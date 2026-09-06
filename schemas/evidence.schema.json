@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/blooddrunk/turtle-value-engine/schemas/evidence.schema.json",
+  "title": "Turtle Value Engine Evidence",
+  "description": "Auditable evidence item used by quantitative adjustments, qualitative judgments, gates and final decisions.",
+  "type": "object",
+  "required": [
+    "id",
+    "direction",
+    "strength",
+    "statement",
+    "source",
+    "confidence"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "direction": {
+      "type": "string",
+      "enum": ["SUPPORT", "COUNTER", "CONTEXT"]
+    },
+    "strength": {
+      "type": "string",
+      "enum": ["E3", "E2", "E1", "E0"],
+      "description": "E3 audited/formal primary data; E2 formal operating disclosure; E1 credible independent secondary evidence; E0 inference only."
+    },
+    "statement": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Concise paraphrased fact or inference supported by the source; avoid unnecessary verbatim quotation."
+    },
+    "metric_context": {
+      "type": ["object", "null"],
+      "properties": {
+        "metric": {"type": "string"},
+        "period": {"type": ["string", "null"]},
+        "value": {"type": ["number", "string", "boolean", "null"]},
+        "unit": {"type": ["string", "null"]},
+        "currency": {"type": ["string", "null"], "minLength": 3, "maxLength": 3}
+      },
+      "additionalProperties": false
+    },
+    "source": {
+      "$ref": "#/$defs/source"
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "notes": {
+      "type": ["string", "null"]
+    }
+  },
+  "$defs": {
+    "source": {
+      "type": "object",
+      "required": ["type", "title"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "ANNUAL_REPORT",
+            "INTERIM_REPORT",
+            "EXCHANGE_FILING",
+            "COMPANY_ANNOUNCEMENT",
+            "COMPANY_OPERATING_DISCLOSURE",
+            "GOVERNMENT",
+            "REGULATOR",
+            "INDUSTRY_ASSOCIATION",
+            "STRUCTURED_DATA_VENDOR",
+            "RESEARCH_PROVIDER",
+            "NEWS",
+            "OTHER"
+          ]
+        },
+        "title": {"type": "string", "minLength": 1},
+        "issuer": {"type": ["string", "null"]},
+        "published_date": {"type": ["string", "null"], "format": "date"},
+        "fiscal_period": {"type": ["string", "null"]},
+        "url": {"type": ["string", "null"], "format": "uri"},
+        "document_id": {"type": ["string", "null"]},
+        "page": {"type": ["integer", "null"], "minimum": 1},
+        "section": {"type": ["string", "null"]},
+        "table_or_note": {"type": ["string", "null"]},
+        "locator": {"type": ["string", "null"], "description": "Additional stable locator such as line range, filing item, note number or table label."}
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
