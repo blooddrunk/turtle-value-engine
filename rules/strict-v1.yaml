@@ -1,0 +1,190 @@
+profile:
+  id: strict-v1
+  name: Turtle Value Engine Strict v1
+  status: draft
+  description: >-
+    Conservative A/H-share value-investing profile. Hard gates are evaluated
+    independently before valuation. Net cash is treated primarily as a safety
+    margin rather than permission to overpay.
+
+universe:
+  min_listing_years_pass: 5
+  min_listing_years_watch: 3
+  exclude_special_treatment: true
+  exclude_negative_parent_equity: true
+  special_models:
+    - banks
+    - insurance
+    - brokers
+    - trusts
+    - reits
+    - property_developers
+
+cdc:
+  continuity:
+    lookback_years: 5
+    min_positive_years: 4
+    require_positive_cumulative: true
+    require_positive_normalized: true
+  normalization:
+    standard_method: min_3y_average_5y_median
+    cyclical_method: full_cycle_median
+    cyclical_min_years: 7
+    cyclical_preferred_years: 10
+  working_capital_distortion_threshold: 0.30
+  capex_payables_materiality_vs_core_cdc: 0.10
+  interest_classification_materiality_vs_reported_cfo: 0.10
+  yield_bands:
+    s: 0.12
+    a: 0.10
+    pass: 0.08
+    watch: 0.06
+    fail_below: 0.06
+
+net_cash:
+  cash_weights:
+    hard_cash: 1.00
+    near_cash: 0.95
+    liquid_financial_assets: 0.80
+    strategic_investments: 0.00
+  upstreamability_factors:
+    fully_accessible: 1.00
+    moderate_friction: 0.75
+    meaningful_constraints: 0.50
+    unavailable: 0.00
+  hybrid_debt_weights:
+    pure_equity_like_min: 0.00
+    pure_equity_like_max: 0.25
+    hybrid: 0.50
+    debt_like: 1.00
+  nci_materiality:
+    minority_profit_ratio: 0.15
+    minority_equity_ratio: 0.20
+  owner_net_cash_ratio_bands:
+    s_plus: 0.60
+    s: 0.50
+    a: 0.30
+    b: 0.20
+    c: 0.00
+  liquidity_coverage:
+    s: 2.00
+    a: 1.50
+    b: 1.20
+    watch: 1.00
+    fail_below: 1.00
+  stress:
+    cdc_retention_factor: 0.70
+    preferred_coverage: 1.20
+    ideal_coverage: 2.00
+    fail_below: 1.00
+  leverage:
+    max_net_debt_to_ebitda_pass: 1.00
+    max_net_debt_to_ebitda_watch: 2.00
+    fail_above: 2.00
+    interest_coverage_pass: 8.00
+    interest_coverage_watch: 4.00
+    fail_below: 4.00
+  cash_governance_factor:
+    strong: 1.00
+    sound: 0.85
+    weak_distribution: 0.70
+    poor_capital_allocation: 0.50
+    severe_governance_max: 0.30
+
+through_return:
+  distributable_base_method: min_normalized_profit_normalized_cdc
+  payout_ratio:
+    formal_policy_method: min_policy_floor_5y_median
+    no_policy_method: p25_5y
+  normalized_buyback_years: 3
+  yield_bands:
+    s: 0.08
+    a: 0.06
+    pass: 0.05
+    watch: 0.04
+    fail_below: 0.04
+  formal_candidate_threshold: 0.05
+
+business_quality:
+  dimensions:
+    demand_durability: 5
+    cyclicality: 5
+    pricing_power: 5
+    moat: 5
+    capital_efficiency: 5
+    dependency: 5
+    regulatory_risk: 5
+    predictability: 5
+  critical_dimensions:
+    - demand_durability
+    - pricing_power
+    - moat
+    - capital_efficiency
+  critical_dimension_fail_at_or_below: 1
+  score_bands:
+    s: 35
+    a: 32
+    pass: 28
+    watch: 24
+    fail_below: 24
+  evidence_coverage:
+    high: 0.85
+    medium: 0.70
+    low_below: 0.70
+  evidence_requirements:
+    score_4_min_strong_evidence: 2
+    score_5_min_strong_evidence: 2
+    score_without_strong_evidence_max: 3
+
+valuation:
+  buyback_cash_credit:
+    enabled: true
+    default_cash: 0
+    min_history_years: 3
+    require_high_confidence: true
+    require_net_diluted_share_reduction: true
+  tiers:
+    observation:
+      cdc_yield: 0.06
+      recurring_shareholder_cash_yield: 0.04
+      decision: WATCH
+    acceptable:
+      cdc_yield: 0.08
+      recurring_shareholder_cash_yield: 0.05
+      decision: ACCEPTABLE
+    turtle_entry:
+      cdc_yield: 0.10
+      recurring_shareholder_cash_yield: 0.05
+      decision: TURTLE_ENTRY
+    extreme_safety:
+      cdc_yield: 0.12
+      recurring_shareholder_cash_yield: 0.06
+      decision: EXTREME_SAFETY
+  combine_constraints: min
+  quality_premium_enabled: false
+  risk_free_rate_adjustment_enabled: false
+  net_cash_raises_primary_price_ceiling: false
+  cash_cushion_labels:
+    thick: 0.50
+    strong: 0.30
+    moderate: 0.20
+  negative_adjusted_ev_mode: NET_NET_SPECIAL_CASE
+
+confidence:
+  levels:
+    - HIGH
+    - MEDIUM
+    - LOW
+  low_critical_input_blocks_auto_pass: true
+
+results:
+  states:
+    - PASS
+    - WATCH
+    - FAIL
+    - SPECIAL_REVIEW
+    - ACCEPTABLE
+    - TURTLE_ENTRY
+    - EXTREME_SAFETY
+    - TOO_EXPENSIVE_FOR_STRICT_MODEL
+    - NO_NORMAL_VALUATION
