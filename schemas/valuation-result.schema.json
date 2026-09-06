@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/blooddrunk/turtle-value-engine/schemas/valuation-result.schema.json",
+  "title": "Turtle Value Engine Valuation Result",
+  "type": "object",
+  "required": [
+    "as_of",
+    "valuation_currency",
+    "listing",
+    "normalized_parent_core_cdc",
+    "distributable_base",
+    "recurring_shareholder_cash",
+    "tiers",
+    "current_valuation_state",
+    "confidence"
+  ],
+  "properties": {
+    "as_of": {"type": "string", "format": "date"},
+    "valuation_currency": {"type": "string", "minLength": 3, "maxLength": 3},
+    "listing": {"type": "string"},
+    "current_price": {"type": ["number", "null"], "minimum": 0},
+    "listing_equivalent_market_cap": {"type": ["number", "null"], "minimum": 0},
+    "actual_aggregate_company_market_cap": {"type": ["number", "null"], "minimum": 0},
+    "normalized_diluted_economic_shares": {"type": ["number", "null"], "exclusiveMinimum": 0},
+
+    "normalized_parent_core_cdc": {"type": "number"},
+    "distributable_base": {"type": "number"},
+    "recurring_dividend_cash": {"type": ["number", "null"]},
+    "verified_recurring_buyback_cash": {"type": "number", "minimum": 0, "default": 0},
+    "recurring_shareholder_cash": {"type": "number"},
+
+    "owner_realizable_net_cash": {"type": ["number", "null"]},
+    "valuation_net_cash": {"type": ["number", "null"]},
+    "adjusted_ev": {"type": ["number", "null"]},
+    "ex_cash_cdc_yield": {"type": ["number", "null"]},
+    "asset_supported_market_cap": {"type": ["number", "null"]},
+
+    "tiers": {
+      "type": "object",
+      "required": ["observation", "acceptable", "turtle_entry", "extreme_safety"],
+      "properties": {
+        "observation": {"$ref": "#/$defs/tier"},
+        "acceptable": {"$ref": "#/$defs/tier"},
+        "turtle_entry": {"$ref": "#/$defs/tier"},
+        "extreme_safety": {"$ref": "#/$defs/tier"}
+      },
+      "additionalProperties": false
+    },
+
+    "current_valuation_state": {
+      "type": "string",
+      "enum": [
+        "EXTREME_SAFETY",
+        "TURTLE_ENTRY",
+        "ACCEPTABLE",
+        "WATCH",
+        "TOO_EXPENSIVE_FOR_STRICT_MODEL",
+        "NO_NORMAL_VALUATION",
+        "SPECIAL_REVIEW"
+      ]
+    },
+
+    "mos_acceptable": {"type": ["number", "null"]},
+    "mos_turtle": {"type": ["number", "null"]},
+    "mos_extreme": {"type": ["number", "null"]},
+
+    "flags": {
+      "type": "array",
+      "items": {"type": "string"},
+      "uniqueItems": true,
+      "default": []
+    },
+
+    "confidence": {
+      "type": "string",
+      "enum": ["HIGH", "MEDIUM", "LOW"]
+    }
+  },
+  "$defs": {
+    "tier": {
+      "type": "object",
+      "required": ["cdc_hurdle", "return_hurdle", "market_cap", "price"],
+      "properties": {
+        "cdc_hurdle": {"type": "number", "exclusiveMinimum": 0},
+        "return_hurdle": {"type": "number", "exclusiveMinimum": 0},
+        "market_cap": {"type": ["number", "null"], "minimum": 0},
+        "price": {"type": ["number", "null"], "minimum": 0},
+        "owner_net_cash_ratio": {"type": ["number", "null"]},
+        "valuation_net_cash_ratio": {"type": ["number", "null"]}
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
