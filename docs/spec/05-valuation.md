@@ -1,186 +1,443 @@
 # 05 — Valuation Engine
 
-> Status: scaffold / next active design module
+> Status: strict-v1 design specification
 
 ## 1. Purpose
 
-Valuation is allowed only after the company independently passes:
+Valuation is allowed only after the company independently passes the required non-price gates:
 
 ```text
 Balance Sheet Safety
 CDC
 Through Return
 Business Quality
+Governance / Data Quality
 ```
 
-The valuation engine answers a narrower question:
+The valuation engine answers one narrow question:
 
-> At what market value and share price does an already-qualified business offer a sufficient margin of safety?
+> **At what market value and share price does an already-qualified business provide enough cash return and margin of safety to become investable under the strict Turtle framework?**
 
-The engine should avoid relying primarily on PE/PB/PEG and instead anchor valuation to owner-realizable cash, normalized Core CDC, sustainable shareholder return and business durability.
+The engine does not attempt to forecast short-term prices and does not primarily rely on PE, PB, PEG or narrative DCF assumptions.
 
 ---
 
-## 2. Core valuation anchors
+## 2. Strict-v1 design principles
 
-### 2.1 CDC hurdle valuation
+### 2.1 Price does not repair a broken business
 
-For a required CDC yield `Y_cdc`:
+A cheaper price cannot turn a failed balance sheet, unreliable cash flow, unacceptable governance or structurally broken business model into a normal `PASS`.
 
-\[
-MaxMarketCap_{CDC} = \frac{NormalizedParentCoreCDC}{Y_{cdc}}
-\]
+Special situations remain separate.
 
-Example hurdle set to design/backtest:
+### 2.2 Net cash is primarily a safety margin, not permission to overpay
+
+The strict profile deliberately separates:
+
+- **return on total purchase price**; and
+- **asset support from realizable net cash**.
+
+The primary entry-price cap is therefore based on total-market-value CDC and recurring shareholder cash return.
+
+Cash-adjusted / ex-cash valuation is retained as a diagnostic and second valuation lens, but does **not** automatically raise the strict-v1 purchase ceiling.
+
+This preserves the intuitive Turtle requirement:
+
+> “每100元市值，企业本身每年真正赚多少，并且有多少真正回到股东手里？”
+
+### 2.3 Independent valuation constraints are combined with `min`, never averaged
+
+A company does not become cheap because one valuation dimension is exceptionally strong while another required return dimension fails.
+
+---
+
+## 3. Core normalized inputs
+
+Use the following audited/normalized inputs from prior modules:
 
 ```text
-12% -> extreme safety / very cheap
-10% -> strict turtle entry
-8%  -> acceptable candidate threshold
+NCDC = NormalizedParentCoreCDC
+DB   = DistributableBase
+CPR  = ConservativePayoutRatio
+VNC  = ValuationNetCash
+NDS  = NormalizedDilutedShares
 ```
 
-### 2.2 Through-return hurdle valuation
-
-Let normalized expected recurring shareholder cash return be:
+Normalized recurring dividend cash:
 
 \[
-ExpectedShareholderReturnCash = DistributableBase \times CPR
+RecurringDividendCash = DB \times CPR
 \]
 
-with net share reduction handled separately or translated to economic ownership return.
+All monetary values must be converted into a declared common valuation currency before formulas are evaluated.
 
-For required through-return hurdle `Y_tr`:
-
-\[
-MaxMarketCap_{TR} = \frac{ExpectedRecurringShareholderReturn}{Y_{tr}}
-\]
-
-The precise treatment of buybacks in price-target calculations remains to be finalized.
-
-### 2.3 Cash-adjusted operating valuation
-
-\[
-AdjustedEV = MarketCap - ValuationNetCash
-\]
-
-\[
-ExCashCDCYield = \frac{NormalizedParentCoreCDC}{AdjustedEV}
-\]
-
-This view asks what price the market is effectively assigning to the operating business after conservatively crediting realizable cash.
-
-If `AdjustedEV <= 0`, switch to a dedicated `NET_NET_SPECIAL_CASE` model rather than reporting meaningless infinite yields.
+Investor-specific dividend withholding tax is **not** part of the core hard gate. The engine may additionally display an after-tax investor view.
 
 ---
 
-## 3. Price tiers to produce
+## 4. Price-target treatment of buybacks
 
-The final valuation module should output at least four price levels:
+The current Through Return metric may include normalized net diluted-share reduction:
+
+\[
+ThroughReturn = DividendThroughReturn + NormalizedNetShareReduction
+\]
+
+However, a historical percentage reduction in shares cannot safely be inverted into a future target market capitalization because the same buyback cash retires very different amounts of stock at different prices.
+
+Therefore strict-v1 uses this rule:
 
 ```text
-Observation Price
-Fair / Acceptable Price
-Turtle Entry Price
-Extreme Safety Price
+Buybacks may help the Through Return gate,
+but target-price capitalization credits recurring buyback CASH only
+when that cash amount is independently verified and sustainable.
 ```
 
-Proposed semantics:
+Define:
 
-### Observation Price
+```text
+VerifiedRecurringBuybackCash
+```
 
-Business is high quality but valuation still fails at least one strict hurdle. Worth monitoring, not purchasing under the strict model.
+Default:
 
-### Fair / Acceptable Price
+```text
+0
+```
 
-Meets minimum formal hurdles (for example CDC >= 8% and Through Return >= 5%) but margin of safety is not unusually wide.
+It may be positive only when all are true:
 
-### Turtle Entry Price
+1. at least three years of disclosed repurchase cash data are available;
+2. diluted share count genuinely fell after stock compensation, acquisition issuance and other dilution;
+3. repurchases were not a one-off event;
+4. the recurring amount is covered by normalized distributable cash;
+5. `BUYBACK_CREDIT_CONFIDENCE = HIGH`.
 
-Meets stricter cash-return hurdles (candidate baseline to test: CDC >=10%) while preserving all other hard gates.
-
-### Extreme Safety Price
-
-Very wide margin of safety, potentially characterized by CDC >=12%, thick owner-realizable net cash and high shareholder return.
-
-These are strategy definitions and require historical validation before finalization.
-
----
-
-## 4. Combining valuation constraints
-
-The engine should not average independent valuation limits.
-
-Baseline conservative rule:
+Then:
 
 \[
-MaxAcceptableMarketCap = min(
-MaxMarketCap_{CDC},
-MaxMarketCap_{TR},
-OtherValidatedCaps
-)
+RecurringShareholderCashRaw = RecurringDividendCash + VerifiedRecurringBuybackCash
 \]
 
-This preserves the hard-gate philosophy: valuation must satisfy each required return constraint rather than allowing one strong dimension to compensate for another weak one.
+Cap it conservatively:
+
+\[
+RecurringShareholderCash = min(NCDC, DB, RecurringShareholderCashRaw)
+\]
+
+If verified buyback cash is unavailable, strict-v1 target prices capitalize dividends only. This is intentionally conservative.
 
 ---
 
-## 5. From market cap to share price
+## 5. Two valuation lenses
 
-For a normalized fully diluted share count:
+### 5.1 Lens A — whole-company cash-return valuation (PRIMARY)
+
+For required whole-company CDC yield `Y_cdc`:
+
+\[
+MarketCapCap_{CDC} = \frac{NCDC}{Y_{cdc}}
+\]
+
+For required recurring shareholder cash yield `Y_return`:
+
+\[
+MarketCapCap_{Return} = \frac{RecurringShareholderCash}{Y_{return}}
+\]
+
+The strict tier cap is:
+
+\[
+TierMarketCap = min(MarketCapCap_{CDC}, MarketCapCap_{Return})
+\]
+
+This is the primary purchase-price model.
+
+### 5.2 Lens B — cash-adjusted operating valuation (DIAGNOSTIC)
+
+\[
+AdjustedEV = MarketCap - VNC
+\]
+
+\[
+ExCashCDCYield = \frac{NCDC}{AdjustedEV}
+\]
+
+For a chosen operating-business hurdle `Y_op`:
+
+\[
+AssetSupportedMarketCap = VNC + \frac{NCDC}{Y_{op}}
+\]
+
+This second lens answers:
+
+> After conservatively crediting realizable net cash, what valuation is the market assigning to the operating business?
+
+In strict-v1, `AssetSupportedMarketCap` is **not** allowed to raise `TierMarketCap`.
+
+It is used for:
+
+- diagnosing cash-rich deep value;
+- understanding the operating-business price;
+- distinguishing cash boxes from genuine cash-generating businesses;
+- identifying discrepancies worth deeper review.
+
+---
+
+## 6. Four price tiers
+
+Strict-v1 starts with four explicit tiers.
+
+| Tier | Required CDC Yield | Required recurring shareholder cash yield | Meaning |
+|---|---:|---:|---|
+| Observation | 6% | 4% | worth monitoring, not a strict buy |
+| Acceptable | 8% | 5% | minimum formal valuation pass |
+| Turtle Entry | 10% | 5% | preferred strict Turtle entry |
+| Extreme Safety | 12% | 6% | unusually wide cash-return margin |
+
+These are strategy parameters, not universal financial truths. They must live in versioned machine-readable configuration and later be validated by historical testing.
+
+### 6.1 Observation tier
+
+\[
+ObservationCap = min(\frac{NCDC}{0.06}, \frac{RecurringShareholderCash}{0.04})
+\]
+
+Crossing this threshold only moves the company into an active watch zone.
+
+### 6.2 Acceptable tier
+
+\[
+AcceptableCap = min(\frac{NCDC}{0.08}, \frac{RecurringShareholderCash}{0.05})
+\]
+
+This is the highest price at which the strict model's minimum valuation requirements are satisfied.
+
+### 6.3 Turtle Entry tier
+
+\[
+TurtleEntryCap = min(\frac{NCDC}{0.10}, \frac{RecurringShareholderCash}{0.05})
+\]
+
+This captures the intended shorthand:
+
+> “每100元市值，正常年份至少约10元真实可支配现金，并且至少约5元形成可持续股东现金回报。”
+
+### 6.4 Extreme Safety tier
+
+\[
+ExtremeSafetyCap = min(\frac{NCDC}{0.12}, \frac{RecurringShareholderCash}{0.06})
+\]
+
+This is not automatically a stronger recommendation. Extremely low prices can signal hidden liabilities, governance failures or structural decline, so deep-value flags remain mandatory.
+
+---
+
+## 7. Tier monotonicity
+
+The engine must verify:
+
+\[
+ObservationCap \ge AcceptableCap \ge TurtleEntryCap \ge ExtremeSafetyCap
+\]
+
+If configuration changes violate this ordering:
+
+```text
+VALUATION_PROFILE_INVALID
+```
+
+and no automated target prices may be published.
+
+---
+
+## 8. Current valuation state
+
+Given current listing-equivalent market capitalization `CurrentMCap`:
+
+```text
+IF CurrentMCap <= ExtremeSafetyCap:
+    EXTREME_SAFETY
+ELSE IF CurrentMCap <= TurtleEntryCap:
+    TURTLE_ENTRY
+ELSE IF CurrentMCap <= AcceptableCap:
+    ACCEPTABLE
+ELSE IF CurrentMCap <= ObservationCap:
+    WATCH
+ELSE:
+    TOO_EXPENSIVE_FOR_STRICT_MODEL
+```
+
+This status is valid only when all prerequisite non-price gates remain valid.
+
+---
+
+## 9. From market cap to share price
+
+For a normal single-class company:
 
 \[
 TargetPrice = \frac{TargetMarketCap}{NormalizedDilutedShares}
 \]
 
-The engine must adjust for:
+Use normalized fully diluted economic shares, not merely period-end basic shares.
 
-- dual listings / fungibility where relevant;
+Adjust for:
+
 - treasury shares;
-- material options/RSUs;
+- options and RSUs;
 - convertibles likely to dilute;
 - stock splits / consolidations;
-- H-share vs total-company ownership structure.
+- class conversion ratios;
+- material post-reporting-date issuance/cancellation.
 
-Share-count normalization must be auditable.
+Every adjustment must be auditable.
 
 ---
 
-## 6. Quality premium: intentionally disabled in v1
+## 10. A-share / H-share and multi-listing treatment
 
-A future version may permit:
+The engine must distinguish **company economics** from **listing price**.
+
+When different listed classes represent equivalent economic claims but trade at different prices, do not force the investor's entry yield to use a weighted-average actual market capitalization that they are not paying.
+
+For each investable listing, compute a listing-equivalent capitalization:
 
 \[
-RequiredCDCYield = BaseYield - QualityAdjustment
+ListingEquivalentMarketCap
+=
+ListingPrice_{common\ currency}
+\times TotalEquivalentEconomicShares
 \]
 
-But the strict v1 model should **not** lower hurdle rates merely because a company has a high Business Score.
+with class-right / share-ratio adjustment where necessary.
 
-Reason:
+Then evaluate CDC Yield and return hurdles using the listing-equivalent capitalization.
 
-> This is the easiest way for the framework to drift back into “great company at any price.”
+This permits the H share and A share of the same underlying company to have different investment states while using the same normalized company fundamentals.
 
-For v1, business quality and valuation pass independently.
+Also retain the actual aggregate class-by-class market value for reporting and reconciliation.
+
+If economic rights differ materially between classes:
+
+```text
+MULTI_CLASS_SPECIAL_REVIEW
+```
 
 ---
 
-## 7. Risk-free-rate adaptation: future extension
+## 11. Margin of safety
 
-Potential later design:
+Do not publish one ambiguous `margin_of_safety` field.
+
+Calculate separately:
 
 \[
-RequiredReturn = max(FixedFloor, R_f + RequiredSpread)
+MOS_{Acceptable} = 1 - \frac{CurrentMCap}{AcceptableCap}
 \]
 
-This may apply to Through Return and/or CDC hurdle rates, but must be validated by backtest and regime analysis before replacing fixed strict-mode thresholds.
+\[
+MOS_{Turtle} = 1 - \frac{CurrentMCap}{TurtleEntryCap}
+\]
+
+\[
+MOS_{Extreme} = 1 - \frac{CurrentMCap}{ExtremeSafetyCap}
+\]
+
+Interpretation:
+
+```text
+positive -> current price is below that tier ceiling
+zero     -> exactly at tier ceiling
+negative -> current price is above that tier ceiling
+```
+
+Example:
+
+```text
+Turtle Entry price = 10.00
+Current price      = 8.00
+MOS_Turtle         = 20%
+```
 
 ---
 
-## 8. Net-net / negative EV handling
+## 12. Net-cash safety overlay
+
+Net cash is displayed alongside entry prices rather than automatically added to them.
+
+At each target cap calculate:
+
+\[
+OwnerNetCashRatio_{tier}
+=
+\frac{OwnerRealizableNetCash}{TierMarketCap}
+\]
+
+and:
+
+\[
+ValuationNetCashRatio_{tier}
+=
+\frac{VNC}{TierMarketCap}
+\]
+
+This tells the analyst how much of the proposed purchase price is backed by realizable cash.
+
+Suggested descriptive labels:
+
+```text
+>= 50%  THICK_CASH_CUSHION
+30–50%  STRONG_CASH_CUSHION
+20–30%  MODERATE_CASH_CUSHION
+< 20%   LOW_CASH_CUSHION
+```
+
+These labels do not override the separate balance-sheet gate.
+
+---
+
+## 13. Why strict-v1 does not add net cash to the buy price
+
+Consider:
+
+```text
+NCDC = 10
+ValuationNetCash = 60
+```
+
+A pure sum-of-parts approach could justify:
+
+\[
+60 + \frac{10}{10\%} = 160
+\]
+
+But at a market value of 160:
+
+\[
+WholeCompanyCDCYield = 6.25\%
+\]
+
+That violates the strict Turtle shorthand that the *entire purchase price* should itself provide strong cash-generation yield.
+
+Therefore strict-v1 reports the 160 asset-supported value as a secondary lens, but its 10% CDC Turtle ceiling remains:
+
+\[
+100
+\]
+
+The extra cash strengthens safety and deep-value support; it does not automatically justify paying more.
+
+A future non-strict profile may explicitly adopt sum-of-parts valuation, but it must be a separate strategy profile.
+
+---
+
+## 14. Net-net / negative adjusted EV
 
 If:
 
 \[
-OwnerRealizableNetCash > MarketCap
+OwnerRealizableNetCash > CurrentMCap
 \]
 
 or:
@@ -189,65 +446,266 @@ or:
 AdjustedEV \le 0
 \]
 
-flag:
+set:
 
 ```text
 NET_NET_SPECIAL_CASE
 ```
 
-Do not auto-upgrade the company to `PASS`.
+Never report infinite Ex-Cash CDC yield.
 
-Mandatory investigation:
+Mandatory review:
 
-- Is cash real and unrestricted?
-- Can shareholders access it?
-- Is the operating business destroying cash?
-- Are there hidden liabilities?
-- Is governance poor?
-- Is the business structurally dying?
-- Are legal/regulatory risks material?
+- cash authenticity and restrictions;
+- shareholder accessibility;
+- hidden liabilities / guarantees;
+- normalized CDC positivity;
+- cash burn trend;
+- governance and related-party risk;
+- structural business decline;
+- delisting / legal / regulatory risk.
 
-Only positive normalized CDC + acceptable governance + credible cash realizability can move such a company into a deep-value priority pool.
+A company may enter `DEEP_VALUE_PRIORITY` only if:
+
+```text
+NormalizedParentCoreCDC > 0
+Governance PASS
+Cash realizability confidence != LOW
+No unresolved material hidden-liability flag
+```
+
+Even then, the normal price-tier label should carry the special-case flag rather than silently treating negative EV as ordinary valuation.
 
 ---
 
-## 9. Valuation consistency checks
+## 15. Cash box / dying-business handling
 
-The engine should reject internally contradictory valuations.
+High net cash does not create a valid valuation when the operating business fails the CDC or Business Quality gate.
 
 Examples:
 
 ```text
-Target price implies CDC Yield below configured minimum -> invalid
-Target price implies Through Return below configured minimum -> invalid
-Target price assumes more cash than OwnerRealizableNetCash -> invalid
-Target price uses single-year peak earnings for cyclical company -> invalid
+Owner Net Cash / Market Cap = 70%
+Normalized CDC <= 0
+```
+
+Result:
+
+```text
+NO_NORMAL_VALUATION
+POTENTIAL_CASH_BOX_OR_LIQUIDATION_CASE
+```
+
+Likewise, a shrinking business with positive historical CDC but a structural-disruption hard gate cannot receive a normal Turtle target price until analyzed under a dedicated run-off / liquidation model.
+
+---
+
+## 16. Cyclical companies
+
+A cyclical company must never use recent peak CDC to derive a target price.
+
+Required:
+
+```text
+normalization_method = FULL_CYCLE
+```
+
+Use a sector-specific full-cycle normalized CDC derived from at least one meaningful cycle (typically 7–10 years where data permit).
+
+The general valuation engine consumes that normalized value but does not invent a universal cyclical adjustment factor.
+
+If full-cycle normalization is unavailable:
+
+```text
+CYCLICAL_VALUATION_UNAVAILABLE
+```
+
+No automated Turtle price is produced.
+
+---
+
+## 17. Special dividends and asset disposals
+
+Special dividends are not recurring Through Return.
+
+When a special distribution is already formally declared and economically near-certain, the engine may produce a separate event-adjusted view:
+
+\[
+EventAdjustedEntryCost
+=
+CurrentMarketCap
+-
+ExpectedNetSpecialDistribution
+\]
+
+But if the distribution is funded by selling an operating asset, normalized future CDC must be recomputed on a **pro-forma post-disposal basis**.
+
+Never simultaneously:
+
+1. keep the disposed asset's old CDC; and
+2. subtract its sale proceeds / special dividend from purchase cost.
+
+That would double-count value.
+
+---
+
+## 18. State-owned enterprises and trapped excess cash
+
+Persistent excess cash at an SOE or otherwise constrained company is handled through the upstreamability and `CashGovernanceFactor` rules in the net-cash module.
+
+Strict-v1 does not give a higher entry price merely because the balance sheet contains excess cash.
+
+The cash still improves:
+
+- survival strength;
+- cash-cushion ratios;
+- asset-supported diagnostic value;
+- deep-value optionality.
+
+But weak payout flexibility or governance keeps `ValuationNetCash` discounted.
+
+---
+
+## 19. Business-quality premium remains disabled
+
+Strict-v1 does **not** lower required cash yields because Business Score is high.
+
+No formula such as:
+
+\[
+RequiredCDCYield = BaseYield - QualityPremium
+\]
+
+is permitted in this profile.
+
+Reason:
+
+> Business quality determines whether the cash flow deserves to be trusted; it does not authorize paying any price for it.
+
+A future profile may test a bounded quality adjustment, but it must be versioned separately and backtested.
+
+---
+
+## 20. Risk-free-rate adaptation remains disabled in strict-v1
+
+Potential future model:
+
+\[
+RequiredReturn = max(FixedFloor, R_f + Spread)
+\]
+
+This is economically reasonable, but strict-v1 intentionally preserves fixed, interpretable hurdles until historical regime tests justify a dynamic version.
+
+The engine may still display the spread over the current risk-free rate as contextual information.
+
+---
+
+## 21. Price-tier confidence
+
+No automated target price may have confidence above the weakest critical input.
+
+Critical inputs include:
+
+```text
+NormalizedParentCoreCDC
+DistributableBase
+ConservativePayoutRatio
+NormalizedDilutedShares
+listing economic-right conversion
+```
+
+If any critical input is `LOW` confidence:
+
+```text
+VALUATION_CONFIDENCE = LOW
+MANUAL_REVIEW_REQUIRED
+```
+
+The engine may calculate indicative ranges but must not publish a normal `TURTLE_ENTRY` decision.
+
+---
+
+## 22. Consistency checks
+
+Reject or flag valuations when any of the following occurs:
+
+```text
+Target cap implies CDC Yield below configured tier hurdle
+Target cap implies recurring shareholder cash yield below tier hurdle
+Tier caps are non-monotonic
+Target uses more recurring shareholder cash than normalized CDC
+Target credits unverified buyback cash
+Target uses single-year peak CDC for a cyclical company
+Target share price uses unnormalized diluted shares
+Target credits special-distribution cash while retaining disposed-asset CDC
+Listing currency/share-ratio conversion is unresolved
+```
+
+Any critical inconsistency:
+
+```text
+VALUATION_INVALID
 ```
 
 ---
 
-## 10. Planned outputs
+## 23. Required outputs
 
 ```json
 {
-  "current_market_cap": null,
+  "as_of": null,
+  "valuation_currency": null,
+  "listing": null,
+
   "current_price": null,
-  "normalized_diluted_shares": null,
+  "listing_equivalent_market_cap": null,
+  "actual_aggregate_company_market_cap": null,
+  "normalized_diluted_economic_shares": null,
+
+  "normalized_parent_core_cdc": null,
+  "distributable_base": null,
+  "recurring_dividend_cash": null,
+  "verified_recurring_buyback_cash": 0,
+  "recurring_shareholder_cash": null,
+
+  "owner_realizable_net_cash": null,
   "valuation_net_cash": null,
   "adjusted_ev": null,
-  "max_market_cap_cdc_8": null,
-  "max_market_cap_cdc_10": null,
-  "max_market_cap_cdc_12": null,
-  "max_market_cap_through_return": null,
-  "observation_market_cap": null,
-  "acceptable_market_cap": null,
-  "turtle_entry_market_cap": null,
-  "extreme_safety_market_cap": null,
-  "observation_price": null,
-  "acceptable_price": null,
-  "turtle_entry_price": null,
-  "extreme_safety_price": null,
-  "margin_of_safety": null,
+  "ex_cash_cdc_yield": null,
+  "asset_supported_market_cap": null,
+
+  "tiers": {
+    "observation": {
+      "cdc_hurdle": 0.06,
+      "return_hurdle": 0.04,
+      "market_cap": null,
+      "price": null
+    },
+    "acceptable": {
+      "cdc_hurdle": 0.08,
+      "return_hurdle": 0.05,
+      "market_cap": null,
+      "price": null
+    },
+    "turtle_entry": {
+      "cdc_hurdle": 0.10,
+      "return_hurdle": 0.05,
+      "market_cap": null,
+      "price": null
+    },
+    "extreme_safety": {
+      "cdc_hurdle": 0.12,
+      "return_hurdle": 0.06,
+      "market_cap": null,
+      "price": null
+    }
+  },
+
+  "current_valuation_state": null,
+  "mos_acceptable": null,
+  "mos_turtle": null,
+  "mos_extreme": null,
+
   "flags": [],
   "confidence": "HIGH|MEDIUM|LOW"
 }
@@ -255,17 +713,131 @@ Target price uses single-year peak earnings for cyclical company -> invalid
 
 ---
 
-## 11. Open design questions
+## 24. Strict-v1 decision pseudocode
 
-The next iteration should resolve these explicitly:
+```text
+REQUIRE all non-price gates PASS
+REQUIRE valuation critical inputs confidence != LOW
 
-1. Should CDC hurdle valuation use total market cap or cash-adjusted EV as the primary anchor?
-2. How should net buyback yield translate into a target market cap without double-counting value already embedded in CDC?
-3. Should Through Return hurdle be fixed at 5% or dynamic versus the risk-free rate?
-4. Should different business-quality tiers receive different required returns, or should strict mode keep a universal hurdle?
-5. How should cyclical companies derive target prices from full-cycle CDC?
-6. How should state-owned enterprises with persistent excess cash but limited payout flexibility be discounted?
-7. How should H-share/A-share dual listings and different market prices be handled while keeping one underlying company valuation?
-8. How should special dividends and asset disposals affect one-time entry value without contaminating normalized recurring return?
+NCDC = NormalizedParentCoreCDC
+DividendCash = DistributableBase * CPR
+BuybackCash = VerifiedRecurringBuybackCash OR 0
+RecurringShareholderCash = MIN(NCDC, DistributableBase, DividendCash + BuybackCash)
 
-These questions must be settled before implementation is considered stable.
+FOR each tier:
+    CDC_CAP = NCDC / tier.cdc_hurdle
+    RETURN_CAP = RecurringShareholderCash / tier.return_hurdle
+    TIER_CAP = MIN(CDC_CAP, RETURN_CAP)
+    TIER_PRICE = TIER_CAP / NormalizedDilutedEconomicShares
+
+CHECK tier monotonicity
+CHECK all valuation consistency rules
+
+IF special-case flag requires manual review:
+    do not auto-issue normal buy decision
+ELSE:
+    classify current listing-equivalent market cap
+```
+
+---
+
+## 25. Interpretation example
+
+Assume:
+
+```text
+Normalized Parent Core CDC      = 10
+Distributable Base              = 9
+CPR                             = 60%
+Verified recurring buyback cash = 0
+Valuation Net Cash              = 40
+Normalized diluted shares       = 10
+```
+
+Then:
+
+\[
+RecurringShareholderCash = 9 \times 60\% = 5.4
+\]
+
+### Acceptable
+
+CDC cap:
+
+\[
+10/8\%=125
+\]
+
+Return cap:
+
+\[
+5.4/5\%=108
+\]
+
+Therefore:
+
+\[
+AcceptableCap=108
+\]
+
+and:
+
+\[
+AcceptablePrice=10.8
+\]
+
+### Turtle Entry
+
+CDC cap:
+
+\[
+10/10\%=100
+\]
+
+Return cap:
+
+\[
+5.4/5\%=108
+\]
+
+Therefore:
+
+\[
+TurtleEntryCap=100
+\]
+
+and:
+
+\[
+TurtleEntryPrice=10.0
+\]
+
+At the Turtle price:
+
+```text
+CDC Yield                = 10.0%
+Recurring shareholder yield = 5.4%
+Valuation net cash / cap = 40.0%
+```
+
+This is the desired interpretation:
+
+> 100元的购买价格本身已经满足约10%的真实现金创造能力和5%以上的可持续股东现金回报，同时约40元还有经过折价后的净现金作为额外安全垫。
+
+---
+
+## 26. What strict-v1 deliberately does not do
+
+The valuation engine currently does not:
+
+- forecast stock-price appreciation;
+- assign terminal multiples;
+- assume multiple expansion;
+- lower hurdle rates for famous/high-quality businesses;
+- capitalize vague future growth;
+- treat all book cash as full-value cash;
+- treat headline buyback spending as shareholder return;
+- extrapolate peak-cycle earnings;
+- automatically convert negative EV into a buy signal.
+
+Those exclusions are intentional. The first production version should be easy to audit and difficult to fool before becoming more sophisticated.
