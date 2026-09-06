@@ -1,0 +1,319 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/blooddrunk/turtle-value-engine/schemas/company-analysis.schema.json",
+  "title": "Turtle Value Engine Company Analysis",
+  "description": "Unified auditable contract from raw facts and adjustments through metrics, gates, valuation and final decision.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "analysis_id",
+    "as_of",
+    "profile_id",
+    "company",
+    "data_quality",
+    "facts",
+    "adjustments",
+    "metrics",
+    "gates",
+    "valuation",
+    "decision"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1.0.0"
+    },
+    "analysis_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "as_of": {
+      "type": "string",
+      "format": "date"
+    },
+    "profile_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "company": {
+      "$ref": "#/$defs/company"
+    },
+    "data_quality": {
+      "$ref": "#/$defs/dataQuality"
+    },
+    "facts": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/fact"}
+    },
+    "adjustments": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/adjustment"}
+    },
+    "metrics": {
+      "$ref": "#/$defs/metrics"
+    },
+    "business_quality": {
+      "$ref": "#/$defs/businessQuality"
+    },
+    "gates": {
+      "type": "object",
+      "required": [
+        "universe",
+        "balance_sheet",
+        "cdc",
+        "through_return",
+        "business_quality",
+        "governance_data_quality"
+      ],
+      "properties": {
+        "universe": {"$ref": "#/$defs/gate"},
+        "balance_sheet": {"$ref": "#/$defs/gate"},
+        "cdc": {"$ref": "#/$defs/gate"},
+        "through_return": {"$ref": "#/$defs/gate"},
+        "business_quality": {"$ref": "#/$defs/gate"},
+        "governance_data_quality": {"$ref": "#/$defs/gate"}
+      },
+      "additionalProperties": false
+    },
+    "valuation": {
+      "$ref": "valuation-result.schema.json"
+    },
+    "decision": {
+      "$ref": "#/$defs/decision"
+    },
+    "evidence_index": {
+      "type": "array",
+      "items": {"$ref": "evidence.schema.json"},
+      "default": []
+    },
+    "flags": {
+      "type": "array",
+      "items": {"type": "string"},
+      "uniqueItems": true,
+      "default": []
+    }
+  },
+  "$defs": {
+    "company": {
+      "type": "object",
+      "required": ["name", "primary_listing", "sector", "reporting_currency"],
+      "properties": {
+        "name": {"type": "string"},
+        "legal_name": {"type": ["string", "null"]},
+        "primary_listing": {"type": "string"},
+        "other_listings": {"type": "array", "items": {"type": "string"}, "default": []},
+        "sector": {"type": "string"},
+        "industry": {"type": ["string", "null"]},
+        "country_or_region": {"type": ["string", "null"]},
+        "reporting_currency": {"type": "string", "minLength": 3, "maxLength": 3},
+        "accounting_standard": {"type": ["string", "null"]},
+        "accounting_standard_version": {"type": ["string", "null"]},
+        "fiscal_year_end": {"type": ["string", "null"]},
+        "special_model": {"type": ["string", "null"]}
+      },
+      "additionalProperties": false
+    },
+    "dataQuality": {
+      "type": "object",
+      "required": ["confidence", "evidence_coverage", "critical_missing_fields"],
+      "properties": {
+        "confidence": {"type": "string", "enum": ["HIGH", "MEDIUM", "LOW"]},
+        "evidence_coverage": {"type": "number", "minimum": 0, "maximum": 1},
+        "critical_missing_fields": {"type": "array", "items": {"type": "string"}},
+        "notes": {"type": ["string", "null"]}
+      },
+      "additionalProperties": false
+    },
+    "fact": {
+      "type": "object",
+      "required": ["id", "field", "value", "period", "source_evidence_ids", "confidence"],
+      "properties": {
+        "id": {"type": "string"},
+        "field": {"type": "string"},
+        "value": {"type": ["number", "string", "boolean", "null"]},
+        "unit": {"type": ["string", "null"]},
+        "currency": {"type": ["string", "null"], "minLength": 3, "maxLength": 3},
+        "period": {"type": "string"},
+        "source_evidence_ids": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+        "estimated": {"type": "boolean", "default": false},
+        "estimation_method": {"type": ["string", "null"]},
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1}
+      },
+      "additionalProperties": false
+    },
+    "adjustment": {
+      "type": "object",
+      "required": [
+        "id",
+        "target_field",
+        "adjustment_type",
+        "status",
+        "reason",
+        "source_evidence_ids",
+        "proposed_by"
+      ],
+      "properties": {
+        "id": {"type": "string"},
+        "target_field": {"type": "string"},
+        "adjustment_type": {
+          "type": "string",
+          "enum": [
+            "RECLASSIFY",
+            "EXCLUDE",
+            "INCLUDE",
+            "HAIRCUT",
+            "OWNERSHIP_ADJUST",
+            "UPSTREAMABILITY_ADJUST",
+            "NORMALIZE",
+            "OTHER"
+          ]
+        },
+        "input_value": {"type": ["number", "null"]},
+        "proposed_adjusted_value": {"type": ["number", "null"]},
+        "status": {"type": "string", "enum": ["PROPOSED", "ACCEPTED", "REJECTED"]},
+        "reason": {"type": "string"},
+        "source_evidence_ids": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+        "proposed_by": {"type": "string", "enum": ["RULE_ENGINE", "LLM", "HUMAN"]},
+        "approved_by": {"type": ["string", "null"], "enum": ["RULE_ENGINE", "HUMAN", null]},
+        "confidence": {"type": ["number", "null"], "minimum": 0, "maximum": 1}
+      },
+      "additionalProperties": false
+    },
+    "metrics": {
+      "type": "object",
+      "required": ["cdc", "net_cash", "through_return"],
+      "properties": {
+        "cdc": {
+          "type": "object",
+          "properties": {
+            "normalized_parent_core_cdc": {"type": ["number", "null"]},
+            "cdc_yield": {"type": ["number", "null"]},
+            "positive_years_5y": {"type": ["integer", "null"]},
+            "cumulative_core_cdc_5y": {"type": ["number", "null"]},
+            "all_in_cdc_5y": {"type": ["number", "null"]}
+          },
+          "additionalProperties": true
+        },
+        "net_cash": {
+          "type": "object",
+          "properties": {
+            "strict_net_cash": {"type": ["number", "null"]},
+            "owner_realizable_net_cash": {"type": ["number", "null"]},
+            "valuation_net_cash": {"type": ["number", "null"]},
+            "owner_net_cash_ratio": {"type": ["number", "null"]},
+            "liquidity_coverage": {"type": ["number", "null"]},
+            "stress_coverage": {"type": ["number", "null"]},
+            "net_debt_to_ebitda": {"type": ["number", "null"]},
+            "interest_coverage": {"type": ["number", "null"]}
+          },
+          "additionalProperties": true
+        },
+        "through_return": {
+          "type": "object",
+          "properties": {
+            "normalized_parent_profit": {"type": ["number", "null"]},
+            "distributable_base": {"type": ["number", "null"]},
+            "conservative_payout_ratio": {"type": ["number", "null"]},
+            "dividend_through_return": {"type": ["number", "null"]},
+            "normalized_net_share_reduction": {"type": ["number", "null"]},
+            "through_return": {"type": ["number", "null"]}
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "businessQuality": {
+      "type": ["object", "null"],
+      "properties": {
+        "score": {"type": ["integer", "null"], "minimum": 0, "maximum": 40},
+        "grade": {"type": ["string", "null"], "enum": ["S", "A", "B", "WATCH", "FAIL", null]},
+        "confidence": {"type": ["string", "null"], "enum": ["HIGH", "MEDIUM", "LOW", null]},
+        "critical_weaknesses": {"type": "array", "items": {"type": "string"}},
+        "dimension_results": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["dimension", "score", "supporting_evidence_ids", "counter_evidence_ids", "confidence"],
+            "properties": {
+              "dimension": {
+                "type": "string",
+                "enum": [
+                  "demand_durability",
+                  "cyclicality",
+                  "pricing_power",
+                  "moat",
+                  "capital_efficiency",
+                  "dependency",
+                  "regulatory_risk",
+                  "predictability"
+                ]
+              },
+              "score": {"type": "integer", "minimum": 0, "maximum": 5},
+              "supporting_evidence_ids": {"type": "array", "items": {"type": "string"}},
+              "counter_evidence_ids": {"type": "array", "items": {"type": "string"}},
+              "confidence": {"type": "string", "enum": ["HIGH", "MEDIUM", "LOW"]},
+              "reasoning_summary": {"type": ["string", "null"]}
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "gate": {
+      "type": "object",
+      "required": ["status", "rules"],
+      "properties": {
+        "status": {"type": "string", "enum": ["PASS", "WATCH", "FAIL", "SPECIAL_REVIEW", "NOT_EVALUATED"]},
+        "rules": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["rule_id", "status"],
+            "properties": {
+              "rule_id": {"type": "string"},
+              "status": {"type": "string", "enum": ["PASS", "WATCH", "FAIL", "SPECIAL_REVIEW", "NOT_EVALUATED"]},
+              "actual": {"type": ["number", "string", "boolean", "null"]},
+              "threshold": {"type": ["number", "string", "boolean", "null"]},
+              "evidence_ids": {"type": "array", "items": {"type": "string"}},
+              "message": {"type": ["string", "null"]}
+            },
+            "additionalProperties": false
+          }
+        },
+        "blocking_reasons": {"type": "array", "items": {"type": "string"}},
+        "confidence": {"type": ["string", "null"], "enum": ["HIGH", "MEDIUM", "LOW", null]}
+      },
+      "additionalProperties": false
+    },
+    "decision": {
+      "type": "object",
+      "required": ["state", "auto_decision_allowed", "summary", "blocking_reasons"],
+      "properties": {
+        "state": {
+          "type": "string",
+          "enum": [
+            "PASS",
+            "WATCH",
+            "FAIL",
+            "SPECIAL_REVIEW",
+            "ACCEPTABLE",
+            "TURTLE_ENTRY",
+            "EXTREME_SAFETY",
+            "TOO_EXPENSIVE_FOR_STRICT_MODEL",
+            "NO_NORMAL_VALUATION"
+          ]
+        },
+        "auto_decision_allowed": {"type": "boolean"},
+        "summary": {"type": "string"},
+        "blocking_reasons": {"type": "array", "items": {"type": "string"}},
+        "top_supporting_evidence_ids": {"type": "array", "items": {"type": "string"}},
+        "top_counter_evidence_ids": {"type": "array", "items": {"type": "string"}},
+        "confidence": {"type": ["string", "null"], "enum": ["HIGH", "MEDIUM", "LOW", null]}
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
