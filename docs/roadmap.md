@@ -28,6 +28,10 @@ Exit criteria:
 
 No network, no LLM, no live market data.
 
+The normalized input contract and offline fixture baseline are frozen before
+the remaining calculation stages. This is an input-boundary milestone, not a
+claim that the full `analyze` pipeline is implemented.
+
 ### Deliverables
 
 Python package and CLI with modules approximately equivalent to:
@@ -79,6 +83,11 @@ Create synthetic cases:
 - `negative_ev_governance_risk`;
 - `cyclical_peak_false_cheap`;
 - `share_dilution_offsets_buyback`.
+
+The committed baseline lives under `fixtures/` and is validated by
+`schemas/normalized-input.schema.json`. Scenario expectations are kept in a
+separate metadata file so they cannot be mistaken for input facts or already
+validated engine outputs.
 
 ### Tests
 

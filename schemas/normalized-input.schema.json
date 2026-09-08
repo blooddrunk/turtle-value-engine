@@ -1,0 +1,850 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/blooddrunk/turtle-value-engine/schemas/normalized-input.schema.json",
+  "title": "Turtle Value Engine Normalized Company Input",
+  "description": "Frozen input contract for deterministic calculations. It contains source facts, evidence and explicit adjustments only; metrics, gates, valuation and decision fields are output-only.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "analysis_id",
+    "as_of",
+    "profile_id",
+    "company",
+    "data_quality",
+    "facts",
+    "evidence_index",
+    "adjustments"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1.0.0"
+    },
+    "analysis_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "as_of": {
+      "type": "string",
+      "format": "date"
+    },
+    "profile_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "company": {
+      "$ref": "#/$defs/company"
+    },
+    "data_quality": {
+      "$ref": "#/$defs/dataQuality"
+    },
+    "facts": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/fact"
+      }
+    },
+    "evidence_index": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/evidence"
+      }
+    },
+    "adjustments": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/adjustment"
+      }
+    },
+    "flags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true,
+      "default": []
+    }
+  },
+  "$defs": {
+    "company": {
+      "type": "object",
+      "required": [
+        "name",
+        "primary_listing",
+        "sector",
+        "reporting_currency"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "legal_name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "primary_listing": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Canonical stable listing identifier used with the company name; other listings are recorded in other_listings."
+        },
+        "other_listings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "sector": {
+          "type": "string",
+          "minLength": 1
+        },
+        "industry": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "country_or_region": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reporting_currency": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 3
+        },
+        "accounting_standard": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "accounting_standard_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "fiscal_year_end": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "special_model": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "dataQuality": {
+      "type": "object",
+      "required": [
+        "confidence",
+        "evidence_coverage",
+        "critical_missing_fields"
+      ],
+      "properties": {
+        "confidence": {
+          "type": "string",
+          "enum": [
+            "HIGH",
+            "MEDIUM",
+            "LOW"
+          ]
+        },
+        "evidence_coverage": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "critical_missing_fields": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "notes": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "fact": {
+      "type": "object",
+      "description": "A sourced scalar fact. Canonical fact names have field-specific scalar constraints below; the field namespace remains open for future normalized adapters.",
+      "required": [
+        "id",
+        "field",
+        "value",
+        "period",
+        "source_evidence_ids",
+        "confidence"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "field": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "value": {
+          "type": [
+            "number",
+            "string",
+            "boolean",
+            "null"
+          ]
+        },
+        "unit": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "currency": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 3,
+          "maxLength": 3
+        },
+        "period": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_evidence_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "estimated": {
+          "type": "boolean",
+          "default": false
+        },
+        "estimation_method": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "field": {
+                "enum": [
+                  "listing_years",
+                  "parent_equity",
+                  "current_market_cap",
+                  "current_price",
+                  "normalized_diluted_economic_shares",
+                  "actual_aggregate_company_market_cap",
+                  "listing_equivalent_market_cap",
+                  "reported_cfo",
+                  "cash_interest_paid_total",
+                  "cash_interest_in_cfo",
+                  "cash_interest_outside_cfo",
+                  "non_recurring_operating_inflows",
+                  "operating_outflows_misclassified_outside_cfo",
+                  "ppe_purchase_cash",
+                  "intangible_purchase_cash",
+                  "other_operating_long_term_asset_cash",
+                  "capex_payables_change",
+                  "lease_principal_outside_cfo",
+                  "capitalized_development_cash_outside_capex",
+                  "acquisition_cash",
+                  "strategic_investment_cash",
+                  "working_capital_contribution",
+                  "parent_economic_share",
+                  "parent_net_profit",
+                  "consolidated_net_profit",
+                  "book_cash",
+                  "reported_interest_bearing_debt",
+                  "hard_cash",
+                  "near_cash",
+                  "liquid_financial_assets",
+                  "strategic_investments",
+                  "restricted_cash",
+                  "pledged_deposits",
+                  "financial_debt",
+                  "lease_debt",
+                  "supplier_finance",
+                  "recourse_factoring",
+                  "debt_like_hybrids",
+                  "material_quasi_debt",
+                  "subsidiary_cash",
+                  "subsidiary_debt",
+                  "subsidiary_ownership",
+                  "upstreamability_factor",
+                  "debt_due_within_one_year",
+                  "normalized_ebitda",
+                  "cash_interest_expense",
+                  "minority_profit",
+                  "minority_equity",
+                  "total_equity",
+                  "cash_governance_factor",
+                  "equity_financing",
+                  "debt_financing",
+                  "other_financing",
+                  "ordinary_dividend_cash",
+                  "special_dividend_cash",
+                  "formal_payout_floor",
+                  "payout_ratio",
+                  "fully_diluted_shares",
+                  "buyback_cash",
+                  "share_issuance_cash",
+                  "share_split_factor",
+                  "revenue",
+                  "core_revenue",
+                  "operating_profit",
+                  "gross_margin",
+                  "ebit_margin",
+                  "roic",
+                  "recurring_revenue_ratio",
+                  "largest_customer_ratio",
+                  "top5_customer_ratio",
+                  "channel_concentration",
+                  "critical_supplier_concentration",
+                  "asp",
+                  "asp_change",
+                  "volume",
+                  "volume_change",
+                  "market_share",
+                  "capex_intensity",
+                  "normalized_operating_nwc",
+                  "invested_capital",
+                  "nopat",
+                  "m_and_a_cash",
+                  "goodwill",
+                  "impairment",
+                  "revenue_cagr_5y",
+                  "profit_cv",
+                  "core_cdc_cv"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "value": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "field": {
+                "enum": [
+                  "special_treatment",
+                  "capitalized_dev_already_in_capex",
+                  "structural_demand_decline",
+                  "replacement_earnings_engine",
+                  "core_business_cash_generation",
+                  "structural_disruption",
+                  "single_point_survival_dependency",
+                  "controlling_shareholder_fund_occupation",
+                  "major_illegal_guarantee",
+                  "cash_authenticity_verified",
+                  "cash_upstreamability_verified",
+                  "payout_policy_formal",
+                  "buyback_recurring",
+                  "net_diluted_share_reduction_verified",
+                  "special_dividend"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "value": {
+                "type": [
+                  "boolean",
+                  "null"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "field": {
+                "const": "payout_policy_confidence"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "value": {
+                "enum": [
+                  "HIGH",
+                  "MEDIUM",
+                  "LOW",
+                  null
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "field": {
+                "const": "governance_risk_level"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "value": {
+                "enum": [
+                  "NONE",
+                  "LOW",
+                  "MEDIUM",
+                  "HIGH",
+                  "SEVERE",
+                  null
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "field": {
+                "const": "cycle_phase"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "value": {
+                "enum": [
+                  "TROUGH",
+                  "MID_CYCLE",
+                  "PEAK",
+                  "DECLINE",
+                  "UNKNOWN",
+                  null
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "field": {
+                "const": "demand_classification"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "value": {
+                "enum": [
+                  "ESSENTIAL",
+                  "REPEAT_PURCHASE",
+                  "REPLACEMENT",
+                  "DISCRETIONARY",
+                  "FASHION",
+                  "ONE_OFF",
+                  null
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "field": {
+                "const": "accounting_opinion"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "value": {
+                "enum": [
+                  "UNMODIFIED",
+                  "QUALIFIED",
+                  "ADVERSE",
+                  "DISCLAIMER",
+                  "UNKNOWN",
+                  null
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "field": {
+                "const": "cash_governance_class"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "value": {
+                "enum": [
+                  "STRONG",
+                  "SOUND",
+                  "WEAK_DISTRIBUTION",
+                  "POOR_CAPITAL_ALLOCATION",
+                  "SEVERE_GOVERNANCE",
+                  null
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "adjustment": {
+      "type": "object",
+      "required": [
+        "id",
+        "target_field",
+        "adjustment_type",
+        "status",
+        "reason",
+        "source_evidence_ids",
+        "proposed_by"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "target_field": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "adjustment_type": {
+          "type": "string",
+          "enum": [
+            "RECLASSIFY",
+            "EXCLUDE",
+            "INCLUDE",
+            "HAIRCUT",
+            "OWNERSHIP_ADJUST",
+            "UPSTREAMABILITY_ADJUST",
+            "NORMALIZE",
+            "OTHER"
+          ]
+        },
+        "input_value": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "proposed_adjusted_value": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "PROPOSED",
+            "ACCEPTED",
+            "REJECTED"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_evidence_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "proposed_by": {
+          "type": "string",
+          "enum": [
+            "RULE_ENGINE",
+            "LLM",
+            "HUMAN"
+          ]
+        },
+        "approved_by": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "RULE_ENGINE",
+            "HUMAN",
+            null
+          ]
+        },
+        "confidence": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 1
+        }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "ACCEPTED"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "approved_by"
+            ],
+            "properties": {
+              "approved_by": {
+                "enum": [
+                  "RULE_ENGINE",
+                  "HUMAN"
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "evidence": {
+      "$comment": "This is the input-contract copy of schemas/evidence.schema.json; both contracts intentionally use the same fields and enums.",
+      "type": "object",
+      "required": [
+        "id",
+        "direction",
+        "strength",
+        "statement",
+        "source",
+        "confidence"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "direction": {
+          "type": "string",
+          "enum": [
+            "SUPPORT",
+            "COUNTER",
+            "CONTEXT"
+          ]
+        },
+        "strength": {
+          "type": "string",
+          "enum": [
+            "E3",
+            "E2",
+            "E1",
+            "E0"
+          ]
+        },
+        "statement": {
+          "type": "string",
+          "minLength": 1
+        },
+        "metric_context": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "metric": {
+              "type": "string"
+            },
+            "period": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "value": {
+              "type": [
+                "number",
+                "string",
+                "boolean",
+                "null"
+              ]
+            },
+            "unit": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "currency": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "minLength": 3,
+              "maxLength": 3
+            }
+          },
+          "required": [
+            "metric"
+          ],
+          "additionalProperties": false
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "notes": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "source": {
+      "type": "object",
+      "required": [
+        "type",
+        "title"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "ANNUAL_REPORT",
+            "INTERIM_REPORT",
+            "EXCHANGE_FILING",
+            "COMPANY_ANNOUNCEMENT",
+            "COMPANY_OPERATING_DISCLOSURE",
+            "GOVERNMENT",
+            "REGULATOR",
+            "INDUSTRY_ASSOCIATION",
+            "STRUCTURED_DATA_VENDOR",
+            "RESEARCH_PROVIDER",
+            "NEWS",
+            "OTHER"
+          ]
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "issuer": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "published_date": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date"
+        },
+        "fiscal_period": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "url": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "format": "uri"
+        },
+        "document_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "page": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "section": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "table_or_note": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "locator": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

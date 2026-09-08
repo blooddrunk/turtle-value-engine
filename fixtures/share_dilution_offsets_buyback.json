@@ -1,0 +1,2581 @@
+{
+  "schema_version": "1.0.0",
+  "analysis_id": "fixture-share_dilution_offsets_buyback-2026-09-08",
+  "as_of": "2026-09-08",
+  "profile_id": "strict-v1",
+  "company": {
+    "name": "share_dilution_offsets_buyback",
+    "legal_name": null,
+    "primary_listing": "HK0008",
+    "other_listings": [],
+    "sector": "technology",
+    "industry": "software_services",
+    "country_or_region": "Synthetic",
+    "reporting_currency": "CNY",
+    "accounting_standard": "Synthetic normalized reporting basis",
+    "accounting_standard_version": "fixture-v1",
+    "fiscal_year_end": "12-31",
+    "special_model": null
+  },
+  "data_quality": {
+    "confidence": "HIGH",
+    "evidence_coverage": 0.96,
+    "critical_missing_fields": [],
+    "notes": "Offline synthetic fixture for share_dilution_offsets_buyback; no network or external files are required."
+  },
+  "facts": [
+    {
+      "id": "share_dilution_offsets_buyback-reported_cfo-fy2021",
+      "field": "reported_cfo",
+      "value": 100,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-cash_interest_paid_total-fy2021",
+      "field": "cash_interest_paid_total",
+      "value": 10,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-cash_interest_in_cfo-fy2021",
+      "field": "cash_interest_in_cfo",
+      "value": 10,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-cash_interest_outside_cfo-fy2021",
+      "field": "cash_interest_outside_cfo",
+      "value": 0,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-non_recurring_operating_inflows-fy2021",
+      "field": "non_recurring_operating_inflows",
+      "value": 0,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-operating_outflows_misclassified_outside_cfo-fy2021",
+      "field": "operating_outflows_misclassified_outside_cfo",
+      "value": 0,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-ppe_purchase_cash-fy2021",
+      "field": "ppe_purchase_cash",
+      "value": 20,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-intangible_purchase_cash-fy2021",
+      "field": "intangible_purchase_cash",
+      "value": 0,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-other_operating_long_term_asset_cash-fy2021",
+      "field": "other_operating_long_term_asset_cash",
+      "value": 0,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-capex_payables_change-fy2021",
+      "field": "capex_payables_change",
+      "value": 0,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-lease_principal_outside_cfo-fy2021",
+      "field": "lease_principal_outside_cfo",
+      "value": 0,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-capitalized_dev_already_in_capex-fy2021",
+      "field": "capitalized_dev_already_in_capex",
+      "value": true,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1
+    },
+    {
+      "id": "share_dilution_offsets_buyback-acquisition_cash-fy2021",
+      "field": "acquisition_cash",
+      "value": 0,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-strategic_investment_cash-fy2021",
+      "field": "strategic_investment_cash",
+      "value": 0,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-working_capital_contribution-fy2021",
+      "field": "working_capital_contribution",
+      "value": 0,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1
+    },
+    {
+      "id": "share_dilution_offsets_buyback-parent_economic_share-fy2021",
+      "field": "parent_economic_share",
+      "value": 1,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-parent_net_profit-fy2021",
+      "field": "parent_net_profit",
+      "value": 75,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-consolidated_net_profit-fy2021",
+      "field": "consolidated_net_profit",
+      "value": 75,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-ordinary_dividend_cash-fy2021",
+      "field": "ordinary_dividend_cash",
+      "value": 24,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-return"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-special_dividend_cash-fy2021",
+      "field": "special_dividend_cash",
+      "value": 0,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-return"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-formal_payout_floor-fy2021",
+      "field": "formal_payout_floor",
+      "value": 0.3,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-return"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-payout_ratio-fy2021",
+      "field": "payout_ratio",
+      "value": 0.32,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-return"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-fully_diluted_shares-fy2021",
+      "field": "fully_diluted_shares",
+      "value": 100,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-return"
+      ],
+      "confidence": 1,
+      "unit": "shares_million"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-buyback_cash-fy2021",
+      "field": "buyback_cash",
+      "value": 30,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-return"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-share_issuance_cash-fy2021",
+      "field": "share_issuance_cash",
+      "value": 8,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-return"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-revenue-fy2021",
+      "field": "revenue",
+      "value": 800,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-business"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-core_revenue-fy2021",
+      "field": "core_revenue",
+      "value": 790,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-business"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-operating_profit-fy2021",
+      "field": "operating_profit",
+      "value": 130,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-business"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-roic-fy2021",
+      "field": "roic",
+      "value": 0.16,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-business"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-gross_margin-fy2021",
+      "field": "gross_margin",
+      "value": 0.62,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-business"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-ebit_margin-fy2021",
+      "field": "ebit_margin",
+      "value": 0.16,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-business"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-recurring_revenue_ratio-fy2021",
+      "field": "recurring_revenue_ratio",
+      "value": 0.75,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-business"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-largest_customer_ratio-fy2021",
+      "field": "largest_customer_ratio",
+      "value": 0.1,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-business"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-demand_classification-fy2021",
+      "field": "demand_classification",
+      "value": "REPEAT_PURCHASE",
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-business"
+      ],
+      "confidence": 1
+    },
+    {
+      "id": "share_dilution_offsets_buyback-reported_cfo-fy2022",
+      "field": "reported_cfo",
+      "value": 105,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-cash_interest_paid_total-fy2022",
+      "field": "cash_interest_paid_total",
+      "value": 10,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-cash_interest_in_cfo-fy2022",
+      "field": "cash_interest_in_cfo",
+      "value": 10,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-cash_interest_outside_cfo-fy2022",
+      "field": "cash_interest_outside_cfo",
+      "value": 0,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-non_recurring_operating_inflows-fy2022",
+      "field": "non_recurring_operating_inflows",
+      "value": 0,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-operating_outflows_misclassified_outside_cfo-fy2022",
+      "field": "operating_outflows_misclassified_outside_cfo",
+      "value": 0,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-ppe_purchase_cash-fy2022",
+      "field": "ppe_purchase_cash",
+      "value": 21,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-intangible_purchase_cash-fy2022",
+      "field": "intangible_purchase_cash",
+      "value": 0,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-other_operating_long_term_asset_cash-fy2022",
+      "field": "other_operating_long_term_asset_cash",
+      "value": 0,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-capex_payables_change-fy2022",
+      "field": "capex_payables_change",
+      "value": 0,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-lease_principal_outside_cfo-fy2022",
+      "field": "lease_principal_outside_cfo",
+      "value": 0,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-capitalized_dev_already_in_capex-fy2022",
+      "field": "capitalized_dev_already_in_capex",
+      "value": true,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1
+    },
+    {
+      "id": "share_dilution_offsets_buyback-acquisition_cash-fy2022",
+      "field": "acquisition_cash",
+      "value": 0,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-strategic_investment_cash-fy2022",
+      "field": "strategic_investment_cash",
+      "value": 0,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-working_capital_contribution-fy2022",
+      "field": "working_capital_contribution",
+      "value": 0,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1
+    },
+    {
+      "id": "share_dilution_offsets_buyback-parent_economic_share-fy2022",
+      "field": "parent_economic_share",
+      "value": 1,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-parent_net_profit-fy2022",
+      "field": "parent_net_profit",
+      "value": 78,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-consolidated_net_profit-fy2022",
+      "field": "consolidated_net_profit",
+      "value": 78,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-ordinary_dividend_cash-fy2022",
+      "field": "ordinary_dividend_cash",
+      "value": 25,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-return"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-special_dividend_cash-fy2022",
+      "field": "special_dividend_cash",
+      "value": 0,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-return"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-formal_payout_floor-fy2022",
+      "field": "formal_payout_floor",
+      "value": 0.3,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-return"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-payout_ratio-fy2022",
+      "field": "payout_ratio",
+      "value": 0.32,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-return"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-fully_diluted_shares-fy2022",
+      "field": "fully_diluted_shares",
+      "value": 102,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-return"
+      ],
+      "confidence": 1,
+      "unit": "shares_million"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-buyback_cash-fy2022",
+      "field": "buyback_cash",
+      "value": 35,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-return"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-share_issuance_cash-fy2022",
+      "field": "share_issuance_cash",
+      "value": 9,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-return"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-revenue-fy2022",
+      "field": "revenue",
+      "value": 850,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-business"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-core_revenue-fy2022",
+      "field": "core_revenue",
+      "value": 840,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-business"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-operating_profit-fy2022",
+      "field": "operating_profit",
+      "value": 138,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-business"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-roic-fy2022",
+      "field": "roic",
+      "value": 0.16,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-business"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-gross_margin-fy2022",
+      "field": "gross_margin",
+      "value": 0.62,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-business"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-ebit_margin-fy2022",
+      "field": "ebit_margin",
+      "value": 0.16,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-business"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-recurring_revenue_ratio-fy2022",
+      "field": "recurring_revenue_ratio",
+      "value": 0.76,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-business"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-largest_customer_ratio-fy2022",
+      "field": "largest_customer_ratio",
+      "value": 0.1,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-business"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-reported_cfo-fy2023",
+      "field": "reported_cfo",
+      "value": 110,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-cash_interest_paid_total-fy2023",
+      "field": "cash_interest_paid_total",
+      "value": 10,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-cash_interest_in_cfo-fy2023",
+      "field": "cash_interest_in_cfo",
+      "value": 10,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-cash_interest_outside_cfo-fy2023",
+      "field": "cash_interest_outside_cfo",
+      "value": 0,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-non_recurring_operating_inflows-fy2023",
+      "field": "non_recurring_operating_inflows",
+      "value": 0,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-operating_outflows_misclassified_outside_cfo-fy2023",
+      "field": "operating_outflows_misclassified_outside_cfo",
+      "value": 0,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-ppe_purchase_cash-fy2023",
+      "field": "ppe_purchase_cash",
+      "value": 22,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-intangible_purchase_cash-fy2023",
+      "field": "intangible_purchase_cash",
+      "value": 0,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-other_operating_long_term_asset_cash-fy2023",
+      "field": "other_operating_long_term_asset_cash",
+      "value": 0,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-capex_payables_change-fy2023",
+      "field": "capex_payables_change",
+      "value": 0,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-lease_principal_outside_cfo-fy2023",
+      "field": "lease_principal_outside_cfo",
+      "value": 0,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-capitalized_dev_already_in_capex-fy2023",
+      "field": "capitalized_dev_already_in_capex",
+      "value": true,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1
+    },
+    {
+      "id": "share_dilution_offsets_buyback-acquisition_cash-fy2023",
+      "field": "acquisition_cash",
+      "value": 0,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-strategic_investment_cash-fy2023",
+      "field": "strategic_investment_cash",
+      "value": 0,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-working_capital_contribution-fy2023",
+      "field": "working_capital_contribution",
+      "value": 0,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1
+    },
+    {
+      "id": "share_dilution_offsets_buyback-parent_economic_share-fy2023",
+      "field": "parent_economic_share",
+      "value": 1,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-parent_net_profit-fy2023",
+      "field": "parent_net_profit",
+      "value": 82,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-consolidated_net_profit-fy2023",
+      "field": "consolidated_net_profit",
+      "value": 82,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-ordinary_dividend_cash-fy2023",
+      "field": "ordinary_dividend_cash",
+      "value": 26,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-return"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-special_dividend_cash-fy2023",
+      "field": "special_dividend_cash",
+      "value": 0,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-return"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-formal_payout_floor-fy2023",
+      "field": "formal_payout_floor",
+      "value": 0.3,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-return"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-payout_ratio-fy2023",
+      "field": "payout_ratio",
+      "value": 0.32,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-return"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-fully_diluted_shares-fy2023",
+      "field": "fully_diluted_shares",
+      "value": 104,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-return"
+      ],
+      "confidence": 1,
+      "unit": "shares_million"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-buyback_cash-fy2023",
+      "field": "buyback_cash",
+      "value": 40,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-return"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-share_issuance_cash-fy2023",
+      "field": "share_issuance_cash",
+      "value": 10,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-return"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-revenue-fy2023",
+      "field": "revenue",
+      "value": 900,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-business"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-core_revenue-fy2023",
+      "field": "core_revenue",
+      "value": 890,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-business"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-operating_profit-fy2023",
+      "field": "operating_profit",
+      "value": 146,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-business"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-roic-fy2023",
+      "field": "roic",
+      "value": 0.17,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-business"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-gross_margin-fy2023",
+      "field": "gross_margin",
+      "value": 0.63,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-business"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-ebit_margin-fy2023",
+      "field": "ebit_margin",
+      "value": 0.16,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-business"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-recurring_revenue_ratio-fy2023",
+      "field": "recurring_revenue_ratio",
+      "value": 0.77,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-business"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-largest_customer_ratio-fy2023",
+      "field": "largest_customer_ratio",
+      "value": 0.11,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-business"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-reported_cfo-fy2024",
+      "field": "reported_cfo",
+      "value": 115,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-cash_interest_paid_total-fy2024",
+      "field": "cash_interest_paid_total",
+      "value": 10,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-cash_interest_in_cfo-fy2024",
+      "field": "cash_interest_in_cfo",
+      "value": 10,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-cash_interest_outside_cfo-fy2024",
+      "field": "cash_interest_outside_cfo",
+      "value": 0,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-non_recurring_operating_inflows-fy2024",
+      "field": "non_recurring_operating_inflows",
+      "value": 0,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-operating_outflows_misclassified_outside_cfo-fy2024",
+      "field": "operating_outflows_misclassified_outside_cfo",
+      "value": 0,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-ppe_purchase_cash-fy2024",
+      "field": "ppe_purchase_cash",
+      "value": 23,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-intangible_purchase_cash-fy2024",
+      "field": "intangible_purchase_cash",
+      "value": 0,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-other_operating_long_term_asset_cash-fy2024",
+      "field": "other_operating_long_term_asset_cash",
+      "value": 0,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-capex_payables_change-fy2024",
+      "field": "capex_payables_change",
+      "value": 0,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-lease_principal_outside_cfo-fy2024",
+      "field": "lease_principal_outside_cfo",
+      "value": 0,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-capitalized_dev_already_in_capex-fy2024",
+      "field": "capitalized_dev_already_in_capex",
+      "value": true,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1
+    },
+    {
+      "id": "share_dilution_offsets_buyback-acquisition_cash-fy2024",
+      "field": "acquisition_cash",
+      "value": 0,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-strategic_investment_cash-fy2024",
+      "field": "strategic_investment_cash",
+      "value": 0,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-working_capital_contribution-fy2024",
+      "field": "working_capital_contribution",
+      "value": 0,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1
+    },
+    {
+      "id": "share_dilution_offsets_buyback-parent_economic_share-fy2024",
+      "field": "parent_economic_share",
+      "value": 1,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-parent_net_profit-fy2024",
+      "field": "parent_net_profit",
+      "value": 86,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-consolidated_net_profit-fy2024",
+      "field": "consolidated_net_profit",
+      "value": 86,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-ordinary_dividend_cash-fy2024",
+      "field": "ordinary_dividend_cash",
+      "value": 27,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-return"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-special_dividend_cash-fy2024",
+      "field": "special_dividend_cash",
+      "value": 0,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-return"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-formal_payout_floor-fy2024",
+      "field": "formal_payout_floor",
+      "value": 0.3,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-return"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-payout_ratio-fy2024",
+      "field": "payout_ratio",
+      "value": 0.31,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-return"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-fully_diluted_shares-fy2024",
+      "field": "fully_diluted_shares",
+      "value": 106,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-return"
+      ],
+      "confidence": 1,
+      "unit": "shares_million"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-buyback_cash-fy2024",
+      "field": "buyback_cash",
+      "value": 45,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-return"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-share_issuance_cash-fy2024",
+      "field": "share_issuance_cash",
+      "value": 11,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-return"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-revenue-fy2024",
+      "field": "revenue",
+      "value": 950,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-business"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-core_revenue-fy2024",
+      "field": "core_revenue",
+      "value": 940,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-business"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-operating_profit-fy2024",
+      "field": "operating_profit",
+      "value": 153,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-business"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-roic-fy2024",
+      "field": "roic",
+      "value": 0.17,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-business"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-gross_margin-fy2024",
+      "field": "gross_margin",
+      "value": 0.63,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-business"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-ebit_margin-fy2024",
+      "field": "ebit_margin",
+      "value": 0.16,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-business"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-recurring_revenue_ratio-fy2024",
+      "field": "recurring_revenue_ratio",
+      "value": 0.78,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-business"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-largest_customer_ratio-fy2024",
+      "field": "largest_customer_ratio",
+      "value": 0.11,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-business"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-reported_cfo-fy2025",
+      "field": "reported_cfo",
+      "value": 120,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-cash_interest_paid_total-fy2025",
+      "field": "cash_interest_paid_total",
+      "value": 10,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-cash_interest_in_cfo-fy2025",
+      "field": "cash_interest_in_cfo",
+      "value": 10,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-cash_interest_outside_cfo-fy2025",
+      "field": "cash_interest_outside_cfo",
+      "value": 0,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-non_recurring_operating_inflows-fy2025",
+      "field": "non_recurring_operating_inflows",
+      "value": 0,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-operating_outflows_misclassified_outside_cfo-fy2025",
+      "field": "operating_outflows_misclassified_outside_cfo",
+      "value": 0,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-ppe_purchase_cash-fy2025",
+      "field": "ppe_purchase_cash",
+      "value": 24,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-intangible_purchase_cash-fy2025",
+      "field": "intangible_purchase_cash",
+      "value": 0,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-other_operating_long_term_asset_cash-fy2025",
+      "field": "other_operating_long_term_asset_cash",
+      "value": 0,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-capex_payables_change-fy2025",
+      "field": "capex_payables_change",
+      "value": 0,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-lease_principal_outside_cfo-fy2025",
+      "field": "lease_principal_outside_cfo",
+      "value": 0,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-capitalized_dev_already_in_capex-fy2025",
+      "field": "capitalized_dev_already_in_capex",
+      "value": true,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1
+    },
+    {
+      "id": "share_dilution_offsets_buyback-acquisition_cash-fy2025",
+      "field": "acquisition_cash",
+      "value": 0,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-strategic_investment_cash-fy2025",
+      "field": "strategic_investment_cash",
+      "value": 0,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-working_capital_contribution-fy2025",
+      "field": "working_capital_contribution",
+      "value": 0,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1
+    },
+    {
+      "id": "share_dilution_offsets_buyback-parent_economic_share-fy2025",
+      "field": "parent_economic_share",
+      "value": 1,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-parent_net_profit-fy2025",
+      "field": "parent_net_profit",
+      "value": 90,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-consolidated_net_profit-fy2025",
+      "field": "consolidated_net_profit",
+      "value": 90,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-ordinary_dividend_cash-fy2025",
+      "field": "ordinary_dividend_cash",
+      "value": 28,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-return"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-special_dividend_cash-fy2025",
+      "field": "special_dividend_cash",
+      "value": 0,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-return"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-formal_payout_floor-fy2025",
+      "field": "formal_payout_floor",
+      "value": 0.3,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-return"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-payout_ratio-fy2025",
+      "field": "payout_ratio",
+      "value": 0.31,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-return"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-fully_diluted_shares-fy2025",
+      "field": "fully_diluted_shares",
+      "value": 108,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-return"
+      ],
+      "confidence": 1,
+      "unit": "shares_million"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-buyback_cash-fy2025",
+      "field": "buyback_cash",
+      "value": 50,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-return"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-share_issuance_cash-fy2025",
+      "field": "share_issuance_cash",
+      "value": 12,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-return"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-revenue-fy2025",
+      "field": "revenue",
+      "value": 1000,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-business"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-core_revenue-fy2025",
+      "field": "core_revenue",
+      "value": 990,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-business"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-operating_profit-fy2025",
+      "field": "operating_profit",
+      "value": 160,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-business"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-roic-fy2025",
+      "field": "roic",
+      "value": 0.18,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-business"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-gross_margin-fy2025",
+      "field": "gross_margin",
+      "value": 0.64,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-business"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-ebit_margin-fy2025",
+      "field": "ebit_margin",
+      "value": 0.16,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-business"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-recurring_revenue_ratio-fy2025",
+      "field": "recurring_revenue_ratio",
+      "value": 0.79,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-business"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-largest_customer_ratio-fy2025",
+      "field": "largest_customer_ratio",
+      "value": 0.12,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-business"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-listing_years-as_of_2026_09_08",
+      "field": "listing_years",
+      "value": 7,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-context"
+      ],
+      "confidence": 1,
+      "unit": "years"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-parent_equity-as_of_2026_09_08",
+      "field": "parent_equity",
+      "value": 550,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-current_market_cap-as_of_2026_09_08",
+      "field": "current_market_cap",
+      "value": 1200,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-context"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-current_price-as_of_2026_09_08",
+      "field": "current_price",
+      "value": 11.111111,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-context"
+      ],
+      "confidence": 1,
+      "unit": "CNY_per_share"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-normalized_diluted_economic_shares-as_of_2026_09_08",
+      "field": "normalized_diluted_economic_shares",
+      "value": 108,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-context"
+      ],
+      "confidence": 1,
+      "unit": "shares_million"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-actual_aggregate_company_market_cap-as_of_2026_09_08",
+      "field": "actual_aggregate_company_market_cap",
+      "value": 1200,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-context"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-listing_equivalent_market_cap-as_of_2026_09_08",
+      "field": "listing_equivalent_market_cap",
+      "value": 1200,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-context"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-special_treatment-as_of_2026_09_08",
+      "field": "special_treatment",
+      "value": false,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-context"
+      ],
+      "confidence": 1
+    },
+    {
+      "id": "share_dilution_offsets_buyback-accounting_opinion-as_of_2026_09_08",
+      "field": "accounting_opinion",
+      "value": "UNMODIFIED",
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-context"
+      ],
+      "confidence": 1
+    },
+    {
+      "id": "share_dilution_offsets_buyback-governance_risk_level-as_of_2026_09_08",
+      "field": "governance_risk_level",
+      "value": "LOW",
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-context"
+      ],
+      "confidence": 1
+    },
+    {
+      "id": "share_dilution_offsets_buyback-cash_authenticity_verified-as_of_2026_09_08",
+      "field": "cash_authenticity_verified",
+      "value": true,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-context"
+      ],
+      "confidence": 1
+    },
+    {
+      "id": "share_dilution_offsets_buyback-cash_upstreamability_verified-as_of_2026_09_08",
+      "field": "cash_upstreamability_verified",
+      "value": true,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-context"
+      ],
+      "confidence": 1
+    },
+    {
+      "id": "share_dilution_offsets_buyback-payout_policy_formal-as_of_2026_09_08",
+      "field": "payout_policy_formal",
+      "value": true,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-context"
+      ],
+      "confidence": 1
+    },
+    {
+      "id": "share_dilution_offsets_buyback-payout_policy_confidence-as_of_2026_09_08",
+      "field": "payout_policy_confidence",
+      "value": "HIGH",
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-context"
+      ],
+      "confidence": 1
+    },
+    {
+      "id": "share_dilution_offsets_buyback-buyback_recurring-as_of_2026_09_08",
+      "field": "buyback_recurring",
+      "value": true,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-context"
+      ],
+      "confidence": 1
+    },
+    {
+      "id": "share_dilution_offsets_buyback-net_diluted_share_reduction_verified-as_of_2026_09_08",
+      "field": "net_diluted_share_reduction_verified",
+      "value": false,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-context"
+      ],
+      "confidence": 1
+    },
+    {
+      "id": "share_dilution_offsets_buyback-special_dividend-as_of_2026_09_08",
+      "field": "special_dividend",
+      "value": false,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-context"
+      ],
+      "confidence": 1
+    },
+    {
+      "id": "share_dilution_offsets_buyback-book_cash-as_of_2026_09_08",
+      "field": "book_cash",
+      "value": 260,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-reported_interest_bearing_debt-as_of_2026_09_08",
+      "field": "reported_interest_bearing_debt",
+      "value": 100,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-hard_cash-as_of_2026_09_08",
+      "field": "hard_cash",
+      "value": 200,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-near_cash-as_of_2026_09_08",
+      "field": "near_cash",
+      "value": 30,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-liquid_financial_assets-as_of_2026_09_08",
+      "field": "liquid_financial_assets",
+      "value": 20,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-strategic_investments-as_of_2026_09_08",
+      "field": "strategic_investments",
+      "value": 0,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-restricted_cash-as_of_2026_09_08",
+      "field": "restricted_cash",
+      "value": 0,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-pledged_deposits-as_of_2026_09_08",
+      "field": "pledged_deposits",
+      "value": 0,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-financial_debt-as_of_2026_09_08",
+      "field": "financial_debt",
+      "value": 100,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-lease_debt-as_of_2026_09_08",
+      "field": "lease_debt",
+      "value": 10,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-supplier_finance-as_of_2026_09_08",
+      "field": "supplier_finance",
+      "value": 0,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-recourse_factoring-as_of_2026_09_08",
+      "field": "recourse_factoring",
+      "value": 0,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-debt_like_hybrids-as_of_2026_09_08",
+      "field": "debt_like_hybrids",
+      "value": 0,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-material_quasi_debt-as_of_2026_09_08",
+      "field": "material_quasi_debt",
+      "value": 0,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-subsidiary_cash-as_of_2026_09_08",
+      "field": "subsidiary_cash",
+      "value": 0,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-subsidiary_debt-as_of_2026_09_08",
+      "field": "subsidiary_debt",
+      "value": 0,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-subsidiary_ownership-as_of_2026_09_08",
+      "field": "subsidiary_ownership",
+      "value": 1,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-balance"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-upstreamability_factor-as_of_2026_09_08",
+      "field": "upstreamability_factor",
+      "value": 1,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-balance"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-debt_due_within_one_year-as_of_2026_09_08",
+      "field": "debt_due_within_one_year",
+      "value": 30,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-normalized_ebitda-as_of_2026_09_08",
+      "field": "normalized_ebitda",
+      "value": 180,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-cash_interest_expense-as_of_2026_09_08",
+      "field": "cash_interest_expense",
+      "value": 10,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-minority_profit-as_of_2026_09_08",
+      "field": "minority_profit",
+      "value": 0,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-minority_equity-as_of_2026_09_08",
+      "field": "minority_equity",
+      "value": 0,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-total_equity-as_of_2026_09_08",
+      "field": "total_equity",
+      "value": 550,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-cash_governance_factor-as_of_2026_09_08",
+      "field": "cash_governance_factor",
+      "value": 0.85,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-balance"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-equity_financing-as_of_2026_09_08",
+      "field": "equity_financing",
+      "value": 0,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-debt_financing-as_of_2026_09_08",
+      "field": "debt_financing",
+      "value": 0,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-other_financing-as_of_2026_09_08",
+      "field": "other_financing",
+      "value": 0,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "share_dilution_offsets_buyback-cash_governance_class-as_of_2026_09_08",
+      "field": "cash_governance_class",
+      "value": "SOUND",
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-business"
+      ],
+      "confidence": 1
+    }
+  ],
+  "evidence_index": [
+    {
+      "id": "ev-share_dilution_offsets_buyback-cdc",
+      "direction": "SUPPORT",
+      "strength": "E0",
+      "statement": "Synthetic Core CDC is positive and recurring, so the case is not a cash-flow failure.",
+      "source": {
+        "type": "OTHER",
+        "title": "Synthetic fixture evidence: share_dilution_offsets_buyback / cdc",
+        "issuer": "turtle-value-engine",
+        "published_date": "2026-09-08",
+        "fiscal_period": "FY2019-FY2025",
+        "document_id": "SYNTH-SHARE_DILUTION_OFFSETS_BUYBACK",
+        "locator": "fixtures/share_dilution_offsets_buyback.json#cdc"
+      },
+      "confidence": 1,
+      "notes": "Synthetic offline evidence for deterministic test data; not an external issuer source."
+    },
+    {
+      "id": "ev-share_dilution_offsets_buyback-balance",
+      "direction": "SUPPORT",
+      "strength": "E0",
+      "statement": "Synthetic balance sheet has net cash and no refinancing dependency, isolating the shareholder-return test.",
+      "source": {
+        "type": "OTHER",
+        "title": "Synthetic fixture evidence: share_dilution_offsets_buyback / balance",
+        "issuer": "turtle-value-engine",
+        "published_date": "2026-09-08",
+        "fiscal_period": "FY2019-FY2025",
+        "document_id": "SYNTH-SHARE_DILUTION_OFFSETS_BUYBACK",
+        "locator": "fixtures/share_dilution_offsets_buyback.json#balance"
+      },
+      "confidence": 1,
+      "notes": "Synthetic offline evidence for deterministic test data; not an external issuer source."
+    },
+    {
+      "id": "ev-share_dilution_offsets_buyback-return",
+      "direction": "COUNTER",
+      "strength": "E0",
+      "statement": "Synthetic headline buyback cash is large, but fully diluted shares rise from 100 to 108 because issuance offsets repurchases.",
+      "source": {
+        "type": "OTHER",
+        "title": "Synthetic fixture evidence: share_dilution_offsets_buyback / return",
+        "issuer": "turtle-value-engine",
+        "published_date": "2026-09-08",
+        "fiscal_period": "FY2019-FY2025",
+        "document_id": "SYNTH-SHARE_DILUTION_OFFSETS_BUYBACK",
+        "locator": "fixtures/share_dilution_offsets_buyback.json#return"
+      },
+      "confidence": 1,
+      "notes": "Synthetic offline evidence for deterministic test data; not an external issuer source."
+    },
+    {
+      "id": "ev-share_dilution_offsets_buyback-business",
+      "direction": "COUNTER",
+      "strength": "E0",
+      "statement": "Synthetic compensation and acquisition issuance create persistent dilution despite recurring buyback announcements.",
+      "source": {
+        "type": "OTHER",
+        "title": "Synthetic fixture evidence: share_dilution_offsets_buyback / business",
+        "issuer": "turtle-value-engine",
+        "published_date": "2026-09-08",
+        "fiscal_period": "FY2019-FY2025",
+        "document_id": "SYNTH-SHARE_DILUTION_OFFSETS_BUYBACK",
+        "locator": "fixtures/share_dilution_offsets_buyback.json#business"
+      },
+      "confidence": 1,
+      "notes": "Synthetic offline evidence for deterministic test data; not an external issuer source."
+    },
+    {
+      "id": "ev-share_dilution_offsets_buyback-context",
+      "direction": "SUPPORT",
+      "strength": "E0",
+      "statement": "Synthetic five-year share-count and cash-flow series are provided for net-share-reduction normalization tests.",
+      "source": {
+        "type": "OTHER",
+        "title": "Synthetic fixture evidence: share_dilution_offsets_buyback / context",
+        "issuer": "turtle-value-engine",
+        "published_date": "2026-09-08",
+        "fiscal_period": "FY2019-FY2025",
+        "document_id": "SYNTH-SHARE_DILUTION_OFFSETS_BUYBACK",
+        "locator": "fixtures/share_dilution_offsets_buyback.json#context"
+      },
+      "confidence": 1,
+      "notes": "Synthetic offline evidence for deterministic test data; not an external issuer source."
+    }
+  ],
+  "adjustments": [
+    {
+      "id": "adj-share_dilution_offsets_buyback-dilution-offset",
+      "target_field": "share_issuance_cash",
+      "adjustment_type": "RECLASSIFY",
+      "status": "ACCEPTED",
+      "reason": "Synthetic equity issuance is retained as a separate dilution fact; buyback cash must not erase the increase in fully diluted shares.",
+      "source_evidence_ids": [
+        "ev-share_dilution_offsets_buyback-return"
+      ],
+      "proposed_by": "RULE_ENGINE",
+      "confidence": 1,
+      "input_value": 12,
+      "proposed_adjusted_value": 12,
+      "approved_by": "RULE_ENGINE"
+    }
+  ]
+}

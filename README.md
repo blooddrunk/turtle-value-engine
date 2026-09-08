@@ -26,8 +26,12 @@ Planned modules:
 - `03-through-return.md` — conservative payout and net share-reduction return
 - `04-business-quality.md` — evidence-based business quality model
 - `05-valuation.md` — valuation engine and target-entry-price model
-- `06-data-lineage.md` — data provenance, confidence and accounting-standard handling
-- `07-industry-models.md` — sector-specific overrides and special models
+- `06-data-contract.md` — data provenance, confidence and pipeline boundaries
+
+The current normalized input baseline is the standalone
+`schemas/normalized-input.schema.json` contract. It is exercised by the
+offline synthetic inputs under `fixtures/`; calculation outputs remain a
+separate, later pipeline layer.
 
 Implementation-oriented assets will later live under:
 

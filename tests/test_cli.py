@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 from turtle_value_engine.cli import main
 from turtle_value_engine.models import CDCInput
@@ -18,3 +19,13 @@ def test_cdc_cli_emits_json(tmp_path, capsys, year_factory):
     output = json.loads(capsys.readouterr().out)
     assert output["normalized_parent_core_cdc"] == 64.0
     assert output["confidence"] == "HIGH"
+
+
+def test_cdc_cli_accepts_frozen_normalized_input(capsys):
+    input_path = Path("fixtures/healthy_cash_cow.json")
+
+    exit_code = main(["cdc", "--input", str(input_path), "--profile", "strict-v1"])
+
+    assert exit_code == 0
+    output = json.loads(capsys.readouterr().out)
+    assert output["normalized_parent_core_cdc"] is not None

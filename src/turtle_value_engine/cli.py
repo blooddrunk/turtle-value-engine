@@ -9,7 +9,8 @@ from pydantic import ValidationError
 
 from turtle_value_engine.calculations import CDCCalculationError
 from turtle_value_engine.config import ProfileLoadError, load_profile
-from turtle_value_engine.models import CDCInput, NormalizedCompanyInput
+from turtle_value_engine.input_loader import NormalizedInputLoadError, parse_normalized_input
+from turtle_value_engine.models import CDCInput
 from turtle_value_engine.pipeline import run_cdc, run_cdc_from_normalized_input
 
 
@@ -46,12 +47,12 @@ def main(argv: list[str] | None = None) -> int:
         parser.error(f"unsupported command: {args.command}")
 
     try:
-        raw_input = json.loads(args.input.read_text(encoding="utf-8"))
+        raw_input = args.input.read_bytes()
         profile = load_profile(args.profile, rules_dir=args.rules_dir)
         try:
-            inputs = CDCInput.model_validate(raw_input)
+            inputs = CDCInput.model_validate_json(raw_input)
         except ValidationError:
-            normalized_input = NormalizedCompanyInput.model_validate(raw_input)
+            normalized_input = parse_normalized_input(raw_input)
             result = run_cdc_from_normalized_input(
                 normalized_input,
                 profile,
@@ -73,8 +74,8 @@ def main(argv: list[str] | None = None) -> int:
         OSError,
         ProfileLoadError,
         CDCCalculationError,
+        NormalizedInputLoadError,
         ValidationError,
-        json.JSONDecodeError,
         ValueError,
     ) as exc:
         print(f"tve: {exc}", file=sys.stderr)

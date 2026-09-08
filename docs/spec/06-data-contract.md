@@ -324,12 +324,29 @@ A future `strict-v2` must not silently alter historical `strict-v1` results.
 ## 14. Canonical schema files
 
 ```text
+schemas/normalized-input.schema.json
 schemas/evidence.schema.json
 schemas/company-analysis.schema.json
 schemas/valuation-result.schema.json
 ```
 
-`company-analysis.schema.json` is the top-level contract.
+`normalized-input.schema.json` is the frozen input-side contract. It contains
+only `schema_version`, analysis/company identity, `data_quality`, `facts`,
+`evidence_index`, explicit `adjustments` and input-side flags. It must not
+contain `metrics`, `gates`, `business_quality`, `valuation` or `decision`.
+
+Within `company`, `primary_listing` is the required canonical listing/issuer
+identifier and `other_listings` preserves additional A/H share listings
+without merging their prices into the input facts.
+
+`company-analysis.schema.json` remains the top-level output contract.
+
+The input model validates cross-object integrity that standard JSON Schema
+cannot express portably: evidence IDs are unique, and every fact or
+adjustment evidence reference must resolve to an item in `evidence_index`.
+Known normalized fact names also have field-specific numeric, boolean or enum
+value checks; missing values remain explicit `null` values and are never
+filled with zero.
 
 ---
 

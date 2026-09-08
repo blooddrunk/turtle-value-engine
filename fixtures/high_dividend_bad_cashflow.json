@@ -1,0 +1,2536 @@
+{
+  "schema_version": "1.0.0",
+  "analysis_id": "fixture-high_dividend_bad_cashflow-2026-09-08",
+  "as_of": "2026-09-08",
+  "profile_id": "strict-v1",
+  "company": {
+    "name": "high_dividend_bad_cashflow",
+    "legal_name": null,
+    "primary_listing": "SZ000002",
+    "other_listings": [],
+    "sector": "industrials",
+    "industry": "capital_goods",
+    "country_or_region": "Synthetic",
+    "reporting_currency": "CNY",
+    "accounting_standard": "Synthetic normalized reporting basis",
+    "accounting_standard_version": "fixture-v1",
+    "fiscal_year_end": "12-31",
+    "special_model": null
+  },
+  "data_quality": {
+    "confidence": "HIGH",
+    "evidence_coverage": 0.95,
+    "critical_missing_fields": [],
+    "notes": "Offline synthetic fixture for high_dividend_bad_cashflow; no network or external files are required."
+  },
+  "facts": [
+    {
+      "id": "high_dividend_bad_cashflow-reported_cfo-fy2021",
+      "field": "reported_cfo",
+      "value": 12,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-cash_interest_paid_total-fy2021",
+      "field": "cash_interest_paid_total",
+      "value": 4,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-cash_interest_in_cfo-fy2021",
+      "field": "cash_interest_in_cfo",
+      "value": 4,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-cash_interest_outside_cfo-fy2021",
+      "field": "cash_interest_outside_cfo",
+      "value": 0,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-non_recurring_operating_inflows-fy2021",
+      "field": "non_recurring_operating_inflows",
+      "value": 0,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-operating_outflows_misclassified_outside_cfo-fy2021",
+      "field": "operating_outflows_misclassified_outside_cfo",
+      "value": 0,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-ppe_purchase_cash-fy2021",
+      "field": "ppe_purchase_cash",
+      "value": 18,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-intangible_purchase_cash-fy2021",
+      "field": "intangible_purchase_cash",
+      "value": 0,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-other_operating_long_term_asset_cash-fy2021",
+      "field": "other_operating_long_term_asset_cash",
+      "value": 0,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-capex_payables_change-fy2021",
+      "field": "capex_payables_change",
+      "value": 0,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-lease_principal_outside_cfo-fy2021",
+      "field": "lease_principal_outside_cfo",
+      "value": 0,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-capitalized_dev_already_in_capex-fy2021",
+      "field": "capitalized_dev_already_in_capex",
+      "value": true,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1
+    },
+    {
+      "id": "high_dividend_bad_cashflow-acquisition_cash-fy2021",
+      "field": "acquisition_cash",
+      "value": 0,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-strategic_investment_cash-fy2021",
+      "field": "strategic_investment_cash",
+      "value": 0,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-working_capital_contribution-fy2021",
+      "field": "working_capital_contribution",
+      "value": 0,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1
+    },
+    {
+      "id": "high_dividend_bad_cashflow-parent_economic_share-fy2021",
+      "field": "parent_economic_share",
+      "value": 1,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-parent_net_profit-fy2021",
+      "field": "parent_net_profit",
+      "value": 30,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-consolidated_net_profit-fy2021",
+      "field": "consolidated_net_profit",
+      "value": 30,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-ordinary_dividend_cash-fy2021",
+      "field": "ordinary_dividend_cash",
+      "value": 25,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-return"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-special_dividend_cash-fy2021",
+      "field": "special_dividend_cash",
+      "value": 0,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-return"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-formal_payout_floor-fy2021",
+      "field": "formal_payout_floor",
+      "value": 0.7,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-return"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-payout_ratio-fy2021",
+      "field": "payout_ratio",
+      "value": 0.83,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-return"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-fully_diluted_shares-fy2021",
+      "field": "fully_diluted_shares",
+      "value": 100,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-return"
+      ],
+      "confidence": 1,
+      "unit": "shares_million"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-buyback_cash-fy2021",
+      "field": "buyback_cash",
+      "value": 0,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-return"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-share_issuance_cash-fy2021",
+      "field": "share_issuance_cash",
+      "value": 0,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-return"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-revenue-fy2021",
+      "field": "revenue",
+      "value": 400,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-business"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-core_revenue-fy2021",
+      "field": "core_revenue",
+      "value": 395,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-business"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-operating_profit-fy2021",
+      "field": "operating_profit",
+      "value": 35,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-business"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-roic-fy2021",
+      "field": "roic",
+      "value": 0.06,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-business"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-gross_margin-fy2021",
+      "field": "gross_margin",
+      "value": 0.18,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-business"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-ebit_margin-fy2021",
+      "field": "ebit_margin",
+      "value": 0.09,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-business"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-largest_customer_ratio-fy2021",
+      "field": "largest_customer_ratio",
+      "value": 0.22,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-business"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-demand_classification-fy2021",
+      "field": "demand_classification",
+      "value": "DISCRETIONARY",
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-business"
+      ],
+      "confidence": 1
+    },
+    {
+      "id": "high_dividend_bad_cashflow-reported_cfo-fy2022",
+      "field": "reported_cfo",
+      "value": 8,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-cash_interest_paid_total-fy2022",
+      "field": "cash_interest_paid_total",
+      "value": 4,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-cash_interest_in_cfo-fy2022",
+      "field": "cash_interest_in_cfo",
+      "value": 4,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-cash_interest_outside_cfo-fy2022",
+      "field": "cash_interest_outside_cfo",
+      "value": 0,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-non_recurring_operating_inflows-fy2022",
+      "field": "non_recurring_operating_inflows",
+      "value": 0,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-operating_outflows_misclassified_outside_cfo-fy2022",
+      "field": "operating_outflows_misclassified_outside_cfo",
+      "value": 0,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-ppe_purchase_cash-fy2022",
+      "field": "ppe_purchase_cash",
+      "value": 17,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-intangible_purchase_cash-fy2022",
+      "field": "intangible_purchase_cash",
+      "value": 0,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-other_operating_long_term_asset_cash-fy2022",
+      "field": "other_operating_long_term_asset_cash",
+      "value": 0,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-capex_payables_change-fy2022",
+      "field": "capex_payables_change",
+      "value": 0,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-lease_principal_outside_cfo-fy2022",
+      "field": "lease_principal_outside_cfo",
+      "value": 0,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-capitalized_dev_already_in_capex-fy2022",
+      "field": "capitalized_dev_already_in_capex",
+      "value": true,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1
+    },
+    {
+      "id": "high_dividend_bad_cashflow-acquisition_cash-fy2022",
+      "field": "acquisition_cash",
+      "value": 0,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-strategic_investment_cash-fy2022",
+      "field": "strategic_investment_cash",
+      "value": 0,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-working_capital_contribution-fy2022",
+      "field": "working_capital_contribution",
+      "value": 0,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1
+    },
+    {
+      "id": "high_dividend_bad_cashflow-parent_economic_share-fy2022",
+      "field": "parent_economic_share",
+      "value": 1,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-parent_net_profit-fy2022",
+      "field": "parent_net_profit",
+      "value": 32,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-consolidated_net_profit-fy2022",
+      "field": "consolidated_net_profit",
+      "value": 32,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-ordinary_dividend_cash-fy2022",
+      "field": "ordinary_dividend_cash",
+      "value": 25,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-return"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-special_dividend_cash-fy2022",
+      "field": "special_dividend_cash",
+      "value": 0,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-return"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-formal_payout_floor-fy2022",
+      "field": "formal_payout_floor",
+      "value": 0.7,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-return"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-payout_ratio-fy2022",
+      "field": "payout_ratio",
+      "value": 0.78,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-return"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-fully_diluted_shares-fy2022",
+      "field": "fully_diluted_shares",
+      "value": 100,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-return"
+      ],
+      "confidence": 1,
+      "unit": "shares_million"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-buyback_cash-fy2022",
+      "field": "buyback_cash",
+      "value": 0,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-return"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-share_issuance_cash-fy2022",
+      "field": "share_issuance_cash",
+      "value": 0,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-return"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-revenue-fy2022",
+      "field": "revenue",
+      "value": 410,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-business"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-core_revenue-fy2022",
+      "field": "core_revenue",
+      "value": 400,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-business"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-operating_profit-fy2022",
+      "field": "operating_profit",
+      "value": 34,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-business"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-roic-fy2022",
+      "field": "roic",
+      "value": 0.05,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-business"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-gross_margin-fy2022",
+      "field": "gross_margin",
+      "value": 0.17,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-business"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-ebit_margin-fy2022",
+      "field": "ebit_margin",
+      "value": 0.08,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-business"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-largest_customer_ratio-fy2022",
+      "field": "largest_customer_ratio",
+      "value": 0.24,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-business"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-reported_cfo-fy2023",
+      "field": "reported_cfo",
+      "value": -5,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-cash_interest_paid_total-fy2023",
+      "field": "cash_interest_paid_total",
+      "value": 4,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-cash_interest_in_cfo-fy2023",
+      "field": "cash_interest_in_cfo",
+      "value": 4,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-cash_interest_outside_cfo-fy2023",
+      "field": "cash_interest_outside_cfo",
+      "value": 0,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-non_recurring_operating_inflows-fy2023",
+      "field": "non_recurring_operating_inflows",
+      "value": 12,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-operating_outflows_misclassified_outside_cfo-fy2023",
+      "field": "operating_outflows_misclassified_outside_cfo",
+      "value": 0,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-ppe_purchase_cash-fy2023",
+      "field": "ppe_purchase_cash",
+      "value": 20,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-intangible_purchase_cash-fy2023",
+      "field": "intangible_purchase_cash",
+      "value": 0,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-other_operating_long_term_asset_cash-fy2023",
+      "field": "other_operating_long_term_asset_cash",
+      "value": 0,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-capex_payables_change-fy2023",
+      "field": "capex_payables_change",
+      "value": 0,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-lease_principal_outside_cfo-fy2023",
+      "field": "lease_principal_outside_cfo",
+      "value": 0,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-capitalized_dev_already_in_capex-fy2023",
+      "field": "capitalized_dev_already_in_capex",
+      "value": true,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1
+    },
+    {
+      "id": "high_dividend_bad_cashflow-acquisition_cash-fy2023",
+      "field": "acquisition_cash",
+      "value": 0,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-strategic_investment_cash-fy2023",
+      "field": "strategic_investment_cash",
+      "value": 0,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-working_capital_contribution-fy2023",
+      "field": "working_capital_contribution",
+      "value": 0,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1
+    },
+    {
+      "id": "high_dividend_bad_cashflow-parent_economic_share-fy2023",
+      "field": "parent_economic_share",
+      "value": 1,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-parent_net_profit-fy2023",
+      "field": "parent_net_profit",
+      "value": 31,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-consolidated_net_profit-fy2023",
+      "field": "consolidated_net_profit",
+      "value": 31,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-ordinary_dividend_cash-fy2023",
+      "field": "ordinary_dividend_cash",
+      "value": 26,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-return"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-special_dividend_cash-fy2023",
+      "field": "special_dividend_cash",
+      "value": 0,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-return"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-formal_payout_floor-fy2023",
+      "field": "formal_payout_floor",
+      "value": 0.7,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-return"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-payout_ratio-fy2023",
+      "field": "payout_ratio",
+      "value": 0.84,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-return"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-fully_diluted_shares-fy2023",
+      "field": "fully_diluted_shares",
+      "value": 100,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-return"
+      ],
+      "confidence": 1,
+      "unit": "shares_million"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-buyback_cash-fy2023",
+      "field": "buyback_cash",
+      "value": 0,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-return"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-share_issuance_cash-fy2023",
+      "field": "share_issuance_cash",
+      "value": 0,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-return"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-revenue-fy2023",
+      "field": "revenue",
+      "value": 405,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-business"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-core_revenue-fy2023",
+      "field": "core_revenue",
+      "value": 392,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-business"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-operating_profit-fy2023",
+      "field": "operating_profit",
+      "value": 30,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-business"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-roic-fy2023",
+      "field": "roic",
+      "value": 0.04,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-business"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-gross_margin-fy2023",
+      "field": "gross_margin",
+      "value": 0.16,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-business"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-ebit_margin-fy2023",
+      "field": "ebit_margin",
+      "value": 0.07,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-business"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-largest_customer_ratio-fy2023",
+      "field": "largest_customer_ratio",
+      "value": 0.26,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-business"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-reported_cfo-fy2024",
+      "field": "reported_cfo",
+      "value": 10,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-cash_interest_paid_total-fy2024",
+      "field": "cash_interest_paid_total",
+      "value": 4,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-cash_interest_in_cfo-fy2024",
+      "field": "cash_interest_in_cfo",
+      "value": 4,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-cash_interest_outside_cfo-fy2024",
+      "field": "cash_interest_outside_cfo",
+      "value": 0,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-non_recurring_operating_inflows-fy2024",
+      "field": "non_recurring_operating_inflows",
+      "value": 0,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-operating_outflows_misclassified_outside_cfo-fy2024",
+      "field": "operating_outflows_misclassified_outside_cfo",
+      "value": 0,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-ppe_purchase_cash-fy2024",
+      "field": "ppe_purchase_cash",
+      "value": 18,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-intangible_purchase_cash-fy2024",
+      "field": "intangible_purchase_cash",
+      "value": 0,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-other_operating_long_term_asset_cash-fy2024",
+      "field": "other_operating_long_term_asset_cash",
+      "value": 0,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-capex_payables_change-fy2024",
+      "field": "capex_payables_change",
+      "value": 0,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-lease_principal_outside_cfo-fy2024",
+      "field": "lease_principal_outside_cfo",
+      "value": 0,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-capitalized_dev_already_in_capex-fy2024",
+      "field": "capitalized_dev_already_in_capex",
+      "value": true,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1
+    },
+    {
+      "id": "high_dividend_bad_cashflow-acquisition_cash-fy2024",
+      "field": "acquisition_cash",
+      "value": 0,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-strategic_investment_cash-fy2024",
+      "field": "strategic_investment_cash",
+      "value": 0,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-working_capital_contribution-fy2024",
+      "field": "working_capital_contribution",
+      "value": 0,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1
+    },
+    {
+      "id": "high_dividend_bad_cashflow-parent_economic_share-fy2024",
+      "field": "parent_economic_share",
+      "value": 1,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-parent_net_profit-fy2024",
+      "field": "parent_net_profit",
+      "value": 34,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-consolidated_net_profit-fy2024",
+      "field": "consolidated_net_profit",
+      "value": 34,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-ordinary_dividend_cash-fy2024",
+      "field": "ordinary_dividend_cash",
+      "value": 27,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-return"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-special_dividend_cash-fy2024",
+      "field": "special_dividend_cash",
+      "value": 0,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-return"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-formal_payout_floor-fy2024",
+      "field": "formal_payout_floor",
+      "value": 0.7,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-return"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-payout_ratio-fy2024",
+      "field": "payout_ratio",
+      "value": 0.79,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-return"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-fully_diluted_shares-fy2024",
+      "field": "fully_diluted_shares",
+      "value": 100,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-return"
+      ],
+      "confidence": 1,
+      "unit": "shares_million"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-buyback_cash-fy2024",
+      "field": "buyback_cash",
+      "value": 0,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-return"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-share_issuance_cash-fy2024",
+      "field": "share_issuance_cash",
+      "value": 0,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-return"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-revenue-fy2024",
+      "field": "revenue",
+      "value": 398,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-business"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-core_revenue-fy2024",
+      "field": "core_revenue",
+      "value": 380,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-business"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-operating_profit-fy2024",
+      "field": "operating_profit",
+      "value": 26,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-business"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-roic-fy2024",
+      "field": "roic",
+      "value": 0.03,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-business"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-gross_margin-fy2024",
+      "field": "gross_margin",
+      "value": 0.15,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-business"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-ebit_margin-fy2024",
+      "field": "ebit_margin",
+      "value": 0.07,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-business"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-largest_customer_ratio-fy2024",
+      "field": "largest_customer_ratio",
+      "value": 0.28,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-business"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-reported_cfo-fy2025",
+      "field": "reported_cfo",
+      "value": -8,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-cash_interest_paid_total-fy2025",
+      "field": "cash_interest_paid_total",
+      "value": 4,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-cash_interest_in_cfo-fy2025",
+      "field": "cash_interest_in_cfo",
+      "value": 4,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-cash_interest_outside_cfo-fy2025",
+      "field": "cash_interest_outside_cfo",
+      "value": 0,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-non_recurring_operating_inflows-fy2025",
+      "field": "non_recurring_operating_inflows",
+      "value": 10,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-operating_outflows_misclassified_outside_cfo-fy2025",
+      "field": "operating_outflows_misclassified_outside_cfo",
+      "value": 0,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-ppe_purchase_cash-fy2025",
+      "field": "ppe_purchase_cash",
+      "value": 22,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-intangible_purchase_cash-fy2025",
+      "field": "intangible_purchase_cash",
+      "value": 0,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-other_operating_long_term_asset_cash-fy2025",
+      "field": "other_operating_long_term_asset_cash",
+      "value": 0,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-capex_payables_change-fy2025",
+      "field": "capex_payables_change",
+      "value": 0,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-lease_principal_outside_cfo-fy2025",
+      "field": "lease_principal_outside_cfo",
+      "value": 0,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-capitalized_dev_already_in_capex-fy2025",
+      "field": "capitalized_dev_already_in_capex",
+      "value": true,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1
+    },
+    {
+      "id": "high_dividend_bad_cashflow-acquisition_cash-fy2025",
+      "field": "acquisition_cash",
+      "value": 0,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-strategic_investment_cash-fy2025",
+      "field": "strategic_investment_cash",
+      "value": 0,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-working_capital_contribution-fy2025",
+      "field": "working_capital_contribution",
+      "value": 0,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1
+    },
+    {
+      "id": "high_dividend_bad_cashflow-parent_economic_share-fy2025",
+      "field": "parent_economic_share",
+      "value": 1,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-parent_net_profit-fy2025",
+      "field": "parent_net_profit",
+      "value": 35,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-consolidated_net_profit-fy2025",
+      "field": "consolidated_net_profit",
+      "value": 35,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-ordinary_dividend_cash-fy2025",
+      "field": "ordinary_dividend_cash",
+      "value": 28,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-return"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-special_dividend_cash-fy2025",
+      "field": "special_dividend_cash",
+      "value": 0,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-return"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-formal_payout_floor-fy2025",
+      "field": "formal_payout_floor",
+      "value": 0.7,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-return"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-payout_ratio-fy2025",
+      "field": "payout_ratio",
+      "value": 0.8,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-return"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-fully_diluted_shares-fy2025",
+      "field": "fully_diluted_shares",
+      "value": 100,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-return"
+      ],
+      "confidence": 1,
+      "unit": "shares_million"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-buyback_cash-fy2025",
+      "field": "buyback_cash",
+      "value": 0,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-return"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-share_issuance_cash-fy2025",
+      "field": "share_issuance_cash",
+      "value": 0,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-return"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-revenue-fy2025",
+      "field": "revenue",
+      "value": 390,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-business"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-core_revenue-fy2025",
+      "field": "core_revenue",
+      "value": 365,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-business"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-operating_profit-fy2025",
+      "field": "operating_profit",
+      "value": 20,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-business"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-roic-fy2025",
+      "field": "roic",
+      "value": 0.02,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-business"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-gross_margin-fy2025",
+      "field": "gross_margin",
+      "value": 0.14,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-business"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-ebit_margin-fy2025",
+      "field": "ebit_margin",
+      "value": 0.05,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-business"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-largest_customer_ratio-fy2025",
+      "field": "largest_customer_ratio",
+      "value": 0.3,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-business"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-listing_years-as_of_2026_09_08",
+      "field": "listing_years",
+      "value": 8,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-context"
+      ],
+      "confidence": 1,
+      "unit": "years"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-parent_equity-as_of_2026_09_08",
+      "field": "parent_equity",
+      "value": 180,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-current_market_cap-as_of_2026_09_08",
+      "field": "current_market_cap",
+      "value": 250,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-context"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-current_price-as_of_2026_09_08",
+      "field": "current_price",
+      "value": 2.5,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-context"
+      ],
+      "confidence": 1,
+      "unit": "CNY_per_share"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-normalized_diluted_economic_shares-as_of_2026_09_08",
+      "field": "normalized_diluted_economic_shares",
+      "value": 100,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-context"
+      ],
+      "confidence": 1,
+      "unit": "shares_million"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-actual_aggregate_company_market_cap-as_of_2026_09_08",
+      "field": "actual_aggregate_company_market_cap",
+      "value": 250,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-context"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-listing_equivalent_market_cap-as_of_2026_09_08",
+      "field": "listing_equivalent_market_cap",
+      "value": 250,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-context"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-special_treatment-as_of_2026_09_08",
+      "field": "special_treatment",
+      "value": false,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-context"
+      ],
+      "confidence": 1
+    },
+    {
+      "id": "high_dividend_bad_cashflow-accounting_opinion-as_of_2026_09_08",
+      "field": "accounting_opinion",
+      "value": "UNMODIFIED",
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-context"
+      ],
+      "confidence": 1
+    },
+    {
+      "id": "high_dividend_bad_cashflow-governance_risk_level-as_of_2026_09_08",
+      "field": "governance_risk_level",
+      "value": "NONE",
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-context"
+      ],
+      "confidence": 1
+    },
+    {
+      "id": "high_dividend_bad_cashflow-cash_authenticity_verified-as_of_2026_09_08",
+      "field": "cash_authenticity_verified",
+      "value": true,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-context"
+      ],
+      "confidence": 1
+    },
+    {
+      "id": "high_dividend_bad_cashflow-cash_upstreamability_verified-as_of_2026_09_08",
+      "field": "cash_upstreamability_verified",
+      "value": true,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-context"
+      ],
+      "confidence": 1
+    },
+    {
+      "id": "high_dividend_bad_cashflow-payout_policy_formal-as_of_2026_09_08",
+      "field": "payout_policy_formal",
+      "value": true,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-context"
+      ],
+      "confidence": 1
+    },
+    {
+      "id": "high_dividend_bad_cashflow-payout_policy_confidence-as_of_2026_09_08",
+      "field": "payout_policy_confidence",
+      "value": "HIGH",
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-context"
+      ],
+      "confidence": 1
+    },
+    {
+      "id": "high_dividend_bad_cashflow-buyback_recurring-as_of_2026_09_08",
+      "field": "buyback_recurring",
+      "value": false,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-context"
+      ],
+      "confidence": 1
+    },
+    {
+      "id": "high_dividend_bad_cashflow-net_diluted_share_reduction_verified-as_of_2026_09_08",
+      "field": "net_diluted_share_reduction_verified",
+      "value": true,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-context"
+      ],
+      "confidence": 1
+    },
+    {
+      "id": "high_dividend_bad_cashflow-special_dividend-as_of_2026_09_08",
+      "field": "special_dividend",
+      "value": false,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-context"
+      ],
+      "confidence": 1
+    },
+    {
+      "id": "high_dividend_bad_cashflow-book_cash-as_of_2026_09_08",
+      "field": "book_cash",
+      "value": 40,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-reported_interest_bearing_debt-as_of_2026_09_08",
+      "field": "reported_interest_bearing_debt",
+      "value": 60,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-hard_cash-as_of_2026_09_08",
+      "field": "hard_cash",
+      "value": 40,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-near_cash-as_of_2026_09_08",
+      "field": "near_cash",
+      "value": 0,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-liquid_financial_assets-as_of_2026_09_08",
+      "field": "liquid_financial_assets",
+      "value": 0,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-strategic_investments-as_of_2026_09_08",
+      "field": "strategic_investments",
+      "value": 0,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-restricted_cash-as_of_2026_09_08",
+      "field": "restricted_cash",
+      "value": 0,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-pledged_deposits-as_of_2026_09_08",
+      "field": "pledged_deposits",
+      "value": 0,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-financial_debt-as_of_2026_09_08",
+      "field": "financial_debt",
+      "value": 60,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-lease_debt-as_of_2026_09_08",
+      "field": "lease_debt",
+      "value": 5,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-supplier_finance-as_of_2026_09_08",
+      "field": "supplier_finance",
+      "value": 0,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-recourse_factoring-as_of_2026_09_08",
+      "field": "recourse_factoring",
+      "value": 0,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-debt_like_hybrids-as_of_2026_09_08",
+      "field": "debt_like_hybrids",
+      "value": 0,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-material_quasi_debt-as_of_2026_09_08",
+      "field": "material_quasi_debt",
+      "value": 0,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-subsidiary_cash-as_of_2026_09_08",
+      "field": "subsidiary_cash",
+      "value": 0,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-subsidiary_debt-as_of_2026_09_08",
+      "field": "subsidiary_debt",
+      "value": 0,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-subsidiary_ownership-as_of_2026_09_08",
+      "field": "subsidiary_ownership",
+      "value": 1,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-balance"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-upstreamability_factor-as_of_2026_09_08",
+      "field": "upstreamability_factor",
+      "value": 1,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-balance"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-debt_due_within_one_year-as_of_2026_09_08",
+      "field": "debt_due_within_one_year",
+      "value": 45,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-normalized_ebitda-as_of_2026_09_08",
+      "field": "normalized_ebitda",
+      "value": 35,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-cash_interest_expense-as_of_2026_09_08",
+      "field": "cash_interest_expense",
+      "value": 4,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-minority_profit-as_of_2026_09_08",
+      "field": "minority_profit",
+      "value": 0,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-minority_equity-as_of_2026_09_08",
+      "field": "minority_equity",
+      "value": 0,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-total_equity-as_of_2026_09_08",
+      "field": "total_equity",
+      "value": 180,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-cash_governance_factor-as_of_2026_09_08",
+      "field": "cash_governance_factor",
+      "value": 0.7,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-balance"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-equity_financing-as_of_2026_09_08",
+      "field": "equity_financing",
+      "value": 50,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-debt_financing-as_of_2026_09_08",
+      "field": "debt_financing",
+      "value": 20,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-other_financing-as_of_2026_09_08",
+      "field": "other_financing",
+      "value": 0,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "high_dividend_bad_cashflow-core_business_cash_generation-as_of_2026_09_08",
+      "field": "core_business_cash_generation",
+      "value": false,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-business"
+      ],
+      "confidence": 1
+    },
+    {
+      "id": "high_dividend_bad_cashflow-cash_governance_class-as_of_2026_09_08",
+      "field": "cash_governance_class",
+      "value": "WEAK_DISTRIBUTION",
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-business"
+      ],
+      "confidence": 1
+    }
+  ],
+  "evidence_index": [
+    {
+      "id": "ev-high_dividend_bad_cashflow-cdc",
+      "direction": "COUNTER",
+      "strength": "E0",
+      "statement": "Synthetic high dividends coexist with negative Core CDC in every year because operating cash does not cover gross maintenance capex.",
+      "source": {
+        "type": "OTHER",
+        "title": "Synthetic fixture evidence: high_dividend_bad_cashflow / cdc",
+        "issuer": "turtle-value-engine",
+        "published_date": "2026-09-08",
+        "fiscal_period": "FY2019-FY2025",
+        "document_id": "SYNTH-HIGH_DIVIDEND_BAD_CASHFLOW",
+        "locator": "fixtures/high_dividend_bad_cashflow.json#cdc"
+      },
+      "confidence": 1,
+      "notes": "Synthetic offline evidence for deterministic test data; not an external issuer source."
+    },
+    {
+      "id": "ev-high_dividend_bad_cashflow-balance",
+      "direction": "COUNTER",
+      "strength": "E0",
+      "statement": "Synthetic cash reserves are modest relative to recurring payout obligations and provide little protection against continued cash burn.",
+      "source": {
+        "type": "OTHER",
+        "title": "Synthetic fixture evidence: high_dividend_bad_cashflow / balance",
+        "issuer": "turtle-value-engine",
+        "published_date": "2026-09-08",
+        "fiscal_period": "FY2019-FY2025",
+        "document_id": "SYNTH-HIGH_DIVIDEND_BAD_CASHFLOW",
+        "locator": "fixtures/high_dividend_bad_cashflow.json#balance"
+      },
+      "confidence": 1,
+      "notes": "Synthetic offline evidence for deterministic test data; not an external issuer source."
+    },
+    {
+      "id": "ev-high_dividend_bad_cashflow-return",
+      "direction": "SUPPORT",
+      "strength": "E0",
+      "statement": "Synthetic reported profit and cash dividends appear high, but payout is not covered by normalized owner cash generation.",
+      "source": {
+        "type": "OTHER",
+        "title": "Synthetic fixture evidence: high_dividend_bad_cashflow / return",
+        "issuer": "turtle-value-engine",
+        "published_date": "2026-09-08",
+        "fiscal_period": "FY2019-FY2025",
+        "document_id": "SYNTH-HIGH_DIVIDEND_BAD_CASHFLOW",
+        "locator": "fixtures/high_dividend_bad_cashflow.json#return"
+      },
+      "confidence": 1,
+      "notes": "Synthetic offline evidence for deterministic test data; not an external issuer source."
+    },
+    {
+      "id": "ev-high_dividend_bad_cashflow-business",
+      "direction": "COUNTER",
+      "strength": "E0",
+      "statement": "Synthetic core business cash generation is marked false; the apparent yield is a cash-flow-quality warning rather than a durable return.",
+      "source": {
+        "type": "OTHER",
+        "title": "Synthetic fixture evidence: high_dividend_bad_cashflow / business",
+        "issuer": "turtle-value-engine",
+        "published_date": "2026-09-08",
+        "fiscal_period": "FY2019-FY2025",
+        "document_id": "SYNTH-HIGH_DIVIDEND_BAD_CASHFLOW",
+        "locator": "fixtures/high_dividend_bad_cashflow.json#business"
+      },
+      "confidence": 1,
+      "notes": "Synthetic offline evidence for deterministic test data; not an external issuer source."
+    },
+    {
+      "id": "ev-high_dividend_bad_cashflow-context",
+      "direction": "SUPPORT",
+      "strength": "E0",
+      "statement": "Synthetic market data are internally consistent and deliberately make headline dividend yield look attractive.",
+      "source": {
+        "type": "OTHER",
+        "title": "Synthetic fixture evidence: high_dividend_bad_cashflow / context",
+        "issuer": "turtle-value-engine",
+        "published_date": "2026-09-08",
+        "fiscal_period": "FY2019-FY2025",
+        "document_id": "SYNTH-HIGH_DIVIDEND_BAD_CASHFLOW",
+        "locator": "fixtures/high_dividend_bad_cashflow.json#context"
+      },
+      "confidence": 1,
+      "notes": "Synthetic offline evidence for deterministic test data; not an external issuer source."
+    }
+  ],
+  "adjustments": [
+    {
+      "id": "adj-high_dividend_bad_cashflow-one-off-grant",
+      "target_field": "non_recurring_operating_inflows",
+      "adjustment_type": "EXCLUDE",
+      "status": "ACCEPTED",
+      "reason": "Synthetic one-off grant inflows are excluded from normalized CFO instead of being treated as recurring cash generation.",
+      "source_evidence_ids": [
+        "ev-high_dividend_bad_cashflow-cdc"
+      ],
+      "proposed_by": "RULE_ENGINE",
+      "confidence": 1,
+      "input_value": 10,
+      "proposed_adjusted_value": 0,
+      "approved_by": "RULE_ENGINE"
+    }
+  ]
+}

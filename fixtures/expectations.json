@@ -1,0 +1,129 @@
+{
+  "schema_version": "1.0.0",
+  "description": "Expected scenario metadata for the frozen normalized-input fixtures. This file is not an engine output and makes no claim that Phase 1 has produced the listed results.",
+  "fixtures": [
+    {
+      "fixture": "healthy_cash_cow",
+      "purpose": "Baseline healthy owner-distributable cash compounder with strong balance-sheet safety, recurring payout and genuine net share reduction.",
+      "covers_rules": [
+        "CDC.CONTINUITY.POSITIVE_YEARS",
+        "CDC.NORMALIZATION.MIN_3Y_AVERAGE_5Y_MEDIAN",
+        "NET_CASH.OWNER_REALIZABLE",
+        "THROUGH_RETURN.DIVIDEND_AND_SHARE_REDUCTION",
+        "VALUATION.TIER_CAPS",
+        "HARD_GATE_PRECEDENCE"
+      ],
+      "expected_risks": [],
+      "engine_validation_status": "Expected scenario only; Phase 1 freezes input and does not claim full-engine validation."
+    },
+    {
+      "fixture": "high_dividend_bad_cashflow",
+      "purpose": "Separates headline dividend yield from owner-distributable cash by combining high dividends with negative normalized Core CDC.",
+      "covers_rules": [
+        "CDC.CONTINUITY.POSITIVE_YEARS",
+        "CDC.NORMALIZATION.REJECT_NEGATIVE_CASHFLOW",
+        "THROUGH_RETURN.PAYOUT_COVERAGE",
+        "HARD_GATE_PRECEDENCE"
+      ],
+      "expected_risks": [
+        "negative_or_insufficient_core_cdc",
+        "unsustainable_payout",
+        "cash_flow_quality_warning"
+      ],
+      "engine_validation_status": "Expected scenario only; Phase 1 freezes input and does not claim full-engine validation."
+    },
+    {
+      "fixture": "cash_rich_dying_business",
+      "purpose": "Tests the cash-box boundary: large apparent cash and positive residual CDC coexist with structural revenue decline and unresolved cash accessibility.",
+      "covers_rules": [
+        "NET_CASH.RESTRICTED_CASH",
+        "NET_CASH.UPSTREAMABILITY",
+        "BUSINESS.STRUCTURAL_REVENUE_DECLINE",
+        "VALUATION.CASH_BOX_DYING_BUSINESS",
+        "DATA_QUALITY.MISSING_STAYS_NULL"
+      ],
+      "expected_risks": [
+        "potential_cash_box_or_liquidation_case",
+        "structural_demand_decline",
+        "trapped_cash_review"
+      ],
+      "engine_validation_status": "Expected scenario only; Phase 1 freezes input and does not claim full-engine validation."
+    },
+    {
+      "fixture": "excellent_business_too_expensive",
+      "purpose": "Shows that excellent operating quality and cash generation do not permit paying above strict whole-company return hurdles.",
+      "covers_rules": [
+        "CDC.YIELD_BANDS",
+        "THROUGH_RETURN.YIELD_BANDS",
+        "VALUATION.COMBINE_CONSTRAINTS_MIN",
+        "BUSINESS_QUALITY_SEPARATE_FROM_PRICE"
+      ],
+      "expected_risks": [
+        "too_expensive_for_strict_model"
+      ],
+      "engine_validation_status": "Expected scenario only; Phase 1 freezes input and does not claim full-engine validation."
+    },
+    {
+      "fixture": "leveraged_dividend_trap",
+      "purpose": "Combines a visible dividend with debt-equivalent obligations, weak interest coverage and refinancing dependency.",
+      "covers_rules": [
+        "NET_CASH.DEBT_EQUIVALENTS",
+        "NET_CASH.INTEREST_COVERAGE",
+        "NET_CASH.STRESS_COVERAGE",
+        "THROUGH_RETURN.DIVIDEND_SUSTAINABILITY",
+        "HARD_GATE_PRECEDENCE"
+      ],
+      "expected_risks": [
+        "negative_strict_net_cash",
+        "interest_coverage_failure",
+        "refinancing_dependency",
+        "supplier_finance_reclassification"
+      ],
+      "engine_validation_status": "Expected scenario only; Phase 1 freezes input and does not claim full-engine validation."
+    },
+    {
+      "fixture": "negative_ev_governance_risk",
+      "purpose": "Separates negative adjusted EV from investability by combining verified excess cash with severe governance and related-party risk.",
+      "covers_rules": [
+        "NET_CASH.NET_NET_SPECIAL_CASE",
+        "NET_CASH.CASH_GOVERNANCE_FACTOR",
+        "GOVERNANCE.FAIL",
+        "VALUATION.NO_NORMAL_VALUATION"
+      ],
+      "expected_risks": [
+        "negative_adjusted_ev_special_case",
+        "severe_governance_review",
+        "guarantee_or_fund_occupation_review"
+      ],
+      "engine_validation_status": "Expected scenario only; Phase 1 freezes input and does not claim full-engine validation."
+    },
+    {
+      "fixture": "cyclical_peak_false_cheap",
+      "purpose": "Provides a seven-year peak-cycle series so recent peak CDC cannot be mistaken for sustainable full-cycle cash generation.",
+      "covers_rules": [
+        "CDC.NORMALIZATION.FULL_CYCLE_MEDIAN",
+        "CDC.CYCLICAL_MIN_HISTORY",
+        "VALUATION.CYCLICAL_VALUATION_UNAVAILABLE_OR_GUARDED"
+      ],
+      "expected_risks": [
+        "peak_cycle_false_cheap",
+        "cyclical_full_cycle_review"
+      ],
+      "engine_validation_status": "Expected scenario only; Phase 1 freezes input and does not claim full-engine validation."
+    },
+    {
+      "fixture": "share_dilution_offsets_buyback",
+      "purpose": "Tests why buyback spending is not shareholder return when compensation and acquisition issuance cause fully diluted shares to rise.",
+      "covers_rules": [
+        "THROUGH_RETURN.NET_SHARE_REDUCTION",
+        "VALUATION.BUYBACK_CASH_CREDIT_GUARD",
+        "HARD_GATE.PAYOUT_REALIZATION"
+      ],
+      "expected_risks": [
+        "buyback_offset_by_dilution",
+        "negative_normalized_net_share_reduction"
+      ],
+      "engine_validation_status": "Expected scenario only; Phase 1 freezes input and does not claim full-engine validation."
+    }
+  ]
+}

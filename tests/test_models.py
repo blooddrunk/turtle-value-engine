@@ -27,6 +27,7 @@ def test_fact_requires_at_least_one_evidence_id():
 
 def test_normalized_input_preserves_null_and_contract_fields():
     input_data = NormalizedCompanyInput(
+        schema_version="1.0.0",
         analysis_id="analysis-1",
         as_of="2026-09-08",
         profile_id="strict-v1",
@@ -49,6 +50,19 @@ def test_normalized_input_preserves_null_and_contract_fields():
                 "period": "FY2025",
                 "source_evidence_ids": ["evidence-1"],
                 "confidence": 0.5,
+            }
+        ],
+        evidence_index=[
+            {
+                "id": "evidence-1",
+                "direction": "CONTEXT",
+                "strength": "E0",
+                "statement": "Synthetic model-validation evidence.",
+                "source": {
+                    "type": "OTHER",
+                    "title": "Synthetic model-validation source",
+                },
+                "confidence": 1,
             }
         ],
         adjustments=[],

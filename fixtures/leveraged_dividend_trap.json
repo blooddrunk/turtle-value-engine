@@ -1,0 +1,2526 @@
+{
+  "schema_version": "1.0.0",
+  "analysis_id": "fixture-leveraged_dividend_trap-2026-09-08",
+  "as_of": "2026-09-08",
+  "profile_id": "strict-v1",
+  "company": {
+    "name": "leveraged_dividend_trap",
+    "legal_name": null,
+    "primary_listing": "SZ000005",
+    "other_listings": [],
+    "sector": "industrials",
+    "industry": "capital_intensive_services",
+    "country_or_region": "Synthetic",
+    "reporting_currency": "CNY",
+    "accounting_standard": "Synthetic normalized reporting basis",
+    "accounting_standard_version": "fixture-v1",
+    "fiscal_year_end": "12-31",
+    "special_model": null
+  },
+  "data_quality": {
+    "confidence": "HIGH",
+    "evidence_coverage": 0.93,
+    "critical_missing_fields": [],
+    "notes": "Offline synthetic fixture for leveraged_dividend_trap; no network or external files are required."
+  },
+  "facts": [
+    {
+      "id": "leveraged_dividend_trap-reported_cfo-fy2021",
+      "field": "reported_cfo",
+      "value": 85,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-cash_interest_paid_total-fy2021",
+      "field": "cash_interest_paid_total",
+      "value": 45,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-cash_interest_in_cfo-fy2021",
+      "field": "cash_interest_in_cfo",
+      "value": 5,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-cash_interest_outside_cfo-fy2021",
+      "field": "cash_interest_outside_cfo",
+      "value": 40,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-non_recurring_operating_inflows-fy2021",
+      "field": "non_recurring_operating_inflows",
+      "value": 0,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-operating_outflows_misclassified_outside_cfo-fy2021",
+      "field": "operating_outflows_misclassified_outside_cfo",
+      "value": 0,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-ppe_purchase_cash-fy2021",
+      "field": "ppe_purchase_cash",
+      "value": 22,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-intangible_purchase_cash-fy2021",
+      "field": "intangible_purchase_cash",
+      "value": 0,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-other_operating_long_term_asset_cash-fy2021",
+      "field": "other_operating_long_term_asset_cash",
+      "value": 0,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-capex_payables_change-fy2021",
+      "field": "capex_payables_change",
+      "value": 0,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-lease_principal_outside_cfo-fy2021",
+      "field": "lease_principal_outside_cfo",
+      "value": 5,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-capitalized_dev_already_in_capex-fy2021",
+      "field": "capitalized_dev_already_in_capex",
+      "value": true,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1
+    },
+    {
+      "id": "leveraged_dividend_trap-acquisition_cash-fy2021",
+      "field": "acquisition_cash",
+      "value": 0,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-strategic_investment_cash-fy2021",
+      "field": "strategic_investment_cash",
+      "value": 0,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-working_capital_contribution-fy2021",
+      "field": "working_capital_contribution",
+      "value": 0,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1
+    },
+    {
+      "id": "leveraged_dividend_trap-parent_economic_share-fy2021",
+      "field": "parent_economic_share",
+      "value": 1,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "leveraged_dividend_trap-parent_net_profit-fy2021",
+      "field": "parent_net_profit",
+      "value": 45,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-consolidated_net_profit-fy2021",
+      "field": "consolidated_net_profit",
+      "value": 45,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-ordinary_dividend_cash-fy2021",
+      "field": "ordinary_dividend_cash",
+      "value": 30,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-return"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-special_dividend_cash-fy2021",
+      "field": "special_dividend_cash",
+      "value": 0,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-return"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-formal_payout_floor-fy2021",
+      "field": "formal_payout_floor",
+      "value": 0.55,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-return"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "leveraged_dividend_trap-payout_ratio-fy2021",
+      "field": "payout_ratio",
+      "value": 0.67,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-return"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "leveraged_dividend_trap-fully_diluted_shares-fy2021",
+      "field": "fully_diluted_shares",
+      "value": 100,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-return"
+      ],
+      "confidence": 1,
+      "unit": "shares_million"
+    },
+    {
+      "id": "leveraged_dividend_trap-buyback_cash-fy2021",
+      "field": "buyback_cash",
+      "value": 0,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-return"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-share_issuance_cash-fy2021",
+      "field": "share_issuance_cash",
+      "value": 0,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-return"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-revenue-fy2021",
+      "field": "revenue",
+      "value": 700,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-business"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-core_revenue-fy2021",
+      "field": "core_revenue",
+      "value": 690,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-business"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-operating_profit-fy2021",
+      "field": "operating_profit",
+      "value": 65,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-business"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-roic-fy2021",
+      "field": "roic",
+      "value": 0.07,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-business"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "leveraged_dividend_trap-gross_margin-fy2021",
+      "field": "gross_margin",
+      "value": 0.25,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-business"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "leveraged_dividend_trap-ebit_margin-fy2021",
+      "field": "ebit_margin",
+      "value": 0.09,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-business"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "leveraged_dividend_trap-largest_customer_ratio-fy2021",
+      "field": "largest_customer_ratio",
+      "value": 0.18,
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-business"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "leveraged_dividend_trap-demand_classification-fy2021",
+      "field": "demand_classification",
+      "value": "DISCRETIONARY",
+      "period": "FY2021",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-business"
+      ],
+      "confidence": 1
+    },
+    {
+      "id": "leveraged_dividend_trap-reported_cfo-fy2022",
+      "field": "reported_cfo",
+      "value": 90,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-cash_interest_paid_total-fy2022",
+      "field": "cash_interest_paid_total",
+      "value": 45,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-cash_interest_in_cfo-fy2022",
+      "field": "cash_interest_in_cfo",
+      "value": 5,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-cash_interest_outside_cfo-fy2022",
+      "field": "cash_interest_outside_cfo",
+      "value": 40,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-non_recurring_operating_inflows-fy2022",
+      "field": "non_recurring_operating_inflows",
+      "value": 0,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-operating_outflows_misclassified_outside_cfo-fy2022",
+      "field": "operating_outflows_misclassified_outside_cfo",
+      "value": 0,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-ppe_purchase_cash-fy2022",
+      "field": "ppe_purchase_cash",
+      "value": 23,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-intangible_purchase_cash-fy2022",
+      "field": "intangible_purchase_cash",
+      "value": 0,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-other_operating_long_term_asset_cash-fy2022",
+      "field": "other_operating_long_term_asset_cash",
+      "value": 0,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-capex_payables_change-fy2022",
+      "field": "capex_payables_change",
+      "value": 0,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-lease_principal_outside_cfo-fy2022",
+      "field": "lease_principal_outside_cfo",
+      "value": 5,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-capitalized_dev_already_in_capex-fy2022",
+      "field": "capitalized_dev_already_in_capex",
+      "value": true,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1
+    },
+    {
+      "id": "leveraged_dividend_trap-acquisition_cash-fy2022",
+      "field": "acquisition_cash",
+      "value": 0,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-strategic_investment_cash-fy2022",
+      "field": "strategic_investment_cash",
+      "value": 0,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-working_capital_contribution-fy2022",
+      "field": "working_capital_contribution",
+      "value": 0,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1
+    },
+    {
+      "id": "leveraged_dividend_trap-parent_economic_share-fy2022",
+      "field": "parent_economic_share",
+      "value": 1,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "leveraged_dividend_trap-parent_net_profit-fy2022",
+      "field": "parent_net_profit",
+      "value": 47,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-consolidated_net_profit-fy2022",
+      "field": "consolidated_net_profit",
+      "value": 47,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-ordinary_dividend_cash-fy2022",
+      "field": "ordinary_dividend_cash",
+      "value": 31,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-return"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-special_dividend_cash-fy2022",
+      "field": "special_dividend_cash",
+      "value": 0,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-return"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-formal_payout_floor-fy2022",
+      "field": "formal_payout_floor",
+      "value": 0.55,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-return"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "leveraged_dividend_trap-payout_ratio-fy2022",
+      "field": "payout_ratio",
+      "value": 0.66,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-return"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "leveraged_dividend_trap-fully_diluted_shares-fy2022",
+      "field": "fully_diluted_shares",
+      "value": 100,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-return"
+      ],
+      "confidence": 1,
+      "unit": "shares_million"
+    },
+    {
+      "id": "leveraged_dividend_trap-buyback_cash-fy2022",
+      "field": "buyback_cash",
+      "value": 0,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-return"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-share_issuance_cash-fy2022",
+      "field": "share_issuance_cash",
+      "value": 0,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-return"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-revenue-fy2022",
+      "field": "revenue",
+      "value": 720,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-business"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-core_revenue-fy2022",
+      "field": "core_revenue",
+      "value": 705,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-business"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-operating_profit-fy2022",
+      "field": "operating_profit",
+      "value": 66,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-business"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-roic-fy2022",
+      "field": "roic",
+      "value": 0.07,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-business"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "leveraged_dividend_trap-gross_margin-fy2022",
+      "field": "gross_margin",
+      "value": 0.25,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-business"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "leveraged_dividend_trap-ebit_margin-fy2022",
+      "field": "ebit_margin",
+      "value": 0.09,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-business"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "leveraged_dividend_trap-largest_customer_ratio-fy2022",
+      "field": "largest_customer_ratio",
+      "value": 0.19,
+      "period": "FY2022",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-business"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "leveraged_dividend_trap-reported_cfo-fy2023",
+      "field": "reported_cfo",
+      "value": 95,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-cash_interest_paid_total-fy2023",
+      "field": "cash_interest_paid_total",
+      "value": 45,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-cash_interest_in_cfo-fy2023",
+      "field": "cash_interest_in_cfo",
+      "value": 5,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-cash_interest_outside_cfo-fy2023",
+      "field": "cash_interest_outside_cfo",
+      "value": 40,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-non_recurring_operating_inflows-fy2023",
+      "field": "non_recurring_operating_inflows",
+      "value": 0,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-operating_outflows_misclassified_outside_cfo-fy2023",
+      "field": "operating_outflows_misclassified_outside_cfo",
+      "value": 0,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-ppe_purchase_cash-fy2023",
+      "field": "ppe_purchase_cash",
+      "value": 24,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-intangible_purchase_cash-fy2023",
+      "field": "intangible_purchase_cash",
+      "value": 0,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-other_operating_long_term_asset_cash-fy2023",
+      "field": "other_operating_long_term_asset_cash",
+      "value": 0,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-capex_payables_change-fy2023",
+      "field": "capex_payables_change",
+      "value": 0,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-lease_principal_outside_cfo-fy2023",
+      "field": "lease_principal_outside_cfo",
+      "value": 5,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-capitalized_dev_already_in_capex-fy2023",
+      "field": "capitalized_dev_already_in_capex",
+      "value": true,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1
+    },
+    {
+      "id": "leveraged_dividend_trap-acquisition_cash-fy2023",
+      "field": "acquisition_cash",
+      "value": 0,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-strategic_investment_cash-fy2023",
+      "field": "strategic_investment_cash",
+      "value": 0,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-working_capital_contribution-fy2023",
+      "field": "working_capital_contribution",
+      "value": 0,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1
+    },
+    {
+      "id": "leveraged_dividend_trap-parent_economic_share-fy2023",
+      "field": "parent_economic_share",
+      "value": 1,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "leveraged_dividend_trap-parent_net_profit-fy2023",
+      "field": "parent_net_profit",
+      "value": 49,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-consolidated_net_profit-fy2023",
+      "field": "consolidated_net_profit",
+      "value": 49,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-ordinary_dividend_cash-fy2023",
+      "field": "ordinary_dividend_cash",
+      "value": 32,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-return"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-special_dividend_cash-fy2023",
+      "field": "special_dividend_cash",
+      "value": 0,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-return"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-formal_payout_floor-fy2023",
+      "field": "formal_payout_floor",
+      "value": 0.55,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-return"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "leveraged_dividend_trap-payout_ratio-fy2023",
+      "field": "payout_ratio",
+      "value": 0.65,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-return"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "leveraged_dividend_trap-fully_diluted_shares-fy2023",
+      "field": "fully_diluted_shares",
+      "value": 100,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-return"
+      ],
+      "confidence": 1,
+      "unit": "shares_million"
+    },
+    {
+      "id": "leveraged_dividend_trap-buyback_cash-fy2023",
+      "field": "buyback_cash",
+      "value": 0,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-return"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-share_issuance_cash-fy2023",
+      "field": "share_issuance_cash",
+      "value": 0,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-return"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-revenue-fy2023",
+      "field": "revenue",
+      "value": 730,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-business"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-core_revenue-fy2023",
+      "field": "core_revenue",
+      "value": 710,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-business"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-operating_profit-fy2023",
+      "field": "operating_profit",
+      "value": 68,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-business"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-roic-fy2023",
+      "field": "roic",
+      "value": 0.08,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-business"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "leveraged_dividend_trap-gross_margin-fy2023",
+      "field": "gross_margin",
+      "value": 0.24,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-business"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "leveraged_dividend_trap-ebit_margin-fy2023",
+      "field": "ebit_margin",
+      "value": 0.09,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-business"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "leveraged_dividend_trap-largest_customer_ratio-fy2023",
+      "field": "largest_customer_ratio",
+      "value": 0.2,
+      "period": "FY2023",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-business"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "leveraged_dividend_trap-reported_cfo-fy2024",
+      "field": "reported_cfo",
+      "value": 100,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-cash_interest_paid_total-fy2024",
+      "field": "cash_interest_paid_total",
+      "value": 45,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-cash_interest_in_cfo-fy2024",
+      "field": "cash_interest_in_cfo",
+      "value": 5,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-cash_interest_outside_cfo-fy2024",
+      "field": "cash_interest_outside_cfo",
+      "value": 40,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-non_recurring_operating_inflows-fy2024",
+      "field": "non_recurring_operating_inflows",
+      "value": 0,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-operating_outflows_misclassified_outside_cfo-fy2024",
+      "field": "operating_outflows_misclassified_outside_cfo",
+      "value": 0,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-ppe_purchase_cash-fy2024",
+      "field": "ppe_purchase_cash",
+      "value": 25,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-intangible_purchase_cash-fy2024",
+      "field": "intangible_purchase_cash",
+      "value": 0,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-other_operating_long_term_asset_cash-fy2024",
+      "field": "other_operating_long_term_asset_cash",
+      "value": 0,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-capex_payables_change-fy2024",
+      "field": "capex_payables_change",
+      "value": 0,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-lease_principal_outside_cfo-fy2024",
+      "field": "lease_principal_outside_cfo",
+      "value": 5,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-capitalized_dev_already_in_capex-fy2024",
+      "field": "capitalized_dev_already_in_capex",
+      "value": true,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1
+    },
+    {
+      "id": "leveraged_dividend_trap-acquisition_cash-fy2024",
+      "field": "acquisition_cash",
+      "value": 0,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-strategic_investment_cash-fy2024",
+      "field": "strategic_investment_cash",
+      "value": 0,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-working_capital_contribution-fy2024",
+      "field": "working_capital_contribution",
+      "value": 0,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1
+    },
+    {
+      "id": "leveraged_dividend_trap-parent_economic_share-fy2024",
+      "field": "parent_economic_share",
+      "value": 1,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "leveraged_dividend_trap-parent_net_profit-fy2024",
+      "field": "parent_net_profit",
+      "value": 51,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-consolidated_net_profit-fy2024",
+      "field": "consolidated_net_profit",
+      "value": 51,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-ordinary_dividend_cash-fy2024",
+      "field": "ordinary_dividend_cash",
+      "value": 33,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-return"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-special_dividend_cash-fy2024",
+      "field": "special_dividend_cash",
+      "value": 0,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-return"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-formal_payout_floor-fy2024",
+      "field": "formal_payout_floor",
+      "value": 0.55,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-return"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "leveraged_dividend_trap-payout_ratio-fy2024",
+      "field": "payout_ratio",
+      "value": 0.65,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-return"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "leveraged_dividend_trap-fully_diluted_shares-fy2024",
+      "field": "fully_diluted_shares",
+      "value": 100,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-return"
+      ],
+      "confidence": 1,
+      "unit": "shares_million"
+    },
+    {
+      "id": "leveraged_dividend_trap-buyback_cash-fy2024",
+      "field": "buyback_cash",
+      "value": 0,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-return"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-share_issuance_cash-fy2024",
+      "field": "share_issuance_cash",
+      "value": 0,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-return"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-revenue-fy2024",
+      "field": "revenue",
+      "value": 735,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-business"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-core_revenue-fy2024",
+      "field": "core_revenue",
+      "value": 710,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-business"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-operating_profit-fy2024",
+      "field": "operating_profit",
+      "value": 67,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-business"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-roic-fy2024",
+      "field": "roic",
+      "value": 0.07,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-business"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "leveraged_dividend_trap-gross_margin-fy2024",
+      "field": "gross_margin",
+      "value": 0.23,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-business"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "leveraged_dividend_trap-ebit_margin-fy2024",
+      "field": "ebit_margin",
+      "value": 0.09,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-business"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "leveraged_dividend_trap-largest_customer_ratio-fy2024",
+      "field": "largest_customer_ratio",
+      "value": 0.22,
+      "period": "FY2024",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-business"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "leveraged_dividend_trap-reported_cfo-fy2025",
+      "field": "reported_cfo",
+      "value": 105,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-cash_interest_paid_total-fy2025",
+      "field": "cash_interest_paid_total",
+      "value": 45,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-cash_interest_in_cfo-fy2025",
+      "field": "cash_interest_in_cfo",
+      "value": 5,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-cash_interest_outside_cfo-fy2025",
+      "field": "cash_interest_outside_cfo",
+      "value": 40,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-non_recurring_operating_inflows-fy2025",
+      "field": "non_recurring_operating_inflows",
+      "value": 0,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-operating_outflows_misclassified_outside_cfo-fy2025",
+      "field": "operating_outflows_misclassified_outside_cfo",
+      "value": 0,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-ppe_purchase_cash-fy2025",
+      "field": "ppe_purchase_cash",
+      "value": 26,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-intangible_purchase_cash-fy2025",
+      "field": "intangible_purchase_cash",
+      "value": 0,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-other_operating_long_term_asset_cash-fy2025",
+      "field": "other_operating_long_term_asset_cash",
+      "value": 0,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-capex_payables_change-fy2025",
+      "field": "capex_payables_change",
+      "value": 0,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-lease_principal_outside_cfo-fy2025",
+      "field": "lease_principal_outside_cfo",
+      "value": 5,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-capitalized_dev_already_in_capex-fy2025",
+      "field": "capitalized_dev_already_in_capex",
+      "value": true,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1
+    },
+    {
+      "id": "leveraged_dividend_trap-acquisition_cash-fy2025",
+      "field": "acquisition_cash",
+      "value": 0,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-strategic_investment_cash-fy2025",
+      "field": "strategic_investment_cash",
+      "value": 0,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-working_capital_contribution-fy2025",
+      "field": "working_capital_contribution",
+      "value": 0,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1
+    },
+    {
+      "id": "leveraged_dividend_trap-parent_economic_share-fy2025",
+      "field": "parent_economic_share",
+      "value": 1,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "leveraged_dividend_trap-parent_net_profit-fy2025",
+      "field": "parent_net_profit",
+      "value": 53,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-consolidated_net_profit-fy2025",
+      "field": "consolidated_net_profit",
+      "value": 53,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-cdc"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-ordinary_dividend_cash-fy2025",
+      "field": "ordinary_dividend_cash",
+      "value": 34,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-return"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-special_dividend_cash-fy2025",
+      "field": "special_dividend_cash",
+      "value": 0,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-return"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-formal_payout_floor-fy2025",
+      "field": "formal_payout_floor",
+      "value": 0.55,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-return"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "leveraged_dividend_trap-payout_ratio-fy2025",
+      "field": "payout_ratio",
+      "value": 0.64,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-return"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "leveraged_dividend_trap-fully_diluted_shares-fy2025",
+      "field": "fully_diluted_shares",
+      "value": 100,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-return"
+      ],
+      "confidence": 1,
+      "unit": "shares_million"
+    },
+    {
+      "id": "leveraged_dividend_trap-buyback_cash-fy2025",
+      "field": "buyback_cash",
+      "value": 0,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-return"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-share_issuance_cash-fy2025",
+      "field": "share_issuance_cash",
+      "value": 0,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-return"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-revenue-fy2025",
+      "field": "revenue",
+      "value": 730,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-business"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-core_revenue-fy2025",
+      "field": "core_revenue",
+      "value": 700,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-business"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-operating_profit-fy2025",
+      "field": "operating_profit",
+      "value": 62,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-business"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-roic-fy2025",
+      "field": "roic",
+      "value": 0.06,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-business"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "leveraged_dividend_trap-gross_margin-fy2025",
+      "field": "gross_margin",
+      "value": 0.21,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-business"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "leveraged_dividend_trap-ebit_margin-fy2025",
+      "field": "ebit_margin",
+      "value": 0.08,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-business"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "leveraged_dividend_trap-largest_customer_ratio-fy2025",
+      "field": "largest_customer_ratio",
+      "value": 0.24,
+      "period": "FY2025",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-business"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "leveraged_dividend_trap-listing_years-as_of_2026_09_08",
+      "field": "listing_years",
+      "value": 10,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-context"
+      ],
+      "confidence": 1,
+      "unit": "years"
+    },
+    {
+      "id": "leveraged_dividend_trap-parent_equity-as_of_2026_09_08",
+      "field": "parent_equity",
+      "value": 300,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-current_market_cap-as_of_2026_09_08",
+      "field": "current_market_cap",
+      "value": 450,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-context"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-current_price-as_of_2026_09_08",
+      "field": "current_price",
+      "value": 4.5,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-context"
+      ],
+      "confidence": 1,
+      "unit": "CNY_per_share"
+    },
+    {
+      "id": "leveraged_dividend_trap-normalized_diluted_economic_shares-as_of_2026_09_08",
+      "field": "normalized_diluted_economic_shares",
+      "value": 100,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-context"
+      ],
+      "confidence": 1,
+      "unit": "shares_million"
+    },
+    {
+      "id": "leveraged_dividend_trap-actual_aggregate_company_market_cap-as_of_2026_09_08",
+      "field": "actual_aggregate_company_market_cap",
+      "value": 450,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-context"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-listing_equivalent_market_cap-as_of_2026_09_08",
+      "field": "listing_equivalent_market_cap",
+      "value": 450,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-context"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-special_treatment-as_of_2026_09_08",
+      "field": "special_treatment",
+      "value": false,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-context"
+      ],
+      "confidence": 1
+    },
+    {
+      "id": "leveraged_dividend_trap-accounting_opinion-as_of_2026_09_08",
+      "field": "accounting_opinion",
+      "value": "UNMODIFIED",
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-context"
+      ],
+      "confidence": 1
+    },
+    {
+      "id": "leveraged_dividend_trap-governance_risk_level-as_of_2026_09_08",
+      "field": "governance_risk_level",
+      "value": "NONE",
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-context"
+      ],
+      "confidence": 1
+    },
+    {
+      "id": "leveraged_dividend_trap-cash_authenticity_verified-as_of_2026_09_08",
+      "field": "cash_authenticity_verified",
+      "value": true,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-context"
+      ],
+      "confidence": 1
+    },
+    {
+      "id": "leveraged_dividend_trap-cash_upstreamability_verified-as_of_2026_09_08",
+      "field": "cash_upstreamability_verified",
+      "value": true,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-context"
+      ],
+      "confidence": 1
+    },
+    {
+      "id": "leveraged_dividend_trap-payout_policy_formal-as_of_2026_09_08",
+      "field": "payout_policy_formal",
+      "value": true,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-context"
+      ],
+      "confidence": 1
+    },
+    {
+      "id": "leveraged_dividend_trap-payout_policy_confidence-as_of_2026_09_08",
+      "field": "payout_policy_confidence",
+      "value": "HIGH",
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-context"
+      ],
+      "confidence": 1
+    },
+    {
+      "id": "leveraged_dividend_trap-buyback_recurring-as_of_2026_09_08",
+      "field": "buyback_recurring",
+      "value": false,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-context"
+      ],
+      "confidence": 1
+    },
+    {
+      "id": "leveraged_dividend_trap-net_diluted_share_reduction_verified-as_of_2026_09_08",
+      "field": "net_diluted_share_reduction_verified",
+      "value": true,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-context"
+      ],
+      "confidence": 1
+    },
+    {
+      "id": "leveraged_dividend_trap-special_dividend-as_of_2026_09_08",
+      "field": "special_dividend",
+      "value": false,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-context"
+      ],
+      "confidence": 1
+    },
+    {
+      "id": "leveraged_dividend_trap-book_cash-as_of_2026_09_08",
+      "field": "book_cash",
+      "value": 120,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-reported_interest_bearing_debt-as_of_2026_09_08",
+      "field": "reported_interest_bearing_debt",
+      "value": 900,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-hard_cash-as_of_2026_09_08",
+      "field": "hard_cash",
+      "value": 100,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-near_cash-as_of_2026_09_08",
+      "field": "near_cash",
+      "value": 20,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-liquid_financial_assets-as_of_2026_09_08",
+      "field": "liquid_financial_assets",
+      "value": 0,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-strategic_investments-as_of_2026_09_08",
+      "field": "strategic_investments",
+      "value": 0,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-restricted_cash-as_of_2026_09_08",
+      "field": "restricted_cash",
+      "value": 0,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-pledged_deposits-as_of_2026_09_08",
+      "field": "pledged_deposits",
+      "value": 20,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-financial_debt-as_of_2026_09_08",
+      "field": "financial_debt",
+      "value": 900,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-lease_debt-as_of_2026_09_08",
+      "field": "lease_debt",
+      "value": 120,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-supplier_finance-as_of_2026_09_08",
+      "field": "supplier_finance",
+      "value": 180,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-recourse_factoring-as_of_2026_09_08",
+      "field": "recourse_factoring",
+      "value": 30,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-debt_like_hybrids-as_of_2026_09_08",
+      "field": "debt_like_hybrids",
+      "value": 50,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-material_quasi_debt-as_of_2026_09_08",
+      "field": "material_quasi_debt",
+      "value": 40,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-subsidiary_cash-as_of_2026_09_08",
+      "field": "subsidiary_cash",
+      "value": 0,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-subsidiary_debt-as_of_2026_09_08",
+      "field": "subsidiary_debt",
+      "value": 0,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-subsidiary_ownership-as_of_2026_09_08",
+      "field": "subsidiary_ownership",
+      "value": 1,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-balance"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "leveraged_dividend_trap-upstreamability_factor-as_of_2026_09_08",
+      "field": "upstreamability_factor",
+      "value": 0.75,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-balance"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "leveraged_dividend_trap-debt_due_within_one_year-as_of_2026_09_08",
+      "field": "debt_due_within_one_year",
+      "value": 400,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-normalized_ebitda-as_of_2026_09_08",
+      "field": "normalized_ebitda",
+      "value": 130,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-cash_interest_expense-as_of_2026_09_08",
+      "field": "cash_interest_expense",
+      "value": 45,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-minority_profit-as_of_2026_09_08",
+      "field": "minority_profit",
+      "value": 0,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-minority_equity-as_of_2026_09_08",
+      "field": "minority_equity",
+      "value": 0,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-total_equity-as_of_2026_09_08",
+      "field": "total_equity",
+      "value": 300,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-cash_governance_factor-as_of_2026_09_08",
+      "field": "cash_governance_factor",
+      "value": 0.85,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-balance"
+      ],
+      "confidence": 1,
+      "unit": "ratio"
+    },
+    {
+      "id": "leveraged_dividend_trap-equity_financing-as_of_2026_09_08",
+      "field": "equity_financing",
+      "value": 0,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-debt_financing-as_of_2026_09_08",
+      "field": "debt_financing",
+      "value": 200,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-other_financing-as_of_2026_09_08",
+      "field": "other_financing",
+      "value": 0,
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-balance"
+      ],
+      "confidence": 1,
+      "unit": "CNY_million",
+      "currency": "CNY"
+    },
+    {
+      "id": "leveraged_dividend_trap-cash_governance_class-as_of_2026_09_08",
+      "field": "cash_governance_class",
+      "value": "SOUND",
+      "period": "AS_OF_2026-09-08",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-business"
+      ],
+      "confidence": 1
+    }
+  ],
+  "evidence_index": [
+    {
+      "id": "ev-leveraged_dividend_trap-cdc",
+      "direction": "COUNTER",
+      "strength": "E0",
+      "statement": "Synthetic Core CDC is positive but thin after cash interest, lease principal and maintenance capex, leaving little room for debt service.",
+      "source": {
+        "type": "OTHER",
+        "title": "Synthetic fixture evidence: leveraged_dividend_trap / cdc",
+        "issuer": "turtle-value-engine",
+        "published_date": "2026-09-08",
+        "fiscal_period": "FY2019-FY2025",
+        "document_id": "SYNTH-LEVERAGED_DIVIDEND_TRAP",
+        "locator": "fixtures/leveraged_dividend_trap.json#cdc"
+      },
+      "confidence": 1,
+      "notes": "Synthetic offline evidence for deterministic test data; not an external issuer source."
+    },
+    {
+      "id": "ev-leveraged_dividend_trap-balance",
+      "direction": "COUNTER",
+      "strength": "E0",
+      "statement": "Synthetic financial debt, lease debt and supplier finance overwhelm accessible cash; one-year maturities exceed cash plus stressed CDC.",
+      "source": {
+        "type": "OTHER",
+        "title": "Synthetic fixture evidence: leveraged_dividend_trap / balance",
+        "issuer": "turtle-value-engine",
+        "published_date": "2026-09-08",
+        "fiscal_period": "FY2019-FY2025",
+        "document_id": "SYNTH-LEVERAGED_DIVIDEND_TRAP",
+        "locator": "fixtures/leveraged_dividend_trap.json#balance"
+      },
+      "confidence": 1,
+      "notes": "Synthetic offline evidence for deterministic test data; not an external issuer source."
+    },
+    {
+      "id": "ev-leveraged_dividend_trap-return",
+      "direction": "SUPPORT",
+      "strength": "E0",
+      "statement": "Synthetic ordinary dividends remain high relative to normalized profit even while leverage and interest burden deteriorate.",
+      "source": {
+        "type": "OTHER",
+        "title": "Synthetic fixture evidence: leveraged_dividend_trap / return",
+        "issuer": "turtle-value-engine",
+        "published_date": "2026-09-08",
+        "fiscal_period": "FY2019-FY2025",
+        "document_id": "SYNTH-LEVERAGED_DIVIDEND_TRAP",
+        "locator": "fixtures/leveraged_dividend_trap.json#return"
+      },
+      "confidence": 1,
+      "notes": "Synthetic offline evidence for deterministic test data; not an external issuer source."
+    },
+    {
+      "id": "ev-leveraged_dividend_trap-business",
+      "direction": "COUNTER",
+      "strength": "E0",
+      "statement": "Synthetic business has heavy capital intensity, medium customer concentration and returns that do not cover its financing risk.",
+      "source": {
+        "type": "OTHER",
+        "title": "Synthetic fixture evidence: leveraged_dividend_trap / business",
+        "issuer": "turtle-value-engine",
+        "published_date": "2026-09-08",
+        "fiscal_period": "FY2019-FY2025",
+        "document_id": "SYNTH-LEVERAGED_DIVIDEND_TRAP",
+        "locator": "fixtures/leveraged_dividend_trap.json#business"
+      },
+      "confidence": 1,
+      "notes": "Synthetic offline evidence for deterministic test data; not an external issuer source."
+    },
+    {
+      "id": "ev-leveraged_dividend_trap-context",
+      "direction": "COUNTER",
+      "strength": "E0",
+      "statement": "Synthetic supplier-finance reclassification is explicit so headline trade payables cannot hide debt-equivalent obligations.",
+      "source": {
+        "type": "OTHER",
+        "title": "Synthetic fixture evidence: leveraged_dividend_trap / context",
+        "issuer": "turtle-value-engine",
+        "published_date": "2026-09-08",
+        "fiscal_period": "FY2019-FY2025",
+        "document_id": "SYNTH-LEVERAGED_DIVIDEND_TRAP",
+        "locator": "fixtures/leveraged_dividend_trap.json#context"
+      },
+      "confidence": 1,
+      "notes": "Synthetic offline evidence for deterministic test data; not an external issuer source."
+    }
+  ],
+  "adjustments": [
+    {
+      "id": "adj-leveraged_dividend_trap-supplier-finance",
+      "target_field": "supplier_finance",
+      "adjustment_type": "RECLASSIFY",
+      "status": "ACCEPTED",
+      "reason": "Synthetic supplier-finance obligations are debt-equivalent and are kept outside normal trade-payables treatment.",
+      "source_evidence_ids": [
+        "ev-leveraged_dividend_trap-context"
+      ],
+      "proposed_by": "RULE_ENGINE",
+      "confidence": 1,
+      "input_value": 180,
+      "proposed_adjusted_value": 180,
+      "approved_by": "RULE_ENGINE"
+    }
+  ]
+}
