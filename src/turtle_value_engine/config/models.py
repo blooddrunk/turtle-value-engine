@@ -215,6 +215,18 @@ class EvidenceRequirementsConfig(BaseModel):
     score_without_strong_evidence_max: int = Field(ge=0, le=5)
 
 
+class BusinessQualityHardGateConfig(BaseModel):
+    """Machine-readable thresholds for the business hard-gate triggers."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    structural_revenue_cagr_below: float = -0.05
+    non_core_profit_ratio_below: float = Field(default=0.50, ge=0, le=1)
+    core_cash_failure_years: int = Field(default=3, gt=0)
+    structural_disruption_revenue_ratio_above: float = Field(default=0.50, ge=0, le=1)
+    single_point_dependency_ratio_above: float = Field(default=0.50, ge=0, le=1)
+
+
 class BusinessQualityConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -224,6 +236,7 @@ class BusinessQualityConfig(BaseModel):
     score_bands: BusinessQualityScoreBands
     evidence_coverage: EvidenceCoverageConfig
     evidence_requirements: EvidenceRequirementsConfig
+    hard_gates: BusinessQualityHardGateConfig = Field(default_factory=BusinessQualityHardGateConfig)
 
 
 class BuybackCashCreditConfig(BaseModel):

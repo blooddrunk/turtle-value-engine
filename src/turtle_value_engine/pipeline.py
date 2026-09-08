@@ -1,10 +1,14 @@
 """Pipeline entry points available in the first deterministic milestone."""
 
+from collections.abc import Sequence
+
 from turtle_value_engine.calculations import (
+    build_business_quality_input_from_normalized_input,
     build_cdc_input_from_normalized_input,
     build_net_cash_input_from_normalized_input,
     build_through_return_input_from_normalized_input,
     build_valuation_input_from_normalized_input,
+    calculate_business_quality,
     calculate_cdc,
     calculate_net_cash,
     calculate_through_return,
@@ -12,8 +16,12 @@ from turtle_value_engine.calculations import (
 )
 from turtle_value_engine.config import RuleProfile, load_profile
 from turtle_value_engine.models import (
+    BusinessQuality,
+    BusinessQualityDimension,
+    BusinessQualityInput,
     CDCInput,
     CDCResult,
+    ConfidenceLevel,
     NetCashInput,
     NetCashResult,
     NormalizedCompanyInput,
@@ -24,13 +32,42 @@ from turtle_value_engine.models import (
 )
 
 
+def run_business_quality(
+    inputs: BusinessQualityInput, profile: RuleProfile | None = None
+) -> BusinessQuality:
+    """Score an explicitly supplied offline business-quality assessment.
+
+    This stage validates evidence and applies deterministic profile rules.  It
+    does not infer business judgments or produce a final recommendation.
+    """
+
+    return calculate_business_quality(inputs, profile or load_profile("strict-v1"))
+
+
+def run_business_quality_from_normalized_input(
+    normalized_input: NormalizedCompanyInput,
+    dimension_results: Sequence[BusinessQualityDimension],
+    profile: RuleProfile | None = None,
+    *,
+    confidence: ConfidenceLevel | None = None,
+) -> BusinessQuality:
+    """Score structured dimensions using the normalized input evidence index."""
+
+    active_profile = profile or load_profile(normalized_input.profile_id)
+    inputs = build_business_quality_input_from_normalized_input(
+        normalized_input,
+        dimension_results,
+        confidence=confidence,
+    )
+    return run_business_quality(inputs, active_profile)
+
+
 def run_cdc(inputs: CDCInput, profile: RuleProfile | None = None) -> CDCResult:
     """Run the currently implemented deterministic CDC stage.
 
-    Full ``CompanyAnalysis`` assembly, business-quality scoring and final
-    decision orchestration remain future work. Keeping this entry point
-    explicit prevents callers from mistaking a partial result for a complete
-    investment decision.
+    Full ``CompanyAnalysis`` assembly and final decision orchestration remain
+    future work. Keeping this entry point explicit prevents callers from
+    mistaking a partial result for a complete investment decision.
     """
 
     active_profile = profile or load_profile("strict-v1")

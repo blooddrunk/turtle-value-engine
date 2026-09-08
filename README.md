@@ -35,11 +35,16 @@ offline synthetic inputs under `fixtures/`.
 ## Implementation status
 
 The current milestone provides isolated deterministic CDC, net-cash,
-Through Return, valuation and hard-gate primitives. It does not yet provide a
-complete `tve analyze` command or assemble a `CompanyAnalysis` decision.
-Business-quality scoring, final decision orchestration and live data adapters
-remain intentionally unimplemented; partial-stage outputs must not be read as
-investment recommendations.
+Through Return, valuation and hard-gate primitives, plus offline
+evidence-backed Business Quality scoring and its hard gate. The Business
+Quality stage accepts explicit dimension judgments, validates their evidence
+lineage and applies the strict-v1 score caps; it does not infer qualitative
+scores from sparse facts or produce an investment recommendation.
+
+The repository still does not provide a complete `tve analyze` command or
+assemble a `CompanyAnalysis` decision. Final decision orchestration, live data
+adapters and LLM-assisted evidence analysis remain intentionally unimplemented;
+partial-stage outputs must not be read as investment recommendations.
 
 Implementation-oriented assets will later live under:
 

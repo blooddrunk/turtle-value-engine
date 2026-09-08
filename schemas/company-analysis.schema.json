@@ -238,7 +238,10 @@
         "score": {"type": ["integer", "null"], "minimum": 0, "maximum": 40},
         "grade": {"type": ["string", "null"], "enum": ["S", "A", "B", "WATCH", "FAIL", null]},
         "confidence": {"type": ["string", "null"], "enum": ["HIGH", "MEDIUM", "LOW", null]},
+        "evidence_coverage": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
         "critical_weaknesses": {"type": "array", "items": {"type": "string"}},
+        "unresolved_questions": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "flags": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
         "dimension_results": {
           "type": "array",
           "items": {
@@ -259,8 +262,8 @@
                 ]
               },
               "score": {"type": "integer", "minimum": 0, "maximum": 5},
-              "supporting_evidence_ids": {"type": "array", "items": {"type": "string"}},
-              "counter_evidence_ids": {"type": "array", "items": {"type": "string"}},
+              "supporting_evidence_ids": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+              "counter_evidence_ids": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
               "confidence": {"type": "string", "enum": ["HIGH", "MEDIUM", "LOW"]},
               "reasoning_summary": {"type": ["string", "null"]}
             },

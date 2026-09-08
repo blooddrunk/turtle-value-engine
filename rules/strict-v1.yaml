@@ -138,6 +138,12 @@ business_quality:
     score_4_min_strong_evidence: 2
     score_5_min_strong_evidence: 2
     score_without_strong_evidence_max: 3
+  hard_gates:
+    structural_revenue_cagr_below: -0.05
+    non_core_profit_ratio_below: 0.50
+    core_cash_failure_years: 3
+    structural_disruption_revenue_ratio_above: 0.50
+    single_point_dependency_ratio_above: 0.50
 
 valuation:
   buyback_cash_credit:

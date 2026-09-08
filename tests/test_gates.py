@@ -11,7 +11,7 @@ from turtle_value_engine.models import (
 from .stage_support import load_stage_results
 
 
-def test_healthy_fixed_gates_pass_but_unimplemented_business_quality_blocks_composite():
+def test_healthy_fixed_gates_without_assessment_block_composite():
     _, _, _, _, _, gates = load_stage_results("healthy_cash_cow")
 
     assert gates.universe.status is GateStatus.PASS

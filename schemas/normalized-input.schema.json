@@ -348,7 +348,19 @@
                   "impairment",
                   "revenue_cagr_5y",
                   "profit_cv",
-                  "core_cdc_cv"
+                  "core_cdc_cv",
+                  "sustainable_core_profit_ratio",
+                  "core_profit_ratio",
+                  "core_profit_to_normalized_total_profit",
+                  "non_core_profit_ratio",
+                  "normalized_core_profit",
+                  "core_operating_profit",
+                  "normalized_total_profit",
+                  "core_cdc",
+                  "structural_disruption_revenue_ratio",
+                  "displaced_product_revenue_ratio",
+                  "rapidly_displaced_revenue_ratio",
+                  "single_point_dependency_ratio"
                 ]
               }
             }
@@ -383,7 +395,10 @@
                   "payout_policy_formal",
                   "buyback_recurring",
                   "net_diluted_share_reduction_verified",
-                  "special_dividend"
+                  "special_dividend",
+                  "non_core_profit_non_recurring",
+                  "non_recurring_profit_dependence",
+                  "non_core_profit_is_non_recurring"
                 ]
               }
             }

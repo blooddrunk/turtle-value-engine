@@ -1,13 +1,14 @@
-"""Composition of the currently implemented independent hard gates.
+"""Composition of the independent hard gates.
 
-This module intentionally stops at ``Gates``.  Business-quality scoring,
-valuation orchestration and final ``CompanyAnalysis`` assembly are not
-implemented here, so an unfinished stage is represented as
-``NOT_EVALUATED`` instead of being treated as a pass.
+Business-quality scoring is accepted only when a structured assessment is
+explicitly supplied.  Full ``CompanyAnalysis`` assembly and final decision
+orchestration remain outside this stage; absent assessments stay
+``NOT_EVALUATED`` rather than being treated as a pass.
 """
 
 from turtle_value_engine.config import RuleProfile, load_profile
 from turtle_value_engine.models import (
+    BusinessQuality,
     CDCResult,
     ConfidenceLevel,
     Gates,
@@ -18,6 +19,7 @@ from turtle_value_engine.models.net_cash import NetCashResult
 from turtle_value_engine.models.through_return import ThroughReturnResult
 
 from .balance_sheet import evaluate_balance_sheet_gate
+from .business_quality import evaluate_business_quality_gate
 from .cdc import evaluate_cdc_gate
 from .common import aggregate_status, result_or_not_evaluated
 from .eligibility import evaluate_eligibility_gate
@@ -31,11 +33,18 @@ def evaluate_hard_gates(
     cdc_result: CDCResult | None = None,
     net_cash_result: NetCashResult | None = None,
     through_return_result: ThroughReturnResult | None = None,
+    business_quality: BusinessQuality | None = None,
+    business_quality_result: BusinessQuality | None = None,
     profile: RuleProfile | None = None,
 ) -> Gates:
-    """Evaluate available gates and preserve unimplemented stages explicitly."""
+    """Evaluate available gates and preserve unfinished stages explicitly."""
 
     active_profile = profile or load_profile(normalized_input.profile_id)
+    if business_quality is not None and business_quality_result is not None:
+        raise ValueError("supply only one of business_quality or business_quality_result")
+    supplied_business_quality = (
+        business_quality_result if business_quality_result is not None else business_quality
+    )
     return Gates(
         universe=evaluate_eligibility_gate(normalized_input, active_profile),
         balance_sheet=(
@@ -53,8 +62,14 @@ def evaluate_hard_gates(
             if through_return_result is not None
             else result_or_not_evaluated("Through Return stage has not been run.")
         ),
-        business_quality=result_or_not_evaluated(
-            "Business-quality evidence scoring is not implemented in this milestone."
+        business_quality=(
+            evaluate_business_quality_gate(
+                supplied_business_quality,
+                active_profile,
+                normalized_input=normalized_input,
+            )
+            if supplied_business_quality is not None
+            else result_or_not_evaluated("Business-quality evidence scoring has not been supplied.")
         ),
         governance_data_quality=evaluate_governance_data_quality_gate(
             normalized_input, active_profile

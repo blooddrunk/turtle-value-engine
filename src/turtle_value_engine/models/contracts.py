@@ -136,6 +136,19 @@ NORMALIZED_NUMERIC_FACT_FIELDS = frozenset(
         "revenue_cagr_5y",
         "profit_cv",
         "core_cdc_cv",
+        # Business hard-gate normalized diagnostics.
+        "sustainable_core_profit_ratio",
+        "core_profit_ratio",
+        "core_profit_to_normalized_total_profit",
+        "non_core_profit_ratio",
+        "normalized_core_profit",
+        "core_operating_profit",
+        "normalized_total_profit",
+        "core_cdc",
+        "structural_disruption_revenue_ratio",
+        "displaced_product_revenue_ratio",
+        "rapidly_displaced_revenue_ratio",
+        "single_point_dependency_ratio",
     }
 )
 
@@ -156,6 +169,9 @@ NORMALIZED_BOOLEAN_FACT_FIELDS = frozenset(
         "buyback_recurring",
         "net_diluted_share_reduction_verified",
         "special_dividend",
+        "non_core_profit_non_recurring",
+        "non_recurring_profit_dependence",
+        "non_core_profit_is_non_recurring",
     }
 )
 
@@ -459,6 +475,15 @@ class BusinessQualityDimension(BaseModel):
     confidence: ConfidenceLevel
     reasoning_summary: str | None = None
 
+    @field_validator("supporting_evidence_ids", "counter_evidence_ids")
+    @classmethod
+    def validate_unique_evidence_ids(cls, value: list[str]) -> list[str]:
+        """Keep dimension evidence references auditable and non-duplicated."""
+
+        if len(value) != len(set(value)):
+            raise ValueError("business-quality evidence IDs must not contain duplicates")
+        return value
+
 
 class BusinessQuality(BaseModel):
     """Structured business-quality assessment."""
@@ -468,8 +493,27 @@ class BusinessQuality(BaseModel):
     score: int | None = Field(default=None, ge=0, le=40)
     grade: Literal["S", "A", "B", "WATCH", "FAIL"] | None = None
     confidence: ConfidenceLevel | None = None
+    evidence_coverage: float | None = Field(default=None, ge=0, le=1)
     critical_weaknesses: list[str] = Field(default_factory=list)
+    unresolved_questions: list[str] = Field(default_factory=list)
+    flags: list[str] = Field(default_factory=list)
     dimension_results: list[BusinessQualityDimension] = Field(default_factory=list)
+
+
+class BusinessQualityInput(BaseModel):
+    """Offline input boundary for deterministic business-quality scoring.
+
+    Dimension scores are structured analyst judgments.  The calculation stage
+    validates their evidence, applies the strict-v1 evidence caps and derives
+    the aggregate score; it does not invent a score from sparse financial
+    facts.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    dimension_results: list[BusinessQualityDimension] = Field(min_length=1)
+    evidence_index: list[Evidence] = Field(default_factory=list)
+    confidence: ConfidenceLevel | None = None
 
 
 class GateRule(BaseModel):
