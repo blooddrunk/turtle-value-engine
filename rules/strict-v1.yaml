@@ -96,6 +96,9 @@ through_return:
   payout_ratio:
     formal_policy_method: min_policy_floor_5y_median
     no_policy_method: p25_5y
+  history_years: 5
+  profit_average_years: 3
+  profit_normalization_method: average_3y
   normalized_buyback_years: 3
   yield_bands:
     s: 0.08

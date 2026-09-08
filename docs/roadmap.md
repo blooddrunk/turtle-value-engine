@@ -28,6 +28,11 @@ Exit criteria:
 
 No network, no LLM, no live market data.
 
+Current status: partial deterministic stages are implemented and tested. CDC,
+net cash, Through Return, valuation tiers and the fixed hard-gate primitives
+are available as isolated functions. Business-quality scoring, final
+`CompanyAnalysis` assembly and the `analyze` CLI remain intentionally pending.
+
 The normalized input contract and offline fixture baseline are frozen before
 the remaining calculation stages. This is an input-boundary milestone, not a
 claim that the full `analyze` pipeline is implemented.

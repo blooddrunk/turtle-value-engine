@@ -23,11 +23,11 @@
     "actual_aggregate_company_market_cap": {"type": ["number", "null"], "minimum": 0},
     "normalized_diluted_economic_shares": {"type": ["number", "null"], "exclusiveMinimum": 0},
 
-    "normalized_parent_core_cdc": {"type": "number"},
-    "distributable_base": {"type": "number"},
+    "normalized_parent_core_cdc": {"type": ["number", "null"]},
+    "distributable_base": {"type": ["number", "null"]},
     "recurring_dividend_cash": {"type": ["number", "null"]},
     "verified_recurring_buyback_cash": {"type": "number", "minimum": 0, "default": 0},
-    "recurring_shareholder_cash": {"type": "number"},
+    "recurring_shareholder_cash": {"type": ["number", "null"]},
 
     "owner_realizable_net_cash": {"type": ["number", "null"]},
     "valuation_net_cash": {"type": ["number", "null"]},

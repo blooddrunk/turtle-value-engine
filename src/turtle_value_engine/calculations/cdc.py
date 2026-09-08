@@ -231,6 +231,7 @@ def build_cdc_input_from_facts(
     """
 
     facts_by_key: dict[tuple[str, str], Fact] = {}
+    source_evidence_ids: dict[str, list[str]] = {}
     periods: set[str] = set()
     for fact in facts:
         if fact.field == "current_market_cap":
@@ -243,6 +244,7 @@ def build_cdc_input_from_facts(
                 f"duplicate normalized fact for field={fact.field!r}, period={fact.period!r}"
             )
         facts_by_key[key] = fact
+        source_evidence_ids[f"{fact.field}@{fact.period}"] = list(fact.source_evidence_ids)
         periods.add(fact.period)
 
     if not periods:
@@ -274,21 +276,30 @@ def build_cdc_input_from_facts(
         years.append(CDCYearInput(**values))
 
     if current_market_cap is None:
-        market_cap_facts = [fact for fact in facts if fact.field == "current_market_cap"]
-        if len(market_cap_facts) > 1:
-            raise CDCCalculationError(
-                "current_market_cap must be supplied once, not repeated across facts"
-            )
+        market_cap_facts: list[Fact] = []
+        selected_market_cap_field = "current_market_cap"
+        for field in ("current_market_cap", "listing_equivalent_market_cap"):
+            candidates = [fact for fact in facts if fact.field == field]
+            if len(candidates) > 1:
+                raise CDCCalculationError(f"{field} must be supplied once, not repeated")
+            if candidates:
+                market_cap_facts = candidates
+                selected_market_cap_field = field
+                break
         if market_cap_facts:
             value = market_cap_facts[0].value
             if value is None or isinstance(value, (bool, str)):
-                raise CDCCalculationError("current_market_cap fact must be numeric")
+                raise CDCCalculationError(f"{selected_market_cap_field} fact must be numeric")
             current_market_cap = float(value)
+            source_evidence_ids["current_market_cap"] = list(
+                market_cap_facts[0].source_evidence_ids
+            )
 
     return CDCInput(
         years=years,
         current_market_cap=current_market_cap,
         cyclical=cyclical,
+        source_evidence_ids=source_evidence_ids,
     )
 
 
@@ -530,6 +541,7 @@ def calculate_cdc(inputs: CDCInput, profile: RuleProfile) -> CDCResult:
         cumulative_core_cdc_5y=cumulative_core,
         all_in_cdc_5y=all_in_cdc_5y,
         year_results=year_results,
+        source_evidence_ids=inputs.source_evidence_ids,
         flags=flags,
         confidence=confidence,
     )

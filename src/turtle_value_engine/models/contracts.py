@@ -386,15 +386,21 @@ class NetCashMetric(BaseModel):
     financial_debt: float | None = None
     lease_debt: float | None = None
     debt_equivalent: float | None = None
+    financial_net_cash: float | None = None
+    obligation_adjusted_net_cash: float | None = None
+    owner_debt_equivalent: float | None = None
     book_net_cash: float | None = None
     strict_net_cash: float | None = None
     owner_realizable_net_cash: float | None = None
     valuation_net_cash: float | None = None
+    adjusted_ev: float | None = None
+    ex_cash_cdc_yield: float | None = None
     owner_net_cash_ratio: float | None = None
     liquidity_coverage: float | None = None
     stress_coverage: float | None = None
     net_debt_to_ebitda: float | None = None
     interest_coverage: float | None = None
+    source_evidence_ids: dict[str, list[str]] = Field(default_factory=dict)
     flags: list[str] = Field(default_factory=list)
     confidence: ConfidenceLevel | None = None
 
@@ -416,6 +422,10 @@ class ThroughReturnMetric(BaseModel):
     flags: list[str] = Field(default_factory=list)
     policy_confidence: ConfidenceLevel | None = None
     confidence: ConfidenceLevel | None = None
+    verified_recurring_buyback_cash: float = Field(default=0, ge=0)
+    buyback_credit_eligible: bool = False
+    buyback_history_years: int | None = Field(default=None, ge=0)
+    source_evidence_ids: dict[str, list[str]] = Field(default_factory=dict)
 
 
 class Metrics(BaseModel):
@@ -603,11 +613,11 @@ class ValuationResult(BaseModel):
     listing_equivalent_market_cap: float | None = Field(default=None, ge=0)
     actual_aggregate_company_market_cap: float | None = Field(default=None, ge=0)
     normalized_diluted_economic_shares: float | None = Field(default=None, gt=0)
-    normalized_parent_core_cdc: float
-    distributable_base: float
+    normalized_parent_core_cdc: float | None
+    distributable_base: float | None
     recurring_dividend_cash: float | None = None
     verified_recurring_buyback_cash: float = Field(default=0, ge=0)
-    recurring_shareholder_cash: float
+    recurring_shareholder_cash: float | None
     owner_realizable_net_cash: float | None = None
     valuation_net_cash: float | None = None
     adjusted_ev: float | None = None

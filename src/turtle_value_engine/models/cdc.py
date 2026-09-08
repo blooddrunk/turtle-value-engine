@@ -90,6 +90,7 @@ class CDCInput(BaseModel):
     years: list[CDCYearInput] = Field(min_length=1)
     current_market_cap: float | None = Field(default=None, gt=0)
     cyclical: bool = False
+    source_evidence_ids: dict[str, list[str]] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def validate_unique_periods(self) -> Self:
@@ -138,5 +139,6 @@ class CDCResult(BaseModel):
     cumulative_core_cdc_5y: float | None = None
     all_in_cdc_5y: float | None = None
     year_results: list[CDCYearResult] = Field(default_factory=list)
+    source_evidence_ids: dict[str, list[str]] = Field(default_factory=dict)
     flags: list[str] = Field(default_factory=list)
     confidence: ConfidenceLevel

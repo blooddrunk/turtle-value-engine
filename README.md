@@ -30,8 +30,16 @@ Planned modules:
 
 The current normalized input baseline is the standalone
 `schemas/normalized-input.schema.json` contract. It is exercised by the
-offline synthetic inputs under `fixtures/`; calculation outputs remain a
-separate, later pipeline layer.
+offline synthetic inputs under `fixtures/`.
+
+## Implementation status
+
+The current milestone provides isolated deterministic CDC, net-cash,
+Through Return, valuation and hard-gate primitives. It does not yet provide a
+complete `tve analyze` command or assemble a `CompanyAnalysis` decision.
+Business-quality scoring, final decision orchestration and live data adapters
+remain intentionally unimplemented; partial-stage outputs must not be read as
+investment recommendations.
 
 Implementation-oriented assets will later live under:
 
@@ -52,4 +60,6 @@ Implementation-oriented assets will later live under:
 
 ## Status
 
-Early specification stage. The framework is intentionally conservative and should be treated as a research and decision-support system rather than investment advice.
+Early implementation stage. The framework is intentionally conservative and
+should be treated as a research and decision-support system rather than
+investment advice.

@@ -25,6 +25,9 @@ from .contracts import (
     ValuationResult,
     ValuationTiers,
 )
+from .net_cash import NetCashInput, NetCashResult
+from .through_return import ThroughReturnInput, ThroughReturnResult, ThroughReturnYearInput
+from .valuation import ValuationInput
 
 __all__ = [
     "Adjustment",
@@ -50,9 +53,15 @@ __all__ = [
     "Metrics",
     "MetricContext",
     "NetCashMetric",
+    "NetCashInput",
+    "NetCashResult",
     "NormalizedCompanyInput",
     "Source",
     "ThroughReturnMetric",
+    "ThroughReturnInput",
+    "ThroughReturnResult",
+    "ThroughReturnYearInput",
+    "ValuationInput",
     "ValuationResult",
     "ValuationState",
     "ValuationTiers",

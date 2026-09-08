@@ -181,6 +181,9 @@ class ThroughReturnConfig(BaseModel):
 
     distributable_base_method: str
     payout_ratio: PayoutRatioConfig
+    history_years: int = Field(default=5, gt=0)
+    profit_average_years: int = Field(default=3, gt=0)
+    profit_normalization_method: str = "average_3y"
     normalized_buyback_years: int = Field(gt=0)
     yield_bands: ThroughReturnYieldBands
     formal_candidate_threshold: float = Field(gt=0)
