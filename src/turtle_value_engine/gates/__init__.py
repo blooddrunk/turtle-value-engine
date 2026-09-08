@@ -1,0 +1,1 @@
+"""Independent hard-gate modules."""
