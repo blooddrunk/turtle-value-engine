@@ -175,6 +175,13 @@ class FakeAKShare:
             **kwargs,
         )
 
+    def stock_restricted_release_queue_em(self, *, symbol: str):
+        return self._return(
+            "stock_restricted_release_queue_em",
+            _fixture("a_restricted_release_queue.json"),
+            symbol=symbol,
+        )
+
     def stock_financial_hk_report_em(self, **kwargs):
         return self._return(
             "stock_financial_hk_report_em",
@@ -343,8 +350,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "28"
-    assert AKSHARE_MAPPING_VERSION == "29"
+    assert provider.identity.provider_version == "29"
+    assert AKSHARE_MAPPING_VERSION == "30"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -931,6 +938,169 @@ def test_a_share_change_fetch_uses_documented_listing_and_date_range_contract():
     assert record.response_metadata["start_date"] == "20180101"
     assert record.response_metadata["end_date"] == "20241231"
     assert record.source_uri == "https://webapi.cninfo.com.cn/#/apiDoc"
+
+
+def test_restricted_release_fetch_requires_explicit_view_and_preserves_batches():
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    request = _request(
+        DataCategory.SHARE_CAPITAL,
+        "SH600000",
+        {"view": "restricted_release_queue"},
+    )
+
+    record = provider.fetch(request)
+
+    assert record.raw_payload == _fixture("a_restricted_release_queue.json")
+    assert fake.calls == [
+        ("stock_restricted_release_queue_em", {"symbol": "600000"}),
+    ]
+    assert record.response_metadata["endpoint"] == "stock_restricted_release_queue_em"
+    assert record.response_metadata["upstream_row_count"] == 2
+    assert record.response_metadata["entity_row_count"] == 2
+    assert record.response_metadata["entity_rows_selected"] is True
+    assert record.response_metadata["listing_scoped_request"] is True
+    assert record.response_metadata["restricted_release_view"] == (
+        "restricted_release_queue"
+    )
+    assert record.source_uri == "https://data.eastmoney.com/dxf/q/600000.html"
+
+
+def test_restricted_release_request_validates_view_and_parameters_before_upstream_call():
+    fake = FakeAKShare()
+    provider = _provider(fake)
+
+    with pytest.raises(ProviderRequestError, match="unsupported AKShare restricted-share-release"):
+        provider.fetch(
+            _request(
+                DataCategory.SHARE_CAPITAL,
+                "SH600000",
+                {"view": "restricted_release_queue", "start_date": "20240101"},
+            )
+        )
+    with pytest.raises(ProviderRequestError, match="does not accept request parameters"):
+        provider.fetch(
+            _request(DataCategory.SHARE_CAPITAL, "SH600000", {"view": "unknown"})
+        )
+
+    assert fake.calls == []
+
+
+def test_restricted_release_response_rejects_cross_listing_and_invalid_dates():
+    class WrongEntityAKShare(FakeAKShare):
+        def stock_restricted_release_queue_em(self, *, symbol: str):
+            payload = _fixture("a_restricted_release_queue.json")
+            payload[0]["股票代码"] = "000001"
+            return self._return(
+                "stock_restricted_release_queue_em",
+                payload,
+                symbol=symbol,
+            )
+
+    class InvalidDateAKShare(FakeAKShare):
+        def stock_restricted_release_queue_em(self, *, symbol: str):
+            payload = _fixture("a_restricted_release_queue.json")
+            payload[0]["解禁时间"] = "not-a-date"
+            return self._return(
+                "stock_restricted_release_queue_em",
+                payload,
+                symbol=symbol,
+            )
+
+    request = _request(
+        DataCategory.SHARE_CAPITAL,
+        "SH600000",
+        {"view": "restricted_release_queue"},
+    )
+    with pytest.raises(ProviderResponseError, match="restricted-share-release row entity"):
+        _provider(WrongEntityAKShare()).fetch(request)
+    with pytest.raises(ProviderResponseError, match="invalid restricted-share-release date"):
+        _provider(InvalidDateAKShare()).fetch(request)
+
+
+def test_restricted_release_raw_record_is_not_promoted_to_a_canonical_share_fact():
+    provider = _provider()
+    record = provider.fetch(
+        _request(
+            DataCategory.SHARE_CAPITAL,
+            "SH600000",
+            {"view": "restricted_release_queue"},
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="restricted-release-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_RESTRICTED_SHARE_RELEASES_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == [
+        "normalized_diluted_economic_shares",
+    ]
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "canonical diluted-economic-share treatment" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    errors = list(Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json")))
+    assert errors == []
+
+
+def test_restricted_release_normalizer_rejects_replayed_cross_listing_rows():
+    provider = _provider()
+    record = provider.fetch(
+        _request(
+            DataCategory.SHARE_CAPITAL,
+            "SH600000",
+            {"view": "restricted_release_queue"},
+        )
+    )
+    mismatched_payload = [dict(row) for row in record.raw_payload]
+    mismatched_payload[0]["股票代码"] = "000001"
+    mismatched = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=mismatched_payload,
+        source_uri=record.source_uri,
+        response_metadata=record.response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match="restricted-share-release row entity"):
+        normalize_akshare_records(
+            [mismatched],
+            analysis_id="mismatched-restricted-release-entity",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_restricted_release_raw_record_replays_offline_without_calling_upstream(
+    tmp_path: Path,
+):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.SHARE_CAPITAL,
+        "SH600000",
+        {"view": "restricted_release_queue"},
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [
+        ("stock_restricted_release_queue_em", {"symbol": "600000"}),
+    ]
 
 
 def test_a_share_change_response_rejects_an_explicit_cross_listing_row():

@@ -743,6 +743,30 @@ governance or accounting fact. H-share trading-suspension coverage remains
 outside this slice. Live calls remain opt-in; tests use an injected client and
 a frozen fixture.
 
+### Phase 2.29 — A-share restricted-share-release raw acquisition contract (COMPLETE)
+
+The mapping review now covers the current documented AKShare Eastmoney
+`stock_restricted_release_queue_em` endpoint under the existing
+`SHARE_CAPITAL` category. The endpoint accepts a six-digit A-share `symbol`
+and returns the listing's historical restricted-share release batches with
+release dates, planned/actual/remaining quantities, market-value context,
+lock-up type and pre/post release observations. Because the published
+symbol-scoped output omits row-level listing codes, the request scope is
+preserved and any optional returned code is checked when present.
+
+The provider selects this endpoint only for the explicit
+`view=restricted_release_queue` request, passes the six-digit code and
+retains all returned rows. The documented quantities/values and release date
+do not by themselves establish one canonical diluted-economic-share
+treatment, and planned/actual/remaining states cannot be silently collapsed
+into a share-count fact. The normalizer therefore emits
+`AKSHARE_RESTRICTED_SHARE_RELEASES_RAW_ONLY`, marks
+`normalized_diluted_economic_shares` as critically missing and creates no
+canonical share, dilution, issuance, buyback or valuation fact. H-share
+restricted-release coverage and filing-backed action classification remain
+unresolved. Live calls remain opt-in; tests use an injected client and a
+frozen fixture.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -752,7 +776,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.28 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.29 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -960,7 +984,7 @@ Phase 2 is active. Phase 1 remains frozen: changes to formulas, hard-gate
 semantics, schemas or `strict-v1` thresholds require a separately reviewed,
 versioned change.
 
-Phase 2.28 completes the next documented structured-data boundary while
+Phase 2.29 completes the next documented structured-data boundary while
 keeping share-change, repurchase and rights-issue period, status, unit and
 economic-scope questions unresolved, and keeping ownership-pledge holder,
 governance and economic-scope questions unresolved. The A-share
@@ -1029,3 +1053,8 @@ The documented A-share trading-suspension response is retained under
 `AKSHARE_TRADING_SUSPENSIONS_RAW_ONLY` because its requested-date suspension
 events, dates and reasons do not establish a complete special-treatment status
 or a filing-backed governance conclusion.
+The documented A-share restricted-share-release response is retained under
+`AKSHARE_RESTRICTED_SHARE_RELEASES_RAW_ONLY` because its release dates,
+quantities, market values and lock-up types do not establish canonical
+diluted-economic-share treatment or a share-count event. H-share coverage and
+filing-backed release interpretation remain unresolved.

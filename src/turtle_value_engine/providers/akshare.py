@@ -9,10 +9,10 @@ financial-statement slices, A-share earnings-forecast, earnings-quick-report,
 performance-report, business-composition, financial-abstract and financial-
 indicator raw slices, raw-only dividend event/snapshot/detail, A-share
 disclosure notice metadata, corporate-action, ownership-pledge, SSE/SZSE/BSE
-insider-share-change and A-share share-capital slices, the A-share
-risk-warning-status, trading-suspension and main-shareholder raw slices, the
-H-share financial-indicator raw slice and the H-share latest-indicator raw
-slice.
+insider-share-change and A-share share-capital slices, including the
+restricted-share-release view, the A-share risk-warning-status,
+trading-suspension and main-shareholder raw slices, the H-share financial-
+indicator raw slice and the H-share latest-indicator raw slice.
 Upstream column names are handled in this module and are never passed to the
 deterministic calculation or gate code.
 """
@@ -59,9 +59,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "28"
+AKSHARE_ADAPTER_VERSION = "29"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "29"
+AKSHARE_MAPPING_VERSION = "30"
 
 
 class ListingMarket(StrEnum):
@@ -137,6 +137,7 @@ _SOURCE_URIS = {
     "stock_repurchase_em": "https://data.eastmoney.com/gphg/hglist.html",
     "stock_zh_a_gbjg_em": "https://emweb.securities.eastmoney.com/pc_hsf10/pages/index.html#/gbjg",
     "stock_share_change_cninfo": "https://webapi.cninfo.com.cn/#/apiDoc",
+    "stock_restricted_release_queue_em": "https://data.eastmoney.com/dxf/q/600000.html",
     "stock_allotment_cninfo": "https://webapi.cninfo.com.cn/#/dataBrowse",
     "stock_gpzy_pledge_ratio_em": "https://data.eastmoney.com/gpzy/pledgeRatio.aspx",
     "stock_share_hold_change_sse": "http://www.sse.com.cn/disclosure/credibility/supervision/change/",
@@ -199,7 +200,8 @@ _H_DIVIDEND_DETAIL_VIEW = "event_detail"
 _DISCLOSURE_NOTICES_PARAMETER_NAMES = frozenset(
     {"market", "keyword", "category", "start_date", "end_date"}
 )
-_SHARE_CAPITAL_PARAMETER_NAMES = frozenset({"start_date", "end_date"})
+_SHARE_CAPITAL_PARAMETER_NAMES = frozenset({"start_date", "end_date", "view"})
+_RESTRICTED_RELEASE_VIEW = "restricted_release_queue"
 _SHARE_CHANGE_DEFAULT_START_DATE = "20091227"
 _SHARE_CHANGE_DEFAULT_END_DATE = "20241021"
 
@@ -630,6 +632,16 @@ class AKShareProvider(StructuredDataProvider):
                 response_metadata["start_date"] = kwargs["start_date"]
                 response_metadata["end_date"] = kwargs["end_date"]
                 response_metadata["range_filtering"] = "provider"
+            elif endpoint.name == "stock_restricted_release_queue_em":
+                _validate_restricted_release_provider_rows(
+                    rows,
+                    listing,
+                    provider=self.identity,
+                    request=request,
+                )
+                response_metadata["entity_row_count"] = len(rows)
+                response_metadata["entity_rows_selected"] = True
+                response_metadata["restricted_release_view"] = _RESTRICTED_RELEASE_VIEW
             response_metadata["upstream_row_count"] = len(rows)
             response_metadata["listing_scoped_request"] = True
         elif request.category is DataCategory.CORPORATE_ACTIONS:
@@ -938,6 +950,9 @@ class AKShareProvider(StructuredDataProvider):
             ),
             share_capital_date_requested=any(
                 name in request.parameters for name in ("start_date", "end_date")
+            ),
+            share_capital_restricted_release_requested=(
+                request.parameters.get("view") == _RESTRICTED_RELEASE_VIEW
             ),
             dividend_snapshot_date_requested="date" in request.parameters,
             dividend_detail_requested="view" in request.parameters,
@@ -1531,7 +1546,19 @@ class AKShareNormalizer:
                     raise ProviderNormalizationError(
                         "AKShare share-capital raw slice supports A-share listings only"
                     )
-                if record.response_metadata.get("endpoint") == "stock_share_change_cninfo":
+                endpoint_name = record.response_metadata.get("endpoint")
+                if endpoint_name == "stock_restricted_release_queue_em":
+                    try:
+                        _share_capital_kwargs(
+                            "stock_restricted_release_queue_em",
+                            listing,
+                            record.request,
+                        )
+                    except ProviderRequestError as exc:
+                        raise ProviderNormalizationError(str(exc)) from exc
+                    _validate_restricted_release_normalizer_rows(rows, listing)
+                    normalizer_flags.add("AKSHARE_RESTRICTED_SHARE_RELEASES_RAW_ONLY")
+                elif endpoint_name == "stock_share_change_cninfo":
                     _validate_share_capital_normalizer_rows(rows, listing)
                     normalizer_flags.add("AKSHARE_SHARE_CAPITAL_CHANGE_RAW_ONLY")
                 else:
@@ -1633,6 +1660,9 @@ class AKShareNormalizer:
             "special-treatment assertion. Main-shareholder records remain raw "
             "structured evidence because holder rows do not establish beneficial "
             "control, governance severity or a company-level diluted-share series. "
+            "Restricted-share-release records remain raw structured evidence because "
+            "their release dates, quantities and market values do not establish a "
+            "canonical diluted-economic-share treatment. "
             "Trading-suspension records remain raw structured evidence because "
             "suspension events and reasons do not establish a complete status or "
             "governance conclusion."
@@ -1655,6 +1685,13 @@ class AKShareNormalizer:
                 "as raw evidence only: its change/announcement dates, numeric share "
                 "holdings and change reasons do not establish a canonical period, "
                 "unit or diluted economic share scope."
+            )
+        if "AKSHARE_RESTRICTED_SHARE_RELEASES_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented A-share restricted-share-release response is retained "
+                "as raw evidence only: release dates, quantities, market values and "
+                "lock-up types do not establish canonical diluted-economic-share "
+                "treatment."
             )
         if "AKSHARE_ALLOTMENT_RAW_ONLY" in normalizer_flags:
             notes += (
@@ -1848,6 +1885,12 @@ _DISCLOSURE_NOTICE_DATE_FIELDS = (
 )
 _SHAREHOLDER_HOLDINGS_DATE_FIELDS = ("截至日期", "公告日期")
 _TRADING_SUSPENSIONS_DATE_FIELDS = ("停牌时间", "停牌截止时间", "预计复牌时间")
+_RESTRICTED_RELEASE_DATE_FIELDS = (
+    "解禁时间",
+    "FREE_DATE",
+    "free_date",
+    "release_date",
+)
 _HK_DIVIDEND_DETAIL_DATE_FIELDS = (
     "公告日期",
     "除净日",
@@ -1874,6 +1917,7 @@ def _endpoint_candidates(
     statement_date_requested: bool = False,
     corporate_action_date_requested: bool = False,
     share_capital_date_requested: bool = False,
+    share_capital_restricted_release_requested: bool = False,
     dividend_snapshot_date_requested: bool = False,
     dividend_detail_requested: bool = False,
 ) -> tuple[str, ...]:
@@ -1974,6 +2018,10 @@ def _endpoint_candidates(
             return ("stock_allotment_cninfo",)
         return ("stock_repurchase_em",)
     if category is DataCategory.SHARE_CAPITAL:
+        if share_capital_restricted_release_requested:
+            if market is ListingMarket.A:
+                return ("stock_restricted_release_queue_em",)
+            return ()
         if share_capital_date_requested:
             return ("stock_share_change_cninfo",)
         return ("stock_zh_a_gbjg_em",)
@@ -2474,6 +2522,29 @@ def _share_capital_kwargs(
     listing: _ListingRef,
     request: ProviderRequest,
 ) -> dict[str, object]:
+    if endpoint_name == "stock_restricted_release_queue_em":
+        if listing.market is not ListingMarket.A:
+            raise ProviderRequestError(
+                "the AKShare restricted-share-release endpoint supports A-share listings only",
+                request=request,
+                retryable=False,
+            )
+        if request.parameters.get("view") != _RESTRICTED_RELEASE_VIEW:
+            raise ProviderRequestError(
+                "the AKShare restricted-share-release endpoint requires "
+                f"view={_RESTRICTED_RELEASE_VIEW!r}",
+                request=request,
+                retryable=False,
+            )
+        unknown = sorted(set(request.parameters) - {"view"})
+        if unknown:
+            raise ProviderRequestError(
+                "unsupported AKShare restricted-share-release parameter(s): "
+                + ", ".join(unknown),
+                request=request,
+                retryable=False,
+            )
+        return {"symbol": listing.code}
     if endpoint_name == "stock_share_change_cninfo":
         if listing.market is not ListingMarket.A:
             raise ProviderRequestError(
@@ -3664,6 +3735,41 @@ def _validate_share_capital_provider_rows(
             )
 
 
+def _validate_restricted_release_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> None:
+    """Validate symbol-scoped restricted-release batches before storage."""
+
+    for row in rows:
+        row_code = _row_code(row, ListingMarket.A)
+        if row_code is not None and row_code != listing.code:
+            raise ProviderResponseError(
+                f"AKShare returned restricted-share-release row entity {row_code!r} for "
+                f"requested listing {listing.canonical_id!r}",
+                provider=provider,
+                request=request,
+            )
+        found, raw_date = _lookup(row, _RESTRICTED_RELEASE_DATE_FIELDS)
+        if not found or _text_value(raw_date) in _MISSING_TEXT:
+            raise ProviderResponseError(
+                f"AKShare returned a restricted-share-release row without a release date "
+                f"for {request.entity_id!r}",
+                provider=provider,
+                request=request,
+            )
+        if _parse_date_value(raw_date) is None:
+            raise ProviderResponseError(
+                f"AKShare returned an invalid restricted-share-release date for "
+                f"{request.entity_id!r}",
+                provider=provider,
+                request=request,
+            )
+
+
 def _validate_disclosure_notice_provider_rows(
     rows: Sequence[Mapping[str, JSONValue]],
     listing: _ListingRef,
@@ -4054,6 +4160,30 @@ def _validate_share_capital_normalizer_rows(
             raise ProviderNormalizationError(
                 f"share-capital row entity {row_code!r} does not match "
                 f"requested listing {listing.canonical_id!r}"
+            )
+
+
+def _validate_restricted_release_normalizer_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+) -> None:
+    """Validate replayed symbol-scoped restricted-release batches."""
+
+    for row in rows:
+        row_code = _row_code(row, ListingMarket.A)
+        if row_code is not None and row_code != listing.code:
+            raise ProviderNormalizationError(
+                f"restricted-share-release row entity {row_code!r} does not match "
+                f"requested listing {listing.canonical_id!r}"
+            )
+        found, raw_date = _lookup(row, _RESTRICTED_RELEASE_DATE_FIELDS)
+        if not found or _text_value(raw_date) in _MISSING_TEXT:
+            raise ProviderNormalizationError(
+                "restricted-share-release row has no release date"
+            )
+        if _parse_date_value(raw_date) is None:
+            raise ProviderNormalizationError(
+                "restricted-share-release row has an invalid release date"
             )
 
 

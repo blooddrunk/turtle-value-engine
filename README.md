@@ -175,6 +175,14 @@ normalizer emits `AKSHARE_TRADING_SUSPENSIONS_RAW_ONLY`, leaves
 `special_treatment` and `governance_risk_level` critically missing and creates
 no canonical status, governance or accounting fact. A complete status history
 and filing-backed suspension interpretation remain outside this slice.
+Phase 2.29 adds the documented A-share Eastmoney
+`stock_restricted_release_queue_em` endpoint as an explicit
+`view=restricted_release_queue` under `SHARE_CAPITAL`. Its symbol-scoped
+restricted-share release batches remain raw structured evidence; the
+normalizer emits `AKSHARE_RESTRICTED_SHARE_RELEASES_RAW_ONLY`, leaves
+`normalized_diluted_economic_shares` critically missing and creates no
+canonical share, dilution or valuation fact. H-share coverage and
+filing-backed release interpretation remain outside this slice.
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

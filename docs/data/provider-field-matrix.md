@@ -690,6 +690,40 @@ The slice deliberately leaves `special_treatment` and
 not a complete status history and does not establish the legal, accounting or
 governance reason behind an event.
 
+## Phase 2.29 A-share restricted-share-release raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_restricted_release_queue_em` as a symbol-scoped Eastmoney
+A-share endpoint. It accepts a six-digit `symbol` and returns historical
+restricted-share release batches with release dates, shareholder counts,
+planned/actual/remaining quantities, market-value and market-value-ratio
+context, lock-up type and pre/post release observations. The
+[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_fundamental/stock_restricted_em.py)
+shows that the endpoint is fetched for one requested symbol and that the
+returned table may not retain a row-level security code.
+
+The adapter selects this endpoint only when `SHARE_CAPITAL` carries the
+explicit `view=restricted_release_queue` selector, passes the six-digit code,
+retains every returned row and validates an optional row code plus the required
+release date. The documentation labels the principal quantity fields in
+shares and the market-value field in yuan, but the response does not establish
+one canonical diluted-economic-share treatment, a settled share-count event
+or a planned-versus-actual outcome suitable for a canonical fact.
+
+The normalizer emits `AKSHARE_RESTRICTED_SHARE_RELEASES_RAW_ONLY`, marks
+`normalized_diluted_economic_shares` as critically missing and creates no
+canonical share, dilution, issuance, buyback or valuation fact. H-share
+restricted-release coverage and filing-backed action interpretation remain
+unresolved.
+
+| Raw upstream item | Phase 2 treatment |
+| --- | --- |
+| `解禁时间` | Required raw event identity; it is not silently treated as a financial-statement period or settled action date. |
+| `解禁数量`, `实际解禁数量`, `未解禁数量` | Raw-only quantities; planned, actual and remaining states are not collapsed into one canonical share count. |
+| `实际解禁数量市值`, `占总市值比例`, `占流通市值比例` | Raw market-value context; units and economic scope do not establish valuation or dilution facts. |
+| `解禁股东数`, `限售股类型` | Raw release context; holder count and lock-up type do not classify issuance, buyback, split or dilution. |
+| pre/post release change fields and prior close | Raw observations; no return, price-impact or governance metric is calculated. |
+
 ## Eligibility, identity and market context
 
 | Normalized field | Status | Boundary note |
