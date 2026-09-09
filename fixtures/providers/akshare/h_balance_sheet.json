@@ -1,0 +1,58 @@
+[
+  {
+    "SECURITY_CODE": "00700",
+    "STD_REPORT_DATE": "2024-12-31",
+    "STD_ITEM_NAME": "Cash and cash equivalents",
+    "AMOUNT": 420000000,
+    "CURRENCY": "HKD"
+  },
+  {
+    "SECURITY_CODE": "00700",
+    "STD_REPORT_DATE": "2024-12-31",
+    "STD_ITEM_NAME": "Interest-bearing debt",
+    "AMOUNT": 600000000,
+    "CURRENCY": "HKD"
+  },
+  {
+    "SECURITY_CODE": "00700",
+    "STD_REPORT_DATE": "2024-12-31",
+    "STD_ITEM_NAME": "Equity attributable to owners of the Company",
+    "AMOUNT": 8800000000,
+    "CURRENCY": "HKD"
+  },
+  {
+    "SECURITY_CODE": "00700",
+    "STD_REPORT_DATE": "2024-12-31",
+    "STD_ITEM_NAME": "Total equity",
+    "AMOUNT": 9000000000,
+    "CURRENCY": "HKD"
+  },
+  {
+    "SECURITY_CODE": "00700",
+    "STD_REPORT_DATE": "2023-12-31",
+    "STD_ITEM_NAME": "Cash and cash equivalents",
+    "AMOUNT": null,
+    "CURRENCY": "HKD"
+  },
+  {
+    "SECURITY_CODE": "00700",
+    "STD_REPORT_DATE": "2023-12-31",
+    "STD_ITEM_NAME": "Interest-bearing debt",
+    "AMOUNT": null,
+    "CURRENCY": "HKD"
+  },
+  {
+    "SECURITY_CODE": "00700",
+    "STD_REPORT_DATE": "2023-12-31",
+    "STD_ITEM_NAME": "Equity attributable to owners of the parent",
+    "AMOUNT": null,
+    "CURRENCY": "HKD"
+  },
+  {
+    "SECURITY_CODE": "00700",
+    "STD_REPORT_DATE": "2023-12-31",
+    "STD_ITEM_NAME": "Total equity",
+    "AMOUNT": null,
+    "CURRENCY": "HKD"
+  }
+]

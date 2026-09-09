@@ -82,6 +82,30 @@ are not treated as zero. The Phase 2 mapping review owns unresolved field-name
 coverage, parent/consolidated entity basis, currency/unit scaling and
 point-in-time publication semantics.
 
+## Phase 2.5 balance-sheet statement slice
+
+The balance-sheet slice is limited to directly reported point-in-time totals.
+It does not manufacture an interest-bearing-debt total from neighboring
+liability or borrowing rows.
+
+| Normalized field | Status | Boundary note |
+| --- | --- | --- |
+| `book_cash` | `STRUCTURED_AUTO` | Map only an explicit reported cash/cash-equivalents line for an exact statement period, entity and currency. |
+| `parent_equity` | `STRUCTURED_AUTO` | Map only an explicit equity-attributable-to-parent line for the matching period and entity. |
+| `total_equity` | `STRUCTURED_AUTO` | Map only an explicit total owners'/shareholders' equity line for the matching period. |
+| `reported_interest_bearing_debt` | `STRUCTURED_AUTO` | Map only an explicit aggregate interest-bearing-debt line; do not sum short-/long-term borrowing sub-items or rename total liabilities. |
+| `financial_debt` | `STRUCTURED_AUTO` | Not emitted by this slice; a later mapping must establish whether an upstream debt total has the canonical post-classification scope. |
+| `minority_equity` | `STRUCTURED_AUTO` | Deferred from this slice; minority attribution and consolidated/standalone basis require a separate mapping review. |
+| `restricted_cash`, `pledged_deposits`, `lease_debt`, `subsidiary_cash`, `subsidiary_debt` | `REQUIRES_PRIMARY_FILING` | Do not infer accessibility, debt-equivalent treatment or upstreamability from aggregate balance-sheet rows. |
+
+The A-share balance endpoint is expected to provide wide report-period rows
+and the H-share endpoint long-form items. Missing or year-only periods and
+ambiguous duplicate periods/items are rejected. Explicit nulls remain null and
+are not treated as zero. The Phase 2 mapping review owns unresolved
+balance-sheet field-name coverage, consolidated-versus-standalone entity
+basis, currency/unit scaling, explicit debt-aggregate availability and
+point-in-time publication semantics.
+
 ## Eligibility, identity and market context
 
 | Normalized field | Status | Boundary note |

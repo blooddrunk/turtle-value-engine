@@ -4,9 +4,9 @@ The adapter deliberately keeps the optional ``akshare`` dependency lazy.  A
 normal test run can import this module, inspect its capabilities and replay
 cached records without installing AKShare or making a network request.
 
-The adapter currently implements metadata, market observations and two narrow
-financial-statement slices.  Upstream column names are handled in this module
-and are never passed to the deterministic calculation or gate code.
+The adapter currently implements metadata, market observations and three
+narrow financial-statement slices.  Upstream column names are handled in this
+module and are never passed to the deterministic calculation or gate code.
 """
 
 from __future__ import annotations
@@ -51,9 +51,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "3"
+AKSHARE_ADAPTER_VERSION = "4"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "3"
+AKSHARE_MAPPING_VERSION = "4"
 
 
 class ListingMarket(StrEnum):
@@ -71,6 +71,7 @@ AKSHARE_CAPABILITIES = ProviderCapabilities(
         DataCategory.MARKET_HISTORY,
         DataCategory.CASH_FLOW_STATEMENT,
         DataCategory.INCOME_STATEMENT,
+        DataCategory.BALANCE_SHEET,
     }
 )
 
@@ -91,6 +92,7 @@ _SOURCE_URIS = {
     "stock_hk_security_profile_em": "https://emweb.securities.eastmoney.com/PC_HKF10/pages/home/index.html",
     "stock_cash_flow_sheet_by_report_em": "https://emweb.securities.eastmoney.com/PC_HSF10/NewFinanceAnalysis/Index",
     "stock_profit_sheet_by_report_em": "https://emweb.securities.eastmoney.com/PC_HSF10/NewFinanceAnalysis/Index",
+    "stock_balance_sheet_by_report_em": "https://emweb.securities.eastmoney.com/PC_HSF10/NewFinanceAnalysis/Index",
     "stock_financial_report_sina": "https://vip.stock.finance.sina.com.cn/corp/go.php/vFD_FinanceSummary/",
     "stock_financial_hk_report_em": "https://emweb.securities.eastmoney.com/PC_HKF10/FinancialAnalysis/index",
 }
@@ -323,6 +325,8 @@ class AKShareProvider(StructuredDataProvider):
                 return _cash_flow_statement_kwargs(endpoint_name, listing, request)
             if request.category is DataCategory.INCOME_STATEMENT:
                 return _income_statement_kwargs(endpoint_name, listing, request)
+            if request.category is DataCategory.BALANCE_SHEET:
+                return _balance_sheet_kwargs(endpoint_name, listing, request)
             if endpoint_name in _NO_ARGUMENT_ENDPOINTS:
                 _reject_unexpected_parameters(request)
                 return {}
@@ -580,6 +584,20 @@ class AKShareNormalizer:
                     missing_fields.add("parent_net_profit")
                 if income_result[1]["consolidated_net_profit"] == 0:
                     missing_fields.add("consolidated_net_profit")
+            elif record.request.category is DataCategory.BALANCE_SHEET:
+                balance_sheet_result = _map_balance_sheet(
+                    record,
+                    evidence,
+                    rows,
+                    listing,
+                    primary=primary,
+                    add_fact=add_fact,
+                )
+                if balance_sheet_result[0] == 0:
+                    missing_fields.add("balance_sheet")
+                for field in _BALANCE_SHEET_CRITICAL_FIELDS:
+                    if balance_sheet_result[1][field] == 0:
+                        missing_fields.add(field)
             else:
                 raise ProviderNormalizationError(
                     f"unsupported AKShare normalization category: {record.request.category.value}"
@@ -596,8 +614,10 @@ class AKShareNormalizer:
             "AKShare structured records were normalized as structured observations. "
             "Cash-flow mapping is limited to explicitly reported operating cash flow "
             "and acquisition cash; income-statement mapping is limited to explicit "
-            "parent and consolidated net profit. Filing classifications and economic "
-            "adjustments remain unresolved until a later provider/filing workflow."
+            "parent and consolidated net profit; balance-sheet mapping is limited "
+            "to explicit cash, equity and interest-bearing-debt totals. Filing "
+            "classifications and economic adjustments remain unresolved until a "
+            "later provider/filing workflow."
         )
         return NormalizedCompanyInput(
             schema_version="1.0.0",
@@ -706,6 +726,10 @@ def _endpoint_candidates(market: ListingMarket, category: DataCategory) -> tuple
         if market is ListingMarket.A:
             return ("stock_profit_sheet_by_report_em", "stock_financial_report_sina")
         return ("stock_financial_hk_report_em",)
+    if category is DataCategory.BALANCE_SHEET:
+        if market is ListingMarket.A:
+            return ("stock_balance_sheet_by_report_em", "stock_financial_report_sina")
+        return ("stock_financial_hk_report_em",)
     raise ProviderCapabilityError(f"AKShare adapter does not support {category.value!r}")
 
 
@@ -734,6 +758,20 @@ def _income_statement_kwargs(
         request,
         statement_symbol="利润表",
         statement_label="income statement",
+    )
+
+
+def _balance_sheet_kwargs(
+    endpoint_name: str,
+    listing: _ListingRef,
+    request: ProviderRequest,
+) -> dict[str, object]:
+    return _financial_statement_kwargs(
+        endpoint_name,
+        listing,
+        request,
+        statement_symbol="资产负债表",
+        statement_label="balance sheet",
     )
 
 
@@ -776,6 +814,14 @@ def _financial_statement_kwargs(
             )
         return {"symbol": listing.canonical_id}
     if endpoint_name == "stock_profit_sheet_by_report_em":
+        if "indicator" in request.parameters:
+            raise ProviderRequestError(
+                f"the A-share report-period {statement_label} endpoint does not accept indicator",
+                request=request,
+                retryable=False,
+            )
+        return {"symbol": listing.canonical_id}
+    if endpoint_name == "stock_balance_sheet_by_report_em":
         if "indicator" in request.parameters:
             raise ProviderRequestError(
                 f"the A-share report-period {statement_label} endpoint does not accept indicator",
@@ -1384,6 +1430,70 @@ _INCOME_STATEMENT_FIELDS = {
     ),
 }
 
+_BALANCE_SHEET_FIELDS = {
+    "book_cash": (
+        "货币资金",
+        "货币资金(元)",
+        "现金及现金等价物",
+        "现金及现金等价物(元)",
+        "MONETARYFUNDS",
+        "CASH_AND_CASH_EQUIVALENTS",
+        "CASH_CASH_EQUIVALENTS",
+        "CASH_AND_BANK_BALANCES",
+        "Cash and cash equivalents",
+        "Cash and bank balances",
+    ),
+    "reported_interest_bearing_debt": (
+        "有息负债合计",
+        "有息负债",
+        "有息债务合计",
+        "有息债务",
+        "带息负债合计",
+        "带息负债",
+        "TOTAL_INTEREST_BEARING_DEBT",
+        "INTEREST_BEARING_DEBT",
+        "TOTAL_INTEREST_BEARING_LIABILITIES",
+        "INTEREST_BEARING_LIABILITIES",
+        "Total interest-bearing debt",
+        "Interest-bearing debt",
+        "Total interest bearing debt",
+        "Interest bearing debt",
+    ),
+    "parent_equity": (
+        "归属于母公司所有者权益合计",
+        "归属于母公司股东权益合计",
+        "归属于母公司所有者权益",
+        "归属于母公司股东权益",
+        "归属于母公司所有者权益（或股东权益）合计",
+        "归属于母公司所有者权益(或股东权益)合计",
+        "归属于母公司股东的权益合计",
+        "TOTAL_PARENT_EQUITY",
+        "PARENT_EQUITY",
+        "TOTAL_EQUITY_ATTRIBUTABLE_TO_OWNERS_OF_THE_PARENT",
+        "EQUITY_ATTRIBUTABLE_TO_OWNERS_OF_THE_PARENT",
+        "EQUITY_ATTRIBUTABLE_TO_OWNERS_OF_THE_COMPANY",
+        "Total equity attributable to owners of the Company",
+        "Equity attributable to owners of the Company",
+        "Total equity attributable to owners of the parent",
+        "Equity attributable to owners of the parent",
+        "Total equity attributable to equity holders of the Company",
+    ),
+    "total_equity": (
+        "所有者权益合计",
+        "所有者权益(或股东权益)合计",
+        "所有者权益（或股东权益）合计",
+        "股东权益合计",
+        "所有者权益",
+        "TOTAL_EQUITY",
+        "TOTAL_OWNER_EQUITY",
+        "TOTAL_SHAREHOLDER_EQUITY",
+        "Total equity",
+        "Total shareholders' equity",
+    ),
+}
+
+_BALANCE_SHEET_CRITICAL_FIELDS = tuple(_BALANCE_SHEET_FIELDS)
+
 _STATEMENT_PERIOD_FIELDS = (
     "报告日",
     "报告日期",
@@ -1443,6 +1553,30 @@ def _map_income_statement(
         field_aliases=_INCOME_STATEMENT_FIELDS,
         statement_label="income",
         pivot_long=_pivot_long_income_statement_rows,
+    )
+
+
+def _map_balance_sheet(
+    record: RawProviderRecord,
+    evidence: Evidence,
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+    *,
+    primary: bool,
+    add_fact: Callable[..., None],
+) -> tuple[int, dict[str, int]]:
+    """Map only explicit cash, equity and interest-bearing-debt totals."""
+
+    return _map_financial_statement(
+        record,
+        evidence,
+        rows,
+        listing,
+        primary=primary,
+        add_fact=add_fact,
+        field_aliases=_BALANCE_SHEET_FIELDS,
+        statement_label="balance-sheet",
+        pivot_long=_pivot_long_balance_sheet_rows,
     )
 
 
@@ -1531,6 +1665,17 @@ def _pivot_long_income_statement_rows(
         record,
         field_aliases=_INCOME_STATEMENT_FIELDS,
         statement_label="income",
+    )
+
+
+def _pivot_long_balance_sheet_rows(
+    rows: Sequence[Mapping[str, JSONValue]], record: RawProviderRecord
+) -> list[tuple[dict[str, JSONValue], Mapping[str, JSONValue]]]:
+    return _pivot_long_statement_rows(
+        rows,
+        record,
+        field_aliases=_BALANCE_SHEET_FIELDS,
+        statement_label="balance-sheet",
     )
 
 

@@ -85,13 +85,24 @@ class FakeAKShare:
             **kwargs,
         )
 
+    def stock_balance_sheet_by_report_em(self, **kwargs):
+        return self._return(
+            "stock_balance_sheet_by_report_em",
+            _fixture("a_balance_sheet.json"),
+            **kwargs,
+        )
+
     def stock_financial_hk_report_em(self, **kwargs):
         return self._return(
             "stock_financial_hk_report_em",
             _fixture(
-                "h_income_statement.json"
-                if kwargs.get("symbol") == "利润表"
-                else "h_cash_flow.json"
+                "h_balance_sheet.json"
+                if kwargs.get("symbol") == "资产负债表"
+                else (
+                    "h_income_statement.json"
+                    if kwargs.get("symbol") == "利润表"
+                    else "h_cash_flow.json"
+                )
             ),
             **kwargs,
         )
@@ -133,6 +144,7 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
     provider = _provider()
 
     assert provider.capabilities.as_values() == (
+        "balance_sheet",
         "cash_flow_statement",
         "company_metadata",
         "income_statement",
@@ -141,7 +153,7 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "market_quote",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "3"
+    assert provider.identity.provider_version == "4"
 
 
 def test_a_quote_is_selected_from_the_upstream_universe_and_kept_opaque():
@@ -212,6 +224,26 @@ def test_income_statement_fetch_uses_market_specific_read_only_endpoints():
     ]
 
 
+def test_balance_sheet_fetch_uses_market_specific_read_only_endpoints():
+    fake = FakeAKShare()
+    provider = _provider(fake)
+
+    a_record = provider.fetch(_request(DataCategory.BALANCE_SHEET, "SH600000"))
+    h_record = provider.fetch(
+        _request(DataCategory.BALANCE_SHEET, "HK00700", {"indicator": "annual"})
+    )
+
+    assert a_record.raw_payload == _fixture("a_balance_sheet.json")
+    assert h_record.raw_payload == _fixture("h_balance_sheet.json")
+    assert fake.calls == [
+        ("stock_balance_sheet_by_report_em", {"symbol": "SH600000"}),
+        (
+            "stock_financial_hk_report_em",
+            {"stock": "00700", "symbol": "资产负债表", "indicator": "年度"},
+        ),
+    ]
+
+
 def test_missing_optional_dependency_is_reported_only_when_a_live_fetch_is_attempted(
     monkeypatch,
 ):
@@ -238,7 +270,7 @@ def test_unsupported_category_is_blocked_before_the_fake_provider_is_called():
     provider = _provider(fake)
 
     with pytest.raises(ProviderCapabilityError):
-        provider.fetch(_request(DataCategory.BALANCE_SHEET, "SH600000"))
+        provider.fetch(_request(DataCategory.SHARE_CAPITAL, "SH600000"))
     assert fake.calls == []
 
 
@@ -411,6 +443,92 @@ def test_h_income_statement_long_rows_are_pivoted_and_keep_nulls():
     assert values[("parent_net_profit", "2023-12-31")].value is None
     assert values[("parent_net_profit", "2024-12-31")].currency == "HKD"
     assert normalized.data_quality.critical_missing_fields == []
+
+
+def test_normalizer_maps_only_explicit_balance_sheet_totals():
+    provider = _provider()
+    record = provider.fetch(_request(DataCategory.BALANCE_SHEET, "SH600000"))
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="balance-sheet-fixture",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    values = {(fact.field, fact.period): fact for fact in normalized.facts}
+    assert values[("book_cash", "2025-12-31")].value == 1800000000.0
+    assert values[("reported_interest_bearing_debt", "2025-12-31")].value == 700000000.0
+    assert values[("parent_equity", "2025-12-31")].value == 7000000000.0
+    assert values[("total_equity", "2025-12-31")].value == 7600000000.0
+    assert values[("book_cash", "2024-12-31")].currency == "CNY"
+    assert values[("total_equity", "2024-12-31")].unit == "reported_currency_amount"
+    assert "total_liabilities" not in {fact.field for fact in normalized.facts}
+    assert normalized.data_quality.critical_missing_fields == []
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    errors = list(Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json")))
+    assert errors == []
+
+
+def test_h_balance_sheet_long_rows_are_pivoted_and_keep_explicit_nulls():
+    provider = _provider()
+    record = provider.fetch(
+        _request(
+            DataCategory.BALANCE_SHEET,
+            "HK00700",
+            {"indicator": "annual"},
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="h-balance-sheet-fixture",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company("HK00700"),
+    )
+
+    values = {(fact.field, fact.period): fact for fact in normalized.facts}
+    assert values[("book_cash", "2024-12-31")].value == 420000000.0
+    assert values[("reported_interest_bearing_debt", "2024-12-31")].value == 600000000.0
+    assert values[("parent_equity", "2024-12-31")].value == 8800000000.0
+    assert values[("total_equity", "2024-12-31")].value == 9000000000.0
+    assert values[("book_cash", "2023-12-31")].value is None
+    assert values[("book_cash", "2024-12-31")].currency == "HKD"
+    assert normalized.data_quality.critical_missing_fields == []
+
+
+def test_balance_sheet_ambiguous_long_items_are_rejected():
+    provider = _provider()
+    record = provider.fetch(_request(DataCategory.BALANCE_SHEET, "HK00700"))
+    duplicate = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=RETRIEVED_AT,
+        raw_payload=[
+            {
+                "STD_REPORT_DATE": "2024-12-31",
+                "STD_ITEM_NAME": "Cash and cash equivalents",
+                "AMOUNT": 1,
+            },
+            {
+                "STD_REPORT_DATE": "2024-12-31",
+                "STD_ITEM_NAME": "Cash and cash equivalents",
+                "AMOUNT": 2,
+            },
+        ],
+        source_uri=record.source_uri,
+        response_metadata=record.response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match="duplicate balance-sheet item"):
+        normalize_akshare_records(
+            [duplicate],
+            analysis_id="duplicate-balance-sheet",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company("HK00700"),
+        )
 
 
 def test_income_statement_ambiguous_long_items_are_rejected():

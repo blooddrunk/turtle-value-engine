@@ -201,6 +201,27 @@ questions are owned by the Phase 2 mapping review: field-name coverage across
 all A/H statement variants, the precise parent/consolidated entity basis,
 currency/unit scaling, and point-in-time publication semantics.
 
+### Phase 2.5 — Balance-sheet mapping slice (COMPLETE)
+
+The AKShare adapter now supports read-only `BALANCE_SHEET` acquisition for
+A-share and H-share listings. The A-share report-period endpoint is normalized
+from wide rows and the H-share endpoint from long-form statement items. The
+slice maps only explicit `book_cash`, `parent_equity`, `total_equity` and an
+explicit aggregate `reported_interest_bearing_debt` when the upstream label
+has that same economic meaning. It does not rename `total_liabilities`, sum
+short- or long-term borrowing rows, or infer restricted cash, lease debt,
+minority attribution or upstreamability.
+
+Exact report dates, reported currency and explicit nulls are preserved, and
+ambiguous periods/items are rejected. The adapter and mapping versions are
+bumped so this endpoint contract has a separate cache/fact namespace. Tests
+use injected clients and frozen fixtures; live integration remains explicitly
+opt-in. Unresolved balance-sheet mapping questions are owned by the Phase 2
+mapping review: field-name coverage across all A/H statement variants, the
+consolidated-versus-standalone entity basis, currency/unit scaling,
+interest-bearing-debt aggregate availability, and point-in-time publication
+semantics.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -210,7 +231,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3 cash-flow + Phase 2.4 income slices
+  akshare.py       # Phase 2.2 market + Phase 2.3 cash-flow + Phase 2.4 income + Phase 2.5 balance slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -418,7 +439,6 @@ Phase 2 is active. Phase 1 remains frozen: changes to formulas, hard-gate
 semantics, schemas or `strict-v1` thresholds require a separately reviewed,
 versioned change.
 
-The next Phase 2 task is to add another financial-statement category only after
-the current AKShare statement boundary has been verified in point-in-time
-fixtures and its unresolved mapping questions have an explicit owner.
-Filing-derived classifications remain a Phase 3 concern.
+The next Phase 2 task is a mapping review of the verified AKShare statement
+boundary and its unresolved field/entity/unit questions. Filing-derived
+classifications remain a Phase 3 concern.
