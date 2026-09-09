@@ -787,6 +787,28 @@ goodwill, impairment, profit, ratio or business-quality fact. H-share goodwill
 coverage and filing-backed impairment review remain outside this slice. Live
 calls remain opt-in; tests use an injected client and a frozen fixture.
 
+### Phase 2.31 — A/H ESG-rating raw acquisition contract (COMPLETE)
+
+The mapping review now covers the documented Sina `stock_esg_rate_sina`
+endpoint under a new provider-neutral `ESG_RATINGS` category. The official
+AKShare documentation describes a no-argument response containing a mixed A/H
+universe with component code, rating agency, rating, rating quarter, marker
+and `cn`/`hk` market; the [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_esg_sina.py)
+retrieves the paginated multi-agency response. The provider validates each
+row's explicit code and market, filters to the requested A/H listing and
+retains every matching agency/quarter row with endpoint and row-count
+provenance.
+
+Agency ratings use provider-specific scales and may be letters or numeric
+values, while `评级季度` is a provider reporting label. Those fields do not
+establish a comparable ESG score, governance-risk judgment or strict-v1
+Business Quality assessment. The normalizer therefore emits
+`AKSHARE_ESG_RATINGS_RAW_ONLY`, marks `governance_risk_level` as critically
+missing and creates no canonical ESG, governance, Business Quality, filing,
+financial or valuation fact. Live calls remain opt-in; tests use an injected
+client and a frozen fixture. See the [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+for the documented interface and fields.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -796,7 +818,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.30 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.31 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -1004,7 +1026,7 @@ Phase 2 is active. Phase 1 remains frozen: changes to formulas, hard-gate
 semantics, schemas or `strict-v1` thresholds require a separately reviewed,
 versioned change.
 
-Phase 2.30 completes the next documented structured-data boundary while
+Phase 2.31 completes the next documented structured-data boundary while
 keeping share-change, repurchase and rights-issue period, status, unit and
 economic-scope questions unresolved, and keeping ownership-pledge holder,
 governance and economic-scope questions unresolved. The A-share
@@ -1083,3 +1105,10 @@ The documented A-share goodwill-impairment response is retained under
 amounts, ratios, profit and announcement dates do not establish the canonical
 accounting entity, report-period scope or a filing-backed reconciliation. H-share
 coverage and filing-backed impairment interpretation remain unresolved.
+The documented Sina A/H ESG-rating response is retained under
+`AKSHARE_ESG_RATINGS_RAW_ONLY` because agency-specific scales, rating values,
+provider quarter labels and markers do not establish a comparable ESG score,
+governance-risk level or Business Quality judgment. The provider validates and
+filters the mixed universe by explicit code plus `cn`/`hk` market while
+retaining all matching agency/quarter rows; no canonical ESG, governance,
+financial or valuation fact is admitted.

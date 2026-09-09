@@ -60,9 +60,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "30"
+AKSHARE_ADAPTER_VERSION = "31"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "31"
+AKSHARE_MAPPING_VERSION = "32"
 
 
 class ListingMarket(StrEnum):
@@ -89,6 +89,7 @@ AKSHARE_CAPABILITIES = ProviderCapabilities(
         DataCategory.FINANCIAL_ABSTRACT,
         DataCategory.FINANCIAL_INDICATORS,
         DataCategory.GOODWILL_IMPAIRMENT,
+        DataCategory.ESG_RATINGS,
         DataCategory.LATEST_INDICATORS,
         DataCategory.BALANCE_SHEET,
         DataCategory.DIVIDENDS,
@@ -149,6 +150,7 @@ _SOURCE_URIS = {
     "stock_main_stock_holder": "https://vip.stock.finance.sina.com.cn/corp/go.php/vCI_StockHolder/stockid/600004.phtml",
     "stock_financial_report_sina": "https://vip.stock.finance.sina.com.cn/corp/go.php/vFD_FinanceSummary/",
     "stock_financial_hk_report_em": "https://emweb.securities.eastmoney.com/PC_HKF10/FinancialAnalysis/index",
+    "stock_esg_rate_sina": "https://finance.sina.com.cn/esg/grade.shtml",
 }
 
 _NO_ARGUMENT_ENDPOINTS = frozenset(
@@ -162,6 +164,7 @@ _NO_ARGUMENT_ENDPOINTS = frozenset(
         "stock_zh_ah_spot_em",
         "stock_zh_a_st_em",
         "stock_repurchase_em",
+        "stock_esg_rate_sina",
     }
 )
 
@@ -552,6 +555,27 @@ class AKShareProvider(StructuredDataProvider):
             response_metadata["listing_scoped_request"] = False
             response_metadata["row_filtering"] = "provider"
             response_metadata["snapshot_scope"] = "current_trading_day"
+        elif request.category is DataCategory.ESG_RATINGS:
+            rows = _table_rows(payload, provider=self.identity, request=request)
+            _validate_esg_rating_provider_rows(
+                rows,
+                listing,
+                provider=self.identity,
+                request=request,
+            )
+            selected = _select_esg_rating_rows(
+                rows,
+                listing,
+                provider=self.identity,
+                request=request,
+            )
+            payload = selected
+            response_metadata["upstream_row_count"] = len(rows)
+            response_metadata["entity_row_count"] = len(selected)
+            response_metadata["entity_rows_selected"] = True
+            response_metadata["listing_scoped_request"] = False
+            response_metadata["row_filtering"] = "provider"
+            response_metadata["snapshot_scope"] = "current_published_dataset"
         elif request.category is DataCategory.TRADING_SUSPENSIONS:
             rows = _table_rows(payload, provider=self.identity, request=request)
             _validate_trading_suspension_provider_rows(
@@ -1275,6 +1299,18 @@ class AKShareNormalizer:
                 # non-ST assertion, so retain both outcomes as raw evidence.
                 missing_fields.add("special_treatment")
                 normalizer_flags.add("AKSHARE_RISK_WARNING_STATUS_RAW_ONLY")
+            elif record.request.category is DataCategory.ESG_RATINGS:
+                if record.response_metadata.get("endpoint") != "stock_esg_rate_sina":
+                    raise ProviderNormalizationError(
+                        "AKShare ESG-rating record must come from stock_esg_rate_sina"
+                    )
+                _validate_esg_rating_normalizer_rows(rows, listing)
+                # Agencies use different scales and the quarter field is a
+                # provider reporting label. Neither is a canonical
+                # governance-risk judgment or a strict-v1 business-quality
+                # assessment.
+                missing_fields.add("governance_risk_level")
+                normalizer_flags.add("AKSHARE_ESG_RATINGS_RAW_ONLY")
             elif record.request.category is DataCategory.TRADING_SUSPENSIONS:
                 if listing.market is not ListingMarket.A:
                     raise ProviderNormalizationError(
@@ -1733,6 +1769,9 @@ class AKShareNormalizer:
             "special-treatment assertion. Main-shareholder records remain raw "
             "structured evidence because holder rows do not establish beneficial "
             "control, governance severity or a company-level diluted-share series. "
+            "ESG-rating records remain raw structured evidence because agencies, "
+            "rating scales and provider quarters do not establish a canonical "
+            "governance-risk judgment or Business Quality assessment. "
             "Restricted-share-release records remain raw structured evidence because "
             "their release dates, quantities and market values do not establish a "
             "canonical diluted-economic-share treatment. "
@@ -1865,6 +1904,12 @@ class AKShareNormalizer:
                 "special_treatment=False, and a current board snapshot does not "
                 "provide a dated history or filing-backed reason."
             )
+        if "AKSHARE_ESG_RATINGS_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented Sina ESG-rating response is retained as raw evidence "
+                "only: its agency-specific ratings and quarter labels do not establish "
+                "a comparable score, governance-risk level or Business Quality judgment."
+            )
         if "AKSHARE_MAIN_SHAREHOLDERS_RAW_ONLY" in normalizer_flags:
             notes += (
                 " The documented A-share main-shareholder response is retained as "
@@ -1965,6 +2010,14 @@ _DISCLOSURE_NOTICE_DATE_FIELDS = (
     "announcement_time",
     "date",
 )
+_ESG_RATING_CODE_FIELDS = (
+    "成分股代码",
+    "股票代码",
+    "证券代码",
+    "code",
+    "symbol",
+)
+_ESG_RATING_MARKET_FIELDS = ("交易市场", "market")
 _SHAREHOLDER_HOLDINGS_DATE_FIELDS = ("截至日期", "公告日期")
 _TRADING_SUSPENSIONS_DATE_FIELDS = ("停牌时间", "停牌截止时间", "预计复牌时间")
 _RESTRICTED_RELEASE_DATE_FIELDS = (
@@ -2016,6 +2069,8 @@ def _endpoint_candidates(
         if market is ListingMarket.A:
             return ("stock_zh_a_st_em",)
         return ()
+    if category is DataCategory.ESG_RATINGS:
+        return ("stock_esg_rate_sina",)
     if category is DataCategory.TRADING_SUSPENSIONS:
         if market is ListingMarket.A:
             return ("stock_tfp_em",)
@@ -3388,6 +3443,46 @@ def _row_code(row: Mapping[str, JSONValue], market: ListingMarket) -> str | None
     return None
 
 
+def _esg_rating_row_listing(row: Mapping[str, JSONValue]) -> _ListingRef | None:
+    """Parse one documented ESG row's explicit code and ``cn``/``hk`` market."""
+
+    found_code, raw_code = _lookup(row, _ESG_RATING_CODE_FIELDS)
+    code_text = _text_value(raw_code) if found_code else None
+    if code_text is None:
+        return None
+
+    found_market, raw_market = _lookup(row, _ESG_RATING_MARKET_FIELDS)
+    market_text = _text_value(raw_market) if found_market else None
+    if market_text is None:
+        raise ValueError("ESG-rating row has no explicit market")
+    market_values = {"cn": ListingMarket.A, "hk": ListingMarket.H}
+    market = market_values.get(market_text.casefold())
+    if market is None:
+        raise ValueError(
+            f"ESG-rating row market {market_text!r} must be 'cn' or 'hk'"
+        )
+
+    if market is ListingMarket.A and re.fullmatch(r"\d{6}", code_text):
+        return _ListingRef(
+            ListingMarket.A,
+            code_text,
+            _inferred_a_prefix(code_text) + code_text,
+        )
+    if market is ListingMarket.H and re.fullmatch(r"\d{1,5}", code_text):
+        code = code_text.zfill(5)
+        return _ListingRef(ListingMarket.H, code, "HK" + code)
+
+    try:
+        parsed = _parse_listing_id(code_text)
+    except ProviderError as exc:
+        raise ValueError(f"ESG-rating row listing code {code_text!r} is invalid") from exc
+    if parsed.market is not market:
+        raise ValueError(
+            f"ESG-rating row listing code {code_text!r} conflicts with market {market_text!r}"
+        )
+    return parsed
+
+
 def _to_json_value(value: object, *, path: str = "response") -> JSONValue:
     """Convert pandas/numpy-like results to strict JSON without zero-filling."""
 
@@ -3575,6 +3670,59 @@ def _validate_risk_warning_provider_rows(
                 provider=provider,
                 request=request,
             )
+
+
+def _validate_esg_rating_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> None:
+    """Validate the mixed A/H ESG universe before filtering its rows."""
+
+    for row in rows:
+        try:
+            row_listing = _esg_rating_row_listing(row)
+        except ValueError as exc:
+            raise ProviderResponseError(
+                f"AKShare returned an invalid ESG-rating row for {request.entity_id!r}: {exc}",
+                provider=provider,
+                request=request,
+            ) from exc
+        if row_listing is None:
+            raise ProviderResponseError(
+                f"AKShare returned an ESG-rating row without a listing code for "
+                f"{request.entity_id!r}",
+                provider=provider,
+                request=request,
+            )
+
+
+def _select_esg_rating_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> list[dict[str, JSONValue]]:
+    """Filter all agency/quarter rows for one requested A/H listing."""
+
+    selected: list[dict[str, JSONValue]] = []
+    for row in rows:
+        try:
+            row_listing = _esg_rating_row_listing(row)
+        except ValueError as exc:
+            raise ProviderResponseError(
+                f"AKShare returned an invalid ESG-rating row for {request.entity_id!r}: {exc}",
+                provider=provider,
+                request=request,
+            ) from exc
+        if row_listing is not None and (
+            row_listing.market is listing.market and row_listing.code == listing.code
+        ):
+            selected.append(dict(row))
+    return selected
 
 
 def _validate_trading_suspension_provider_rows(
@@ -4045,6 +4193,26 @@ def _validate_risk_warning_normalizer_rows(
         if row_code != listing.code:
             raise ProviderNormalizationError(
                 f"risk-warning-status row entity {row_code!r} does not match "
+                f"requested listing {listing.canonical_id!r}"
+            )
+
+
+def _validate_esg_rating_normalizer_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+) -> None:
+    """Keep replayed mixed-market ESG rows inside the requested listing."""
+
+    for row in rows:
+        try:
+            row_listing = _esg_rating_row_listing(row)
+        except ValueError as exc:
+            raise ProviderNormalizationError(str(exc)) from exc
+        if row_listing is None:
+            raise ProviderNormalizationError("ESG-rating row has no explicit listing code")
+        if row_listing.market is not listing.market or row_listing.code != listing.code:
+            raise ProviderNormalizationError(
+                f"ESG-rating row entity {row_listing.canonical_id!r} does not match "
                 f"requested listing {listing.canonical_id!r}"
             )
 

@@ -63,6 +63,9 @@ class FakeAKShare:
     def stock_zh_a_st_em(self):
         return self._return("stock_zh_a_st_em", _fixture("a_risk_warning_status.json"))
 
+    def stock_esg_rate_sina(self):
+        return self._return("stock_esg_rate_sina", _fixture("esg_ratings.json"))
+
     def stock_tfp_em(self, *, date: str):
         return self._return(
             "stock_tfp_em",
@@ -341,6 +344,7 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "dividends",
         "earnings_forecast",
         "earnings_quick_report",
+        "esg_ratings",
         "financial_abstract",
         "financial_indicators",
         "goodwill_impairment",
@@ -358,8 +362,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "30"
-    assert AKSHARE_MAPPING_VERSION == "31"
+    assert provider.identity.provider_version == "31"
+    assert AKSHARE_MAPPING_VERSION == "32"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -4870,3 +4874,171 @@ def test_goodwill_impairment_cache_replay_does_not_call_upstream(tmp_path: Path)
     assert replay.mode is RetrievalMode.CACHE_REPLAY
     assert replay.record == live.record
     assert fake.calls == [("stock_sy_jz_em", {"date": "20250630"})]
+
+
+def test_esg_rating_fetch_filters_all_matching_rows_from_the_documented_mixed_a_h_universe():
+    fake = FakeAKShare()
+    provider = _provider(fake)
+
+    a_record = provider.fetch(_request(DataCategory.ESG_RATINGS, "SH600000"))
+    h_record = provider.fetch(_request(DataCategory.ESG_RATINGS, "HK00700"))
+
+    fixture = _fixture("esg_ratings.json")
+    assert a_record.raw_payload == [
+        row for row in fixture if row["成分股代码"] == "SH600000"
+    ]
+    assert h_record.raw_payload == [
+        row for row in fixture if row["成分股代码"] == "HK00700"
+    ]
+    assert fake.calls == [
+        ("stock_esg_rate_sina", {}),
+        ("stock_esg_rate_sina", {}),
+    ]
+    assert a_record.response_metadata["endpoint"] == "stock_esg_rate_sina"
+    assert a_record.response_metadata["upstream_row_count"] == 4
+    assert a_record.response_metadata["entity_row_count"] == 2
+    assert a_record.response_metadata["entity_rows_selected"] is True
+    assert a_record.response_metadata["listing_scoped_request"] is False
+    assert a_record.response_metadata["row_filtering"] == "provider"
+    assert a_record.response_metadata["snapshot_scope"] == "current_published_dataset"
+    assert a_record.source_uri == "https://finance.sina.com.cn/esg/grade.shtml"
+
+
+def test_esg_rating_request_accepts_no_parameters_for_a_or_h_listings():
+    fake = FakeAKShare()
+    provider = _provider(fake)
+
+    with pytest.raises(ProviderRequestError, match="does not accept request parameters"):
+        provider.fetch(
+            _request(
+                DataCategory.ESG_RATINGS,
+                "SH600000",
+                {"date": "20250930"},
+            )
+        )
+
+    provider.fetch(_request(DataCategory.ESG_RATINGS, "HK00700"))
+    assert fake.calls == [("stock_esg_rate_sina", {})]
+
+
+@pytest.mark.parametrize(
+    ("row", "message"),
+    [
+        (
+            {"评级机构": "示例机构", "交易市场": "cn"},
+            "without a listing code",
+        ),
+        (
+            {"成分股代码": "600000", "评级机构": "示例机构"},
+            "no explicit market",
+        ),
+        (
+            {"成分股代码": "SH600000", "评级机构": "示例机构", "交易市场": "hk"},
+            "conflicts with market",
+        ),
+    ],
+)
+def test_esg_rating_response_rejects_rows_without_unambiguous_a_h_identity(
+    row: dict[str, str], message: str
+):
+    class InvalidRows(FakeAKShare):
+        def stock_esg_rate_sina(self):
+            return self._return("stock_esg_rate_sina", [row])
+
+    with pytest.raises(ProviderResponseError, match=message):
+        _provider(InvalidRows()).fetch(
+            _request(DataCategory.ESG_RATINGS, "SH600000")
+        )
+
+
+def test_esg_rating_with_no_matching_listing_is_an_empty_raw_snapshot():
+    class NoMatchingRating(FakeAKShare):
+        def stock_esg_rate_sina(self):
+            return self._return(
+                "stock_esg_rate_sina",
+                [
+                    {
+                        "成分股代码": "SZ000001",
+                        "评级机构": "示例机构",
+                        "评级": "A",
+                        "评级季度": "2025 Q4",
+                        "标识": None,
+                        "交易市场": "cn",
+                    }
+                ],
+            )
+
+    fake = NoMatchingRating()
+    record = _provider(fake).fetch(
+        _request(DataCategory.ESG_RATINGS, "SH600000")
+    )
+
+    assert record.raw_payload == []
+    assert record.response_metadata["upstream_row_count"] == 1
+    assert record.response_metadata["entity_row_count"] == 0
+
+
+def test_esg_rating_raw_record_is_not_promoted_to_canonical_facts():
+    provider = _provider()
+    record = provider.fetch(_request(DataCategory.ESG_RATINGS, "SH600000"))
+
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="esg-rating-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_ESG_RATINGS_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == ["governance_risk_level"]
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "agency-specific ratings" in normalized.data_quality.notes
+    assert "Business Quality judgment" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    errors = list(Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json")))
+    assert errors == []
+
+
+def test_esg_rating_normalizer_rejects_replayed_rows_for_another_listing():
+    provider = _provider()
+    record = provider.fetch(_request(DataCategory.ESG_RATINGS, "SH600000"))
+    mismatched_payload = [dict(row) for row in record.raw_payload]
+    mismatched_payload[0]["成分股代码"] = "HK00700"
+    mismatched_payload[0]["交易市场"] = "hk"
+    mismatched = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=mismatched_payload,
+        source_uri=record.source_uri,
+        response_metadata=record.response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match="ESG-rating row entity"):
+        normalize_akshare_records(
+            [mismatched],
+            analysis_id="mismatched-esg-rating-entity",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_esg_rating_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(DataCategory.ESG_RATINGS, "SH600000")
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [("stock_esg_rate_sina", {})]

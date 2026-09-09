@@ -190,6 +190,12 @@ evidence; the normalizer emits `AKSHARE_GOODWILL_IMPAIRMENT_RAW_ONLY`, leaves
 `goodwill` and `impairment` critically missing and creates no canonical facts
 until primary-filing scope and reconciliation are available. H-share coverage
 and filing-backed impairment interpretation remain outside this slice.
+Phase 2.31 adds the documented Sina `stock_esg_rate_sina` no-argument mixed
+A/H ESG-rating universe under `ESG_RATINGS`. Its explicit code/market, agency,
+rating, quarter and marker rows remain raw structured evidence; different
+agency scales and provider quarter labels do not establish a comparable score,
+governance-risk level or Business Quality assessment, so the normalizer emits
+`AKSHARE_ESG_RATINGS_RAW_ONLY` with no canonical facts.
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

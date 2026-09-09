@@ -756,6 +756,33 @@ remain unresolved.
 | `公告日期` | Raw-only publication metadata; it is not silently treated as the report period or an impairment-recognition date. |
 | `序号` | Retained in the opaque upstream row; no ordering or metric is calculated. |
 
+## Phase 2.31 A/H ESG-rating raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents the no-argument Sina `stock_esg_rate_sina` endpoint. Its published
+columns are component stock code (`成分股代码`), rating agency (`评级机构`),
+rating (`评级`), rating quarter (`评级季度`), marker (`标识`) and trading
+market (`交易市场`); the documented response mixes A-share `cn` and H-share
+`hk` rows. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_esg_sina.py)
+fetches a paginated response containing multiple agencies and quarters.
+
+The provider validates the explicit code plus `cn`/`hk` market for every row,
+filters the universe to the requested A/H listing and retains all matching
+agency/quarter rows as raw structured evidence. Rating values may use
+agency-specific letter or numeric scales, and `评级季度` is a provider
+reporting label rather than an admitted financial-statement period. The
+normalizer therefore emits `AKSHARE_ESG_RATINGS_RAW_ONLY`, marks
+`governance_risk_level` as critically missing and creates no canonical ESG
+score, governance, Business Quality, financial or valuation fact.
+
+| Raw upstream item | Phase 2 treatment |
+| --- | --- |
+| `成分股代码`, `交易市场` | Required A/H identity boundary; code and `cn`/`hk` market must agree before provider filtering. |
+| `评级机构` | Raw agency context; different providers are not treated as one comparable scoring system. |
+| `评级` | Raw rating value only; letters, numeric values and agency-specific scales are not normalized into an ESG score or governance fact. |
+| `评级季度` | Raw provider period label; it is not silently treated as a canonical statement period. |
+| `标识` | Raw provider marker; it does not establish a governance conclusion or metric. |
+
 ## Eligibility, identity and market context
 
 | Normalized field | Status | Boundary note |
