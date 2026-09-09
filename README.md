@@ -127,7 +127,14 @@ extends the category to the documented Beijing `stock_share_hold_change_bse`
 endpoint for Beijing A-share listings. Its holding quantities are documented
 in 万股 and prices in 元, but the rows remain raw evidence because they do not
 establish a company-level diluted-share series or governance-risk judgment.
-H-share insider-share coverage remains unresolved.
+Phase 2.22 adds the documented H-share
+`stock_financial_hk_analysis_indicator_em` historical indicator endpoint under
+the same `FINANCIAL_INDICATORS` category. Its `年度`/`报告期` rows retain
+reported amounts, per-share values and provider ratios as raw evidence only;
+the normalizer emits the existing `AKSHARE_FINANCIAL_INDICATORS_RAW_ONLY`
+boundary without canonical revenue, profit or CFO facts. H-share
+insider-share coverage remains unresolved because the current AKShare stock
+documentation does not define an equivalent H-share insider endpoint.
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

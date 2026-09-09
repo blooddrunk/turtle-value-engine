@@ -438,7 +438,7 @@ period and indicator metadata. The normalizer emits
 `AKSHARE_FINANCIAL_INDICATORS_RAW_ONLY`, marks `revenue`,
 `parent_net_profit`, `consolidated_net_profit` and `reported_cfo` as critically
 missing and emits no canonical financial fact or metric. H-share financial
-indicators remain outside this slice.
+indicators are covered by the Phase 2.22 H-share extension below.
 
 | Raw upstream item | Phase 2 treatment |
 | --- | --- |
@@ -447,6 +447,33 @@ indicators remain outside this slice.
 | amount fields such as `TOTALOPERATEREVE`, `PARENTNETPROFIT`, `MLR` | Raw-only; entity basis, unit/scaling and statement semantics are not settled for canonical revenue or profit facts. |
 | per-share fields such as `EPSJB`, `MGJYXJJE`, `BPS` | Raw-only; per-share values do not establish total amounts or a verified diluted-share basis. |
 | ratio fields such as `ROEJQ`, `XSJLL`, `ZCFZL` | Raw-only provider-derived ratios; calculation inputs and methodology are not imported as canonical metrics or valuation inputs. |
+
+## Phase 2.22 H-share financial-indicator raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_financial_hk_analysis_indicator_em` as the Eastmoney
+historical H-share financial-analysis indicator endpoint. It accepts a
+five-digit H-share `symbol` and an `indicator` choice of `年度` or `报告期`, and
+returns listing identity, report dates, amount fields, per-share indicators,
+provider-calculated ratios and currency metadata.
+
+The provider passes the five-digit code and requested mode, retains the
+complete listing-scoped response as an opaque raw payload, validates explicit
+H-share identity and parseable report dates, and records row, period and mode
+metadata. The normalizer emits `AKSHARE_FINANCIAL_INDICATORS_RAW_ONLY`, marks
+`revenue`, `parent_net_profit`, `consolidated_net_profit` and `reported_cfo` as
+critically missing and emits no canonical financial fact, metric or valuation
+input. Amount, unit/scaling, point-in-time and provider-ratio semantics remain
+unresolved.
+
+| Raw upstream item | Phase 2 treatment |
+| --- | --- |
+| `SECUCODE`, `SECURITY_CODE`, `SECURITY_NAME_ABBR`, `ORG_CODE` | Used for conservative H-share listing identity and evidence context; they do not create normalized facts. |
+| `REPORT_DATE`, `DATE_TYPE_CODE`, `START_DATE`, `FISCAL_YEAR` | Raw-only report context; the mode and report date do not establish the canonical point-in-time period. |
+| `OPERATE_INCOME`, `GROSS_PROFIT`, `HOLDER_PROFIT` | Raw-only amount fields; entity basis and unit/scaling are not admitted for canonical revenue or profit facts. |
+| `PER_NETCASH_OPERATE`, `PER_OI`, `BPS`, `BASIC_EPS`, `DILUTED_EPS` | Raw-only per-share fields; they do not establish total amounts or a verified diluted-share basis. |
+| `GROSS_PROFIT_RATIO`, `NET_PROFIT_RATIO`, `ROE_AVG`, `ROA`, `OCF_SALES`, `DEBT_ASSET_RATIO`, `CURRENT_RATIO` | Raw-only provider-calculated ratios; calculation inputs and methodology are not imported as canonical metrics or valuation inputs. |
+| `CURRENCY`, `IS_CNY_CODE` | Raw currency metadata only; currency/unit scaling and cross-listing equivalence remain unresolved. |
 
 ## Phase 2.19–2.21 A-share insider share-change raw slice
 

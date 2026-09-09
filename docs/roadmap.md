@@ -590,6 +590,29 @@ share-count, dilution, governance, buyback or issuance fact. H-share coverage,
 holder interpretation and filing-backed governance analysis remain unresolved.
 Live calls remain opt-in; tests use an injected client and a frozen fixture.
 
+### Phase 2.22 — H-share financial-indicator raw acquisition contract (COMPLETE)
+
+The mapping review now covers the documented AKShare Eastmoney
+`stock_financial_hk_analysis_indicator_em` endpoint under the existing
+provider-neutral `FINANCIAL_INDICATORS` category. The endpoint accepts a
+five-digit H-share `symbol` and the documented `年度` or `报告期` mode; it
+returns explicit listing identity, report dates, amount fields, per-share
+indicators, provider-calculated ratios and currency labels. The provider
+passes the requested listing code and mode, retains the complete
+listing-scoped response as an opaque raw record, validates explicit listing
+identity and parseable report dates, and records row, period and indicator
+metadata.
+
+The mixed response does not establish one canonical statement entity,
+unit/scaling, point-in-time availability basis or ratio calculation
+methodology. The normalizer therefore retains structured evidence, marks
+`revenue`, `parent_net_profit`, `consolidated_net_profit` and `reported_cfo` as
+critically missing and emits `AKSHARE_FINANCIAL_INDICATORS_RAW_ONLY`; it
+creates no canonical fact, metric or valuation input. H-share insider-share
+coverage remains unresolved because the current AKShare stock documentation
+does not define an equivalent H-share insider endpoint. Live calls remain
+opt-in; tests use an injected client and a frozen fixture.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -599,7 +622,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.21 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.22 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -807,7 +830,7 @@ Phase 2 is active. Phase 1 remains frozen: changes to formulas, hard-gate
 semantics, schemas or `strict-v1` thresholds require a separately reviewed,
 versioned change.
 
-Phase 2.21 completes the next documented structured-data boundary while
+Phase 2.22 completes the next documented structured-data boundary while
 keeping share-change, repurchase and rights-issue period, status, unit and
 economic-scope questions unresolved, and keeping ownership-pledge holder,
 governance and economic-scope questions unresolved. The A-share
@@ -849,4 +872,7 @@ a company-level diluted-share series or a governance-risk judgment.
 The documented BSE insider-share-change response is retained under the same
 raw-only boundary: its holding quantities, prices and event dates do not
 establish a company-level diluted-share series or a governance-risk judgment.
-H-share insider-share coverage remains unresolved.
+The H-share financial-indicator response is retained under the same raw-only
+boundary: its amounts, per-share values, provider ratios and currency label do
+not establish a canonical statement entity, unit, point-in-time basis or
+calculation methodology. H-share insider-share coverage remains unresolved.
