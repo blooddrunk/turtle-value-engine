@@ -10,8 +10,8 @@ performance-report, business-composition, financial-abstract and financial-
 indicator raw slices, raw-only dividend event/snapshot/detail, A-share
 disclosure notice metadata, corporate-action, ownership-pledge, SSE/SZSE/BSE
 insider-share-change and A-share share-capital slices, the A-share
-risk-warning-status raw slice, the H-share financial-indicator raw slice and
-the H-share latest-indicator raw slice.
+risk-warning-status and main-shareholder raw slices, the H-share financial-
+indicator raw slice and the H-share latest-indicator raw slice.
 Upstream column names are handled in this module and are never passed to the
 deterministic calculation or gate code.
 """
@@ -58,9 +58,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "26"
+AKSHARE_ADAPTER_VERSION = "27"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "27"
+AKSHARE_MAPPING_VERSION = "28"
 
 
 class ListingMarket(StrEnum):
@@ -93,6 +93,7 @@ AKSHARE_CAPABILITIES = ProviderCapabilities(
         DataCategory.SHARE_CAPITAL,
         DataCategory.OWNERSHIP_PLEDGE,
         DataCategory.INSIDER_SHARE_CHANGES,
+        DataCategory.SHAREHOLDER_HOLDINGS,
     }
 )
 
@@ -138,6 +139,7 @@ _SOURCE_URIS = {
     "stock_share_hold_change_sse": "http://www.sse.com.cn/disclosure/credibility/supervision/change/",
     "stock_share_hold_change_szse": "http://www.szse.cn/disclosure/supervision/change/index.html",
     "stock_share_hold_change_bse": "https://www.bse.cn/disclosure/djg_sharehold_change.html",
+    "stock_main_stock_holder": "https://vip.stock.finance.sina.com.cn/corp/go.php/vCI_StockHolder/stockid/600004.phtml",
     "stock_financial_report_sina": "https://vip.stock.finance.sina.com.cn/corp/go.php/vFD_FinanceSummary/",
     "stock_financial_hk_report_em": "https://emweb.securities.eastmoney.com/PC_HKF10/FinancialAnalysis/index",
 }
@@ -362,6 +364,16 @@ class AKShareProvider(StructuredDataProvider):
             raise ProviderRequestError(
                 "the AKShare insider-share-change endpoints support Shanghai, Shenzhen and "
                 "Beijing A-share listings only",
+                provider=self.identity,
+                request=request,
+                retryable=False,
+            )
+        if (
+            request.category is DataCategory.SHAREHOLDER_HOLDINGS
+            and listing.market is not ListingMarket.A
+        ):
+            raise ProviderRequestError(
+                "the AKShare main-shareholder endpoint supports A-share listings only",
                 provider=self.identity,
                 request=request,
                 retryable=False,
@@ -657,6 +669,18 @@ class AKShareProvider(StructuredDataProvider):
             response_metadata["entity_row_count"] = len(rows)
             response_metadata["entity_rows_selected"] = True
             response_metadata["listing_scoped_request"] = True
+        elif request.category is DataCategory.SHAREHOLDER_HOLDINGS:
+            rows = _table_rows(payload, provider=self.identity, request=request)
+            _validate_shareholder_holdings_provider_rows(
+                rows,
+                listing,
+                provider=self.identity,
+                request=request,
+            )
+            response_metadata["upstream_row_count"] = len(rows)
+            response_metadata["entity_row_count"] = len(rows)
+            response_metadata["entity_rows_selected"] = True
+            response_metadata["listing_scoped_request"] = True
         elif request.category is DataCategory.EARNINGS_FORECAST:
             rows = _table_rows(payload, provider=self.identity, request=request)
             requested_date = _parse_earnings_forecast_date_parameter(
@@ -939,6 +963,8 @@ class AKShareProvider(StructuredDataProvider):
                 return _ownership_pledge_kwargs(endpoint_name, listing, request)
             if request.category is DataCategory.INSIDER_SHARE_CHANGES:
                 return _insider_share_change_kwargs(endpoint_name, listing, request)
+            if request.category is DataCategory.SHAREHOLDER_HOLDINGS:
+                return _shareholder_holdings_kwargs(endpoint_name, listing, request)
             if endpoint_name in _NO_ARGUMENT_ENDPOINTS:
                 _reject_unexpected_parameters(request)
                 return {}
@@ -1482,6 +1508,22 @@ class AKShareNormalizer:
                 # company share-count series or a governance verdict.
                 missing_fields.add("governance_risk_level")
                 normalizer_flags.add("AKSHARE_INSIDER_SHARE_CHANGE_RAW_ONLY")
+            elif record.request.category is DataCategory.SHAREHOLDER_HOLDINGS:
+                if listing.market is not ListingMarket.A:
+                    raise ProviderNormalizationError(
+                        "AKShare main-shareholder raw slice supports A-share listings only"
+                    )
+                if record.response_metadata.get("endpoint") != "stock_main_stock_holder":
+                    raise ProviderNormalizationError(
+                        "AKShare main-shareholder record must come from "
+                        "stock_main_stock_holder"
+                    )
+                _validate_shareholder_holdings_normalizer_rows(rows, listing)
+                # The symbol-scoped table describes historical holder rows,
+                # but does not establish beneficial control, a governance
+                # severity, or a company-level diluted-share series.
+                missing_fields.add("governance_risk_level")
+                normalizer_flags.add("AKSHARE_MAIN_SHAREHOLDERS_RAW_ONLY")
             else:
                 raise ProviderNormalizationError(
                     f"unsupported AKShare normalization category: {record.request.category.value}"
@@ -1526,7 +1568,9 @@ class AKShareNormalizer:
             "later provider/filing workflow. Risk-warning-status records remain "
             "raw structured evidence because the endpoint is a positive current "
             "board-membership snapshot rather than a dated, complete "
-            "special-treatment assertion."
+            "special-treatment assertion. Main-shareholder records remain raw "
+            "structured evidence because holder rows do not establish beneficial "
+            "control, governance severity or a company-level diluted-share series."
         )
         if "AKSHARE_CORPORATE_ACTIONS_RAW_ONLY" in normalizer_flags:
             notes += (
@@ -1644,6 +1688,13 @@ class AKShareNormalizer:
                 "special_treatment=False, and a current board snapshot does not "
                 "provide a dated history or filing-backed reason."
             )
+        if "AKSHARE_MAIN_SHAREHOLDERS_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented A-share main-shareholder response is retained as "
+                "raw evidence only: historical holder names, holdings, ratios and "
+                "dates do not establish beneficial control, governance severity or "
+                "a company-level diluted-share series."
+            )
         return NormalizedCompanyInput(
             schema_version="1.0.0",
             analysis_id=analysis_id,
@@ -1723,6 +1774,7 @@ _DISCLOSURE_NOTICE_DATE_FIELDS = (
     "announcement_time",
     "date",
 )
+_SHAREHOLDER_HOLDINGS_DATE_FIELDS = ("截至日期", "公告日期")
 _HK_DIVIDEND_DETAIL_DATE_FIELDS = (
     "公告日期",
     "除净日",
@@ -1859,6 +1911,10 @@ def _endpoint_candidates(
             return ("stock_share_hold_change_szse",)
         if market is ListingMarket.A and listing.canonical_id.startswith("BJ"):
             return ("stock_share_hold_change_bse",)
+        return ()
+    if category is DataCategory.SHAREHOLDER_HOLDINGS:
+        if market is ListingMarket.A:
+            return ("stock_main_stock_holder",)
         return ()
     raise ProviderCapabilityError(f"AKShare adapter does not support {category.value!r}")
 
@@ -2458,6 +2514,27 @@ def _insider_share_change_kwargs(
             retryable=False,
         )
     return {"symbol": listing.code}
+
+
+def _shareholder_holdings_kwargs(
+    endpoint_name: str,
+    listing: _ListingRef,
+    request: ProviderRequest,
+) -> dict[str, object]:
+    if endpoint_name != "stock_main_stock_holder":
+        raise ProviderRequestError(
+            f"unsupported AKShare main-shareholder endpoint {endpoint_name!r}",
+            request=request,
+            retryable=False,
+        )
+    if listing.market is not ListingMarket.A:
+        raise ProviderRequestError(
+            "the AKShare main-shareholder endpoint supports A-share listings only",
+            request=request,
+            retryable=False,
+        )
+    _reject_unexpected_parameters(request)
+    return {"stock": listing.code}
 
 
 def _corporate_action_kwargs(
@@ -3949,6 +4026,44 @@ def _validate_insider_share_change_provider_rows(
                     provider=provider,
                     request=request,
                 )
+
+
+def _validate_shareholder_holdings_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> None:
+    """Validate dates in the symbol-scoped main-shareholder response."""
+
+    for row in rows:
+        for field in _SHAREHOLDER_HOLDINGS_DATE_FIELDS:
+            found, raw_date = _lookup(row, (field,))
+            if found and _text_value(raw_date) not in _MISSING_TEXT:
+                if _parse_date_value(raw_date) is None:
+                    raise ProviderResponseError(
+                        f"AKShare returned an invalid main-shareholder date in "
+                        f"{field!r} for {request.entity_id!r}",
+                        provider=provider,
+                        request=request,
+                    )
+
+
+def _validate_shareholder_holdings_normalizer_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+) -> None:
+    """Validate dates in replayed main-shareholder rows."""
+
+    for row in rows:
+        for field in _SHAREHOLDER_HOLDINGS_DATE_FIELDS:
+            found, raw_date = _lookup(row, (field,))
+            if found and _text_value(raw_date) not in _MISSING_TEXT:
+                if _parse_date_value(raw_date) is None:
+                    raise ProviderNormalizationError(
+                        f"main-shareholder row has an invalid date in {field!r}"
+                    )
 
 
 def _history_kwargs(

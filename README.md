@@ -161,6 +161,13 @@ structured evidence only; the normalizer emits
 `AKSHARE_RISK_WARNING_STATUS_RAW_ONLY`, leaves `special_treatment` critically
 missing and does not infer `special_treatment=False` when no row matches.
 H-share risk-warning coverage remains outside this slice.
+Phase 2.27 adds the documented A-share Sina `stock_main_stock_holder`
+endpoint under `SHAREHOLDER_HOLDINGS`. Its historical holder names, holding
+quantities/ratios, share-class labels and dates remain raw structured evidence;
+the normalizer emits `AKSHARE_MAIN_SHAREHOLDERS_RAW_ONLY`, leaves
+`governance_risk_level` critically missing and creates no ownership,
+share-count, dilution or valuation facts. Beneficial-control interpretation
+and H-share coverage remain outside this slice.
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

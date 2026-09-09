@@ -256,6 +256,13 @@ class FakeAKShare:
             symbol=symbol,
         )
 
+    def stock_main_stock_holder(self, *, stock: str):
+        return self._return(
+            "stock_main_stock_holder",
+            _fixture("a_main_stock_holder.json"),
+            stock=stock,
+        )
+
 
 class OfficialBalanceAKShare:
     __version__ = "fixture-akshare-official-balance"
@@ -325,10 +332,11 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "performance_report",
         "risk_warning_status",
         "share_capital",
+        "shareholder_holdings",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "26"
-    assert AKSHARE_MAPPING_VERSION == "27"
+    assert provider.identity.provider_version == "27"
+    assert AKSHARE_MAPPING_VERSION == "28"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -460,6 +468,126 @@ def test_risk_warning_cache_replay_does_not_call_upstream(tmp_path: Path):
     assert replay.mode is RetrievalMode.CACHE_REPLAY
     assert replay.record == live.record
     assert fake.calls == [("stock_zh_a_st_em", {})]
+
+
+def test_main_shareholder_fetch_uses_documented_listing_scoped_endpoint():
+    fake = FakeAKShare()
+    record = _provider(fake).fetch(
+        _request(DataCategory.SHAREHOLDER_HOLDINGS, "SH600000")
+    )
+
+    assert record.raw_payload == _fixture("a_main_stock_holder.json")
+    assert fake.calls == [
+        ("stock_main_stock_holder", {"stock": "600000"}),
+    ]
+    assert record.response_metadata["endpoint"] == "stock_main_stock_holder"
+    assert record.response_metadata["upstream_row_count"] == 3
+    assert record.response_metadata["entity_row_count"] == 3
+    assert record.response_metadata["entity_rows_selected"] is True
+    assert record.response_metadata["listing_scoped_request"] is True
+    assert record.source_uri == (
+        "https://vip.stock.finance.sina.com.cn/corp/go.php/"
+        "vCI_StockHolder/stockid/600004.phtml"
+    )
+
+
+def test_main_shareholder_request_is_a_share_only_and_accepts_no_parameters():
+    fake = FakeAKShare()
+    provider = _provider(fake)
+
+    with pytest.raises(ProviderRequestError, match="does not accept request parameters"):
+        provider.fetch(
+            _request(
+                DataCategory.SHAREHOLDER_HOLDINGS,
+                "SH600000",
+                {"date": "20241231"},
+            )
+        )
+    with pytest.raises(ProviderRequestError, match="A-share listings only"):
+        provider.fetch(_request(DataCategory.SHAREHOLDER_HOLDINGS, "HK00700"))
+
+    assert fake.calls == []
+
+
+def test_main_shareholder_response_rejects_invalid_documented_dates():
+    class InvalidDate(FakeAKShare):
+        def stock_main_stock_holder(self, *, stock: str):
+            payload = _fixture("a_main_stock_holder.json")
+            payload[0]["公告日期"] = "not-a-date"
+            return self._return("stock_main_stock_holder", payload, stock=stock)
+
+    with pytest.raises(ProviderResponseError, match="invalid main-shareholder date"):
+        _provider(InvalidDate()).fetch(
+            _request(DataCategory.SHAREHOLDER_HOLDINGS, "SH600000")
+        )
+
+
+def test_main_shareholder_raw_record_is_not_promoted_to_ownership_or_share_facts():
+    provider = _provider()
+    record = provider.fetch(_request(DataCategory.SHAREHOLDER_HOLDINGS, "SH600000"))
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="main-shareholder-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_MAIN_SHAREHOLDERS_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == [
+        "governance_risk_level",
+    ]
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "beneficial control" in normalized.data_quality.notes
+    assert "diluted-share series" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    errors = list(Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json")))
+    assert errors == []
+
+
+def test_main_shareholder_normalizer_rejects_invalid_replayed_dates():
+    provider = _provider()
+    record = provider.fetch(_request(DataCategory.SHAREHOLDER_HOLDINGS, "SH600000"))
+    mismatched_payload = [dict(row) for row in record.raw_payload]
+    mismatched_payload[0]["截至日期"] = "not-a-date"
+    mismatched = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=mismatched_payload,
+        source_uri=record.source_uri,
+        response_metadata=record.response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match="main-shareholder row has an invalid"):
+        normalize_akshare_records(
+            [mismatched],
+            analysis_id="invalid-main-shareholder-date",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_main_shareholder_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(DataCategory.SHAREHOLDER_HOLDINGS, "SH600000")
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [
+        ("stock_main_stock_holder", {"stock": "600000"}),
+    ]
 
 
 def test_a_quote_is_selected_from_the_upstream_universe_and_kept_opaque():

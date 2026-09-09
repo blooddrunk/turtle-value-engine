@@ -88,6 +88,7 @@ class DataCategory(StrEnum):
     CORPORATE_ACTIONS = "corporate_actions"
     OWNERSHIP_PLEDGE = "ownership_pledge"
     INSIDER_SHARE_CHANGES = "insider_share_changes"
+    SHAREHOLDER_HOLDINGS = "shareholder_holdings"
 
 
 class RetrievalMode(StrEnum):

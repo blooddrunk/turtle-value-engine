@@ -703,6 +703,26 @@ special-treatment fact and does not infer `special_treatment=False` from
 an empty match. H-share risk-warning coverage remains outside this slice. Live
 calls remain opt-in; tests use an injected client and a frozen fixture.
 
+### Phase 2.27 — A-share main-shareholder raw acquisition contract (COMPLETE)
+
+The mapping review now covers the documented AKShare Sina
+`stock_main_stock_holder` endpoint under a new provider-neutral
+`SHAREHOLDER_HOLDINGS` category. The endpoint accepts an A-share `stock` code
+and returns all historical main-shareholder rows with holder names, holding
+quantities/ratios, share-class labels, as-of dates, announcement dates and
+holder context. The provider passes the requested six-digit code, retains the
+complete symbol-scoped response and records its row count.
+
+The documented holder rows do not establish beneficial control, a governance
+severity, a canonical share class or a company-level diluted-share series.
+The normalizer therefore retains structured evidence, marks
+`governance_risk_level` as critically missing and emits
+`AKSHARE_MAIN_SHAREHOLDERS_RAW_ONLY`; it creates no ownership, share-count,
+dilution, buyback, issuance or valuation fact. H-share main-shareholder
+coverage and filing-backed ownership interpretation remain outside this
+slice. Live calls remain opt-in; tests use an injected client and a frozen
+fixture.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -712,7 +732,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.26 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.27 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -920,7 +940,7 @@ Phase 2 is active. Phase 1 remains frozen: changes to formulas, hard-gate
 semantics, schemas or `strict-v1` thresholds require a separately reviewed,
 versioned change.
 
-Phase 2.26 completes the next documented structured-data boundary while
+Phase 2.27 completes the next documented structured-data boundary while
 keeping share-change, repurchase and rights-issue period, status, unit and
 economic-scope questions unresolved, and keeping ownership-pledge holder,
 governance and economic-scope questions unresolved. The A-share
@@ -981,3 +1001,7 @@ The documented A-share risk-warning-board response is retained under
 `AKSHARE_RISK_WARNING_STATUS_RAW_ONLY` because its current-trading-day
 universe membership does not establish dated status history or an explicit
 `special_treatment=False` result for listings absent from the response.
+The documented A-share main-shareholder response is retained under
+`AKSHARE_MAIN_SHAREHOLDERS_RAW_ONLY` because its historical holder names,
+quantities, ratios and share-class labels do not establish beneficial control,
+a company-level diluted-share series or a filing-backed governance conclusion.

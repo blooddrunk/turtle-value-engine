@@ -1,6 +1,6 @@
 # Provider and Cache Architecture
 
-> Status: Phase 2 foundation, read-only AKShare statement slices, earnings forecasts/quick reports/performance reports/business composition/financial abstract/financial indicators, H-share latest indicators, dividend events/snapshots/detail, A-share disclosure-notice metadata, risk-warning status, share-capital, corporate-action, ownership-pledge and SSE/SZSE/BSE insider-share-change raw slices
+> Status: Phase 2 foundation, read-only AKShare statement slices, earnings forecasts/quick reports/performance reports/business composition/financial abstract/financial indicators, H-share latest indicators, dividend events/snapshots/detail, A-share disclosure-notice metadata, risk-warning status, share-capital, corporate-action, ownership-pledge, main-shareholder and SSE/SZSE/BSE insider-share-change raw slices
 
 This document freezes the boundary between structured-data acquisition and the
 deterministic Turtle Value Engine. It does not authorize a live provider or
@@ -403,6 +403,18 @@ opaque raw record. The normalizer emits
 missing and does not infer `special_treatment=False` from absence or treat the
 current board snapshot as a dated history or filing-backed reason.
 
+The A-share main-shareholder slice is also acquisition-only. The current
+[AKShare documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_main_stock_holder` as a Sina endpoint accepting a six-digit
+`stock` code and returning all historical holder rows with holding quantities,
+ratios, share-class labels, as-of dates, announcement dates and holder context.
+The provider passes the code, retains the complete symbol-scoped response,
+validates any non-null dates and records the row count. The normalizer emits
+`AKSHARE_MAIN_SHAREHOLDERS_RAW_ONLY`, marks `governance_risk_level` as
+critically missing and does not create ownership, share-count, dilution,
+buyback, issuance or valuation facts; beneficial-control and filing-backed
+governance interpretation remain outside this slice.
+
 When a statement row includes an explicit security code, the normalizer also
 checks it against the requested listing and rejects a mismatch. Statement
 endpoints that omit a row-level code remain bound to their listing-scoped
@@ -557,7 +569,7 @@ The cache performs no network retries. The normalizer performs no provider
 retries. The deterministic pipeline performs no provider retries and should
 not be rerun as a substitute for resolving missing facts.
 
-## 12. Phase 2.2–2.26 AKShare adapter
+## 12. Phase 2.2–2.27 AKShare adapter
 
 The first concrete adapter is intentionally limited to read-only metadata,
 market observations, three documented financial-statement slices, raw-only
@@ -566,7 +578,7 @@ business-composition and financial-abstract categories, A/H financial-indicator
 raw slices, raw-only dividend event/snapshot/detail and corporate-action categories,
 two A-share share-capital raw slices, one A-share ownership-pledge raw slice,
 an H-share latest-indicator raw slice, an A-share disclosure-notice raw slice,
-an A-share risk-warning-status raw slice and SSE/SZSE/BSE
+an A-share risk-warning-status and main-shareholder raw slice and SSE/SZSE/BSE
 insider-share-change raw slices. It
 advertises exactly these capabilities:
 
@@ -593,6 +605,7 @@ advertises exactly these capabilities:
 | `SHARE_CAPITAL` | `stock_zh_a_gbjg_em` (no parameters); `stock_share_change_cninfo` (explicit date range) | — | raw historical response and provenance only; no canonical share/dilution fact |
 | `OWNERSHIP_PLEDGE` | `stock_gpzy_pledge_ratio_em` (exact `date`) | — | date-bound A-share pledge-ratio snapshot; raw structured evidence only; no canonical governance, cash or debt-equivalent fact |
 | `INSIDER_SHARE_CHANGES` | `stock_share_hold_change_sse` (Shanghai); `stock_share_hold_change_szse` (Shenzhen); `stock_share_hold_change_bse` (Beijing) | — | listing-scoped A-share insider/related-person rows as raw structured evidence only; no canonical share, dilution, governance, buyback or issuance fact |
+| `SHAREHOLDER_HOLDINGS` | `stock_main_stock_holder` (`stock`) | — | listing-scoped A-share historical main-shareholder rows as raw structured evidence only; no canonical ownership, share, dilution or governance fact |
 
 The adapter accepts common stable A/H identifiers such as `SH600000`,
 `000001.SZ`, `A:600000`, `HK00700`, `700.HK` and `H:00700`. A-share history
@@ -610,8 +623,8 @@ The normalizer emits `Fact` and `Evidence` objects inside the existing
 `NormalizedCompanyInput`. For the earnings-forecast, earnings-quick-report,
 performance-report, business-composition, financial-abstract,
 financial-indicator, latest-indicator, dividend event/detail, disclosure-notice,
-risk-warning-status, corporate-action, share-capital, ownership-pledge and
-insider-share-change raw slices it emits
+risk-warning-status, corporate-action, share-capital, ownership-pledge,
+main-shareholder and insider-share-change raw slices it emits
 raw-record evidence only and explicit unresolved flags where needed; it does
 not emit canonical forecast-profit, revenue, margin, dividend, buyback,
 issuance, dilution, share, governance, pledged-cash or debt-equivalent facts.
@@ -715,9 +728,15 @@ The presence of a row is not converted into a canonical special-treatment
 fact, and the absence of a row is not converted into an explicit false value;
 dated status history and the filing-backed reason remain unresolved.
 
+For the A-share main-shareholder slice, the documented symbol-scoped historical
+holder rows and their dates are retained as raw evidence only. Holder names,
+quantities, ratios and share-class labels do not establish beneficial control,
+materiality, a company-level diluted-share series or a filing-backed
+governance conclusion.
+
 ## 13. Deliberate non-goals
 
-This foundation plus the Phase 2.2–2.26 slices does not include:
+This foundation plus the Phase 2.2–2.27 slices does not include:
 
 - Tushare, BaoStock or any other additional provider;
 - automatic network scheduling, credentials or retry orchestration outside an adapter;

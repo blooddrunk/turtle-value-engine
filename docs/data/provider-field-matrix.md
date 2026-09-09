@@ -630,6 +630,35 @@ The slice deliberately leaves `special_treatment` unresolved: current
 risk-warning-board membership is positive raw evidence, while absence, dated
 history and the filing-backed reason remain outside this acquisition contract.
 
+## Phase 2.27 A-share main-shareholder raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_main_stock_holder` as a Sina A-share listing-scoped endpoint
+with a required six-digit `stock` input. It returns all historical main-
+shareholder rows with holder name, holding quantity, holding ratio, share-class
+label, as-of date, announcement date and holder context. The rows are scoped by
+the requested symbol but do not carry a canonical company identity in every
+record.
+
+The provider passes the requested A-share code, retains the complete response
+as a `RawProviderRecord`, validates any non-null documented dates and records
+the row count. The normalizer emits structured-data evidence only, marks
+`governance_risk_level` as critically missing and emits
+`AKSHARE_MAIN_SHAREHOLDERS_RAW_ONLY`; it creates no ownership, share-count,
+dilution, buyback, issuance or valuation fact. H-share main-shareholder data
+and filing-backed beneficial-control interpretation remain unresolved.
+
+| Raw upstream item | Phase 2 treatment |
+| --- | --- |
+| `股东名称`, `股东说明` | Raw-only holder context; names and descriptions do not establish beneficial ownership, control or governance severity. |
+| `持股数量`, `持股比例`, `股本性质` | Raw-only holding context; holder quantities and share classes do not establish the company's fully diluted economic share count or a canonical ownership fact. |
+| `截至日期`, `公告日期` | Raw-only period/publication metadata; the dates are not silently collapsed into a financial-statement or governance period. |
+| `股东总数`, `平均持股数` | Raw-only aggregate context; no concentration, valuation or governance metric is calculated. |
+
+The slice deliberately leaves `governance_risk_level` unresolved: historical
+holder rows do not establish beneficial control, materiality, related-party
+context or a filing-backed governance conclusion.
+
 ## Eligibility, identity and market context
 
 | Normalized field | Status | Boundary note |
