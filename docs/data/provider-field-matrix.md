@@ -147,6 +147,38 @@ dividend, buyback, issuance and split classifications remain unresolved.
 | `流通受限股份`, `已流通股份`, `已上市流通A股` | Raw-only; legal circulation categories are not normalized into economic share counts. |
 | `变动原因` | Raw-only; text is not classified as buyback, issuance, split or other action. |
 
+## Phase 2.9 corporate-action raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+describes `stock_repurchase_em` as an A-share Eastmoney endpoint with no
+request parameters. It returns an all-company response containing planned and
+completed repurchase quantities and amounts, a repurchase-start date, an
+implementation status and a latest-announcement date. The documentation
+labels the monetary columns in yuan, and the implementation source exposes
+both planned and completed states.
+
+The provider filters the universe by the requested A-share code before
+creating the raw record and retains every matching row. It records the
+upstream and selected row counts; a response row without a listing code is a
+provider-response error, while no matching row is retained as an empty raw
+snapshot. The normalizer emits no canonical buyback or share-reduction fact:
+the completed amount may be cumulative, the latest announcement is an update
+date rather than a settled cash-flow period, and planned versus completed
+status cannot be collapsed into one annual amount.
+
+| Raw upstream item | Phase 2 treatment |
+| --- | --- |
+| `计划回购金额区间-下限`, `计划回购金额区间-上限` | Raw-only; planned ranges are not realized shareholder cash. |
+| `已回购金额`, `已回购股份数量` | Raw-only; completion status and cumulative scope do not establish an accepted period fact. |
+| `回购起始时间` | Raw-only; start date is not the cash settlement/reporting period. |
+| `实施进度` | Raw-only; status is not sufficient to classify a settled transaction or recurrence. |
+| `最新公告日期` | Raw-only; announcement/update date is not an economic event period. |
+
+The slice emits `AKSHARE_CORPORATE_ACTIONS_RAW_ONLY`, marks
+`buyback_cash` as critically missing and does not emit `buyback_recurring`,
+`net_diluted_share_reduction_verified` or a valuation credit. H-share
+repurchase coverage and filing-backed action classification remain unresolved.
+
 ## Eligibility, identity and market context
 
 | Normalized field | Status | Boundary note |
@@ -257,7 +289,7 @@ special questions remain for a filing-backed mapping review.
 | `payout_policy_formal` | `REQUIRES_PRIMARY_FILING` | Formality is a disclosure claim, not a time series statistic. |
 | `payout_policy_confidence` | `REQUIRES_JUDGMENT` | Confidence records the quality of the policy interpretation. |
 | `fully_diluted_shares` | `DERIVED_DETERMINISTIC` | Normalize share classes, dilution and corporate actions before using the count; the current A-share share-capital history is raw-only. |
-| `buyback_cash` | `STRUCTURED_AUTO` | Reported buyback amount may be retained as a raw/structured fact; it earns no strict valuation credit by itself. |
+| `buyback_cash` | `STRUCTURED_AUTO` | A reported buyback amount may be imported only when its settled period, action status, currency/unit and economic scope are explicit; the current AKShare repurchase slice remains raw-only. |
 | `share_issuance_cash` | `STRUCTURED_AUTO` | Reported issuance proceeds may be imported for the matching action/period. |
 | `share_split_factor` | `STRUCTURED_AUTO` | A formal split/consolidation factor can be imported when effective date is clear. |
 | `buyback_recurring` | `REQUIRES_PRIMARY_FILING` | Recurrence is a policy/history conclusion, not a single transaction amount. |

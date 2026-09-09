@@ -11,10 +11,10 @@ from turtle_value_engine.providers import (
     AKShareProvider,
     DataCategory,
     FilesystemRawResponseCache,
-    ProviderCapabilityError,
     ProviderNormalizationError,
     ProviderRequest,
     ProviderRequestError,
+    ProviderResponseError,
     RetrievalMode,
     fetch_akshare_with_cache,
     normalize_akshare_records,
@@ -129,6 +129,9 @@ class FakeAKShare:
             **kwargs,
         )
 
+    def stock_repurchase_em(self):
+        return self._return("stock_repurchase_em", _fixture("a_repurchase.json"))
+
 
 class OfficialBalanceAKShare:
     __version__ = "fixture-akshare-official-balance"
@@ -180,6 +183,7 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "balance_sheet",
         "cash_flow_statement",
         "company_metadata",
+        "corporate_actions",
         "dividends",
         "income_statement",
         "listing_metadata",
@@ -188,8 +192,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "share_capital",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "7"
-    assert AKSHARE_MAPPING_VERSION == "8"
+    assert provider.identity.provider_version == "8"
+    assert AKSHARE_MAPPING_VERSION == "9"
 
 
 def test_a_quote_is_selected_from_the_upstream_universe_and_kept_opaque():
@@ -462,6 +466,123 @@ def test_dividend_endpoint_rejects_parameters_before_upstream_call():
     assert fake.calls == []
 
 
+def test_corporate_actions_fetch_filters_universe_without_discarding_listing_history():
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    record = provider.fetch(_request(DataCategory.CORPORATE_ACTIONS, "SH600000"))
+
+    fixture = _fixture("a_repurchase.json")
+    assert record.raw_payload == [row for row in fixture if row["股票代码"] == "600000"]
+    assert fake.calls == [("stock_repurchase_em", {})]
+    assert record.response_metadata["endpoint"] == "stock_repurchase_em"
+    assert record.response_metadata["upstream_row_count"] == 3
+    assert record.response_metadata["entity_row_count"] == 2
+    assert record.response_metadata["entity_rows_selected"] is True
+    assert record.response_metadata["row_filtering"] == "provider"
+    assert record.source_uri == "https://data.eastmoney.com/gphg/hglist.html"
+
+
+def test_corporate_actions_endpoint_rejects_parameters_and_h_share_requests_before_upstream_call():
+    fake = FakeAKShare()
+    provider = _provider(fake)
+
+    with pytest.raises(ProviderRequestError, match="does not accept request parameters"):
+        provider.fetch(
+            _request(DataCategory.CORPORATE_ACTIONS, "SH600000", {"start_date": "2025-01-01"})
+        )
+    with pytest.raises(ProviderRequestError, match="A-share listings only"):
+        provider.fetch(_request(DataCategory.CORPORATE_ACTIONS, "HK00700"))
+
+    assert fake.calls == []
+
+
+def test_corporate_actions_normalizer_keeps_repurchase_rows_as_raw_evidence():
+    provider = _provider()
+    record = provider.fetch(_request(DataCategory.CORPORATE_ACTIONS, "SH600000"))
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="repurchase-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    assert normalized.facts == []
+    assert len(normalized.evidence_index) == 1
+    assert normalized.flags == ["AKSHARE_CORPORATE_ACTIONS_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == ["buyback_cash"]
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "settled annual buyback-cash fact" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    errors = list(Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json")))
+    assert errors == []
+
+
+def test_corporate_actions_normalizer_rejects_replayed_rows_for_another_listing():
+    provider = _provider()
+    record = provider.fetch(_request(DataCategory.CORPORATE_ACTIONS, "SH600000"))
+    mismatched_payload = [dict(row) for row in record.raw_payload]
+    mismatched_payload[0]["股票代码"] = "000001"
+    mismatched = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=mismatched_payload,
+        source_uri=record.source_uri,
+        response_metadata=record.response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match="does not match requested listing"):
+        normalize_akshare_records(
+            [mismatched],
+            analysis_id="mismatched-repurchase-entity",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_corporate_actions_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(DataCategory.CORPORATE_ACTIONS, "SH600000")
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [("stock_repurchase_em", {})]
+
+
+def test_corporate_actions_with_no_matching_listing_is_an_empty_raw_snapshot():
+    class NoRepurchase(FakeAKShare):
+        def stock_repurchase_em(self):
+            return [{"股票代码": "000001", "股票简称": "平安银行"}]
+
+    fake = NoRepurchase()
+    record = _provider(fake).fetch(_request(DataCategory.CORPORATE_ACTIONS, "SH600000"))
+
+    assert record.raw_payload == []
+    assert record.response_metadata["upstream_row_count"] == 1
+    assert record.response_metadata["entity_row_count"] == 0
+
+
+def test_corporate_actions_rejects_a_universe_row_without_an_explicit_listing_code():
+    class MissingListingCode(FakeAKShare):
+        def stock_repurchase_em(self):
+            return [{"股票代码": None, "股票简称": "unresolved"}]
+
+    with pytest.raises(ProviderResponseError, match="without a listing code"):
+        _provider(MissingListingCode()).fetch(
+            _request(DataCategory.CORPORATE_ACTIONS, "SH600000")
+        )
+
+
 def test_missing_optional_dependency_is_reported_only_when_a_live_fetch_is_attempted(
     monkeypatch,
 ):
@@ -483,13 +604,14 @@ def test_missing_optional_dependency_is_reported_only_when_a_live_fetch_is_attem
     assert imported == ["akshare"]
 
 
-def test_unsupported_category_is_blocked_before_the_fake_provider_is_called():
-    fake = FakeAKShare()
-    provider = _provider(fake)
+def test_missing_corporate_action_endpoint_is_blocked_before_an_upstream_call():
+    class NoCorporateActionEndpoint:
+        __version__ = "fixture-akshare-without-repurchase"
 
-    with pytest.raises(ProviderCapabilityError):
+    provider = _provider(NoCorporateActionEndpoint())
+
+    with pytest.raises(ProviderRequestError, match="does not expose a supported endpoint"):
         provider.fetch(_request(DataCategory.CORPORATE_ACTIONS, "SH600000"))
-    assert fake.calls == []
 
 
 def test_cache_replay_is_offline_and_preserves_raw_record(tmp_path: Path):
