@@ -869,6 +869,33 @@ H-share coverage and filing-backed pledge interpretation remain unresolved.
 | `最新价`, `质押日收盘价`, `预估平仓线` | Raw price/collateral context; no liquidation-risk, debt or valuation metric is calculated. |
 | `公告日期`, `质押开始日期`, `质押结束日期` | Raw event dates; no single canonical action/statement period is selected. |
 
+## Phase 2.35 A-share company-litigation raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_cg_lawsuit_cninfo` as a CNINFO company-governance
+litigation endpoint. Its inputs are a board/universe `symbol` and
+`YYYYMMDD` `start_date`/`end_date`; the documented defaults are `全部`,
+`20180630` and `20210927`. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_cg_lawsuit.py)
+returns A-share universe rows containing code/name, an announcement-statistics
+interval, lawsuit count and lawsuit amount, with the amount documented in 万元.
+
+The provider calls the documented `symbol="全部"` universe and filters every
+row to the requested A-share code after requiring an explicit code. It retains
+all matching rows and records the upstream symbol, date range, scope and
+upstream/selected row counts. There is no H-share endpoint in this slice. The
+date-range aggregate does not establish a canonical event or statement period,
+legal status, accounting entity/scope or a material expected cash obligation.
+The normalizer therefore emits `AKSHARE_LITIGATION_RAW_ONLY`, marks
+`material_quasi_debt` and `governance_risk_level` as critically missing, and
+creates no canonical litigation, quasi-debt, governance or valuation fact.
+
+| Raw upstream item | Phase 2 treatment |
+| --- | --- |
+| `证券代码`, `证券简称` | Explicit A-share identity, filtering and evidence context only. |
+| `公告统计区间` | Raw aggregate interval; it is not silently used as a canonical statement or event period. |
+| `诉讼次数` | Raw date-range count; it does not establish materiality or a governance conclusion. |
+| `诉讼金额` | Raw amount documented in 万元; it is not promoted to settled quasi-debt or a valuation adjustment. |
+
 ## Eligibility, identity and market context
 
 | Normalized field | Status | Boundary note |

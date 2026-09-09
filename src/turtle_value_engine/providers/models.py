@@ -91,6 +91,7 @@ class DataCategory(StrEnum):
     SHARE_CAPITAL = "share_capital"
     CORPORATE_ACTIONS = "corporate_actions"
     EXTERNAL_GUARANTEES = "external_guarantees"
+    LITIGATION = "litigation"
     OWNERSHIP_PLEDGE = "ownership_pledge"
     INSIDER_SHARE_CHANGES = "insider_share_changes"
     SHAREHOLDER_HOLDINGS = "shareholder_holdings"

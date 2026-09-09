@@ -1,6 +1,6 @@
 # Provider and Cache Architecture
 
-> Status: Phase 2 foundation, read-only AKShare statement slices, earnings forecasts/quick reports/performance reports/business composition/financial abstract/financial indicators, H-share latest indicators, dividend events/snapshots/detail, A-share disclosure-notice metadata, risk-warning status, trading-suspension, restricted-share-release, goodwill-impairment, ESG-rating, SSE margin-detail, share-capital, corporate-action, external-guarantee, ownership-pledge snapshot/detail, main-shareholder and SSE/SZSE/BSE insider-share-change raw slices
+> Status: Phase 2 foundation, read-only AKShare statement slices, earnings forecasts/quick reports/performance reports/business composition/financial abstract/financial indicators, H-share latest indicators, dividend events/snapshots/detail, A-share disclosure-notice metadata, risk-warning status, trading-suspension, restricted-share-release, goodwill-impairment, ESG-rating, SSE margin-detail, share-capital, corporate-action, external-guarantee, company-litigation, ownership-pledge snapshot/detail, main-shareholder and SSE/SZSE/BSE insider-share-change raw slices
 
 This document freezes the boundary between structured-data acquisition and the
 deterministic Turtle Value Engine. It does not authorize a live provider or
@@ -107,6 +107,7 @@ DISCLOSURE_NOTICES
 SHARE_CAPITAL
 CORPORATE_ACTIONS
 EXTERNAL_GUARANTEES
+LITIGATION
 OWNERSHIP_PLEDGE
 INSIDER_SHARE_CHANGES
 SHAREHOLDER_HOLDINGS
@@ -490,6 +491,22 @@ canonical period/entity scope or governance judgment. The normalizer emits
 `governance_risk_level` as critically missing and creates no canonical fact.
 H-share coverage and filing-backed review remain unresolved.
 
+The A-share company-litigation slice is also acquisition-only. The current
+[AKShare documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and
+[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_cg_lawsuit.py)
+document `stock_cg_lawsuit_cninfo` as a CNINFO company-governance endpoint with
+a board/universe selector and `YYYYMMDD` start/end dates. The adapter calls the
+documented `symbol="全部"` universe, validates every explicit `证券代码`,
+filters to the requested A-share listing and preserves all matching rows plus
+the requested range, upstream symbol and row counts. Its lawsuit count/amount
+and announcement-statistics interval are raw date-range aggregate evidence;
+the documented 万元 amount and interval do not settle a canonical event or
+statement period, legal status, accounting entity/scope, material quasi-debt
+amount or governance judgment. The normalizer emits
+`AKSHARE_LITIGATION_RAW_ONLY`, marks `material_quasi_debt` and
+`governance_risk_level` as critically missing and creates no canonical fact.
+H-share coverage and filing-backed litigation review remain unresolved.
+
 The A-share individual ownership-pledge detail sub-slice is also
 acquisition-only. The current [AKShare documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
 and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_gpzy_em.py)
@@ -658,18 +675,19 @@ The cache performs no network retries. The normalizer performs no provider
 retries. The deterministic pipeline performs no provider retries and should
 not be rerun as a substitute for resolving missing facts.
 
-## 12. Phase 2.2–2.34 AKShare adapter
+## 12. Phase 2.2–2.35 AKShare adapter
 
 The first concrete adapter is intentionally limited to read-only metadata,
 market observations, three documented financial-statement slices, raw-only
 earnings-forecast, earnings-quick-report, performance-report,
 business-composition and financial-abstract categories, A/H financial-indicator
-raw slices, raw-only dividend event/snapshot/detail, corporate-action and
-external-guarantee categories,
+raw slices, raw-only dividend event/snapshot/detail, corporate-action,
+external-guarantee and company-litigation categories,
 three A-share share-capital raw slices, two A-share ownership-pledge raw views,
 an H-share latest-indicator raw slice, an A-share disclosure-notice raw slice,
 an A-share risk-warning-status, trading-suspension, goodwill-impairment,
-ESG-rating, SSE margin-detail, external-guarantee and main-shareholder raw slice and
+ESG-rating, SSE margin-detail, external-guarantee, company-litigation and
+main-shareholder raw slice and
 SSE/SZSE/BSE insider-share-change raw slices. It
 advertises exactly these capabilities:
 
@@ -693,6 +711,7 @@ advertises exactly these capabilities:
 | `ESG_RATINGS` | `stock_esg_rate_sina` (no parameters) | `stock_esg_rate_sina` (no parameters) | mixed A/H agency, rating, quarter and marker rows as raw structured evidence only; no canonical ESG score, governance or Business Quality fact |
 | `MARGIN_TRADING` | `stock_margin_detail_sse` (exact `date`; Shanghai A-share only) | — | requested-date SSE security-level margin rows as raw structured evidence only; no issuer debt/cash/leverage/valuation fact |
 | `EXTERNAL_GUARANTEES` | `stock_cg_guarantee_cninfo` (`symbol=全部`, date range; A-share only) | — | A-share date-range external-guarantee universe filtered to the requested listing as raw evidence only; no canonical quasi-debt, illegal-guarantee or governance fact |
+| `LITIGATION` | `stock_cg_lawsuit_cninfo` (`symbol=全部`, date range; A-share only) | — | A-share date-range company-litigation universe filtered to the requested listing as raw evidence only; no canonical litigation, quasi-debt or governance fact |
 | `LATEST_INDICATORS` | — | `stock_hk_financial_indicator_em` | H-share symbol-scoped latest-indicator row as raw structured evidence only; no canonical financial, share, dividend, market-cap, metric or valuation input |
 | `BALANCE_SHEET` | `stock_zcfz_em` / `stock_zcfz_bj_em` (detailed report-period and Sina fallbacks) | `stock_financial_hk_report_em` | explicit `book_cash`, equity totals and aggregate interest-bearing debt when labeled |
 | `DIVIDENDS` | `stock_dividend_cninfo`; `stock_fhps_em` (explicit report date) | `stock_hk_dividend_payout_em`; `stock_hk_fhpx_detail_ths` (`view=event_detail`) | raw structured evidence only; no canonical dividend cash or payout ratio |
@@ -721,8 +740,8 @@ performance-report, business-composition, financial-abstract,
 financial-indicator, latest-indicator, dividend event/detail, disclosure-notice,
 risk-warning-status, trading-suspension, restricted-share-release,
 goodwill-impairment, ESG-rating, margin-trading, corporate-action,
-external-guarantee, share-capital, ownership-pledge, main-shareholder and
-insider-share-change raw slices it emits
+external-guarantee, company-litigation, share-capital, ownership-pledge,
+main-shareholder and insider-share-change raw slices it emits
 raw-record evidence only and explicit unresolved flags where needed; it does
 not emit canonical forecast-profit, revenue, margin, dividend, buyback,
 issuance, dilution, share, governance, pledged-cash, quasi-debt,
@@ -775,6 +794,10 @@ entity scope of the parent-equity denominator, and the treatment of the
 published ratio as evidence rather than a governance metric remain unresolved;
 no quasi-debt, illegal-guarantee or governance classification is admitted
 automatically.
+For the A-share company-litigation slice, the date-range aggregate versus an
+event or statement period, lawsuit amount completeness, legal status,
+accounting entity/scope and materiality threshold remain unresolved; no
+litigation, quasi-debt or governance classification is admitted automatically.
 For the A-share dividend-distribution snapshot, the explicit June-30 or
 December-31 report date and listing-filtered rows are retained, but ratio units,
 settled cash status, ordinary-versus-special classification and payout
@@ -885,6 +908,15 @@ governance-risk judgment. No material-quasi-debt, illegal-guarantee or
 governance fact is emitted automatically; H-share coverage and filing-backed
 review remain unresolved.
 
+For the A-share company-litigation slice, the documented
+`stock_cg_lawsuit_cninfo` universe and its requested-code result are retained
+as raw evidence only. `公告统计区间` is an aggregate announcement interval,
+while `诉讼次数` and `诉讼金额` do not by themselves establish a complete
+liability, material expected cash obligation, canonical accounting period or
+governance-risk judgment. No litigation, quasi-debt or governance fact is
+emitted automatically; H-share coverage and filing-backed review remain
+unresolved.
+
 For the A-share individual ownership-pledge detail slice, the documented
 `stock_gpzy_individual_pledge_ratio_detail_em` response and its requested-code
 result are retained as raw evidence only. Its holder/institution identity,
@@ -897,7 +929,7 @@ unresolved.
 
 ## 13. Deliberate non-goals
 
-This foundation plus the Phase 2.2–2.34 slices does not include:
+This foundation plus the Phase 2.2–2.35 slices does not include:
 
 - Tushare, BaoStock or any other additional provider;
 - automatic network scheduling, credentials or retry orchestration outside an adapter;

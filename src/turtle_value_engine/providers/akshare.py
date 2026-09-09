@@ -14,7 +14,8 @@ slices, including the restricted-share-release view, the A-share
 risk-warning-status, trading-suspension and main-shareholder raw slices, the
 H-share financial-indicator raw slice, the H-share latest-indicator raw slice,
 the A-share goodwill-impairment detail raw slice, the SSE margin-detail raw
-slice and the A-share individual ownership-pledge detail view.
+slice and the A-share individual ownership-pledge detail view and A-share
+company-litigation raw slice.
 Upstream column names are handled in this module and are never passed to the
 deterministic calculation or gate code.
 """
@@ -61,9 +62,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "34"
+AKSHARE_ADAPTER_VERSION = "35"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "35"
+AKSHARE_MAPPING_VERSION = "36"
 
 
 class ListingMarket(StrEnum):
@@ -99,6 +100,7 @@ AKSHARE_CAPABILITIES = ProviderCapabilities(
         DataCategory.CORPORATE_ACTIONS,
         DataCategory.SHARE_CAPITAL,
         DataCategory.EXTERNAL_GUARANTEES,
+        DataCategory.LITIGATION,
         DataCategory.OWNERSHIP_PLEDGE,
         DataCategory.INSIDER_SHARE_CHANGES,
         DataCategory.SHAREHOLDER_HOLDINGS,
@@ -149,6 +151,7 @@ _SOURCE_URIS = {
     "stock_gpzy_pledge_ratio_em": "https://data.eastmoney.com/gpzy/pledgeRatio.aspx",
     "stock_gpzy_individual_pledge_ratio_detail_em": "https://data.eastmoney.com/gpzy/detail/{symbol}.html",
     "stock_cg_guarantee_cninfo": "https://webapi.cninfo.com.cn/#/thematicStatistics",
+    "stock_cg_lawsuit_cninfo": "https://webapi.cninfo.com.cn/#/thematicStatistics",
     "stock_share_hold_change_sse": "http://www.sse.com.cn/disclosure/credibility/supervision/change/",
     "stock_share_hold_change_szse": "http://www.szse.cn/disclosure/supervision/change/index.html",
     "stock_share_hold_change_bse": "https://www.bse.cn/disclosure/djg_sharehold_change.html",
@@ -223,6 +226,9 @@ _CORPORATE_ACTION_PARAMETER_NAMES = frozenset({"start_date", "end_date"})
 _EXTERNAL_GUARANTEES_PARAMETER_NAMES = frozenset({"start_date", "end_date"})
 _EXTERNAL_GUARANTEES_DEFAULT_START_DATE = "20180630"
 _EXTERNAL_GUARANTEES_DEFAULT_END_DATE = "20210927"
+_LITIGATION_PARAMETER_NAMES = frozenset({"start_date", "end_date"})
+_LITIGATION_DEFAULT_START_DATE = "20180630"
+_LITIGATION_DEFAULT_END_DATE = "20210927"
 _OWNERSHIP_PLEDGE_PARAMETER_NAMES = frozenset({"date"})
 _OWNERSHIP_PLEDGE_DETAIL_PARAMETER_NAMES = frozenset({"view"})
 _OWNERSHIP_PLEDGE_DETAIL_VIEW = "individual_pledge_detail"
@@ -440,6 +446,13 @@ class AKShareProvider(StructuredDataProvider):
         ):
             raise ProviderRequestError(
                 "the AKShare external-guarantee endpoint supports A-share listings only",
+                provider=self.identity,
+                request=request,
+                retryable=False,
+            )
+        if request.category is DataCategory.LITIGATION and listing.market is not ListingMarket.A:
+            raise ProviderRequestError(
+                "the AKShare litigation endpoint supports A-share listings only",
                 provider=self.identity,
                 request=request,
                 retryable=False,
@@ -832,6 +845,24 @@ class AKShareProvider(StructuredDataProvider):
             response_metadata["upstream_symbol"] = kwargs["symbol"]
             response_metadata["start_date"] = kwargs["start_date"]
             response_metadata["end_date"] = kwargs["end_date"]
+        elif request.category is DataCategory.LITIGATION:
+            rows = _table_rows(payload, provider=self.identity, request=request)
+            selected = _select_listing_rows(
+                rows,
+                listing,
+                provider=self.identity,
+                request=request,
+                row_label="litigation",
+            )
+            payload = selected
+            response_metadata["upstream_row_count"] = len(rows)
+            response_metadata["entity_row_count"] = len(selected)
+            response_metadata["entity_rows_selected"] = True
+            response_metadata["listing_scoped_request"] = False
+            response_metadata["row_filtering"] = "provider"
+            response_metadata["upstream_symbol"] = kwargs["symbol"]
+            response_metadata["start_date"] = kwargs["start_date"]
+            response_metadata["end_date"] = kwargs["end_date"]
         elif request.category is DataCategory.OWNERSHIP_PLEDGE:
             rows = _table_rows(payload, provider=self.identity, request=request)
             if endpoint.name == "stock_gpzy_individual_pledge_ratio_detail_em":
@@ -1191,6 +1222,8 @@ class AKShareProvider(StructuredDataProvider):
                 return _corporate_action_kwargs(endpoint_name, listing, request)
             if request.category is DataCategory.EXTERNAL_GUARANTEES:
                 return _external_guarantees_kwargs(endpoint_name, listing, request)
+            if request.category is DataCategory.LITIGATION:
+                return _litigation_kwargs(endpoint_name, listing, request)
             if request.category is DataCategory.OWNERSHIP_PLEDGE:
                 return _ownership_pledge_kwargs(endpoint_name, listing, request)
             if request.category is DataCategory.INSIDER_SHARE_CHANGES:
@@ -1815,6 +1848,29 @@ class AKShareNormalizer:
                     {"governance_risk_level", "major_illegal_guarantee", "material_quasi_debt"}
                 )
                 normalizer_flags.add("AKSHARE_EXTERNAL_GUARANTEES_RAW_ONLY")
+            elif record.request.category is DataCategory.LITIGATION:
+                if listing.market is not ListingMarket.A:
+                    raise ProviderNormalizationError(
+                        "AKShare litigation raw slice supports A-share listings only"
+                    )
+                if record.response_metadata.get("endpoint") != "stock_cg_lawsuit_cninfo":
+                    raise ProviderNormalizationError(
+                        "AKShare litigation record must come from stock_cg_lawsuit_cninfo"
+                    )
+                try:
+                    _litigation_kwargs(
+                        "stock_cg_lawsuit_cninfo",
+                        listing,
+                        record.request,
+                    )
+                except ProviderRequestError as exc:
+                    raise ProviderNormalizationError(str(exc)) from exc
+                _validate_litigation_normalizer_rows(rows, listing)
+                # The documented response is a date-range aggregate. Its
+                # lawsuit count and amount do not establish a settled,
+                # material quasi-debt amount or a governance judgment.
+                missing_fields.update({"governance_risk_level", "material_quasi_debt"})
+                normalizer_flags.add("AKSHARE_LITIGATION_RAW_ONLY")
             elif record.request.category is DataCategory.SHARE_CAPITAL:
                 if listing.market is not ListingMarket.A:
                     raise ProviderNormalizationError(
@@ -1946,6 +2002,9 @@ class AKShareNormalizer:
             "and period basis are explicit. External-guarantee records remain raw "
             "structured evidence because the date-range aggregate does not establish "
             "a canonical quasi-debt amount or illegal-guarantee/governance judgment. "
+            "Litigation records remain raw structured evidence because their "
+            "date-range lawsuit totals do not establish a canonical quasi-debt "
+            "amount or governance judgment. "
             "Ownership-pledge records remain raw "
             "structured evidence until the affected holder, governance context "
             "and point-in-time interpretation are established. Filing "
@@ -1982,6 +2041,13 @@ class AKShareNormalizer:
                 "raw evidence only: its date-range guarantee totals, parent-equity "
                 "denominator and aggregate ratio do not establish canonical "
                 "quasi-debt or an illegal-guarantee/governance judgment."
+            )
+        if "AKSHARE_LITIGATION_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented A-share company-litigation response is retained as "
+                "raw evidence only: its date-range lawsuit totals and aggregate "
+                "interval do not establish canonical quasi-debt or a governance "
+                "judgment."
             )
         if "AKSHARE_SHARE_CAPITAL_RAW_ONLY" in normalizer_flags:
             notes += (
@@ -2375,6 +2441,10 @@ def _endpoint_candidates(
     if category is DataCategory.EXTERNAL_GUARANTEES:
         if market is ListingMarket.A:
             return ("stock_cg_guarantee_cninfo",)
+        return ()
+    if category is DataCategory.LITIGATION:
+        if market is ListingMarket.A:
+            return ("stock_cg_lawsuit_cninfo",)
         return ()
     if category is DataCategory.SHARE_CAPITAL:
         if share_capital_restricted_release_requested:
@@ -3310,6 +3380,74 @@ def _external_guarantees_date_parameter(
     except ValueError as exc:
         raise ProviderRequestError(
             f"external-guarantee {name} must be a valid YYYYMMDD date",
+            request=request,
+            retryable=False,
+        ) from exc
+    return raw_value, parsed
+
+
+def _litigation_kwargs(
+    endpoint_name: str,
+    listing: _ListingRef,
+    request: ProviderRequest,
+) -> dict[str, object]:
+    if endpoint_name != "stock_cg_lawsuit_cninfo":
+        raise ProviderRequestError(
+            f"unsupported AKShare litigation endpoint {endpoint_name!r}",
+            request=request,
+            retryable=False,
+        )
+    if listing.market is not ListingMarket.A:
+        raise ProviderRequestError(
+            "the AKShare litigation endpoint supports A-share listings only",
+            request=request,
+            retryable=False,
+        )
+    unknown = sorted(set(request.parameters) - _LITIGATION_PARAMETER_NAMES)
+    if unknown:
+        raise ProviderRequestError(
+            "unsupported AKShare litigation parameter(s): " + ", ".join(unknown),
+            request=request,
+            retryable=False,
+        )
+    start_date, start_value = _litigation_date_parameter(
+        request.parameters.get("start_date", _LITIGATION_DEFAULT_START_DATE),
+        name="start_date",
+        request=request,
+    )
+    end_date, end_value = _litigation_date_parameter(
+        request.parameters.get("end_date", _LITIGATION_DEFAULT_END_DATE),
+        name="end_date",
+        request=request,
+    )
+    if start_value > end_value:
+        raise ProviderRequestError(
+            "litigation start_date must not be after end_date",
+            request=request,
+            retryable=False,
+        )
+    # The documented endpoint's symbol is a board/universe selector; use 全部
+    # so the adapter can filter the requested listing locally.
+    return {"symbol": "全部", "start_date": start_date, "end_date": end_date}
+
+
+def _litigation_date_parameter(
+    raw_value: object,
+    *,
+    name: str,
+    request: ProviderRequest,
+) -> tuple[str, date]:
+    if not isinstance(raw_value, str) or not re.fullmatch(r"\d{8}", raw_value):
+        raise ProviderRequestError(
+            f"litigation {name} must be YYYYMMDD",
+            request=request,
+            retryable=False,
+        )
+    try:
+        parsed = datetime.strptime(raw_value, "%Y%m%d").date()
+    except ValueError as exc:
+        raise ProviderRequestError(
+            f"litigation {name} must be a valid YYYYMMDD date",
             request=request,
             retryable=False,
         ) from exc
@@ -4610,6 +4748,25 @@ def _validate_external_guarantees_normalizer_rows(
         if row_code != listing.code:
             raise ProviderNormalizationError(
                 f"external-guarantee row entity {row_code!r} does not match "
+                f"requested listing {listing.canonical_id!r}"
+            )
+
+
+def _validate_litigation_normalizer_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+) -> None:
+    """Keep replayed litigation universe rows inside the request entity."""
+
+    for row in rows:
+        row_code = _row_code(row, ListingMarket.A)
+        if row_code is None:
+            raise ProviderNormalizationError(
+                "litigation row has no explicit listing code"
+            )
+        if row_code != listing.code:
+            raise ProviderNormalizationError(
+                f"litigation row entity {row_code!r} does not match "
                 f"requested listing {listing.canonical_id!r}"
             )
 

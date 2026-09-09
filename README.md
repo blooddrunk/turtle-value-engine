@@ -224,6 +224,16 @@ emits `AKSHARE_INDIVIDUAL_PLEDGE_DETAIL_RAW_ONLY`, leaves
 `governance_risk_level` critically missing and creates no canonical share,
 cash, debt-equivalent or governance fact. H-share coverage and filing-backed
 pledge interpretation remain unresolved.
+Phase 2.35 adds the documented A-share CNINFO `stock_cg_lawsuit_cninfo`
+company-litigation universe under `LITIGATION`. The provider calls the
+documented `symbol="全部"` universe, filters by explicit listing code and
+preserves the requested date range, announcement interval, lawsuit count and
+amount as raw evidence. Because the date-range aggregate does not settle a
+canonical period, legal/accounting scope, material quasi-debt amount or
+governance judgment, the normalizer emits
+`AKSHARE_LITIGATION_RAW_ONLY`, leaves `material_quasi_debt` and
+`governance_risk_level` critically missing and creates no canonical fact.
+H-share coverage and filing-backed litigation review remain unresolved.
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

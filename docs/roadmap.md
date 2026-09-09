@@ -879,6 +879,28 @@ normalizer therefore retains raw evidence, emits
 H-share coverage and filing-backed pledge interpretation remain unresolved.
 Live calls remain opt-in; tests use an injected client and a frozen fixture.
 
+### Phase 2.35 — A-share company-litigation raw acquisition contract (COMPLETE)
+
+The mapping review now covers the documented CNINFO
+`stock_cg_lawsuit_cninfo` endpoint under a new provider-neutral `LITIGATION`
+category. The endpoint accepts a board/universe `symbol` plus `start_date` and
+`end_date` in `YYYYMMDD` form; the documented defaults are `全部`, `20180630`
+and `20210927`. Its response contains explicit A-share code/name,
+announcement-statistics interval, lawsuit count and lawsuit amount, with the
+amount documented in 万元. The provider calls the documented `symbol="全部"`
+universe, requires an explicit code on every row, filters to the requested
+listing and retains all matching rows with range, scope and row-count
+provenance.
+
+The date-range aggregate does not establish a canonical event or statement
+period, legal status, accounting entity/scope, or whether a reported amount is
+a material expected cash obligation. The normalizer therefore retains the
+response as structured evidence, emits `AKSHARE_LITIGATION_RAW_ONLY`, marks
+`material_quasi_debt` and `governance_risk_level` as critically missing, and
+creates no canonical litigation, quasi-debt, governance or valuation fact.
+H-share coverage and filing-backed litigation review remain unresolved. Live
+calls remain opt-in; tests use an injected client and a frozen fixture.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -888,7 +910,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.34 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.35 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -1096,7 +1118,7 @@ Phase 2 is active. Phase 1 remains frozen: changes to formulas, hard-gate
 semantics, schemas or `strict-v1` thresholds require a separately reviewed,
 versioned change.
 
-Phase 2.34 completes the next documented structured-data boundary while
+Phase 2.35 completes the next documented structured-data boundary while
 keeping share-change, repurchase and rights-issue period, status, unit and
 economic-scope questions unresolved, and keeping ownership-pledge holder,
 governance and economic-scope questions unresolved. The A-share
@@ -1204,3 +1226,10 @@ establish a fully diluted share count, settled pledged cash/debt-equivalent
 amount, beneficial control or a governance judgment. It leaves
 `governance_risk_level` critically missing; H-share coverage and filing-backed
 pledge interpretation remain unresolved.
+
+The documented A-share company-litigation response is retained under
+`AKSHARE_LITIGATION_RAW_ONLY` because its date-range lawsuit count, amount and
+aggregate interval do not establish a canonical event/statement period, legal
+status, accounting scope, material quasi-debt amount or governance judgment.
+It leaves `material_quasi_debt` and `governance_risk_level` critically missing;
+H-share coverage and filing-backed litigation review remain unresolved.
