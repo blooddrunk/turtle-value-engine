@@ -841,6 +841,34 @@ critically missing, and creates no canonical fact.
 | `归属于母公司所有者权益` | Raw provider denominator in 万元; it is not a canonical equity period/entity mapping. |
 | `担保金融占净资产比例` | Raw published ratio; it does not establish a canonical ratio, illegal-guarantee status or governance level. |
 
+## Phase 2.34 A-share individual ownership-pledge detail raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_gpzy_individual_pledge_ratio_detail_em` as an Eastmoney
+symbol-scoped A-share endpoint. It accepts a six-digit `symbol` and returns
+historical important-shareholder pledge rows with explicit code, holder,
+quantity/ratio, pledge institution, prices, announcement/start/end dates and
+status. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_gpzy_em.py)
+applies a `SECURITY_CODE` filter to the documented detail dataset.
+
+The provider selects this endpoint only for an explicit
+`OWNERSHIP_PLEDGE` request with `view=individual_pledge_detail`, passes only
+the six-digit code, validates the explicit code and any populated event dates,
+and preserves all rows as a listing-scoped raw response. The quantities,
+ratios, prices and status do not establish a canonical diluted share count,
+settled pledged cash/debt-equivalent amount or governance judgment. The
+normalizer therefore emits `AKSHARE_INDIVIDUAL_PLEDGE_DETAIL_RAW_ONLY`, marks
+`governance_risk_level` critically missing and creates no canonical fact.
+H-share coverage and filing-backed pledge interpretation remain unresolved.
+
+| Raw upstream item | Phase 2 treatment |
+| --- | --- |
+| `股票代码`, `股票简称` | Listing identity/context; explicit code is checked against the request. |
+| `股东名称`, `质押机构`, `状态` | Raw holder/counterparty/status context; no beneficial-control or governance conclusion. |
+| `质押股份数量`, `占所持股份比例`, `占总股本比例` | Raw quantity/ratios; no fully diluted share, dilution or canonical pledge amount is inferred. |
+| `最新价`, `质押日收盘价`, `预估平仓线` | Raw price/collateral context; no liquidation-risk, debt or valuation metric is calculated. |
+| `公告日期`, `质押开始日期`, `质押结束日期` | Raw event dates; no single canonical action/statement period is selected. |
+
 ## Eligibility, identity and market context
 
 | Normalized field | Status | Boundary note |

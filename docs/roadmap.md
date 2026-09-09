@@ -856,6 +856,29 @@ ratio fact. H-share coverage and filing-backed illegal-guarantee/governance
 review remain outside this slice. Live calls remain opt-in; tests use an
 injected client and a frozen fixture.
 
+### Phase 2.34 — A-share individual ownership-pledge detail raw acquisition contract (COMPLETE)
+
+The mapping review now covers the documented Eastmoney
+`stock_gpzy_individual_pledge_ratio_detail_em` endpoint under the existing
+`OWNERSHIP_PLEDGE` category. It accepts a six-digit A-share `symbol` and
+returns symbol-scoped historical important-shareholder pledge rows with
+explicit listing code, holder/institution, quantities/ratios, prices,
+announcement/start/end dates and status. The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_gpzy_em.py)
+define the documented interface and its `SECURITY_CODE` filter.
+
+The provider selects this endpoint only for the explicit request
+`view=individual_pledge_detail`, passes the requested code, validates explicit
+listing identity and any populated event dates, and retains every row with
+listing-scoped provenance. The documented quantities, ratios, prices and
+status do not establish a fully diluted share count, settled pledged
+cash/debt-equivalent amount, beneficial control or governance judgment. The
+normalizer therefore retains raw evidence, emits
+`AKSHARE_INDIVIDUAL_PLEDGE_DETAIL_RAW_ONLY`, marks
+`governance_risk_level` critically missing and creates no canonical fact.
+H-share coverage and filing-backed pledge interpretation remain unresolved.
+Live calls remain opt-in; tests use an injected client and a frozen fixture.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -865,7 +888,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.33 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.34 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -1073,7 +1096,7 @@ Phase 2 is active. Phase 1 remains frozen: changes to formulas, hard-gate
 semantics, schemas or `strict-v1` thresholds require a separately reviewed,
 versioned change.
 
-Phase 2.33 completes the next documented structured-data boundary while
+Phase 2.34 completes the next documented structured-data boundary while
 keeping share-change, repurchase and rights-issue period, status, unit and
 economic-scope questions unresolved, and keeping ownership-pledge holder,
 governance and economic-scope questions unresolved. The A-share
@@ -1173,3 +1196,11 @@ quasi-debt amount, legal guarantee status, canonical period/entity scope or a
 governance judgment. It leaves `material_quasi_debt`,
 `major_illegal_guarantee` and `governance_risk_level` critically missing; H-share
 coverage and filing-backed review remain unresolved.
+
+The documented A-share individual ownership-pledge detail response is retained
+under `AKSHARE_INDIVIDUAL_PLEDGE_DETAIL_RAW_ONLY` because its holder,
+institution, quantity, ratio, price, status and event-date fields do not
+establish a fully diluted share count, settled pledged cash/debt-equivalent
+amount, beneficial control or a governance judgment. It leaves
+`governance_risk_level` critically missing; H-share coverage and filing-backed
+pledge interpretation remain unresolved.

@@ -215,6 +215,15 @@ governance judgment, the normalizer emits
 `material_quasi_debt`, `major_illegal_guarantee` and
 `governance_risk_level` critically missing and creates no canonical fact.
 H-share coverage and filing-backed interpretation remain unresolved.
+Phase 2.34 adds the documented A-share
+`stock_gpzy_individual_pledge_ratio_detail_em` symbol-scoped detail endpoint
+as an explicit `view=individual_pledge_detail` under the existing
+`OWNERSHIP_PLEDGE` category. Its holder, institution, quantity, ratio, price,
+status and event-date fields remain raw structured evidence; the normalizer
+emits `AKSHARE_INDIVIDUAL_PLEDGE_DETAIL_RAW_ONLY`, leaves
+`governance_risk_level` critically missing and creates no canonical share,
+cash, debt-equivalent or governance fact. H-share coverage and filing-backed
+pledge interpretation remain unresolved.
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

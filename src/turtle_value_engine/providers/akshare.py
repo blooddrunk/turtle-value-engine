@@ -13,8 +13,8 @@ ownership-pledge, SSE/SZSE/BSE insider-share-change and A-share share-capital
 slices, including the restricted-share-release view, the A-share
 risk-warning-status, trading-suspension and main-shareholder raw slices, the
 H-share financial-indicator raw slice, the H-share latest-indicator raw slice,
-the A-share goodwill-impairment detail raw slice and the SSE margin-detail raw
-slice.
+the A-share goodwill-impairment detail raw slice, the SSE margin-detail raw
+slice and the A-share individual ownership-pledge detail view.
 Upstream column names are handled in this module and are never passed to the
 deterministic calculation or gate code.
 """
@@ -61,9 +61,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "33"
+AKSHARE_ADAPTER_VERSION = "34"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "34"
+AKSHARE_MAPPING_VERSION = "35"
 
 
 class ListingMarket(StrEnum):
@@ -147,6 +147,7 @@ _SOURCE_URIS = {
     "stock_restricted_release_queue_em": "https://data.eastmoney.com/dxf/q/600000.html",
     "stock_allotment_cninfo": "https://webapi.cninfo.com.cn/#/dataBrowse",
     "stock_gpzy_pledge_ratio_em": "https://data.eastmoney.com/gpzy/pledgeRatio.aspx",
+    "stock_gpzy_individual_pledge_ratio_detail_em": "https://data.eastmoney.com/gpzy/detail/{symbol}.html",
     "stock_cg_guarantee_cninfo": "https://webapi.cninfo.com.cn/#/thematicStatistics",
     "stock_share_hold_change_sse": "http://www.sse.com.cn/disclosure/credibility/supervision/change/",
     "stock_share_hold_change_szse": "http://www.szse.cn/disclosure/supervision/change/index.html",
@@ -223,6 +224,13 @@ _EXTERNAL_GUARANTEES_PARAMETER_NAMES = frozenset({"start_date", "end_date"})
 _EXTERNAL_GUARANTEES_DEFAULT_START_DATE = "20180630"
 _EXTERNAL_GUARANTEES_DEFAULT_END_DATE = "20210927"
 _OWNERSHIP_PLEDGE_PARAMETER_NAMES = frozenset({"date"})
+_OWNERSHIP_PLEDGE_DETAIL_PARAMETER_NAMES = frozenset({"view"})
+_OWNERSHIP_PLEDGE_DETAIL_VIEW = "individual_pledge_detail"
+_OWNERSHIP_PLEDGE_DETAIL_DATE_FIELDS = (
+    "公告日期",
+    "质押开始日期",
+    "质押结束日期",
+)
 _INSIDER_SHARE_CHANGE_PARAMETER_NAMES = frozenset()
 _TRADING_SUSPENSIONS_PARAMETER_NAMES = frozenset({"date"})
 _GOODWILL_IMPAIRMENT_ANNOUNCEMENT_DATE_FIELDS = (
@@ -826,39 +834,53 @@ class AKShareProvider(StructuredDataProvider):
             response_metadata["end_date"] = kwargs["end_date"]
         elif request.category is DataCategory.OWNERSHIP_PLEDGE:
             rows = _table_rows(payload, provider=self.identity, request=request)
-            requested_date = _parse_pledge_date_parameter(
-                kwargs["date"],
-                request=request,
-            )
-            _validate_ownership_pledge_provider_rows(
-                rows,
-                listing,
-                requested_date=requested_date,
-                provider=self.identity,
-                request=request,
-            )
-            selected = _select_listing_rows(
-                rows,
-                listing,
-                provider=self.identity,
-                request=request,
-                row_label="ownership-pledge",
-            )
-            if len(selected) > 1:
-                raise ProviderResponseError(
-                    f"AKShare returned ambiguous ownership-pledge rows for "
-                    f"{request.entity_id!r}",
+            if endpoint.name == "stock_gpzy_individual_pledge_ratio_detail_em":
+                _validate_ownership_pledge_detail_provider_rows(
+                    rows,
+                    listing,
                     provider=self.identity,
                     request=request,
                 )
-            payload = selected
-            response_metadata["upstream_row_count"] = len(rows)
-            response_metadata["entity_row_count"] = len(selected)
-            response_metadata["entity_rows_selected"] = True
-            response_metadata["listing_scoped_request"] = False
-            response_metadata["row_filtering"] = "provider"
-            response_metadata["requested_date"] = kwargs["date"]
-            response_metadata["observation_date"] = requested_date.isoformat()
+                response_metadata["upstream_row_count"] = len(rows)
+                response_metadata["entity_row_count"] = len(rows)
+                response_metadata["entity_rows_selected"] = True
+                response_metadata["listing_scoped_request"] = True
+                response_metadata["ownership_pledge_view"] = _OWNERSHIP_PLEDGE_DETAIL_VIEW
+                response_metadata["upstream_symbol"] = kwargs["symbol"]
+            else:
+                requested_date = _parse_pledge_date_parameter(
+                    kwargs["date"],
+                    request=request,
+                )
+                _validate_ownership_pledge_provider_rows(
+                    rows,
+                    listing,
+                    requested_date=requested_date,
+                    provider=self.identity,
+                    request=request,
+                )
+                selected = _select_listing_rows(
+                    rows,
+                    listing,
+                    provider=self.identity,
+                    request=request,
+                    row_label="ownership-pledge",
+                )
+                if len(selected) > 1:
+                    raise ProviderResponseError(
+                        f"AKShare returned ambiguous ownership-pledge rows for "
+                        f"{request.entity_id!r}",
+                        provider=self.identity,
+                        request=request,
+                    )
+                payload = selected
+                response_metadata["upstream_row_count"] = len(rows)
+                response_metadata["entity_row_count"] = len(selected)
+                response_metadata["entity_rows_selected"] = True
+                response_metadata["listing_scoped_request"] = False
+                response_metadata["row_filtering"] = "provider"
+                response_metadata["requested_date"] = kwargs["date"]
+                response_metadata["observation_date"] = requested_date.isoformat()
         elif request.category is DataCategory.INSIDER_SHARE_CHANGES:
             rows = _table_rows(payload, provider=self.identity, request=request)
             _validate_insider_share_change_provider_rows(
@@ -1106,6 +1128,9 @@ class AKShareProvider(StructuredDataProvider):
             ),
             share_capital_restricted_release_requested=(
                 request.parameters.get("view") == _RESTRICTED_RELEASE_VIEW
+            ),
+            ownership_pledge_detail_requested=(
+                request.parameters.get("view") == _OWNERSHIP_PLEDGE_DETAIL_VIEW
             ),
             dividend_snapshot_date_requested="date" in request.parameters,
             dividend_detail_requested="view" in request.parameters,
@@ -1818,23 +1843,42 @@ class AKShareNormalizer:
                     raise ProviderNormalizationError(
                         "AKShare ownership-pledge raw slice supports A-share listings only"
                     )
-                try:
-                    requested_date = _parse_pledge_date_parameter(
-                        record.request.parameters.get("date"),
-                        request=record.request,
+                endpoint_name = record.response_metadata.get("endpoint")
+                if endpoint_name == "stock_gpzy_individual_pledge_ratio_detail_em":
+                    try:
+                        _ownership_pledge_kwargs(
+                            "stock_gpzy_individual_pledge_ratio_detail_em",
+                            listing,
+                            record.request,
+                        )
+                    except ProviderRequestError as exc:
+                        raise ProviderNormalizationError(str(exc)) from exc
+                    _validate_ownership_pledge_detail_normalizer_rows(rows, listing)
+                    normalizer_flags.add("AKSHARE_INDIVIDUAL_PLEDGE_DETAIL_RAW_ONLY")
+                elif endpoint_name == "stock_gpzy_pledge_ratio_em":
+                    try:
+                        requested_date = _parse_pledge_date_parameter(
+                            record.request.parameters.get("date"),
+                            request=record.request,
+                        )
+                    except ProviderRequestError as exc:
+                        raise ProviderNormalizationError(str(exc)) from exc
+                    _validate_ownership_pledge_rows(
+                        rows,
+                        listing,
+                        observation_date=requested_date,
                     )
-                except ProviderRequestError as exc:
-                    raise ProviderNormalizationError(str(exc)) from exc
-                _validate_ownership_pledge_rows(
-                    rows,
-                    listing,
-                    observation_date=requested_date,
-                )
-                # A dated pledge ratio is a screening signal only. It does not
+                    normalizer_flags.add("AKSHARE_OWNERSHIP_PLEDGE_RAW_ONLY")
+                else:
+                    raise ProviderNormalizationError(
+                        "AKShare ownership-pledge record must come from "
+                        "stock_gpzy_pledge_ratio_em or "
+                        "stock_gpzy_individual_pledge_ratio_detail_em"
+                    )
+                # Pledge observations are screening evidence only. They do not
                 # establish governance severity, controlling-shareholder
                 # identity, cash accessibility or a strict-v1 debt/cash fact.
                 missing_fields.add("governance_risk_level")
-                normalizer_flags.add("AKSHARE_OWNERSHIP_PLEDGE_RAW_ONLY")
             elif record.request.category is DataCategory.INSIDER_SHARE_CHANGES:
                 if listing.canonical_id[:2] not in {"SH", "SZ", "BJ"}:
                     raise ProviderNormalizationError(
@@ -1972,6 +2016,13 @@ class AKShareNormalizer:
                 "raw evidence only: its ratio and observation date do not identify "
                 "a controlling holder or establish a governance-risk conclusion, "
                 "pledged cash amount or debt-equivalent fact."
+            )
+        if "AKSHARE_INDIVIDUAL_PLEDGE_DETAIL_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented A-share individual ownership-pledge detail response "
+                "is retained as raw evidence only: holder, quantity, status and event "
+                "dates do not establish a canonical share, cash, debt-equivalent or "
+                "governance fact."
             )
         if "AKSHARE_INSIDER_SHARE_CHANGE_RAW_ONLY" in normalizer_flags:
             notes += (
@@ -2211,6 +2262,7 @@ def _endpoint_candidates(
     corporate_action_date_requested: bool = False,
     share_capital_date_requested: bool = False,
     share_capital_restricted_release_requested: bool = False,
+    ownership_pledge_detail_requested: bool = False,
     dividend_snapshot_date_requested: bool = False,
     dividend_detail_requested: bool = False,
 ) -> tuple[str, ...]:
@@ -2334,6 +2386,8 @@ def _endpoint_candidates(
         return ("stock_zh_a_gbjg_em",)
     if category is DataCategory.OWNERSHIP_PLEDGE:
         if market is ListingMarket.A:
+            if ownership_pledge_detail_requested:
+                return ("stock_gpzy_individual_pledge_ratio_detail_em",)
             return ("stock_gpzy_pledge_ratio_em",)
         return ()
     if category is DataCategory.INSIDER_SHARE_CHANGES:
@@ -2944,6 +2998,31 @@ def _ownership_pledge_kwargs(
     listing: _ListingRef,
     request: ProviderRequest,
 ) -> dict[str, object]:
+    if endpoint_name == "stock_gpzy_individual_pledge_ratio_detail_em":
+        if listing.market is not ListingMarket.A:
+            raise ProviderRequestError(
+                "the AKShare individual ownership-pledge endpoint supports A-share listings only",
+                request=request,
+                retryable=False,
+            )
+        unknown = sorted(
+            set(request.parameters) - _OWNERSHIP_PLEDGE_DETAIL_PARAMETER_NAMES
+        )
+        if unknown:
+            raise ProviderRequestError(
+                "unsupported AKShare individual ownership-pledge parameter(s): "
+                + ", ".join(unknown),
+                request=request,
+                retryable=False,
+            )
+        if request.parameters.get("view") != _OWNERSHIP_PLEDGE_DETAIL_VIEW:
+            raise ProviderRequestError(
+                "individual ownership-pledge view must be "
+                f"{_OWNERSHIP_PLEDGE_DETAIL_VIEW!r}",
+                request=request,
+                retryable=False,
+            )
+        return {"symbol": listing.code}
     if endpoint_name != "stock_gpzy_pledge_ratio_em":
         raise ProviderRequestError(
             f"unsupported AKShare ownership-pledge endpoint {endpoint_name!r}",
@@ -5020,6 +5099,32 @@ def _validate_ownership_pledge_rows(
             )
 
 
+def _validate_ownership_pledge_detail_normalizer_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+) -> None:
+    """Validate replayed symbol-scoped individual pledge-detail rows."""
+
+    for row in rows:
+        row_code = _row_code(row, ListingMarket.A)
+        if row_code is None:
+            raise ProviderNormalizationError(
+                "individual ownership-pledge row has no explicit listing code"
+            )
+        if row_code != listing.code:
+            raise ProviderNormalizationError(
+                f"individual ownership-pledge row entity {row_code!r} does not match "
+                f"requested listing {listing.canonical_id!r}"
+            )
+        for field in _OWNERSHIP_PLEDGE_DETAIL_DATE_FIELDS:
+            found, raw_date = _lookup(row, (field,))
+            if found and _text_value(raw_date) is not None:
+                if _parse_date_value(raw_date) is None:
+                    raise ProviderNormalizationError(
+                        f"individual ownership-pledge row has an invalid date in {field!r}"
+                    )
+
+
 def _validate_insider_share_change_normalizer_rows(
     rows: Sequence[Mapping[str, JSONValue]],
     listing: _ListingRef,
@@ -5082,6 +5187,43 @@ def _validate_ownership_pledge_provider_rows(
                 provider=provider,
                 request=request,
             )
+
+
+def _validate_ownership_pledge_detail_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> None:
+    """Validate symbol-scoped individual pledge-detail rows before storage."""
+
+    for row in rows:
+        row_code = _row_code(row, ListingMarket.A)
+        if row_code is None:
+            raise ProviderResponseError(
+                f"AKShare returned an individual ownership-pledge row without a listing "
+                f"code for {request.entity_id!r}",
+                provider=provider,
+                request=request,
+            )
+        if row_code != listing.code:
+            raise ProviderResponseError(
+                f"AKShare returned individual ownership-pledge row entity {row_code!r} "
+                f"for requested listing {listing.canonical_id!r}",
+                provider=provider,
+                request=request,
+            )
+        for field in _OWNERSHIP_PLEDGE_DETAIL_DATE_FIELDS:
+            found, raw_date = _lookup(row, (field,))
+            if found and _text_value(raw_date) is not None:
+                if _parse_date_value(raw_date) is None:
+                    raise ProviderResponseError(
+                        f"AKShare returned an individual ownership-pledge row with an "
+                        f"invalid date in {field!r} for {request.entity_id!r}",
+                        provider=provider,
+                        request=request,
+                    )
 
 
 def _validate_insider_share_change_provider_rows(

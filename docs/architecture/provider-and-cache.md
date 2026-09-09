@@ -1,6 +1,6 @@
 # Provider and Cache Architecture
 
-> Status: Phase 2 foundation, read-only AKShare statement slices, earnings forecasts/quick reports/performance reports/business composition/financial abstract/financial indicators, H-share latest indicators, dividend events/snapshots/detail, A-share disclosure-notice metadata, risk-warning status, trading-suspension, restricted-share-release, goodwill-impairment, ESG-rating, SSE margin-detail, share-capital, corporate-action, external-guarantee, ownership-pledge, main-shareholder and SSE/SZSE/BSE insider-share-change raw slices
+> Status: Phase 2 foundation, read-only AKShare statement slices, earnings forecasts/quick reports/performance reports/business composition/financial abstract/financial indicators, H-share latest indicators, dividend events/snapshots/detail, A-share disclosure-notice metadata, risk-warning status, trading-suspension, restricted-share-release, goodwill-impairment, ESG-rating, SSE margin-detail, share-capital, corporate-action, external-guarantee, ownership-pledge snapshot/detail, main-shareholder and SSE/SZSE/BSE insider-share-change raw slices
 
 This document freezes the boundary between structured-data acquisition and the
 deterministic Turtle Value Engine. It does not authorize a live provider or
@@ -490,6 +490,20 @@ canonical period/entity scope or governance judgment. The normalizer emits
 `governance_risk_level` as critically missing and creates no canonical fact.
 H-share coverage and filing-backed review remain unresolved.
 
+The A-share individual ownership-pledge detail sub-slice is also
+acquisition-only. The current [AKShare documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_gpzy_em.py)
+document `stock_gpzy_individual_pledge_ratio_detail_em` as a symbol-scoped
+Eastmoney detail response. The adapter selects it only with
+`view=individual_pledge_detail`, passes the six-digit code, validates explicit
+row codes and populated announcement/start/end dates, and retains every row.
+Holder/institution identity, quantities/ratios, prices, status and event dates
+remain raw evidence: they do not establish beneficial control, a fully diluted
+share count, settled pledged cash/debt-equivalent amount or a governance
+judgment. The normalizer emits
+`AKSHARE_INDIVIDUAL_PLEDGE_DETAIL_RAW_ONLY`, marks
+`governance_risk_level` as critically missing and creates no canonical fact.
+
 When a statement row includes an explicit security code, the normalizer also
 checks it against the requested listing and rejects a mismatch. Statement
 endpoints that omit a row-level code remain bound to their listing-scoped
@@ -644,7 +658,7 @@ The cache performs no network retries. The normalizer performs no provider
 retries. The deterministic pipeline performs no provider retries and should
 not be rerun as a substitute for resolving missing facts.
 
-## 12. Phase 2.2–2.33 AKShare adapter
+## 12. Phase 2.2–2.34 AKShare adapter
 
 The first concrete adapter is intentionally limited to read-only metadata,
 market observations, three documented financial-statement slices, raw-only
@@ -652,7 +666,7 @@ earnings-forecast, earnings-quick-report, performance-report,
 business-composition and financial-abstract categories, A/H financial-indicator
 raw slices, raw-only dividend event/snapshot/detail, corporate-action and
 external-guarantee categories,
-three A-share share-capital raw slices, one A-share ownership-pledge raw slice,
+three A-share share-capital raw slices, two A-share ownership-pledge raw views,
 an H-share latest-indicator raw slice, an A-share disclosure-notice raw slice,
 an A-share risk-warning-status, trading-suspension, goodwill-impairment,
 ESG-rating, SSE margin-detail, external-guarantee and main-shareholder raw slice and
@@ -685,7 +699,7 @@ advertises exactly these capabilities:
 | `DISCLOSURE_NOTICES` | `stock_zh_a_disclosure_report_cninfo` (`market=沪深京`, optional filters/date range) | — | listing-bound announcement metadata as raw structured evidence only; no filing-content, accounting or governance fact |
 | `CORPORATE_ACTIONS` | `stock_repurchase_em` (no parameters); `stock_allotment_cninfo` (date-range request) | — | A-share repurchase or rights-issue rows; raw structured evidence only; no canonical buyback, issuance or dilution fact |
 | `SHARE_CAPITAL` | `stock_zh_a_gbjg_em` (no parameters); `stock_share_change_cninfo` (explicit date range); `stock_restricted_release_queue_em` (`view=restricted_release_queue`) | — | raw historical response and provenance only; no canonical share/dilution fact |
-| `OWNERSHIP_PLEDGE` | `stock_gpzy_pledge_ratio_em` (exact `date`) | — | date-bound A-share pledge-ratio snapshot; raw structured evidence only; no canonical governance, cash or debt-equivalent fact |
+| `OWNERSHIP_PLEDGE` | `stock_gpzy_pledge_ratio_em` (exact `date`); `stock_gpzy_individual_pledge_ratio_detail_em` (`view=individual_pledge_detail`) | — | date-bound snapshot or symbol-scoped detail as raw structured evidence only; no canonical governance, share, cash or debt-equivalent fact |
 | `INSIDER_SHARE_CHANGES` | `stock_share_hold_change_sse` (Shanghai); `stock_share_hold_change_szse` (Shenzhen); `stock_share_hold_change_bse` (Beijing) | — | listing-scoped A-share insider/related-person rows as raw structured evidence only; no canonical share, dilution, governance, buyback or issuance fact |
 | `SHAREHOLDER_HOLDINGS` | `stock_main_stock_holder` (`stock`) | — | listing-scoped A-share historical main-shareholder rows as raw structured evidence only; no canonical ownership, share, dilution or governance fact |
 
@@ -748,11 +762,13 @@ a null currency still requires later source review before cross-currency
 calculations. For the rights-issue slice, planned-versus-completed outcome,
 effective-date basis, amount unit/scaling and share-class/dilution semantics
 remain unresolved; no capital-action classification is admitted automatically.
-For the ownership-pledge slice, the exact observation date and ratio are
-retained for the requested A-share snapshot, but affected-holder identity,
-controlling-owner status, governance severity, pledged-cash accessibility and
-debt-equivalent treatment remain unresolved; no governance-risk conclusion is
-admitted automatically.
+For the ownership-pledge slices, the exact observation date and ratio are
+retained for the requested A-share snapshot, while the individual detail view
+also retains holder/institution, quantity, price, status and event-date rows.
+Affected-holder identity, controlling-owner status, governance severity,
+pledged-cash accessibility, diluted-share treatment and debt-equivalent
+classification remain unresolved; no governance-risk conclusion is admitted
+automatically.
 For the A-share external-guarantee slice, the date-range aggregate versus an
 event or reporting period, guarantee purpose and legal status, the unit and
 entity scope of the parent-equity denominator, and the treatment of the
@@ -869,9 +885,19 @@ governance-risk judgment. No material-quasi-debt, illegal-guarantee or
 governance fact is emitted automatically; H-share coverage and filing-backed
 review remain unresolved.
 
+For the A-share individual ownership-pledge detail slice, the documented
+`stock_gpzy_individual_pledge_ratio_detail_em` response and its requested-code
+result are retained as raw evidence only. Its holder/institution identity,
+quantities/ratios, prices, status and event dates do not establish beneficial
+control, a fully diluted share count, settled pledged cash/debt-equivalent
+amount or a governance judgment. No share, cash, debt-equivalent or governance
+fact is emitted automatically; `governance_risk_level` remains critically
+missing and H-share coverage plus filing-backed pledge interpretation remain
+unresolved.
+
 ## 13. Deliberate non-goals
 
-This foundation plus the Phase 2.2–2.33 slices does not include:
+This foundation plus the Phase 2.2–2.34 slices does not include:
 
 - Tushare, BaoStock or any other additional provider;
 - automatic network scheduling, credentials or retry orchestration outside an adapter;

@@ -273,6 +273,13 @@ class FakeAKShare:
             date=date,
         )
 
+    def stock_gpzy_individual_pledge_ratio_detail_em(self, *, symbol: str):
+        return self._return(
+            "stock_gpzy_individual_pledge_ratio_detail_em",
+            _fixture("a_individual_pledge_detail.json"),
+            symbol=symbol,
+        )
+
     def stock_share_hold_change_sse(self, *, symbol: str):
         return self._return(
             "stock_share_hold_change_sse",
@@ -378,8 +385,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "33"
-    assert AKSHARE_MAPPING_VERSION == "34"
+    assert provider.identity.provider_version == "34"
+    assert AKSHARE_MAPPING_VERSION == "35"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -1542,6 +1549,198 @@ def test_ownership_pledge_cache_replay_does_not_call_upstream(tmp_path: Path):
     assert replay.record == live.record
     assert fake.calls == [
         ("stock_gpzy_pledge_ratio_em", {"date": "20241220"}),
+    ]
+
+
+def test_a_individual_ownership_pledge_detail_fetch_uses_explicit_view_and_symbol():
+    fake = FakeAKShare()
+    record = _provider(fake).fetch(
+        _request(
+            DataCategory.OWNERSHIP_PLEDGE,
+            "SH600000",
+            {"view": "individual_pledge_detail"},
+        )
+    )
+
+    assert record.raw_payload == _fixture("a_individual_pledge_detail.json")
+    assert fake.calls == [
+        (
+            "stock_gpzy_individual_pledge_ratio_detail_em",
+            {"symbol": "600000"},
+        ),
+    ]
+    assert record.response_metadata["endpoint"] == (
+        "stock_gpzy_individual_pledge_ratio_detail_em"
+    )
+    assert record.response_metadata["upstream_row_count"] == 2
+    assert record.response_metadata["entity_row_count"] == 2
+    assert record.response_metadata["entity_rows_selected"] is True
+    assert record.response_metadata["listing_scoped_request"] is True
+    assert record.response_metadata["ownership_pledge_view"] == (
+        "individual_pledge_detail"
+    )
+    assert record.response_metadata["upstream_symbol"] == "600000"
+    assert record.source_uri == "https://data.eastmoney.com/gpzy/detail/{symbol}.html"
+
+
+def test_individual_ownership_pledge_detail_requires_its_explicit_view_and_a_share():
+    fake = FakeAKShare()
+    provider = _provider(fake)
+
+    with pytest.raises(ProviderRequestError, match="unsupported AKShare .*ownership-pledge"):
+        provider.fetch(
+            _request(
+                DataCategory.OWNERSHIP_PLEDGE,
+                "SH600000",
+                {"view": "individual_pledge_detail", "date": "20241220"},
+            )
+        )
+    with pytest.raises(ProviderRequestError, match="unsupported AKShare .*ownership-pledge"):
+        provider.fetch(
+            _request(
+                DataCategory.OWNERSHIP_PLEDGE,
+                "SH600000",
+                {"view": "other_pledge_view"},
+            )
+        )
+    with pytest.raises(ProviderRequestError, match="A-share listings only"):
+        provider.fetch(
+            _request(
+                DataCategory.OWNERSHIP_PLEDGE,
+                "HK00700",
+                {"view": "individual_pledge_detail"},
+            )
+        )
+
+    assert fake.calls == []
+
+
+def test_individual_ownership_pledge_detail_response_rejects_another_listing():
+    class WrongListingAKShare(FakeAKShare):
+        def stock_gpzy_individual_pledge_ratio_detail_em(self, *, symbol: str):
+            payload = _fixture("a_individual_pledge_detail.json")
+            payload[0]["股票代码"] = "000001"
+            return self._return(
+                "stock_gpzy_individual_pledge_ratio_detail_em",
+                payload,
+                symbol=symbol,
+            )
+
+    with pytest.raises(ProviderResponseError, match="individual ownership-pledge row entity"):
+        _provider(WrongListingAKShare()).fetch(
+            _request(
+                DataCategory.OWNERSHIP_PLEDGE,
+                "SH600000",
+                {"view": "individual_pledge_detail"},
+            )
+        )
+
+
+def test_individual_ownership_pledge_detail_response_rejects_invalid_event_date():
+    class InvalidDateAKShare(FakeAKShare):
+        def stock_gpzy_individual_pledge_ratio_detail_em(self, *, symbol: str):
+            payload = _fixture("a_individual_pledge_detail.json")
+            payload[0]["公告日期"] = "not-a-date"
+            return self._return(
+                "stock_gpzy_individual_pledge_ratio_detail_em",
+                payload,
+                symbol=symbol,
+            )
+
+    with pytest.raises(ProviderResponseError, match="invalid date in '公告日期'"):
+        _provider(InvalidDateAKShare()).fetch(
+            _request(
+                DataCategory.OWNERSHIP_PLEDGE,
+                "SH600000",
+                {"view": "individual_pledge_detail"},
+            )
+        )
+
+
+def test_individual_ownership_pledge_detail_raw_record_is_not_promoted_to_facts():
+    provider = _provider()
+    record = provider.fetch(
+        _request(
+            DataCategory.OWNERSHIP_PLEDGE,
+            "SH600000",
+            {"view": "individual_pledge_detail"},
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="individual-pledge-detail-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_INDIVIDUAL_PLEDGE_DETAIL_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == [
+        "governance_risk_level",
+    ]
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "individual ownership-pledge detail" in normalized.data_quality.notes
+    assert "canonical share" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    errors = list(Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json")))
+    assert errors == []
+
+
+def test_individual_ownership_pledge_detail_normalizer_rejects_replayed_rows_for_another_listing():
+    provider = _provider()
+    record = provider.fetch(
+        _request(
+            DataCategory.OWNERSHIP_PLEDGE,
+            "SH600000",
+            {"view": "individual_pledge_detail"},
+        )
+    )
+    mismatched_payload = [dict(row) for row in record.raw_payload]
+    mismatched_payload[0]["股票代码"] = "000001"
+    mismatched = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=mismatched_payload,
+        source_uri=record.source_uri,
+        response_metadata=record.response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match="individual ownership-pledge row entity"):
+        normalize_akshare_records(
+            [mismatched],
+            analysis_id="mismatched-individual-pledge-detail",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_individual_ownership_pledge_detail_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.OWNERSHIP_PLEDGE,
+        "SH600000",
+        {"view": "individual_pledge_detail"},
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [
+        (
+            "stock_gpzy_individual_pledge_ratio_detail_em",
+            {"symbol": "600000"},
+        ),
     ]
 
 
