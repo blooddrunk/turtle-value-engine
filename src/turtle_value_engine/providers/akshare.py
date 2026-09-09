@@ -1,0 +1,1317 @@
+"""Read-only AKShare acquisition and normalization for A/H market data.
+
+The adapter deliberately keeps the optional ``akshare`` dependency lazy.  A
+normal test run can import this module, inspect its capabilities and replay
+cached records without installing AKShare or making a network request.
+
+Only the four structured categories needed for the first Phase 2.2 slice are
+implemented.  Upstream column names are handled in this module and are never
+passed to the deterministic calculation or gate code.
+"""
+
+from __future__ import annotations
+
+import importlib
+import math
+import re
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
+from datetime import UTC, date, datetime, timedelta
+from enum import StrEnum
+from numbers import Integral, Real
+
+from turtle_value_engine.models import (
+    Company,
+    ConfidenceLevel,
+    DataQuality,
+    Evidence,
+    Fact,
+    NormalizedCompanyInput,
+    Source,
+)
+from turtle_value_engine.models.common import EvidenceDirection, EvidenceStrength, SourceType
+
+from .base import StructuredDataProvider
+from .cache import CacheKey, ProviderFetchResult, RawResponseCache, fetch_with_cache
+from .errors import (
+    ProviderCapabilityError,
+    ProviderError,
+    ProviderNormalizationError,
+    ProviderRequestError,
+    ProviderResponseError,
+)
+from .models import (
+    DataCategory,
+    JSONValue,
+    ProviderCapabilities,
+    ProviderIdentity,
+    ProviderRequest,
+    RawProviderRecord,
+    canonical_json_bytes,
+)
+from .normalization import deterministic_id
+
+AKSHARE_ADAPTER_VERSION = "1"
+AKSHARE_SOURCE_NAME = "AKShare"
+AKSHARE_MAPPING_VERSION = "1"
+
+
+class ListingMarket(StrEnum):
+    """The two listing markets handled by this adapter."""
+
+    A = "A"
+    H = "H"
+
+
+AKSHARE_CAPABILITIES = ProviderCapabilities(
+    {
+        DataCategory.COMPANY_METADATA,
+        DataCategory.LISTING_METADATA,
+        DataCategory.MARKET_QUOTE,
+        DataCategory.MARKET_HISTORY,
+    }
+)
+
+
+_SOURCE_URIS = {
+    "stock_info_a_code_name": "https://akshare.akfamily.xyz/data/stock/stock.html",
+    "stock_zh_ah_name": "https://akshare.akfamily.xyz/data/stock/stock.html",
+    "stock_zh_a_spot_em": "https://quote.eastmoney.com/center/gridlist.html#hs_a_board",
+    "stock_zh_a_spot": "https://finance.sina.com.cn/realstock/company/",
+    "stock_hk_spot_em": "http://quote.eastmoney.com/center/gridlist.html#hk_stocks",
+    "stock_hk_spot": "http://stock.finance.sina.com.cn/hkstock/",
+    "stock_zh_ah_spot_em": "https://quote.eastmoney.com/center/gridlist.html#ah_comparison",
+    "stock_zh_a_hist": "https://quote.eastmoney.com/concept/",
+    "stock_zh_a_daily": "https://finance.sina.com.cn/realstock/company/",
+    "stock_hk_daily": "http://stock.finance.sina.com.cn/hkstock/",
+    "stock_zh_ah_daily": "https://gu.qq.com/",
+    "stock_hk_company_profile_em": "https://emweb.securities.eastmoney.com/PC_HKF10/pages/home/index.html",
+    "stock_hk_security_profile_em": "https://emweb.securities.eastmoney.com/PC_HKF10/pages/home/index.html",
+}
+
+_NO_ARGUMENT_ENDPOINTS = frozenset(
+    {
+        "stock_info_a_code_name",
+        "stock_zh_ah_name",
+        "stock_zh_a_spot_em",
+        "stock_zh_a_spot",
+        "stock_hk_spot_em",
+        "stock_hk_spot",
+        "stock_zh_ah_spot_em",
+    }
+)
+
+_ROW_SELECT_CATEGORIES = frozenset(
+    {
+        DataCategory.COMPANY_METADATA,
+        DataCategory.LISTING_METADATA,
+        DataCategory.MARKET_QUOTE,
+    }
+)
+
+_HISTORY_PARAMETER_NAMES = frozenset(
+    {
+        "adjust",
+        "end_date",
+        "end_year",
+        "period",
+        "start_date",
+        "start_year",
+    }
+)
+
+_DATE_FORMATS = ("%Y-%m-%d", "%Y%m%d", "%Y/%m/%d", "%Y-%m-%d %H:%M:%S")
+_MISSING_TEXT = frozenset({"", "-", "--", "—", "na", "n/a", "nan", "nat", "none", "null"})
+
+
+@dataclass(frozen=True, slots=True)
+class _ListingRef:
+    market: ListingMarket
+    code: str
+    canonical_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class _Endpoint:
+    name: str
+    function: Callable[..., object]
+    source_uri: str
+
+
+class AKShareProvider(StructuredDataProvider):
+    """Acquire opaque, read-only AKShare records for one A/H listing.
+
+    ``client`` is injectable so deterministic tests can provide a tiny fake
+    object.  When omitted, importing ``akshare`` is deferred until the first
+    actual fetch.  No adapter method mutates an upstream resource.
+    """
+
+    def __init__(
+        self,
+        client: object | None = None,
+        *,
+        provider_version: str = AKSHARE_ADAPTER_VERSION,
+        source_name: str = AKSHARE_SOURCE_NAME,
+        clock: Callable[[], datetime] | None = None,
+    ) -> None:
+        self._client = client
+        self._identity = ProviderIdentity(
+            provider_id="akshare",
+            provider_version=provider_version,
+            source_name=source_name,
+        )
+        self._clock = clock or (lambda: datetime.now(UTC))
+
+    @property
+    def identity(self) -> ProviderIdentity:
+        """Return the stable adapter/source identity used by the cache."""
+
+        return self._identity
+
+    @property
+    def capabilities(self) -> ProviderCapabilities:
+        """Return the exact categories implemented by this adapter slice."""
+
+        return AKSHARE_CAPABILITIES
+
+    def fetch_raw(self, request: ProviderRequest) -> RawProviderRecord:
+        """Fetch one opaque record and retain provider fields only in its payload."""
+
+        if not isinstance(request, ProviderRequest):
+            raise TypeError("request must be a ProviderRequest")
+        if not self.capabilities.supports(request.category):
+            raise ProviderCapabilityError(
+                f"AKShare adapter does not support {request.category.value!r}",
+                provider=self.identity,
+                request=request,
+            )
+
+        listing = _parse_listing_id(request.entity_id, provider=self.identity, request=request)
+        client = self._load_client(request)
+        endpoint = self._resolve_endpoint(client, listing.market, request.category, request)
+        kwargs = self._endpoint_kwargs(endpoint.name, listing, request)
+
+        try:
+            upstream_response = endpoint.function(**kwargs)
+        except ProviderError:
+            raise
+        except Exception as exc:
+            raise ProviderRequestError(
+                f"AKShare endpoint {endpoint.name!r} failed for {request.entity_id!r}",
+                provider=self.identity,
+                request=request,
+                retryable=_is_probably_retryable(exc),
+            ) from exc
+
+        try:
+            payload = _to_json_value(upstream_response)
+        except ProviderResponseError as exc:
+            raise ProviderResponseError(
+                f"AKShare endpoint {endpoint.name!r} returned a non-JSON response: {exc}",
+                provider=self.identity,
+                request=request,
+            ) from exc
+
+        response_metadata: dict[str, JSONValue] = {
+            "endpoint": endpoint.name,
+            "market": listing.market.value,
+            "listing_code": listing.code,
+            "raw_response_type": type(upstream_response).__name__,
+        }
+        library_version = getattr(client, "__version__", None)
+        if isinstance(library_version, str) and library_version:
+            response_metadata["library_version"] = library_version
+
+        if request.category in _ROW_SELECT_CATEGORIES:
+            rows = _table_rows(payload, provider=self.identity, request=request)
+            selected = _select_listing_row(
+                rows,
+                listing,
+                provider=self.identity,
+                request=request,
+            )
+            payload = selected
+            response_metadata["upstream_row_count"] = len(rows)
+            response_metadata["entity_row_selected"] = True
+        elif request.category is DataCategory.MARKET_HISTORY:
+            rows = _table_rows(payload, provider=self.identity, request=request)
+            response_metadata["upstream_row_count"] = len(rows)
+            if listing.market is ListingMarket.H and _has_history_range(request.parameters):
+                response_metadata["range_filtering"] = "normalizer"
+
+        try:
+            retrieved_at = self._clock()
+        except Exception as exc:
+            raise ProviderResponseError(
+                "AKShare retrieval clock failed",
+                provider=self.identity,
+                request=request,
+            ) from exc
+        if not isinstance(retrieved_at, datetime):
+            raise ProviderResponseError(
+                "AKShare retrieval clock must return a datetime",
+                provider=self.identity,
+                request=request,
+            )
+
+        return RawProviderRecord(
+            provider=self.identity,
+            request=request,
+            retrieved_at=retrieved_at,
+            raw_payload=payload,
+            source_uri=endpoint.source_uri,
+            response_metadata=response_metadata,
+        )
+
+    def _load_client(self, request: ProviderRequest) -> object:
+        if self._client is not None:
+            return self._client
+        try:
+            self._client = importlib.import_module("akshare")
+        except ImportError as exc:
+            raise ProviderRequestError(
+                "AKShare is an optional dependency; install the akshare extra before live fetches",
+                provider=self.identity,
+                request=request,
+                retryable=False,
+            ) from exc
+        return self._client
+
+    def _resolve_endpoint(
+        self,
+        client: object,
+        market: ListingMarket,
+        category: DataCategory,
+        request: ProviderRequest,
+    ) -> _Endpoint:
+        candidates = _endpoint_candidates(market, category)
+        for name in candidates:
+            function = getattr(client, name, None)
+            if callable(function):
+                return _Endpoint(
+                    name=name,
+                    function=function,
+                    source_uri=_SOURCE_URIS.get(name, "https://akshare.akfamily.xyz/data/stock/stock.html"),
+                )
+        names = ", ".join(candidates)
+        raise ProviderRequestError(
+            f"AKShare client does not expose a supported endpoint for "
+            f"{category.value!r}; tried: {names}",
+            provider=self.identity,
+            request=request,
+            retryable=False,
+        )
+
+    def _endpoint_kwargs(
+        self,
+        endpoint_name: str,
+        listing: _ListingRef,
+        request: ProviderRequest,
+    ) -> dict[str, object]:
+        try:
+            if request.category is DataCategory.MARKET_HISTORY:
+                return _history_kwargs(endpoint_name, listing, request)
+            if endpoint_name in _NO_ARGUMENT_ENDPOINTS:
+                _reject_unexpected_parameters(request)
+                return {}
+            _reject_unexpected_parameters(request)
+            return {"symbol": listing.code}
+        except ProviderRequestError as exc:
+            if exc.provider is not None:
+                raise
+            raise ProviderRequestError(
+                str(exc),
+                provider=self.identity,
+                request=request,
+                retryable=exc.retryable,
+            ) from exc
+
+
+# The spelling used in the roadmap is kept as a compatibility alias.
+AkShareProvider = AKShareProvider
+AKShareAdapter = AKShareProvider
+
+
+def fetch_akshare_with_cache(
+    provider: AKShareProvider,
+    request: ProviderRequest,
+    cache: RawResponseCache,
+    *,
+    offline: bool = False,
+    max_age: timedelta | None = None,
+    allow_stale: bool = False,
+) -> ProviderFetchResult:
+    """Use the provider-neutral cache helper with an AKShare provider."""
+
+    return fetch_with_cache(
+        provider,
+        request,
+        cache,
+        offline=offline,
+        max_age=max_age,
+        allow_stale=allow_stale,
+    )
+
+
+class AKShareNormalizer:
+    """Map the supported AKShare records to the existing input contract.
+
+    The caller supplies the required ``Company`` identity.  Metadata can
+    enrich nullable context fields but cannot invent a sector or reporting
+    currency.  Quote/history observations become canonical extension facts;
+    they do not become metrics, gates, valuation inputs or a second model.
+    """
+
+    mapping_version = AKSHARE_MAPPING_VERSION
+
+    def __init__(self, *, confidence: float = 0.8) -> None:
+        if not math.isfinite(confidence) or not 0 <= confidence <= 1:
+            raise ValueError("confidence must be finite and between 0 and 1")
+        self.confidence = float(confidence)
+
+    def normalize(
+        self,
+        records: Sequence[RawProviderRecord],
+        *,
+        analysis_id: str,
+        as_of: date,
+        profile_id: str,
+        company: Company,
+    ) -> NormalizedCompanyInput:
+        """Return one schema-valid normalized input from AKShare raw records."""
+
+        if not isinstance(records, Sequence) or isinstance(records, (str, bytes)):
+            raise TypeError("records must be a sequence of RawProviderRecord")
+        if not records:
+            raise ProviderNormalizationError("at least one raw record is required")
+        if not isinstance(company, Company):
+            raise TypeError("company must be a Company")
+
+        ordered_records = _deduplicate_and_sort_records(records)
+        facts: list[Fact] = []
+        evidence_index: list[Evidence] = []
+        fact_keys: set[tuple[str, str]] = set()
+        missing_fields: set[str] = set()
+        coverage_total = 0
+        coverage_present = 0
+        metadata_context: dict[str, str] = {}
+
+        def add_fact(
+            record: RawProviderRecord,
+            evidence: Evidence,
+            *,
+            field: str,
+            value: object,
+            period: str,
+            currency: str | None = None,
+            unit: str | None = None,
+            count_coverage: bool = True,
+        ) -> None:
+            nonlocal coverage_present, coverage_total
+            if count_coverage:
+                coverage_total += 1
+                if value is not None:
+                    coverage_present += 1
+            key = (field, period)
+            if key in fact_keys:
+                raise ProviderNormalizationError(
+                    f"ambiguous duplicate mapping for field={field!r}, period={period!r}"
+                )
+            fact_keys.add(key)
+            facts.append(
+                Fact(
+                    id=deterministic_id(
+                        "fact",
+                        self.mapping_version,
+                        record.provider.provider_id,
+                        record.provider.provider_version,
+                        record.request.as_dict(),
+                        field,
+                        period,
+                    ),
+                    field=field,
+                    value=value,
+                    unit=unit,
+                    currency=currency,
+                    period=period,
+                    source_evidence_ids=[evidence.id],
+                    confidence=self.confidence,
+                )
+            )
+
+        for record in ordered_records:
+            if record.provider.provider_id.lower() != "akshare":
+                raise ProviderNormalizationError(
+                    f"AKShare normalizer cannot consume provider {record.provider.provider_id!r}"
+                )
+            evidence = _evidence_for_record(record, confidence=self.confidence)
+            evidence_index.append(evidence)
+            listing = _parse_listing_id(record.request.entity_id)
+            rows = _table_rows(record.raw_payload)
+            primary = _same_listing(listing.canonical_id, company.primary_listing)
+            as_of_period = _listing_period(as_of, listing, primary=primary)
+
+            if record.request.category is DataCategory.COMPANY_METADATA:
+                row = _single_normalization_row(rows, record)
+                context = _map_company_metadata(row)
+                if primary:
+                    metadata_context.update(
+                        {key: value for key, value in context.items() if value is not None}
+                    )
+                for field, aliases in _COMPANY_METADATA_FIELDS.items():
+                    found, raw_value = _lookup(row, aliases)
+                    if found:
+                        value = _text_value(raw_value)
+                        add_fact(
+                            record,
+                            evidence,
+                            field=field,
+                            value=value,
+                            period=as_of_period,
+                            count_coverage=False,
+                        )
+            elif record.request.category is DataCategory.LISTING_METADATA:
+                row = _single_normalization_row(rows, record)
+                for field, aliases in _LISTING_METADATA_FIELDS.items():
+                    found, raw_value = _lookup(row, aliases)
+                    if found:
+                        value = _text_value(raw_value)
+                        add_fact(
+                            record,
+                            evidence,
+                            field=field,
+                            value=value,
+                            period=as_of_period,
+                            count_coverage=False,
+                        )
+                listing_date = _metadata_date(row)
+                if listing_date is not None:
+                    if listing_date > as_of:
+                        raise ProviderNormalizationError(
+                            f"listing date {listing_date.isoformat()} is after analysis date "
+                            f"{as_of.isoformat()}"
+                        )
+                    add_fact(
+                        record,
+                        evidence,
+                        field="listing_years",
+                        value=(as_of - listing_date).days / 365.25,
+                        period=as_of_period,
+                        unit="years",
+                        count_coverage=False,
+                    )
+            elif record.request.category is DataCategory.MARKET_QUOTE:
+                row = _single_normalization_row(rows, record)
+                field = "current_price" if primary else "listing_current_price"
+                found, raw_value = _lookup(row, _QUOTE_PRICE_FIELDS)
+                value = _number_value(raw_value, field=field) if found else None
+                add_fact(
+                    record,
+                    evidence,
+                    field=field,
+                    value=value,
+                    period=as_of_period,
+                    currency=_currency_for(listing.market),
+                    unit="price_per_share",
+                )
+                if value is None and primary:
+                    missing_fields.add("current_price")
+                timestamp_found, timestamp_value = _lookup(row, _QUOTE_TIME_FIELDS)
+                if timestamp_found:
+                    add_fact(
+                        record,
+                        evidence,
+                        field="market_quote_timestamp",
+                        value=_text_value(timestamp_value),
+                        period=as_of_period,
+                        count_coverage=False,
+                    )
+            elif record.request.category is DataCategory.MARKET_HISTORY:
+                history_result = _map_history(
+                    record,
+                    evidence,
+                    rows,
+                    listing,
+                    as_of=as_of,
+                    primary=primary,
+                    add_fact=add_fact,
+                )
+                if history_result[0] == 0:
+                    missing_fields.add("market_history")
+                if history_result[1] == 0:
+                    missing_fields.add("historical_close")
+            else:
+                raise ProviderNormalizationError(
+                    f"unsupported AKShare normalization category: {record.request.category.value}"
+                )
+
+        normalized_company = _enrich_company(company, metadata_context)
+        coverage = coverage_present / coverage_total if coverage_total else 0.0
+        quality = (
+            ConfidenceLevel.LOW
+            if missing_fields or not facts
+            else ConfidenceLevel.MEDIUM
+        )
+        notes = (
+            "AKShare Phase 2.2 records were normalized as structured observations. "
+            "Financial statements, filing classifications, and economic adjustments "
+            "remain unresolved until a later provider/filing workflow."
+        )
+        return NormalizedCompanyInput(
+            schema_version="1.0.0",
+            analysis_id=analysis_id,
+            as_of=as_of,
+            profile_id=profile_id,
+            company=normalized_company,
+            data_quality=DataQuality(
+                confidence=quality,
+                evidence_coverage=coverage,
+                critical_missing_fields=sorted(missing_fields),
+                notes=notes,
+            ),
+            facts=facts,
+            evidence_index=evidence_index,
+            adjustments=[],
+        )
+
+
+AkShareNormalizer = AKShareNormalizer
+
+
+def normalize_akshare_records(
+    records: Sequence[RawProviderRecord],
+    *,
+    analysis_id: str,
+    as_of: date,
+    profile_id: str,
+    company: Company,
+    confidence: float = 0.8,
+) -> NormalizedCompanyInput:
+    """Convenience wrapper around :class:`AKShareNormalizer`."""
+
+    return AKShareNormalizer(confidence=confidence).normalize(
+        records,
+        analysis_id=analysis_id,
+        as_of=as_of,
+        profile_id=profile_id,
+        company=company,
+    )
+
+
+_COMPANY_METADATA_FIELDS = {
+    "company_name": ("公司名称", "name", "名称", "company_name"),
+    "company_english_name": ("英文名称", "english_name", "company_english_name"),
+    "company_registration_region": ("注册地", "country_or_region", "registration_region"),
+    "company_incorporation_date": ("公司成立日期", "成立日期", "incorporation_date"),
+    "company_industry": ("所属行业", "industry", "company_industry"),
+    "fiscal_year_end": ("年结日", "财年结日", "fiscal_year_end"),
+}
+
+_LISTING_METADATA_FIELDS = {
+    "listing_code": ("证券代码", "代码", "股票代码", "code", "symbol"),
+    "listing_name": ("证券简称", "名称", "股票简称", "name"),
+    "listing_date": ("上市日期", "上市日", "listing_date"),
+    "listing_exchange": ("交易所", "exchange"),
+    "listing_board": ("板块", "board"),
+    "listing_security_type": ("证券类型", "security_type"),
+    "listing_isin": ("ISIN（国际证券识别编码）", "ISIN", "isin"),
+    "listing_hk_connect": ("是否沪港通标的", "是否深港通标的", "hk_connect"),
+}
+
+_QUOTE_PRICE_FIELDS = (
+    "最新价",
+    "最新价-HKD",
+    "最新价-RMB",
+    "latest_price",
+    "current_price",
+    "price",
+)
+_QUOTE_TIME_FIELDS = ("时间", "日期", "date", "datetime", "timestamp")
+
+_HISTORY_FIELDS = {
+    "historical_open": (("开盘", "open"), "price_per_share"),
+    "historical_high": (("最高", "high"), "price_per_share"),
+    "historical_low": (("最低", "low"), "price_per_share"),
+    "historical_close": (("收盘", "close", "latest", "最新价"), "price_per_share"),
+    "historical_volume": (("成交量", "volume"), None),
+    "historical_turnover": (("成交额", "amount", "turnover"), "currency_amount"),
+    "historical_change_percent": (("涨跌幅", "change_percent", "pct_change"), "percent"),
+}
+
+
+def _endpoint_candidates(market: ListingMarket, category: DataCategory) -> tuple[str, ...]:
+    if category is DataCategory.COMPANY_METADATA:
+        if market is ListingMarket.A:
+            return ("stock_info_a_code_name", "stock_zh_ah_name")
+        return ("stock_hk_company_profile_em", "stock_zh_ah_name", "stock_hk_spot_em")
+    if category is DataCategory.LISTING_METADATA:
+        if market is ListingMarket.A:
+            return ("stock_info_a_code_name", "stock_zh_ah_name")
+        return ("stock_hk_security_profile_em", "stock_zh_ah_name", "stock_hk_spot_em")
+    if category is DataCategory.MARKET_QUOTE:
+        if market is ListingMarket.A:
+            return ("stock_zh_a_spot_em", "stock_zh_a_spot")
+        return ("stock_hk_spot_em", "stock_hk_spot")
+    if category is DataCategory.MARKET_HISTORY:
+        if market is ListingMarket.A:
+            return ("stock_zh_a_hist", "stock_zh_a_daily")
+        return ("stock_hk_daily", "stock_zh_ah_daily")
+    raise ProviderCapabilityError(f"AKShare adapter does not support {category.value!r}")
+
+
+def _parse_listing_id(
+    entity_id: str,
+    *,
+    provider: ProviderIdentity | None = None,
+    request: ProviderRequest | None = None,
+) -> _ListingRef:
+    if not isinstance(entity_id, str) or not entity_id.strip():
+        raise ProviderRequestError(
+            "entity_id must identify an A or H listing",
+            provider=provider,
+            request=request,
+            retryable=False,
+        )
+    value = re.sub(r"\s+", "", entity_id).upper()
+
+    match = re.fullmatch(r"(SH|SZ|BJ)(\d{6})", value)
+    if match:
+        exchange, code = match.groups()
+        return _ListingRef(ListingMarket.A, code, exchange + code)
+    match = re.fullmatch(r"HK(\d{1,5})", value)
+    if match:
+        code = match.group(1).zfill(5)
+        return _ListingRef(ListingMarket.H, code, "HK" + code)
+    match = re.fullmatch(r"A[:.]?(\d{6})", value)
+    if match:
+        code = match.group(1)
+        return _ListingRef(ListingMarket.A, code, _inferred_a_prefix(code) + code)
+    match = re.fullmatch(r"H[:.]?(\d{1,5})", value)
+    if match:
+        code = match.group(1).zfill(5)
+        return _ListingRef(ListingMarket.H, code, "HK" + code)
+    match = re.fullmatch(r"(\d{6})\.(SH|SS|SZ|BJ)", value)
+    if match:
+        code, exchange = match.groups()
+        exchange = "SH" if exchange == "SS" else exchange
+        return _ListingRef(ListingMarket.A, code, exchange + code)
+    match = re.fullmatch(r"(\d{1,5})\.HK", value)
+    if match:
+        code = match.group(1).zfill(5)
+        return _ListingRef(ListingMarket.H, code, "HK" + code)
+    if re.fullmatch(r"\d{6}", value):
+        return _ListingRef(ListingMarket.A, value, _inferred_a_prefix(value) + value)
+    if re.fullmatch(r"\d{1,5}", value):
+        code = value.zfill(5)
+        return _ListingRef(ListingMarket.H, code, "HK" + code)
+
+    raise ProviderRequestError(
+        f"unsupported A/H listing identifier: {entity_id!r}",
+        provider=provider,
+        request=request,
+        retryable=False,
+    )
+
+
+def _inferred_a_prefix(code: str) -> str:
+    if code.startswith("6"):
+        return "SH"
+    if code.startswith(("4", "8")):
+        return "BJ"
+    return "SZ"
+
+
+def _same_listing(canonical_id: str, other: str) -> bool:
+    try:
+        return canonical_id == _parse_listing_id(other).canonical_id
+    except ProviderError:
+        return canonical_id == str(other).strip().upper()
+
+
+def _canonical_row_code(value: object, market: ListingMarket) -> str | None:
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, Real):
+        numeric = float(value)
+        if not math.isfinite(numeric):
+            return None
+        text = str(int(numeric)) if numeric.is_integer() else str(numeric)
+    else:
+        text = str(value).strip().upper()
+    if text.lower() in _MISSING_TEXT:
+        return None
+    digits = re.findall(r"\d+", text)
+    if not digits:
+        return None
+    code = "".join(digits)
+    if market is ListingMarket.A:
+        if len(code) > 6:
+            code = code[-6:]
+        return code.zfill(6)
+    if len(code) > 5:
+        code = code[-5:]
+    return code.zfill(5)
+
+
+def _row_code(row: Mapping[str, JSONValue], market: ListingMarket) -> str | None:
+    if market is ListingMarket.A:
+        keys = ("A股代码", "股票代码", "证券代码", "code", "symbol", "代码")
+    else:
+        keys = ("H股代码", "证券代码", "股票代码", "code", "symbol", "代码")
+    for key in keys:
+        if key in row:
+            code = _canonical_row_code(row[key], market)
+            if code is not None:
+                return code
+    return None
+
+
+def _to_json_value(value: object, *, path: str = "response") -> JSONValue:
+    """Convert pandas/numpy-like results to strict JSON without zero-filling."""
+
+    if value is None:
+        return None
+    if type(value).__name__ in {"NAType", "NaTType"}:
+        return None
+    if isinstance(value, (str, bool)):
+        return value
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    if isinstance(value, Integral) and not isinstance(value, bool):
+        return int(value)
+    if isinstance(value, Real) and not isinstance(value, bool):
+        numeric = float(value)
+        if math.isnan(numeric):
+            return None
+        if not math.isfinite(numeric):
+            raise ProviderResponseError(f"{path} contains infinity")
+        return numeric
+    if isinstance(value, Mapping):
+        converted: dict[str, JSONValue] = {}
+        for key, child in value.items():
+            if not isinstance(key, str):
+                raise ProviderResponseError(f"{path} has a non-string object key")
+            converted[key] = _to_json_value(child, path=f"{path}.{key}")
+        return converted
+    if isinstance(value, (list, tuple)):
+        return [_to_json_value(child, path=f"{path}[{index}]") for index, child in enumerate(value)]
+
+    to_dict = getattr(value, "to_dict", None)
+    if callable(to_dict):
+        try:
+            tabular = to_dict(orient="records")
+        except TypeError:
+            try:
+                tabular = to_dict("records")
+            except Exception as exc:
+                raise ProviderResponseError(f"{path} could not be converted to records") from exc
+        return _to_json_value(tabular, path=path)
+
+    item = getattr(value, "item", None)
+    if callable(item):
+        try:
+            return _to_json_value(item(), path=path)
+        except Exception as exc:
+            if isinstance(exc, ProviderResponseError):
+                raise
+            raise ProviderResponseError(f"{path} contains an unsupported scalar") from exc
+    raise ProviderResponseError(f"{path} has unsupported type {type(value).__name__}")
+
+
+def _table_rows(
+    payload: JSONValue,
+    *,
+    provider: ProviderIdentity | None = None,
+    request: ProviderRequest | None = None,
+) -> list[dict[str, JSONValue]]:
+    if payload is None:
+        return []
+    if isinstance(payload, Mapping):
+        data = payload.get("data")
+        if isinstance(data, list):
+            payload = data
+        else:
+            return [dict(payload)]
+    if not isinstance(payload, list):
+        raise ProviderResponseError(
+            "tabular AKShare response must be an object, array or null",
+            provider=provider,
+            request=request,
+        )
+    rows: list[dict[str, JSONValue]] = []
+    for index, item in enumerate(payload):
+        if not isinstance(item, Mapping):
+            raise ProviderResponseError(
+                f"AKShare tabular response row {index} is not an object",
+                provider=provider,
+                request=request,
+            )
+        rows.append(dict(item))
+    return rows
+
+
+def _select_listing_row(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> dict[str, JSONValue]:
+    matches = [row for row in rows if _row_code(row, listing.market) == listing.code]
+    if len(matches) == 1:
+        return dict(matches[0])
+    if len(matches) > 1:
+        raise ProviderResponseError(
+            f"AKShare returned ambiguous rows for {request.entity_id!r}",
+            provider=provider,
+            request=request,
+        )
+    if len(rows) == 1 and _row_code(rows[0], listing.market) is None:
+        return dict(rows[0])
+    raise ProviderResponseError(
+        f"AKShare returned no row for {request.entity_id!r}",
+        provider=provider,
+        request=request,
+    )
+
+
+def _history_kwargs(
+    endpoint_name: str,
+    listing: _ListingRef,
+    request: ProviderRequest,
+) -> dict[str, object]:
+    parameters = dict(request.parameters)
+    unknown = sorted(set(parameters) - _HISTORY_PARAMETER_NAMES)
+    if unknown:
+        raise ProviderRequestError(
+            "unsupported AKShare history parameter(s): " + ", ".join(unknown),
+            request=request,
+            retryable=False,
+        )
+    period = str(parameters.get("period", "daily")).lower()
+    adjust = str(parameters.get("adjust", ""))
+    if period not in {"daily", "weekly", "monthly"}:
+        raise ProviderRequestError(
+            "history period must be daily, weekly or monthly",
+            request=request,
+            retryable=False,
+        )
+    if adjust not in {"", "qfq", "hfq"}:
+        raise ProviderRequestError(
+            "history adjust must be '', 'qfq' or 'hfq'",
+            request=request,
+            retryable=False,
+        )
+    if listing.market is ListingMarket.H and period != "daily":
+        raise ProviderRequestError(
+            "the AKShare H-share history endpoint supports daily observations only",
+            request=request,
+            retryable=False,
+        )
+
+    start_text, start_date = _date_parameter(parameters, "start_date", "start_year")
+    end_text, end_date = _date_parameter(parameters, "end_date", "end_year")
+    if start_date is not None and end_date is not None and start_date > end_date:
+        raise ProviderRequestError(
+            "history start_date must not be after end_date",
+            request=request,
+            retryable=False,
+        )
+
+    if endpoint_name == "stock_hk_daily":
+        return {"symbol": listing.code, "adjust": adjust}
+    if endpoint_name == "stock_zh_ah_daily":
+        kwargs: dict[str, object] = {"symbol": listing.code, "adjust": adjust}
+        if start_date is not None:
+            kwargs["start_year"] = str(start_date.year)
+        if end_date is not None:
+            kwargs["end_year"] = str(end_date.year)
+        return kwargs
+
+    if endpoint_name == "stock_zh_a_daily":
+        kwargs = {
+            "symbol": listing.canonical_id[:2].lower() + listing.code,
+            "adjust": adjust,
+        }
+        if start_text is not None:
+            kwargs["start_date"] = start_text
+        if end_text is not None:
+            kwargs["end_date"] = end_text
+        return kwargs
+
+    kwargs = {"symbol": listing.code, "period": period, "adjust": adjust}
+    if start_text is not None:
+        kwargs["start_date"] = start_text
+    if end_text is not None:
+        kwargs["end_date"] = end_text
+    return kwargs
+
+
+def _date_parameter(
+    parameters: Mapping[str, JSONValue],
+    date_name: str,
+    year_name: str,
+) -> tuple[str | None, date | None]:
+    raw = parameters.get(date_name)
+    if raw is None:
+        raw = parameters.get(year_name)
+        if raw is not None:
+            text = str(raw)
+            if not re.fullmatch(r"\d{4}", text):
+                raise ProviderRequestError(
+                    f"{year_name} must be a four-digit year", retryable=False
+                )
+            text = text + ("0101" if date_name == "start_date" else "1231")
+        else:
+            return None, None
+    else:
+        text = str(raw)
+    for fmt in _DATE_FORMATS:
+        try:
+            parsed = datetime.strptime(text, fmt).date()
+            return parsed.strftime("%Y%m%d"), parsed
+        except ValueError:
+            continue
+    raise ProviderRequestError(f"{date_name} must be YYYY-MM-DD or YYYYMMDD", retryable=False)
+
+
+def _reject_unexpected_parameters(request: ProviderRequest) -> None:
+    if request.parameters:
+        names = ", ".join(sorted(request.parameters))
+        raise ProviderRequestError(
+            f"{request.category.value} does not accept request parameters: {names}",
+            request=request,
+            retryable=False,
+        )
+
+
+def _has_history_range(parameters: Mapping[str, JSONValue]) -> bool:
+    return any(name in parameters for name in ("start_date", "end_date", "start_year", "end_year"))
+
+
+def _is_probably_retryable(exc: Exception) -> bool:
+    message = str(exc).lower()
+    return any(
+        token in message
+        for token in (
+            "timeout",
+            "timed out",
+            "temporarily",
+            "rate limit",
+            "too many requests",
+            "quota",
+            "connection",
+            "503",
+            "502",
+            "504",
+        )
+    )
+
+
+def _deduplicate_and_sort_records(
+    records: Sequence[RawProviderRecord],
+) -> list[RawProviderRecord]:
+    unique: dict[bytes, RawProviderRecord] = {}
+    payloads: dict[bytes, bytes] = {}
+    for record in records:
+        if not isinstance(record, RawProviderRecord):
+            raise TypeError("records must contain RawProviderRecord values")
+        identity = canonical_json_bytes(
+            {
+                "provider": record.provider.as_dict(),
+                "request": record.request.as_dict(),
+                "retrieved_at": record.retrieved_at.isoformat(),
+            }
+        )
+        payload = canonical_json_bytes(record.raw_payload)
+        if identity in unique:
+            if payloads[identity] != payload:
+                raise ProviderNormalizationError(
+                    "raw records with the same request and retrieval timestamp disagree"
+                )
+            continue
+        unique[identity] = record
+        payloads[identity] = payload
+    return sorted(
+        unique.values(),
+        key=lambda record: (
+            record.request.category.value,
+            record.request.entity_id,
+            record.retrieved_at.isoformat(),
+            canonical_json_bytes(record.raw_payload),
+        ),
+    )
+
+
+def _evidence_for_record(record: RawProviderRecord, *, confidence: float) -> Evidence:
+    cache_key = CacheKey.from_record(record)
+    locator = (
+        f"category={record.request.category.value}; entity={record.request.entity_id}; "
+        f"parameters={canonical_json_bytes(record.request.parameters).decode('utf-8')}"
+    )
+    return Evidence(
+        id=deterministic_id(
+            "evidence",
+            record.provider.provider_id,
+            record.provider.provider_version,
+            record.request.as_dict(),
+            record.retrieved_at.isoformat(),
+        ),
+        direction=EvidenceDirection.CONTEXT,
+        strength=EvidenceStrength.E1,
+        statement=(
+            f"AKShare returned {record.request.category.value} data for "
+            f"{record.request.entity_id}."
+        ),
+        source=Source(
+            type=SourceType.STRUCTURED_DATA_VENDOR,
+            title=(
+                f"{record.provider.source_name} structured data "
+                f"({record.provider.provider_version})"
+            ),
+            issuer=record.provider.source_name,
+            url=record.source_uri,
+            document_id=cache_key.digest,
+            locator=locator,
+        ),
+        confidence=confidence,
+        notes=(
+            f"Retrieved at {record.retrieved_at.isoformat()}; raw response is replayable "
+            "through the provider cache."
+        ),
+    )
+
+
+def _single_normalization_row(
+    rows: Sequence[Mapping[str, JSONValue]], record: RawProviderRecord
+) -> Mapping[str, JSONValue]:
+    if len(rows) != 1:
+        raise ProviderNormalizationError(
+            f"{record.request.category.value} must contain exactly one selected row; "
+            f"got {len(rows)}"
+        )
+    return rows[0]
+
+
+def _lookup(
+    row: Mapping[str, JSONValue], aliases: Sequence[str]
+) -> tuple[bool, JSONValue | None]:
+    for alias in aliases:
+        if alias in row:
+            return True, row[alias]
+    return False, None
+
+
+def _text_value(value: object) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        text = value.strip()
+    elif isinstance(value, (date, datetime)):
+        text = value.isoformat()
+    else:
+        text = str(value).strip()
+    return None if text.lower() in _MISSING_TEXT else text
+
+
+def _number_value(value: object, *, field: str) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        raise ProviderNormalizationError(f"{field} cannot be boolean")
+    if isinstance(value, Real):
+        numeric = float(value)
+    else:
+        text = str(value).strip()
+        if text.lower() in _MISSING_TEXT:
+            return None
+        text = text.replace(",", "").rstrip("%")
+        try:
+            numeric = float(text)
+        except ValueError as exc:
+            raise ProviderNormalizationError(
+                f"{field} value {value!r} is not numeric or null"
+            ) from exc
+    if math.isnan(numeric):
+        return None
+    if not math.isfinite(numeric):
+        raise ProviderNormalizationError(f"{field} cannot be infinite")
+    return numeric
+
+
+def _currency_for(market: ListingMarket) -> str:
+    return "CNY" if market is ListingMarket.A else "HKD"
+
+
+def _listing_period(as_of: date, listing: _ListingRef, *, primary: bool) -> str:
+    base = f"AS_OF_{as_of.isoformat()}"
+    return base if primary else f"{base}:{listing.canonical_id}"
+
+
+def _map_company_metadata(row: Mapping[str, JSONValue]) -> dict[str, str | None]:
+    result: dict[str, str | None] = {}
+    for field, aliases in _COMPANY_METADATA_FIELDS.items():
+        found, value = _lookup(row, aliases)
+        if found:
+            result[field] = _text_value(value)
+    return result
+
+
+def _enrich_company(company: Company, context: Mapping[str, str]) -> Company:
+    updates: dict[str, str] = {}
+    if company.legal_name is None and context.get("company_name"):
+        updates["legal_name"] = context["company_name"]
+    if company.industry is None and context.get("company_industry"):
+        updates["industry"] = context["company_industry"]
+    if company.country_or_region is None and context.get("company_registration_region"):
+        updates["country_or_region"] = context["company_registration_region"]
+    if company.fiscal_year_end is None and context.get("fiscal_year_end"):
+        updates["fiscal_year_end"] = context["fiscal_year_end"]
+    return company.model_copy(update=updates) if updates else company
+
+
+def _map_history(
+    record: RawProviderRecord,
+    evidence: Evidence,
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+    *,
+    as_of: date,
+    primary: bool,
+    add_fact: Callable[..., None],
+) -> tuple[int, int]:
+    start_date, end_date = _normalizer_history_range(record.request.parameters)
+    ordered: list[tuple[date, Mapping[str, JSONValue]]] = []
+    for row in rows:
+        observation_date = _observation_date(row)
+        if observation_date is None:
+            raise ProviderNormalizationError(
+                f"market history row for {record.request.entity_id!r} has no date"
+            )
+        if start_date is not None and observation_date < start_date:
+            continue
+        if end_date is not None and observation_date > end_date:
+            continue
+        ordered.append((observation_date, row))
+    ordered.sort(key=lambda item: item[0])
+    seen_dates: set[date] = set()
+    row_count = 0
+    close_count = 0
+    for observation_date, row in ordered:
+        if observation_date in seen_dates:
+            raise ProviderNormalizationError(
+                f"ambiguous duplicate market history date {observation_date.isoformat()} "
+                f"for {record.request.entity_id!r}"
+            )
+        seen_dates.add(observation_date)
+        row_count += 1
+        period = observation_date.isoformat()
+        if not primary:
+            period = f"{listing.canonical_id}:{period}"
+        for field, (aliases, unit) in _HISTORY_FIELDS.items():
+            found, raw_value = _lookup(row, aliases)
+            if not found and field != "historical_close":
+                continue
+            value = _number_value(raw_value, field=field) if found else None
+            if field == "historical_close" and value is not None:
+                close_count += 1
+            field_currency = (
+                _currency_for(listing.market)
+                if field
+                in {
+                    "historical_open",
+                    "historical_high",
+                    "historical_low",
+                    "historical_close",
+                    "historical_turnover",
+                }
+                else None
+            )
+            field_unit = unit
+            if field == "historical_volume":
+                field_unit = "lots" if listing.market is ListingMarket.A else "shares"
+            add_fact(
+                record,
+                evidence,
+                field=field,
+                value=value,
+                period=period,
+                currency=field_currency,
+                unit=field_unit,
+            )
+    return row_count, close_count
+
+
+def _observation_date(row: Mapping[str, JSONValue]) -> date | None:
+    found, raw_value = _lookup(row, ("日期", "date", "时间", "datetime"))
+    if not found or raw_value is None:
+        return None
+    if isinstance(raw_value, datetime):
+        return raw_value.date()
+    if isinstance(raw_value, date):
+        return raw_value
+    text = str(raw_value).strip()
+    for fmt in _DATE_FORMATS:
+        try:
+            return datetime.strptime(text, fmt).date()
+        except ValueError:
+            continue
+    match = re.match(r"^(\d{4}-\d{2}-\d{2})", text)
+    if match:
+        return date.fromisoformat(match.group(1))
+    return None
+
+
+def _metadata_date(row: Mapping[str, JSONValue]) -> date | None:
+    found, raw_value = _lookup(row, ("上市日期", "上市日", "listing_date"))
+    if not found or raw_value is None:
+        return None
+    if isinstance(raw_value, datetime):
+        return raw_value.date()
+    if isinstance(raw_value, date):
+        return raw_value
+    text = str(raw_value).strip()
+    for fmt in _DATE_FORMATS:
+        try:
+            return datetime.strptime(text, fmt).date()
+        except ValueError:
+            continue
+    match = re.match(r"^(\d{4}-\d{2}-\d{2})", text)
+    if match:
+        return date.fromisoformat(match.group(1))
+    raise ProviderNormalizationError(f"listing_date value {raw_value!r} is not a date")
+
+
+def _normalizer_history_range(
+    parameters: Mapping[str, JSONValue],
+) -> tuple[date | None, date | None]:
+    _, start_date = _date_parameter(parameters, "start_date", "start_year")
+    _, end_date = _date_parameter(parameters, "end_date", "end_year")
+    if start_date is not None and end_date is not None and start_date > end_date:
+        raise ProviderNormalizationError("market history range is inverted")
+    return start_date, end_date
+
+
+def normalize_listing_id(entity_id: str) -> str:
+    """Return the adapter's canonical ``SH/SZ/BJ`` or ``HK`` listing ID."""
+
+    return _parse_listing_id(entity_id).canonical_id
+
+
+__all__ = [
+    "AKSHARE_ADAPTER_VERSION",
+    "AKSHARE_CAPABILITIES",
+    "AKSHARE_MAPPING_VERSION",
+    "AKSHARE_SOURCE_NAME",
+    "AKShareNormalizer",
+    "AKShareAdapter",
+    "AKShareProvider",
+    "AkShareNormalizer",
+    "AkShareProvider",
+    "ListingMarket",
+    "fetch_akshare_with_cache",
+    "normalize_akshare_records",
+    "normalize_listing_id",
+]

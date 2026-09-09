@@ -22,6 +22,28 @@ every investment conclusion.” Primary-filing verification can still be
 required by a later policy. A field marked `REQUIRES_PRIMARY_FILING` or
 `REQUIRES_JUDGMENT` must not be fabricated from a similarly named aggregate.
 
+## Phase 2.2 market and metadata extension facts
+
+The current normalized schema intentionally permits future scalar fact names.
+The first AKShare adapter uses the following provider-neutral extension facts
+for observations that are not yet consumed by strict-v1 calculations:
+
+| Normalized field | Status | Boundary note |
+| --- | --- | --- |
+| `company_name`, `company_english_name`, `company_registration_region` | `STRUCTURED_AUTO` | Preserve the explicit metadata value as evidence; required `Company` identity remains caller-supplied. |
+| `company_incorporation_date`, `company_industry`, `fiscal_year_end` | `STRUCTURED_AUTO` | Enrich nullable company context only; do not infer a missing sector or reporting currency. |
+| `listing_code`, `listing_name`, `listing_date`, `listing_exchange`, `listing_board` | `STRUCTURED_AUTO` | Retain the listing's explicit code and metadata; do not infer listing age from history rows. |
+| `listing_security_type`, `listing_isin`, `listing_hk_connect` | `STRUCTURED_AUTO` | Preserve explicit security metadata; connect status is not a governance or eligibility conclusion. |
+| `market_quote_timestamp` | `STRUCTURED_AUTO` | Retain the provider's observation timestamp separately from the analysis `as_of` date. |
+| `historical_open`, `historical_high`, `historical_low`, `historical_close` | `STRUCTURED_AUTO` | Dated price observations retain the listing currency and are not financial statement facts. |
+| `historical_volume`, `historical_turnover`, `historical_change_percent` | `STRUCTURED_AUTO` | Preserve the upstream unit convention in `Fact.unit`; no liquidity or return metric is calculated here. |
+
+Only `current_price` from a quote for the selected primary listing is a
+strict-v1 input candidate. The extension facts above are evidence-backed
+observations for later market-data consumers, not engine outputs. The adapter
+does not map AKShare's headline `总市值`/market-cap fields because market cap
+must remain an engine-owned deterministic projection.
+
 ## Eligibility, identity and market context
 
 | Normalized field | Status | Boundary note |

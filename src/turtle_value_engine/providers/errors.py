@@ -32,6 +32,10 @@ class ProviderResponseError(ProviderError):
     """Raised when an adapter returns an invalid or mismatched raw record."""
 
 
+class ProviderNormalizationError(ValueError):
+    """Raised when a provider payload cannot be mapped unambiguously."""
+
+
 class CacheError(RuntimeError):
     """Base error for local raw-response cache operations."""
 

@@ -142,14 +142,26 @@ The provider-neutral acquisition boundary, raw-response filesystem cache,
 capability model, error-isolation rules, provider field matrix and CI
 guardrails are now frozen. No live provider is included in this sub-phase.
 
-### Phase 2.2 — First structured provider adapter (NEXT)
+### Phase 2.2 — First structured provider adapter (COMPLETE)
 
-Implement one narrowly scoped adapter behind the foundation, beginning with
-read-only A/H quote and history acquisition. Validate its raw records,
-provenance, cache/replay behavior and normalized mapping against frozen
-fixtures before adding financial statement categories. Do not treat the
-adapter as a source for filing-derived classifications listed in the provider
-field matrix.
+The read-only `AKShareProvider` now sits behind the foundation and supports
+`COMPANY_METADATA`, `LISTING_METADATA`, `MARKET_QUOTE` and
+`MARKET_HISTORY` for A/H listing identifiers. It lazily loads the optional
+AKShare dependency, converts tabular responses to JSON-safe opaque raw
+records, selects the requested listing row, preserves source/version metadata
+and uses the existing cache/replay helper without writing on provider
+failure.
+
+`AKShareNormalizer` maps only provider-neutral metadata, quote and history
+facts into the existing `NormalizedCompanyInput` contract. It creates
+structured-data evidence, preserves nulls, rejects ambiguous periods and
+records unresolved quote/history coverage. It does not map financial
+statements, filing-derived classifications, provider headline market caps or
+any deterministic metric.
+
+The deterministic tests use injected clients and frozen fixtures. Live
+integration is explicitly opt-in with `TVE_RUN_AKSHARE_LIVE=1` and is not part
+of ordinary CI.
 
 ### Future Phase 2 deliverables
 
@@ -160,7 +172,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # future Phase 2.2 adapter
+  akshare.py       # Phase 2.2 read-only metadata/quote/history adapter
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -368,8 +380,7 @@ Phase 2 is active. Phase 1 remains frozen: changes to formulas, hard-gate
 semantics, schemas or `strict-v1` thresholds require a separately reviewed,
 versioned change.
 
-The exact next task is **Phase 2.2: implement the first read-only AKShare
-quote/history adapter**, with a focused normalization contract and recorded
-live-provider integration tests kept out of ordinary network-independent PR
-CI. Financial-statement mappings should follow only after the quote/history
-boundary is verified.
+The next Phase 2 task is to add financial-statement categories only after the
+AKShare quote/history boundary has been verified in point-in-time fixtures and
+its unresolved mapping questions have an explicit owner. Filing-derived
+classifications remain a Phase 3 concern.

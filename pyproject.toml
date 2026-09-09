@@ -19,6 +19,9 @@ dev = [
   "ruff>=0.6,<1",
   "jsonschema>=4.23,<5",
 ]
+akshare = [
+  "akshare>=1.18,<2",
+]
 
 [project.scripts]
 tve = "turtle_value_engine.cli:main"

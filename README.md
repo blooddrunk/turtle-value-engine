@@ -44,14 +44,25 @@ Business Quality assessment, its gate remains `NOT_EVALUATED`, valuation stays
 indicative, and the final decision cannot authorize an automatic investment
 recommendation.
 
-Live data adapters and LLM-assisted evidence analysis remain intentionally
-unimplemented. The deterministic analyze command is offline-only and does not
-call AKShare, Tushare, other network providers or an LLM.
+Phase 2.2 now includes a read-only, optional-dependency `AKShareProvider` for
+A/H listing metadata, company metadata, quotes and daily market history. Its
+raw responses can be replayed through the provider cache and its focused
+normalizer emits only canonical facts and evidence. Financial-statement
+mapping, filing retrieval and LLM-assisted evidence analysis remain
+unimplemented. The deterministic `tve analyze` command is still offline-only
+and does not call a provider or an LLM.
 
-Phase 2 now includes a provider-neutral raw-record/cache foundation and a
-normalized-field capability matrix. Live provider adapters remain
-unimplemented; they must feed the existing normalized input contract rather
-than introduce a second analysis model.
+Install the live-provider extra only when an explicitly network-enabled
+workflow is intended:
+
+```text
+python -m pip install ".[akshare]"
+```
+
+Phase 2 now includes a provider-neutral raw-record/cache foundation, a
+normalized-field capability matrix and the focused AKShare adapter. All
+provider output must feed the existing normalized input contract rather than
+introduce a second analysis model.
 
 Implementation-oriented assets will later live under:
 
@@ -60,6 +71,11 @@ Implementation-oriented assets will later live under:
 - `agents/` — LLM roles, prompts and evidence contracts
 - `src/` — calculation and orchestration code
 - `tests/` — formula, rule and regression tests
+
+The adapter entry points are under `src/turtle_value_engine/providers/akshare.py`.
+Ordinary tests use injected clients and frozen JSON fixtures; live integration
+is opt-in with `TVE_RUN_AKSHARE_LIVE=1` and must not be used as a substitute
+for cached replay.
 
 ## Design principles
 

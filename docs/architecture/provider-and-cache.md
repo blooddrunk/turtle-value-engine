@@ -1,6 +1,6 @@
 # Provider and Cache Architecture
 
-> Status: Phase 2 foundation decision
+> Status: Phase 2 foundation and first read-only adapter
 
 This document freezes the boundary between structured-data acquisition and the
 deterministic Turtle Value Engine. It does not authorize a live provider or
@@ -230,6 +230,7 @@ Failure rules are:
   `ProviderError` with retryability classified by the adapter;
 - invalid response type or request/provider identity mismatch ->
   `ProviderResponseError`;
+- ambiguous or invalid raw-to-fact mapping -> `ProviderNormalizationError`;
 - no provider error is converted to an empty payload, zero or a successful
   `Fact`;
 - a live provider failure does not write to the cache;
@@ -316,17 +317,54 @@ The cache performs no network retries. The normalizer performs no provider
 retries. The deterministic pipeline performs no provider retries and should
 not be rerun as a substitute for resolving missing facts.
 
-## 12. Deliberate non-goals
+## 12. Phase 2.2 AKShare adapter
 
-This foundation does not include:
+The first concrete adapter is intentionally limited to read-only metadata and
+market observations. It advertises exactly these capabilities:
 
-- AKShare, Tushare, BaoStock or any other live adapter;
-- network calls or provider credentials;
+| Category | A-share endpoint | H-share endpoint | Normalized output |
+| --- | --- | --- | --- |
+| `COMPANY_METADATA` | `stock_info_a_code_name` | `stock_hk_company_profile_em` (with conservative metadata-list fallbacks) | company metadata extension facts; nullable `Company` context enrichment only |
+| `LISTING_METADATA` | `stock_info_a_code_name` | `stock_hk_security_profile_em` (with conservative listing-list fallbacks) | listing code/name/date/exchange and other explicit metadata facts |
+| `MARKET_QUOTE` | `stock_zh_a_spot_em` | `stock_hk_spot_em` | selected-listing `current_price` plus quote timestamp |
+| `MARKET_HISTORY` | `stock_zh_a_hist` | `stock_hk_daily` | dated OHLCV/turnover extension facts |
+
+The adapter accepts common stable A/H identifiers such as `SH600000`,
+`000001.SZ`, `A:600000`, `HK00700`, `700.HK` and `H:00700`. A-share history
+passes the supported period, date-range and adjustment parameters to AKShare.
+The current H-share daily endpoint returns a full history, so the normalizer
+applies an explicitly requested date range deterministically after replay;
+the raw record remains the upstream response.
+
+The `akshare` package is optional and loaded only at the first live fetch.
+Tests inject a client object and use frozen JSON fixtures. The existing
+`fetch_with_cache` helper remains the only cache boundary: `offline=True`
+never calls AKShare, and a failed live request is never written as a snapshot.
+
+The normalizer emits `Fact` and `Evidence` objects inside the existing
+`NormalizedCompanyInput`. It never maps provider headline market cap,
+listing-years inferred from history length, financial statements, filing
+classifications, or any CDC/net-cash/Through Return/valuation/gate result.
+
+Open mapping questions intentionally left for later review are: an explicit
+A-share first-trading date and listing-status source, point-in-time treatment
+of delayed/closed quote timestamps, FX and A/H cross-listing share equivalence,
+and whether the H-share full-history endpoint can be replaced by a bounded
+range endpoint without changing replay semantics.
+
+## 13. Deliberate non-goals
+
+This foundation plus the Phase 2.2 slice does not include:
+
+- Tushare, BaoStock or any other additional provider;
+- automatic network scheduling, credentials or retry orchestration outside an adapter;
 - official filing retrieval or PDF parsing;
 - LLM evidence extraction or Business Quality scoring;
 - a normalized-data database, web service, scheduler or event monitor;
+- financial-statement categories or economic classifications inside the
+  adapter;
 - financial calculations inside provider classes.
 
-The next implementation may add one adapter category at a time behind these
-interfaces and must validate its mappings against frozen normalized fixtures
-before using live data in screening.
+Future provider categories must be added one at a time behind these
+interfaces and validated against frozen normalized fixtures before being used
+in screening.

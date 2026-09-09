@@ -1,5 +1,20 @@
 """Provider-neutral structured-data and raw-response cache foundations."""
 
+from .akshare import (
+    AKSHARE_ADAPTER_VERSION,
+    AKSHARE_CAPABILITIES,
+    AKSHARE_MAPPING_VERSION,
+    AKSHARE_SOURCE_NAME,
+    AKShareAdapter,
+    AKShareNormalizer,
+    AkShareNormalizer,
+    AKShareProvider,
+    AkShareProvider,
+    ListingMarket,
+    fetch_akshare_with_cache,
+    normalize_akshare_records,
+    normalize_listing_id,
+)
 from .base import StructuredDataNormalizer, StructuredDataProvider
 from .cache import (
     CacheKey,
@@ -16,6 +31,7 @@ from .errors import (
     CacheWriteError,
     ProviderCapabilityError,
     ProviderError,
+    ProviderNormalizationError,
     ProviderRequestError,
     ProviderResponseError,
 )
@@ -33,6 +49,15 @@ from .models import (
 from .normalization import deterministic_id
 
 __all__ = [
+    "AKSHARE_ADAPTER_VERSION",
+    "AKSHARE_CAPABILITIES",
+    "AKSHARE_MAPPING_VERSION",
+    "AKSHARE_SOURCE_NAME",
+    "AKShareAdapter",
+    "AKShareNormalizer",
+    "AKShareProvider",
+    "AkShareNormalizer",
+    "AkShareProvider",
     "CacheCorruptionError",
     "CacheError",
     "CacheKey",
@@ -47,16 +72,21 @@ __all__ = [
     "ProviderError",
     "ProviderFetchResult",
     "ProviderIdentity",
+    "ProviderNormalizationError",
     "ProviderRequest",
     "ProviderRequestError",
     "ProviderResponseError",
     "RawProviderRecord",
     "RawResponseCache",
     "RetrievalMode",
+    "ListingMarket",
     "StructuredDataNormalizer",
     "StructuredDataProvider",
     "canonical_json_bytes",
     "deterministic_cache_key",
     "deterministic_id",
     "fetch_with_cache",
+    "fetch_akshare_with_cache",
+    "normalize_akshare_records",
+    "normalize_listing_id",
 ]
