@@ -8,7 +8,8 @@ The adapter currently implements metadata, market observations, three narrow
 financial-statement slices, A-share earnings-forecast, earnings-quick-report,
 performance-report, business-composition, financial-abstract and financial-
 indicator raw slices, raw-only dividend event/snapshot, corporate-action,
-ownership-pledge, insider-share-change and A-share share-capital slices.
+ownership-pledge, SSE/SZSE insider-share-change and A-share share-capital
+slices.
 Upstream column names are handled in this module and are never passed to the
 deterministic calculation or gate code.
 """
@@ -55,9 +56,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "19"
+AKSHARE_ADAPTER_VERSION = "20"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "20"
+AKSHARE_MAPPING_VERSION = "21"
 
 
 class ListingMarket(StrEnum):
@@ -125,6 +126,7 @@ _SOURCE_URIS = {
     "stock_allotment_cninfo": "https://webapi.cninfo.com.cn/#/dataBrowse",
     "stock_gpzy_pledge_ratio_em": "https://data.eastmoney.com/gpzy/pledgeRatio.aspx",
     "stock_share_hold_change_sse": "http://www.sse.com.cn/disclosure/credibility/supervision/change/",
+    "stock_share_hold_change_szse": "http://www.szse.cn/disclosure/supervision/change/index.html",
     "stock_financial_report_sina": "https://vip.stock.finance.sina.com.cn/corp/go.php/vFD_FinanceSummary/",
     "stock_financial_hk_report_em": "https://emweb.securities.eastmoney.com/PC_HKF10/FinancialAnalysis/index",
 }
@@ -287,10 +289,11 @@ class AKShareProvider(StructuredDataProvider):
             )
         if (
             request.category is DataCategory.INSIDER_SHARE_CHANGES
-            and listing.canonical_id[:2] != "SH"
+            and listing.canonical_id[:2] not in {"SH", "SZ"}
         ):
             raise ProviderRequestError(
-                "the AKShare insider-share-change endpoint supports Shanghai A-share listings only",
+                "the AKShare insider-share-change endpoints support Shanghai and Shenzhen "
+                "A-share listings only",
                 provider=self.identity,
                 request=request,
                 retryable=False,
@@ -1256,10 +1259,10 @@ class AKShareNormalizer:
                 missing_fields.add("governance_risk_level")
                 normalizer_flags.add("AKSHARE_OWNERSHIP_PLEDGE_RAW_ONLY")
             elif record.request.category is DataCategory.INSIDER_SHARE_CHANGES:
-                if listing.canonical_id[:2] != "SH":
+                if listing.canonical_id[:2] not in {"SH", "SZ"}:
                     raise ProviderNormalizationError(
                         "AKShare insider-share-change raw slice supports "
-                        "Shanghai A-share listings only"
+                        "Shanghai and Shenzhen A-share listings only"
                     )
                 _validate_insider_share_change_normalizer_rows(rows, listing)
                 # Insider transactions are event evidence, not a settled
@@ -1344,9 +1347,10 @@ class AKShareNormalizer:
             )
         if "AKSHARE_INSIDER_SHARE_CHANGE_RAW_ONLY" in normalizer_flags:
             notes += (
-                " The documented SSE insider-share-change response is retained as raw "
-                "evidence only: holder role, trade quantities, prices and dates do not "
-                "establish a company-level diluted-share series or governance-risk judgment."
+                " The documented SSE/SZSE insider-share-change response is retained as "
+                "raw evidence only: holder role, trade quantities, prices and dates do "
+                "not establish a company-level diluted-share series or governance-risk "
+                "judgment."
             )
         if "AKSHARE_DIVIDEND_SNAPSHOT_RAW_ONLY" in normalizer_flags:
             notes += (
@@ -1578,6 +1582,8 @@ def _endpoint_candidates(
     if category is DataCategory.INSIDER_SHARE_CHANGES:
         if market is ListingMarket.A and listing.canonical_id.startswith("SH"):
             return ("stock_share_hold_change_sse",)
+        if market is ListingMarket.A and listing.canonical_id.startswith("SZ"):
+            return ("stock_share_hold_change_szse",)
         return ()
     raise ProviderCapabilityError(f"AKShare adapter does not support {category.value!r}")
 
@@ -1991,15 +1997,20 @@ def _insider_share_change_kwargs(
     listing: _ListingRef,
     request: ProviderRequest,
 ) -> dict[str, object]:
-    if endpoint_name != "stock_share_hold_change_sse":
+    exchange_by_endpoint = {
+        "stock_share_hold_change_sse": "SH",
+        "stock_share_hold_change_szse": "SZ",
+    }
+    expected_exchange = exchange_by_endpoint.get(endpoint_name)
+    if expected_exchange is None:
         raise ProviderRequestError(
             f"unsupported AKShare insider-share-change endpoint {endpoint_name!r}",
             request=request,
             retryable=False,
         )
-    if listing.canonical_id[:2] != "SH":
+    if listing.canonical_id[:2] != expected_exchange:
         raise ProviderRequestError(
-            "the AKShare insider-share-change endpoint supports Shanghai A-share listings only",
+            f"the {endpoint_name} endpoint supports {expected_exchange} A-share listings only",
             request=request,
             retryable=False,
         )
@@ -3209,7 +3220,7 @@ def _validate_insider_share_change_normalizer_rows(
     rows: Sequence[Mapping[str, JSONValue]],
     listing: _ListingRef,
 ) -> None:
-    """Keep replayed SSE insider-share rows inside the listing boundary."""
+    """Keep replayed SSE/SZSE insider-share rows inside the listing boundary."""
 
     for row in rows:
         row_code = _row_code(row, ListingMarket.A)
@@ -3276,7 +3287,7 @@ def _validate_insider_share_change_provider_rows(
     provider: ProviderIdentity,
     request: ProviderRequest,
 ) -> None:
-    """Validate an SSE listing-scoped insider-share response before storage."""
+    """Validate an SSE/SZSE listing-scoped insider-share response before storage."""
 
     for row in rows:
         row_code = _row_code(row, ListingMarket.A)

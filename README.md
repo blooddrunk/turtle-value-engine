@@ -119,6 +119,11 @@ holdings, prices and event dates remain raw-only: they do not establish a
 company-level diluted-share series or a governance-risk judgment, and the
 normalizer emits `AKSHARE_INSIDER_SHARE_CHANGE_RAW_ONLY` without creating
 share-count, dilution, governance, buyback or issuance facts.
+Phase 2.20 extends the same raw-only category to the documented Shenzhen
+`stock_share_hold_change_szse` endpoint for Shenzhen A-share listings. Its
+documented holding quantities, prices, units and event dates remain evidence
+only; the normalizer preserves the same no-fabrication boundary. Beijing and
+H-share insider-share coverage remain unresolved.
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

@@ -210,6 +210,13 @@ class FakeAKShare:
             symbol=symbol,
         )
 
+    def stock_share_hold_change_szse(self, *, symbol: str):
+        return self._return(
+            "stock_share_hold_change_szse",
+            _fixture("a_insider_share_change_szse.json"),
+            symbol=symbol,
+        )
+
 
 class OfficialBalanceAKShare:
     __version__ = "fixture-akshare-official-balance"
@@ -278,8 +285,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "share_capital",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "19"
-    assert AKSHARE_MAPPING_VERSION == "20"
+    assert provider.identity.provider_version == "20"
+    assert AKSHARE_MAPPING_VERSION == "21"
 
 
 def test_a_quote_is_selected_from_the_upstream_universe_and_kept_opaque():
@@ -866,12 +873,36 @@ def test_insider_share_change_fetch_uses_listing_scoped_sse_endpoint():
     )
 
 
-def test_insider_share_change_request_is_shanghai_only_and_has_no_parameters():
+def test_insider_share_change_fetch_uses_listing_scoped_szse_endpoint():
+    fake = FakeAKShare()
+    record = _provider(fake).fetch(
+        _request(DataCategory.INSIDER_SHARE_CHANGES, "SZ000001")
+    )
+
+    assert record.raw_payload == _fixture("a_insider_share_change_szse.json")
+    assert fake.calls == [
+        ("stock_share_hold_change_szse", {"symbol": "000001"}),
+    ]
+    assert record.response_metadata["endpoint"] == "stock_share_hold_change_szse"
+    assert record.response_metadata["upstream_row_count"] == 2
+    assert record.response_metadata["entity_row_count"] == 2
+    assert record.response_metadata["entity_rows_selected"] is True
+    assert record.response_metadata["listing_scoped_request"] is True
+    assert record.source_uri == (
+        "http://www.szse.cn/disclosure/supervision/change/index.html"
+    )
+
+
+def test_insider_share_change_request_supports_shanghai_and_shenzhen_and_has_no_parameters():
     fake = FakeAKShare()
     provider = _provider(fake)
 
-    with pytest.raises(ProviderRequestError, match="Shanghai A-share listings only"):
-        provider.fetch(_request(DataCategory.INSIDER_SHARE_CHANGES, "SZ000001"))
+    provider.fetch(_request(DataCategory.INSIDER_SHARE_CHANGES, "SZ000001"))
+    with pytest.raises(
+        ProviderRequestError,
+        match="Shanghai and Shenzhen A-share listings only",
+    ):
+        provider.fetch(_request(DataCategory.INSIDER_SHARE_CHANGES, "BJ430489"))
     with pytest.raises(ProviderRequestError, match="unsupported AKShare insider-share-change"):
         provider.fetch(
             _request(
@@ -881,7 +912,9 @@ def test_insider_share_change_request_is_shanghai_only_and_has_no_parameters():
             )
         )
 
-    assert fake.calls == []
+    assert fake.calls == [
+        ("stock_share_hold_change_szse", {"symbol": "000001"}),
+    ]
 
 
 def test_insider_share_change_response_rejects_missing_or_cross_listing_rows():
@@ -951,6 +984,28 @@ def test_insider_share_change_raw_record_is_not_promoted_to_shares_or_governance
     schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
     errors = list(Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json")))
     assert errors == []
+
+
+def test_szse_insider_share_change_raw_record_stays_outside_canonical_facts():
+    record = _provider().fetch(
+        _request(DataCategory.INSIDER_SHARE_CHANGES, "SZ000001")
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="szse-insider-share-change-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company("SZ000001"),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_INSIDER_SHARE_CHANGE_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == [
+        "governance_risk_level",
+    ]
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "SSE/SZSE insider-share-change" in normalized.data_quality.notes
 
 
 def test_insider_share_change_normalizer_rejects_replayed_rows_for_another_listing():
