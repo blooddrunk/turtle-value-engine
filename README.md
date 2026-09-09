@@ -113,6 +113,12 @@ Phase 2.18 adds the documented A-share Eastmoney
 provider ratios remain raw-only because the response does not establish the
 canonical entity, unit, point-in-time basis or calculation methodology; the
 normalizer emits no canonical revenue, profit or CFO fact.
+Phase 2.19 adds the documented SSE `stock_share_hold_change_sse` endpoint for
+Shanghai A-share listings under `INSIDER_SHARE_CHANGES`. Its holder roles,
+holdings, prices and event dates remain raw-only: they do not establish a
+company-level diluted-share series or a governance-risk judgment, and the
+normalizer emits `AKSHARE_INSIDER_SHARE_CHANGE_RAW_ONLY` without creating
+share-count, dilution, governance, buyback or issuance facts.
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

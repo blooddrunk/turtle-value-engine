@@ -448,6 +448,31 @@ indicators remain outside this slice.
 | per-share fields such as `EPSJB`, `MGJYXJJE`, `BPS` | Raw-only; per-share values do not establish total amounts or a verified diluted-share basis. |
 | ratio fields such as `ROEJQ`, `XSJLL`, `ZCFZL` | Raw-only provider-derived ratios; calculation inputs and methodology are not imported as canonical metrics or valuation inputs. |
 
+## Phase 2.19 SSE insider share-change raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_share_hold_change_sse` as an SSE endpoint for a specific
+Shanghai A-share symbol. It returns company code/name, insider name and role,
+share class and currency labels, before/after holdings, changed quantity and
+average price, change reason, change date and filing date.
+
+The provider passes the six-digit Shanghai code, validates that every returned
+row is explicitly bound to that listing and validates any non-null event dates.
+It retains every row as an opaque listing-scoped raw record. The normalizer
+emits `AKSHARE_INSIDER_SHARE_CHANGE_RAW_ONLY`, marks
+`governance_risk_level` as critically missing and creates no company share
+count, dilution, governance, buyback or issuance fact. Insider roles and
+transactions require later context and filing review; Shenzhen/Beijing and
+H-share coverage remain outside this slice.
+
+| Raw upstream item | Phase 2 treatment |
+| --- | --- |
+| `公司代码`, `公司名称` | Used only for explicit listing-boundary validation and evidence context. |
+| `姓名`, `职务`, `股票种类`, `货币种类` | Raw-only; holder identity, role and share class do not establish a governance judgment or economic attribution. |
+| `本次变动前持股数`, `变动数`, `变动后持股数`, `本次变动平均价格` | Raw-only; event holdings and price do not establish a company-level fully diluted share series or settled buyback/issuance cash flow. |
+| `变动原因` | Raw-only; the reason label does not establish intent, materiality or governance severity. |
+| `变动日期`, `填报日期` | Raw-only event metadata; neither date is silently promoted to a financial-statement period or point-in-time governance conclusion. |
+
 ## Eligibility, identity and market context
 
 | Normalized field | Status | Boundary note |

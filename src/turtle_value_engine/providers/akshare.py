@@ -7,10 +7,10 @@ cached records without installing AKShare or making a network request.
 The adapter currently implements metadata, market observations, three narrow
 financial-statement slices, A-share earnings-forecast, earnings-quick-report,
 performance-report, business-composition, financial-abstract and financial-
-indicator raw slices, raw-only dividend event/snapshot, corporate-action and
-ownership-pledge slices, and A-share share-capital raw slices. Upstream column
-names are handled in this module and are never passed to the deterministic
-calculation or gate code.
+indicator raw slices, raw-only dividend event/snapshot, corporate-action,
+ownership-pledge, insider-share-change and A-share share-capital slices.
+Upstream column names are handled in this module and are never passed to the
+deterministic calculation or gate code.
 """
 
 from __future__ import annotations
@@ -55,9 +55,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "18"
+AKSHARE_ADAPTER_VERSION = "19"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "19"
+AKSHARE_MAPPING_VERSION = "20"
 
 
 class ListingMarket(StrEnum):
@@ -86,6 +86,7 @@ AKSHARE_CAPABILITIES = ProviderCapabilities(
         DataCategory.CORPORATE_ACTIONS,
         DataCategory.SHARE_CAPITAL,
         DataCategory.OWNERSHIP_PLEDGE,
+        DataCategory.INSIDER_SHARE_CHANGES,
     }
 )
 
@@ -123,6 +124,7 @@ _SOURCE_URIS = {
     "stock_share_change_cninfo": "https://webapi.cninfo.com.cn/#/apiDoc",
     "stock_allotment_cninfo": "https://webapi.cninfo.com.cn/#/dataBrowse",
     "stock_gpzy_pledge_ratio_em": "https://data.eastmoney.com/gpzy/pledgeRatio.aspx",
+    "stock_share_hold_change_sse": "http://www.sse.com.cn/disclosure/credibility/supervision/change/",
     "stock_financial_report_sina": "https://vip.stock.finance.sina.com.cn/corp/go.php/vFD_FinanceSummary/",
     "stock_financial_hk_report_em": "https://emweb.securities.eastmoney.com/PC_HKF10/FinancialAnalysis/index",
 }
@@ -175,6 +177,7 @@ _SHARE_CHANGE_DEFAULT_END_DATE = "20241021"
 
 _CORPORATE_ACTION_PARAMETER_NAMES = frozenset({"start_date", "end_date"})
 _OWNERSHIP_PLEDGE_PARAMETER_NAMES = frozenset({"date"})
+_INSIDER_SHARE_CHANGE_PARAMETER_NAMES = frozenset()
 _EARNINGS_FORECAST_START_DATE = date(2008, 12, 31)
 _EARNINGS_FORECAST_QUARTER_ENDS = frozenset({(3, 31), (6, 30), (9, 30), (12, 31)})
 _EARNINGS_QUICK_REPORT_START_DATE = date(2010, 3, 31)
@@ -278,6 +281,16 @@ class AKShareProvider(StructuredDataProvider):
         ):
             raise ProviderRequestError(
                 "the AKShare ownership-pledge endpoint supports A-share listings only",
+                provider=self.identity,
+                request=request,
+                retryable=False,
+            )
+        if (
+            request.category is DataCategory.INSIDER_SHARE_CHANGES
+            and listing.canonical_id[:2] != "SH"
+        ):
+            raise ProviderRequestError(
+                "the AKShare insider-share-change endpoint supports Shanghai A-share listings only",
                 provider=self.identity,
                 request=request,
                 retryable=False,
@@ -517,6 +530,18 @@ class AKShareProvider(StructuredDataProvider):
             response_metadata["row_filtering"] = "provider"
             response_metadata["requested_date"] = kwargs["date"]
             response_metadata["observation_date"] = requested_date.isoformat()
+        elif request.category is DataCategory.INSIDER_SHARE_CHANGES:
+            rows = _table_rows(payload, provider=self.identity, request=request)
+            _validate_insider_share_change_provider_rows(
+                rows,
+                listing,
+                provider=self.identity,
+                request=request,
+            )
+            response_metadata["upstream_row_count"] = len(rows)
+            response_metadata["entity_row_count"] = len(rows)
+            response_metadata["entity_rows_selected"] = True
+            response_metadata["listing_scoped_request"] = True
         elif request.category is DataCategory.EARNINGS_FORECAST:
             rows = _table_rows(payload, provider=self.identity, request=request)
             requested_date = _parse_earnings_forecast_date_parameter(
@@ -762,6 +787,8 @@ class AKShareProvider(StructuredDataProvider):
                 return _corporate_action_kwargs(endpoint_name, listing, request)
             if request.category is DataCategory.OWNERSHIP_PLEDGE:
                 return _ownership_pledge_kwargs(endpoint_name, listing, request)
+            if request.category is DataCategory.INSIDER_SHARE_CHANGES:
+                return _insider_share_change_kwargs(endpoint_name, listing, request)
             if endpoint_name in _NO_ARGUMENT_ENDPOINTS:
                 _reject_unexpected_parameters(request)
                 return {}
@@ -1228,6 +1255,17 @@ class AKShareNormalizer:
                 # identity, cash accessibility or a strict-v1 debt/cash fact.
                 missing_fields.add("governance_risk_level")
                 normalizer_flags.add("AKSHARE_OWNERSHIP_PLEDGE_RAW_ONLY")
+            elif record.request.category is DataCategory.INSIDER_SHARE_CHANGES:
+                if listing.canonical_id[:2] != "SH":
+                    raise ProviderNormalizationError(
+                        "AKShare insider-share-change raw slice supports "
+                        "Shanghai A-share listings only"
+                    )
+                _validate_insider_share_change_normalizer_rows(rows, listing)
+                # Insider transactions are event evidence, not a settled
+                # company share-count series or a governance verdict.
+                missing_fields.add("governance_risk_level")
+                normalizer_flags.add("AKSHARE_INSIDER_SHARE_CHANGE_RAW_ONLY")
             else:
                 raise ProviderNormalizationError(
                     f"unsupported AKShare normalization category: {record.request.category.value}"
@@ -1303,6 +1341,12 @@ class AKShareNormalizer:
                 "raw evidence only: its ratio and observation date do not identify "
                 "a controlling holder or establish a governance-risk conclusion, "
                 "pledged cash amount or debt-equivalent fact."
+            )
+        if "AKSHARE_INSIDER_SHARE_CHANGE_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented SSE insider-share-change response is retained as raw "
+                "evidence only: holder role, trade quantities, prices and dates do not "
+                "establish a company-level diluted-share series or governance-risk judgment."
             )
         if "AKSHARE_DIVIDEND_SNAPSHOT_RAW_ONLY" in normalizer_flags:
             notes += (
@@ -1530,6 +1574,10 @@ def _endpoint_candidates(
     if category is DataCategory.OWNERSHIP_PLEDGE:
         if market is ListingMarket.A:
             return ("stock_gpzy_pledge_ratio_em",)
+        return ()
+    if category is DataCategory.INSIDER_SHARE_CHANGES:
+        if market is ListingMarket.A and listing.canonical_id.startswith("SH"):
+            return ("stock_share_hold_change_sse",)
         return ()
     raise ProviderCapabilityError(f"AKShare adapter does not support {category.value!r}")
 
@@ -1936,6 +1984,33 @@ def _ownership_pledge_kwargs(
     raw_date = request.parameters["date"]
     _parse_pledge_date_parameter(raw_date, request=request)
     return {"date": raw_date}
+
+
+def _insider_share_change_kwargs(
+    endpoint_name: str,
+    listing: _ListingRef,
+    request: ProviderRequest,
+) -> dict[str, object]:
+    if endpoint_name != "stock_share_hold_change_sse":
+        raise ProviderRequestError(
+            f"unsupported AKShare insider-share-change endpoint {endpoint_name!r}",
+            request=request,
+            retryable=False,
+        )
+    if listing.canonical_id[:2] != "SH":
+        raise ProviderRequestError(
+            "the AKShare insider-share-change endpoint supports Shanghai A-share listings only",
+            request=request,
+            retryable=False,
+        )
+    unknown = sorted(set(request.parameters) - _INSIDER_SHARE_CHANGE_PARAMETER_NAMES)
+    if unknown:
+        raise ProviderRequestError(
+            "unsupported AKShare insider-share-change parameter(s): " + ", ".join(unknown),
+            request=request,
+            retryable=False,
+        )
+    return {"symbol": listing.code}
 
 
 def _corporate_action_kwargs(
@@ -2416,6 +2491,7 @@ def _row_code(row: Mapping[str, JSONValue], market: ListingMarket) -> str | None
             "A股代码",
             "股票代码",
             "证券代码",
+            "公司代码",
             "SECURITY_CODE",
             "SECUCODE",
             "code",
@@ -2428,6 +2504,7 @@ def _row_code(row: Mapping[str, JSONValue], market: ListingMarket) -> str | None
             "SECURITY_CODE",
             "SECUCODE",
             "证券代码",
+            "公司代码",
             "股票代码",
             "code",
             "symbol",
@@ -3128,6 +3205,34 @@ def _validate_ownership_pledge_rows(
             )
 
 
+def _validate_insider_share_change_normalizer_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+) -> None:
+    """Keep replayed SSE insider-share rows inside the listing boundary."""
+
+    for row in rows:
+        row_code = _row_code(row, ListingMarket.A)
+        if row_code is None:
+            raise ProviderNormalizationError(
+                "insider-share-change row has no explicit listing code"
+            )
+        if row_code != listing.code:
+            raise ProviderNormalizationError(
+                f"insider-share-change row entity {row_code!r} does not match "
+                f"requested listing {listing.canonical_id!r}"
+            )
+        for field in ("变动日期", "填报日期"):
+            if (
+                field in row
+                and _text_value(row[field]) is not None
+                and _parse_date_value(row[field]) is None
+            ):
+                raise ProviderNormalizationError(
+                    f"insider-share-change row has an invalid {field}"
+                )
+
+
 def _validate_ownership_pledge_provider_rows(
     rows: Sequence[Mapping[str, JSONValue]],
     listing: _ListingRef,
@@ -3162,6 +3267,45 @@ def _validate_ownership_pledge_provider_rows(
                 provider=provider,
                 request=request,
             )
+
+
+def _validate_insider_share_change_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> None:
+    """Validate an SSE listing-scoped insider-share response before storage."""
+
+    for row in rows:
+        row_code = _row_code(row, ListingMarket.A)
+        if row_code is None:
+            raise ProviderResponseError(
+                f"AKShare returned an insider-share-change row without a listing code for "
+                f"{request.entity_id!r}",
+                provider=provider,
+                request=request,
+            )
+        if row_code != listing.code:
+            raise ProviderResponseError(
+                f"AKShare returned insider-share-change row entity {row_code!r} for "
+                f"requested listing {listing.canonical_id!r}",
+                provider=provider,
+                request=request,
+            )
+        for field in ("变动日期", "填报日期"):
+            if (
+                field in row
+                and _text_value(row[field]) is not None
+                and _parse_date_value(row[field]) is None
+            ):
+                raise ProviderResponseError(
+                    f"AKShare returned an insider-share-change row with an invalid {field} "
+                    f"for {request.entity_id!r}",
+                    provider=provider,
+                    request=request,
+                )
 
 
 def _history_kwargs(

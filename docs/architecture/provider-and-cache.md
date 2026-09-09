@@ -1,6 +1,6 @@
 # Provider and Cache Architecture
 
-> Status: Phase 2 foundation, read-only AKShare statement slices, earnings forecasts/quick reports/performance reports/business composition/financial abstract/financial indicators, dividend events/snapshots, share-capital and corporate-action raw slices
+> Status: Phase 2 foundation, read-only AKShare statement slices, earnings forecasts/quick reports/performance reports/business composition/financial abstract/financial indicators, dividend events/snapshots, share-capital, corporate-action, ownership-pledge and insider-share-change raw slices
 
 This document freezes the boundary between structured-data acquisition and the
 deterministic Turtle Value Engine. It does not authorize a live provider or
@@ -344,6 +344,19 @@ marks `revenue`, `parent_net_profit`, `consolidated_net_profit` and
 metric or valuation input. H-share financial indicators remain outside this
 slice.
 
+The insider-share-change slice is also acquisition-only. The current
+[AKShare documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+describes `stock_share_hold_change_sse` as an SSE endpoint accepting a
+Shanghai A-share `symbol` and returning listing-scoped insider/management
+holding-change rows. The provider passes the six-digit code, validates explicit
+company identity and any non-null change/filing dates, and retains every row.
+Because holder roles, event holdings and prices do not establish a
+company-level diluted-share series or a governance judgment, the normalizer
+marks `governance_risk_level` as critically missing and emits
+`AKSHARE_INSIDER_SHARE_CHANGE_RAW_ONLY` without creating share-count,
+dilution, governance, buyback or issuance facts. Shenzhen/Beijing and H-share
+coverage remain outside this slice.
+
 When a statement row includes an explicit security code, the normalizer also
 checks it against the requested listing and rejects a mismatch. Statement
 endpoints that omit a row-level code remain bound to their listing-scoped
@@ -498,7 +511,7 @@ The cache performs no network retries. The normalizer performs no provider
 retries. The deterministic pipeline performs no provider retries and should
 not be rerun as a substitute for resolving missing facts.
 
-## 12. Phase 2.2–2.17 AKShare adapter
+## 12. Phase 2.2–2.19 AKShare adapter
 
 The first concrete adapter is intentionally limited to read-only metadata,
 market observations, three documented financial-statement slices, raw-only
@@ -614,7 +627,7 @@ admitted automatically.
 
 ## 13. Deliberate non-goals
 
-This foundation plus the Phase 2.2–2.17 slices does not include:
+This foundation plus the Phase 2.2–2.19 slices does not include:
 
 - Tushare, BaoStock or any other additional provider;
 - automatic network scheduling, credentials or retry orchestration outside an adapter;

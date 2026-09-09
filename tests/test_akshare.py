@@ -203,6 +203,13 @@ class FakeAKShare:
             date=date,
         )
 
+    def stock_share_hold_change_sse(self, *, symbol: str):
+        return self._return(
+            "stock_share_hold_change_sse",
+            _fixture("a_insider_share_change.json"),
+            symbol=symbol,
+        )
+
 
 class OfficialBalanceAKShare:
     __version__ = "fixture-akshare-official-balance"
@@ -262,6 +269,7 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "financial_abstract",
         "financial_indicators",
         "income_statement",
+        "insider_share_changes",
         "listing_metadata",
         "market_history",
         "market_quote",
@@ -270,8 +278,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "share_capital",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "18"
-    assert AKSHARE_MAPPING_VERSION == "19"
+    assert provider.identity.provider_version == "19"
+    assert AKSHARE_MAPPING_VERSION == "20"
 
 
 def test_a_quote_is_selected_from_the_upstream_universe_and_kept_opaque():
@@ -835,6 +843,156 @@ def test_ownership_pledge_cache_replay_does_not_call_upstream(tmp_path: Path):
     assert replay.record == live.record
     assert fake.calls == [
         ("stock_gpzy_pledge_ratio_em", {"date": "20241220"}),
+    ]
+
+
+def test_insider_share_change_fetch_uses_listing_scoped_sse_endpoint():
+    fake = FakeAKShare()
+    record = _provider(fake).fetch(
+        _request(DataCategory.INSIDER_SHARE_CHANGES, "SH600000")
+    )
+
+    assert record.raw_payload == _fixture("a_insider_share_change.json")
+    assert fake.calls == [
+        ("stock_share_hold_change_sse", {"symbol": "600000"}),
+    ]
+    assert record.response_metadata["endpoint"] == "stock_share_hold_change_sse"
+    assert record.response_metadata["upstream_row_count"] == 2
+    assert record.response_metadata["entity_row_count"] == 2
+    assert record.response_metadata["entity_rows_selected"] is True
+    assert record.response_metadata["listing_scoped_request"] is True
+    assert record.source_uri == (
+        "http://www.sse.com.cn/disclosure/credibility/supervision/change/"
+    )
+
+
+def test_insider_share_change_request_is_shanghai_only_and_has_no_parameters():
+    fake = FakeAKShare()
+    provider = _provider(fake)
+
+    with pytest.raises(ProviderRequestError, match="Shanghai A-share listings only"):
+        provider.fetch(_request(DataCategory.INSIDER_SHARE_CHANGES, "SZ000001"))
+    with pytest.raises(ProviderRequestError, match="unsupported AKShare insider-share-change"):
+        provider.fetch(
+            _request(
+                DataCategory.INSIDER_SHARE_CHANGES,
+                "SH600000",
+                {"start_date": "20240101"},
+            )
+        )
+
+    assert fake.calls == []
+
+
+def test_insider_share_change_response_rejects_missing_or_cross_listing_rows():
+    class MissingListingCode(FakeAKShare):
+        def stock_share_hold_change_sse(self, *, symbol: str):
+            return self._return(
+                "stock_share_hold_change_sse",
+                [{"公司代码": None, "变动日期": "2021-07-15"}],
+                symbol=symbol,
+            )
+
+    with pytest.raises(
+        ProviderResponseError,
+        match="insider-share-change row without a listing code",
+    ):
+        _provider(MissingListingCode()).fetch(
+            _request(DataCategory.INSIDER_SHARE_CHANGES, "SH600000")
+        )
+
+    class WrongEntity(FakeAKShare):
+        def stock_share_hold_change_sse(self, *, symbol: str):
+            payload = _fixture("a_insider_share_change.json")
+            payload[0]["公司代码"] = "600004"
+            return self._return("stock_share_hold_change_sse", payload, symbol=symbol)
+
+    with pytest.raises(ProviderResponseError, match="insider-share-change row entity"):
+        _provider(WrongEntity()).fetch(
+            _request(DataCategory.INSIDER_SHARE_CHANGES, "SH600000")
+        )
+
+
+def test_insider_share_change_response_rejects_invalid_event_dates():
+    class InvalidDate(FakeAKShare):
+        def stock_share_hold_change_sse(self, *, symbol: str):
+            payload = _fixture("a_insider_share_change.json")
+            payload[0]["变动日期"] = "not-a-date"
+            return self._return("stock_share_hold_change_sse", payload, symbol=symbol)
+
+    with pytest.raises(ProviderResponseError, match="invalid 变动日期"):
+        _provider(InvalidDate()).fetch(
+            _request(DataCategory.INSIDER_SHARE_CHANGES, "SH600000")
+        )
+
+
+def test_insider_share_change_raw_record_is_not_promoted_to_shares_or_governance():
+    record = _provider().fetch(
+        _request(DataCategory.INSIDER_SHARE_CHANGES, "SH600000")
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="insider-share-change-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_INSIDER_SHARE_CHANGE_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == [
+        "governance_risk_level",
+    ]
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "diluted-share series" in normalized.data_quality.notes
+    assert "governance-risk judgment" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    errors = list(Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json")))
+    assert errors == []
+
+
+def test_insider_share_change_normalizer_rejects_replayed_rows_for_another_listing():
+    record = _provider().fetch(
+        _request(DataCategory.INSIDER_SHARE_CHANGES, "SH600000")
+    )
+    mismatched_payload = [dict(row) for row in record.raw_payload]
+    mismatched_payload[0]["公司代码"] = "600004"
+    mismatched = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=mismatched_payload,
+        source_uri=record.source_uri,
+        response_metadata=record.response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match="insider-share-change row entity"):
+        normalize_akshare_records(
+            [mismatched],
+            analysis_id="mismatched-insider-share-change",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_insider_share_change_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(DataCategory.INSIDER_SHARE_CHANGES, "SH600000")
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [
+        ("stock_share_hold_change_sse", {"symbol": "600000"}),
     ]
 
 

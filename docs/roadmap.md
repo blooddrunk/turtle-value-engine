@@ -526,6 +526,28 @@ creates no canonical fact, metric or valuation input. H-share financial
 indicators remain outside this slice. Live calls remain opt-in; tests use an
 injected client and a frozen fixture.
 
+### Phase 2.19 — SSE insider share-change raw acquisition contract (COMPLETE)
+
+The mapping review now covers the documented AKShare SSE
+`stock_share_hold_change_sse` endpoint under a new provider-neutral
+`INSIDER_SHARE_CHANGES` category. The endpoint accepts a Shanghai A-share
+`symbol` and returns listing-scoped rows with company code, holder and role,
+share class, currency label, before/after holdings, change quantity and price,
+change reason, change date and filing date. The provider passes the six-digit
+code, retains every returned row as an opaque raw record and validates explicit
+listing identity plus any supplied event dates.
+
+The documented holdings and transaction prices describe insider events, not a
+company-level fully diluted share series, and they do not by themselves
+establish governance severity or a canonical buyback/issuance cash flow. The
+normalizer therefore retains structured evidence, marks
+`governance_risk_level` as critically missing and emits
+`AKSHARE_INSIDER_SHARE_CHANGE_RAW_ONLY`; it creates no share-count, dilution,
+governance, buyback or issuance fact. Shenzhen/Beijing and H-share coverage,
+holder interpretation and filing-backed governance analysis remain outside
+this slice. Live calls remain opt-in; tests use an injected client and a
+frozen fixture.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -535,7 +557,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.18 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.19 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -743,7 +765,7 @@ Phase 2 is active. Phase 1 remains frozen: changes to formulas, hard-gate
 semantics, schemas or `strict-v1` thresholds require a separately reviewed,
 versioned change.
 
-Phase 2.18 completes the next documented structured-data boundary while
+Phase 2.19 completes the next documented structured-data boundary while
 keeping share-change, repurchase and rights-issue period, status, unit and
 economic-scope questions unresolved, and keeping ownership-pledge holder,
 governance and economic-scope questions unresolved. The A-share
@@ -776,3 +798,7 @@ The A-share financial-indicator response remains raw-only because its reported
 amounts, per-share values and provider ratios do not establish the canonical
 entity, unit, point-in-time basis or calculation methodology. Filing-derived
 statement facts and analytical classifications remain outside this slice.
+The documented SSE insider-share-change response is also raw-only because
+holder roles, holdings, transaction prices and event dates do not establish a
+company-level diluted-share series or a governance-risk judgment. Shenzhen,
+Beijing and H-share insider-share coverage remains unresolved.
