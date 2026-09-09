@@ -135,6 +135,15 @@ the normalizer emits the existing `AKSHARE_FINANCIAL_INDICATORS_RAW_ONLY`
 boundary without canonical revenue, profit or CFO facts. H-share
 insider-share coverage remains unresolved because the current AKShare stock
 documentation does not define an equivalent H-share insider endpoint.
+Phase 2.23 adds the documented H-share `stock_hk_financial_indicator_em`
+latest-indicator endpoint under a separate `LATEST_INDICATORS` category. Its
+symbol-scoped mixed per-share, share-capital, dividend, headline financial and
+valuation row remains raw evidence only; the normalizer emits
+`AKSHARE_LATEST_INDICATORS_RAW_ONLY` without canonical financial, share,
+dividend, market-cap, metric or valuation facts. The published output omits a
+canonical statement period and row-level listing identity, so the request
+scope is preserved without inventing either. H-share insider-share coverage
+remains unresolved.
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

@@ -9,7 +9,8 @@ financial-statement slices, A-share earnings-forecast, earnings-quick-report,
 performance-report, business-composition, financial-abstract and financial-
 indicator raw slices, raw-only dividend event/snapshot, corporate-action,
 ownership-pledge, SSE/SZSE/BSE insider-share-change and A-share share-capital
-slices, and the H-share financial-indicator raw slice.
+slices, the H-share financial-indicator raw slice and the H-share latest-
+indicator raw slice.
 Upstream column names are handled in this module and are never passed to the
 deterministic calculation or gate code.
 """
@@ -56,9 +57,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "22"
+AKSHARE_ADAPTER_VERSION = "23"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "23"
+AKSHARE_MAPPING_VERSION = "24"
 
 
 class ListingMarket(StrEnum):
@@ -82,6 +83,7 @@ AKSHARE_CAPABILITIES = ProviderCapabilities(
         DataCategory.BUSINESS_COMPOSITION,
         DataCategory.FINANCIAL_ABSTRACT,
         DataCategory.FINANCIAL_INDICATORS,
+        DataCategory.LATEST_INDICATORS,
         DataCategory.BALANCE_SHEET,
         DataCategory.DIVIDENDS,
         DataCategory.CORPORATE_ACTIONS,
@@ -115,6 +117,7 @@ _SOURCE_URIS = {
     "stock_financial_abstract": "https://vip.stock.finance.sina.com.cn/corp/go.php/vFD_FinanceSummary/stockid/600004.phtml",
     "stock_financial_analysis_indicator_em": "https://emweb.securities.eastmoney.com/pc_hsf10/pages/index.html?type=web&code=SZ301389&color=b#/cwfx",
     "stock_financial_hk_analysis_indicator_em": "https://emweb.securities.eastmoney.com/PC_HKF10/NewFinancialAnalysis/index?type=web&code=00700",
+    "stock_hk_financial_indicator_em": "https://emweb.securities.eastmoney.com/PC_HKF10/pages/home/index.html",
     "stock_balance_sheet_by_report_em": "https://emweb.securities.eastmoney.com/PC_HSF10/NewFinanceAnalysis/Index",
     "stock_zcfz_em": "https://data.eastmoney.com/bbsj/202003/zcfz.html",
     "stock_zcfz_bj_em": "https://data.eastmoney.com/bbsj/202003/zcfz.html",
@@ -172,6 +175,7 @@ _PERFORMANCE_REPORT_PARAMETER_NAMES = frozenset({"date"})
 _BUSINESS_COMPOSITION_PARAMETER_NAMES = frozenset()
 _FINANCIAL_ABSTRACT_PARAMETER_NAMES = frozenset()
 _FINANCIAL_INDICATORS_PARAMETER_NAMES = frozenset({"indicator"})
+_LATEST_INDICATORS_PARAMETER_NAMES = frozenset()
 _FINANCIAL_INDICATORS_CHOICES = {
     ListingMarket.A: frozenset({"按报告期", "按单季度"}),
     ListingMarket.H: frozenset({"年度", "报告期"}),
@@ -349,6 +353,16 @@ class AKShareProvider(StructuredDataProvider):
         ):
             raise ProviderRequestError(
                 "the AKShare financial-abstract endpoint supports A-share listings only",
+                provider=self.identity,
+                request=request,
+                retryable=False,
+            )
+        if (
+            request.category is DataCategory.LATEST_INDICATORS
+            and listing.market is not ListingMarket.H
+        ):
+            raise ProviderRequestError(
+                "the AKShare latest-indicator endpoint supports H-share listings only",
                 provider=self.identity,
                 request=request,
                 retryable=False,
@@ -675,6 +689,18 @@ class AKShareProvider(StructuredDataProvider):
             response_metadata["listing_scoped_request"] = True
             response_metadata["report_period_count"] = len(report_periods)
             response_metadata["indicator"] = kwargs["indicator"]
+        elif request.category is DataCategory.LATEST_INDICATORS:
+            rows = _table_rows(payload, provider=self.identity, request=request)
+            _validate_latest_indicators_provider_rows(
+                rows,
+                listing,
+                provider=self.identity,
+                request=request,
+            )
+            response_metadata["upstream_row_count"] = len(rows)
+            response_metadata["entity_row_count"] = len(rows)
+            response_metadata["entity_rows_selected"] = True
+            response_metadata["listing_scoped_request"] = True
 
         try:
             retrieved_at = self._clock()
@@ -777,6 +803,8 @@ class AKShareProvider(StructuredDataProvider):
                 return _financial_abstract_kwargs(endpoint_name, listing, request)
             if request.category is DataCategory.FINANCIAL_INDICATORS:
                 return _financial_indicators_kwargs(endpoint_name, listing, request)
+            if request.category is DataCategory.LATEST_INDICATORS:
+                return _latest_indicators_kwargs(endpoint_name, listing, request)
             if request.category is DataCategory.DIVIDENDS:
                 return _dividends_kwargs(endpoint_name, listing, request)
             if request.category is DataCategory.SHARE_CAPITAL:
@@ -1177,6 +1205,24 @@ class AKShareNormalizer:
                     }
                 )
                 normalizer_flags.add("AKSHARE_FINANCIAL_INDICATORS_RAW_ONLY")
+            elif record.request.category is DataCategory.LATEST_INDICATORS:
+                if listing.market is not ListingMarket.H:
+                    raise ProviderNormalizationError(
+                        "AKShare latest-indicator raw slice supports H-share listings only"
+                    )
+                _validate_latest_indicators_normalizer_rows(rows, listing)
+                # This latest snapshot mixes amount, per-share, capital,
+                # dividend and valuation fields without a canonical statement
+                # period, entity basis, unit/scaling or diluted-share scope.
+                missing_fields.update(
+                    {
+                        "consolidated_net_profit",
+                        "parent_net_profit",
+                        "reported_cfo",
+                        "revenue",
+                    }
+                )
+                normalizer_flags.add("AKSHARE_LATEST_INDICATORS_RAW_ONLY")
             elif record.request.category is DataCategory.DIVIDENDS:
                 endpoint_name = record.response_metadata.get("endpoint")
                 if endpoint_name == "stock_fhps_em":
@@ -1393,6 +1439,13 @@ class AKShareNormalizer:
                 "provider ratios do not establish the canonical entity, unit or "
                 "calculation basis."
             )
+        if "AKSHARE_LATEST_INDICATORS_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented H-share latest-indicator response is retained as raw "
+                "evidence only: its mixed amount, per-share, capital, dividend and "
+                "valuation fields do not establish a canonical period, entity, unit "
+                "or diluted-share basis."
+            )
         return NormalizedCompanyInput(
             schema_version="1.0.0",
             analysis_id=analysis_id,
@@ -1534,6 +1587,10 @@ def _endpoint_candidates(
         if market is ListingMarket.A:
             return ("stock_financial_analysis_indicator_em",)
         return ("stock_financial_hk_analysis_indicator_em",)
+    if category is DataCategory.LATEST_INDICATORS:
+        if market is ListingMarket.H:
+            return ("stock_hk_financial_indicator_em",)
+        return ()
     if category is DataCategory.BALANCE_SHEET:
         if market is ListingMarket.A:
             if listing.canonical_id.startswith("BJ"):
@@ -1815,6 +1872,33 @@ def _financial_indicators_indicator(
             retryable=False,
         )
     return indicator
+
+
+def _latest_indicators_kwargs(
+    endpoint_name: str,
+    listing: _ListingRef,
+    request: ProviderRequest,
+) -> dict[str, object]:
+    if endpoint_name != "stock_hk_financial_indicator_em":
+        raise ProviderRequestError(
+            f"unsupported AKShare latest-indicator endpoint {endpoint_name!r}",
+            request=request,
+            retryable=False,
+        )
+    if listing.market is not ListingMarket.H:
+        raise ProviderRequestError(
+            "the AKShare latest-indicator endpoint supports H-share listings only",
+            request=request,
+            retryable=False,
+        )
+    unknown = sorted(set(request.parameters) - _LATEST_INDICATORS_PARAMETER_NAMES)
+    if unknown:
+        raise ProviderRequestError(
+            "unsupported AKShare latest-indicator parameter(s): " + ", ".join(unknown),
+            request=request,
+            retryable=False,
+        )
+    return {"symbol": listing.code}
 
 
 def _earnings_quick_report_kwargs(
@@ -3143,6 +3227,51 @@ def _validate_financial_indicators_normalizer_rows(
         if _parse_date_value(raw_period) is None:
             raise ProviderNormalizationError(
                 "financial-indicator row has an invalid report date"
+            )
+
+
+def _validate_latest_indicators_normalizer_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+) -> None:
+    """Keep replayed latest-indicator snapshots inside their listing boundary."""
+
+    if len(rows) > 1:
+        raise ProviderNormalizationError(
+            "latest-indicator response must contain at most one row"
+        )
+    for row in rows:
+        row_code = _row_code(row, ListingMarket.H)
+        if row_code is not None and row_code != listing.code:
+            raise ProviderNormalizationError(
+                f"latest-indicator row entity {row_code!r} does not match "
+                f"requested listing {listing.canonical_id!r}"
+            )
+
+
+def _validate_latest_indicators_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> None:
+    """Validate the symbol-scoped latest-indicator response before storage."""
+
+    if len(rows) > 1:
+        raise ProviderResponseError(
+            f"AKShare returned ambiguous latest-indicator rows for {request.entity_id!r}",
+            provider=provider,
+            request=request,
+        )
+    for row in rows:
+        row_code = _row_code(row, ListingMarket.H)
+        if row_code is not None and row_code != listing.code:
+            raise ProviderResponseError(
+                f"AKShare returned latest-indicator row entity {row_code!r} for "
+                f"requested listing {listing.canonical_id!r}",
+                provider=provider,
+                request=request,
             )
 
 

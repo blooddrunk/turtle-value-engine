@@ -137,6 +137,13 @@ class FakeAKShare:
             indicator=indicator,
         )
 
+    def stock_hk_financial_indicator_em(self, *, symbol: str):
+        return self._return(
+            "stock_hk_financial_indicator_em",
+            _fixture("h_latest_indicators.json"),
+            symbol=symbol,
+        )
+
     def stock_balance_sheet_by_report_em(self, **kwargs):
         return self._return(
             "stock_balance_sheet_by_report_em",
@@ -292,6 +299,7 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "financial_indicators",
         "income_statement",
         "insider_share_changes",
+        "latest_indicators",
         "listing_metadata",
         "market_history",
         "market_quote",
@@ -300,8 +308,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "share_capital",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "22"
-    assert AKSHARE_MAPPING_VERSION == "23"
+    assert provider.identity.provider_version == "23"
+    assert AKSHARE_MAPPING_VERSION == "24"
 
 
 def test_a_quote_is_selected_from_the_upstream_universe_and_kept_opaque():
@@ -3318,6 +3326,103 @@ def test_h_financial_indicators_fetch_uses_documented_listing_and_mode():
         "https://emweb.securities.eastmoney.com/PC_HKF10/NewFinancialAnalysis/"
         "index?type=web&code=00700"
     )
+
+
+def test_h_latest_indicators_fetch_uses_documented_symbol_and_keeps_snapshot_opaque():
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    record = provider.fetch(_request(DataCategory.LATEST_INDICATORS, "HK00700"))
+
+    assert record.raw_payload == _fixture("h_latest_indicators.json")
+    assert fake.calls == [
+        ("stock_hk_financial_indicator_em", {"symbol": "00700"}),
+    ]
+    assert record.response_metadata["endpoint"] == "stock_hk_financial_indicator_em"
+    assert record.response_metadata["upstream_row_count"] == 1
+    assert record.response_metadata["entity_row_count"] == 1
+    assert record.response_metadata["entity_rows_selected"] is True
+    assert record.response_metadata["listing_scoped_request"] is True
+    assert record.response_metadata["market"] == "H"
+    assert record.source_uri == (
+        "https://emweb.securities.eastmoney.com/PC_HKF10/pages/home/index.html"
+    )
+
+
+def test_h_latest_indicators_rejects_a_share_and_parameters_before_upstream_call():
+    fake = FakeAKShare()
+    provider = _provider(fake)
+
+    with pytest.raises(ProviderRequestError, match="latest-indicator endpoint supports H-share"):
+        provider.fetch(_request(DataCategory.LATEST_INDICATORS, "SH600000"))
+    with pytest.raises(ProviderRequestError, match="unsupported AKShare latest-indicator"):
+        provider.fetch(
+            _request(DataCategory.LATEST_INDICATORS, "HK00700", {"indicator": "年度"})
+        )
+
+    assert fake.calls == []
+
+
+def test_h_latest_indicators_response_rejects_ambiguous_rows():
+    class AmbiguousRows(FakeAKShare):
+        def stock_hk_financial_indicator_em(self, *, symbol: str):
+            payload = _fixture("h_latest_indicators.json") * 2
+            return self._return(
+                "stock_hk_financial_indicator_em",
+                payload,
+                symbol=symbol,
+            )
+
+    with pytest.raises(ProviderResponseError, match="ambiguous latest-indicator rows"):
+        _provider(AmbiguousRows()).fetch(
+            _request(DataCategory.LATEST_INDICATORS, "HK00700")
+        )
+
+
+def test_h_latest_indicators_normalizer_keeps_mixed_snapshot_as_raw_evidence_only():
+    provider = _provider()
+    record = provider.fetch(_request(DataCategory.LATEST_INDICATORS, "HK00700"))
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="h-latest-indicators-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company("HK00700"),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_LATEST_INDICATORS_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == [
+        "consolidated_net_profit",
+        "parent_net_profit",
+        "reported_cfo",
+        "revenue",
+    ]
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "latest-indicator response" in normalized.data_quality.notes
+    assert "canonical period" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    errors = list(Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json")))
+    assert errors == []
+
+
+def test_h_latest_indicators_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(DataCategory.LATEST_INDICATORS, "HK00700")
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [
+        ("stock_hk_financial_indicator_em", {"symbol": "00700"}),
+    ]
 
 
 def test_financial_indicators_accepts_quarterly_mode_and_rejects_unsupported_requests():

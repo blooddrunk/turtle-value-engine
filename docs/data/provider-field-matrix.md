@@ -475,6 +475,34 @@ unresolved.
 | `GROSS_PROFIT_RATIO`, `NET_PROFIT_RATIO`, `ROE_AVG`, `ROA`, `OCF_SALES`, `DEBT_ASSET_RATIO`, `CURRENT_RATIO` | Raw-only provider-calculated ratios; calculation inputs and methodology are not imported as canonical metrics or valuation inputs. |
 | `CURRENCY`, `IS_CNY_CODE` | Raw currency metadata only; currency/unit scaling and cross-listing equivalence remain unresolved. |
 
+## Phase 2.23 H-share latest-indicator raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_hk_financial_indicator_em` as the Eastmoney H-share
+“latest indicators” endpoint. It accepts a five-digit `symbol` and returns one
+symbol-scoped row containing per-share, share-capital, dividend, headline
+financial and valuation fields. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_profile_em.py)
+selects the published output columns without retaining a row-level listing code
+or a canonical statement period.
+
+The provider passes the five-digit code, retains the complete symbol-scoped
+response as an opaque raw payload, records the returned row count and rejects
+an ambiguous multi-row response. The normalizer emits
+`AKSHARE_LATEST_INDICATORS_RAW_ONLY`, marks `revenue`, `parent_net_profit`,
+`consolidated_net_profit` and `reported_cfo` as critically missing and emits no
+canonical financial, share, dividend, market-cap, metric or valuation fact.
+Entity, period, unit/scaling, diluted-share and provider-calculation semantics
+remain unresolved.
+
+| Raw upstream item | Phase 2 treatment |
+| --- | --- |
+| `基本每股收益(元)`, `每股净资产(元)`, `每股经营现金流(元)` | Raw-only per-share values; they do not establish total profit, CFO or a verified diluted-share basis. |
+| `法定股本(股)`, `每手股`, `已发行股本(股)`, `已发行股本-H股(股)` | Raw-only capital context; share-class, point-in-time and dilution semantics are not settled. |
+| `每股股息TTM(港元)`, `派息比率(%)`, `股息率TTM(%)` | Raw-only dividend context; the snapshot does not establish settled cash, period or ordinary-versus-special classification. |
+| `营业总收入`, `净利润` | Raw-only headline amounts; canonical statement entity, period and unit/scaling are not established. |
+| `总市值(港元)`, `港股市值(港元)`, `市盈率`, `市净率` | Raw-only provider valuation context; market cap and valuation metrics remain deterministic engine outputs. |
+| `营业总收入滚动环比增长(%)`, `净利润滚动环比增长(%)`, `销售净利率(%)`, `股东权益回报率(%)`, `总资产回报率(%)` | Raw-only provider-calculated ratios; calculation inputs, period and methodology are not imported as canonical metrics. |
+
 ## Phase 2.19–2.21 A-share insider share-change raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
