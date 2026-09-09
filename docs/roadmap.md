@@ -28,15 +28,15 @@ Exit criteria:
 
 No network, no LLM, no live market data.
 
-Current status: partial deterministic stages are implemented and tested. CDC,
-net cash, Through Return, valuation tiers, offline evidence-backed
-Business-quality scoring and the fixed hard-gate primitives are available as
-isolated functions. Final `CompanyAnalysis` assembly and the `analyze` CLI
-remain intentionally pending.
+Current status: the deterministic offline pipeline and `tve analyze` CLI are
+implemented and tested. CDC, net cash, Through Return, valuation tiers,
+offline evidence-backed Business-quality scoring and the fixed hard-gate
+primitives are composed into a schema-valid `CompanyAnalysis`.
 
-The normalized input contract and offline fixture baseline are frozen before
-the remaining calculation stages. This is an input-boundary milestone, not a
-claim that the full `analyze` pipeline is implemented.
+The analyze command does not invent Business Quality judgments. Unless an
+explicit structured assessment is supplied through the Python pipeline API,
+that gate remains `NOT_EVALUATED`, valuation remains indicative and the final
+decision disables automatic investment output.
 
 ### Deliverables
 
@@ -77,6 +77,10 @@ The engine must:
 4. evaluate hard gates;
 5. compute valuation tiers when eligible;
 6. output valid `CompanyAnalysis` JSON.
+
+The CLI is intentionally offline-only. Provider adapters, network access,
+LLM-assisted evidence analysis and automatic Business Quality assessment are
+later-phase boundaries.
 
 ### Fixtures
 

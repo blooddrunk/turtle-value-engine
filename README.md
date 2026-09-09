@@ -35,16 +35,18 @@ offline synthetic inputs under `fixtures/`.
 ## Implementation status
 
 The current milestone provides isolated deterministic CDC, net-cash,
-Through Return, valuation and hard-gate primitives, plus offline
-evidence-backed Business Quality scoring and its hard gate. The Business
-Quality stage accepts explicit dimension judgments, validates their evidence
-lineage and applies the strict-v1 score caps; it does not infer qualitative
-scores from sparse facts or produce an investment recommendation.
+Through Return, valuation and hard-gate primitives, plus an offline
+`tve analyze` command that assembles a schema-valid `CompanyAnalysis`.
+Business Quality scoring accepts explicit dimension judgments, validates their
+evidence lineage and applies the strict-v1 score caps; the analyze command does
+not infer qualitative scores from sparse facts. Without an explicit structured
+Business Quality assessment, its gate remains `NOT_EVALUATED`, valuation stays
+indicative, and the final decision cannot authorize an automatic investment
+recommendation.
 
-The repository still does not provide a complete `tve analyze` command or
-assemble a `CompanyAnalysis` decision. Final decision orchestration, live data
-adapters and LLM-assisted evidence analysis remain intentionally unimplemented;
-partial-stage outputs must not be read as investment recommendations.
+Live data adapters and LLM-assisted evidence analysis remain intentionally
+unimplemented. The deterministic analyze command is offline-only and does not
+call AKShare, Tushare, other network providers or an LLM.
 
 Implementation-oriented assets will later live under:
 

@@ -1,9 +1,9 @@
 """Composition of the independent hard gates.
 
 Business-quality scoring is accepted only when a structured assessment is
-explicitly supplied.  Full ``CompanyAnalysis`` assembly and final decision
-orchestration remain outside this stage; absent assessments stay
-``NOT_EVALUATED`` rather than being treated as a pass.
+explicitly supplied.  Absent assessments stay ``NOT_EVALUATED`` rather than
+being treated as a pass; the top-level deterministic pipeline maps that state
+to manual review.
 """
 
 from turtle_value_engine.config import RuleProfile, load_profile
