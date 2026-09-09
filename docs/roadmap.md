@@ -1038,6 +1038,30 @@ valuation fact. The documented dataset is bounded by its published coverage
 and its A/H field conventions are not collapsed into one canonical metric.
 Live calls remain opt-in; tests use injected clients and frozen A/H fixtures.
 
+### Phase 2.41 — A-share actual-controller holding-change raw acquisition contract (COMPLETE)
+
+The mapping review now covers the current documented AKShare CNINFO
+`stock_hold_control_cninfo` endpoint under the existing
+`SHAREHOLDER_HOLDINGS` category. The [AKShare stock-data
+documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and [official
+implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hold_control_cninfo.py)
+define an A-share full-universe response selected by `symbol`, with control
+scopes `单独控制`, `实际控制人`, `一致行动人`, `家族控制` and `全部`. The
+published fields are security identity, `变动日期`, actual/direct controller
+names, `控股数量`, `控股比例` and `控制类型`.
+
+The provider selects this endpoint only for the explicit request
+`view=control_changes`, defaults to the documented `symbol=全部` universe (or
+passes the requested `control_type`), validates every upstream code and change
+date, filters the universe to the requested A-share listing and retains the
+control scope and row-count provenance. The normalizer emits
+`AKSHARE_CONTROL_HOLDINGS_RAW_ONLY`, leaves `governance_risk_level` critically
+missing and creates no canonical ownership, control, concentration,
+share-count, dilution or valuation fact. Filing-backed legal and point-in-time
+interpretation remains a later concern. Live calls remain opt-in; tests use an
+injected client and a frozen fixture with cache replay and invalid-scope/
+response-validation coverage.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -1047,7 +1071,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.40 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.41 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -1255,7 +1279,7 @@ Phase 2 is active. Phase 1 remains frozen: changes to formulas, hard-gate
 semantics, schemas or `strict-v1` thresholds require a separately reviewed,
 versioned change.
 
-Phase 2.40 completes the next documented structured-data boundary while
+Phase 2.41 completes the next documented structured-data boundary while
 keeping share-change, repurchase and rights-issue period, status, unit and
 economic-scope questions unresolved, and keeping ownership-pledge holder,
 governance and economic-scope questions unresolved. The A-share
@@ -1361,6 +1385,15 @@ identity from the published output, so the explicit request scope is retained
 without inventing a row-level listing code. `governance_risk_level` remains
 critically missing and no ownership, share, buyback, issuance, return or
 valuation fact is emitted.
+
+The documented A-share `stock_hold_control_cninfo` response is retained under
+`AKSHARE_CONTROL_HOLDINGS_RAW_ONLY` because its controller names, holding
+quantities, ratios, provider control categories and change dates do not by
+themselves establish filing-backed legal control, governance severity,
+canonical ownership/concentration or a company-level diluted-share series.
+`governance_risk_level` remains critically missing and no canonical fact is
+emitted; the explicit `view=control_changes` and control-scope selector remain
+part of the replayable acquisition boundary.
 
 The documented A-share external-guarantee response is retained under
 `AKSHARE_EXTERNAL_GUARANTEES_RAW_ONLY` because its date-range aggregate,

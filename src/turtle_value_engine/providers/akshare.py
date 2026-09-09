@@ -11,8 +11,9 @@ indicator raw slices, raw-only dividend event/snapshot/detail, A-share
 disclosure notice metadata, corporate-action, external-guarantee,
 ownership-pledge, SSE/SZSE/BSE insider-share-change and A-share share-capital
 slices, including the restricted-share-release view, the A-share
-risk-warning-status, trading-suspension, main-shareholder and shareholder-count
-raw slices, the A/H HSGT individual-holdings raw slice, the H-share
+risk-warning-status, trading-suspension, main-shareholder, shareholder-count
+and actual-controller holding-change raw slices, the A/H HSGT
+individual-holdings raw slice, the H-share
 financial-indicator raw slice, the H-share
 latest-indicator raw slice, the A-share goodwill-impairment detail raw slice,
 the SSE/SZSE/BSE margin-detail raw slices, the A-share individual ownership-pledge
@@ -64,9 +65,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "40"
+AKSHARE_ADAPTER_VERSION = "41"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "41"
+AKSHARE_MAPPING_VERSION = "42"
 
 
 class ListingMarket(StrEnum):
@@ -161,6 +162,7 @@ _SOURCE_URIS = {
     "stock_share_hold_change_bse": "https://www.bse.cn/disclosure/djg_sharehold_change.html",
     "stock_main_stock_holder": "https://vip.stock.finance.sina.com.cn/corp/go.php/vCI_StockHolder/stockid/600004.phtml",
     "stock_hold_num_cninfo": "https://webapi.cninfo.com.cn/#/thematicStatistics",
+    "stock_hold_control_cninfo": "https://webapi.cninfo.com.cn/#/thematicStatistics",
     "stock_financial_report_sina": "https://vip.stock.finance.sina.com.cn/corp/go.php/vFD_FinanceSummary/",
     "stock_financial_hk_report_em": "https://emweb.securities.eastmoney.com/PC_HKF10/FinancialAnalysis/index",
     "stock_esg_rate_sina": "https://finance.sina.com.cn/esg/grade.shtml",
@@ -263,6 +265,12 @@ _OWNERSHIP_PLEDGE_EQUITY_MORTGAGE_VIEW = "equity_mortgage"
 _OWNERSHIP_PLEDGE_EQUITY_MORTGAGE_DEFAULT_DATE = "20210930"
 _HSGT_INDIVIDUAL_PARAMETER_NAMES = frozenset({"view"})
 _HSGT_INDIVIDUAL_VIEW = "hsgt_individual"
+_SHAREHOLDER_CONTROL_PARAMETER_NAMES = frozenset({"view", "control_type"})
+_SHAREHOLDER_CONTROL_VIEW = "control_changes"
+_SHAREHOLDER_CONTROL_TYPES = frozenset(
+    {"单独控制", "实际控制人", "一致行动人", "家族控制", "全部"}
+)
+_SHAREHOLDER_CONTROL_DEFAULT_TYPE = "全部"
 _OWNERSHIP_PLEDGE_DETAIL_DATE_FIELDS = (
     "公告日期",
     "质押开始日期",
@@ -995,7 +1003,32 @@ class AKShareProvider(StructuredDataProvider):
             response_metadata["listing_scoped_request"] = True
         elif request.category is DataCategory.SHAREHOLDER_HOLDINGS:
             rows = _table_rows(payload, provider=self.identity, request=request)
-            if endpoint.name == "stock_hsgt_individual_em":
+            if endpoint.name == "stock_hold_control_cninfo":
+                _validate_shareholder_control_provider_rows(
+                    rows,
+                    listing,
+                    provider=self.identity,
+                    request=request,
+                )
+                selected = _select_listing_rows(
+                    rows,
+                    listing,
+                    provider=self.identity,
+                    request=request,
+                    row_label="shareholder-control",
+                )
+                payload = selected
+                response_metadata["upstream_row_count"] = len(rows)
+                response_metadata["entity_row_count"] = len(selected)
+                response_metadata["entity_rows_selected"] = True
+                response_metadata["listing_scoped_request"] = False
+                response_metadata["row_filtering"] = "provider"
+                response_metadata["upstream_symbol"] = kwargs["symbol"]
+                response_metadata["control_type"] = kwargs["symbol"]
+                response_metadata["control_view"] = _SHAREHOLDER_CONTROL_VIEW
+                response_metadata["snapshot_scope"] = "historical_published_dataset"
+                response_metadata["observation_date_field"] = "变动日期"
+            elif endpoint.name == "stock_hsgt_individual_em":
                 _validate_hsgt_individual_provider_rows(
                     rows,
                     listing,
@@ -1281,6 +1314,9 @@ class AKShareProvider(StructuredDataProvider):
             dividend_snapshot_date_requested="date" in request.parameters,
             dividend_detail_requested="view" in request.parameters,
             shareholder_count_date_requested="date" in request.parameters,
+            shareholder_control_requested=(
+                request.parameters.get("view") == _SHAREHOLDER_CONTROL_VIEW
+            ),
             shareholder_hsgt_individual_requested=(
                 "view" in request.parameters
             ),
@@ -2090,7 +2126,23 @@ class AKShareNormalizer:
                 normalizer_flags.add("AKSHARE_INSIDER_SHARE_CHANGE_RAW_ONLY")
             elif record.request.category is DataCategory.SHAREHOLDER_HOLDINGS:
                 endpoint_name = record.response_metadata.get("endpoint")
-                if endpoint_name == "stock_hsgt_individual_em":
+                if endpoint_name == "stock_hold_control_cninfo":
+                    if listing.market is not ListingMarket.A:
+                        raise ProviderNormalizationError(
+                            "AKShare actual-controller holding-change raw slice supports "
+                            "A-share listings only"
+                        )
+                    try:
+                        _shareholder_holdings_kwargs(
+                            "stock_hold_control_cninfo",
+                            listing,
+                            record.request,
+                        )
+                    except ProviderRequestError as exc:
+                        raise ProviderNormalizationError(str(exc)) from exc
+                    _validate_shareholder_control_normalizer_rows(rows, listing)
+                    normalizer_flags.add("AKSHARE_CONTROL_HOLDINGS_RAW_ONLY")
+                elif endpoint_name == "stock_hsgt_individual_em":
                     try:
                         _shareholder_holdings_kwargs(
                             "stock_hsgt_individual_em",
@@ -2129,8 +2181,8 @@ class AKShareNormalizer:
                 else:
                     raise ProviderNormalizationError(
                         "AKShare shareholder-holdings record must come from "
-                        "stock_hsgt_individual_em, stock_main_stock_holder or "
-                        "stock_hold_num_cninfo"
+                        "stock_hold_control_cninfo, stock_hsgt_individual_em, "
+                        "stock_main_stock_holder or stock_hold_num_cninfo"
                     )
                 # These tables describe shareholder context, but do not
                 # establish beneficial control, a governance severity, a
@@ -2382,6 +2434,13 @@ class AKShareNormalizer:
                 "dates do not establish beneficial control, governance severity or "
                 "a company-level diluted-share series."
             )
+        if "AKSHARE_CONTROL_HOLDINGS_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented A-share actual-controller holding-change response is "
+                "retained as raw evidence only: controller names, holding quantities, "
+                "ratios and change dates do not establish a filing-backed control, "
+                "governance or company-level diluted-share conclusion."
+            )
         if "AKSHARE_HSGT_INDIVIDUAL_HOLDINGS_RAW_ONLY" in normalizer_flags:
             notes += (
                 " The documented A/H HSGT individual-holdings response is retained as "
@@ -2501,6 +2560,7 @@ _ESG_RATING_MARKET_FIELDS = ("交易市场", "market")
 _SHAREHOLDER_HOLDINGS_DATE_FIELDS = ("截至日期", "公告日期")
 _SHAREHOLDER_COUNT_DATE_FIELDS = ("变动日期",)
 _HSGT_INDIVIDUAL_DATE_FIELDS = ("持股日期", "HOLD_DATE", "date")
+_SHAREHOLDER_CONTROL_DATE_FIELDS = ("变动日期",)
 _TRADING_SUSPENSIONS_DATE_FIELDS = ("停牌时间", "停牌截止时间", "预计复牌时间")
 _RESTRICTED_RELEASE_DATE_FIELDS = (
     "解禁时间",
@@ -2540,6 +2600,7 @@ def _endpoint_candidates(
     dividend_snapshot_date_requested: bool = False,
     dividend_detail_requested: bool = False,
     shareholder_count_date_requested: bool = False,
+    shareholder_control_requested: bool = False,
     shareholder_hsgt_individual_requested: bool = False,
 ) -> tuple[str, ...]:
     market = listing.market
@@ -2687,6 +2748,8 @@ def _endpoint_candidates(
     if category is DataCategory.SHAREHOLDER_HOLDINGS:
         if market is ListingMarket.H:
             return ("stock_hsgt_individual_em",)
+        if shareholder_control_requested:
+            return ("stock_hold_control_cninfo",)
         if shareholder_hsgt_individual_requested:
             return ("stock_hsgt_individual_em",)
         if market is ListingMarket.A:
@@ -3414,6 +3477,41 @@ def _shareholder_holdings_kwargs(
     listing: _ListingRef,
     request: ProviderRequest,
 ) -> dict[str, object]:
+    if endpoint_name == "stock_hold_control_cninfo":
+        if listing.market is not ListingMarket.A:
+            raise ProviderRequestError(
+                "the AKShare actual-controller holding-change endpoint supports "
+                "A-share listings only",
+                request=request,
+                retryable=False,
+            )
+        unknown = sorted(set(request.parameters) - _SHAREHOLDER_CONTROL_PARAMETER_NAMES)
+        if unknown:
+            raise ProviderRequestError(
+                "unsupported AKShare actual-controller holding-change parameter(s): "
+                + ", ".join(unknown),
+                request=request,
+                retryable=False,
+            )
+        if request.parameters.get("view") != _SHAREHOLDER_CONTROL_VIEW:
+            raise ProviderRequestError(
+                "the AKShare actual-controller holding-change endpoint requires "
+                f"view={_SHAREHOLDER_CONTROL_VIEW!r}",
+                request=request,
+                retryable=False,
+            )
+        control_type = request.parameters.get(
+            "control_type",
+            _SHAREHOLDER_CONTROL_DEFAULT_TYPE,
+        )
+        if not isinstance(control_type, str) or control_type not in _SHAREHOLDER_CONTROL_TYPES:
+            choices = ", ".join(sorted(_SHAREHOLDER_CONTROL_TYPES))
+            raise ProviderRequestError(
+                "actual-controller holding-change control_type must be one of: " + choices,
+                request=request,
+                retryable=False,
+            )
+        return {"symbol": control_type}
     if endpoint_name == "stock_hsgt_individual_em":
         unknown = sorted(set(request.parameters) - _HSGT_INDIVIDUAL_PARAMETER_NAMES)
         if unknown:
@@ -5829,6 +5927,40 @@ def _validate_shareholder_holdings_provider_rows(
                     )
 
 
+def _validate_shareholder_control_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> None:
+    """Validate the full CNINFO actual-controller universe before filtering."""
+
+    for row in rows:
+        if _row_code(row, ListingMarket.A) is None:
+            raise ProviderResponseError(
+                f"AKShare returned an actual-controller holding-change row without a "
+                f"listing code for {request.entity_id!r}",
+                provider=provider,
+                request=request,
+            )
+        found, raw_date = _lookup(row, _SHAREHOLDER_CONTROL_DATE_FIELDS)
+        if not found or _text_value(raw_date) in _MISSING_TEXT:
+            raise ProviderResponseError(
+                f"AKShare returned an actual-controller holding-change row without a "
+                f"change date for {request.entity_id!r}",
+                provider=provider,
+                request=request,
+            )
+        if _parse_date_value(raw_date) is None:
+            raise ProviderResponseError(
+                f"AKShare returned an invalid actual-controller holding-change date "
+                f"for {request.entity_id!r}",
+                provider=provider,
+                request=request,
+            )
+
+
 def _validate_hsgt_individual_provider_rows(
     rows: Sequence[Mapping[str, JSONValue]],
     listing: _ListingRef,
@@ -5921,6 +6053,34 @@ def _validate_shareholder_holdings_normalizer_rows(
                     raise ProviderNormalizationError(
                         f"main-shareholder row has an invalid date in {field!r}"
                     )
+
+
+def _validate_shareholder_control_normalizer_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+) -> None:
+    """Keep replayed CNINFO control rows inside the requested listing scope."""
+
+    for row in rows:
+        row_code = _row_code(row, ListingMarket.A)
+        if row_code is None:
+            raise ProviderNormalizationError(
+                "actual-controller holding-change row has no explicit listing code"
+            )
+        if row_code != listing.code:
+            raise ProviderNormalizationError(
+                f"actual-controller holding-change row entity {row_code!r} does not "
+                f"match requested listing {listing.canonical_id!r}"
+            )
+        found, raw_date = _lookup(row, _SHAREHOLDER_CONTROL_DATE_FIELDS)
+        if not found or _text_value(raw_date) in _MISSING_TEXT:
+            raise ProviderNormalizationError(
+                "actual-controller holding-change row has no exact change date"
+            )
+        if _parse_date_value(raw_date) is None:
+            raise ProviderNormalizationError(
+                "actual-controller holding-change row has an invalid change date"
+            )
 
 
 def _validate_hsgt_individual_normalizer_rows(

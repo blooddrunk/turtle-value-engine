@@ -1054,6 +1054,38 @@ holding quantities, market values, ratios and changes do not establish
 beneficial control, shareholder concentration, issuer corporate-action cash or
 a company-level diluted-share series.
 
+## Phase 2.41 A-share actual-controller holding-change raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hold_control_cninfo.py)
+document `stock_hold_control_cninfo` as a CNINFO A-share full-universe endpoint.
+Its `symbol` selector accepts `单独控制`, `实际控制人`, `一致行动人`, `家族控制`
+or `全部`; the provider exposes that selector through the explicit
+`view=control_changes` request and optional `control_type` parameter.
+
+The provider validates an explicit `证券代码` and `变动日期` on every upstream
+row, filters the full universe to the requested A-share listing, and preserves
+the selected rows plus endpoint, control-scope and row-count provenance. The
+response is retained as raw evidence only. Controller names, holding quantity,
+holding ratio and control type are not promoted into beneficial-control,
+concentration, governance, share-count or dilution facts without filing-backed
+legal, entity and point-in-time interpretation.
+
+| Raw upstream item | Phase 2 treatment |
+| --- | --- |
+| `证券代码`, `证券简称` | Explicit A-share identity, listing filtering and evidence context only. |
+| `变动日期` | Validated change-date field and retained as raw historical observation metadata; it is not silently treated as a filing, legal-effective or accounting period. |
+| `实际控制人名称`, `直接控制人名称` | Raw controller-name evidence only; no beneficial-control or governance conclusion is inferred. |
+| `控股数量` | Raw published quantity in 万股; its entity, share-class and point-in-time semantics do not establish canonical shares or dilution. |
+| `控股比例` | Raw published percentage; it is not a canonical ownership, concentration or control metric. |
+| `控制类型` and request `control_type` | Raw provider classification and query scope; provider categories are not collapsed into a legal control conclusion. |
+| request `view=control_changes` and upstream `symbol` | Explicit endpoint-selection and control-scope provenance retained in the request/evidence metadata. |
+
+The slice emits `AKSHARE_CONTROL_HOLDINGS_RAW_ONLY`, leaves
+`governance_risk_level` critically missing and creates no canonical fact.
+Filing-backed control, governance and economic-scope analysis remains outside
+this acquisition contract.
+
 ## Eligibility, identity and market context
 
 | Normalized field | Status | Boundary note |

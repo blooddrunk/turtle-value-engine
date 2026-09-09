@@ -343,6 +343,13 @@ class FakeAKShare:
             date=date,
         )
 
+    def stock_hold_control_cninfo(self, *, symbol: str):
+        return self._return(
+            "stock_hold_control_cninfo",
+            _fixture("a_control_holdings.json"),
+            symbol=symbol,
+        )
+
     def stock_hsgt_individual_em(self, *, symbol: str):
         fixture = (
             "a_hsgt_individual_holdings.json"
@@ -433,8 +440,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "40"
-    assert AKSHARE_MAPPING_VERSION == "41"
+    assert provider.identity.provider_version == "41"
+    assert AKSHARE_MAPPING_VERSION == "42"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -968,6 +975,208 @@ def test_hsgt_individual_holdings_cache_replay_does_not_call_upstream(tmp_path: 
     assert replay.record == live.record
     assert fake.calls == [
         ("stock_hsgt_individual_em", {"symbol": "00700"}),
+    ]
+
+
+def test_actual_controller_holding_changes_filter_the_documented_cninfo_universe():
+    fake = FakeAKShare()
+    record = _provider(fake).fetch(
+        _request(
+            DataCategory.SHAREHOLDER_HOLDINGS,
+            "SH600000",
+            {"view": "control_changes"},
+        )
+    )
+
+    fixture = _fixture("a_control_holdings.json")
+    assert record.raw_payload == [row for row in fixture if row["证券代码"] == "600000"]
+    assert fake.calls == [
+        ("stock_hold_control_cninfo", {"symbol": "全部"}),
+    ]
+    assert record.response_metadata["endpoint"] == "stock_hold_control_cninfo"
+    assert record.response_metadata["upstream_row_count"] == 3
+    assert record.response_metadata["entity_row_count"] == 2
+    assert record.response_metadata["entity_rows_selected"] is True
+    assert record.response_metadata["listing_scoped_request"] is False
+    assert record.response_metadata["row_filtering"] == "provider"
+    assert record.response_metadata["upstream_symbol"] == "全部"
+    assert record.response_metadata["control_type"] == "全部"
+    assert record.response_metadata["control_view"] == "control_changes"
+    assert record.response_metadata["snapshot_scope"] == "historical_published_dataset"
+    assert record.response_metadata["observation_date_field"] == "变动日期"
+    assert record.source_uri == "https://webapi.cninfo.com.cn/#/thematicStatistics"
+
+
+def test_actual_controller_holding_changes_pass_the_documented_control_scope():
+    fake = FakeAKShare()
+    record = _provider(fake).fetch(
+        _request(
+            DataCategory.SHAREHOLDER_HOLDINGS,
+            "SH600000",
+            {"view": "control_changes", "control_type": "实际控制人"},
+        )
+    )
+
+    assert record.response_metadata["control_type"] == "实际控制人"
+    assert fake.calls == [
+        ("stock_hold_control_cninfo", {"symbol": "实际控制人"}),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("parameters", "match"),
+    [
+        ({"view": "control_changes", "unexpected": True}, "unsupported AKShare actual-controller"),
+        ({"view": "control_changes", "control_type": "unknown"}, "control_type must be one of"),
+    ],
+)
+def test_actual_controller_holding_change_request_validates_view_and_scope(
+    parameters: dict,
+    match: str,
+):
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError, match=match):
+        _provider(fake).fetch(
+            _request(DataCategory.SHAREHOLDER_HOLDINGS, "SH600000", parameters)
+        )
+
+    assert fake.calls == []
+
+
+def test_actual_controller_holding_change_request_is_a_share_only():
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError, match="A-share listings only"):
+        _provider(fake).fetch(
+            _request(
+                DataCategory.SHAREHOLDER_HOLDINGS,
+                "HK00700",
+                {"view": "control_changes"},
+            )
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("missing_code", "actual-controller holding-change row without a listing code"),
+        ("missing_date", "actual-controller holding-change row without a change date"),
+        ("invalid_date", "invalid actual-controller holding-change date"),
+    ],
+)
+def test_actual_controller_holding_change_response_validates_identity_and_dates(
+    mutation: str,
+    match: str,
+):
+    class InvalidRows(FakeAKShare):
+        def stock_hold_control_cninfo(self, *, symbol: str):
+            rows = _fixture("a_control_holdings.json")
+            if mutation == "missing_code":
+                rows[0].pop("证券代码")
+            elif mutation == "missing_date":
+                rows[0].pop("变动日期")
+            else:
+                rows[0]["变动日期"] = "not-a-date"
+            return self._return("stock_hold_control_cninfo", rows, symbol=symbol)
+
+    with pytest.raises(ProviderResponseError, match=match):
+        _provider(InvalidRows()).fetch(
+            _request(
+                DataCategory.SHAREHOLDER_HOLDINGS,
+                "SH600000",
+                {"view": "control_changes"},
+            )
+        )
+
+
+def test_actual_controller_holding_changes_are_raw_only_without_canonical_facts():
+    record = _provider().fetch(
+        _request(
+            DataCategory.SHAREHOLDER_HOLDINGS,
+            "SH600000",
+            {"view": "control_changes"},
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="actual-controller-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_CONTROL_HOLDINGS_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == [
+        "governance_risk_level",
+    ]
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "filing-backed control" in normalized.data_quality.notes
+    assert "diluted-share conclusion" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+def test_actual_controller_holding_change_normalizer_rejects_replayed_scope_mismatches():
+    record = _provider().fetch(
+        _request(
+            DataCategory.SHAREHOLDER_HOLDINGS,
+            "SH600000",
+            {"view": "control_changes"},
+        )
+    )
+    payload = [dict(row) for row in record.raw_payload]
+    payload[0]["证券代码"] = "000001"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=record.source_uri,
+        response_metadata=record.response_metadata,
+    )
+
+    with pytest.raises(
+        ProviderNormalizationError,
+        match="actual-controller holding-change row entity",
+    ):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="invalid-actual-controller-entity",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_actual_controller_holding_changes_cache_replay_does_not_call_upstream(
+    tmp_path: Path,
+):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.SHAREHOLDER_HOLDINGS,
+        "SH600000",
+        {"view": "control_changes"},
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [
+        ("stock_hold_control_cninfo", {"symbol": "全部"}),
     ]
 
 

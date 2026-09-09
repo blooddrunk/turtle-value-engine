@@ -289,6 +289,20 @@ without inventing a code. The normalizer emits
 `governance_risk_level` critically missing and creates no ownership,
 concentration, share-count, dilution, buyback, issuance, return or valuation
 fact.
+Phase 2.41 adds the documented A-share CNINFO `stock_hold_control_cninfo`
+endpoint under the existing `SHAREHOLDER_HOLDINGS` category, selected only
+with `view=control_changes`. The [AKShare stock-data
+documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and [official
+implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hold_control_cninfo.py)
+define a full A-share universe with the optional control-scope selector
+`单独控制`, `实际控制人`, `一致行动人`, `家族控制` or `全部`, and publish
+security identity, change date, controller names, holding quantity/ratio and
+control type. The provider calls the documented universe, filters it to the
+requested listing and retains the rows as raw evidence. The normalizer emits
+`AKSHARE_CONTROL_HOLDINGS_RAW_ONLY`, leaves `governance_risk_level` critically
+missing and creates no canonical ownership, control, share-count, dilution or
+valuation fact because filing-backed legal and point-in-time semantics remain
+unresolved.
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.
