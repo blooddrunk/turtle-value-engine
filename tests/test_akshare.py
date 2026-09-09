@@ -217,6 +217,13 @@ class FakeAKShare:
             symbol=symbol,
         )
 
+    def stock_share_hold_change_bse(self, *, symbol: str):
+        return self._return(
+            "stock_share_hold_change_bse",
+            _fixture("a_insider_share_change_bse.json"),
+            symbol=symbol,
+        )
+
 
 class OfficialBalanceAKShare:
     __version__ = "fixture-akshare-official-balance"
@@ -285,8 +292,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "share_capital",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "20"
-    assert AKSHARE_MAPPING_VERSION == "21"
+    assert provider.identity.provider_version == "21"
+    assert AKSHARE_MAPPING_VERSION == "22"
 
 
 def test_a_quote_is_selected_from_the_upstream_universe_and_kept_opaque():
@@ -893,16 +900,37 @@ def test_insider_share_change_fetch_uses_listing_scoped_szse_endpoint():
     )
 
 
-def test_insider_share_change_request_supports_shanghai_and_shenzhen_and_has_no_parameters():
+def test_insider_share_change_fetch_uses_listing_scoped_bse_endpoint():
+    fake = FakeAKShare()
+    record = _provider(fake).fetch(
+        _request(DataCategory.INSIDER_SHARE_CHANGES, "BJ430489")
+    )
+
+    assert record.raw_payload == _fixture("a_insider_share_change_bse.json")
+    assert fake.calls == [
+        ("stock_share_hold_change_bse", {"symbol": "430489"}),
+    ]
+    assert record.response_metadata["endpoint"] == "stock_share_hold_change_bse"
+    assert record.response_metadata["upstream_row_count"] == 2
+    assert record.response_metadata["entity_row_count"] == 2
+    assert record.response_metadata["entity_rows_selected"] is True
+    assert record.response_metadata["listing_scoped_request"] is True
+    assert record.source_uri == (
+        "https://www.bse.cn/disclosure/djg_sharehold_change.html"
+    )
+
+
+def test_insider_share_change_request_supports_mainland_exchanges_and_has_no_parameters():
     fake = FakeAKShare()
     provider = _provider(fake)
 
     provider.fetch(_request(DataCategory.INSIDER_SHARE_CHANGES, "SZ000001"))
+    provider.fetch(_request(DataCategory.INSIDER_SHARE_CHANGES, "BJ430489"))
     with pytest.raises(
         ProviderRequestError,
-        match="Shanghai and Shenzhen A-share listings only",
+        match="Shanghai, Shenzhen and Beijing A-share listings only",
     ):
-        provider.fetch(_request(DataCategory.INSIDER_SHARE_CHANGES, "BJ430489"))
+        provider.fetch(_request(DataCategory.INSIDER_SHARE_CHANGES, "HK00700"))
     with pytest.raises(ProviderRequestError, match="unsupported AKShare insider-share-change"):
         provider.fetch(
             _request(
@@ -914,6 +942,7 @@ def test_insider_share_change_request_supports_shanghai_and_shenzhen_and_has_no_
 
     assert fake.calls == [
         ("stock_share_hold_change_szse", {"symbol": "000001"}),
+        ("stock_share_hold_change_bse", {"symbol": "430489"}),
     ]
 
 
@@ -956,6 +985,30 @@ def test_insider_share_change_response_rejects_invalid_event_dates():
     with pytest.raises(ProviderResponseError, match="invalid 变动日期"):
         _provider(InvalidDate()).fetch(
             _request(DataCategory.INSIDER_SHARE_CHANGES, "SH600000")
+        )
+
+
+def test_bse_insider_share_change_response_rejects_cross_listing_rows_and_invalid_dates():
+    class WrongEntity(FakeAKShare):
+        def stock_share_hold_change_bse(self, *, symbol: str):
+            payload = _fixture("a_insider_share_change_bse.json")
+            payload[0]["代码"] = "830000"
+            return self._return("stock_share_hold_change_bse", payload, symbol=symbol)
+
+    with pytest.raises(ProviderResponseError, match="insider-share-change row entity"):
+        _provider(WrongEntity()).fetch(
+            _request(DataCategory.INSIDER_SHARE_CHANGES, "BJ430489")
+        )
+
+    class InvalidDate(FakeAKShare):
+        def stock_share_hold_change_bse(self, *, symbol: str):
+            payload = _fixture("a_insider_share_change_bse.json")
+            payload[0]["变动日期"] = "not-a-date"
+            return self._return("stock_share_hold_change_bse", payload, symbol=symbol)
+
+    with pytest.raises(ProviderResponseError, match="invalid 变动日期"):
+        _provider(InvalidDate()).fetch(
+            _request(DataCategory.INSIDER_SHARE_CHANGES, "BJ430489")
         )
 
 
@@ -1005,7 +1058,30 @@ def test_szse_insider_share_change_raw_record_stays_outside_canonical_facts():
         "governance_risk_level",
     ]
     assert normalized.data_quality.confidence.value == "LOW"
-    assert "SSE/SZSE insider-share-change" in normalized.data_quality.notes
+    assert "SSE/SZSE/BSE insider-share-change" in normalized.data_quality.notes
+
+
+def test_bse_insider_share_change_raw_record_stays_outside_canonical_facts():
+    record = _provider().fetch(
+        _request(DataCategory.INSIDER_SHARE_CHANGES, "BJ430489")
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="bse-insider-share-change-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company("BJ430489"),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_INSIDER_SHARE_CHANGE_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == [
+        "governance_risk_level",
+    ]
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "SSE/SZSE/BSE insider-share-change" in normalized.data_quality.notes
+    assert "diluted-share series" in normalized.data_quality.notes
 
 
 def test_insider_share_change_normalizer_rejects_replayed_rows_for_another_listing():
@@ -1048,6 +1124,24 @@ def test_insider_share_change_cache_replay_does_not_call_upstream(tmp_path: Path
     assert replay.record == live.record
     assert fake.calls == [
         ("stock_share_hold_change_sse", {"symbol": "600000"}),
+    ]
+
+
+def test_bse_insider_share_change_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(DataCategory.INSIDER_SHARE_CHANGES, "BJ430489")
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [
+        ("stock_share_hold_change_bse", {"symbol": "430489"}),
     ]
 
 

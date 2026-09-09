@@ -8,7 +8,7 @@ The adapter currently implements metadata, market observations, three narrow
 financial-statement slices, A-share earnings-forecast, earnings-quick-report,
 performance-report, business-composition, financial-abstract and financial-
 indicator raw slices, raw-only dividend event/snapshot, corporate-action,
-ownership-pledge, SSE/SZSE insider-share-change and A-share share-capital
+ownership-pledge, SSE/SZSE/BSE insider-share-change and A-share share-capital
 slices.
 Upstream column names are handled in this module and are never passed to the
 deterministic calculation or gate code.
@@ -56,9 +56,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "20"
+AKSHARE_ADAPTER_VERSION = "21"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "21"
+AKSHARE_MAPPING_VERSION = "22"
 
 
 class ListingMarket(StrEnum):
@@ -127,6 +127,7 @@ _SOURCE_URIS = {
     "stock_gpzy_pledge_ratio_em": "https://data.eastmoney.com/gpzy/pledgeRatio.aspx",
     "stock_share_hold_change_sse": "http://www.sse.com.cn/disclosure/credibility/supervision/change/",
     "stock_share_hold_change_szse": "http://www.szse.cn/disclosure/supervision/change/index.html",
+    "stock_share_hold_change_bse": "https://www.bse.cn/disclosure/djg_sharehold_change.html",
     "stock_financial_report_sina": "https://vip.stock.finance.sina.com.cn/corp/go.php/vFD_FinanceSummary/",
     "stock_financial_hk_report_em": "https://emweb.securities.eastmoney.com/PC_HKF10/FinancialAnalysis/index",
 }
@@ -289,11 +290,11 @@ class AKShareProvider(StructuredDataProvider):
             )
         if (
             request.category is DataCategory.INSIDER_SHARE_CHANGES
-            and listing.canonical_id[:2] not in {"SH", "SZ"}
+            and listing.canonical_id[:2] not in {"SH", "SZ", "BJ"}
         ):
             raise ProviderRequestError(
-                "the AKShare insider-share-change endpoints support Shanghai and Shenzhen "
-                "A-share listings only",
+                "the AKShare insider-share-change endpoints support Shanghai, Shenzhen and "
+                "Beijing A-share listings only",
                 provider=self.identity,
                 request=request,
                 retryable=False,
@@ -1259,10 +1260,10 @@ class AKShareNormalizer:
                 missing_fields.add("governance_risk_level")
                 normalizer_flags.add("AKSHARE_OWNERSHIP_PLEDGE_RAW_ONLY")
             elif record.request.category is DataCategory.INSIDER_SHARE_CHANGES:
-                if listing.canonical_id[:2] not in {"SH", "SZ"}:
+                if listing.canonical_id[:2] not in {"SH", "SZ", "BJ"}:
                     raise ProviderNormalizationError(
                         "AKShare insider-share-change raw slice supports "
-                        "Shanghai and Shenzhen A-share listings only"
+                        "Shanghai, Shenzhen and Beijing A-share listings only"
                     )
                 _validate_insider_share_change_normalizer_rows(rows, listing)
                 # Insider transactions are event evidence, not a settled
@@ -1347,7 +1348,7 @@ class AKShareNormalizer:
             )
         if "AKSHARE_INSIDER_SHARE_CHANGE_RAW_ONLY" in normalizer_flags:
             notes += (
-                " The documented SSE/SZSE insider-share-change response is retained as "
+                " The documented SSE/SZSE/BSE insider-share-change response is retained as "
                 "raw evidence only: holder role, trade quantities, prices and dates do "
                 "not establish a company-level diluted-share series or governance-risk "
                 "judgment."
@@ -1584,6 +1585,8 @@ def _endpoint_candidates(
             return ("stock_share_hold_change_sse",)
         if market is ListingMarket.A and listing.canonical_id.startswith("SZ"):
             return ("stock_share_hold_change_szse",)
+        if market is ListingMarket.A and listing.canonical_id.startswith("BJ"):
+            return ("stock_share_hold_change_bse",)
         return ()
     raise ProviderCapabilityError(f"AKShare adapter does not support {category.value!r}")
 
@@ -2000,6 +2003,7 @@ def _insider_share_change_kwargs(
     exchange_by_endpoint = {
         "stock_share_hold_change_sse": "SH",
         "stock_share_hold_change_szse": "SZ",
+        "stock_share_hold_change_bse": "BJ",
     }
     expected_exchange = exchange_by_endpoint.get(endpoint_name)
     if expected_exchange is None:
@@ -3220,7 +3224,7 @@ def _validate_insider_share_change_normalizer_rows(
     rows: Sequence[Mapping[str, JSONValue]],
     listing: _ListingRef,
 ) -> None:
-    """Keep replayed SSE/SZSE insider-share rows inside the listing boundary."""
+    """Keep replayed SSE/SZSE/BSE insider-share rows inside the listing boundary."""
 
     for row in rows:
         row_code = _row_code(row, ListingMarket.A)
@@ -3287,7 +3291,7 @@ def _validate_insider_share_change_provider_rows(
     provider: ProviderIdentity,
     request: ProviderRequest,
 ) -> None:
-    """Validate an SSE/SZSE listing-scoped insider-share response before storage."""
+    """Validate an SSE/SZSE/BSE listing-scoped insider-share response before storage."""
 
     for row in rows:
         row_code = _row_code(row, ListingMarket.A)

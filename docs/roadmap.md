@@ -543,10 +543,11 @@ establish governance severity or a canonical buyback/issuance cash flow. The
 normalizer therefore retains structured evidence, marks
 `governance_risk_level` as critically missing and emits
 `AKSHARE_INSIDER_SHARE_CHANGE_RAW_ONLY`; it creates no share-count, dilution,
-governance, buyback or issuance fact. Beijing and H-share coverage, holder
-interpretation and filing-backed governance analysis remain outside this slice.
-Shenzhen coverage is handled by Phase 2.20 below. Live calls remain opt-in;
-tests use an injected client and a frozen fixture.
+governance, buyback or issuance fact. Beijing coverage is handled by Phase 2.21
+below. H-share coverage, holder interpretation and filing-backed governance
+analysis remain outside this slice. Shenzhen coverage is handled by Phase 2.20
+below. Live calls remain opt-in; tests use an injected client and a frozen
+fixture.
 
 ### Phase 2.20 — SZSE insider share-change raw acquisition contract (COMPLETE)
 
@@ -564,10 +565,30 @@ ratio in thousandths, but the response still describes insider events rather
 than a company-level fully diluted share series. The normalizer therefore
 retains structured evidence, marks `governance_risk_level` as critically
 missing and emits `AKSHARE_INSIDER_SHARE_CHANGE_RAW_ONLY`; it creates no
-share-count, dilution, governance, buyback or issuance fact. Beijing and
-H-share insider-share coverage, holder interpretation and filing-backed
-governance analysis remain outside this slice. Live calls remain opt-in; tests
-use an injected client and a frozen fixture.
+share-count, dilution, governance, buyback or issuance fact. H-share
+insider-share coverage, holder interpretation and filing-backed governance
+analysis remain outside this slice. Live calls remain opt-in; tests use an
+injected client and a frozen fixture.
+
+### Phase 2.21 — BSE insider share-change raw acquisition contract (COMPLETE)
+
+The mapping review now covers the documented AKShare Beijing Stock Exchange
+`stock_share_hold_change_bse` endpoint under the existing provider-neutral
+`INSIDER_SHARE_CHANGES` category. The endpoint accepts a Beijing A-share
+`symbol` and returns listing-scoped rows with security identity, insider name
+and role, change date, before/after holdings, changed quantity, average price
+and change reason. The provider passes the six-digit code, retains every
+returned row as an opaque raw record, validates explicit listing identity and
+any supplied change dates, and records the listing-scoped response metadata.
+
+The documented holding quantities are reported in ten-thousand shares and the
+average price in yuan, but the response still describes insider events rather
+than a company-level fully diluted share series. The normalizer therefore
+retains structured evidence, marks `governance_risk_level` as critically
+missing and emits `AKSHARE_INSIDER_SHARE_CHANGE_RAW_ONLY`; it creates no
+share-count, dilution, governance, buyback or issuance fact. H-share coverage,
+holder interpretation and filing-backed governance analysis remain unresolved.
+Live calls remain opt-in; tests use an injected client and a frozen fixture.
 
 ### Future Phase 2 deliverables
 
@@ -578,7 +599,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.20 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.21 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -786,7 +807,7 @@ Phase 2 is active. Phase 1 remains frozen: changes to formulas, hard-gate
 semantics, schemas or `strict-v1` thresholds require a separately reviewed,
 versioned change.
 
-Phase 2.20 completes the next documented structured-data boundary while
+Phase 2.21 completes the next documented structured-data boundary while
 keeping share-change, repurchase and rights-issue period, status, unit and
 economic-scope questions unresolved, and keeping ownership-pledge holder,
 governance and economic-scope questions unresolved. The A-share
@@ -821,8 +842,11 @@ entity, unit, point-in-time basis or calculation methodology. Filing-derived
 statement facts and analytical classifications remain outside this slice.
 The documented SSE insider-share-change response is also raw-only because
 holder roles, holdings, transaction prices and event dates do not establish a
-company-level diluted-share series or a governance-risk judgment. Beijing and
-H-share insider-share coverage remains unresolved. The documented
+company-level diluted-share series or a governance-risk judgment. The documented
 SZSE insider-share-change response is retained under the same raw-only
 boundary: its change quantities, prices, units and event dates do not establish
 a company-level diluted-share series or a governance-risk judgment.
+The documented BSE insider-share-change response is retained under the same
+raw-only boundary: its holding quantities, prices and event dates do not
+establish a company-level diluted-share series or a governance-risk judgment.
+H-share insider-share coverage remains unresolved.

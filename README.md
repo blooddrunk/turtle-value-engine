@@ -122,8 +122,12 @@ share-count, dilution, governance, buyback or issuance facts.
 Phase 2.20 extends the same raw-only category to the documented Shenzhen
 `stock_share_hold_change_szse` endpoint for Shenzhen A-share listings. Its
 documented holding quantities, prices, units and event dates remain evidence
-only; the normalizer preserves the same no-fabrication boundary. Beijing and
-H-share insider-share coverage remain unresolved.
+only; the normalizer preserves the same no-fabrication boundary. Phase 2.21
+extends the category to the documented Beijing `stock_share_hold_change_bse`
+endpoint for Beijing A-share listings. Its holding quantities are documented
+in 万股 and prices in 元, but the rows remain raw evidence because they do not
+establish a company-level diluted-share series or governance-risk judgment.
+H-share insider-share coverage remains unresolved.
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.
