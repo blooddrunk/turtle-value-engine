@@ -230,6 +230,31 @@ issuance, buyback or split fact.
 | `变动原因`, `变动原因编码` | Raw-only; reason text/codes are not classified as buyback, issuance, split or another economic action. |
 | `证券代码`, `证券简称`, `机构名称` | Used only for conservative listing identity validation; they do not create a normalized share or action fact. |
 
+## Phase 2.11 A-share ownership-pledge snapshot raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_gpzy_pledge_ratio_em` as an Eastmoney A-share universe
+endpoint with a required `date` input in `YYYYMMDD` form. Its response is a
+date-specific snapshot containing listing code, trading date, pledge ratio,
+pledged-share count/value, pledge count, restricted/unrestricted pledged
+shares, one-year performance and an industry code.
+
+The provider passes the exact requested date, validates every returned row's
+listing code and trading date, filters the universe to the requested A-share
+code and retains the matching row as raw evidence. The normalizer marks
+`governance_risk_level` as critically missing and emits
+`AKSHARE_OWNERSHIP_PLEDGE_RAW_ONLY`; it emits no governance-risk, pledged-cash,
+debt-equivalent or valuation fact. A ratio and share count do not establish
+the affected holder, controlling-shareholder status, enforceability,
+accessibility or an accepted economic period.
+
+| Raw upstream item | Phase 2 treatment |
+| --- | --- |
+| `股票代码`, `交易日期` | Used for conservative listing and exact-snapshot validation; they do not create a governance or financial fact. |
+| `质押比例`, `质押股数`, `质押市值` | Raw-only; affected holder, market-value timing, units and pledged-cash accessibility are not established. |
+| `质押笔数`, `无限售股质押数`, `限售股质押数` | Raw-only; pledge structure and legal/economic enforceability remain unresolved. |
+| `近一年涨跌幅`, `所属行业代码` | Raw-only context; no performance, sector or governance conclusion is inferred. |
+
 ## Eligibility, identity and market context
 
 | Normalized field | Status | Boundary note |

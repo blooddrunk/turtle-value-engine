@@ -93,6 +93,7 @@ CASH_FLOW_STATEMENT
 DIVIDENDS
 SHARE_CAPITAL
 CORPORATE_ACTIONS
+OWNERSHIP_PLEDGE
 ```
 
 Each request has:
@@ -402,8 +403,8 @@ not be rerun as a substitute for resolving missing facts.
 
 The first concrete adapter is intentionally limited to read-only metadata,
 market observations, three documented financial-statement slices, raw-only
-dividend and corporate-action categories, and two A-share share-capital raw
-slices. It
+dividend and corporate-action categories, two A-share share-capital raw slices
+and one A-share ownership-pledge raw slice. It
 advertises exactly these capabilities:
 
 | Category | A-share endpoint | H-share endpoint | Normalized output |
@@ -418,6 +419,7 @@ advertises exactly these capabilities:
 | `DIVIDENDS` | `stock_dividend_cninfo` | `stock_hk_dividend_payout_em` | raw structured evidence only; no canonical dividend cash or payout ratio |
 | `CORPORATE_ACTIONS` | `stock_repurchase_em` (no parameters); `stock_allotment_cninfo` (date-range request) | — | A-share repurchase or rights-issue rows; raw structured evidence only; no canonical buyback, issuance or dilution fact |
 | `SHARE_CAPITAL` | `stock_zh_a_gbjg_em` (no parameters); `stock_share_change_cninfo` (explicit date range) | — | raw historical response and provenance only; no canonical share/dilution fact |
+| `OWNERSHIP_PLEDGE` | `stock_gpzy_pledge_ratio_em` (exact `date`) | — | date-bound A-share pledge-ratio snapshot; raw structured evidence only; no canonical governance, cash or debt-equivalent fact |
 
 The adapter accepts common stable A/H identifiers such as `SH600000`,
 `000001.SZ`, `A:600000`, `HK00700`, `700.HK` and `H:00700`. A-share history
@@ -432,10 +434,11 @@ Tests inject a client object and use frozen JSON fixtures. The existing
 never calls AKShare, and a failed live request is never written as a snapshot.
 
 The normalizer emits `Fact` and `Evidence` objects inside the existing
-`NormalizedCompanyInput`. For the dividend, corporate-action and share-capital
-raw slices it emits raw-record evidence only and explicit unresolved flags
-where needed; it does not emit canonical dividend, buyback, issuance, dilution
-or share facts. It never maps provider headline market cap,
+`NormalizedCompanyInput`. For the dividend, corporate-action, share-capital
+and ownership-pledge raw slices it emits raw-record evidence only and explicit
+unresolved flags where needed; it does not emit canonical dividend, buyback,
+issuance, dilution, share, governance, pledged-cash or debt-equivalent facts.
+It never maps provider headline market cap,
 listing-years inferred from history length, unlisted financial-statement lines,
 total liabilities as interest-bearing debt, filing classifications, or any
 CDC/net-cash/Through Return/valuation/gate result. The statement slices
@@ -468,6 +471,11 @@ a null currency still requires later source review before cross-currency
 calculations. For the rights-issue slice, planned-versus-completed outcome,
 effective-date basis, amount unit/scaling and share-class/dilution semantics
 remain unresolved; no capital-action classification is admitted automatically.
+For the ownership-pledge slice, the exact observation date and ratio are
+retained for the requested A-share snapshot, but affected-holder identity,
+controlling-owner status, governance severity, pledged-cash accessibility and
+debt-equivalent treatment remain unresolved; no governance-risk conclusion is
+admitted automatically.
 
 ## 13. Deliberate non-goals
 

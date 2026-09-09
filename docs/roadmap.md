@@ -345,6 +345,26 @@ share, issuance, buyback or split fact. The existing no-parameter
 filing-backed action classification remain unresolved. Live calls remain
 opt-in; tests use an injected client and a frozen fixture.
 
+### Phase 2.11 — A-share ownership-pledge snapshot raw contract (COMPLETE)
+
+The mapping review now covers the documented AKShare Eastmoney
+`stock_gpzy_pledge_ratio_em` endpoint under the provider-neutral
+`OWNERSHIP_PLEDGE` category. The endpoint requires an A-share `date` in
+`YYYYMMDD` form and returns a date-specific universe snapshot with pledge ratio,
+pledged shares/value, pledge counts, share-class pledge counts, one-year
+performance and industry-code context. The provider validates the exact
+trading date and explicit listing identity, filters the universe to the
+requested A-share code and retains the matching row as raw evidence.
+
+The documented ratio and counts do not identify the affected holder or
+controlling-shareholder status, establish governance severity, settle units or
+cash accessibility, or define a debt-equivalent fact. The normalizer therefore
+emits `AKSHARE_OWNERSHIP_PLEDGE_RAW_ONLY`, marks `governance_risk_level` as
+critically missing and creates no governance, pledged-cash, debt-equivalent or
+valuation fact. H-share pledge coverage and filing-backed governance
+interpretation remain unresolved. Live calls remain opt-in; tests use an
+injected client and a frozen fixture.
+
 The next Phase 2 task remains a focused mapping review of one documented
 structured-data or corporate-action boundary. No additional share, dividend,
 buyback, split or issuance fact is admitted until its period, unit, entity,
@@ -574,9 +594,10 @@ Phase 2 is active. Phase 1 remains frozen: changes to formulas, hard-gate
 semantics, schemas or `strict-v1` thresholds require a separately reviewed,
 versioned change.
 
-Phase 2.11 completes the next documented structured-data boundary while
+Phase 2.11 completes the next documented structured-data boundaries while
 keeping share-change, repurchase and rights-issue period, status, unit and
-economic-scope questions unresolved. Phase 2 remains active; the next
-documented category must still be reviewed before its fields can enter the
-canonical contract.
+economic-scope questions unresolved, and keeping ownership-pledge holder,
+governance and economic-scope questions unresolved. Phase 2 remains active;
+the next documented category must still be reviewed before its fields can
+enter the canonical contract.
 Filing-derived classifications remain a Phase 3 concern.

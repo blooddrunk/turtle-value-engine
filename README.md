@@ -75,6 +75,10 @@ dilution facts without a settled period and economic-scope review. Phase 2.11
 adds the documented A-share `stock_share_change_cninfo` endpoint as an
 explicit-date-range raw-only share-capital slice; its date, unit, class and
 dilution semantics remain unresolved and are not mapped into canonical facts.
+The same phase adds the documented A-share `stock_gpzy_pledge_ratio_em`
+ownership-pledge snapshot as a date-bound raw-only slice; its ratio and
+observation date do not identify a controlling holder or establish a
+governance-risk, pledged-cash or debt-equivalent fact.
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.
