@@ -1,6 +1,6 @@
 # Provider and Cache Architecture
 
-> Status: Phase 2 foundation, read-only AKShare statement slices, earnings forecasts/quick reports/performance reports/business composition/financial abstract/financial indicators, H-share latest indicators, dividend events/snapshots/detail, A-share disclosure-notice metadata, risk-warning status, trading-suspension, restricted-share-release, share-capital, corporate-action, ownership-pledge, main-shareholder and SSE/SZSE/BSE insider-share-change raw slices
+> Status: Phase 2 foundation, read-only AKShare statement slices, earnings forecasts/quick reports/performance reports/business composition/financial abstract/financial indicators, H-share latest indicators, dividend events/snapshots/detail, A-share disclosure-notice metadata, risk-warning status, trading-suspension, restricted-share-release, goodwill-impairment, share-capital, corporate-action, ownership-pledge, main-shareholder and SSE/SZSE/BSE insider-share-change raw slices
 
 This document freezes the boundary between structured-data acquisition and the
 deterministic Turtle Value Engine. It does not authorize a live provider or
@@ -96,6 +96,7 @@ PERFORMANCE_REPORT
 BUSINESS_COMPOSITION
 FINANCIAL_ABSTRACT
 FINANCIAL_INDICATORS
+GOODWILL_IMPAIRMENT
 LATEST_INDICATORS
 BALANCE_SHEET
 CASH_FLOW_STATEMENT
@@ -429,6 +430,19 @@ requested A-share listing and retains every matching row. The normalizer emits
 status, governance or accounting fact; a complete status history and
 filing-backed interpretation remain outside this slice.
 
+The A-share goodwill-impairment slice is also acquisition-only. The current
+[AKShare documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_sy_jz_em` as an Eastmoney endpoint accepting a required
+`YYYYMMDD` report `date` and returning listing rows with goodwill,
+goodwill-impairment, ratio, profit, announcement-date and market context. The
+provider validates explicit listing codes and nullable announcement dates,
+filters the universe to the requested A-share listing and records the requested
+report period in response metadata. The normalizer emits
+`AKSHARE_GOODWILL_IMPAIRMENT_RAW_ONLY`, marks `goodwill` and `impairment` as
+critically missing and does not create canonical accounting or provider-metric
+facts; primary-filing entity, scope and reconciliation review remain outside
+this slice.
+
 When a statement row includes an explicit security code, the normalizer also
 checks it against the requested listing and rejects a mismatch. Statement
 endpoints that omit a row-level code remain bound to their listing-scoped
@@ -583,7 +597,7 @@ The cache performs no network retries. The normalizer performs no provider
 retries. The deterministic pipeline performs no provider retries and should
 not be rerun as a substitute for resolving missing facts.
 
-## 12. Phase 2.2–2.29 AKShare adapter
+## 12. Phase 2.2–2.30 AKShare adapter
 
 The first concrete adapter is intentionally limited to read-only metadata,
 market observations, three documented financial-statement slices, raw-only
@@ -592,8 +606,8 @@ business-composition and financial-abstract categories, A/H financial-indicator
 raw slices, raw-only dividend event/snapshot/detail and corporate-action categories,
 three A-share share-capital raw slices, one A-share ownership-pledge raw slice,
 an H-share latest-indicator raw slice, an A-share disclosure-notice raw slice,
-an A-share risk-warning-status, trading-suspension and main-shareholder raw
-slice and SSE/SZSE/BSE insider-share-change raw slices. It
+an A-share risk-warning-status, trading-suspension, goodwill-impairment and
+main-shareholder raw slice and SSE/SZSE/BSE insider-share-change raw slices. It
 advertises exactly these capabilities:
 
 | Category | A-share endpoint | H-share endpoint | Normalized output |
@@ -612,6 +626,7 @@ advertises exactly these capabilities:
 | `BUSINESS_COMPOSITION` | `stock_zygc_em` | — | A-share historical main-business composition rows as raw structured evidence only; no canonical revenue, margin or business-quality fact |
 | `FINANCIAL_ABSTRACT` | `stock_financial_abstract` | — | A-share historical key-indicator matrix as raw structured evidence only; no canonical revenue, profit or CFO fact |
 | `FINANCIAL_INDICATORS` | `stock_financial_analysis_indicator_em` | `stock_financial_hk_analysis_indicator_em` | A/H historical financial-indicator rows as raw structured evidence only; no canonical revenue, profit, CFO, metric or valuation input |
+| `GOODWILL_IMPAIRMENT` | `stock_sy_jz_em` (exact `date`) | — | A-share report-date goodwill/impairment rows as raw structured evidence only; no canonical goodwill or impairment fact |
 | `LATEST_INDICATORS` | — | `stock_hk_financial_indicator_em` | H-share symbol-scoped latest-indicator row as raw structured evidence only; no canonical financial, share, dividend, market-cap, metric or valuation input |
 | `BALANCE_SHEET` | `stock_zcfz_em` / `stock_zcfz_bj_em` (detailed report-period and Sina fallbacks) | `stock_financial_hk_report_em` | explicit `book_cash`, equity totals and aggregate interest-bearing debt when labeled |
 | `DIVIDENDS` | `stock_dividend_cninfo`; `stock_fhps_em` (explicit report date) | `stock_hk_dividend_payout_em`; `stock_hk_fhpx_detail_ths` (`view=event_detail`) | raw structured evidence only; no canonical dividend cash or payout ratio |
@@ -638,8 +653,9 @@ The normalizer emits `Fact` and `Evidence` objects inside the existing
 `NormalizedCompanyInput`. For the earnings-forecast, earnings-quick-report,
 performance-report, business-composition, financial-abstract,
 financial-indicator, latest-indicator, dividend event/detail, disclosure-notice,
-risk-warning-status, trading-suspension, restricted-share-release, corporate-action, share-capital,
-ownership-pledge, main-shareholder and insider-share-change raw slices it emits
+risk-warning-status, trading-suspension, restricted-share-release,
+goodwill-impairment, corporate-action, share-capital, ownership-pledge,
+main-shareholder and insider-share-change raw slices it emits
 raw-record evidence only and explicit unresolved flags where needed; it does
 not emit canonical forecast-profit, revenue, margin, dividend, buyback,
 issuance, dilution, share, governance, pledged-cash or debt-equivalent facts.
@@ -764,9 +780,19 @@ treatment or a share-count event. Optional row-level codes are checked when
 present because the documented symbol-scoped response may omit them; H-share
 coverage and filing-backed release interpretation remain unresolved.
 
+For the A-share goodwill-impairment slice, the documented `stock_sy_jz_em`
+report-date universe and its listing-filtered result are retained as raw
+evidence only. `商誉` and `商誉减值` are aggregator amounts whose accounting
+entity, statement scope, report-period basis and reconciliation to a primary
+filing remain unresolved; provider ratios and `净利润` inherit the same raw
+boundary. `公告日期` is publication metadata, not an admitted report or
+recognition date, so no canonical goodwill, impairment or profit fact is
+emitted automatically. H-share coverage and filing-backed impairment review
+remain unresolved.
+
 ## 13. Deliberate non-goals
 
-This foundation plus the Phase 2.2–2.29 slices does not include:
+This foundation plus the Phase 2.2–2.30 slices does not include:
 
 - Tushare, BaoStock or any other additional provider;
 - automatic network scheduling, credentials or retry orchestration outside an adapter;

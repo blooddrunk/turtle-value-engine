@@ -70,6 +70,13 @@ class FakeAKShare:
             date=date,
         )
 
+    def stock_sy_jz_em(self, *, date: str):
+        return self._return(
+            "stock_sy_jz_em",
+            _fixture("a_goodwill_impairment.json"),
+            date=date,
+        )
+
     def stock_zh_a_spot_em(self):
         return self._return("stock_zh_a_spot_em", _fixture("a_quote.json"))
 
@@ -336,6 +343,7 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "earnings_quick_report",
         "financial_abstract",
         "financial_indicators",
+        "goodwill_impairment",
         "income_statement",
         "insider_share_changes",
         "latest_indicators",
@@ -350,8 +358,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "29"
-    assert AKSHARE_MAPPING_VERSION == "30"
+    assert provider.identity.provider_version == "30"
+    assert AKSHARE_MAPPING_VERSION == "31"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -4652,3 +4660,213 @@ def test_h_financial_indicators_cache_replay_does_not_call_upstream(tmp_path: Pa
             {"symbol": "00700", "indicator": "年度"},
         )
     ]
+
+
+def test_a_goodwill_impairment_fetch_filters_the_documented_report_date_universe():
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    record = provider.fetch(
+        _request(
+            DataCategory.GOODWILL_IMPAIRMENT,
+            "SH600000",
+            {"date": "20250630"},
+        )
+    )
+
+    fixture = _fixture("a_goodwill_impairment.json")
+    assert record.raw_payload == [row for row in fixture if row["股票代码"] == "600000"]
+    assert fake.calls == [("stock_sy_jz_em", {"date": "20250630"})]
+    assert record.response_metadata["endpoint"] == "stock_sy_jz_em"
+    assert record.response_metadata["upstream_row_count"] == 2
+    assert record.response_metadata["entity_row_count"] == 1
+    assert record.response_metadata["entity_rows_selected"] is True
+    assert record.response_metadata["listing_scoped_request"] is False
+    assert record.response_metadata["row_filtering"] == "provider"
+    assert record.response_metadata["requested_date"] == "20250630"
+    assert record.response_metadata["report_period"] == "2025-06-30"
+    assert record.response_metadata["snapshot_scope"] == "requested_report_date"
+    assert record.source_uri == "https://data.eastmoney.com/sy/jzlist.html"
+
+
+def test_a_goodwill_impairment_request_validates_date_and_market_before_upstream_call():
+    fake = FakeAKShare()
+    provider = _provider(fake)
+
+    with pytest.raises(ProviderRequestError, match="requires date"):
+        provider.fetch(_request(DataCategory.GOODWILL_IMPAIRMENT, "SH600000"))
+    with pytest.raises(ProviderRequestError, match="date must be YYYYMMDD"):
+        provider.fetch(
+            _request(
+                DataCategory.GOODWILL_IMPAIRMENT,
+                "SH600000",
+                {"date": "2025-06-30"},
+            )
+        )
+    with pytest.raises(ProviderRequestError, match="date must be a valid YYYYMMDD"):
+        provider.fetch(
+            _request(
+                DataCategory.GOODWILL_IMPAIRMENT,
+                "SH600000",
+                {"date": "20251331"},
+            )
+        )
+    with pytest.raises(ProviderRequestError, match="unsupported AKShare goodwill-impairment"):
+        provider.fetch(
+            _request(
+                DataCategory.GOODWILL_IMPAIRMENT,
+                "SH600000",
+                {"date": "20250630", "view": "detail"},
+            )
+        )
+    with pytest.raises(ProviderRequestError, match="A-share listings only"):
+        provider.fetch(
+            _request(
+                DataCategory.GOODWILL_IMPAIRMENT,
+                "HK00700",
+                {"date": "20250630"},
+            )
+        )
+
+    assert fake.calls == []
+
+
+def test_goodwill_impairment_response_rejects_missing_code_or_invalid_announcement_date():
+    class InvalidRows(FakeAKShare):
+        def __init__(self, mode: str) -> None:
+            super().__init__()
+            self.mode = mode
+
+        def stock_sy_jz_em(self, *, date: str):
+            rows = [dict(row) for row in _fixture("a_goodwill_impairment.json")]
+            if self.mode == "missing_code":
+                rows[0].pop("股票代码")
+            else:
+                rows[0]["公告日期"] = "not-a-date"
+            return self._return("stock_sy_jz_em", rows, date=date)
+
+    with pytest.raises(ProviderResponseError, match="goodwill-impairment row without"):
+        _provider(InvalidRows("missing_code")).fetch(
+            _request(
+                DataCategory.GOODWILL_IMPAIRMENT,
+                "SH600000",
+                {"date": "20250630"},
+            )
+        )
+    with pytest.raises(
+        ProviderResponseError,
+        match="invalid goodwill-impairment announcement date",
+    ):
+        _provider(InvalidRows("invalid_date")).fetch(
+            _request(
+                DataCategory.GOODWILL_IMPAIRMENT,
+                "SH600000",
+                {"date": "20250630"},
+            )
+        )
+
+
+def test_goodwill_impairment_with_no_matching_listing_is_an_empty_raw_snapshot():
+    class NoGoodwillImpairment(FakeAKShare):
+        def stock_sy_jz_em(self, *, date: str):
+            return self._return(
+                "stock_sy_jz_em",
+                [{"股票代码": "000001", "股票简称": "平安银行"}],
+                date=date,
+            )
+
+    fake = NoGoodwillImpairment()
+    record = _provider(fake).fetch(
+        _request(
+            DataCategory.GOODWILL_IMPAIRMENT,
+            "SH600000",
+            {"date": "20250630"},
+        )
+    )
+
+    assert record.raw_payload == []
+    assert record.response_metadata["upstream_row_count"] == 1
+    assert record.response_metadata["entity_row_count"] == 0
+
+
+def test_goodwill_impairment_raw_record_is_not_promoted_to_canonical_facts():
+    provider = _provider()
+    record = provider.fetch(
+        _request(
+            DataCategory.GOODWILL_IMPAIRMENT,
+            "SH600000",
+            {"date": "20250630"},
+        )
+    )
+
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="goodwill-impairment-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_GOODWILL_IMPAIRMENT_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == [
+        "goodwill",
+        "impairment",
+    ]
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "primary-filing scope" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+def test_goodwill_impairment_normalizer_rejects_replayed_rows_for_another_listing():
+    provider = _provider()
+    record = provider.fetch(
+        _request(
+            DataCategory.GOODWILL_IMPAIRMENT,
+            "SH600000",
+            {"date": "20250630"},
+        )
+    )
+    payload = [dict(row) for row in record.raw_payload]
+    payload[0]["股票代码"] = "000001"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=record.source_uri,
+        response_metadata=record.response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match="goodwill-impairment row entity"):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-goodwill-impairment-entity",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_goodwill_impairment_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.GOODWILL_IMPAIRMENT,
+        "SH600000",
+        {"date": "20250630"},
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [("stock_sy_jz_em", {"date": "20250630"})]

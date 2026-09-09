@@ -767,6 +767,26 @@ restricted-release coverage and filing-backed action classification remain
 unresolved. Live calls remain opt-in; tests use an injected client and a
 frozen fixture.
 
+### Phase 2.30 — A-share goodwill-impairment raw acquisition contract (COMPLETE)
+
+The mapping review now covers the current documented AKShare Eastmoney
+`stock_sy_jz_em` endpoint under a new provider-neutral
+`GOODWILL_IMPAIRMENT` category. The endpoint accepts an A-share report-date
+`date` in `YYYYMMDD` form and returns a universe of listing rows with goodwill,
+goodwill-impairment, ratio, profit, announcement-date and market context. The
+provider validates explicit listing identity and nullable announcement dates,
+filters to the requested six-digit A-share code, retains all matching rows and
+records the requested report period for replay.
+
+The goodwill and impairment amounts are aggregator fields whose accounting
+entity, scope, reconciliation and point-in-time semantics still require a
+primary filing. The normalizer therefore retains the filtered response as
+structured evidence, marks `goodwill` and `impairment` as critically missing
+and emits `AKSHARE_GOODWILL_IMPAIRMENT_RAW_ONLY`; it creates no canonical
+goodwill, impairment, profit, ratio or business-quality fact. H-share goodwill
+coverage and filing-backed impairment review remain outside this slice. Live
+calls remain opt-in; tests use an injected client and a frozen fixture.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -776,7 +796,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.29 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.30 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -984,7 +1004,7 @@ Phase 2 is active. Phase 1 remains frozen: changes to formulas, hard-gate
 semantics, schemas or `strict-v1` thresholds require a separately reviewed,
 versioned change.
 
-Phase 2.29 completes the next documented structured-data boundary while
+Phase 2.30 completes the next documented structured-data boundary while
 keeping share-change, repurchase and rights-issue period, status, unit and
 economic-scope questions unresolved, and keeping ownership-pledge holder,
 governance and economic-scope questions unresolved. The A-share
@@ -1058,3 +1078,8 @@ The documented A-share restricted-share-release response is retained under
 quantities, market values and lock-up types do not establish canonical
 diluted-economic-share treatment or a share-count event. H-share coverage and
 filing-backed release interpretation remain unresolved.
+The documented A-share goodwill-impairment response is retained under
+`AKSHARE_GOODWILL_IMPAIRMENT_RAW_ONLY` because its goodwill and impairment
+amounts, ratios, profit and announcement dates do not establish the canonical
+accounting entity, report-period scope or a filing-backed reconciliation. H-share
+coverage and filing-backed impairment interpretation remain unresolved.

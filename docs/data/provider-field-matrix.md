@@ -724,6 +724,38 @@ unresolved.
 | `解禁股东数`, `限售股类型` | Raw release context; holder count and lock-up type do not classify issuance, buyback, split or dilution. |
 | pre/post release change fields and prior close | Raw observations; no return, price-impact or governance metric is calculated. |
 
+## Phase 2.30 A-share goodwill-impairment raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_sy_jz_em` as an Eastmoney A-share goodwill-impairment detail
+endpoint. It accepts a required `YYYYMMDD` `date` and returns a report-date
+universe with listing code/name, goodwill (`商誉`) and goodwill impairment
+(`商誉减值`) amounts in yuan, provider ratios, net profit, announcement date
+and market. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_sy_em.py)
+shows the requested report date is passed to the upstream report-date filter;
+the returned table itself does not provide a separate canonical report-period
+field, so the adapter records the requested date in response metadata.
+
+The provider validates explicit A-share listing codes and nullable announcement
+dates, filters the returned universe to the requested listing and retains every
+matching row as a `RawProviderRecord`. The amounts are useful discovery
+evidence, but they do not establish the accounting entity, statement scope,
+period basis or reconciliation required for canonical `goodwill` or
+`impairment`. The normalizer therefore emits
+`AKSHARE_GOODWILL_IMPAIRMENT_RAW_ONLY`, marks both fields as critically missing
+and creates no canonical goodwill, impairment, profit, ratio or business-quality
+fact. H-share goodwill coverage and filing-backed impairment interpretation
+remain unresolved.
+
+| Raw upstream item | Phase 2 treatment |
+| --- | --- |
+| `股票代码`, `股票简称`, `交易市场` | Identity and market context only; the provider checks the code boundary but creates no canonical accounting fact. |
+| `商誉`, `商誉减值` | Raw-only amount evidence. Both `goodwill` and `impairment` are `REQUIRES_PRIMARY_FILING`; entity, accounting scope, report period and reconciliation are not established. |
+| `商誉占净资产比例`, `商誉减值占净资产比例`, `商誉减值占净利润比例` | Raw-only provider ratios; denominator, units and entity/period basis are not accepted as canonical metrics. |
+| `净利润` | Raw-only profit context; the row does not establish parent versus consolidated entity, statement period or a canonical profit fact. |
+| `公告日期` | Raw-only publication metadata; it is not silently treated as the report period or an impairment-recognition date. |
+| `序号` | Retained in the opaque upstream row; no ordering or metric is calculated. |
+
 ## Eligibility, identity and market context
 
 | Normalized field | Status | Boundary note |

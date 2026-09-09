@@ -12,7 +12,8 @@ disclosure notice metadata, corporate-action, ownership-pledge, SSE/SZSE/BSE
 insider-share-change and A-share share-capital slices, including the
 restricted-share-release view, the A-share risk-warning-status,
 trading-suspension and main-shareholder raw slices, the H-share financial-
-indicator raw slice and the H-share latest-indicator raw slice.
+indicator raw slice, the H-share latest-indicator raw slice and the A-share
+goodwill-impairment detail raw slice.
 Upstream column names are handled in this module and are never passed to the
 deterministic calculation or gate code.
 """
@@ -59,9 +60,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "29"
+AKSHARE_ADAPTER_VERSION = "30"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "30"
+AKSHARE_MAPPING_VERSION = "31"
 
 
 class ListingMarket(StrEnum):
@@ -87,6 +88,7 @@ AKSHARE_CAPABILITIES = ProviderCapabilities(
         DataCategory.BUSINESS_COMPOSITION,
         DataCategory.FINANCIAL_ABSTRACT,
         DataCategory.FINANCIAL_INDICATORS,
+        DataCategory.GOODWILL_IMPAIRMENT,
         DataCategory.LATEST_INDICATORS,
         DataCategory.BALANCE_SHEET,
         DataCategory.DIVIDENDS,
@@ -126,6 +128,7 @@ _SOURCE_URIS = {
     "stock_financial_analysis_indicator_em": "https://emweb.securities.eastmoney.com/pc_hsf10/pages/index.html?type=web&code=SZ301389&color=b#/cwfx",
     "stock_financial_hk_analysis_indicator_em": "https://emweb.securities.eastmoney.com/PC_HKF10/NewFinancialAnalysis/index?type=web&code=00700",
     "stock_hk_financial_indicator_em": "https://emweb.securities.eastmoney.com/PC_HKF10/pages/home/index.html",
+    "stock_sy_jz_em": "https://data.eastmoney.com/sy/jzlist.html",
     "stock_balance_sheet_by_report_em": "https://emweb.securities.eastmoney.com/PC_HSF10/NewFinanceAnalysis/Index",
     "stock_zcfz_em": "https://data.eastmoney.com/bbsj/202003/zcfz.html",
     "stock_zcfz_bj_em": "https://data.eastmoney.com/bbsj/202003/zcfz.html",
@@ -188,6 +191,7 @@ _PERFORMANCE_REPORT_PARAMETER_NAMES = frozenset({"date"})
 _BUSINESS_COMPOSITION_PARAMETER_NAMES = frozenset()
 _FINANCIAL_ABSTRACT_PARAMETER_NAMES = frozenset()
 _FINANCIAL_INDICATORS_PARAMETER_NAMES = frozenset({"indicator"})
+_GOODWILL_IMPAIRMENT_PARAMETER_NAMES = frozenset({"date"})
 _LATEST_INDICATORS_PARAMETER_NAMES = frozenset()
 _FINANCIAL_INDICATORS_CHOICES = {
     ListingMarket.A: frozenset({"按报告期", "按单季度"}),
@@ -209,6 +213,12 @@ _CORPORATE_ACTION_PARAMETER_NAMES = frozenset({"start_date", "end_date"})
 _OWNERSHIP_PLEDGE_PARAMETER_NAMES = frozenset({"date"})
 _INSIDER_SHARE_CHANGE_PARAMETER_NAMES = frozenset()
 _TRADING_SUSPENSIONS_PARAMETER_NAMES = frozenset({"date"})
+_GOODWILL_IMPAIRMENT_ANNOUNCEMENT_DATE_FIELDS = (
+    "公告日期",
+    "公告时间",
+    "announcement_date",
+    "notice_date",
+)
 _EARNINGS_FORECAST_START_DATE = date(2008, 12, 31)
 _EARNINGS_FORECAST_QUARTER_ENDS = frozenset({(3, 31), (6, 30), (9, 30), (12, 31)})
 _EARNINGS_QUICK_REPORT_START_DATE = date(2010, 3, 31)
@@ -342,6 +352,16 @@ class AKShareProvider(StructuredDataProvider):
         ):
             raise ProviderRequestError(
                 "the AKShare trading-suspension endpoint supports A-share listings only",
+                provider=self.identity,
+                request=request,
+                retryable=False,
+            )
+        if (
+            request.category is DataCategory.GOODWILL_IMPAIRMENT
+            and listing.market is not ListingMarket.A
+        ):
+            raise ProviderRequestError(
+                "the AKShare goodwill-impairment endpoint supports A-share listings only",
                 provider=self.identity,
                 request=request,
                 retryable=False,
@@ -555,6 +575,34 @@ class AKShareProvider(StructuredDataProvider):
             response_metadata["row_filtering"] = "provider"
             response_metadata["requested_date"] = kwargs["date"]
             response_metadata["snapshot_scope"] = "requested_date"
+        elif request.category is DataCategory.GOODWILL_IMPAIRMENT:
+            rows = _table_rows(payload, provider=self.identity, request=request)
+            requested_date = _parse_goodwill_impairment_date_parameter(
+                kwargs["date"],
+                request=request,
+            )
+            _validate_goodwill_impairment_provider_rows(
+                rows,
+                listing,
+                provider=self.identity,
+                request=request,
+            )
+            selected = _select_listing_rows(
+                rows,
+                listing,
+                provider=self.identity,
+                request=request,
+                row_label="goodwill-impairment",
+            )
+            payload = selected
+            response_metadata["upstream_row_count"] = len(rows)
+            response_metadata["entity_row_count"] = len(selected)
+            response_metadata["entity_rows_selected"] = True
+            response_metadata["listing_scoped_request"] = False
+            response_metadata["row_filtering"] = "provider"
+            response_metadata["requested_date"] = kwargs["date"]
+            response_metadata["report_period"] = requested_date.isoformat()
+            response_metadata["snapshot_scope"] = "requested_report_date"
         elif request.category is DataCategory.MARKET_HISTORY:
             rows = _table_rows(payload, provider=self.identity, request=request)
             response_metadata["upstream_row_count"] = len(rows)
@@ -1019,6 +1067,8 @@ class AKShareProvider(StructuredDataProvider):
                 return _shareholder_holdings_kwargs(endpoint_name, listing, request)
             if request.category is DataCategory.TRADING_SUSPENSIONS:
                 return _trading_suspensions_kwargs(endpoint_name, listing, request)
+            if request.category is DataCategory.GOODWILL_IMPAIRMENT:
+                return _goodwill_impairment_kwargs(endpoint_name, listing, request)
             if endpoint_name in _NO_ARGUMENT_ENDPOINTS:
                 _reject_unexpected_parameters(request)
                 return {}
@@ -1248,6 +1298,29 @@ class AKShareNormalizer:
                 # conclusion for the requested listing.
                 missing_fields.update({"governance_risk_level", "special_treatment"})
                 normalizer_flags.add("AKSHARE_TRADING_SUSPENSIONS_RAW_ONLY")
+            elif record.request.category is DataCategory.GOODWILL_IMPAIRMENT:
+                if listing.market is not ListingMarket.A:
+                    raise ProviderNormalizationError(
+                        "AKShare goodwill-impairment raw slice supports A-share listings only"
+                    )
+                if record.response_metadata.get("endpoint") != "stock_sy_jz_em":
+                    raise ProviderNormalizationError(
+                        "AKShare goodwill-impairment record must come from stock_sy_jz_em"
+                    )
+                try:
+                    _goodwill_impairment_kwargs(
+                        "stock_sy_jz_em",
+                        listing,
+                        record.request,
+                    )
+                except ProviderRequestError as exc:
+                    raise ProviderNormalizationError(str(exc)) from exc
+                _validate_goodwill_impairment_normalizer_rows(rows, listing)
+                # Goodwill and impairment amounts from an aggregator do not
+                # establish the filing-backed entity, accounting scope or
+                # reconciliation required by the normalized contract.
+                missing_fields.update({"goodwill", "impairment"})
+                normalizer_flags.add("AKSHARE_GOODWILL_IMPAIRMENT_RAW_ONLY")
             elif record.request.category is DataCategory.MARKET_QUOTE:
                 row = _single_normalization_row(rows, record)
                 field = "current_price" if primary else "listing_current_price"
@@ -1665,7 +1738,9 @@ class AKShareNormalizer:
             "canonical diluted-economic-share treatment. "
             "Trading-suspension records remain raw structured evidence because "
             "suspension events and reasons do not establish a complete status or "
-            "governance conclusion."
+            "governance conclusion. Goodwill-impairment records remain raw "
+            "structured evidence because aggregator amounts and announcement "
+            "dates do not establish filing-backed accounting scope."
         )
         if "AKSHARE_CORPORATE_ACTIONS_RAW_ONLY" in normalizer_flags:
             notes += (
@@ -1804,6 +1879,13 @@ class AKShareNormalizer:
                 "do not establish a complete special-treatment status or a "
                 "filing-backed governance conclusion."
             )
+        if "AKSHARE_GOODWILL_IMPAIRMENT_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented A-share goodwill-impairment response is retained "
+                "as raw evidence only: aggregator goodwill and impairment amounts, "
+                "report dates and announcement dates require primary-filing scope "
+                "and reconciliation before canonical facts can be admitted."
+            )
         return NormalizedCompanyInput(
             schema_version="1.0.0",
             analysis_id=analysis_id,
@@ -1937,6 +2019,10 @@ def _endpoint_candidates(
     if category is DataCategory.TRADING_SUSPENSIONS:
         if market is ListingMarket.A:
             return ("stock_tfp_em",)
+        return ()
+    if category is DataCategory.GOODWILL_IMPAIRMENT:
+        if market is ListingMarket.A:
+            return ("stock_sy_jz_em",)
         return ()
     if category is DataCategory.MARKET_QUOTE:
         if market is ListingMarket.A:
@@ -2720,6 +2806,41 @@ def _trading_suspensions_kwargs(
     return {"date": raw_date}
 
 
+def _goodwill_impairment_kwargs(
+    endpoint_name: str,
+    listing: _ListingRef,
+    request: ProviderRequest,
+) -> dict[str, object]:
+    if endpoint_name != "stock_sy_jz_em":
+        raise ProviderRequestError(
+            f"unsupported AKShare goodwill-impairment endpoint {endpoint_name!r}",
+            request=request,
+            retryable=False,
+        )
+    if listing.market is not ListingMarket.A:
+        raise ProviderRequestError(
+            "the AKShare goodwill-impairment endpoint supports A-share listings only",
+            request=request,
+            retryable=False,
+        )
+    unknown = sorted(set(request.parameters) - _GOODWILL_IMPAIRMENT_PARAMETER_NAMES)
+    if unknown:
+        raise ProviderRequestError(
+            "unsupported AKShare goodwill-impairment parameter(s): " + ", ".join(unknown),
+            request=request,
+            retryable=False,
+        )
+    if "date" not in request.parameters:
+        raise ProviderRequestError(
+            "the AKShare goodwill-impairment endpoint requires date (YYYYMMDD)",
+            request=request,
+            retryable=False,
+        )
+    raw_date = request.parameters["date"]
+    _parse_goodwill_impairment_date_parameter(raw_date, request=request)
+    return {"date": raw_date}
+
+
 def _corporate_action_kwargs(
     endpoint_name: str,
     listing: _ListingRef,
@@ -2851,6 +2972,27 @@ def _parse_trading_suspensions_date_parameter(
     except ValueError as exc:
         raise ProviderRequestError(
             "trading-suspension date must be a valid YYYYMMDD date",
+            request=request,
+            retryable=False,
+        ) from exc
+
+
+def _parse_goodwill_impairment_date_parameter(
+    raw_value: object,
+    *,
+    request: ProviderRequest | None = None,
+) -> date:
+    if not isinstance(raw_value, str) or not re.fullmatch(r"\d{8}", raw_value):
+        raise ProviderRequestError(
+            "goodwill-impairment date must be YYYYMMDD",
+            request=request,
+            retryable=False,
+        )
+    try:
+        return datetime.strptime(raw_value, "%Y%m%d").date()
+    except ValueError as exc:
+        raise ProviderRequestError(
+            "goodwill-impairment date must be a valid YYYYMMDD date",
             request=request,
             retryable=False,
         ) from exc
@@ -3464,6 +3606,35 @@ def _validate_trading_suspension_provider_rows(
                     )
 
 
+def _validate_goodwill_impairment_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> None:
+    """Validate listing identity and optional announcement dates in the universe."""
+
+    for row in rows:
+        if _row_code(row, ListingMarket.A) is None:
+            raise ProviderResponseError(
+                f"AKShare returned a goodwill-impairment row without a listing code for "
+                f"{request.entity_id!r}",
+                provider=provider,
+                request=request,
+            )
+        for field in _GOODWILL_IMPAIRMENT_ANNOUNCEMENT_DATE_FIELDS:
+            found, raw_date = _lookup(row, (field,))
+            if found and _text_value(raw_date) not in _MISSING_TEXT:
+                if _parse_date_value(raw_date) is None:
+                    raise ProviderResponseError(
+                        f"AKShare returned an invalid goodwill-impairment announcement date "
+                        f"in {field!r} for {request.entity_id!r}",
+                        provider=provider,
+                        request=request,
+                    )
+
+
 def _validate_hk_dividend_detail_provider_rows(
     rows: Sequence[Mapping[str, JSONValue]],
     listing: _ListingRef,
@@ -3901,6 +4072,33 @@ def _validate_trading_suspension_normalizer_rows(
                 if _parse_date_value(raw_date) is None:
                     raise ProviderNormalizationError(
                         f"trading-suspension row has an invalid date in {field!r}"
+                    )
+
+
+def _validate_goodwill_impairment_normalizer_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+) -> None:
+    """Keep replayed goodwill-impairment rows inside the requested listing."""
+
+    for row in rows:
+        row_code = _row_code(row, ListingMarket.A)
+        if row_code is None:
+            raise ProviderNormalizationError(
+                "goodwill-impairment row has no explicit listing code"
+            )
+        if row_code != listing.code:
+            raise ProviderNormalizationError(
+                f"goodwill-impairment row entity {row_code!r} does not match "
+                f"requested listing {listing.canonical_id!r}"
+            )
+        for field in _GOODWILL_IMPAIRMENT_ANNOUNCEMENT_DATE_FIELDS:
+            found, raw_date = _lookup(row, (field,))
+            if found and _text_value(raw_date) not in _MISSING_TEXT:
+                if _parse_date_value(raw_date) is None:
+                    raise ProviderNormalizationError(
+                        f"goodwill-impairment row has an invalid announcement date in "
+                        f"{field!r}"
                     )
 
 

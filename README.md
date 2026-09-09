@@ -183,6 +183,13 @@ normalizer emits `AKSHARE_RESTRICTED_SHARE_RELEASES_RAW_ONLY`, leaves
 `normalized_diluted_economic_shares` critically missing and creates no
 canonical share, dilution or valuation fact. H-share coverage and
 filing-backed release interpretation remain outside this slice.
+Phase 2.30 adds the documented A-share Eastmoney `stock_sy_jz_em` goodwill-
+impairment report-date snapshot under `GOODWILL_IMPAIRMENT`. Its goodwill,
+impairment, ratios, profit and announcement-date fields remain raw structured
+evidence; the normalizer emits `AKSHARE_GOODWILL_IMPAIRMENT_RAW_ONLY`, leaves
+`goodwill` and `impairment` critically missing and creates no canonical facts
+until primary-filing scope and reconciliation are available. H-share coverage
+and filing-backed impairment interpretation remain outside this slice.
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.
