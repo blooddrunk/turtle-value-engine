@@ -222,6 +222,13 @@ consolidated-versus-standalone entity basis, currency/unit scaling,
 interest-bearing-debt aggregate availability, and point-in-time publication
 semantics.
 
+This mapping-review hardening keeps statement currency provenance
+conservative across all three slices: only explicit valid three-letter codes
+are accepted, missing currency is preserved as `null` rather than inferred
+from the listing market, and conflicting currencies within one report period
+are rejected. Unit scaling and consolidated-versus-standalone presentation
+basis remain open questions for a later review.
+
 ### Future Phase 2 deliverables
 
 ```text

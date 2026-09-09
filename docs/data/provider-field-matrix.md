@@ -103,8 +103,14 @@ and the H-share endpoint long-form items. Missing or year-only periods and
 ambiguous duplicate periods/items are rejected. Explicit nulls remain null and
 are not treated as zero. The Phase 2 mapping review owns unresolved
 balance-sheet field-name coverage, consolidated-versus-standalone entity
-basis, currency/unit scaling, explicit debt-aggregate availability and
-point-in-time publication semantics.
+basis, unit scaling, explicit debt-aggregate availability and point-in-time
+publication semantics.
+
+For all statement amounts, an explicit valid three-letter currency code is
+required before a currency is attached to a fact. The mapper does not use the
+listing market as a currency default: omitted currency remains `null`, and
+conflicting explicit currencies within one report period are rejected. Unit
+scaling and conversion remain outside this slice.
 
 For all three statement slices, an explicit row-level security code must match
 the requested listing; a mismatch is a normalization error. If an upstream

@@ -53,7 +53,7 @@ from .normalization import deterministic_id
 
 AKSHARE_ADAPTER_VERSION = "4"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "5"
+AKSHARE_MAPPING_VERSION = "6"
 
 
 class ListingMarket(StrEnum):
@@ -1615,6 +1615,11 @@ def _map_financial_statement(
         return 0, {field: 0 for field in field_aliases}
     for row in rows:
         _validate_statement_entity(row, listing, statement_label=statement_label)
+    statement_currencies = _statement_currencies_by_period(
+        rows,
+        record=record,
+        statement_label=statement_label,
+    )
     is_long = any(
         _lookup(row, _LONG_STATEMENT_ITEM_FIELDS)[0]
         or _lookup(row, _LONG_STATEMENT_VALUE_FIELDS)[0]
@@ -1640,7 +1645,7 @@ def _map_financial_statement(
                 f"ambiguous duplicate {statement_label} statement period {period!r}"
             )
         seen_periods.add(period)
-        currency = _statement_currency(period_row, listing)
+        currency = statement_currencies.get(statement_date.isoformat())
         found_any = False
         for field, aliases in field_aliases.items():
             found, raw_value = _lookup(period_row, (field, *aliases))
@@ -1796,12 +1801,74 @@ def _statement_date(row: Mapping[str, JSONValue]) -> date | None:
     return None
 
 
-def _statement_currency(row: Mapping[str, JSONValue], listing: _ListingRef) -> str:
-    found, raw_value = _lookup(row, _STATEMENT_CURRENCY_FIELDS)
-    value = _text_value(raw_value) if found else None
-    if value is not None and re.fullmatch(r"[A-Za-z]{3}", value):
-        return value.upper()
-    return _currency_for(listing.market)
+def _statement_currency_metadata(
+    row: Mapping[str, JSONValue],
+    *,
+    statement_label: str,
+) -> tuple[bool, str | None]:
+    """Read explicit statement currency metadata without inferring it.
+
+    A listing market is not a reliable substitute for the reporting currency:
+    an H-share issuer may report in CNY, and an A-share issuer may disclose a
+    different presentation currency.  Only an explicit three-letter code is
+    safe to place in ``Fact.currency``.  Multiple provider aliases on one row
+    must also agree instead of being resolved by alias order.
+    """
+
+    found = False
+    candidates: set[str] = set()
+    for field in _STATEMENT_CURRENCY_FIELDS:
+        if field not in row:
+            continue
+        found = True
+        raw_value = row[field]
+        value = _text_value(raw_value)
+        if value is None:
+            continue
+        if not re.fullmatch(r"[A-Za-z]{3}", value):
+            raise ProviderNormalizationError(
+                f"{statement_label} statement currency {raw_value!r} is not "
+                "an explicit three-letter code"
+            )
+        candidates.add(value.upper())
+
+    if len(candidates) > 1:
+        values = ", ".join(sorted(candidates))
+        raise ProviderNormalizationError(
+            f"conflicting {statement_label} statement currency metadata: {values}"
+        )
+    return found, next(iter(candidates), None)
+
+
+def _statement_currencies_by_period(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    record: RawProviderRecord,
+    statement_label: str,
+) -> dict[str, str | None]:
+    """Collect order-independent explicit currencies for statement periods."""
+
+    currencies: dict[str, str | None] = {}
+    for row in rows:
+        statement_date = _statement_date(row)
+        if statement_date is None:
+            raise ProviderNormalizationError(
+                f"{statement_label} statement row for {record.request.entity_id!r} "
+                "has no exact report date"
+            )
+        found, currency = _statement_currency_metadata(row, statement_label=statement_label)
+        if not found:
+            continue
+        period = statement_date.isoformat()
+        previous = currencies.get(period)
+        if previous is not None and currency is not None and previous != currency:
+            raise ProviderNormalizationError(
+                f"conflicting {statement_label} statement currency metadata for "
+                f"{period!r}: {previous!r} vs {currency!r}"
+            )
+        if previous is None or currency is not None:
+            currencies[period] = currency
+    return currencies
 
 
 def _map_history(

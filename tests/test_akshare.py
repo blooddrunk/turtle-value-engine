@@ -7,6 +7,7 @@ from jsonschema import Draft202012Validator
 
 from turtle_value_engine.models import Company
 from turtle_value_engine.providers import (
+    AKSHARE_MAPPING_VERSION,
     AKShareProvider,
     DataCategory,
     FilesystemRawResponseCache,
@@ -154,6 +155,7 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
     )
     assert provider.identity.provider_id == "akshare"
     assert provider.identity.provider_version == "4"
+    assert AKSHARE_MAPPING_VERSION == "6"
 
 
 def test_a_quote_is_selected_from_the_upstream_universe_and_kept_opaque():
@@ -496,6 +498,128 @@ def test_h_balance_sheet_long_rows_are_pivoted_and_keep_explicit_nulls():
     assert values[("book_cash", "2023-12-31")].value is None
     assert values[("book_cash", "2024-12-31")].currency == "HKD"
     assert normalized.data_quality.critical_missing_fields == []
+
+
+def test_statement_currency_is_not_inferred_when_upstream_omits_it():
+    provider = _provider()
+    record = provider.fetch(_request(DataCategory.INCOME_STATEMENT, "HK00700"))
+    payload = [
+        {key: value for key, value in row.items() if key != "CURRENCY"}
+        for row in record.raw_payload
+    ]
+    without_currency = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=record.source_uri,
+        response_metadata=record.response_metadata,
+    )
+
+    normalized = normalize_akshare_records(
+        [without_currency],
+        analysis_id="statement-currency-missing",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company("HK00700"),
+    )
+
+    statement_facts = [
+        fact
+        for fact in normalized.facts
+        if fact.field in {"parent_net_profit", "consolidated_net_profit"}
+    ]
+    assert statement_facts
+    assert {fact.currency for fact in statement_facts} == {None}
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+def test_statement_currency_conflicts_within_a_period_are_rejected():
+    provider = _provider()
+    record = provider.fetch(_request(DataCategory.INCOME_STATEMENT, "HK00700"))
+    conflicting = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=[
+            {
+                "SECURITY_CODE": "00700",
+                "STD_REPORT_DATE": "2024-12-31",
+                "STD_ITEM_NAME": "Profit for the year",
+                "AMOUNT": 880000000,
+                "CURRENCY": "CNY",
+            },
+            {
+                "SECURITY_CODE": "00700",
+                "STD_REPORT_DATE": "2024-12-31",
+                "STD_ITEM_NAME": "Profit attributable to equity holders of the Company",
+                "AMOUNT": 860000000,
+                "CURRENCY": "HKD",
+            },
+        ],
+        source_uri=record.source_uri,
+        response_metadata=record.response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match="conflicting income statement currency"):
+        normalize_akshare_records(
+            [conflicting],
+            analysis_id="statement-currency-conflict",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company("HK00700"),
+        )
+
+
+def test_statement_currency_aliases_must_agree_on_one_row():
+    provider = _provider()
+    record = provider.fetch(_request(DataCategory.INCOME_STATEMENT, "HK00700"))
+    payload = [dict(row) for row in record.raw_payload]
+    payload[0]["CURRENCY_NAME"] = "CNY"
+    conflicting = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=record.source_uri,
+        response_metadata=record.response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match="conflicting income statement currency"):
+        normalize_akshare_records(
+            [conflicting],
+            analysis_id="statement-currency-alias-conflict",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company("HK00700"),
+        )
+
+
+def test_invalid_explicit_statement_currency_is_rejected():
+    provider = _provider()
+    record = provider.fetch(_request(DataCategory.INCOME_STATEMENT, "HK00700"))
+    payload = [dict(row) for row in record.raw_payload]
+    payload[0]["CURRENCY"] = "人民币"
+    invalid = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=record.source_uri,
+        response_metadata=record.response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match="not an explicit three-letter code"):
+        normalize_akshare_records(
+            [invalid],
+            analysis_id="statement-currency-invalid",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company("HK00700"),
+        )
 
 
 def test_statement_rows_for_a_different_listing_are_rejected():

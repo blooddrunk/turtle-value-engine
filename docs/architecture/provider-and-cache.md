@@ -187,6 +187,12 @@ PPE/intangible purchases, sum borrowing sub-items into debt, calculate
 CDC/financing metrics, or import revenue and provider ratios as canonical
 facts.
 
+Statement currency is accepted only from explicit, valid three-letter
+metadata. The normalizer does not infer a statement currency from the listing
+market; missing currency remains `null`, and conflicting explicit currencies
+within one report period are a normalization error. Reported amount scaling
+and unit conversion remain unresolved and are not performed.
+
 Missing report dates, year-only periods, duplicate periods or duplicate
 long-form items are normalization errors. This keeps a provider convenience
 table from silently becoming a normalized annual history with ambiguous
@@ -387,9 +393,12 @@ A-share first-trading date and listing-status source, point-in-time treatment
 of delayed/closed quote timestamps, FX and A/H cross-listing share equivalence,
 whether the H-share full-history endpoint can be replaced by a bounded range
 endpoint without changing replay semantics, field-name coverage across all
-A/H balance-sheet variants, consolidated-versus-standalone statement basis,
-currency/unit scaling, and the availability of an explicit interest-bearing
-debt aggregate.
+A/H balance-sheet variants, consolidated-versus-standalone presentation basis,
+statement unit scaling, and the availability of an explicit interest-bearing
+debt aggregate. Missing or conflicting statement currency metadata is handled
+conservatively as
+described above, but a null currency still requires later source review before
+cross-currency calculations.
 
 ## 13. Deliberate non-goals
 
