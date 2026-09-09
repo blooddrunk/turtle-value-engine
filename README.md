@@ -154,6 +154,13 @@ structured evidence; the normalizer emits
 `AKSHARE_HK_DIVIDEND_DETAIL_RAW_ONLY` without canonical dividend cash, payout,
 filing or governance facts. General H-share disclosure retrieval remains a
 Phase 3 concern.
+Phase 2.26 adds the documented A-share `stock_zh_a_st_em` risk-warning-board
+universe under `RISK_WARNING_STATUS`. The provider validates explicit listing
+codes and retains the requested listing's current-trading-day row as raw
+structured evidence only; the normalizer emits
+`AKSHARE_RISK_WARNING_STATUS_RAW_ONLY`, leaves `special_treatment` critically
+missing and does not infer `special_treatment=False` when no row matches.
+H-share risk-warning coverage remains outside this slice.
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

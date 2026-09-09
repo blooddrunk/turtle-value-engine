@@ -604,6 +604,32 @@ symbol-scoped event detail does not establish a settled total amount, unit,
 ordinary-versus-special policy classification or canonical period. General
 H-share disclosure retrieval remains a Phase 3 filing/evidence concern.
 
+## Phase 2.26 A-share risk-warning-status raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_zh_a_st_em` as a no-argument Eastmoney risk-warning-board
+universe endpoint. It returns the current trading-day universe with explicit
+`代码`, `名称` and current market-observation fields. The endpoint is not a
+dated status history and does not define a complete assertion about listings
+absent from the response.
+
+The provider validates every returned row's explicit A-share listing code,
+filters the universe to the requested six-digit A-share code, and retains the
+selected rows and upstream/selected counts as raw evidence. The normalizer
+emits `AKSHARE_RISK_WARNING_STATUS_RAW_ONLY`, marks `special_treatment` as
+critically missing and emits no canonical special-treatment fact; an empty
+selected result does not become `special_treatment=False`.
+
+| Raw upstream item | Phase 2 treatment |
+| --- | --- |
+| `代码`, `名称` | Used only for explicit listing-boundary validation, filtering and raw evidence context; they do not create a canonical status fact. |
+| `最新价`, `涨跌幅`, `涨跌额`, `成交量`, `成交额`, `振幅`, `最高`, `最低`, `今开`, `昨收`, `量比`, `换手率` | Retained as raw current-market context; this slice does not replace the canonical quote or history categories. |
+| `市盈率-动态`, `市净率` | Retained as raw provider fields only; no canonical metric, eligibility or valuation inference is made. |
+
+The slice deliberately leaves `special_treatment` unresolved: current
+risk-warning-board membership is positive raw evidence, while absence, dated
+history and the filing-backed reason remain outside this acquisition contract.
+
 ## Eligibility, identity and market context
 
 | Normalized field | Status | Boundary note |

@@ -60,6 +60,9 @@ class FakeAKShare:
             symbol=symbol,
         )
 
+    def stock_zh_a_st_em(self):
+        return self._return("stock_zh_a_st_em", _fixture("a_risk_warning_status.json"))
+
     def stock_zh_a_spot_em(self):
         return self._return("stock_zh_a_spot_em", _fixture("a_quote.json"))
 
@@ -320,11 +323,143 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "market_quote",
         "ownership_pledge",
         "performance_report",
+        "risk_warning_status",
         "share_capital",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "25"
-    assert AKSHARE_MAPPING_VERSION == "26"
+    assert provider.identity.provider_version == "26"
+    assert AKSHARE_MAPPING_VERSION == "27"
+
+
+def test_a_risk_warning_fetch_filters_the_documented_current_universe():
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    record = provider.fetch(_request(DataCategory.RISK_WARNING_STATUS, "SH600000"))
+
+    fixture = _fixture("a_risk_warning_status.json")
+    assert record.raw_payload == [row for row in fixture if row["代码"] == "600000"]
+    assert fake.calls == [("stock_zh_a_st_em", {})]
+    assert record.response_metadata["endpoint"] == "stock_zh_a_st_em"
+    assert record.response_metadata["upstream_row_count"] == 2
+    assert record.response_metadata["entity_row_count"] == 1
+    assert record.response_metadata["entity_rows_selected"] is True
+    assert record.response_metadata["listing_scoped_request"] is False
+    assert record.response_metadata["row_filtering"] == "provider"
+    assert record.response_metadata["snapshot_scope"] == "current_trading_day"
+    assert record.source_uri == "https://quote.eastmoney.com/center/gridlist.html#st_board"
+
+
+def test_risk_warning_request_is_a_share_only_and_accepts_no_parameters():
+    fake = FakeAKShare()
+    provider = _provider(fake)
+
+    with pytest.raises(ProviderRequestError, match="does not accept request parameters"):
+        provider.fetch(
+            _request(
+                DataCategory.RISK_WARNING_STATUS,
+                "SH600000",
+                {"date": "20241220"},
+            )
+        )
+    with pytest.raises(ProviderRequestError, match="A-share listings only"):
+        provider.fetch(_request(DataCategory.RISK_WARNING_STATUS, "HK00700"))
+
+    assert fake.calls == []
+
+
+def test_risk_warning_response_rejects_a_universe_row_without_listing_code():
+    class MissingListingCode(FakeAKShare):
+        def stock_zh_a_st_em(self):
+            return self._return(
+                "stock_zh_a_st_em",
+                [{"代码": None, "名称": "invalid"}],
+            )
+
+    with pytest.raises(ProviderResponseError, match="risk-warning-status row without"):
+        _provider(MissingListingCode()).fetch(
+            _request(DataCategory.RISK_WARNING_STATUS, "SH600000")
+        )
+
+
+def test_risk_warning_raw_record_is_not_promoted_to_special_treatment():
+    provider = _provider()
+    record = provider.fetch(_request(DataCategory.RISK_WARNING_STATUS, "SH600000"))
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="risk-warning-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_RISK_WARNING_STATUS_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == ["special_treatment"]
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "special_treatment=False" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    errors = list(Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json")))
+    assert errors == []
+
+
+def test_risk_warning_with_no_matching_listing_is_an_empty_raw_snapshot():
+    class NoRiskWarning(FakeAKShare):
+        def stock_zh_a_st_em(self):
+            return self._return(
+                "stock_zh_a_st_em",
+                [{"代码": "000001", "名称": "*ST示例科技"}],
+            )
+
+    fake = NoRiskWarning()
+    record = _provider(fake).fetch(
+        _request(DataCategory.RISK_WARNING_STATUS, "SH600000")
+    )
+
+    assert record.raw_payload == []
+    assert record.response_metadata["upstream_row_count"] == 1
+    assert record.response_metadata["entity_row_count"] == 0
+
+
+def test_risk_warning_normalizer_rejects_replayed_rows_for_another_listing():
+    provider = _provider()
+    record = provider.fetch(_request(DataCategory.RISK_WARNING_STATUS, "SH600000"))
+    mismatched_payload = [dict(row) for row in record.raw_payload]
+    mismatched_payload[0]["代码"] = "000001"
+    mismatched = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=mismatched_payload,
+        source_uri=record.source_uri,
+        response_metadata=record.response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match="risk-warning-status row entity"):
+        normalize_akshare_records(
+            [mismatched],
+            analysis_id="mismatched-risk-warning-entity",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_risk_warning_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(DataCategory.RISK_WARNING_STATUS, "SH600000")
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [("stock_zh_a_st_em", {})]
 
 
 def test_a_quote_is_selected_from_the_upstream_universe_and_kept_opaque():

@@ -9,8 +9,9 @@ financial-statement slices, A-share earnings-forecast, earnings-quick-report,
 performance-report, business-composition, financial-abstract and financial-
 indicator raw slices, raw-only dividend event/snapshot/detail, A-share
 disclosure notice metadata, corporate-action, ownership-pledge, SSE/SZSE/BSE
-insider-share-change and A-share share-capital slices, the H-share financial-
-indicator raw slice and the H-share latest-indicator raw slice.
+insider-share-change and A-share share-capital slices, the A-share
+risk-warning-status raw slice, the H-share financial-indicator raw slice and
+the H-share latest-indicator raw slice.
 Upstream column names are handled in this module and are never passed to the
 deterministic calculation or gate code.
 """
@@ -57,9 +58,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "25"
+AKSHARE_ADAPTER_VERSION = "26"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "26"
+AKSHARE_MAPPING_VERSION = "27"
 
 
 class ListingMarket(StrEnum):
@@ -73,6 +74,7 @@ AKSHARE_CAPABILITIES = ProviderCapabilities(
     {
         DataCategory.COMPANY_METADATA,
         DataCategory.LISTING_METADATA,
+        DataCategory.RISK_WARNING_STATUS,
         DataCategory.MARKET_QUOTE,
         DataCategory.MARKET_HISTORY,
         DataCategory.CASH_FLOW_STATEMENT,
@@ -98,6 +100,7 @@ AKSHARE_CAPABILITIES = ProviderCapabilities(
 _SOURCE_URIS = {
     "stock_info_a_code_name": "https://akshare.akfamily.xyz/data/stock/stock.html",
     "stock_zh_ah_name": "https://akshare.akfamily.xyz/data/stock/stock.html",
+    "stock_zh_a_st_em": "https://quote.eastmoney.com/center/gridlist.html#st_board",
     "stock_zh_a_spot_em": "https://quote.eastmoney.com/center/gridlist.html#hs_a_board",
     "stock_zh_a_spot": "https://finance.sina.com.cn/realstock/company/",
     "stock_hk_spot_em": "http://quote.eastmoney.com/center/gridlist.html#hk_stocks",
@@ -148,6 +151,7 @@ _NO_ARGUMENT_ENDPOINTS = frozenset(
         "stock_hk_spot_em",
         "stock_hk_spot",
         "stock_zh_ah_spot_em",
+        "stock_zh_a_st_em",
         "stock_repurchase_em",
     }
 )
@@ -314,6 +318,16 @@ class AKShareProvider(StructuredDataProvider):
             )
 
         listing = _parse_listing_id(request.entity_id, provider=self.identity, request=request)
+        if (
+            request.category is DataCategory.RISK_WARNING_STATUS
+            and listing.market is not ListingMarket.A
+        ):
+            raise ProviderRequestError(
+                "the AKShare risk-warning-status endpoint supports A-share listings only",
+                provider=self.identity,
+                request=request,
+                retryable=False,
+            )
         if request.category is DataCategory.SHARE_CAPITAL and listing.market is not ListingMarket.A:
             raise ProviderRequestError(
                 "the AKShare share-capital endpoint supports A-share listings only",
@@ -468,6 +482,28 @@ class AKShareProvider(StructuredDataProvider):
             payload = selected
             response_metadata["upstream_row_count"] = len(rows)
             response_metadata["entity_row_selected"] = True
+        elif request.category is DataCategory.RISK_WARNING_STATUS:
+            rows = _table_rows(payload, provider=self.identity, request=request)
+            _validate_risk_warning_provider_rows(
+                rows,
+                listing,
+                provider=self.identity,
+                request=request,
+            )
+            selected = _select_listing_rows(
+                rows,
+                listing,
+                provider=self.identity,
+                request=request,
+                row_label="risk-warning-status",
+            )
+            payload = selected
+            response_metadata["upstream_row_count"] = len(rows)
+            response_metadata["entity_row_count"] = len(selected)
+            response_metadata["entity_rows_selected"] = True
+            response_metadata["listing_scoped_request"] = False
+            response_metadata["row_filtering"] = "provider"
+            response_metadata["snapshot_scope"] = "current_trading_day"
         elif request.category is DataCategory.MARKET_HISTORY:
             rows = _table_rows(payload, provider=self.identity, request=request)
             response_metadata["upstream_row_count"] = len(rows)
@@ -1093,6 +1129,22 @@ class AKShareNormalizer:
                         unit="years",
                         count_coverage=False,
                     )
+            elif record.request.category is DataCategory.RISK_WARNING_STATUS:
+                if listing.market is not ListingMarket.A:
+                    raise ProviderNormalizationError(
+                        "AKShare risk-warning-status raw slice supports A-share listings only"
+                    )
+                if record.response_metadata.get("endpoint") != "stock_zh_a_st_em":
+                    raise ProviderNormalizationError(
+                        "AKShare risk-warning-status record must come from "
+                        "stock_zh_a_st_em"
+                    )
+                _validate_risk_warning_normalizer_rows(rows, listing)
+                # The endpoint is a positive membership snapshot of the risk-
+                # warning board. An empty selected result is not an explicit
+                # non-ST assertion, so retain both outcomes as raw evidence.
+                missing_fields.add("special_treatment")
+                normalizer_flags.add("AKSHARE_RISK_WARNING_STATUS_RAW_ONLY")
             elif record.request.category is DataCategory.MARKET_QUOTE:
                 row = _single_normalization_row(rows, record)
                 field = "current_price" if primary else "listing_current_price"
@@ -1471,7 +1523,10 @@ class AKShareNormalizer:
             "structured evidence until the affected holder, governance context "
             "and point-in-time interpretation are established. Filing "
             "classifications and economic adjustments remain unresolved until a "
-            "later provider/filing workflow."
+            "later provider/filing workflow. Risk-warning-status records remain "
+            "raw structured evidence because the endpoint is a positive current "
+            "board-membership snapshot rather than a dated, complete "
+            "special-treatment assertion."
         )
         if "AKSHARE_CORPORATE_ACTIONS_RAW_ONLY" in normalizer_flags:
             notes += (
@@ -1581,6 +1636,13 @@ class AKShareNormalizer:
                 "evidence only: its event dates, plan, type, progress and scrip fields "
                 "do not establish settled ordinary dividend cash, a canonical period "
                 "or a filing-derived classification."
+            )
+        if "AKSHARE_RISK_WARNING_STATUS_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented A-share risk-warning-board response is retained as "
+                "raw evidence only: an empty selected result does not establish "
+                "special_treatment=False, and a current board snapshot does not "
+                "provide a dated history or filing-backed reason."
             )
         return NormalizedCompanyInput(
             schema_version="1.0.0",
@@ -1699,6 +1761,10 @@ def _endpoint_candidates(
         if market is ListingMarket.A:
             return ("stock_info_a_code_name", "stock_zh_ah_name")
         return ("stock_hk_security_profile_em", "stock_zh_ah_name", "stock_hk_spot_em")
+    if category is DataCategory.RISK_WARNING_STATUS:
+        if market is ListingMarket.A:
+            return ("stock_zh_a_st_em",)
+        return ()
     if category is DataCategory.MARKET_QUOTE:
         if market is ListingMarket.A:
             return ("stock_zh_a_spot_em", "stock_zh_a_spot")
@@ -3069,6 +3135,25 @@ def _validate_dividend_snapshot_provider_rows(
             )
 
 
+def _validate_risk_warning_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> None:
+    """Reject a risk-warning universe row without explicit listing identity."""
+
+    for row in rows:
+        if _row_code(row, ListingMarket.A) is None:
+            raise ProviderResponseError(
+                f"AKShare returned a risk-warning-status row without a listing code for "
+                f"{listing.canonical_id!r}",
+                provider=provider,
+                request=request,
+            )
+
+
 def _validate_hk_dividend_detail_provider_rows(
     rows: Sequence[Mapping[str, JSONValue]],
     listing: _ListingRef,
@@ -3425,6 +3510,25 @@ def _validate_dividend_snapshot_normalizer_rows(
         if row_code != listing.code:
             raise ProviderNormalizationError(
                 f"dividend-snapshot row entity {row_code!r} does not match "
+                f"requested listing {listing.canonical_id!r}"
+            )
+
+
+def _validate_risk_warning_normalizer_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+) -> None:
+    """Keep replayed risk-warning rows inside the requested listing boundary."""
+
+    for row in rows:
+        row_code = _row_code(row, ListingMarket.A)
+        if row_code is None:
+            raise ProviderNormalizationError(
+                "risk-warning-status row has no explicit listing code"
+            )
+        if row_code != listing.code:
+            raise ProviderNormalizationError(
+                f"risk-warning-status row entity {row_code!r} does not match "
                 f"requested listing {listing.canonical_id!r}"
             )
 

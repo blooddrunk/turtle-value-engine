@@ -683,6 +683,26 @@ classification or a canonical financial period. General H-share disclosure
 retrieval and linked-document parsing remain Phase 3 work. Live calls remain
 opt-in; tests use an injected client and a frozen fixture.
 
+### Phase 2.26 — A-share risk-warning-status raw acquisition contract (COMPLETE)
+
+The mapping review now covers the documented AKShare Eastmoney
+`stock_zh_a_st_em` endpoint under a new provider-neutral
+`RISK_WARNING_STATUS` category. The endpoint accepts no request
+arguments and returns the current risk-warning-board universe with explicit
+listing code/name plus current market-observation fields. The provider
+validates every returned row's listing code, filters the universe to the
+requested six-digit A-share code, retains the matching rows and records both
+upstream and selected row counts.
+
+Risk-warning-board membership is a positive current snapshot, not a dated
+status history or a complete assertion about a listing when it is absent from
+the response. The normalizer therefore retains the filtered response as
+structured evidence, marks `special_treatment` as critically missing and
+emits `AKSHARE_RISK_WARNING_STATUS_RAW_ONLY`; it creates no canonical
+special-treatment fact and does not infer `special_treatment=False` from
+an empty match. H-share risk-warning coverage remains outside this slice. Live
+calls remain opt-in; tests use an injected client and a frozen fixture.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -692,7 +712,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.25 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.26 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -900,7 +920,7 @@ Phase 2 is active. Phase 1 remains frozen: changes to formulas, hard-gate
 semantics, schemas or `strict-v1` thresholds require a separately reviewed,
 versioned change.
 
-Phase 2.25 completes the next documented structured-data boundary while
+Phase 2.26 completes the next documented structured-data boundary while
 keeping share-change, repurchase and rights-issue period, status, unit and
 economic-scope questions unresolved, and keeping ownership-pledge holder,
 governance and economic-scope questions unresolved. The A-share
@@ -957,3 +977,7 @@ work. The current AKShare documentation has no general H-share
 disclosure-notice endpoint; the separately selected H-share dividend-event
 detail response is retained under `AKSHARE_HK_DIVIDEND_DETAIL_RAW_ONLY` and
 does not replace Phase 3 disclosure retrieval or parsing.
+The documented A-share risk-warning-board response is retained under
+`AKSHARE_RISK_WARNING_STATUS_RAW_ONLY` because its current-trading-day
+universe membership does not establish dated status history or an explicit
+`special_treatment=False` result for listings absent from the response.
