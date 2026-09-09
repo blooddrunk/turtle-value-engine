@@ -204,13 +204,13 @@ currency/unit scaling, and point-in-time publication semantics.
 ### Phase 2.5 — Balance-sheet mapping slice (COMPLETE)
 
 The AKShare adapter now supports read-only `BALANCE_SHEET` acquisition for
-A-share and H-share listings. The A-share report-period endpoint is normalized
-from wide rows and the H-share endpoint from long-form statement items. The
-slice maps only explicit `book_cash`, `parent_equity`, `total_equity` and an
-explicit aggregate `reported_interest_bearing_debt` when the upstream label
-has that same economic meaning. It does not rename `total_liabilities`, sum
-short- or long-term borrowing rows, or infer restricted cash, lease debt,
-minority attribution or upstreamability.
+A-share and H-share listings. The A-share detailed report-period endpoint is
+normalized from wide rows and the H-share endpoint from long-form statement
+items. The slice maps only explicit `book_cash`, `parent_equity`,
+`total_equity` and an explicit aggregate `reported_interest_bearing_debt`
+when the upstream label has that same economic meaning. It does not rename
+`total_liabilities`, sum short- or long-term borrowing rows, or infer
+restricted cash, lease debt, minority attribution or upstreamability.
 
 Exact report dates, reported currency and explicit nulls are preserved, and
 ambiguous periods/items are rejected. The adapter and mapping versions are
@@ -222,12 +222,51 @@ consolidated-versus-standalone entity basis, currency/unit scaling,
 interest-bearing-debt aggregate availability, and point-in-time publication
 semantics.
 
-This mapping-review hardening keeps statement currency provenance
-conservative across all three slices: only explicit valid three-letter codes
-are accepted, missing currency is preserved as `null` rather than inferred
-from the listing market, and conflicting currencies within one report period
-are rejected. Unit scaling and consolidated-versus-standalone presentation
-basis remain open questions for a later review.
+### Phase 2.6 — Verified A-share balance endpoint contract (COMPLETE)
+
+The mapping review now covers the current documented AKShare aggregate
+balance endpoint, `stock_zcfz_em` (and `stock_zcfz_bj_em` for Beijing-listed
+shares). These endpoints accept an exact quarter-end `statement_date`, return
+an A-share universe, and expose only a limited aggregate shape. The provider
+selects the requested listing before creating the raw record and the
+normalizer uses the requested statement date rather than the announcement
+date as the point-in-time period. The documented aggregate fields map only
+`book_cash` and `total_equity`; `负债-总负债` is deliberately not promoted to
+debt, and parent equity remains missing when it is not reported. The existing
+detailed report-period endpoint remains a compatibility fallback when the
+installed AKShare client exposes it.
+
+The adapter and mapping versions are bumped for this endpoint contract.
+Offline tests cover date validation, row selection, exact periods, explicit
+missing fields and the no-total-liabilities rule. Live calls remain opt-in.
+
+The next Phase 2 task is a focused review of a single shareholder-return or
+share-capital endpoint; no dividend, buyback, split, issuance or diluted-share
+fact is admitted until its period, unit and economic scope are explicit.
+
+### Phase 2.7 — Dividend event acquisition boundary (COMPLETE)
+
+The AKShare adapter now exposes the documented A-share `stock_dividend_cninfo`
+and H-share `stock_hk_dividend_payout_em` endpoints through the same
+read-only provider boundary. Their historical rows are retained in opaque
+raw records and structured-data evidence. The normalizer deliberately emits
+no `ordinary_dividend_cash`, `special_dividend_cash` or `payout_ratio`: the
+A-share feed reports per-10-share plans and announcement/payment dates, while
+the H-share feed reports plan strings and fiscal years. Neither shape alone
+establishes a total cash amount, ordinary-versus-special policy
+classification, or a single accepted period basis.
+
+Offline fixtures cover both markets, endpoint arguments, replay metadata and
+the no-fabrication behavior. Live calls remain opt-in. The next Phase 2 task
+is a similarly narrow review of A-share share-capital history; H-share share
+class equivalence and diluted-share treatment remain unresolved.
+
+This mapping-review hardening keeps statement currency provenance conservative
+across all three slices: only explicit valid three-letter codes are accepted,
+missing currency is preserved as `null` rather than inferred from the listing
+market, and conflicting currencies within one report period are rejected. Unit
+scaling and consolidated-versus-standalone presentation basis remain open
+questions for a later review.
 
 ### Future Phase 2 deliverables
 
@@ -238,7 +277,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3 cash-flow + Phase 2.4 income + Phase 2.5 balance slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.7 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```

@@ -181,8 +181,12 @@ labels unambiguously represent `reported_cfo`, `acquisition_cash`,
 `parent_net_profit`, `consolidated_net_profit`, `book_cash`,
 `parent_equity`, `total_equity` or an explicit aggregate
 `reported_interest_bearing_debt`. A-share wide records and H-share long-form
-item records are handled separately. The mapper preserves the reported sign,
-currency and null value; it does not scale amounts, split aggregate capex into
+item records are handled separately. The documented A-share aggregate
+balance endpoint is date-based and returns a universe; the provider selects
+the requested listing and carries the exact requested quarter-end date into
+the normalized period. That aggregate shape maps only its explicit cash and
+total-equity fields. The mapper preserves the reported sign, currency and
+null value; it does not scale amounts, split aggregate capex into
 PPE/intangible purchases, sum borrowing sub-items into debt, calculate
 CDC/financing metrics, or import revenue and provider ratios as canonical
 facts.
@@ -352,10 +356,11 @@ The cache performs no network retries. The normalizer performs no provider
 retries. The deterministic pipeline performs no provider retries and should
 not be rerun as a substitute for resolving missing facts.
 
-## 12. Phase 2.2–2.5 AKShare adapter
+## 12. Phase 2.2–2.7 AKShare adapter
 
 The first concrete adapter is intentionally limited to read-only metadata,
-market observations and three documented financial-statement slices. It
+market observations, three documented financial-statement slices and a
+raw-only dividend event category. It
 advertises exactly these capabilities:
 
 | Category | A-share endpoint | H-share endpoint | Normalized output |
@@ -366,7 +371,8 @@ advertises exactly these capabilities:
 | `MARKET_HISTORY` | `stock_zh_a_hist` | `stock_hk_daily` | dated OHLCV/turnover extension facts |
 | `CASH_FLOW_STATEMENT` | `stock_cash_flow_sheet_by_report_em` (Sina fallback) | `stock_financial_hk_report_em` | explicit `reported_cfo` and `acquisition_cash` lines |
 | `INCOME_STATEMENT` | `stock_profit_sheet_by_report_em` (Sina fallback) | `stock_financial_hk_report_em` | explicit `parent_net_profit` and `consolidated_net_profit` lines |
-| `BALANCE_SHEET` | `stock_balance_sheet_by_report_em` (Sina fallback) | `stock_financial_hk_report_em` | explicit `book_cash`, equity totals and aggregate interest-bearing debt when labeled |
+| `BALANCE_SHEET` | `stock_zcfz_em` / `stock_zcfz_bj_em` (detailed report-period and Sina fallbacks) | `stock_financial_hk_report_em` | explicit `book_cash`, equity totals and aggregate interest-bearing debt when labeled |
+| `DIVIDENDS` | `stock_dividend_cninfo` | `stock_hk_dividend_payout_em` | raw structured evidence only; no canonical dividend cash or payout ratio |
 
 The adapter accepts common stable A/H identifiers such as `SH600000`,
 `000001.SZ`, `A:600000`, `HK00700`, `700.HK` and `H:00700`. A-share history
@@ -393,16 +399,18 @@ A-share first-trading date and listing-status source, point-in-time treatment
 of delayed/closed quote timestamps, FX and A/H cross-listing share equivalence,
 whether the H-share full-history endpoint can be replaced by a bounded range
 endpoint without changing replay semantics, field-name coverage across all
-A/H balance-sheet variants, consolidated-versus-standalone presentation basis,
-statement unit scaling, and the availability of an explicit interest-bearing
-debt aggregate. Missing or conflicting statement currency metadata is handled
-conservatively as
-described above, but a null currency still requires later source review before
-cross-currency calculations.
+A/H balance-sheet variants, consolidated-versus-standalone statement basis,
+statement unit scaling, the absence of parent-equity and interest-bearing-debt
+aggregates in the documented A-share quarterly balance shape, point-in-time
+publication semantics, and the period/total-cash/ordinary-versus-special
+classification needed to normalize dividend event rows. Missing or conflicting
+statement currency metadata is handled conservatively as described above, but
+a null currency still requires later source review before cross-currency
+calculations.
 
 ## 13. Deliberate non-goals
 
-This foundation plus the Phase 2.2–2.5 slices does not include:
+This foundation plus the Phase 2.2–2.7 slices does not include:
 
 - Tushare, BaoStock or any other additional provider;
 - automatic network scheduling, credentials or retry orchestration outside an adapter;

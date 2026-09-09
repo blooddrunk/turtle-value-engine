@@ -98,13 +98,18 @@ liability or borrowing rows.
 | `minority_equity` | `STRUCTURED_AUTO` | Deferred from this slice; minority attribution and consolidated/standalone basis require a separate mapping review. |
 | `restricted_cash`, `pledged_deposits`, `lease_debt`, `subsidiary_cash`, `subsidiary_debt` | `REQUIRES_PRIMARY_FILING` | Do not infer accessibility, debt-equivalent treatment or upstreamability from aggregate balance-sheet rows. |
 
-The A-share balance endpoint is expected to provide wide report-period rows
-and the H-share endpoint long-form items. Missing or year-only periods and
-ambiguous duplicate periods/items are rejected. Explicit nulls remain null and
-are not treated as zero. The Phase 2 mapping review owns unresolved
-balance-sheet field-name coverage, consolidated-versus-standalone entity
-basis, unit scaling, explicit debt-aggregate availability and point-in-time
-publication semantics.
+The A-share detailed balance endpoint provides wide report-period rows and
+the H-share endpoint provides long-form statement items. The current
+documented A-share aggregate fallback (`stock_zcfz_em` or
+`stock_zcfz_bj_em`) is requested by exact quarter-end date, returns a universe
+row set and exposes only cash and total-equity fields from this allowlist; the
+normalizer selects the requested listing and uses the requested date as the
+statement period. Missing or year-only periods and ambiguous periods/items
+are rejected. Explicit nulls remain null and are not treated as zero. The
+Phase 2 mapping review owns unresolved balance-sheet field-name coverage,
+consolidated-versus-standalone entity basis, currency/unit scaling, the
+missing parent-equity/debt aggregates in the documented A-share shape and
+point-in-time publication semantics.
 
 For all statement amounts, an explicit valid three-letter currency code is
 required before a currency is attached to a fact. The mapper does not use the
@@ -206,6 +211,17 @@ are `UNAVAILABLE` to Phase 2 provider classes and must not be imported as
 provider “metrics.”
 
 ## Through Return and capital actions
+
+### Phase 2.7 dividend event boundary
+
+The AKShare `DIVIDENDS` category currently retains A-share and H-share
+dividend event rows as raw structured evidence only. The normalizer does not
+map a canonical cash fact because the documented feeds expose per-share or
+per-10-share plans, plan strings, fiscal years and event dates with different
+period and classification semantics. In particular, an event row is not
+silently converted into `ordinary_dividend_cash`, `special_dividend_cash` or
+`payout_ratio`; the unresolved amount, entity, period and ordinary-versus-
+special questions remain for a filing-backed mapping review.
 
 | Normalized field | Status | Boundary note |
 | --- | --- | --- |
