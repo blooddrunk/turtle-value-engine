@@ -4,9 +4,9 @@ The adapter deliberately keeps the optional ``akshare`` dependency lazy.  A
 normal test run can import this module, inspect its capabilities and replay
 cached records without installing AKShare or making a network request.
 
-Only the four structured categories needed for the first Phase 2.2 slice are
-implemented.  Upstream column names are handled in this module and are never
-passed to the deterministic calculation or gate code.
+The adapter currently implements metadata, market observations and two narrow
+financial-statement slices.  Upstream column names are handled in this module
+and are never passed to the deterministic calculation or gate code.
 """
 
 from __future__ import annotations
@@ -51,9 +51,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "2"
+AKSHARE_ADAPTER_VERSION = "3"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "2"
+AKSHARE_MAPPING_VERSION = "3"
 
 
 class ListingMarket(StrEnum):
@@ -70,6 +70,7 @@ AKSHARE_CAPABILITIES = ProviderCapabilities(
         DataCategory.MARKET_QUOTE,
         DataCategory.MARKET_HISTORY,
         DataCategory.CASH_FLOW_STATEMENT,
+        DataCategory.INCOME_STATEMENT,
     }
 )
 
@@ -89,6 +90,7 @@ _SOURCE_URIS = {
     "stock_hk_company_profile_em": "https://emweb.securities.eastmoney.com/PC_HKF10/pages/home/index.html",
     "stock_hk_security_profile_em": "https://emweb.securities.eastmoney.com/PC_HKF10/pages/home/index.html",
     "stock_cash_flow_sheet_by_report_em": "https://emweb.securities.eastmoney.com/PC_HSF10/NewFinanceAnalysis/Index",
+    "stock_profit_sheet_by_report_em": "https://emweb.securities.eastmoney.com/PC_HSF10/NewFinanceAnalysis/Index",
     "stock_financial_report_sina": "https://vip.stock.finance.sina.com.cn/corp/go.php/vFD_FinanceSummary/",
     "stock_financial_hk_report_em": "https://emweb.securities.eastmoney.com/PC_HKF10/FinancialAnalysis/index",
 }
@@ -319,6 +321,8 @@ class AKShareProvider(StructuredDataProvider):
                 return _history_kwargs(endpoint_name, listing, request)
             if request.category is DataCategory.CASH_FLOW_STATEMENT:
                 return _cash_flow_statement_kwargs(endpoint_name, listing, request)
+            if request.category is DataCategory.INCOME_STATEMENT:
+                return _income_statement_kwargs(endpoint_name, listing, request)
             if endpoint_name in _NO_ARGUMENT_ENDPOINTS:
                 _reject_unexpected_parameters(request)
                 return {}
@@ -561,6 +565,21 @@ class AKShareNormalizer:
                     missing_fields.add("cash_flow_statement")
                 if cash_flow_result[1] == 0:
                     missing_fields.add("reported_cfo")
+            elif record.request.category is DataCategory.INCOME_STATEMENT:
+                income_result = _map_income_statement(
+                    record,
+                    evidence,
+                    rows,
+                    listing,
+                    primary=primary,
+                    add_fact=add_fact,
+                )
+                if income_result[0] == 0:
+                    missing_fields.add("income_statement")
+                if income_result[1]["parent_net_profit"] == 0:
+                    missing_fields.add("parent_net_profit")
+                if income_result[1]["consolidated_net_profit"] == 0:
+                    missing_fields.add("consolidated_net_profit")
             else:
                 raise ProviderNormalizationError(
                     f"unsupported AKShare normalization category: {record.request.category.value}"
@@ -576,8 +595,9 @@ class AKShareNormalizer:
         notes = (
             "AKShare structured records were normalized as structured observations. "
             "Cash-flow mapping is limited to explicitly reported operating cash flow "
-            "and acquisition cash; filing classifications and economic adjustments "
-            "remain unresolved until a later provider/filing workflow."
+            "and acquisition cash; income-statement mapping is limited to explicit "
+            "parent and consolidated net profit. Filing classifications and economic "
+            "adjustments remain unresolved until a later provider/filing workflow."
         )
         return NormalizedCompanyInput(
             schema_version="1.0.0",
@@ -682,6 +702,10 @@ def _endpoint_candidates(market: ListingMarket, category: DataCategory) -> tuple
         if market is ListingMarket.A:
             return ("stock_cash_flow_sheet_by_report_em", "stock_financial_report_sina")
         return ("stock_financial_hk_report_em",)
+    if category is DataCategory.INCOME_STATEMENT:
+        if market is ListingMarket.A:
+            return ("stock_profit_sheet_by_report_em", "stock_financial_report_sina")
+        return ("stock_financial_hk_report_em",)
     raise ProviderCapabilityError(f"AKShare adapter does not support {category.value!r}")
 
 
@@ -690,10 +714,41 @@ def _cash_flow_statement_kwargs(
     listing: _ListingRef,
     request: ProviderRequest,
 ) -> dict[str, object]:
+    return _financial_statement_kwargs(
+        endpoint_name,
+        listing,
+        request,
+        statement_symbol="现金流量表",
+        statement_label="cash-flow",
+    )
+
+
+def _income_statement_kwargs(
+    endpoint_name: str,
+    listing: _ListingRef,
+    request: ProviderRequest,
+) -> dict[str, object]:
+    return _financial_statement_kwargs(
+        endpoint_name,
+        listing,
+        request,
+        statement_symbol="利润表",
+        statement_label="income statement",
+    )
+
+
+def _financial_statement_kwargs(
+    endpoint_name: str,
+    listing: _ListingRef,
+    request: ProviderRequest,
+    *,
+    statement_symbol: str,
+    statement_label: str,
+) -> dict[str, object]:
     unknown = sorted(set(request.parameters) - _FINANCIAL_STATEMENT_PARAMETER_NAMES)
     if unknown:
         raise ProviderRequestError(
-            "unsupported AKShare cash-flow parameter(s): " + ", ".join(unknown),
+            f"unsupported AKShare {statement_label} parameter(s): " + ", ".join(unknown),
             request=request,
             retryable=False,
         )
@@ -708,14 +763,22 @@ def _cash_flow_statement_kwargs(
     }
     if indicator not in indicators:
         raise ProviderRequestError(
-            "cash-flow indicator must be annual or reporting",
+            f"{statement_label} indicator must be annual or reporting",
             request=request,
             retryable=False,
         )
     if endpoint_name == "stock_cash_flow_sheet_by_report_em":
         if "indicator" in request.parameters:
             raise ProviderRequestError(
-                "the A-share report-period cash-flow endpoint does not accept indicator",
+                f"the A-share report-period {statement_label} endpoint does not accept indicator",
+                request=request,
+                retryable=False,
+            )
+        return {"symbol": listing.canonical_id}
+    if endpoint_name == "stock_profit_sheet_by_report_em":
+        if "indicator" in request.parameters:
+            raise ProviderRequestError(
+                f"the A-share report-period {statement_label} endpoint does not accept indicator",
                 request=request,
                 retryable=False,
             )
@@ -727,15 +790,15 @@ def _cash_flow_statement_kwargs(
                 request=request,
                 retryable=False,
             )
-        return {"stock": listing.canonical_id.lower(), "symbol": "现金流量表"}
+        return {"stock": listing.canonical_id.lower(), "symbol": statement_symbol}
     if endpoint_name == "stock_financial_hk_report_em":
         return {
             "stock": listing.code,
-            "symbol": "现金流量表",
+            "symbol": statement_symbol,
             "indicator": indicators[indicator],
         }
     raise ProviderRequestError(
-        f"unsupported AKShare cash-flow endpoint {endpoint_name!r}",
+        f"unsupported AKShare {statement_label} endpoint {endpoint_name!r}",
         request=request,
         retryable=False,
     )
@@ -1271,6 +1334,56 @@ _CASH_FLOW_FIELDS = {
     ),
 }
 
+_INCOME_STATEMENT_FIELDS = {
+    "parent_net_profit": (
+        "归属于母公司所有者的净利润",
+        "归属于母公司股东的净利润",
+        "归属于母公司所有者的净利润(元)",
+        "归属于母公司股东的净利润(元)",
+        "归母净利润",
+        "PARENT_NETPROFIT",
+        "PARENT_NET_PROFIT",
+        "NET_PROFIT_ATTRIBUTABLE_TO_PARENT",
+        "NET_PROFIT_ATTRIBUTABLE_TO_OWNERS",
+        "PROFIT_ATTRIBUTABLE_TO_EQUITY_HOLDERS_OF_THE_COMPANY",
+        "PROFIT_ATTRIBUTABLE_TO_OWNERS_OF_THE_COMPANY",
+        "Profit attributable to equity holders of the Company",
+        "Profit attributable to owners of the Company",
+        "Profit attributable to owners of the parent",
+        "股东应占溢利",
+        "股东应占溢利（亏损）",
+        "股东应占利润",
+        "本公司拥有人应占溢利",
+        "本公司拥有人应占利润",
+        "母公司拥有人应占溢利",
+    ),
+    "consolidated_net_profit": (
+        "净利润",
+        "净利润(元)",
+        "净利润（元）",
+        "NETPROFIT",
+        "NET_PROFIT",
+        "PROFIT_FOR_THE_PERIOD",
+        "PROFIT_FOR_THE_YEAR",
+        "PROFIT_FOR_THE_PERIOD (LOSS)",
+        "PROFIT_FOR_THE_YEAR (LOSS)",
+        "Profit for the period",
+        "Profit for the year",
+        "Profit (loss) for the period",
+        "Profit (loss) for the year",
+        "Net profit",
+        "Net income",
+        "除税后溢利",
+        "除税后利润",
+        "本年度溢利",
+        "本年度利润",
+        "年内溢利",
+        "年内利润",
+        "期内溢利",
+        "期内利润",
+    ),
+}
+
 _STATEMENT_PERIOD_FIELDS = (
     "报告日",
     "报告日期",
@@ -1295,38 +1408,89 @@ def _map_cash_flow_statement(
 ) -> tuple[int, int]:
     """Map only unambiguous reported cash-flow lines from A/H statement shapes."""
 
+    mapped_periods, counts = _map_financial_statement(
+        record,
+        evidence,
+        rows,
+        listing,
+        primary=primary,
+        add_fact=add_fact,
+        field_aliases=_CASH_FLOW_FIELDS,
+        statement_label="cash-flow",
+        pivot_long=_pivot_long_cash_flow_rows,
+    )
+    return mapped_periods, counts["reported_cfo"]
+
+
+def _map_income_statement(
+    record: RawProviderRecord,
+    evidence: Evidence,
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+    *,
+    primary: bool,
+    add_fact: Callable[..., None],
+) -> tuple[int, dict[str, int]]:
+    """Map only explicit consolidated and parent-attributable net profit."""
+
+    return _map_financial_statement(
+        record,
+        evidence,
+        rows,
+        listing,
+        primary=primary,
+        add_fact=add_fact,
+        field_aliases=_INCOME_STATEMENT_FIELDS,
+        statement_label="income",
+        pivot_long=_pivot_long_income_statement_rows,
+    )
+
+
+def _map_financial_statement(
+    record: RawProviderRecord,
+    evidence: Evidence,
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+    *,
+    primary: bool,
+    add_fact: Callable[..., None],
+    field_aliases: Mapping[str, Sequence[str]],
+    statement_label: str,
+    pivot_long: Callable[
+        [Sequence[Mapping[str, JSONValue]], RawProviderRecord],
+        list[tuple[dict[str, JSONValue], Mapping[str, JSONValue]]],
+    ],
+) -> tuple[int, dict[str, int]]:
     if not rows:
-        return 0, 0
+        return 0, {field: 0 for field in field_aliases}
     is_long = any(
         _lookup(row, _LONG_STATEMENT_ITEM_FIELDS)[0]
         or _lookup(row, _LONG_STATEMENT_VALUE_FIELDS)[0]
         for row in rows
     )
-    if is_long:
-        period_rows = _pivot_long_cash_flow_rows(rows, record)
-    else:
-        period_rows = [(row, row) for row in rows]
+    period_rows = pivot_long(rows, record) if is_long else [(row, row) for row in rows]
 
     mapped_periods = 0
-    cfo_periods = 0
+    field_counts = {field: 0 for field in field_aliases}
     seen_periods: set[str] = set()
     for period_row, _ in period_rows:
         statement_date = _statement_date(period_row)
         if statement_date is None:
             raise ProviderNormalizationError(
-                f"cash-flow statement row for {record.request.entity_id!r} has no exact report date"
+                f"{statement_label} statement row for {record.request.entity_id!r} "
+                "has no exact report date"
             )
         period = statement_date.isoformat()
         if not primary:
             period = f"{listing.canonical_id}:{period}"
         if period in seen_periods:
             raise ProviderNormalizationError(
-                f"ambiguous duplicate cash-flow statement period {period!r}"
+                f"ambiguous duplicate {statement_label} statement period {period!r}"
             )
         seen_periods.add(period)
         currency = _statement_currency(period_row, listing)
         found_any = False
-        for field, aliases in _CASH_FLOW_FIELDS.items():
+        for field, aliases in field_aliases.items():
             found, raw_value = _lookup(period_row, (field, *aliases))
             if not found:
                 continue
@@ -1341,30 +1505,62 @@ def _map_cash_flow_statement(
                 unit="reported_currency_amount",
             )
             found_any = True
-            if field == "reported_cfo" and value is not None:
-                cfo_periods += 1
+            if value is not None:
+                field_counts[field] += 1
         if found_any:
             mapped_periods += 1
-    return mapped_periods, cfo_periods
+    return mapped_periods, field_counts
 
 
 def _pivot_long_cash_flow_rows(
     rows: Sequence[Mapping[str, JSONValue]], record: RawProviderRecord
 ) -> list[tuple[dict[str, JSONValue], Mapping[str, JSONValue]]]:
+    return _pivot_long_statement_rows(
+        rows,
+        record,
+        field_aliases=_CASH_FLOW_FIELDS,
+        statement_label="cash-flow",
+    )
+
+
+def _pivot_long_income_statement_rows(
+    rows: Sequence[Mapping[str, JSONValue]], record: RawProviderRecord
+) -> list[tuple[dict[str, JSONValue], Mapping[str, JSONValue]]]:
+    return _pivot_long_statement_rows(
+        rows,
+        record,
+        field_aliases=_INCOME_STATEMENT_FIELDS,
+        statement_label="income",
+    )
+
+
+def _pivot_long_statement_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    record: RawProviderRecord,
+    *,
+    field_aliases: Mapping[str, Sequence[str]],
+    statement_label: str,
+) -> list[tuple[dict[str, JSONValue], Mapping[str, JSONValue]]]:
     grouped: dict[str, dict[str, JSONValue]] = {}
     seen_items: dict[str, set[str]] = {}
     source_rows: dict[str, Mapping[str, JSONValue]] = {}
+    normalized_aliases = {
+        field: {field, *(alias.strip().upper() for alias in aliases)}
+        for field, aliases in field_aliases.items()
+    }
     for row in rows:
         statement_date = _statement_date(row)
         if statement_date is None:
             raise ProviderNormalizationError(
-                f"cash-flow statement row for {record.request.entity_id!r} has no exact report date"
+                f"{statement_label} statement row for {record.request.entity_id!r} "
+                "has no exact report date"
             )
         item_found, item = _lookup(row, _LONG_STATEMENT_ITEM_FIELDS)
         value_found, value = _lookup(row, _LONG_STATEMENT_VALUE_FIELDS)
         if not item_found or not value_found or _text_value(item) is None:
             raise ProviderNormalizationError(
-                "long cash-flow statement rows require a non-empty item name and amount"
+                f"long {statement_label} statement rows require a non-empty item name "
+                "and amount"
             )
         period = statement_date.isoformat()
         item_name = _text_value(item)
@@ -1374,14 +1570,15 @@ def _pivot_long_cash_flow_rows(
         period_items = seen_items.setdefault(period, set())
         if normalized_item in period_items:
             raise ProviderNormalizationError(
-                f"ambiguous duplicate cash-flow item {item_name!r} for {period!r}"
+                f"ambiguous duplicate {statement_label} item {item_name!r} for {period!r}"
             )
         period_items.add(normalized_item)
-        for field, aliases in _CASH_FLOW_FIELDS.items():
-            if normalized_item in {alias.strip().upper() for alias in aliases}:
+        for field, aliases in normalized_aliases.items():
+            if normalized_item in aliases:
                 if field in target:
                     raise ProviderNormalizationError(
-                        f"ambiguous duplicate cash-flow field {field!r} for {period!r}"
+                        f"ambiguous duplicate {statement_label} field {field!r} "
+                        f"for {period!r}"
                     )
                 target[field] = value
         for field in _STATEMENT_CURRENCY_FIELDS:

@@ -62,6 +62,26 @@ long-form statement items. It rejects missing or year-only report periods and
 ambiguous duplicate periods/items. Explicit nulls stay null and are never
 converted to zero.
 
+## Phase 2.4 income-statement slice
+
+The income-statement slice is limited to the two numeric statement facts that
+already exist in the normalized contract. It does not turn an income-table
+headline or ratio into a provider metric.
+
+| Normalized field | Status | Boundary note |
+| --- | --- | --- |
+| `parent_net_profit` | `STRUCTURED_AUTO` | Map only an explicit parent-attributable net-profit line for an exact report period, entity and currency; preserve sign and nulls. |
+| `consolidated_net_profit` | `STRUCTURED_AUTO` | Map only an explicit consolidated/net-profit line for an exact report period, entity and currency; preserve sign and nulls. |
+| `revenue`, `operating_profit`, `gross_margin`, `net_margin` | `STRUCTURED_AUTO` / `DERIVED_DETERMINISTIC` | Not mapped in this slice; any future use must define entity, period, unit and derivation semantics separately. |
+| income-statement ratios and filing-derived classifications | `DERIVED_DETERMINISTIC` / `REQUIRES_PRIMARY_FILING` | Not emitted by the provider normalizer. |
+
+The A-share income endpoint is expected to provide wide report-period rows and
+the H-share endpoint long-form items. Missing or year-only periods and
+ambiguous duplicate periods/items are rejected. Explicit nulls remain null and
+are not treated as zero. The Phase 2 mapping review owns unresolved field-name
+coverage, parent/consolidated entity basis, currency/unit scaling and
+point-in-time publication semantics.
+
 ## Eligibility, identity and market context
 
 | Normalized field | Status | Boundary note |

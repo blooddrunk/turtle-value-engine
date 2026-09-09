@@ -1,0 +1,30 @@
+[
+  {
+    "SECURITY_CODE": "00700",
+    "STD_REPORT_DATE": "2024-12-31",
+    "STD_ITEM_NAME": "Profit for the year",
+    "AMOUNT": 880000000,
+    "CURRENCY": "HKD"
+  },
+  {
+    "SECURITY_CODE": "00700",
+    "STD_REPORT_DATE": "2024-12-31",
+    "STD_ITEM_NAME": "Profit attributable to equity holders of the Company",
+    "AMOUNT": 860000000,
+    "CURRENCY": "HKD"
+  },
+  {
+    "SECURITY_CODE": "00700",
+    "STD_REPORT_DATE": "2023-12-31",
+    "STD_ITEM_NAME": "Profit for the year",
+    "AMOUNT": null,
+    "CURRENCY": "HKD"
+  },
+  {
+    "SECURITY_CODE": "00700",
+    "STD_REPORT_DATE": "2023-12-31",
+    "STD_ITEM_NAME": "Profit attributable to owners of the parent",
+    "AMOUNT": null,
+    "CURRENCY": "HKD"
+  }
+]

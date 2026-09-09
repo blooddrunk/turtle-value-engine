@@ -183,6 +183,24 @@ cash-flow classification of interest/leases, capex component separation and
 all filing-derived adjustments require primary disclosures or a later mapping
 review.
 
+### Phase 2.4 — Income-statement mapping slice (COMPLETE)
+
+The AKShare adapter now supports read-only `INCOME_STATEMENT` acquisition for
+A-share and H-share listings. The A-share report-period endpoint is normalized
+from wide rows and the H-share endpoint from long-form statement items. Only
+explicit `parent_net_profit` and `consolidated_net_profit` lines are mapped;
+revenue, operating profit, margins, provider ratios and filing-derived
+classifications remain outside this slice. Exact report periods, reported
+currency and explicit nulls are preserved, and ambiguous periods/items are
+rejected.
+
+The adapter and mapping versions are bumped so this endpoint contract has a
+separate cache/fact namespace. Tests use injected clients and frozen fixtures;
+live integration remains explicitly opt-in. Unresolved income-mapping
+questions are owned by the Phase 2 mapping review: field-name coverage across
+all A/H statement variants, the precise parent/consolidated entity basis,
+currency/unit scaling, and point-in-time publication semantics.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -192,7 +210,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 metadata/quote/history + Phase 2.3 cash-flow slice
+  akshare.py       # Phase 2.2 market + Phase 2.3 cash-flow + Phase 2.4 income slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -400,7 +418,7 @@ Phase 2 is active. Phase 1 remains frozen: changes to formulas, hard-gate
 semantics, schemas or `strict-v1` thresholds require a separately reviewed,
 versioned change.
 
-The next Phase 2 task is to add financial-statement categories only after the
-AKShare quote/history boundary has been verified in point-in-time fixtures and
-its unresolved mapping questions have an explicit owner. Filing-derived
-classifications remain a Phase 3 concern.
+The next Phase 2 task is to add another financial-statement category only after
+the current AKShare statement boundary has been verified in point-in-time
+fixtures and its unresolved mapping questions have an explicit owner.
+Filing-derived classifications remain a Phase 3 concern.
