@@ -1,0 +1,23 @@
+[
+  {
+    "SECURITY_CODE": "00700",
+    "STD_REPORT_DATE": "2024-12-31",
+    "STD_ITEM_NAME": "经营活动产生的现金流量净额",
+    "AMOUNT": 880000000,
+    "CURRENCY": "HKD"
+  },
+  {
+    "SECURITY_CODE": "00700",
+    "STD_REPORT_DATE": "2024-12-31",
+    "STD_ITEM_NAME": "取得子公司及其他营业单位支付的现金净额",
+    "AMOUNT": null,
+    "CURRENCY": "HKD"
+  },
+  {
+    "SECURITY_CODE": "00700",
+    "STD_REPORT_DATE": "2023-12-31",
+    "STD_ITEM_NAME": "经营活动产生的现金流量净额",
+    "AMOUNT": null,
+    "CURRENCY": "HKD"
+  }
+]

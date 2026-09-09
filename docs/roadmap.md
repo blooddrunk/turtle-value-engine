@@ -163,6 +163,26 @@ The deterministic tests use injected clients and frozen fixtures. Live
 integration is explicitly opt-in with `TVE_RUN_AKSHARE_LIVE=1` and is not part
 of ordinary CI.
 
+### Phase 2.3 — First financial-statement mapping slice (COMPLETE)
+
+The AKShare adapter now supports read-only `CASH_FLOW_STATEMENT` acquisition
+for A-share and H-share listings using documented market-specific endpoints.
+Deterministic fixtures cover the A-share wide-row and H-share long-row shapes.
+The normalizer maps only explicit `reported_cfo` and `acquisition_cash` lines
+with exact report periods and reported currency. It preserves explicit nulls,
+rejects ambiguous periods/items, and does not map aggregate capex into
+PPE/intangible fields or calculate CDC/financing metrics.
+
+The adapter and mapping versions are bumped so old raw-cache namespaces are
+not replayed under the new endpoint/mapping contract. Live calls remain
+opt-in; ordinary CI uses injected clients and frozen fixtures.
+
+Unresolved mapping questions are intentionally deferred: A/H field-level
+coverage for all statement variants, parent-versus-consolidated attribution,
+cash-flow classification of interest/leases, capex component separation and
+all filing-derived adjustments require primary disclosures or a later mapping
+review.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -172,7 +192,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 read-only metadata/quote/history adapter
+  akshare.py       # Phase 2.2 metadata/quote/history + Phase 2.3 cash-flow slice
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```

@@ -51,9 +51,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "1"
+AKSHARE_ADAPTER_VERSION = "2"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "1"
+AKSHARE_MAPPING_VERSION = "2"
 
 
 class ListingMarket(StrEnum):
@@ -69,6 +69,7 @@ AKSHARE_CAPABILITIES = ProviderCapabilities(
         DataCategory.LISTING_METADATA,
         DataCategory.MARKET_QUOTE,
         DataCategory.MARKET_HISTORY,
+        DataCategory.CASH_FLOW_STATEMENT,
     }
 )
 
@@ -87,6 +88,9 @@ _SOURCE_URIS = {
     "stock_zh_ah_daily": "https://gu.qq.com/",
     "stock_hk_company_profile_em": "https://emweb.securities.eastmoney.com/PC_HKF10/pages/home/index.html",
     "stock_hk_security_profile_em": "https://emweb.securities.eastmoney.com/PC_HKF10/pages/home/index.html",
+    "stock_cash_flow_sheet_by_report_em": "https://emweb.securities.eastmoney.com/PC_HSF10/NewFinanceAnalysis/Index",
+    "stock_financial_report_sina": "https://vip.stock.finance.sina.com.cn/corp/go.php/vFD_FinanceSummary/",
+    "stock_financial_hk_report_em": "https://emweb.securities.eastmoney.com/PC_HKF10/FinancialAnalysis/index",
 }
 
 _NO_ARGUMENT_ENDPOINTS = frozenset(
@@ -119,6 +123,8 @@ _HISTORY_PARAMETER_NAMES = frozenset(
         "start_year",
     }
 )
+
+_FINANCIAL_STATEMENT_PARAMETER_NAMES = frozenset({"indicator"})
 
 _DATE_FORMATS = ("%Y-%m-%d", "%Y%m%d", "%Y/%m/%d", "%Y-%m-%d %H:%M:%S")
 _MISSING_TEXT = frozenset({"", "-", "--", "—", "na", "n/a", "nan", "nat", "none", "null"})
@@ -311,6 +317,8 @@ class AKShareProvider(StructuredDataProvider):
         try:
             if request.category is DataCategory.MARKET_HISTORY:
                 return _history_kwargs(endpoint_name, listing, request)
+            if request.category is DataCategory.CASH_FLOW_STATEMENT:
+                return _cash_flow_statement_kwargs(endpoint_name, listing, request)
             if endpoint_name in _NO_ARGUMENT_ENDPOINTS:
                 _reject_unexpected_parameters(request)
                 return {}
@@ -540,6 +548,19 @@ class AKShareNormalizer:
                     missing_fields.add("market_history")
                 if history_result[1] == 0:
                     missing_fields.add("historical_close")
+            elif record.request.category is DataCategory.CASH_FLOW_STATEMENT:
+                cash_flow_result = _map_cash_flow_statement(
+                    record,
+                    evidence,
+                    rows,
+                    listing,
+                    primary=primary,
+                    add_fact=add_fact,
+                )
+                if cash_flow_result[0] == 0:
+                    missing_fields.add("cash_flow_statement")
+                if cash_flow_result[1] == 0:
+                    missing_fields.add("reported_cfo")
             else:
                 raise ProviderNormalizationError(
                     f"unsupported AKShare normalization category: {record.request.category.value}"
@@ -553,8 +574,9 @@ class AKShareNormalizer:
             else ConfidenceLevel.MEDIUM
         )
         notes = (
-            "AKShare Phase 2.2 records were normalized as structured observations. "
-            "Financial statements, filing classifications, and economic adjustments "
+            "AKShare structured records were normalized as structured observations. "
+            "Cash-flow mapping is limited to explicitly reported operating cash flow "
+            "and acquisition cash; filing classifications and economic adjustments "
             "remain unresolved until a later provider/filing workflow."
         )
         return NormalizedCompanyInput(
@@ -656,7 +678,67 @@ def _endpoint_candidates(market: ListingMarket, category: DataCategory) -> tuple
         if market is ListingMarket.A:
             return ("stock_zh_a_hist", "stock_zh_a_daily")
         return ("stock_hk_daily", "stock_zh_ah_daily")
+    if category is DataCategory.CASH_FLOW_STATEMENT:
+        if market is ListingMarket.A:
+            return ("stock_cash_flow_sheet_by_report_em", "stock_financial_report_sina")
+        return ("stock_financial_hk_report_em",)
     raise ProviderCapabilityError(f"AKShare adapter does not support {category.value!r}")
+
+
+def _cash_flow_statement_kwargs(
+    endpoint_name: str,
+    listing: _ListingRef,
+    request: ProviderRequest,
+) -> dict[str, object]:
+    unknown = sorted(set(request.parameters) - _FINANCIAL_STATEMENT_PARAMETER_NAMES)
+    if unknown:
+        raise ProviderRequestError(
+            "unsupported AKShare cash-flow parameter(s): " + ", ".join(unknown),
+            request=request,
+            retryable=False,
+        )
+    indicator = str(request.parameters.get("indicator", "annual")).lower()
+    indicators = {
+        "annual": "年度",
+        "yearly": "年度",
+        "reporting": "报告期",
+        "report": "报告期",
+        "年度": "年度",
+        "报告期": "报告期",
+    }
+    if indicator not in indicators:
+        raise ProviderRequestError(
+            "cash-flow indicator must be annual or reporting",
+            request=request,
+            retryable=False,
+        )
+    if endpoint_name == "stock_cash_flow_sheet_by_report_em":
+        if "indicator" in request.parameters:
+            raise ProviderRequestError(
+                "the A-share report-period cash-flow endpoint does not accept indicator",
+                request=request,
+                retryable=False,
+            )
+        return {"symbol": listing.canonical_id}
+    if endpoint_name == "stock_financial_report_sina":
+        if listing.market is not ListingMarket.A:
+            raise ProviderRequestError(
+                "the Sina financial-report endpoint supports A-share listings only",
+                request=request,
+                retryable=False,
+            )
+        return {"stock": listing.canonical_id.lower(), "symbol": "现金流量表"}
+    if endpoint_name == "stock_financial_hk_report_em":
+        return {
+            "stock": listing.code,
+            "symbol": "现金流量表",
+            "indicator": indicators[indicator],
+        }
+    raise ProviderRequestError(
+        f"unsupported AKShare cash-flow endpoint {endpoint_name!r}",
+        request=request,
+        retryable=False,
+    )
 
 
 def _parse_listing_id(
@@ -1170,6 +1252,174 @@ def _enrich_company(company: Company, context: Mapping[str, str]) -> Company:
     if company.fiscal_year_end is None and context.get("fiscal_year_end"):
         updates["fiscal_year_end"] = context["fiscal_year_end"]
     return company.model_copy(update=updates) if updates else company
+
+
+_CASH_FLOW_FIELDS = {
+    "reported_cfo": (
+        "经营活动产生的现金流量净额",
+        "经营活动现金流量净额",
+        "经营活动产生的现金流量净额(元)",
+        "经营活动现金流量净额(元)",
+        "NETCASH_OPERATE",
+        "NETCASH_OPERATE_CONTINUOUS",
+        "OPERATE_CASH_FLOW",
+    ),
+    "acquisition_cash": (
+        "取得子公司及其他营业单位支付的现金净额",
+        "取得子公司及其他营业单位支付的现金",
+        "CASH_PAID_FOR_ACQUISITION",
+    ),
+}
+
+_STATEMENT_PERIOD_FIELDS = (
+    "报告日",
+    "报告日期",
+    "报告期",
+    "REPORT_DATE",
+    "STD_REPORT_DATE",
+    "STD_REPORT_DATE_NAME",
+)
+_STATEMENT_CURRENCY_FIELDS = ("币种", "CURRENCY", "CURRENCY_NAME")
+_LONG_STATEMENT_ITEM_FIELDS = ("STD_ITEM_NAME", "项目名称", "科目名称", "ITEM_NAME")
+_LONG_STATEMENT_VALUE_FIELDS = ("AMOUNT", "金额", "VALUE", "ITEM_VALUE")
+
+
+def _map_cash_flow_statement(
+    record: RawProviderRecord,
+    evidence: Evidence,
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+    *,
+    primary: bool,
+    add_fact: Callable[..., None],
+) -> tuple[int, int]:
+    """Map only unambiguous reported cash-flow lines from A/H statement shapes."""
+
+    if not rows:
+        return 0, 0
+    is_long = any(
+        _lookup(row, _LONG_STATEMENT_ITEM_FIELDS)[0]
+        or _lookup(row, _LONG_STATEMENT_VALUE_FIELDS)[0]
+        for row in rows
+    )
+    if is_long:
+        period_rows = _pivot_long_cash_flow_rows(rows, record)
+    else:
+        period_rows = [(row, row) for row in rows]
+
+    mapped_periods = 0
+    cfo_periods = 0
+    seen_periods: set[str] = set()
+    for period_row, _ in period_rows:
+        statement_date = _statement_date(period_row)
+        if statement_date is None:
+            raise ProviderNormalizationError(
+                f"cash-flow statement row for {record.request.entity_id!r} has no exact report date"
+            )
+        period = statement_date.isoformat()
+        if not primary:
+            period = f"{listing.canonical_id}:{period}"
+        if period in seen_periods:
+            raise ProviderNormalizationError(
+                f"ambiguous duplicate cash-flow statement period {period!r}"
+            )
+        seen_periods.add(period)
+        currency = _statement_currency(period_row, listing)
+        found_any = False
+        for field, aliases in _CASH_FLOW_FIELDS.items():
+            found, raw_value = _lookup(period_row, (field, *aliases))
+            if not found:
+                continue
+            value = _number_value(raw_value, field=field)
+            add_fact(
+                record,
+                evidence,
+                field=field,
+                value=value,
+                period=period,
+                currency=currency,
+                unit="reported_currency_amount",
+            )
+            found_any = True
+            if field == "reported_cfo" and value is not None:
+                cfo_periods += 1
+        if found_any:
+            mapped_periods += 1
+    return mapped_periods, cfo_periods
+
+
+def _pivot_long_cash_flow_rows(
+    rows: Sequence[Mapping[str, JSONValue]], record: RawProviderRecord
+) -> list[tuple[dict[str, JSONValue], Mapping[str, JSONValue]]]:
+    grouped: dict[str, dict[str, JSONValue]] = {}
+    seen_items: dict[str, set[str]] = {}
+    source_rows: dict[str, Mapping[str, JSONValue]] = {}
+    for row in rows:
+        statement_date = _statement_date(row)
+        if statement_date is None:
+            raise ProviderNormalizationError(
+                f"cash-flow statement row for {record.request.entity_id!r} has no exact report date"
+            )
+        item_found, item = _lookup(row, _LONG_STATEMENT_ITEM_FIELDS)
+        value_found, value = _lookup(row, _LONG_STATEMENT_VALUE_FIELDS)
+        if not item_found or not value_found or _text_value(item) is None:
+            raise ProviderNormalizationError(
+                "long cash-flow statement rows require a non-empty item name and amount"
+            )
+        period = statement_date.isoformat()
+        item_name = _text_value(item)
+        assert item_name is not None
+        normalized_item = item_name.strip().upper()
+        target = grouped.setdefault(period, {})
+        period_items = seen_items.setdefault(period, set())
+        if normalized_item in period_items:
+            raise ProviderNormalizationError(
+                f"ambiguous duplicate cash-flow item {item_name!r} for {period!r}"
+            )
+        period_items.add(normalized_item)
+        for field, aliases in _CASH_FLOW_FIELDS.items():
+            if normalized_item in {alias.strip().upper() for alias in aliases}:
+                if field in target:
+                    raise ProviderNormalizationError(
+                        f"ambiguous duplicate cash-flow field {field!r} for {period!r}"
+                    )
+                target[field] = value
+        for field in _STATEMENT_CURRENCY_FIELDS:
+            if field in row:
+                target[field] = row[field]
+        source_rows.setdefault(period, row)
+    return [
+        (dict({"报告日": period}, **values), source_rows[period])
+        for period, values in sorted(grouped.items())
+    ]
+
+
+def _statement_date(row: Mapping[str, JSONValue]) -> date | None:
+    found, raw_value = _lookup(row, _STATEMENT_PERIOD_FIELDS)
+    if not found or raw_value is None:
+        return None
+    if isinstance(raw_value, datetime):
+        return raw_value.date()
+    if isinstance(raw_value, date):
+        return raw_value
+    text = str(raw_value).strip()
+    for fmt in _DATE_FORMATS:
+        try:
+            return datetime.strptime(text, fmt).date()
+        except ValueError:
+            continue
+    match = re.match(r"^(\d{4}-\d{2}-\d{2})", text)
+    if match:
+        return date.fromisoformat(match.group(1))
+    return None
+
+
+def _statement_currency(row: Mapping[str, JSONValue], listing: _ListingRef) -> str:
+    found, raw_value = _lookup(row, _STATEMENT_CURRENCY_FIELDS)
+    value = _text_value(raw_value) if found else None
+    if value is not None and re.fullmatch(r"[A-Za-z]{3}", value):
+        return value.upper()
+    return _currency_for(listing.market)
 
 
 def _map_history(

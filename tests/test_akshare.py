@@ -71,6 +71,20 @@ class FakeAKShare:
     def stock_hk_daily(self, **kwargs):
         return self._return("stock_hk_daily", _fixture("h_history.json"), **kwargs)
 
+    def stock_cash_flow_sheet_by_report_em(self, **kwargs):
+        return self._return(
+            "stock_cash_flow_sheet_by_report_em",
+            _fixture("a_cash_flow.json"),
+            **kwargs,
+        )
+
+    def stock_financial_hk_report_em(self, **kwargs):
+        return self._return(
+            "stock_financial_hk_report_em",
+            _fixture("h_cash_flow.json"),
+            **kwargs,
+        )
+
 
 def _request(category: DataCategory, entity_id: str, parameters: dict | None = None):
     return ProviderRequest(
@@ -108,13 +122,14 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
     provider = _provider()
 
     assert provider.capabilities.as_values() == (
+        "cash_flow_statement",
         "company_metadata",
         "listing_metadata",
         "market_history",
         "market_quote",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "1"
+    assert provider.identity.provider_version == "2"
 
 
 def test_a_quote_is_selected_from_the_upstream_universe_and_kept_opaque():
@@ -143,6 +158,26 @@ def test_h_history_uses_hk_symbol_and_keeps_range_parameters_in_cache_identity()
     assert record.raw_payload == _fixture("h_history.json")
     assert fake.calls == [("stock_hk_daily", {"symbol": "00700", "adjust": ""})]
     assert record.response_metadata["range_filtering"] == "normalizer"
+
+
+def test_cash_flow_fetch_uses_market_specific_read_only_endpoints():
+    fake = FakeAKShare()
+    provider = _provider(fake)
+
+    a_record = provider.fetch(_request(DataCategory.CASH_FLOW_STATEMENT, "SH600000"))
+    h_record = provider.fetch(
+        _request(DataCategory.CASH_FLOW_STATEMENT, "HK00700", {"indicator": "annual"})
+    )
+
+    assert a_record.raw_payload == _fixture("a_cash_flow.json")
+    assert h_record.raw_payload == _fixture("h_cash_flow.json")
+    assert fake.calls == [
+        ("stock_cash_flow_sheet_by_report_em", {"symbol": "SH600000"}),
+        (
+            "stock_financial_hk_report_em",
+            {"stock": "00700", "symbol": "现金流量表", "indicator": "年度"},
+        ),
+    ]
 
 
 def test_missing_optional_dependency_is_reported_only_when_a_live_fetch_is_attempted(
@@ -245,6 +280,85 @@ def test_normalizer_maps_metadata_quote_and_history_to_schema_valid_facts():
         evidence.source.type.value == "STRUCTURED_DATA_VENDOR"
         for evidence in normalized.evidence_index
     )
+
+
+def test_normalizer_maps_explicit_cash_flow_lines_without_deriving_cdc():
+    provider = _provider()
+    records = [
+        provider.fetch(_request(DataCategory.CASH_FLOW_STATEMENT, "SH600000")),
+    ]
+    normalized = normalize_akshare_records(
+        records,
+        analysis_id="cash-flow-fixture",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    values = {(fact.field, fact.period): fact for fact in normalized.facts}
+    assert values[("reported_cfo", "2025-12-31")].value == 1200000000.0
+    assert values[("acquisition_cash", "2025-12-31")].value == -250000000.0
+    assert values[("reported_cfo", "2025-12-31")].currency == "CNY"
+    assert values[("reported_cfo", "2025-12-31")].unit == "reported_currency_amount"
+    assert "core_cdc" not in {fact.field for fact in normalized.facts}
+    assert normalized.data_quality.critical_missing_fields == []
+
+
+def test_h_cash_flow_long_rows_are_pivoted_and_keep_nulls():
+    provider = _provider()
+    record = provider.fetch(
+        _request(
+            DataCategory.CASH_FLOW_STATEMENT,
+            "HK00700",
+            {"indicator": "annual"},
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="h-cash-flow-fixture",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company("HK00700"),
+    )
+
+    values = {(fact.field, fact.period): fact.value for fact in normalized.facts}
+    assert values[("reported_cfo", "2024-12-31")] == 880000000.0
+    assert values[("acquisition_cash", "2024-12-31")] is None
+    assert values[("reported_cfo", "2023-12-31")] is None
+    assert normalized.data_quality.critical_missing_fields == []
+
+
+def test_cash_flow_ambiguous_period_or_item_is_rejected():
+    provider = _provider()
+    record = provider.fetch(_request(DataCategory.CASH_FLOW_STATEMENT, "HK00700"))
+    duplicate = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=RETRIEVED_AT,
+        raw_payload=[
+            {
+                "STD_REPORT_DATE": "2024-12-31",
+                "STD_ITEM_NAME": "经营活动产生的现金流量净额",
+                "AMOUNT": 1,
+            },
+            {
+                "STD_REPORT_DATE": "2024-12-31",
+                "STD_ITEM_NAME": "经营活动产生的现金流量净额",
+                "AMOUNT": 2,
+            },
+        ],
+        source_uri=record.source_uri,
+        response_metadata=record.response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match="duplicate cash-flow item"):
+        normalize_akshare_records(
+            [duplicate],
+            analysis_id="duplicate-cash-flow",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company("HK00700"),
+        )
 
 
 def test_h_history_range_is_applied_deterministically_during_normalization():

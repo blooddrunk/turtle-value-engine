@@ -174,6 +174,24 @@ reported price, reported CFO, reported profit, total cash, reported debt,
 dividend amount, or a share count when the provider's period and entity are
 unambiguous.
 
+The first financial-statement slice is deliberately narrow. The AKShare
+adapter may acquire `CASH_FLOW_STATEMENT` records for A/H listings, while its
+normalizer maps only report-period rows whose labels unambiguously represent
+`reported_cfo` or `acquisition_cash`. A-share wide records and H-share
+long-form item records are handled separately. The mapper preserves the
+reported sign, currency and null value; it does not scale amounts, split
+aggregate capex into PPE/intangible purchases, or calculate CDC and financing
+metrics.
+
+Missing report dates, year-only periods, duplicate periods or duplicate
+long-form items are normalization errors. This keeps a provider convenience
+table from silently becoming a normalized annual history with ambiguous
+semantics.
+
+The adapter version and mapping version are part of the cache/fact identity,
+so this new endpoint contract cannot replay a prior Phase 2.2 snapshot under
+an incompatible mapping.
+
 It is not permission to infer economic classifications that are absent from
 the provider response. Examples that remain outside automatic Phase 2
 normalization include:

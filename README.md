@@ -47,10 +47,13 @@ recommendation.
 Phase 2.2 now includes a read-only, optional-dependency `AKShareProvider` for
 A/H listing metadata, company metadata, quotes and daily market history. Its
 raw responses can be replayed through the provider cache and its focused
-normalizer emits only canonical facts and evidence. Financial-statement
-mapping, filing retrieval and LLM-assisted evidence analysis remain
-unimplemented. The deterministic `tve analyze` command is still offline-only
-and does not call a provider or an LLM.
+normalizer emits only canonical facts and evidence. Phase 2.3 adds cash-flow
+statement acquisition for A/H listings and maps only explicit reported
+operating cash flow and acquisition cash; it does not derive CDC,
+classify interest or restricted cash, or accept provider metrics. Filing
+retrieval and LLM-assisted evidence analysis remain unimplemented. The
+deterministic `tve analyze` command is still offline-only and does not call a
+provider or an LLM.
 
 Install the live-provider extra only when an explicitly network-enabled
 workflow is intended:

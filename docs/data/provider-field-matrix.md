@@ -44,6 +44,24 @@ observations for later market-data consumers, not engine outputs. The adapter
 does not map AKShare's headline `总市值`/market-cap fields because market cap
 must remain an engine-owned deterministic projection.
 
+## Phase 2.3 cash-flow statement slice
+
+The first financial-statement mapping slice is intentionally narrower than the
+full cash-flow contract:
+
+| Normalized field | Status | Boundary note |
+| --- | --- | --- |
+| `reported_cfo` | `STRUCTURED_AUTO` | Map only an explicit operating-cash-flow line for an exact report period and preserve the reported sign/currency. |
+| `acquisition_cash` | `STRUCTURED_AUTO` | Map only an explicit cash-paid-for-acquisition line; do not infer acquisitions from total investing cash flow. |
+| `ppe_purchase_cash`, `intangible_purchase_cash` | `STRUCTURED_AUTO` | Not mapped when the provider combines PPE, intangible and other long-term assets in one line. |
+| `equity_financing`, `debt_financing`, `other_financing` | `STRUCTURED_AUTO` | Deferred until a provider line has the same canonical category semantics; gross borrowings or repayments are not silently renamed. |
+| `core_cdc` and all CDC/interest classifications | `DERIVED_DETERMINISTIC` / `REQUIRES_PRIMARY_FILING` | Not emitted by the provider normalizer. |
+
+The current AKShare slice supports A-share wide statement rows and H-share
+long-form statement items. It rejects missing or year-only report periods and
+ambiguous duplicate periods/items. Explicit nulls stay null and are never
+converted to zero.
+
 ## Eligibility, identity and market context
 
 | Normalized field | Status | Boundary note |
