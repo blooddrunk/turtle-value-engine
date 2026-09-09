@@ -988,6 +988,36 @@ The slice deliberately leaves `governance_risk_level` unresolved and emits
 beneficial-control interpretation and filing-backed analysis remain outside
 this acquisition contract.
 
+## Phase 2.39 BSE margin-detail raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_margin_detail_bse` as a Beijing Stock Exchange endpoint
+accepting an exact `YYYYMMDD` `date`. Its full requested-date universe contains
+explicit security code/name, financing balances, financing/short-sale
+quantities and financing/short-sale balances; amounts are documented in yuan
+and quantities in shares. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_margin_bse.py)
+paginates the BSE detail endpoint, zero-pads security codes and returns the
+published columns.
+
+The provider supports explicit Beijing A-share identifiers, validates every
+returned security code, filters the full universe to the requested listing and
+retains endpoint, request-date and row-count provenance. BSE rows do not
+contain a row-level observation date, so the exact request date remains the
+metadata observation boundary; the adapter does not add a synthetic date to
+the opaque payload.
+
+These fields describe customer financing against a security rather than the
+issuer's accounting debt, cash or leverage. The normalizer therefore emits
+`AKSHARE_MARGIN_TRADING_RAW_ONLY`, leaves `financial_debt` critically missing
+and creates no canonical debt, cash, margin, leverage or valuation fact.
+
+| Raw upstream item | Phase 2 treatment |
+| --- | --- |
+| `证券代码`, `证券简称` | Explicit BSE security identity and listing-filter context only; no issuer fact is inferred. |
+| `融资买入额`, `融资余额`, `融券余额`, `融资融券余额` | Raw amount evidence documented in yuan; customer financing positions/flows are not issuer financial debt, cash or issuer CFO. |
+| `融券卖出量`, `融券余量` | Raw security-lending quantities documented in shares; they do not establish issuer shares, dilution, debt or valuation. |
+| request `date` | Exact BSE observation boundary retained in request and response metadata; it is not an issuer accounting period or a fabricated row field. |
+
 ## Eligibility, identity and market context
 
 | Normalized field | Status | Boundary note |

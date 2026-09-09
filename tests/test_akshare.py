@@ -80,6 +80,13 @@ class FakeAKShare:
             date=date,
         )
 
+    def stock_margin_detail_bse(self, *, date: str):
+        return self._return(
+            "stock_margin_detail_bse",
+            _fixture("a_margin_detail_bse.json"),
+            date=date,
+        )
+
     def stock_tfp_em(self, *, date: str):
         return self._return(
             "stock_tfp_em",
@@ -414,8 +421,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "38"
-    assert AKSHARE_MAPPING_VERSION == "39"
+    assert provider.identity.provider_version == "39"
+    assert AKSHARE_MAPPING_VERSION == "40"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -6224,18 +6231,7 @@ def test_margin_detail_request_requires_exact_date_and_supported_mainland_listin
         )
     with pytest.raises(
         ProviderRequestError,
-        match="Shanghai and Shenzhen A-share listings only",
-    ):
-        provider.fetch(
-            _request(
-                DataCategory.MARGIN_TRADING,
-                "BJ430047",
-                {"date": "20230922"},
-            )
-        )
-    with pytest.raises(
-        ProviderRequestError,
-        match="Shanghai and Shenzhen A-share listings only",
+        match="Shanghai, Shenzhen and Beijing A-share listings only",
     ):
         provider.fetch(
             _request(
@@ -6588,3 +6584,133 @@ def test_szse_margin_detail_cache_replay_does_not_call_upstream(tmp_path: Path):
     assert replay.mode is RetrievalMode.CACHE_REPLAY
     assert replay.record == live.record
     assert fake.calls == [("stock_margin_detail_szse", {"date": "20230925"})]
+
+
+def test_bse_margin_detail_fetch_filters_the_documented_date_bound_universe():
+    fake = FakeAKShare()
+    record = _provider(fake).fetch(
+        _request(
+            DataCategory.MARGIN_TRADING,
+            "BJ920000",
+            {"date": "20260721"},
+        )
+    )
+
+    fixture = _fixture("a_margin_detail_bse.json")
+    assert record.raw_payload == [
+        row for row in fixture if row["证券代码"] == "920000"
+    ]
+    assert fake.calls == [
+        ("stock_margin_detail_bse", {"date": "20260721"}),
+    ]
+    assert record.response_metadata["endpoint"] == "stock_margin_detail_bse"
+    assert record.response_metadata["upstream_row_count"] == 3
+    assert record.response_metadata["entity_row_count"] == 1
+    assert record.response_metadata["entity_rows_selected"] is True
+    assert record.response_metadata["listing_scoped_request"] is False
+    assert record.response_metadata["row_filtering"] == "provider"
+    assert record.response_metadata["requested_date"] == "20260721"
+    assert record.response_metadata["observation_date"] == "2026-07-21"
+    assert record.response_metadata["date_binding"] == "request"
+    assert record.response_metadata["snapshot_scope"] == "requested_date"
+    assert record.source_uri == (
+        "https://www.bse.cn/disclosure/rzrq_trans_list.html"
+    )
+    assert all("信用交易日期" not in row for row in record.raw_payload)
+
+
+def test_bse_margin_detail_response_rejects_a_row_without_listing_code():
+    class InvalidRows(FakeAKShare):
+        def stock_margin_detail_bse(self, *, date: str):
+            rows = [dict(row) for row in _fixture("a_margin_detail_bse.json")]
+            rows[0].pop("证券代码")
+            return self._return("stock_margin_detail_bse", rows, date=date)
+
+    with pytest.raises(ProviderResponseError, match="margin-trading row without a listing code"):
+        _provider(InvalidRows()).fetch(
+            _request(
+                DataCategory.MARGIN_TRADING,
+                "BJ920000",
+                {"date": "20260721"},
+            )
+        )
+
+
+def test_bse_margin_detail_raw_record_is_not_promoted_to_issuer_facts():
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARGIN_TRADING,
+            "BJ920000",
+            {"date": "20260721"},
+        )
+    )
+
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="bse-margin-detail-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company(primary_listing="BJ920000"),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_MARGIN_TRADING_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == ["financial_debt"]
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "security-level financing balances" in normalized.data_quality.notes
+    assert "issuer financial debt, cash or leverage facts" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+def test_bse_margin_detail_normalizer_rejects_replayed_rows_for_another_listing():
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARGIN_TRADING,
+            "BJ920000",
+            {"date": "20260721"},
+        )
+    )
+    payload = [dict(row) for row in record.raw_payload]
+    payload[0]["证券代码"] = "920001"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=record.source_uri,
+        response_metadata=record.response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match="margin-trading row entity"):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-bse-margin-detail-entity",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company(primary_listing="BJ920000"),
+        )
+
+
+def test_bse_margin_detail_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.MARGIN_TRADING,
+        "BJ920000",
+        {"date": "20260721"},
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [("stock_margin_detail_bse", {"date": "20260721"})]

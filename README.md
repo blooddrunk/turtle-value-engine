@@ -252,8 +252,7 @@ and security names as raw evidence. The endpoint does not return a row-level
 date, so the request date is preserved as provenance rather than invented in
 the payload. The normalizer emits `AKSHARE_MARGIN_TRADING_RAW_ONLY`, leaves
 `financial_debt` critically missing and creates no issuer debt, cash, leverage
-or valuation fact. BSE margin-detail and market-level margin summaries remain
-unresolved.
+or valuation fact. Market-level margin summaries remain unresolved.
 Phase 2.38 adds the documented A-share CNINFO `stock_hold_num_cninfo` endpoint
 under the existing `SHAREHOLDER_HOLDINGS` category. The [AKShare stock-data
 documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and [official
@@ -265,6 +264,17 @@ requested A-share listing and preserves the fields as raw evidence. The
 normalizer emits `AKSHARE_SHAREHOLDER_COUNTS_RAW_ONLY`, leaves
 `governance_risk_level` critically missing and creates no concentration,
 governance or diluted-share fact.
+Phase 2.39 extends the documented BSE
+[`stock_margin_detail_bse`](https://akshare.akfamily.xyz/data/stock/stock.html)
+endpoint under `MARGIN_TRADING` to Beijing A-share listings. The [official
+implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_margin_bse.py)
+passes an exact `YYYYMMDD` date to the full BSE security universe, validates
+explicit codes and retains the requested listing as raw evidence. Because the
+documented rows have no row-level observation date, the request date is
+preserved only in request/response metadata. Security-level investor financing
+is not issuer debt, cash or leverage, so the normalizer emits the existing
+`AKSHARE_MARGIN_TRADING_RAW_ONLY` boundary without canonical facts. Market-level
+margin summaries remain unresolved.
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

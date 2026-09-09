@@ -826,7 +826,7 @@ The response describes customer financing against a security, not the issuer's
 reported financial debt, cash or a settled issuer accounting period. The
 normalizer therefore retains the structured evidence, marks `financial_debt`
 as critically missing and emits `AKSHARE_MARGIN_TRADING_RAW_ONLY`; it creates
-no canonical debt, cash, leverage, margin or valuation fact. SZSE/BSE margin
+no canonical debt, cash, leverage, margin or valuation fact. SZSE margin
 detail, market-level margin summaries and filing-backed interpretation remain
 outside this slice. Live calls remain opt-in; tests use an injected client and
 a frozen fixture.
@@ -950,8 +950,8 @@ issuer's reported financial debt, cash or a settled issuer accounting period.
 The normalizer therefore retains the structured evidence, marks
 `financial_debt` as critically missing and emits
 `AKSHARE_MARGIN_TRADING_RAW_ONLY`; it creates no canonical debt, cash,
-leverage, margin or valuation fact. BSE margin detail, market-level margin
-summaries and filing-backed interpretation remain outside this slice. Live
+leverage, margin or valuation fact. Market-level margin summaries and
+filing-backed interpretation remain outside this slice. Live
 calls remain opt-in; tests use an injected client and a frozen fixture.
 
 ### Phase 2.38 — A-share shareholder-count raw acquisition contract (COMPLETE)
@@ -981,6 +981,32 @@ company-level diluted-share series. The normalizer emits
 critically missing and creates no canonical fact. H-share shareholder-count
 coverage and filing-backed interpretation remain unresolved. Live calls remain
 opt-in; tests use an injected client and a frozen fixture.
+
+### Phase 2.39 — BSE margin-detail raw acquisition contract (COMPLETE)
+
+The mapping review now covers the current documented Beijing Stock Exchange
+`stock_margin_detail_bse` endpoint under the existing `MARGIN_TRADING`
+category. The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+defines an exact `date` in `YYYYMMDD` form and a full BSE security universe
+with explicit security code/name, financing balances and financing/short-sale
+quantities. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_margin_bse.py)
+passes the requested date to the BSE detail request, paginates the published
+response and returns the documented columns.
+
+The provider supports Beijing A-share identifiers, passes the exact requested
+date, validates every returned security code, filters the universe to the
+requested listing and retains the matching row with endpoint, request-date and
+row-count provenance. The documented BSE rows do not contain a row-level
+observation date, so the request date is preserved as the binding observation
+boundary in metadata rather than added to the opaque payload.
+
+The response describes customer financing against a security, not the issuer's
+reported financial debt, cash or a settled issuer accounting period. The
+normalizer therefore retains the structured evidence, marks `financial_debt`
+as critically missing and emits `AKSHARE_MARGIN_TRADING_RAW_ONLY`; it creates
+no canonical debt, cash, leverage, margin or valuation fact. Market-level
+margin summaries and filing-backed interpretation remain unresolved. Live
+calls remain opt-in; tests use an injected client and a frozen fixture.
 
 ### Future Phase 2 deliverables
 
@@ -1199,7 +1225,7 @@ Phase 2 is active. Phase 1 remains frozen: changes to formulas, hard-gate
 semantics, schemas or `strict-v1` thresholds require a separately reviewed,
 versioned change.
 
-Phase 2.38 completes the next documented structured-data boundary while
+Phase 2.39 completes the next documented structured-data boundary while
 keeping share-change, repurchase and rights-issue period, status, unit and
 economic-scope questions unresolved, and keeping ownership-pledge holder,
 governance and economic-scope questions unresolved. The A-share
@@ -1286,13 +1312,13 @@ filters the mixed universe by explicit code plus `cn`/`hk` market while
 retaining all matching agency/quarter rows; no canonical ESG, governance,
 financial or valuation fact is admitted.
 
-The documented SSE and SZSE margin-detail responses are retained under
+The documented SSE, SZSE and BSE margin-detail responses are retained under
 `AKSHARE_MARGIN_TRADING_RAW_ONLY` because their security-level investor
 financing balances, quantities and transaction flows do not establish issuer
 financial debt, cash, leverage or a canonical margin fact; `financial_debt`
 remains critically missing. The SSE response carries its exact observation
-date in each row, while the documented SZSE response binds the exact request
-date only through the request and response metadata; neither is an issuer
+date in each row, while the documented SZSE and BSE responses bind the exact
+request date only through the request and response metadata; none is an issuer
 accounting period.
 
 The documented A-share external-guarantee response is retained under

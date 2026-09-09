@@ -14,7 +14,7 @@ slices, including the restricted-share-release view, the A-share
 risk-warning-status, trading-suspension, main-shareholder and shareholder-count
 raw slices, the H-share financial-indicator raw slice, the H-share
 latest-indicator raw slice, the A-share goodwill-impairment detail raw slice,
-the SSE/SZSE margin-detail raw slices, the A-share individual ownership-pledge
+the SSE/SZSE/BSE margin-detail raw slices, the A-share individual ownership-pledge
 detail view, the A-share CNINFO equity-mortgage view and A-share
 company-litigation raw slice.
 Upstream column names are handled in this module and are never passed to the
@@ -63,9 +63,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "38"
+AKSHARE_ADAPTER_VERSION = "39"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "39"
+AKSHARE_MAPPING_VERSION = "40"
 
 
 class ListingMarket(StrEnum):
@@ -164,6 +164,7 @@ _SOURCE_URIS = {
     "stock_esg_rate_sina": "https://finance.sina.com.cn/esg/grade.shtml",
     "stock_margin_detail_sse": "http://www.sse.com.cn/market/othersdata/margin/detail/",
     "stock_margin_detail_szse": "https://www.szse.cn/disclosure/margin/margin/index.html",
+    "stock_margin_detail_bse": "https://www.bse.cn/disclosure/rzrq_trans_list.html",
 }
 
 _NO_ARGUMENT_ENDPOINTS = frozenset(
@@ -217,8 +218,22 @@ _FINANCIAL_INDICATORS_CHOICES = {
 }
 
 _MARGIN_TRADING_ENDPOINTS = frozenset(
-    {"stock_margin_detail_sse", "stock_margin_detail_szse"}
+    {
+        "stock_margin_detail_sse",
+        "stock_margin_detail_szse",
+        "stock_margin_detail_bse",
+    }
 )
+_MARGIN_TRADING_ENDPOINT_PREFIXES = {
+    "stock_margin_detail_sse": "SH",
+    "stock_margin_detail_szse": "SZ",
+    "stock_margin_detail_bse": "BJ",
+}
+_MARGIN_TRADING_MARKET_NAMES = {
+    "SH": "Shanghai",
+    "SZ": "Shenzhen",
+    "BJ": "Beijing",
+}
 
 _DIVIDEND_SNAPSHOT_PARAMETER_NAMES = frozenset({"date"})
 _H_DIVIDEND_DETAIL_PARAMETER_NAMES = frozenset({"view"})
@@ -423,11 +438,11 @@ class AKShareProvider(StructuredDataProvider):
             )
         if (
             request.category is DataCategory.MARGIN_TRADING
-            and listing.canonical_id[:2] not in {"SH", "SZ"}
+            and listing.canonical_id[:2] not in {"SH", "SZ", "BJ"}
         ):
             raise ProviderRequestError(
-                "the AKShare margin-trading detail endpoints support Shanghai and "
-                "Shenzhen A-share listings only",
+                "the AKShare margin-trading detail endpoints support Shanghai, "
+                "Shenzhen and Beijing A-share listings only",
                 provider=self.identity,
                 request=request,
                 retryable=False,
@@ -1537,18 +1552,18 @@ class AKShareNormalizer:
                 missing_fields.add("governance_risk_level")
                 normalizer_flags.add("AKSHARE_ESG_RATINGS_RAW_ONLY")
             elif record.request.category is DataCategory.MARGIN_TRADING:
-                if listing.canonical_id[:2] not in {"SH", "SZ"}:
+                if listing.canonical_id[:2] not in {"SH", "SZ", "BJ"}:
                     raise ProviderNormalizationError(
-                        "AKShare margin-trading raw slices support Shanghai and "
-                        "Shenzhen A-share listings only"
+                        "AKShare margin-trading raw slices support Shanghai, "
+                        "Shenzhen and Beijing A-share listings only"
                     )
                 endpoint_name = record.response_metadata.get("endpoint")
                 if endpoint_name not in _MARGIN_TRADING_ENDPOINTS:
                     raise ProviderNormalizationError(
                         "AKShare margin-trading record must come from a documented "
-                        "SSE or SZSE detail endpoint"
+                        "SSE, SZSE or BSE detail endpoint"
                     )
-                expected_prefix = "SH" if endpoint_name == "stock_margin_detail_sse" else "SZ"
+                expected_prefix = _MARGIN_TRADING_ENDPOINT_PREFIXES[endpoint_name]
                 if listing.canonical_id[:2] != expected_prefix:
                     raise ProviderNormalizationError(
                         f"AKShare {endpoint_name} record does not support "
@@ -2314,7 +2329,7 @@ class AKShareNormalizer:
             )
         if "AKSHARE_MARGIN_TRADING_RAW_ONLY" in normalizer_flags:
             notes += (
-                " The documented SSE/SZSE margin-detail response is retained as raw "
+                " The documented SSE/SZSE/BSE margin-detail response is retained as raw "
                 "evidence only: security-level financing balances, quantities and "
                 "transaction flows do not establish issuer financial debt, cash or "
                 "leverage facts."
@@ -2497,6 +2512,8 @@ def _endpoint_candidates(
             return ("stock_margin_detail_sse",)
         if market is ListingMarket.A and listing.canonical_id.startswith("SZ"):
             return ("stock_margin_detail_szse",)
+        if market is ListingMarket.A and listing.canonical_id.startswith("BJ"):
+            return ("stock_margin_detail_bse",)
         return ()
     if category is DataCategory.TRADING_SUSPENSIONS:
         if market is ListingMarket.A:
@@ -2899,8 +2916,8 @@ def _margin_trading_kwargs(
             request=request,
             retryable=False,
         )
-    expected_prefix = "SH" if endpoint_name == "stock_margin_detail_sse" else "SZ"
-    market_name = "Shanghai" if expected_prefix == "SH" else "Shenzhen"
+    expected_prefix = _MARGIN_TRADING_ENDPOINT_PREFIXES[endpoint_name]
+    market_name = _MARGIN_TRADING_MARKET_NAMES[expected_prefix]
     if listing.canonical_id[:2] != expected_prefix:
         raise ProviderRequestError(
             f"the AKShare {endpoint_name} supports {market_name} A-share listings only",
@@ -4192,7 +4209,7 @@ def _row_code(row: Mapping[str, JSONValue], market: ListingMarket) -> str | None
 
 
 def _margin_trading_row_code(row: Mapping[str, JSONValue]) -> str | None:
-    """Read the documented SSE/SZSE margin-detail security code."""
+    """Read the documented SSE/SZSE/BSE margin-detail security code."""
 
     for key in _MARGIN_TRADING_CODE_FIELDS:
         if key in row:
@@ -4493,7 +4510,7 @@ def _validate_margin_trading_provider_rows(
     provider: ProviderIdentity,
     request: ProviderRequest,
 ) -> None:
-    """Validate explicit security identity and the requested observation date."""
+    """Validate margin security identity and the requested observation date."""
 
     for row in rows:
         if _margin_trading_row_code(row) is None:
@@ -4531,7 +4548,7 @@ def _select_margin_trading_rows(
     rows: Sequence[Mapping[str, JSONValue]],
     listing: _ListingRef,
 ) -> list[dict[str, JSONValue]]:
-    """Filter an SSE or SZSE security universe to the requested listing."""
+    """Filter an SSE, SZSE or BSE security universe to the requested listing."""
 
     selected: list[dict[str, JSONValue]] = []
     for row in rows:
