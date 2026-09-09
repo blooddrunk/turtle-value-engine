@@ -275,6 +275,20 @@ preserved only in request/response metadata. Security-level investor financing
 is not issuer debt, cash or leverage, so the normalizer emits the existing
 `AKSHARE_MARGIN_TRADING_RAW_ONLY` boundary without canonical facts. Market-level
 margin summaries remain unresolved.
+Phase 2.40 adds the documented A/H `stock_hsgt_individual_em` endpoint under
+the existing `SHAREHOLDER_HOLDINGS` category, selected only with the explicit
+`view=hsgt_individual` request. The [AKShare stock-data
+documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and [official
+implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hsgt_em.py)
+define symbol-scoped historical north-/southbound investor-holding rows for
+A/H listings. The provider preserves the dated quantities, market values,
+ratios and market-specific change fields as raw evidence; because the official
+response drops row-level security identity, the request scope is retained
+without inventing a code. The normalizer emits
+`AKSHARE_HSGT_INDIVIDUAL_HOLDINGS_RAW_ONLY`, leaves
+`governance_risk_level` critically missing and creates no ownership,
+concentration, share-count, dilution, buyback, issuance, return or valuation
+fact.
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

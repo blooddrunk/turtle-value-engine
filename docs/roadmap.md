@@ -1008,6 +1008,36 @@ no canonical debt, cash, leverage, margin or valuation fact. Market-level
 margin summaries and filing-backed interpretation remain unresolved. Live
 calls remain opt-in; tests use an injected client and a frozen fixture.
 
+### Phase 2.40 — A/H HSGT individual-holdings raw acquisition contract (COMPLETE)
+
+The mapping review now covers the current documented AKShare Eastmoney
+`stock_hsgt_individual_em` endpoint under the existing
+`SHAREHOLDER_HOLDINGS` category. The [AKShare stock-data
+documentation](https://akshare.akfamily.xyz/data/stock/stock.html) defines a
+symbol input supporting A-share and H-share listings and publishes dated
+holdings, closing price, holding quantity, holding market value, holding-ratio
+and change fields. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hsgt_em.py)
+dispatches six-digit symbols to the A-share response and five-digit symbols to
+the H-share response; it removes the row-level security identity from the
+published output, so the request scope is the retained entity boundary.
+
+The provider selects this endpoint only for the explicit request
+`view=hsgt_individual`, passes the canonical six- or five-digit listing code,
+validates each row's holding date and any optional returned identity, and
+retains the complete symbol-scoped response with listing and row-count
+provenance. The data is an investor north-/southbound holding snapshot rather
+than a complete beneficial-ownership record or company share-capital series.
+Its quantities, market values, ratios and change fields therefore do not
+establish beneficial control, governance severity, shareholder concentration,
+issuer buyback/issuance cash or a fully diluted share count.
+
+The normalizer emits `AKSHARE_HSGT_INDIVIDUAL_HOLDINGS_RAW_ONLY`, marks
+`governance_risk_level` as critically missing and creates no canonical
+ownership, concentration, share-count, dilution, buyback, issuance, return or
+valuation fact. The documented dataset is bounded by its published coverage
+and its A/H field conventions are not collapsed into one canonical metric.
+Live calls remain opt-in; tests use injected clients and frozen A/H fixtures.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -1017,7 +1047,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.38 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.40 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -1225,7 +1255,7 @@ Phase 2 is active. Phase 1 remains frozen: changes to formulas, hard-gate
 semantics, schemas or `strict-v1` thresholds require a separately reviewed,
 versioned change.
 
-Phase 2.39 completes the next documented structured-data boundary while
+Phase 2.40 completes the next documented structured-data boundary while
 keeping share-change, repurchase and rights-issue period, status, unit and
 economic-scope questions unresolved, and keeping ownership-pledge holder,
 governance and economic-scope questions unresolved. The A-share
@@ -1320,6 +1350,17 @@ remains critically missing. The SSE response carries its exact observation
 date in each row, while the documented SZSE and BSE responses bind the exact
 request date only through the request and response metadata; none is an issuer
 accounting period.
+
+The documented A/H `stock_hsgt_individual_em` response is retained under
+`AKSHARE_HSGT_INDIVIDUAL_HOLDINGS_RAW_ONLY` because its symbol-scoped
+north-/southbound investor holdings, quantities, market values, ratios and
+dated changes do not establish beneficial control, governance severity,
+shareholder concentration, issuer corporate-action cash or a company-level
+diluted-share series. Its official implementation removes row-level security
+identity from the published output, so the explicit request scope is retained
+without inventing a row-level listing code. `governance_risk_level` remains
+critically missing and no ownership, share, buyback, issuance, return or
+valuation fact is emitted.
 
 The documented A-share external-guarantee response is retained under
 `AKSHARE_EXTERNAL_GUARANTEES_RAW_ONLY` because its date-range aggregate,

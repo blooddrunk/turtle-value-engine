@@ -1018,6 +1018,42 @@ and creates no canonical debt, cash, margin, leverage or valuation fact.
 | `融券卖出量`, `融券余量` | Raw security-lending quantities documented in shares; they do not establish issuer shares, dilution, debt or valuation. |
 | request `date` | Exact BSE observation boundary retained in request and response metadata; it is not an issuer accounting period or a fabricated row field. |
 
+## Phase 2.40 A/H HSGT individual-holdings raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_hsgt_individual_em` as an Eastmoney endpoint accepting a
+`symbol` for either an A-share or H-share listing. It publishes a historical
+holding-date series with closing price, change percentage, holding quantity,
+holding market value, holding ratio and market-specific change fields. The
+[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hsgt_em.py)
+dispatches six-digit symbols to the A-share path and five-digit symbols to the
+H-share path, then drops the row-level security identity from the returned
+columns.
+
+The provider selects this endpoint only for an explicit
+`SHAREHOLDER_HOLDINGS` request with `view=hsgt_individual`, passes the
+canonical listing code and retains the complete symbol-scoped response. It
+validates each holding date and any optional returned identity, while the
+request scope remains the binding entity boundary. The data describes
+north-/southbound investor holdings, not complete beneficial ownership or a
+company share-capital series. The normalizer emits
+`AKSHARE_HSGT_INDIVIDUAL_HOLDINGS_RAW_ONLY`, marks
+`governance_risk_level` as critically missing and creates no canonical fact.
+
+| Raw upstream item | Phase 2 treatment |
+| --- | --- |
+| `持股日期` | Validated historical observation date; it is not silently treated as a statement, ownership or governance period. |
+| `当日收盘价`, `当日涨跌幅` | Raw market context; this slice does not replace the canonical quote/history categories. |
+| `持股数量`, `持股市值`, `持股数量占A股百分比` | Raw investor-position quantity/value/ratio; no beneficial-control, concentration or diluted-share fact is inferred. |
+| A-share `今日增持股数`, `今日增持资金`, `今日持股市值变化` | Raw daily change fields; they are not issuer buyback, issuance, shareholder-return or cash-flow facts. |
+| H-share `持股市值变化-1日`, `持股市值变化-5日`, `持股市值变化-10日` | Raw lookback changes; they are not collapsed into a common A/H return or ownership metric. |
+| request `symbol` and `view` | Listing and endpoint-selection scope retained in the request/evidence provenance; no row-level listing code is invented after the official implementation removes it. |
+
+The slice deliberately leaves `governance_risk_level` unresolved. Investor
+holding quantities, market values, ratios and changes do not establish
+beneficial control, shareholder concentration, issuer corporate-action cash or
+a company-level diluted-share series.
+
 ## Eligibility, identity and market context
 
 | Normalized field | Status | Boundary note |

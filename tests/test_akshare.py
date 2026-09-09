@@ -343,6 +343,18 @@ class FakeAKShare:
             date=date,
         )
 
+    def stock_hsgt_individual_em(self, *, symbol: str):
+        fixture = (
+            "a_hsgt_individual_holdings.json"
+            if len(symbol) == 6
+            else "h_hsgt_individual_holdings.json"
+        )
+        return self._return(
+            "stock_hsgt_individual_em",
+            _fixture(fixture),
+            symbol=symbol,
+        )
+
 
 class OfficialBalanceAKShare:
     __version__ = "fixture-akshare-official-balance"
@@ -421,8 +433,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "39"
-    assert AKSHARE_MAPPING_VERSION == "40"
+    assert provider.identity.provider_version == "40"
+    assert AKSHARE_MAPPING_VERSION == "41"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -760,6 +772,203 @@ def test_main_shareholder_fetch_uses_documented_listing_scoped_endpoint():
         "https://vip.stock.finance.sina.com.cn/corp/go.php/"
         "vCI_StockHolder/stockid/600004.phtml"
     )
+
+
+def test_hsgt_individual_holdings_fetch_uses_explicit_view_for_a_and_h_listings():
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    a_record = provider.fetch(
+        _request(
+            DataCategory.SHAREHOLDER_HOLDINGS,
+            "SH600000",
+            {"view": "hsgt_individual"},
+        )
+    )
+    h_record = provider.fetch(
+        _request(
+            DataCategory.SHAREHOLDER_HOLDINGS,
+            "HK00700",
+            {"view": "hsgt_individual"},
+        )
+    )
+
+    assert a_record.raw_payload == _fixture("a_hsgt_individual_holdings.json")
+    assert h_record.raw_payload == _fixture("h_hsgt_individual_holdings.json")
+    assert fake.calls == [
+        ("stock_hsgt_individual_em", {"symbol": "600000"}),
+        ("stock_hsgt_individual_em", {"symbol": "00700"}),
+    ]
+    assert a_record.response_metadata["endpoint"] == "stock_hsgt_individual_em"
+    assert a_record.response_metadata["upstream_row_count"] == 2
+    assert a_record.response_metadata["entity_row_count"] == 2
+    assert a_record.response_metadata["entity_rows_selected"] is True
+    assert a_record.response_metadata["listing_scoped_request"] is True
+    assert a_record.response_metadata["snapshot_scope"] == "historical_published_dataset"
+    assert a_record.response_metadata["observation_date_field"] == "持股日期"
+    assert h_record.response_metadata["market"] == "H"
+    assert h_record.response_metadata["listing_code"] == "00700"
+    assert h_record.source_uri == "https://data.eastmoney.com/hsgt/StockHdDetail/002008.html"
+
+
+def test_hsgt_individual_holdings_request_requires_explicit_view_and_rejects_extra_parameters():
+    fake = FakeAKShare()
+    provider = _provider(fake)
+
+    with pytest.raises(ProviderRequestError, match="A-share listings only"):
+        provider.fetch(_request(DataCategory.SHAREHOLDER_HOLDINGS, "HK00700"))
+    with pytest.raises(ProviderRequestError, match="requires view='hsgt_individual'"):
+        provider.fetch(
+            _request(
+                DataCategory.SHAREHOLDER_HOLDINGS,
+                "SH600000",
+                {"view": "unknown"},
+            )
+        )
+    with pytest.raises(
+        ProviderRequestError,
+        match="unsupported AKShare HSGT individual-holdings parameter",
+    ):
+        provider.fetch(
+            _request(
+                DataCategory.SHAREHOLDER_HOLDINGS,
+                "HK00700",
+                {"view": "hsgt_individual", "date": "20240816"},
+            )
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("missing_date", "without a holding date"),
+        ("invalid_date", "invalid HSGT individual-holdings date"),
+        ("wrong_entity", "HSGT individual-holdings row entity"),
+    ],
+)
+def test_hsgt_individual_holdings_response_validates_dates_and_optional_identity(
+    mutation: str,
+    match: str,
+):
+    class InvalidRows(FakeAKShare):
+        def stock_hsgt_individual_em(self, *, symbol: str):
+            rows = _fixture("a_hsgt_individual_holdings.json")
+            if mutation == "missing_date":
+                rows[0].pop("持股日期")
+            elif mutation == "invalid_date":
+                rows[0]["持股日期"] = "not-a-date"
+            elif mutation == "wrong_entity":
+                rows[0]["证券代码"] = "000001"
+            return self._return("stock_hsgt_individual_em", rows, symbol=symbol)
+
+    with pytest.raises(ProviderResponseError, match=match):
+        _provider(InvalidRows()).fetch(
+            _request(
+                DataCategory.SHAREHOLDER_HOLDINGS,
+                "SH600000",
+                {"view": "hsgt_individual"},
+            )
+        )
+
+
+@pytest.mark.parametrize(
+    ("listing", "fixture", "analysis_id"),
+    [
+        ("SH600000", "a_hsgt_individual_holdings.json", "a-hsgt-raw-only"),
+        ("HK00700", "h_hsgt_individual_holdings.json", "h-hsgt-raw-only"),
+    ],
+)
+def test_hsgt_individual_holdings_are_retained_as_raw_evidence_without_canonical_facts(
+    listing: str,
+    fixture: str,
+    analysis_id: str,
+):
+    record = _provider().fetch(
+        _request(
+            DataCategory.SHAREHOLDER_HOLDINGS,
+            listing,
+            {"view": "hsgt_individual"},
+        )
+    )
+
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id=analysis_id,
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company(listing),
+    )
+
+    assert record.raw_payload == _fixture(fixture)
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_HSGT_INDIVIDUAL_HOLDINGS_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == [
+        "governance_risk_level",
+    ]
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "investor holding quantities" in normalized.data_quality.notes
+    assert "diluted-share series" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+def test_hsgt_individual_holdings_normalizer_rejects_invalid_replayed_dates():
+    record = _provider().fetch(
+        _request(
+            DataCategory.SHAREHOLDER_HOLDINGS,
+            "HK00700",
+            {"view": "hsgt_individual"},
+        )
+    )
+    payload = [dict(row) for row in record.raw_payload]
+    payload[0]["持股日期"] = "not-a-date"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=record.source_uri,
+        response_metadata=record.response_metadata,
+    )
+
+    with pytest.raises(
+        ProviderNormalizationError,
+        match="HSGT individual-holdings row has an invalid holding date",
+    ):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="invalid-hsgt-date",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company("HK00700"),
+        )
+
+
+def test_hsgt_individual_holdings_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.SHAREHOLDER_HOLDINGS,
+        "HK00700",
+        {"view": "hsgt_individual"},
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [
+        ("stock_hsgt_individual_em", {"symbol": "00700"}),
+    ]
 
 
 def test_main_shareholder_request_is_a_share_only_and_accepts_no_parameters():

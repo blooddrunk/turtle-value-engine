@@ -12,7 +12,8 @@ disclosure notice metadata, corporate-action, external-guarantee,
 ownership-pledge, SSE/SZSE/BSE insider-share-change and A-share share-capital
 slices, including the restricted-share-release view, the A-share
 risk-warning-status, trading-suspension, main-shareholder and shareholder-count
-raw slices, the H-share financial-indicator raw slice, the H-share
+raw slices, the A/H HSGT individual-holdings raw slice, the H-share
+financial-indicator raw slice, the H-share
 latest-indicator raw slice, the A-share goodwill-impairment detail raw slice,
 the SSE/SZSE/BSE margin-detail raw slices, the A-share individual ownership-pledge
 detail view, the A-share CNINFO equity-mortgage view and A-share
@@ -63,9 +64,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "39"
+AKSHARE_ADAPTER_VERSION = "40"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "40"
+AKSHARE_MAPPING_VERSION = "41"
 
 
 class ListingMarket(StrEnum):
@@ -143,6 +144,7 @@ _SOURCE_URIS = {
     "stock_fhps_em": "https://data.eastmoney.com/yjfp/",
     "stock_hk_dividend_payout_em": "https://emweb.securities.eastmoney.com/PC_HKF10/pages/home/index.html",
     "stock_hk_fhpx_detail_ths": "https://stockpage.10jqka.com.cn/HK0700/bonus/",
+    "stock_hsgt_individual_em": "https://data.eastmoney.com/hsgt/StockHdDetail/002008.html",
     "stock_zh_a_disclosure_report_cninfo": "http://www.cninfo.com.cn/new/commonUrl/pageOfSearch?url=disclosure/list/search",
     "stock_repurchase_em": "https://data.eastmoney.com/gphg/hglist.html",
     "stock_zh_a_gbjg_em": "https://emweb.securities.eastmoney.com/pc_hsf10/pages/index.html#/gbjg",
@@ -259,6 +261,8 @@ _OWNERSHIP_PLEDGE_DETAIL_VIEW = "individual_pledge_detail"
 _OWNERSHIP_PLEDGE_EQUITY_MORTGAGE_PARAMETER_NAMES = frozenset({"date", "view"})
 _OWNERSHIP_PLEDGE_EQUITY_MORTGAGE_VIEW = "equity_mortgage"
 _OWNERSHIP_PLEDGE_EQUITY_MORTGAGE_DEFAULT_DATE = "20210930"
+_HSGT_INDIVIDUAL_PARAMETER_NAMES = frozenset({"view"})
+_HSGT_INDIVIDUAL_VIEW = "hsgt_individual"
 _OWNERSHIP_PLEDGE_DETAIL_DATE_FIELDS = (
     "公告日期",
     "质押开始日期",
@@ -504,10 +508,12 @@ class AKShareProvider(StructuredDataProvider):
             )
         if (
             request.category is DataCategory.SHAREHOLDER_HOLDINGS
-            and listing.market is not ListingMarket.A
+            and listing.market is ListingMarket.H
+            and request.parameters.get("view") != _HSGT_INDIVIDUAL_VIEW
         ):
             raise ProviderRequestError(
-                "the AKShare shareholder-holdings endpoints support A-share listings only",
+                "the AKShare shareholder-holdings endpoints support A-share listings only "
+                "unless view='hsgt_individual' selects the documented A/H endpoint",
                 provider=self.identity,
                 request=request,
                 retryable=False,
@@ -989,7 +995,20 @@ class AKShareProvider(StructuredDataProvider):
             response_metadata["listing_scoped_request"] = True
         elif request.category is DataCategory.SHAREHOLDER_HOLDINGS:
             rows = _table_rows(payload, provider=self.identity, request=request)
-            if endpoint.name == "stock_hold_num_cninfo":
+            if endpoint.name == "stock_hsgt_individual_em":
+                _validate_hsgt_individual_provider_rows(
+                    rows,
+                    listing,
+                    provider=self.identity,
+                    request=request,
+                )
+                response_metadata["upstream_row_count"] = len(rows)
+                response_metadata["entity_row_count"] = len(rows)
+                response_metadata["entity_rows_selected"] = True
+                response_metadata["listing_scoped_request"] = True
+                response_metadata["snapshot_scope"] = "historical_published_dataset"
+                response_metadata["observation_date_field"] = "持股日期"
+            elif endpoint.name == "stock_hold_num_cninfo":
                 requested_date = _parse_shareholder_count_date_parameter(
                     kwargs["date"],
                     request=request,
@@ -1262,6 +1281,9 @@ class AKShareProvider(StructuredDataProvider):
             dividend_snapshot_date_requested="date" in request.parameters,
             dividend_detail_requested="view" in request.parameters,
             shareholder_count_date_requested="date" in request.parameters,
+            shareholder_hsgt_individual_requested=(
+                "view" in request.parameters
+            ),
         )
         for name in candidates:
             function = getattr(client, name, None)
@@ -2067,12 +2089,23 @@ class AKShareNormalizer:
                 missing_fields.add("governance_risk_level")
                 normalizer_flags.add("AKSHARE_INSIDER_SHARE_CHANGE_RAW_ONLY")
             elif record.request.category is DataCategory.SHAREHOLDER_HOLDINGS:
-                if listing.market is not ListingMarket.A:
-                    raise ProviderNormalizationError(
-                        "AKShare shareholder-holdings raw slices support A-share listings only"
-                    )
                 endpoint_name = record.response_metadata.get("endpoint")
-                if endpoint_name == "stock_hold_num_cninfo":
+                if endpoint_name == "stock_hsgt_individual_em":
+                    try:
+                        _shareholder_holdings_kwargs(
+                            "stock_hsgt_individual_em",
+                            listing,
+                            record.request,
+                        )
+                    except ProviderRequestError as exc:
+                        raise ProviderNormalizationError(str(exc)) from exc
+                    _validate_hsgt_individual_normalizer_rows(rows, listing)
+                    normalizer_flags.add("AKSHARE_HSGT_INDIVIDUAL_HOLDINGS_RAW_ONLY")
+                elif endpoint_name == "stock_hold_num_cninfo":
+                    if listing.market is not ListingMarket.A:
+                        raise ProviderNormalizationError(
+                            "AKShare shareholder-count raw slice supports A-share listings only"
+                        )
                     try:
                         observation_date = _parse_shareholder_count_date_parameter(
                             record.request.parameters.get("date"),
@@ -2087,12 +2120,17 @@ class AKShareNormalizer:
                     )
                     normalizer_flags.add("AKSHARE_SHAREHOLDER_COUNTS_RAW_ONLY")
                 elif endpoint_name == "stock_main_stock_holder":
+                    if listing.market is not ListingMarket.A:
+                        raise ProviderNormalizationError(
+                            "AKShare main-shareholder raw slice supports A-share listings only"
+                        )
                     _validate_shareholder_holdings_normalizer_rows(rows, listing)
                     normalizer_flags.add("AKSHARE_MAIN_SHAREHOLDERS_RAW_ONLY")
                 else:
                     raise ProviderNormalizationError(
                         "AKShare shareholder-holdings record must come from "
-                        "stock_main_stock_holder or stock_hold_num_cninfo"
+                        "stock_hsgt_individual_em, stock_main_stock_holder or "
+                        "stock_hold_num_cninfo"
                     )
                 # These tables describe shareholder context, but do not
                 # establish beneficial control, a governance severity, a
@@ -2151,6 +2189,9 @@ class AKShareNormalizer:
             "special-treatment assertion. Main-shareholder records remain raw "
             "structured evidence because holder rows do not establish beneficial "
             "control, governance severity or a company-level diluted-share series. "
+            "HSGT individual-holdings records remain raw structured evidence because "
+            "their investor holding snapshots do not establish beneficial control, "
+            "governance severity or a company-level diluted-share series. "
             "ESG-rating records remain raw structured evidence because agencies, "
             "rating scales and provider quarters do not establish a canonical "
             "governance-risk judgment or Business Quality assessment. "
@@ -2341,6 +2382,13 @@ class AKShareNormalizer:
                 "dates do not establish beneficial control, governance severity or "
                 "a company-level diluted-share series."
             )
+        if "AKSHARE_HSGT_INDIVIDUAL_HOLDINGS_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented A/H HSGT individual-holdings response is retained as "
+                "raw evidence only: its investor holding quantities, market values, "
+                "ratios and dates do not establish beneficial control, governance "
+                "severity or a company-level diluted-share series."
+            )
         if "AKSHARE_SHAREHOLDER_COUNTS_RAW_ONLY" in normalizer_flags:
             notes += (
                 " The documented A-share shareholder-count response is retained as "
@@ -2452,6 +2500,7 @@ _ESG_RATING_CODE_FIELDS = (
 _ESG_RATING_MARKET_FIELDS = ("交易市场", "market")
 _SHAREHOLDER_HOLDINGS_DATE_FIELDS = ("截至日期", "公告日期")
 _SHAREHOLDER_COUNT_DATE_FIELDS = ("变动日期",)
+_HSGT_INDIVIDUAL_DATE_FIELDS = ("持股日期", "HOLD_DATE", "date")
 _TRADING_SUSPENSIONS_DATE_FIELDS = ("停牌时间", "停牌截止时间", "预计复牌时间")
 _RESTRICTED_RELEASE_DATE_FIELDS = (
     "解禁时间",
@@ -2491,6 +2540,7 @@ def _endpoint_candidates(
     dividend_snapshot_date_requested: bool = False,
     dividend_detail_requested: bool = False,
     shareholder_count_date_requested: bool = False,
+    shareholder_hsgt_individual_requested: bool = False,
 ) -> tuple[str, ...]:
     market = listing.market
     if category is DataCategory.COMPANY_METADATA:
@@ -2635,6 +2685,10 @@ def _endpoint_candidates(
             return ("stock_share_hold_change_bse",)
         return ()
     if category is DataCategory.SHAREHOLDER_HOLDINGS:
+        if market is ListingMarket.H:
+            return ("stock_hsgt_individual_em",)
+        if shareholder_hsgt_individual_requested:
+            return ("stock_hsgt_individual_em",)
         if market is ListingMarket.A:
             if shareholder_count_date_requested:
                 return ("stock_hold_num_cninfo",)
@@ -3360,6 +3414,23 @@ def _shareholder_holdings_kwargs(
     listing: _ListingRef,
     request: ProviderRequest,
 ) -> dict[str, object]:
+    if endpoint_name == "stock_hsgt_individual_em":
+        unknown = sorted(set(request.parameters) - _HSGT_INDIVIDUAL_PARAMETER_NAMES)
+        if unknown:
+            raise ProviderRequestError(
+                "unsupported AKShare HSGT individual-holdings parameter(s): "
+                + ", ".join(unknown),
+                request=request,
+                retryable=False,
+            )
+        if request.parameters.get("view") != _HSGT_INDIVIDUAL_VIEW:
+            raise ProviderRequestError(
+                "the AKShare HSGT individual-holdings endpoint requires "
+                f"view={_HSGT_INDIVIDUAL_VIEW!r}",
+                request=request,
+                retryable=False,
+            )
+        return {"symbol": listing.code}
     if endpoint_name == "stock_hold_num_cninfo":
         if listing.market is not ListingMarket.A:
             raise ProviderRequestError(
@@ -5758,6 +5829,41 @@ def _validate_shareholder_holdings_provider_rows(
                     )
 
 
+def _validate_hsgt_individual_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> None:
+    """Validate dates and any optional identity in the A/H HSGT response."""
+
+    for row in rows:
+        row_code = _row_code(row, listing.market)
+        if row_code is not None and row_code != listing.code:
+            raise ProviderResponseError(
+                f"AKShare returned HSGT individual-holdings row entity {row_code!r} "
+                f"for requested listing {listing.canonical_id!r}",
+                provider=provider,
+                request=request,
+            )
+        found, raw_date = _lookup(row, _HSGT_INDIVIDUAL_DATE_FIELDS)
+        if not found or _text_value(raw_date) in _MISSING_TEXT:
+            raise ProviderResponseError(
+                f"AKShare returned an HSGT individual-holdings row without a holding "
+                f"date for {request.entity_id!r}",
+                provider=provider,
+                request=request,
+            )
+        if _parse_date_value(raw_date) is None:
+            raise ProviderResponseError(
+                f"AKShare returned an invalid HSGT individual-holdings date for "
+                f"{request.entity_id!r}",
+                provider=provider,
+                request=request,
+            )
+
+
 def _validate_shareholder_count_provider_rows(
     rows: Sequence[Mapping[str, JSONValue]],
     listing: _ListingRef,
@@ -5815,6 +5921,30 @@ def _validate_shareholder_holdings_normalizer_rows(
                     raise ProviderNormalizationError(
                         f"main-shareholder row has an invalid date in {field!r}"
                     )
+
+
+def _validate_hsgt_individual_normalizer_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+) -> None:
+    """Keep replayed A/H HSGT rows inside their listing/date request scope."""
+
+    for row in rows:
+        row_code = _row_code(row, listing.market)
+        if row_code is not None and row_code != listing.code:
+            raise ProviderNormalizationError(
+                f"HSGT individual-holdings row entity {row_code!r} does not match "
+                f"requested listing {listing.canonical_id!r}"
+            )
+        found, raw_date = _lookup(row, _HSGT_INDIVIDUAL_DATE_FIELDS)
+        if not found or _text_value(raw_date) in _MISSING_TEXT:
+            raise ProviderNormalizationError(
+                "HSGT individual-holdings row has no exact holding date"
+            )
+        if _parse_date_value(raw_date) is None:
+            raise ProviderNormalizationError(
+                "HSGT individual-holdings row has an invalid holding date"
+            )
 
 
 def _validate_shareholder_count_normalizer_rows(
