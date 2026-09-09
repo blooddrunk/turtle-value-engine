@@ -24,12 +24,12 @@ Exit criteria:
 
 ---
 
-## Phase 1 — Deterministic calculation engine (FIRST IMPLEMENTATION TARGET)
+## Phase 1 — Deterministic calculation engine (COMPLETE)
 
 No network, no LLM, no live market data.
 
-Current status: the deterministic offline pipeline and `tve analyze` CLI are
-implemented and tested. CDC, net cash, Through Return, valuation tiers,
+Status: complete. The deterministic offline pipeline and `tve analyze` CLI
+are implemented and tested. CDC, net cash, Through Return, valuation tiers,
 offline evidence-backed Business-quality scoring and the fixed hard-gate
 primitives are composed into a schema-valid `CompanyAnalysis`.
 
@@ -121,7 +121,7 @@ For frozen inputs, outputs are reproducible and independent of any LLM.
 
 ---
 
-## Phase 2 — Structured data adapters
+## Phase 2 — Structured data adapters (CURRENT ACTIVE MILESTONE)
 
 Goal: make the deterministic engine usable on real companies without introducing document-reading complexity yet.
 
@@ -136,17 +136,38 @@ BaoStock       -> optional A-share historical/backtest data
 local cache    -> reproducibility and rate-limit protection
 ```
 
-### Deliverables
+### Phase 2.1 — Provider and cache foundation (COMPLETE)
+
+The provider-neutral acquisition boundary, raw-response filesystem cache,
+capability model, error-isolation rules, provider field matrix and CI
+guardrails are now frozen. No live provider is included in this sub-phase.
+
+### Phase 2.2 — First structured provider adapter (NEXT)
+
+Implement one narrowly scoped adapter behind the foundation, beginning with
+read-only A/H quote and history acquisition. Validate its raw records,
+provenance, cache/replay behavior and normalized mapping against frozen
+fixtures before adding financial statement categories. Do not treat the
+adapter as a source for filing-derived classifications listed in the provider
+field matrix.
+
+### Future Phase 2 deliverables
 
 ```text
 src/turtle_value_engine/providers/
   base.py
-  akshare.py
-  tushare.py
-  baostock.py
+  models.py
+  errors.py
+  cache.py
+  normalization.py
+  akshare.py       # future Phase 2.2 adapter
+  tushare.py       # future optional adapter
+  baostock.py      # future optional adapter
 ```
 
-Provider output must map into normalized `Fact` records; provider-specific field names must not leak into calculation modules.
+Provider output must map into normalized `Fact` records through the frozen
+normalization boundary; provider-specific field names must not leak into
+calculation modules.
 
 ### Exit criteria
 
@@ -341,28 +362,14 @@ This is the project's definition of safe “self-evolution.”
 
 ---
 
-# Immediate next task
+# Current milestone
 
-Start **Phase 1 only**.
+Phase 2 is active. Phase 1 remains frozen: changes to formulas, hard-gate
+semantics, schemas or `strict-v1` thresholds require a separately reviewed,
+versioned change.
 
-Technology choice:
-
-- Python 3.11+;
-- `pyproject.toml` package;
-- Pydantic (or equivalent) for runtime models/schema validation;
-- PyYAML for rule profile loading;
-- pytest for tests;
-- Ruff for lint/format;
-- optional Typer for CLI.
-
-Do not add live data sources, LLM dependencies, web frameworks or schedulers until the deterministic core and fixtures pass.
-
-The first milestone is:
-
-```text
-input JSON
-   -> deterministic calculations
-   -> hard gates
-   -> valuation tiers
-   -> CompanyAnalysis JSON
-```
+The exact next task is **Phase 2.2: implement the first read-only AKShare
+quote/history adapter**, with a focused normalization contract and recorded
+live-provider integration tests kept out of ordinary network-independent PR
+CI. Financial-statement mappings should follow only after the quote/history
+boundary is verified.

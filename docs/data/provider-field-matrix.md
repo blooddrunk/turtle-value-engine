@@ -1,0 +1,203 @@
+# Structured Provider Field Matrix
+
+> Status: Phase 2 normalization guardrail
+
+This matrix classifies normalized fields used by the current strict-v1 input
+and gate pipeline. It is an allowlist for what a structured-data adapter may
+automatically normalize. It does not change the frozen JSON Schema or imply
+that every provider has the required coverage.
+
+## Status meanings
+
+| Status | Meaning for a Phase 2 adapter |
+| --- | --- |
+| `STRUCTURED_AUTO` | The provider may emit the field when it reports the same economic value, entity, period and unit unambiguously. |
+| `DERIVED_DETERMINISTIC` | A normalizer or engine-owned projection may derive it from accepted canonical facts using a versioned deterministic rule. A provider must not provide a conflicting calculated value as authoritative. |
+| `REQUIRES_PRIMARY_FILING` | A structured value may be a discovery hint, but the strict normalized fact requires an annual/interim report, exchange filing, formal announcement or equivalent primary disclosure. |
+| `REQUIRES_JUDGMENT` | The field requires economic interpretation or an analyst judgment. It is not an automatic provider fact. |
+| `UNAVAILABLE` | The value is intentionally not produced by the Phase 2 adapter boundary; it remains null or output-only until a later layer exists. |
+
+`STRUCTURED_AUTO` means “reported and unambiguous,” not “authoritative for
+every investment conclusion.” Primary-filing verification can still be
+required by a later policy. A field marked `REQUIRES_PRIMARY_FILING` or
+`REQUIRES_JUDGMENT` must not be fabricated from a similarly named aggregate.
+
+## Eligibility, identity and market context
+
+| Normalized field | Status | Boundary note |
+| --- | --- | --- |
+| `listing_years` | `DERIVED_DETERMINISTIC` | Derive from a verified listing/first-trading date and `as_of`; do not infer from available history length. |
+| `special_treatment` | `STRUCTURED_AUTO` | Exchange/provider status can be imported when the listing and observation date are explicit. |
+| `parent_equity` | `STRUCTURED_AUTO` | Reported parent-attributable equity for the matching period. |
+| `current_price` | `STRUCTURED_AUTO` | Quote for the requested listing and timestamp. |
+| `current_market_cap` | `DERIVED_DETERMINISTIC` | Prefer canonical price × normalized share count; a provider headline market cap is a cross-check, not a replacement. |
+| `listing_equivalent_market_cap` | `DERIVED_DETERMINISTIC` | Derive for the selected listing, including any explicit FX/share mapping. |
+| `actual_aggregate_company_market_cap` | `DERIVED_DETERMINISTIC` | Aggregate A/H listings only under the existing multi-listing contract; never merge listing prices. |
+| `normalized_diluted_economic_shares` | `DERIVED_DETERMINISTIC` | Derive from share-capital facts and corporate actions after entity/class treatment is explicit. |
+
+Company `primary_listing`, `other_listings`, sector and reporting currency are
+identity/context fields, not valuation facts. A sector-specific `special_model`
+classification is `UNAVAILABLE` for automatic Phase 2 inference when it cannot
+be established by a stable policy; it must not be guessed from a provider's
+free-text industry label.
+
+## CDC inputs and diagnostics
+
+| Normalized field | Status | Boundary note |
+| --- | --- | --- |
+| `reported_cfo` | `STRUCTURED_AUTO` | Reported operating cash flow for the exact statement period and entity. |
+| `parent_net_profit` | `STRUCTURED_AUTO` | Parent-attributable net profit for the exact period. |
+| `consolidated_net_profit` | `STRUCTURED_AUTO` | Consolidated net profit for the exact period. |
+| `parent_economic_share` | `DERIVED_DETERMINISTIC` | Derive from explicit parent/consolidated facts only when the ownership basis is compatible. |
+| `cash_interest_paid_total` | `REQUIRES_PRIMARY_FILING` | Cash-versus-accrual and statement classification must be verified from the statement/notes. |
+| `cash_interest_in_cfo` | `REQUIRES_PRIMARY_FILING` | Structured interest expense is not proof of cash-flow classification. |
+| `cash_interest_outside_cfo` | `DERIVED_DETERMINISTIC` | Difference only after the two filing-supported interest facts are accepted. |
+| `non_recurring_operating_inflows` | `REQUIRES_PRIMARY_FILING` | Grants, disposals and other one-offs require line-item/note review. |
+| `operating_outflows_misclassified_outside_cfo` | `REQUIRES_PRIMARY_FILING` | Requires a filing-supported economic reclassification. |
+| `ppe_purchase_cash` | `STRUCTURED_AUTO` | Use a matching cash-flow line when it clearly represents cash purchases. |
+| `intangible_purchase_cash` | `STRUCTURED_AUTO` | Use a matching line only when capitalization scope is clear. |
+| `other_operating_long_term_asset_cash` | `REQUIRES_PRIMARY_FILING` | Aggregates can hide operating reinvestment and require note review. |
+| `capex_payables_change` | `REQUIRES_PRIMARY_FILING` | Requires non-cash capex/payables disclosure; do not derive from total payables. |
+| `lease_principal_outside_cfo` | `REQUIRES_PRIMARY_FILING` | Lease cash-flow classification is not safe to infer from total lease debt. |
+| `capitalized_dev_already_in_capex` | `REQUIRES_PRIMARY_FILING` | The no-double-counting claim needs accounting-note support. |
+| `capitalized_development_cash_outside_capex` | `REQUIRES_PRIMARY_FILING` | Requires explicit disclosure and scope reconciliation. |
+| `acquisition_cash` | `STRUCTURED_AUTO` | A clearly reported acquisition cash-flow line may be imported; unusual transactions still need review. |
+| `strategic_investment_cash` | `REQUIRES_PRIMARY_FILING` | Economic classification between operating investment and strategic assets is filing-derived. |
+| `working_capital_contribution` | `REQUIRES_PRIMARY_FILING` | The sign and distortion interpretation require component-level cash-flow review. |
+| `equity_financing`, `debt_financing`, `other_financing` | `STRUCTURED_AUTO` | Reported financing cash-flow categories may be retained as diagnostics; they are not used to manufacture CDC or shareholder return. |
+| `core_cdc` | `DERIVED_DETERMINISTIC` | Engine-derived diagnostic; never accept a provider's precomputed “cash generation” as authoritative. |
+
+The normalized five-year continuity, normalized CDC and CDC yield are engine
+outputs, not provider-supplied facts. If any required annual input is null, the
+normalizer must preserve that null and let the existing CDC stage expose the
+established missing-data flag.
+
+## Net-cash inputs
+
+| Normalized field | Status | Boundary note |
+| --- | --- | --- |
+| `book_cash` | `STRUCTURED_AUTO` | Reported cash and equivalents for the matching consolidated period. |
+| `reported_interest_bearing_debt` | `STRUCTURED_AUTO` | Reported aggregate debt, retained as a reported fact. |
+| `hard_cash` | `REQUIRES_PRIMARY_FILING` | C0 accessibility classification requires notes and restriction review. |
+| `near_cash` | `REQUIRES_PRIMARY_FILING` | C1 haircut/eligibility requires instrument and liquidity details. |
+| `liquid_financial_assets` | `REQUIRES_PRIMARY_FILING` | C2 treatment requires instrument, liquidity and ownership review. |
+| `strategic_investments` | `REQUIRES_PRIMARY_FILING` | C3 assets are not automatically cash-equivalent. |
+| `restricted_cash` | `REQUIRES_PRIMARY_FILING` | The amount and release conditions must come from primary disclosure. |
+| `pledged_deposits` | `REQUIRES_PRIMARY_FILING` | Pledges and enforceability cannot be inferred from total cash. |
+| `financial_debt` | `STRUCTURED_AUTO` | A reported interest-bearing debt total may be imported when its scope matches the contract; debt-equivalent additions remain explicit. |
+| `lease_debt` | `REQUIRES_PRIMARY_FILING` | Requires lease-liability scope and economic treatment. |
+| `supplier_finance` | `REQUIRES_PRIMARY_FILING` | Requires supplier-finance or reverse-factoring disclosure. |
+| `recourse_factoring` | `REQUIRES_PRIMARY_FILING` | Recourse and derecognition treatment require notes. |
+| `debt_like_hybrids` | `REQUIRES_PRIMARY_FILING` | Convertibles, perpetuals and preferred-like instruments require terms review. |
+| `material_quasi_debt` | `REQUIRES_PRIMARY_FILING` | Guarantees and other quasi-debt require economic interpretation of primary facts. |
+| `subsidiary_cash` | `REQUIRES_PRIMARY_FILING` | Consolidated cash must be decomposed by subsidiary and ownership. |
+| `subsidiary_debt` | `REQUIRES_PRIMARY_FILING` | Same scope and basis as subsidiary cash are required. |
+| `subsidiary_ownership` | `STRUCTURED_AUTO` | Legal ownership can be imported when the entity and class are explicit; economic attribution may still need review. |
+| `upstreamability_factor` | `REQUIRES_JUDGMENT` | Accessibility to ordinary shareholders is not a database ratio. |
+| `debt_due_within_one_year` | `REQUIRES_PRIMARY_FILING` | Maturity and refinancing exposure require the debt schedule/notes. |
+| `normalized_ebitda` | `REQUIRES_JUDGMENT` | Reported EBITDA is not automatically normalized EBITDA. |
+| `cash_interest_expense` | `REQUIRES_PRIMARY_FILING` | Cash interest and accrual interest need reconciliation. |
+| `minority_profit` | `STRUCTURED_AUTO` | Reported non-controlling-interest profit for the matching period. |
+| `minority_equity` | `STRUCTURED_AUTO` | Reported non-controlling-interest equity for the matching period. |
+| `total_equity` | `STRUCTURED_AUTO` | Reported total equity for the matching period. |
+| `cash_authenticity_verified` | `REQUIRES_PRIMARY_FILING` | Verification requires bank/cash notes, audit context and restriction review. |
+| `cash_upstreamability_verified` | `REQUIRES_PRIMARY_FILING` | Verification requires subsidiary and legal/accessibility evidence. |
+| `cash_governance_factor` | `REQUIRES_JUDGMENT` | A governance haircut is an explicit interpretation, not a vendor field. |
+| `cash_governance_class` | `REQUIRES_JUDGMENT` | Classification requires capital-allocation and governance evidence. |
+
+`strict_cash`, `owner_realizable_net_cash`, `valuation_net_cash`, adjusted EV,
+coverage ratios and the owner net-cash ratio are deterministic outputs. They
+are `UNAVAILABLE` to Phase 2 provider classes and must not be imported as
+provider “metrics.”
+
+## Through Return and capital actions
+
+| Normalized field | Status | Boundary note |
+| --- | --- | --- |
+| `ordinary_dividend_cash` | `STRUCTURED_AUTO` | Reported declared/paid amount may be imported when ordinary versus special and period are explicit. |
+| `special_dividend_cash` | `REQUIRES_PRIMARY_FILING` | Special-return classification and payment period require formal disclosure. |
+| `formal_payout_floor` | `REQUIRES_PRIMARY_FILING` | A policy floor must be supported by a formal company disclosure. |
+| `payout_ratio` | `DERIVED_DETERMINISTIC` | Derive from accepted dividend and profit facts; do not trust a vendor ratio with a different denominator. |
+| `payout_policy_formal` | `REQUIRES_PRIMARY_FILING` | Formality is a disclosure claim, not a time series statistic. |
+| `payout_policy_confidence` | `REQUIRES_JUDGMENT` | Confidence records the quality of the policy interpretation. |
+| `fully_diluted_shares` | `DERIVED_DETERMINISTIC` | Normalize share classes, dilution and corporate actions before using the count. |
+| `buyback_cash` | `STRUCTURED_AUTO` | Reported buyback amount may be retained as a raw/structured fact; it earns no strict valuation credit by itself. |
+| `share_issuance_cash` | `STRUCTURED_AUTO` | Reported issuance proceeds may be imported for the matching action/period. |
+| `share_split_factor` | `STRUCTURED_AUTO` | A formal split/consolidation factor can be imported when effective date is clear. |
+| `buyback_recurring` | `REQUIRES_PRIMARY_FILING` | Recurrence is a policy/history conclusion, not a single transaction amount. |
+| `net_diluted_share_reduction_verified` | `REQUIRES_PRIMARY_FILING` | Requires issued shares, cancellations and dilution reconciliation. |
+| `special_dividend` | `REQUIRES_PRIMARY_FILING` | Formal event classification is required. |
+
+Normalized parent profit, distributable base, conservative payout ratio,
+dividend Through Return, verified buyback credit and total Through Return are
+engine results or filing-supported inputs to the engine. A provider class must
+not calculate or inject those outputs.
+
+## Valuation inputs and safeguards
+
+Valuation consumes canonical quote/listing context plus deterministic CDC,
+Through Return and net-cash results. In particular:
+
+- `current_price` may be structured data;
+- market-cap and share-count equivalents are deterministic projections;
+- `normalized_parent_core_cdc`, `distributable_base`, recurring shareholder
+  cash, owner-realizable net cash, valuation net cash and adjusted EV are
+  engine-owned results;
+- `cash_governance_factor` remains judgment-dependent and cannot be inferred
+  from a cash balance;
+- a missing or unresolved operating base keeps the existing valuation state
+  unavailable; it is never replaced by zero.
+
+## Governance, data quality and Business Quality
+
+| Normalized field | Status | Boundary note |
+| --- | --- | --- |
+| `accounting_opinion` | `REQUIRES_PRIMARY_FILING` | Use the formal audit opinion, not an aggregator label. |
+| `governance_risk_level` | `REQUIRES_JUDGMENT` | Requires evidence synthesis and counter-evidence. |
+| `controlling_shareholder_fund_occupation` | `REQUIRES_PRIMARY_FILING` | Requires formal disclosure or regulator/exchange evidence. |
+| `major_illegal_guarantee` | `REQUIRES_PRIMARY_FILING` | Requires formal disclosure or regulator/exchange evidence. |
+| `revenue` | `STRUCTURED_AUTO` | Reported revenue for the matching statement period. |
+| `core_revenue` | `REQUIRES_JUDGMENT` | Core-business scope is an analytical classification. |
+| `operating_profit` | `STRUCTURED_AUTO` | Reported operating profit where the accounting definition is explicit. |
+| `gross_margin`, `ebit_margin`, `roic` | `DERIVED_DETERMINISTIC` | Derive from accepted numerator/denominator facts. |
+| `recurring_revenue_ratio` | `REQUIRES_JUDGMENT` | Recurrence requires business-model interpretation. |
+| `largest_customer_ratio`, `top5_customer_ratio` | `REQUIRES_PRIMARY_FILING` | Customer concentration belongs to notes/operating disclosures. |
+| `channel_concentration`, `critical_supplier_concentration` | `REQUIRES_PRIMARY_FILING` | Requires primary operating disclosures and scope checks. |
+| `asp`, `asp_change`, `volume`, `volume_change` | `REQUIRES_PRIMARY_FILING` | Product-level operating data needs company/industry disclosure. |
+| `market_share` | `REQUIRES_JUDGMENT` | Definition, market boundary and source quality require judgment. |
+| `capex_intensity`, `invested_capital`, `nopat` | `DERIVED_DETERMINISTIC` | Derive only after the relevant economic classifications are accepted. |
+| `normalized_operating_nwc` | `REQUIRES_PRIMARY_FILING` | Working-capital normalization needs line-item and business context. |
+| `m_and_a_cash`, `goodwill`, `impairment` | `REQUIRES_PRIMARY_FILING` | Reported amounts may be structured, but material transaction/impairment scope needs primary review. |
+| `revenue_cagr_5y`, `profit_cv`, `core_cdc_cv` | `DERIVED_DETERMINISTIC` | Derive from complete, point-in-time annual series. |
+| `cycle_phase` | `REQUIRES_JUDGMENT` | A recent price or one strong year is not a cycle classification. |
+| `demand_classification` | `REQUIRES_JUDGMENT` | Demand durability is a Business Quality judgment. |
+| `structural_demand_decline` | `REQUIRES_JUDGMENT` | Requires evidence of structural rather than temporary change. |
+| `sustainable_core_profit_ratio`, `core_profit_ratio`, `core_profit_to_normalized_total_profit` | `REQUIRES_JUDGMENT` | Core/non-core and sustainability classifications belong to filing/evidence review. |
+| `non_core_profit_ratio`, `normalized_core_profit`, `core_operating_profit`, `normalized_total_profit` | `REQUIRES_PRIMARY_FILING` | Amounts require primary line-item and one-off reconciliation before deterministic ratios. |
+| `non_core_profit_non_recurring`, `non_recurring_profit_dependence`, `non_core_profit_is_non_recurring` | `REQUIRES_JUDGMENT` | Hard business-gate triggers require explicit evidence and interpretation. |
+| `core_business_cash_generation` | `DERIVED_DETERMINISTIC` | May be derived only from complete canonical CDC history; a provider label is not enough. |
+| `structural_disruption`, `structural_disruption_revenue_ratio`, `displaced_product_revenue_ratio`, `rapidly_displaced_revenue_ratio` | `REQUIRES_JUDGMENT` | Disruption exposure and replacement economics are evidence judgments. |
+| `replacement_earnings_engine` | `REQUIRES_JUDGMENT` | Requires a credible replacement path assessment. |
+| `single_point_survival_dependency`, `single_point_dependency_ratio` | `REQUIRES_JUDGMENT` | Dependency and survivability are not structured ratios. |
+
+The `BusinessQuality` eight-dimension score and its evidence lineage are not
+structured-provider outputs. They remain an explicit assessment consumed by
+the existing deterministic scorer. Until the filing/evidence layer exists,
+these judgments stay `UNAVAILABLE` to automatic Phase 2 normalization and the
+existing gate remains `NOT_EVALUATED` when no assessment is supplied.
+
+## Phase 2 enforcement rule
+
+For every field not marked `STRUCTURED_AUTO` or `DERIVED_DETERMINISTIC`, a
+Phase 2 adapter must do one of the following:
+
+1. omit the raw-to-fact mapping and retain the field in the critical-missing
+   inventory;
+2. preserve an explicit `null` fact with evidence explaining why it is
+   unresolved; or
+3. wait for the Phase 3 primary-filing/evidence workflow.
+
+It must not fill the field with zero, copy a neighboring aggregate, use a
+provider-specific calculated ratio, or turn an unverified headline into an
+accepted adjustment. This matrix is a guardrail against accidentally turning
+Phase 2 screening convenience into Phase 3 filing analysis.

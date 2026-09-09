@@ -48,6 +48,11 @@ Live data adapters and LLM-assisted evidence analysis remain intentionally
 unimplemented. The deterministic analyze command is offline-only and does not
 call AKShare, Tushare, other network providers or an LLM.
 
+Phase 2 now includes a provider-neutral raw-record/cache foundation and a
+normalized-field capability matrix. Live provider adapters remain
+unimplemented; they must feed the existing normalized input contract rather
+than introduce a second analysis model.
+
 Implementation-oriented assets will later live under:
 
 - `rules/` — deterministic thresholds and parameter sets
