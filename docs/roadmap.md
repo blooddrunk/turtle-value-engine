@@ -240,10 +240,6 @@ The adapter and mapping versions are bumped for this endpoint contract.
 Offline tests cover date validation, row selection, exact periods, explicit
 missing fields and the no-total-liabilities rule. Live calls remain opt-in.
 
-The next Phase 2 task is a focused review of a single shareholder-return or
-share-capital endpoint; no dividend, buyback, split, issuance or diluted-share
-fact is admitted until its period, unit and economic scope are explicit.
-
 ### Phase 2.7 — Dividend event acquisition boundary (COMPLETE)
 
 The AKShare adapter now exposes the documented A-share `stock_dividend_cninfo`
@@ -261,6 +257,30 @@ the no-fabrication behavior. Live calls remain opt-in. The next Phase 2 task
 is a similarly narrow review of A-share share-capital history; H-share share
 class equivalence and diluted-share treatment remain unresolved.
 
+### Phase 2.8 — A-share share-capital raw acquisition contract (COMPLETE)
+
+The mapping review now covers the current documented AKShare A-share
+share-capital endpoint, `stock_zh_a_gbjg_em`. The endpoint accepts a `symbol`
+and returns all historical capital-structure records with `变更日期`, `总股本`,
+circulation fields and `变动原因`. The provider passes the requested six-digit
+A-share code, retains the complete response as an opaque raw record and records
+the returned row count for replay diagnostics.
+
+The official documentation types `总股本` as `int64`, but does not declare an
+explicit unit or a fully diluted economic scope. The change-date semantics,
+options/convertibles, A/H class relationship and change-reason classification
+are therefore unresolved. The normalizer records the raw evidence and an
+explicit `AKSHARE_SHARE_CAPITAL_RAW_ONLY` flag, marks
+`normalized_diluted_economic_shares` as missing and emits no canonical share,
+dilution, buyback, issuance or split fact. H-share share capital remains
+outside this slice. Live calls remain opt-in; tests use an injected client and
+a frozen fixture.
+
+The next Phase 2 task is a focused mapping review of one remaining documented
+structured-data category; no additional dividend, buyback, split, issuance or
+diluted-share fact is admitted until its period, unit and economic scope are
+explicit.
+
 This mapping-review hardening keeps statement currency provenance conservative
 across all three slices: only explicit valid three-letter codes are accepted,
 missing currency is preserved as `null` rather than inferred from the listing
@@ -277,7 +297,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.7 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.8 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -485,6 +505,7 @@ Phase 2 is active. Phase 1 remains frozen: changes to formulas, hard-gate
 semantics, schemas or `strict-v1` thresholds require a separately reviewed,
 versioned change.
 
-The next Phase 2 task is a mapping review of the verified AKShare statement
-boundary and its unresolved field/entity/unit questions. Filing-derived
-classifications remain a Phase 3 concern.
+The next Phase 2 task is a mapping review of one remaining documented
+structured-data category and its unresolved period/entity/unit/economic-scope
+questions.
+Filing-derived classifications remain a Phase 3 concern.

@@ -62,8 +62,11 @@ the provider preserves that missing coverage rather than substituting total
 liabilities. It does not rename total liabilities, sum loan sub-items, or
 infer restricted cash, lease debt or upstreamability. The
 adapter does not derive CDC, classify interest or restricted cash, accept
-provider metrics, or infer filing-derived adjustments. Filing retrieval and
-LLM-assisted evidence analysis remain unimplemented. The deterministic
+provider metrics, or infer filing-derived adjustments. Phase 2.8 adds the
+documented A-share `stock_zh_a_gbjg_em` share-capital endpoint as a raw-only
+history slice; its share-count and dilution semantics remain unresolved and
+are not mapped into canonical facts. Filing retrieval and LLM-assisted
+evidence analysis remain unimplemented. The deterministic
 `tve analyze` command is still offline-only and does not call a provider or an
 LLM.
 

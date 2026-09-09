@@ -4,9 +4,10 @@ The adapter deliberately keeps the optional ``akshare`` dependency lazy.  A
 normal test run can import this module, inspect its capabilities and replay
 cached records without installing AKShare or making a network request.
 
-The adapter currently implements metadata, market observations and three
-narrow financial-statement slices.  Upstream column names are handled in this
-module and are never passed to the deterministic calculation or gate code.
+The adapter currently implements metadata, market observations, three narrow
+financial-statement slices, a raw-only dividend event slice and an A-share
+share-capital raw slice. Upstream column names are handled in this module and
+are never passed to the deterministic calculation or gate code.
 """
 
 from __future__ import annotations
@@ -51,9 +52,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "6"
+AKSHARE_ADAPTER_VERSION = "7"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "7"
+AKSHARE_MAPPING_VERSION = "8"
 
 
 class ListingMarket(StrEnum):
@@ -73,6 +74,7 @@ AKSHARE_CAPABILITIES = ProviderCapabilities(
         DataCategory.INCOME_STATEMENT,
         DataCategory.BALANCE_SHEET,
         DataCategory.DIVIDENDS,
+        DataCategory.SHARE_CAPITAL,
     }
 )
 
@@ -98,6 +100,7 @@ _SOURCE_URIS = {
     "stock_zcfz_bj_em": "https://data.eastmoney.com/bbsj/202003/zcfz.html",
     "stock_dividend_cninfo": "http://webapi.cninfo.com.cn/#/company",
     "stock_hk_dividend_payout_em": "https://emweb.securities.eastmoney.com/PC_HKF10/pages/home/index.html",
+    "stock_zh_a_gbjg_em": "https://emweb.securities.eastmoney.com/pc_hsf10/pages/index.html#/gbjg",
     "stock_financial_report_sina": "https://vip.stock.finance.sina.com.cn/corp/go.php/vFD_FinanceSummary/",
     "stock_financial_hk_report_em": "https://emweb.securities.eastmoney.com/PC_HKF10/FinancialAnalysis/index",
 }
@@ -206,6 +209,13 @@ class AKShareProvider(StructuredDataProvider):
             )
 
         listing = _parse_listing_id(request.entity_id, provider=self.identity, request=request)
+        if request.category is DataCategory.SHARE_CAPITAL and listing.market is not ListingMarket.A:
+            raise ProviderRequestError(
+                "the AKShare share-capital endpoint supports A-share listings only",
+                provider=self.identity,
+                request=request,
+                retryable=False,
+            )
         client = self._load_client(request)
         endpoint = self._resolve_endpoint(client, listing, request.category, request)
         kwargs = self._endpoint_kwargs(endpoint.name, listing, request)
@@ -278,6 +288,10 @@ class AKShareProvider(StructuredDataProvider):
         elif request.category is DataCategory.DIVIDENDS:
             rows = _table_rows(payload, provider=self.identity, request=request)
             response_metadata["upstream_row_count"] = len(rows)
+        elif request.category is DataCategory.SHARE_CAPITAL:
+            rows = _table_rows(payload, provider=self.identity, request=request)
+            response_metadata["upstream_row_count"] = len(rows)
+            response_metadata["listing_scoped_request"] = True
 
         try:
             retrieved_at = self._clock()
@@ -361,6 +375,8 @@ class AKShareProvider(StructuredDataProvider):
                 return _income_statement_kwargs(endpoint_name, listing, request)
             if request.category is DataCategory.BALANCE_SHEET:
                 return _balance_sheet_kwargs(endpoint_name, listing, request)
+            if request.category is DataCategory.SHARE_CAPITAL:
+                return _share_capital_kwargs(endpoint_name, listing, request)
             if endpoint_name in _NO_ARGUMENT_ENDPOINTS:
                 _reject_unexpected_parameters(request)
                 return {}
@@ -445,6 +461,7 @@ class AKShareNormalizer:
         coverage_total = 0
         coverage_present = 0
         metadata_context: dict[str, str] = {}
+        normalizer_flags: set[str] = set()
 
         def add_fact(
             record: RawProviderRecord,
@@ -638,6 +655,13 @@ class AKShareNormalizer:
                 # Keep the raw record and evidence available without treating
                 # a per-share plan or fiscal-year label as ordinary cash.
                 missing_fields.add("ordinary_dividend_cash")
+            elif record.request.category is DataCategory.SHARE_CAPITAL:
+                if listing.market is not ListingMarket.A:
+                    raise ProviderNormalizationError(
+                        "AKShare share-capital raw slice supports A-share listings only"
+                    )
+                missing_fields.add("normalized_diluted_economic_shares")
+                normalizer_flags.add("AKSHARE_SHARE_CAPITAL_RAW_ONLY")
             else:
                 raise ProviderNormalizationError(
                     f"unsupported AKShare normalization category: {record.request.category.value}"
@@ -661,6 +685,12 @@ class AKShareNormalizer:
             "economic adjustments remain unresolved until a later provider/filing "
             "workflow."
         )
+        if "AKSHARE_SHARE_CAPITAL_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented A-share share-capital history is retained as raw "
+                "evidence only: its change-date, unit and diluted economic scope "
+                "are not sufficient for a canonical share-count fact."
+            )
         return NormalizedCompanyInput(
             schema_version="1.0.0",
             analysis_id=analysis_id,
@@ -676,6 +706,7 @@ class AKShareNormalizer:
             facts=facts,
             evidence_index=evidence_index,
             adjustments=[],
+            flags=sorted(normalizer_flags),
         )
 
 
@@ -797,6 +828,8 @@ def _endpoint_candidates(
         if market is ListingMarket.A:
             return ("stock_dividend_cninfo",)
         return ("stock_hk_dividend_payout_em",)
+    if category is DataCategory.SHARE_CAPITAL:
+        return ("stock_zh_a_gbjg_em",)
     raise ProviderCapabilityError(f"AKShare adapter does not support {category.value!r}")
 
 
@@ -840,6 +873,27 @@ def _balance_sheet_kwargs(
         statement_symbol="资产负债表",
         statement_label="balance sheet",
     )
+
+
+def _share_capital_kwargs(
+    endpoint_name: str,
+    listing: _ListingRef,
+    request: ProviderRequest,
+) -> dict[str, object]:
+    if endpoint_name != "stock_zh_a_gbjg_em":
+        raise ProviderRequestError(
+            f"unsupported AKShare share-capital endpoint {endpoint_name!r}",
+            request=request,
+            retryable=False,
+        )
+    if listing.market is not ListingMarket.A:
+        raise ProviderRequestError(
+            "the AKShare share-capital endpoint supports A-share listings only",
+            request=request,
+            retryable=False,
+        )
+    _reject_unexpected_parameters(request)
+    return {"symbol": listing.code}
 
 
 def _financial_statement_kwargs(

@@ -93,6 +93,13 @@ class FakeAKShare:
             **kwargs,
         )
 
+    def stock_zh_a_gbjg_em(self, *, symbol: str):
+        return self._return(
+            "stock_zh_a_gbjg_em",
+            _fixture("a_share_capital.json"),
+            symbol=symbol,
+        )
+
     def stock_financial_hk_report_em(self, **kwargs):
         return self._return(
             "stock_financial_hk_report_em",
@@ -178,10 +185,11 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "listing_metadata",
         "market_history",
         "market_quote",
+        "share_capital",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "6"
-    assert AKSHARE_MAPPING_VERSION == "7"
+    assert provider.identity.provider_version == "7"
+    assert AKSHARE_MAPPING_VERSION == "8"
 
 
 def test_a_quote_is_selected_from_the_upstream_universe_and_kept_opaque():
@@ -270,6 +278,82 @@ def test_balance_sheet_fetch_uses_market_specific_read_only_endpoints():
             {"stock": "00700", "symbol": "资产负债表", "indicator": "年度"},
         ),
     ]
+
+
+def test_a_share_capital_fetch_uses_documented_listing_scoped_history_endpoint():
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    record = provider.fetch(_request(DataCategory.SHARE_CAPITAL, "SH600000"))
+
+    assert record.raw_payload == _fixture("a_share_capital.json")
+    assert fake.calls == [
+        ("stock_zh_a_gbjg_em", {"symbol": "600000"}),
+    ]
+    assert record.response_metadata["endpoint"] == "stock_zh_a_gbjg_em"
+    assert record.response_metadata["upstream_row_count"] == 2
+    assert record.response_metadata["listing_scoped_request"] is True
+    assert record.source_uri == (
+        "https://emweb.securities.eastmoney.com/pc_hsf10/pages/index.html#/gbjg"
+    )
+
+
+def test_share_capital_endpoint_rejects_parameters_and_h_share_requests_before_upstream_call():
+    fake = FakeAKShare()
+    provider = _provider(fake)
+
+    with pytest.raises(ProviderRequestError, match="does not accept request parameters"):
+        provider.fetch(
+            _request(
+                DataCategory.SHARE_CAPITAL,
+                "SH600000",
+                {"start_date": "2024-01-01"},
+            )
+        )
+    with pytest.raises(ProviderRequestError, match="A-share listings only"):
+        provider.fetch(_request(DataCategory.SHARE_CAPITAL, "HK00700"))
+
+    assert fake.calls == []
+
+
+def test_share_capital_raw_record_is_not_promoted_to_a_canonical_diluted_share_fact():
+    provider = _provider()
+    record = provider.fetch(_request(DataCategory.SHARE_CAPITAL, "SH600000"))
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="share-capital-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_SHARE_CAPITAL_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == [
+        "normalized_diluted_economic_shares",
+    ]
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "canonical share-count fact" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    errors = list(Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json")))
+    assert errors == []
+
+
+def test_share_capital_raw_record_replays_offline_without_calling_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(DataCategory.SHARE_CAPITAL, "SH600000")
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [("stock_zh_a_gbjg_em", {"symbol": "600000"})]
 
 
 def test_official_a_balance_endpoint_selects_listing_and_preserves_requested_period():
@@ -404,7 +488,7 @@ def test_unsupported_category_is_blocked_before_the_fake_provider_is_called():
     provider = _provider(fake)
 
     with pytest.raises(ProviderCapabilityError):
-        provider.fetch(_request(DataCategory.SHARE_CAPITAL, "SH600000"))
+        provider.fetch(_request(DataCategory.CORPORATE_ACTIONS, "SH600000"))
     assert fake.calls == []
 
 

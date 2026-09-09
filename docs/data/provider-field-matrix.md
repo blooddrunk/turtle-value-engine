@@ -122,6 +122,31 @@ the requested listing; a mismatch is a normalization error. If an upstream
 statement response has no row-level code, the mapper relies only on the
 listing-scoped request and does not infer a code from another row.
 
+## Phase 2.8 share-capital raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+describes `stock_zh_a_gbjg_em` as an A-share endpoint with a `symbol` input and
+all historical records. Its documented output includes `变更日期`, `总股本`,
+circulation fields and `变动原因`; `总股本` is typed as `int64`, but the
+documentation does not state an explicit unit or a diluted-economic-share
+definition. The endpoint's legal share-capital history also does not establish
+the treatment of options, convertibles, multiple share classes or the economic
+meaning of each change reason.
+
+The provider passes only the requested six-digit A-share code and preserves the
+entire response as a `RawProviderRecord`. The normalizer retains the evidence,
+sets `normalized_diluted_economic_shares` in the critical-missing inventory and
+emits `AKSHARE_SHARE_CAPITAL_RAW_ONLY`; it emits no canonical fact and does not
+use `变更日期` as a financial-statement period. H-share share capital and
+dividend, buyback, issuance and split classifications remain unresolved.
+
+| Raw upstream item | Phase 2 treatment |
+| --- | --- |
+| `变更日期` | Raw-only; effective-date versus observation-period semantics are unresolved. |
+| `总股本` | Raw-only; no unit or fully diluted economic scope is admitted. |
+| `流通受限股份`, `已流通股份`, `已上市流通A股` | Raw-only; legal circulation categories are not normalized into economic share counts. |
+| `变动原因` | Raw-only; text is not classified as buyback, issuance, split or other action. |
+
 ## Eligibility, identity and market context
 
 | Normalized field | Status | Boundary note |
@@ -133,7 +158,7 @@ listing-scoped request and does not infer a code from another row.
 | `current_market_cap` | `DERIVED_DETERMINISTIC` | Prefer canonical price × normalized share count; a provider headline market cap is a cross-check, not a replacement. |
 | `listing_equivalent_market_cap` | `DERIVED_DETERMINISTIC` | Derive for the selected listing, including any explicit FX/share mapping. |
 | `actual_aggregate_company_market_cap` | `DERIVED_DETERMINISTIC` | Aggregate A/H listings only under the existing multi-listing contract; never merge listing prices. |
-| `normalized_diluted_economic_shares` | `DERIVED_DETERMINISTIC` | Derive from share-capital facts and corporate actions after entity/class treatment is explicit. |
+| `normalized_diluted_economic_shares` | `DERIVED_DETERMINISTIC` | Derive only from verified share-capital facts and corporate actions after entity/class, unit and dilution treatment are explicit; the current AKShare raw slice does not supply it. |
 
 Company `primary_listing`, `other_listings`, sector and reporting currency are
 identity/context fields, not valuation facts. A sector-specific `special_model`
@@ -231,7 +256,7 @@ special questions remain for a filing-backed mapping review.
 | `payout_ratio` | `DERIVED_DETERMINISTIC` | Derive from accepted dividend and profit facts; do not trust a vendor ratio with a different denominator. |
 | `payout_policy_formal` | `REQUIRES_PRIMARY_FILING` | Formality is a disclosure claim, not a time series statistic. |
 | `payout_policy_confidence` | `REQUIRES_JUDGMENT` | Confidence records the quality of the policy interpretation. |
-| `fully_diluted_shares` | `DERIVED_DETERMINISTIC` | Normalize share classes, dilution and corporate actions before using the count. |
+| `fully_diluted_shares` | `DERIVED_DETERMINISTIC` | Normalize share classes, dilution and corporate actions before using the count; the current A-share share-capital history is raw-only. |
 | `buyback_cash` | `STRUCTURED_AUTO` | Reported buyback amount may be retained as a raw/structured fact; it earns no strict valuation credit by itself. |
 | `share_issuance_cash` | `STRUCTURED_AUTO` | Reported issuance proceeds may be imported for the matching action/period. |
 | `share_split_factor` | `STRUCTURED_AUTO` | A formal split/consolidation factor can be imported when effective date is clear. |

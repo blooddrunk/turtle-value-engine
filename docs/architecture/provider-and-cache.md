@@ -1,6 +1,6 @@
 # Provider and Cache Architecture
 
-> Status: Phase 2 foundation and read-only AKShare statement slices
+> Status: Phase 2 foundation, read-only AKShare statement slices, dividend events and share-capital raw slice
 
 This document freezes the boundary between structured-data acquisition and the
 deterministic Turtle Value Engine. It does not authorize a live provider or
@@ -202,6 +202,21 @@ long-form items are normalization errors. This keeps a provider convenience
 table from silently becoming a normalized annual history with ambiguous
 semantics.
 
+The first share-capital slice is deliberately acquisition-only. The current
+[AKShare documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+describes `stock_zh_a_gbjg_em` as an A-share endpoint that accepts `symbol` and
+returns all historical records with `变更日期`, `总股本`, circulation fields and
+`变动原因`. The documentation types `总股本` as `int64`, but does not declare a
+unit or define a fully diluted economic scope for the count. The provider
+therefore passes the six-digit A-share code, retains the complete tabular
+payload and row count, and does not select a “latest” row. The normalizer keeps
+the raw record's evidence, marks
+`normalized_diluted_economic_shares` as critically missing and emits the
+`AKSHARE_SHARE_CAPITAL_RAW_ONLY` flag without creating a canonical share fact.
+It does not treat `变更日期` as a financial-statement period or `总股本` as
+fully diluted shares. H-share share capital and all dividend/capital-action
+facts remain outside this slice.
+
 When a statement row includes an explicit security code, the normalizer also
 checks it against the requested listing and rejects a mismatch. Statement
 endpoints that omit a row-level code remain bound to their listing-scoped
@@ -356,11 +371,11 @@ The cache performs no network retries. The normalizer performs no provider
 retries. The deterministic pipeline performs no provider retries and should
 not be rerun as a substitute for resolving missing facts.
 
-## 12. Phase 2.2–2.7 AKShare adapter
+## 12. Phase 2.2–2.8 AKShare adapter
 
 The first concrete adapter is intentionally limited to read-only metadata,
-market observations, three documented financial-statement slices and a
-raw-only dividend event category. It
+market observations, three documented financial-statement slices, a raw-only
+dividend event category and one A-share share-capital raw slice. It
 advertises exactly these capabilities:
 
 | Category | A-share endpoint | H-share endpoint | Normalized output |
@@ -373,6 +388,7 @@ advertises exactly these capabilities:
 | `INCOME_STATEMENT` | `stock_profit_sheet_by_report_em` (Sina fallback) | `stock_financial_hk_report_em` | explicit `parent_net_profit` and `consolidated_net_profit` lines |
 | `BALANCE_SHEET` | `stock_zcfz_em` / `stock_zcfz_bj_em` (detailed report-period and Sina fallbacks) | `stock_financial_hk_report_em` | explicit `book_cash`, equity totals and aggregate interest-bearing debt when labeled |
 | `DIVIDENDS` | `stock_dividend_cninfo` | `stock_hk_dividend_payout_em` | raw structured evidence only; no canonical dividend cash or payout ratio |
+| `SHARE_CAPITAL` | `stock_zh_a_gbjg_em` | — | raw historical response and provenance only; no canonical share/dilution fact |
 
 The adapter accepts common stable A/H identifiers such as `SH600000`,
 `000001.SZ`, `A:600000`, `HK00700`, `700.HK` and `H:00700`. A-share history
@@ -387,7 +403,10 @@ Tests inject a client object and use frozen JSON fixtures. The existing
 never calls AKShare, and a failed live request is never written as a snapshot.
 
 The normalizer emits `Fact` and `Evidence` objects inside the existing
-`NormalizedCompanyInput`. It never maps provider headline market cap,
+`NormalizedCompanyInput`. For the dividend and share-capital raw slices it
+emits raw-record evidence only and explicit unresolved flags where needed; it
+does not emit canonical dividend or share facts. It never maps provider
+headline market cap,
 listing-years inferred from history length, unlisted financial-statement lines,
 total liabilities as interest-bearing debt, filing classifications, or any
 CDC/net-cash/Through Return/valuation/gate result. The statement slices
@@ -400,17 +419,24 @@ of delayed/closed quote timestamps, FX and A/H cross-listing share equivalence,
 whether the H-share full-history endpoint can be replaced by a bounded range
 endpoint without changing replay semantics, field-name coverage across all
 A/H balance-sheet variants, consolidated-versus-standalone statement basis,
-statement unit scaling, the absence of parent-equity and interest-bearing-debt
-aggregates in the documented A-share quarterly balance shape, point-in-time
-publication semantics, and the period/total-cash/ordinary-versus-special
-classification needed to normalize dividend event rows. Missing or conflicting
+currency/unit scaling, the absence of parent-equity and interest-bearing-debt
+aggregates in the documented A-share quarterly balance shape, and
+point-in-time publication semantics. For the share-capital raw slice, the
+remaining questions are the unit represented by `总股本`, whether each
+`变更日期` is an effective legal change date or a point-in-time observation
+date, the treatment of options/convertibles and other dilution, the economic
+relationship between A/H classes, and whether the change-reason text can be
+used to classify buybacks, issuance or splits. None of those classifications
+is admitted automatically.
+The period/total-cash/ordinary-versus-special classification needed to
+normalize dividend event rows also remains open. Missing or conflicting
 statement currency metadata is handled conservatively as described above, but
 a null currency still requires later source review before cross-currency
 calculations.
 
 ## 13. Deliberate non-goals
 
-This foundation plus the Phase 2.2–2.7 slices does not include:
+This foundation plus the Phase 2.2–2.8 slices does not include:
 
 - Tushare, BaoStock or any other additional provider;
 - automatic network scheduling, credentials or retry orchestration outside an adapter;
