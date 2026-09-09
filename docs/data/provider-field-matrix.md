@@ -394,6 +394,32 @@ slice.
 | `主营收入`, `主营成本`, `主营利润` | Raw-only; row grain, entity basis, unit/scaling and overlapping classifications do not establish canonical totals. |
 | `收入比例`, `成本比例`, `利润比例`, `毛利率` | Raw-only ratios; denominator and presentation semantics are not admitted as canonical revenue or margin facts. |
 
+## Phase 2.17 A-share financial-abstract raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_financial_abstract` as a Sina A-share listing-scoped
+endpoint. It accepts a six-digit `symbol` and returns all historical key
+indicators in a wide matrix with `选项`, `指标` and report-period columns. The
+documented output mixes amount-like rows, per-share indicators and ratios
+without defining one canonical statement entity, unit/scaling or diluted-share
+basis for the normalized contract.
+
+The provider passes the requested A-share code, validates explicit metric
+identity and date-shaped period columns, retains the complete response as an
+opaque raw payload and records row and distinct-period counts. The normalizer
+emits `AKSHARE_FINANCIAL_ABSTRACT_RAW_ONLY`, marks `revenue`,
+`parent_net_profit`, `consolidated_net_profit` and `reported_cfo` as critically
+missing and emits no canonical revenue, profit, CFO, ratio or valuation fact.
+H-share financial abstracts remain outside this slice.
+
+| Raw upstream item | Phase 2 treatment |
+| --- | --- |
+| `选项`, `指标` | Used only to validate metric identity and preserve evidence context; they do not create normalized facts. |
+| report-period columns such as `20241231` | Raw-only historical context; the wide matrix's period presentation is not silently adopted as a canonical statement period. |
+| amount-like rows such as `归母净利润`, `净利润`, `营业总收入` | Raw-only; the response does not establish the accepted entity, unit/scaling or statement semantics for canonical profit/revenue facts. |
+| per-share rows such as `每股经营现金流` | Raw-only; per-share values do not establish a total reported CFO or diluted-share basis. |
+| ratio rows such as `净资产收益率` | Raw-only; provider ratios are not imported as canonical metrics or used to derive valuation inputs. |
+
 ## Eligibility, identity and market context
 
 | Normalized field | Status | Boundary note |

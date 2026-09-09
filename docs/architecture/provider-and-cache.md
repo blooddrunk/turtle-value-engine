@@ -1,6 +1,6 @@
 # Provider and Cache Architecture
 
-> Status: Phase 2 foundation, read-only AKShare statement slices, earnings forecasts/quick reports/performance reports/business composition, dividend events/snapshots, share-capital and corporate-action raw slices
+> Status: Phase 2 foundation, read-only AKShare statement slices, earnings forecasts/quick reports/performance reports/business composition/financial abstract, dividend events/snapshots, share-capital and corporate-action raw slices
 
 This document freezes the boundary between structured-data acquisition and the
 deterministic Turtle Value Engine. It does not authorize a live provider or
@@ -91,6 +91,8 @@ INCOME_STATEMENT
 EARNINGS_FORECAST
 EARNINGS_QUICK_REPORT
 PERFORMANCE_REPORT
+BUSINESS_COMPOSITION
+FINANCIAL_ABSTRACT
 BALANCE_SHEET
 CASH_FLOW_STATEMENT
 DIVIDENDS
@@ -311,6 +313,20 @@ classification semantics are not settled, the normalizer marks `revenue` and
 operating-profit, margin or business-quality fact. H-share composition remains
 outside this slice.
 
+The financial-abstract slice is also acquisition-only. The current
+[AKShare documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_financial_abstract` as a Sina A-share listing-scoped endpoint
+accepting a six-digit `symbol` and returning all historical key indicators in
+a wide matrix with `选项`, `指标` and report-period columns. The provider
+passes the requested code, validates explicit metric identity and date-shaped
+period columns, retains the full payload and records row and distinct-period
+counts. Because the response mixes amount rows with per-share indicators and
+ratios without an admitted canonical entity, unit/scaling, period or
+diluted-share basis, the normalizer marks `revenue`,
+`parent_net_profit`, `consolidated_net_profit` and `reported_cfo` as critically
+missing and emits `AKSHARE_FINANCIAL_ABSTRACT_RAW_ONLY` without creating a
+canonical fact.
+
 When a statement row includes an explicit security code, the normalizer also
 checks it against the requested listing and rejects a mismatch. Statement
 endpoints that omit a row-level code remain bound to their listing-scoped
@@ -465,14 +481,14 @@ The cache performs no network retries. The normalizer performs no provider
 retries. The deterministic pipeline performs no provider retries and should
 not be rerun as a substitute for resolving missing facts.
 
-## 12. Phase 2.2–2.16 AKShare adapter
+## 12. Phase 2.2–2.17 AKShare adapter
 
 The first concrete adapter is intentionally limited to read-only metadata,
 market observations, three documented financial-statement slices, raw-only
-earnings-forecast, earnings-quick-report, performance-report and
-business-composition categories, raw-only dividend event/snapshot and
-corporate-action categories, two A-share share-capital raw slices and one
-A-share ownership-pledge raw slice. It
+earnings-forecast, earnings-quick-report, performance-report,
+business-composition and financial-abstract categories, raw-only dividend
+event/snapshot and corporate-action categories, two A-share share-capital raw
+slices and one A-share ownership-pledge raw slice. It
 advertises exactly these capabilities:
 
 | Category | A-share endpoint | H-share endpoint | Normalized output |
@@ -487,6 +503,7 @@ advertises exactly these capabilities:
 | `EARNINGS_QUICK_REPORT` | `stock_yjkb_em` | — | A-share quarterly quick-report rows as raw structured evidence only; no canonical profit or revenue fact |
 | `PERFORMANCE_REPORT` | `stock_yjbb_em` | — | A-share quarterly headline performance rows as raw structured evidence only; no canonical profit or CFO fact |
 | `BUSINESS_COMPOSITION` | `stock_zygc_em` | — | A-share historical main-business composition rows as raw structured evidence only; no canonical revenue, margin or business-quality fact |
+| `FINANCIAL_ABSTRACT` | `stock_financial_abstract` | — | A-share historical key-indicator matrix as raw structured evidence only; no canonical revenue, profit or CFO fact |
 | `BALANCE_SHEET` | `stock_zcfz_em` / `stock_zcfz_bj_em` (detailed report-period and Sina fallbacks) | `stock_financial_hk_report_em` | explicit `book_cash`, equity totals and aggregate interest-bearing debt when labeled |
 | `DIVIDENDS` | `stock_dividend_cninfo`; `stock_fhps_em` (explicit report date) | `stock_hk_dividend_payout_em` | raw structured evidence only; no canonical dividend cash or payout ratio |
 | `CORPORATE_ACTIONS` | `stock_repurchase_em` (no parameters); `stock_allotment_cninfo` (date-range request) | — | A-share repurchase or rights-issue rows; raw structured evidence only; no canonical buyback, issuance or dilution fact |
@@ -507,8 +524,8 @@ never calls AKShare, and a failed live request is never written as a snapshot.
 
 The normalizer emits `Fact` and `Evidence` objects inside the existing
 `NormalizedCompanyInput`. For the earnings-forecast, earnings-quick-report,
-performance-report, business-composition, dividend, corporate-action,
-share-capital and ownership-pledge raw slices it emits
+performance-report, business-composition, financial-abstract, dividend,
+corporate-action, share-capital and ownership-pledge raw slices it emits
 raw-record evidence only and explicit unresolved flags where needed; it does
 not emit canonical forecast-profit, revenue, margin, dividend, buyback,
 issuance, dilution, share, governance, pledged-cash or debt-equivalent facts.
@@ -572,10 +589,15 @@ and report dates are retained, but product/industry/geographic overlap,
 aggregation, units, entity basis and core-business classification remain
 unresolved; no revenue, core-revenue, operating-profit or margin fact is
 admitted automatically.
+For the A-share financial-abstract slice, the listing-scoped historical matrix
+and report-period columns are retained, but the mixed amount/per-share/ratio
+rows do not establish canonical entity, unit/scaling, period or diluted-share
+semantics; no revenue, parent/consolidated net-profit or reported-CFO fact is
+admitted automatically.
 
 ## 13. Deliberate non-goals
 
-This foundation plus the Phase 2.2–2.16 slices does not include:
+This foundation plus the Phase 2.2–2.17 slices does not include:
 
 - Tushare, BaoStock or any other additional provider;
 - automatic network scheduling, credentials or retry orchestration outside an adapter;

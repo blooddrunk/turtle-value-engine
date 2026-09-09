@@ -102,6 +102,11 @@ composition history under a distinct `BUSINESS_COMPOSITION` category. Its
 overlapping product, industry and geographic rows remain raw-only because
 their aggregation, unit, entity and core-business semantics are unresolved;
 the normalizer emits no canonical revenue, margin or business-quality fact.
+Phase 2.17 adds the documented A-share Sina `stock_financial_abstract`
+historical key-indicator matrix under a distinct `FINANCIAL_ABSTRACT` category.
+Its amount, per-share and ratio rows remain raw-only because the wide response
+does not establish the canonical entity, unit, period or diluted-share basis;
+the normalizer emits no canonical revenue, profit or CFO fact.
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

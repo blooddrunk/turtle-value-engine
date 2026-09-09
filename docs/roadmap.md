@@ -484,6 +484,27 @@ canonical revenue, operating-profit, margin or business-quality fact. H-share
 business composition remains outside this slice. Live calls remain opt-in;
 tests use an injected client and a frozen fixture.
 
+### Phase 2.17 — A-share financial-abstract raw acquisition contract (COMPLETE)
+
+The mapping review now covers the documented AKShare Sina
+`stock_financial_abstract` endpoint under a new provider-neutral
+`FINANCIAL_ABSTRACT` category. The endpoint accepts a six-digit A-share
+`symbol` and returns the issuer's historical key-indicator matrix with
+`选项`, `指标` and report-period columns. The provider passes the requested
+listing code, retains the complete listing-scoped response as an opaque raw
+record, validates explicit metric identity and date-shaped period columns, and
+records row and distinct-period counts.
+
+The response mixes amount rows such as revenue and profit with per-share
+indicators and ratios. Its wide presentation does not establish the canonical
+entity, unit/scaling, period or diluted-share basis required by the normalized
+contract. The normalizer therefore retains structured evidence, marks
+`revenue`, `parent_net_profit`, `consolidated_net_profit` and `reported_cfo` as
+critically missing and emits `AKSHARE_FINANCIAL_ABSTRACT_RAW_ONLY`; it creates
+no canonical fact, metric or valuation input. H-share financial abstracts
+remain outside this slice. Live calls remain opt-in; tests use an injected
+client and a frozen fixture.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -493,7 +514,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.16 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.17 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -701,7 +722,7 @@ Phase 2 is active. Phase 1 remains frozen: changes to formulas, hard-gate
 semantics, schemas or `strict-v1` thresholds require a separately reviewed,
 versioned change.
 
-Phase 2.16 completes the next documented structured-data boundary while
+Phase 2.17 completes the next documented structured-data boundary while
 keeping share-change, repurchase and rights-issue period, status, unit and
 economic-scope questions unresolved, and keeping ownership-pledge holder,
 governance and economic-scope questions unresolved. The A-share
@@ -725,3 +746,8 @@ overlapping product, industry and geographic rows do not establish a canonical
 revenue or core-revenue series; aggregation, unit, entity and classification
 semantics remain unresolved. Filing-derived business-quality judgments remain
 a later-phase concern.
+
+The A-share financial-abstract matrix remains raw-only because its amount,
+per-share and ratio rows use a wide historical presentation without an
+admitted canonical entity, unit, period or diluted-share basis. Filing-derived
+statement facts and analytical classifications remain outside this slice.

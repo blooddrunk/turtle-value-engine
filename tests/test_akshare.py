@@ -114,6 +114,13 @@ class FakeAKShare:
             symbol=symbol,
         )
 
+    def stock_financial_abstract(self, *, symbol: str):
+        return self._return(
+            "stock_financial_abstract",
+            _fixture("a_financial_abstract.json"),
+            symbol=symbol,
+        )
+
     def stock_balance_sheet_by_report_em(self, **kwargs):
         return self._return(
             "stock_balance_sheet_by_report_em",
@@ -244,6 +251,7 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "dividends",
         "earnings_forecast",
         "earnings_quick_report",
+        "financial_abstract",
         "income_statement",
         "listing_metadata",
         "market_history",
@@ -253,8 +261,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "share_capital",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "16"
-    assert AKSHARE_MAPPING_VERSION == "17"
+    assert provider.identity.provider_version == "17"
+    assert AKSHARE_MAPPING_VERSION == "18"
 
 
 def test_a_quote_is_selected_from_the_upstream_universe_and_kept_opaque():
@@ -2784,3 +2792,152 @@ def test_ambiguous_duplicate_history_periods_are_rejected():
             profile_id="strict-v1",
             company=_company(),
         )
+
+
+def test_financial_abstract_fetch_preserves_matrix_and_records_period_metadata():
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    record = provider.fetch(_request(DataCategory.FINANCIAL_ABSTRACT, "SH600000"))
+
+    assert record.raw_payload == _fixture("a_financial_abstract.json")
+    assert record.raw_payload[2]["2024-09-30"] is None
+    assert fake.calls == [
+        ("stock_financial_abstract", {"symbol": "600000"}),
+    ]
+    assert record.response_metadata["endpoint"] == "stock_financial_abstract"
+    assert record.response_metadata["upstream_row_count"] == 4
+    assert record.response_metadata["entity_row_count"] == 4
+    assert record.response_metadata["listing_scoped_request"] is True
+    assert record.response_metadata["report_period_count"] == 2
+    assert record.source_uri == (
+        "https://vip.stock.finance.sina.com.cn/corp/go.php/"
+        "vFD_FinanceSummary/stockid/600004.phtml"
+    )
+
+
+def test_financial_abstract_rejects_h_shares_and_request_parameters_before_upstream_call():
+    fake = FakeAKShare()
+    provider = _provider(fake)
+
+    with pytest.raises(ProviderRequestError, match="A-share listings only"):
+        provider.fetch(_request(DataCategory.FINANCIAL_ABSTRACT, "HK00700"))
+    with pytest.raises(ProviderRequestError, match="unsupported AKShare financial-abstract"):
+        provider.fetch(
+            _request(
+                DataCategory.FINANCIAL_ABSTRACT,
+                "SH600000",
+                {"start_year": "2024"},
+            )
+        )
+
+    assert fake.calls == []
+
+
+def test_financial_abstract_response_requires_explicit_metric_identity():
+    class MissingMetric(FakeAKShare):
+        def stock_financial_abstract(self, *, symbol: str):
+            return self._return(
+                "stock_financial_abstract",
+                [{"选项": "常用指标", "20241231": 1.0}],
+                symbol=symbol,
+            )
+
+    with pytest.raises(
+        ProviderResponseError,
+        match="financial-abstract row without explicit metric identity",
+    ):
+        _provider(MissingMetric()).fetch(
+            _request(DataCategory.FINANCIAL_ABSTRACT, "SH600000")
+        )
+
+
+def test_financial_abstract_response_rejects_invalid_report_period_columns():
+    class InvalidPeriod(FakeAKShare):
+        def stock_financial_abstract(self, *, symbol: str):
+            return self._return(
+                "stock_financial_abstract",
+                [
+                    {
+                        "选项": "常用指标",
+                        "指标": "归母净利润",
+                        "20241331": 1.0,
+                    }
+                ],
+                symbol=symbol,
+            )
+
+    with pytest.raises(ProviderResponseError, match="invalid financial-abstract report-period"):
+        _provider(InvalidPeriod()).fetch(
+            _request(DataCategory.FINANCIAL_ABSTRACT, "SH600000")
+        )
+
+
+def test_financial_abstract_normalizer_keeps_matrix_as_raw_evidence_only():
+    provider = _provider()
+    record = provider.fetch(_request(DataCategory.FINANCIAL_ABSTRACT, "SH600000"))
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="financial-abstract-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_FINANCIAL_ABSTRACT_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == [
+        "consolidated_net_profit",
+        "parent_net_profit",
+        "reported_cfo",
+        "revenue",
+    ]
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "wide amount, per-share and ratio" in normalized.data_quality.notes
+    assert "canonical entity" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    errors = list(Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json")))
+    assert errors == []
+
+
+def test_financial_abstract_normalizer_rejects_replayed_rows_without_metric_identity():
+    provider = _provider()
+    record = provider.fetch(_request(DataCategory.FINANCIAL_ABSTRACT, "SH600000"))
+    payload = [dict(row) for row in record.raw_payload]
+    del payload[0]["指标"]
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=record.source_uri,
+        response_metadata=record.response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match="no explicit metric identity"):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="invalid-financial-abstract-replay",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_financial_abstract_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(DataCategory.FINANCIAL_ABSTRACT, "SH600000")
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [
+        ("stock_financial_abstract", {"symbol": "600000"}),
+    ]
