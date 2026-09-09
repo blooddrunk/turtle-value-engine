@@ -201,6 +201,13 @@ class FakeAKShare:
             **kwargs,
         )
 
+    def stock_zh_a_disclosure_report_cninfo(self, **kwargs):
+        return self._return(
+            "stock_zh_a_disclosure_report_cninfo",
+            _fixture("a_disclosure_report.json"),
+            **kwargs,
+        )
+
     def stock_repurchase_em(self):
         return self._return("stock_repurchase_em", _fixture("a_repurchase.json"))
 
@@ -292,6 +299,7 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "cash_flow_statement",
         "company_metadata",
         "corporate_actions",
+        "disclosure_notices",
         "dividends",
         "earnings_forecast",
         "earnings_quick_report",
@@ -308,8 +316,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "share_capital",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "23"
-    assert AKSHARE_MAPPING_VERSION == "24"
+    assert provider.identity.provider_version == "24"
+    assert AKSHARE_MAPPING_VERSION == "25"
 
 
 def test_a_quote_is_selected_from_the_upstream_universe_and_kept_opaque():
@@ -1585,6 +1593,211 @@ def test_a_dividend_snapshot_cache_replay_does_not_call_upstream(tmp_path: Path)
     assert replay.mode is RetrievalMode.CACHE_REPLAY
     assert replay.record == live.record
     assert fake.calls == [("stock_fhps_em", {"date": "20241231"})]
+
+
+def test_a_disclosure_notice_fetch_uses_documented_listing_and_filter_contract():
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    request = _request(
+        DataCategory.DISCLOSURE_NOTICES,
+        "SH600000",
+        {
+            "market": "沪深京",
+            "category": "公司治理",
+            "start_date": "20240101",
+            "end_date": "20241231",
+        },
+    )
+
+    record = provider.fetch(request)
+
+    assert record.raw_payload == _fixture("a_disclosure_report.json")
+    assert fake.calls == [
+        (
+            "stock_zh_a_disclosure_report_cninfo",
+            {
+                "symbol": "600000",
+                "market": "沪深京",
+                "keyword": "",
+                "category": "公司治理",
+                "start_date": "20240101",
+                "end_date": "20241231",
+            },
+        )
+    ]
+    assert record.response_metadata["endpoint"] == "stock_zh_a_disclosure_report_cninfo"
+    assert record.response_metadata["upstream_row_count"] == 2
+    assert record.response_metadata["entity_row_count"] == 2
+    assert record.response_metadata["entity_rows_selected"] is True
+    assert record.response_metadata["listing_scoped_request"] is True
+    assert record.response_metadata["row_filtering"] == "provider"
+    assert record.response_metadata["notice_category"] == "公司治理"
+    assert record.response_metadata["start_date"] == "20240101"
+    assert record.response_metadata["end_date"] == "20241231"
+    assert record.source_uri == (
+        "http://www.cninfo.com.cn/new/commonUrl/pageOfSearch?url=disclosure/list/search"
+    )
+
+
+def test_a_disclosure_notice_request_uses_documented_defaults_and_rejects_unsupported_scope():
+    fake = FakeAKShare()
+    provider = _provider(fake)
+
+    provider.fetch(_request(DataCategory.DISCLOSURE_NOTICES, "SH600000"))
+    assert fake.calls == [
+        (
+            "stock_zh_a_disclosure_report_cninfo",
+            {
+                "symbol": "600000",
+                "market": "沪深京",
+                "keyword": "",
+                "category": "",
+                "start_date": "20230618",
+                "end_date": "20231219",
+            },
+        )
+    ]
+
+    with pytest.raises(ProviderRequestError, match="A-share listings only"):
+        provider.fetch(_request(DataCategory.DISCLOSURE_NOTICES, "HK00700"))
+    with pytest.raises(ProviderRequestError, match="market must be"):
+        provider.fetch(
+            _request(DataCategory.DISCLOSURE_NOTICES, "SH600000", {"market": "港股"})
+        )
+    with pytest.raises(ProviderRequestError, match="category must be"):
+        provider.fetch(
+            _request(
+                DataCategory.DISCLOSURE_NOTICES,
+                "SH600000",
+                {"category": "not-a-documented-category"},
+            )
+        )
+    with pytest.raises(ProviderRequestError, match="start_date must not be after"):
+        provider.fetch(
+            _request(
+                DataCategory.DISCLOSURE_NOTICES,
+                "SH600000",
+                {"start_date": "20250101", "end_date": "20240101"},
+            )
+        )
+
+
+def test_disclosure_notice_response_rejects_cross_listing_missing_code_or_invalid_date():
+    class WrongEntityAKShare(FakeAKShare):
+        def stock_zh_a_disclosure_report_cninfo(self, **kwargs):
+            payload = _fixture("a_disclosure_report.json")
+            payload[0]["代码"] = "000001"
+            return self._return("stock_zh_a_disclosure_report_cninfo", payload, **kwargs)
+
+    with pytest.raises(ProviderResponseError, match="disclosure-notice row entity"):
+        _provider(WrongEntityAKShare()).fetch(
+            _request(DataCategory.DISCLOSURE_NOTICES, "SH600000")
+        )
+
+    class MissingCodeAKShare(FakeAKShare):
+        def stock_zh_a_disclosure_report_cninfo(self, **kwargs):
+            payload = _fixture("a_disclosure_report.json")
+            payload[0].pop("代码")
+            return self._return("stock_zh_a_disclosure_report_cninfo", payload, **kwargs)
+
+    with pytest.raises(ProviderResponseError, match="without a listing code"):
+        _provider(MissingCodeAKShare()).fetch(
+            _request(DataCategory.DISCLOSURE_NOTICES, "SH600000")
+        )
+
+    class InvalidDateAKShare(FakeAKShare):
+        def stock_zh_a_disclosure_report_cninfo(self, **kwargs):
+            payload = _fixture("a_disclosure_report.json")
+            payload[0]["公告时间"] = "not-a-date"
+            return self._return("stock_zh_a_disclosure_report_cninfo", payload, **kwargs)
+
+    with pytest.raises(ProviderResponseError, match="invalid disclosure-notice date"):
+        _provider(InvalidDateAKShare()).fetch(
+            _request(DataCategory.DISCLOSURE_NOTICES, "SH600000")
+        )
+
+
+def test_disclosure_notice_raw_record_is_not_promoted_to_filing_or_governance_facts():
+    provider = _provider()
+    record = provider.fetch(_request(DataCategory.DISCLOSURE_NOTICES, "SH600000"))
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="disclosure-notices-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_DISCLOSURE_NOTICES_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == [
+        "accounting_opinion",
+        "governance_risk_level",
+    ]
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "filing contents" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+def test_disclosure_notice_normalizer_rejects_replayed_rows_for_another_listing():
+    provider = _provider()
+    record = provider.fetch(_request(DataCategory.DISCLOSURE_NOTICES, "SH600000"))
+    mismatched_payload = [dict(row) for row in record.raw_payload]
+    mismatched_payload[0]["代码"] = "000001"
+    mismatched = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=mismatched_payload,
+        source_uri=record.source_uri,
+        response_metadata=record.response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match="does not match requested listing"):
+        normalize_akshare_records(
+            [mismatched],
+            analysis_id="mismatched-disclosure-notice-entity",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_disclosure_notice_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.DISCLOSURE_NOTICES,
+        "SH600000",
+        {"category": "公司治理", "start_date": "20240101", "end_date": "20241231"},
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [
+        (
+            "stock_zh_a_disclosure_report_cninfo",
+            {
+                "symbol": "600000",
+                "market": "沪深京",
+                "keyword": "",
+                "category": "公司治理",
+                "start_date": "20240101",
+                "end_date": "20241231",
+            },
+        )
+    ]
 
 
 def test_a_earnings_forecast_fetch_uses_exact_report_date_and_filters_the_universe():

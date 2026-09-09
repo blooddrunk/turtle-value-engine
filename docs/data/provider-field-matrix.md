@@ -543,6 +543,35 @@ outside this slice.
 | BSE `变动股数`, `变动前持股数`, `变动后持股数`, `变动均价` | Raw-only; documented 万股/元 units and event holdings do not establish a company-level fully diluted share series or settled buyback/issuance cash flow. |
 | BSE `变动原因` | Raw-only; the reason label does not establish intent, materiality or governance severity. |
 
+## Phase 2.24 A-share disclosure-notice raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_zh_a_disclosure_report_cninfo` as a CNINFO endpoint for a
+specified A-share `symbol`. Its documented inputs include the `沪深京` market,
+optional keyword/category filters and `YYYYMMDD` start/end dates; its output
+contains listing code, short name, announcement title, announcement time and a
+disclosure link.
+
+The provider passes only the requested six-digit A-share code with the
+documented `沪深京` market and filters, validates every returned row's explicit
+listing identity and any non-null announcement date, and retains the complete
+listing-bound response as raw evidence. The normalizer marks
+`accounting_opinion` and `governance_risk_level` as critically missing and
+emits `AKSHARE_DISCLOSURE_NOTICES_RAW_ONLY`; it does not fetch, parse or
+classify the linked announcement and creates no filing-derived financial or
+governance fact. H-share disclosure coverage remains outside this slice.
+
+| Raw upstream item | Phase 2 treatment |
+| --- | --- |
+| `代码`, `简称` | Used only for explicit listing-boundary validation and evidence context; they do not create a normalized company or listing fact. |
+| `公告标题` | Raw-only discovery metadata; title text is not classified as an accounting, governance or corporate-action conclusion. |
+| `公告时间` | Raw-only publication metadata; it is not silently promoted to a financial-statement period or point-in-time fact. |
+| `公告链接` | Raw-only retrieval locator; the linked document is outside this structured-data slice and requires the Phase 3 filing/evidence workflow. |
+
+The slice deliberately leaves `accounting_opinion` and
+`governance_risk_level` unresolved: announcement metadata alone does not
+establish filing contents, audit language, materiality or governance severity.
+
 ## Eligibility, identity and market context
 
 | Normalized field | Status | Boundary note |

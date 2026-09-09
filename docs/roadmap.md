@@ -636,6 +636,26 @@ insider-share coverage remains unresolved because the current AKShare stock
 documentation does not define an equivalent H-share insider endpoint. Live
 calls remain opt-in; tests use an injected client and a frozen fixture.
 
+### Phase 2.24 — A-share disclosure-notice raw acquisition contract (COMPLETE)
+
+The mapping review now covers the documented AKShare CNINFO
+`stock_zh_a_disclosure_report_cninfo` endpoint under a new provider-neutral
+`DISCLOSURE_NOTICES` category. The endpoint accepts a six-digit A-share
+`symbol`, the documented `沪深京` market, optional keyword/category filters and
+an explicit `YYYYMMDD` date range. It returns listing-bound announcement
+metadata: code, short name, title, announcement time and disclosure link.
+
+The provider passes the requested listing and documented filters, validates
+the date range and every returned row's explicit listing identity/date, and
+retains the complete response as an opaque raw record. The normalizer emits
+`AKSHARE_DISCLOSURE_NOTICES_RAW_ONLY`, marks `accounting_opinion` and
+`governance_risk_level` as critically missing, and creates no filing-content,
+accounting, governance, financial or valuation fact. Announcement titles and
+links are discovery metadata only; linked documents remain outside this
+slice. H-share disclosure coverage and Phase 3 filing retrieval/parsing remain
+unresolved. Live calls remain opt-in; tests use an injected client and a
+frozen fixture.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -645,7 +665,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.23 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.24 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -853,7 +873,7 @@ Phase 2 is active. Phase 1 remains frozen: changes to formulas, hard-gate
 semantics, schemas or `strict-v1` thresholds require a separately reviewed,
 versioned change.
 
-Phase 2.23 completes the next documented structured-data boundary while
+Phase 2.24 completes the next documented structured-data boundary while
 keeping share-change, repurchase and rights-issue period, status, unit and
 economic-scope questions unresolved, and keeping ownership-pledge holder,
 governance and economic-scope questions unresolved. The A-share
@@ -902,4 +922,8 @@ calculation methodology. The H-share latest-indicator response is retained
 under a separate raw-only snapshot boundary because its mixed per-share,
 capital, dividend, headline financial and valuation fields do not establish a
 canonical period, entity, unit or diluted-share basis. H-share insider-share
-coverage remains unresolved.
+coverage remains unresolved. The A-share disclosure-notice response is retained
+under a separate raw-only discovery boundary because its listing-bound title,
+timestamp and link do not establish filing contents, an accounting opinion or a
+governance-risk judgment; linked-document retrieval and parsing remain Phase 3
+work.

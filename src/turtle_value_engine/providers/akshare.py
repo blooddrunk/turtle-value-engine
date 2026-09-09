@@ -7,10 +7,10 @@ cached records without installing AKShare or making a network request.
 The adapter currently implements metadata, market observations, three narrow
 financial-statement slices, A-share earnings-forecast, earnings-quick-report,
 performance-report, business-composition, financial-abstract and financial-
-indicator raw slices, raw-only dividend event/snapshot, corporate-action,
-ownership-pledge, SSE/SZSE/BSE insider-share-change and A-share share-capital
-slices, the H-share financial-indicator raw slice and the H-share latest-
-indicator raw slice.
+indicator raw slices, raw-only dividend event/snapshot, A-share disclosure
+notice metadata, corporate-action, ownership-pledge, SSE/SZSE/BSE
+insider-share-change and A-share share-capital slices, the H-share financial-
+indicator raw slice and the H-share latest-indicator raw slice.
 Upstream column names are handled in this module and are never passed to the
 deterministic calculation or gate code.
 """
@@ -57,9 +57,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "23"
+AKSHARE_ADAPTER_VERSION = "24"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "24"
+AKSHARE_MAPPING_VERSION = "25"
 
 
 class ListingMarket(StrEnum):
@@ -86,6 +86,7 @@ AKSHARE_CAPABILITIES = ProviderCapabilities(
         DataCategory.LATEST_INDICATORS,
         DataCategory.BALANCE_SHEET,
         DataCategory.DIVIDENDS,
+        DataCategory.DISCLOSURE_NOTICES,
         DataCategory.CORPORATE_ACTIONS,
         DataCategory.SHARE_CAPITAL,
         DataCategory.OWNERSHIP_PLEDGE,
@@ -124,6 +125,7 @@ _SOURCE_URIS = {
     "stock_dividend_cninfo": "http://webapi.cninfo.com.cn/#/company",
     "stock_fhps_em": "https://data.eastmoney.com/yjfp/",
     "stock_hk_dividend_payout_em": "https://emweb.securities.eastmoney.com/PC_HKF10/pages/home/index.html",
+    "stock_zh_a_disclosure_report_cninfo": "http://www.cninfo.com.cn/new/commonUrl/pageOfSearch?url=disclosure/list/search",
     "stock_repurchase_em": "https://data.eastmoney.com/gphg/hglist.html",
     "stock_zh_a_gbjg_em": "https://emweb.securities.eastmoney.com/pc_hsf10/pages/index.html#/gbjg",
     "stock_share_change_cninfo": "https://webapi.cninfo.com.cn/#/apiDoc",
@@ -182,6 +184,9 @@ _FINANCIAL_INDICATORS_CHOICES = {
 }
 
 _DIVIDEND_SNAPSHOT_PARAMETER_NAMES = frozenset({"date"})
+_DISCLOSURE_NOTICES_PARAMETER_NAMES = frozenset(
+    {"market", "keyword", "category", "start_date", "end_date"}
+)
 _SHARE_CAPITAL_PARAMETER_NAMES = frozenset({"start_date", "end_date"})
 _SHARE_CHANGE_DEFAULT_START_DATE = "20091227"
 _SHARE_CHANGE_DEFAULT_END_DATE = "20241021"
@@ -197,6 +202,43 @@ _PERFORMANCE_REPORT_START_DATE = date(2010, 3, 31)
 _PERFORMANCE_REPORT_QUARTER_ENDS = frozenset({(3, 31), (6, 30), (9, 30), (12, 31)})
 _ALLOTMENT_DEFAULT_START_DATE = "19700101"
 _ALLOTMENT_DEFAULT_END_DATE = "22220222"
+_DISCLOSURE_NOTICES_DEFAULT_MARKET = "沪深京"
+_DISCLOSURE_NOTICES_DEFAULT_CATEGORY = ""
+_DISCLOSURE_NOTICES_DEFAULT_KEYWORD = ""
+_DISCLOSURE_NOTICES_DEFAULT_START_DATE = "20230618"
+_DISCLOSURE_NOTICES_DEFAULT_END_DATE = "20231219"
+_DISCLOSURE_NOTICES_MARKET = "沪深京"
+_DISCLOSURE_NOTICE_CATEGORIES = frozenset(
+    {
+        "",
+        "年报",
+        "半年报",
+        "一季报",
+        "三季报",
+        "业绩预告",
+        "权益分派",
+        "董事会",
+        "监事会",
+        "股东大会",
+        "日常经营",
+        "公司治理",
+        "中介报告",
+        "首发",
+        "增发",
+        "股权激励",
+        "配股",
+        "解禁",
+        "公司债",
+        "可转债",
+        "其他融资",
+        "股权变动",
+        "补充更正",
+        "澄清致歉",
+        "风险提示",
+        "特别处理和退市",
+        "退市整理期",
+    }
+)
 
 _OFFICIAL_BALANCE_SHEET_ENDPOINTS = frozenset(
     {"stock_zcfz_em", "stock_zcfz_bj_em"}
@@ -363,6 +405,16 @@ class AKShareProvider(StructuredDataProvider):
         ):
             raise ProviderRequestError(
                 "the AKShare latest-indicator endpoint supports H-share listings only",
+                provider=self.identity,
+                request=request,
+                retryable=False,
+            )
+        if (
+            request.category is DataCategory.DISCLOSURE_NOTICES
+            and listing.market is not ListingMarket.A
+        ):
+            raise ProviderRequestError(
+                "the AKShare disclosure-notice endpoint supports A-share listings only",
                 provider=self.identity,
                 request=request,
                 retryable=False,
@@ -701,6 +753,24 @@ class AKShareProvider(StructuredDataProvider):
             response_metadata["entity_row_count"] = len(rows)
             response_metadata["entity_rows_selected"] = True
             response_metadata["listing_scoped_request"] = True
+        elif request.category is DataCategory.DISCLOSURE_NOTICES:
+            rows = _table_rows(payload, provider=self.identity, request=request)
+            _validate_disclosure_notice_provider_rows(
+                rows,
+                listing,
+                provider=self.identity,
+                request=request,
+            )
+            response_metadata["upstream_row_count"] = len(rows)
+            response_metadata["entity_row_count"] = len(rows)
+            response_metadata["entity_rows_selected"] = True
+            response_metadata["listing_scoped_request"] = True
+            response_metadata["row_filtering"] = "provider"
+            response_metadata["notice_market"] = kwargs["market"]
+            response_metadata["notice_category"] = kwargs["category"]
+            response_metadata["notice_keyword"] = kwargs["keyword"]
+            response_metadata["start_date"] = kwargs["start_date"]
+            response_metadata["end_date"] = kwargs["end_date"]
 
         try:
             retrieved_at = self._clock()
@@ -805,6 +875,8 @@ class AKShareProvider(StructuredDataProvider):
                 return _financial_indicators_kwargs(endpoint_name, listing, request)
             if request.category is DataCategory.LATEST_INDICATORS:
                 return _latest_indicators_kwargs(endpoint_name, listing, request)
+            if request.category is DataCategory.DISCLOSURE_NOTICES:
+                return _disclosure_notices_kwargs(endpoint_name, listing, request)
             if request.category is DataCategory.DIVIDENDS:
                 return _dividends_kwargs(endpoint_name, listing, request)
             if request.category is DataCategory.SHARE_CAPITAL:
@@ -1223,6 +1295,25 @@ class AKShareNormalizer:
                     }
                 )
                 normalizer_flags.add("AKSHARE_LATEST_INDICATORS_RAW_ONLY")
+            elif record.request.category is DataCategory.DISCLOSURE_NOTICES:
+                if listing.market is not ListingMarket.A:
+                    raise ProviderNormalizationError(
+                        "AKShare disclosure-notice raw slice supports A-share listings only"
+                    )
+                try:
+                    _disclosure_notices_kwargs(
+                        "stock_zh_a_disclosure_report_cninfo",
+                        listing,
+                        record.request,
+                    )
+                except ProviderRequestError as exc:
+                    raise ProviderNormalizationError(str(exc)) from exc
+                _validate_disclosure_notice_normalizer_rows(rows, listing)
+                # Notice metadata identifies a filing candidate but does not
+                # contain the filing contents, audit opinion or governance
+                # interpretation required by the normalized contract.
+                missing_fields.update({"accounting_opinion", "governance_risk_level"})
+                normalizer_flags.add("AKSHARE_DISCLOSURE_NOTICES_RAW_ONLY")
             elif record.request.category is DataCategory.DIVIDENDS:
                 endpoint_name = record.response_metadata.get("endpoint")
                 if endpoint_name == "stock_fhps_em":
@@ -1446,6 +1537,12 @@ class AKShareNormalizer:
                 "valuation fields do not establish a canonical period, entity, unit "
                 "or diluted-share basis."
             )
+        if "AKSHARE_DISCLOSURE_NOTICES_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented A-share disclosure-notice response is retained as raw "
+                "evidence only: listing-bound announcement metadata does not establish "
+                "filing contents, an accounting opinion or a governance-risk judgment."
+            )
         return NormalizedCompanyInput(
             schema_version="1.0.0",
             analysis_id=analysis_id,
@@ -1517,6 +1614,14 @@ _QUOTE_PRICE_FIELDS = (
     "price",
 )
 _QUOTE_TIME_FIELDS = ("时间", "日期", "date", "datetime", "timestamp")
+
+_DISCLOSURE_NOTICE_DATE_FIELDS = (
+    "公告时间",
+    "公告日期",
+    "announcementTime",
+    "announcement_time",
+    "date",
+)
 
 _HISTORY_FIELDS = {
     "historical_open": (("开盘", "open"), "price_per_share"),
@@ -1590,6 +1695,10 @@ def _endpoint_candidates(
     if category is DataCategory.LATEST_INDICATORS:
         if market is ListingMarket.H:
             return ("stock_hk_financial_indicator_em",)
+        return ()
+    if category is DataCategory.DISCLOSURE_NOTICES:
+        if market is ListingMarket.A:
+            return ("stock_zh_a_disclosure_report_cninfo",)
         return ()
     if category is DataCategory.BALANCE_SHEET:
         if market is ListingMarket.A:
@@ -1899,6 +2008,102 @@ def _latest_indicators_kwargs(
             retryable=False,
         )
     return {"symbol": listing.code}
+
+
+def _disclosure_notices_kwargs(
+    endpoint_name: str,
+    listing: _ListingRef,
+    request: ProviderRequest,
+) -> dict[str, object]:
+    if endpoint_name != "stock_zh_a_disclosure_report_cninfo":
+        raise ProviderRequestError(
+            f"unsupported AKShare disclosure-notice endpoint {endpoint_name!r}",
+            request=request,
+            retryable=False,
+        )
+    if listing.market is not ListingMarket.A:
+        raise ProviderRequestError(
+            "the AKShare disclosure-notice endpoint supports A-share listings only",
+            request=request,
+            retryable=False,
+        )
+    unknown = sorted(set(request.parameters) - _DISCLOSURE_NOTICES_PARAMETER_NAMES)
+    if unknown:
+        raise ProviderRequestError(
+            "unsupported AKShare disclosure-notice parameter(s): " + ", ".join(unknown),
+            request=request,
+            retryable=False,
+        )
+
+    market = request.parameters.get("market", _DISCLOSURE_NOTICES_DEFAULT_MARKET)
+    if market != _DISCLOSURE_NOTICES_MARKET:
+        raise ProviderRequestError(
+            "AKShare disclosure-notice market must be '沪深京' for A-share listings",
+            request=request,
+            retryable=False,
+        )
+    keyword = request.parameters.get("keyword", _DISCLOSURE_NOTICES_DEFAULT_KEYWORD)
+    if not isinstance(keyword, str):
+        raise ProviderRequestError(
+            "AKShare disclosure-notice keyword must be a string",
+            request=request,
+            retryable=False,
+        )
+    category = request.parameters.get("category", _DISCLOSURE_NOTICES_DEFAULT_CATEGORY)
+    if not isinstance(category, str) or category not in _DISCLOSURE_NOTICE_CATEGORIES:
+        choices = ", ".join(sorted(value for value in _DISCLOSURE_NOTICE_CATEGORIES if value))
+        raise ProviderRequestError(
+            "AKShare disclosure-notice category must be empty or one of: " + choices,
+            request=request,
+            retryable=False,
+        )
+    start_date, start_value = _disclosure_notices_date_parameter(
+        request.parameters.get("start_date", _DISCLOSURE_NOTICES_DEFAULT_START_DATE),
+        name="start_date",
+        request=request,
+    )
+    end_date, end_value = _disclosure_notices_date_parameter(
+        request.parameters.get("end_date", _DISCLOSURE_NOTICES_DEFAULT_END_DATE),
+        name="end_date",
+        request=request,
+    )
+    if start_value > end_value:
+        raise ProviderRequestError(
+            "disclosure-notice start_date must not be after end_date",
+            request=request,
+            retryable=False,
+        )
+    return {
+        "symbol": listing.code,
+        "market": market,
+        "keyword": keyword,
+        "category": category,
+        "start_date": start_date,
+        "end_date": end_date,
+    }
+
+
+def _disclosure_notices_date_parameter(
+    raw_value: object,
+    *,
+    name: str,
+    request: ProviderRequest,
+) -> tuple[str, date]:
+    if not isinstance(raw_value, str) or not re.fullmatch(r"\d{8}", raw_value):
+        raise ProviderRequestError(
+            f"disclosure-notice {name} must be YYYYMMDD",
+            request=request,
+            retryable=False,
+        )
+    try:
+        parsed = datetime.strptime(raw_value, "%Y%m%d").date()
+    except ValueError as exc:
+        raise ProviderRequestError(
+            f"disclosure-notice {name} must be a valid YYYYMMDD date",
+            request=request,
+            retryable=False,
+        ) from exc
+    return raw_value, parsed
 
 
 def _earnings_quick_report_kwargs(
@@ -3034,6 +3239,42 @@ def _validate_share_capital_provider_rows(
             )
 
 
+def _validate_disclosure_notice_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> None:
+    """Validate listing identity and explicit announcement dates before storage."""
+
+    for row in rows:
+        row_code = _row_code(row, ListingMarket.A)
+        if row_code is None:
+            raise ProviderResponseError(
+                f"AKShare returned a disclosure-notice row without a listing code for "
+                f"{request.entity_id!r}",
+                provider=provider,
+                request=request,
+            )
+        if row_code != listing.code:
+            raise ProviderResponseError(
+                f"AKShare returned disclosure-notice row entity {row_code!r} for "
+                f"requested listing {listing.canonical_id!r}",
+                provider=provider,
+                request=request,
+            )
+        found, raw_date = _lookup(row, _DISCLOSURE_NOTICE_DATE_FIELDS)
+        if found and _text_value(raw_date) not in _MISSING_TEXT:
+            if _parse_date_value(raw_date) is None:
+                raise ProviderResponseError(
+                    f"AKShare returned an invalid disclosure-notice date for "
+                    f"{request.entity_id!r}",
+                    provider=provider,
+                    request=request,
+                )
+
+
 def _validate_corporate_action_rows(
     rows: Sequence[Mapping[str, JSONValue]],
     listing: _ListingRef,
@@ -3322,6 +3563,31 @@ def _validate_share_capital_normalizer_rows(
                 f"share-capital row entity {row_code!r} does not match "
                 f"requested listing {listing.canonical_id!r}"
             )
+
+
+def _validate_disclosure_notice_normalizer_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+) -> None:
+    """Keep replayed disclosure-notice rows inside the requested listing."""
+
+    for row in rows:
+        row_code = _row_code(row, ListingMarket.A)
+        if row_code is None:
+            raise ProviderNormalizationError(
+                "disclosure-notice row has no explicit listing code"
+            )
+        if row_code != listing.code:
+            raise ProviderNormalizationError(
+                f"disclosure-notice row entity {row_code!r} does not match "
+                f"requested listing {listing.canonical_id!r}"
+            )
+        found, raw_date = _lookup(row, _DISCLOSURE_NOTICE_DATE_FIELDS)
+        if found and _text_value(raw_date) not in _MISSING_TEXT:
+            if _parse_date_value(raw_date) is None:
+                raise ProviderNormalizationError(
+                    "disclosure-notice row has an invalid announcement date"
+                )
 
 
 def _validate_ownership_pledge_rows(

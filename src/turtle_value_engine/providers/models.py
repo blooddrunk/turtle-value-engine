@@ -82,6 +82,7 @@ class DataCategory(StrEnum):
     BALANCE_SHEET = "balance_sheet"
     CASH_FLOW_STATEMENT = "cash_flow_statement"
     DIVIDENDS = "dividends"
+    DISCLOSURE_NOTICES = "disclosure_notices"
     SHARE_CAPITAL = "share_capital"
     CORPORATE_ACTIONS = "corporate_actions"
     OWNERSHIP_PLEDGE = "ownership_pledge"
