@@ -91,7 +91,12 @@ Phase 2.14 adds the documented A-share `stock_yjbb_em` performance-report
 snapshot under a distinct `PERFORMANCE_REPORT` category; its headline net
 profit has no admitted parent/consolidated basis and its operating cash flow
 is per share, so the response remains raw-only without canonical profit or CFO
-facts.
+facts. Phase 2.15 adds the documented A-share `stock_yjkb_em` earnings-quick-
+report snapshot under a distinct `EARNINGS_QUICK_REPORT` category; its
+headline profit/revenue comparisons, per-share indicators and announcement
+date do not establish canonical entity, unit, diluted-share or filing-period
+semantics, so the response remains raw-only without canonical profit or
+revenue facts.
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

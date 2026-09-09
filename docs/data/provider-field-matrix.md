@@ -338,6 +338,35 @@ slice.
 | `最新公告日期` | Raw-only; publication/update date is not silently substituted for a report-period or point-in-time availability fact. |
 | `股票代码`, `股票简称` | Used only for conservative listing selection and evidence context; they do not create a normalized profit or CFO fact. |
 
+## Phase 2.15 A-share earnings-quick-report raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_yjyg_em.py)
+document `stock_yjkb_em` as an Eastmoney A-share universe endpoint. It accepts
+an explicit quarterly report date in `YYYYMMDD` form, with documented coverage
+starting at `20100331`, and returns headline revenue and net-profit values,
+prior-period comparisons, per-share indicators, return on equity, industry and
+announcement-date metadata.
+
+The provider requires an exact quarter-end date, validates explicit listing
+identity on every upstream row, filters the response to the requested A-share
+code and retains all matching rows. The report's `净利润-净利润` field does
+not identify an admitted parent-versus-consolidated entity basis, while the
+revenue headline, per-share indicators and ratios do not establish the
+canonical period, unit or diluted-share scope. The normalizer therefore keeps
+the selected response as structured evidence, marks `parent_net_profit` and
+`consolidated_net_profit` as critically missing and emits
+`AKSHARE_EARNINGS_QUICK_REPORT_RAW_ONLY`; it emits no profit, revenue, margin,
+CFO, CDC or valuation fact. H-share quick reports remain outside this slice.
+
+| Raw upstream item | Phase 2 treatment |
+| --- | --- |
+| `净利润-净利润`, `净利润-去年同期` | Raw-only; headline and comparison values do not establish parent-attributable versus consolidated entity scope for canonical profit facts. |
+| `营业收入-营业收入`, `营业收入-去年同期` and growth fields | Raw-only; headline/comparison semantics and presentation units are not admitted as canonical revenue facts in this slice. |
+| `每股收益`, `每股净资产`, `净资产收益率` | Raw-only; per-share and ratio values do not establish the engine's diluted economic-share, entity or period contracts. |
+| `公告日期` | Raw-only; publication date is not silently substituted for the requested report period or filing availability timestamp. |
+| `股票代码`, `股票简称` | Used only for conservative listing selection and evidence context; they do not create a normalized profit or revenue fact. |
+
 ## Eligibility, identity and market context
 
 | Normalized field | Status | Boundary note |

@@ -441,6 +441,28 @@ revenue, margin, CFO, CDC or valuation fact. H-share performance reports
 remain outside this slice. Live calls remain opt-in; tests use an injected
 client and a frozen fixture.
 
+### Phase 2.15 — A-share earnings-quick-report raw acquisition contract (COMPLETE)
+
+The mapping review now covers the documented AKShare Eastmoney
+`stock_yjkb_em` endpoint under a new provider-neutral
+`EARNINGS_QUICK_REPORT` category. The endpoint accepts an A-share quarterly
+report date in `YYYYMMDD` form, from the documented `20100331` start date, and
+returns a universe of quick-report rows containing listing identity, headline
+revenue and net-profit values, prior-period comparisons, per-share indicators,
+ratios, industry and announcement-date metadata. The provider validates the
+exact quarter-end request, rejects rows without explicit listing identity,
+filters to the requested six-digit A-share code and retains all matching rows.
+
+The headline net-profit field does not establish the accepted
+parent-versus-consolidated entity basis, and the revenue/per-share fields do
+not settle the canonical period, unit or diluted-share scope. The normalizer
+therefore retains the filtered response as structured evidence, marks
+`parent_net_profit` and `consolidated_net_profit` as critically missing and
+emits `AKSHARE_EARNINGS_QUICK_REPORT_RAW_ONLY`; it creates no canonical
+profit, revenue, margin, CFO, CDC or valuation fact. H-share quick reports
+remain outside this slice. Live calls remain opt-in; tests use an injected
+client and a frozen fixture.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -450,7 +472,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.14 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.15 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -658,7 +680,7 @@ Phase 2 is active. Phase 1 remains frozen: changes to formulas, hard-gate
 semantics, schemas or `strict-v1` thresholds require a separately reviewed,
 versioned change.
 
-Phase 2.14 completes the next documented structured-data boundary while
+Phase 2.15 completes the next documented structured-data boundary while
 keeping share-change, repurchase and rights-issue period, status, unit and
 economic-scope questions unresolved, and keeping ownership-pledge holder,
 governance and economic-scope questions unresolved. The A-share
@@ -672,4 +694,7 @@ profit for the requested period. Filing-derived classifications remain a
 Phase 3 concern. The A-share performance-report snapshot remains raw-only
 because its headline net profit has no admitted parent/consolidated basis and
 its operating cash flow is per share rather than a canonical reported CFO
-total.
+total. The A-share earnings-quick-report snapshot remains raw-only because its
+headline profit and revenue comparisons, per-share indicators and announcement
+date do not establish the canonical entity, unit, diluted-share or filing
+period semantics.

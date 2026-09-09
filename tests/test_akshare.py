@@ -93,6 +93,13 @@ class FakeAKShare:
             date=date,
         )
 
+    def stock_yjkb_em(self, *, date: str):
+        return self._return(
+            "stock_yjkb_em",
+            _fixture("a_earnings_quick_report.json"),
+            date=date,
+        )
+
     def stock_yjbb_em(self, *, date: str):
         return self._return(
             "stock_yjbb_em",
@@ -228,6 +235,7 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "corporate_actions",
         "dividends",
         "earnings_forecast",
+        "earnings_quick_report",
         "income_statement",
         "listing_metadata",
         "market_history",
@@ -237,8 +245,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "share_capital",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "14"
-    assert AKSHARE_MAPPING_VERSION == "15"
+    assert provider.identity.provider_version == "15"
+    assert AKSHARE_MAPPING_VERSION == "16"
 
 
 def test_a_quote_is_selected_from_the_upstream_universe_and_kept_opaque():
@@ -1454,6 +1462,237 @@ def test_earnings_forecast_cache_replay_does_not_call_upstream(tmp_path: Path):
     assert replay.mode is RetrievalMode.CACHE_REPLAY
     assert replay.record == live.record
     assert fake.calls == [("stock_yjyg_em", {"date": "20241231"})]
+
+
+def test_a_earnings_quick_report_fetch_uses_exact_report_date_and_filters_the_universe():
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    request = _request(
+        DataCategory.EARNINGS_QUICK_REPORT,
+        "SH600000",
+        {"date": "20241231"},
+    )
+
+    record = provider.fetch(request)
+
+    fixture = _fixture("a_earnings_quick_report.json")
+    assert record.raw_payload == [row for row in fixture if row["股票代码"] == "600000"]
+    assert fake.calls == [("stock_yjkb_em", {"date": "20241231"})]
+    assert record.response_metadata["endpoint"] == "stock_yjkb_em"
+    assert record.response_metadata["upstream_row_count"] == 2
+    assert record.response_metadata["entity_row_count"] == 1
+    assert record.response_metadata["entity_rows_selected"] is True
+    assert record.response_metadata["listing_scoped_request"] is False
+    assert record.response_metadata["row_filtering"] == "provider"
+    assert record.response_metadata["requested_date"] == "20241231"
+    assert record.response_metadata["report_period"] == "2024-12-31"
+    assert record.source_uri == "https://data.eastmoney.com/bbsj/202003/yjkb.html"
+
+
+def test_earnings_quick_report_request_requires_a_documented_quarter_end_date():
+    fake = FakeAKShare()
+    provider = _provider(fake)
+
+    with pytest.raises(ProviderRequestError, match="requires date"):
+        provider.fetch(_request(DataCategory.EARNINGS_QUICK_REPORT, "SH600000"))
+    with pytest.raises(ProviderRequestError, match="date must be YYYYMMDD"):
+        provider.fetch(
+            _request(
+                DataCategory.EARNINGS_QUICK_REPORT,
+                "SH600000",
+                {"date": "2024-12-31"},
+            )
+        )
+    with pytest.raises(ProviderRequestError, match="date must be a valid YYYYMMDD"):
+        provider.fetch(
+            _request(
+                DataCategory.EARNINGS_QUICK_REPORT,
+                "SH600000",
+                {"date": "20241331"},
+            )
+        )
+    with pytest.raises(ProviderRequestError, match="on or after 20100331"):
+        provider.fetch(
+            _request(
+                DataCategory.EARNINGS_QUICK_REPORT,
+                "SH600000",
+                {"date": "20091231"},
+            )
+        )
+    with pytest.raises(ProviderRequestError, match="exact quarter-end"):
+        provider.fetch(
+            _request(
+                DataCategory.EARNINGS_QUICK_REPORT,
+                "SH600000",
+                {"date": "20241230"},
+            )
+        )
+    with pytest.raises(ProviderRequestError, match="unsupported AKShare earnings-quick-report"):
+        provider.fetch(
+            _request(
+                DataCategory.EARNINGS_QUICK_REPORT,
+                "SH600000",
+                {"date": "20241231", "indicator": "annual"},
+            )
+        )
+    with pytest.raises(ProviderRequestError, match="A-share listings only"):
+        provider.fetch(
+            _request(
+                DataCategory.EARNINGS_QUICK_REPORT,
+                "HK00700",
+                {"date": "20241231"},
+            )
+        )
+
+    assert fake.calls == []
+
+
+def test_earnings_quick_report_response_rejects_a_row_without_an_explicit_listing_code():
+    class MissingListingCode(FakeAKShare):
+        def stock_yjkb_em(self, *, date: str):
+            return self._return(
+                "stock_yjkb_em",
+                [{"股票代码": None, "股票简称": "unresolved"}],
+                date=date,
+            )
+
+    with pytest.raises(
+        ProviderResponseError,
+        match="earnings-quick-report row without a listing code",
+    ):
+        _provider(MissingListingCode()).fetch(
+            _request(
+                DataCategory.EARNINGS_QUICK_REPORT,
+                "SH600000",
+                {"date": "20241231"},
+            )
+        )
+
+
+def test_earnings_quick_report_response_rejects_an_explicit_wrong_report_period():
+    class WrongPeriod(FakeAKShare):
+        def stock_yjkb_em(self, *, date: str):
+            return self._return(
+                "stock_yjkb_em",
+                [{"股票代码": "600000", "报告日期": "2024-09-30"}],
+                date=date,
+            )
+
+    with pytest.raises(ProviderResponseError, match="earnings-quick-report row period"):
+        _provider(WrongPeriod()).fetch(
+            _request(
+                DataCategory.EARNINGS_QUICK_REPORT,
+                "SH600000",
+                {"date": "20241231"},
+            )
+        )
+
+
+def test_earnings_quick_report_raw_record_is_not_promoted_to_reported_profit_facts():
+    provider = _provider()
+    record = provider.fetch(
+        _request(
+            DataCategory.EARNINGS_QUICK_REPORT,
+            "SH600000",
+            {"date": "20241231"},
+        )
+    )
+
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="earnings-quick-report-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_EARNINGS_QUICK_REPORT_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == [
+        "consolidated_net_profit",
+        "parent_net_profit",
+    ]
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "headline net profit" in normalized.data_quality.notes
+    assert "per-share" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    errors = list(Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json")))
+    assert errors == []
+
+
+def test_earnings_quick_report_normalizer_rejects_replayed_rows_for_another_listing():
+    provider = _provider()
+    record = provider.fetch(
+        _request(
+            DataCategory.EARNINGS_QUICK_REPORT,
+            "SH600000",
+            {"date": "20241231"},
+        )
+    )
+    mismatched_payload = [dict(row) for row in record.raw_payload]
+    mismatched_payload[0]["股票代码"] = "000001"
+    mismatched = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=mismatched_payload,
+        source_uri=record.source_uri,
+        response_metadata=record.response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match="earnings-quick-report row entity"):
+        normalize_akshare_records(
+            [mismatched],
+            analysis_id="mismatched-earnings-quick-report",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_earnings_quick_report_with_no_matching_listing_is_an_empty_raw_snapshot():
+    class NoQuickReport(FakeAKShare):
+        def stock_yjkb_em(self, *, date: str):
+            return self._return(
+                "stock_yjkb_em",
+                [{"股票代码": "000001", "股票简称": "平安银行"}],
+                date=date,
+            )
+
+    fake = NoQuickReport()
+    record = _provider(fake).fetch(
+        _request(
+            DataCategory.EARNINGS_QUICK_REPORT,
+            "SH600000",
+            {"date": "20241231"},
+        )
+    )
+
+    assert record.raw_payload == []
+    assert record.response_metadata["upstream_row_count"] == 1
+    assert record.response_metadata["entity_row_count"] == 0
+
+
+def test_earnings_quick_report_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.EARNINGS_QUICK_REPORT,
+        "SH600000",
+        {"date": "20241231"},
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [("stock_yjkb_em", {"date": "20241231"})]
 
 
 def test_a_performance_report_fetch_uses_exact_report_date_and_filters_the_universe():
