@@ -1,6 +1,6 @@
 # Provider and Cache Architecture
 
-> Status: Phase 2 foundation, read-only AKShare statement slices, dividend events and share-capital raw slice
+> Status: Phase 2 foundation, read-only AKShare statement slices, dividend events, share-capital and corporate-action raw slices
 
 This document freezes the boundary between structured-data acquisition and the
 deterministic Turtle Value Engine. It does not authorize a live provider or
@@ -214,8 +214,20 @@ the raw record's evidence, marks
 `normalized_diluted_economic_shares` as critically missing and emits the
 `AKSHARE_SHARE_CAPITAL_RAW_ONLY` flag without creating a canonical share fact.
 It does not treat `变更日期` as a financial-statement period or `总股本` as
-fully diluted shares. H-share share capital and all dividend/capital-action
-facts remain outside this slice.
+fully diluted shares. H-share share capital and canonical dividend or
+capital-action facts remain outside these raw-only slices.
+
+The new rights-issue sub-slice extends the raw-only corporate-action boundary.
+The current [AKShare documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+describes `stock_allotment_cninfo` as a CNINFO endpoint accepting an A-share
+`symbol`, `start_date` and `end_date`, and returning dated plan/result rows with
+share quantities, prices, proceeds and other allotment fields. The adapter
+passes the six-digit A-share code and the documented `YYYYMMDD` date range,
+retains every returned row and records the request range and row count. The
+documented fields do not by themselves settle the effective event date,
+planned-versus-completed outcome, amount unit/scaling or share-class/dilution
+scope, so the normalizer keeps the response as raw evidence and does not create
+an issuance, buyback, split or share-count fact.
 
 When a statement row includes an explicit security code, the normalizer also
 checks it against the requested listing and rejects a mismatch. Statement
@@ -371,11 +383,11 @@ The cache performs no network retries. The normalizer performs no provider
 retries. The deterministic pipeline performs no provider retries and should
 not be rerun as a substitute for resolving missing facts.
 
-## 12. Phase 2.2–2.9 AKShare adapter
+## 12. Phase 2.2–2.10 AKShare adapter
 
 The first concrete adapter is intentionally limited to read-only metadata,
 market observations, three documented financial-statement slices, raw-only
-dividend and corporate-action categories and one A-share share-capital raw
+dividend and corporate-action categories, and one A-share share-capital raw
 slice. It
 advertises exactly these capabilities:
 
@@ -389,7 +401,7 @@ advertises exactly these capabilities:
 | `INCOME_STATEMENT` | `stock_profit_sheet_by_report_em` (Sina fallback) | `stock_financial_hk_report_em` | explicit `parent_net_profit` and `consolidated_net_profit` lines |
 | `BALANCE_SHEET` | `stock_zcfz_em` / `stock_zcfz_bj_em` (detailed report-period and Sina fallbacks) | `stock_financial_hk_report_em` | explicit `book_cash`, equity totals and aggregate interest-bearing debt when labeled |
 | `DIVIDENDS` | `stock_dividend_cninfo` | `stock_hk_dividend_payout_em` | raw structured evidence only; no canonical dividend cash or payout ratio |
-| `CORPORATE_ACTIONS` | `stock_repurchase_em` | — | A-share repurchase rows filtered from the universe; raw structured evidence only; no canonical buyback cash |
+| `CORPORATE_ACTIONS` | `stock_repurchase_em` (no parameters); `stock_allotment_cninfo` (date-range request) | — | A-share repurchase or rights-issue rows; raw structured evidence only; no canonical buyback, issuance or dilution fact |
 | `SHARE_CAPITAL` | `stock_zh_a_gbjg_em` | — | raw historical response and provenance only; no canonical share/dilution fact |
 
 The adapter accepts common stable A/H identifiers such as `SH600000`,
@@ -407,8 +419,8 @@ never calls AKShare, and a failed live request is never written as a snapshot.
 The normalizer emits `Fact` and `Evidence` objects inside the existing
 `NormalizedCompanyInput`. For the dividend, corporate-action and share-capital
 raw slices it emits raw-record evidence only and explicit unresolved flags
-where needed; it does not emit canonical dividend, buyback or share facts. It never maps provider
-headline market cap,
+where needed; it does not emit canonical dividend, buyback, issuance, dilution
+or share facts. It never maps provider headline market cap,
 listing-years inferred from history length, unlisted financial-statement lines,
 total liabilities as interest-bearing debt, filing classifications, or any
 CDC/net-cash/Through Return/valuation/gate result. The statement slices
@@ -436,11 +448,13 @@ The period/total-cash/ordinary-versus-special classification needed to
 normalize dividend event rows also remains open. Missing or conflicting
 statement currency metadata is handled conservatively as described above, but
 a null currency still requires later source review before cross-currency
-calculations.
+calculations. For the rights-issue slice, planned-versus-completed outcome,
+effective-date basis, amount unit/scaling and share-class/dilution semantics
+remain unresolved; no capital-action classification is admitted automatically.
 
 ## 13. Deliberate non-goals
 
-This foundation plus the Phase 2.2–2.9 slices does not include:
+This foundation plus the Phase 2.2–2.10 slices does not include:
 
 - Tushare, BaoStock or any other additional provider;
 - automatic network scheduling, credentials or retry orchestration outside an adapter;

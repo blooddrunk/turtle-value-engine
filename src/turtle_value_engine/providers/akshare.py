@@ -52,9 +52,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "8"
+AKSHARE_ADAPTER_VERSION = "9"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "9"
+AKSHARE_MAPPING_VERSION = "10"
 
 
 class ListingMarket(StrEnum):
@@ -103,6 +103,7 @@ _SOURCE_URIS = {
     "stock_hk_dividend_payout_em": "https://emweb.securities.eastmoney.com/PC_HKF10/pages/home/index.html",
     "stock_repurchase_em": "https://data.eastmoney.com/gphg/hglist.html",
     "stock_zh_a_gbjg_em": "https://emweb.securities.eastmoney.com/pc_hsf10/pages/index.html#/gbjg",
+    "stock_allotment_cninfo": "https://webapi.cninfo.com.cn/#/dataBrowse",
     "stock_financial_report_sina": "https://vip.stock.finance.sina.com.cn/corp/go.php/vFD_FinanceSummary/",
     "stock_financial_hk_report_em": "https://emweb.securities.eastmoney.com/PC_HKF10/FinancialAnalysis/index",
 }
@@ -140,6 +141,10 @@ _HISTORY_PARAMETER_NAMES = frozenset(
 )
 
 _FINANCIAL_STATEMENT_PARAMETER_NAMES = frozenset({"indicator", "statement_date"})
+
+_CORPORATE_ACTION_PARAMETER_NAMES = frozenset({"start_date", "end_date"})
+_ALLOTMENT_DEFAULT_START_DATE = "19700101"
+_ALLOTMENT_DEFAULT_END_DATE = "22220222"
 
 _OFFICIAL_BALANCE_SHEET_ENDPOINTS = frozenset(
     {"stock_zcfz_em", "stock_zcfz_bj_em"}
@@ -224,7 +229,7 @@ class AKShareProvider(StructuredDataProvider):
             and listing.market is not ListingMarket.A
         ):
             raise ProviderRequestError(
-                "the AKShare repurchase endpoint supports A-share listings only",
+                "the AKShare corporate-action endpoint supports A-share listings only",
                 provider=self.identity,
                 request=request,
                 retryable=False,
@@ -301,24 +306,37 @@ class AKShareProvider(StructuredDataProvider):
         elif request.category is DataCategory.DIVIDENDS:
             rows = _table_rows(payload, provider=self.identity, request=request)
             response_metadata["upstream_row_count"] = len(rows)
-        elif request.category is DataCategory.CORPORATE_ACTIONS:
-            rows = _table_rows(payload, provider=self.identity, request=request)
-            selected = _select_listing_rows(
-                rows,
-                listing,
-                provider=self.identity,
-                request=request,
-            )
-            payload = selected
-            response_metadata["upstream_row_count"] = len(rows)
-            response_metadata["entity_row_count"] = len(selected)
-            response_metadata["entity_rows_selected"] = True
-            response_metadata["listing_scoped_request"] = False
-            response_metadata["row_filtering"] = "provider"
         elif request.category is DataCategory.SHARE_CAPITAL:
             rows = _table_rows(payload, provider=self.identity, request=request)
             response_metadata["upstream_row_count"] = len(rows)
             response_metadata["listing_scoped_request"] = True
+        elif request.category is DataCategory.CORPORATE_ACTIONS:
+            rows = _table_rows(payload, provider=self.identity, request=request)
+            if endpoint.name == "stock_repurchase_em":
+                selected = _select_listing_rows(
+                    rows,
+                    listing,
+                    provider=self.identity,
+                    request=request,
+                )
+                payload = selected
+                response_metadata["upstream_row_count"] = len(rows)
+                response_metadata["entity_row_count"] = len(selected)
+                response_metadata["entity_rows_selected"] = True
+                response_metadata["listing_scoped_request"] = False
+                response_metadata["row_filtering"] = "provider"
+            elif endpoint.name == "stock_allotment_cninfo":
+                _validate_corporate_action_provider_rows(
+                    rows,
+                    listing,
+                    provider=self.identity,
+                    request=request,
+                )
+                response_metadata["upstream_row_count"] = len(rows)
+                response_metadata["listing_scoped_request"] = True
+                response_metadata["action_type"] = "rights_issue"
+                response_metadata["start_date"] = kwargs["start_date"]
+                response_metadata["end_date"] = kwargs["end_date"]
 
         try:
             retrieved_at = self._clock()
@@ -369,6 +387,9 @@ class AKShareProvider(StructuredDataProvider):
             listing,
             category,
             statement_date_requested="statement_date" in request.parameters,
+            corporate_action_date_requested=any(
+                name in request.parameters for name in ("start_date", "end_date")
+            ),
         )
         for name in candidates:
             function = getattr(client, name, None)
@@ -404,6 +425,8 @@ class AKShareProvider(StructuredDataProvider):
                 return _balance_sheet_kwargs(endpoint_name, listing, request)
             if request.category is DataCategory.SHARE_CAPITAL:
                 return _share_capital_kwargs(endpoint_name, listing, request)
+            if request.category is DataCategory.CORPORATE_ACTIONS:
+                return _corporate_action_kwargs(endpoint_name, listing, request)
             if endpoint_name in _NO_ARGUMENT_ENDPOINTS:
                 _reject_unexpected_parameters(request)
                 return {}
@@ -685,15 +708,22 @@ class AKShareNormalizer:
             elif record.request.category is DataCategory.CORPORATE_ACTIONS:
                 if listing.market is not ListingMarket.A:
                     raise ProviderNormalizationError(
-                        "AKShare repurchase raw slice supports A-share listings only"
+                        "AKShare corporate-action raw slices support A-share listings only"
                     )
-                _validate_corporate_action_rows(rows, listing)
-                # The endpoint combines planned and completed repurchase fields
-                # and exposes an announcement/update date rather than one
-                # settled cash-flow period. Retain the record and evidence, but
-                # do not turn it into annual buyback cash or a recurrence claim.
-                missing_fields.add("buyback_cash")
-                normalizer_flags.add("AKSHARE_CORPORATE_ACTIONS_RAW_ONLY")
+                endpoint_name = record.response_metadata.get("endpoint")
+                if endpoint_name == "stock_allotment_cninfo":
+                    _validate_corporate_action_normalizer_rows(rows, listing)
+                    missing_fields.add("share_issuance_cash")
+                    normalizer_flags.add("AKSHARE_ALLOTMENT_RAW_ONLY")
+                else:
+                    _validate_corporate_action_rows(rows, listing)
+                    # The endpoint combines planned and completed repurchase
+                    # fields and exposes an announcement/update date rather
+                    # than one settled cash-flow period. Retain the record and
+                    # evidence, but do not turn it into annual buyback cash or
+                    # a recurrence claim.
+                    missing_fields.add("buyback_cash")
+                    normalizer_flags.add("AKSHARE_CORPORATE_ACTIONS_RAW_ONLY")
             elif record.request.category is DataCategory.SHARE_CAPITAL:
                 if listing.market is not ListingMarket.A:
                     raise ProviderNormalizationError(
@@ -720,9 +750,9 @@ class AKShareNormalizer:
             "parent and consolidated net profit; balance-sheet mapping is limited "
             "to explicit cash, equity and interest-bearing-debt totals. Dividend "
             "and corporate-action records remain raw structured evidence until "
-            "cash amount, action status and period basis are explicit. Filing "
-            "classifications and economic adjustments remain unresolved until a "
-            "later provider/filing workflow."
+            "ordinary/special status, cash amount, action outcome, amount unit "
+            "and period basis are explicit. Filing classifications and economic "
+            "adjustments remain unresolved until a later provider/filing workflow."
         )
         if "AKSHARE_CORPORATE_ACTIONS_RAW_ONLY" in normalizer_flags:
             notes += (
@@ -735,6 +765,13 @@ class AKShareNormalizer:
                 " The documented A-share share-capital history is retained as raw "
                 "evidence only: its change-date, unit and diluted economic scope "
                 "are not sufficient for a canonical share-count fact."
+            )
+        if "AKSHARE_ALLOTMENT_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented A-share rights-issue response is retained as raw "
+                "evidence only: its action dates, planned/actual outcome, amount "
+                "units and share-class scope are not sufficient for a canonical "
+                "issuance or dilution fact."
             )
         return NormalizedCompanyInput(
             schema_version="1.0.0",
@@ -824,6 +861,7 @@ def _endpoint_candidates(
     category: DataCategory,
     *,
     statement_date_requested: bool = False,
+    corporate_action_date_requested: bool = False,
 ) -> tuple[str, ...]:
     market = listing.market
     if category is DataCategory.COMPANY_METADATA:
@@ -874,6 +912,8 @@ def _endpoint_candidates(
             return ("stock_dividend_cninfo",)
         return ("stock_hk_dividend_payout_em",)
     if category is DataCategory.CORPORATE_ACTIONS:
+        if corporate_action_date_requested:
+            return ("stock_allotment_cninfo",)
         return ("stock_repurchase_em",)
     if category is DataCategory.SHARE_CAPITAL:
         return ("stock_zh_a_gbjg_em",)
@@ -941,6 +981,77 @@ def _share_capital_kwargs(
         )
     _reject_unexpected_parameters(request)
     return {"symbol": listing.code}
+
+
+def _corporate_action_kwargs(
+    endpoint_name: str,
+    listing: _ListingRef,
+    request: ProviderRequest,
+) -> dict[str, object]:
+    if endpoint_name == "stock_repurchase_em":
+        _reject_unexpected_parameters(request)
+        return {}
+    if endpoint_name != "stock_allotment_cninfo":
+        raise ProviderRequestError(
+            f"unsupported AKShare corporate-action endpoint {endpoint_name!r}",
+            request=request,
+            retryable=False,
+        )
+    if listing.market is not ListingMarket.A:
+        raise ProviderRequestError(
+            "the AKShare rights-issue endpoint supports A-share listings only",
+            request=request,
+            retryable=False,
+        )
+    unknown = sorted(set(request.parameters) - _CORPORATE_ACTION_PARAMETER_NAMES)
+    if unknown:
+        raise ProviderRequestError(
+            "unsupported AKShare corporate-action parameter(s): " + ", ".join(unknown),
+            request=request,
+            retryable=False,
+        )
+    start_date, start_value = _allotment_date_parameter(
+        request.parameters.get("start_date", _ALLOTMENT_DEFAULT_START_DATE),
+        name="start_date",
+        request=request,
+    )
+    end_date, end_value = _allotment_date_parameter(
+        request.parameters.get("end_date", _ALLOTMENT_DEFAULT_END_DATE),
+        name="end_date",
+        request=request,
+    )
+    if start_value is not None and end_value is not None and start_value > end_value:
+        raise ProviderRequestError(
+            "corporate-action start_date must not be after end_date",
+            request=request,
+            retryable=False,
+        )
+    return {"symbol": listing.code, "start_date": start_date, "end_date": end_date}
+
+
+def _allotment_date_parameter(
+    raw_value: object,
+    *,
+    name: str,
+    request: ProviderRequest,
+) -> tuple[str, date | None]:
+    if not isinstance(raw_value, str) or not re.fullmatch(r"\d{8}", raw_value):
+        raise ProviderRequestError(
+            f"corporate-action {name} must be YYYYMMDD",
+            request=request,
+            retryable=False,
+        )
+    if raw_value == _ALLOTMENT_DEFAULT_END_DATE:
+        return raw_value, None
+    try:
+        parsed = datetime.strptime(raw_value, "%Y%m%d").date()
+    except ValueError as exc:
+        raise ProviderRequestError(
+            f"corporate-action {name} must be a valid YYYYMMDD date",
+            request=request,
+            retryable=False,
+        ) from exc
+    return raw_value, parsed
 
 
 def _financial_statement_kwargs(
@@ -1323,6 +1434,26 @@ def _select_listing_rows(
     return [dict(row) for row in rows if _row_code(row, listing.market) == listing.code]
 
 
+def _validate_corporate_action_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> None:
+    """Reject explicitly cross-listed rows before storing raw evidence."""
+
+    for row in rows:
+        row_code = _row_code(row, listing.market)
+        if row_code is not None and row_code != listing.code:
+            raise ProviderResponseError(
+                f"AKShare returned corporate-action row entity {row_code!r} for "
+                f"requested listing {listing.canonical_id!r}",
+                provider=provider,
+                request=request,
+            )
+
+
 def _validate_corporate_action_rows(
     rows: Sequence[Mapping[str, JSONValue]],
     listing: _ListingRef,
@@ -1336,6 +1467,21 @@ def _validate_corporate_action_rows(
                 "corporate-action row has no explicit listing code"
             )
         if row_code != listing.code:
+            raise ProviderNormalizationError(
+                f"corporate-action row entity {row_code!r} does not match "
+                f"requested listing {listing.canonical_id!r}"
+            )
+
+
+def _validate_corporate_action_normalizer_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+) -> None:
+    """Keep manually supplied raw records inside the requested listing boundary."""
+
+    for row in rows:
+        row_code = _row_code(row, listing.market)
+        if row_code is not None and row_code != listing.code:
             raise ProviderNormalizationError(
                 f"corporate-action row entity {row_code!r} does not match "
                 f"requested listing {listing.canonical_id!r}"

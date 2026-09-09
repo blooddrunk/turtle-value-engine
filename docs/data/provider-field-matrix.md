@@ -179,6 +179,30 @@ The slice emits `AKSHARE_CORPORATE_ACTIONS_RAW_ONLY`, marks
 `net_diluted_share_reduction_verified` or a valuation credit. H-share
 repurchase coverage and filing-backed action classification remain unresolved.
 
+## Phase 2.10 rights-issue corporate-action raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_allotment_cninfo` as a CNINFO endpoint with `symbol`,
+`start_date` and `end_date` inputs. Its response contains dated rights-issue
+plan/result rows, share quantities, prices, proceeds, fees and multiple action
+dates. The endpoint's tabular output does not establish one canonical effective
+period, planned-versus-completed outcome, amount unit/scaling or fully diluted
+share-class scope for the strict input contract.
+
+The Phase 2 adapter therefore passes an explicit A-share code and date range,
+retains the complete response as a `RawProviderRecord`, and emits only
+structured-data evidence. The normalizer sets `share_issuance_cash` as
+critically missing and emits `AKSHARE_ALLOTMENT_RAW_ONLY`; it creates no
+issuance-cash, dilution, buyback, split or share-count fact. H-share rights
+issues and any filing-backed classification remain unresolved.
+
+| Raw upstream item | Phase 2 treatment |
+| --- | --- |
+| action dates (`公告日期`, `股权登记日`, `配股上市日`, etc.) | Raw-only; announcement, record, ex-rights, payment and listing dates are not silently collapsed into one period. |
+| planned/actual quantities and proceeds | Raw-only; outcome status, units/scaling and cash-flow meaning are not established for canonical issuance cash. |
+| `配股比例`, `配股价格` and fees | Raw-only; no share-issuance, split or return metric is derived. |
+| `证券代码`, `证券简称`, `机构名称` | Used only for conservative listing identity validation; they do not create a normalized corporate-action fact. |
+
 ## Eligibility, identity and market context
 
 | Normalized field | Status | Boundary note |

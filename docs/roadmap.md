@@ -299,6 +299,31 @@ credit. H-share repurchase data and filing-backed action classification remain
 outside this slice. Live calls remain opt-in; tests use an injected client and
 a frozen fixture.
 
+### Phase 2.10 — A-share rights-issue corporate-action raw contract (COMPLETE)
+
+The mapping review now covers the current documented AKShare CNINFO
+`stock_allotment_cninfo` endpoint under the provider-neutral
+`CORPORATE_ACTIONS` category. The endpoint accepts an A-share `symbol` plus
+`start_date` and `end_date` strings in `YYYYMMDD` form and returns historical
+rights-issue plan/result rows with multiple dates, share quantities, prices,
+proceeds and fees. The provider passes the requested six-digit code and date
+range, retains the complete response as an opaque raw record and records its
+row count and effective request range.
+
+The documented response does not establish one canonical event period,
+planned-versus-completed outcome, amount unit/scaling, or fully diluted
+share-class scope. The normalizer therefore emits structured evidence only,
+sets `share_issuance_cash` as critically missing and emits
+`AKSHARE_ALLOTMENT_RAW_ONLY`; it creates no canonical issuance, dilution,
+buyback, split or share-count fact. H-share corporate actions and
+filing-backed interpretation remain unresolved. Live calls remain opt-in;
+tests use an injected client and a frozen fixture.
+
+The next Phase 2 task is a focused mapping review of one remaining documented
+structured-data category; no additional dividend, buyback, split, issuance or
+diluted-share fact is admitted until its period, unit and economic scope are
+explicit.
+
 This mapping-review hardening keeps statement currency provenance conservative
 across all three slices: only explicit valid three-letter codes are accepted,
 missing currency is preserved as `null` rather than inferred from the listing
@@ -315,7 +340,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.9 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.10 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -523,6 +548,8 @@ Phase 2 is active. Phase 1 remains frozen: changes to formulas, hard-gate
 semantics, schemas or `strict-v1` thresholds require a separately reviewed,
 versioned change.
 
-Phase 2.9 completes the next documented structured-data boundary while keeping
-repurchase period, status and economic-scope questions unresolved. Filing-
-derived classifications remain a Phase 3 concern.
+Phase 2.10 completes the next documented structured-data boundary while
+keeping repurchase and rights-issue period, status, unit and economic-scope
+questions unresolved. Phase 2 remains active; the next documented category
+must still be reviewed before its fields can enter the canonical contract.
+Filing-derived classifications remain a Phase 3 concern.

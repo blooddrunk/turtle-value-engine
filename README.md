@@ -67,8 +67,11 @@ documented A-share `stock_zh_a_gbjg_em` share-capital endpoint as a raw-only
 history slice; its share-count and dilution semantics remain unresolved and
 are not mapped into canonical facts. Phase 2.9 adds the documented A-share
 `stock_repurchase_em` endpoint as a listing-filtered raw-only corporate-action
-slice; planned/completed amounts and announcement dates are not mapped into
-`buyback_cash` without a settled period and economic-scope review. Filing
+slice and Phase 2.10 adds the documented `stock_allotment_cninfo` rights-issue
+endpoint as a listing-scoped raw-only slice. Planned/completed repurchase
+amounts and announcement dates, plus rights-issue outcome, date, unit and
+dilution semantics, are not mapped into canonical buyback, issuance or
+dilution facts without a settled period and economic-scope review. Filing
 retrieval and LLM-assisted evidence analysis remain unimplemented. The deterministic
 `tve analyze` command is still offline-only and does not call a provider or an
 LLM.

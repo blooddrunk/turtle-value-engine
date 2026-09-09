@@ -132,6 +132,13 @@ class FakeAKShare:
     def stock_repurchase_em(self):
         return self._return("stock_repurchase_em", _fixture("a_repurchase.json"))
 
+    def stock_allotment_cninfo(self, **kwargs):
+        return self._return(
+            "stock_allotment_cninfo",
+            _fixture("a_allotment.json"),
+            **kwargs,
+        )
+
 
 class OfficialBalanceAKShare:
     __version__ = "fixture-akshare-official-balance"
@@ -192,8 +199,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "share_capital",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "8"
-    assert AKSHARE_MAPPING_VERSION == "9"
+    assert provider.identity.provider_version == "9"
+    assert AKSHARE_MAPPING_VERSION == "10"
 
 
 def test_a_quote_is_selected_from_the_upstream_universe_and_kept_opaque():
@@ -360,6 +367,165 @@ def test_share_capital_raw_record_replays_offline_without_calling_upstream(tmp_p
     assert fake.calls == [("stock_zh_a_gbjg_em", {"symbol": "600000"})]
 
 
+def test_a_rights_issue_fetch_uses_documented_listing_and_date_range_contract():
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    request = _request(
+        DataCategory.CORPORATE_ACTIONS,
+        "SH600000",
+        {"start_date": "20180101", "end_date": "20241231"},
+    )
+
+    record = provider.fetch(request)
+
+    assert record.raw_payload == _fixture("a_allotment.json")
+    assert fake.calls == [
+        (
+            "stock_allotment_cninfo",
+            {"symbol": "600000", "start_date": "20180101", "end_date": "20241231"},
+        )
+    ]
+    assert record.response_metadata["endpoint"] == "stock_allotment_cninfo"
+    assert record.response_metadata["upstream_row_count"] == 2
+    assert record.response_metadata["listing_scoped_request"] is True
+    assert record.response_metadata["action_type"] == "rights_issue"
+    assert record.response_metadata["start_date"] == "20180101"
+    assert record.response_metadata["end_date"] == "20241231"
+    assert record.source_uri == "https://webapi.cninfo.com.cn/#/dataBrowse"
+
+
+def test_rights_issue_response_rejects_an_explicit_cross_listing_row():
+    class WrongEntityAKShare(FakeAKShare):
+        def stock_allotment_cninfo(self, **kwargs):
+            payload = _fixture("a_allotment.json")
+            payload[0]["证券代码"] = "000001"
+            return self._return("stock_allotment_cninfo", payload, **kwargs)
+
+    fake = WrongEntityAKShare()
+    provider = _provider(fake)
+
+    with pytest.raises(ProviderResponseError, match="corporate-action row entity"):
+        provider.fetch(
+            _request(
+                DataCategory.CORPORATE_ACTIONS,
+                "SH600000",
+                {"start_date": "20180101", "end_date": "20241231"},
+            )
+        )
+    assert fake.calls == [
+        (
+            "stock_allotment_cninfo",
+            {"symbol": "600000", "start_date": "20180101", "end_date": "20241231"},
+        )
+    ]
+
+
+def test_rights_issue_request_uses_official_default_date_range_when_omitted():
+    fake = FakeAKShare()
+    provider = _provider(fake)
+
+    provider.fetch(
+        _request(
+            DataCategory.CORPORATE_ACTIONS,
+            "SH600000",
+            {"start_date": "20180101"},
+        )
+    )
+
+    assert fake.calls == [
+        (
+            "stock_allotment_cninfo",
+            {"symbol": "600000", "start_date": "20180101", "end_date": "22220222"},
+        )
+    ]
+
+
+def test_rights_issue_request_validates_date_range_and_parameters_before_upstream_call():
+    fake = FakeAKShare()
+    provider = _provider(fake)
+
+    with pytest.raises(ProviderRequestError, match="start_date must be YYYYMMDD"):
+        provider.fetch(
+            _request(
+                DataCategory.CORPORATE_ACTIONS,
+                "SH600000",
+                {"start_date": "2024-01-01"},
+            )
+        )
+    with pytest.raises(ProviderRequestError, match="must not be after"):
+        provider.fetch(
+            _request(
+                DataCategory.CORPORATE_ACTIONS,
+                "SH600000",
+                {"start_date": "20250101", "end_date": "20240101"},
+            )
+        )
+    with pytest.raises(ProviderRequestError, match="unsupported AKShare corporate-action"):
+        provider.fetch(
+            _request(
+                DataCategory.CORPORATE_ACTIONS,
+                "SH600000",
+                {"start_date": "20240101", "category": "配股"},
+            )
+        )
+    assert fake.calls == []
+
+
+def test_rights_issue_raw_record_is_not_promoted_to_issuance_or_dilution_facts():
+    provider = _provider()
+    record = provider.fetch(
+        _request(
+            DataCategory.CORPORATE_ACTIONS,
+            "SH600000",
+            {"start_date": "20180101", "end_date": "20241231"},
+        )
+    )
+
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="rights-issue-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_ALLOTMENT_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == ["share_issuance_cash"]
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "canonical issuance or dilution fact" in normalized.data_quality.notes
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+def test_rights_issue_raw_record_replays_offline_without_calling_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.CORPORATE_ACTIONS,
+        "SH600000",
+        {"start_date": "20180101", "end_date": "20241231"},
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [
+        (
+            "stock_allotment_cninfo",
+            {"symbol": "600000", "start_date": "20180101", "end_date": "20241231"},
+        )
+    ]
+
+
 def test_official_a_balance_endpoint_selects_listing_and_preserves_requested_period():
     fake = OfficialBalanceAKShare()
     provider = AKShareProvider(fake)
@@ -488,7 +654,7 @@ def test_corporate_actions_endpoint_rejects_parameters_and_h_share_requests_befo
 
     with pytest.raises(ProviderRequestError, match="does not accept request parameters"):
         provider.fetch(
-            _request(DataCategory.CORPORATE_ACTIONS, "SH600000", {"start_date": "2025-01-01"})
+            _request(DataCategory.CORPORATE_ACTIONS, "SH600000", {"status": "completed"})
         )
     with pytest.raises(ProviderRequestError, match="A-share listings only"):
         provider.fetch(_request(DataCategory.CORPORATE_ACTIONS, "HK00700"))
@@ -612,6 +778,18 @@ def test_missing_corporate_action_endpoint_is_blocked_before_an_upstream_call():
 
     with pytest.raises(ProviderRequestError, match="does not expose a supported endpoint"):
         provider.fetch(_request(DataCategory.CORPORATE_ACTIONS, "SH600000"))
+
+
+def test_corporate_action_endpoint_is_a_share_only_and_rejects_h_share_before_upstream_call():
+    fake = FakeAKShare()
+    provider = _provider(fake)
+
+    with pytest.raises(
+        ProviderRequestError,
+        match="corporate-action endpoint.*A-share listings only",
+    ):
+        provider.fetch(_request(DataCategory.CORPORATE_ACTIONS, "HK00700"))
+    assert fake.calls == []
 
 
 def test_cache_replay_is_offline_and_preserves_raw_record(tmp_path: Path):
