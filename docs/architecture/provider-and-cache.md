@@ -192,9 +192,16 @@ long-form items are normalization errors. This keeps a provider convenience
 table from silently becoming a normalized annual history with ambiguous
 semantics.
 
+When a statement row includes an explicit security code, the normalizer also
+checks it against the requested listing and rejects a mismatch. Statement
+endpoints that omit a row-level code remain bound to their listing-scoped
+request; the normalizer does not invent an entity code for them.
+
 The adapter version and mapping version are part of the cache/fact identity,
-so this new endpoint contract cannot replay a prior Phase 2.2 snapshot under
-an incompatible mapping.
+so an endpoint or mapping contract change cannot replay a prior snapshot under
+an incompatible mapping. The explicit statement-row entity guard is a
+normalizer-only mapping change; it bumps the mapping version while leaving the
+raw adapter/cache version unchanged.
 
 It is not permission to infer economic classifications that are absent from
 the provider response. Examples that remain outside automatic Phase 2

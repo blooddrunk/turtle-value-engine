@@ -106,6 +106,11 @@ balance-sheet field-name coverage, consolidated-versus-standalone entity
 basis, currency/unit scaling, explicit debt-aggregate availability and
 point-in-time publication semantics.
 
+For all three statement slices, an explicit row-level security code must match
+the requested listing; a mismatch is a normalization error. If an upstream
+statement response has no row-level code, the mapper relies only on the
+listing-scoped request and does not infer a code from another row.
+
 ## Eligibility, identity and market context
 
 | Normalized field | Status | Boundary note |

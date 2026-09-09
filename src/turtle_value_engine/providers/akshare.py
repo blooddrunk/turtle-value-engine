@@ -53,7 +53,7 @@ from .normalization import deterministic_id
 
 AKSHARE_ADAPTER_VERSION = "4"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "4"
+AKSHARE_MAPPING_VERSION = "5"
 
 
 class ListingMarket(StrEnum):
@@ -946,9 +946,25 @@ def _canonical_row_code(value: object, market: ListingMarket) -> str | None:
 
 def _row_code(row: Mapping[str, JSONValue], market: ListingMarket) -> str | None:
     if market is ListingMarket.A:
-        keys = ("A股代码", "股票代码", "证券代码", "code", "symbol", "代码")
+        keys = (
+            "A股代码",
+            "股票代码",
+            "证券代码",
+            "SECURITY_CODE",
+            "code",
+            "symbol",
+            "代码",
+        )
     else:
-        keys = ("H股代码", "证券代码", "股票代码", "code", "symbol", "代码")
+        keys = (
+            "H股代码",
+            "SECURITY_CODE",
+            "证券代码",
+            "股票代码",
+            "code",
+            "symbol",
+            "代码",
+        )
     for key in keys:
         if key in row:
             code = _canonical_row_code(row[key], market)
@@ -1597,6 +1613,8 @@ def _map_financial_statement(
 ) -> tuple[int, dict[str, int]]:
     if not rows:
         return 0, {field: 0 for field in field_aliases}
+    for row in rows:
+        _validate_statement_entity(row, listing, statement_label=statement_label)
     is_long = any(
         _lookup(row, _LONG_STATEMENT_ITEM_FIELDS)[0]
         or _lookup(row, _LONG_STATEMENT_VALUE_FIELDS)[0]
@@ -1644,6 +1662,28 @@ def _map_financial_statement(
         if found_any:
             mapped_periods += 1
     return mapped_periods, field_counts
+
+
+def _validate_statement_entity(
+    row: Mapping[str, JSONValue],
+    listing: _ListingRef,
+    *,
+    statement_label: str,
+) -> None:
+    """Reject an explicit statement row code that is not the requested listing.
+
+    Some statement endpoints return rows without a security-code column because
+    the request itself is listing-scoped. Those rows remain valid. When the
+    upstream does provide a code, however, silently trusting the endpoint would
+    allow a mixed-entity payload to cross the raw-to-fact boundary.
+    """
+
+    row_code = _row_code(row, listing.market)
+    if row_code is not None and row_code != listing.code:
+        raise ProviderNormalizationError(
+            f"{statement_label} statement row entity {row_code!r} does not match "
+            f"requested listing {listing.canonical_id!r}"
+        )
 
 
 def _pivot_long_cash_flow_rows(

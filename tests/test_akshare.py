@@ -498,6 +498,30 @@ def test_h_balance_sheet_long_rows_are_pivoted_and_keep_explicit_nulls():
     assert normalized.data_quality.critical_missing_fields == []
 
 
+def test_statement_rows_for_a_different_listing_are_rejected():
+    provider = _provider()
+    record = provider.fetch(_request(DataCategory.INCOME_STATEMENT, "HK00700"))
+    payload = [dict(row) for row in record.raw_payload]
+    payload[0]["SECURITY_CODE"] = "00005"
+    mismatched = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=record.source_uri,
+        response_metadata=record.response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match="does not match requested listing"):
+        normalize_akshare_records(
+            [mismatched],
+            analysis_id="mismatched-statement-entity",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company("HK00700"),
+        )
+
+
 def test_balance_sheet_ambiguous_long_items_are_rejected():
     provider = _provider()
     record = provider.fetch(_request(DataCategory.BALANCE_SHEET, "HK00700"))
