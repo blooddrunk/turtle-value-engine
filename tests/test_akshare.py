@@ -63,6 +63,13 @@ class FakeAKShare:
     def stock_zh_a_st_em(self):
         return self._return("stock_zh_a_st_em", _fixture("a_risk_warning_status.json"))
 
+    def stock_tfp_em(self, *, date: str):
+        return self._return(
+            "stock_tfp_em",
+            _fixture("a_trading_suspensions.json"),
+            date=date,
+        )
+
     def stock_zh_a_spot_em(self):
         return self._return("stock_zh_a_spot_em", _fixture("a_quote.json"))
 
@@ -333,10 +340,11 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "risk_warning_status",
         "share_capital",
         "shareholder_holdings",
+        "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "27"
-    assert AKSHARE_MAPPING_VERSION == "28"
+    assert provider.identity.provider_version == "28"
+    assert AKSHARE_MAPPING_VERSION == "29"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -468,6 +476,191 @@ def test_risk_warning_cache_replay_does_not_call_upstream(tmp_path: Path):
     assert replay.mode is RetrievalMode.CACHE_REPLAY
     assert replay.record == live.record
     assert fake.calls == [("stock_zh_a_st_em", {})]
+
+
+def test_trading_suspension_fetch_filters_the_documented_date_bound_universe():
+    fake = FakeAKShare()
+    record = _provider(fake).fetch(
+        _request(
+            DataCategory.TRADING_SUSPENSIONS,
+            "SH600000",
+            {"date": "20240426"},
+        )
+    )
+
+    fixture = _fixture("a_trading_suspensions.json")
+    assert record.raw_payload == [row for row in fixture if row["代码"] == "600000"]
+    assert fake.calls == [("stock_tfp_em", {"date": "20240426"})]
+    assert record.response_metadata["endpoint"] == "stock_tfp_em"
+    assert record.response_metadata["upstream_row_count"] == 3
+    assert record.response_metadata["entity_row_count"] == 2
+    assert record.response_metadata["entity_rows_selected"] is True
+    assert record.response_metadata["listing_scoped_request"] is False
+    assert record.response_metadata["row_filtering"] == "provider"
+    assert record.response_metadata["requested_date"] == "20240426"
+    assert record.response_metadata["snapshot_scope"] == "requested_date"
+    assert record.source_uri == "https://data.eastmoney.com/tfpxx/"
+
+
+def test_trading_suspension_request_validates_date_and_market_before_upstream_call():
+    fake = FakeAKShare()
+    provider = _provider(fake)
+
+    with pytest.raises(ProviderRequestError, match="requires date"):
+        provider.fetch(_request(DataCategory.TRADING_SUSPENSIONS, "SH600000"))
+    with pytest.raises(ProviderRequestError, match="date must be YYYYMMDD"):
+        provider.fetch(
+            _request(
+                DataCategory.TRADING_SUSPENSIONS,
+                "SH600000",
+                {"date": "2024-04-26"},
+            )
+        )
+    with pytest.raises(ProviderRequestError, match="date must be a valid YYYYMMDD"):
+        provider.fetch(
+            _request(
+                DataCategory.TRADING_SUSPENSIONS,
+                "SH600000",
+                {"date": "20240230"},
+            )
+        )
+    with pytest.raises(ProviderRequestError, match="unsupported AKShare trading-suspension"):
+        provider.fetch(
+            _request(
+                DataCategory.TRADING_SUSPENSIONS,
+                "SH600000",
+                {"date": "20240426", "market": "沪深京"},
+            )
+        )
+    with pytest.raises(ProviderRequestError, match="A-share listings only"):
+        provider.fetch(
+            _request(
+                DataCategory.TRADING_SUSPENSIONS,
+                "HK00700",
+                {"date": "20240426"},
+            )
+        )
+
+    assert fake.calls == []
+
+
+def test_trading_suspension_response_rejects_missing_codes_and_invalid_dates():
+    class MissingCode(FakeAKShare):
+        def stock_tfp_em(self, *, date: str):
+            return self._return(
+                "stock_tfp_em",
+                [{"代码": None, "停牌时间": "2024-04-26"}],
+                date=date,
+            )
+
+    with pytest.raises(ProviderResponseError, match="trading-suspension row without"):
+        _provider(MissingCode()).fetch(
+            _request(DataCategory.TRADING_SUSPENSIONS, "SH600000", {"date": "20240426"})
+        )
+
+    class InvalidDate(FakeAKShare):
+        def stock_tfp_em(self, *, date: str):
+            payload = _fixture("a_trading_suspensions.json")
+            payload[0]["预计复牌时间"] = "not-a-date"
+            return self._return("stock_tfp_em", payload, date=date)
+
+    with pytest.raises(ProviderResponseError, match="invalid trading-suspension date"):
+        _provider(InvalidDate()).fetch(
+            _request(DataCategory.TRADING_SUSPENSIONS, "SH600000", {"date": "20240426"})
+        )
+
+
+def test_trading_suspension_with_no_matching_listing_is_an_empty_raw_snapshot():
+    class NoSuspension(FakeAKShare):
+        def stock_tfp_em(self, *, date: str):
+            return self._return(
+                "stock_tfp_em",
+                [{"代码": "000001", "停牌时间": "2024-04-26"}],
+                date=date,
+            )
+
+    record = _provider(NoSuspension()).fetch(
+        _request(DataCategory.TRADING_SUSPENSIONS, "SH600000", {"date": "20240426"})
+    )
+
+    assert record.raw_payload == []
+    assert record.response_metadata["upstream_row_count"] == 1
+    assert record.response_metadata["entity_row_count"] == 0
+
+
+def test_trading_suspension_raw_record_is_not_promoted_to_status_or_governance_facts():
+    provider = _provider()
+    record = provider.fetch(
+        _request(DataCategory.TRADING_SUSPENSIONS, "SH600000", {"date": "20240426"})
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="trading-suspension-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_TRADING_SUSPENSIONS_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == [
+        "governance_risk_level",
+        "special_treatment",
+    ]
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "complete special-treatment status" in normalized.data_quality.notes
+    assert "governance conclusion" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    errors = list(Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json")))
+    assert errors == []
+
+
+def test_trading_suspension_normalizer_rejects_replayed_rows_for_another_listing():
+    provider = _provider()
+    record = provider.fetch(
+        _request(DataCategory.TRADING_SUSPENSIONS, "SH600000", {"date": "20240426"})
+    )
+    mismatched_payload = [dict(row) for row in record.raw_payload]
+    mismatched_payload[0]["代码"] = "000001"
+    mismatched = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=mismatched_payload,
+        source_uri=record.source_uri,
+        response_metadata=record.response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match="trading-suspension row entity"):
+        normalize_akshare_records(
+            [mismatched],
+            analysis_id="mismatched-trading-suspension",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_trading_suspension_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.TRADING_SUSPENSIONS,
+        "SH600000",
+        {"date": "20240426"},
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [("stock_tfp_em", {"date": "20240426"})]
 
 
 def test_main_shareholder_fetch_uses_documented_listing_scoped_endpoint():

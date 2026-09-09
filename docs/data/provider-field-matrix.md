@@ -659,6 +659,37 @@ The slice deliberately leaves `governance_risk_level` unresolved: historical
 holder rows do not establish beneficial control, materiality, related-party
 context or a filing-backed governance conclusion.
 
+## Phase 2.28 A-share trading-suspension raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_tfp_em` as an Eastmoney A-share endpoint with a required
+`YYYYMMDD` `date` input. It returns the requested-date suspension/resumption
+universe with listing code, name, suspension start/end dates, duration, reason,
+market and expected resume date. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_tfp_em.py)
+also shows that nullable suspension/resume dates are converted to date values
+when available.
+
+The provider validates the exact date request, rejects rows without an
+explicit listing code or with invalid non-null event dates, filters the
+universe to the requested A-share listing and retains every matching row as a
+`RawProviderRecord`. The normalizer emits structured-data evidence only,
+marks `special_treatment` and `governance_risk_level` as critically missing
+and emits `AKSHARE_TRADING_SUSPENSIONS_RAW_ONLY`; it creates no canonical
+status, governance, accounting or valuation fact. H-share suspension data and
+filing-backed interpretation remain unresolved.
+
+| Raw upstream item | Phase 2 treatment |
+| --- | --- |
+| `代码`, `名称`, `所属市场` | Used only for explicit listing-boundary validation and raw event context; they do not create a canonical listing or status fact. |
+| `停牌时间`, `停牌截止时间`, `预计复牌时间` | Preserved as nullable raw event dates; they are not collapsed into a complete current status or accounting period. |
+| `停牌期限`, `停牌原因` | Preserved as raw event context; the reason does not establish special treatment, governance severity or filing content. |
+| `序号` | Retained in the opaque upstream row; no ordering or duration metric is calculated. |
+
+The slice deliberately leaves `special_treatment` and
+`governance_risk_level` unresolved: a requested-date suspension universe is
+not a complete status history and does not establish the legal, accounting or
+governance reason behind an event.
+
 ## Eligibility, identity and market context
 
 | Normalized field | Status | Boundary note |

@@ -10,8 +10,9 @@ performance-report, business-composition, financial-abstract and financial-
 indicator raw slices, raw-only dividend event/snapshot/detail, A-share
 disclosure notice metadata, corporate-action, ownership-pledge, SSE/SZSE/BSE
 insider-share-change and A-share share-capital slices, the A-share
-risk-warning-status and main-shareholder raw slices, the H-share financial-
-indicator raw slice and the H-share latest-indicator raw slice.
+risk-warning-status, trading-suspension and main-shareholder raw slices, the
+H-share financial-indicator raw slice and the H-share latest-indicator raw
+slice.
 Upstream column names are handled in this module and are never passed to the
 deterministic calculation or gate code.
 """
@@ -58,9 +59,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "27"
+AKSHARE_ADAPTER_VERSION = "28"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "28"
+AKSHARE_MAPPING_VERSION = "29"
 
 
 class ListingMarket(StrEnum):
@@ -75,6 +76,7 @@ AKSHARE_CAPABILITIES = ProviderCapabilities(
         DataCategory.COMPANY_METADATA,
         DataCategory.LISTING_METADATA,
         DataCategory.RISK_WARNING_STATUS,
+        DataCategory.TRADING_SUSPENSIONS,
         DataCategory.MARKET_QUOTE,
         DataCategory.MARKET_HISTORY,
         DataCategory.CASH_FLOW_STATEMENT,
@@ -107,6 +109,7 @@ _SOURCE_URIS = {
     "stock_hk_spot_em": "http://quote.eastmoney.com/center/gridlist.html#hk_stocks",
     "stock_hk_spot": "http://stock.finance.sina.com.cn/hkstock/",
     "stock_zh_ah_spot_em": "https://quote.eastmoney.com/center/gridlist.html#ah_comparison",
+    "stock_tfp_em": "https://data.eastmoney.com/tfpxx/",
     "stock_zh_a_hist": "https://quote.eastmoney.com/concept/",
     "stock_zh_a_daily": "https://finance.sina.com.cn/realstock/company/",
     "stock_hk_daily": "http://stock.finance.sina.com.cn/hkstock/",
@@ -203,6 +206,7 @@ _SHARE_CHANGE_DEFAULT_END_DATE = "20241021"
 _CORPORATE_ACTION_PARAMETER_NAMES = frozenset({"start_date", "end_date"})
 _OWNERSHIP_PLEDGE_PARAMETER_NAMES = frozenset({"date"})
 _INSIDER_SHARE_CHANGE_PARAMETER_NAMES = frozenset()
+_TRADING_SUSPENSIONS_PARAMETER_NAMES = frozenset({"date"})
 _EARNINGS_FORECAST_START_DATE = date(2008, 12, 31)
 _EARNINGS_FORECAST_QUARTER_ENDS = frozenset({(3, 31), (6, 30), (9, 30), (12, 31)})
 _EARNINGS_QUICK_REPORT_START_DATE = date(2010, 3, 31)
@@ -326,6 +330,16 @@ class AKShareProvider(StructuredDataProvider):
         ):
             raise ProviderRequestError(
                 "the AKShare risk-warning-status endpoint supports A-share listings only",
+                provider=self.identity,
+                request=request,
+                retryable=False,
+            )
+        if (
+            request.category is DataCategory.TRADING_SUSPENSIONS
+            and listing.market is not ListingMarket.A
+        ):
+            raise ProviderRequestError(
+                "the AKShare trading-suspension endpoint supports A-share listings only",
                 provider=self.identity,
                 request=request,
                 retryable=False,
@@ -516,6 +530,29 @@ class AKShareProvider(StructuredDataProvider):
             response_metadata["listing_scoped_request"] = False
             response_metadata["row_filtering"] = "provider"
             response_metadata["snapshot_scope"] = "current_trading_day"
+        elif request.category is DataCategory.TRADING_SUSPENSIONS:
+            rows = _table_rows(payload, provider=self.identity, request=request)
+            _validate_trading_suspension_provider_rows(
+                rows,
+                listing,
+                provider=self.identity,
+                request=request,
+            )
+            selected = _select_listing_rows(
+                rows,
+                listing,
+                provider=self.identity,
+                request=request,
+                row_label="trading-suspension",
+            )
+            payload = selected
+            response_metadata["upstream_row_count"] = len(rows)
+            response_metadata["entity_row_count"] = len(selected)
+            response_metadata["entity_rows_selected"] = True
+            response_metadata["listing_scoped_request"] = False
+            response_metadata["row_filtering"] = "provider"
+            response_metadata["requested_date"] = kwargs["date"]
+            response_metadata["snapshot_scope"] = "requested_date"
         elif request.category is DataCategory.MARKET_HISTORY:
             rows = _table_rows(payload, provider=self.identity, request=request)
             response_metadata["upstream_row_count"] = len(rows)
@@ -965,6 +1002,8 @@ class AKShareProvider(StructuredDataProvider):
                 return _insider_share_change_kwargs(endpoint_name, listing, request)
             if request.category is DataCategory.SHAREHOLDER_HOLDINGS:
                 return _shareholder_holdings_kwargs(endpoint_name, listing, request)
+            if request.category is DataCategory.TRADING_SUSPENSIONS:
+                return _trading_suspensions_kwargs(endpoint_name, listing, request)
             if endpoint_name in _NO_ARGUMENT_ENDPOINTS:
                 _reject_unexpected_parameters(request)
                 return {}
@@ -1171,6 +1210,29 @@ class AKShareNormalizer:
                 # non-ST assertion, so retain both outcomes as raw evidence.
                 missing_fields.add("special_treatment")
                 normalizer_flags.add("AKSHARE_RISK_WARNING_STATUS_RAW_ONLY")
+            elif record.request.category is DataCategory.TRADING_SUSPENSIONS:
+                if listing.market is not ListingMarket.A:
+                    raise ProviderNormalizationError(
+                        "AKShare trading-suspension raw slice supports A-share listings only"
+                    )
+                if record.response_metadata.get("endpoint") != "stock_tfp_em":
+                    raise ProviderNormalizationError(
+                        "AKShare trading-suspension record must come from stock_tfp_em"
+                    )
+                try:
+                    _trading_suspensions_kwargs(
+                        "stock_tfp_em",
+                        listing,
+                        record.request,
+                    )
+                except ProviderRequestError as exc:
+                    raise ProviderNormalizationError(str(exc)) from exc
+                _validate_trading_suspension_normalizer_rows(rows, listing)
+                # The dated universe reports suspension events and reasons,
+                # not a complete special-treatment status or a governance
+                # conclusion for the requested listing.
+                missing_fields.update({"governance_risk_level", "special_treatment"})
+                normalizer_flags.add("AKSHARE_TRADING_SUSPENSIONS_RAW_ONLY")
             elif record.request.category is DataCategory.MARKET_QUOTE:
                 row = _single_normalization_row(rows, record)
                 field = "current_price" if primary else "listing_current_price"
@@ -1570,7 +1632,10 @@ class AKShareNormalizer:
             "board-membership snapshot rather than a dated, complete "
             "special-treatment assertion. Main-shareholder records remain raw "
             "structured evidence because holder rows do not establish beneficial "
-            "control, governance severity or a company-level diluted-share series."
+            "control, governance severity or a company-level diluted-share series. "
+            "Trading-suspension records remain raw structured evidence because "
+            "suspension events and reasons do not establish a complete status or "
+            "governance conclusion."
         )
         if "AKSHARE_CORPORATE_ACTIONS_RAW_ONLY" in normalizer_flags:
             notes += (
@@ -1695,6 +1760,13 @@ class AKShareNormalizer:
                 "dates do not establish beneficial control, governance severity or "
                 "a company-level diluted-share series."
             )
+        if "AKSHARE_TRADING_SUSPENSIONS_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented A-share trading-suspension response is retained as "
+                "raw evidence only: its requested-date event rows, dates and reasons "
+                "do not establish a complete special-treatment status or a "
+                "filing-backed governance conclusion."
+            )
         return NormalizedCompanyInput(
             schema_version="1.0.0",
             analysis_id=analysis_id,
@@ -1775,6 +1847,7 @@ _DISCLOSURE_NOTICE_DATE_FIELDS = (
     "date",
 )
 _SHAREHOLDER_HOLDINGS_DATE_FIELDS = ("截至日期", "公告日期")
+_TRADING_SUSPENSIONS_DATE_FIELDS = ("停牌时间", "停牌截止时间", "预计复牌时间")
 _HK_DIVIDEND_DETAIL_DATE_FIELDS = (
     "公告日期",
     "除净日",
@@ -1816,6 +1889,10 @@ def _endpoint_candidates(
     if category is DataCategory.RISK_WARNING_STATUS:
         if market is ListingMarket.A:
             return ("stock_zh_a_st_em",)
+        return ()
+    if category is DataCategory.TRADING_SUSPENSIONS:
+        if market is ListingMarket.A:
+            return ("stock_tfp_em",)
         return ()
     if category is DataCategory.MARKET_QUOTE:
         if market is ListingMarket.A:
@@ -2537,6 +2614,41 @@ def _shareholder_holdings_kwargs(
     return {"stock": listing.code}
 
 
+def _trading_suspensions_kwargs(
+    endpoint_name: str,
+    listing: _ListingRef,
+    request: ProviderRequest,
+) -> dict[str, object]:
+    if endpoint_name != "stock_tfp_em":
+        raise ProviderRequestError(
+            f"unsupported AKShare trading-suspension endpoint {endpoint_name!r}",
+            request=request,
+            retryable=False,
+        )
+    if listing.market is not ListingMarket.A:
+        raise ProviderRequestError(
+            "the AKShare trading-suspension endpoint supports A-share listings only",
+            request=request,
+            retryable=False,
+        )
+    unknown = sorted(set(request.parameters) - _TRADING_SUSPENSIONS_PARAMETER_NAMES)
+    if unknown:
+        raise ProviderRequestError(
+            "unsupported AKShare trading-suspension parameter(s): " + ", ".join(unknown),
+            request=request,
+            retryable=False,
+        )
+    if "date" not in request.parameters:
+        raise ProviderRequestError(
+            "the AKShare trading-suspension endpoint requires date (YYYYMMDD)",
+            request=request,
+            retryable=False,
+        )
+    raw_date = request.parameters["date"]
+    _parse_trading_suspensions_date_parameter(raw_date, request=request)
+    return {"date": raw_date}
+
+
 def _corporate_action_kwargs(
     endpoint_name: str,
     listing: _ListingRef,
@@ -2647,6 +2759,27 @@ def _parse_pledge_date_parameter(
     except ValueError as exc:
         raise ProviderRequestError(
             "ownership-pledge date must be a valid YYYYMMDD date",
+            request=request,
+            retryable=False,
+        ) from exc
+
+
+def _parse_trading_suspensions_date_parameter(
+    raw_value: object,
+    *,
+    request: ProviderRequest | None = None,
+) -> date:
+    if not isinstance(raw_value, str) or not re.fullmatch(r"\d{8}", raw_value):
+        raise ProviderRequestError(
+            "trading-suspension date must be YYYYMMDD",
+            request=request,
+            retryable=False,
+        )
+    try:
+        return datetime.strptime(raw_value, "%Y%m%d").date()
+    except ValueError as exc:
+        raise ProviderRequestError(
+            "trading-suspension date must be a valid YYYYMMDD date",
             request=request,
             retryable=False,
         ) from exc
@@ -3231,6 +3364,35 @@ def _validate_risk_warning_provider_rows(
             )
 
 
+def _validate_trading_suspension_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> None:
+    """Validate listing identity and nullable event dates in a suspension universe."""
+
+    for row in rows:
+        if _row_code(row, ListingMarket.A) is None:
+            raise ProviderResponseError(
+                f"AKShare returned a trading-suspension row without a listing code for "
+                f"{listing.canonical_id!r}",
+                provider=provider,
+                request=request,
+            )
+        for field in _TRADING_SUSPENSIONS_DATE_FIELDS:
+            found, raw_date = _lookup(row, (field,))
+            if found and _text_value(raw_date) is not None:
+                if _parse_date_value(raw_date) is None:
+                    raise ProviderResponseError(
+                        f"AKShare returned an invalid trading-suspension date in "
+                        f"{field!r} for {request.entity_id!r}",
+                        provider=provider,
+                        request=request,
+                    )
+
+
 def _validate_hk_dividend_detail_provider_rows(
     rows: Sequence[Mapping[str, JSONValue]],
     listing: _ListingRef,
@@ -3608,6 +3770,32 @@ def _validate_risk_warning_normalizer_rows(
                 f"risk-warning-status row entity {row_code!r} does not match "
                 f"requested listing {listing.canonical_id!r}"
             )
+
+
+def _validate_trading_suspension_normalizer_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+) -> None:
+    """Keep replayed trading-suspension rows inside the requested listing boundary."""
+
+    for row in rows:
+        row_code = _row_code(row, ListingMarket.A)
+        if row_code is None:
+            raise ProviderNormalizationError(
+                "trading-suspension row has no listing code"
+            )
+        if row_code != listing.code:
+            raise ProviderNormalizationError(
+                f"trading-suspension row entity {row_code!r} does not match "
+                f"requested listing {listing.canonical_id!r}"
+            )
+        for field in _TRADING_SUSPENSIONS_DATE_FIELDS:
+            found, raw_date = _lookup(row, (field,))
+            if found and _text_value(raw_date) is not None:
+                if _parse_date_value(raw_date) is None:
+                    raise ProviderNormalizationError(
+                        f"trading-suspension row has an invalid date in {field!r}"
+                    )
 
 
 def _validate_hk_dividend_detail_normalizer_rows(

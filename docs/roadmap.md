@@ -723,6 +723,26 @@ coverage and filing-backed ownership interpretation remain outside this
 slice. Live calls remain opt-in; tests use an injected client and a frozen
 fixture.
 
+### Phase 2.28 — A-share trading-suspension raw acquisition contract (COMPLETE)
+
+The mapping review now covers the documented AKShare Eastmoney
+`stock_tfp_em` endpoint under a new provider-neutral `TRADING_SUSPENSIONS`
+category. The endpoint accepts an A-share date in `YYYYMMDD` form and returns a
+date-bound universe of suspension/resumption rows with explicit listing code,
+suspension dates, duration, reason, market and expected resume date. The
+provider validates the request and every returned row's listing identity and
+nullable event dates, filters the universe to the requested listing and retains
+all matching rows as raw evidence.
+
+The event rows describe suspension activity for the requested date, not a
+complete listing-status history, special-treatment state or filing-backed
+governance conclusion. The normalizer therefore emits
+`AKSHARE_TRADING_SUSPENSIONS_RAW_ONLY`, marks `special_treatment` and
+`governance_risk_level` as critically missing and creates no canonical status,
+governance or accounting fact. H-share trading-suspension coverage remains
+outside this slice. Live calls remain opt-in; tests use an injected client and
+a frozen fixture.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -732,7 +752,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.27 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.28 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -940,7 +960,7 @@ Phase 2 is active. Phase 1 remains frozen: changes to formulas, hard-gate
 semantics, schemas or `strict-v1` thresholds require a separately reviewed,
 versioned change.
 
-Phase 2.27 completes the next documented structured-data boundary while
+Phase 2.28 completes the next documented structured-data boundary while
 keeping share-change, repurchase and rights-issue period, status, unit and
 economic-scope questions unresolved, and keeping ownership-pledge holder,
 governance and economic-scope questions unresolved. The A-share
@@ -1005,3 +1025,7 @@ The documented A-share main-shareholder response is retained under
 `AKSHARE_MAIN_SHAREHOLDERS_RAW_ONLY` because its historical holder names,
 quantities, ratios and share-class labels do not establish beneficial control,
 a company-level diluted-share series or a filing-backed governance conclusion.
+The documented A-share trading-suspension response is retained under
+`AKSHARE_TRADING_SUSPENSIONS_RAW_ONLY` because its requested-date suspension
+events, dates and reasons do not establish a complete special-treatment status
+or a filing-backed governance conclusion.

@@ -1,6 +1,6 @@
 # Provider and Cache Architecture
 
-> Status: Phase 2 foundation, read-only AKShare statement slices, earnings forecasts/quick reports/performance reports/business composition/financial abstract/financial indicators, H-share latest indicators, dividend events/snapshots/detail, A-share disclosure-notice metadata, risk-warning status, share-capital, corporate-action, ownership-pledge, main-shareholder and SSE/SZSE/BSE insider-share-change raw slices
+> Status: Phase 2 foundation, read-only AKShare statement slices, earnings forecasts/quick reports/performance reports/business composition/financial abstract/financial indicators, H-share latest indicators, dividend events/snapshots/detail, A-share disclosure-notice metadata, risk-warning status, trading-suspension, share-capital, corporate-action, ownership-pledge, main-shareholder and SSE/SZSE/BSE insider-share-change raw slices
 
 This document freezes the boundary between structured-data acquisition and the
 deterministic Turtle Value Engine. It does not authorize a live provider or
@@ -86,6 +86,7 @@ only what it can acquire reliably:
 COMPANY_METADATA
 LISTING_METADATA
 RISK_WARNING_STATUS
+TRADING_SUSPENSIONS
 MARKET_QUOTE
 MARKET_HISTORY
 INCOME_STATEMENT
@@ -104,6 +105,7 @@ SHARE_CAPITAL
 CORPORATE_ACTIONS
 OWNERSHIP_PLEDGE
 INSIDER_SHARE_CHANGES
+SHAREHOLDER_HOLDINGS
 ```
 
 Each request has:
@@ -415,6 +417,18 @@ critically missing and does not create ownership, share-count, dilution,
 buyback, issuance or valuation facts; beneficial-control and filing-backed
 governance interpretation remain outside this slice.
 
+The A-share trading-suspension slice is also acquisition-only. The current
+[AKShare documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_tfp_em` as an Eastmoney endpoint accepting a `YYYYMMDD`
+`date` and returning a suspension/resumption universe with listing codes,
+event dates, duration, reason, market and expected resume date. The provider
+validates the request and nullable event dates, filters the universe to the
+requested A-share listing and retains every matching row. The normalizer emits
+`AKSHARE_TRADING_SUSPENSIONS_RAW_ONLY`, marks `special_treatment` and
+`governance_risk_level` as critically missing and does not create a canonical
+status, governance or accounting fact; a complete status history and
+filing-backed interpretation remain outside this slice.
+
 When a statement row includes an explicit security code, the normalizer also
 checks it against the requested listing and rejects a mismatch. Statement
 endpoints that omit a row-level code remain bound to their listing-scoped
@@ -569,7 +583,7 @@ The cache performs no network retries. The normalizer performs no provider
 retries. The deterministic pipeline performs no provider retries and should
 not be rerun as a substitute for resolving missing facts.
 
-## 12. Phase 2.2–2.27 AKShare adapter
+## 12. Phase 2.2–2.28 AKShare adapter
 
 The first concrete adapter is intentionally limited to read-only metadata,
 market observations, three documented financial-statement slices, raw-only
@@ -578,8 +592,8 @@ business-composition and financial-abstract categories, A/H financial-indicator
 raw slices, raw-only dividend event/snapshot/detail and corporate-action categories,
 two A-share share-capital raw slices, one A-share ownership-pledge raw slice,
 an H-share latest-indicator raw slice, an A-share disclosure-notice raw slice,
-an A-share risk-warning-status and main-shareholder raw slice and SSE/SZSE/BSE
-insider-share-change raw slices. It
+an A-share risk-warning-status, trading-suspension and main-shareholder raw
+slice and SSE/SZSE/BSE insider-share-change raw slices. It
 advertises exactly these capabilities:
 
 | Category | A-share endpoint | H-share endpoint | Normalized output |
@@ -587,6 +601,7 @@ advertises exactly these capabilities:
 | `COMPANY_METADATA` | `stock_info_a_code_name` | `stock_hk_company_profile_em` (with conservative metadata-list fallbacks) | company metadata extension facts; nullable `Company` context enrichment only |
 | `LISTING_METADATA` | `stock_info_a_code_name` | `stock_hk_security_profile_em` (with conservative listing-list fallbacks) | listing code/name/date/exchange and other explicit metadata facts |
 | `RISK_WARNING_STATUS` | `stock_zh_a_st_em` (no parameters) | — | current A-share risk-warning-board membership as raw structured evidence only; no canonical `special_treatment` fact |
+| `TRADING_SUSPENSIONS` | `stock_tfp_em` (exact `date`) | — | requested-date A-share suspension/resumption rows as raw structured evidence only; no canonical status or governance fact |
 | `MARKET_QUOTE` | `stock_zh_a_spot_em` | `stock_hk_spot_em` | selected-listing `current_price` plus quote timestamp |
 | `MARKET_HISTORY` | `stock_zh_a_hist` | `stock_hk_daily` | dated OHLCV/turnover extension facts |
 | `CASH_FLOW_STATEMENT` | `stock_cash_flow_sheet_by_report_em` (Sina fallback) | `stock_financial_hk_report_em` | explicit `reported_cfo` and `acquisition_cash` lines |
@@ -623,8 +638,8 @@ The normalizer emits `Fact` and `Evidence` objects inside the existing
 `NormalizedCompanyInput`. For the earnings-forecast, earnings-quick-report,
 performance-report, business-composition, financial-abstract,
 financial-indicator, latest-indicator, dividend event/detail, disclosure-notice,
-risk-warning-status, corporate-action, share-capital, ownership-pledge,
-main-shareholder and insider-share-change raw slices it emits
+risk-warning-status, trading-suspension, corporate-action, share-capital,
+ownership-pledge, main-shareholder and insider-share-change raw slices it emits
 raw-record evidence only and explicit unresolved flags where needed; it does
 not emit canonical forecast-profit, revenue, margin, dividend, buyback,
 issuance, dilution, share, governance, pledged-cash or debt-equivalent facts.
@@ -734,9 +749,15 @@ quantities, ratios and share-class labels do not establish beneficial control,
 materiality, a company-level diluted-share series or a filing-backed
 governance conclusion.
 
+For the A-share trading-suspension slice, the documented requested-date
+universe and its listing-filtered result are retained as raw evidence only.
+Suspension dates, duration and reasons do not establish a complete
+special-treatment status, an accounting classification or a filing-backed
+governance conclusion.
+
 ## 13. Deliberate non-goals
 
-This foundation plus the Phase 2.2–2.27 slices does not include:
+This foundation plus the Phase 2.2–2.28 slices does not include:
 
 - Tushare, BaoStock or any other additional provider;
 - automatic network scheduling, credentials or retry orchestration outside an adapter;

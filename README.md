@@ -168,6 +168,13 @@ the normalizer emits `AKSHARE_MAIN_SHAREHOLDERS_RAW_ONLY`, leaves
 `governance_risk_level` critically missing and creates no ownership,
 share-count, dilution or valuation facts. Beneficial-control interpretation
 and H-share coverage remain outside this slice.
+Phase 2.28 adds the documented A-share Eastmoney `stock_tfp_em` endpoint under
+`TRADING_SUSPENSIONS`. Its requested-date suspension rows, event dates,
+reasons and expected resume dates remain raw structured evidence; the
+normalizer emits `AKSHARE_TRADING_SUSPENSIONS_RAW_ONLY`, leaves
+`special_treatment` and `governance_risk_level` critically missing and creates
+no canonical status, governance or accounting fact. A complete status history
+and filing-backed suspension interpretation remain outside this slice.
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

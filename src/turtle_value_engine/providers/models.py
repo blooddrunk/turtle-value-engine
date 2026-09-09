@@ -70,6 +70,7 @@ class DataCategory(StrEnum):
     COMPANY_METADATA = "company_metadata"
     LISTING_METADATA = "listing_metadata"
     RISK_WARNING_STATUS = "risk_warning_status"
+    TRADING_SUSPENSIONS = "trading_suspensions"
     MARKET_QUOTE = "market_quote"
     MARKET_HISTORY = "market_history"
     INCOME_STATEMENT = "income_statement"
