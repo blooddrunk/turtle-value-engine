@@ -572,6 +572,38 @@ The slice deliberately leaves `accounting_opinion` and
 `governance_risk_level` unresolved: announcement metadata alone does not
 establish filing contents, audit language, materiality or governance severity.
 
+## Phase 2.25 H-share dividend-event detail raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_hk_fhpx_detail_ths` as a Tonghuashun H-share dividend-event
+detail endpoint. It accepts a five-digit H-share `symbol` and returns
+symbol-scoped historical rows with announcement date, plan, ex-date, payment
+date, transfer-date range, event type, progress and scrip-dividend context. The
+same documentation does not define a general H-share disclosure-notice
+counterpart to the A-share CNINFO endpoint; this slice is therefore an
+explicitly narrow dividend-event boundary, not general filing discovery.
+
+The provider selects the endpoint only for the provider-neutral request view
+`view=event_detail`, passes the listing code, validates any non-null event
+dates, retains every returned row and records that the response is scoped by
+the requested symbol. The published rows do not carry a canonical listing code,
+so the provider does not invent one per row. The normalizer emits
+`AKSHARE_HK_DIVIDEND_DETAIL_RAW_ONLY`, marks `ordinary_dividend_cash` as
+critically missing and emits no canonical dividend, payout, share, filing or
+governance fact.
+
+| Raw upstream item | Phase 2 treatment |
+| --- | --- |
+| `公告日期` | Raw-only announcement metadata; it is not silently promoted to a financial-statement period or a settled cash period. |
+| `方案` | Raw-only plan text; a per-share plan or “不分红” label does not establish total cash, ordinary-versus-special status or payment completion. |
+| `除净日`, `派息日`, `过户日期起止日-起始`, `过户日期起止日-截止` | Raw-only event dates; multiple event dates do not establish one canonical dividend period. |
+| `类型`, `进度`, `以股代息` | Raw-only status and scrip context; these labels do not establish a filing classification, payout ratio or diluted-share adjustment. |
+
+The slice deliberately leaves `ordinary_dividend_cash` unresolved: the
+symbol-scoped event detail does not establish a settled total amount, unit,
+ordinary-versus-special policy classification or canonical period. General
+H-share disclosure retrieval remains a Phase 3 filing/evidence concern.
+
 ## Eligibility, identity and market context
 
 | Normalized field | Status | Boundary note |

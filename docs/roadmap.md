@@ -656,6 +656,33 @@ slice. H-share disclosure coverage and Phase 3 filing retrieval/parsing remain
 unresolved. Live calls remain opt-in; tests use an injected client and a
 frozen fixture.
 
+### Phase 2.25 — H-share dividend-event detail raw acquisition contract (COMPLETE)
+
+The remaining H-share disclosure gap was reviewed against the current
+documented AKShare stock interfaces. The documentation exposes no general
+H-share disclosure-notice counterpart to the A-share CNINFO endpoint, so this
+phase does not invent one or promote a company-profile/financial snapshot into
+disclosure metadata. It instead adds one adjacent, separately selectable
+documented event source: the Tonghuashun
+`stock_hk_fhpx_detail_ths` endpoint under the existing `DIVIDENDS` category.
+
+The endpoint accepts a five-digit H-share `symbol` and returns symbol-scoped
+historical dividend-event rows with announcement date, plan, ex-date, payment
+date, transfer-date range, event type, progress and scrip-dividend context. The
+provider selects it only for the explicit provider-neutral request view
+`view=event_detail`, validates any non-null event dates, preserves the full
+symbol-scoped response and records the request scope for replay. The published
+rows do not carry a canonical listing code, so the request boundary is retained
+without inventing row-level identity.
+
+The normalizer emits `AKSHARE_HK_DIVIDEND_DETAIL_RAW_ONLY`, marks
+`ordinary_dividend_cash` as critically missing and creates no dividend-cash,
+payout-ratio, share-count, filing-content or governance fact. Plan strings,
+event status and dates do not establish settled amount, ordinary-versus-special
+classification or a canonical financial period. General H-share disclosure
+retrieval and linked-document parsing remain Phase 3 work. Live calls remain
+opt-in; tests use an injected client and a frozen fixture.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -665,7 +692,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.24 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.25 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -873,7 +900,7 @@ Phase 2 is active. Phase 1 remains frozen: changes to formulas, hard-gate
 semantics, schemas or `strict-v1` thresholds require a separately reviewed,
 versioned change.
 
-Phase 2.24 completes the next documented structured-data boundary while
+Phase 2.25 completes the next documented structured-data boundary while
 keeping share-change, repurchase and rights-issue period, status, unit and
 economic-scope questions unresolved, and keeping ownership-pledge holder,
 governance and economic-scope questions unresolved. The A-share
@@ -926,4 +953,7 @@ coverage remains unresolved. The A-share disclosure-notice response is retained
 under a separate raw-only discovery boundary because its listing-bound title,
 timestamp and link do not establish filing contents, an accounting opinion or a
 governance-risk judgment; linked-document retrieval and parsing remain Phase 3
-work.
+work. The current AKShare documentation has no general H-share
+disclosure-notice endpoint; the separately selected H-share dividend-event
+detail response is retained under `AKSHARE_HK_DIVIDEND_DETAIL_RAW_ONLY` and
+does not replace Phase 3 disclosure retrieval or parsing.

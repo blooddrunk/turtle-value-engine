@@ -201,6 +201,13 @@ class FakeAKShare:
             **kwargs,
         )
 
+    def stock_hk_fhpx_detail_ths(self, *, symbol: str):
+        return self._return(
+            "stock_hk_fhpx_detail_ths",
+            _fixture("h_dividend_detail_ths.json"),
+            symbol=symbol,
+        )
+
     def stock_zh_a_disclosure_report_cninfo(self, **kwargs):
         return self._return(
             "stock_zh_a_disclosure_report_cninfo",
@@ -316,8 +323,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "share_capital",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "24"
-    assert AKSHARE_MAPPING_VERSION == "25"
+    assert provider.identity.provider_version == "25"
+    assert AKSHARE_MAPPING_VERSION == "26"
 
 
 def test_a_quote_is_selected_from_the_upstream_universe_and_kept_opaque():
@@ -1421,6 +1428,106 @@ def test_dividend_normalizer_keeps_plans_as_evidence_without_fabricating_cash():
     schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
     errors = list(Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json")))
     assert errors == []
+
+
+def test_h_dividend_detail_fetch_uses_explicit_event_detail_view_and_keeps_scope():
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    request = _request(
+        DataCategory.DIVIDENDS,
+        "HK00700",
+        {"view": "event_detail"},
+    )
+
+    record = provider.fetch(request)
+
+    assert record.raw_payload == _fixture("h_dividend_detail_ths.json")
+    assert fake.calls == [("stock_hk_fhpx_detail_ths", {"symbol": "00700"})]
+    assert record.response_metadata["endpoint"] == "stock_hk_fhpx_detail_ths"
+    assert record.response_metadata["upstream_row_count"] == 3
+    assert record.response_metadata["entity_row_count"] == 3
+    assert record.response_metadata["entity_rows_selected"] is True
+    assert record.response_metadata["listing_scoped_request"] is True
+    assert record.response_metadata["dividend_detail_view"] == "event_detail"
+    assert record.source_uri == "https://stockpage.10jqka.com.cn/HK0700/bonus/"
+
+
+def test_h_dividend_detail_request_rejects_unknown_view_before_upstream_call():
+    fake = FakeAKShare()
+    provider = _provider(fake)
+
+    with pytest.raises(ProviderRequestError, match="view must be 'event_detail'"):
+        provider.fetch(
+            _request(
+                DataCategory.DIVIDENDS,
+                "HK00700",
+                {"view": "not-a-documented-view"},
+            )
+        )
+
+    assert fake.calls == []
+
+
+def test_h_dividend_detail_response_rejects_invalid_event_dates():
+    class InvalidDateAKShare(FakeAKShare):
+        def stock_hk_fhpx_detail_ths(self, *, symbol: str):
+            payload = _fixture("h_dividend_detail_ths.json")
+            payload[0]["公告日期"] = "not-a-date"
+            return self._return(
+                "stock_hk_fhpx_detail_ths",
+                payload,
+                symbol=symbol,
+            )
+
+    with pytest.raises(ProviderResponseError, match="invalid H-share dividend-detail date"):
+        _provider(InvalidDateAKShare()).fetch(
+            _request(DataCategory.DIVIDENDS, "HK00700", {"view": "event_detail"})
+        )
+
+
+def test_h_dividend_detail_raw_record_is_not_promoted_to_dividend_or_filing_facts():
+    provider = _provider()
+    record = provider.fetch(
+        _request(DataCategory.DIVIDENDS, "HK00700", {"view": "event_detail"})
+    )
+
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="h-dividend-detail-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company(primary_listing="HK00700"),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_HK_DIVIDEND_DETAIL_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == [
+        "ordinary_dividend_cash",
+    ]
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "settled ordinary dividend cash" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+def test_h_dividend_detail_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(DataCategory.DIVIDENDS, "HK00700", {"view": "event_detail"})
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [("stock_hk_fhpx_detail_ths", {"symbol": "00700"})]
 
 
 def test_dividend_endpoint_rejects_parameters_before_upstream_call():

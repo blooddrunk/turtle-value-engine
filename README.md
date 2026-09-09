@@ -144,6 +144,16 @@ dividend, market-cap, metric or valuation facts. The published output omits a
 canonical statement period and row-level listing identity, so the request
 scope is preserved without inventing either. H-share insider-share coverage
 remains unresolved.
+Phase 2.25 reviews the remaining H-share disclosure gap against the current
+AKShare stock documentation: it documents no general H-share disclosure-notice
+counterpart to the A-share CNINFO endpoint. The one adjacent documented slice
+added here is the H-share `stock_hk_fhpx_detail_ths` dividend-event detail
+endpoint, selected explicitly with `view=event_detail`. Its announcement,
+ex-date, payment-date, plan, type, progress and scrip fields remain raw
+structured evidence; the normalizer emits
+`AKSHARE_HK_DIVIDEND_DETAIL_RAW_ONLY` without canonical dividend cash, payout,
+filing or governance facts. General H-share disclosure retrieval remains a
+Phase 3 concern.
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

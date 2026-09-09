@@ -7,8 +7,8 @@ cached records without installing AKShare or making a network request.
 The adapter currently implements metadata, market observations, three narrow
 financial-statement slices, A-share earnings-forecast, earnings-quick-report,
 performance-report, business-composition, financial-abstract and financial-
-indicator raw slices, raw-only dividend event/snapshot, A-share disclosure
-notice metadata, corporate-action, ownership-pledge, SSE/SZSE/BSE
+indicator raw slices, raw-only dividend event/snapshot/detail, A-share
+disclosure notice metadata, corporate-action, ownership-pledge, SSE/SZSE/BSE
 insider-share-change and A-share share-capital slices, the H-share financial-
 indicator raw slice and the H-share latest-indicator raw slice.
 Upstream column names are handled in this module and are never passed to the
@@ -57,9 +57,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "24"
+AKSHARE_ADAPTER_VERSION = "25"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "25"
+AKSHARE_MAPPING_VERSION = "26"
 
 
 class ListingMarket(StrEnum):
@@ -125,6 +125,7 @@ _SOURCE_URIS = {
     "stock_dividend_cninfo": "http://webapi.cninfo.com.cn/#/company",
     "stock_fhps_em": "https://data.eastmoney.com/yjfp/",
     "stock_hk_dividend_payout_em": "https://emweb.securities.eastmoney.com/PC_HKF10/pages/home/index.html",
+    "stock_hk_fhpx_detail_ths": "https://stockpage.10jqka.com.cn/HK0700/bonus/",
     "stock_zh_a_disclosure_report_cninfo": "http://www.cninfo.com.cn/new/commonUrl/pageOfSearch?url=disclosure/list/search",
     "stock_repurchase_em": "https://data.eastmoney.com/gphg/hglist.html",
     "stock_zh_a_gbjg_em": "https://emweb.securities.eastmoney.com/pc_hsf10/pages/index.html#/gbjg",
@@ -184,6 +185,8 @@ _FINANCIAL_INDICATORS_CHOICES = {
 }
 
 _DIVIDEND_SNAPSHOT_PARAMETER_NAMES = frozenset({"date"})
+_H_DIVIDEND_DETAIL_PARAMETER_NAMES = frozenset({"view"})
+_H_DIVIDEND_DETAIL_VIEW = "event_detail"
 _DISCLOSURE_NOTICES_PARAMETER_NAMES = frozenset(
     {"market", "keyword", "category", "start_date", "end_date"}
 )
@@ -516,6 +519,18 @@ class AKShareProvider(StructuredDataProvider):
                 response_metadata["row_filtering"] = "provider"
                 response_metadata["requested_date"] = kwargs["date"]
                 response_metadata["report_period"] = requested_date.isoformat()
+            elif endpoint.name == "stock_hk_fhpx_detail_ths":
+                _validate_hk_dividend_detail_provider_rows(
+                    rows,
+                    listing,
+                    provider=self.identity,
+                    request=request,
+                )
+                response_metadata["upstream_row_count"] = len(rows)
+                response_metadata["entity_row_count"] = len(rows)
+                response_metadata["entity_rows_selected"] = True
+                response_metadata["listing_scoped_request"] = True
+                response_metadata["dividend_detail_view"] = _H_DIVIDEND_DETAIL_VIEW
             else:
                 response_metadata["upstream_row_count"] = len(rows)
         elif request.category is DataCategory.SHARE_CAPITAL:
@@ -828,6 +843,7 @@ class AKShareProvider(StructuredDataProvider):
                 name in request.parameters for name in ("start_date", "end_date")
             ),
             dividend_snapshot_date_requested="date" in request.parameters,
+            dividend_detail_requested="view" in request.parameters,
         )
         for name in candidates:
             function = getattr(client, name, None)
@@ -1330,6 +1346,22 @@ class AKShareNormalizer:
                         raise ProviderNormalizationError(str(exc)) from exc
                     _validate_dividend_snapshot_normalizer_rows(rows, listing)
                     normalizer_flags.add("AKSHARE_DIVIDEND_SNAPSHOT_RAW_ONLY")
+                elif endpoint_name == "stock_hk_fhpx_detail_ths":
+                    if listing.market is not ListingMarket.H:
+                        raise ProviderNormalizationError(
+                            "AKShare H-share dividend-detail raw slice supports "
+                            "H-share listings only"
+                        )
+                    try:
+                        _dividends_kwargs(
+                            "stock_hk_fhpx_detail_ths",
+                            listing,
+                            record.request,
+                        )
+                    except ProviderRequestError as exc:
+                        raise ProviderNormalizationError(str(exc)) from exc
+                    _validate_hk_dividend_detail_normalizer_rows(rows, listing)
+                    normalizer_flags.add("AKSHARE_HK_DIVIDEND_DETAIL_RAW_ONLY")
                 # The upstream endpoints expose event plans and dates, not a
                 # normalized cash amount with a settled entity/period basis.
                 # Keep the raw record and evidence available without treating
@@ -1543,6 +1575,13 @@ class AKShareNormalizer:
                 "evidence only: listing-bound announcement metadata does not establish "
                 "filing contents, an accounting opinion or a governance-risk judgment."
             )
+        if "AKSHARE_HK_DIVIDEND_DETAIL_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented H-share dividend-detail response is retained as raw "
+                "evidence only: its event dates, plan, type, progress and scrip fields "
+                "do not establish settled ordinary dividend cash, a canonical period "
+                "or a filing-derived classification."
+            )
         return NormalizedCompanyInput(
             schema_version="1.0.0",
             analysis_id=analysis_id,
@@ -1622,6 +1661,13 @@ _DISCLOSURE_NOTICE_DATE_FIELDS = (
     "announcement_time",
     "date",
 )
+_HK_DIVIDEND_DETAIL_DATE_FIELDS = (
+    "公告日期",
+    "除净日",
+    "派息日",
+    "过户日期起止日-起始",
+    "过户日期起止日-截止",
+)
 
 _HISTORY_FIELDS = {
     "historical_open": (("开盘", "open"), "price_per_share"),
@@ -1642,6 +1688,7 @@ def _endpoint_candidates(
     corporate_action_date_requested: bool = False,
     share_capital_date_requested: bool = False,
     dividend_snapshot_date_requested: bool = False,
+    dividend_detail_requested: bool = False,
 ) -> tuple[str, ...]:
     market = listing.market
     if category is DataCategory.COMPANY_METADATA:
@@ -1724,6 +1771,8 @@ def _endpoint_candidates(
             if dividend_snapshot_date_requested:
                 return ("stock_fhps_em",)
             return ("stock_dividend_cninfo",)
+        if dividend_detail_requested:
+            return ("stock_hk_fhpx_detail_ths",)
         return ("stock_hk_dividend_payout_em",)
     if category is DataCategory.CORPORATE_ACTIONS:
         if corporate_action_date_requested:
@@ -2182,6 +2231,28 @@ def _dividends_kwargs(
                 retryable=False,
             )
         _reject_unexpected_parameters(request)
+        return {"symbol": listing.code}
+    if endpoint_name == "stock_hk_fhpx_detail_ths":
+        if listing.market is not ListingMarket.H:
+            raise ProviderRequestError(
+                "the AKShare H-share dividend-detail endpoint supports H-share listings only",
+                request=request,
+                retryable=False,
+            )
+        unknown = sorted(set(request.parameters) - _H_DIVIDEND_DETAIL_PARAMETER_NAMES)
+        if unknown:
+            raise ProviderRequestError(
+                "unsupported AKShare H-share dividend-detail parameter(s): "
+                + ", ".join(unknown),
+                request=request,
+                retryable=False,
+            )
+        if request.parameters.get("view") != _H_DIVIDEND_DETAIL_VIEW:
+            raise ProviderRequestError(
+                "H-share dividend-detail view must be 'event_detail'",
+                request=request,
+                retryable=False,
+            )
         return {"symbol": listing.code}
     if endpoint_name == "stock_hk_dividend_payout_em":
         if listing.market is not ListingMarket.H:
@@ -2998,6 +3069,36 @@ def _validate_dividend_snapshot_provider_rows(
             )
 
 
+def _validate_hk_dividend_detail_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> None:
+    """Validate dates in the symbol-scoped H-share dividend-detail response."""
+
+    for row in rows:
+        row_code = _row_code(row, ListingMarket.H)
+        if row_code is not None and row_code != listing.code:
+            raise ProviderResponseError(
+                f"AKShare returned H-share dividend-detail row entity {row_code!r} for "
+                f"requested listing {listing.canonical_id!r}",
+                provider=provider,
+                request=request,
+            )
+        for field in _HK_DIVIDEND_DETAIL_DATE_FIELDS:
+            found, raw_date = _lookup(row, (field,))
+            if found and _text_value(raw_date) is not None:
+                if _parse_date_value(raw_date) is None:
+                    raise ProviderResponseError(
+                        f"AKShare returned an invalid H-share dividend-detail date in "
+                        f"{field!r} for {request.entity_id!r}",
+                        provider=provider,
+                        request=request,
+                    )
+
+
 def _validate_earnings_forecast_provider_rows(
     rows: Sequence[Mapping[str, JSONValue]],
     listing: _ListingRef,
@@ -3326,6 +3427,28 @@ def _validate_dividend_snapshot_normalizer_rows(
                 f"dividend-snapshot row entity {row_code!r} does not match "
                 f"requested listing {listing.canonical_id!r}"
             )
+
+
+def _validate_hk_dividend_detail_normalizer_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+) -> None:
+    """Validate replayed symbol-scoped H-share dividend-detail rows."""
+
+    for row in rows:
+        row_code = _row_code(row, ListingMarket.H)
+        if row_code is not None and row_code != listing.code:
+            raise ProviderNormalizationError(
+                f"H-share dividend-detail row entity {row_code!r} does not match "
+                f"requested listing {listing.canonical_id!r}"
+            )
+        for field in _HK_DIVIDEND_DETAIL_DATE_FIELDS:
+            found, raw_date = _lookup(row, (field,))
+            if found and _text_value(raw_date) is not None:
+                if _parse_date_value(raw_date) is None:
+                    raise ProviderNormalizationError(
+                        f"H-share dividend-detail row has an invalid date in {field!r}"
+                    )
 
 
 def _validate_earnings_forecast_normalizer_rows(

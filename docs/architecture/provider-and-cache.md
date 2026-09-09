@@ -1,6 +1,6 @@
 # Provider and Cache Architecture
 
-> Status: Phase 2 foundation, read-only AKShare statement slices, earnings forecasts/quick reports/performance reports/business composition/financial abstract/financial indicators, H-share latest indicators, dividend events/snapshots, A-share disclosure-notice metadata, share-capital, corporate-action, ownership-pledge and SSE/SZSE/BSE insider-share-change raw slices
+> Status: Phase 2 foundation, read-only AKShare statement slices, earnings forecasts/quick reports/performance reports/business composition/financial abstract/financial indicators, H-share latest indicators, dividend events/snapshots/detail, A-share disclosure-notice metadata, share-capital, corporate-action, ownership-pledge and SSE/SZSE/BSE insider-share-change raw slices
 
 This document freezes the boundary between structured-data acquisition and the
 deterministic Turtle Value Engine. It does not authorize a live provider or
@@ -545,13 +545,13 @@ The cache performs no network retries. The normalizer performs no provider
 retries. The deterministic pipeline performs no provider retries and should
 not be rerun as a substitute for resolving missing facts.
 
-## 12. Phase 2.2–2.24 AKShare adapter
+## 12. Phase 2.2–2.25 AKShare adapter
 
 The first concrete adapter is intentionally limited to read-only metadata,
 market observations, three documented financial-statement slices, raw-only
 earnings-forecast, earnings-quick-report, performance-report,
 business-composition and financial-abstract categories, A/H financial-indicator
-raw slices, raw-only dividend event/snapshot and corporate-action categories,
+raw slices, raw-only dividend event/snapshot/detail and corporate-action categories,
 two A-share share-capital raw slices, one A-share ownership-pledge raw slice,
 an H-share latest-indicator raw slice, an A-share disclosure-notice raw slice
 and SSE/SZSE/BSE insider-share-change raw slices. It
@@ -573,7 +573,7 @@ advertises exactly these capabilities:
 | `FINANCIAL_INDICATORS` | `stock_financial_analysis_indicator_em` | `stock_financial_hk_analysis_indicator_em` | A/H historical financial-indicator rows as raw structured evidence only; no canonical revenue, profit, CFO, metric or valuation input |
 | `LATEST_INDICATORS` | — | `stock_hk_financial_indicator_em` | H-share symbol-scoped latest-indicator row as raw structured evidence only; no canonical financial, share, dividend, market-cap, metric or valuation input |
 | `BALANCE_SHEET` | `stock_zcfz_em` / `stock_zcfz_bj_em` (detailed report-period and Sina fallbacks) | `stock_financial_hk_report_em` | explicit `book_cash`, equity totals and aggregate interest-bearing debt when labeled |
-| `DIVIDENDS` | `stock_dividend_cninfo`; `stock_fhps_em` (explicit report date) | `stock_hk_dividend_payout_em` | raw structured evidence only; no canonical dividend cash or payout ratio |
+| `DIVIDENDS` | `stock_dividend_cninfo`; `stock_fhps_em` (explicit report date) | `stock_hk_dividend_payout_em`; `stock_hk_fhpx_detail_ths` (`view=event_detail`) | raw structured evidence only; no canonical dividend cash or payout ratio |
 | `DISCLOSURE_NOTICES` | `stock_zh_a_disclosure_report_cninfo` (`market=沪深京`, optional filters/date range) | — | listing-bound announcement metadata as raw structured evidence only; no filing-content, accounting or governance fact |
 | `CORPORATE_ACTIONS` | `stock_repurchase_em` (no parameters); `stock_allotment_cninfo` (date-range request) | — | A-share repurchase or rights-issue rows; raw structured evidence only; no canonical buyback, issuance or dilution fact |
 | `SHARE_CAPITAL` | `stock_zh_a_gbjg_em` (no parameters); `stock_share_change_cninfo` (explicit date range) | — | raw historical response and provenance only; no canonical share/dilution fact |
@@ -595,7 +595,7 @@ never calls AKShare, and a failed live request is never written as a snapshot.
 The normalizer emits `Fact` and `Evidence` objects inside the existing
 `NormalizedCompanyInput`. For the earnings-forecast, earnings-quick-report,
 performance-report, business-composition, financial-abstract,
-financial-indicator, latest-indicator, dividend, disclosure-notice,
+financial-indicator, latest-indicator, dividend event/detail, disclosure-notice,
 corporate-action, share-capital, ownership-pledge and insider-share-change raw
 slices it emits
 raw-record evidence only and explicit unresolved flags where needed; it does
@@ -683,11 +683,21 @@ For the A-share disclosure-notice slice, listing-bound announcement code,
 title, timestamp and link are retained, but announcement metadata does not
 establish filing contents, an accounting opinion, a governance-risk judgment or
 any canonical financial period; no filing-derived fact is admitted
-automatically. H-share disclosure coverage remains unresolved.
+automatically. The current AKShare documentation has no general H-share
+disclosure-notice endpoint. The separately selected H-share dividend-event
+detail response retains its dates, plan and status as raw evidence only; it
+does not establish settled ordinary dividend cash or replace Phase 3 filing
+retrieval/parsing.
+The [AKShare documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_hk_fhpx_detail_ths` as a symbol-scoped Tonghuashun dividend
+detail response with announcement/ex/payment dates, plan, type, progress and
+scrip context. It is selected only by the explicit `view=event_detail` request
+selector; its response does not establish general H-share filing coverage or
+row-level listing identity.
 
 ## 13. Deliberate non-goals
 
-This foundation plus the Phase 2.2–2.24 slices does not include:
+This foundation plus the Phase 2.2–2.25 slices does not include:
 
 - Tushare, BaoStock or any other additional provider;
 - automatic network scheduling, credentials or retry orchestration outside an adapter;
