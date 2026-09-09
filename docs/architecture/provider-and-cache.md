@@ -1,6 +1,6 @@
 # Provider and Cache Architecture
 
-> Status: Phase 2 foundation, read-only AKShare statement slices, earnings forecasts/quick reports/performance reports/business composition/financial abstract/financial indicators, H-share latest indicators, dividend events/snapshots/detail, A-share disclosure-notice metadata, risk-warning status, trading-suspension, restricted-share-release, goodwill-impairment, ESG-rating, SSE margin-detail, share-capital, corporate-action, ownership-pledge, main-shareholder and SSE/SZSE/BSE insider-share-change raw slices
+> Status: Phase 2 foundation, read-only AKShare statement slices, earnings forecasts/quick reports/performance reports/business composition/financial abstract/financial indicators, H-share latest indicators, dividend events/snapshots/detail, A-share disclosure-notice metadata, risk-warning status, trading-suspension, restricted-share-release, goodwill-impairment, ESG-rating, SSE margin-detail, share-capital, corporate-action, external-guarantee, ownership-pledge, main-shareholder and SSE/SZSE/BSE insider-share-change raw slices
 
 This document freezes the boundary between structured-data acquisition and the
 deterministic Turtle Value Engine. It does not authorize a live provider or
@@ -106,6 +106,7 @@ DIVIDENDS
 DISCLOSURE_NOTICES
 SHARE_CAPITAL
 CORPORATE_ACTIONS
+EXTERNAL_GUARANTEES
 OWNERSHIP_PLEDGE
 INSIDER_SHARE_CHANGES
 SHAREHOLDER_HOLDINGS
@@ -472,6 +473,23 @@ debt or cash, so the normalizer marks `financial_debt` as critically missing,
 emits `AKSHARE_MARGIN_TRADING_RAW_ONLY` and creates no canonical debt, cash,
 margin, leverage or valuation fact.
 
+The A-share external-guarantee slice is also acquisition-only. The current
+[AKShare documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and
+[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_cg_guarantee.py)
+document `stock_cg_guarantee_cninfo` as a CNINFO company-governance endpoint
+with a board/universe selector and `YYYYMMDD` start/end dates. The adapter
+calls the documented `symbol="全部"` universe, validates every explicit
+`证券代码`, filters to the requested A-share listing and preserves all
+matching rows plus the requested range, upstream symbol and row counts. Its
+guarantee count/amount, parent-company equity and published ratio are raw
+date-range aggregate evidence; the documented 万元 units and aggregate
+interval do not settle a quasi-debt amount, guarantee purpose, legal status,
+canonical period/entity scope or governance judgment. The normalizer emits
+`AKSHARE_EXTERNAL_GUARANTEES_RAW_ONLY`, marks
+`material_quasi_debt`, `major_illegal_guarantee` and
+`governance_risk_level` as critically missing and creates no canonical fact.
+H-share coverage and filing-backed review remain unresolved.
+
 When a statement row includes an explicit security code, the normalizer also
 checks it against the requested listing and rejects a mismatch. Statement
 endpoints that omit a row-level code remain bound to their listing-scoped
@@ -626,17 +644,18 @@ The cache performs no network retries. The normalizer performs no provider
 retries. The deterministic pipeline performs no provider retries and should
 not be rerun as a substitute for resolving missing facts.
 
-## 12. Phase 2.2–2.32 AKShare adapter
+## 12. Phase 2.2–2.33 AKShare adapter
 
 The first concrete adapter is intentionally limited to read-only metadata,
 market observations, three documented financial-statement slices, raw-only
 earnings-forecast, earnings-quick-report, performance-report,
 business-composition and financial-abstract categories, A/H financial-indicator
-raw slices, raw-only dividend event/snapshot/detail and corporate-action categories,
+raw slices, raw-only dividend event/snapshot/detail, corporate-action and
+external-guarantee categories,
 three A-share share-capital raw slices, one A-share ownership-pledge raw slice,
 an H-share latest-indicator raw slice, an A-share disclosure-notice raw slice,
 an A-share risk-warning-status, trading-suspension, goodwill-impairment,
-ESG-rating, SSE margin-detail and main-shareholder raw slice and
+ESG-rating, SSE margin-detail, external-guarantee and main-shareholder raw slice and
 SSE/SZSE/BSE insider-share-change raw slices. It
 advertises exactly these capabilities:
 
@@ -659,6 +678,7 @@ advertises exactly these capabilities:
 | `GOODWILL_IMPAIRMENT` | `stock_sy_jz_em` (exact `date`) | — | A-share report-date goodwill/impairment rows as raw structured evidence only; no canonical goodwill or impairment fact |
 | `ESG_RATINGS` | `stock_esg_rate_sina` (no parameters) | `stock_esg_rate_sina` (no parameters) | mixed A/H agency, rating, quarter and marker rows as raw structured evidence only; no canonical ESG score, governance or Business Quality fact |
 | `MARGIN_TRADING` | `stock_margin_detail_sse` (exact `date`; Shanghai A-share only) | — | requested-date SSE security-level margin rows as raw structured evidence only; no issuer debt/cash/leverage/valuation fact |
+| `EXTERNAL_GUARANTEES` | `stock_cg_guarantee_cninfo` (`symbol=全部`, date range; A-share only) | — | A-share date-range external-guarantee universe filtered to the requested listing as raw evidence only; no canonical quasi-debt, illegal-guarantee or governance fact |
 | `LATEST_INDICATORS` | — | `stock_hk_financial_indicator_em` | H-share symbol-scoped latest-indicator row as raw structured evidence only; no canonical financial, share, dividend, market-cap, metric or valuation input |
 | `BALANCE_SHEET` | `stock_zcfz_em` / `stock_zcfz_bj_em` (detailed report-period and Sina fallbacks) | `stock_financial_hk_report_em` | explicit `book_cash`, equity totals and aggregate interest-bearing debt when labeled |
 | `DIVIDENDS` | `stock_dividend_cninfo`; `stock_fhps_em` (explicit report date) | `stock_hk_dividend_payout_em`; `stock_hk_fhpx_detail_ths` (`view=event_detail`) | raw structured evidence only; no canonical dividend cash or payout ratio |
@@ -686,11 +706,13 @@ The normalizer emits `Fact` and `Evidence` objects inside the existing
 performance-report, business-composition, financial-abstract,
 financial-indicator, latest-indicator, dividend event/detail, disclosure-notice,
 risk-warning-status, trading-suspension, restricted-share-release,
-goodwill-impairment, ESG-rating, margin-trading, corporate-action, share-capital,
-ownership-pledge, main-shareholder and insider-share-change raw slices it emits
+goodwill-impairment, ESG-rating, margin-trading, corporate-action,
+external-guarantee, share-capital, ownership-pledge, main-shareholder and
+insider-share-change raw slices it emits
 raw-record evidence only and explicit unresolved flags where needed; it does
 not emit canonical forecast-profit, revenue, margin, dividend, buyback,
-issuance, dilution, share, governance, pledged-cash or debt-equivalent facts.
+issuance, dilution, share, governance, pledged-cash, quasi-debt,
+illegal-guarantee or debt-equivalent facts.
 Margin-trading rows remain raw evidence because security-level investor
 financing balances and quantities are not issuer accounting debt or cash.
 It never maps provider headline market cap,
@@ -731,6 +753,12 @@ retained for the requested A-share snapshot, but affected-holder identity,
 controlling-owner status, governance severity, pledged-cash accessibility and
 debt-equivalent treatment remain unresolved; no governance-risk conclusion is
 admitted automatically.
+For the A-share external-guarantee slice, the date-range aggregate versus an
+event or reporting period, guarantee purpose and legal status, the unit and
+entity scope of the parent-equity denominator, and the treatment of the
+published ratio as evidence rather than a governance metric remain unresolved;
+no quasi-debt, illegal-guarantee or governance classification is admitted
+automatically.
 For the A-share dividend-distribution snapshot, the explicit June-30 or
 December-31 report date and listing-filtered rows are retained, but ratio units,
 settled cash status, ordinary-versus-special classification and payout
@@ -831,9 +859,19 @@ universe and its listing-filtered result are retained as raw evidence only.
 period. `标识` remains opaque provider context, so no comparable ESG score,
 governance-risk level or Business Quality fact is emitted automatically.
 
+For the A-share external-guarantee slice, the documented
+`stock_cg_guarantee_cninfo` universe and its requested-code result are retained
+as raw evidence only. `公告统计区间` is an aggregate announcement interval,
+while `担保金额`, `归属于母公司所有者权益` and
+`担保金融占净资产比例` do not by themselves establish settled quasi-debt,
+the guarantee's legal/purpose classification, a canonical denominator or a
+governance-risk judgment. No material-quasi-debt, illegal-guarantee or
+governance fact is emitted automatically; H-share coverage and filing-backed
+review remain unresolved.
+
 ## 13. Deliberate non-goals
 
-This foundation plus the Phase 2.2–2.32 slices does not include:
+This foundation plus the Phase 2.2–2.33 slices does not include:
 
 - Tushare, BaoStock or any other additional provider;
 - automatic network scheduling, credentials or retry orchestration outside an adapter;

@@ -831,6 +831,31 @@ detail, market-level margin summaries and filing-backed interpretation remain
 outside this slice. Live calls remain opt-in; tests use an injected client and
 a frozen fixture.
 
+### Phase 2.33 — A-share external-guarantee raw acquisition contract (COMPLETE)
+
+The mapping review now covers the documented CNINFO
+`stock_cg_guarantee_cninfo` endpoint under a new provider-neutral
+`EXTERNAL_GUARANTEES` category. The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_cg_guarantee.py)
+define a board/universe `symbol` plus `start_date` and `end_date` in
+`YYYYMMDD` form; the documented defaults are `全部`, `20180630` and
+`20210927`. The provider calls the documented `symbol="全部"` universe,
+requires an explicit A-share code on every returned row, filters to the
+requested listing and retains all matching rows with date-range, scope and
+row-count provenance.
+
+The response exposes announcement-statistics interval, guarantee count and
+amount, parent-company equity and a published guarantee-to-net-assets ratio.
+The amount and equity are documented in 万元, but the date-range aggregate
+does not settle guarantee purpose, legal status, canonical period/entity scope
+or whether the amount is a quasi-debt obligation. The normalizer therefore
+retains raw evidence, emits `AKSHARE_EXTERNAL_GUARANTEES_RAW_ONLY`, marks
+`material_quasi_debt`, `major_illegal_guarantee` and `governance_risk_level` as
+critically missing and creates no canonical guarantee, debt, governance or
+ratio fact. H-share coverage and filing-backed illegal-guarantee/governance
+review remain outside this slice. Live calls remain opt-in; tests use an
+injected client and a frozen fixture.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -840,7 +865,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.32 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.33 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -1048,7 +1073,7 @@ Phase 2 is active. Phase 1 remains frozen: changes to formulas, hard-gate
 semantics, schemas or `strict-v1` thresholds require a separately reviewed,
 versioned change.
 
-Phase 2.32 completes the next documented structured-data boundary while
+Phase 2.33 completes the next documented structured-data boundary while
 keeping share-change, repurchase and rights-issue period, status, unit and
 economic-scope questions unresolved, and keeping ownership-pledge holder,
 governance and economic-scope questions unresolved. The A-share
@@ -1140,3 +1165,11 @@ The documented SSE margin-detail response is retained under
 financing balances, quantities and transaction flows do not establish issuer
 financial debt, cash, leverage or a canonical margin fact; `financial_debt`
 remains critically missing.
+
+The documented A-share external-guarantee response is retained under
+`AKSHARE_EXTERNAL_GUARANTEES_RAW_ONLY` because its date-range aggregate,
+parent-equity denominator and published ratio do not establish a settled
+quasi-debt amount, legal guarantee status, canonical period/entity scope or a
+governance judgment. It leaves `material_quasi_debt`,
+`major_illegal_guarantee` and `governance_risk_level` critically missing; H-share
+coverage and filing-backed review remain unresolved.

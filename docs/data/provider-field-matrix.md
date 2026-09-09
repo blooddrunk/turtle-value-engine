@@ -811,6 +811,36 @@ margin, leverage or valuation fact.
 | `融资余额`, `融资买入额`, `融资偿还额` | Raw amount evidence documented in yuan; customer financing positions/flows are not issuer financial debt, cash or issuer CFO. |
 | `融券余量`, `融券卖出量`, `融券偿还量` | Raw security-lending quantities; they do not establish issuer shares, dilution, debt or valuation. |
 
+## Phase 2.33 A-share external-guarantee raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_cg_guarantee_cninfo` as a CNINFO company-governance
+external-guarantee endpoint. Its inputs are a board/universe `symbol` and
+`YYYYMMDD` `start_date`/`end_date`; the documented defaults are `全部`,
+`20180630` and `20210927`. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_cg_guarantee.py)
+returns A-share universe rows containing code/name, announcement-statistics
+interval, guarantee count and amount, parent-company equity and the published
+guarantee-to-net-assets ratio.
+
+The provider calls the documented `symbol="全部"` universe and filters every
+row to the requested A-share code after requiring an explicit code. It retains
+all matching rows and records the upstream symbol, date range, scope, and
+upstream/selected row counts. There is no H-share endpoint in this slice.
+The documented amount and equity fields are in 万元, but the date-range
+aggregate does not establish a settled quasi-debt amount, guarantee purpose,
+legal status, canonical period/entity scope or a governance judgment. The
+normalizer therefore emits `AKSHARE_EXTERNAL_GUARANTEES_RAW_ONLY`, marks
+`material_quasi_debt`, `major_illegal_guarantee` and `governance_risk_level` as
+critically missing, and creates no canonical fact.
+
+| Raw upstream item | Phase 2 treatment |
+| --- | --- |
+| `证券代码`, `证券简称` | Explicit A-share identity, filtering and evidence context only. |
+| `公告统计区间` | Raw aggregate interval; it is not silently used as a canonical statement or event period. |
+| `担保笔数`, `担保金额` | Raw date-range count and amount; the amount is not promoted to settled quasi-debt. |
+| `归属于母公司所有者权益` | Raw provider denominator in 万元; it is not a canonical equity period/entity mapping. |
+| `担保金融占净资产比例` | Raw published ratio; it does not establish a canonical ratio, illegal-guarantee status or governance level. |
+
 ## Eligibility, identity and market context
 
 | Normalized field | Status | Boundary note |

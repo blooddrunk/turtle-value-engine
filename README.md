@@ -204,6 +204,17 @@ Those are investor/security-level margin observations rather than issuer
 accounting debt or cash, so the normalizer emits
 `AKSHARE_MARGIN_TRADING_RAW_ONLY`, leaves `financial_debt` critically missing
 and creates no canonical leverage, cash or valuation fact.
+Phase 2.33 adds the documented A-share CNINFO `stock_cg_guarantee_cninfo`
+external-guarantee universe under `EXTERNAL_GUARANTEES`. The provider calls
+the documented `symbol="全部"` universe, filters by explicit listing code and
+preserves the requested date range, guarantee count/amount, parent-company
+equity and published ratio as raw evidence. Because the aggregate does not
+settle quasi-debt, legal guarantee status, canonical period/entity scope or a
+governance judgment, the normalizer emits
+`AKSHARE_EXTERNAL_GUARANTEES_RAW_ONLY`, leaves
+`material_quasi_debt`, `major_illegal_guarantee` and
+`governance_risk_level` critically missing and creates no canonical fact.
+H-share coverage and filing-backed interpretation remain unresolved.
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

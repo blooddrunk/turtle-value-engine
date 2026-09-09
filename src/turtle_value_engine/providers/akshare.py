@@ -8,12 +8,13 @@ The adapter currently implements metadata, market observations, three narrow
 financial-statement slices, A-share earnings-forecast, earnings-quick-report,
 performance-report, business-composition, financial-abstract and financial-
 indicator raw slices, raw-only dividend event/snapshot/detail, A-share
-disclosure notice metadata, corporate-action, ownership-pledge, SSE/SZSE/BSE
-insider-share-change and A-share share-capital slices, including the
-restricted-share-release view, the A-share risk-warning-status,
-trading-suspension and main-shareholder raw slices, the H-share financial-
-indicator raw slice, the H-share latest-indicator raw slice, the A-share
-goodwill-impairment detail raw slice and the SSE margin-detail raw slice.
+disclosure notice metadata, corporate-action, external-guarantee,
+ownership-pledge, SSE/SZSE/BSE insider-share-change and A-share share-capital
+slices, including the restricted-share-release view, the A-share
+risk-warning-status, trading-suspension and main-shareholder raw slices, the
+H-share financial-indicator raw slice, the H-share latest-indicator raw slice,
+the A-share goodwill-impairment detail raw slice and the SSE margin-detail raw
+slice.
 Upstream column names are handled in this module and are never passed to the
 deterministic calculation or gate code.
 """
@@ -60,9 +61,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "32"
+AKSHARE_ADAPTER_VERSION = "33"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "33"
+AKSHARE_MAPPING_VERSION = "34"
 
 
 class ListingMarket(StrEnum):
@@ -97,6 +98,7 @@ AKSHARE_CAPABILITIES = ProviderCapabilities(
         DataCategory.DISCLOSURE_NOTICES,
         DataCategory.CORPORATE_ACTIONS,
         DataCategory.SHARE_CAPITAL,
+        DataCategory.EXTERNAL_GUARANTEES,
         DataCategory.OWNERSHIP_PLEDGE,
         DataCategory.INSIDER_SHARE_CHANGES,
         DataCategory.SHAREHOLDER_HOLDINGS,
@@ -145,6 +147,7 @@ _SOURCE_URIS = {
     "stock_restricted_release_queue_em": "https://data.eastmoney.com/dxf/q/600000.html",
     "stock_allotment_cninfo": "https://webapi.cninfo.com.cn/#/dataBrowse",
     "stock_gpzy_pledge_ratio_em": "https://data.eastmoney.com/gpzy/pledgeRatio.aspx",
+    "stock_cg_guarantee_cninfo": "https://webapi.cninfo.com.cn/#/thematicStatistics",
     "stock_share_hold_change_sse": "http://www.sse.com.cn/disclosure/credibility/supervision/change/",
     "stock_share_hold_change_szse": "http://www.szse.cn/disclosure/supervision/change/index.html",
     "stock_share_hold_change_bse": "https://www.bse.cn/disclosure/djg_sharehold_change.html",
@@ -216,6 +219,9 @@ _SHARE_CHANGE_DEFAULT_START_DATE = "20091227"
 _SHARE_CHANGE_DEFAULT_END_DATE = "20241021"
 
 _CORPORATE_ACTION_PARAMETER_NAMES = frozenset({"start_date", "end_date"})
+_EXTERNAL_GUARANTEES_PARAMETER_NAMES = frozenset({"start_date", "end_date"})
+_EXTERNAL_GUARANTEES_DEFAULT_START_DATE = "20180630"
+_EXTERNAL_GUARANTEES_DEFAULT_END_DATE = "20210927"
 _OWNERSHIP_PLEDGE_PARAMETER_NAMES = frozenset({"date"})
 _INSIDER_SHARE_CHANGE_PARAMETER_NAMES = frozenset()
 _TRADING_SUSPENSIONS_PARAMETER_NAMES = frozenset({"date"})
@@ -416,6 +422,16 @@ class AKShareProvider(StructuredDataProvider):
         ):
             raise ProviderRequestError(
                 "the AKShare ownership-pledge endpoint supports A-share listings only",
+                provider=self.identity,
+                request=request,
+                retryable=False,
+            )
+        if (
+            request.category is DataCategory.EXTERNAL_GUARANTEES
+            and listing.market is not ListingMarket.A
+        ):
+            raise ProviderRequestError(
+                "the AKShare external-guarantee endpoint supports A-share listings only",
                 provider=self.identity,
                 request=request,
                 retryable=False,
@@ -790,6 +806,24 @@ class AKShareProvider(StructuredDataProvider):
                 response_metadata["action_type"] = "rights_issue"
                 response_metadata["start_date"] = kwargs["start_date"]
                 response_metadata["end_date"] = kwargs["end_date"]
+        elif request.category is DataCategory.EXTERNAL_GUARANTEES:
+            rows = _table_rows(payload, provider=self.identity, request=request)
+            selected = _select_listing_rows(
+                rows,
+                listing,
+                provider=self.identity,
+                request=request,
+                row_label="external-guarantee",
+            )
+            payload = selected
+            response_metadata["upstream_row_count"] = len(rows)
+            response_metadata["entity_row_count"] = len(selected)
+            response_metadata["entity_rows_selected"] = True
+            response_metadata["listing_scoped_request"] = False
+            response_metadata["row_filtering"] = "provider"
+            response_metadata["upstream_symbol"] = kwargs["symbol"]
+            response_metadata["start_date"] = kwargs["start_date"]
+            response_metadata["end_date"] = kwargs["end_date"]
         elif request.category is DataCategory.OWNERSHIP_PLEDGE:
             rows = _table_rows(payload, provider=self.identity, request=request)
             requested_date = _parse_pledge_date_parameter(
@@ -1130,6 +1164,8 @@ class AKShareProvider(StructuredDataProvider):
                 return _share_capital_kwargs(endpoint_name, listing, request)
             if request.category is DataCategory.CORPORATE_ACTIONS:
                 return _corporate_action_kwargs(endpoint_name, listing, request)
+            if request.category is DataCategory.EXTERNAL_GUARANTEES:
+                return _external_guarantees_kwargs(endpoint_name, listing, request)
             if request.category is DataCategory.OWNERSHIP_PLEDGE:
                 return _ownership_pledge_kwargs(endpoint_name, listing, request)
             if request.category is DataCategory.INSIDER_SHARE_CHANGES:
@@ -1728,6 +1764,32 @@ class AKShareNormalizer:
                     # a recurrence claim.
                     missing_fields.add("buyback_cash")
                     normalizer_flags.add("AKSHARE_CORPORATE_ACTIONS_RAW_ONLY")
+            elif record.request.category is DataCategory.EXTERNAL_GUARANTEES:
+                if listing.market is not ListingMarket.A:
+                    raise ProviderNormalizationError(
+                        "AKShare external-guarantee raw slice supports A-share listings only"
+                    )
+                if record.response_metadata.get("endpoint") != "stock_cg_guarantee_cninfo":
+                    raise ProviderNormalizationError(
+                        "AKShare external-guarantee record must come from "
+                        "stock_cg_guarantee_cninfo"
+                    )
+                try:
+                    _external_guarantees_kwargs(
+                        "stock_cg_guarantee_cninfo",
+                        listing,
+                        record.request,
+                    )
+                except ProviderRequestError as exc:
+                    raise ProviderNormalizationError(str(exc)) from exc
+                _validate_external_guarantees_normalizer_rows(rows, listing)
+                # The documented aggregate is a date-range screening response.
+                # Its amount, denominator and guarantee purpose do not establish
+                # canonical quasi-debt or an illegal-guarantee judgment.
+                missing_fields.update(
+                    {"governance_risk_level", "major_illegal_guarantee", "material_quasi_debt"}
+                )
+                normalizer_flags.add("AKSHARE_EXTERNAL_GUARANTEES_RAW_ONLY")
             elif record.request.category is DataCategory.SHARE_CAPITAL:
                 if listing.market is not ListingMarket.A:
                     raise ProviderNormalizationError(
@@ -1837,7 +1899,10 @@ class AKShareNormalizer:
             "Dividend "
             "and corporate-action records remain raw structured evidence until "
             "ordinary/special status, cash amount, action outcome, amount unit "
-            "and period basis are explicit. Ownership-pledge records remain raw "
+            "and period basis are explicit. External-guarantee records remain raw "
+            "structured evidence because the date-range aggregate does not establish "
+            "a canonical quasi-debt amount or illegal-guarantee/governance judgment. "
+            "Ownership-pledge records remain raw "
             "structured evidence until the affected holder, governance context "
             "and point-in-time interpretation are established. Filing "
             "classifications and economic adjustments remain unresolved until a "
@@ -1866,6 +1931,13 @@ class AKShareNormalizer:
                 " The documented A-share repurchase endpoint is retained as raw "
                 "evidence only: planned versus completed amounts and announcement "
                 "dates do not establish a settled annual buyback-cash fact."
+            )
+        if "AKSHARE_EXTERNAL_GUARANTEES_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented A-share external-guarantee response is retained as "
+                "raw evidence only: its date-range guarantee totals, parent-equity "
+                "denominator and aggregate ratio do not establish canonical "
+                "quasi-debt or an illegal-guarantee/governance judgment."
             )
         if "AKSHARE_SHARE_CAPITAL_RAW_ONLY" in normalizer_flags:
             notes += (
@@ -2248,6 +2320,10 @@ def _endpoint_candidates(
         if corporate_action_date_requested:
             return ("stock_allotment_cninfo",)
         return ("stock_repurchase_em",)
+    if category is DataCategory.EXTERNAL_GUARANTEES:
+        if market is ListingMarket.A:
+            return ("stock_cg_guarantee_cninfo",)
+        return ()
     if category is DataCategory.SHARE_CAPITAL:
         if share_capital_restricted_release_requested:
             if market is ListingMarket.A:
@@ -3068,6 +3144,51 @@ def _corporate_action_kwargs(
     return {"symbol": listing.code, "start_date": start_date, "end_date": end_date}
 
 
+def _external_guarantees_kwargs(
+    endpoint_name: str,
+    listing: _ListingRef,
+    request: ProviderRequest,
+) -> dict[str, object]:
+    if endpoint_name != "stock_cg_guarantee_cninfo":
+        raise ProviderRequestError(
+            f"unsupported AKShare external-guarantee endpoint {endpoint_name!r}",
+            request=request,
+            retryable=False,
+        )
+    if listing.market is not ListingMarket.A:
+        raise ProviderRequestError(
+            "the AKShare external-guarantee endpoint supports A-share listings only",
+            request=request,
+            retryable=False,
+        )
+    unknown = sorted(set(request.parameters) - _EXTERNAL_GUARANTEES_PARAMETER_NAMES)
+    if unknown:
+        raise ProviderRequestError(
+            "unsupported AKShare external-guarantee parameter(s): " + ", ".join(unknown),
+            request=request,
+            retryable=False,
+        )
+    start_date, start_value = _external_guarantees_date_parameter(
+        request.parameters.get("start_date", _EXTERNAL_GUARANTEES_DEFAULT_START_DATE),
+        name="start_date",
+        request=request,
+    )
+    end_date, end_value = _external_guarantees_date_parameter(
+        request.parameters.get("end_date", _EXTERNAL_GUARANTEES_DEFAULT_END_DATE),
+        name="end_date",
+        request=request,
+    )
+    if start_value > end_value:
+        raise ProviderRequestError(
+            "external-guarantee start_date must not be after end_date",
+            request=request,
+            retryable=False,
+        )
+    # The documented endpoint's symbol is a board/universe selector; use 全部
+    # so the adapter can filter the requested listing locally.
+    return {"symbol": "全部", "start_date": start_date, "end_date": end_date}
+
+
 def _allotment_date_parameter(
     raw_value: object,
     *,
@@ -3087,6 +3208,29 @@ def _allotment_date_parameter(
     except ValueError as exc:
         raise ProviderRequestError(
             f"corporate-action {name} must be a valid YYYYMMDD date",
+            request=request,
+            retryable=False,
+        ) from exc
+    return raw_value, parsed
+
+
+def _external_guarantees_date_parameter(
+    raw_value: object,
+    *,
+    name: str,
+    request: ProviderRequest,
+) -> tuple[str, date]:
+    if not isinstance(raw_value, str) or not re.fullmatch(r"\d{8}", raw_value):
+        raise ProviderRequestError(
+            f"external-guarantee {name} must be YYYYMMDD",
+            request=request,
+            retryable=False,
+        )
+    try:
+        parsed = datetime.strptime(raw_value, "%Y%m%d").date()
+    except ValueError as exc:
+        raise ProviderRequestError(
+            f"external-guarantee {name} must be a valid YYYYMMDD date",
             request=request,
             retryable=False,
         ) from exc
@@ -4368,6 +4512,25 @@ def _validate_corporate_action_normalizer_rows(
         if row_code is not None and row_code != listing.code:
             raise ProviderNormalizationError(
                 f"corporate-action row entity {row_code!r} does not match "
+                f"requested listing {listing.canonical_id!r}"
+            )
+
+
+def _validate_external_guarantees_normalizer_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+) -> None:
+    """Keep replayed external-guarantee universe rows inside the request."""
+
+    for row in rows:
+        row_code = _row_code(row, ListingMarket.A)
+        if row_code is None:
+            raise ProviderNormalizationError(
+                "external-guarantee row has no explicit listing code"
+            )
+        if row_code != listing.code:
+            raise ProviderNormalizationError(
+                f"external-guarantee row entity {row_code!r} does not match "
                 f"requested listing {listing.canonical_id!r}"
             )
 

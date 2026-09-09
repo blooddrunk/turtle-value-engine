@@ -259,6 +259,13 @@ class FakeAKShare:
             **kwargs,
         )
 
+    def stock_cg_guarantee_cninfo(self, **kwargs):
+        return self._return(
+            "stock_cg_guarantee_cninfo",
+            _fixture("a_external_guarantees.json"),
+            **kwargs,
+        )
+
     def stock_gpzy_pledge_ratio_em(self, *, date: str):
         return self._return(
             "stock_gpzy_pledge_ratio_em",
@@ -352,6 +359,7 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "earnings_forecast",
         "earnings_quick_report",
         "esg_ratings",
+        "external_guarantees",
         "financial_abstract",
         "financial_indicators",
         "goodwill_impairment",
@@ -370,8 +378,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "32"
-    assert AKSHARE_MAPPING_VERSION == "33"
+    assert provider.identity.provider_version == "33"
+    assert AKSHARE_MAPPING_VERSION == "34"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -3498,6 +3506,213 @@ def test_corporate_actions_rejects_a_universe_row_without_an_explicit_listing_co
         _provider(MissingListingCode()).fetch(
             _request(DataCategory.CORPORATE_ACTIONS, "SH600000")
         )
+
+
+def test_external_guarantees_fetch_filters_documented_all_universe_and_preserves_range():
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    record = provider.fetch(
+        _request(
+            DataCategory.EXTERNAL_GUARANTEES,
+            "SH600000",
+            {"start_date": "20180630", "end_date": "20210927"},
+        )
+    )
+
+    fixture = _fixture("a_external_guarantees.json")
+    assert record.raw_payload == [row for row in fixture if row["证券代码"] == "600000"]
+    assert fake.calls == [
+        (
+            "stock_cg_guarantee_cninfo",
+            {"symbol": "全部", "start_date": "20180630", "end_date": "20210927"},
+        )
+    ]
+    assert record.response_metadata["endpoint"] == "stock_cg_guarantee_cninfo"
+    assert record.response_metadata["upstream_row_count"] == 2
+    assert record.response_metadata["entity_row_count"] == 1
+    assert record.response_metadata["entity_rows_selected"] is True
+    assert record.response_metadata["listing_scoped_request"] is False
+    assert record.response_metadata["row_filtering"] == "provider"
+    assert record.response_metadata["upstream_symbol"] == "全部"
+    assert record.response_metadata["start_date"] == "20180630"
+    assert record.response_metadata["end_date"] == "20210927"
+    assert record.source_uri == "https://webapi.cninfo.com.cn/#/thematicStatistics"
+
+
+def test_external_guarantee_request_uses_documented_defaults_and_validates_range():
+    fake = FakeAKShare()
+    provider = _provider(fake)
+
+    provider.fetch(_request(DataCategory.EXTERNAL_GUARANTEES, "SH600000"))
+    with pytest.raises(
+        ProviderRequestError,
+        match="external-guarantee start_date must be YYYYMMDD",
+    ):
+        provider.fetch(
+            _request(
+                DataCategory.EXTERNAL_GUARANTEES,
+                "SH600000",
+                {"start_date": "2018-06-30"},
+            )
+        )
+    with pytest.raises(
+        ProviderRequestError,
+        match="external-guarantee end_date must be a valid YYYYMMDD date",
+    ):
+        provider.fetch(
+            _request(
+                DataCategory.EXTERNAL_GUARANTEES,
+                "SH600000",
+                {"end_date": "20210931"},
+            )
+        )
+    with pytest.raises(
+        ProviderRequestError,
+        match="external-guarantee start_date must not be after end_date",
+    ):
+        provider.fetch(
+            _request(
+                DataCategory.EXTERNAL_GUARANTEES,
+                "SH600000",
+                {"start_date": "20220101", "end_date": "20210101"},
+            )
+        )
+    with pytest.raises(ProviderRequestError, match="unsupported AKShare external-guarantee"):
+        provider.fetch(
+            _request(
+                DataCategory.EXTERNAL_GUARANTEES,
+                "SH600000",
+                {"symbol": "全部"},
+            )
+        )
+    with pytest.raises(ProviderRequestError, match="A-share listings only"):
+        provider.fetch(_request(DataCategory.EXTERNAL_GUARANTEES, "HK00700"))
+
+    assert fake.calls == [
+        (
+            "stock_cg_guarantee_cninfo",
+            {"symbol": "全部", "start_date": "20180630", "end_date": "20210927"},
+        )
+    ]
+
+
+def test_external_guarantees_reject_a_universe_row_without_an_explicit_listing_code():
+    class MissingListingCode(FakeAKShare):
+        def stock_cg_guarantee_cninfo(self, **kwargs):
+            return self._return(
+                "stock_cg_guarantee_cninfo",
+                [{"证券代码": None, "证券简称": "unresolved"}],
+                **kwargs,
+            )
+
+    with pytest.raises(
+        ProviderResponseError,
+        match="external-guarantee row without a listing code",
+    ):
+        _provider(MissingListingCode()).fetch(
+            _request(DataCategory.EXTERNAL_GUARANTEES, "SH600000")
+        )
+
+
+def test_external_guarantees_with_no_matching_listing_is_an_empty_raw_snapshot():
+    class NoMatchingGuarantee(FakeAKShare):
+        def stock_cg_guarantee_cninfo(self, **kwargs):
+            return self._return(
+                "stock_cg_guarantee_cninfo",
+                [
+                    row
+                    for row in _fixture("a_external_guarantees.json")
+                    if row["证券代码"] == "000001"
+                ],
+                **kwargs,
+            )
+
+    fake = NoMatchingGuarantee()
+    record = _provider(fake).fetch(
+        _request(DataCategory.EXTERNAL_GUARANTEES, "SH600000")
+    )
+
+    assert record.raw_payload == []
+    assert record.response_metadata["upstream_row_count"] == 1
+    assert record.response_metadata["entity_row_count"] == 0
+
+
+def test_external_guarantees_are_retained_as_raw_evidence_without_canonical_facts():
+    provider = _provider()
+    record = provider.fetch(_request(DataCategory.EXTERNAL_GUARANTEES, "SH600000"))
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="external-guarantees-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_EXTERNAL_GUARANTEES_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == [
+        "governance_risk_level",
+        "major_illegal_guarantee",
+        "material_quasi_debt",
+    ]
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "canonical quasi-debt" in normalized.data_quality.notes
+    assert "illegal-guarantee/governance judgment" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+def test_external_guarantees_normalizer_rejects_replayed_rows_for_another_listing():
+    provider = _provider()
+    record = provider.fetch(_request(DataCategory.EXTERNAL_GUARANTEES, "SH600000"))
+    payload = [dict(row) for row in record.raw_payload]
+    payload[0]["证券代码"] = "000001"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=record.source_uri,
+        response_metadata=record.response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match="external-guarantee row entity"):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-external-guarantee-entity",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_external_guarantees_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.EXTERNAL_GUARANTEES,
+        "SH600000",
+        {"start_date": "20180630", "end_date": "20210927"},
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [
+        (
+            "stock_cg_guarantee_cninfo",
+            {"symbol": "全部", "start_date": "20180630", "end_date": "20210927"},
+        )
+    ]
 
 
 def test_missing_optional_dependency_is_reported_only_when_a_live_fetch_is_attempted(

@@ -90,6 +90,7 @@ class DataCategory(StrEnum):
     DISCLOSURE_NOTICES = "disclosure_notices"
     SHARE_CAPITAL = "share_capital"
     CORPORATE_ACTIONS = "corporate_actions"
+    EXTERNAL_GUARANTEES = "external_guarantees"
     OWNERSHIP_PLEDGE = "ownership_pledge"
     INSIDER_SHARE_CHANGES = "insider_share_changes"
     SHAREHOLDER_HOLDINGS = "shareholder_holdings"
