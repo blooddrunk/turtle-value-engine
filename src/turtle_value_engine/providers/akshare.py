@@ -5,11 +5,11 @@ normal test run can import this module, inspect its capabilities and replay
 cached records without installing AKShare or making a network request.
 
 The adapter currently implements metadata, market observations, three narrow
-financial-statement slices, A-share earnings-forecast, earnings-quick-report
-and performance-report raw slices, raw-only dividend event/snapshot,
-corporate-action and ownership-pledge slices, and A-share share-capital raw
-slices. Upstream column names are handled in this module and are never passed
-to the deterministic calculation or gate code.
+financial-statement slices, A-share earnings-forecast, earnings-quick-report,
+performance-report and business-composition raw slices, raw-only dividend
+event/snapshot, corporate-action and ownership-pledge slices, and A-share
+share-capital raw slices. Upstream column names are handled in this module and
+are never passed to the deterministic calculation or gate code.
 """
 
 from __future__ import annotations
@@ -54,9 +54,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "15"
+AKSHARE_ADAPTER_VERSION = "16"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "16"
+AKSHARE_MAPPING_VERSION = "17"
 
 
 class ListingMarket(StrEnum):
@@ -77,6 +77,7 @@ AKSHARE_CAPABILITIES = ProviderCapabilities(
         DataCategory.EARNINGS_FORECAST,
         DataCategory.EARNINGS_QUICK_REPORT,
         DataCategory.PERFORMANCE_REPORT,
+        DataCategory.BUSINESS_COMPOSITION,
         DataCategory.BALANCE_SHEET,
         DataCategory.DIVIDENDS,
         DataCategory.CORPORATE_ACTIONS,
@@ -105,6 +106,7 @@ _SOURCE_URIS = {
     "stock_yjyg_em": "https://data.eastmoney.com/bbsj/202003/yjyg.html",
     "stock_yjkb_em": "https://data.eastmoney.com/bbsj/202003/yjkb.html",
     "stock_yjbb_em": "https://data.eastmoney.com/bbsj/202003/yjbb.html",
+    "stock_zygc_em": "https://emweb.securities.eastmoney.com/PC_HSF10/BusinessAnalysis/Index?type=web&code=SH688041#",
     "stock_balance_sheet_by_report_em": "https://emweb.securities.eastmoney.com/PC_HSF10/NewFinanceAnalysis/Index",
     "stock_zcfz_em": "https://data.eastmoney.com/bbsj/202003/zcfz.html",
     "stock_zcfz_bj_em": "https://data.eastmoney.com/bbsj/202003/zcfz.html",
@@ -156,6 +158,7 @@ _FINANCIAL_STATEMENT_PARAMETER_NAMES = frozenset({"indicator", "statement_date"}
 _EARNINGS_FORECAST_PARAMETER_NAMES = frozenset({"date"})
 _EARNINGS_QUICK_REPORT_PARAMETER_NAMES = frozenset({"date"})
 _PERFORMANCE_REPORT_PARAMETER_NAMES = frozenset({"date"})
+_BUSINESS_COMPOSITION_PARAMETER_NAMES = frozenset()
 
 _DIVIDEND_SNAPSHOT_PARAMETER_NAMES = frozenset({"date"})
 _SHARE_CAPITAL_PARAMETER_NAMES = frozenset({"start_date", "end_date"})
@@ -297,6 +300,16 @@ class AKShareProvider(StructuredDataProvider):
         ):
             raise ProviderRequestError(
                 "the AKShare performance-report endpoint supports A-share listings only",
+                provider=self.identity,
+                request=request,
+                retryable=False,
+            )
+        if (
+            request.category is DataCategory.BUSINESS_COMPOSITION
+            and listing.market is not ListingMarket.A
+        ):
+            raise ProviderRequestError(
+                "the AKShare business-composition endpoint supports A-share listings only",
                 provider=self.identity,
                 request=request,
                 retryable=False,
@@ -559,6 +572,23 @@ class AKShareProvider(StructuredDataProvider):
             response_metadata["row_filtering"] = "provider"
             response_metadata["requested_date"] = kwargs["date"]
             response_metadata["report_period"] = requested_date.isoformat()
+        elif request.category is DataCategory.BUSINESS_COMPOSITION:
+            rows = _table_rows(payload, provider=self.identity, request=request)
+            _validate_business_composition_provider_rows(
+                rows,
+                listing,
+                provider=self.identity,
+                request=request,
+            )
+            report_periods = {
+                parsed.isoformat()
+                for row in rows
+                if (parsed := _business_composition_date(row)) is not None
+            }
+            response_metadata["upstream_row_count"] = len(rows)
+            response_metadata["entity_row_count"] = len(rows)
+            response_metadata["listing_scoped_request"] = True
+            response_metadata["report_period_count"] = len(report_periods)
 
         try:
             retrieved_at = self._clock()
@@ -655,6 +685,8 @@ class AKShareProvider(StructuredDataProvider):
                 return _earnings_quick_report_kwargs(endpoint_name, listing, request)
             if request.category is DataCategory.PERFORMANCE_REPORT:
                 return _performance_report_kwargs(endpoint_name, listing, request)
+            if request.category is DataCategory.BUSINESS_COMPOSITION:
+                return _business_composition_kwargs(endpoint_name, listing, request)
             if request.category is DataCategory.DIVIDENDS:
                 return _dividends_kwargs(endpoint_name, listing, request)
             if request.category is DataCategory.SHARE_CAPITAL:
@@ -999,6 +1031,18 @@ class AKShareNormalizer:
                     {"parent_net_profit", "consolidated_net_profit", "reported_cfo"}
                 )
                 normalizer_flags.add("AKSHARE_PERFORMANCE_REPORT_RAW_ONLY")
+            elif record.request.category is DataCategory.BUSINESS_COMPOSITION:
+                if listing.market is not ListingMarket.A:
+                    raise ProviderNormalizationError(
+                        "AKShare business-composition raw slice supports A-share listings only"
+                    )
+                _validate_business_composition_normalizer_rows(rows, listing)
+                # Product, industry and geographic rows are overlapping views
+                # of the business, not one canonical revenue or core-revenue
+                # series. Keep them as evidence until their aggregation,
+                # entity, unit and classification semantics are reviewed.
+                missing_fields.update({"core_revenue", "revenue"})
+                normalizer_flags.add("AKSHARE_BUSINESS_COMPOSITION_RAW_ONLY")
             elif record.request.category is DataCategory.DIVIDENDS:
                 endpoint_name = record.response_metadata.get("endpoint")
                 if endpoint_name == "stock_fhps_em":
@@ -1097,6 +1141,9 @@ class AKShareNormalizer:
             "entity or unit basis. Performance report records remain raw structured "
             "evidence because their headline net profit has no admitted "
             "parent/consolidated basis and their operating cash flow is per share. "
+            "Business-composition records remain raw structured evidence because "
+            "their product, industry and geographic rows do not establish one "
+            "canonical revenue or core-revenue series. "
             "Dividend "
             "and corporate-action records remain raw structured evidence until "
             "ordinary/special status, cash amount, action outcome, amount unit "
@@ -1166,6 +1213,13 @@ class AKShareNormalizer:
                 "raw evidence only: its headline net profit has no admitted "
                 "parent/consolidated basis, and its operating cash flow is per share "
                 "rather than a canonical reported CFO total."
+            )
+        if "AKSHARE_BUSINESS_COMPOSITION_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented A-share business-composition response is retained "
+                "as raw evidence only: its overlapping product, industry and "
+                "geographic rows do not establish a canonical revenue or "
+                "core-revenue series."
             )
         return NormalizedCompanyInput(
             schema_version="1.0.0",
@@ -1295,6 +1349,10 @@ def _endpoint_candidates(
     if category is DataCategory.PERFORMANCE_REPORT:
         if market is ListingMarket.A:
             return ("stock_yjbb_em",)
+        return ()
+    if category is DataCategory.BUSINESS_COMPOSITION:
+        if market is ListingMarket.A:
+            return ("stock_zygc_em",)
         return ()
     if category is DataCategory.BALANCE_SHEET:
         if market is ListingMarket.A:
@@ -1450,6 +1508,33 @@ def _performance_report_kwargs(
         request=request,
     )
     return {"date": report_date.strftime("%Y%m%d")}
+
+
+def _business_composition_kwargs(
+    endpoint_name: str,
+    listing: _ListingRef,
+    request: ProviderRequest,
+) -> dict[str, object]:
+    if endpoint_name != "stock_zygc_em":
+        raise ProviderRequestError(
+            f"unsupported AKShare business-composition endpoint {endpoint_name!r}",
+            request=request,
+            retryable=False,
+        )
+    if listing.market is not ListingMarket.A:
+        raise ProviderRequestError(
+            "the AKShare business-composition endpoint supports A-share listings only",
+            request=request,
+            retryable=False,
+        )
+    unknown = sorted(set(request.parameters) - _BUSINESS_COMPOSITION_PARAMETER_NAMES)
+    if unknown:
+        raise ProviderRequestError(
+            "unsupported AKShare business-composition parameter(s): " + ", ".join(unknown),
+            request=request,
+            retryable=False,
+        )
+    return {"symbol": listing.canonical_id}
 
 
 def _earnings_quick_report_kwargs(
@@ -2364,6 +2449,43 @@ def _validate_performance_report_provider_rows(
             )
 
 
+def _validate_business_composition_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> None:
+    """Validate listing identity and any explicit report dates before storage."""
+
+    for row in rows:
+        row_code = _row_code(row, ListingMarket.A)
+        if row_code is None:
+            raise ProviderResponseError(
+                f"AKShare returned a business-composition row without a listing code for "
+                f"{request.entity_id!r}",
+                provider=provider,
+                request=request,
+            )
+        if row_code != listing.code:
+            raise ProviderResponseError(
+                f"AKShare returned business-composition row entity {row_code!r} for "
+                f"requested listing {listing.canonical_id!r}",
+                provider=provider,
+                request=request,
+            )
+        found, raw_period = _lookup(row, _BUSINESS_COMPOSITION_PERIOD_FIELDS)
+        if not found or _text_value(raw_period) is None:
+            continue
+        if _business_composition_date(row) is None:
+            raise ProviderResponseError(
+                f"AKShare returned a business-composition row with an invalid report date "
+                f"for {request.entity_id!r}",
+                provider=provider,
+                request=request,
+            )
+
+
 def _validate_earnings_quick_report_provider_rows(
     rows: Sequence[Mapping[str, JSONValue]],
     listing: _ListingRef,
@@ -2525,6 +2647,34 @@ def _validate_performance_report_normalizer_rows(
             raise ProviderNormalizationError(
                 f"performance-report row entity {row_code!r} does not match "
                 f"requested listing {listing.canonical_id!r}"
+            )
+
+
+def _validate_business_composition_normalizer_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+) -> None:
+    """Keep replayed business-composition rows inside the listing boundary."""
+
+    for row in rows:
+        row_code = _row_code(row, ListingMarket.A)
+        if row_code is None:
+            raise ProviderNormalizationError(
+                "business-composition row has no explicit listing code"
+            )
+        if row_code != listing.code:
+            raise ProviderNormalizationError(
+                f"business-composition row entity {row_code!r} does not match "
+                f"requested listing {listing.canonical_id!r}"
+            )
+        found, raw_period = _lookup(row, _BUSINESS_COMPOSITION_PERIOD_FIELDS)
+        if (
+            found
+            and _text_value(raw_period) is not None
+            and _business_composition_date(row) is None
+        ):
+            raise ProviderNormalizationError(
+                "business-composition row has an invalid report date"
             )
 
 
@@ -3091,6 +3241,12 @@ _EARNINGS_QUICK_REPORT_PERIOD_FIELDS = (
     "REPORT_DATE",
     "report_date",
 )
+_BUSINESS_COMPOSITION_PERIOD_FIELDS = (
+    "报告日期",
+    "报告期",
+    "REPORT_DATE",
+    "report_date",
+)
 _STATEMENT_CURRENCY_FIELDS = ("币种", "CURRENCY", "CURRENCY_NAME")
 _LONG_STATEMENT_ITEM_FIELDS = ("STD_ITEM_NAME", "项目名称", "科目名称", "ITEM_NAME")
 _LONG_STATEMENT_VALUE_FIELDS = ("AMOUNT", "金额", "VALUE", "ITEM_VALUE")
@@ -3374,6 +3530,13 @@ def _parse_date_value(raw_value: object) -> date | None:
         except ValueError:
             return None
     return None
+
+
+def _business_composition_date(row: Mapping[str, JSONValue]) -> date | None:
+    found, raw_value = _lookup(row, _BUSINESS_COMPOSITION_PERIOD_FIELDS)
+    if not found or _text_value(raw_value) is None:
+        return None
+    return _parse_date_value(raw_value)
 
 
 def _parse_statement_date_parameter(

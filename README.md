@@ -97,6 +97,11 @@ headline profit/revenue comparisons, per-share indicators and announcement
 date do not establish canonical entity, unit, diluted-share or filing-period
 semantics, so the response remains raw-only without canonical profit or
 revenue facts.
+Phase 2.16 adds the documented A-share `stock_zygc_em` main-business
+composition history under a distinct `BUSINESS_COMPOSITION` category. Its
+overlapping product, industry and geographic rows remain raw-only because
+their aggregation, unit, entity and core-business semantics are unresolved;
+the normalizer emits no canonical revenue, margin or business-quality fact.
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

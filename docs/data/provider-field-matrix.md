@@ -367,6 +367,33 @@ CFO, CDC or valuation fact. H-share quick reports remain outside this slice.
 | `公告日期` | Raw-only; publication date is not silently substituted for the requested report period or filing availability timestamp. |
 | `股票代码`, `股票简称` | Used only for conservative listing selection and evidence context; they do not create a normalized profit or revenue fact. |
 
+## Phase 2.16 A-share business-composition raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_zygc_em` as an Eastmoney A-share listing-scoped endpoint. It
+accepts a market-prefixed `symbol` such as `SH688041` and returns all
+historical rows with report date, classification type, business constituent,
+revenue/cost/profit amounts, ratios and gross-margin context. The endpoint
+contains overlapping product, industry and geographic views rather than one
+additive revenue table.
+
+The provider passes the canonical A-share listing identifier, validates an
+explicit listing code on every returned row and validates any non-null report
+date. It retains every row as an opaque raw payload and records the row count
+and distinct report-period count. The normalizer emits
+`AKSHARE_BUSINESS_COMPOSITION_RAW_ONLY`, marks `revenue` and `core_revenue` as
+critically missing and emits no canonical revenue, operating-profit, margin or
+business-quality fact. H-share business composition remains outside this
+slice.
+
+| Raw upstream item | Phase 2 treatment |
+| --- | --- |
+| `股票代码` | Used for conservative listing identity validation; it does not create a normalized fact. |
+| `报告日期` | Raw-only historical context; the endpoint's report presentation is not silently adopted as the canonical statement period. |
+| `分类类型`, `主营构成` | Raw-only; product, industry and geographic views are not automatically classified as the company's core business or added together. |
+| `主营收入`, `主营成本`, `主营利润` | Raw-only; row grain, entity basis, unit/scaling and overlapping classifications do not establish canonical totals. |
+| `收入比例`, `成本比例`, `利润比例`, `毛利率` | Raw-only ratios; denominator and presentation semantics are not admitted as canonical revenue or margin facts. |
+
 ## Eligibility, identity and market context
 
 | Normalized field | Status | Boundary note |

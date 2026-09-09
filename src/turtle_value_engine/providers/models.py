@@ -75,6 +75,7 @@ class DataCategory(StrEnum):
     EARNINGS_FORECAST = "earnings_forecast"
     EARNINGS_QUICK_REPORT = "earnings_quick_report"
     PERFORMANCE_REPORT = "performance_report"
+    BUSINESS_COMPOSITION = "business_composition"
     BALANCE_SHEET = "balance_sheet"
     CASH_FLOW_STATEMENT = "cash_flow_statement"
     DIVIDENDS = "dividends"
