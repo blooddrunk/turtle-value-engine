@@ -783,6 +783,34 @@ score, governance, Business Quality, financial or valuation fact.
 | `评级季度` | Raw provider period label; it is not silently treated as a canonical statement period. |
 | `标识` | Raw provider marker; it does not establish a governance conclusion or metric. |
 
+## Phase 2.32 SSE margin-detail raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_margin_detail_sse` as an SSE endpoint accepting an exact
+`YYYYMMDD` `date`. Its full requested-date universe contains an explicit
+security code/name, financing balance and financing/short-sale quantities. The
+[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_margin_sse.py)
+passes the date to the SSE detail request and renames the published columns.
+
+The provider supports Shanghai A-share identifiers only, validates an explicit
+security code and exact credit-transaction date on every returned row, filters
+the universe to the requested listing and retains every matching row with
+endpoint, date and row-count provenance. SZSE/BSE detail and market-level
+margin summaries are not part of this slice.
+
+The fields describe customer financing against a security. They are not issuer
+accounting debt, cash, leverage or a settled issuer reporting period. The
+normalizer therefore emits `AKSHARE_MARGIN_TRADING_RAW_ONLY`, marks
+`financial_debt` as critically missing and creates no canonical debt, cash,
+margin, leverage or valuation fact.
+
+| Raw upstream item | Phase 2 treatment |
+| --- | --- |
+| `信用交易日期` | Exact requested observation boundary only; it is not an issuer accounting period. |
+| `标的证券代码`, `标的证券简称` | Security identity, filtering and evidence context only; no issuer fact is inferred. |
+| `融资余额`, `融资买入额`, `融资偿还额` | Raw amount evidence documented in yuan; customer financing positions/flows are not issuer financial debt, cash or issuer CFO. |
+| `融券余量`, `融券卖出量`, `融券偿还量` | Raw security-lending quantities; they do not establish issuer shares, dilution, debt or valuation. |
+
 ## Eligibility, identity and market context
 
 | Normalized field | Status | Boundary note |

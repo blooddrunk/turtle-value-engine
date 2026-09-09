@@ -66,6 +66,13 @@ class FakeAKShare:
     def stock_esg_rate_sina(self):
         return self._return("stock_esg_rate_sina", _fixture("esg_ratings.json"))
 
+    def stock_margin_detail_sse(self, *, date: str):
+        return self._return(
+            "stock_margin_detail_sse",
+            _fixture("a_margin_detail_sse.json"),
+            date=date,
+        )
+
     def stock_tfp_em(self, *, date: str):
         return self._return(
             "stock_tfp_em",
@@ -352,6 +359,7 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "insider_share_changes",
         "latest_indicators",
         "listing_metadata",
+        "margin_trading",
         "market_history",
         "market_quote",
         "ownership_pledge",
@@ -362,8 +370,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "31"
-    assert AKSHARE_MAPPING_VERSION == "32"
+    assert provider.identity.provider_version == "32"
+    assert AKSHARE_MAPPING_VERSION == "33"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -5042,3 +5050,261 @@ def test_esg_rating_cache_replay_does_not_call_upstream(tmp_path: Path):
     assert replay.mode is RetrievalMode.CACHE_REPLAY
     assert replay.record == live.record
     assert fake.calls == [("stock_esg_rate_sina", {})]
+
+
+def test_sse_margin_detail_fetch_filters_the_documented_date_bound_universe():
+    fake = FakeAKShare()
+    record = _provider(fake).fetch(
+        _request(
+            DataCategory.MARGIN_TRADING,
+            "SH600000",
+            {"date": "20230922"},
+        )
+    )
+
+    fixture = _fixture("a_margin_detail_sse.json")
+    assert record.raw_payload == [
+        row for row in fixture if row["标的证券代码"] == "600000"
+    ]
+    assert fake.calls == [
+        ("stock_margin_detail_sse", {"date": "20230922"}),
+    ]
+    assert record.response_metadata["endpoint"] == "stock_margin_detail_sse"
+    assert record.response_metadata["upstream_row_count"] == 3
+    assert record.response_metadata["entity_row_count"] == 1
+    assert record.response_metadata["entity_rows_selected"] is True
+    assert record.response_metadata["listing_scoped_request"] is False
+    assert record.response_metadata["row_filtering"] == "provider"
+    assert record.response_metadata["requested_date"] == "20230922"
+    assert record.response_metadata["observation_date"] == "2023-09-22"
+    assert record.response_metadata["snapshot_scope"] == "requested_date"
+    assert record.source_uri == (
+        "http://www.sse.com.cn/market/othersdata/margin/detail/"
+    )
+
+
+def test_sse_margin_detail_request_requires_exact_date_and_shanghai_listing():
+    fake = FakeAKShare()
+    provider = _provider(fake)
+
+    with pytest.raises(ProviderRequestError, match="requires date"):
+        provider.fetch(_request(DataCategory.MARGIN_TRADING, "SH600000"))
+    with pytest.raises(ProviderRequestError, match="date must be YYYYMMDD"):
+        provider.fetch(
+            _request(
+                DataCategory.MARGIN_TRADING,
+                "SH600000",
+                {"date": "2023-09-22"},
+            )
+        )
+    with pytest.raises(
+        ProviderRequestError,
+        match="date must be a valid YYYYMMDD date",
+    ):
+        provider.fetch(
+            _request(
+                DataCategory.MARGIN_TRADING,
+                "SH600000",
+                {"date": "20230230"},
+            )
+        )
+    with pytest.raises(ProviderRequestError, match="unsupported AKShare margin-trading"):
+        provider.fetch(
+            _request(
+                DataCategory.MARGIN_TRADING,
+                "SH600000",
+                {"date": "20230922", "market": "沪市"},
+            )
+        )
+    with pytest.raises(ProviderRequestError, match="Shanghai A-share listings only"):
+        provider.fetch(
+            _request(
+                DataCategory.MARGIN_TRADING,
+                "SZ000001",
+                {"date": "20230922"},
+            )
+        )
+    with pytest.raises(ProviderRequestError, match="Shanghai A-share listings only"):
+        provider.fetch(
+            _request(
+                DataCategory.MARGIN_TRADING,
+                "HK00700",
+                {"date": "20230922"},
+            )
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("mode", "message"),
+    [
+        ("missing_code", "margin-trading row without a listing code"),
+        ("missing_date", "margin-trading row without an observation date"),
+        ("invalid_date", "invalid margin-trading observation date"),
+        ("wrong_date", "margin-trading row date"),
+    ],
+)
+def test_sse_margin_detail_response_rejects_invalid_identity_or_date(
+    mode: str, message: str
+):
+    class InvalidRows(FakeAKShare):
+        def stock_margin_detail_sse(self, *, date: str):
+            rows = [dict(row) for row in _fixture("a_margin_detail_sse.json")]
+            if mode == "missing_code":
+                rows[0].pop("标的证券代码")
+            elif mode == "missing_date":
+                rows[0].pop("信用交易日期")
+            elif mode == "invalid_date":
+                rows[0]["信用交易日期"] = "not-a-date"
+            else:
+                rows[0]["信用交易日期"] = "20230921"
+            return self._return("stock_margin_detail_sse", rows, date=date)
+
+    with pytest.raises(ProviderResponseError, match=message):
+        _provider(InvalidRows()).fetch(
+            _request(
+                DataCategory.MARGIN_TRADING,
+                "SH600000",
+                {"date": "20230922"},
+            )
+        )
+
+
+def test_sse_margin_detail_with_no_matching_listing_is_an_empty_raw_snapshot():
+    class NoMatchingMarginDetail(FakeAKShare):
+        def stock_margin_detail_sse(self, *, date: str):
+            return self._return(
+                "stock_margin_detail_sse",
+                [
+                    row
+                    for row in _fixture("a_margin_detail_sse.json")
+                    if row["标的证券代码"] == "600519"
+                ],
+                date=date,
+            )
+
+    fake = NoMatchingMarginDetail()
+    record = _provider(fake).fetch(
+        _request(
+            DataCategory.MARGIN_TRADING,
+            "SH600000",
+            {"date": "20230922"},
+        )
+    )
+
+    assert record.raw_payload == []
+    assert record.response_metadata["upstream_row_count"] == 1
+    assert record.response_metadata["entity_row_count"] == 0
+
+
+def test_sse_margin_detail_raw_record_is_not_promoted_to_issuer_facts():
+    provider = _provider()
+    record = provider.fetch(
+        _request(
+            DataCategory.MARGIN_TRADING,
+            "SH600000",
+            {"date": "20230922"},
+        )
+    )
+
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="margin-detail-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_MARGIN_TRADING_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == ["financial_debt"]
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "security-level financing balances" in normalized.data_quality.notes
+    assert "issuer financial debt, cash or leverage facts" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+def test_sse_margin_detail_normalizer_rejects_replayed_rows_for_another_listing():
+    provider = _provider()
+    record = provider.fetch(
+        _request(
+            DataCategory.MARGIN_TRADING,
+            "SH600000",
+            {"date": "20230922"},
+        )
+    )
+    payload = [dict(row) for row in record.raw_payload]
+    payload[0]["标的证券代码"] = "600519"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=record.source_uri,
+        response_metadata=record.response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match="margin-trading row entity"):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-margin-detail-entity",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_sse_margin_detail_normalizer_rejects_replayed_rows_for_another_date():
+    provider = _provider()
+    record = provider.fetch(
+        _request(
+            DataCategory.MARGIN_TRADING,
+            "SH600000",
+            {"date": "20230922"},
+        )
+    )
+    payload = [dict(row) for row in record.raw_payload]
+    payload[0]["信用交易日期"] = "20230921"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=record.source_uri,
+        response_metadata=record.response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match="margin-trading row date"):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-margin-detail-date",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_sse_margin_detail_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.MARGIN_TRADING,
+        "SH600000",
+        {"date": "20230922"},
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [("stock_margin_detail_sse", {"date": "20230922"})]

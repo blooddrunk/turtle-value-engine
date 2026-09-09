@@ -196,6 +196,14 @@ rating, quarter and marker rows remain raw structured evidence; different
 agency scales and provider quarter labels do not establish a comparable score,
 governance-risk level or Business Quality assessment, so the normalizer emits
 `AKSHARE_ESG_RATINGS_RAW_ONLY` with no canonical facts.
+Phase 2.32 adds the documented SSE `stock_margin_detail_sse` endpoint under
+`MARGIN_TRADING` for Shanghai A-share listings with an exact `YYYYMMDD` date.
+The provider filters the full SSE security universe to the requested code and
+retains financing balances, quantities and transaction flows as raw evidence.
+Those are investor/security-level margin observations rather than issuer
+accounting debt or cash, so the normalizer emits
+`AKSHARE_MARGIN_TRADING_RAW_ONLY`, leaves `financial_debt` critically missing
+and creates no canonical leverage, cash or valuation fact.
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

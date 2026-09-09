@@ -12,8 +12,8 @@ disclosure notice metadata, corporate-action, ownership-pledge, SSE/SZSE/BSE
 insider-share-change and A-share share-capital slices, including the
 restricted-share-release view, the A-share risk-warning-status,
 trading-suspension and main-shareholder raw slices, the H-share financial-
-indicator raw slice, the H-share latest-indicator raw slice and the A-share
-goodwill-impairment detail raw slice.
+indicator raw slice, the H-share latest-indicator raw slice, the A-share
+goodwill-impairment detail raw slice and the SSE margin-detail raw slice.
 Upstream column names are handled in this module and are never passed to the
 deterministic calculation or gate code.
 """
@@ -60,9 +60,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "31"
+AKSHARE_ADAPTER_VERSION = "32"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "32"
+AKSHARE_MAPPING_VERSION = "33"
 
 
 class ListingMarket(StrEnum):
@@ -90,6 +90,7 @@ AKSHARE_CAPABILITIES = ProviderCapabilities(
         DataCategory.FINANCIAL_INDICATORS,
         DataCategory.GOODWILL_IMPAIRMENT,
         DataCategory.ESG_RATINGS,
+        DataCategory.MARGIN_TRADING,
         DataCategory.LATEST_INDICATORS,
         DataCategory.BALANCE_SHEET,
         DataCategory.DIVIDENDS,
@@ -151,6 +152,7 @@ _SOURCE_URIS = {
     "stock_financial_report_sina": "https://vip.stock.finance.sina.com.cn/corp/go.php/vFD_FinanceSummary/",
     "stock_financial_hk_report_em": "https://emweb.securities.eastmoney.com/PC_HKF10/FinancialAnalysis/index",
     "stock_esg_rate_sina": "https://finance.sina.com.cn/esg/grade.shtml",
+    "stock_margin_detail_sse": "http://www.sse.com.cn/market/othersdata/margin/detail/",
 }
 
 _NO_ARGUMENT_ENDPOINTS = frozenset(
@@ -196,6 +198,7 @@ _FINANCIAL_ABSTRACT_PARAMETER_NAMES = frozenset()
 _FINANCIAL_INDICATORS_PARAMETER_NAMES = frozenset({"indicator"})
 _GOODWILL_IMPAIRMENT_PARAMETER_NAMES = frozenset({"date"})
 _LATEST_INDICATORS_PARAMETER_NAMES = frozenset()
+_MARGIN_TRADING_PARAMETER_NAMES = frozenset({"date"})
 _FINANCIAL_INDICATORS_CHOICES = {
     ListingMarket.A: frozenset({"按报告期", "按单季度"}),
     ListingMarket.H: frozenset({"年度", "报告期"}),
@@ -222,6 +225,16 @@ _GOODWILL_IMPAIRMENT_ANNOUNCEMENT_DATE_FIELDS = (
     "announcement_date",
     "notice_date",
 )
+_MARGIN_TRADING_CODE_FIELDS = (
+    "标的证券代码",
+    "证券代码",
+    "股票代码",
+    "公司代码",
+    "code",
+    "symbol",
+    "代码",
+)
+_MARGIN_TRADING_DATE_FIELDS = ("信用交易日期", "交易日期", "日期", "date")
 _EARNINGS_FORECAST_START_DATE = date(2008, 12, 31)
 _EARNINGS_FORECAST_QUARTER_ENDS = frozenset({(3, 31), (6, 30), (9, 30), (12, 31)})
 _EARNINGS_QUICK_REPORT_START_DATE = date(2010, 3, 31)
@@ -365,6 +378,17 @@ class AKShareProvider(StructuredDataProvider):
         ):
             raise ProviderRequestError(
                 "the AKShare goodwill-impairment endpoint supports A-share listings only",
+                provider=self.identity,
+                request=request,
+                retryable=False,
+            )
+        if (
+            request.category is DataCategory.MARGIN_TRADING
+            and listing.canonical_id[:2] != "SH"
+        ):
+            raise ProviderRequestError(
+                "the AKShare margin-trading detail endpoint supports Shanghai A-share "
+                "listings only",
                 provider=self.identity,
                 request=request,
                 retryable=False,
@@ -576,6 +600,29 @@ class AKShareProvider(StructuredDataProvider):
             response_metadata["listing_scoped_request"] = False
             response_metadata["row_filtering"] = "provider"
             response_metadata["snapshot_scope"] = "current_published_dataset"
+        elif request.category is DataCategory.MARGIN_TRADING:
+            rows = _table_rows(payload, provider=self.identity, request=request)
+            requested_date = _parse_margin_trading_date_parameter(
+                kwargs["date"],
+                request=request,
+            )
+            _validate_margin_trading_provider_rows(
+                rows,
+                listing,
+                observation_date=requested_date,
+                provider=self.identity,
+                request=request,
+            )
+            selected = _select_margin_trading_rows(rows, listing)
+            payload = selected
+            response_metadata["upstream_row_count"] = len(rows)
+            response_metadata["entity_row_count"] = len(selected)
+            response_metadata["entity_rows_selected"] = True
+            response_metadata["listing_scoped_request"] = False
+            response_metadata["row_filtering"] = "provider"
+            response_metadata["requested_date"] = kwargs["date"]
+            response_metadata["observation_date"] = requested_date.isoformat()
+            response_metadata["snapshot_scope"] = "requested_date"
         elif request.category is DataCategory.TRADING_SUSPENSIONS:
             rows = _table_rows(payload, provider=self.identity, request=request)
             _validate_trading_suspension_provider_rows(
@@ -1093,6 +1140,8 @@ class AKShareProvider(StructuredDataProvider):
                 return _trading_suspensions_kwargs(endpoint_name, listing, request)
             if request.category is DataCategory.GOODWILL_IMPAIRMENT:
                 return _goodwill_impairment_kwargs(endpoint_name, listing, request)
+            if request.category is DataCategory.MARGIN_TRADING:
+                return _margin_trading_kwargs(endpoint_name, listing, request)
             if endpoint_name in _NO_ARGUMENT_ENDPOINTS:
                 _reject_unexpected_parameters(request)
                 return {}
@@ -1311,6 +1360,35 @@ class AKShareNormalizer:
                 # assessment.
                 missing_fields.add("governance_risk_level")
                 normalizer_flags.add("AKSHARE_ESG_RATINGS_RAW_ONLY")
+            elif record.request.category is DataCategory.MARGIN_TRADING:
+                if listing.canonical_id[:2] != "SH":
+                    raise ProviderNormalizationError(
+                        "AKShare margin-trading raw slice supports Shanghai A-share "
+                        "listings only"
+                    )
+                if record.response_metadata.get("endpoint") != "stock_margin_detail_sse":
+                    raise ProviderNormalizationError(
+                        "AKShare margin-trading record must come from "
+                        "stock_margin_detail_sse"
+                    )
+                try:
+                    observation_date = _parse_margin_trading_date_parameter(
+                        record.request.parameters.get("date"),
+                        request=record.request,
+                    )
+                except ProviderRequestError as exc:
+                    raise ProviderNormalizationError(str(exc)) from exc
+                _validate_margin_trading_normalizer_rows(
+                    rows,
+                    listing,
+                    observation_date=observation_date,
+                )
+                # Security-level margin balances describe customer financing
+                # against a security, not the issuer's reported debt or cash.
+                # Keep the observation available for later review without
+                # treating it as an issuer accounting fact.
+                missing_fields.add("financial_debt")
+                normalizer_flags.add("AKSHARE_MARGIN_TRADING_RAW_ONLY")
             elif record.request.category is DataCategory.TRADING_SUSPENSIONS:
                 if listing.market is not ListingMarket.A:
                     raise ProviderNormalizationError(
@@ -1772,6 +1850,8 @@ class AKShareNormalizer:
             "ESG-rating records remain raw structured evidence because agencies, "
             "rating scales and provider quarters do not establish a canonical "
             "governance-risk judgment or Business Quality assessment. "
+            "Margin-trading records remain raw structured evidence because their "
+            "security-level investor balances are not issuer accounting debt or cash. "
             "Restricted-share-release records remain raw structured evidence because "
             "their release dates, quantities and market values do not establish a "
             "canonical diluted-economic-share treatment. "
@@ -1909,6 +1989,12 @@ class AKShareNormalizer:
                 " The documented Sina ESG-rating response is retained as raw evidence "
                 "only: its agency-specific ratings and quarter labels do not establish "
                 "a comparable score, governance-risk level or Business Quality judgment."
+            )
+        if "AKSHARE_MARGIN_TRADING_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented SSE margin-detail response is retained as raw evidence "
+                "only: security-level financing balances, quantities and transaction "
+                "flows do not establish issuer financial debt, cash or leverage facts."
             )
         if "AKSHARE_MAIN_SHAREHOLDERS_RAW_ONLY" in normalizer_flags:
             notes += (
@@ -2071,6 +2157,10 @@ def _endpoint_candidates(
         return ()
     if category is DataCategory.ESG_RATINGS:
         return ("stock_esg_rate_sina",)
+    if category is DataCategory.MARGIN_TRADING:
+        if market is ListingMarket.A and listing.canonical_id.startswith("SH"):
+            return ("stock_margin_detail_sse",)
+        return ()
     if category is DataCategory.TRADING_SUSPENSIONS:
         if market is ListingMarket.A:
             return ("stock_tfp_em",)
@@ -2445,6 +2535,42 @@ def _latest_indicators_kwargs(
             retryable=False,
         )
     return {"symbol": listing.code}
+
+
+def _margin_trading_kwargs(
+    endpoint_name: str,
+    listing: _ListingRef,
+    request: ProviderRequest,
+) -> dict[str, object]:
+    if endpoint_name != "stock_margin_detail_sse":
+        raise ProviderRequestError(
+            f"unsupported AKShare margin-trading endpoint {endpoint_name!r}",
+            request=request,
+            retryable=False,
+        )
+    if listing.canonical_id[:2] != "SH":
+        raise ProviderRequestError(
+            "the AKShare margin-trading detail endpoint supports Shanghai A-share "
+            "listings only",
+            request=request,
+            retryable=False,
+        )
+    unknown = sorted(set(request.parameters) - _MARGIN_TRADING_PARAMETER_NAMES)
+    if unknown:
+        raise ProviderRequestError(
+            "unsupported AKShare margin-trading parameter(s): " + ", ".join(unknown),
+            request=request,
+            retryable=False,
+        )
+    if "date" not in request.parameters:
+        raise ProviderRequestError(
+            "the AKShare margin-trading detail endpoint requires date (YYYYMMDD)",
+            request=request,
+            retryable=False,
+        )
+    raw_date = request.parameters["date"]
+    _parse_margin_trading_date_parameter(raw_date, request=request)
+    return {"date": raw_date}
 
 
 def _disclosure_notices_kwargs(
@@ -3053,6 +3179,27 @@ def _parse_goodwill_impairment_date_parameter(
         ) from exc
 
 
+def _parse_margin_trading_date_parameter(
+    raw_value: object,
+    *,
+    request: ProviderRequest | None = None,
+) -> date:
+    if not isinstance(raw_value, str) or not re.fullmatch(r"\d{8}", raw_value):
+        raise ProviderRequestError(
+            "margin-trading date must be YYYYMMDD",
+            request=request,
+            retryable=False,
+        )
+    try:
+        return datetime.strptime(raw_value, "%Y%m%d").date()
+    except ValueError as exc:
+        raise ProviderRequestError(
+            "margin-trading date must be a valid YYYYMMDD date",
+            request=request,
+            retryable=False,
+        ) from exc
+
+
 def _parse_dividend_snapshot_date_parameter(
     raw_value: object,
     *,
@@ -3443,6 +3590,17 @@ def _row_code(row: Mapping[str, JSONValue], market: ListingMarket) -> str | None
     return None
 
 
+def _margin_trading_row_code(row: Mapping[str, JSONValue]) -> str | None:
+    """Read the documented SSE margin-detail security code."""
+
+    for key in _MARGIN_TRADING_CODE_FIELDS:
+        if key in row:
+            code = _canonical_row_code(row[key], ListingMarket.A)
+            if code is not None:
+                return code
+    return None
+
+
 def _esg_rating_row_listing(row: Mapping[str, JSONValue]) -> _ListingRef | None:
     """Parse one documented ESG row's explicit code and ``cn``/``hk`` market."""
 
@@ -3721,6 +3879,61 @@ def _select_esg_rating_rows(
         if row_listing is not None and (
             row_listing.market is listing.market and row_listing.code == listing.code
         ):
+            selected.append(dict(row))
+    return selected
+
+
+def _validate_margin_trading_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+    *,
+    observation_date: date,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> None:
+    """Validate explicit security identity and the requested SSE observation date."""
+
+    for row in rows:
+        if _margin_trading_row_code(row) is None:
+            raise ProviderResponseError(
+                f"AKShare returned a margin-trading row without a listing code for "
+                f"requested {listing.canonical_id!r}",
+                provider=provider,
+                request=request,
+            )
+        has_date, row_date = _margin_trading_date_details(row)
+        if not has_date:
+            raise ProviderResponseError(
+                f"AKShare returned a margin-trading row without an observation date for "
+                f"{request.entity_id!r}",
+                provider=provider,
+                request=request,
+            )
+        if row_date is None:
+            raise ProviderResponseError(
+                f"AKShare returned an invalid margin-trading observation date for "
+                f"{request.entity_id!r}",
+                provider=provider,
+                request=request,
+            )
+        if row_date != observation_date:
+            raise ProviderResponseError(
+                f"AKShare returned margin-trading row date {row_date.isoformat()!r}; "
+                f"requested {observation_date.isoformat()!r}",
+                provider=provider,
+                request=request,
+            )
+
+
+def _select_margin_trading_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+) -> list[dict[str, JSONValue]]:
+    """Filter the SSE security universe to the requested Shanghai listing."""
+
+    selected: list[dict[str, JSONValue]] = []
+    for row in rows:
+        if _margin_trading_row_code(row) == listing.code:
             selected.append(dict(row))
     return selected
 
@@ -4214,6 +4427,41 @@ def _validate_esg_rating_normalizer_rows(
             raise ProviderNormalizationError(
                 f"ESG-rating row entity {row_listing.canonical_id!r} does not match "
                 f"requested listing {listing.canonical_id!r}"
+            )
+
+
+def _validate_margin_trading_normalizer_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+    *,
+    observation_date: date,
+) -> None:
+    """Keep replayed SSE margin-detail rows inside the listing/date boundary."""
+
+    for row in rows:
+        row_code = _margin_trading_row_code(row)
+        if row_code is None:
+            raise ProviderNormalizationError(
+                "margin-trading row has no explicit listing code"
+            )
+        if row_code != listing.code:
+            raise ProviderNormalizationError(
+                f"margin-trading row entity {row_code!r} does not match "
+                f"requested listing {listing.canonical_id!r}"
+            )
+        has_date, row_date = _margin_trading_date_details(row)
+        if not has_date:
+            raise ProviderNormalizationError(
+                "margin-trading row has no exact observation date"
+            )
+        if row_date is None:
+            raise ProviderNormalizationError(
+                "margin-trading row has an invalid observation date"
+            )
+        if row_date != observation_date:
+            raise ProviderNormalizationError(
+                f"margin-trading row date {row_date.isoformat()!r} does not match "
+                f"requested observation date {observation_date.isoformat()!r}"
             )
 
 
@@ -5725,6 +5973,17 @@ def _observation_date(row: Mapping[str, JSONValue]) -> date | None:
     if match:
         return date.fromisoformat(match.group(1))
     return None
+
+
+def _margin_trading_date_details(
+    row: Mapping[str, JSONValue],
+) -> tuple[bool, date | None]:
+    """Return whether a date is present and its parsed value, if valid."""
+
+    found, raw_value = _lookup(row, _MARGIN_TRADING_DATE_FIELDS)
+    if not found or _text_value(raw_value) in _MISSING_TEXT:
+        return False, None
+    return True, _parse_date_value(raw_value)
 
 
 def _metadata_date(row: Mapping[str, JSONValue]) -> date | None:

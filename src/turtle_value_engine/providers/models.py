@@ -82,6 +82,7 @@ class DataCategory(StrEnum):
     FINANCIAL_INDICATORS = "financial_indicators"
     GOODWILL_IMPAIRMENT = "goodwill_impairment"
     ESG_RATINGS = "esg_ratings"
+    MARGIN_TRADING = "margin_trading"
     LATEST_INDICATORS = "latest_indicators"
     BALANCE_SHEET = "balance_sheet"
     CASH_FLOW_STATEMENT = "cash_flow_statement"

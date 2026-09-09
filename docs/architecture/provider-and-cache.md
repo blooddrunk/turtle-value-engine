@@ -1,6 +1,6 @@
 # Provider and Cache Architecture
 
-> Status: Phase 2 foundation, read-only AKShare statement slices, earnings forecasts/quick reports/performance reports/business composition/financial abstract/financial indicators, H-share latest indicators, dividend events/snapshots/detail, A-share disclosure-notice metadata, risk-warning status, trading-suspension, restricted-share-release, goodwill-impairment, ESG-rating, share-capital, corporate-action, ownership-pledge, main-shareholder and SSE/SZSE/BSE insider-share-change raw slices
+> Status: Phase 2 foundation, read-only AKShare statement slices, earnings forecasts/quick reports/performance reports/business composition/financial abstract/financial indicators, H-share latest indicators, dividend events/snapshots/detail, A-share disclosure-notice metadata, risk-warning status, trading-suspension, restricted-share-release, goodwill-impairment, ESG-rating, SSE margin-detail, share-capital, corporate-action, ownership-pledge, main-shareholder and SSE/SZSE/BSE insider-share-change raw slices
 
 This document freezes the boundary between structured-data acquisition and the
 deterministic Turtle Value Engine. It does not authorize a live provider or
@@ -98,6 +98,7 @@ FINANCIAL_ABSTRACT
 FINANCIAL_INDICATORS
 GOODWILL_IMPAIRMENT
 ESG_RATINGS
+MARGIN_TRADING
 LATEST_INDICATORS
 BALANCE_SHEET
 CASH_FLOW_STATEMENT
@@ -456,6 +457,21 @@ missing and does not create a canonical ESG score, governance or Business
 Quality fact because agencies use different scales and quarters are provider
 reporting labels.
 
+The SSE margin-detail slice is also acquisition-only. The current
+[AKShare documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_margin_detail_sse` as an endpoint accepting an exact
+`YYYYMMDD` `date` and returning a full SSE security universe with explicit
+security codes, financing balances and financing/short-sale quantities. The
+[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_margin_sse.py)
+passes the requested date to the SSE detail request and renames the published
+columns. The provider supports Shanghai A-share identifiers only, validates
+the explicit code and date on every row, filters to the requested listing and
+retains every matching row with date and row-count provenance. These are
+security-level investor financing observations rather than issuer accounting
+debt or cash, so the normalizer marks `financial_debt` as critically missing,
+emits `AKSHARE_MARGIN_TRADING_RAW_ONLY` and creates no canonical debt, cash,
+margin, leverage or valuation fact.
+
 When a statement row includes an explicit security code, the normalizer also
 checks it against the requested listing and rejects a mismatch. Statement
 endpoints that omit a row-level code remain bound to their listing-scoped
@@ -610,7 +626,7 @@ The cache performs no network retries. The normalizer performs no provider
 retries. The deterministic pipeline performs no provider retries and should
 not be rerun as a substitute for resolving missing facts.
 
-## 12. Phase 2.2–2.31 AKShare adapter
+## 12. Phase 2.2–2.32 AKShare adapter
 
 The first concrete adapter is intentionally limited to read-only metadata,
 market observations, three documented financial-statement slices, raw-only
@@ -620,8 +636,8 @@ raw slices, raw-only dividend event/snapshot/detail and corporate-action categor
 three A-share share-capital raw slices, one A-share ownership-pledge raw slice,
 an H-share latest-indicator raw slice, an A-share disclosure-notice raw slice,
 an A-share risk-warning-status, trading-suspension, goodwill-impairment,
-ESG-rating and main-shareholder raw slice and SSE/SZSE/BSE insider-share-change
-raw slices. It
+ESG-rating, SSE margin-detail and main-shareholder raw slice and
+SSE/SZSE/BSE insider-share-change raw slices. It
 advertises exactly these capabilities:
 
 | Category | A-share endpoint | H-share endpoint | Normalized output |
@@ -642,6 +658,7 @@ advertises exactly these capabilities:
 | `FINANCIAL_INDICATORS` | `stock_financial_analysis_indicator_em` | `stock_financial_hk_analysis_indicator_em` | A/H historical financial-indicator rows as raw structured evidence only; no canonical revenue, profit, CFO, metric or valuation input |
 | `GOODWILL_IMPAIRMENT` | `stock_sy_jz_em` (exact `date`) | — | A-share report-date goodwill/impairment rows as raw structured evidence only; no canonical goodwill or impairment fact |
 | `ESG_RATINGS` | `stock_esg_rate_sina` (no parameters) | `stock_esg_rate_sina` (no parameters) | mixed A/H agency, rating, quarter and marker rows as raw structured evidence only; no canonical ESG score, governance or Business Quality fact |
+| `MARGIN_TRADING` | `stock_margin_detail_sse` (exact `date`; Shanghai A-share only) | — | requested-date SSE security-level margin rows as raw structured evidence only; no issuer debt/cash/leverage/valuation fact |
 | `LATEST_INDICATORS` | — | `stock_hk_financial_indicator_em` | H-share symbol-scoped latest-indicator row as raw structured evidence only; no canonical financial, share, dividend, market-cap, metric or valuation input |
 | `BALANCE_SHEET` | `stock_zcfz_em` / `stock_zcfz_bj_em` (detailed report-period and Sina fallbacks) | `stock_financial_hk_report_em` | explicit `book_cash`, equity totals and aggregate interest-bearing debt when labeled |
 | `DIVIDENDS` | `stock_dividend_cninfo`; `stock_fhps_em` (explicit report date) | `stock_hk_dividend_payout_em`; `stock_hk_fhpx_detail_ths` (`view=event_detail`) | raw structured evidence only; no canonical dividend cash or payout ratio |
@@ -669,11 +686,13 @@ The normalizer emits `Fact` and `Evidence` objects inside the existing
 performance-report, business-composition, financial-abstract,
 financial-indicator, latest-indicator, dividend event/detail, disclosure-notice,
 risk-warning-status, trading-suspension, restricted-share-release,
-goodwill-impairment, ESG-rating, corporate-action, share-capital,
+goodwill-impairment, ESG-rating, margin-trading, corporate-action, share-capital,
 ownership-pledge, main-shareholder and insider-share-change raw slices it emits
 raw-record evidence only and explicit unresolved flags where needed; it does
 not emit canonical forecast-profit, revenue, margin, dividend, buyback,
 issuance, dilution, share, governance, pledged-cash or debt-equivalent facts.
+Margin-trading rows remain raw evidence because security-level investor
+financing balances and quantities are not issuer accounting debt or cash.
 It never maps provider headline market cap,
 listing-years inferred from history length, unlisted financial-statement lines,
 total liabilities as interest-bearing debt, filing classifications, or any
@@ -814,7 +833,7 @@ governance-risk level or Business Quality fact is emitted automatically.
 
 ## 13. Deliberate non-goals
 
-This foundation plus the Phase 2.2–2.31 slices does not include:
+This foundation plus the Phase 2.2–2.32 slices does not include:
 
 - Tushare, BaoStock or any other additional provider;
 - automatic network scheduling, credentials or retry orchestration outside an adapter;

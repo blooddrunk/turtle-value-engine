@@ -809,6 +809,28 @@ financial or valuation fact. Live calls remain opt-in; tests use an injected
 client and a frozen fixture. See the [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
 for the documented interface and fields.
 
+### Phase 2.32 — SSE margin-detail raw acquisition contract (COMPLETE)
+
+The mapping review now covers the documented SSE
+`stock_margin_detail_sse` endpoint under a new provider-neutral
+`MARGIN_TRADING` category. The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_margin_sse.py)
+define an exact `date` in `YYYYMMDD` form and a full SSE universe of security
+rows with explicit security code, security name, financing balances and
+financing/short-sale quantities. The provider supports Shanghai A-share
+listing identifiers only, validates every returned code and observation date,
+filters to all rows for the requested security and preserves row/count/date
+provenance.
+
+The response describes customer financing against a security, not the issuer's
+reported financial debt, cash or a settled issuer accounting period. The
+normalizer therefore retains the structured evidence, marks `financial_debt`
+as critically missing and emits `AKSHARE_MARGIN_TRADING_RAW_ONLY`; it creates
+no canonical debt, cash, leverage, margin or valuation fact. SZSE/BSE margin
+detail, market-level margin summaries and filing-backed interpretation remain
+outside this slice. Live calls remain opt-in; tests use an injected client and
+a frozen fixture.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -818,7 +840,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.31 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.32 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -1026,7 +1048,7 @@ Phase 2 is active. Phase 1 remains frozen: changes to formulas, hard-gate
 semantics, schemas or `strict-v1` thresholds require a separately reviewed,
 versioned change.
 
-Phase 2.31 completes the next documented structured-data boundary while
+Phase 2.32 completes the next documented structured-data boundary while
 keeping share-change, repurchase and rights-issue period, status, unit and
 economic-scope questions unresolved, and keeping ownership-pledge holder,
 governance and economic-scope questions unresolved. The A-share
@@ -1112,3 +1134,9 @@ governance-risk level or Business Quality judgment. The provider validates and
 filters the mixed universe by explicit code plus `cn`/`hk` market while
 retaining all matching agency/quarter rows; no canonical ESG, governance,
 financial or valuation fact is admitted.
+
+The documented SSE margin-detail response is retained under
+`AKSHARE_MARGIN_TRADING_RAW_ONLY` because its security-level investor
+financing balances, quantities and transaction flows do not establish issuer
+financial debt, cash, leverage or a canonical margin fact; `financial_debt`
+remains critically missing.
