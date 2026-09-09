@@ -6,11 +6,11 @@ cached records without installing AKShare or making a network request.
 
 The adapter currently implements metadata, market observations, three narrow
 financial-statement slices, A-share earnings-forecast, earnings-quick-report,
-performance-report, business-composition and financial-abstract raw slices,
-raw-only dividend event/snapshot, corporate-action and ownership-pledge
-slices, and A-share share-capital raw slices. Upstream column names are handled
-in this module and are never passed to the deterministic calculation or gate
-code.
+performance-report, business-composition, financial-abstract and financial-
+indicator raw slices, raw-only dividend event/snapshot, corporate-action and
+ownership-pledge slices, and A-share share-capital raw slices. Upstream column
+names are handled in this module and are never passed to the deterministic
+calculation or gate code.
 """
 
 from __future__ import annotations
@@ -55,9 +55,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "17"
+AKSHARE_ADAPTER_VERSION = "18"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "18"
+AKSHARE_MAPPING_VERSION = "19"
 
 
 class ListingMarket(StrEnum):
@@ -80,6 +80,7 @@ AKSHARE_CAPABILITIES = ProviderCapabilities(
         DataCategory.PERFORMANCE_REPORT,
         DataCategory.BUSINESS_COMPOSITION,
         DataCategory.FINANCIAL_ABSTRACT,
+        DataCategory.FINANCIAL_INDICATORS,
         DataCategory.BALANCE_SHEET,
         DataCategory.DIVIDENDS,
         DataCategory.CORPORATE_ACTIONS,
@@ -110,6 +111,7 @@ _SOURCE_URIS = {
     "stock_yjbb_em": "https://data.eastmoney.com/bbsj/202003/yjbb.html",
     "stock_zygc_em": "https://emweb.securities.eastmoney.com/PC_HSF10/BusinessAnalysis/Index?type=web&code=SH688041#",
     "stock_financial_abstract": "https://vip.stock.finance.sina.com.cn/corp/go.php/vFD_FinanceSummary/stockid/600004.phtml",
+    "stock_financial_analysis_indicator_em": "https://emweb.securities.eastmoney.com/pc_hsf10/pages/index.html?type=web&code=SZ301389&color=b#/cwfx",
     "stock_balance_sheet_by_report_em": "https://emweb.securities.eastmoney.com/PC_HSF10/NewFinanceAnalysis/Index",
     "stock_zcfz_em": "https://data.eastmoney.com/bbsj/202003/zcfz.html",
     "stock_zcfz_bj_em": "https://data.eastmoney.com/bbsj/202003/zcfz.html",
@@ -163,6 +165,8 @@ _EARNINGS_QUICK_REPORT_PARAMETER_NAMES = frozenset({"date"})
 _PERFORMANCE_REPORT_PARAMETER_NAMES = frozenset({"date"})
 _BUSINESS_COMPOSITION_PARAMETER_NAMES = frozenset()
 _FINANCIAL_ABSTRACT_PARAMETER_NAMES = frozenset()
+_FINANCIAL_INDICATORS_PARAMETER_NAMES = frozenset({"indicator"})
+_FINANCIAL_INDICATORS_CHOICES = frozenset({"按报告期", "按单季度"})
 
 _DIVIDEND_SNAPSHOT_PARAMETER_NAMES = frozenset({"date"})
 _SHARE_CAPITAL_PARAMETER_NAMES = frozenset({"start_date", "end_date"})
@@ -324,6 +328,16 @@ class AKShareProvider(StructuredDataProvider):
         ):
             raise ProviderRequestError(
                 "the AKShare financial-abstract endpoint supports A-share listings only",
+                provider=self.identity,
+                request=request,
+                retryable=False,
+            )
+        if (
+            request.category is DataCategory.FINANCIAL_INDICATORS
+            and listing.market is not ListingMarket.A
+        ):
+            raise ProviderRequestError(
+                "the AKShare financial-indicators endpoint supports A-share listings only",
                 provider=self.identity,
                 request=request,
                 retryable=False,
@@ -620,6 +634,24 @@ class AKShareProvider(StructuredDataProvider):
             response_metadata["entity_row_count"] = len(rows)
             response_metadata["listing_scoped_request"] = True
             response_metadata["report_period_count"] = len(report_periods)
+        elif request.category is DataCategory.FINANCIAL_INDICATORS:
+            rows = _table_rows(payload, provider=self.identity, request=request)
+            _validate_financial_indicators_provider_rows(
+                rows,
+                listing,
+                provider=self.identity,
+                request=request,
+            )
+            report_periods = {
+                parsed.isoformat()
+                for row in rows
+                if (parsed := _financial_indicators_date(row)) is not None
+            }
+            response_metadata["upstream_row_count"] = len(rows)
+            response_metadata["entity_row_count"] = len(rows)
+            response_metadata["listing_scoped_request"] = True
+            response_metadata["report_period_count"] = len(report_periods)
+            response_metadata["indicator"] = kwargs["indicator"]
 
         try:
             retrieved_at = self._clock()
@@ -720,6 +752,8 @@ class AKShareProvider(StructuredDataProvider):
                 return _business_composition_kwargs(endpoint_name, listing, request)
             if request.category is DataCategory.FINANCIAL_ABSTRACT:
                 return _financial_abstract_kwargs(endpoint_name, listing, request)
+            if request.category is DataCategory.FINANCIAL_INDICATORS:
+                return _financial_indicators_kwargs(endpoint_name, listing, request)
             if request.category is DataCategory.DIVIDENDS:
                 return _dividends_kwargs(endpoint_name, listing, request)
             if request.category is DataCategory.SHARE_CAPITAL:
@@ -1095,6 +1129,32 @@ class AKShareNormalizer:
                     }
                 )
                 normalizer_flags.add("AKSHARE_FINANCIAL_ABSTRACT_RAW_ONLY")
+            elif record.request.category is DataCategory.FINANCIAL_INDICATORS:
+                if listing.market is not ListingMarket.A:
+                    raise ProviderNormalizationError(
+                        "AKShare financial-indicators raw slice supports A-share listings only"
+                    )
+                try:
+                    _financial_indicators_indicator(
+                        record.request.parameters.get("indicator"),
+                        request=record.request,
+                    )
+                except ProviderRequestError as exc:
+                    raise ProviderNormalizationError(str(exc)) from exc
+                _validate_financial_indicators_normalizer_rows(rows, listing)
+                # The endpoint intentionally mixes reported amounts with
+                # per-share values and provider-calculated ratios. Its report
+                # presentation does not establish a canonical entity, unit or
+                # calculation basis for automatic fact mapping.
+                missing_fields.update(
+                    {
+                        "consolidated_net_profit",
+                        "parent_net_profit",
+                        "reported_cfo",
+                        "revenue",
+                    }
+                )
+                normalizer_flags.add("AKSHARE_FINANCIAL_INDICATORS_RAW_ONLY")
             elif record.request.category is DataCategory.DIVIDENDS:
                 endpoint_name = record.response_metadata.get("endpoint")
                 if endpoint_name == "stock_fhps_em":
@@ -1199,6 +1259,9 @@ class AKShareNormalizer:
             "Financial-abstract records remain raw structured evidence because "
             "their wide amount, per-share and ratio matrix does not establish "
             "the canonical entity, unit, period or diluted-share basis. "
+            "Financial-indicator records remain raw structured evidence because "
+            "their reported amounts, per-share values and provider ratios do not "
+            "establish the canonical entity, unit or calculation basis. "
             "Dividend "
             "and corporate-action records remain raw structured evidence until "
             "ordinary/special status, cash amount, action outcome, amount unit "
@@ -1282,6 +1345,13 @@ class AKShareNormalizer:
                 "as raw evidence only: its wide amount, per-share and ratio rows "
                 "do not establish the canonical entity, unit, period or "
                 "diluted-share basis."
+            )
+        if "AKSHARE_FINANCIAL_INDICATORS_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented A-share financial-indicator response is retained "
+                "as raw evidence only: its reported amounts, per-share values and "
+                "provider ratios do not establish the canonical entity, unit or "
+                "calculation basis."
             )
         return NormalizedCompanyInput(
             schema_version="1.0.0",
@@ -1419,6 +1489,10 @@ def _endpoint_candidates(
     if category is DataCategory.FINANCIAL_ABSTRACT:
         if market is ListingMarket.A:
             return ("stock_financial_abstract",)
+        return ()
+    if category is DataCategory.FINANCIAL_INDICATORS:
+        if market is ListingMarket.A:
+            return ("stock_financial_analysis_indicator_em",)
         return ()
     if category is DataCategory.BALANCE_SHEET:
         if market is ListingMarket.A:
@@ -1628,6 +1702,56 @@ def _financial_abstract_kwargs(
             retryable=False,
         )
     return {"symbol": listing.code}
+
+
+def _financial_indicators_kwargs(
+    endpoint_name: str,
+    listing: _ListingRef,
+    request: ProviderRequest,
+) -> dict[str, object]:
+    if endpoint_name != "stock_financial_analysis_indicator_em":
+        raise ProviderRequestError(
+            f"unsupported AKShare financial-indicators endpoint {endpoint_name!r}",
+            request=request,
+            retryable=False,
+        )
+    if listing.market is not ListingMarket.A:
+        raise ProviderRequestError(
+            "the AKShare financial-indicators endpoint supports A-share listings only",
+            request=request,
+            retryable=False,
+        )
+    unknown = sorted(set(request.parameters) - _FINANCIAL_INDICATORS_PARAMETER_NAMES)
+    if unknown:
+        raise ProviderRequestError(
+            "unsupported AKShare financial-indicators parameter(s): " + ", ".join(unknown),
+            request=request,
+            retryable=False,
+        )
+    indicator = _financial_indicators_indicator(
+        request.parameters.get("indicator"),
+        request=request,
+    )
+    return {
+        "symbol": f"{listing.code}.{listing.canonical_id[:2]}",
+        "indicator": indicator,
+    }
+
+
+def _financial_indicators_indicator(
+    raw_value: object,
+    *,
+    request: ProviderRequest | None = None,
+) -> str:
+    indicator = "按报告期" if raw_value is None else raw_value
+    if not isinstance(indicator, str) or indicator not in _FINANCIAL_INDICATORS_CHOICES:
+        choices = ", ".join(sorted(_FINANCIAL_INDICATORS_CHOICES))
+        raise ProviderRequestError(
+            f"financial-indicators indicator must be one of: {choices}",
+            request=request,
+            retryable=False,
+        )
+    return indicator
 
 
 def _earnings_quick_report_kwargs(
@@ -2293,6 +2417,7 @@ def _row_code(row: Mapping[str, JSONValue], market: ListingMarket) -> str | None
             "股票代码",
             "证券代码",
             "SECURITY_CODE",
+            "SECUCODE",
             "code",
             "symbol",
             "代码",
@@ -2301,6 +2426,7 @@ def _row_code(row: Mapping[str, JSONValue], market: ListingMarket) -> str | None
         keys = (
             "H股代码",
             "SECURITY_CODE",
+            "SECUCODE",
             "证券代码",
             "股票代码",
             "code",
@@ -2626,6 +2752,48 @@ def _validate_financial_abstract_provider_rows(
                 )
 
 
+def _validate_financial_indicators_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> None:
+    """Validate listing identity and report dates before storing indicators."""
+
+    for row in rows:
+        row_code = _row_code(row, ListingMarket.A)
+        if row_code is None:
+            raise ProviderResponseError(
+                f"AKShare returned a financial-indicator row without a listing code for "
+                f"{request.entity_id!r}",
+                provider=provider,
+                request=request,
+            )
+        if row_code != listing.code:
+            raise ProviderResponseError(
+                f"AKShare returned financial-indicator row entity {row_code!r} for "
+                f"requested listing {listing.canonical_id!r}",
+                provider=provider,
+                request=request,
+            )
+        found, raw_period = _lookup(row, _FINANCIAL_INDICATORS_PERIOD_FIELDS)
+        if not found or _text_value(raw_period) in _MISSING_TEXT:
+            raise ProviderResponseError(
+                f"AKShare returned a financial-indicator row without a report date for "
+                f"{request.entity_id!r}",
+                provider=provider,
+                request=request,
+            )
+        if _parse_date_value(raw_period) is None:
+            raise ProviderResponseError(
+                f"AKShare returned an invalid financial-indicator report date for "
+                f"{request.entity_id!r}",
+                provider=provider,
+                request=request,
+            )
+
+
 def _validate_earnings_quick_report_provider_rows(
     rows: Sequence[Mapping[str, JSONValue]],
     listing: _ListingRef,
@@ -2850,6 +3018,34 @@ def _validate_financial_abstract_normalizer_rows(
                 raise ProviderNormalizationError(
                     f"financial-abstract row has an invalid report-period column {key!r}"
                 )
+
+
+def _validate_financial_indicators_normalizer_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+) -> None:
+    """Keep replayed financial-indicator rows inside listing/date boundaries."""
+
+    for row in rows:
+        row_code = _row_code(row, ListingMarket.A)
+        if row_code is None:
+            raise ProviderNormalizationError(
+                "financial-indicator row has no explicit listing code"
+            )
+        if row_code != listing.code:
+            raise ProviderNormalizationError(
+                f"financial-indicator row entity {row_code!r} does not match "
+                f"requested listing {listing.canonical_id!r}"
+            )
+        found, raw_period = _lookup(row, _FINANCIAL_INDICATORS_PERIOD_FIELDS)
+        if not found or _text_value(raw_period) in _MISSING_TEXT:
+            raise ProviderNormalizationError(
+                "financial-indicator row has no exact report date"
+            )
+        if _parse_date_value(raw_period) is None:
+            raise ProviderNormalizationError(
+                "financial-indicator row has an invalid report date"
+            )
 
 
 def _validate_earnings_quick_report_normalizer_rows(
@@ -3423,6 +3619,12 @@ _BUSINESS_COMPOSITION_PERIOD_FIELDS = (
 )
 _FINANCIAL_ABSTRACT_OPTION_FIELDS = ("选项", "option", "category")
 _FINANCIAL_ABSTRACT_INDICATOR_FIELDS = ("指标", "indicator", "metric")
+_FINANCIAL_INDICATORS_PERIOD_FIELDS = (
+    "REPORT_DATE",
+    "report_date",
+    "报告日期",
+    "报告期",
+)
 _STATEMENT_CURRENCY_FIELDS = ("币种", "CURRENCY", "CURRENCY_NAME")
 _LONG_STATEMENT_ITEM_FIELDS = ("STD_ITEM_NAME", "项目名称", "科目名称", "ITEM_NAME")
 _LONG_STATEMENT_VALUE_FIELDS = ("AMOUNT", "金额", "VALUE", "ITEM_VALUE")
@@ -3724,6 +3926,13 @@ def _financial_abstract_periods(row: Mapping[str, JSONValue]) -> set[date]:
         if _is_financial_abstract_period_key(key)
         and (parsed := _parse_date_value(key)) is not None
     }
+
+
+def _financial_indicators_date(row: Mapping[str, JSONValue]) -> date | None:
+    found, raw_value = _lookup(row, _FINANCIAL_INDICATORS_PERIOD_FIELDS)
+    if not found or _text_value(raw_value) in _MISSING_TEXT:
+        return None
+    return _parse_date_value(raw_value)
 
 
 def _business_composition_date(row: Mapping[str, JSONValue]) -> date | None:

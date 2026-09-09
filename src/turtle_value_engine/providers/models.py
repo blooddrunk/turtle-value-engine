@@ -77,6 +77,7 @@ class DataCategory(StrEnum):
     PERFORMANCE_REPORT = "performance_report"
     BUSINESS_COMPOSITION = "business_composition"
     FINANCIAL_ABSTRACT = "financial_abstract"
+    FINANCIAL_INDICATORS = "financial_indicators"
     BALANCE_SHEET = "balance_sheet"
     CASH_FLOW_STATEMENT = "cash_flow_statement"
     DIVIDENDS = "dividends"

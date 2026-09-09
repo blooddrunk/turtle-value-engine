@@ -1,6 +1,6 @@
 # Provider and Cache Architecture
 
-> Status: Phase 2 foundation, read-only AKShare statement slices, earnings forecasts/quick reports/performance reports/business composition/financial abstract, dividend events/snapshots, share-capital and corporate-action raw slices
+> Status: Phase 2 foundation, read-only AKShare statement slices, earnings forecasts/quick reports/performance reports/business composition/financial abstract/financial indicators, dividend events/snapshots, share-capital and corporate-action raw slices
 
 This document freezes the boundary between structured-data acquisition and the
 deterministic Turtle Value Engine. It does not authorize a live provider or
@@ -93,6 +93,7 @@ EARNINGS_QUICK_REPORT
 PERFORMANCE_REPORT
 BUSINESS_COMPOSITION
 FINANCIAL_ABSTRACT
+FINANCIAL_INDICATORS
 BALANCE_SHEET
 CASH_FLOW_STATEMENT
 DIVIDENDS
@@ -326,6 +327,22 @@ diluted-share basis, the normalizer marks `revenue`,
 `parent_net_profit`, `consolidated_net_profit` and `reported_cfo` as critically
 missing and emits `AKSHARE_FINANCIAL_ABSTRACT_RAW_ONLY` without creating a
 canonical fact.
+
+The financial-indicator slice is also acquisition-only. The current
+[AKShare documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_financial_analysis_indicator_em` as an Eastmoney A-share
+listing-scoped endpoint with an `indicator` choice of `按报告期` or
+`按单季度`. Its response includes explicit listing identity and report dates,
+but mixes reported amounts, per-share values and provider-calculated ratios
+without establishing one canonical entity, unit/scaling, point-in-time basis or
+calculation methodology. The provider passes the market-suffixed A-share
+symbol and indicator mode, retains the complete response, validates row
+identity/report dates and records row, period and mode metadata. The normalizer
+marks `revenue`, `parent_net_profit`, `consolidated_net_profit` and
+`reported_cfo` as critically missing and emits
+`AKSHARE_FINANCIAL_INDICATORS_RAW_ONLY` without creating a canonical fact,
+metric or valuation input. H-share financial indicators remain outside this
+slice.
 
 When a statement row includes an explicit security code, the normalizer also
 checks it against the requested listing and rejects a mismatch. Statement

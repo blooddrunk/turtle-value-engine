@@ -121,6 +121,14 @@ class FakeAKShare:
             symbol=symbol,
         )
 
+    def stock_financial_analysis_indicator_em(self, *, symbol: str, indicator: str):
+        return self._return(
+            "stock_financial_analysis_indicator_em",
+            _fixture("a_financial_indicators.json"),
+            symbol=symbol,
+            indicator=indicator,
+        )
+
     def stock_balance_sheet_by_report_em(self, **kwargs):
         return self._return(
             "stock_balance_sheet_by_report_em",
@@ -252,6 +260,7 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "earnings_forecast",
         "earnings_quick_report",
         "financial_abstract",
+        "financial_indicators",
         "income_statement",
         "listing_metadata",
         "market_history",
@@ -261,8 +270,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "share_capital",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "17"
-    assert AKSHARE_MAPPING_VERSION == "18"
+    assert provider.identity.provider_version == "18"
+    assert AKSHARE_MAPPING_VERSION == "19"
 
 
 def test_a_quote_is_selected_from_the_upstream_universe_and_kept_opaque():
@@ -2940,4 +2949,213 @@ def test_financial_abstract_cache_replay_does_not_call_upstream(tmp_path: Path):
     assert replay.record == live.record
     assert fake.calls == [
         ("stock_financial_abstract", {"symbol": "600000"}),
+    ]
+
+
+def test_financial_indicators_fetch_preserves_rows_and_period_metadata():
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    record = provider.fetch(_request(DataCategory.FINANCIAL_INDICATORS, "SH600000"))
+
+    assert record.raw_payload == _fixture("a_financial_indicators.json")
+    assert fake.calls == [
+        (
+            "stock_financial_analysis_indicator_em",
+            {"symbol": "600000.SH", "indicator": "按报告期"},
+        ),
+    ]
+    assert record.response_metadata["endpoint"] == (
+        "stock_financial_analysis_indicator_em"
+    )
+    assert record.response_metadata["upstream_row_count"] == 2
+    assert record.response_metadata["entity_row_count"] == 2
+    assert record.response_metadata["listing_scoped_request"] is True
+    assert record.response_metadata["report_period_count"] == 2
+    assert record.response_metadata["indicator"] == "按报告期"
+    assert record.source_uri == (
+        "https://emweb.securities.eastmoney.com/pc_hsf10/pages/index.html?"
+        "type=web&code=SZ301389&color=b#/cwfx"
+    )
+
+
+def test_financial_indicators_accepts_quarterly_mode_and_rejects_unsupported_requests():
+    fake = FakeAKShare()
+    provider = _provider(fake)
+
+    provider.fetch(
+        _request(
+            DataCategory.FINANCIAL_INDICATORS,
+            "SH600000",
+            {"indicator": "按单季度"},
+        )
+    )
+
+    with pytest.raises(ProviderRequestError, match="A-share listings only"):
+        provider.fetch(_request(DataCategory.FINANCIAL_INDICATORS, "HK00700"))
+    with pytest.raises(ProviderRequestError, match="one of"):
+        provider.fetch(
+            _request(
+                DataCategory.FINANCIAL_INDICATORS,
+                "SH600000",
+                {"indicator": "年度"},
+            )
+        )
+    with pytest.raises(ProviderRequestError, match="unsupported AKShare financial-indicators"):
+        provider.fetch(
+            _request(
+                DataCategory.FINANCIAL_INDICATORS,
+                "SH600000",
+                {"start_year": "2024"},
+            )
+        )
+
+    assert fake.calls == [
+        (
+            "stock_financial_analysis_indicator_em",
+            {"symbol": "600000.SH", "indicator": "按单季度"},
+        )
+    ]
+
+
+def test_financial_indicators_response_requires_matching_listing_and_report_date():
+    class InvalidRows(FakeAKShare):
+        def __init__(self, mode: str) -> None:
+            super().__init__()
+            self.mode = mode
+
+        def stock_financial_analysis_indicator_em(
+            self,
+            *,
+            symbol: str,
+            indicator: str,
+        ):
+            rows = [dict(row) for row in _fixture("a_financial_indicators.json")]
+            if self.mode == "missing_code":
+                rows[0].pop("SECUCODE")
+                rows[0].pop("SECURITY_CODE")
+            elif self.mode == "wrong_code":
+                rows[0]["SECUCODE"] = "000001.SZ"
+                rows[0]["SECURITY_CODE"] = "000001"
+            elif self.mode == "invalid_date":
+                rows[0]["REPORT_DATE"] = "2024-13-31"
+            else:
+                rows[0].pop("REPORT_DATE")
+            return self._return(
+                "stock_financial_analysis_indicator_em",
+                rows,
+                symbol=symbol,
+                indicator=indicator,
+            )
+
+    with pytest.raises(ProviderResponseError, match="without a listing code"):
+        _provider(InvalidRows("missing_code")).fetch(
+            _request(DataCategory.FINANCIAL_INDICATORS, "SH600000")
+        )
+    with pytest.raises(ProviderResponseError, match="financial-indicator row entity"):
+        _provider(InvalidRows("wrong_code")).fetch(
+            _request(DataCategory.FINANCIAL_INDICATORS, "SH600000")
+        )
+    with pytest.raises(ProviderResponseError, match="invalid financial-indicator report date"):
+        _provider(InvalidRows("invalid_date")).fetch(
+            _request(DataCategory.FINANCIAL_INDICATORS, "SH600000")
+        )
+    with pytest.raises(ProviderResponseError, match="without a report date"):
+        _provider(InvalidRows("missing_date")).fetch(
+            _request(DataCategory.FINANCIAL_INDICATORS, "SH600000")
+        )
+
+
+def test_financial_indicators_normalizer_keeps_mixed_metrics_as_raw_evidence_only():
+    provider = _provider()
+    record = provider.fetch(_request(DataCategory.FINANCIAL_INDICATORS, "SH600000"))
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="financial-indicators-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_FINANCIAL_INDICATORS_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == [
+        "consolidated_net_profit",
+        "parent_net_profit",
+        "reported_cfo",
+        "revenue",
+    ]
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "reported amounts, per-share values" in normalized.data_quality.notes
+    assert "canonical entity" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    errors = list(Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json")))
+    assert errors == []
+
+
+def test_financial_indicators_normalizer_rejects_replayed_rows_with_wrong_identity_or_mode():
+    provider = _provider()
+    record = provider.fetch(_request(DataCategory.FINANCIAL_INDICATORS, "SH600000"))
+    payload = [dict(row) for row in record.raw_payload]
+    payload[0]["SECUCODE"] = "000001.SZ"
+    payload[0]["SECURITY_CODE"] = "000001"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=record.source_uri,
+        response_metadata=record.response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match="financial-indicator row entity"):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="invalid-financial-indicators-replay",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+    invalid_mode = record.__class__(
+        provider=record.provider,
+        request=record.request.__class__(
+            category=record.request.category,
+            entity_id=record.request.entity_id,
+            parameters={"indicator": "年度"},
+        ),
+        retrieved_at=record.retrieved_at,
+        raw_payload=record.raw_payload,
+        source_uri=record.source_uri,
+        response_metadata=record.response_metadata,
+    )
+    with pytest.raises(ProviderNormalizationError, match="one of"):
+        normalize_akshare_records(
+            [invalid_mode],
+            analysis_id="invalid-financial-indicators-mode",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_financial_indicators_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(DataCategory.FINANCIAL_INDICATORS, "SH600000")
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [
+        (
+            "stock_financial_analysis_indicator_em",
+            {"symbol": "600000.SH", "indicator": "按报告期"},
+        )
     ]

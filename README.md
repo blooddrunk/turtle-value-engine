@@ -107,6 +107,12 @@ historical key-indicator matrix under a distinct `FINANCIAL_ABSTRACT` category.
 Its amount, per-share and ratio rows remain raw-only because the wide response
 does not establish the canonical entity, unit, period or diluted-share basis;
 the normalizer emits no canonical revenue, profit or CFO fact.
+Phase 2.18 adds the documented A-share Eastmoney
+`stock_financial_analysis_indicator_em` endpoint under a distinct
+`FINANCIAL_INDICATORS` category. Its reported amounts, per-share values and
+provider ratios remain raw-only because the response does not establish the
+canonical entity, unit, point-in-time basis or calculation methodology; the
+normalizer emits no canonical revenue, profit or CFO fact.
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

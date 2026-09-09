@@ -420,6 +420,34 @@ H-share financial abstracts remain outside this slice.
 | per-share rows such as `每股经营现金流` | Raw-only; per-share values do not establish a total reported CFO or diluted-share basis. |
 | ratio rows such as `净资产收益率` | Raw-only; provider ratios are not imported as canonical metrics or used to derive valuation inputs. |
 
+## Phase 2.18 A-share financial-indicator raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_financial_analysis_indicator_em` as an Eastmoney A-share
+listing-scoped endpoint. Its official financial-analysis page exposes an
+`indicator` choice of `按报告期` or `按单季度` and returns explicit listing
+identity, report date, amount fields, per-share fields and provider-calculated
+ratios. The response does not define one canonical statement entity,
+unit/scaling, period availability basis or calculation methodology for the
+normalized contract.
+
+The provider passes the market-suffixed A-share symbol and the documented
+indicator choice, validates explicit listing identity and parseable report
+dates, retains the complete response as an opaque raw payload and records row,
+period and indicator metadata. The normalizer emits
+`AKSHARE_FINANCIAL_INDICATORS_RAW_ONLY`, marks `revenue`,
+`parent_net_profit`, `consolidated_net_profit` and `reported_cfo` as critically
+missing and emits no canonical financial fact or metric. H-share financial
+indicators remain outside this slice.
+
+| Raw upstream item | Phase 2 treatment |
+| --- | --- |
+| `SECUCODE`, `SECURITY_CODE`, `SECURITY_NAME_ABBR` | Used for conservative listing identity validation and evidence context; they do not create normalized facts. |
+| `REPORT_DATE`, `REPORT_TYPE`, `REPORT_DATE_NAME` | Raw-only report context; report presentation and availability do not establish the canonical point-in-time period. |
+| amount fields such as `TOTALOPERATEREVE`, `PARENTNETPROFIT`, `MLR` | Raw-only; entity basis, unit/scaling and statement semantics are not settled for canonical revenue or profit facts. |
+| per-share fields such as `EPSJB`, `MGJYXJJE`, `BPS` | Raw-only; per-share values do not establish total amounts or a verified diluted-share basis. |
+| ratio fields such as `ROEJQ`, `XSJLL`, `ZCFZL` | Raw-only provider-derived ratios; calculation inputs and methodology are not imported as canonical metrics or valuation inputs. |
+
 ## Eligibility, identity and market context
 
 | Normalized field | Status | Boundary note |
