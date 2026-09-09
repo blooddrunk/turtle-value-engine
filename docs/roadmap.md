@@ -244,6 +244,23 @@ The next Phase 2 task is a focused review of a single shareholder-return or
 share-capital endpoint; no dividend, buyback, split, issuance or diluted-share
 fact is admitted until its period, unit and economic scope are explicit.
 
+### Phase 2.7 — Dividend event acquisition boundary (COMPLETE)
+
+The AKShare adapter now exposes the documented A-share `stock_dividend_cninfo`
+and H-share `stock_hk_dividend_payout_em` endpoints through the same
+read-only provider boundary. Their historical rows are retained in opaque
+raw records and structured-data evidence. The normalizer deliberately emits
+no `ordinary_dividend_cash`, `special_dividend_cash` or `payout_ratio`: the
+A-share feed reports per-10-share plans and announcement/payment dates, while
+the H-share feed reports plan strings and fiscal years. Neither shape alone
+establishes a total cash amount, ordinary-versus-special policy
+classification, or a single accepted period basis.
+
+Offline fixtures cover both markets, endpoint arguments, replay metadata and
+the no-fabrication behavior. Live calls remain opt-in. The next Phase 2 task
+is a similarly narrow review of A-share share-capital history; H-share share
+class equivalence and diluted-share treatment remain unresolved.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -253,7 +270,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3 cash-flow + Phase 2.4 income + Phase 2.5–2.6 balance slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.7 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```

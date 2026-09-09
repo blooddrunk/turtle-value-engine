@@ -53,7 +53,10 @@ operating cash flow and acquisition cash. Phase 2.4 adds a narrow income
 statement slice that maps only explicit parent-attributable and consolidated
 net profit. Phase 2.5–2.6 add a narrow balance-sheet slice that maps only
 explicit book cash, parent/total equity and an explicitly reported
-interest-bearing-debt total. The current documented A-share aggregate
+interest-bearing-debt total. Phase 2.7 adds read-only A/H dividend-event
+acquisition as raw structured evidence only; it does not turn per-share plans
+or plan strings into `ordinary_dividend_cash` or a payout ratio. The current
+documented A-share aggregate
 endpoint is date-based and only supplies the cash and total-equity subset;
 the provider preserves that missing coverage rather than substituting total
 liabilities. It does not rename total liabilities, sum loan sub-items, or

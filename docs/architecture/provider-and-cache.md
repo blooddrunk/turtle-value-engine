@@ -350,10 +350,11 @@ The cache performs no network retries. The normalizer performs no provider
 retries. The deterministic pipeline performs no provider retries and should
 not be rerun as a substitute for resolving missing facts.
 
-## 12. Phase 2.2–2.5 AKShare adapter
+## 12. Phase 2.2–2.7 AKShare adapter
 
 The first concrete adapter is intentionally limited to read-only metadata,
-market observations and three documented financial-statement slices. It
+market observations, three documented financial-statement slices and a
+raw-only dividend event category. It
 advertises exactly these capabilities:
 
 | Category | A-share endpoint | H-share endpoint | Normalized output |
@@ -365,6 +366,7 @@ advertises exactly these capabilities:
 | `CASH_FLOW_STATEMENT` | `stock_cash_flow_sheet_by_report_em` (Sina fallback) | `stock_financial_hk_report_em` | explicit `reported_cfo` and `acquisition_cash` lines |
 | `INCOME_STATEMENT` | `stock_profit_sheet_by_report_em` (Sina fallback) | `stock_financial_hk_report_em` | explicit `parent_net_profit` and `consolidated_net_profit` lines |
 | `BALANCE_SHEET` | `stock_zcfz_em` / `stock_zcfz_bj_em` (detailed report-period and Sina fallbacks) | `stock_financial_hk_report_em` | explicit `book_cash`, equity totals and aggregate interest-bearing debt when labeled |
+| `DIVIDENDS` | `stock_dividend_cninfo` | `stock_hk_dividend_payout_em` | raw structured evidence only; no canonical dividend cash or payout ratio |
 
 The adapter accepts common stable A/H identifiers such as `SH600000`,
 `000001.SZ`, `A:600000`, `HK00700`, `700.HK` and `H:00700`. A-share history
@@ -393,12 +395,13 @@ whether the H-share full-history endpoint can be replaced by a bounded range
 endpoint without changing replay semantics, field-name coverage across all
 A/H balance-sheet variants, consolidated-versus-standalone statement basis,
 currency/unit scaling, the absence of parent-equity and interest-bearing-debt
-aggregates in the documented A-share quarterly balance shape, and
-point-in-time publication semantics.
+aggregates in the documented A-share quarterly balance shape, point-in-time
+publication semantics, and the period/total-cash/ordinary-versus-special
+classification needed to normalize dividend event rows.
 
 ## 13. Deliberate non-goals
 
-This foundation plus the Phase 2.2–2.5 slices does not include:
+This foundation plus the Phase 2.2–2.7 slices does not include:
 
 - Tushare, BaoStock or any other additional provider;
 - automatic network scheduling, credentials or retry orchestration outside an adapter;

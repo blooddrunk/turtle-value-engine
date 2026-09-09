@@ -107,6 +107,20 @@ class FakeAKShare:
             **kwargs,
         )
 
+    def stock_dividend_cninfo(self, **kwargs):
+        return self._return(
+            "stock_dividend_cninfo",
+            _fixture("a_dividends.json"),
+            **kwargs,
+        )
+
+    def stock_hk_dividend_payout_em(self, **kwargs):
+        return self._return(
+            "stock_hk_dividend_payout_em",
+            _fixture("h_dividends.json"),
+            **kwargs,
+        )
+
 
 class OfficialBalanceAKShare:
     __version__ = "fixture-akshare-official-balance"
@@ -158,13 +172,14 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "balance_sheet",
         "cash_flow_statement",
         "company_metadata",
+        "dividends",
         "income_statement",
         "listing_metadata",
         "market_history",
         "market_quote",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "5"
+    assert provider.identity.provider_version == "6"
 
 
 def test_a_quote_is_selected_from_the_upstream_universe_and_kept_opaque():
@@ -303,6 +318,60 @@ def test_official_a_balance_endpoint_requires_an_exact_statement_date():
                 "SH600000",
                 {"statement_date": "2024-12-30"},
             )
+        )
+    assert fake.calls == []
+
+
+def test_dividend_fetch_uses_documented_market_specific_endpoints():
+    fake = FakeAKShare()
+    provider = _provider(fake)
+
+    a_record = provider.fetch(_request(DataCategory.DIVIDENDS, "SH600000"))
+    h_record = provider.fetch(_request(DataCategory.DIVIDENDS, "HK00700"))
+
+    assert a_record.raw_payload == _fixture("a_dividends.json")
+    assert h_record.raw_payload == _fixture("h_dividends.json")
+    assert fake.calls == [
+        ("stock_dividend_cninfo", {"symbol": "600000"}),
+        ("stock_hk_dividend_payout_em", {"symbol": "00700"}),
+    ]
+    assert a_record.response_metadata["upstream_row_count"] == 2
+    assert h_record.response_metadata["upstream_row_count"] == 2
+
+
+def test_dividend_normalizer_keeps_plans_as_evidence_without_fabricating_cash():
+    provider = _provider()
+    records = [
+        provider.fetch(_request(DataCategory.DIVIDENDS, "SH600000")),
+        provider.fetch(_request(DataCategory.DIVIDENDS, "HK00700")),
+    ]
+
+    normalized = normalize_akshare_records(
+        records,
+        analysis_id="dividend-fixture",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    assert normalized.facts == []
+    assert len(normalized.evidence_index) == 2
+    assert normalized.data_quality.critical_missing_fields == [
+        "ordinary_dividend_cash"
+    ]
+    assert normalized.data_quality.confidence.value == "LOW"
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    errors = list(Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json")))
+    assert errors == []
+
+
+def test_dividend_endpoint_rejects_parameters_before_upstream_call():
+    fake = FakeAKShare()
+    provider = _provider(fake)
+
+    with pytest.raises(ProviderRequestError, match="does not accept request parameters"):
+        provider.fetch(
+            _request(DataCategory.DIVIDENDS, "SH600000", {"indicator": "annual"})
         )
     assert fake.calls == []
 

@@ -206,6 +206,17 @@ provider “metrics.”
 
 ## Through Return and capital actions
 
+### Phase 2.7 dividend event boundary
+
+The AKShare `DIVIDENDS` category currently retains A-share and H-share
+dividend event rows as raw structured evidence only. The normalizer does not
+map a canonical cash fact because the documented feeds expose per-share or
+per-10-share plans, plan strings, fiscal years and event dates with different
+period and classification semantics. In particular, an event row is not
+silently converted into `ordinary_dividend_cash`, `special_dividend_cash` or
+`payout_ratio`; the unresolved amount, entity, period and ordinary-versus-
+special questions remain for a filing-backed mapping review.
+
 | Normalized field | Status | Boundary note |
 | --- | --- | --- |
 | `ordinary_dividend_cash` | `STRUCTURED_AUTO` | Reported declared/paid amount may be imported when ordinary versus special and period are explicit. |

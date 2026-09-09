@@ -51,9 +51,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "5"
+AKSHARE_ADAPTER_VERSION = "6"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "5"
+AKSHARE_MAPPING_VERSION = "6"
 
 
 class ListingMarket(StrEnum):
@@ -72,6 +72,7 @@ AKSHARE_CAPABILITIES = ProviderCapabilities(
         DataCategory.CASH_FLOW_STATEMENT,
         DataCategory.INCOME_STATEMENT,
         DataCategory.BALANCE_SHEET,
+        DataCategory.DIVIDENDS,
     }
 )
 
@@ -95,6 +96,8 @@ _SOURCE_URIS = {
     "stock_balance_sheet_by_report_em": "https://emweb.securities.eastmoney.com/PC_HSF10/NewFinanceAnalysis/Index",
     "stock_zcfz_em": "https://data.eastmoney.com/bbsj/202003/zcfz.html",
     "stock_zcfz_bj_em": "https://data.eastmoney.com/bbsj/202003/zcfz.html",
+    "stock_dividend_cninfo": "http://webapi.cninfo.com.cn/#/company",
+    "stock_hk_dividend_payout_em": "https://emweb.securities.eastmoney.com/PC_HKF10/pages/home/index.html",
     "stock_financial_report_sina": "https://vip.stock.finance.sina.com.cn/corp/go.php/vFD_FinanceSummary/",
     "stock_financial_hk_report_em": "https://emweb.securities.eastmoney.com/PC_HKF10/FinancialAnalysis/index",
 }
@@ -272,6 +275,9 @@ class AKShareProvider(StructuredDataProvider):
                 request.parameters["statement_date"],
                 request=request,
             ).isoformat()
+        elif request.category is DataCategory.DIVIDENDS:
+            rows = _table_rows(payload, provider=self.identity, request=request)
+            response_metadata["upstream_row_count"] = len(rows)
 
         try:
             retrieved_at = self._clock()
@@ -626,6 +632,12 @@ class AKShareNormalizer:
                 for field in _BALANCE_SHEET_CRITICAL_FIELDS:
                     if balance_sheet_result[1][field] == 0:
                         missing_fields.add(field)
+            elif record.request.category is DataCategory.DIVIDENDS:
+                # The upstream endpoints expose event plans and dates, not a
+                # normalized cash amount with a settled entity/period basis.
+                # Keep the raw record and evidence available without treating
+                # a per-share plan or fiscal-year label as ordinary cash.
+                missing_fields.add("ordinary_dividend_cash")
             else:
                 raise ProviderNormalizationError(
                     f"unsupported AKShare normalization category: {record.request.category.value}"
@@ -643,9 +655,11 @@ class AKShareNormalizer:
             "Cash-flow mapping is limited to explicitly reported operating cash flow "
             "and acquisition cash; income-statement mapping is limited to explicit "
             "parent and consolidated net profit; balance-sheet mapping is limited "
-            "to explicit cash, equity and interest-bearing-debt totals. Filing "
-            "classifications and economic adjustments remain unresolved until a "
-            "later provider/filing workflow."
+            "to explicit cash, equity and interest-bearing-debt totals. Dividend "
+            "records remain raw structured evidence until ordinary/special status, "
+            "cash amount and period basis are explicit. Filing classifications and "
+            "economic adjustments remain unresolved until a later provider/filing "
+            "workflow."
         )
         return NormalizedCompanyInput(
             schema_version="1.0.0",
@@ -779,6 +793,10 @@ def _endpoint_candidates(
                 "stock_financial_report_sina",
             )
         return ("stock_financial_hk_report_em",)
+    if category is DataCategory.DIVIDENDS:
+        if market is ListingMarket.A:
+            return ("stock_dividend_cninfo",)
+        return ("stock_hk_dividend_payout_em",)
     raise ProviderCapabilityError(f"AKShare adapter does not support {category.value!r}")
 
 
