@@ -329,6 +329,12 @@ class FakeAKShare:
             symbol=symbol,
         )
 
+    def stock_hold_management_detail_em(self):
+        return self._return(
+            "stock_hold_management_detail_em",
+            _fixture("a_management_holdings.json"),
+        )
+
     def stock_main_stock_holder(self, *, stock: str):
         return self._return(
             "stock_main_stock_holder",
@@ -440,8 +446,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "41"
-    assert AKSHARE_MAPPING_VERSION == "42"
+    assert provider.identity.provider_version == "42"
+    assert AKSHARE_MAPPING_VERSION == "43"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -2715,6 +2721,179 @@ def test_insider_share_change_fetch_uses_listing_scoped_bse_endpoint():
     assert record.source_uri == (
         "https://www.bse.cn/disclosure/djg_sharehold_change.html"
     )
+
+
+def test_management_holdings_fetch_uses_explicit_view_and_filters_the_documented_universe():
+    fake = FakeAKShare()
+    record = _provider(fake).fetch(
+        _request(
+            DataCategory.INSIDER_SHARE_CHANGES,
+            "SH600000",
+            {"view": "management_detail"},
+        )
+    )
+
+    fixture = _fixture("a_management_holdings.json")
+    assert record.raw_payload == [row for row in fixture if row["代码"] == "600000"]
+    assert fake.calls == [("stock_hold_management_detail_em", {})]
+    assert record.response_metadata["endpoint"] == "stock_hold_management_detail_em"
+    assert record.response_metadata["upstream_row_count"] == 3
+    assert record.response_metadata["entity_row_count"] == 2
+    assert record.response_metadata["entity_rows_selected"] is True
+    assert record.response_metadata["listing_scoped_request"] is False
+    assert record.response_metadata["row_filtering"] == "provider"
+    assert record.response_metadata["management_view"] == "management_detail"
+    assert record.response_metadata["snapshot_scope"] == "historical_published_dataset"
+    assert record.response_metadata["observation_date_field"] == "日期"
+    assert record.source_uri == "https://data.eastmoney.com/executive/list.html"
+
+
+def test_management_holdings_request_validates_view_parameters_and_market():
+    fake = FakeAKShare()
+    provider = _provider(fake)
+
+    with pytest.raises(ProviderRequestError, match="unsupported AKShare management-holdings"):
+        provider.fetch(
+            _request(
+                DataCategory.INSIDER_SHARE_CHANGES,
+                "SH600000",
+                {"view": "management_detail", "date": "20240101"},
+            )
+        )
+    with pytest.raises(ProviderRequestError, match="Shanghai, Shenzhen and Beijing A-share"):
+        provider.fetch(
+            _request(
+                DataCategory.INSIDER_SHARE_CHANGES,
+                "HK00700",
+                {"view": "management_detail"},
+            )
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("missing_code", "management-holding row without a listing code"),
+        ("missing_date", "management-holding row without a change date"),
+        ("invalid_date", "invalid management-holding date"),
+    ],
+)
+def test_management_holdings_response_validates_identity_and_dates(
+    mutation: str,
+    match: str,
+):
+    class InvalidRows(FakeAKShare):
+        def stock_hold_management_detail_em(self):
+            rows = _fixture("a_management_holdings.json")
+            if mutation == "missing_code":
+                rows[0].pop("代码")
+            elif mutation == "missing_date":
+                rows[0].pop("日期")
+            else:
+                rows[0]["日期"] = "not-a-date"
+            return self._return("stock_hold_management_detail_em", rows)
+
+    with pytest.raises(ProviderResponseError, match=match):
+        _provider(InvalidRows()).fetch(
+            _request(
+                DataCategory.INSIDER_SHARE_CHANGES,
+                "SH600000",
+                {"view": "management_detail"},
+            )
+        )
+
+
+def test_management_holdings_raw_record_is_not_promoted_to_shares_or_governance():
+    record = _provider().fetch(
+        _request(
+            DataCategory.INSIDER_SHARE_CHANGES,
+            "SH600000",
+            {"view": "management_detail"},
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="management-holdings-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_MANAGEMENT_HOLDINGS_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == [
+        "governance_risk_level",
+    ]
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "management-holding response" in normalized.data_quality.notes
+    assert "diluted-share series" in normalized.data_quality.notes
+    assert "governance-risk judgment" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    errors = list(Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json")))
+    assert errors == []
+
+
+@pytest.mark.parametrize(
+    ("field", "match"),
+    [
+        ("代码", "management-holding row entity"),
+        ("日期", "management-holding row has an invalid change date"),
+    ],
+)
+def test_management_holdings_normalizer_rejects_replayed_identity_or_date_mismatches(
+    field: str,
+    match: str,
+):
+    record = _provider().fetch(
+        _request(
+            DataCategory.INSIDER_SHARE_CHANGES,
+            "SH600000",
+            {"view": "management_detail"},
+        )
+    )
+    payload = [dict(row) for row in record.raw_payload]
+    payload[0][field] = "000001" if field == "代码" else "not-a-date"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=record.source_uri,
+        response_metadata=record.response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match=match):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-management-holdings",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_management_holdings_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.INSIDER_SHARE_CHANGES,
+        "SH600000",
+        {"view": "management_detail"},
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [("stock_hold_management_detail_em", {})]
 
 
 def test_insider_share_change_request_supports_mainland_exchanges_and_has_no_parameters():

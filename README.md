@@ -303,6 +303,19 @@ requested listing and retains the rows as raw evidence. The normalizer emits
 missing and creates no canonical ownership, control, share-count, dilution or
 valuation fact because filing-backed legal and point-in-time semantics remain
 unresolved.
+Phase 2.42 adds the documented Eastmoney `stock_hold_management_detail_em`
+endpoint under the existing `INSIDER_SHARE_CHANGES` category, selected only
+with `view=management_detail`. The [AKShare stock-data
+documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and
+[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hold_control_em.py)
+define a no-argument full management/related-person holding-change universe
+with `日期`, `代码`, `名称`, transaction, role, relationship and beginning/
+ending holding fields. The provider validates every returned code and change
+date, filters the universe to the requested A-share listing and retains the
+documented raw fields plus endpoint/view and row-count provenance. The
+normalizer emits `AKSHARE_MANAGEMENT_HOLDINGS_RAW_ONLY`, leaves
+`governance_risk_level` critically missing and creates no canonical share,
+dilution, buyback, issuance, ownership, return or valuation fact.
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

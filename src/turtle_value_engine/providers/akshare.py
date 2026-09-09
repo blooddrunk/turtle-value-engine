@@ -12,7 +12,8 @@ disclosure notice metadata, corporate-action, external-guarantee,
 ownership-pledge, SSE/SZSE/BSE insider-share-change and A-share share-capital
 slices, including the restricted-share-release view, the A-share
 risk-warning-status, trading-suspension, main-shareholder, shareholder-count
-and actual-controller holding-change raw slices, the A/H HSGT
+and actual-controller holding-change raw slices, the A-share Eastmoney
+management-holding raw slice, the A/H HSGT
 individual-holdings raw slice, the H-share
 financial-indicator raw slice, the H-share
 latest-indicator raw slice, the A-share goodwill-impairment detail raw slice,
@@ -65,9 +66,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "41"
+AKSHARE_ADAPTER_VERSION = "42"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "42"
+AKSHARE_MAPPING_VERSION = "43"
 
 
 class ListingMarket(StrEnum):
@@ -160,6 +161,7 @@ _SOURCE_URIS = {
     "stock_share_hold_change_sse": "http://www.sse.com.cn/disclosure/credibility/supervision/change/",
     "stock_share_hold_change_szse": "http://www.szse.cn/disclosure/supervision/change/index.html",
     "stock_share_hold_change_bse": "https://www.bse.cn/disclosure/djg_sharehold_change.html",
+    "stock_hold_management_detail_em": "https://data.eastmoney.com/executive/list.html",
     "stock_main_stock_holder": "https://vip.stock.finance.sina.com.cn/corp/go.php/vCI_StockHolder/stockid/600004.phtml",
     "stock_hold_num_cninfo": "https://webapi.cninfo.com.cn/#/thematicStatistics",
     "stock_hold_control_cninfo": "https://webapi.cninfo.com.cn/#/thematicStatistics",
@@ -183,6 +185,7 @@ _NO_ARGUMENT_ENDPOINTS = frozenset(
         "stock_zh_a_st_em",
         "stock_repurchase_em",
         "stock_esg_rate_sina",
+        "stock_hold_management_detail_em",
     }
 )
 
@@ -282,6 +285,17 @@ _OWNERSHIP_PLEDGE_EQUITY_MORTGAGE_DATE_FIELDS = (
     "date",
 )
 _INSIDER_SHARE_CHANGE_PARAMETER_NAMES = frozenset()
+_INSIDER_MANAGEMENT_DETAIL_PARAMETER_NAMES = frozenset({"view"})
+_INSIDER_MANAGEMENT_DETAIL_VIEW = "management_detail"
+_INSIDER_MANAGEMENT_DETAIL_DATE_FIELDS = ("日期",)
+_INSIDER_SHARE_CHANGE_ENDPOINTS = frozenset(
+    {
+        "stock_share_hold_change_sse",
+        "stock_share_hold_change_szse",
+        "stock_share_hold_change_bse",
+        "stock_hold_management_detail_em",
+    }
+)
 _TRADING_SUSPENSIONS_PARAMETER_NAMES = frozenset({"date"})
 _GOODWILL_IMPAIRMENT_ANNOUNCEMENT_DATE_FIELDS = (
     "公告日期",
@@ -991,16 +1005,40 @@ class AKShareProvider(StructuredDataProvider):
                 response_metadata["observation_date"] = requested_date.isoformat()
         elif request.category is DataCategory.INSIDER_SHARE_CHANGES:
             rows = _table_rows(payload, provider=self.identity, request=request)
-            _validate_insider_share_change_provider_rows(
-                rows,
-                listing,
-                provider=self.identity,
-                request=request,
-            )
-            response_metadata["upstream_row_count"] = len(rows)
-            response_metadata["entity_row_count"] = len(rows)
-            response_metadata["entity_rows_selected"] = True
-            response_metadata["listing_scoped_request"] = True
+            if endpoint.name == "stock_hold_management_detail_em":
+                _validate_insider_management_detail_provider_rows(
+                    rows,
+                    listing,
+                    provider=self.identity,
+                    request=request,
+                )
+                selected = _select_listing_rows(
+                    rows,
+                    listing,
+                    provider=self.identity,
+                    request=request,
+                    row_label="management-holding",
+                )
+                payload = selected
+                response_metadata["upstream_row_count"] = len(rows)
+                response_metadata["entity_row_count"] = len(selected)
+                response_metadata["entity_rows_selected"] = True
+                response_metadata["listing_scoped_request"] = False
+                response_metadata["row_filtering"] = "provider"
+                response_metadata["management_view"] = _INSIDER_MANAGEMENT_DETAIL_VIEW
+                response_metadata["snapshot_scope"] = "historical_published_dataset"
+                response_metadata["observation_date_field"] = "日期"
+            else:
+                _validate_insider_share_change_provider_rows(
+                    rows,
+                    listing,
+                    provider=self.identity,
+                    request=request,
+                )
+                response_metadata["upstream_row_count"] = len(rows)
+                response_metadata["entity_row_count"] = len(rows)
+                response_metadata["entity_rows_selected"] = True
+                response_metadata["listing_scoped_request"] = True
         elif request.category is DataCategory.SHAREHOLDER_HOLDINGS:
             rows = _table_rows(payload, provider=self.identity, request=request)
             if endpoint.name == "stock_hold_control_cninfo":
@@ -1319,6 +1357,9 @@ class AKShareProvider(StructuredDataProvider):
             ),
             shareholder_hsgt_individual_requested=(
                 "view" in request.parameters
+            ),
+            insider_management_detail_requested=(
+                request.parameters.get("view") == _INSIDER_MANAGEMENT_DETAIL_VIEW
             ),
         )
         for name in candidates:
@@ -2119,11 +2160,30 @@ class AKShareNormalizer:
                         "AKShare insider-share-change raw slice supports "
                         "Shanghai, Shenzhen and Beijing A-share listings only"
                     )
-                _validate_insider_share_change_normalizer_rows(rows, listing)
+                endpoint_name = record.response_metadata.get("endpoint")
+                if endpoint_name == "stock_hold_management_detail_em":
+                    try:
+                        _insider_share_change_kwargs(
+                            "stock_hold_management_detail_em",
+                            listing,
+                            record.request,
+                        )
+                    except ProviderRequestError as exc:
+                        raise ProviderNormalizationError(str(exc)) from exc
+                    _validate_insider_management_detail_normalizer_rows(rows, listing)
+                    normalizer_flags.add("AKSHARE_MANAGEMENT_HOLDINGS_RAW_ONLY")
+                elif endpoint_name in _INSIDER_SHARE_CHANGE_ENDPOINTS:
+                    _validate_insider_share_change_normalizer_rows(rows, listing)
+                    normalizer_flags.add("AKSHARE_INSIDER_SHARE_CHANGE_RAW_ONLY")
+                else:
+                    raise ProviderNormalizationError(
+                        "AKShare insider-share-change record must come from "
+                        "stock_share_hold_change_sse, stock_share_hold_change_szse, "
+                        "stock_share_hold_change_bse or stock_hold_management_detail_em"
+                    )
                 # Insider transactions are event evidence, not a settled
                 # company share-count series or a governance verdict.
                 missing_fields.add("governance_risk_level")
-                normalizer_flags.add("AKSHARE_INSIDER_SHARE_CHANGE_RAW_ONLY")
             elif record.request.category is DataCategory.SHAREHOLDER_HOLDINGS:
                 endpoint_name = record.response_metadata.get("endpoint")
                 if endpoint_name == "stock_hold_control_cninfo":
@@ -2337,6 +2397,13 @@ class AKShareNormalizer:
                 "raw evidence only: holder role, trade quantities, prices and dates do "
                 "not establish a company-level diluted-share series or governance-risk "
                 "judgment."
+            )
+        if "AKSHARE_MANAGEMENT_HOLDINGS_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented Eastmoney management-holding response is retained as "
+                "raw evidence only: management/related-person transaction quantities, "
+                "prices, holdings and dates do not establish a company-level "
+                "diluted-share series or governance-risk judgment."
             )
         if "AKSHARE_DIVIDEND_SNAPSHOT_RAW_ONLY" in normalizer_flags:
             notes += (
@@ -2602,6 +2669,7 @@ def _endpoint_candidates(
     shareholder_count_date_requested: bool = False,
     shareholder_control_requested: bool = False,
     shareholder_hsgt_individual_requested: bool = False,
+    insider_management_detail_requested: bool = False,
 ) -> tuple[str, ...]:
     market = listing.market
     if category is DataCategory.COMPANY_METADATA:
@@ -2738,6 +2806,10 @@ def _endpoint_candidates(
             return ("stock_gpzy_pledge_ratio_em",)
         return ()
     if category is DataCategory.INSIDER_SHARE_CHANGES:
+        if insider_management_detail_requested:
+            if market is ListingMarket.A:
+                return ("stock_hold_management_detail_em",)
+            return ()
         if market is ListingMarket.A and listing.canonical_id.startswith("SH"):
             return ("stock_share_hold_change_sse",)
         if market is ListingMarket.A and listing.canonical_id.startswith("SZ"):
@@ -3444,6 +3516,30 @@ def _insider_share_change_kwargs(
     listing: _ListingRef,
     request: ProviderRequest,
 ) -> dict[str, object]:
+    if endpoint_name == "stock_hold_management_detail_em":
+        if listing.market is not ListingMarket.A:
+            raise ProviderRequestError(
+                "the AKShare management-holding endpoint supports A-share listings only",
+                request=request,
+                retryable=False,
+            )
+        unknown = sorted(set(request.parameters) - _INSIDER_MANAGEMENT_DETAIL_PARAMETER_NAMES)
+        if unknown:
+            raise ProviderRequestError(
+                "unsupported AKShare management-holdings parameter(s): "
+                + ", ".join(unknown),
+                request=request,
+                retryable=False,
+            )
+        if request.parameters.get("view") != _INSIDER_MANAGEMENT_DETAIL_VIEW:
+            raise ProviderRequestError(
+                "the AKShare management-holding endpoint requires "
+                f"view={_INSIDER_MANAGEMENT_DETAIL_VIEW!r}",
+                request=request,
+                retryable=False,
+            )
+        return {}
+
     exchange_by_endpoint = {
         "stock_share_hold_change_sse": "SH",
         "stock_share_hold_change_szse": "SZ",
@@ -5764,6 +5860,35 @@ def _validate_insider_share_change_normalizer_rows(
                 )
 
 
+def _validate_insider_management_detail_normalizer_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+) -> None:
+    """Validate replayed Eastmoney management-holding rows inside the listing boundary."""
+
+    for row in rows:
+        row_code = _row_code(row, ListingMarket.A)
+        if row_code is None:
+            raise ProviderNormalizationError(
+                "management-holding row has no explicit listing code"
+            )
+        if row_code != listing.code:
+            raise ProviderNormalizationError(
+                f"management-holding row entity {row_code!r} does not match "
+                f"requested listing {listing.canonical_id!r}"
+            )
+        found, raw_date = _lookup(row, _INSIDER_MANAGEMENT_DETAIL_DATE_FIELDS)
+        date_text = _text_value(raw_date) if found else None
+        if date_text is None:
+            raise ProviderNormalizationError(
+                "management-holding row has no exact change date"
+            )
+        if _parse_date_value(raw_date) is None:
+            raise ProviderNormalizationError(
+                "management-holding row has an invalid change date"
+            )
+
+
 def _validate_ownership_pledge_provider_rows(
     rows: Sequence[Mapping[str, JSONValue]],
     listing: _ListingRef,
@@ -5903,6 +6028,41 @@ def _validate_insider_share_change_provider_rows(
                     provider=provider,
                     request=request,
                 )
+
+
+def _validate_insider_management_detail_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> None:
+    """Validate identity and dates in the full management-holding universe."""
+
+    for row in rows:
+        if _row_code(row, ListingMarket.A) is None:
+            raise ProviderResponseError(
+                f"AKShare returned a management-holding row without a listing code for "
+                f"{request.entity_id!r}",
+                provider=provider,
+                request=request,
+            )
+        found, raw_date = _lookup(row, _INSIDER_MANAGEMENT_DETAIL_DATE_FIELDS)
+        date_text = _text_value(raw_date) if found else None
+        if date_text is None:
+            raise ProviderResponseError(
+                f"AKShare returned a management-holding row without a change date for "
+                f"{request.entity_id!r}",
+                provider=provider,
+                request=request,
+            )
+        if _parse_date_value(raw_date) is None:
+            raise ProviderResponseError(
+                f"AKShare returned an invalid management-holding date for "
+                f"{request.entity_id!r}",
+                provider=provider,
+                request=request,
+            )
 
 
 def _validate_shareholder_holdings_provider_rows(

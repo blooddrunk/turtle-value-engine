@@ -1086,6 +1086,31 @@ The slice emits `AKSHARE_CONTROL_HOLDINGS_RAW_ONLY`, leaves
 Filing-backed control, governance and economic-scope analysis remains outside
 this acquisition contract.
 
+## Phase 2.42 A-share management-holding raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hold_control_em.py)
+document `stock_hold_management_detail_em` as a no-argument Eastmoney
+management/related-person holding-change universe. The adapter selects it only
+with `view=management_detail`, validates every returned `代码` and `日期`,
+filters the full response to the requested A-share listing and preserves the
+upstream and selected row counts in response metadata.
+
+| Raw upstream item | Phase 2 treatment |
+| --- | --- |
+| `日期`, `代码`, `名称` | Validated change date and explicit A-share listing identity used for universe filtering; the date is not silently treated as a filing, legal-effective or accounting period. |
+| `变动人`, `董监高人员姓名`, `职务`, `变动人与董监高的关系` | Raw person, management-role and relationship evidence only; no beneficial-control or governance conclusion is inferred. |
+| `变动股数`, `成交均价`, `变动金额`, `变动比例` | Raw transaction quantity, price, amount and ratio; no issuer buyback, issuance, cash-flow, return or dilution fact is inferred. |
+| `变动原因`, `持股种类` | Raw provider reason and share-class labels; they are not collapsed into a canonical corporate-action classification. |
+| `变动后持股数`, `开始时持有`, `结束后持有` | Raw beginning/ending holdings; they do not establish a company-level share count, fully diluted economic shares or beneficial ownership. |
+| request `view=management_detail` | Explicit endpoint-selection scope retained in request/evidence provenance; the documented endpoint receives no upstream arguments. |
+
+The normalizer emits `AKSHARE_MANAGEMENT_HOLDINGS_RAW_ONLY`, leaves
+`governance_risk_level` critically missing and creates no canonical ownership,
+share-count, dilution, buyback, issuance, return or valuation fact. Filing-
+backed person identity, legal relationship and point-in-time interpretation
+remain outside this acquisition contract.
+
 ## Eligibility, identity and market context
 
 | Normalized field | Status | Boundary note |

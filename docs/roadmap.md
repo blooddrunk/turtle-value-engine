@@ -1062,6 +1062,29 @@ interpretation remains a later concern. Live calls remain opt-in; tests use an
 injected client and a frozen fixture with cache replay and invalid-scope/
 response-validation coverage.
 
+### Phase 2.42 — A-share management-holding raw acquisition contract (COMPLETE)
+
+The mapping review now covers the current documented AKShare Eastmoney
+`stock_hold_management_detail_em` endpoint under the existing
+`INSIDER_SHARE_CHANGES` category. The [AKShare stock-data
+documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and [official
+implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hold_control_em.py)
+define a no-argument full management/related-person holding-change universe.
+Its published fields are `日期`, `代码`, `名称`, `变动人`, `变动股数`, `成交均价`,
+`变动金额`, `变动原因`, `变动比例`, `变动后持股数`, `持股种类`,
+`董监高人员姓名`, `职务`, `变动人与董监高的关系`, `开始时持有` and
+`结束后持有`.
+
+The provider selects this endpoint only for the explicit request
+`view=management_detail`, passes no upstream arguments, validates every
+returned listing code and `日期`, filters the full response to the requested
+A-share listing and retains endpoint/view and row-count provenance. The
+normalizer emits `AKSHARE_MANAGEMENT_HOLDINGS_RAW_ONLY`, leaves
+`governance_risk_level` critically missing and creates no canonical share,
+dilution, buyback, issuance, ownership, return or valuation fact. Live calls
+remain opt-in; tests use an injected client and a frozen fixture with cache
+replay, invalid-parameter, response-validation and replay-scope coverage.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -1071,7 +1094,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.41 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.42 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -1279,7 +1302,7 @@ Phase 2 is active. Phase 1 remains frozen: changes to formulas, hard-gate
 semantics, schemas or `strict-v1` thresholds require a separately reviewed,
 versioned change.
 
-Phase 2.41 completes the next documented structured-data boundary while
+Phase 2.42 completes the next documented structured-data boundary while
 keeping share-change, repurchase and rights-issue period, status, unit and
 economic-scope questions unresolved, and keeping ownership-pledge holder,
 governance and economic-scope questions unresolved. The A-share
