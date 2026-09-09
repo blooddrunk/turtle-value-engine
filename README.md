@@ -87,6 +87,11 @@ Phase 2.13 adds the documented A-share `stock_yjyg_em` earnings-forecast
 snapshot under a distinct `EARNINGS_FORECAST` category; its forecast ranges,
 forecast type and announcement dates remain raw-only and do not establish
 reported parent or consolidated net profit for the requested period.
+Phase 2.14 adds the documented A-share `stock_yjbb_em` performance-report
+snapshot under a distinct `PERFORMANCE_REPORT` category; its headline net
+profit has no admitted parent/consolidated basis and its operating cash flow
+is per share, so the response remains raw-only without canonical profit or CFO
+facts.
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

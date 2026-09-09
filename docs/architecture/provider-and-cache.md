@@ -1,6 +1,6 @@
 # Provider and Cache Architecture
 
-> Status: Phase 2 foundation, read-only AKShare statement slices, earnings forecasts, dividend events/snapshots, share-capital and corporate-action raw slices
+> Status: Phase 2 foundation, read-only AKShare statement slices, earnings forecasts/performance reports, dividend events/snapshots, share-capital and corporate-action raw slices
 
 This document freezes the boundary between structured-data acquisition and the
 deterministic Turtle Value Engine. It does not authorize a live provider or
@@ -89,6 +89,7 @@ MARKET_QUOTE
 MARKET_HISTORY
 INCOME_STATEMENT
 EARNINGS_FORECAST
+PERFORMANCE_REPORT
 BALANCE_SHEET
 CASH_FLOW_STATEMENT
 DIVIDENDS
@@ -261,6 +262,23 @@ both reported profit fields as critically missing and emits
 `AKSHARE_EARNINGS_FORECAST_RAW_ONLY` without creating a canonical profit,
 margin, CDC or valuation fact. H-share forecasts remain outside this slice.
 
+The performance-report slice is also acquisition-only. The current
+[AKShare documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and
+[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_yjbb_em.py)
+describe `stock_yjbb_em` as an Eastmoney A-share universe endpoint accepting an
+explicit quarterly report date in `YYYYMMDD` form, with documented coverage
+starting at `20100331`. It returns headline revenue and net-profit values,
+per-share indicators, ratios, industry and latest-announcement metadata. The
+provider validates the exact quarter-end date, rejects rows without an
+explicit listing code, filters to the requested A-share listing and retains
+all matching rows. The headline net profit does not identify the admitted
+parent/consolidated entity basis, and operating cash flow is per share rather
+than a total CFO fact, so the normalizer keeps raw evidence, marks
+`parent_net_profit`, `consolidated_net_profit` and `reported_cfo` as critically
+missing and emits `AKSHARE_PERFORMANCE_REPORT_RAW_ONLY` without creating a
+canonical profit, revenue, margin, CFO, CDC or valuation fact. H-share
+performance reports remain outside this slice.
+
 When a statement row includes an explicit security code, the normalizer also
 checks it against the requested listing and rejects a mismatch. Statement
 endpoints that omit a row-level code remain bound to their listing-scoped
@@ -415,11 +433,11 @@ The cache performs no network retries. The normalizer performs no provider
 retries. The deterministic pipeline performs no provider retries and should
 not be rerun as a substitute for resolving missing facts.
 
-## 12. Phase 2.2–2.13 AKShare adapter
+## 12. Phase 2.2–2.14 AKShare adapter
 
 The first concrete adapter is intentionally limited to read-only metadata,
-market observations, three documented financial-statement slices, one
-raw-only earnings-forecast category, raw-only dividend event/snapshot and
+market observations, three documented financial-statement slices, raw-only
+earnings-forecast and performance-report categories, raw-only dividend event/snapshot and
 corporate-action categories, two A-share share-capital raw slices and one
 A-share ownership-pledge raw slice. It
 advertises exactly these capabilities:
@@ -433,6 +451,7 @@ advertises exactly these capabilities:
 | `CASH_FLOW_STATEMENT` | `stock_cash_flow_sheet_by_report_em` (Sina fallback) | `stock_financial_hk_report_em` | explicit `reported_cfo` and `acquisition_cash` lines |
 | `INCOME_STATEMENT` | `stock_profit_sheet_by_report_em` (Sina fallback) | `stock_financial_hk_report_em` | explicit `parent_net_profit` and `consolidated_net_profit` lines |
 | `EARNINGS_FORECAST` | `stock_yjyg_em` | — | A-share quarterly forecast rows as raw structured evidence only; no reported-profit fact |
+| `PERFORMANCE_REPORT` | `stock_yjbb_em` | — | A-share quarterly headline performance rows as raw structured evidence only; no canonical profit or CFO fact |
 | `BALANCE_SHEET` | `stock_zcfz_em` / `stock_zcfz_bj_em` (detailed report-period and Sina fallbacks) | `stock_financial_hk_report_em` | explicit `book_cash`, equity totals and aggregate interest-bearing debt when labeled |
 | `DIVIDENDS` | `stock_dividend_cninfo`; `stock_fhps_em` (explicit report date) | `stock_hk_dividend_payout_em` | raw structured evidence only; no canonical dividend cash or payout ratio |
 | `CORPORATE_ACTIONS` | `stock_repurchase_em` (no parameters); `stock_allotment_cninfo` (date-range request) | — | A-share repurchase or rights-issue rows; raw structured evidence only; no canonical buyback, issuance or dilution fact |
@@ -452,7 +471,7 @@ Tests inject a client object and use frozen JSON fixtures. The existing
 never calls AKShare, and a failed live request is never written as a snapshot.
 
 The normalizer emits `Fact` and `Evidence` objects inside the existing
-`NormalizedCompanyInput`. For the earnings-forecast, dividend,
+`NormalizedCompanyInput`. For the earnings-forecast, performance-report, dividend,
 corporate-action, share-capital and ownership-pledge raw slices it emits
 raw-record evidence only and explicit unresolved flags where needed; it does
 not emit canonical forecast-profit, dividend, buyback, issuance, dilution,
@@ -504,10 +523,14 @@ For the A-share earnings-forecast slice, the exact quarter-end report date and
 listing-filtered rows are retained, but forecast ranges, forecast type,
 publication timing and reported-profit entity semantics remain unresolved; no
 parent or consolidated net-profit fact is admitted automatically.
+For the A-share performance-report slice, the exact quarter-end report date
+and listing-filtered rows are retained, but the headline net-profit entity
+basis and per-share operating-cash-flow denominator remain unresolved; no
+parent, consolidated net-profit or reported-CFO fact is admitted automatically.
 
 ## 13. Deliberate non-goals
 
-This foundation plus the Phase 2.2–2.13 slices does not include:
+This foundation plus the Phase 2.2–2.14 slices does not include:
 
 - Tushare, BaoStock or any other additional provider;
 - automatic network scheduling, credentials or retry orchestration outside an adapter;

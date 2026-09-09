@@ -73,6 +73,7 @@ class DataCategory(StrEnum):
     MARKET_HISTORY = "market_history"
     INCOME_STATEMENT = "income_statement"
     EARNINGS_FORECAST = "earnings_forecast"
+    PERFORMANCE_REPORT = "performance_report"
     BALANCE_SHEET = "balance_sheet"
     CASH_FLOW_STATEMENT = "cash_flow_statement"
     DIVIDENDS = "dividends"

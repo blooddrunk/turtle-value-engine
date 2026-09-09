@@ -5,10 +5,11 @@ normal test run can import this module, inspect its capabilities and replay
 cached records without installing AKShare or making a network request.
 
 The adapter currently implements metadata, market observations, three narrow
-financial-statement slices, an A-share earnings-forecast raw slice, raw-only
-dividend event/snapshot, corporate-action and ownership-pledge slices, and
-A-share share-capital raw slices. Upstream column names are handled in this
-module and are never passed to the deterministic calculation or gate code.
+financial-statement slices, A-share earnings-forecast and performance-report
+raw slices, raw-only dividend event/snapshot, corporate-action and
+ownership-pledge slices, and A-share share-capital raw slices. Upstream column
+names are handled in this module and are never passed to the deterministic
+calculation or gate code.
 """
 
 from __future__ import annotations
@@ -53,9 +54,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "13"
+AKSHARE_ADAPTER_VERSION = "14"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "14"
+AKSHARE_MAPPING_VERSION = "15"
 
 
 class ListingMarket(StrEnum):
@@ -74,6 +75,7 @@ AKSHARE_CAPABILITIES = ProviderCapabilities(
         DataCategory.CASH_FLOW_STATEMENT,
         DataCategory.INCOME_STATEMENT,
         DataCategory.EARNINGS_FORECAST,
+        DataCategory.PERFORMANCE_REPORT,
         DataCategory.BALANCE_SHEET,
         DataCategory.DIVIDENDS,
         DataCategory.CORPORATE_ACTIONS,
@@ -100,6 +102,7 @@ _SOURCE_URIS = {
     "stock_cash_flow_sheet_by_report_em": "https://emweb.securities.eastmoney.com/PC_HSF10/NewFinanceAnalysis/Index",
     "stock_profit_sheet_by_report_em": "https://emweb.securities.eastmoney.com/PC_HSF10/NewFinanceAnalysis/Index",
     "stock_yjyg_em": "https://data.eastmoney.com/bbsj/202003/yjyg.html",
+    "stock_yjbb_em": "https://data.eastmoney.com/bbsj/202003/yjbb.html",
     "stock_balance_sheet_by_report_em": "https://emweb.securities.eastmoney.com/PC_HSF10/NewFinanceAnalysis/Index",
     "stock_zcfz_em": "https://data.eastmoney.com/bbsj/202003/zcfz.html",
     "stock_zcfz_bj_em": "https://data.eastmoney.com/bbsj/202003/zcfz.html",
@@ -149,6 +152,7 @@ _HISTORY_PARAMETER_NAMES = frozenset(
 
 _FINANCIAL_STATEMENT_PARAMETER_NAMES = frozenset({"indicator", "statement_date"})
 _EARNINGS_FORECAST_PARAMETER_NAMES = frozenset({"date"})
+_PERFORMANCE_REPORT_PARAMETER_NAMES = frozenset({"date"})
 
 _DIVIDEND_SNAPSHOT_PARAMETER_NAMES = frozenset({"date"})
 _SHARE_CAPITAL_PARAMETER_NAMES = frozenset({"start_date", "end_date"})
@@ -159,6 +163,8 @@ _CORPORATE_ACTION_PARAMETER_NAMES = frozenset({"start_date", "end_date"})
 _OWNERSHIP_PLEDGE_PARAMETER_NAMES = frozenset({"date"})
 _EARNINGS_FORECAST_START_DATE = date(2008, 12, 31)
 _EARNINGS_FORECAST_QUARTER_ENDS = frozenset({(3, 31), (6, 30), (9, 30), (12, 31)})
+_PERFORMANCE_REPORT_START_DATE = date(2010, 3, 31)
+_PERFORMANCE_REPORT_QUARTER_ENDS = frozenset({(3, 31), (6, 30), (9, 30), (12, 31)})
 _ALLOTMENT_DEFAULT_START_DATE = "19700101"
 _ALLOTMENT_DEFAULT_END_DATE = "22220222"
 
@@ -266,6 +272,16 @@ class AKShareProvider(StructuredDataProvider):
         ):
             raise ProviderRequestError(
                 "the AKShare earnings-forecast endpoint supports A-share listings only",
+                provider=self.identity,
+                request=request,
+                retryable=False,
+            )
+        if (
+            request.category is DataCategory.PERFORMANCE_REPORT
+            and listing.market is not ListingMarket.A
+        ):
+            raise ProviderRequestError(
+                "the AKShare performance-report endpoint supports A-share listings only",
                 provider=self.identity,
                 request=request,
                 retryable=False,
@@ -473,6 +489,33 @@ class AKShareProvider(StructuredDataProvider):
             response_metadata["row_filtering"] = "provider"
             response_metadata["requested_date"] = kwargs["date"]
             response_metadata["report_period"] = requested_date.isoformat()
+        elif request.category is DataCategory.PERFORMANCE_REPORT:
+            rows = _table_rows(payload, provider=self.identity, request=request)
+            requested_date = _parse_performance_report_date_parameter(
+                kwargs["date"],
+                request=request,
+            )
+            _validate_performance_report_provider_rows(
+                rows,
+                listing,
+                provider=self.identity,
+                request=request,
+            )
+            selected = _select_listing_rows(
+                rows,
+                listing,
+                provider=self.identity,
+                request=request,
+                row_label="performance-report",
+            )
+            payload = selected
+            response_metadata["upstream_row_count"] = len(rows)
+            response_metadata["entity_row_count"] = len(selected)
+            response_metadata["entity_rows_selected"] = True
+            response_metadata["listing_scoped_request"] = False
+            response_metadata["row_filtering"] = "provider"
+            response_metadata["requested_date"] = kwargs["date"]
+            response_metadata["report_period"] = requested_date.isoformat()
 
         try:
             retrieved_at = self._clock()
@@ -565,6 +608,8 @@ class AKShareProvider(StructuredDataProvider):
                 return _balance_sheet_kwargs(endpoint_name, listing, request)
             if request.category is DataCategory.EARNINGS_FORECAST:
                 return _earnings_forecast_kwargs(endpoint_name, listing, request)
+            if request.category is DataCategory.PERFORMANCE_REPORT:
+                return _performance_report_kwargs(endpoint_name, listing, request)
             if request.category is DataCategory.DIVIDENDS:
                 return _dividends_kwargs(endpoint_name, listing, request)
             if request.category is DataCategory.SHARE_CAPITAL:
@@ -867,6 +912,26 @@ class AKShareNormalizer:
                 # profit for the requested statement period.
                 missing_fields.update({"parent_net_profit", "consolidated_net_profit"})
                 normalizer_flags.add("AKSHARE_EARNINGS_FORECAST_RAW_ONLY")
+            elif record.request.category is DataCategory.PERFORMANCE_REPORT:
+                if listing.market is not ListingMarket.A:
+                    raise ProviderNormalizationError(
+                        "AKShare performance-report raw slice supports A-share listings only"
+                    )
+                try:
+                    _parse_performance_report_date_parameter(
+                        record.request.parameters.get("date"),
+                        request=record.request,
+                    )
+                except ProviderRequestError as exc:
+                    raise ProviderNormalizationError(str(exc)) from exc
+                _validate_performance_report_normalizer_rows(rows, listing)
+                # The report headline does not identify parent versus
+                # consolidated profit, and operating cash flow is reported
+                # per share rather than as the accepted total CFO fact.
+                missing_fields.update(
+                    {"parent_net_profit", "consolidated_net_profit", "reported_cfo"}
+                )
+                normalizer_flags.add("AKSHARE_PERFORMANCE_REPORT_RAW_ONLY")
             elif record.request.category is DataCategory.DIVIDENDS:
                 endpoint_name = record.response_metadata.get("endpoint")
                 if endpoint_name == "stock_fhps_em":
@@ -959,7 +1024,10 @@ class AKShareNormalizer:
             "parent and consolidated net profit; balance-sheet mapping is limited "
             "to explicit cash, equity and interest-bearing-debt totals. Earnings "
             "forecast records remain raw structured evidence because forecast "
-            "ranges and announcement dates are not reported profit. Dividend "
+            "ranges and announcement dates are not reported profit. Performance "
+            "report records remain raw structured evidence because their headline "
+            "net profit has no admitted parent/consolidated basis and their operating "
+            "cash flow is per share. Dividend "
             "and corporate-action records remain raw structured evidence until "
             "ordinary/special status, cash amount, action outcome, amount unit "
             "and period basis are explicit. Ownership-pledge records remain raw "
@@ -1014,6 +1082,13 @@ class AKShareNormalizer:
                 "raw evidence only: forecast ranges, forecast type and announcement "
                 "dates do not establish reported parent or consolidated net profit "
                 "for the requested report period."
+            )
+        if "AKSHARE_PERFORMANCE_REPORT_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented A-share performance-report response is retained as "
+                "raw evidence only: its headline net profit has no admitted "
+                "parent/consolidated basis, and its operating cash flow is per share "
+                "rather than a canonical reported CFO total."
             )
         return NormalizedCompanyInput(
             schema_version="1.0.0",
@@ -1136,6 +1211,10 @@ def _endpoint_candidates(
         if market is ListingMarket.A:
             return ("stock_yjyg_em",)
         return ()
+    if category is DataCategory.PERFORMANCE_REPORT:
+        if market is ListingMarket.A:
+            return ("stock_yjbb_em",)
+        return ()
     if category is DataCategory.BALANCE_SHEET:
         if market is ListingMarket.A:
             if listing.canonical_id.startswith("BJ"):
@@ -1249,6 +1328,43 @@ def _earnings_forecast_kwargs(
             retryable=False,
         )
     report_date = _parse_earnings_forecast_date_parameter(
+        request.parameters["date"],
+        request=request,
+    )
+    return {"date": report_date.strftime("%Y%m%d")}
+
+
+def _performance_report_kwargs(
+    endpoint_name: str,
+    listing: _ListingRef,
+    request: ProviderRequest,
+) -> dict[str, object]:
+    if endpoint_name != "stock_yjbb_em":
+        raise ProviderRequestError(
+            f"unsupported AKShare performance-report endpoint {endpoint_name!r}",
+            request=request,
+            retryable=False,
+        )
+    if listing.market is not ListingMarket.A:
+        raise ProviderRequestError(
+            "the AKShare performance-report endpoint supports A-share listings only",
+            request=request,
+            retryable=False,
+        )
+    unknown = sorted(set(request.parameters) - _PERFORMANCE_REPORT_PARAMETER_NAMES)
+    if unknown:
+        raise ProviderRequestError(
+            "unsupported AKShare performance-report parameter(s): " + ", ".join(unknown),
+            request=request,
+            retryable=False,
+        )
+    if "date" not in request.parameters:
+        raise ProviderRequestError(
+            "the AKShare performance-report endpoint requires date (YYYYMMDD)",
+            request=request,
+            retryable=False,
+        )
+    report_date = _parse_performance_report_date_parameter(
         request.parameters["date"],
         request=request,
     )
@@ -1579,6 +1695,40 @@ def _parse_earnings_forecast_date_parameter(
     if (parsed.month, parsed.day) not in _EARNINGS_FORECAST_QUARTER_ENDS:
         raise ProviderRequestError(
             "earnings-forecast date must be an exact quarter-end report date",
+            request=request,
+            retryable=False,
+        )
+    return parsed
+
+
+def _parse_performance_report_date_parameter(
+    raw_value: object,
+    *,
+    request: ProviderRequest | None = None,
+) -> date:
+    if not isinstance(raw_value, str) or not re.fullmatch(r"\d{8}", raw_value):
+        raise ProviderRequestError(
+            "performance-report date must be YYYYMMDD",
+            request=request,
+            retryable=False,
+        )
+    try:
+        parsed = datetime.strptime(raw_value, "%Y%m%d").date()
+    except ValueError as exc:
+        raise ProviderRequestError(
+            "performance-report date must be a valid YYYYMMDD date",
+            request=request,
+            retryable=False,
+        ) from exc
+    if parsed < _PERFORMANCE_REPORT_START_DATE:
+        raise ProviderRequestError(
+            "performance-report date must be on or after 20100331",
+            request=request,
+            retryable=False,
+        )
+    if (parsed.month, parsed.day) not in _PERFORMANCE_REPORT_QUARTER_ENDS:
+        raise ProviderRequestError(
+            "performance-report date must be an exact quarter-end report date",
             request=request,
             retryable=False,
         )
@@ -2043,6 +2193,25 @@ def _validate_earnings_forecast_provider_rows(
             )
 
 
+def _validate_performance_report_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> None:
+    """Validate a performance-report universe before filtering its rows."""
+
+    for row in rows:
+        if _row_code(row, ListingMarket.A) is None:
+            raise ProviderResponseError(
+                f"AKShare returned a performance-report row without a listing code for "
+                f"{request.entity_id!r}",
+                provider=provider,
+                request=request,
+            )
+
+
 def _validate_share_capital_provider_rows(
     rows: Sequence[Mapping[str, JSONValue]],
     listing: _ListingRef,
@@ -2147,6 +2316,25 @@ def _validate_earnings_forecast_normalizer_rows(
             raise ProviderNormalizationError(
                 f"earnings-forecast row period {row_date.isoformat()!r} does not match "
                 f"requested report period {report_period.isoformat()!r}"
+            )
+
+
+def _validate_performance_report_normalizer_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+) -> None:
+    """Keep replayed performance-report rows inside the requested listing."""
+
+    for row in rows:
+        row_code = _row_code(row, ListingMarket.A)
+        if row_code is None:
+            raise ProviderNormalizationError(
+                "performance-report row has no explicit listing code"
+            )
+        if row_code != listing.code:
+            raise ProviderNormalizationError(
+                f"performance-report row entity {row_code!r} does not match "
+                f"requested listing {listing.canonical_id!r}"
             )
 
 

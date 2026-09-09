@@ -419,6 +419,28 @@ margin, CDC or valuation fact. H-share earnings forecasts remain outside this
 slice. Live calls remain opt-in; tests use an injected client and a frozen
 fixture.
 
+### Phase 2.14 — A-share performance-report raw acquisition contract (COMPLETE)
+
+The mapping review now covers the documented AKShare Eastmoney
+`stock_yjbb_em` endpoint under a new provider-neutral `PERFORMANCE_REPORT`
+category. The endpoint accepts an A-share quarterly report date in `YYYYMMDD`
+form, from the documented `20100331` start date, and returns a universe of
+headline performance rows containing listing identity, revenue and net-profit
+headlines, per-share indicators, ratios, industry and latest-announcement
+metadata. The provider validates the exact quarter-end request, rejects rows
+without explicit listing identity, filters to the requested six-digit A-share
+code and retains all matching rows.
+
+The headline net-profit field does not establish the accepted
+parent-versus-consolidated entity basis, and operating cash flow is reported
+per share rather than as a total CFO fact. The normalizer therefore retains
+the filtered response as structured evidence, marks `parent_net_profit`,
+`consolidated_net_profit` and `reported_cfo` as critically missing and emits
+`AKSHARE_PERFORMANCE_REPORT_RAW_ONLY`; it creates no canonical profit,
+revenue, margin, CFO, CDC or valuation fact. H-share performance reports
+remain outside this slice. Live calls remain opt-in; tests use an injected
+client and a frozen fixture.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -428,7 +450,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.13 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.14 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -636,7 +658,7 @@ Phase 2 is active. Phase 1 remains frozen: changes to formulas, hard-gate
 semantics, schemas or `strict-v1` thresholds require a separately reviewed,
 versioned change.
 
-Phase 2.13 completes the next documented structured-data boundary while
+Phase 2.14 completes the next documented structured-data boundary while
 keeping share-change, repurchase and rights-issue period, status, unit and
 economic-scope questions unresolved, and keeping ownership-pledge holder,
 governance and economic-scope questions unresolved. The A-share
@@ -647,4 +669,7 @@ be reviewed before its fields can enter the canonical contract. The A-share
 earnings-forecast snapshot remains raw-only because forecast ranges, forecast
 type and announcement dates do not establish reported parent or consolidated
 profit for the requested period. Filing-derived classifications remain a
-Phase 3 concern.
+Phase 3 concern. The A-share performance-report snapshot remains raw-only
+because its headline net profit has no admitted parent/consolidated basis and
+its operating cash flow is per share rather than a canonical reported CFO
+total.
