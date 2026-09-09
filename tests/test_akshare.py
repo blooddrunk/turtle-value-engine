@@ -108,6 +108,17 @@ class FakeAKShare:
         )
 
 
+class OfficialBalanceAKShare:
+    __version__ = "fixture-akshare-official-balance"
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, dict]] = []
+
+    def stock_zcfz_em(self, *, date: str):
+        self.calls.append(("stock_zcfz_em", {"date": date}))
+        return _fixture("a_balance_sheet_official.json")
+
+
 def _request(category: DataCategory, entity_id: str, parameters: dict | None = None):
     return ProviderRequest(
         category=category,
@@ -153,7 +164,7 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "market_quote",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "4"
+    assert provider.identity.provider_version == "5"
 
 
 def test_a_quote_is_selected_from_the_upstream_universe_and_kept_opaque():
@@ -242,6 +253,58 @@ def test_balance_sheet_fetch_uses_market_specific_read_only_endpoints():
             {"stock": "00700", "symbol": "资产负债表", "indicator": "年度"},
         ),
     ]
+
+
+def test_official_a_balance_endpoint_selects_listing_and_preserves_requested_period():
+    fake = OfficialBalanceAKShare()
+    provider = AKShareProvider(fake)
+    record = provider.fetch(
+        _request(
+            DataCategory.BALANCE_SHEET,
+            "SH600000",
+            {"statement_date": "2024-12-31"},
+        )
+    )
+
+    assert record.raw_payload == _fixture("a_balance_sheet_official.json")[0]
+    assert fake.calls == [("stock_zcfz_em", {"date": "20241231"})]
+    assert record.response_metadata["upstream_row_count"] == 2
+    assert record.response_metadata["statement_date"] == "2024-12-31"
+
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="official-balance-sheet-fixture",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+    values = {(fact.field, fact.period): fact for fact in normalized.facts}
+    assert values[("book_cash", "2024-12-31")].value == 1600000000.0
+    assert values[("total_equity", "2024-12-31")].value == 7350000000.0
+    assert "reported_interest_bearing_debt" not in {fact.field for fact in normalized.facts}
+    assert "parent_equity" not in {fact.field for fact in normalized.facts}
+    assert "total_liabilities" not in {fact.field for fact in normalized.facts}
+    assert normalized.data_quality.critical_missing_fields == [
+        "parent_equity",
+        "reported_interest_bearing_debt",
+    ]
+
+
+def test_official_a_balance_endpoint_requires_an_exact_statement_date():
+    fake = OfficialBalanceAKShare()
+    provider = AKShareProvider(fake)
+
+    with pytest.raises(ProviderRequestError, match="requires statement_date"):
+        provider.fetch(_request(DataCategory.BALANCE_SHEET, "SH600000"))
+    with pytest.raises(ProviderRequestError, match="exact quarter-end"):
+        provider.fetch(
+            _request(
+                DataCategory.BALANCE_SHEET,
+                "SH600000",
+                {"statement_date": "2024-12-30"},
+            )
+        )
+    assert fake.calls == []
 
 
 def test_missing_optional_dependency_is_reported_only_when_a_live_fetch_is_attempted(

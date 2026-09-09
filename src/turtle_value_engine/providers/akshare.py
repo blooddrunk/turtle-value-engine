@@ -51,7 +51,7 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "4"
+AKSHARE_ADAPTER_VERSION = "5"
 AKSHARE_SOURCE_NAME = "AKShare"
 AKSHARE_MAPPING_VERSION = "5"
 
@@ -93,6 +93,8 @@ _SOURCE_URIS = {
     "stock_cash_flow_sheet_by_report_em": "https://emweb.securities.eastmoney.com/PC_HSF10/NewFinanceAnalysis/Index",
     "stock_profit_sheet_by_report_em": "https://emweb.securities.eastmoney.com/PC_HSF10/NewFinanceAnalysis/Index",
     "stock_balance_sheet_by_report_em": "https://emweb.securities.eastmoney.com/PC_HSF10/NewFinanceAnalysis/Index",
+    "stock_zcfz_em": "https://data.eastmoney.com/bbsj/202003/zcfz.html",
+    "stock_zcfz_bj_em": "https://data.eastmoney.com/bbsj/202003/zcfz.html",
     "stock_financial_report_sina": "https://vip.stock.finance.sina.com.cn/corp/go.php/vFD_FinanceSummary/",
     "stock_financial_hk_report_em": "https://emweb.securities.eastmoney.com/PC_HKF10/FinancialAnalysis/index",
 }
@@ -128,7 +130,11 @@ _HISTORY_PARAMETER_NAMES = frozenset(
     }
 )
 
-_FINANCIAL_STATEMENT_PARAMETER_NAMES = frozenset({"indicator"})
+_FINANCIAL_STATEMENT_PARAMETER_NAMES = frozenset({"indicator", "statement_date"})
+
+_OFFICIAL_BALANCE_SHEET_ENDPOINTS = frozenset(
+    {"stock_zcfz_em", "stock_zcfz_bj_em"}
+)
 
 _DATE_FORMATS = ("%Y-%m-%d", "%Y%m%d", "%Y/%m/%d", "%Y-%m-%d %H:%M:%S")
 _MISSING_TEXT = frozenset({"", "-", "--", "—", "na", "n/a", "nan", "nat", "none", "null"})
@@ -198,7 +204,7 @@ class AKShareProvider(StructuredDataProvider):
 
         listing = _parse_listing_id(request.entity_id, provider=self.identity, request=request)
         client = self._load_client(request)
-        endpoint = self._resolve_endpoint(client, listing.market, request.category, request)
+        endpoint = self._resolve_endpoint(client, listing, request.category, request)
         kwargs = self._endpoint_kwargs(endpoint.name, listing, request)
 
         try:
@@ -248,6 +254,24 @@ class AKShareProvider(StructuredDataProvider):
             response_metadata["upstream_row_count"] = len(rows)
             if listing.market is ListingMarket.H and _has_history_range(request.parameters):
                 response_metadata["range_filtering"] = "normalizer"
+        elif (
+            request.category is DataCategory.BALANCE_SHEET
+            and endpoint.name in _OFFICIAL_BALANCE_SHEET_ENDPOINTS
+        ):
+            rows = _table_rows(payload, provider=self.identity, request=request)
+            selected = _select_listing_row(
+                rows,
+                listing,
+                provider=self.identity,
+                request=request,
+            )
+            payload = selected
+            response_metadata["upstream_row_count"] = len(rows)
+            response_metadata["entity_row_selected"] = True
+            response_metadata["statement_date"] = _parse_statement_date_parameter(
+                request.parameters["statement_date"],
+                request=request,
+            ).isoformat()
 
         try:
             retrieved_at = self._clock()
@@ -290,11 +314,15 @@ class AKShareProvider(StructuredDataProvider):
     def _resolve_endpoint(
         self,
         client: object,
-        market: ListingMarket,
+        listing: _ListingRef,
         category: DataCategory,
         request: ProviderRequest,
     ) -> _Endpoint:
-        candidates = _endpoint_candidates(market, category)
+        candidates = _endpoint_candidates(
+            listing,
+            category,
+            statement_date_requested="statement_date" in request.parameters,
+        )
         for name in candidates:
             function = getattr(client, name, None)
             if callable(function):
@@ -701,7 +729,13 @@ _HISTORY_FIELDS = {
 }
 
 
-def _endpoint_candidates(market: ListingMarket, category: DataCategory) -> tuple[str, ...]:
+def _endpoint_candidates(
+    listing: _ListingRef,
+    category: DataCategory,
+    *,
+    statement_date_requested: bool = False,
+) -> tuple[str, ...]:
+    market = listing.market
     if category is DataCategory.COMPANY_METADATA:
         if market is ListingMarket.A:
             return ("stock_info_a_code_name", "stock_zh_ah_name")
@@ -728,7 +762,22 @@ def _endpoint_candidates(market: ListingMarket, category: DataCategory) -> tuple
         return ("stock_financial_hk_report_em",)
     if category is DataCategory.BALANCE_SHEET:
         if market is ListingMarket.A:
-            return ("stock_balance_sheet_by_report_em", "stock_financial_report_sina")
+            if listing.canonical_id.startswith("BJ"):
+                aggregate_endpoint = "stock_zcfz_bj_em"
+            else:
+                aggregate_endpoint = "stock_zcfz_em"
+            detailed_endpoint = "stock_balance_sheet_by_report_em"
+            if statement_date_requested:
+                return (
+                    aggregate_endpoint,
+                    detailed_endpoint,
+                    "stock_financial_report_sina",
+                )
+            return (
+                detailed_endpoint,
+                aggregate_endpoint,
+                "stock_financial_report_sina",
+            )
         return ("stock_financial_hk_report_em",)
     raise ProviderCapabilityError(f"AKShare adapter does not support {category.value!r}")
 
@@ -790,6 +839,25 @@ def _financial_statement_kwargs(
             request=request,
             retryable=False,
         )
+    if endpoint_name in _OFFICIAL_BALANCE_SHEET_ENDPOINTS:
+        if "indicator" in request.parameters:
+            raise ProviderRequestError(
+                f"the A-share aggregate {statement_label} endpoint does not accept indicator",
+                request=request,
+                retryable=False,
+            )
+        if "statement_date" not in request.parameters:
+            raise ProviderRequestError(
+                f"the A-share aggregate {statement_label} endpoint requires "
+                "statement_date (YYYY-MM-DD or YYYYMMDD)",
+                request=request,
+                retryable=False,
+            )
+        statement_date = _parse_statement_date_parameter(
+            request.parameters["statement_date"],
+            request=request,
+        )
+        return {"date": statement_date.strftime("%Y%m%d")}
     indicator = str(request.parameters.get("indicator", "annual")).lower()
     indicators = {
         "annual": "年度",
@@ -806,6 +874,13 @@ def _financial_statement_kwargs(
             retryable=False,
         )
     if endpoint_name == "stock_cash_flow_sheet_by_report_em":
+        if "statement_date" in request.parameters:
+            raise ProviderRequestError(
+                f"the A-share report-period {statement_label} endpoint does not "
+                "accept statement_date",
+                request=request,
+                retryable=False,
+            )
         if "indicator" in request.parameters:
             raise ProviderRequestError(
                 f"the A-share report-period {statement_label} endpoint does not accept indicator",
@@ -814,6 +889,13 @@ def _financial_statement_kwargs(
             )
         return {"symbol": listing.canonical_id}
     if endpoint_name == "stock_profit_sheet_by_report_em":
+        if "statement_date" in request.parameters:
+            raise ProviderRequestError(
+                f"the A-share report-period {statement_label} endpoint does not "
+                "accept statement_date",
+                request=request,
+                retryable=False,
+            )
         if "indicator" in request.parameters:
             raise ProviderRequestError(
                 f"the A-share report-period {statement_label} endpoint does not accept indicator",
@@ -822,6 +904,13 @@ def _financial_statement_kwargs(
             )
         return {"symbol": listing.canonical_id}
     if endpoint_name == "stock_balance_sheet_by_report_em":
+        if "statement_date" in request.parameters:
+            raise ProviderRequestError(
+                f"the A-share report-period {statement_label} endpoint does not "
+                "accept statement_date",
+                request=request,
+                retryable=False,
+            )
         if "indicator" in request.parameters:
             raise ProviderRequestError(
                 f"the A-share report-period {statement_label} endpoint does not accept indicator",
@@ -830,6 +919,12 @@ def _financial_statement_kwargs(
             )
         return {"symbol": listing.canonical_id}
     if endpoint_name == "stock_financial_report_sina":
+        if "statement_date" in request.parameters:
+            raise ProviderRequestError(
+                f"the Sina {statement_label} endpoint does not accept statement_date",
+                request=request,
+                retryable=False,
+            )
         if listing.market is not ListingMarket.A:
             raise ProviderRequestError(
                 "the Sina financial-report endpoint supports A-share listings only",
@@ -838,6 +933,12 @@ def _financial_statement_kwargs(
             )
         return {"stock": listing.canonical_id.lower(), "symbol": statement_symbol}
     if endpoint_name == "stock_financial_hk_report_em":
+        if "statement_date" in request.parameters:
+            raise ProviderRequestError(
+                f"the H-share {statement_label} endpoint does not accept statement_date",
+                request=request,
+                retryable=False,
+            )
         return {
             "stock": listing.code,
             "symbol": statement_symbol,
@@ -1450,6 +1551,7 @@ _BALANCE_SHEET_FIELDS = {
     "book_cash": (
         "货币资金",
         "货币资金(元)",
+        "资产-货币资金",
         "现金及现金等价物",
         "现金及现金等价物(元)",
         "MONETARYFUNDS",
@@ -1626,7 +1728,7 @@ def _map_financial_statement(
     field_counts = {field: 0 for field in field_aliases}
     seen_periods: set[str] = set()
     for period_row, _ in period_rows:
-        statement_date = _statement_date(period_row)
+        statement_date = _statement_date(period_row, record=record)
         if statement_date is None:
             raise ProviderNormalizationError(
                 f"{statement_label} statement row for {record.request.entity_id!r} "
@@ -1776,14 +1878,13 @@ def _pivot_long_statement_rows(
     ]
 
 
-def _statement_date(row: Mapping[str, JSONValue]) -> date | None:
-    found, raw_value = _lookup(row, _STATEMENT_PERIOD_FIELDS)
-    if not found or raw_value is None:
-        return None
+def _parse_date_value(raw_value: object) -> date | None:
     if isinstance(raw_value, datetime):
         return raw_value.date()
     if isinstance(raw_value, date):
         return raw_value
+    if raw_value is None or isinstance(raw_value, bool):
+        return None
     text = str(raw_value).strip()
     for fmt in _DATE_FORMATS:
         try:
@@ -1792,7 +1893,47 @@ def _statement_date(row: Mapping[str, JSONValue]) -> date | None:
             continue
     match = re.match(r"^(\d{4}-\d{2}-\d{2})", text)
     if match:
-        return date.fromisoformat(match.group(1))
+        try:
+            return date.fromisoformat(match.group(1))
+        except ValueError:
+            return None
+    return None
+
+
+def _parse_statement_date_parameter(
+    raw_value: object,
+    *,
+    request: ProviderRequest | None = None,
+) -> date:
+    statement_date = _parse_date_value(raw_value)
+    if statement_date is None or statement_date.strftime("%m%d") not in {
+        "0331",
+        "0630",
+        "0930",
+        "1231",
+    }:
+        raise ProviderRequestError(
+            "statement_date must be an exact quarter-end date "
+            "(YYYY-MM-DD or YYYYMMDD)",
+            request=request,
+            retryable=False,
+        )
+    return statement_date
+
+
+def _statement_date(
+    row: Mapping[str, JSONValue],
+    *,
+    record: RawProviderRecord | None = None,
+) -> date | None:
+    found, raw_value = _lookup(row, _STATEMENT_PERIOD_FIELDS)
+    if found:
+        return _parse_date_value(raw_value)
+    if record is not None:
+        fallback = record.response_metadata.get("statement_date")
+        if fallback is None:
+            fallback = record.request.parameters.get("statement_date")
+        return _parse_date_value(fallback)
     return None
 
 

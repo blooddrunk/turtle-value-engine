@@ -98,12 +98,17 @@ liability or borrowing rows.
 | `minority_equity` | `STRUCTURED_AUTO` | Deferred from this slice; minority attribution and consolidated/standalone basis require a separate mapping review. |
 | `restricted_cash`, `pledged_deposits`, `lease_debt`, `subsidiary_cash`, `subsidiary_debt` | `REQUIRES_PRIMARY_FILING` | Do not infer accessibility, debt-equivalent treatment or upstreamability from aggregate balance-sheet rows. |
 
-The A-share balance endpoint is expected to provide wide report-period rows
-and the H-share endpoint long-form items. Missing or year-only periods and
-ambiguous duplicate periods/items are rejected. Explicit nulls remain null and
-are not treated as zero. The Phase 2 mapping review owns unresolved
-balance-sheet field-name coverage, consolidated-versus-standalone entity
-basis, currency/unit scaling, explicit debt-aggregate availability and
+The A-share detailed balance endpoint provides wide report-period rows and
+the H-share endpoint provides long-form statement items. The current
+documented A-share aggregate fallback (`stock_zcfz_em` or
+`stock_zcfz_bj_em`) is requested by exact quarter-end date, returns a universe
+row set and exposes only cash and total-equity fields from this allowlist; the
+normalizer selects the requested listing and uses the requested date as the
+statement period. Missing or year-only periods and ambiguous periods/items
+are rejected. Explicit nulls remain null and are not treated as zero. The
+Phase 2 mapping review owns unresolved balance-sheet field-name coverage,
+consolidated-versus-standalone entity basis, currency/unit scaling, the
+missing parent-equity/debt aggregates in the documented A-share shape and
 point-in-time publication semantics.
 
 For all three statement slices, an explicit row-level security code must match

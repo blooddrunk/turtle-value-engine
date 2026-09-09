@@ -181,8 +181,12 @@ labels unambiguously represent `reported_cfo`, `acquisition_cash`,
 `parent_net_profit`, `consolidated_net_profit`, `book_cash`,
 `parent_equity`, `total_equity` or an explicit aggregate
 `reported_interest_bearing_debt`. A-share wide records and H-share long-form
-item records are handled separately. The mapper preserves the reported sign,
-currency and null value; it does not scale amounts, split aggregate capex into
+item records are handled separately. The documented A-share aggregate
+balance endpoint is date-based and returns a universe; the provider selects
+the requested listing and carries the exact requested quarter-end date into
+the normalized period. That aggregate shape maps only its explicit cash and
+total-equity fields. The mapper preserves the reported sign, currency and
+null value; it does not scale amounts, split aggregate capex into
 PPE/intangible purchases, sum borrowing sub-items into debt, calculate
 CDC/financing metrics, or import revenue and provider ratios as canonical
 facts.
@@ -360,7 +364,7 @@ advertises exactly these capabilities:
 | `MARKET_HISTORY` | `stock_zh_a_hist` | `stock_hk_daily` | dated OHLCV/turnover extension facts |
 | `CASH_FLOW_STATEMENT` | `stock_cash_flow_sheet_by_report_em` (Sina fallback) | `stock_financial_hk_report_em` | explicit `reported_cfo` and `acquisition_cash` lines |
 | `INCOME_STATEMENT` | `stock_profit_sheet_by_report_em` (Sina fallback) | `stock_financial_hk_report_em` | explicit `parent_net_profit` and `consolidated_net_profit` lines |
-| `BALANCE_SHEET` | `stock_balance_sheet_by_report_em` (Sina fallback) | `stock_financial_hk_report_em` | explicit `book_cash`, equity totals and aggregate interest-bearing debt when labeled |
+| `BALANCE_SHEET` | `stock_zcfz_em` / `stock_zcfz_bj_em` (detailed report-period and Sina fallbacks) | `stock_financial_hk_report_em` | explicit `book_cash`, equity totals and aggregate interest-bearing debt when labeled |
 
 The adapter accepts common stable A/H identifiers such as `SH600000`,
 `000001.SZ`, `A:600000`, `HK00700`, `700.HK` and `H:00700`. A-share history
@@ -388,8 +392,9 @@ of delayed/closed quote timestamps, FX and A/H cross-listing share equivalence,
 whether the H-share full-history endpoint can be replaced by a bounded range
 endpoint without changing replay semantics, field-name coverage across all
 A/H balance-sheet variants, consolidated-versus-standalone statement basis,
-currency/unit scaling, and the availability of an explicit interest-bearing
-debt aggregate.
+currency/unit scaling, the absence of parent-equity and interest-bearing-debt
+aggregates in the documented A-share quarterly balance shape, and
+point-in-time publication semantics.
 
 ## 13. Deliberate non-goals
 

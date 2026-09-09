@@ -51,10 +51,13 @@ normalizer emits only canonical facts and evidence. Phase 2.3 adds cash-flow
 statement acquisition for A/H listings and maps only explicit reported
 operating cash flow and acquisition cash. Phase 2.4 adds a narrow income
 statement slice that maps only explicit parent-attributable and consolidated
-net profit. Phase 2.5 adds a narrow balance-sheet slice that maps only
+net profit. Phase 2.5–2.6 add a narrow balance-sheet slice that maps only
 explicit book cash, parent/total equity and an explicitly reported
-interest-bearing-debt total. It does not rename total liabilities, sum loan
-sub-items, or infer restricted cash, lease debt or upstreamability. The
+interest-bearing-debt total. The current documented A-share aggregate
+endpoint is date-based and only supplies the cash and total-equity subset;
+the provider preserves that missing coverage rather than substituting total
+liabilities. It does not rename total liabilities, sum loan sub-items, or
+infer restricted cash, lease debt or upstreamability. The
 adapter does not derive CDC, classify interest or restricted cash, accept
 provider metrics, or infer filing-derived adjustments. Filing retrieval and
 LLM-assisted evidence analysis remain unimplemented. The deterministic
