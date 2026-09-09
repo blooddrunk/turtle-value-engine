@@ -958,6 +958,36 @@ margin, leverage or valuation fact.
 | `融券卖出量`, `融券余量` | Raw security-lending quantities documented in shares/lots; they do not establish issuer shares, dilution, debt or valuation. |
 | request `date` | Exact upstream observation boundary retained in request and response metadata; it is not an issuer accounting period or a fabricated row field. |
 
+## Phase 2.38 A-share shareholder-count raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_hold_num_cninfo` as a CNINFO thematic-statistics endpoint
+accepting an exact quarter-end `date` from `20170331` onward. The [official
+implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hold_num_cninfo.py)
+returns the A-share universe with explicit listing code/name, `变动日期`,
+current/prior shareholder counts, count change percentage, current/prior
+average holdings and average-holdings change percentage.
+
+The provider selects this endpoint only when the `SHAREHOLDER_HOLDINGS`
+request includes `date`, validates the supported quarter-end date and every
+row's explicit code and matching `变动日期`, then filters the universe to the
+requested A-share listing. The selected rows and request/observation dates are
+retained as raw evidence; the no-parameter request continues to use the
+symbol-scoped main-shareholder endpoint.
+
+| Raw upstream item | Phase 2 treatment |
+| --- | --- |
+| `证券代码`, `证券简称` | Explicit A-share identity, listing filtering and evidence context only. |
+| `变动日期` | Validated against the requested exact quarter-end date and retained as raw observation metadata; it is not silently promoted to a statement or governance period. |
+| `本期股东人数`, `上期股东人数`, `股东人数增幅` | Raw shareholder-count evidence; no canonical concentration, ownership or governance metric is calculated. |
+| `本期人均持股数量`, `上期人均持股数量`, `人均持股数量增幅` | Raw average-holding evidence; the documented unit/aggregation does not establish a company-level diluted-economic-share fact. |
+| request `date` | Exact CNINFO quarter-end boundary retained in request and response metadata; it does not become a fabricated provider field. |
+
+The slice deliberately leaves `governance_risk_level` unresolved and emits
+`AKSHARE_SHAREHOLDER_COUNTS_RAW_ONLY`. H-share shareholder-count coverage,
+beneficial-control interpretation and filing-backed analysis remain outside
+this acquisition contract.
+
 ## Eligibility, identity and market context
 
 | Normalized field | Status | Boundary note |

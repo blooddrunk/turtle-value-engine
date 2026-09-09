@@ -1,6 +1,6 @@
 # Provider and Cache Architecture
 
-> Status: Phase 2 foundation, read-only AKShare statement slices, earnings forecasts/quick reports/performance reports/business composition/financial abstract/financial indicators, H-share latest indicators, dividend events/snapshots/detail, A-share disclosure-notice metadata, risk-warning status, trading-suspension, restricted-share-release, goodwill-impairment, ESG-rating, SSE/SZSE margin-detail, share-capital, corporate-action, external-guarantee, company-litigation, ownership-pledge snapshot/detail, main-shareholder and SSE/SZSE/BSE insider-share-change raw slices
+> Status: Phase 2 foundation, read-only AKShare statement slices, earnings forecasts/quick reports/performance reports/business composition/financial abstract/financial indicators, H-share latest indicators, dividend events/snapshots/detail, A-share disclosure-notice metadata, risk-warning status, trading-suspension, restricted-share-release, goodwill-impairment, ESG-rating, SSE/SZSE margin-detail, share-capital, corporate-action, external-guarantee, company-litigation, ownership-pledge snapshot/detail, main-shareholder, shareholder-count and SSE/SZSE/BSE insider-share-change raw slices
 
 This document freezes the boundary between structured-data acquisition and the
 deterministic Turtle Value Engine. It does not authorize a live provider or
@@ -689,7 +689,7 @@ The cache performs no network retries. The normalizer performs no provider
 retries. The deterministic pipeline performs no provider retries and should
 not be rerun as a substitute for resolving missing facts.
 
-## 12. Phase 2.2–2.37 AKShare adapter
+## 12. Phase 2.2–2.38 AKShare adapter
 
 The first concrete adapter is intentionally limited to read-only metadata,
 market observations, three documented financial-statement slices, raw-only
@@ -701,7 +701,7 @@ three A-share share-capital raw slices, three A-share ownership-pledge raw views
 an H-share latest-indicator raw slice, an A-share disclosure-notice raw slice,
 an A-share risk-warning-status, trading-suspension, goodwill-impairment,
 ESG-rating, SSE/SZSE margin-detail, external-guarantee, company-litigation and
-main-shareholder raw slice and
+main-shareholder/shareholder-count raw slices and
 SSE/SZSE/BSE insider-share-change raw slices. It
 advertises exactly these capabilities:
 
@@ -734,7 +734,7 @@ advertises exactly these capabilities:
 | `SHARE_CAPITAL` | `stock_zh_a_gbjg_em` (no parameters); `stock_share_change_cninfo` (explicit date range); `stock_restricted_release_queue_em` (`view=restricted_release_queue`) | — | raw historical response and provenance only; no canonical share/dilution fact |
 | `OWNERSHIP_PLEDGE` | `stock_gpzy_pledge_ratio_em` (exact `date`); `stock_gpzy_individual_pledge_ratio_detail_em` (`view=individual_pledge_detail`); `stock_cg_equity_mortgage_cninfo` (`view=equity_mortgage`, `date`) | — | date-bound snapshot, symbol-scoped detail or CNINFO pledge-event rows as raw structured evidence only; no canonical governance, share, cash or debt-equivalent fact |
 | `INSIDER_SHARE_CHANGES` | `stock_share_hold_change_sse` (Shanghai); `stock_share_hold_change_szse` (Shenzhen); `stock_share_hold_change_bse` (Beijing) | — | listing-scoped A-share insider/related-person rows as raw structured evidence only; no canonical share, dilution, governance, buyback or issuance fact |
-| `SHAREHOLDER_HOLDINGS` | `stock_main_stock_holder` (`stock`) | — | listing-scoped A-share historical main-shareholder rows as raw structured evidence only; no canonical ownership, share, dilution or governance fact |
+| `SHAREHOLDER_HOLDINGS` | `stock_main_stock_holder` (`stock`); `stock_hold_num_cninfo` (exact quarter-end `date`) | — | A-share historical main-shareholder rows or requested-quarter shareholder-count rows as raw structured evidence only; no canonical ownership, concentration, share, dilution or governance fact |
 
 The adapter accepts common stable A/H identifiers such as `SH600000`,
 `000001.SZ`, `A:600000`, `HK00700`, `700.HK` and `H:00700`. A-share history
@@ -755,13 +755,17 @@ financial-indicator, latest-indicator, dividend event/detail, disclosure-notice,
 risk-warning-status, trading-suspension, restricted-share-release,
 goodwill-impairment, ESG-rating, margin-trading, corporate-action,
 external-guarantee, company-litigation, share-capital, ownership-pledge,
-main-shareholder and insider-share-change raw slices it emits
+main-shareholder, shareholder-count and insider-share-change raw slices it emits
 raw-record evidence only and explicit unresolved flags where needed; it does
 not emit canonical forecast-profit, revenue, margin, dividend, buyback,
 issuance, dilution, share, governance, pledged-cash, quasi-debt,
 illegal-guarantee or debt-equivalent facts.
 Margin-trading rows remain raw evidence because security-level investor
 financing balances and quantities are not issuer accounting debt or cash.
+Shareholder-count rows remain raw evidence because quarter-end shareholder
+counts, average holdings and change percentages do not establish a canonical
+concentration metric, governance judgment or company-level diluted-share
+series.
 It never maps provider headline market cap,
 listing-years inferred from history length, unlisted financial-statement lines,
 total liabilities as interest-bearing debt, filing classifications, or any
@@ -883,6 +887,20 @@ quantities, ratios and share-class labels do not establish beneficial control,
 materiality, a company-level diluted-share series or a filing-backed
 governance conclusion.
 
+For the A-share shareholder-count slice, the documented
+[AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hold_num_cninfo.py)
+define `stock_hold_num_cninfo` with an exact quarter-end `date` from
+`20170331` onward. The provider validates each returned code and `变动日期`,
+filters the full CNINFO universe to the requested A-share listing and retains
+the current/prior shareholder counts, average holdings and change percentages
+as raw evidence. A date-bearing `SHAREHOLDER_HOLDINGS` request selects this
+endpoint; a request without `date` continues to select
+`stock_main_stock_holder`. The normalizer emits
+`AKSHARE_SHAREHOLDER_COUNTS_RAW_ONLY`, leaves `governance_risk_level` missing
+and does not calculate concentration, beneficial-control, governance or
+diluted-share facts.
+
 For the A-share trading-suspension slice, the documented requested-date
 universe and its listing-filtered result are retained as raw evidence only.
 Suspension dates, duration and reasons do not establish a complete
@@ -958,7 +976,7 @@ filing-backed pledge interpretation remain unresolved.
 
 ## 13. Deliberate non-goals
 
-This foundation plus the Phase 2.2–2.36 slices does not include:
+This foundation plus the Phase 2.2–2.38 slices does not include:
 
 - Tushare, BaoStock or any other additional provider;
 - automatic network scheduling, credentials or retry orchestration outside an adapter;

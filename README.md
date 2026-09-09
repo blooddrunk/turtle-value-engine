@@ -254,6 +254,17 @@ the payload. The normalizer emits `AKSHARE_MARGIN_TRADING_RAW_ONLY`, leaves
 `financial_debt` critically missing and creates no issuer debt, cash, leverage
 or valuation fact. BSE margin-detail and market-level margin summaries remain
 unresolved.
+Phase 2.38 adds the documented A-share CNINFO `stock_hold_num_cninfo` endpoint
+under the existing `SHAREHOLDER_HOLDINGS` category. The [AKShare stock-data
+documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and [official
+implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hold_num_cninfo.py)
+define an exact quarter-end `date` from `20170331` and return shareholder
+counts, average holdings and their change percentages. The provider validates
+the request and each row's `变动日期`, filters the full universe to the
+requested A-share listing and preserves the fields as raw evidence. The
+normalizer emits `AKSHARE_SHAREHOLDER_COUNTS_RAW_ONLY`, leaves
+`governance_risk_level` critically missing and creates no concentration,
+governance or diluted-share fact.
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

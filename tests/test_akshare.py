@@ -329,6 +329,13 @@ class FakeAKShare:
             stock=stock,
         )
 
+    def stock_hold_num_cninfo(self, *, date: str):
+        return self._return(
+            "stock_hold_num_cninfo",
+            _fixture("a_shareholder_counts.json"),
+            date=date,
+        )
+
 
 class OfficialBalanceAKShare:
     __version__ = "fixture-akshare-official-balance"
@@ -407,8 +414,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "37"
-    assert AKSHARE_MAPPING_VERSION == "38"
+    assert provider.identity.provider_version == "38"
+    assert AKSHARE_MAPPING_VERSION == "39"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -752,18 +759,12 @@ def test_main_shareholder_request_is_a_share_only_and_accepts_no_parameters():
     fake = FakeAKShare()
     provider = _provider(fake)
 
-    with pytest.raises(ProviderRequestError, match="does not accept request parameters"):
-        provider.fetch(
-            _request(
-                DataCategory.SHAREHOLDER_HOLDINGS,
-                "SH600000",
-                {"date": "20241231"},
-            )
-        )
+    record = provider.fetch(_request(DataCategory.SHAREHOLDER_HOLDINGS, "SH600000"))
+    assert record.response_metadata["endpoint"] == "stock_main_stock_holder"
     with pytest.raises(ProviderRequestError, match="A-share listings only"):
         provider.fetch(_request(DataCategory.SHAREHOLDER_HOLDINGS, "HK00700"))
 
-    assert fake.calls == []
+    assert fake.calls == [("stock_main_stock_holder", {"stock": "600000"})]
 
 
 def test_main_shareholder_response_rejects_invalid_documented_dates():
@@ -845,6 +846,233 @@ def test_main_shareholder_cache_replay_does_not_call_upstream(tmp_path: Path):
     assert fake.calls == [
         ("stock_main_stock_holder", {"stock": "600000"}),
     ]
+
+
+def test_shareholder_count_fetch_filters_the_documented_quarter_end_universe():
+    fake = FakeAKShare()
+    record = _provider(fake).fetch(
+        _request(
+            DataCategory.SHAREHOLDER_HOLDINGS,
+            "SH600000",
+            {"date": "20241231"},
+        )
+    )
+
+    fixture = _fixture("a_shareholder_counts.json")
+    assert record.raw_payload == [row for row in fixture if row["证券代码"] == "600000"]
+    assert fake.calls == [("stock_hold_num_cninfo", {"date": "20241231"})]
+    assert record.response_metadata["endpoint"] == "stock_hold_num_cninfo"
+    assert record.response_metadata["upstream_row_count"] == 3
+    assert record.response_metadata["entity_row_count"] == 1
+    assert record.response_metadata["entity_rows_selected"] is True
+    assert record.response_metadata["listing_scoped_request"] is False
+    assert record.response_metadata["row_filtering"] == "provider"
+    assert record.response_metadata["requested_date"] == "20241231"
+    assert record.response_metadata["observation_date"] == "2024-12-31"
+    assert record.response_metadata["date_binding"] == "row_and_request"
+    assert record.response_metadata["snapshot_scope"] == "requested_quarter_end"
+    assert record.source_uri == "https://webapi.cninfo.com.cn/#/thematicStatistics"
+
+
+@pytest.mark.parametrize(
+    ("parameters", "match"),
+    [
+        ({"date": "2024-12-31"}, "date must be YYYYMMDD"),
+        ({"date": "20241331"}, "date must be a valid YYYYMMDD date"),
+        ({"date": "20161231"}, "date must be on or after 20170331"),
+        ({"date": "20241230"}, "date must be an exact quarter-end report date"),
+        (
+            {"date": "20241231", "market": "沪市"},
+            "unsupported AKShare shareholder-count parameter",
+        ),
+    ],
+)
+def test_shareholder_count_request_requires_documented_quarter_end_date(
+    parameters: dict,
+    match: str,
+):
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError, match=match):
+        _provider(fake).fetch(
+            _request(DataCategory.SHAREHOLDER_HOLDINGS, "SH600000", parameters)
+        )
+
+    assert fake.calls == []
+
+
+def test_shareholder_count_request_is_a_share_only_before_upstream_call():
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError, match="A-share listings only"):
+        _provider(fake).fetch(
+            _request(
+                DataCategory.SHAREHOLDER_HOLDINGS,
+                "HK00700",
+                {"date": "20241231"},
+            )
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("missing_code", "shareholder-count row without a listing code"),
+        ("missing_date", "shareholder-count row without an observation date"),
+        ("invalid_date", "invalid shareholder-count observation date"),
+        ("wrong_date", "shareholder-count row date"),
+    ],
+)
+def test_shareholder_count_response_requires_explicit_code_and_matching_date(
+    mutation: str,
+    match: str,
+):
+    class InvalidRows(FakeAKShare):
+        def stock_hold_num_cninfo(self, *, date: str):
+            rows = _fixture("a_shareholder_counts.json")
+            if mutation == "missing_code":
+                rows[0].pop("证券代码")
+            elif mutation == "missing_date":
+                rows[0].pop("变动日期")
+            elif mutation == "invalid_date":
+                rows[0]["变动日期"] = "not-a-date"
+            elif mutation == "wrong_date":
+                rows[0]["变动日期"] = "2024-09-30"
+            return self._return("stock_hold_num_cninfo", rows, date=date)
+
+    with pytest.raises(ProviderResponseError, match=match):
+        _provider(InvalidRows()).fetch(
+            _request(
+                DataCategory.SHAREHOLDER_HOLDINGS,
+                "SH600000",
+                {"date": "20241231"},
+            )
+        )
+
+
+def test_shareholder_count_with_no_matching_listing_is_an_empty_raw_snapshot():
+    class NoMatchingShareholderCount(FakeAKShare):
+        def stock_hold_num_cninfo(self, *, date: str):
+            return self._return(
+                "stock_hold_num_cninfo",
+                [
+                    row
+                    for row in _fixture("a_shareholder_counts.json")
+                    if row["证券代码"] == "000001"
+                ],
+                date=date,
+            )
+
+    record = _provider(NoMatchingShareholderCount()).fetch(
+        _request(
+            DataCategory.SHAREHOLDER_HOLDINGS,
+            "SH600000",
+            {"date": "20241231"},
+        )
+    )
+
+    assert record.raw_payload == []
+    assert record.response_metadata["upstream_row_count"] == 1
+    assert record.response_metadata["entity_row_count"] == 0
+
+
+def test_shareholder_count_raw_record_is_not_promoted_to_canonical_facts():
+    record = _provider().fetch(
+        _request(
+            DataCategory.SHAREHOLDER_HOLDINGS,
+            "SH600000",
+            {"date": "20241231"},
+        )
+    )
+
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="shareholder-count-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_SHAREHOLDER_COUNTS_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == [
+        "governance_risk_level",
+    ]
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "quarter-end shareholder counts" in normalized.data_quality.notes
+    assert "canonical concentration metric" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    errors = list(Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json")))
+    assert errors == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("entity", "shareholder-count row entity"),
+        ("date", "shareholder-count row date"),
+        ("missing_date", "shareholder-count row has no exact observation date"),
+    ],
+)
+def test_shareholder_count_normalizer_rejects_replayed_scope_mismatches(
+    mutation: str,
+    match: str,
+):
+    record = _provider().fetch(
+        _request(
+            DataCategory.SHAREHOLDER_HOLDINGS,
+            "SH600000",
+            {"date": "20241231"},
+        )
+    )
+    payload = [dict(row) for row in record.raw_payload]
+    if mutation == "entity":
+        payload[0]["证券代码"] = "000001"
+    elif mutation == "date":
+        payload[0]["变动日期"] = "2024-09-30"
+    else:
+        payload[0].pop("变动日期")
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=record.source_uri,
+        response_metadata=record.response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match=match):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-shareholder-count",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_shareholder_count_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.SHAREHOLDER_HOLDINGS,
+        "SH600000",
+        {"date": "20241231"},
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [("stock_hold_num_cninfo", {"date": "20241231"})]
 
 
 def test_a_quote_is_selected_from_the_upstream_universe_and_kept_opaque():

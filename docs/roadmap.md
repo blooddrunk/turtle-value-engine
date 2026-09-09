@@ -954,6 +954,34 @@ leverage, margin or valuation fact. BSE margin detail, market-level margin
 summaries and filing-backed interpretation remain outside this slice. Live
 calls remain opt-in; tests use an injected client and a frozen fixture.
 
+### Phase 2.38 — A-share shareholder-count raw acquisition contract (COMPLETE)
+
+The mapping review now covers the documented CNINFO
+`stock_hold_num_cninfo` endpoint under the existing
+`SHAREHOLDER_HOLDINGS` category. The [AKShare stock-data
+documentation](https://akshare.akfamily.xyz/data/stock/stock.html) defines an
+exact quarter-end `date` in `YYYYMMDD` form, from `20170331` onward, and the
+[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hold_num_cninfo.py)
+returns the full A-share universe with explicit code/name, `变动日期`, current
+and prior shareholder counts, count change percentage, current and prior
+average holdings and average-holdings change percentage.
+
+The provider selects this endpoint when a `date` parameter is supplied, checks
+that the date is a supported exact quarter end and validates every returned
+listing code and row date against the request. It filters the full response to
+the requested A-share listing and preserves the selected row, requested date,
+observation date and upstream/selected row counts as raw provenance. The
+existing no-parameter `stock_main_stock_holder` route remains unchanged.
+
+The response's counts, average holdings and change percentages remain raw
+structured evidence: they do not establish a canonical shareholder
+concentration metric, beneficial-control or governance judgment, or a
+company-level diluted-share series. The normalizer emits
+`AKSHARE_SHAREHOLDER_COUNTS_RAW_ONLY`, leaves `governance_risk_level`
+critically missing and creates no canonical fact. H-share shareholder-count
+coverage and filing-backed interpretation remain unresolved. Live calls remain
+opt-in; tests use an injected client and a frozen fixture.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -963,7 +991,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.37 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.38 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -1171,7 +1199,7 @@ Phase 2 is active. Phase 1 remains frozen: changes to formulas, hard-gate
 semantics, schemas or `strict-v1` thresholds require a separately reviewed,
 versioned change.
 
-Phase 2.37 completes the next documented structured-data boundary while
+Phase 2.38 completes the next documented structured-data boundary while
 keeping share-change, repurchase and rights-issue period, status, unit and
 economic-scope questions unresolved, and keeping ownership-pledge holder,
 governance and economic-scope questions unresolved. The A-share
