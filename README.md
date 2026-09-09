@@ -244,6 +244,16 @@ amount or governance judgment. The normalizer emits
 `AKSHARE_EQUITY_MORTGAGE_RAW_ONLY`, leaves `governance_risk_level` critically
 missing and creates no canonical fact. H-share coverage and filing-backed
 pledge interpretation remain unresolved.
+Phase 2.37 extends the documented `stock_margin_detail_szse` endpoint under
+`MARGIN_TRADING` to Shenzhen A-share listings. The provider passes an exact
+`YYYYMMDD` request date, filters the full Shenzhen security universe by
+explicit code and retains financing balances, financing/short-sale quantities
+and security names as raw evidence. The endpoint does not return a row-level
+date, so the request date is preserved as provenance rather than invented in
+the payload. The normalizer emits `AKSHARE_MARGIN_TRADING_RAW_ONLY`, leaves
+`financial_debt` critically missing and creates no issuer debt, cash, leverage
+or valuation fact. BSE margin-detail and market-level margin summaries remain
+unresolved.
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

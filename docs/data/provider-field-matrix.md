@@ -795,8 +795,8 @@ passes the date to the SSE detail request and renames the published columns.
 The provider supports Shanghai A-share identifiers only, validates an explicit
 security code and exact credit-transaction date on every returned row, filters
 the universe to the requested listing and retains every matching row with
-endpoint, date and row-count provenance. SZSE/BSE detail and market-level
-margin summaries are not part of this slice.
+endpoint, date and row-count provenance. BSE detail and market-level margin
+summaries are not part of this slice.
 
 The fields describe customer financing against a security. They are not issuer
 accounting debt, cash, leverage or a settled issuer reporting period. The
@@ -926,6 +926,37 @@ H-share coverage and filing-backed pledge interpretation remain unresolved.
 | `出质人`, `质权人`, `质押事项` | Raw holder, counterparty and event-description context; no control, legal-status or governance conclusion. |
 | `质押数量`, `质押解除数量` | Raw quantities documented in 万股; no fully diluted share, issuance, buyback or pledged-cash fact is inferred. |
 | `占总股本比例`, `累计质押占总股本比例` | Raw published ratios; no canonical dilution, debt-equivalent or governance metric is calculated. |
+
+## Phase 2.37 SZSE margin-detail raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_margin_detail_szse` as an SZSE endpoint accepting an exact
+`YYYYMMDD` `date`. Its full requested-date universe contains an explicit
+security code/name, financing balance and financing/short-sale quantities in
+the documented yuan and share/lot units. The
+[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_margin_szse.py)
+passes the date to the SZSE report request and returns the published columns;
+the documented rows do not include a row-level observation date.
+
+The provider supports Shenzhen A-share identifiers, validates an explicit
+security code on every returned row, filters the universe to the requested
+listing and retains the matching row with endpoint, request-date and row-count
+provenance. The request date is the observation boundary for this endpoint;
+the adapter does not add a synthetic date to the opaque payload. BSE detail and
+market-level margin summaries remain outside this slice.
+
+The fields describe customer financing against a security. They are not issuer
+accounting debt, cash, leverage or a settled issuer reporting period. The
+normalizer therefore emits `AKSHARE_MARGIN_TRADING_RAW_ONLY`, marks
+`financial_debt` as critically missing and creates no canonical debt, cash,
+margin, leverage or valuation fact.
+
+| Raw upstream item | Phase 2 treatment |
+| --- | --- |
+| `证券代码`, `证券简称` | Security identity, filtering and evidence context only; no issuer fact is inferred. |
+| `融资买入额`, `融资余额`, `融券余额`, `融资融券余额` | Raw amount evidence documented in yuan; customer financing positions/flows are not issuer financial debt, cash or issuer CFO. |
+| `融券卖出量`, `融券余量` | Raw security-lending quantities documented in shares/lots; they do not establish issuer shares, dilution, debt or valuation. |
+| request `date` | Exact upstream observation boundary retained in request and response metadata; it is not an issuer accounting period or a fabricated row field. |
 
 ## Eligibility, identity and market context
 

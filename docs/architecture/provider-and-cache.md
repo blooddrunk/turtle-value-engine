@@ -1,6 +1,6 @@
 # Provider and Cache Architecture
 
-> Status: Phase 2 foundation, read-only AKShare statement slices, earnings forecasts/quick reports/performance reports/business composition/financial abstract/financial indicators, H-share latest indicators, dividend events/snapshots/detail, A-share disclosure-notice metadata, risk-warning status, trading-suspension, restricted-share-release, goodwill-impairment, ESG-rating, SSE margin-detail, share-capital, corporate-action, external-guarantee, company-litigation, ownership-pledge snapshot/detail, main-shareholder and SSE/SZSE/BSE insider-share-change raw slices
+> Status: Phase 2 foundation, read-only AKShare statement slices, earnings forecasts/quick reports/performance reports/business composition/financial abstract/financial indicators, H-share latest indicators, dividend events/snapshots/detail, A-share disclosure-notice metadata, risk-warning status, trading-suspension, restricted-share-release, goodwill-impairment, ESG-rating, SSE/SZSE margin-detail, share-capital, corporate-action, external-guarantee, company-litigation, ownership-pledge snapshot/detail, main-shareholder and SSE/SZSE/BSE insider-share-change raw slices
 
 This document freezes the boundary between structured-data acquisition and the
 deterministic Turtle Value Engine. It does not authorize a live provider or
@@ -474,6 +474,20 @@ debt or cash, so the normalizer marks `financial_debt` as critically missing,
 emits `AKSHARE_MARGIN_TRADING_RAW_ONLY` and creates no canonical debt, cash,
 margin, leverage or valuation fact.
 
+The corresponding SZSE slice is also acquisition-only. The current
+[AKShare documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_margin_detail_szse` as an endpoint accepting an exact
+`YYYYMMDD` `date` and returning a full Shenzhen security universe with
+explicit security code/name, financing balances and financing/short-sale
+quantities. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_margin_szse.py)
+passes the requested date to the SZSE report request and returns the published
+columns; unlike the SSE response, the documented SZSE rows do not contain a
+row-level observation date. The provider validates every code, filters to the
+requested Shenzhen listing and retains the request date in response metadata
+without adding a synthetic payload field. The normalizer emits
+`AKSHARE_MARGIN_TRADING_RAW_ONLY`, marks `financial_debt` as critically
+missing and creates no canonical debt, cash, leverage or valuation fact.
+
 The A-share external-guarantee slice is also acquisition-only. The current
 [AKShare documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and
 [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_cg_guarantee.py)
@@ -675,7 +689,7 @@ The cache performs no network retries. The normalizer performs no provider
 retries. The deterministic pipeline performs no provider retries and should
 not be rerun as a substitute for resolving missing facts.
 
-## 12. Phase 2.2–2.36 AKShare adapter
+## 12. Phase 2.2–2.37 AKShare adapter
 
 The first concrete adapter is intentionally limited to read-only metadata,
 market observations, three documented financial-statement slices, raw-only
@@ -686,7 +700,7 @@ external-guarantee and company-litigation categories,
 three A-share share-capital raw slices, three A-share ownership-pledge raw views,
 an H-share latest-indicator raw slice, an A-share disclosure-notice raw slice,
 an A-share risk-warning-status, trading-suspension, goodwill-impairment,
-ESG-rating, SSE margin-detail, external-guarantee, company-litigation and
+ESG-rating, SSE/SZSE margin-detail, external-guarantee, company-litigation and
 main-shareholder raw slice and
 SSE/SZSE/BSE insider-share-change raw slices. It
 advertises exactly these capabilities:
@@ -709,7 +723,7 @@ advertises exactly these capabilities:
 | `FINANCIAL_INDICATORS` | `stock_financial_analysis_indicator_em` | `stock_financial_hk_analysis_indicator_em` | A/H historical financial-indicator rows as raw structured evidence only; no canonical revenue, profit, CFO, metric or valuation input |
 | `GOODWILL_IMPAIRMENT` | `stock_sy_jz_em` (exact `date`) | — | A-share report-date goodwill/impairment rows as raw structured evidence only; no canonical goodwill or impairment fact |
 | `ESG_RATINGS` | `stock_esg_rate_sina` (no parameters) | `stock_esg_rate_sina` (no parameters) | mixed A/H agency, rating, quarter and marker rows as raw structured evidence only; no canonical ESG score, governance or Business Quality fact |
-| `MARGIN_TRADING` | `stock_margin_detail_sse` (exact `date`; Shanghai A-share only) | — | requested-date SSE security-level margin rows as raw structured evidence only; no issuer debt/cash/leverage/valuation fact |
+| `MARGIN_TRADING` | `stock_margin_detail_sse` (exact `date`; Shanghai A-share) and `stock_margin_detail_szse` (exact `date`; Shenzhen A-share) | — | requested-date SSE/SZSE security-level margin rows as raw structured evidence only; no issuer debt/cash/leverage/valuation fact |
 | `EXTERNAL_GUARANTEES` | `stock_cg_guarantee_cninfo` (`symbol=全部`, date range; A-share only) | — | A-share date-range external-guarantee universe filtered to the requested listing as raw evidence only; no canonical quasi-debt, illegal-guarantee or governance fact |
 | `LITIGATION` | `stock_cg_lawsuit_cninfo` (`symbol=全部`, date range; A-share only) | — | A-share date-range company-litigation universe filtered to the requested listing as raw evidence only; no canonical litigation, quasi-debt or governance fact |
 | `LATEST_INDICATORS` | — | `stock_hk_financial_indicator_em` | H-share symbol-scoped latest-indicator row as raw structured evidence only; no canonical financial, share, dividend, market-cap, metric or valuation input |
