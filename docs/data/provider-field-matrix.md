@@ -255,6 +255,32 @@ accessibility or an accepted economic period.
 | `质押笔数`, `无限售股质押数`, `限售股质押数` | Raw-only; pledge structure and legal/economic enforceability remain unresolved. |
 | `近一年涨跌幅`, `所属行业代码` | Raw-only context; no performance, sector or governance conclusion is inferred. |
 
+## Phase 2.12 A-share dividend-distribution snapshot raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_fhps_em.py)
+document `stock_fhps_em` as an Eastmoney A-share distribution endpoint. It
+accepts a report date in `YYYYMMDD` form, documented as a June 30 or December
+31 period, and returns a universe row set with listing code, distribution
+ratios, multiple event/announcement dates, progress and per-share context.
+
+The provider requires an explicit supported report date, validates that every
+universe row has a listing code, filters the response to the requested A-share
+listing and retains the selected rows as raw evidence. The normalizer marks
+`ordinary_dividend_cash` as critically missing and emits
+`AKSHARE_DIVIDEND_SNAPSHOT_RAW_ONLY`; it emits no canonical dividend cash,
+special-dividend or payout-ratio fact. The report-date filter, ratio columns,
+progress status and several event dates do not by themselves establish a
+settled cash amount, ordinary-versus-special policy or a payout denominator.
+
+| Raw upstream item | Phase 2 treatment |
+| --- | --- |
+| `代码`, `名称` | Used for conservative listing selection and evidence context; they do not create a dividend fact. |
+| `送转股份-*` | Raw-only; share-distribution ratios are not converted into a split, dilution or share-count fact. |
+| `现金分红-现金分红比例`, `现金分红-股息率` | Raw-only; the response does not settle a total cash amount, declared-versus-paid status or the canonical payout denominator. |
+| `预案公告日`, `股权登记日`, `除权除息日`, `最新公告日期` | Raw-only; announcement, record and ex-rights dates are not silently collapsed into a cash-flow period. |
+| `方案进度`, `总股本`, per-share indicators | Raw-only context; progress, unit/scope and accounting basis are not sufficient for canonical shareholder-return facts. |
+
 ## Eligibility, identity and market context
 
 | Normalized field | Status | Boundary note |
@@ -348,17 +374,19 @@ provider “metrics.”
 ### Phase 2.7 dividend event boundary
 
 The AKShare `DIVIDENDS` category currently retains A-share and H-share
-dividend event rows as raw structured evidence only. The normalizer does not
-map a canonical cash fact because the documented feeds expose per-share or
-per-10-share plans, plan strings, fiscal years and event dates with different
-period and classification semantics. In particular, an event row is not
-silently converted into `ordinary_dividend_cash`, `special_dividend_cash` or
-`payout_ratio`; the unresolved amount, entity, period and ordinary-versus-
-special questions remain for a filing-backed mapping review.
+dividend event rows, plus the explicit-date A-share distribution snapshot, as
+raw structured evidence only. The normalizer does not map a canonical cash
+fact because the documented feeds expose per-share or per-10-share plans,
+distribution ratios, plan strings, fiscal years and event dates with different
+period and classification semantics. In particular, an event row or snapshot
+is not silently converted into `ordinary_dividend_cash`,
+`special_dividend_cash` or `payout_ratio`; the unresolved amount, entity,
+period and ordinary-versus-special questions remain for a filing-backed
+mapping review.
 
 | Normalized field | Status | Boundary note |
 | --- | --- | --- |
-| `ordinary_dividend_cash` | `STRUCTURED_AUTO` | Reported declared/paid amount may be imported when ordinary versus special and period are explicit. |
+| `ordinary_dividend_cash` | `STRUCTURED_AUTO` | Reported declared/paid amount may be imported when ordinary versus special and period are explicit; the current AKShare event and distribution-snapshot feeds remain raw-only. |
 | `special_dividend_cash` | `REQUIRES_PRIMARY_FILING` | Special-return classification and payment period require formal disclosure. |
 | `formal_payout_floor` | `REQUIRES_PRIMARY_FILING` | A policy floor must be supported by a formal company disclosure. |
 | `payout_ratio` | `DERIVED_DETERMINISTIC` | Derive from accepted dividend and profit facts; do not trust a vendor ratio with a different denominator. |

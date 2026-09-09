@@ -365,6 +365,26 @@ valuation fact. H-share pledge coverage and filing-backed governance
 interpretation remain unresolved. Live calls remain opt-in; tests use an
 injected client and a frozen fixture.
 
+### Phase 2.12 — A-share dividend-distribution snapshot raw contract (COMPLETE)
+
+The mapping review now covers the documented AKShare Eastmoney
+`stock_fhps_em` endpoint under the existing provider-neutral `DIVIDENDS`
+category. The endpoint accepts an explicit A-share report date in `YYYYMMDD`
+form, limited to the documented June 30 or December 31 periods, and returns a
+universe snapshot with distribution ratios, multiple event/announcement dates,
+progress and per-share context. The provider validates the report date and
+explicit listing identity, filters the universe to the requested A-share code
+and retains the matching rows as raw evidence.
+
+The documented ratios and status do not establish a settled total cash amount,
+declared-versus-paid state, ordinary-versus-special classification or the
+canonical payout denominator. The normalizer therefore emits
+`AKSHARE_DIVIDEND_SNAPSHOT_RAW_ONLY`, marks `ordinary_dividend_cash` as
+critically missing and creates no dividend-cash, payout-ratio, split, dilution
+or share-count fact. The existing no-parameter A/H dividend endpoints remain
+unchanged. Live calls remain opt-in; tests use an injected client and a frozen
+fixture.
+
 The next Phase 2 task remains a focused mapping review of one documented
 structured-data or corporate-action boundary. No additional share, dividend,
 buyback, split or issuance fact is admitted until its period, unit, entity,
@@ -386,7 +406,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.11 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.12 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -594,10 +614,12 @@ Phase 2 is active. Phase 1 remains frozen: changes to formulas, hard-gate
 semantics, schemas or `strict-v1` thresholds require a separately reviewed,
 versioned change.
 
-Phase 2.11 completes the next documented structured-data boundaries while
+Phase 2.12 completes the next documented structured-data boundary while
 keeping share-change, repurchase and rights-issue period, status, unit and
 economic-scope questions unresolved, and keeping ownership-pledge holder,
-governance and economic-scope questions unresolved. Phase 2 remains active;
-the next documented category must still be reviewed before its fields can
-enter the canonical contract.
+governance and economic-scope questions unresolved. The A-share
+dividend-distribution snapshot remains raw-only because its ratios, status and
+multiple dates do not establish settled ordinary cash or a canonical payout
+denominator. Phase 2 remains active; the next documented category must still
+be reviewed before its fields can enter the canonical contract.
 Filing-derived classifications remain a Phase 3 concern.

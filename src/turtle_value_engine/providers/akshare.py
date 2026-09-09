@@ -5,10 +5,10 @@ normal test run can import this module, inspect its capabilities and replay
 cached records without installing AKShare or making a network request.
 
 The adapter currently implements metadata, market observations, three narrow
-financial-statement slices, raw-only dividend, corporate-action and ownership-
-pledge slices, and A-share share-capital raw slices. Upstream column names are
-handled in this module and are never passed to the deterministic calculation
-or gate code.
+financial-statement slices, raw-only dividend event/snapshot, corporate-action
+and ownership-pledge slices, and A-share share-capital raw slices. Upstream
+column names are handled in this module and are never passed to the
+deterministic calculation or gate code.
 """
 
 from __future__ import annotations
@@ -53,9 +53,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "11"
+AKSHARE_ADAPTER_VERSION = "12"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "12"
+AKSHARE_MAPPING_VERSION = "13"
 
 
 class ListingMarket(StrEnum):
@@ -102,6 +102,7 @@ _SOURCE_URIS = {
     "stock_zcfz_em": "https://data.eastmoney.com/bbsj/202003/zcfz.html",
     "stock_zcfz_bj_em": "https://data.eastmoney.com/bbsj/202003/zcfz.html",
     "stock_dividend_cninfo": "http://webapi.cninfo.com.cn/#/company",
+    "stock_fhps_em": "https://data.eastmoney.com/yjfp/",
     "stock_hk_dividend_payout_em": "https://emweb.securities.eastmoney.com/PC_HKF10/pages/home/index.html",
     "stock_repurchase_em": "https://data.eastmoney.com/gphg/hglist.html",
     "stock_zh_a_gbjg_em": "https://emweb.securities.eastmoney.com/pc_hsf10/pages/index.html#/gbjg",
@@ -146,6 +147,7 @@ _HISTORY_PARAMETER_NAMES = frozenset(
 
 _FINANCIAL_STATEMENT_PARAMETER_NAMES = frozenset({"indicator", "statement_date"})
 
+_DIVIDEND_SNAPSHOT_PARAMETER_NAMES = frozenset({"date"})
 _SHARE_CAPITAL_PARAMETER_NAMES = frozenset({"start_date", "end_date"})
 _SHARE_CHANGE_DEFAULT_START_DATE = "20091227"
 _SHARE_CHANGE_DEFAULT_END_DATE = "20241021"
@@ -324,7 +326,34 @@ class AKShareProvider(StructuredDataProvider):
             ).isoformat()
         elif request.category is DataCategory.DIVIDENDS:
             rows = _table_rows(payload, provider=self.identity, request=request)
-            response_metadata["upstream_row_count"] = len(rows)
+            if endpoint.name == "stock_fhps_em":
+                _validate_dividend_snapshot_provider_rows(
+                    rows,
+                    listing,
+                    provider=self.identity,
+                    request=request,
+                )
+                selected = _select_listing_rows(
+                    rows,
+                    listing,
+                    provider=self.identity,
+                    request=request,
+                    row_label="dividend-snapshot",
+                )
+                payload = selected
+                requested_date = _parse_dividend_snapshot_date_parameter(
+                    kwargs["date"],
+                    request=request,
+                )
+                response_metadata["upstream_row_count"] = len(rows)
+                response_metadata["entity_row_count"] = len(selected)
+                response_metadata["entity_rows_selected"] = True
+                response_metadata["listing_scoped_request"] = False
+                response_metadata["row_filtering"] = "provider"
+                response_metadata["requested_date"] = kwargs["date"]
+                response_metadata["report_period"] = requested_date.isoformat()
+            else:
+                response_metadata["upstream_row_count"] = len(rows)
         elif request.category is DataCategory.SHARE_CAPITAL:
             rows = _table_rows(payload, provider=self.identity, request=request)
             if endpoint.name == "stock_share_change_cninfo":
@@ -457,6 +486,7 @@ class AKShareProvider(StructuredDataProvider):
             share_capital_date_requested=any(
                 name in request.parameters for name in ("start_date", "end_date")
             ),
+            dividend_snapshot_date_requested="date" in request.parameters,
         )
         for name in candidates:
             function = getattr(client, name, None)
@@ -490,6 +520,8 @@ class AKShareProvider(StructuredDataProvider):
                 return _income_statement_kwargs(endpoint_name, listing, request)
             if request.category is DataCategory.BALANCE_SHEET:
                 return _balance_sheet_kwargs(endpoint_name, listing, request)
+            if request.category is DataCategory.DIVIDENDS:
+                return _dividends_kwargs(endpoint_name, listing, request)
             if request.category is DataCategory.SHARE_CAPITAL:
                 return _share_capital_kwargs(endpoint_name, listing, request)
             if request.category is DataCategory.CORPORATE_ACTIONS:
@@ -769,10 +801,25 @@ class AKShareNormalizer:
                     if balance_sheet_result[1][field] == 0:
                         missing_fields.add(field)
             elif record.request.category is DataCategory.DIVIDENDS:
+                endpoint_name = record.response_metadata.get("endpoint")
+                if endpoint_name == "stock_fhps_em":
+                    if listing.market is not ListingMarket.A:
+                        raise ProviderNormalizationError(
+                            "AKShare dividend-snapshot raw slice supports A-share listings only"
+                        )
+                    try:
+                        _parse_dividend_snapshot_date_parameter(
+                            record.request.parameters.get("date"),
+                            request=record.request,
+                        )
+                    except ProviderRequestError as exc:
+                        raise ProviderNormalizationError(str(exc)) from exc
+                    _validate_dividend_snapshot_normalizer_rows(rows, listing)
+                    normalizer_flags.add("AKSHARE_DIVIDEND_SNAPSHOT_RAW_ONLY")
                 # The upstream endpoints expose event plans and dates, not a
                 # normalized cash amount with a settled entity/period basis.
                 # Keep the raw record and evidence available without treating
-                # a per-share plan or fiscal-year label as ordinary cash.
+                # a per-share plan, ratio or fiscal-year label as ordinary cash.
                 missing_fields.add("ordinary_dividend_cash")
             elif record.request.category is DataCategory.CORPORATE_ACTIONS:
                 if listing.market is not ListingMarket.A:
@@ -885,6 +932,13 @@ class AKShareNormalizer:
                 "a controlling holder or establish a governance-risk conclusion, "
                 "pledged cash amount or debt-equivalent fact."
             )
+        if "AKSHARE_DIVIDEND_SNAPSHOT_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented A-share dividend-distribution snapshot is retained "
+                "as raw evidence only: its report-date ratios, distribution status "
+                "and announcement/record/ex-rights dates do not establish settled "
+                "ordinary dividend cash or a canonical payout ratio."
+            )
         return NormalizedCompanyInput(
             schema_version="1.0.0",
             analysis_id=analysis_id,
@@ -975,6 +1029,7 @@ def _endpoint_candidates(
     statement_date_requested: bool = False,
     corporate_action_date_requested: bool = False,
     share_capital_date_requested: bool = False,
+    dividend_snapshot_date_requested: bool = False,
 ) -> tuple[str, ...]:
     market = listing.market
     if category is DataCategory.COMPANY_METADATA:
@@ -1022,6 +1077,8 @@ def _endpoint_candidates(
         return ("stock_financial_hk_report_em",)
     if category is DataCategory.DIVIDENDS:
         if market is ListingMarket.A:
+            if dividend_snapshot_date_requested:
+                return ("stock_fhps_em",)
             return ("stock_dividend_cninfo",)
         return ("stock_hk_dividend_payout_em",)
     if category is DataCategory.CORPORATE_ACTIONS:
@@ -1078,6 +1135,62 @@ def _balance_sheet_kwargs(
         request,
         statement_symbol="资产负债表",
         statement_label="balance sheet",
+    )
+
+
+def _dividends_kwargs(
+    endpoint_name: str,
+    listing: _ListingRef,
+    request: ProviderRequest,
+) -> dict[str, object]:
+    if endpoint_name == "stock_fhps_em":
+        if listing.market is not ListingMarket.A:
+            raise ProviderRequestError(
+                "the AKShare dividend-snapshot endpoint supports A-share listings only",
+                request=request,
+                retryable=False,
+            )
+        unknown = sorted(set(request.parameters) - _DIVIDEND_SNAPSHOT_PARAMETER_NAMES)
+        if unknown:
+            raise ProviderRequestError(
+                "unsupported AKShare dividend-snapshot parameter(s): "
+                + ", ".join(unknown),
+                request=request,
+                retryable=False,
+            )
+        if "date" not in request.parameters:
+            raise ProviderRequestError(
+                "the AKShare dividend-snapshot endpoint requires date (YYYYMMDD)",
+                request=request,
+                retryable=False,
+            )
+        report_date = _parse_dividend_snapshot_date_parameter(
+            request.parameters["date"],
+            request=request,
+        )
+        return {"date": report_date.strftime("%Y%m%d")}
+    if endpoint_name == "stock_dividend_cninfo":
+        if listing.market is not ListingMarket.A:
+            raise ProviderRequestError(
+                "the AKShare A-share dividend endpoint supports A-share listings only",
+                request=request,
+                retryable=False,
+            )
+        _reject_unexpected_parameters(request)
+        return {"symbol": listing.code}
+    if endpoint_name == "stock_hk_dividend_payout_em":
+        if listing.market is not ListingMarket.H:
+            raise ProviderRequestError(
+                "the AKShare H-share dividend endpoint supports H-share listings only",
+                request=request,
+                retryable=False,
+            )
+        _reject_unexpected_parameters(request)
+        return {"symbol": listing.code}
+    raise ProviderRequestError(
+        f"unsupported AKShare dividends endpoint {endpoint_name!r}",
+        request=request,
+        retryable=False,
     )
 
 
@@ -1285,6 +1398,40 @@ def _parse_pledge_date_parameter(
             request=request,
             retryable=False,
         ) from exc
+
+
+def _parse_dividend_snapshot_date_parameter(
+    raw_value: object,
+    *,
+    request: ProviderRequest,
+) -> date:
+    if not isinstance(raw_value, str) or not re.fullmatch(r"\d{8}", raw_value):
+        raise ProviderRequestError(
+            "dividend-snapshot date must be YYYYMMDD",
+            request=request,
+            retryable=False,
+        )
+    try:
+        parsed = datetime.strptime(raw_value, "%Y%m%d").date()
+    except ValueError as exc:
+        raise ProviderRequestError(
+            "dividend-snapshot date must be a valid YYYYMMDD date",
+            request=request,
+            retryable=False,
+        ) from exc
+    if parsed < date(1990, 12, 31):
+        raise ProviderRequestError(
+            "dividend-snapshot date must be on or after 19901231",
+            request=request,
+            retryable=False,
+        )
+    if (parsed.month, parsed.day) not in {(6, 30), (12, 31)}:
+        raise ProviderRequestError(
+            "dividend-snapshot date must be a June 30 or December 31 report date",
+            request=request,
+            retryable=False,
+        )
+    return parsed
 
 
 def _financial_statement_kwargs(
@@ -1688,6 +1835,25 @@ def _validate_corporate_action_provider_rows(
             )
 
 
+def _validate_dividend_snapshot_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> None:
+    """Reject an A-share distribution universe row without an explicit code."""
+
+    for row in rows:
+        if _row_code(row, ListingMarket.A) is None:
+            raise ProviderResponseError(
+                f"AKShare returned a dividend-snapshot row without a listing code for "
+                f"{listing.canonical_id!r}",
+                provider=provider,
+                request=request,
+            )
+
+
 def _validate_share_capital_provider_rows(
     rows: Sequence[Mapping[str, JSONValue]],
     listing: _ListingRef,
@@ -1738,6 +1904,25 @@ def _validate_corporate_action_normalizer_rows(
         if row_code is not None and row_code != listing.code:
             raise ProviderNormalizationError(
                 f"corporate-action row entity {row_code!r} does not match "
+                f"requested listing {listing.canonical_id!r}"
+            )
+
+
+def _validate_dividend_snapshot_normalizer_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+) -> None:
+    """Keep replayed dividend-distribution rows inside the requested listing."""
+
+    for row in rows:
+        row_code = _row_code(row, ListingMarket.A)
+        if row_code is None:
+            raise ProviderNormalizationError(
+                "dividend-snapshot row has no explicit listing code"
+            )
+        if row_code != listing.code:
+            raise ProviderNormalizationError(
+                f"dividend-snapshot row entity {row_code!r} does not match "
                 f"requested listing {listing.canonical_id!r}"
             )
 

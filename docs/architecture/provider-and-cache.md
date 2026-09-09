@@ -1,6 +1,6 @@
 # Provider and Cache Architecture
 
-> Status: Phase 2 foundation, read-only AKShare statement slices, dividend events, share-capital and corporate-action raw slices
+> Status: Phase 2 foundation, read-only AKShare statement slices, dividend events/snapshots, share-capital and corporate-action raw slices
 
 This document freezes the boundary between structured-data acquisition and the
 deterministic Turtle Value Engine. It does not authorize a live provider or
@@ -399,12 +399,12 @@ The cache performs no network retries. The normalizer performs no provider
 retries. The deterministic pipeline performs no provider retries and should
 not be rerun as a substitute for resolving missing facts.
 
-## 12. Phase 2.2–2.11 AKShare adapter
+## 12. Phase 2.2–2.12 AKShare adapter
 
 The first concrete adapter is intentionally limited to read-only metadata,
 market observations, three documented financial-statement slices, raw-only
-dividend and corporate-action categories, two A-share share-capital raw slices
-and one A-share ownership-pledge raw slice. It
+dividend event/snapshot and corporate-action categories, two A-share
+share-capital raw slices and one A-share ownership-pledge raw slice. It
 advertises exactly these capabilities:
 
 | Category | A-share endpoint | H-share endpoint | Normalized output |
@@ -416,7 +416,7 @@ advertises exactly these capabilities:
 | `CASH_FLOW_STATEMENT` | `stock_cash_flow_sheet_by_report_em` (Sina fallback) | `stock_financial_hk_report_em` | explicit `reported_cfo` and `acquisition_cash` lines |
 | `INCOME_STATEMENT` | `stock_profit_sheet_by_report_em` (Sina fallback) | `stock_financial_hk_report_em` | explicit `parent_net_profit` and `consolidated_net_profit` lines |
 | `BALANCE_SHEET` | `stock_zcfz_em` / `stock_zcfz_bj_em` (detailed report-period and Sina fallbacks) | `stock_financial_hk_report_em` | explicit `book_cash`, equity totals and aggregate interest-bearing debt when labeled |
-| `DIVIDENDS` | `stock_dividend_cninfo` | `stock_hk_dividend_payout_em` | raw structured evidence only; no canonical dividend cash or payout ratio |
+| `DIVIDENDS` | `stock_dividend_cninfo`; `stock_fhps_em` (explicit report date) | `stock_hk_dividend_payout_em` | raw structured evidence only; no canonical dividend cash or payout ratio |
 | `CORPORATE_ACTIONS` | `stock_repurchase_em` (no parameters); `stock_allotment_cninfo` (date-range request) | — | A-share repurchase or rights-issue rows; raw structured evidence only; no canonical buyback, issuance or dilution fact |
 | `SHARE_CAPITAL` | `stock_zh_a_gbjg_em` (no parameters); `stock_share_change_cninfo` (explicit date range) | — | raw historical response and provenance only; no canonical share/dilution fact |
 | `OWNERSHIP_PLEDGE` | `stock_gpzy_pledge_ratio_em` (exact `date`) | — | date-bound A-share pledge-ratio snapshot; raw structured evidence only; no canonical governance, cash or debt-equivalent fact |
@@ -476,10 +476,15 @@ retained for the requested A-share snapshot, but affected-holder identity,
 controlling-owner status, governance severity, pledged-cash accessibility and
 debt-equivalent treatment remain unresolved; no governance-risk conclusion is
 admitted automatically.
+For the A-share dividend-distribution snapshot, the explicit June-30 or
+December-31 report date and listing-filtered rows are retained, but ratio units,
+settled cash status, ordinary-versus-special classification and payout
+denominator remain unresolved; no dividend-cash or payout-ratio fact is
+admitted automatically.
 
 ## 13. Deliberate non-goals
 
-This foundation plus the Phase 2.2–2.11 slices does not include:
+This foundation plus the Phase 2.2–2.12 slices does not include:
 
 - Tushare, BaoStock or any other additional provider;
 - automatic network scheduling, credentials or retry orchestration outside an adapter;

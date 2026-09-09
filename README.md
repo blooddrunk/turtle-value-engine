@@ -79,6 +79,10 @@ The same phase adds the documented A-share `stock_gpzy_pledge_ratio_em`
 ownership-pledge snapshot as a date-bound raw-only slice; its ratio and
 observation date do not identify a controlling holder or establish a
 governance-risk, pledged-cash or debt-equivalent fact.
+Phase 2.12 adds the documented A-share `stock_fhps_em` distribution snapshot
+with an explicit June-30 or December-31 report date; its distribution ratios,
+status and multiple event dates remain raw-only and do not establish settled
+ordinary dividend cash or a canonical payout ratio.
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.
