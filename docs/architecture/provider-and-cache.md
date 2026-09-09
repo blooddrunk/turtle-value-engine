@@ -675,7 +675,7 @@ The cache performs no network retries. The normalizer performs no provider
 retries. The deterministic pipeline performs no provider retries and should
 not be rerun as a substitute for resolving missing facts.
 
-## 12. Phase 2.2–2.35 AKShare adapter
+## 12. Phase 2.2–2.36 AKShare adapter
 
 The first concrete adapter is intentionally limited to read-only metadata,
 market observations, three documented financial-statement slices, raw-only
@@ -683,7 +683,7 @@ earnings-forecast, earnings-quick-report, performance-report,
 business-composition and financial-abstract categories, A/H financial-indicator
 raw slices, raw-only dividend event/snapshot/detail, corporate-action,
 external-guarantee and company-litigation categories,
-three A-share share-capital raw slices, two A-share ownership-pledge raw views,
+three A-share share-capital raw slices, three A-share ownership-pledge raw views,
 an H-share latest-indicator raw slice, an A-share disclosure-notice raw slice,
 an A-share risk-warning-status, trading-suspension, goodwill-impairment,
 ESG-rating, SSE margin-detail, external-guarantee, company-litigation and
@@ -718,7 +718,7 @@ advertises exactly these capabilities:
 | `DISCLOSURE_NOTICES` | `stock_zh_a_disclosure_report_cninfo` (`market=沪深京`, optional filters/date range) | — | listing-bound announcement metadata as raw structured evidence only; no filing-content, accounting or governance fact |
 | `CORPORATE_ACTIONS` | `stock_repurchase_em` (no parameters); `stock_allotment_cninfo` (date-range request) | — | A-share repurchase or rights-issue rows; raw structured evidence only; no canonical buyback, issuance or dilution fact |
 | `SHARE_CAPITAL` | `stock_zh_a_gbjg_em` (no parameters); `stock_share_change_cninfo` (explicit date range); `stock_restricted_release_queue_em` (`view=restricted_release_queue`) | — | raw historical response and provenance only; no canonical share/dilution fact |
-| `OWNERSHIP_PLEDGE` | `stock_gpzy_pledge_ratio_em` (exact `date`); `stock_gpzy_individual_pledge_ratio_detail_em` (`view=individual_pledge_detail`) | — | date-bound snapshot or symbol-scoped detail as raw structured evidence only; no canonical governance, share, cash or debt-equivalent fact |
+| `OWNERSHIP_PLEDGE` | `stock_gpzy_pledge_ratio_em` (exact `date`); `stock_gpzy_individual_pledge_ratio_detail_em` (`view=individual_pledge_detail`); `stock_cg_equity_mortgage_cninfo` (`view=equity_mortgage`, `date`) | — | date-bound snapshot, symbol-scoped detail or CNINFO pledge-event rows as raw structured evidence only; no canonical governance, share, cash or debt-equivalent fact |
 | `INSIDER_SHARE_CHANGES` | `stock_share_hold_change_sse` (Shanghai); `stock_share_hold_change_szse` (Shenzhen); `stock_share_hold_change_bse` (Beijing) | — | listing-scoped A-share insider/related-person rows as raw structured evidence only; no canonical share, dilution, governance, buyback or issuance fact |
 | `SHAREHOLDER_HOLDINGS` | `stock_main_stock_holder` (`stock`) | — | listing-scoped A-share historical main-shareholder rows as raw structured evidence only; no canonical ownership, share, dilution or governance fact |
 
@@ -784,6 +784,9 @@ remain unresolved; no capital-action classification is admitted automatically.
 For the ownership-pledge slices, the exact observation date and ratio are
 retained for the requested A-share snapshot, while the individual detail view
 also retains holder/institution, quantity, price, status and event-date rows.
+The CNINFO equity-mortgage view retains every listing-filtered pledge-event
+row, its query date, announcement date, pledgor/pledgee, quantities and
+ratios. The query date is not promoted to an event or accounting period.
 Affected-holder identity, controlling-owner status, governance severity,
 pledged-cash accessibility, diluted-share treatment and debt-equivalent
 classification remain unresolved; no governance-risk conclusion is admitted
@@ -927,9 +930,21 @@ fact is emitted automatically; `governance_risk_level` remains critically
 missing and H-share coverage plus filing-backed pledge interpretation remain
 unresolved.
 
+For the A-share CNINFO equity-mortgage slice, the documented
+[`stock_cg_equity_mortgage_cninfo`](https://akshare.akfamily.xyz/data/stock/stock.html)
+response and its requested-code result are retained as raw evidence only. The
+[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_cg_equity_mortgage.py)
+uses a CNINFO thematic-statistics response. Its query date, announcement date,
+pledgor/pledgee, quantities, ratios and event description do not establish a
+canonical pledge period, fully diluted share count, settled pledged
+cash/debt-equivalent amount or a governance judgment. No share, cash,
+debt-equivalent or governance fact is emitted automatically;
+`governance_risk_level` remains critically missing and H-share coverage plus
+filing-backed pledge interpretation remain unresolved.
+
 ## 13. Deliberate non-goals
 
-This foundation plus the Phase 2.2–2.35 slices does not include:
+This foundation plus the Phase 2.2–2.36 slices does not include:
 
 - Tushare, BaoStock or any other additional provider;
 - automatic network scheduling, credentials or retry orchestration outside an adapter;

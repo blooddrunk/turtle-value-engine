@@ -234,6 +234,16 @@ governance judgment, the normalizer emits
 `AKSHARE_LITIGATION_RAW_ONLY`, leaves `material_quasi_debt` and
 `governance_risk_level` critically missing and creates no canonical fact.
 H-share coverage and filing-backed litigation review remain unresolved.
+Phase 2.36 adds the documented A-share CNINFO
+`stock_cg_equity_mortgage_cninfo` endpoint as an explicit
+`view=equity_mortgage` under the existing `OWNERSHIP_PLEDGE` category. Its
+query date, announcement date, pledgor/pledgee, quantities, ratios and event
+description remain raw structured evidence; they do not establish a canonical
+pledge period, fully diluted share count, settled pledged cash/debt-equivalent
+amount or governance judgment. The normalizer emits
+`AKSHARE_EQUITY_MORTGAGE_RAW_ONLY`, leaves `governance_risk_level` critically
+missing and creates no canonical fact. H-share coverage and filing-backed
+pledge interpretation remain unresolved.
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

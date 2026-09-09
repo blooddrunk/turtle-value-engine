@@ -14,8 +14,8 @@ slices, including the restricted-share-release view, the A-share
 risk-warning-status, trading-suspension and main-shareholder raw slices, the
 H-share financial-indicator raw slice, the H-share latest-indicator raw slice,
 the A-share goodwill-impairment detail raw slice, the SSE margin-detail raw
-slice and the A-share individual ownership-pledge detail view and A-share
-company-litigation raw slice.
+slice, the A-share individual ownership-pledge detail view, the A-share
+CNINFO equity-mortgage view and A-share company-litigation raw slice.
 Upstream column names are handled in this module and are never passed to the
 deterministic calculation or gate code.
 """
@@ -62,9 +62,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "35"
+AKSHARE_ADAPTER_VERSION = "36"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "36"
+AKSHARE_MAPPING_VERSION = "37"
 
 
 class ListingMarket(StrEnum):
@@ -150,6 +150,7 @@ _SOURCE_URIS = {
     "stock_allotment_cninfo": "https://webapi.cninfo.com.cn/#/dataBrowse",
     "stock_gpzy_pledge_ratio_em": "https://data.eastmoney.com/gpzy/pledgeRatio.aspx",
     "stock_gpzy_individual_pledge_ratio_detail_em": "https://data.eastmoney.com/gpzy/detail/{symbol}.html",
+    "stock_cg_equity_mortgage_cninfo": "https://webapi.cninfo.com.cn/#/thematicStatistics",
     "stock_cg_guarantee_cninfo": "https://webapi.cninfo.com.cn/#/thematicStatistics",
     "stock_cg_lawsuit_cninfo": "https://webapi.cninfo.com.cn/#/thematicStatistics",
     "stock_share_hold_change_sse": "http://www.sse.com.cn/disclosure/credibility/supervision/change/",
@@ -232,10 +233,18 @@ _LITIGATION_DEFAULT_END_DATE = "20210927"
 _OWNERSHIP_PLEDGE_PARAMETER_NAMES = frozenset({"date"})
 _OWNERSHIP_PLEDGE_DETAIL_PARAMETER_NAMES = frozenset({"view"})
 _OWNERSHIP_PLEDGE_DETAIL_VIEW = "individual_pledge_detail"
+_OWNERSHIP_PLEDGE_EQUITY_MORTGAGE_PARAMETER_NAMES = frozenset({"date", "view"})
+_OWNERSHIP_PLEDGE_EQUITY_MORTGAGE_VIEW = "equity_mortgage"
+_OWNERSHIP_PLEDGE_EQUITY_MORTGAGE_DEFAULT_DATE = "20210930"
 _OWNERSHIP_PLEDGE_DETAIL_DATE_FIELDS = (
     "公告日期",
     "质押开始日期",
     "质押结束日期",
+)
+_OWNERSHIP_PLEDGE_EQUITY_MORTGAGE_DATE_FIELDS = (
+    "公告日期",
+    "announcement_date",
+    "date",
 )
 _INSIDER_SHARE_CHANGE_PARAMETER_NAMES = frozenset()
 _TRADING_SUSPENSIONS_PARAMETER_NAMES = frozenset({"date"})
@@ -878,6 +887,31 @@ class AKShareProvider(StructuredDataProvider):
                 response_metadata["listing_scoped_request"] = True
                 response_metadata["ownership_pledge_view"] = _OWNERSHIP_PLEDGE_DETAIL_VIEW
                 response_metadata["upstream_symbol"] = kwargs["symbol"]
+            elif endpoint.name == "stock_cg_equity_mortgage_cninfo":
+                _validate_ownership_pledge_equity_mortgage_provider_rows(
+                    rows,
+                    listing,
+                    provider=self.identity,
+                    request=request,
+                )
+                selected = _select_listing_rows(
+                    rows,
+                    listing,
+                    provider=self.identity,
+                    request=request,
+                    row_label="equity-mortgage",
+                )
+                payload = selected
+                response_metadata["upstream_row_count"] = len(rows)
+                response_metadata["entity_row_count"] = len(selected)
+                response_metadata["entity_rows_selected"] = True
+                response_metadata["listing_scoped_request"] = False
+                response_metadata["row_filtering"] = "provider"
+                response_metadata["ownership_pledge_view"] = (
+                    _OWNERSHIP_PLEDGE_EQUITY_MORTGAGE_VIEW
+                )
+                response_metadata["requested_date"] = kwargs["date"]
+                response_metadata["snapshot_scope"] = "requested_date_parameter"
             else:
                 requested_date = _parse_pledge_date_parameter(
                     kwargs["date"],
@@ -1162,6 +1196,9 @@ class AKShareProvider(StructuredDataProvider):
             ),
             ownership_pledge_detail_requested=(
                 request.parameters.get("view") == _OWNERSHIP_PLEDGE_DETAIL_VIEW
+            ),
+            ownership_pledge_equity_mortgage_requested=(
+                request.parameters.get("view") == _OWNERSHIP_PLEDGE_EQUITY_MORTGAGE_VIEW
             ),
             dividend_snapshot_date_requested="date" in request.parameters,
             dividend_detail_requested="view" in request.parameters,
@@ -1911,6 +1948,20 @@ class AKShareNormalizer:
                         raise ProviderNormalizationError(str(exc)) from exc
                     _validate_ownership_pledge_detail_normalizer_rows(rows, listing)
                     normalizer_flags.add("AKSHARE_INDIVIDUAL_PLEDGE_DETAIL_RAW_ONLY")
+                elif endpoint_name == "stock_cg_equity_mortgage_cninfo":
+                    try:
+                        _ownership_pledge_kwargs(
+                            "stock_cg_equity_mortgage_cninfo",
+                            listing,
+                            record.request,
+                        )
+                    except ProviderRequestError as exc:
+                        raise ProviderNormalizationError(str(exc)) from exc
+                    _validate_ownership_pledge_equity_mortgage_normalizer_rows(
+                        rows,
+                        listing,
+                    )
+                    normalizer_flags.add("AKSHARE_EQUITY_MORTGAGE_RAW_ONLY")
                 elif endpoint_name == "stock_gpzy_pledge_ratio_em":
                     try:
                         requested_date = _parse_pledge_date_parameter(
@@ -1929,7 +1980,8 @@ class AKShareNormalizer:
                     raise ProviderNormalizationError(
                         "AKShare ownership-pledge record must come from "
                         "stock_gpzy_pledge_ratio_em or "
-                        "stock_gpzy_individual_pledge_ratio_detail_em"
+                        "stock_gpzy_individual_pledge_ratio_detail_em or "
+                        "stock_cg_equity_mortgage_cninfo"
                     )
                 # Pledge observations are screening evidence only. They do not
                 # establish governance severity, controlling-shareholder
@@ -2089,6 +2141,14 @@ class AKShareNormalizer:
                 "is retained as raw evidence only: holder, quantity, status and event "
                 "dates do not establish a canonical share, cash, debt-equivalent or "
                 "governance fact."
+            )
+        if "AKSHARE_EQUITY_MORTGAGE_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented A-share CNINFO equity-mortgage response is retained as "
+                "raw evidence only: its query date, pledge-event rows, quantities and "
+                "ratios do not establish a canonical pledge period, fully diluted share "
+                "count, settled pledged cash/debt-equivalent amount or governance "
+                "judgment."
             )
         if "AKSHARE_INSIDER_SHARE_CHANGE_RAW_ONLY" in normalizer_flags:
             notes += (
@@ -2329,6 +2389,7 @@ def _endpoint_candidates(
     share_capital_date_requested: bool = False,
     share_capital_restricted_release_requested: bool = False,
     ownership_pledge_detail_requested: bool = False,
+    ownership_pledge_equity_mortgage_requested: bool = False,
     dividend_snapshot_date_requested: bool = False,
     dividend_detail_requested: bool = False,
 ) -> tuple[str, ...]:
@@ -2458,6 +2519,8 @@ def _endpoint_candidates(
         if market is ListingMarket.A:
             if ownership_pledge_detail_requested:
                 return ("stock_gpzy_individual_pledge_ratio_detail_em",)
+            if ownership_pledge_equity_mortgage_requested:
+                return ("stock_cg_equity_mortgage_cninfo",)
             return ("stock_gpzy_pledge_ratio_em",)
         return ()
     if category is DataCategory.INSIDER_SHARE_CHANGES:
@@ -3068,6 +3131,36 @@ def _ownership_pledge_kwargs(
     listing: _ListingRef,
     request: ProviderRequest,
 ) -> dict[str, object]:
+    if endpoint_name == "stock_cg_equity_mortgage_cninfo":
+        if listing.market is not ListingMarket.A:
+            raise ProviderRequestError(
+                "the AKShare equity-mortgage endpoint supports A-share listings only",
+                request=request,
+                retryable=False,
+            )
+        unknown = sorted(
+            set(request.parameters) - _OWNERSHIP_PLEDGE_EQUITY_MORTGAGE_PARAMETER_NAMES
+        )
+        if unknown:
+            raise ProviderRequestError(
+                "unsupported AKShare equity-mortgage parameter(s): "
+                + ", ".join(unknown),
+                request=request,
+                retryable=False,
+            )
+        if request.parameters.get("view") != _OWNERSHIP_PLEDGE_EQUITY_MORTGAGE_VIEW:
+            raise ProviderRequestError(
+                "equity-mortgage view must be "
+                f"{_OWNERSHIP_PLEDGE_EQUITY_MORTGAGE_VIEW!r}",
+                request=request,
+                retryable=False,
+            )
+        raw_date = request.parameters.get(
+            "date",
+            _OWNERSHIP_PLEDGE_EQUITY_MORTGAGE_DEFAULT_DATE,
+        )
+        _parse_pledge_date_parameter(raw_date, request=request)
+        return {"date": raw_date}
     if endpoint_name == "stock_gpzy_individual_pledge_ratio_detail_em":
         if listing.market is not ListingMarket.A:
             raise ProviderRequestError(
@@ -5282,6 +5375,32 @@ def _validate_ownership_pledge_detail_normalizer_rows(
                     )
 
 
+def _validate_ownership_pledge_equity_mortgage_normalizer_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+) -> None:
+    """Validate replayed CNINFO equity-mortgage rows inside the listing boundary."""
+
+    for row in rows:
+        row_code = _row_code(row, ListingMarket.A)
+        if row_code is None:
+            raise ProviderNormalizationError(
+                "equity-mortgage row has no explicit listing code"
+            )
+        if row_code != listing.code:
+            raise ProviderNormalizationError(
+                f"equity-mortgage row entity {row_code!r} does not match "
+                f"requested listing {listing.canonical_id!r}"
+            )
+        for field in _OWNERSHIP_PLEDGE_EQUITY_MORTGAGE_DATE_FIELDS:
+            found, raw_date = _lookup(row, (field,))
+            if found and _text_value(raw_date) is not None:
+                if _parse_date_value(raw_date) is None:
+                    raise ProviderNormalizationError(
+                        f"equity-mortgage row has an invalid date in {field!r}"
+                    )
+
+
 def _validate_insider_share_change_normalizer_rows(
     rows: Sequence[Mapping[str, JSONValue]],
     listing: _ListingRef,
@@ -5378,6 +5497,35 @@ def _validate_ownership_pledge_detail_provider_rows(
                     raise ProviderResponseError(
                         f"AKShare returned an individual ownership-pledge row with an "
                         f"invalid date in {field!r} for {request.entity_id!r}",
+                        provider=provider,
+                        request=request,
+                    )
+
+
+def _validate_ownership_pledge_equity_mortgage_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> None:
+    """Validate CNINFO equity-mortgage rows before listing filtering and storage."""
+
+    for row in rows:
+        if _row_code(row, ListingMarket.A) is None:
+            raise ProviderResponseError(
+                f"AKShare returned an equity-mortgage row without a listing code for "
+                f"{request.entity_id!r}",
+                provider=provider,
+                request=request,
+            )
+        for field in _OWNERSHIP_PLEDGE_EQUITY_MORTGAGE_DATE_FIELDS:
+            found, raw_date = _lookup(row, (field,))
+            if found and _text_value(raw_date) is not None:
+                if _parse_date_value(raw_date) is None:
+                    raise ProviderResponseError(
+                        f"AKShare returned an equity-mortgage row with an invalid date in "
+                        f"{field!r} for {request.entity_id!r}",
                         provider=provider,
                         request=request,
                     )

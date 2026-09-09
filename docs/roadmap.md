@@ -901,6 +901,31 @@ creates no canonical litigation, quasi-debt, governance or valuation fact.
 H-share coverage and filing-backed litigation review remain unresolved. Live
 calls remain opt-in; tests use an injected client and a frozen fixture.
 
+### Phase 2.36 — A-share CNINFO equity-mortgage raw acquisition contract (COMPLETE)
+
+The mapping review now covers the current documented CNINFO
+`stock_cg_equity_mortgage_cninfo` endpoint under the existing
+`OWNERSHIP_PLEDGE` category. The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+defines a `date` parameter with documented default `20210930`, and the
+[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_cg_equity_mortgage.py)
+retrieves the CNINFO thematic-statistics response. Its rows contain explicit
+A-share code/name, announcement date, pledgor/pledgee, pledge and release
+quantities, percentage fields and an opaque pledge-event description.
+
+The provider selects this endpoint only for the explicit request view
+`view=equity_mortgage`, passes the documented date or default, validates every
+returned listing code and any populated announcement date, filters the
+universe to the requested A-share code and retains every matching row. The
+query date is preserved as a request boundary; the multiple announcement
+dates and event descriptions do not establish one canonical pledge or
+accounting period. The documented quantities and ratios also do not establish
+a fully diluted share count, settled pledged cash/debt-equivalent amount,
+beneficial control or a governance judgment. The normalizer therefore emits
+`AKSHARE_EQUITY_MORTGAGE_RAW_ONLY`, marks `governance_risk_level` as critically
+missing and creates no canonical fact. H-share coverage and filing-backed
+pledge interpretation remain unresolved. Live calls remain opt-in; tests use
+an injected client and a frozen fixture.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -910,7 +935,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.35 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.36 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -1118,7 +1143,7 @@ Phase 2 is active. Phase 1 remains frozen: changes to formulas, hard-gate
 semantics, schemas or `strict-v1` thresholds require a separately reviewed,
 versioned change.
 
-Phase 2.35 completes the next documented structured-data boundary while
+Phase 2.36 completes the next documented structured-data boundary while
 keeping share-change, repurchase and rights-issue period, status, unit and
 economic-scope questions unresolved, and keeping ownership-pledge holder,
 governance and economic-scope questions unresolved. The A-share
@@ -1233,3 +1258,11 @@ aggregate interval do not establish a canonical event/statement period, legal
 status, accounting scope, material quasi-debt amount or governance judgment.
 It leaves `material_quasi_debt` and `governance_risk_level` critically missing;
 H-share coverage and filing-backed litigation review remain unresolved.
+
+The documented A-share CNINFO equity-mortgage response is retained under
+`AKSHARE_EQUITY_MORTGAGE_RAW_ONLY` because its query date, announcement dates,
+pledgor/pledgee, quantities, ratios and event descriptions do not establish a
+canonical pledge period, fully diluted share count, settled pledged
+cash/debt-equivalent amount, beneficial control or a governance judgment. It
+leaves `governance_risk_level` critically missing; H-share coverage and
+filing-backed pledge interpretation remain unresolved.

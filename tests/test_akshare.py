@@ -287,6 +287,13 @@ class FakeAKShare:
             symbol=symbol,
         )
 
+    def stock_cg_equity_mortgage_cninfo(self, *, date: str):
+        return self._return(
+            "stock_cg_equity_mortgage_cninfo",
+            _fixture("a_equity_mortgage.json"),
+            date=date,
+        )
+
     def stock_share_hold_change_sse(self, *, symbol: str):
         return self._return(
             "stock_share_hold_change_sse",
@@ -393,8 +400,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "35"
-    assert AKSHARE_MAPPING_VERSION == "36"
+    assert provider.identity.provider_version == "36"
+    assert AKSHARE_MAPPING_VERSION == "37"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -1749,6 +1756,244 @@ def test_individual_ownership_pledge_detail_cache_replay_does_not_call_upstream(
             "stock_gpzy_individual_pledge_ratio_detail_em",
             {"symbol": "600000"},
         ),
+    ]
+
+
+def test_a_equity_mortgage_fetch_filters_the_documented_date_universe():
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    request = _request(
+        DataCategory.OWNERSHIP_PLEDGE,
+        "SH600000",
+        {"view": "equity_mortgage", "date": "20210930"},
+    )
+
+    record = provider.fetch(request)
+
+    fixture = _fixture("a_equity_mortgage.json")
+    assert record.raw_payload == [row for row in fixture if row["股票代码"] == "600000"]
+    assert fake.calls == [
+        ("stock_cg_equity_mortgage_cninfo", {"date": "20210930"}),
+    ]
+    assert record.response_metadata["endpoint"] == "stock_cg_equity_mortgage_cninfo"
+    assert record.response_metadata["upstream_row_count"] == 3
+    assert record.response_metadata["entity_row_count"] == 2
+    assert record.response_metadata["entity_rows_selected"] is True
+    assert record.response_metadata["listing_scoped_request"] is False
+    assert record.response_metadata["row_filtering"] == "provider"
+    assert record.response_metadata["ownership_pledge_view"] == "equity_mortgage"
+    assert record.response_metadata["requested_date"] == "20210930"
+    assert record.response_metadata["snapshot_scope"] == "requested_date_parameter"
+    assert record.source_uri == "https://webapi.cninfo.com.cn/#/thematicStatistics"
+
+
+def test_equity_mortgage_request_uses_documented_default_and_validates_scope():
+    fake = FakeAKShare()
+    provider = _provider(fake)
+
+    record = provider.fetch(
+        _request(
+            DataCategory.OWNERSHIP_PLEDGE,
+            "SH600000",
+            {"view": "equity_mortgage"},
+        )
+    )
+    assert record.response_metadata["requested_date"] == "20210930"
+    assert fake.calls == [
+        ("stock_cg_equity_mortgage_cninfo", {"date": "20210930"}),
+    ]
+
+    with pytest.raises(ProviderRequestError, match="must be YYYYMMDD"):
+        provider.fetch(
+            _request(
+                DataCategory.OWNERSHIP_PLEDGE,
+                "SH600000",
+                {"view": "equity_mortgage", "date": "2021-09-30"},
+            )
+        )
+    with pytest.raises(ProviderRequestError, match="must be a valid YYYYMMDD date"):
+        provider.fetch(
+            _request(
+                DataCategory.OWNERSHIP_PLEDGE,
+                "SH600000",
+                {"view": "equity_mortgage", "date": "20210931"},
+            )
+        )
+    with pytest.raises(ProviderRequestError, match="unsupported AKShare equity-mortgage"):
+        provider.fetch(
+            _request(
+                DataCategory.OWNERSHIP_PLEDGE,
+                "SH600000",
+                {"view": "equity_mortgage", "date": "20210930", "market": "A"},
+            )
+        )
+    with pytest.raises(ProviderRequestError, match="A-share listings only"):
+        provider.fetch(
+            _request(
+                DataCategory.OWNERSHIP_PLEDGE,
+                "HK00700",
+                {"view": "equity_mortgage", "date": "20210930"},
+            )
+        )
+
+    assert fake.calls == [
+        ("stock_cg_equity_mortgage_cninfo", {"date": "20210930"}),
+    ]
+
+
+def test_equity_mortgage_response_rejects_missing_code_or_invalid_announcement_date():
+    class MissingListingCode(FakeAKShare):
+        def stock_cg_equity_mortgage_cninfo(self, *, date: str):
+            return self._return(
+                "stock_cg_equity_mortgage_cninfo",
+                [{"股票代码": None, "公告日期": "2021-09-30"}],
+                date=date,
+            )
+
+    with pytest.raises(
+        ProviderResponseError,
+        match="equity-mortgage row without a listing code",
+    ):
+        _provider(MissingListingCode()).fetch(
+            _request(
+                DataCategory.OWNERSHIP_PLEDGE,
+                "SH600000",
+                {"view": "equity_mortgage", "date": "20210930"},
+            )
+        )
+
+    class InvalidAnnouncementDate(FakeAKShare):
+        def stock_cg_equity_mortgage_cninfo(self, *, date: str):
+            payload = _fixture("a_equity_mortgage.json")
+            payload[0]["公告日期"] = "not-a-date"
+            return self._return(
+                "stock_cg_equity_mortgage_cninfo",
+                payload,
+                date=date,
+            )
+
+    with pytest.raises(
+        ProviderResponseError,
+        match="equity-mortgage row with an invalid date in '公告日期'",
+    ):
+        _provider(InvalidAnnouncementDate()).fetch(
+            _request(
+                DataCategory.OWNERSHIP_PLEDGE,
+                "SH600000",
+                {"view": "equity_mortgage", "date": "20210930"},
+            )
+        )
+
+
+def test_equity_mortgage_with_no_matching_listing_is_an_empty_raw_snapshot():
+    class NoMatchingMortgage(FakeAKShare):
+        def stock_cg_equity_mortgage_cninfo(self, *, date: str):
+            return self._return(
+                "stock_cg_equity_mortgage_cninfo",
+                [
+                    row
+                    for row in _fixture("a_equity_mortgage.json")
+                    if row["股票代码"] == "000001"
+                ],
+                date=date,
+            )
+
+    fake = NoMatchingMortgage()
+    record = _provider(fake).fetch(
+        _request(
+            DataCategory.OWNERSHIP_PLEDGE,
+            "SH600000",
+            {"view": "equity_mortgage", "date": "20210930"},
+        )
+    )
+
+    assert record.raw_payload == []
+    assert record.response_metadata["upstream_row_count"] == 1
+    assert record.response_metadata["entity_row_count"] == 0
+
+
+def test_equity_mortgage_is_retained_as_raw_evidence_without_canonical_facts():
+    provider = _provider()
+    record = provider.fetch(
+        _request(
+            DataCategory.OWNERSHIP_PLEDGE,
+            "SH600000",
+            {"view": "equity_mortgage", "date": "20210930"},
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="equity-mortgage-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_EQUITY_MORTGAGE_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == [
+        "governance_risk_level",
+    ]
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "canonical pledge period" in normalized.data_quality.notes
+    assert "governance judgment" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+def test_equity_mortgage_normalizer_rejects_replayed_rows_for_another_listing():
+    provider = _provider()
+    record = provider.fetch(
+        _request(
+            DataCategory.OWNERSHIP_PLEDGE,
+            "SH600000",
+            {"view": "equity_mortgage", "date": "20210930"},
+        )
+    )
+    payload = [dict(row) for row in record.raw_payload]
+    payload[0]["股票代码"] = "000001"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=record.source_uri,
+        response_metadata=record.response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match="equity-mortgage row entity"):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-equity-mortgage-entity",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_equity_mortgage_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.OWNERSHIP_PLEDGE,
+        "SH600000",
+        {"view": "equity_mortgage", "date": "20210930"},
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [
+        ("stock_cg_equity_mortgage_cninfo", {"date": "20210930"}),
     ]
 
 

@@ -896,6 +896,37 @@ creates no canonical litigation, quasi-debt, governance or valuation fact.
 | `诉讼次数` | Raw date-range count; it does not establish materiality or a governance conclusion. |
 | `诉讼金额` | Raw amount documented in 万元; it is not promoted to settled quasi-debt or a valuation adjustment. |
 
+## Phase 2.36 A-share CNINFO equity-mortgage raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_cg_equity_mortgage_cninfo` as a CNINFO company-governance
+equity-pledge endpoint. It accepts a `YYYYMMDD` `date` parameter (documented
+default `20210930`) and returns rows with explicit A-share code, announcement
+date, pledgor/pledgee, pledge quantities, percentage fields and an opaque
+pledge-event description. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_cg_equity_mortgage.py)
+uses the CNINFO thematic-statistics response and preserves those rows as
+tabular output.
+
+The provider selects this endpoint only for an explicit
+`OWNERSHIP_PLEDGE` request with `view=equity_mortgage`, passes the documented
+date (or its documented default), validates explicit listing identity and any
+populated announcement date, filters the universe to the requested A-share
+code and preserves every matching row. The query date is a source request
+boundary, not an event or accounting period. The documented quantities and
+ratios do not establish a fully diluted share count, settled pledged
+cash/debt-equivalent amount, beneficial control or a governance judgment. The
+normalizer therefore emits `AKSHARE_EQUITY_MORTGAGE_RAW_ONLY`, marks
+`governance_risk_level` as critically missing and creates no canonical fact.
+H-share coverage and filing-backed pledge interpretation remain unresolved.
+
+| Raw upstream item | Phase 2 treatment |
+| --- | --- |
+| `股票代码`, `股票简称` | Explicit A-share identity, filtering and evidence context only. |
+| `公告日期` | Validated publication/event metadata; it is not silently selected as a canonical pledge or statement period. |
+| `出质人`, `质权人`, `质押事项` | Raw holder, counterparty and event-description context; no control, legal-status or governance conclusion. |
+| `质押数量`, `质押解除数量` | Raw quantities documented in 万股; no fully diluted share, issuance, buyback or pledged-cash fact is inferred. |
+| `占总股本比例`, `累计质押占总股本比例` | Raw published ratios; no canonical dilution, debt-equivalent or governance metric is calculated. |
+
 ## Eligibility, identity and market context
 
 | Normalized field | Status | Boundary note |
