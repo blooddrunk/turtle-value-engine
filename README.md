@@ -83,6 +83,10 @@ Phase 2.12 adds the documented A-share `stock_fhps_em` distribution snapshot
 with an explicit June-30 or December-31 report date; its distribution ratios,
 status and multiple event dates remain raw-only and do not establish settled
 ordinary dividend cash or a canonical payout ratio.
+Phase 2.13 adds the documented A-share `stock_yjyg_em` earnings-forecast
+snapshot under a distinct `EARNINGS_FORECAST` category; its forecast ranges,
+forecast type and announcement dates remain raw-only and do not establish
+reported parent or consolidated net profit for the requested period.
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

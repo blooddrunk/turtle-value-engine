@@ -281,6 +281,33 @@ settled cash amount, ordinary-versus-special policy or a payout denominator.
 | `预案公告日`, `股权登记日`, `除权除息日`, `最新公告日期` | Raw-only; announcement, record and ex-rights dates are not silently collapsed into a cash-flow period. |
 | `方案进度`, `总股本`, per-share indicators | Raw-only context; progress, unit/scope and accounting basis are not sufficient for canonical shareholder-return facts. |
 
+## Phase 2.13 A-share earnings-forecast raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_yjyg_em` as an Eastmoney A-share universe endpoint. It accepts
+an explicit quarterly report date in `YYYYMMDD` form, with documented coverage
+starting at `20081231`, and returns forecast indicators, forecast values or
+ranges, change reasons, forecast type, prior-period values and announcement
+dates. The endpoint's forecast values are estimates rather than reported
+statement facts, and the announcement date is publication metadata rather than
+the statement period.
+
+The provider requires an exact quarter-end date, validates explicit listing
+identity on every upstream row, filters the universe to the requested A-share
+code and retains all matching rows. The normalizer keeps the selected response
+as structured evidence, marks `parent_net_profit` and
+`consolidated_net_profit` as critically missing and emits
+`AKSHARE_EARNINGS_FORECAST_RAW_ONLY`; it emits no profit, revenue, margin, CDC
+or valuation fact. H-share forecasts remain outside this slice.
+
+| Raw upstream item | Phase 2 treatment |
+| --- | --- |
+| `预测指标`, `业绩变动`, `预测数值`, `业绩变动幅度` | Raw-only; forecast ranges and change percentages are not reported parent or consolidated profit. |
+| `业绩变动原因`, `预告类型` | Raw-only; provider text and forecast type are not treated as a filing-backed earnings classification. |
+| `上年同期值` | Raw-only; a prior-period comparison value does not establish the current reported statement amount or entity basis. |
+| `公告日期` | Raw-only; publication date is not silently substituted for the requested report period or filing availability timestamp. |
+| `股票代码`, `股票简称` | Used only for conservative listing selection and evidence context; they do not create a normalized profit fact. |
+
 ## Eligibility, identity and market context
 
 | Normalized field | Status | Boundary note |

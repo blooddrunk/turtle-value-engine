@@ -385,10 +385,11 @@ or share-count fact. The existing no-parameter A/H dividend endpoints remain
 unchanged. Live calls remain opt-in; tests use an injected client and a frozen
 fixture.
 
-The next Phase 2 task remains a focused mapping review of one documented
-structured-data or corporate-action boundary. No additional share, dividend,
-buyback, split or issuance fact is admitted until its period, unit, entity,
-status and economic scope are explicit.
+This slice left the next Phase 2 task as a focused mapping review of one
+documented structured-data or corporate-action boundary. Phase 2.13 below
+covers that next boundary; no additional share, dividend, buyback, split or
+issuance fact is admitted until its period, unit, entity, status and economic
+scope are explicit.
 
 This mapping-review hardening keeps statement currency provenance conservative
 across all three slices: only explicit valid three-letter codes are accepted,
@@ -396,6 +397,27 @@ missing currency is preserved as `null` rather than inferred from the listing
 market, and conflicting currencies within one report period are rejected. Unit
 scaling and consolidated-versus-standalone presentation basis remain open
 questions for a later review.
+
+### Phase 2.13 — A-share earnings-forecast raw acquisition contract (COMPLETE)
+
+The mapping review now covers the documented AKShare Eastmoney
+`stock_yjyg_em` endpoint under a new provider-neutral `EARNINGS_FORECAST`
+category. The endpoint accepts an A-share quarterly report date in `YYYYMMDD`
+form, from the documented `20081231` start date, and returns a universe of
+forecast rows containing listing identity, forecast indicators, forecast
+values/ranges, change reasons, forecast type, prior-period values and
+announcement dates. The provider validates the exact quarter-end request,
+rejects rows without explicit listing identity, filters to the requested
+six-digit A-share code and retains all matching rows.
+
+Forecast values and announcement dates do not establish reported parent or
+consolidated net profit for the requested statement period. The normalizer
+therefore retains the filtered response as structured evidence, marks
+`parent_net_profit` and `consolidated_net_profit` as critically missing and
+emits `AKSHARE_EARNINGS_FORECAST_RAW_ONLY`; it creates no canonical profit,
+margin, CDC or valuation fact. H-share earnings forecasts remain outside this
+slice. Live calls remain opt-in; tests use an injected client and a frozen
+fixture.
 
 ### Future Phase 2 deliverables
 
@@ -406,7 +428,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.12 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.13 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -614,12 +636,15 @@ Phase 2 is active. Phase 1 remains frozen: changes to formulas, hard-gate
 semantics, schemas or `strict-v1` thresholds require a separately reviewed,
 versioned change.
 
-Phase 2.12 completes the next documented structured-data boundary while
+Phase 2.13 completes the next documented structured-data boundary while
 keeping share-change, repurchase and rights-issue period, status, unit and
 economic-scope questions unresolved, and keeping ownership-pledge holder,
 governance and economic-scope questions unresolved. The A-share
 dividend-distribution snapshot remains raw-only because its ratios, status and
 multiple dates do not establish settled ordinary cash or a canonical payout
 denominator. Phase 2 remains active; the next documented category must still
-be reviewed before its fields can enter the canonical contract.
-Filing-derived classifications remain a Phase 3 concern.
+be reviewed before its fields can enter the canonical contract. The A-share
+earnings-forecast snapshot remains raw-only because forecast ranges, forecast
+type and announcement dates do not establish reported parent or consolidated
+profit for the requested period. Filing-derived classifications remain a
+Phase 3 concern.

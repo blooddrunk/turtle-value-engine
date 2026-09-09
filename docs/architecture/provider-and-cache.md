@@ -1,6 +1,6 @@
 # Provider and Cache Architecture
 
-> Status: Phase 2 foundation, read-only AKShare statement slices, dividend events/snapshots, share-capital and corporate-action raw slices
+> Status: Phase 2 foundation, read-only AKShare statement slices, earnings forecasts, dividend events/snapshots, share-capital and corporate-action raw slices
 
 This document freezes the boundary between structured-data acquisition and the
 deterministic Turtle Value Engine. It does not authorize a live provider or
@@ -88,6 +88,7 @@ LISTING_METADATA
 MARKET_QUOTE
 MARKET_HISTORY
 INCOME_STATEMENT
+EARNINGS_FORECAST
 BALANCE_SHEET
 CASH_FLOW_STATEMENT
 DIVIDENDS
@@ -245,6 +246,21 @@ planned-versus-completed outcome, amount unit/scaling or share-class/dilution
 scope, so the normalizer keeps the response as raw evidence and does not create
 an issuance, buyback, split or share-count fact.
 
+The earnings-forecast slice is also acquisition-only. The current
+[AKShare documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and
+[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_yjyg_em.py)
+describe `stock_yjyg_em` as an Eastmoney A-share universe endpoint accepting an
+explicit quarterly report date in `YYYYMMDD` form. It returns forecast
+indicators, forecast values or ranges, change reasons, forecast types,
+prior-period values and announcement dates. The provider validates the exact
+quarter-end date, rejects rows without an explicit listing code, filters to the
+requested A-share listing and retains all matching rows. Forecast values and
+announcement dates are estimates/publication metadata rather than reported
+parent or consolidated profit, so the normalizer keeps raw evidence, marks
+both reported profit fields as critically missing and emits
+`AKSHARE_EARNINGS_FORECAST_RAW_ONLY` without creating a canonical profit,
+margin, CDC or valuation fact. H-share forecasts remain outside this slice.
+
 When a statement row includes an explicit security code, the normalizer also
 checks it against the requested listing and rejects a mismatch. Statement
 endpoints that omit a row-level code remain bound to their listing-scoped
@@ -399,12 +415,13 @@ The cache performs no network retries. The normalizer performs no provider
 retries. The deterministic pipeline performs no provider retries and should
 not be rerun as a substitute for resolving missing facts.
 
-## 12. Phase 2.2–2.12 AKShare adapter
+## 12. Phase 2.2–2.13 AKShare adapter
 
 The first concrete adapter is intentionally limited to read-only metadata,
-market observations, three documented financial-statement slices, raw-only
-dividend event/snapshot and corporate-action categories, two A-share
-share-capital raw slices and one A-share ownership-pledge raw slice. It
+market observations, three documented financial-statement slices, one
+raw-only earnings-forecast category, raw-only dividend event/snapshot and
+corporate-action categories, two A-share share-capital raw slices and one
+A-share ownership-pledge raw slice. It
 advertises exactly these capabilities:
 
 | Category | A-share endpoint | H-share endpoint | Normalized output |
@@ -415,6 +432,7 @@ advertises exactly these capabilities:
 | `MARKET_HISTORY` | `stock_zh_a_hist` | `stock_hk_daily` | dated OHLCV/turnover extension facts |
 | `CASH_FLOW_STATEMENT` | `stock_cash_flow_sheet_by_report_em` (Sina fallback) | `stock_financial_hk_report_em` | explicit `reported_cfo` and `acquisition_cash` lines |
 | `INCOME_STATEMENT` | `stock_profit_sheet_by_report_em` (Sina fallback) | `stock_financial_hk_report_em` | explicit `parent_net_profit` and `consolidated_net_profit` lines |
+| `EARNINGS_FORECAST` | `stock_yjyg_em` | — | A-share quarterly forecast rows as raw structured evidence only; no reported-profit fact |
 | `BALANCE_SHEET` | `stock_zcfz_em` / `stock_zcfz_bj_em` (detailed report-period and Sina fallbacks) | `stock_financial_hk_report_em` | explicit `book_cash`, equity totals and aggregate interest-bearing debt when labeled |
 | `DIVIDENDS` | `stock_dividend_cninfo`; `stock_fhps_em` (explicit report date) | `stock_hk_dividend_payout_em` | raw structured evidence only; no canonical dividend cash or payout ratio |
 | `CORPORATE_ACTIONS` | `stock_repurchase_em` (no parameters); `stock_allotment_cninfo` (date-range request) | — | A-share repurchase or rights-issue rows; raw structured evidence only; no canonical buyback, issuance or dilution fact |
@@ -434,10 +452,11 @@ Tests inject a client object and use frozen JSON fixtures. The existing
 never calls AKShare, and a failed live request is never written as a snapshot.
 
 The normalizer emits `Fact` and `Evidence` objects inside the existing
-`NormalizedCompanyInput`. For the dividend, corporate-action, share-capital
-and ownership-pledge raw slices it emits raw-record evidence only and explicit
-unresolved flags where needed; it does not emit canonical dividend, buyback,
-issuance, dilution, share, governance, pledged-cash or debt-equivalent facts.
+`NormalizedCompanyInput`. For the earnings-forecast, dividend,
+corporate-action, share-capital and ownership-pledge raw slices it emits
+raw-record evidence only and explicit unresolved flags where needed; it does
+not emit canonical forecast-profit, dividend, buyback, issuance, dilution,
+share, governance, pledged-cash or debt-equivalent facts.
 It never maps provider headline market cap,
 listing-years inferred from history length, unlisted financial-statement lines,
 total liabilities as interest-bearing debt, filing classifications, or any
@@ -481,10 +500,14 @@ December-31 report date and listing-filtered rows are retained, but ratio units,
 settled cash status, ordinary-versus-special classification and payout
 denominator remain unresolved; no dividend-cash or payout-ratio fact is
 admitted automatically.
+For the A-share earnings-forecast slice, the exact quarter-end report date and
+listing-filtered rows are retained, but forecast ranges, forecast type,
+publication timing and reported-profit entity semantics remain unresolved; no
+parent or consolidated net-profit fact is admitted automatically.
 
 ## 13. Deliberate non-goals
 
-This foundation plus the Phase 2.2–2.12 slices does not include:
+This foundation plus the Phase 2.2–2.13 slices does not include:
 
 - Tushare, BaoStock or any other additional provider;
 - automatic network scheduling, credentials or retry orchestration outside an adapter;
