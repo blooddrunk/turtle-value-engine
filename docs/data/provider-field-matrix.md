@@ -203,6 +203,33 @@ issues and any filing-backed classification remain unresolved.
 | `配股比例`, `配股价格` and fees | Raw-only; no share-issuance, split or return metric is derived. |
 | `证券代码`, `证券简称`, `机构名称` | Used only for conservative listing identity validation; they do not create a normalized corporate-action fact. |
 
+## Phase 2.11 company share-change raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_share_changes_cninfo.py)
+document `stock_share_change_cninfo` as a CNINFO endpoint with A-share
+`symbol`, `start_date` and `end_date` inputs in `YYYYMMDD` form. Its rows
+contain change and announcement dates, total/circulation holdings, multiple
+share-class holdings and change-reason fields. The documented numeric output
+types do not define a unit or a fully diluted economic share scope, and the two
+dates do not by themselves define the accepted event period.
+
+When an explicit date range is supplied to the `SHARE_CAPITAL` category, the
+adapter passes the six-digit A-share code and range, preserves every returned
+row and records the range and row count. The normalizer validates explicit row
+identity, retains structured-data evidence, sets
+`normalized_diluted_economic_shares` in the critical-missing inventory and
+emits `AKSHARE_SHARE_CAPITAL_CHANGE_RAW_ONLY`. It emits no canonical share,
+issuance, buyback or split fact.
+
+| Raw upstream item | Phase 2 treatment |
+| --- | --- |
+| `变动日期`, `公告日期` | Raw-only; change/effective-date and announcement-period semantics are not silently collapsed. |
+| `总股本`, `已流通股份`, `流通受限股份` | Raw-only; documented numeric types do not settle units or fully diluted economic scope. |
+| share-class holdings such as `人民币普通股`, `境外上市外资股-H股` | Raw-only; A/H/class equivalence and dilution treatment remain unresolved. |
+| `变动原因`, `变动原因编码` | Raw-only; reason text/codes are not classified as buyback, issuance, split or another economic action. |
+| `证券代码`, `证券简称`, `机构名称` | Used only for conservative listing identity validation; they do not create a normalized share or action fact. |
+
 ## Eligibility, identity and market context
 
 | Normalized field | Status | Boundary note |
@@ -214,7 +241,7 @@ issues and any filing-backed classification remain unresolved.
 | `current_market_cap` | `DERIVED_DETERMINISTIC` | Prefer canonical price × normalized share count; a provider headline market cap is a cross-check, not a replacement. |
 | `listing_equivalent_market_cap` | `DERIVED_DETERMINISTIC` | Derive for the selected listing, including any explicit FX/share mapping. |
 | `actual_aggregate_company_market_cap` | `DERIVED_DETERMINISTIC` | Aggregate A/H listings only under the existing multi-listing contract; never merge listing prices. |
-| `normalized_diluted_economic_shares` | `DERIVED_DETERMINISTIC` | Derive only from verified share-capital facts and corporate actions after entity/class, unit and dilution treatment are explicit; the current AKShare raw slice does not supply it. |
+| `normalized_diluted_economic_shares` | `DERIVED_DETERMINISTIC` | Derive only from verified share-capital facts and corporate actions after entity/class, unit and dilution treatment are explicit; the current AKShare raw slices do not supply it. |
 
 Company `primary_listing`, `other_listings`, sector and reporting currency are
 identity/context fields, not valuation facts. A sector-specific `special_model`

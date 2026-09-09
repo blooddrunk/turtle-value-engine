@@ -217,6 +217,21 @@ It does not treat `变更日期` as a financial-statement period or `总股本` 
 fully diluted shares. H-share share capital and canonical dividend or
 capital-action facts remain outside these raw-only slices.
 
+The company-share-change sub-slice is also acquisition-only. The current
+[AKShare documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and
+[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_share_changes_cninfo.py)
+describe `stock_share_change_cninfo` as a CNINFO endpoint accepting an A-share
+`symbol`, `start_date` and `end_date` in `YYYYMMDD` form. It returns dated rows
+with total/circulation holdings, share-class holdings and change-reason text.
+When a date range is explicitly requested through the `SHARE_CAPITAL` category,
+the adapter passes the six-digit code and range, retains every row and records
+the effective range and row count. The normalizer validates explicit row
+identity, preserves raw evidence, marks
+`normalized_diluted_economic_shares` as critically missing and emits
+`AKSHARE_SHARE_CAPITAL_CHANGE_RAW_ONLY`; it does not treat the change date as a
+financial-statement period or any reported holding as a fully diluted share
+count.
+
 The new rights-issue sub-slice extends the raw-only corporate-action boundary.
 The current [AKShare documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
 describes `stock_allotment_cninfo` as a CNINFO endpoint accepting an A-share
@@ -383,12 +398,12 @@ The cache performs no network retries. The normalizer performs no provider
 retries. The deterministic pipeline performs no provider retries and should
 not be rerun as a substitute for resolving missing facts.
 
-## 12. Phase 2.2–2.10 AKShare adapter
+## 12. Phase 2.2–2.11 AKShare adapter
 
 The first concrete adapter is intentionally limited to read-only metadata,
 market observations, three documented financial-statement slices, raw-only
-dividend and corporate-action categories, and one A-share share-capital raw
-slice. It
+dividend and corporate-action categories, and two A-share share-capital raw
+slices. It
 advertises exactly these capabilities:
 
 | Category | A-share endpoint | H-share endpoint | Normalized output |
@@ -402,7 +417,7 @@ advertises exactly these capabilities:
 | `BALANCE_SHEET` | `stock_zcfz_em` / `stock_zcfz_bj_em` (detailed report-period and Sina fallbacks) | `stock_financial_hk_report_em` | explicit `book_cash`, equity totals and aggregate interest-bearing debt when labeled |
 | `DIVIDENDS` | `stock_dividend_cninfo` | `stock_hk_dividend_payout_em` | raw structured evidence only; no canonical dividend cash or payout ratio |
 | `CORPORATE_ACTIONS` | `stock_repurchase_em` (no parameters); `stock_allotment_cninfo` (date-range request) | — | A-share repurchase or rights-issue rows; raw structured evidence only; no canonical buyback, issuance or dilution fact |
-| `SHARE_CAPITAL` | `stock_zh_a_gbjg_em` | — | raw historical response and provenance only; no canonical share/dilution fact |
+| `SHARE_CAPITAL` | `stock_zh_a_gbjg_em` (no parameters); `stock_share_change_cninfo` (explicit date range) | — | raw historical response and provenance only; no canonical share/dilution fact |
 
 The adapter accepts common stable A/H identifiers such as `SH600000`,
 `000001.SZ`, `A:600000`, `HK00700`, `700.HK` and `H:00700`. A-share history
@@ -435,13 +450,15 @@ endpoint without changing replay semantics, field-name coverage across all
 A/H balance-sheet variants, consolidated-versus-standalone statement basis,
 currency/unit scaling, the absence of parent-equity and interest-bearing-debt
 aggregates in the documented A-share quarterly balance shape, and
-point-in-time publication semantics. For the share-capital raw slice, the
-remaining questions are the unit represented by `总股本`, whether each
-`变更日期` is an effective legal change date or a point-in-time observation
-date, the treatment of options/convertibles and other dilution, the economic
-relationship between A/H classes, and whether the change-reason text can be
-used to classify buybacks, issuance or splits. For the corporate-action raw
-slice, the planned-versus-completed status, cumulative amount scope and
+point-in-time publication semantics. For the share-capital raw slices, the
+remaining questions are the unit represented by `总股本` and the CNINFO numeric
+holdings, whether each `变更日期` is an effective legal change date or a
+point-in-time observation date, whether `公告日期` or `变动日期` is the
+accepted event period, the treatment of options/convertibles and other
+dilution, the economic relationship between A/H classes, and whether the
+change-reason text can be used to classify buybacks, issuance or splits. For
+the corporate-action raw slice, the planned-versus-completed status, cumulative
+amount scope and
 announcement-date versus cash-period semantics remain unresolved. None of
 those classifications is admitted automatically.
 The period/total-cash/ordinary-versus-special classification needed to
@@ -454,7 +471,7 @@ remain unresolved; no capital-action classification is admitted automatically.
 
 ## 13. Deliberate non-goals
 
-This foundation plus the Phase 2.2–2.10 slices does not include:
+This foundation plus the Phase 2.2–2.11 slices does not include:
 
 - Tushare, BaoStock or any other additional provider;
 - automatic network scheduling, credentials or retry orchestration outside an adapter;

@@ -100,6 +100,13 @@ class FakeAKShare:
             symbol=symbol,
         )
 
+    def stock_share_change_cninfo(self, **kwargs):
+        return self._return(
+            "stock_share_change_cninfo",
+            _fixture("a_share_change_cninfo.json"),
+            **kwargs,
+        )
+
     def stock_financial_hk_report_em(self, **kwargs):
         return self._return(
             "stock_financial_hk_report_em",
@@ -199,8 +206,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "share_capital",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "9"
-    assert AKSHARE_MAPPING_VERSION == "10"
+    assert provider.identity.provider_version == "10"
+    assert AKSHARE_MAPPING_VERSION == "11"
 
 
 def test_a_quote_is_selected_from_the_upstream_universe_and_kept_opaque():
@@ -317,12 +324,112 @@ def test_share_capital_endpoint_rejects_parameters_and_h_share_requests_before_u
             _request(
                 DataCategory.SHARE_CAPITAL,
                 "SH600000",
-                {"start_date": "2024-01-01"},
+                {"unexpected": "value"},
             )
         )
     with pytest.raises(ProviderRequestError, match="A-share listings only"):
         provider.fetch(_request(DataCategory.SHARE_CAPITAL, "HK00700"))
 
+    assert fake.calls == []
+
+
+def test_a_share_change_fetch_uses_documented_listing_and_date_range_contract():
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    request = _request(
+        DataCategory.SHARE_CAPITAL,
+        "SH600000",
+        {"start_date": "20180101", "end_date": "20241231"},
+    )
+
+    record = provider.fetch(request)
+
+    assert record.raw_payload == _fixture("a_share_change_cninfo.json")
+    assert fake.calls == [
+        (
+            "stock_share_change_cninfo",
+            {"symbol": "600000", "start_date": "20180101", "end_date": "20241231"},
+        )
+    ]
+    assert record.response_metadata["endpoint"] == "stock_share_change_cninfo"
+    assert record.response_metadata["upstream_row_count"] == 2
+    assert record.response_metadata["listing_scoped_request"] is True
+    assert record.response_metadata["range_filtering"] == "provider"
+    assert record.response_metadata["start_date"] == "20180101"
+    assert record.response_metadata["end_date"] == "20241231"
+    assert record.source_uri == "https://webapi.cninfo.com.cn/#/apiDoc"
+
+
+def test_a_share_change_response_rejects_an_explicit_cross_listing_row():
+    class WrongEntityAKShare(FakeAKShare):
+        def stock_share_change_cninfo(self, **kwargs):
+            payload = _fixture("a_share_change_cninfo.json")
+            payload[0]["证券代码"] = "000001"
+            return self._return("stock_share_change_cninfo", payload, **kwargs)
+
+    fake = WrongEntityAKShare()
+    provider = _provider(fake)
+
+    with pytest.raises(ProviderResponseError, match="share-capital row entity"):
+        provider.fetch(
+            _request(
+                DataCategory.SHARE_CAPITAL,
+                "SH600000",
+                {"start_date": "20180101", "end_date": "20241231"},
+            )
+        )
+    assert fake.calls == [
+        (
+            "stock_share_change_cninfo",
+            {"symbol": "600000", "start_date": "20180101", "end_date": "20241231"},
+        )
+    ]
+
+
+def test_a_share_change_request_uses_documented_default_date_range_when_partly_omitted():
+    fake = FakeAKShare()
+    provider = _provider(fake)
+
+    provider.fetch(
+        _request(DataCategory.SHARE_CAPITAL, "SH600000", {"start_date": "20180101"})
+    )
+
+    assert fake.calls == [
+        (
+            "stock_share_change_cninfo",
+            {"symbol": "600000", "start_date": "20180101", "end_date": "20241021"},
+        )
+    ]
+
+
+def test_a_share_change_request_validates_date_range_and_parameters_before_upstream_call():
+    fake = FakeAKShare()
+    provider = _provider(fake)
+
+    with pytest.raises(ProviderRequestError, match="share-capital start_date must be YYYYMMDD"):
+        provider.fetch(
+            _request(
+                DataCategory.SHARE_CAPITAL,
+                "SH600000",
+                {"start_date": "2024-01-01"},
+            )
+        )
+    with pytest.raises(ProviderRequestError, match="share-capital start_date must not be after"):
+        provider.fetch(
+            _request(
+                DataCategory.SHARE_CAPITAL,
+                "SH600000",
+                {"start_date": "20250101", "end_date": "20240101"},
+            )
+        )
+    with pytest.raises(ProviderRequestError, match="unsupported AKShare share-capital"):
+        provider.fetch(
+            _request(
+                DataCategory.SHARE_CAPITAL,
+                "SH600000",
+                {"start_date": "20240101", "reason": "配股"},
+            )
+        )
     assert fake.calls == []
 
 
@@ -365,6 +472,94 @@ def test_share_capital_raw_record_replays_offline_without_calling_upstream(tmp_p
     assert replay.mode is RetrievalMode.CACHE_REPLAY
     assert replay.record == live.record
     assert fake.calls == [("stock_zh_a_gbjg_em", {"symbol": "600000"})]
+
+
+def test_a_share_change_raw_record_is_not_promoted_to_a_canonical_share_fact():
+    provider = _provider()
+    record = provider.fetch(
+        _request(
+            DataCategory.SHARE_CAPITAL,
+            "SH600000",
+            {"start_date": "20180101", "end_date": "20241231"},
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="share-change-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_SHARE_CAPITAL_CHANGE_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == [
+        "normalized_diluted_economic_shares",
+    ]
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "canonical period, unit or diluted economic share scope" in (
+        normalized.data_quality.notes
+    )
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    errors = list(Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json")))
+    assert errors == []
+
+
+def test_a_share_change_normalizer_rejects_replayed_rows_for_another_listing():
+    provider = _provider()
+    record = provider.fetch(
+        _request(
+            DataCategory.SHARE_CAPITAL,
+            "SH600000",
+            {"start_date": "20180101", "end_date": "20241231"},
+        )
+    )
+    mismatched_payload = [dict(row) for row in record.raw_payload]
+    mismatched_payload[0]["证券代码"] = "000001"
+    mismatched = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=mismatched_payload,
+        source_uri=record.source_uri,
+        response_metadata=record.response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match="share-capital row entity"):
+        normalize_akshare_records(
+            [mismatched],
+            analysis_id="mismatched-share-change-entity",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_a_share_change_raw_record_replays_offline_without_calling_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.SHARE_CAPITAL,
+        "SH600000",
+        {"start_date": "20180101", "end_date": "20241231"},
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [
+        (
+            "stock_share_change_cninfo",
+            {"symbol": "600000", "start_date": "20180101", "end_date": "20241231"},
+        )
+    ]
 
 
 def test_a_rights_issue_fetch_uses_documented_listing_and_date_range_contract():

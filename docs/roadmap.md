@@ -319,10 +319,36 @@ buyback, split or share-count fact. H-share corporate actions and
 filing-backed interpretation remain unresolved. Live calls remain opt-in;
 tests use an injected client and a frozen fixture.
 
-The next Phase 2 task is a focused mapping review of one remaining documented
-structured-data category; no additional dividend, buyback, split, issuance or
-diluted-share fact is admitted until its period, unit and economic scope are
-explicit.
+This slice leaves the next documented structured-data review open; no
+additional dividend, buyback, split, issuance or diluted-share fact is admitted
+until its period, unit and economic scope are explicit.
+
+### Phase 2.11 — A-share company share-change raw contract (COMPLETE)
+
+The mapping review now covers the current documented AKShare CNINFO
+`stock_share_change_cninfo` endpoint under the provider-neutral
+`SHARE_CAPITAL` category. The endpoint accepts an A-share `symbol` plus
+`start_date` and `end_date` strings in `YYYYMMDD` form and returns historical
+company-share-change rows with change/announcement dates, total and
+circulation holdings, share-class holdings and change reasons. The provider
+uses this endpoint only when a date range is explicitly requested, passes the
+six-digit code and range, retains every returned row and records the range and
+row count.
+
+The documented numeric fields do not define a unit or fully diluted economic
+scope, and the response dates do not establish one canonical event period.
+The normalizer therefore validates explicit row identity, emits structured
+evidence only, sets `normalized_diluted_economic_shares` as critically missing
+and emits `AKSHARE_SHARE_CAPITAL_CHANGE_RAW_ONLY`; it creates no canonical
+share, issuance, buyback or split fact. The existing no-parameter
+`stock_zh_a_gbjg_em` raw slice remains unchanged. H-share share capital and
+filing-backed action classification remain unresolved. Live calls remain
+opt-in; tests use an injected client and a frozen fixture.
+
+The next Phase 2 task remains a focused mapping review of one documented
+structured-data or corporate-action boundary. No additional share, dividend,
+buyback, split or issuance fact is admitted until its period, unit, entity,
+status and economic scope are explicit.
 
 This mapping-review hardening keeps statement currency provenance conservative
 across all three slices: only explicit valid three-letter codes are accepted,
@@ -340,7 +366,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.10 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.11 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -548,8 +574,9 @@ Phase 2 is active. Phase 1 remains frozen: changes to formulas, hard-gate
 semantics, schemas or `strict-v1` thresholds require a separately reviewed,
 versioned change.
 
-Phase 2.10 completes the next documented structured-data boundary while
-keeping repurchase and rights-issue period, status, unit and economic-scope
-questions unresolved. Phase 2 remains active; the next documented category
-must still be reviewed before its fields can enter the canonical contract.
+Phase 2.11 completes the next documented structured-data boundary while
+keeping share-change, repurchase and rights-issue period, status, unit and
+economic-scope questions unresolved. Phase 2 remains active; the next
+documented category must still be reviewed before its fields can enter the
+canonical contract.
 Filing-derived classifications remain a Phase 3 concern.

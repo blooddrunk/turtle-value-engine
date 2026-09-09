@@ -71,10 +71,13 @@ slice and Phase 2.10 adds the documented `stock_allotment_cninfo` rights-issue
 endpoint as a listing-scoped raw-only slice. Planned/completed repurchase
 amounts and announcement dates, plus rights-issue outcome, date, unit and
 dilution semantics, are not mapped into canonical buyback, issuance or
-dilution facts without a settled period and economic-scope review. Filing
-retrieval and LLM-assisted evidence analysis remain unimplemented. The deterministic
-`tve analyze` command is still offline-only and does not call a provider or an
-LLM.
+dilution facts without a settled period and economic-scope review. Phase 2.11
+adds the documented A-share `stock_share_change_cninfo` endpoint as an
+explicit-date-range raw-only share-capital slice; its date, unit, class and
+dilution semantics remain unresolved and are not mapped into canonical facts.
+Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
+deterministic `tve analyze` command is still offline-only and does not call a
+provider or an LLM.
 
 Install the live-provider extra only when an explicitly network-enabled
 workflow is intended:

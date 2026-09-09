@@ -6,7 +6,7 @@ cached records without installing AKShare or making a network request.
 
 The adapter currently implements metadata, market observations, three narrow
 financial-statement slices, raw-only dividend and corporate-action slices, and
-an A-share share-capital raw slice. Upstream column names are handled in this
+A-share share-capital raw slices. Upstream column names are handled in this
 module and are never passed to the deterministic calculation or gate code.
 """
 
@@ -52,9 +52,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "9"
+AKSHARE_ADAPTER_VERSION = "10"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "10"
+AKSHARE_MAPPING_VERSION = "11"
 
 
 class ListingMarket(StrEnum):
@@ -103,6 +103,7 @@ _SOURCE_URIS = {
     "stock_hk_dividend_payout_em": "https://emweb.securities.eastmoney.com/PC_HKF10/pages/home/index.html",
     "stock_repurchase_em": "https://data.eastmoney.com/gphg/hglist.html",
     "stock_zh_a_gbjg_em": "https://emweb.securities.eastmoney.com/pc_hsf10/pages/index.html#/gbjg",
+    "stock_share_change_cninfo": "https://webapi.cninfo.com.cn/#/apiDoc",
     "stock_allotment_cninfo": "https://webapi.cninfo.com.cn/#/dataBrowse",
     "stock_financial_report_sina": "https://vip.stock.finance.sina.com.cn/corp/go.php/vFD_FinanceSummary/",
     "stock_financial_hk_report_em": "https://emweb.securities.eastmoney.com/PC_HKF10/FinancialAnalysis/index",
@@ -141,6 +142,10 @@ _HISTORY_PARAMETER_NAMES = frozenset(
 )
 
 _FINANCIAL_STATEMENT_PARAMETER_NAMES = frozenset({"indicator", "statement_date"})
+
+_SHARE_CAPITAL_PARAMETER_NAMES = frozenset({"start_date", "end_date"})
+_SHARE_CHANGE_DEFAULT_START_DATE = "20091227"
+_SHARE_CHANGE_DEFAULT_END_DATE = "20241021"
 
 _CORPORATE_ACTION_PARAMETER_NAMES = frozenset({"start_date", "end_date"})
 _ALLOTMENT_DEFAULT_START_DATE = "19700101"
@@ -308,6 +313,16 @@ class AKShareProvider(StructuredDataProvider):
             response_metadata["upstream_row_count"] = len(rows)
         elif request.category is DataCategory.SHARE_CAPITAL:
             rows = _table_rows(payload, provider=self.identity, request=request)
+            if endpoint.name == "stock_share_change_cninfo":
+                _validate_share_capital_provider_rows(
+                    rows,
+                    listing,
+                    provider=self.identity,
+                    request=request,
+                )
+                response_metadata["start_date"] = kwargs["start_date"]
+                response_metadata["end_date"] = kwargs["end_date"]
+                response_metadata["range_filtering"] = "provider"
             response_metadata["upstream_row_count"] = len(rows)
             response_metadata["listing_scoped_request"] = True
         elif request.category is DataCategory.CORPORATE_ACTIONS:
@@ -388,6 +403,9 @@ class AKShareProvider(StructuredDataProvider):
             category,
             statement_date_requested="statement_date" in request.parameters,
             corporate_action_date_requested=any(
+                name in request.parameters for name in ("start_date", "end_date")
+            ),
+            share_capital_date_requested=any(
                 name in request.parameters for name in ("start_date", "end_date")
             ),
         )
@@ -729,8 +747,12 @@ class AKShareNormalizer:
                     raise ProviderNormalizationError(
                         "AKShare share-capital raw slice supports A-share listings only"
                     )
+                if record.response_metadata.get("endpoint") == "stock_share_change_cninfo":
+                    _validate_share_capital_normalizer_rows(rows, listing)
+                    normalizer_flags.add("AKSHARE_SHARE_CAPITAL_CHANGE_RAW_ONLY")
+                else:
+                    normalizer_flags.add("AKSHARE_SHARE_CAPITAL_RAW_ONLY")
                 missing_fields.add("normalized_diluted_economic_shares")
-                normalizer_flags.add("AKSHARE_SHARE_CAPITAL_RAW_ONLY")
             else:
                 raise ProviderNormalizationError(
                     f"unsupported AKShare normalization category: {record.request.category.value}"
@@ -765,6 +787,13 @@ class AKShareNormalizer:
                 " The documented A-share share-capital history is retained as raw "
                 "evidence only: its change-date, unit and diluted economic scope "
                 "are not sufficient for a canonical share-count fact."
+            )
+        if "AKSHARE_SHARE_CAPITAL_CHANGE_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented A-share company share-change response is retained "
+                "as raw evidence only: its change/announcement dates, numeric share "
+                "holdings and change reasons do not establish a canonical period, "
+                "unit or diluted economic share scope."
             )
         if "AKSHARE_ALLOTMENT_RAW_ONLY" in normalizer_flags:
             notes += (
@@ -862,6 +891,7 @@ def _endpoint_candidates(
     *,
     statement_date_requested: bool = False,
     corporate_action_date_requested: bool = False,
+    share_capital_date_requested: bool = False,
 ) -> tuple[str, ...]:
     market = listing.market
     if category is DataCategory.COMPANY_METADATA:
@@ -916,6 +946,8 @@ def _endpoint_candidates(
             return ("stock_allotment_cninfo",)
         return ("stock_repurchase_em",)
     if category is DataCategory.SHARE_CAPITAL:
+        if share_capital_date_requested:
+            return ("stock_share_change_cninfo",)
         return ("stock_zh_a_gbjg_em",)
     raise ProviderCapabilityError(f"AKShare adapter does not support {category.value!r}")
 
@@ -967,6 +999,41 @@ def _share_capital_kwargs(
     listing: _ListingRef,
     request: ProviderRequest,
 ) -> dict[str, object]:
+    if endpoint_name == "stock_share_change_cninfo":
+        if listing.market is not ListingMarket.A:
+            raise ProviderRequestError(
+                "the AKShare share-capital endpoint supports A-share listings only",
+                request=request,
+                retryable=False,
+            )
+        unknown = sorted(set(request.parameters) - _SHARE_CAPITAL_PARAMETER_NAMES)
+        if unknown:
+            raise ProviderRequestError(
+                "unsupported AKShare share-capital parameter(s): " + ", ".join(unknown),
+                request=request,
+                retryable=False,
+            )
+        start_date, start_value = _share_change_date_parameter(
+            request.parameters.get("start_date", _SHARE_CHANGE_DEFAULT_START_DATE),
+            name="start_date",
+            request=request,
+        )
+        end_date, end_value = _share_change_date_parameter(
+            request.parameters.get("end_date", _SHARE_CHANGE_DEFAULT_END_DATE),
+            name="end_date",
+            request=request,
+        )
+        if start_value > end_value:
+            raise ProviderRequestError(
+                "share-capital start_date must not be after end_date",
+                request=request,
+                retryable=False,
+            )
+        return {
+            "symbol": listing.code,
+            "start_date": start_date,
+            "end_date": end_date,
+        }
     if endpoint_name != "stock_zh_a_gbjg_em":
         raise ProviderRequestError(
             f"unsupported AKShare share-capital endpoint {endpoint_name!r}",
@@ -1048,6 +1115,29 @@ def _allotment_date_parameter(
     except ValueError as exc:
         raise ProviderRequestError(
             f"corporate-action {name} must be a valid YYYYMMDD date",
+            request=request,
+            retryable=False,
+        ) from exc
+    return raw_value, parsed
+
+
+def _share_change_date_parameter(
+    raw_value: object,
+    *,
+    name: str,
+    request: ProviderRequest,
+) -> tuple[str, date]:
+    if not isinstance(raw_value, str) or not re.fullmatch(r"\d{8}", raw_value):
+        raise ProviderRequestError(
+            f"share-capital {name} must be YYYYMMDD",
+            request=request,
+            retryable=False,
+        )
+    try:
+        parsed = datetime.strptime(raw_value, "%Y%m%d").date()
+    except ValueError as exc:
+        raise ProviderRequestError(
+            f"share-capital {name} must be a valid YYYYMMDD date",
             request=request,
             retryable=False,
         ) from exc
@@ -1454,6 +1544,26 @@ def _validate_corporate_action_provider_rows(
             )
 
 
+def _validate_share_capital_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> None:
+    """Reject explicitly cross-listed rows before storing share-change evidence."""
+
+    for row in rows:
+        row_code = _row_code(row, ListingMarket.A)
+        if row_code is not None and row_code != listing.code:
+            raise ProviderResponseError(
+                f"AKShare returned share-capital row entity {row_code!r} for "
+                f"requested listing {listing.canonical_id!r}",
+                provider=provider,
+                request=request,
+            )
+
+
 def _validate_corporate_action_rows(
     rows: Sequence[Mapping[str, JSONValue]],
     listing: _ListingRef,
@@ -1484,6 +1594,21 @@ def _validate_corporate_action_normalizer_rows(
         if row_code is not None and row_code != listing.code:
             raise ProviderNormalizationError(
                 f"corporate-action row entity {row_code!r} does not match "
+                f"requested listing {listing.canonical_id!r}"
+            )
+
+
+def _validate_share_capital_normalizer_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+) -> None:
+    """Keep replayed share-change payloads inside the requested listing boundary."""
+
+    for row in rows:
+        row_code = _row_code(row, ListingMarket.A)
+        if row_code is not None and row_code != listing.code:
+            raise ProviderNormalizationError(
+                f"share-capital row entity {row_code!r} does not match "
                 f"requested listing {listing.canonical_id!r}"
             )
 
