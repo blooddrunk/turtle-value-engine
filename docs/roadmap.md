@@ -1126,6 +1126,26 @@ canonical fact. Live calls remain opt-in; tests use an injected client and a
 frozen fixture with cache replay, invalid-parameter, response-validation and
 replay-scope coverage.
 
+### Phase 2.45 — A-share top-ten-shareholder raw acquisition contract (COMPLETE)
+
+The mapping review now covers the current Eastmoney
+[`stock_gdfx_top_10_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
+endpoint and its [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_gdfx_em.py).
+It accepts a market-prefixed A-share `symbol` and an exact quarter-end `date`
+such as `20240930`, returning the documented top-ten rows with rank, holder,
+share type, holding quantity, total-share ratio and change fields.
+
+The provider selects this boundary only with the explicit
+`SHAREHOLDER_HOLDINGS` request `view=top_10`, validates the quarter-end report
+date plus rank/holder identity, preserves the request date and symbol scope and
+retains the provider's raw row fields without inventing a row-level code or
+filing date. The normalizer emits
+`AKSHARE_TOP_10_SHAREHOLDERS_RAW_ONLY`, leaves `governance_risk_level`
+critically missing and creates no beneficial-control, concentration, share,
+dilution or valuation fact. Live calls remain opt-in; tests use an injected
+client and a frozen fixture with cache replay, invalid-parameter,
+response-validation and replay-scope coverage.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -1135,7 +1155,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.44 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.45 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -1343,7 +1363,7 @@ Phase 2 is active. Phase 1 remains frozen: changes to formulas, hard-gate
 semantics, schemas or `strict-v1` thresholds require a separately reviewed,
 versioned change.
 
-Phase 2.44 completes the next documented structured-data boundary while
+Phase 2.45 completes the next documented structured-data boundary while
 keeping share-change, repurchase and rights-issue period, status, unit and
 economic-scope questions unresolved, and keeping ownership-pledge holder,
 governance and economic-scope questions unresolved. The A-share
@@ -1361,6 +1381,12 @@ total. The A-share earnings-quick-report snapshot remains raw-only because its
 headline profit and revenue comparisons, per-share indicators and announcement
 date do not establish the canonical entity, unit, diluted-share or filing
 period semantics.
+
+The A-share top-ten-shareholder report-period rows remain raw-only because
+holder rank, quantities, ratios and report-date context do not establish
+beneficial control, a canonical concentration metric or a company-level
+diluted-share series. The explicit `view=top_10` and quarter-end `date` remain
+part of the replayable acquisition boundary.
 
 The A-share business-composition snapshot remains raw-only because its
 overlapping product, industry and geographic rows do not establish a canonical

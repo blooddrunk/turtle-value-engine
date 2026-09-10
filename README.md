@@ -335,6 +335,15 @@ not establish issuer cash flow, an accounting period, a canonical liquidity
 metric or a valuation fact. The provider derives the documented `sh`/`sz`/`bj`
 market argument from the requested A-share identity and validates observation
 dates; the normalizer emits `AKSHARE_INDIVIDUAL_FUND_FLOW_RAW_ONLY`.
+Phase 2.45 adds the documented Eastmoney
+[`stock_gdfx_top_10_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
+endpoint and its [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_gdfx_em.py)
+under `SHAREHOLDER_HOLDINGS` with the explicit `view=top_10` selector and an
+exact quarter-end report `date`. Rank, holder, share type, quantity, ratio and
+change fields remain raw evidence only: they do not establish beneficial
+control, a canonical concentration metric or a company-level diluted-share
+series. The provider preserves the requested report period and listing scope,
+and the normalizer emits `AKSHARE_TOP_10_SHAREHOLDERS_RAW_ONLY`.
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.
