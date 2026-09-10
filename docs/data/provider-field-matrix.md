@@ -786,7 +786,7 @@ share-count, listing-date, income or valuation input.
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
 documents `stock_zh_a_new_em` as a no-argument Eastmoney A-share new-stock
-universe. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_info.py)
+universe. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_zh_a_special.py)
 confirms the exact 17 fields `序号`, `代码`, `名称`, quote/change fields,
 `成交量`, `成交额`, `振幅`, OHLC, `量比`, `换手率`, `市盈率-动态` and `市净率`.
 

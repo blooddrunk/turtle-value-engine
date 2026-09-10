@@ -541,7 +541,7 @@ share fact.
 Phase 2.65 adds the distinct documented Eastmoney A-share new-stock-board
 endpoint [`stock_zh_a_new_em`](https://akshare.akfamily.xyz/data/stock/stock.html),
 whose current official implementation is in
-[`stock_info.py`](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_info.py),
+[`stock_zh_a_special.py`](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_zh_a_special.py),
 under `MARKET_ACTIVITY` with explicit `view=new_stock`. It calls the documented
 no-argument universe, validates the exact 17-field response, six-digit A-share
 codes, unique positive sequence numbers, finite numeric/null quote fields and

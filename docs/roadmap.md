@@ -1583,7 +1583,7 @@ replayed-scope validation.
 The mapping review now covers the distinct Eastmoney A-share new-stock-board
 endpoint documented as
 [`stock_zh_a_new_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
-and implemented by the current [official source](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_info.py).
+and implemented by the current [official source](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_zh_a_special.py).
 It accepts no upstream arguments and returns the exact fields `序号`, `代码`,
 `名称`, `最新价`, `涨跌幅`, `涨跌额`, `成交量`, `成交额`, `振幅`, `最高`, `最低`,
 `今开`, `昨收`, `量比`, `换手率`, `市盈率-动态` and `市净率`.
