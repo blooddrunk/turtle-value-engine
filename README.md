@@ -677,6 +677,23 @@ have no issuer identity, the normalizer emits
 governance, cash, debt-equivalent or share fact. No H-share counterpart or
 calculation, gate, pipeline, CLI or input-loader contract is added.
 
+Phase 2.76 adds the next documented A-share Eastmoney goodwill market-profile
+view, [`stock_sy_profile_em`](https://akshare.akfamily.xyz/data/stock/stock.html),
+under the existing `GOODWILL_IMPAIRMENT` category with explicit
+`view=market_profile`. The current [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_sy_em.py)
+accepts no upstream arguments and returns the historical eight-field A-share
+market overview keyed by `报告期`: goodwill, goodwill impairment, net assets,
+net-profit scale and three provider ratios. The adapter validates the exact
+shape, finite numeric/null values and strictly ascending report periods,
+records the market-wide scope and CNY/provider-ratio context, and retains all
+rows without claiming issuer-level selection. The normalizer emits
+`AKSHARE_GOODWILL_PROFILE_RAW_ONLY`, leaves `goodwill` and `impairment`
+critically missing and creates no canonical accounting, profit, ratio or
+business-quality fact because the aggregate response mixes annual/interim
+periods and still requires primary-filing entity/scope reconciliation. No
+H-share counterpart or calculation, gate, pipeline, CLI or input-loader
+contract is changed.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

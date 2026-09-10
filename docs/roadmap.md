@@ -1829,6 +1829,31 @@ calculation, gate, pipeline, CLI or input-loader contract is added. Live calls
 remain opt-in; tests use an injected client and a frozen fixture with cache
 replay, invalid-request, strict-response, raw-only and replay-scope coverage.
 
+### Phase 2.76 — A-share Eastmoney goodwill market-profile raw acquisition contract (COMPLETE)
+
+The mapping review now covers the next distinct documented AKShare Eastmoney
+goodwill view, `stock_sy_profile_em`, under the existing
+`GOODWILL_IMPAIRMENT` category. The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+describes a no-argument A-share market overview returning all historical rows;
+the [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_sy_em.py)
+returns the exact eight fields `报告期`, `商誉`, `商誉减值`, `净资产`,
+`商誉占净资产比例`, `商誉减值占净资产比例`, `净利润规模` and
+`商誉减值占净利润比例`, with amount columns in yuan and provider ratios.
+
+The provider selects this callable only with explicit `view=market_profile`,
+passes no upstream arguments, validates the exact row shape, finite
+numeric/null values and strictly ascending report periods, and retains the
+complete market-wide response. The requested A-share listing is provenance
+context only: the response has no issuer identity, so no row filtering or
+entity selection is claimed. The normalizer emits
+`AKSHARE_GOODWILL_PROFILE_RAW_ONLY`, marks `goodwill` and `impairment` as
+critically missing and creates no canonical accounting, profit, ratio or
+business-quality fact. Aggregate values mix annual and interim report periods
+and require primary-filing entity, scope and reconciliation review. H-share
+goodwill coverage remains outside this slice. Live calls remain opt-in; tests
+use an injected client and a frozen fixture with cache replay, invalid-request,
+strict-response, raw-only and replay-scope coverage.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -1838,7 +1863,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.75 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.76 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -2053,7 +2078,14 @@ date series, preserves the source percent-to-fraction ratio scaling and does
 not claim listing-level rows or facts. The milestone continues to keep
 share-change, repurchase and rights-issue period, status, unit and
 economic-scope questions unresolved, and keeps ownership-pledge holder,
-governance and economic-scope questions unresolved. The A-share
+governance and economic-scope questions unresolved. Phase 2.76 adds the
+documented A-share `stock_sy_profile_em` goodwill market-profile view under
+`GOODWILL_IMPAIRMENT`. Its no-argument eight-field history is strictly ordered
+by `报告期`, records CNY/provider-ratio context and remains raw-only because
+aggregate annual/interim values do not establish listing accounting scope;
+`goodwill` and `impairment` remain critically missing pending primary-filing
+reconciliation. The milestone keeps H-share goodwill coverage and issuer-level
+accounting interpretation unresolved. The A-share
 Tencent daily-history response is the dated-series exception among the recent
 market-history slices: it maps the existing daily-history extension facts,
 preserves volume as `shares` and amount as `CNY`, and retains its market-

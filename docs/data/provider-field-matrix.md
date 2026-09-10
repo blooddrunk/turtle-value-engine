@@ -1109,6 +1109,34 @@ governance, cash, debt-equivalent or share fact. The response remains outside
 the calculation, gate, pipeline, CLI and input-loader contracts. No H-share
 counterpart or filing-backed pledge interpretation is added.
 
+## Phase 2.76 A-share Eastmoney goodwill market-profile raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_sy_em.py)
+document `stock_sy_profile_em` as a no-argument A-share Eastmoney market
+overview with historical rows. The explicit adapter request is
+`GOODWILL_IMPAIRMENT` plus `view=market_profile`; upstream arguments are empty
+and the requested listing is provenance context only. The response has no
+issuer/listing identity, so all rows are retained with
+`listing_scoped_request=false`, `row_filtering=none` and
+`entity_rows_selected=false`.
+
+| Raw upstream item | Phase 2 treatment |
+| --- | --- |
+| `报告期` | Required report-period label; rows must be strictly ascending and remain provider history rather than a listing-specific statement period. |
+| `商誉`, `商誉减值`, `净资产`, `净利润规模` | Amount fields documented in yuan; recorded with `amount_unit=CNY` as market-wide raw evidence, without canonical accounting or profit scope. |
+| `商誉占净资产比例`, `商誉减值占净资产比例`, `商誉减值占净利润比例` | Provider-reported ratios retained with `ratio_unit=provider_reported_ratio`; no canonical ratio or denominator is inferred. |
+| request `view=market_profile` | Explicit A-share endpoint selection, no-argument upstream call, exact eight-field schema and replay scope. |
+| market-wide response and report-period bounds | Complete response retained; aggregate annual/interim periods require primary-filing entity, scope and reconciliation review. |
+
+The adapter rejects missing or unexpected fields, invalid periods, non-finite
+or non-numeric values and duplicate/non-ascending `报告期` rows. The normalizer
+emits `AKSHARE_GOODWILL_PROFILE_RAW_ONLY`, marks `goodwill` and `impairment`
+as critically missing and creates no canonical accounting, profit, ratio or
+Business Quality fact. H-share goodwill coverage and filing-backed
+reconciliation remain unresolved. The response remains outside the
+calculation, gate, pipeline, CLI and input-loader contracts.
+
 ## Phase 2.9 corporate-action raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)

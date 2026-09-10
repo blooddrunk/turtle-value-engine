@@ -1,6 +1,6 @@
 # Provider and Cache Architecture
 
-> Status: Phase 2 foundation, read-only AKShare statement slices, earnings forecasts/quick reports/performance reports/business composition/financial abstract/financial indicators, H-share latest indicators, A-share disclosure-notice metadata including the Eastmoney individual-notice view, risk-warning status, trading-suspension, restricted-share-release, goodwill-impairment, ESG-rating, SSE/SZSE/BSE margin-detail, share-capital, individual-info snapshot, corporate-action including IPO-summary, external-guarantee, company-litigation, ownership-pledge snapshot/detail, main-shareholder, shareholder-count, A-share actual-controller holding-change, A/H HSGT individual-holdings, SSE/SZSE/BSE insider-share-change, A-share Eastmoney management-holding and A-share top-ten/top-ten-tradable-shareholder/top-ten-tradable-shareholder-detail, Dragon-Tiger market-activity detail/statistics/institution-statistics/market-participation-desire/market-focus/institution-participation/hot-rank/new-stock-board, A+H quote-comparison, A-share Eastmoney intraday-trade, Tencent daily-history/latest-trading-day tick, Sina minute-history, A-share/H-share intraday-history, pre-market-history and five-level bid-ask raw slices
+> Status: Phase 2 foundation, read-only AKShare statement slices, earnings forecasts/quick reports/performance reports/business composition/financial abstract/financial indicators, H-share latest indicators, A-share disclosure-notice metadata including the Eastmoney individual-notice view, risk-warning status, trading-suspension, restricted-share-release, goodwill-impairment detail/market-profile, ESG-rating, SSE/SZSE/BSE margin-detail, share-capital, individual-info snapshot, corporate-action including IPO-summary, external-guarantee, company-litigation, ownership-pledge snapshot/detail, main-shareholder, shareholder-count, A-share actual-controller holding-change, A/H HSGT individual-holdings, SSE/SZSE/BSE insider-share-change, A-share Eastmoney management-holding and A-share top-ten/top-ten-tradable-shareholder/top-ten-tradable-shareholder-detail, Dragon-Tiger market-activity detail/statistics/institution-statistics/market-participation-desire/market-focus/institution-participation/hot-rank/new-stock-board, A+H quote-comparison, A-share Eastmoney intraday-trade, Tencent daily-history/latest-trading-day tick, Sina minute-history, A-share/H-share intraday-history, pre-market-history and five-level bid-ask raw slices
 
 This document freezes the boundary between structured-data acquisition and the
 deterministic Turtle Value Engine. It does not authorize a live provider or
@@ -449,6 +449,22 @@ critically missing and does not create canonical accounting or provider-metric
 facts; primary-filing entity, scope and reconciliation review remain outside
 this slice.
 
+The A-share goodwill market-profile slice is also acquisition-only. The current
+[AKShare documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_sy_profile_em` as a no-argument Eastmoney market overview
+returning historical `报告期` rows with goodwill, goodwill impairment, net
+assets, net-profit scale and provider ratios. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_sy_em.py)
+returns eight exact fields, with amount columns in yuan. The provider selects
+this endpoint only with explicit `view=market_profile`, validates the exact
+schema, finite numeric/null values and strictly ascending report periods, and
+records the market-wide A-share scope plus CNY/provider-ratio context. The
+requested listing is provenance context only because the response has no
+issuer identity; the normalizer emits
+`AKSHARE_GOODWILL_PROFILE_RAW_ONLY`, leaves `goodwill` and `impairment`
+critically missing and creates no canonical fact because the aggregate history
+mixes annual/interim periods and requires primary-filing entity, scope and
+reconciliation review.
+
 The A/H ESG-rating slice is also acquisition-only. The current
 [AKShare documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
 documents `stock_esg_rate_sina` as a no-argument Sina response containing
@@ -706,7 +722,7 @@ The cache performs no network retries. The normalizer performs no provider
 retries. The deterministic pipeline performs no provider retries and should
 not be rerun as a substitute for resolving missing facts.
 
-## 12. Phase 2.2–2.75 AKShare adapter
+## 12. Phase 2.2–2.76 AKShare adapter
 
 The first concrete adapter is intentionally limited to read-only metadata,
 market observations, three documented financial-statement slices, raw-only
@@ -719,7 +735,8 @@ external-guarantee and company-litigation categories,
 four A-share share-capital raw slices, four A-share ownership-pledge raw views,
 an H-share latest-indicator raw slice, an A-share disclosure-notice raw slice
 including the Eastmoney individual-notice view,
-an A-share risk-warning-status, trading-suspension, goodwill-impairment,
+an A-share risk-warning-status, trading-suspension, goodwill-impairment
+detail/market-profile,
 ESG-rating, SSE/SZSE/BSE margin-detail, external-guarantee, company-litigation,
 main-shareholder/shareholder-count/actual-controller holding-change/HSGT
 individual-holdings raw slices, A-share Eastmoney individual-fund-flow,
@@ -753,7 +770,7 @@ advertises exactly these capabilities:
 | `BUSINESS_COMPOSITION` | `stock_zygc_em` | — | A-share historical main-business composition rows as raw structured evidence only; no canonical revenue, margin or business-quality fact |
 | `FINANCIAL_ABSTRACT` | `stock_financial_abstract` | — | A-share historical key-indicator matrix as raw structured evidence only; no canonical revenue, profit or CFO fact |
 | `FINANCIAL_INDICATORS` | `stock_financial_analysis_indicator_em` | `stock_financial_hk_analysis_indicator_em` | A/H historical financial-indicator rows as raw structured evidence only; no canonical revenue, profit, CFO, metric or valuation input |
-| `GOODWILL_IMPAIRMENT` | `stock_sy_jz_em` (exact `date`) | — | A-share report-date goodwill/impairment rows as raw structured evidence only; no canonical goodwill or impairment fact |
+| `GOODWILL_IMPAIRMENT` | `stock_sy_profile_em` (`view=market_profile`, no upstream arguments; market-wide history); `stock_sy_jz_em` (exact `date`; listing-filtered detail) | — | A-share goodwill/impairment market-profile and report-date detail rows as raw structured evidence only; no canonical goodwill or impairment fact |
 | `ESG_RATINGS` | `stock_esg_rate_sina` (no parameters) | `stock_esg_rate_sina` (no parameters) | mixed A/H agency, rating, quarter and marker rows as raw structured evidence only; no canonical ESG score, governance or Business Quality fact |
 | `MARGIN_TRADING` | `stock_margin_detail_sse` (exact `date`; Shanghai A-share), `stock_margin_detail_szse` (exact `date`; Shenzhen A-share) and `stock_margin_detail_bse` (exact `date`; Beijing A-share) | — | requested-date SSE/SZSE/BSE security-level margin rows as raw structured evidence only; no issuer debt/cash/leverage/valuation fact |
 | `EXTERNAL_GUARANTEES` | `stock_cg_guarantee_cninfo` (`symbol=全部`, date range; A-share only) | — | A-share date-range external-guarantee universe filtered to the requested listing as raw evidence only; no canonical quasi-debt, illegal-guarantee or governance fact |
@@ -1397,6 +1414,18 @@ recognition date, so no canonical goodwill, impairment or profit fact is
 emitted automatically. H-share coverage and filing-backed impairment review
 remain unresolved.
 
+For the A-share goodwill market-profile slice, the documented
+`stock_sy_profile_em` response is retained as raw evidence only. Its
+market-wide `商誉`, `商誉减值`, `净资产` and `净利润规模` amounts are in CNY,
+while its three ratios remain provider-reported values; neither group has a
+canonical denominator, issuer scope or filing-backed period. `报告期` is
+validated as a strictly ascending provider history, but annual and interim
+rows are not silently collapsed into a listing-level accounting series. The
+normalizer therefore emits `AKSHARE_GOODWILL_PROFILE_RAW_ONLY`, leaves
+`goodwill` and `impairment` critically missing and creates no canonical
+accounting, profit, ratio or Business Quality fact. H-share coverage and
+primary-filing reconciliation remain unresolved.
+
 For the A/H ESG-rating slice, the documented `stock_esg_rate_sina` mixed
 universe and its listing-filtered result are retained as raw evidence only.
 `评级机构` scales and `评级` values can differ across agencies, and
@@ -1511,7 +1540,7 @@ critically missing.
 
 ## 13. Deliberate non-goals
 
-This foundation plus the Phase 2.2–2.75 slices does not include:
+This foundation plus the Phase 2.2–2.76 slices does not include:
 
 - Tushare, BaoStock or any other additional provider;
 - automatic network scheduling, credentials or retry orchestration outside an adapter;
