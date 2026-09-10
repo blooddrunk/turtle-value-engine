@@ -2287,6 +2287,35 @@ complete-universe validation before filtering, raw-only normalization, cache
 replay and replay-scope rejection. No calculation, gate, pipeline, CLI or
 input-loader contract changes.
 
+### Phase 2.92 — SSE daily-deal overview raw acquisition contract (COMPLETE)
+
+The mapping review now covers the distinct documented AKShare
+`stock_sse_deal_daily` endpoint under the existing `MARKET_ACTIVITY` category
+with explicit `view=sse_deal_daily` and a required `date=YYYYMMDD`. The [AKShare
+stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_summary.py)
+define the SSE requested-trading-day overview and its final six-field order
+`单日情况`, `股票`, `主板A`, `主板B`, `科创板`, `股票回购`. The implementation
+also defines the eight metric rows, orders them as `挂牌数`, `市价总值`,
+`流通市值`, `成交金额`, `成交量`, `平均市盈率`, `换手率` and `流通换手率`,
+and supports dates from `20211227` onward.
+
+The provider validates the complete market-level response before retention,
+including exact field order, exact metric order and finite numeric-or-null
+values. It passes only the documented date to the no-symbol upstream call and
+records the SSE market scope, requested/observation date, field/metric order,
+the fact that no numeric units are documented, and non-listing row counts for
+cache replay. The checked-in fixture preserves the official documentation
+sample, including its explicit null average P/E value.
+
+The normalizer emits `AKSHARE_SSE_DEAL_DAILY_RAW_ONLY` and creates no canonical
+fact: exchange-wide aggregate counts, amounts, turnover, valuation and board
+breakdowns do not establish a requested listing's quote, issuer cash flow,
+shareholder return, governance, valuation or canonical market metric. Tests
+cover request/date validation, exact response shape and values, raw-only
+normalization, replay-scope rejection and cache replay. No calculation, gate,
+pipeline, CLI or input-loader contract changes.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -2296,7 +2325,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.91 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.92 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```

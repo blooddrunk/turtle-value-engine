@@ -894,6 +894,34 @@ three source-shaped rows with one selected listing. The provider-specific
 response remains outside the calculation, gate, pipeline, CLI and input-loader
 contracts.
 
+## Phase 2.92 SSE daily-deal overview raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_sse_deal_daily` as an SSE requested-trading-day market
+overview. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_summary.py)
+accepts `date=YYYYMMDD` (supported from `20211227`) and returns the final six
+fields `单日情况`, `股票`, `主板A`, `主板B`, `科创板` and `股票回购`. Its eight
+metric rows are explicitly ordered as `挂牌数`, `市价总值`, `流通市值`,
+`成交金额`, `成交量`, `平均市盈率`, `换手率` and `流通换手率`.
+
+The provider exposes this endpoint under `MARKET_ACTIVITY` only with explicit
+`view=sse_deal_daily`, passes only the date to the no-symbol upstream call and
+validates the complete market-level response before retention. It records the
+requested date, SSE market scope, exact field/metric order, the absence of
+documented numeric units and non-listing row counts for cache replay. The
+normalizer emits `AKSHARE_SSE_DEAL_DAILY_RAW_ONLY`; no canonical quote,
+accounting, return, governance, valuation or market fact is admitted from an
+exchange-wide aggregate.
+
+| Raw upstream item | Phase 2.92 treatment |
+| --- | --- |
+| `单日情况` | Required metric label in the official eight-row order; it is not a report period or listing identity. |
+| `股票`, `主板A`, `主板B`, `科创板`, `股票回购` | Finite numeric-or-null market/board aggregates; the endpoint does not document numeric units, and no listing-level quote, turnover, valuation or issuer cash-flow fact is inferred. |
+| request `view=sse_deal_daily`, `date` | Explicit requested-day SSE market-overview scope; `listing_scoped_request=false`, no provider filtering, source URI, field/metric order and row counts remain part of the cache replay boundary. |
+
+The provider-specific response remains outside the calculation, gate, pipeline,
+CLI and input-loader contracts.
+
 ## Phase 2.63 A-share Eastmoney dividend-distribution detail raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)

@@ -926,6 +926,19 @@ the normalizer emits `AKSHARE_HK_MAIN_BOARD_QUOTE_RAW_ONLY`, marks
 `current_price` critically missing and creates no canonical quote fact. No
 calculation, gate, pipeline, CLI or input-loader contract changes.
 
+Phase 2.92 adds the distinct official SSE daily-deal overview endpoint
+[`stock_sse_deal_daily`](https://akshare.akfamily.xyz/data/stock/stock.html)
+under `MARKET_ACTIVITY` with explicit `view=sse_deal_daily` and a required
+`date=YYYYMMDD`. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_summary.py)
+returns the exact six fields `单日情况`, `股票`, `主板A`, `主板B`, `科创板` and
+`股票回购` in eight fixed metric rows, supports dates from `20211227`, and
+passes only the date to the SSE market-level call. The provider validates the
+complete response and exact field/metric order, records the requested date,
+SSE scope, absence of documented numeric units and non-listing row counts for
+replay, and the normalizer emits `AKSHARE_SSE_DEAL_DAILY_RAW_ONLY` without
+creating a canonical fact. No calculation, gate, pipeline, CLI or
+input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

@@ -44,6 +44,7 @@ new-stock-board raw slices are also available. The A-share CNINFO IPO-summary,
 Eastmoney IPO-yield,
 Eastmoney individual-notice, Eastmoney market-wide notice and Eastmoney
 shareholder-meeting raw slices are also available.
+The SSE daily-deal overview raw slice is also available.
 The A-share Eastmoney top-ten, top-ten-tradable-shareholder and
 top-ten-tradable-shareholder-detail raw slices are also available.
 Upstream column names are handled in this module and are never passed to the
@@ -92,9 +93,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "91"
+AKSHARE_ADAPTER_VERSION = "92"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "92"
+AKSHARE_MAPPING_VERSION = "93"
 
 
 class ListingMarket(StrEnum):
@@ -187,6 +188,7 @@ _SOURCE_URIS = {
     "stock_hk_hot_rank_detail_em": "https://guba.eastmoney.com/rank/stock?code=HK_00700",
     "stock_hk_hot_rank_latest_em": "https://guba.eastmoney.com/rank/stock?code=HK_00700",
     "stock_zh_ab_comparison_em": "https://quote.eastmoney.com/center/gridlist.html#ab_comparison",
+    "stock_sse_deal_daily": "https://www.sse.com.cn/market/stockdata/overview/day/",
     "stock_zt_pool_em": "https://quote.eastmoney.com/ztb/detail#type=ztgc",
     "stock_zt_pool_dtgc_em": "https://quote.eastmoney.com/ztb/detail#type=dtgc",
     "stock_intraday_em": "https://quote.eastmoney.com/f1.html?newcode=0.000001",
@@ -793,6 +795,38 @@ _MARKET_ACTIVITY_BLOCK_TRADE_UNDOCUMENTED_NUMERIC_UNITS = {
     "收盘价": "not_documented",
     "成交价": "not_documented",
     "折溢率": "not_documented",
+}
+_MARKET_ACTIVITY_SSE_DEAL_DAILY_PARAMETER_NAMES = frozenset({"view", "date"})
+_MARKET_ACTIVITY_SSE_DEAL_DAILY_VIEW = "sse_deal_daily"
+_MARKET_ACTIVITY_SSE_DEAL_DAILY_MIN_DATE = date(2021, 12, 27)
+_MARKET_ACTIVITY_SSE_DEAL_DAILY_FIELDS = (
+    "单日情况",
+    "股票",
+    "主板A",
+    "主板B",
+    "科创板",
+    "股票回购",
+)
+_MARKET_ACTIVITY_SSE_DEAL_DAILY_METRICS = (
+    "挂牌数",
+    "市价总值",
+    "流通市值",
+    "成交金额",
+    "成交量",
+    "平均市盈率",
+    "换手率",
+    "流通换手率",
+)
+_MARKET_ACTIVITY_SSE_DEAL_DAILY_NUMERIC_FIELDS = (
+    "股票",
+    "主板A",
+    "主板B",
+    "科创板",
+    "股票回购",
+)
+_MARKET_ACTIVITY_SSE_DEAL_DAILY_UNDOCUMENTED_UNITS = {
+    field: "not_documented"
+    for field in _MARKET_ACTIVITY_SSE_DEAL_DAILY_NUMERIC_FIELDS
 }
 _MARKET_ACTIVITY_STATISTIC_PARAMETER_NAMES = frozenset({"view", "period"})
 _MARKET_ACTIVITY_STATISTIC_VIEW = "stock_statistic"
@@ -2344,7 +2378,47 @@ class AKShareProvider(StructuredDataProvider):
                 response_metadata["observation_end_date"] = max(observation_dates).isoformat()
         elif request.category is DataCategory.MARKET_ACTIVITY:
             rows = _table_rows(payload, provider=self.identity, request=request)
-            if endpoint.name == _MARKET_ACTIVITY_HOT_RANK_DETAIL_ENDPOINT:
+            if endpoint.name == "stock_sse_deal_daily":
+                requested_date = _market_activity_date_parameter(
+                    kwargs["date"],
+                    name="date",
+                    request=request,
+                )
+                _validate_market_activity_sse_deal_daily_provider_rows(
+                    rows,
+                    provider=self.identity,
+                    request=request,
+                )
+                response_metadata["upstream_row_count"] = len(rows)
+                response_metadata["entity_row_count"] = 0
+                response_metadata["entity_rows_selected"] = False
+                response_metadata["listing_scoped_request"] = False
+                response_metadata["row_filtering"] = "none"
+                response_metadata["market_activity_view"] = (
+                    _MARKET_ACTIVITY_SSE_DEAL_DAILY_VIEW
+                )
+                response_metadata["market_scope"] = "Shanghai Stock Exchange"
+                response_metadata["snapshot_scope"] = "requested_sse_trading_day"
+                response_metadata["requested_date"] = kwargs["date"]
+                response_metadata["observation_date"] = requested_date.isoformat()
+                response_metadata["date_binding"] = "request_only"
+                response_metadata["metric_field"] = "单日情况"
+                response_metadata["metric_order"] = list(
+                    _MARKET_ACTIVITY_SSE_DEAL_DAILY_METRICS
+                )
+                response_metadata["value_fields"] = list(
+                    _MARKET_ACTIVITY_SSE_DEAL_DAILY_NUMERIC_FIELDS
+                )
+                response_metadata["field_count"] = len(
+                    _MARKET_ACTIVITY_SSE_DEAL_DAILY_FIELDS
+                )
+                response_metadata["source_field_order"] = list(
+                    _MARKET_ACTIVITY_SSE_DEAL_DAILY_FIELDS
+                )
+                response_metadata["undocumented_numeric_units"] = dict(
+                    _MARKET_ACTIVITY_SSE_DEAL_DAILY_UNDOCUMENTED_UNITS
+                )
+            elif endpoint.name == _MARKET_ACTIVITY_HOT_RANK_DETAIL_ENDPOINT:
                 observation_dates = (
                     _validate_market_activity_hot_rank_detail_provider_rows(
                         rows,
@@ -4378,6 +4452,10 @@ class AKShareProvider(StructuredDataProvider):
                 request.parameters.get("view")
                 == _MARKET_ACTIVITY_BLOCK_TRADE_VIEW
             ),
+            market_activity_sse_deal_daily_requested=(
+                request.parameters.get("view")
+                == _MARKET_ACTIVITY_SSE_DEAL_DAILY_VIEW
+            ),
             market_activity_limit_up_pool_requested=(
                 request.parameters.get("view") == _MARKET_ACTIVITY_LIMIT_UP_POOL_VIEW
             ),
@@ -4827,7 +4905,14 @@ class AKShareNormalizer:
                     == _MARKET_ACTIVITY_HOT_RANK_DETAIL_VIEW
                 )
                 endpoint_name = record.response_metadata.get("endpoint")
-                if is_hot_rank_detail:
+                if endpoint_name == "stock_sse_deal_daily":
+                    _validate_market_activity_sse_deal_daily_normalizer_scope(
+                        record,
+                        listing,
+                        rows,
+                    )
+                    normalizer_flags.add("AKSHARE_SSE_DEAL_DAILY_RAW_ONLY")
+                elif is_hot_rank_detail:
                     _validate_market_activity_hot_rank_detail_normalizer_scope(
                         record,
                         listing,
@@ -4993,6 +5078,7 @@ class AKShareNormalizer:
                 else:
                     raise ProviderNormalizationError(
                         "AKShare market-activity record must come from "
+                        "stock_sse_deal_daily, "
                         "stock_zh_a_new_em, stock_comment_detail_scrd_desire_em, "
                         "stock_comment_detail_scrd_focus_em, "
                         "stock_comment_detail_zlkp_jgcyd_em, "
@@ -6425,6 +6511,14 @@ class AKShareNormalizer:
                 "discount/premium and brokerage context do not establish issuer cash flow, "
                 "shareholder return, governance, valuation or a canonical market metric."
             )
+        if "AKSHARE_SSE_DEAL_DAILY_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented SSE daily-deal response is retained as raw evidence only: "
+                "its requested-date market aggregates and exchange-board breakdown do not "
+                "establish a listing-level quote, issuer cash flow, shareholder return, "
+                "governance, valuation or canonical market metric; the endpoint does not "
+                "document numeric units for these output values."
+            )
         if "AKSHARE_MARKET_ACTIVITY_STATISTICS_RAW_ONLY" in normalizer_flags:
             notes += (
                 " The documented A-share Dragon-Tiger stock-statistic response is retained "
@@ -6884,6 +6978,7 @@ def _endpoint_candidates(
     market_activity_statistic_requested: bool = False,
     market_activity_institution_statistic_requested: bool = False,
     market_activity_block_trade_requested: bool = False,
+    market_activity_sse_deal_daily_requested: bool = False,
     market_activity_hot_rank_latest_requested: bool = False,
     market_activity_hk_hot_rank_detail_requested: bool = False,
     market_activity_hot_rank_detail_requested: bool = False,
@@ -7001,6 +7096,10 @@ def _endpoint_candidates(
             return ("stock_hk_hist_min_em",)
         return ("stock_hk_daily", "stock_zh_ah_daily")
     if category is DataCategory.MARKET_ACTIVITY:
+        if market_activity_sse_deal_daily_requested:
+            if market is ListingMarket.A:
+                return ("stock_sse_deal_daily",)
+            return ()
         if market_activity_hot_rank_detail_requested:
             if market is ListingMarket.A:
                 return (_MARKET_ACTIVITY_HOT_RANK_DETAIL_ENDPOINT,)
@@ -12833,6 +12932,82 @@ def _validate_market_activity_block_trade_provider_rows(
     return observation_dates
 
 
+def _market_activity_sse_deal_daily_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> str | None:
+    """Return a strict-schema error for one SSE daily-deal overview."""
+
+    if len(rows) != len(_MARKET_ACTIVITY_SSE_DEAL_DAILY_METRICS):
+        return (
+            "SSE daily-deal response must contain exactly "
+            f"{len(_MARKET_ACTIVITY_SSE_DEAL_DAILY_METRICS)} rows"
+        )
+
+    for index, row in enumerate(rows):
+        missing = [field for field in _MARKET_ACTIVITY_SSE_DEAL_DAILY_FIELDS if field not in row]
+        unexpected = [
+            field
+            for field in row
+            if field not in _MARKET_ACTIVITY_SSE_DEAL_DAILY_FIELDS
+        ]
+        if missing:
+            return (
+                f"SSE daily-deal row {index} is missing field(s): "
+                + ", ".join(missing)
+            )
+        if unexpected:
+            return (
+                f"SSE daily-deal row {index} contains unsupported field(s): "
+                + ", ".join(unexpected)
+            )
+        if tuple(row) != _MARKET_ACTIVITY_SSE_DEAL_DAILY_FIELDS:
+            return "SSE daily-deal rows must preserve the official field order"
+
+        metric = row["单日情况"]
+        expected_metric = _MARKET_ACTIVITY_SSE_DEAL_DAILY_METRICS[index]
+        if metric != expected_metric:
+            return (
+                f"SSE daily-deal row {index} field '单日情况' must be "
+                f"{expected_metric!r}"
+            )
+        for field in _MARKET_ACTIVITY_SSE_DEAL_DAILY_NUMERIC_FIELDS:
+            value = row[field]
+            if value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, Real):
+                return (
+                    f"SSE daily-deal row {index} field {field!r} must be numeric or null"
+                )
+            try:
+                numeric = float(value)
+            except (OverflowError, TypeError, ValueError):
+                return (
+                    f"SSE daily-deal row {index} field {field!r} must be numeric or null"
+                )
+            if not math.isfinite(numeric):
+                return (
+                    f"SSE daily-deal row {index} field {field!r} must be finite or null"
+                )
+    return None
+
+
+def _validate_market_activity_sse_deal_daily_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> None:
+    """Validate the complete SSE daily-deal overview before retention."""
+
+    message = _market_activity_sse_deal_daily_validation_message(rows)
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message}",
+            provider=provider,
+            request=request,
+        )
+
+
 def _market_activity_participation_desire_date(value: object) -> date | None:
     if not isinstance(value, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
         return None
@@ -15861,6 +16036,93 @@ def _validate_market_activity_block_trade_normalizer_scope(
             "A-share block-trade response metadata date bounds do not contain "
             "the selected rows"
         )
+
+
+def _validate_market_activity_sse_deal_daily_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> None:
+    """Validate replay scope for the market-wide SSE daily-deal overview."""
+
+    if listing.market is not ListingMarket.A:
+        raise ProviderNormalizationError(
+            "AKShare SSE daily-deal raw slice supports A-share listings only"
+        )
+    endpoint_name = "stock_sse_deal_daily"
+    if record.response_metadata.get("endpoint") != endpoint_name:
+        raise ProviderNormalizationError(
+            "AKShare SSE daily-deal record must come from stock_sse_deal_daily"
+        )
+    if record.source_uri != _SOURCE_URIS[endpoint_name]:
+        raise ProviderNormalizationError(
+            "AKShare SSE daily-deal source URI does not match the documented endpoint"
+        )
+    try:
+        upstream_kwargs = _market_activity_sse_deal_daily_kwargs(
+            endpoint_name,
+            listing,
+            record.request,
+        )
+        requested_date = _market_activity_date_parameter(
+            upstream_kwargs["date"],
+            name="date",
+            request=record.request,
+        )
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+    if set(upstream_kwargs) != {"date"}:
+        raise ProviderNormalizationError(
+            "AKShare SSE daily-deal endpoint must receive only date"
+        )
+
+    message = _market_activity_sse_deal_daily_validation_message(rows)
+    if message is not None:
+        raise ProviderNormalizationError(message)
+
+    expected_metadata = {
+        "endpoint": endpoint_name,
+        "market": ListingMarket.A.value,
+        "listing_code": listing.code,
+        "market_activity_view": _MARKET_ACTIVITY_SSE_DEAL_DAILY_VIEW,
+        "market_scope": "Shanghai Stock Exchange",
+        "listing_scoped_request": False,
+        "row_filtering": "none",
+        "snapshot_scope": "requested_sse_trading_day",
+        "requested_date": upstream_kwargs["date"],
+        "observation_date": requested_date.isoformat(),
+        "date_binding": "request_only",
+        "metric_field": "单日情况",
+        "metric_order": list(_MARKET_ACTIVITY_SSE_DEAL_DAILY_METRICS),
+        "value_fields": list(_MARKET_ACTIVITY_SSE_DEAL_DAILY_NUMERIC_FIELDS),
+        "field_count": len(_MARKET_ACTIVITY_SSE_DEAL_DAILY_FIELDS),
+        "source_field_order": list(_MARKET_ACTIVITY_SSE_DEAL_DAILY_FIELDS),
+        "undocumented_numeric_units": dict(
+            _MARKET_ACTIVITY_SSE_DEAL_DAILY_UNDOCUMENTED_UNITS
+        ),
+        "entity_rows_selected": False,
+        "upstream_row_count": len(rows),
+        "entity_row_count": 0,
+    }
+    boolean_fields = {"listing_scoped_request", "entity_rows_selected"}
+    count_fields = {"field_count", "upstream_row_count", "entity_row_count"}
+    for name, expected in expected_metadata.items():
+        actual = record.response_metadata.get(name)
+        if name in boolean_fields:
+            matches = isinstance(actual, bool) and actual is expected
+        elif name in count_fields:
+            matches = (
+                isinstance(actual, int)
+                and not isinstance(actual, bool)
+                and actual == expected
+            )
+        else:
+            matches = actual == expected
+        if not matches:
+            raise ProviderNormalizationError(
+                f"AKShare SSE daily-deal response metadata {name!r} does not "
+                "match the requested replay scope"
+            )
 
 
 def _validate_market_activity_participation_desire_normalizer_scope(
@@ -19747,6 +20009,8 @@ def _market_activity_kwargs(
         return _market_activity_institution_statistic_kwargs(endpoint_name, listing, request)
     if endpoint_name == "stock_dzjy_mrmx":
         return _market_activity_block_trade_kwargs(endpoint_name, listing, request)
+    if endpoint_name == "stock_sse_deal_daily":
+        return _market_activity_sse_deal_daily_kwargs(endpoint_name, listing, request)
 
     if endpoint_name != "stock_lhb_detail_em":
         raise ProviderRequestError(
@@ -19815,6 +20079,62 @@ def _market_activity_block_trade_kwargs(
         "start_date": request.parameters["start_date"],
         "end_date": request.parameters["end_date"],
     }
+
+
+def _market_activity_sse_deal_daily_kwargs(
+    endpoint_name: str,
+    listing: _ListingRef,
+    request: ProviderRequest,
+) -> dict[str, object]:
+    """Build the documented SSE daily-deal overview request."""
+
+    if endpoint_name != "stock_sse_deal_daily":
+        raise ProviderRequestError(
+            f"unsupported AKShare SSE daily-deal endpoint {endpoint_name!r}",
+            request=request,
+            retryable=False,
+        )
+    if listing.market is not ListingMarket.A:
+        raise ProviderRequestError(
+            "the AKShare SSE daily-deal endpoint supports A-share listings only",
+            request=request,
+            retryable=False,
+        )
+    unknown = sorted(
+        set(request.parameters) - _MARKET_ACTIVITY_SSE_DEAL_DAILY_PARAMETER_NAMES
+    )
+    if unknown:
+        raise ProviderRequestError(
+            "unsupported AKShare SSE daily-deal parameter(s): "
+            + ", ".join(unknown),
+            request=request,
+            retryable=False,
+        )
+    if request.parameters.get("view") != _MARKET_ACTIVITY_SSE_DEAL_DAILY_VIEW:
+        raise ProviderRequestError(
+            "AKShare SSE daily-deal endpoint requires "
+            f"view={_MARKET_ACTIVITY_SSE_DEAL_DAILY_VIEW!r}",
+            request=request,
+            retryable=False,
+        )
+    if "date" not in request.parameters:
+        raise ProviderRequestError(
+            "the AKShare SSE daily-deal endpoint requires date (YYYYMMDD)",
+            request=request,
+            retryable=False,
+        )
+    requested_date = _market_activity_date_parameter(
+        request.parameters["date"],
+        name="date",
+        request=request,
+    )
+    if requested_date < _MARKET_ACTIVITY_SSE_DEAL_DAILY_MIN_DATE:
+        raise ProviderRequestError(
+            "AKShare SSE daily-deal date must be on or after 20211227",
+            request=request,
+            retryable=False,
+        )
+    return {"date": requested_date.strftime("%Y%m%d")}
 
 
 def _market_activity_limit_up_pool_kwargs(
