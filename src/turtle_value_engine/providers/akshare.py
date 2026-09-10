@@ -33,8 +33,9 @@ Xueqiu individual-spot quote and Dragon-Tiger market-activity
 detail/statistics/institution-statistics raw slices are also available. The
 A-share Xueqiu, CNINFO and Tonghuashun company-profile raw slices are also
 available. The A-share dividend-distribution detail and
-new-stock-board raw slices are also available. The A-share CNINFO IPO-summary
-and Eastmoney individual-notice raw slices are also available.
+new-stock-board raw slices are also available. The A-share CNINFO IPO-summary,
+Eastmoney individual-notice and Eastmoney market-wide notice raw slices are also
+available.
 The A-share Eastmoney top-ten, top-ten-tradable-shareholder and
 top-ten-tradable-shareholder-detail raw slices are also available.
 Upstream column names are handled in this module and are never passed to the
@@ -83,9 +84,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "79"
+AKSHARE_ADAPTER_VERSION = "80"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "80"
+AKSHARE_MAPPING_VERSION = "81"
 
 
 class ListingMarket(StrEnum):
@@ -203,6 +204,7 @@ _SOURCE_URIS = {
     "stock_hsgt_individual_em": "https://data.eastmoney.com/hsgt/StockHdDetail/002008.html",
     "stock_zh_a_disclosure_report_cninfo": "http://www.cninfo.com.cn/new/commonUrl/pageOfSearch?url=disclosure/list/search",
     "stock_individual_notice_report": "https://data.eastmoney.com/notices/stock/{symbol}.html",
+    "stock_notice_report": "https://data.eastmoney.com/notices/hsa/5.html",
     "stock_repurchase_em": "https://data.eastmoney.com/gphg/hglist.html",
     "stock_zh_a_gbjg_em": "https://emweb.securities.eastmoney.com/pc_hsf10/pages/index.html#/gbjg",
     "stock_share_change_cninfo": "https://webapi.cninfo.com.cn/#/apiDoc",
@@ -1018,6 +1020,11 @@ _DISCLOSURE_INDIVIDUAL_CATEGORIES = frozenset(
 _DISCLOSURE_INDIVIDUAL_FIELDS = frozenset(
     {"代码", "名称", "公告标题", "公告类型", "公告日期", "网址"}
 )
+_DISCLOSURE_MARKET_PARAMETER_NAMES = frozenset({"view", "category", "date"})
+_DISCLOSURE_MARKET_VIEW = "market_notice"
+_DISCLOSURE_MARKET_DEFAULT_CATEGORY = "全部"
+_DISCLOSURE_MARKET_CATEGORIES = _DISCLOSURE_INDIVIDUAL_CATEGORIES
+_DISCLOSURE_MARKET_FIELDS = _DISCLOSURE_INDIVIDUAL_FIELDS
 _SHARE_CAPITAL_PARAMETER_NAMES = frozenset({"start_date", "end_date", "view"})
 _RESTRICTED_RELEASE_VIEW = "restricted_release_queue"
 _INDIVIDUAL_INFO_VIEW = "individual_info"
@@ -3301,7 +3308,41 @@ class AKShareProvider(StructuredDataProvider):
             response_metadata["listing_scoped_request"] = True
         elif request.category is DataCategory.DISCLOSURE_NOTICES:
             rows = _table_rows(payload, provider=self.identity, request=request)
-            if endpoint.name == "stock_individual_notice_report":
+            if endpoint.name == "stock_notice_report":
+                requested_date = _market_disclosure_notice_date_parameter(
+                    kwargs["date"],
+                    request=request,
+                )[1]
+                _validate_market_disclosure_notice_provider_rows(
+                    rows,
+                    requested_date=requested_date,
+                    provider=self.identity,
+                    request=request,
+                )
+                selected = _select_listing_rows(
+                    rows,
+                    listing,
+                    provider=self.identity,
+                    request=request,
+                    row_label="market-disclosure-notice",
+                )
+                payload = selected
+                response_metadata["upstream_row_count"] = len(rows)
+                response_metadata["entity_row_count"] = len(selected)
+                response_metadata["entity_rows_selected"] = True
+                response_metadata["listing_scoped_request"] = False
+                response_metadata["row_filtering"] = "provider"
+                response_metadata["disclosure_notice_view"] = _DISCLOSURE_MARKET_VIEW
+                response_metadata["market_scope"] = "all_a_share_listings"
+                response_metadata["upstream_symbol"] = kwargs["symbol"]
+                response_metadata["notice_category"] = kwargs["symbol"]
+                response_metadata["requested_date"] = kwargs["date"]
+                response_metadata["observation_date"] = requested_date.isoformat()
+                response_metadata["snapshot_scope"] = "requested_notice_date"
+                response_metadata["notice_date_field"] = "公告日期"
+                response_metadata["date_binding"] = "request_and_row"
+                response_metadata["notice_field_count"] = len(_DISCLOSURE_MARKET_FIELDS)
+            elif endpoint.name == "stock_individual_notice_report":
                 _validate_individual_disclosure_notice_provider_rows(
                     rows,
                     listing,
@@ -3447,6 +3488,9 @@ class AKShareProvider(StructuredDataProvider):
             dividend_detail_requested="view" in request.parameters,
             disclosure_individual_requested=(
                 request.parameters.get("view") == _DISCLOSURE_INDIVIDUAL_VIEW
+            ),
+            disclosure_market_requested=(
+                request.parameters.get("view") == _DISCLOSURE_MARKET_VIEW
             ),
             shareholder_count_date_requested="date" in request.parameters,
             shareholder_control_requested=(
@@ -4560,7 +4604,14 @@ class AKShareNormalizer:
                         "AKShare disclosure-notice raw slice supports A-share listings only"
                     )
                 endpoint_name = record.response_metadata.get("endpoint")
-                if endpoint_name == "stock_individual_notice_report":
+                if endpoint_name == "stock_notice_report":
+                    _validate_market_disclosure_notice_normalizer_scope(
+                        record,
+                        listing,
+                        rows,
+                    )
+                    normalizer_flags.add("AKSHARE_MARKET_NOTICES_RAW_ONLY")
+                elif endpoint_name == "stock_individual_notice_report":
                     _validate_individual_disclosure_notice_normalizer_scope(
                         record,
                         listing,
@@ -4582,7 +4633,7 @@ class AKShareNormalizer:
                     raise ProviderNormalizationError(
                         "AKShare disclosure-notice record must come from "
                         "stock_zh_a_disclosure_report_cninfo or "
-                        "stock_individual_notice_report"
+                        "stock_individual_notice_report or stock_notice_report"
                     )
                 # Notice metadata identifies a filing candidate but does not
                 # contain the filing contents, audit opinion or governance
@@ -5268,6 +5319,13 @@ class AKShareNormalizer:
                 "do not establish filing contents, an accounting opinion or a "
                 "governance-risk judgment."
             )
+        if "AKSHARE_MARKET_NOTICES_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented Eastmoney market-wide notice response is retained as "
+                "raw evidence only: its date-bound announcement metadata does not "
+                "establish filing contents, an accounting opinion or a "
+                "governance-risk judgment."
+            )
         if "AKSHARE_XUEQIU_BASIC_INFO_RAW_ONLY" in normalizer_flags:
             notes += (
                 " The documented Xueqiu individual-basic-info response is retained as "
@@ -5717,6 +5775,7 @@ def _endpoint_candidates(
     dividend_snapshot_date_requested: bool = False,
     dividend_detail_requested: bool = False,
     disclosure_individual_requested: bool = False,
+    disclosure_market_requested: bool = False,
     shareholder_count_date_requested: bool = False,
     shareholder_control_requested: bool = False,
     shareholder_free_top10_requested: bool = False,
@@ -5893,6 +5952,8 @@ def _endpoint_candidates(
         return ()
     if category is DataCategory.DISCLOSURE_NOTICES:
         if market is ListingMarket.A:
+            if disclosure_market_requested:
+                return ("stock_notice_report",)
             if disclosure_individual_requested:
                 return ("stock_individual_notice_report",)
             return ("stock_zh_a_disclosure_report_cninfo",)
@@ -6482,6 +6543,8 @@ def _disclosure_notices_kwargs(
     listing: _ListingRef,
     request: ProviderRequest,
 ) -> dict[str, object]:
+    if endpoint_name == "stock_notice_report":
+        return _market_disclosure_notice_kwargs(listing, request)
     if endpoint_name == "stock_individual_notice_report":
         return _individual_disclosure_notice_kwargs(listing, request)
     if endpoint_name != "stock_zh_a_disclosure_report_cninfo":
@@ -6619,6 +6682,57 @@ def _individual_disclosure_notice_kwargs(
     }
 
 
+def _market_disclosure_notice_kwargs(
+    listing: _ListingRef,
+    request: ProviderRequest,
+) -> dict[str, object]:
+    """Build the documented Eastmoney market-wide notice request."""
+
+    if listing.market is not ListingMarket.A:
+        raise ProviderRequestError(
+            "the AKShare market disclosure-notice endpoint supports A-share listings only",
+            request=request,
+            retryable=False,
+        )
+    unknown = sorted(set(request.parameters) - _DISCLOSURE_MARKET_PARAMETER_NAMES)
+    if unknown:
+        raise ProviderRequestError(
+            "unsupported AKShare market disclosure-notice parameter(s): "
+            + ", ".join(unknown),
+            request=request,
+            retryable=False,
+        )
+    if request.parameters.get("view") != _DISCLOSURE_MARKET_VIEW:
+        raise ProviderRequestError(
+            "AKShare market disclosure-notice view must be 'market_notice'",
+            request=request,
+            retryable=False,
+        )
+
+    category = request.parameters.get(
+        "category",
+        _DISCLOSURE_MARKET_DEFAULT_CATEGORY,
+    )
+    if not isinstance(category, str) or category not in _DISCLOSURE_MARKET_CATEGORIES:
+        choices = ", ".join(sorted(_DISCLOSURE_MARKET_CATEGORIES))
+        raise ProviderRequestError(
+            "AKShare market disclosure-notice category must be one of: " + choices,
+            request=request,
+            retryable=False,
+        )
+    if "date" not in request.parameters:
+        raise ProviderRequestError(
+            "the AKShare market disclosure-notice endpoint requires date (YYYYMMDD)",
+            request=request,
+            retryable=False,
+        )
+    requested_date, _ = _market_disclosure_notice_date_parameter(
+        request.parameters["date"],
+        request=request,
+    )
+    return {"symbol": category, "date": requested_date}
+
+
 def _individual_disclosure_notice_date_parameter(
     raw_value: object,
     *,
@@ -6638,6 +6752,28 @@ def _individual_disclosure_notice_date_parameter(
     except ValueError as exc:
         raise ProviderRequestError(
             f"individual-notice {name} must be a valid YYYYMMDD date",
+            request=request,
+            retryable=False,
+        ) from exc
+    return raw_value, parsed
+
+
+def _market_disclosure_notice_date_parameter(
+    raw_value: object,
+    *,
+    request: ProviderRequest,
+) -> tuple[str, date]:
+    if not isinstance(raw_value, str) or not re.fullmatch(r"\d{8}", raw_value):
+        raise ProviderRequestError(
+            "market disclosure-notice date must be YYYYMMDD",
+            request=request,
+            retryable=False,
+        )
+    try:
+        parsed = datetime.strptime(raw_value, "%Y%m%d").date()
+    except ValueError as exc:
+        raise ProviderRequestError(
+            "market disclosure-notice date must be a valid YYYYMMDD date",
             request=request,
             retryable=False,
         ) from exc
@@ -12592,6 +12728,95 @@ def _validate_disclosure_notice_provider_rows(
                 )
 
 
+def _market_disclosure_notice_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    requested_date: date,
+    listing: _ListingRef | None = None,
+) -> str | None:
+    """Return strict-schema errors for the dated market-wide notice response."""
+
+    for index, row in enumerate(rows):
+        missing = sorted(_DISCLOSURE_MARKET_FIELDS - set(row))
+        if missing:
+            return (
+                f"market disclosure-notice row {index} is missing field(s): "
+                + ", ".join(missing)
+            )
+        unexpected = sorted(set(row) - _DISCLOSURE_MARKET_FIELDS)
+        if unexpected:
+            return (
+                f"market disclosure-notice row {index} contains unsupported field(s): "
+                + ", ".join(unexpected)
+            )
+
+        raw_code = row["代码"]
+        if not isinstance(raw_code, str) or not re.fullmatch(r"\d{6}", raw_code.strip()):
+            return f"market disclosure-notice row {index} has an invalid 代码"
+        row_code = raw_code.strip()
+        if listing is not None and row_code != listing.code:
+            return (
+                f"market disclosure-notice row {index} entity {row_code!r} does not "
+                f"match requested listing {listing.canonical_id!r}"
+            )
+
+        for field in ("名称", "公告标题", "公告类型"):
+            value = row[field]
+            if not isinstance(value, str) or _text_value(value) is None:
+                return (
+                    f"market disclosure-notice row {index} field {field!r} "
+                    "must be a non-empty string"
+                )
+
+        raw_date = row["公告日期"]
+        if not isinstance(raw_date, str):
+            return (
+                f"market disclosure-notice row {index} field '公告日期' "
+                "must be a valid date"
+            )
+        row_date = _parse_date_value(raw_date)
+        if row_date is None:
+            return (
+                f"market disclosure-notice row {index} field '公告日期' "
+                "must be a valid date"
+            )
+        if row_date != requested_date:
+            return (
+                f"market disclosure-notice row {index} 公告日期 "
+                f"{row_date.isoformat()!r} does not match requested date "
+                f"{requested_date.isoformat()!r}"
+            )
+
+        url = row["网址"]
+        if not isinstance(url, str) or not re.fullmatch(r"https?://\S+", url.strip()):
+            return (
+                f"market disclosure-notice row {index} field '网址' must be a "
+                "valid HTTP(S) URL"
+            )
+    return None
+
+
+def _validate_market_disclosure_notice_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    requested_date: date,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> None:
+    """Validate the dated Eastmoney A-share notice universe before filtering."""
+
+    message = _market_disclosure_notice_validation_message(
+        rows,
+        requested_date=requested_date,
+    )
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message}",
+            provider=provider,
+            request=request,
+        )
+
+
 def _individual_disclosure_notice_validation_message(
     rows: Sequence[Mapping[str, JSONValue]],
     listing: _ListingRef,
@@ -14647,6 +14872,94 @@ def _validate_restricted_release_normalizer_rows(
             raise ProviderNormalizationError(
                 "restricted-share-release row has an invalid release date"
             )
+
+
+def _validate_market_disclosure_notice_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> None:
+    """Validate replayed Eastmoney market-notice scope and row shape."""
+
+    if listing.market is not ListingMarket.A:
+        raise ProviderNormalizationError(
+            "AKShare market disclosure-notice raw slice supports A-share listings only"
+        )
+    if record.response_metadata.get("endpoint") != "stock_notice_report":
+        raise ProviderNormalizationError(
+            "AKShare market disclosure-notice record must come from stock_notice_report"
+        )
+    if record.source_uri != _SOURCE_URIS["stock_notice_report"]:
+        raise ProviderNormalizationError(
+            "AKShare market disclosure-notice source URI does not match "
+            "stock_notice_report"
+        )
+    try:
+        upstream_kwargs = _market_disclosure_notice_kwargs(listing, record.request)
+        requested_date = _market_disclosure_notice_date_parameter(
+            upstream_kwargs["date"],
+            request=record.request,
+        )[1]
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+
+    expected_metadata = {
+        "endpoint": "stock_notice_report",
+        "market": ListingMarket.A.value,
+        "listing_code": listing.code,
+        "disclosure_notice_view": _DISCLOSURE_MARKET_VIEW,
+        "market_scope": "all_a_share_listings",
+        "upstream_symbol": upstream_kwargs["symbol"],
+        "notice_category": upstream_kwargs["symbol"],
+        "requested_date": upstream_kwargs["date"],
+        "observation_date": requested_date.isoformat(),
+        "snapshot_scope": "requested_notice_date",
+        "notice_date_field": "公告日期",
+        "date_binding": "request_and_row",
+        "notice_field_count": len(_DISCLOSURE_MARKET_FIELDS),
+        "listing_scoped_request": False,
+        "row_filtering": "provider",
+        "entity_rows_selected": True,
+        "entity_row_count": len(rows),
+    }
+    boolean_fields = {"listing_scoped_request", "entity_rows_selected"}
+    count_fields = {"notice_field_count", "entity_row_count"}
+    for name, expected in expected_metadata.items():
+        actual = record.response_metadata.get(name)
+        if name in boolean_fields:
+            matches = isinstance(actual, bool) and actual is expected
+        elif name in count_fields:
+            matches = (
+                isinstance(actual, int)
+                and not isinstance(actual, bool)
+                and actual == expected
+            )
+        else:
+            matches = actual == expected
+        if not matches:
+            raise ProviderNormalizationError(
+                "market disclosure-notice response metadata "
+                f"{name!r} does not match the requested replay scope"
+            )
+
+    upstream_row_count = record.response_metadata.get("upstream_row_count")
+    if (
+        not isinstance(upstream_row_count, int)
+        or isinstance(upstream_row_count, bool)
+        or upstream_row_count < len(rows)
+    ):
+        raise ProviderNormalizationError(
+            "market disclosure-notice response metadata "
+            "'upstream_row_count' does not match the requested replay scope"
+        )
+
+    message = _market_disclosure_notice_validation_message(
+        rows,
+        requested_date=requested_date,
+        listing=listing,
+    )
+    if message is not None:
+        raise ProviderNormalizationError(message)
 
 
 def _validate_individual_disclosure_notice_normalizer_scope(

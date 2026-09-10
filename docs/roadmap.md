@@ -1941,6 +1941,34 @@ cache replay, invalid-request, exact-schema, response-validation, raw-only and
 replay-scope coverage. No calculation, gate, pipeline, CLI or input-loader
 contract changes.
 
+### Phase 2.80 — A-share Eastmoney market-wide notice raw acquisition contract (COMPLETE)
+
+The mapping review now covers the distinct documented AKShare Eastmoney
+`stock_notice_report` endpoint under the existing `DISCLOSURE_NOTICES` category.
+The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_fundamental/stock_notice.py)
+define the category choices for `symbol`, a required `date=YYYYMMDD` and the
+exact six fields `代码`, `名称`, `公告标题`, `公告类型`, `公告日期` and `网址`.
+
+The provider selects this callable only with explicit `view=market_notice`,
+supports A-share listings only, passes the selected category and validated date
+to the upstream function, validates the complete market-wide response before
+selecting the requested listing, and records the request date, row date,
+provider-filter and market-universe scope for replay. It rejects missing or
+unexpected fields, non-six-digit codes, blank text, invalid URLs and any row
+whose `公告日期` does not match the requested date. An empty listing selection
+is retained as an explicit empty raw snapshot.
+
+The normalizer emits `AKSHARE_MARKET_NOTICES_RAW_ONLY`, marks
+`accounting_opinion` and `governance_risk_level` as critically missing and
+creates no filing-content, accounting or governance fact: date-bound notice
+metadata identifies announcement candidates but does not establish their
+contents, audit language or governance severity. H-share notice coverage
+remains outside this slice. Live calls remain opt-in; tests use an injected
+client and a frozen fixture with cache replay, invalid-request, exact-schema,
+response-validation, raw-only and replay-scope coverage. No calculation, gate,
+pipeline, CLI or input-loader contract changes.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -1950,7 +1978,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.79 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.80 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```

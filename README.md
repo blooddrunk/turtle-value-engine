@@ -739,6 +739,19 @@ announcement values remain raw evidence and do not become canonical accounting,
 profit, ratio or Business Quality facts. No H-share counterpart or calculation,
 gate, pipeline, CLI or input-loader contract is changed.
 
+Phase 2.80 adds the distinct documented A-share Eastmoney market-wide notice
+endpoint [`stock_notice_report`](https://akshare.akfamily.xyz/data/stock/stock.html),
+whose current [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_fundamental/stock_notice.py)
+takes a category `symbol` and required `date=YYYYMMDD` under
+`DISCLOSURE_NOTICES` with explicit `view=market_notice`. The adapter validates
+the exact six fields `代码`, `名称`, `公告标题`, `公告类型`, `公告日期` and `网址`,
+requires every row date to match the requested date, then filters the complete
+A-share notice universe to the requested listing. The normalizer emits
+`AKSHARE_MARKET_NOTICES_RAW_ONLY`: date-bound announcement metadata remains raw
+evidence and does not establish filing contents, an accounting opinion or a
+governance-risk judgment. No H-share counterpart or calculation, gate, pipeline,
+CLI or input-loader contract is changed.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

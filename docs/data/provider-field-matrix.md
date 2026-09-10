@@ -1221,6 +1221,38 @@ Business Quality fact. H-share goodwill coverage and primary-filing
 reconciliation remain unresolved. The response remains outside the
 calculation, gate, pipeline, CLI and input-loader contracts.
 
+## Phase 2.80 A-share Eastmoney market-wide notice raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_fundamental/stock_notice.py)
+document `stock_notice_report` as a market-wide Eastmoney A-share notice
+endpoint. Its request accepts a documented category `symbol` and required
+`date=YYYYMMDD`; the adapter exposes those through explicit
+`view=market_notice` routing. The exact response fields are `代码`, `名称`,
+`公告标题`, `公告类型`, `公告日期` and `网址`.
+
+The provider validates the complete response before filtering it to the
+requested A-share code. Every row must have a six-digit code, non-empty text,
+valid HTTP(S) URL and an `公告日期` equal to the requested date. The raw record
+retains the selected row(s), upstream/selected counts, category, request/row
+date binding, market-wide scope and provider-filter metadata; no matching row
+is an error. The normalizer emits `AKSHARE_MARKET_NOTICES_RAW_ONLY` and leaves
+`accounting_opinion` and `governance_risk_level` critically missing.
+
+| Raw upstream item | Phase 2 treatment |
+| --- | --- |
+| `代码` | Required six-digit A-share listing identity; validated across the full market response and used only for provider-boundary filtering/evidence context. |
+| `名称` | Required non-empty provider display name; retained as raw evidence and not used to overwrite company identity. |
+| `公告标题`, `公告类型` | Required non-empty announcement discovery metadata; not interpreted as filing contents, accounting language or governance severity. |
+| `公告日期` | Required valid date matching the explicit request date; retained as notice-date evidence, not promoted to a financial-statement period or governance fact. |
+| `网址` | Required HTTP(S) notice locator; linked filing contents remain outside this structured-data slice and require the Phase 3 evidence workflow. |
+| request `view=market_notice`, `category`, `date=YYYYMMDD` | Explicit endpoint selector, documented category mapping and date-bound A-share universe; upstream names are not exposed to calculations, gates, pipeline, CLI or input-loader code. |
+
+The slice deliberately remains raw-only: date-bound announcement metadata
+identifies candidates for review but does not establish filing contents, an
+accounting opinion, materiality or a governance-risk judgment. The response
+remains outside the calculation, gate, pipeline, CLI and input-loader contracts.
+
 ## Phase 2.9 corporate-action raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
