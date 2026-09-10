@@ -253,6 +253,34 @@ concentration, share, dilution, governance or valuation fact is admitted.
 | `增减`, `变动比率` | Raw change context; it is not classified as issuance, buyback, transfer or dilution. |
 | request `symbol`, `view=free_top_10`, exact quarter-end `date` | Explicit endpoint and replay scope; the report-period date is not treated as filing availability or an accounting fact. |
 
+## Phase 2.47 A-share top-ten-tradable-shareholder detail raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_gdfx_free_holding_detail_em` as an Eastmoney full-universe
+endpoint accepting an exact quarter-end `date`. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_gdfx_em.py)
+returns listing code/name, holder identity/type, report period, holding
+quantity and change, float-market value and announcement date fields for all
+matching report-period rows.
+
+The provider selects this endpoint only for the explicit
+`SHAREHOLDER_HOLDINGS` request `view=free_holding_detail`, passes only the
+documented `date`, validates every listing code, holder and exact report
+period plus any announcement date, and filters the full universe to the
+requested A-share listing. The normalizer emits
+`AKSHARE_FREE_HOLDING_DETAIL_RAW_ONLY`; no canonical ownership, concentration,
+share, dilution, governance or valuation fact is admitted.
+
+| Raw upstream item | Phase 2 treatment |
+| --- | --- |
+| `股票代码`, `股票简称` | Validated listing identity/name used to select the requested listing; no cross-listing or issuer-level ownership fact is inferred. |
+| `股东名称`, `股东类型` | Raw holder identity/type; no beneficial control or legal ownership fact is admitted. |
+| `报告期` | Exact report-period binding for the requested quarter; it is not treated as filing availability. |
+| `期末持股-数量`, `期末持股-数量变化`, `期末持股-数量变化比例` | Raw tradable-holding quantity/change fields; unit and fully diluted economic-share scope remain unresolved. |
+| `期末持股-持股变动` | Raw provider change label; it is not classified as issuance, buyback, transfer or dilution. |
+| `期末持股-流通市值` | Raw provider float-market value; it is not normalized into a valuation or concentration metric. |
+| `公告日` | Validated announcement-date context; it is not treated as a filing's contents or an accounting period. |
+| request `view=free_holding_detail`, exact quarter-end `date` | Explicit endpoint and replay scope; the full-universe response is filtered by listing before storage. |
+
 ## Phase 2.9 corporate-action raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)

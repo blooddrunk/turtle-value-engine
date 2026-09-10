@@ -387,6 +387,13 @@ class FakeAKShare:
             date=date,
         )
 
+    def stock_gdfx_free_holding_detail_em(self, *, date: str):
+        return self._return(
+            "stock_gdfx_free_holding_detail_em",
+            _fixture("a_free_holding_detail.json"),
+            date=date,
+        )
+
     def stock_hsgt_individual_em(self, *, symbol: str):
         fixture = (
             "a_hsgt_individual_holdings.json"
@@ -478,8 +485,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "46"
-    assert AKSHARE_MAPPING_VERSION == "47"
+    assert provider.identity.provider_version == "47"
+    assert AKSHARE_MAPPING_VERSION == "48"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -8131,4 +8138,270 @@ def test_free_top_10_shareholders_cache_replay_does_not_call_upstream(tmp_path: 
             "stock_gdfx_free_top_10_em",
             {"symbol": "SH600000", "date": "20240930"},
         )
+    ]
+
+
+def test_free_holding_detail_fetch_filters_the_documented_report_period_universe():
+    fake = FakeAKShare()
+    record = _provider(fake).fetch(
+        _request(
+            DataCategory.SHAREHOLDER_HOLDINGS,
+            "SH600000",
+            {"view": "free_holding_detail", "date": "20240930"},
+        )
+    )
+
+    fixture = _fixture("a_free_holding_detail.json")
+    assert record.raw_payload == [row for row in fixture if row["股票代码"] == "600000"]
+    assert fake.calls == [
+        ("stock_gdfx_free_holding_detail_em", {"date": "20240930"}),
+    ]
+    assert record.response_metadata["endpoint"] == "stock_gdfx_free_holding_detail_em"
+    assert record.response_metadata["upstream_row_count"] == 3
+    assert record.response_metadata["entity_row_count"] == 2
+    assert record.response_metadata["entity_rows_selected"] is True
+    assert record.response_metadata["listing_scoped_request"] is False
+    assert record.response_metadata["row_filtering"] == "provider"
+    assert record.response_metadata["free_holding_detail_view"] == "free_holding_detail"
+    assert record.response_metadata["requested_date"] == "20240930"
+    assert record.response_metadata["report_period"] == "2024-09-30"
+    assert record.response_metadata["date_binding"] == "row_and_request"
+    assert record.response_metadata["snapshot_scope"] == "requested_quarter_end"
+    assert record.response_metadata["observation_date_field"] == "报告期"
+    assert record.source_uri == "https://data.eastmoney.com/gdfx/HoldingAnalyse.html"
+
+
+@pytest.mark.parametrize(
+    ("parameters", "match"),
+    [
+        (
+            {"view": "free_holding_detail"},
+            "requires date",
+        ),
+        (
+            {"view": "free_holding_detail", "date": "2024-09-30"},
+            "date must be YYYYMMDD",
+        ),
+        (
+            {"view": "free_holding_detail", "date": "20240931"},
+            "date must be a valid YYYYMMDD date",
+        ),
+        (
+            {"view": "free_holding_detail", "date": "20240929"},
+            "date must be an exact quarter-end report date",
+        ),
+        (
+            {
+                "view": "free_holding_detail",
+                "date": "20240930",
+                "market": "A",
+            },
+            "unsupported AKShare free-holding-detail parameter",
+        ),
+    ],
+)
+def test_free_holding_detail_request_validates_explicit_scope(
+    parameters: dict,
+    match: str,
+):
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError, match=match):
+        _provider(fake).fetch(
+            _request(DataCategory.SHAREHOLDER_HOLDINGS, "SH600000", parameters)
+        )
+
+    assert fake.calls == []
+
+
+def test_free_holding_detail_request_is_a_share_only_before_upstream_call():
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError, match="A-share listings only"):
+        _provider(fake).fetch(
+            _request(
+                DataCategory.SHAREHOLDER_HOLDINGS,
+                "HK00700",
+                {"view": "free_holding_detail", "date": "20240930"},
+            )
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("missing_code", "free-holding-detail row without a listing code"),
+        ("missing_holder", "free-holding-detail row without a holder name"),
+        ("missing_period", "free-holding-detail row without a report period"),
+        ("invalid_period", "invalid free-holding-detail report period"),
+        ("wrong_period", "free-holding-detail row period"),
+        (
+            "invalid_announcement",
+            "invalid free-holding-detail announcement date",
+        ),
+    ],
+)
+def test_free_holding_detail_response_validates_identity_and_report_period(
+    mutation: str,
+    match: str,
+):
+    class InvalidRows(FakeAKShare):
+        def stock_gdfx_free_holding_detail_em(self, *, date: str):
+            rows = _fixture("a_free_holding_detail.json")
+            if mutation == "missing_code":
+                rows[0].pop("股票代码")
+            elif mutation == "missing_holder":
+                rows[0]["股东名称"] = None
+            elif mutation == "missing_period":
+                rows[0].pop("报告期")
+            elif mutation == "invalid_period":
+                rows[0]["报告期"] = "not-a-date"
+            elif mutation == "wrong_period":
+                rows[0]["报告期"] = "2024-06-30"
+            else:
+                rows[0]["公告日"] = "not-a-date"
+            return self._return(
+                "stock_gdfx_free_holding_detail_em",
+                rows,
+                date=date,
+            )
+
+    with pytest.raises(ProviderResponseError, match=match):
+        _provider(InvalidRows()).fetch(
+            _request(
+                DataCategory.SHAREHOLDER_HOLDINGS,
+                "SH600000",
+                {"view": "free_holding_detail", "date": "20240930"},
+            )
+        )
+
+
+def test_free_holding_detail_with_no_matching_listing_is_an_empty_raw_snapshot():
+    class NoMatchingFreeHoldingDetail(FakeAKShare):
+        def stock_gdfx_free_holding_detail_em(self, *, date: str):
+            return self._return(
+                "stock_gdfx_free_holding_detail_em",
+                [
+                    row
+                    for row in _fixture("a_free_holding_detail.json")
+                    if row["股票代码"] == "000001"
+                ],
+                date=date,
+            )
+
+    record = _provider(NoMatchingFreeHoldingDetail()).fetch(
+        _request(
+            DataCategory.SHAREHOLDER_HOLDINGS,
+            "SH600000",
+            {"view": "free_holding_detail", "date": "20240930"},
+        )
+    )
+
+    assert record.raw_payload == []
+    assert record.response_metadata["upstream_row_count"] == 1
+    assert record.response_metadata["entity_row_count"] == 0
+
+
+def test_free_holding_detail_is_retained_as_raw_evidence_without_canonical_facts():
+    record = _provider().fetch(
+        _request(
+            DataCategory.SHAREHOLDER_HOLDINGS,
+            "SH600000",
+            {"view": "free_holding_detail", "date": "20240930"},
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="free-holding-detail-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_FREE_HOLDING_DETAIL_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == [
+        "governance_risk_level",
+    ]
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "top-ten-tradable-shareholder detail universe" in normalized.data_quality.notes
+    assert "canonical concentration metric" in normalized.data_quality.notes
+    assert "diluted-share series" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("entity", "free-holding-detail row entity"),
+        ("period", "free-holding-detail row period"),
+        ("missing_period", "free-holding-detail row has no exact report period"),
+        ("invalid_announcement", "free-holding-detail row has an invalid announcement date"),
+    ],
+)
+def test_free_holding_detail_normalizer_rejects_replayed_scope_mismatches(
+    mutation: str,
+    match: str,
+):
+    record = _provider().fetch(
+        _request(
+            DataCategory.SHAREHOLDER_HOLDINGS,
+            "SH600000",
+            {"view": "free_holding_detail", "date": "20240930"},
+        )
+    )
+    payload = [dict(row) for row in record.raw_payload]
+    if mutation == "entity":
+        payload[0]["股票代码"] = "000001"
+    elif mutation == "period":
+        payload[0]["报告期"] = "2024-06-30"
+    elif mutation == "missing_period":
+        payload[0].pop("报告期")
+    else:
+        payload[0]["公告日"] = "not-a-date"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=record.source_uri,
+        response_metadata=record.response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match=match):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-free-holding-detail",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_free_holding_detail_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.SHAREHOLDER_HOLDINGS,
+        "SH600000",
+        {"view": "free_holding_detail", "date": "20240930"},
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [
+        ("stock_gdfx_free_holding_detail_em", {"date": "20240930"}),
     ]

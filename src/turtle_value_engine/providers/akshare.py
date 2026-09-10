@@ -21,8 +21,8 @@ the SSE/SZSE/BSE margin-detail raw slices, the A-share individual ownership-pled
 detail view, the A-share CNINFO equity-mortgage view, A-share company-litigation
 raw slice and A-share Eastmoney individual-info raw slice.
 The A-share Eastmoney individual-fund-flow raw slice is also available.
-The A-share Eastmoney top-ten and top-ten-tradable-shareholder raw slices are
-also available.
+The A-share Eastmoney top-ten, top-ten-tradable-shareholder and
+top-ten-tradable-shareholder-detail raw slices are also available.
 Upstream column names are handled in this module and are never passed to the
 deterministic calculation or gate code.
 """
@@ -69,9 +69,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "46"
+AKSHARE_ADAPTER_VERSION = "47"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "47"
+AKSHARE_MAPPING_VERSION = "48"
 
 
 class ListingMarket(StrEnum):
@@ -179,6 +179,7 @@ _SOURCE_URIS = {
         "https://emweb.securities.eastmoney.com/PC_HSF10/ShareholderResearch/"
         "Index?type=web&code=SH688686#sdltgd-0"
     ),
+    "stock_gdfx_free_holding_detail_em": "https://data.eastmoney.com/gdfx/HoldingAnalyse.html",
     "stock_financial_report_sina": "https://vip.stock.finance.sina.com.cn/corp/go.php/vFD_FinanceSummary/",
     "stock_financial_hk_report_em": "https://emweb.securities.eastmoney.com/PC_HKF10/FinancialAnalysis/index",
     "stock_esg_rate_sina": "https://finance.sina.com.cn/esg/grade.shtml",
@@ -288,8 +289,10 @@ _HSGT_INDIVIDUAL_PARAMETER_NAMES = frozenset({"view"})
 _HSGT_INDIVIDUAL_VIEW = "hsgt_individual"
 _SHAREHOLDER_TOP10_PARAMETER_NAMES = frozenset({"date", "view"})
 _SHAREHOLDER_TOP10_VIEW = "top_10"
-_SHAREHOLDER_TOP10_QUARTER_ENDS = frozenset({(3, 31), (6, 30), (9, 30), (12, 31)})
+_SHAREHOLDER_QUARTER_ENDS = frozenset({(3, 31), (6, 30), (9, 30), (12, 31)})
 _SHAREHOLDER_FREE_TOP10_VIEW = "free_top_10"
+_SHAREHOLDER_FREE_HOLDING_DETAIL_VIEW = "free_holding_detail"
+_SHAREHOLDER_FREE_HOLDING_DETAIL_PARAMETER_NAMES = frozenset({"date", "view"})
 _SHAREHOLDER_TOP10_ENDPOINTS = frozenset(
     {"stock_gdfx_top_10_em", "stock_gdfx_free_top_10_em"}
 )
@@ -1104,8 +1107,42 @@ class AKShareProvider(StructuredDataProvider):
                 response_metadata["listing_scoped_request"] = True
         elif request.category is DataCategory.SHAREHOLDER_HOLDINGS:
             rows = _table_rows(payload, provider=self.identity, request=request)
-            if endpoint.name in _SHAREHOLDER_TOP10_ENDPOINTS:
-                requested_date = _parse_shareholder_top10_date_parameter(
+            if endpoint.name == "stock_gdfx_free_holding_detail_em":
+                requested_date = _parse_shareholder_quarter_end_date_parameter(
+                    kwargs["date"],
+                    request=request,
+                    label="free-holding-detail",
+                )
+                _validate_shareholder_free_holding_detail_provider_rows(
+                    rows,
+                    listing,
+                    report_period=requested_date,
+                    provider=self.identity,
+                    request=request,
+                )
+                selected = _select_listing_rows(
+                    rows,
+                    listing,
+                    provider=self.identity,
+                    request=request,
+                    row_label="free-holding-detail",
+                )
+                payload = selected
+                response_metadata["upstream_row_count"] = len(rows)
+                response_metadata["entity_row_count"] = len(selected)
+                response_metadata["entity_rows_selected"] = True
+                response_metadata["listing_scoped_request"] = False
+                response_metadata["row_filtering"] = "provider"
+                response_metadata["free_holding_detail_view"] = (
+                    _SHAREHOLDER_FREE_HOLDING_DETAIL_VIEW
+                )
+                response_metadata["requested_date"] = kwargs["date"]
+                response_metadata["report_period"] = requested_date.isoformat()
+                response_metadata["date_binding"] = "row_and_request"
+                response_metadata["snapshot_scope"] = "requested_quarter_end"
+                response_metadata["observation_date_field"] = "报告期"
+            elif endpoint.name in _SHAREHOLDER_TOP10_ENDPOINTS:
+                requested_date = _parse_shareholder_quarter_end_date_parameter(
                     kwargs["date"],
                     request=request,
                     label=(
@@ -1457,6 +1494,9 @@ class AKShareProvider(StructuredDataProvider):
             ),
             shareholder_free_top10_requested=(
                 request.parameters.get("view") == _SHAREHOLDER_FREE_TOP10_VIEW
+            ),
+            shareholder_free_holding_detail_requested=(
+                request.parameters.get("view") == _SHAREHOLDER_FREE_HOLDING_DETAIL_VIEW
             ),
             shareholder_top10_requested=(
                 request.parameters.get("view") == _SHAREHOLDER_TOP10_VIEW
@@ -2325,7 +2365,31 @@ class AKShareNormalizer:
                 missing_fields.add("governance_risk_level")
             elif record.request.category is DataCategory.SHAREHOLDER_HOLDINGS:
                 endpoint_name = record.response_metadata.get("endpoint")
-                if endpoint_name in _SHAREHOLDER_TOP10_ENDPOINTS:
+                if endpoint_name == "stock_gdfx_free_holding_detail_em":
+                    if listing.market is not ListingMarket.A:
+                        raise ProviderNormalizationError(
+                            "AKShare free-holding-detail raw slice supports A-share listings only"
+                        )
+                    try:
+                        _shareholder_holdings_kwargs(
+                            endpoint_name,
+                            listing,
+                            record.request,
+                        )
+                        report_period = _parse_shareholder_quarter_end_date_parameter(
+                            record.request.parameters.get("date"),
+                            request=record.request,
+                            label="free-holding-detail",
+                        )
+                    except ProviderRequestError as exc:
+                        raise ProviderNormalizationError(str(exc)) from exc
+                    _validate_shareholder_free_holding_detail_normalizer_rows(
+                        rows,
+                        listing,
+                        report_period=report_period,
+                    )
+                    normalizer_flags.add("AKSHARE_FREE_HOLDING_DETAIL_RAW_ONLY")
+                elif endpoint_name in _SHAREHOLDER_TOP10_ENDPOINTS:
                     if listing.market is not ListingMarket.A:
                         raise ProviderNormalizationError(
                             "AKShare top-ten-shareholder raw slices support A-share listings only"
@@ -2409,6 +2473,7 @@ class AKShareNormalizer:
                     raise ProviderNormalizationError(
                         "AKShare shareholder-holdings record must come from "
                         "stock_gdfx_top_10_em, stock_gdfx_free_top_10_em, "
+                        "stock_gdfx_free_holding_detail_em, "
                         "stock_hold_control_cninfo, stock_hsgt_individual_em, "
                         "stock_main_stock_holder or stock_hold_num_cninfo"
                     )
@@ -2690,6 +2755,15 @@ class AKShareNormalizer:
                 "beneficial control, a canonical concentration metric or a "
                 "company-level diluted-share series."
             )
+        if "AKSHARE_FREE_HOLDING_DETAIL_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented A-share top-ten-tradable-shareholder detail universe "
+                "is retained as raw evidence only: report-period holder rows, "
+                "quantities, change fields, float-market values and announcement "
+                "dates do not establish beneficial control, a canonical concentration "
+                "metric, a company-level diluted-share series or a filing-backed "
+                "governance judgment."
+            )
         if "AKSHARE_MARGIN_TRADING_RAW_ONLY" in normalizer_flags:
             notes += (
                 " The documented SSE/SZSE/BSE margin-detail response is retained as raw "
@@ -2831,6 +2905,23 @@ _SHAREHOLDER_HOLDINGS_DATE_FIELDS = ("截至日期", "公告日期")
 _SHAREHOLDER_COUNT_DATE_FIELDS = ("变动日期",)
 _HSGT_INDIVIDUAL_DATE_FIELDS = ("持股日期", "HOLD_DATE", "date")
 _SHAREHOLDER_CONTROL_DATE_FIELDS = ("变动日期",)
+_SHAREHOLDER_FREE_HOLDING_DETAIL_PERIOD_FIELDS = (
+    "报告期",
+    "END_DATE",
+    "report_period",
+)
+_SHAREHOLDER_FREE_HOLDING_DETAIL_HOLDER_FIELDS = (
+    "股东名称",
+    "HOLDER_NAME",
+    "holder_name",
+    "holder",
+)
+_SHAREHOLDER_FREE_HOLDING_DETAIL_ANNOUNCEMENT_FIELDS = (
+    "公告日",
+    "UPDATE_DATE",
+    "公告日期",
+    "announcement_date",
+)
 _SHAREHOLDER_TOP10_RANK_FIELDS = ("名次", "rank")
 _SHAREHOLDER_TOP10_HOLDER_FIELDS = ("股东名称", "holder_name", "holder")
 _TRADING_SUSPENSIONS_DATE_FIELDS = ("停牌时间", "停牌截止时间", "预计复牌时间")
@@ -2875,6 +2966,7 @@ def _endpoint_candidates(
     shareholder_count_date_requested: bool = False,
     shareholder_control_requested: bool = False,
     shareholder_free_top10_requested: bool = False,
+    shareholder_free_holding_detail_requested: bool = False,
     shareholder_top10_requested: bool = False,
     shareholder_hsgt_individual_requested: bool = False,
     insider_management_detail_requested: bool = False,
@@ -3038,6 +3130,10 @@ def _endpoint_candidates(
             return ("stock_hsgt_individual_em",)
         if shareholder_control_requested:
             return ("stock_hold_control_cninfo",)
+        if shareholder_free_holding_detail_requested:
+            if market is ListingMarket.A:
+                return ("stock_gdfx_free_holding_detail_em",)
+            return ()
         if shareholder_free_top10_requested:
             if market is ListingMarket.A:
                 return ("stock_gdfx_free_top_10_em",)
@@ -3819,6 +3915,43 @@ def _shareholder_holdings_kwargs(
     listing: _ListingRef,
     request: ProviderRequest,
 ) -> dict[str, object]:
+    if endpoint_name == "stock_gdfx_free_holding_detail_em":
+        if listing.market is not ListingMarket.A:
+            raise ProviderRequestError(
+                "the AKShare free-holding-detail endpoint supports A-share listings only",
+                request=request,
+                retryable=False,
+            )
+        unknown = sorted(
+            set(request.parameters) - _SHAREHOLDER_FREE_HOLDING_DETAIL_PARAMETER_NAMES
+        )
+        if unknown:
+            raise ProviderRequestError(
+                "unsupported AKShare free-holding-detail parameter(s): "
+                + ", ".join(unknown),
+                request=request,
+                retryable=False,
+            )
+        if request.parameters.get("view") != _SHAREHOLDER_FREE_HOLDING_DETAIL_VIEW:
+            raise ProviderRequestError(
+                "the AKShare free-holding-detail endpoint requires "
+                f"view={_SHAREHOLDER_FREE_HOLDING_DETAIL_VIEW!r}",
+                request=request,
+                retryable=False,
+            )
+        if "date" not in request.parameters:
+            raise ProviderRequestError(
+                "the AKShare free-holding-detail endpoint requires date (YYYYMMDD)",
+                request=request,
+                retryable=False,
+            )
+        raw_date = request.parameters["date"]
+        _parse_shareholder_quarter_end_date_parameter(
+            raw_date,
+            request=request,
+            label="free-holding-detail",
+        )
+        return {"date": raw_date}
     if endpoint_name in _SHAREHOLDER_TOP10_ENDPOINTS:
         if listing.market is not ListingMarket.A:
             raise ProviderRequestError(
@@ -3849,7 +3982,7 @@ def _shareholder_holdings_kwargs(
                 retryable=False,
             )
         raw_date = request.parameters["date"]
-        _parse_shareholder_top10_date_parameter(raw_date, request=request, label=label)
+        _parse_shareholder_quarter_end_date_parameter(raw_date, request=request, label=label)
         return {"symbol": listing.canonical_id, "date": raw_date}
     if endpoint_name == "stock_hold_control_cninfo":
         if listing.market is not ListingMarket.A:
@@ -4361,7 +4494,7 @@ def _parse_shareholder_count_date_parameter(
     return parsed
 
 
-def _parse_shareholder_top10_date_parameter(
+def _parse_shareholder_quarter_end_date_parameter(
     raw_value: object,
     *,
     request: ProviderRequest | None = None,
@@ -4381,7 +4514,7 @@ def _parse_shareholder_top10_date_parameter(
             request=request,
             retryable=False,
         ) from exc
-    if (parsed.month, parsed.day) not in _SHAREHOLDER_TOP10_QUARTER_ENDS:
+    if (parsed.month, parsed.day) not in _SHAREHOLDER_QUARTER_ENDS:
         raise ProviderRequestError(
             f"{label} date must be an exact quarter-end report date",
             request=request,
@@ -6560,6 +6693,78 @@ def _top10_rank_value(raw_value: object) -> int | None:
     return int(numeric)
 
 
+def _validate_shareholder_free_holding_detail_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+    *,
+    report_period: date,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> None:
+    """Validate the full tradable-holder detail universe before filtering."""
+
+    for row in rows:
+        if _row_code(row, ListingMarket.A) is None:
+            raise ProviderResponseError(
+                f"AKShare returned a free-holding-detail row without a listing code for "
+                f"{request.entity_id!r}",
+                provider=provider,
+                request=request,
+            )
+        found_holder, raw_holder = _lookup(
+            row,
+            _SHAREHOLDER_FREE_HOLDING_DETAIL_HOLDER_FIELDS,
+        )
+        if not found_holder or _text_value(raw_holder) is None:
+            raise ProviderResponseError(
+                f"AKShare returned a free-holding-detail row without a holder name for "
+                f"{request.entity_id!r}",
+                provider=provider,
+                request=request,
+            )
+        found_period, raw_period = _lookup(
+            row,
+            _SHAREHOLDER_FREE_HOLDING_DETAIL_PERIOD_FIELDS,
+        )
+        if not found_period or _text_value(raw_period) is None:
+            raise ProviderResponseError(
+                f"AKShare returned a free-holding-detail row without a report period for "
+                f"{request.entity_id!r}",
+                provider=provider,
+                request=request,
+            )
+        row_period = _parse_date_value(raw_period)
+        if row_period is None:
+            raise ProviderResponseError(
+                f"AKShare returned an invalid free-holding-detail report period for "
+                f"{request.entity_id!r}",
+                provider=provider,
+                request=request,
+            )
+        if row_period != report_period:
+            raise ProviderResponseError(
+                f"AKShare returned free-holding-detail row period "
+                f"{row_period.isoformat()!r}; requested {report_period.isoformat()!r}",
+                provider=provider,
+                request=request,
+            )
+        found_announcement, raw_announcement = _lookup(
+            row,
+            _SHAREHOLDER_FREE_HOLDING_DETAIL_ANNOUNCEMENT_FIELDS,
+        )
+        if (
+            found_announcement
+            and _text_value(raw_announcement) is not None
+            and _parse_date_value(raw_announcement) is None
+        ):
+            raise ProviderResponseError(
+                f"AKShare returned an invalid free-holding-detail announcement date for "
+                f"{request.entity_id!r}",
+                provider=provider,
+                request=request,
+            )
+
+
 def _validate_shareholder_top10_provider_rows(
     rows: Sequence[Mapping[str, JSONValue]],
     listing: _ListingRef,
@@ -6733,6 +6938,65 @@ def _validate_shareholder_holdings_normalizer_rows(
                     raise ProviderNormalizationError(
                         f"main-shareholder row has an invalid date in {field!r}"
                     )
+
+
+def _validate_shareholder_free_holding_detail_normalizer_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+    *,
+    report_period: date,
+) -> None:
+    """Keep replayed tradable-holder detail rows inside listing/period scope."""
+
+    for row in rows:
+        row_code = _row_code(row, ListingMarket.A)
+        if row_code is None:
+            raise ProviderNormalizationError(
+                "free-holding-detail row has no explicit listing code"
+            )
+        if row_code != listing.code:
+            raise ProviderNormalizationError(
+                f"free-holding-detail row entity {row_code!r} does not match "
+                f"requested listing {listing.canonical_id!r}"
+            )
+        found_holder, raw_holder = _lookup(
+            row,
+            _SHAREHOLDER_FREE_HOLDING_DETAIL_HOLDER_FIELDS,
+        )
+        if not found_holder or _text_value(raw_holder) is None:
+            raise ProviderNormalizationError(
+                "free-holding-detail row has no holder name"
+            )
+        found_period, raw_period = _lookup(
+            row,
+            _SHAREHOLDER_FREE_HOLDING_DETAIL_PERIOD_FIELDS,
+        )
+        if not found_period or _text_value(raw_period) is None:
+            raise ProviderNormalizationError(
+                "free-holding-detail row has no exact report period"
+            )
+        row_period = _parse_date_value(raw_period)
+        if row_period is None:
+            raise ProviderNormalizationError(
+                "free-holding-detail row has an invalid report period"
+            )
+        if row_period != report_period:
+            raise ProviderNormalizationError(
+                f"free-holding-detail row period {row_period.isoformat()!r} does not "
+                f"match requested report period {report_period.isoformat()!r}"
+            )
+        found_announcement, raw_announcement = _lookup(
+            row,
+            _SHAREHOLDER_FREE_HOLDING_DETAIL_ANNOUNCEMENT_FIELDS,
+        )
+        if (
+            found_announcement
+            and _text_value(raw_announcement) is not None
+            and _parse_date_value(raw_announcement) is None
+        ):
+            raise ProviderNormalizationError(
+                "free-holding-detail row has an invalid announcement date"
+            )
 
 
 def _validate_shareholder_top10_normalizer_rows(

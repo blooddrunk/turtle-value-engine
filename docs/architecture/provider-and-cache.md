@@ -1,6 +1,6 @@
 # Provider and Cache Architecture
 
-> Status: Phase 2 foundation, read-only AKShare statement slices, earnings forecasts/quick reports/performance reports/business composition/financial abstract/financial indicators, H-share latest indicators, dividend events/snapshots/detail, A-share disclosure-notice metadata, risk-warning status, trading-suspension, restricted-share-release, goodwill-impairment, ESG-rating, SSE/SZSE/BSE margin-detail, share-capital, individual-info snapshot, corporate-action, external-guarantee, company-litigation, ownership-pledge snapshot/detail, main-shareholder, shareholder-count, A-share actual-controller holding-change, A/H HSGT individual-holdings, SSE/SZSE/BSE insider-share-change, A-share Eastmoney management-holding and A-share Eastmoney top-ten/top-ten-tradable-shareholder raw slices
+> Status: Phase 2 foundation, read-only AKShare statement slices, earnings forecasts/quick reports/performance reports/business composition/financial abstract/financial indicators, H-share latest indicators, dividend events/snapshots/detail, A-share disclosure-notice metadata, risk-warning status, trading-suspension, restricted-share-release, goodwill-impairment, ESG-rating, SSE/SZSE/BSE margin-detail, share-capital, individual-info snapshot, corporate-action, external-guarantee, company-litigation, ownership-pledge snapshot/detail, main-shareholder, shareholder-count, A-share actual-controller holding-change, A/H HSGT individual-holdings, SSE/SZSE/BSE insider-share-change, A-share Eastmoney management-holding and A-share Eastmoney top-ten/top-ten-tradable-shareholder and top-ten-tradable-shareholder-detail raw slices
 
 This document freezes the boundary between structured-data acquisition and the
 deterministic Turtle Value Engine. It does not authorize a live provider or
@@ -705,7 +705,7 @@ The cache performs no network retries. The normalizer performs no provider
 retries. The deterministic pipeline performs no provider retries and should
 not be rerun as a substitute for resolving missing facts.
 
-## 12. Phase 2.2–2.46 AKShare adapter
+## 12. Phase 2.2–2.47 AKShare adapter
 
 The first concrete adapter is intentionally limited to read-only metadata,
 market observations, three documented financial-statement slices, raw-only
@@ -719,8 +719,9 @@ an A-share risk-warning-status, trading-suspension, goodwill-impairment,
 ESG-rating, SSE/SZSE/BSE margin-detail, external-guarantee, company-litigation,
 main-shareholder/shareholder-count/actual-controller holding-change/HSGT
 individual-holdings raw slices, A-share Eastmoney individual-fund-flow,
-top-ten-shareholder/top-ten-tradable-shareholder, SSE/SZSE/BSE
-insider-share-change and A-share Eastmoney management-holding raw slices. It
+top-ten-shareholder/top-ten-tradable-shareholder/top-ten-tradable-shareholder-detail,
+SSE/SZSE/BSE insider-share-change and A-share Eastmoney management-holding raw
+slices. It
 advertises exactly these capabilities:
 
 | Category | A-share endpoint | H-share endpoint | Normalized output |
@@ -753,7 +754,7 @@ advertises exactly these capabilities:
 | `SHARE_CAPITAL` | `stock_zh_a_gbjg_em` (no parameters); `stock_share_change_cninfo` (explicit date range); `stock_restricted_release_queue_em` (`view=restricted_release_queue`); `stock_individual_info_em` (`view=individual_info`) | — | raw historical response or current item/value snapshot and provenance only; no canonical share/dilution fact |
 | `OWNERSHIP_PLEDGE` | `stock_gpzy_pledge_ratio_em` (exact `date`); `stock_gpzy_individual_pledge_ratio_detail_em` (`view=individual_pledge_detail`); `stock_cg_equity_mortgage_cninfo` (`view=equity_mortgage`, `date`) | — | date-bound snapshot, symbol-scoped detail or CNINFO pledge-event rows as raw structured evidence only; no canonical governance, share, cash or debt-equivalent fact |
 | `INSIDER_SHARE_CHANGES` | `stock_share_hold_change_sse` (Shanghai); `stock_share_hold_change_szse` (Shenzhen); `stock_share_hold_change_bse` (Beijing); `stock_hold_management_detail_em` (`view=management_detail`, no upstream arguments, full universe filtered to requested A-share) | — | listing-scoped exchange rows or management/related-person holding-change rows as raw structured evidence only; no canonical share, dilution, governance, buyback or issuance fact |
-| `SHAREHOLDER_HOLDINGS` | `stock_main_stock_holder` (`stock`); `stock_hold_num_cninfo` (exact quarter-end `date`); `stock_hold_control_cninfo` (`view=control_changes`, optional `control_type`); `stock_gdfx_top_10_em` (`view=top_10`, exact quarter-end `date`); `stock_gdfx_free_top_10_em` (`view=free_top_10`, exact quarter-end `date`); `stock_hsgt_individual_em` (`view=hsgt_individual`) | `stock_hsgt_individual_em` (`view=hsgt_individual`) | A-share main-shareholder/shareholder-count/actual-controller/top-ten/top-ten-tradable holding-change or A/H HSGT investor-holding rows as raw structured evidence only; no canonical ownership, concentration, share, dilution or governance fact |
+| `SHAREHOLDER_HOLDINGS` | `stock_main_stock_holder` (`stock`); `stock_hold_num_cninfo` (exact quarter-end `date`); `stock_hold_control_cninfo` (`view=control_changes`, optional `control_type`); `stock_gdfx_top_10_em` (`view=top_10`, exact quarter-end `date`); `stock_gdfx_free_top_10_em` (`view=free_top_10`, exact quarter-end `date`); `stock_gdfx_free_holding_detail_em` (`view=free_holding_detail`, exact quarter-end `date`); `stock_hsgt_individual_em` (`view=hsgt_individual`) | `stock_hsgt_individual_em` (`view=hsgt_individual`) | A-share main-shareholder/shareholder-count/actual-controller/top-ten/top-ten-tradable/top-ten-tradable-detail holding-change or A/H HSGT investor-holding rows as raw structured evidence only; no canonical ownership, concentration, share, dilution or governance fact |
 
 The adapter accepts common stable A/H identifiers such as `SH600000`,
 `000001.SZ`, `A:600000`, `HK00700`, `700.HK` and `H:00700`. A-share history
@@ -775,7 +776,8 @@ risk-warning-status, trading-suspension, restricted-share-release,
 goodwill-impairment, ESG-rating, margin-trading, corporate-action,
 external-guarantee, company-litigation, share-capital, ownership-pledge,
 main-shareholder, shareholder-count, top-ten-shareholder,
-top-ten-tradable-shareholder, insider-share-change, management-holding,
+top-ten-tradable-shareholder, top-ten-tradable-shareholder-detail,
+insider-share-change, management-holding,
 individual-info and individual-fund-flow raw slices it emits
 raw-record evidence only and explicit unresolved flags where needed; it does
 not emit canonical forecast-profit, revenue, margin, dividend, buyback,
@@ -1091,9 +1093,24 @@ does not invent a row-level code or filing date. The normalizer emits
 critically missing and creates no beneficial-control, concentration, share,
 dilution or valuation fact.
 
+For the A-share top-ten-tradable-shareholder detail slice, the current [AKShare
+stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_gdfx_em.py)
+define `stock_gdfx_free_holding_detail_em` as a full A-share universe endpoint
+accepting an exact quarter-end `date`. The provider selects it only with
+`SHAREHOLDER_HOLDINGS` plus `view=free_holding_detail`, passes the requested
+report date, validates every explicit listing code and report-period value plus
+holder identity and optional announcement dates, and filters the universe to
+the requested listing. It retains the report-period holding detail,
+quantity/change, float-market-value and announcement fields as raw evidence
+without treating them as filing dates or canonical ownership, concentration,
+share, dilution or governance facts. The normalizer emits
+`AKSHARE_FREE_HOLDING_DETAIL_RAW_ONLY` and leaves `governance_risk_level`
+critically missing.
+
 ## 13. Deliberate non-goals
 
-This foundation plus the Phase 2.2–2.46 slices does not include:
+This foundation plus the Phase 2.2–2.47 slices does not include:
 
 - Tushare, BaoStock or any other additional provider;
 - automatic network scheduling, credentials or retry orchestration outside an adapter;

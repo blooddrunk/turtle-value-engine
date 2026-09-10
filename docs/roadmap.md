@@ -1167,6 +1167,28 @@ concentration, share, dilution or valuation fact. Live calls remain opt-in;
 tests use an injected client and a frozen fixture with cache replay,
 invalid-parameter, response-validation and replay-scope coverage.
 
+### Phase 2.47 — A-share top-ten-tradable-shareholder detail raw acquisition contract (COMPLETE)
+
+The mapping review now covers the current Eastmoney
+[`stock_gdfx_free_holding_detail_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
+endpoint and its [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_gdfx_em.py).
+It accepts an exact quarter-end `date` such as `20240930` and returns the
+documented full-universe top-ten-tradable-holder detail rows with listing code,
+holder identity/type, report period, holding quantity/change, float-market value
+and announcement date fields.
+
+The provider selects this boundary only with the explicit
+`SHAREHOLDER_HOLDINGS` request `view=free_holding_detail`, passes the upstream
+`date`, validates every returned listing code and holder plus the exact report
+period and optional announcement date, and filters the universe to the
+requested A-share listing. It preserves the raw report-period holding detail
+without treating announcement dates as filing contents or canonical ownership,
+concentration, share or dilution facts. The normalizer emits
+`AKSHARE_FREE_HOLDING_DETAIL_RAW_ONLY`, leaves `governance_risk_level`
+critically missing and creates no canonical fact. Live calls remain opt-in;
+tests use an injected client and a frozen fixture with cache replay,
+invalid-parameter, response-validation and replay-scope coverage.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -1176,7 +1198,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.46 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.47 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -1384,7 +1406,7 @@ Phase 2 is active. Phase 1 remains frozen: changes to formulas, hard-gate
 semantics, schemas or `strict-v1` thresholds require a separately reviewed,
 versioned change.
 
-Phase 2.46 completes the next documented structured-data boundary while
+Phase 2.47 completes the next documented structured-data boundary while
 keeping share-change, repurchase and rights-issue period, status, unit and
 economic-scope questions unresolved, and keeping ownership-pledge holder,
 governance and economic-scope questions unresolved. The A-share
@@ -1414,6 +1436,14 @@ because holder rank, quantities, float-share ratios and report-date context do
 not establish beneficial control, a canonical concentration metric or a
 company-level diluted-share series. The explicit `view=free_top_10` and
 quarter-end `date` remain part of the replayable acquisition boundary.
+
+The A-share top-ten-tradable-shareholder detail universe remains raw-only
+because its report-period holder rows, quantities, change fields,
+float-market values and announcement dates do not establish beneficial control,
+a canonical concentration metric, a company-level diluted-share series or a
+filing-backed governance conclusion. The explicit
+`view=free_holding_detail` and quarter-end `date` remain part of the replayable
+acquisition boundary.
 
 The A-share business-composition snapshot remains raw-only because its
 overlapping product, industry and geographic rows do not establish a canonical
