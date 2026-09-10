@@ -809,6 +809,21 @@ context and market-value fields remain raw evidence and do not establish a
 canonical concentration metric, governance judgment or diluted-share series.
 No calculation, gate, pipeline, CLI or input-loader contract changes.
 
+Phase 2.85 adds the distinct documented A-share CNINFO management-holding-detail
+endpoint [`stock_hold_management_detail_cninfo`](https://akshare.akfamily.xyz/data/stock/stock.html)
+with the explicit provider-neutral selector `view=cninfo_management_detail` and
+`direction` mapped to the official `symbol` choice `增持` or `减持`. The
+[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hold_control_cninfo.py)
+returns a rolling near-one-year full universe; the adapter validates its exact
+16-field schema, dates, numeric/null types and non-negative ranges before
+filtering to the requested A-share code. An official response sample is checked
+in with selected and non-selected codes; direction, window, units and row counts
+are retained in replay metadata. The normalizer emits
+`AKSHARE_CNINFO_MANAGEMENT_HOLDINGS_RAW_ONLY`: management transactions remain
+raw evidence and do not establish a diluted-share series, settled cash amount or
+governance judgment. No calculation, gate, pipeline, CLI or input-loader contract
+changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

@@ -637,6 +637,13 @@ class FakeAKShare:
             _fixture("a_management_holdings.json"),
         )
 
+    def stock_hold_management_detail_cninfo(self, *, symbol: str):
+        return self._return(
+            "stock_hold_management_detail_cninfo",
+            _fixture("a_cninfo_management_detail.json"),
+            symbol=symbol,
+        )
+
     def stock_main_stock_holder(self, *, stock: str):
         return self._return(
             "stock_main_stock_holder",
@@ -780,8 +787,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "84"
-    assert AKSHARE_MAPPING_VERSION == "85"
+    assert provider.identity.provider_version == "85"
+    assert AKSHARE_MAPPING_VERSION == "86"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -7513,6 +7520,277 @@ def test_management_holdings_cache_replay_does_not_call_upstream(tmp_path: Path)
     assert replay.mode is RetrievalMode.CACHE_REPLAY
     assert replay.record == live.record
     assert fake.calls == [("stock_hold_management_detail_em", {})]
+
+
+def _cninfo_management_detail_request(
+    entity_id: str = "SZ000019",
+    direction: str = "增持",
+    parameters: dict | None = None,
+):
+    return _request(
+        DataCategory.INSIDER_SHARE_CHANGES,
+        entity_id,
+        {
+            "view": "cninfo_management_detail",
+            "direction": direction,
+            **({} if parameters is None else parameters),
+        },
+    )
+
+
+def test_cninfo_management_detail_fetch_uses_direction_and_filters_official_universe():
+    fake = FakeAKShare()
+    record = _provider(fake).fetch(_cninfo_management_detail_request())
+
+    fixture = _fixture("a_cninfo_management_detail.json")
+    assert record.raw_payload == [row for row in fixture if row["证券代码"] == "000019"]
+    assert fake.calls == [
+        ("stock_hold_management_detail_cninfo", {"symbol": "增持"}),
+    ]
+    assert record.response_metadata["endpoint"] == (
+        "stock_hold_management_detail_cninfo"
+    )
+    assert record.response_metadata["upstream_row_count"] == 8
+    assert record.response_metadata["entity_row_count"] == 2
+    assert record.response_metadata["entity_rows_selected"] is True
+    assert record.response_metadata["listing_scoped_request"] is False
+    assert record.response_metadata["row_filtering"] == "provider"
+    assert record.response_metadata["management_view"] == (
+        "cninfo_management_detail"
+    )
+    assert record.response_metadata["management_direction"] == "增持"
+    assert record.response_metadata["upstream_direction"] == "增持"
+    assert record.response_metadata["snapshot_scope"] == (
+        "upstream_rolling_prior_year_to_request_date"
+    )
+    assert record.response_metadata["date_binding"] == "upstream_rolling_window"
+    assert record.response_metadata["observation_date_field"] == "截止日期"
+    assert record.response_metadata["observation_date_fields"] == [
+        "截止日期",
+        "公告日期",
+    ]
+    assert record.response_metadata["observation_start_date"] == "2025-09-24"
+    assert record.response_metadata["observation_end_date"] == "2026-06-30"
+    assert record.response_metadata["field_count"] == 16
+    assert record.response_metadata["source_field_order"] == list(
+        record.raw_payload[0]
+    )
+    assert record.response_metadata["quantity_unit"] == "万股"
+    assert record.response_metadata["price_unit"] == "元"
+    assert record.response_metadata["market_value_unit"] == "万元"
+    assert record.response_metadata["ratio_unit"] == "%"
+    assert record.source_uri == "https://webapi.cninfo.com.cn/#/thematicStatistics"
+
+
+def test_cninfo_management_detail_empty_selection_keeps_upstream_scope_for_replay():
+    record = _provider().fetch(_cninfo_management_detail_request("SZ000002"))
+
+    assert record.raw_payload == []
+    assert record.response_metadata["upstream_row_count"] == 8
+    assert record.response_metadata["entity_row_count"] == 0
+    assert record.response_metadata["observation_start_date"] == "2025-09-24"
+    assert record.response_metadata["observation_end_date"] == "2026-06-30"
+
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="cninfo-management-detail-empty-selection",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company("SZ000002"),
+    )
+
+    assert normalized.facts == []
+    assert normalized.flags == ["AKSHARE_CNINFO_MANAGEMENT_HOLDINGS_RAW_ONLY"]
+
+
+def test_cninfo_management_detail_request_requires_explicit_scope_and_direction():
+    fake = FakeAKShare()
+    provider = _provider(fake)
+
+    with pytest.raises(
+        ProviderRequestError,
+        match="unsupported AKShare CNINFO management-holdings parameter",
+    ):
+        provider.fetch(
+            _cninfo_management_detail_request(parameters={"date": "20260101"})
+        )
+    with pytest.raises(
+        ProviderRequestError,
+        match="requires view='cninfo_management_detail'",
+    ):
+        provider.fetch(
+            _request(
+                DataCategory.INSIDER_SHARE_CHANGES,
+                "SZ000019",
+                {"direction": "增持"},
+            )
+        )
+    with pytest.raises(
+        ProviderRequestError,
+        match="requires a string direction parameter",
+    ):
+        provider.fetch(
+            _request(
+                DataCategory.INSIDER_SHARE_CHANGES,
+                "SZ000019",
+                {"view": "cninfo_management_detail"},
+            )
+        )
+    with pytest.raises(
+        ProviderRequestError,
+        match="direction must be one of",
+    ):
+        provider.fetch(_cninfo_management_detail_request(direction="持平"))
+    with pytest.raises(
+        ProviderRequestError,
+        match="Shanghai, Shenzhen and Beijing A-share listings only",
+    ):
+        provider.fetch(_cninfo_management_detail_request(entity_id="HK00700"))
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("missing_field", "unexpected field schema"),
+        ("extra_field", "unexpected field schema"),
+        ("reordered_fields", "unexpected field schema"),
+        ("numeric_type", "must be numeric or null"),
+        ("invalid_date", "invalid 截止日期"),
+        ("negative_range", "must be non-negative or null"),
+    ],
+)
+def test_cninfo_management_detail_response_rejects_schema_type_date_and_range_failures(
+    mutation: str,
+    match: str,
+):
+    class InvalidRows(FakeAKShare):
+        def stock_hold_management_detail_cninfo(self, *, symbol: str):
+            payload = _fixture("a_cninfo_management_detail.json")
+            if mutation == "missing_field":
+                payload[0].pop("数据来源")
+            elif mutation == "extra_field":
+                payload[0]["未记录字段"] = "unexpected"
+            elif mutation == "reordered_fields":
+                payload[0] = dict(reversed(list(payload[0].items())))
+            elif mutation == "numeric_type":
+                payload[0]["期末持股数量"] = "1"
+            elif mutation == "invalid_date":
+                payload[0]["截止日期"] = "not-a-date"
+            else:
+                payload[0]["期末市值"] = -1
+            return self._return(
+                "stock_hold_management_detail_cninfo",
+                payload,
+                symbol=symbol,
+            )
+
+    with pytest.raises(ProviderResponseError, match=match):
+        _provider(InvalidRows()).fetch(_cninfo_management_detail_request())
+
+
+def test_cninfo_management_detail_raw_record_is_not_promoted_to_facts():
+    record = _provider().fetch(_cninfo_management_detail_request())
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="cninfo-management-detail-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company("SZ000019"),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_CNINFO_MANAGEMENT_HOLDINGS_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == [
+        "governance_risk_level",
+    ]
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "CNINFO management-holding-detail response" in normalized.data_quality.notes
+    assert "diluted-share series" in normalized.data_quality.notes
+    assert "governance-risk judgment" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    errors = list(
+        Draft202012Validator(schema).iter_errors(
+            normalized.model_dump(mode="json")
+        )
+    )
+    assert errors == []
+
+
+@pytest.mark.parametrize("scope_mutation", ["direction", "source_uri", "date_range"])
+def test_cninfo_management_detail_normalizer_rejects_replayed_scope_mismatches(
+    scope_mutation: str,
+):
+    record = _provider().fetch(_cninfo_management_detail_request())
+    metadata = dict(record.response_metadata)
+    source_uri = record.source_uri
+    if scope_mutation == "direction":
+        metadata["management_direction"] = "减持"
+    elif scope_mutation == "source_uri":
+        source_uri = "https://webapi.cninfo.com.cn/#/wrong"
+    else:
+        metadata["observation_start_date"] = "2026-01-01"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=record.raw_payload,
+        source_uri=source_uri,
+        response_metadata=metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match="CNINFO management-holding"):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-cninfo-management-detail",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company("SZ000019"),
+        )
+
+
+def test_cninfo_management_detail_normalizer_rejects_replayed_cross_listing_row():
+    record = _provider().fetch(_cninfo_management_detail_request())
+    payload = [dict(row) for row in record.raw_payload]
+    payload[0]["证券代码"] = "000021"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=record.source_uri,
+        response_metadata=record.response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match="row entity"):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-cninfo-management-detail-row",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company("SZ000019"),
+        )
+
+
+def test_cninfo_management_detail_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _cninfo_management_detail_request()
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [
+        ("stock_hold_management_detail_cninfo", {"symbol": "增持"}),
+    ]
 
 
 def test_insider_share_change_request_supports_mainland_exchanges_and_has_no_parameters():

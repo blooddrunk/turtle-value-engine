@@ -24,7 +24,8 @@ the SSE/SZSE/BSE margin-detail raw slices, the A-share individual ownership-pled
 detail view, the A-share CNINFO equity-mortgage view, the A-share Eastmoney
 ownership-pledge market-profile view, A-share company-litigation raw slice and
 A-share Eastmoney individual-info raw slice.
-The A-share Eastmoney individual-fund-flow, market-participation-desire,
+The A-share Eastmoney and CNINFO management-holding raw slices are also
+available. The A-share Eastmoney individual-fund-flow, market-participation-desire,
 market-focus, institution-participation, hot-rank, latest-hot-rank, limit-up-pool,
 limit-down-pool, H-share latest-hot-rank,
 A+H comparison,
@@ -86,9 +87,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "84"
+AKSHARE_ADAPTER_VERSION = "85"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "85"
+AKSHARE_MAPPING_VERSION = "86"
 
 
 class ListingMarket(StrEnum):
@@ -226,6 +227,7 @@ _SOURCE_URIS = {
     "stock_share_hold_change_szse": "http://www.szse.cn/disclosure/supervision/change/index.html",
     "stock_share_hold_change_bse": "https://www.bse.cn/disclosure/djg_sharehold_change.html",
     "stock_hold_management_detail_em": "https://data.eastmoney.com/executive/list.html",
+    "stock_hold_management_detail_cninfo": "https://webapi.cninfo.com.cn/#/thematicStatistics",
     "stock_main_stock_holder": "https://vip.stock.finance.sina.com.cn/corp/go.php/vCI_StockHolder/stockid/600004.phtml",
     "stock_hold_num_cninfo": "https://webapi.cninfo.com.cn/#/thematicStatistics",
     "stock_zh_a_gdhs_detail_em": "https://data.eastmoney.com/gdhs/detail/000002.html",
@@ -1287,12 +1289,58 @@ _INSIDER_SHARE_CHANGE_PARAMETER_NAMES = frozenset()
 _INSIDER_MANAGEMENT_DETAIL_PARAMETER_NAMES = frozenset({"view"})
 _INSIDER_MANAGEMENT_DETAIL_VIEW = "management_detail"
 _INSIDER_MANAGEMENT_DETAIL_DATE_FIELDS = ("日期",)
+_INSIDER_CNINFO_MANAGEMENT_DETAIL_PARAMETER_NAMES = frozenset(
+    {"view", "direction"}
+)
+_INSIDER_CNINFO_MANAGEMENT_DETAIL_VIEW = "cninfo_management_detail"
+_INSIDER_CNINFO_MANAGEMENT_DETAIL_DIRECTIONS = frozenset({"增持", "减持"})
+_INSIDER_CNINFO_MANAGEMENT_DETAIL_FIELDS = (
+    "证券代码",
+    "证券简称",
+    "截止日期",
+    "公告日期",
+    "高管姓名",
+    "董监高姓名",
+    "董监高职务",
+    "变动人与董监高关系",
+    "期初持股数量",
+    "期末持股数量",
+    "变动数量",
+    "变动比例",
+    "成交均价",
+    "期末市值",
+    "持股变动原因",
+    "数据来源",
+)
+_INSIDER_CNINFO_MANAGEMENT_DETAIL_TEXT_FIELDS = (
+    "证券代码",
+    "证券简称",
+    "高管姓名",
+    "董监高姓名",
+    "董监高职务",
+    "变动人与董监高关系",
+    "持股变动原因",
+    "数据来源",
+)
+_INSIDER_CNINFO_MANAGEMENT_DETAIL_DATE_FIELDS = ("截止日期", "公告日期")
+_INSIDER_CNINFO_MANAGEMENT_DETAIL_NUMERIC_FIELDS = (
+    "期初持股数量",
+    "期末持股数量",
+    "变动数量",
+    "变动比例",
+    "成交均价",
+    "期末市值",
+)
+_INSIDER_CNINFO_MANAGEMENT_DETAIL_NONNEGATIVE_FIELDS = frozenset(
+    {"期初持股数量", "期末持股数量", "成交均价", "期末市值"}
+)
 _INSIDER_SHARE_CHANGE_ENDPOINTS = frozenset(
     {
         "stock_share_hold_change_sse",
         "stock_share_hold_change_szse",
         "stock_share_hold_change_bse",
         "stock_hold_management_detail_em",
+        "stock_hold_management_detail_cninfo",
     }
 )
 _TRADING_SUSPENSIONS_PARAMETER_NAMES = frozenset({"date"})
@@ -3163,7 +3211,59 @@ class AKShareProvider(StructuredDataProvider):
                 response_metadata["observation_date"] = requested_date.isoformat()
         elif request.category is DataCategory.INSIDER_SHARE_CHANGES:
             rows = _table_rows(payload, provider=self.identity, request=request)
-            if endpoint.name == "stock_hold_management_detail_em":
+            if endpoint.name == "stock_hold_management_detail_cninfo":
+                observation_start, observation_end = (
+                    _validate_insider_cninfo_management_detail_provider_rows(
+                        rows,
+                        listing,
+                        provider=self.identity,
+                        request=request,
+                    )
+                )
+                selected = _select_listing_rows(
+                    rows,
+                    listing,
+                    provider=self.identity,
+                    request=request,
+                    row_label="CNINFO management-holding",
+                )
+                payload = selected
+                response_metadata["upstream_row_count"] = len(rows)
+                response_metadata["entity_row_count"] = len(selected)
+                response_metadata["entity_rows_selected"] = True
+                response_metadata["listing_scoped_request"] = False
+                response_metadata["row_filtering"] = "provider"
+                response_metadata["management_view"] = (
+                    _INSIDER_CNINFO_MANAGEMENT_DETAIL_VIEW
+                )
+                response_metadata["management_direction"] = kwargs["symbol"]
+                response_metadata["upstream_direction"] = kwargs["symbol"]
+                response_metadata["upstream_symbol"] = kwargs["symbol"]
+                response_metadata["snapshot_scope"] = (
+                    "upstream_rolling_prior_year_to_request_date"
+                )
+                response_metadata["date_binding"] = "upstream_rolling_window"
+                response_metadata["observation_date_field"] = "截止日期"
+                response_metadata["observation_date_fields"] = list(
+                    _INSIDER_CNINFO_MANAGEMENT_DETAIL_DATE_FIELDS
+                )
+                response_metadata["observation_start_date"] = (
+                    observation_start.isoformat() if observation_start else None
+                )
+                response_metadata["observation_end_date"] = (
+                    observation_end.isoformat() if observation_end else None
+                )
+                response_metadata["field_count"] = len(
+                    _INSIDER_CNINFO_MANAGEMENT_DETAIL_FIELDS
+                )
+                response_metadata["source_field_order"] = list(
+                    _INSIDER_CNINFO_MANAGEMENT_DETAIL_FIELDS
+                )
+                response_metadata["quantity_unit"] = "万股"
+                response_metadata["price_unit"] = "元"
+                response_metadata["market_value_unit"] = "万元"
+                response_metadata["ratio_unit"] = "%"
+            elif endpoint.name == "stock_hold_management_detail_em":
                 _validate_insider_management_detail_provider_rows(
                     rows,
                     listing,
@@ -3764,6 +3864,11 @@ class AKShareProvider(StructuredDataProvider):
             ),
             shareholder_hsgt_individual_requested=(
                 "view" in request.parameters
+            ),
+            insider_cninfo_management_detail_requested=(
+                request.parameters.get("view")
+                == _INSIDER_CNINFO_MANAGEMENT_DETAIL_VIEW
+                or "direction" in request.parameters
             ),
             insider_management_detail_requested=(
                 request.parameters.get("view") == _INSIDER_MANAGEMENT_DETAIL_VIEW
@@ -5172,7 +5277,24 @@ class AKShareNormalizer:
                         "Shanghai, Shenzhen and Beijing A-share listings only"
                     )
                 endpoint_name = record.response_metadata.get("endpoint")
-                if endpoint_name == "stock_hold_management_detail_em":
+                if endpoint_name == "stock_hold_management_detail_cninfo":
+                    try:
+                        _insider_share_change_kwargs(
+                            "stock_hold_management_detail_cninfo",
+                            listing,
+                            record.request,
+                        )
+                    except ProviderRequestError as exc:
+                        raise ProviderNormalizationError(str(exc)) from exc
+                    _validate_insider_cninfo_management_detail_normalizer_scope(
+                        rows,
+                        listing,
+                        record,
+                    )
+                    normalizer_flags.add(
+                        "AKSHARE_CNINFO_MANAGEMENT_HOLDINGS_RAW_ONLY"
+                    )
+                elif endpoint_name == "stock_hold_management_detail_em":
                     try:
                         _insider_share_change_kwargs(
                             "stock_hold_management_detail_em",
@@ -5190,7 +5312,8 @@ class AKShareNormalizer:
                     raise ProviderNormalizationError(
                         "AKShare insider-share-change record must come from "
                         "stock_share_hold_change_sse, stock_share_hold_change_szse, "
-                        "stock_share_hold_change_bse or stock_hold_management_detail_em"
+                        "stock_share_hold_change_bse, stock_hold_management_detail_em "
+                        "or stock_hold_management_detail_cninfo"
                     )
                 # Insider transactions are event evidence, not a settled
                 # company share-count series or a governance verdict.
@@ -5552,6 +5675,14 @@ class AKShareNormalizer:
                 "raw evidence only: management/related-person transaction quantities, "
                 "prices, holdings and dates do not establish a company-level "
                 "diluted-share series or governance-risk judgment."
+            )
+        if "AKSHARE_CNINFO_MANAGEMENT_HOLDINGS_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented A-share CNINFO management-holding-detail response is "
+                "retained as raw evidence only: its direction, person/role fields, "
+                "quantities, prices, values and dates do not establish a company-level "
+                "diluted-share series, settled transaction cash or governance-risk "
+                "judgment."
             )
         if "AKSHARE_DIVIDEND_SNAPSHOT_RAW_ONLY" in normalizer_flags:
             notes += (
@@ -6124,6 +6255,7 @@ def _endpoint_candidates(
     shareholder_free_holding_detail_requested: bool = False,
     shareholder_top10_requested: bool = False,
     shareholder_hsgt_individual_requested: bool = False,
+    insider_cninfo_management_detail_requested: bool = False,
     insider_management_detail_requested: bool = False,
     market_activity_statistic_requested: bool = False,
     market_activity_institution_statistic_requested: bool = False,
@@ -6375,6 +6507,10 @@ def _endpoint_candidates(
             return ("stock_gpzy_pledge_ratio_em",)
         return ()
     if category is DataCategory.INSIDER_SHARE_CHANGES:
+        if insider_cninfo_management_detail_requested:
+            if market is ListingMarket.A:
+                return ("stock_hold_management_detail_cninfo",)
+            return ()
         if insider_management_detail_requested:
             if market is ListingMarket.A:
                 return ("stock_hold_management_detail_em",)
@@ -7549,6 +7685,50 @@ def _insider_share_change_kwargs(
     listing: _ListingRef,
     request: ProviderRequest,
 ) -> dict[str, object]:
+    if endpoint_name == "stock_hold_management_detail_cninfo":
+        if listing.market is not ListingMarket.A:
+            raise ProviderRequestError(
+                "the AKShare CNINFO management-holding endpoint supports A-share "
+                "listings only",
+                request=request,
+                retryable=False,
+            )
+        unknown = sorted(
+            set(request.parameters)
+            - _INSIDER_CNINFO_MANAGEMENT_DETAIL_PARAMETER_NAMES
+        )
+        if unknown:
+            raise ProviderRequestError(
+                "unsupported AKShare CNINFO management-holdings parameter(s): "
+                + ", ".join(unknown),
+                request=request,
+                retryable=False,
+            )
+        if request.parameters.get("view") != _INSIDER_CNINFO_MANAGEMENT_DETAIL_VIEW:
+            raise ProviderRequestError(
+                "the AKShare CNINFO management-holding endpoint requires "
+                f"view={_INSIDER_CNINFO_MANAGEMENT_DETAIL_VIEW!r}",
+                request=request,
+                retryable=False,
+            )
+        direction = request.parameters.get("direction")
+        if not isinstance(direction, str):
+            raise ProviderRequestError(
+                "the AKShare CNINFO management-holding endpoint requires a string "
+                "direction parameter",
+                request=request,
+                retryable=False,
+            )
+        if direction not in _INSIDER_CNINFO_MANAGEMENT_DETAIL_DIRECTIONS:
+            choices = ", ".join(sorted(_INSIDER_CNINFO_MANAGEMENT_DETAIL_DIRECTIONS))
+            raise ProviderRequestError(
+                "the AKShare CNINFO management-holding direction must be one of: "
+                + choices,
+                request=request,
+                retryable=False,
+            )
+        return {"symbol": direction}
+
     if endpoint_name == "stock_hold_management_detail_em":
         if listing.market is not ListingMarket.A:
             raise ProviderRequestError(
@@ -16232,6 +16412,229 @@ def _validate_insider_share_change_normalizer_rows(
                 )
 
 
+def _cninfo_management_detail_row_validation_error(
+    row: Mapping[str, JSONValue],
+    index: int,
+) -> tuple[str | None, date | None]:
+    """Return a strict-schema error and parsed cutoff date for one CNINFO row."""
+
+    if tuple(row) != _INSIDER_CNINFO_MANAGEMENT_DETAIL_FIELDS:
+        return (
+            f"CNINFO management-holding row {index} has an unexpected field "
+            "schema or order",
+            None,
+        )
+
+    code = row["证券代码"]
+    if not isinstance(code, str) or re.fullmatch(r"\d{6}", code) is None:
+        return (
+            f"CNINFO management-holding row {index} has an invalid 证券代码",
+            None,
+        )
+
+    for field in _INSIDER_CNINFO_MANAGEMENT_DETAIL_TEXT_FIELDS:
+        value = row[field]
+        if value is not None and not isinstance(value, str):
+            return (
+                f"CNINFO management-holding row {index} field {field!r} "
+                "must be text or null",
+                None,
+            )
+
+    observation_dates: dict[str, date | None] = {}
+    for field in _INSIDER_CNINFO_MANAGEMENT_DETAIL_DATE_FIELDS:
+        value = row[field]
+        if value is None:
+            if field == "截止日期":
+                return (
+                    f"CNINFO management-holding row {index} has no {field}",
+                    None,
+                )
+            observation_dates[field] = None
+            continue
+        if not isinstance(value, str):
+            return (
+                f"CNINFO management-holding row {index} field {field!r} "
+                "must be an ISO date string or null",
+                None,
+            )
+        parsed = _parse_date_value(value)
+        if parsed is None:
+            return (
+                f"CNINFO management-holding row {index} has an invalid {field}",
+                None,
+            )
+        observation_dates[field] = parsed
+
+    for field in _INSIDER_CNINFO_MANAGEMENT_DETAIL_NUMERIC_FIELDS:
+        value = row[field]
+        if value is None:
+            continue
+        if isinstance(value, bool) or not isinstance(value, Real):
+            return (
+                f"CNINFO management-holding row {index} field {field!r} "
+                "must be numeric or null",
+                None,
+            )
+        numeric = float(value)
+        if not math.isfinite(numeric):
+            return (
+                f"CNINFO management-holding row {index} field {field!r} "
+                "must be finite or null",
+                None,
+            )
+        if (
+            field in _INSIDER_CNINFO_MANAGEMENT_DETAIL_NONNEGATIVE_FIELDS
+            and numeric < 0
+        ):
+            return (
+                f"CNINFO management-holding row {index} field {field!r} "
+                "must be non-negative or null",
+                None,
+            )
+
+    return None, observation_dates["截止日期"]
+
+
+def _validate_insider_cninfo_management_detail_normalizer_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+) -> list[date]:
+    """Validate replayed CNINFO management-detail rows inside the listing boundary."""
+
+    cutoff_dates: list[date] = []
+    for index, row in enumerate(rows):
+        message, cutoff_date = _cninfo_management_detail_row_validation_error(
+            row,
+            index,
+        )
+        if message is not None:
+            raise ProviderNormalizationError(message)
+        row_code = row["证券代码"]
+        if row_code != listing.code:
+            raise ProviderNormalizationError(
+                f"CNINFO management-holding row entity {row_code!r} does not match "
+                f"requested listing {listing.canonical_id!r}"
+            )
+        if cutoff_date is not None:
+            cutoff_dates.append(cutoff_date)
+    return cutoff_dates
+
+
+def _validate_insider_cninfo_management_detail_normalizer_scope(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+    record: RawProviderRecord,
+) -> None:
+    """Validate CNINFO endpoint, direction, schema and replay metadata."""
+
+    cutoff_dates = _validate_insider_cninfo_management_detail_normalizer_rows(
+        rows,
+        listing,
+    )
+    try:
+        upstream_kwargs = _insider_share_change_kwargs(
+            "stock_hold_management_detail_cninfo",
+            listing,
+            record.request,
+        )
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+
+    if record.source_uri != _SOURCE_URIS["stock_hold_management_detail_cninfo"]:
+        raise ProviderNormalizationError(
+            "AKShare CNINFO management-holding source URI does not match the "
+            "documented endpoint"
+        )
+
+    direction = upstream_kwargs["symbol"]
+    expected_metadata: dict[str, JSONValue] = {
+        "endpoint": "stock_hold_management_detail_cninfo",
+        "market": ListingMarket.A.value,
+        "listing_code": listing.code,
+        "management_view": _INSIDER_CNINFO_MANAGEMENT_DETAIL_VIEW,
+        "management_direction": direction,
+        "upstream_direction": direction,
+        "upstream_symbol": direction,
+        "listing_scoped_request": False,
+        "row_filtering": "provider",
+        "snapshot_scope": "upstream_rolling_prior_year_to_request_date",
+        "date_binding": "upstream_rolling_window",
+        "observation_date_field": "截止日期",
+        "observation_date_fields": list(
+            _INSIDER_CNINFO_MANAGEMENT_DETAIL_DATE_FIELDS
+        ),
+        "field_count": len(_INSIDER_CNINFO_MANAGEMENT_DETAIL_FIELDS),
+        "source_field_order": list(_INSIDER_CNINFO_MANAGEMENT_DETAIL_FIELDS),
+        "quantity_unit": "万股",
+        "price_unit": "元",
+        "market_value_unit": "万元",
+        "ratio_unit": "%",
+        "entity_rows_selected": True,
+        "entity_row_count": len(rows),
+    }
+    for name, expected in expected_metadata.items():
+        if name not in record.response_metadata:
+            matches = False
+        elif name in {"listing_scoped_request", "entity_rows_selected"}:
+            actual = record.response_metadata[name]
+            matches = isinstance(actual, bool) and actual is expected
+        elif name == "entity_row_count":
+            actual = record.response_metadata[name]
+            matches = (
+                isinstance(actual, int)
+                and not isinstance(actual, bool)
+                and actual == expected
+            )
+        else:
+            matches = record.response_metadata[name] == expected
+        if not matches:
+            raise ProviderNormalizationError(
+                "AKShare CNINFO management-holding response metadata "
+                f"{name!r} does not match the requested replay scope"
+            )
+
+    upstream_count = record.response_metadata.get("upstream_row_count")
+    if (
+        not isinstance(upstream_count, int)
+        or isinstance(upstream_count, bool)
+        or upstream_count < len(rows)
+    ):
+        raise ProviderNormalizationError(
+            "AKShare CNINFO management-holding response metadata "
+            "'upstream_row_count' does not match the requested replay scope"
+        )
+
+    for name in ("observation_start_date", "observation_end_date"):
+        actual = record.response_metadata.get(name)
+        actual_date = _parse_date_value(actual) if actual is not None else None
+        if actual is not None and actual_date is None:
+            raise ProviderNormalizationError(
+                "AKShare CNINFO management-holding response metadata "
+                f"{name!r} is not a valid date"
+            )
+        if not cutoff_dates:
+            # Provider filtering may legitimately leave no rows for the requested
+            # listing while the full upstream snapshot still has date bounds.
+            continue
+        if actual_date is None:
+            raise ProviderNormalizationError(
+                "AKShare CNINFO management-holding response metadata "
+                f"{name!r} does not cover the selected row dates"
+            )
+        if actual_date is not None:
+            boundary_ok = (
+                actual_date <= min(cutoff_dates)
+                if name == "observation_start_date"
+                else actual_date >= max(cutoff_dates)
+            )
+            if not boundary_ok:
+                raise ProviderNormalizationError(
+                    "AKShare CNINFO management-holding response metadata "
+                    f"{name!r} does not cover the selected row dates"
+                )
+
+
 def _validate_insider_management_detail_normalizer_rows(
     rows: Sequence[Mapping[str, JSONValue]],
     listing: _ListingRef,
@@ -16259,6 +16662,43 @@ def _validate_insider_management_detail_normalizer_rows(
             raise ProviderNormalizationError(
                 "management-holding row has an invalid change date"
             )
+
+
+def _validate_insider_cninfo_management_detail_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> tuple[date | None, date | None]:
+    """Validate the full CNINFO management-detail universe before filtering."""
+
+    cutoff_dates: list[date] = []
+    for index, row in enumerate(rows):
+        message, cutoff_date = _cninfo_management_detail_row_validation_error(
+            row,
+            index,
+        )
+        if message is not None:
+            raise ProviderResponseError(
+                f"AKShare {message} for {request.entity_id!r}",
+                provider=provider,
+                request=request,
+            )
+        row_code = row["证券代码"]
+        if not isinstance(row_code, str) or re.fullmatch(r"\d{6}", row_code) is None:
+            raise ProviderResponseError(
+                f"AKShare returned a CNINFO management-holding row with an invalid "
+                f"证券代码 for {request.entity_id!r}",
+                provider=provider,
+                request=request,
+            )
+        if cutoff_date is not None:
+            cutoff_dates.append(cutoff_date)
+    return (
+        min(cutoff_dates) if cutoff_dates else None,
+        max(cutoff_dates) if cutoff_dates else None,
+    )
 
 
 def _validate_ownership_pledge_provider_rows(

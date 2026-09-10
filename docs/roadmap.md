@@ -2083,6 +2083,33 @@ positive fetch, request/field/type/range/date failures, raw-only normalization,
 cache replay and replay-scope rejection. No calculation, gate, pipeline, CLI or
 input-loader contract changes.
 
+### Phase 2.85 — A-share CNINFO management-holding-detail raw acquisition contract (COMPLETE)
+
+The mapping review now covers the distinct documented AKShare
+`stock_hold_management_detail_cninfo` endpoint under the existing
+`INSIDER_SHARE_CHANGES` category. The [AKShare stock-data
+documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and
+[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hold_control_cninfo.py)
+define `symbol` choices `增持` and `减持`, a CNINFO `p_sysapi1030` request and a
+rolling near-one-year full universe. The adapter freezes the provider-neutral
+`view=cninfo_management_detail` plus explicit `direction` contract, maps
+direction to upstream `symbol`, validates the exact 16-field output order,
+six-digit codes, dates, finite numeric/null values and non-negative holdings,
+price and market-value ranges, and filters the universe to the requested
+A-share listing. Direction, rolling-window scope, units, source field order,
+row counts and observed cut-off-date bounds are retained for cache replay. The
+checked-in fixture contains eight rows copied from an official `增持` response,
+including selected and non-selected codes.
+
+The normalizer emits `AKSHARE_CNINFO_MANAGEMENT_HOLDINGS_RAW_ONLY` and creates
+no canonical fact: management person/role/relationship, transaction quantity,
+price, value, percentage and reason/source fields remain raw evidence and do not
+establish a diluted-share series, settled transaction cash or governance
+judgment. Tests cover positive fetch and filtering, explicit view/direction and
+market/parameter rejection, exact field order, type/date/range response
+failures, raw-only normalization, cache replay and replay-scope rejection. No
+calculation, gate, pipeline, CLI or input-loader contract changes.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -2092,7 +2119,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.84 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.85 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```

@@ -1401,6 +1401,37 @@ The normalizer emits `AKSHARE_SHAREHOLDER_COUNT_DETAIL_RAW_ONLY`, leaves
 concentration, governance, valuation or diluted-share fact. The response
 remains outside the calculation, gate, pipeline, CLI and input-loader contracts.
 
+## Phase 2.85 A-share CNINFO management-holding-detail raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hold_control_cninfo.py)
+document `stock_hold_management_detail_cninfo` as a CNINFO full-universe
+management-holding-detail endpoint. Its official `symbol` parameter accepts
+`增持` or `减持` and returns a rolling near-one-year response. This adapter
+exposes that choice as the explicit provider-neutral `direction` parameter under
+`INSIDER_SHARE_CHANGES` with `view=cninfo_management_detail`, maps it back to
+the official `symbol`, validates the complete response, and filters the universe
+to the requested A-share code. The checked-in fixture contains eight rows copied
+from an official `增持` response, including two selected `000019` rows and
+non-selected codes, while preserving the official 16-field output order.
+
+| Raw upstream item | Phase 2.85 treatment |
+| --- | --- |
+| `证券代码`, `证券简称` | Exact six-digit provider identity and name fields used for conservative A-share filtering; they do not establish ownership or share-count facts. |
+| `截止日期`, `公告日期` | Validated date fields; the cut-off date is the observed event/reporting context and neither date is silently promoted to an accounting or legal-effective period. |
+| `高管姓名`, `董监高姓名`, `董监高职务`, `变动人与董监高关系` | Raw person, role and relationship evidence only; no beneficial-control or governance conclusion is inferred. |
+| `期初持股数量`, `期末持股数量`, `变动数量` | Raw provider quantities, with documented holdings in 万股; they do not establish a company-level fully diluted share series or settled issuance/buyback amount. |
+| `变动比例` | Raw provider percentage; no canonical ownership, concentration, dilution or return metric is calculated. |
+| `成交均价`, `期末市值` | Raw price/value fields in the documented 元/万元 scales; they do not establish settled transaction cash, market cap or valuation input. |
+| `持股变动原因`, `数据来源` | Raw provider reason and source labels; they are not collapsed into a canonical corporate-action, filing or governance classification. |
+| request `view=cninfo_management_detail`, `direction` / upstream `symbol` | Explicit endpoint selector and `增持`/`减持` scope retained in request/evidence metadata, together with the rolling-window, source-order, units, row-count and observed-date replay boundary. |
+
+The slice emits `AKSHARE_CNINFO_MANAGEMENT_HOLDINGS_RAW_ONLY`, leaves
+`governance_risk_level` critically missing and creates no canonical fact. The
+response remains outside the calculation, gate, pipeline, CLI and input-loader
+contracts; filing-backed person identity, legal relationship and point-in-time
+interpretation remain outside this acquisition contract.
+
 ## Phase 2.9 corporate-action raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)

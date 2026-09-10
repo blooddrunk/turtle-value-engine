@@ -1,6 +1,6 @@
 # Provider and Cache Architecture
 
-> Status: Phase 2 foundation, read-only AKShare statement slices, earnings forecasts/quick reports/performance reports/business composition/financial abstract/financial indicators, H-share latest indicators, A-share disclosure-notice metadata including the Eastmoney individual-notice, market-wide notice and shareholder-meeting views, risk-warning status, trading-suspension, restricted-share-release, goodwill-impairment detail/goodwill-detail/impairment-forecast/market-profile, ESG-rating, SSE/SZSE/BSE margin-detail, share-capital, individual-info snapshot, corporate-action including IPO-summary, external-guarantee, company-litigation, ownership-pledge snapshot/detail, main-shareholder, shareholder-count/shareholder-count-detail, A-share actual-controller holding-change, A/H HSGT individual-holdings, SSE/SZSE/BSE insider-share-change, A-share Eastmoney management-holding and A-share top-ten/top-ten-tradable-shareholder/top-ten-tradable-shareholder-detail, Dragon-Tiger market-activity detail/statistics/institution-statistics/market-participation-desire/market-focus/institution-participation/hot-rank/latest-hot-rank/limit-up-pool/limit-down-pool/H-share latest-hot-rank/new-stock-board, A+H quote-comparison, A-share Eastmoney/Sina intraday-trade, Tencent daily-history/latest-trading-day tick, Sina minute-history, A-share/H-share intraday-history, pre-market-history and five-level bid-ask raw slices
+> Status: Phase 2 foundation, read-only AKShare statement slices, earnings forecasts/quick reports/performance reports/business composition/financial abstract/financial indicators, H-share latest indicators, A-share disclosure-notice metadata including the Eastmoney individual-notice, market-wide notice and shareholder-meeting views, risk-warning status, trading-suspension, restricted-share-release, goodwill-impairment detail/goodwill-detail/impairment-forecast/market-profile, ESG-rating, SSE/SZSE/BSE margin-detail, share-capital, individual-info snapshot, corporate-action including IPO-summary, external-guarantee, company-litigation, ownership-pledge snapshot/detail, main-shareholder, shareholder-count/shareholder-count-detail, A-share actual-controller holding-change, A/H HSGT individual-holdings, SSE/SZSE/BSE insider-share-change, A-share Eastmoney/CNINFO management-holding and A-share top-ten/top-ten-tradable-shareholder/top-ten-tradable-shareholder-detail, Dragon-Tiger market-activity detail/statistics/institution-statistics/market-participation-desire/market-focus/institution-participation/hot-rank/latest-hot-rank/limit-up-pool/limit-down-pool/H-share latest-hot-rank/new-stock-board, A+H quote-comparison, A-share Eastmoney/Sina intraday-trade, Tencent daily-history/latest-trading-day tick, Sina minute-history, A-share/H-share intraday-history, pre-market-history and five-level bid-ask raw slices
 
 This document freezes the boundary between structured-data acquisition and the
 deterministic Turtle Value Engine. It does not authorize a live provider or
@@ -1499,6 +1499,26 @@ the requested A-share listing and records the upstream/selected row counts.
 The normalizer emits `AKSHARE_MANAGEMENT_HOLDINGS_RAW_ONLY`, leaves
 `governance_risk_level` critically missing and does not infer ownership,
 share-count, dilution, buyback, issuance, return or valuation facts.
+
+For the distinct A-share CNINFO management-holding-detail slice, the current
+[AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hold_control_cninfo.py)
+define `stock_hold_management_detail_cninfo(symbol="增持")` with the choices
+`增持` and `减持`. The implementation maps those choices to `B`/`S`, posts to
+CNINFO `p_sysapi1030`, and requests the prior-year-through-current-date rolling
+window. Its output is reordered to the exact fields `证券代码`, `证券简称`,
+`截止日期`, `公告日期`, `高管姓名`, `董监高姓名`, `董监高职务`,
+`变动人与董监高关系`, `期初持股数量`, `期末持股数量`, `变动数量`,
+`变动比例`, `成交均价`, `期末市值`, `持股变动原因` and `数据来源`.
+The provider-neutral boundary requires `view=cninfo_management_detail` and an
+explicit `direction`, validates the full universe's exact field order, six-digit
+codes, dates, finite numeric/null values and non-negative holdings/price/value
+ranges, then filters it to the requested A-share listing. Direction, rolling
+window scope, units, source field order, row counts and observed cutoff-date
+bounds are retained as replay metadata. The normalizer emits
+`AKSHARE_CNINFO_MANAGEMENT_HOLDINGS_RAW_ONLY`, leaves `governance_risk_level`
+critically missing and creates no ownership, share-count, dilution, settled-cash,
+return, valuation or governance fact.
 
 For the A-share individual-info slice, the current [AKShare stock-data
 documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and [official
