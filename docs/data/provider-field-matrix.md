@@ -1324,6 +1324,39 @@ input-loader contracts. H-share popularity rank and provider timing alone do
 not establish issuer cash flow, shareholder return, governance severity or
 valuation.
 
+## Phase 2.83 A-share Eastmoney limit-down-pool raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_ztb_em.py)
+document `stock_zt_pool_dtgc_em` as the recent-data Eastmoney A-share
+limit-down-pool endpoint. The request accepts a required `date` in `YYYYMMDD`
+form and the response schema is exactly `序号`, `代码`, `名称`, `涨跌幅`,
+`最新价`, `成交额`, `流通市值`, `总市值`, `动态市盈率`, `换手率`, `封单资金`,
+`最后封板时间`, `板上成交额`, `连续跌停`, `开板次数` and `所属行业`.
+
+The provider selects this endpoint only under `MARKET_ACTIVITY` with explicit
+`view=limit_down_pool`, passes the date unchanged, validates the complete
+recent-date universe before filtering to the requested A-share listing, and
+records the requested/observed date binding, row counts, exact field scope,
+rank ordering and provider source URI. The fixture is a frozen real response
+snapshot for 20260910. The normalizer emits
+`AKSHARE_LIMIT_DOWN_POOL_RAW_ONLY`; it creates no canonical fact.
+
+| Raw upstream item | Phase 2.83 treatment |
+| --- | --- |
+| `序号` | Required positive integer with strictly ascending full-universe ordering; retained as provider ranking context only. |
+| `代码` | Required six-digit A-share identity; used only for provider-boundary filtering and replay scope. |
+| `名称`, `所属行业` | Required non-empty text context; no issuer classification or business-quality fact is inferred. |
+| `涨跌幅`, `最新价`, `流通市值`, `总市值`, `动态市盈率`, `换手率` | Finite numeric-or-null quote, market-cap and provider-statistic fields; they do not become return, liquidity, valuation, cash-flow or canonical market facts. |
+| `成交额`, `封单资金`, `板上成交额`, `连续跌停`, `开板次数` | Finite integer-like-or-null activity and provider-counter fields; they remain raw evidence only. |
+| `最后封板时间` | Required valid `HHMMSS` time-only field; request `date` supplies provenance and no synthetic timestamp is created. |
+| request `view=limit_down_pool`, `date` | Explicit endpoint, A-share listing filter and requested-trading-date replay scope; the upstream date is retained as request-bound provenance. |
+
+The response remains outside the calculation, gate, pipeline, CLI and
+input-loader contracts. Quote, limit-down activity, provider ranking and
+market-cap fields remain raw evidence only and do not establish issuer cash
+flow, shareholder return, governance, valuation or a canonical market metric.
+
 ## Phase 2.9 corporate-action raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)

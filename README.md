@@ -780,6 +780,21 @@ input-loader contracts. Live calls remain opt-in; tests use the official-doc
 fixture with cache replay, market-specific request/response validation,
 raw-only normalization and replay-scope coverage.
 
+Phase 2.83 adds the distinct documented Eastmoney A-share limit-down-pool
+endpoint [`stock_zt_pool_dtgc_em`](https://akshare.akfamily.xyz/data/stock/stock.html),
+whose current [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_ztb_em.py)
+uses a recent-data `date` and returns the exact 16 fields for the requested
+trading-day pool. Under `MARKET_ACTIVITY` with explicit
+`view=limit_down_pool`, the adapter validates the full response, including
+codes, ascending ranks, `HHMMSS` lock times, finite numeric/null values and
+integer-like counters, before filtering to the requested A-share listing. The
+fixture is a frozen real response snapshot for 20260910; cache replay and
+scope-metadata checks are covered. The normalizer emits
+`AKSHARE_LIMIT_DOWN_POOL_RAW_ONLY`: quote, limit-down activity, ranking and
+market-cap fields remain raw evidence and do not establish issuer cash flow,
+shareholder return, governance, valuation or a canonical market fact. No
+calculation, gate, pipeline, CLI or input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

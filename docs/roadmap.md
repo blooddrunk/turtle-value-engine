@@ -2020,6 +2020,36 @@ and input-loader contracts. Live calls remain opt-in; tests use the official-doc
 fixture with cache replay, market-specific request/response validation,
 raw-only normalization and replay-scope coverage.
 
+### Phase 2.83 — A-share Eastmoney limit-down-pool raw acquisition contract (COMPLETE)
+
+The mapping review now covers the distinct documented AKShare Eastmoney
+`stock_zt_pool_dtgc_em` endpoint under the existing `MARKET_ACTIVITY` category.
+The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_ztb_em.py)
+define a recent-data A-share limit-down-pool call with required `date=YYYYMMDD`
+and the exact fields `序号`, `代码`, `名称`, `涨跌幅`, `最新价`, `成交额`,
+`流通市值`, `总市值`, `动态市盈率`, `换手率`, `封单资金`, `最后封板时间`,
+`板上成交额`, `连续跌停`, `开板次数` and `所属行业`.
+
+The provider selects this callable only with explicit `view=limit_down_pool`,
+passes the requested date unchanged, validates the complete upstream universe
+before filtering by six-digit A-share code, and records the endpoint, source
+URI, requested/observed dates, row counts, provider filtering, rank field and
+strict ordering for cache replay. Validation rejects missing or extra fields,
+invalid codes, duplicate codes or ranks, non-ascending ranks, empty text,
+invalid `HHMMSS` lock times, non-finite values and non-integer activity
+counters. The checked-in fixture is a frozen real response snapshot for
+20260910.
+
+The normalizer emits `AKSHARE_LIMIT_DOWN_POOL_RAW_ONLY` and creates no
+canonical fact: quote, limit-down activity, provider ranking and market-cap
+fields remain raw evidence and do not establish issuer cash flow, shareholder
+return, governance, valuation or a canonical market metric. Live calls remain
+opt-in; tests cover explicit request validation, exact response schema,
+listing filtering including an empty selection, raw-only normalization,
+cache/raw replay and replay-scope metadata. No calculation, gate, pipeline,
+CLI or input-loader contract changes.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -2029,7 +2059,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.82 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.83 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
