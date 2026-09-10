@@ -527,6 +527,17 @@ records the symbol-scoped historical-detail replay boundary. The normalizer
 emits `AKSHARE_A_DIVIDEND_DETAIL_RAW_ONLY`: report-period distribution rows,
 event dates, ratios, per-share indicators and share-count context do not establish
 settled ordinary dividend cash or a canonical payout denominator.
+Phase 2.64 adds the distinct documented CNINFO A-share IPO-summary endpoint
+[`stock_ipo_summary_cninfo`](https://akshare.akfamily.xyz/data/stock/stock.html),
+whose current official implementation is in
+[`stock_ipo_summary_cninfo.py`](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_ipo_summary_cninfo.py),
+under `CORPORATE_ACTIONS` with explicit `view=ipo_summary`. It passes the
+unprefixed six-digit A-share code, validates one exact 15-field row with
+optional dates/numeric values and string/null underwriter context, and records
+the historical IPO-summary replay scope. The normalizer emits
+`AKSHARE_IPO_SUMMARY_RAW_ONLY`: offering dates, proceeds, fees and share
+quantities do not establish settled issuance cash, dilution or a canonical
+share fact.
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

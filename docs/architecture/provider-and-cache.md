@@ -1,6 +1,6 @@
 # Provider and Cache Architecture
 
-> Status: Phase 2 foundation, read-only AKShare statement slices, earnings forecasts/quick reports/performance reports/business composition/financial abstract/financial indicators, H-share latest indicators, dividend events/snapshots/detail, A-share disclosure-notice metadata, risk-warning status, trading-suspension, restricted-share-release, goodwill-impairment, ESG-rating, SSE/SZSE/BSE margin-detail, share-capital, individual-info snapshot, corporate-action, external-guarantee, company-litigation, ownership-pledge snapshot/detail, main-shareholder, shareholder-count, A-share actual-controller holding-change, A/H HSGT individual-holdings, SSE/SZSE/BSE insider-share-change, A-share Eastmoney management-holding and A-share top-ten/top-ten-tradable-shareholder/top-ten-tradable-shareholder-detail, Dragon-Tiger market-activity detail/statistics/institution-statistics/market-participation-desire/hot-rank, A+H quote-comparison, A-share Eastmoney intraday-trade, Tencent daily-history/latest-trading-day tick, Sina minute-history, A-share/H-share intraday-history, pre-market-history and five-level bid-ask raw slices
+> Status: Phase 2 foundation, read-only AKShare statement slices, earnings forecasts/quick reports/performance reports/business composition/financial abstract/financial indicators, H-share latest indicators, dividend events/snapshots/detail, A-share disclosure-notice metadata, risk-warning status, trading-suspension, restricted-share-release, goodwill-impairment, ESG-rating, SSE/SZSE/BSE margin-detail, share-capital, individual-info snapshot, corporate-action including IPO-summary, external-guarantee, company-litigation, ownership-pledge snapshot/detail, main-shareholder, shareholder-count, A-share actual-controller holding-change, A/H HSGT individual-holdings, SSE/SZSE/BSE insider-share-change, A-share Eastmoney management-holding and A-share top-ten/top-ten-tradable-shareholder/top-ten-tradable-shareholder-detail, Dragon-Tiger market-activity detail/statistics/institution-statistics/market-participation-desire/hot-rank, A+H quote-comparison, A-share Eastmoney intraday-trade, Tencent daily-history/latest-trading-day tick, Sina minute-history, A-share/H-share intraday-history, pre-market-history and five-level bid-ask raw slices
 
 This document freezes the boundary between structured-data acquisition and the
 deterministic Turtle Value Engine. It does not authorize a live provider or
@@ -706,14 +706,15 @@ The cache performs no network retries. The normalizer performs no provider
 retries. The deterministic pipeline performs no provider retries and should
 not be rerun as a substitute for resolving missing facts.
 
-## 12. Phase 2.2–2.63 AKShare adapter
+## 12. Phase 2.2–2.64 AKShare adapter
 
 The first concrete adapter is intentionally limited to read-only metadata,
 market observations, three documented financial-statement slices, raw-only
 earnings-forecast, earnings-quick-report, performance-report,
 business-composition and financial-abstract categories, A/H financial-indicator
 raw slices, raw-only dividend event/snapshot/detail including the A-share
-Eastmoney distribution-detail view, corporate-action,
+Eastmoney distribution-detail view, corporate-action including the A-share
+CNINFO IPO-summary view,
 external-guarantee and company-litigation categories,
 four A-share share-capital raw slices, three A-share ownership-pledge raw views,
 an H-share latest-indicator raw slice, an A-share disclosure-notice raw slice,
@@ -757,7 +758,7 @@ advertises exactly these capabilities:
 | `BALANCE_SHEET` | `stock_zcfz_em` / `stock_zcfz_bj_em` (detailed report-period and Sina fallbacks) | `stock_financial_hk_report_em` | explicit `book_cash`, equity totals and aggregate interest-bearing debt when labeled |
 | `DIVIDENDS` | `stock_dividend_cninfo`; `stock_fhps_em` (explicit report date); `stock_fhps_detail_em` (`view=event_detail`) | `stock_hk_dividend_payout_em`; `stock_hk_fhpx_detail_ths` (`view=event_detail`) | raw structured evidence only; no canonical dividend cash or payout ratio |
 | `DISCLOSURE_NOTICES` | `stock_zh_a_disclosure_report_cninfo` (`market=沪深京`, optional filters/date range) | — | listing-bound announcement metadata as raw structured evidence only; no filing-content, accounting or governance fact |
-| `CORPORATE_ACTIONS` | `stock_repurchase_em` (no parameters); `stock_allotment_cninfo` (date-range request) | — | A-share repurchase or rights-issue rows; raw structured evidence only; no canonical buyback, issuance or dilution fact |
+| `CORPORATE_ACTIONS` | `stock_repurchase_em` (no parameters); `stock_allotment_cninfo` (date-range request); `stock_ipo_summary_cninfo` (`view=ipo_summary`, symbol-scoped) | — | A-share repurchase, rights-issue or IPO-summary rows; raw structured evidence only; no canonical buyback, issuance or dilution fact |
 | `SHARE_CAPITAL` | `stock_zh_a_gbjg_em` (no parameters); `stock_share_change_cninfo` (explicit date range); `stock_restricted_release_queue_em` (`view=restricted_release_queue`); `stock_individual_info_em` (`view=individual_info`) | — | raw historical response or current item/value snapshot and provenance only; no canonical share/dilution fact |
 | `OWNERSHIP_PLEDGE` | `stock_gpzy_pledge_ratio_em` (exact `date`); `stock_gpzy_individual_pledge_ratio_detail_em` (`view=individual_pledge_detail`); `stock_cg_equity_mortgage_cninfo` (`view=equity_mortgage`, `date`) | — | date-bound snapshot, symbol-scoped detail or CNINFO pledge-event rows as raw structured evidence only; no canonical governance, share, cash or debt-equivalent fact |
 | `INSIDER_SHARE_CHANGES` | `stock_share_hold_change_sse` (Shanghai); `stock_share_hold_change_szse` (Shenzhen); `stock_share_hold_change_bse` (Beijing); `stock_hold_management_detail_em` (`view=management_detail`, no upstream arguments, full universe filtered to requested A-share) | — | listing-scoped exchange rows or management/related-person holding-change rows as raw structured evidence only; no canonical share, dilution, governance, buyback or issuance fact |
@@ -829,6 +830,21 @@ scope into replay metadata. The normalizer emits
 `AKSHARE_A_DIVIDEND_DETAIL_RAW_ONLY`; its distribution ratios, event plans,
 per-share indicators and share-count context remain raw evidence and do not
 establish settled ordinary dividend cash or a canonical payout denominator.
+The A-share `stock_ipo_summary_cninfo` view passes the unprefixed six-digit
+listing code to the documented CNINFO IPO-summary endpoint. The current
+[AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_ipo_summary_cninfo.py)
+define the exact 15 fields `股票代码`, `招股公告日期`, `中签率公告日`,
+`每股面值`, `总发行数量`, `发行前每股净资产`, `摊薄发行市盈率`,
+`募集资金净额`, `上网发行日期`, `上市日期`, `发行价格`, `发行费用总额`,
+`发行后每股净资产`, `上网发行中签率` and `主承销商`. The adapter requires
+`view=ipo_summary`, validates exactly one symbol-matching row, optional valid
+dates, finite numeric/null fields and string/null underwriter text, and binds
+the request view, symbol, row counts, historical scope and row-date binding
+into replay metadata. The normalizer emits
+`AKSHARE_IPO_SUMMARY_RAW_ONLY`; offering dates, proceeds, fees, quantities and
+underwriter context do not establish canonical issuance cash, dilution or a
+share fact.
 The A-share `stock_intraday_em` view passes the unprefixed six-digit listing
 code to the documented Eastmoney intraday-trade endpoint. Its latest-trading-day
 response contains the exact time-only fields `时间`, `成交价`, `手数` and
@@ -868,7 +884,7 @@ The normalizer emits `Fact` and `Evidence` objects inside the existing
 performance-report, business-composition, financial-abstract,
 financial-indicator, latest-indicator, dividend event/detail, disclosure-notice,
 risk-warning-status, trading-suspension, restricted-share-release,
-goodwill-impairment, ESG-rating, margin-trading, corporate-action,
+goodwill-impairment, ESG-rating, margin-trading, corporate-action/IPO-summary,
 external-guarantee, company-litigation, share-capital, ownership-pledge,
 main-shareholder, shareholder-count, top-ten-shareholder,
 top-ten-tradable-shareholder, top-ten-tradable-shareholder-detail,
@@ -1330,7 +1346,7 @@ critically missing.
 
 ## 13. Deliberate non-goals
 
-This foundation plus the Phase 2.2–2.63 slices does not include:
+This foundation plus the Phase 2.2–2.64 slices does not include:
 
 - Tushare, BaoStock or any other additional provider;
 - automatic network scheduling, credentials or retry orchestration outside an adapter;

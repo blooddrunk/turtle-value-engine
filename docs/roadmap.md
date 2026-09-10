@@ -1554,6 +1554,30 @@ payout denominator. Live calls remain opt-in; tests use an injected client and
 a frozen fixture with cache replay, invalid-parameter, response-validation,
 raw-only and replay-scope coverage.
 
+### Phase 2.64 — A-share CNINFO IPO-summary raw acquisition contract (COMPLETE)
+
+The mapping review now covers the distinct CNINFO A-share IPO-summary endpoint
+documented as
+[`stock_ipo_summary_cninfo`](https://akshare.akfamily.xyz/data/stock/stock.html)
+and implemented by the current [official source](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_ipo_summary_cninfo.py).
+It accepts a six-digit A-share `symbol` and returns the exact fields
+`股票代码`, `招股公告日期`, `中签率公告日`, `每股面值`, `总发行数量`,
+`发行前每股净资产`, `摊薄发行市盈率`, `募集资金净额`, `上网发行日期`,
+`上市日期`, `发行价格`, `发行费用总额`, `发行后每股净资产`,
+`上网发行中签率` and `主承销商`.
+
+The provider selects this callable only under the existing provider-neutral
+`CORPORATE_ACTIONS` category with explicit `view=ipo_summary`, passes the
+unprefixed A-share code, requires one exact symbol-matching row, validates
+optional dates, finite numeric/null fields and string/null underwriter text,
+and records the view, symbol, row counts, historical scope and row-date
+binding for replay. The normalizer emits
+`AKSHARE_IPO_SUMMARY_RAW_ONLY`, marks `share_issuance_cash` critically missing
+and creates no canonical issuance, dilution or share fact. Live calls remain
+opt-in; tests use an injected client and frozen fixture coverage for cache
+replay, invalid requests, response validation, raw-only normalization and
+replayed-scope validation.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -1563,7 +1587,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.63 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.64 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -1771,7 +1795,7 @@ Phase 2 is active. Phase 1 remains frozen: changes to formulas, hard-gate
 semantics, schemas or `strict-v1` thresholds require a separately reviewed,
 versioned change.
 
-Phase 2.63 completes the next documented structured-data boundary while
+Phase 2.64 completes the next documented structured-data boundary while
 keeping share-change, repurchase and rights-issue period, status, unit and
 economic-scope questions unresolved, and keeping ownership-pledge holder,
 governance and economic-scope questions unresolved. The A-share
@@ -1827,6 +1851,12 @@ cash or a canonical payout denominator. The explicit `view=event_detail`,
 unprefixed symbol, exact 19-field response, ascending report-period ordering,
 row-date binding and symbol-scoped historical-detail snapshot remain part of
 its replayable acquisition boundary.
+The A-share CNINFO IPO-summary response remains raw-only because its offering
+dates, proceeds, fees, quantities and underwriter context do not establish a
+settled issuance-cash period, dilution or a canonical share fact. The explicit
+`view=ipo_summary`, unprefixed symbol, exact 15-field response, symbol-scoped
+historical scope and row-date binding remain part of its replayable acquisition
+boundary.
 dividend-distribution snapshot remains raw-only because its ratios, status and
 multiple dates do not establish settled ordinary cash or a canonical payout
 denominator. Phase 2 remains active; future documented categories must be

@@ -751,6 +751,37 @@ calculation, gate, pipeline, CLI and input-loader contracts. Its raw evidence is
 available for later review without being treated as a canonical dividend-cash,
 payout, share-count, income or valuation input.
 
+## Phase 2.64 A-share CNINFO IPO-summary raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_ipo_summary_cninfo` as a symbol-scoped CNINFO A-share
+listing/IPO-summary endpoint. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_ipo_summary_cninfo.py)
+accepts a six-digit `symbol`, reads the first returned record and exposes the
+15 documented fields below.
+
+The provider selects this callable only under the existing
+`CORPORATE_ACTIONS` category with explicit `view=ipo_summary`, passes the
+unprefixed requested A-share code, requires exactly one response row and
+validates its exact field set, listing identity, optional dates, finite numeric
+values and string/null underwriter field before storing raw evidence. It records
+the view, symbol, row counts, historical IPO-summary scope and row-date binding
+for replay. The normalizer emits `AKSHARE_IPO_SUMMARY_RAW_ONLY`, marks
+`share_issuance_cash` as critically missing and creates no canonical issuance,
+dilution or share fact.
+
+| Raw upstream item | Phase 2 treatment |
+| --- | --- |
+| `股票代码` | Required six-digit A-share identity; it must match the requested listing and is not a new canonical entity fact. |
+| `招股公告日期`, `中签率公告日`, `上网发行日期`, `上市日期` | Validated date-or-null fields; historical offering/listing context only, not a settled issuance-cash period or canonical listing-date fact. |
+| `每股面值`, `总发行数量`, `发行前每股净资产`, `摊薄发行市盈率`, `募集资金净额`, `发行价格`, `发行费用总额`, `发行后每股净资产`, `上网发行中签率` | Validated finite numeric-or-null fields; provider scale and economic basis remain raw because the response does not establish the accepted unit, settlement period or diluted-share scope. |
+| `主承销商` | Validated string-or-null issuer/underwriter context; no governance, issuance or valuation fact is inferred. |
+| request `view=ipo_summary`, unprefixed A-share `symbol` | Explicit endpoint, A-share listing and historical row-date replay scope. |
+
+The provider-specific IPO-summary response remains outside the calculation, gate,
+pipeline, CLI and input-loader contracts. Its raw evidence is available for
+later review without being treated as canonical issuance cash, dilution,
+share-count, listing-date, income or valuation input.
+
 ## Phase 2.9 corporate-action raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)

@@ -26,7 +26,7 @@ daily-history and Tencent latest-trading-day tick, Sina minute-history,
 intraday-history, H-share intraday-history, pre-market-history, five-level bid-ask
 and Dragon-Tiger market-activity detail/statistics/institution-statistics raw
 slices are also available. The A-share dividend-distribution detail raw slice is
-also available.
+also available. The A-share CNINFO IPO-summary raw slice is also available.
 The A-share Eastmoney top-ten, top-ten-tradable-shareholder and
 top-ten-tradable-shareholder-detail raw slices are also available.
 Upstream column names are handled in this module and are never passed to the
@@ -75,9 +75,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "63"
+AKSHARE_ADAPTER_VERSION = "64"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "64"
+AKSHARE_MAPPING_VERSION = "65"
 
 
 class ListingMarket(StrEnum):
@@ -171,6 +171,7 @@ _SOURCE_URIS = {
     "stock_dividend_cninfo": "http://webapi.cninfo.com.cn/#/company",
     "stock_fhps_em": "https://data.eastmoney.com/yjfp/",
     "stock_fhps_detail_em": "https://data.eastmoney.com/yjfp/detail/300073.html",
+    "stock_ipo_summary_cninfo": "https://webapi.cninfo.com.cn/#/company",
     "stock_hk_dividend_payout_em": "https://emweb.securities.eastmoney.com/PC_HKF10/pages/home/index.html",
     "stock_hk_fhpx_detail_ths": "https://stockpage.10jqka.com.cn/HK0700/bonus/",
     "stock_hsgt_individual_em": "https://data.eastmoney.com/hsgt/StockHdDetail/002008.html",
@@ -591,6 +592,45 @@ _SHARE_CHANGE_DEFAULT_START_DATE = "20091227"
 _SHARE_CHANGE_DEFAULT_END_DATE = "20241021"
 
 _CORPORATE_ACTION_PARAMETER_NAMES = frozenset({"start_date", "end_date"})
+_IPO_SUMMARY_PARAMETER_NAMES = frozenset({"view"})
+_IPO_SUMMARY_VIEW = "ipo_summary"
+_IPO_SUMMARY_FIELDS = frozenset(
+    {
+        "股票代码",
+        "招股公告日期",
+        "中签率公告日",
+        "每股面值",
+        "总发行数量",
+        "发行前每股净资产",
+        "摊薄发行市盈率",
+        "募集资金净额",
+        "上网发行日期",
+        "上市日期",
+        "发行价格",
+        "发行费用总额",
+        "发行后每股净资产",
+        "上网发行中签率",
+        "主承销商",
+    }
+)
+_IPO_SUMMARY_DATE_FIELDS = (
+    "招股公告日期",
+    "中签率公告日",
+    "上网发行日期",
+    "上市日期",
+)
+_IPO_SUMMARY_NUMERIC_FIELDS = (
+    "每股面值",
+    "总发行数量",
+    "发行前每股净资产",
+    "摊薄发行市盈率",
+    "募集资金净额",
+    "发行价格",
+    "发行费用总额",
+    "发行后每股净资产",
+    "上网发行中签率",
+)
+_IPO_SUMMARY_TEXT_FIELDS = ("主承销商",)
 _EXTERNAL_GUARANTEES_PARAMETER_NAMES = frozenset({"start_date", "end_date"})
 _EXTERNAL_GUARANTEES_DEFAULT_START_DATE = "20180630"
 _EXTERNAL_GUARANTEES_DEFAULT_END_DATE = "20210927"
@@ -1801,7 +1841,23 @@ class AKShareProvider(StructuredDataProvider):
             response_metadata["listing_scoped_request"] = True
         elif request.category is DataCategory.CORPORATE_ACTIONS:
             rows = _table_rows(payload, provider=self.identity, request=request)
-            if endpoint.name == "stock_repurchase_em":
+            if endpoint.name == "stock_ipo_summary_cninfo":
+                _validate_ipo_summary_provider_rows(
+                    rows,
+                    listing,
+                    provider=self.identity,
+                    request=request,
+                )
+                response_metadata["upstream_row_count"] = len(rows)
+                response_metadata["entity_row_count"] = len(rows)
+                response_metadata["entity_rows_selected"] = True
+                response_metadata["listing_scoped_request"] = True
+                response_metadata["corporate_action_view"] = _IPO_SUMMARY_VIEW
+                response_metadata["action_type"] = "ipo_summary"
+                response_metadata["upstream_symbol"] = kwargs["symbol"]
+                response_metadata["snapshot_scope"] = "historical_ipo_summary"
+                response_metadata["date_binding"] = "row_dates"
+            elif endpoint.name == "stock_repurchase_em":
                 selected = _select_listing_rows(
                     rows,
                     listing,
@@ -2337,6 +2393,9 @@ class AKShareProvider(StructuredDataProvider):
             statement_date_requested="statement_date" in request.parameters,
             corporate_action_date_requested=any(
                 name in request.parameters for name in ("start_date", "end_date")
+            ),
+            corporate_action_ipo_summary_requested=(
+                request.parameters.get("view") == _IPO_SUMMARY_VIEW
             ),
             share_capital_date_requested=any(
                 name in request.parameters for name in ("start_date", "end_date")
@@ -3325,7 +3384,11 @@ class AKShareNormalizer:
                         "AKShare corporate-action raw slices support A-share listings only"
                     )
                 endpoint_name = record.response_metadata.get("endpoint")
-                if endpoint_name == "stock_allotment_cninfo":
+                if endpoint_name == "stock_ipo_summary_cninfo":
+                    _validate_ipo_summary_normalizer_scope(record, listing, rows)
+                    missing_fields.add("share_issuance_cash")
+                    normalizer_flags.add("AKSHARE_IPO_SUMMARY_RAW_ONLY")
+                elif endpoint_name == "stock_allotment_cninfo":
                     _validate_corporate_action_normalizer_rows(rows, listing)
                     missing_fields.add("share_issuance_cash")
                     normalizer_flags.add("AKSHARE_ALLOTMENT_RAW_ONLY")
@@ -3791,6 +3854,13 @@ class AKShareNormalizer:
                 "units and share-class scope are not sufficient for a canonical "
                 "issuance or dilution fact."
             )
+        if "AKSHARE_IPO_SUMMARY_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented A-share IPO-summary response is retained as raw "
+                "evidence only: historical offering dates, proceeds, fees, share "
+                "quantities and underwriter context do not establish a settled "
+                "issuance-cash period, dilution or canonical share fact."
+            )
         if "AKSHARE_OWNERSHIP_PLEDGE_RAW_ONLY" in normalizer_flags:
             notes += (
                 " The documented A-share ownership-pledge snapshot is retained as "
@@ -4246,6 +4316,7 @@ def _endpoint_candidates(
     *,
     statement_date_requested: bool = False,
     corporate_action_date_requested: bool = False,
+    corporate_action_ipo_summary_requested: bool = False,
     share_capital_date_requested: bool = False,
     share_capital_restricted_release_requested: bool = False,
     share_capital_individual_info_requested: bool = False,
@@ -4420,6 +4491,8 @@ def _endpoint_candidates(
             return ("stock_hk_fhpx_detail_ths",)
         return ("stock_hk_dividend_payout_em",)
     if category is DataCategory.CORPORATE_ACTIONS:
+        if corporate_action_ipo_summary_requested:
+            return ("stock_ipo_summary_cninfo",)
         if corporate_action_date_requested:
             return ("stock_allotment_cninfo",)
         return ("stock_repurchase_em",)
@@ -5570,6 +5643,28 @@ def _corporate_action_kwargs(
     listing: _ListingRef,
     request: ProviderRequest,
 ) -> dict[str, object]:
+    if endpoint_name == "stock_ipo_summary_cninfo":
+        if listing.market is not ListingMarket.A:
+            raise ProviderRequestError(
+                "the AKShare IPO-summary endpoint supports A-share listings only",
+                request=request,
+                retryable=False,
+            )
+        unknown = sorted(set(request.parameters) - _IPO_SUMMARY_PARAMETER_NAMES)
+        if unknown:
+            raise ProviderRequestError(
+                "unsupported AKShare IPO-summary parameter(s): " + ", ".join(unknown),
+                request=request,
+                retryable=False,
+            )
+        if request.parameters.get("view") != _IPO_SUMMARY_VIEW:
+            raise ProviderRequestError(
+                "AKShare IPO-summary endpoint requires "
+                f"view={_IPO_SUMMARY_VIEW!r}",
+                request=request,
+                retryable=False,
+            )
+        return {"symbol": listing.code}
     if endpoint_name == "stock_repurchase_em":
         _reject_unexpected_parameters(request)
         return {}
@@ -6532,6 +6627,73 @@ def _validate_corporate_action_provider_rows(
                 provider=provider,
                 request=request,
             )
+
+
+def _ipo_summary_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+) -> str | None:
+    """Return a strict-schema error for one documented IPO-summary row."""
+
+    if len(rows) != 1:
+        return f"A-share IPO-summary response must contain exactly one row; got {len(rows)}"
+
+    row = rows[0]
+    missing = sorted(_IPO_SUMMARY_FIELDS - set(row))
+    if missing:
+        return "A-share IPO-summary row is missing field(s): " + ", ".join(missing)
+    unexpected = sorted(set(row) - _IPO_SUMMARY_FIELDS)
+    if unexpected:
+        return "A-share IPO-summary row contains unsupported field(s): " + ", ".join(
+            unexpected
+        )
+
+    row_code = _row_code(row, ListingMarket.A)
+    if row_code is None:
+        return "A-share IPO-summary row has no listing code"
+    if row_code != listing.code:
+        return (
+            f"A-share IPO-summary row entity {row_code!r} does not match "
+            f"requested listing {listing.canonical_id!r}"
+        )
+
+    for field in _IPO_SUMMARY_DATE_FIELDS:
+        value = row[field]
+        if value is not None and _parse_date_value(value) is None:
+            return f"A-share IPO-summary field {field!r} must be a valid date or null"
+
+    for field in _IPO_SUMMARY_NUMERIC_FIELDS:
+        value = row[field]
+        if value is None:
+            continue
+        if isinstance(value, bool) or not isinstance(value, Real):
+            return f"A-share IPO-summary field {field!r} must be numeric or null"
+        try:
+            numeric = float(value)
+        except (OverflowError, TypeError, ValueError):
+            return f"A-share IPO-summary field {field!r} must be numeric or null"
+        if not math.isfinite(numeric):
+            return f"A-share IPO-summary field {field!r} must be finite or null"
+
+    for field in _IPO_SUMMARY_TEXT_FIELDS:
+        value = row[field]
+        if value is not None and not isinstance(value, str):
+            return f"A-share IPO-summary field {field!r} must be a string or null"
+    return None
+
+
+def _validate_ipo_summary_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> None:
+    """Validate the symbol-scoped CNINFO IPO-summary response before storage."""
+
+    message = _ipo_summary_validation_message(rows, listing)
+    if message is not None:
+        raise ProviderResponseError(message, provider=provider, request=request)
 
 
 def _bid_ask_validation_message(
@@ -9301,6 +9463,50 @@ def _validate_a_dividend_detail_normalizer_scope(
             )
 
     message = _a_dividend_detail_validation_message(rows)
+    if message is not None:
+        raise ProviderNormalizationError(message)
+
+
+def _validate_ipo_summary_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> None:
+    """Validate replayed A-share IPO-summary rows and request metadata."""
+
+    if record.response_metadata.get("endpoint") != "stock_ipo_summary_cninfo":
+        raise ProviderNormalizationError(
+            "AKShare A-share IPO-summary record must come from "
+            "stock_ipo_summary_cninfo"
+        )
+    try:
+        upstream_kwargs = _corporate_action_kwargs(
+            "stock_ipo_summary_cninfo",
+            listing,
+            record.request,
+        )
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+
+    expected_metadata = {
+        "corporate_action_view": _IPO_SUMMARY_VIEW,
+        "action_type": "ipo_summary",
+        "upstream_symbol": upstream_kwargs["symbol"],
+        "listing_scoped_request": True,
+        "snapshot_scope": "historical_ipo_summary",
+        "date_binding": "row_dates",
+        "upstream_row_count": len(rows),
+        "entity_row_count": len(rows),
+        "entity_rows_selected": True,
+    }
+    for name, expected in expected_metadata.items():
+        if record.response_metadata.get(name) != expected:
+            raise ProviderNormalizationError(
+                f"A-share IPO-summary response metadata {name!r} does not match "
+                "the requested replay scope"
+            )
+
+    message = _ipo_summary_validation_message(rows, listing)
     if message is not None:
         raise ProviderNormalizationError(message)
 

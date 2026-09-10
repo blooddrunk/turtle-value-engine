@@ -440,6 +440,13 @@ class FakeAKShare:
             **kwargs,
         )
 
+    def stock_ipo_summary_cninfo(self, *, symbol: str):
+        return self._return(
+            "stock_ipo_summary_cninfo",
+            _fixture("a_ipo_summary_cninfo.json"),
+            symbol=symbol,
+        )
+
     def stock_cg_guarantee_cninfo(self, **kwargs):
         return self._return(
             "stock_cg_guarantee_cninfo",
@@ -638,8 +645,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "63"
-    assert AKSHARE_MAPPING_VERSION == "64"
+    assert provider.identity.provider_version == "64"
+    assert AKSHARE_MAPPING_VERSION == "65"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -7889,6 +7896,239 @@ def test_corporate_actions_cache_replay_does_not_call_upstream(tmp_path: Path):
     assert replay.mode is RetrievalMode.CACHE_REPLAY
     assert replay.record == live.record
     assert fake.calls == [("stock_repurchase_em", {})]
+
+
+def test_a_ipo_summary_fetch_uses_explicit_view_and_keeps_scope():
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    request = _request(
+        DataCategory.CORPORATE_ACTIONS,
+        "SH600000",
+        {"view": "ipo_summary"},
+    )
+
+    record = provider.fetch(request)
+
+    assert record.raw_payload == _fixture("a_ipo_summary_cninfo.json")
+    assert fake.calls == [("stock_ipo_summary_cninfo", {"symbol": "600000"})]
+    assert record.response_metadata["endpoint"] == "stock_ipo_summary_cninfo"
+    assert record.response_metadata["upstream_row_count"] == 1
+    assert record.response_metadata["entity_row_count"] == 1
+    assert record.response_metadata["entity_rows_selected"] is True
+    assert record.response_metadata["listing_scoped_request"] is True
+    assert record.response_metadata["corporate_action_view"] == "ipo_summary"
+    assert record.response_metadata["action_type"] == "ipo_summary"
+    assert record.response_metadata["upstream_symbol"] == "600000"
+    assert record.response_metadata["snapshot_scope"] == "historical_ipo_summary"
+    assert record.response_metadata["date_binding"] == "row_dates"
+    assert record.source_uri == "https://webapi.cninfo.com.cn/#/company"
+
+
+@pytest.mark.parametrize(
+    ("entity_id", "parameters", "match"),
+    [
+        ("SH600000", {"view": "not-a-documented-view"}, "does not accept request parameters"),
+        (
+            "SH600000",
+            {"view": "ipo_summary", "start_date": "20240101"},
+            "unsupported AKShare IPO-summary parameter",
+        ),
+        ("HK00700", {"view": "ipo_summary"}, "A-share listings only"),
+    ],
+)
+def test_a_ipo_summary_request_validates_explicit_scope_before_upstream_call(
+    entity_id: str,
+    parameters: dict,
+    match: str,
+):
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError, match=match):
+        _provider(fake).fetch(
+            _request(DataCategory.CORPORATE_ACTIONS, entity_id, parameters)
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("missing_field", "missing field"),
+        ("extra_field", "unsupported field"),
+        ("wrong_code", "IPO-summary row entity"),
+        ("invalid_date", "招股公告日期.*valid date"),
+        ("invalid_numeric", "发行价格.*numeric"),
+        ("invalid_text", "主承销商.*string"),
+        ("multiple_rows", "exactly one row"),
+    ],
+)
+def test_a_ipo_summary_response_validates_documented_row(
+    mutation: str,
+    match: str,
+):
+    class InvalidRows(FakeAKShare):
+        def stock_ipo_summary_cninfo(self, *, symbol: str):
+            rows = _fixture("a_ipo_summary_cninfo.json")
+            if mutation == "missing_field":
+                rows[0].pop("发行价格")
+            elif mutation == "extra_field":
+                rows[0]["unexpected"] = "not documented"
+            elif mutation == "wrong_code":
+                rows[0]["股票代码"] = "000001"
+            elif mutation == "invalid_date":
+                rows[0]["招股公告日期"] = "not-a-date"
+            elif mutation == "invalid_numeric":
+                rows[0]["发行价格"] = "10.0"
+            elif mutation == "invalid_text":
+                rows[0]["主承销商"] = 1
+            else:
+                rows.append(dict(rows[0]))
+            return self._return("stock_ipo_summary_cninfo", rows, symbol=symbol)
+
+    with pytest.raises(ProviderResponseError, match=match):
+        _provider(InvalidRows()).fetch(
+            _request(
+                DataCategory.CORPORATE_ACTIONS,
+                "SH600000",
+                {"view": "ipo_summary"},
+            )
+        )
+
+
+def test_a_ipo_summary_raw_record_is_not_promoted_to_issuance_or_share_facts():
+    provider = _provider()
+    record = provider.fetch(
+        _request(
+            DataCategory.CORPORATE_ACTIONS,
+            "SH600000",
+            {"view": "ipo_summary"},
+        )
+    )
+
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="a-ipo-summary-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_IPO_SUMMARY_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == [
+        "share_issuance_cash",
+    ]
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "settled issuance-cash period" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "view",
+        "action_type",
+        "symbol",
+        "listing_scope",
+        "snapshot",
+        "date_binding",
+        "count",
+    ],
+)
+def test_a_ipo_summary_normalizer_rejects_replayed_scope_mismatches(mutation: str):
+    request = _request(
+        DataCategory.CORPORATE_ACTIONS,
+        "SH600000",
+        {"view": "ipo_summary"},
+    )
+    record = _provider().fetch(request)
+    response_metadata = dict(record.response_metadata)
+    if mutation == "view":
+        response_metadata["corporate_action_view"] = "rights_issue"
+    elif mutation == "action_type":
+        response_metadata["action_type"] = "rights_issue"
+    elif mutation == "symbol":
+        response_metadata["upstream_symbol"] = "000001"
+    elif mutation == "listing_scope":
+        response_metadata["listing_scoped_request"] = False
+    elif mutation == "snapshot":
+        response_metadata["snapshot_scope"] = "current_snapshot"
+    elif mutation == "date_binding":
+        response_metadata["date_binding"] = "retrieval_only"
+    else:
+        response_metadata["entity_row_count"] = 99
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=record.raw_payload,
+        source_uri=record.source_uri,
+        response_metadata=response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match="A-share IPO-summary"):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-a-ipo-summary",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_a_ipo_summary_normalizer_rejects_replayed_invalid_rows():
+    record = _provider().fetch(
+        _request(
+            DataCategory.CORPORATE_ACTIONS,
+            "SH600000",
+            {"view": "ipo_summary"},
+        )
+    )
+    payload = [dict(row) for row in record.raw_payload]
+    payload[0]["上市日期"] = "not-a-date"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=record.source_uri,
+        response_metadata=record.response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match="上市日期.*valid date"):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="invalid-a-ipo-summary-row",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_a_ipo_summary_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.CORPORATE_ACTIONS,
+        "SH600000",
+        {"view": "ipo_summary"},
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [("stock_ipo_summary_cninfo", {"symbol": "600000"})]
 
 
 def test_corporate_actions_with_no_matching_listing_is_an_empty_raw_snapshot():
