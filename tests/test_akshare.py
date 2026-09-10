@@ -199,6 +199,12 @@ class FakeAKShare:
             date=date,
         )
 
+    def stock_board_industry_name_em(self):
+        return self._return(
+            "stock_board_industry_name_em",
+            _fixture("a_industry_board.json"),
+        )
+
     def stock_sse_summary(self):
         return self._return("stock_sse_summary", _fixture("a_sse_summary.json"))
 
@@ -857,8 +863,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "96"
-    assert AKSHARE_MAPPING_VERSION == "97"
+    assert provider.identity.provider_version == "97"
+    assert AKSHARE_MAPPING_VERSION == "98"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -17428,6 +17434,353 @@ def test_market_activity_sse_deal_daily_cache_replay_does_not_call_upstream(tmp_
     assert replay.mode is RetrievalMode.CACHE_REPLAY
     assert replay.record == live.record
     assert fake.calls == [("stock_sse_deal_daily", {"date": "20250221"})]
+
+
+def test_market_activity_industry_board_fetch_uses_documented_no_argument_endpoint():
+    fake = FakeAKShare()
+    record = _provider(fake).fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SH600000",
+            {"view": "industry_board"},
+        )
+    )
+
+    assert record.raw_payload == _fixture("a_industry_board.json")
+    assert fake.calls == [("stock_board_industry_name_em", {})]
+    assert record.response_metadata["endpoint"] == "stock_board_industry_name_em"
+    assert record.response_metadata["market"] == "A"
+    assert record.response_metadata["listing_code"] == "600000"
+    assert record.response_metadata["market_activity_view"] == "industry_board"
+    assert record.response_metadata["market_scope"] == (
+        "Eastmoney A-share industry-board universe"
+    )
+    assert record.response_metadata["listing_scoped_request"] is False
+    assert record.response_metadata["row_filtering"] == "none"
+    assert record.response_metadata["snapshot_scope"] == (
+        "current_industry_board_realtime_snapshot"
+    )
+    assert record.response_metadata["date_binding"] == "retrieval_only"
+    assert record.response_metadata["board_name_field"] == "板块名称"
+    assert record.response_metadata["board_code_field"] == "板块代码"
+    assert record.response_metadata["board_ordering"] == "source_ranked"
+    assert record.response_metadata["board_order"] == [
+        "煤炭行业",
+        "互联网服务",
+        "银行",
+    ]
+    assert record.response_metadata["board_code_order"] == [
+        "BK0437",
+        "BK0447",
+        "BK0475",
+    ]
+    assert record.response_metadata["value_fields"] == [
+        "排名",
+        "最新价",
+        "涨跌额",
+        "涨跌幅",
+        "总市值",
+        "换手率",
+        "上涨家数",
+        "下跌家数",
+        "领涨股票-涨跌幅",
+    ]
+    assert record.response_metadata["integer_fields"] == [
+        "排名",
+        "上涨家数",
+        "下跌家数",
+    ]
+    assert record.response_metadata["text_fields"] == [
+        "板块名称",
+        "板块代码",
+        "领涨股票",
+    ]
+    assert record.response_metadata["field_count"] == 12
+    assert record.response_metadata["source_field_order"] == [
+        "排名",
+        "板块名称",
+        "板块代码",
+        "最新价",
+        "涨跌额",
+        "涨跌幅",
+        "总市值",
+        "换手率",
+        "上涨家数",
+        "下跌家数",
+        "领涨股票",
+        "领涨股票-涨跌幅",
+    ]
+    assert record.response_metadata["documented_units"] == {
+        "涨跌幅": "percent",
+        "换手率": "percent",
+        "领涨股票-涨跌幅": "percent",
+    }
+    assert record.response_metadata["undocumented_numeric_units"] == {
+        "最新价": "not_documented",
+        "涨跌额": "not_documented",
+        "总市值": "not_documented",
+    }
+    assert record.response_metadata["upstream_row_count"] == 3
+    assert record.response_metadata["entity_row_count"] == 0
+    assert record.response_metadata["entity_rows_selected"] is False
+    assert record.source_uri == (
+        "https://quote.eastmoney.com/center/boardlist.html#industry_board"
+    )
+
+
+@pytest.mark.parametrize(
+    ("parameters", "entity_id", "match"),
+    [
+        ({}, "SH600000", "requires start_date and end_date"),
+        ({"view": "industry_board", "date": "20260911"}, "SH600000", "unsupported"),
+        ({"view": "industry_board"}, "HK00700", "A-share listings only"),
+    ],
+)
+def test_market_activity_industry_board_request_validates_explicit_scope_before_upstream_call(
+    parameters: dict,
+    entity_id: str,
+    match: str,
+):
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError, match=match):
+        _provider(fake).fetch(
+            _request(DataCategory.MARKET_ACTIVITY, entity_id, parameters)
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("missing_field", "missing field"),
+        ("extra_field", "unsupported field"),
+        ("reordered_fields", "official field order"),
+        ("invalid_rank", "positive integer"),
+        ("non_ascending_rank", "strictly ascending"),
+        ("duplicate_name", "duplicate"),
+        ("invalid_code", "BK code"),
+        ("duplicate_code", "duplicate"),
+        ("invalid_text", "string or null"),
+        ("invalid_numeric", "numeric or null"),
+        ("negative_non_negative", "non-negative"),
+        ("empty_response", "at least one row"),
+    ],
+)
+def test_market_activity_industry_board_response_validates_exact_fields_order_types_and_scope(
+    mutation: str,
+    match: str,
+):
+    class InvalidRows(FakeAKShare):
+        def stock_board_industry_name_em(self):
+            rows = [dict(row) for row in _fixture("a_industry_board.json")]
+            if mutation == "missing_field":
+                rows[0].pop("总市值")
+            elif mutation == "extra_field":
+                rows[0]["unexpected"] = "not documented"
+            elif mutation == "reordered_fields":
+                rows[0] = dict(reversed(list(rows[0].items())))
+            elif mutation == "invalid_rank":
+                rows[0]["排名"] = 1.5
+            elif mutation == "non_ascending_rank":
+                rows[1]["排名"] = 1
+            elif mutation == "duplicate_name":
+                rows[1]["板块名称"] = rows[0]["板块名称"]
+            elif mutation == "invalid_code":
+                rows[0]["板块代码"] = "industry-1"
+            elif mutation == "duplicate_code":
+                rows[1]["板块代码"] = rows[0]["板块代码"]
+            elif mutation == "invalid_text":
+                rows[0]["领涨股票"] = 600000
+            elif mutation == "invalid_numeric":
+                rows[0]["涨跌幅"] = "4.8"
+            elif mutation == "negative_non_negative":
+                rows[0]["换手率"] = -1
+            else:
+                rows.clear()
+            return self._return("stock_board_industry_name_em", rows)
+
+    with pytest.raises(ProviderResponseError, match=match):
+        _provider(InvalidRows()).fetch(
+            _request(
+                DataCategory.MARKET_ACTIVITY,
+                "SH600000",
+                {"view": "industry_board"},
+            )
+        )
+
+
+def test_market_activity_industry_board_is_retained_as_raw_evidence_without_listing_facts():
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SH600000",
+            {"view": "industry_board"},
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="industry-board-raw-only",
+        as_of=date(2026, 9, 11),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_INDUSTRY_BOARD_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == []
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "industry-board" in normalized.data_quality.notes
+    assert "current board ranking" in normalized.data_quality.notes
+    assert "canonical market metric" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "endpoint",
+        "source_uri",
+        "market",
+        "listing_code",
+        "view",
+        "market_scope",
+        "listing_scope",
+        "filtering",
+        "snapshot",
+        "date_binding",
+        "board_name_field",
+        "board_code_field",
+        "board_ordering",
+        "board_order",
+        "board_code_order",
+        "value_fields",
+        "integer_fields",
+        "text_fields",
+        "field_count",
+        "source_field_order",
+        "documented_units",
+        "undocumented_units",
+        "upstream_count",
+        "entity_count",
+        "selected",
+        "payload",
+    ],
+)
+def test_market_activity_industry_board_normalizer_rejects_replayed_scope_mismatches(
+    mutation: str,
+):
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SH600000",
+            {"view": "industry_board"},
+        )
+    )
+    payload = [dict(row) for row in record.raw_payload]
+    response_metadata = dict(record.response_metadata)
+    source_uri = record.source_uri
+    if mutation == "endpoint":
+        response_metadata["endpoint"] = "stock_sse_summary"
+    elif mutation == "source_uri":
+        source_uri = "https://example.invalid/industry-board"
+    elif mutation == "market":
+        response_metadata["market"] = "H"
+    elif mutation == "listing_code":
+        response_metadata["listing_code"] = "000001"
+    elif mutation == "view":
+        response_metadata["market_activity_view"] = "sse_summary"
+    elif mutation == "market_scope":
+        response_metadata["market_scope"] = "Shanghai Stock Exchange"
+    elif mutation == "listing_scope":
+        response_metadata["listing_scoped_request"] = True
+    elif mutation == "filtering":
+        response_metadata["row_filtering"] = "provider"
+    elif mutation == "snapshot":
+        response_metadata["snapshot_scope"] = "latest_trading_day_market_summary"
+    elif mutation == "date_binding":
+        response_metadata["date_binding"] = "request_only"
+    elif mutation == "board_name_field":
+        response_metadata["board_name_field"] = "行业"
+    elif mutation == "board_code_field":
+        response_metadata["board_code_field"] = "代码"
+    elif mutation == "board_ordering":
+        response_metadata["board_ordering"] = "alphabetical"
+    elif mutation == "board_order":
+        response_metadata["board_order"] = list(
+            reversed(response_metadata["board_order"])
+        )
+    elif mutation == "board_code_order":
+        response_metadata["board_code_order"] = ["BK0001"]
+    elif mutation == "value_fields":
+        response_metadata["value_fields"] = ["最新价"]
+    elif mutation == "integer_fields":
+        response_metadata["integer_fields"] = ["排名"]
+    elif mutation == "text_fields":
+        response_metadata["text_fields"] = ["板块名称"]
+    elif mutation == "field_count":
+        response_metadata["field_count"] = 11
+    elif mutation == "source_field_order":
+        response_metadata["source_field_order"] = list(
+            reversed(response_metadata["source_field_order"])
+        )
+    elif mutation == "documented_units":
+        response_metadata["documented_units"] = {"涨跌幅": "fraction"}
+    elif mutation == "undocumented_units":
+        response_metadata["undocumented_numeric_units"] = {"最新价": "CNY"}
+    elif mutation == "upstream_count":
+        response_metadata["upstream_row_count"] = 2
+    elif mutation == "entity_count":
+        response_metadata["entity_row_count"] = 1
+    elif mutation == "selected":
+        response_metadata["entity_rows_selected"] = True
+    else:
+        payload[0]["总市值"] = "1234567890123"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=source_uri,
+        response_metadata=response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-industry-board",
+            as_of=date(2026, 9, 11),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_market_activity_industry_board_cache_replay_does_not_call_upstream(
+    tmp_path: Path,
+):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.MARKET_ACTIVITY,
+        "SH600000",
+        {"view": "industry_board"},
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [("stock_board_industry_name_em", {})]
 
 
 def test_market_activity_sse_summary_fetch_uses_documented_no_argument_endpoint():

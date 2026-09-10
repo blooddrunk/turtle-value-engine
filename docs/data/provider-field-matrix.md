@@ -1024,6 +1024,37 @@ exchange-wide industry aggregate.
 The provider-specific response remains outside the calculation, gate, pipeline,
 CLI and input-loader contracts.
 
+## Phase 2.97 A-share Eastmoney industry-board raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_board_industry_name_em` as an Eastmoney current snapshot of
+all industry boards. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_board_industry_em.py)
+uses a no-argument request and returns the 12 source-shaped fields `排名`,
+`板块名称`, `板块代码`, `最新价`, `涨跌额`, `涨跌幅`, `总市值`, `换手率`,
+`上涨家数`, `下跌家数`, `领涨股票` and `领涨股票-涨跌幅`, in that order.
+
+The provider exposes this endpoint under `MARKET_ACTIVITY` only with explicit
+`view=industry_board`, passes no upstream arguments, and validates the complete
+board universe before retention. It records the ranked board/name/code order,
+documented percentage units, undocumented price/market-value units and
+non-listing row counts for cache replay. The normalizer emits
+`AKSHARE_INDUSTRY_BOARD_RAW_ONLY`; no canonical quote, accounting, return,
+governance, valuation or market fact is admitted from this current
+industry-board snapshot.
+
+| Raw upstream item | Phase 2.97 treatment |
+| --- | --- |
+| `排名` | Required positive integer with strict ascending source order; it ranks the response and is not a listing identifier. |
+| `板块名称`, `板块代码` | Required unique board identity; the `BK...` code and name are retained as raw context and do not establish a requested issuer's industry classification. |
+| `最新价`, `涨跌额`, `总市值` | Finite numeric-or-null current board context; the endpoint does not settle canonical quote or market-value units. |
+| `涨跌幅`, `换手率`, `领涨股票-涨跌幅` | Finite numeric-or-null provider percentages with documented `%`/`percent` units; no canonical return or liquidity metric is inferred. |
+| `上涨家数`, `下跌家数` | Non-negative integer board breadth counts; they remain aggregate market context only. |
+| `领涨股票` | Optional source leader name retained as raw context; it does not establish issuer quality, governance or shareholder-return evidence. |
+| request `view=industry_board` | Explicit no-argument current board-universe scope; `listing_scoped_request=false`, no provider filtering, source URI, board order and row counts remain part of the cache replay boundary. |
+
+The provider-specific response remains outside the calculation, gate, pipeline,
+CLI and input-loader contracts.
+
 ## Phase 2.92 SSE daily-deal overview raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)

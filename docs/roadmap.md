@@ -2425,6 +2425,29 @@ exact response fields/order/types, raw-only normalization, replay-scope
 rejection and cache replay. No calculation, gate, pipeline, CLI or input-loader
 contract changes.
 
+### Phase 2.97 — A-share Eastmoney industry-board raw acquisition contract (COMPLETE)
+
+The mapping review now covers the distinct documented AKShare Eastmoney
+`stock_board_industry_name_em` endpoint under the existing `MARKET_ACTIVITY`
+category with explicit `view=industry_board`. The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_board_industry_em.py)
+define a no-argument current snapshot of all A-share industry boards with the
+12 source-shaped fields `排名`, `板块名称`, `板块代码`, `最新价`, `涨跌额`,
+`涨跌幅`, `总市值`, `换手率`, `上涨家数`, `下跌家数`, `领涨股票` and
+`领涨股票-涨跌幅`.
+
+The provider validates the complete source field order, positive ascending
+ranks, unique board names/codes, finite numeric-or-null values and documented
+percentage units. It records the source board ordering, no-argument request
+scope and non-listing row counts for replay. The checked-in fixture freezes
+three source-shaped board rows. The normalizer emits
+`AKSHARE_INDUSTRY_BOARD_RAW_ONLY` and creates no canonical fact: a current
+industry-board snapshot does not establish a requested listing's quote, issuer
+cash flow, shareholder return, governance, valuation or canonical market
+metric. Tests cover explicit view/A-share validation, exact response
+fields/order/types, raw-only normalization, replay-scope rejection and cache
+replay. No calculation, gate, pipeline, CLI or input-loader contract changes.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -2434,7 +2457,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.96 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.97 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -2659,6 +2682,12 @@ monthly source-shaped nine-field response are validated with strict
 field/industry/order/type checks; CNY, share, transaction and percentage units
 remain explicit replay metadata, and no listing-level or canonical market fact
 is inferred.
+Phase 2.97 adds the documented A-share Eastmoney
+`stock_board_industry_name_em` current industry-board snapshot. Its explicit
+`industry_board` view and source-shaped 12-field ranked board response are
+validated with strict field/order/identity/type checks; percentage units and
+undocumented price/market-value units remain explicit replay metadata, and no
+listing-level or canonical market fact is inferred.
 Phase 2.75 completes the next documented structured-data boundary by adding
 the A-share `stock_gpzy_profile_em` market-wide historical ownership-pledge
 view. Its no-argument eight-field response is validated as an ascending raw

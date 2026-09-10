@@ -991,6 +991,18 @@ non-listing row counts for replay. The normalizer emits
 canonical market fact. No calculation, gate, pipeline, CLI or input-loader
 contract changes.
 
+Phase 2.97 adds the distinct official A-share Eastmoney
+`stock_board_industry_name_em` endpoint under `MARKET_ACTIVITY` with explicit
+`view=industry_board`. The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_board_industry_em.py)
+define the current 12-field industry-board snapshot. The provider validates
+the complete source order, ranked board/code identity, numeric/null values and
+documented percentage units, and preserves the board ordering and
+non-listing row counts for replay. The normalizer emits
+`AKSHARE_INDUSTRY_BOARD_RAW_ONLY` without creating a listing-level or canonical
+market fact. No calculation, gate, pipeline, CLI or input-loader contract
+changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.
