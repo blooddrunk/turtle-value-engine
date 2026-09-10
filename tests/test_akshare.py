@@ -280,6 +280,13 @@ class FakeAKShare:
     def stock_hot_rank_em(self):
         return self._return("stock_hot_rank_em", _fixture("a_hot_rank.json"))
 
+    def stock_zt_pool_em(self, *, date: str):
+        return self._return(
+            "stock_zt_pool_em",
+            _fixture("a_limit_up_pool.json"),
+            date=date,
+        )
+
     def stock_zh_a_new_em(self):
         return self._return("stock_zh_a_new_em", _fixture("a_new_stock_snapshot.json"))
 
@@ -669,8 +676,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "68"
-    assert AKSHARE_MAPPING_VERSION == "69"
+    assert provider.identity.provider_version == "69"
+    assert AKSHARE_MAPPING_VERSION == "70"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -13442,6 +13449,303 @@ def test_market_institution_participation_cache_replay_does_not_call_upstream(
     assert fake.calls == [
         ("stock_comment_detail_zlkp_jgcyd_em", {"symbol": "600000"}),
     ]
+
+
+def test_market_limit_up_pool_fetch_uses_explicit_date_and_filters_universe():
+    fake = FakeAKShare()
+    request = _request(
+        DataCategory.MARKET_ACTIVITY,
+        "SH600000",
+        {"view": "limit_up_pool", "date": "20260909"},
+    )
+    record = _provider(fake).fetch(request)
+
+    fixture = _fixture("a_limit_up_pool.json")
+    assert record.raw_payload == [row for row in fixture if row["代码"] == "600000"]
+    assert fake.calls == [("stock_zt_pool_em", {"date": "20260909"})]
+    assert record.response_metadata["endpoint"] == "stock_zt_pool_em"
+    assert record.response_metadata["market_activity_view"] == "limit_up_pool"
+    assert record.response_metadata["requested_date"] == "20260909"
+    assert record.response_metadata["observation_date"] == "2026-09-09"
+    assert record.response_metadata["snapshot_scope"] == (
+        "requested_trading_date_limit_up_pool"
+    )
+    assert record.response_metadata["date_binding"] == "request"
+    assert record.response_metadata["rank_field"] == "序号"
+    assert record.response_metadata["rank_ordering"] == "strictly_ascending"
+    assert record.response_metadata["code_field"] == "代码"
+    assert record.response_metadata["upstream_row_count"] == 3
+    assert record.response_metadata["entity_row_count"] == 1
+    assert record.response_metadata["entity_rows_selected"] is True
+    assert record.response_metadata["listing_scoped_request"] is False
+    assert record.response_metadata["row_filtering"] == "provider"
+    assert record.source_uri == "https://quote.eastmoney.com/ztb/detail#type=ztgc"
+
+
+@pytest.mark.parametrize(
+    ("parameters", "entity_id", "match"),
+    [
+        (
+            {"view": "limit_up_pool"},
+            "SH600000",
+            "requires date",
+        ),
+        (
+            {"view": "limit_up_pool", "date": "2026-09-09"},
+            "SH600000",
+            "must be YYYYMMDD",
+        ),
+        (
+            {"view": "limit_up_pool", "date": "20260931"},
+            "SH600000",
+            "must be a valid YYYYMMDD date",
+        ),
+        (
+            {"view": "limit_up_pool", "date": "20260909", "period": "近三月"},
+            "SH600000",
+            "unsupported AKShare market-activity limit-up-pool parameter",
+        ),
+        (
+            {"view": "limit_up_pool", "date": "20260909"},
+            "HK00700",
+            "A-share listings only",
+        ),
+    ],
+)
+def test_market_limit_up_pool_request_validates_view_date_parameters_and_market(
+    parameters: dict,
+    entity_id: str,
+    match: str,
+):
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError, match=match):
+        _provider(fake).fetch(
+            _request(DataCategory.MARKET_ACTIVITY, entity_id, parameters)
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("missing_field", "missing field.*所属行业"),
+        ("extra_field", "contains unsupported field.*extra"),
+        ("invalid_code", "invalid 代码"),
+        ("duplicate_code", "duplicate listing code"),
+        ("missing_rank", "missing field.*序号"),
+        ("invalid_rank", "field '序号'.*positive integer"),
+        ("descending_rank", "序号 values must be strictly ascending"),
+        ("empty_name", "field '名称'.*non-empty string"),
+        ("non_numeric", "field '成交额'.*numeric or null"),
+        ("infinity", "contains infinity"),
+        ("invalid_time", "field '首次封板时间'.*valid HHMMSS time"),
+        ("invalid_statistic", "field '涨停统计'.*match days/ct"),
+    ],
+)
+def test_market_limit_up_pool_response_validates_exact_rows(
+    mutation: str,
+    match: str,
+):
+    class InvalidRows(FakeAKShare):
+        def stock_zt_pool_em(self, *, date: str):
+            rows = _fixture("a_limit_up_pool.json")
+            if mutation == "missing_field":
+                rows[0].pop("所属行业")
+            elif mutation == "extra_field":
+                rows[0]["extra"] = 1
+            elif mutation == "invalid_code":
+                rows[0]["代码"] = "6000000"
+            elif mutation == "duplicate_code":
+                rows[1]["代码"] = rows[0]["代码"]
+            elif mutation == "missing_rank":
+                rows[0].pop("序号")
+            elif mutation == "invalid_rank":
+                rows[0]["序号"] = 1.5
+            elif mutation == "descending_rank":
+                rows[0]["序号"] = 2
+                rows[1]["序号"] = 1
+            elif mutation == "empty_name":
+                rows[0]["名称"] = ""
+            elif mutation == "non_numeric":
+                rows[0]["成交额"] = "123456789"
+            elif mutation == "infinity":
+                rows[0]["换手率"] = float("inf")
+            elif mutation == "invalid_time":
+                rows[0]["首次封板时间"] = "256199"
+            else:
+                rows[0]["涨停统计"] = "not-a-statistic"
+            return self._return("stock_zt_pool_em", rows, date=date)
+
+    with pytest.raises(ProviderResponseError, match=match):
+        _provider(InvalidRows()).fetch(
+            _request(
+                DataCategory.MARKET_ACTIVITY,
+                "SH600000",
+                {"view": "limit_up_pool", "date": "20260909"},
+            )
+        )
+
+
+def test_market_limit_up_pool_fetch_keeps_empty_selection_and_universe_metadata():
+    class NoMatch(FakeAKShare):
+        def stock_zt_pool_em(self, *, date: str):
+            rows = [
+                row
+                for row in _fixture("a_limit_up_pool.json")
+                if row["代码"] != "600000"
+            ]
+            return self._return("stock_zt_pool_em", rows, date=date)
+
+    fake = NoMatch()
+    record = _provider(fake).fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SH600000",
+            {"view": "limit_up_pool", "date": "20260909"},
+        )
+    )
+
+    assert record.raw_payload == []
+    assert record.response_metadata["upstream_row_count"] == 2
+    assert record.response_metadata["entity_row_count"] == 0
+    assert record.response_metadata["entity_rows_selected"] is True
+    assert fake.calls == [("stock_zt_pool_em", {"date": "20260909"})]
+
+
+def test_market_limit_up_pool_is_retained_as_raw_evidence_without_canonical_facts():
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SH600000",
+            {"view": "limit_up_pool", "date": "20260909"},
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="market-limit-up-pool-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_LIMIT_UP_POOL_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == []
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "limit-up-pool" in normalized.data_quality.notes
+    assert "quote" in normalized.data_quality.notes
+    assert "issuer cash flow" in normalized.data_quality.notes
+    assert "canonical market metric" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "endpoint",
+        "source_uri",
+        "market_view",
+        "requested_date",
+        "observation_date",
+        "listing_scope",
+        "row_filtering",
+        "snapshot",
+        "date_binding",
+        "rank_field",
+        "rank_ordering",
+        "code_field",
+        "entity_count",
+        "upstream_count",
+        "payload",
+    ],
+)
+def test_market_limit_up_pool_normalizer_rejects_replayed_scope_mismatches(
+    mutation: str,
+):
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SH600000",
+            {"view": "limit_up_pool", "date": "20260909"},
+        )
+    )
+    payload = [dict(row) for row in record.raw_payload]
+    response_metadata = dict(record.response_metadata)
+    source_uri = record.source_uri
+    if mutation == "endpoint":
+        response_metadata["endpoint"] = "stock_hot_rank_em"
+    elif mutation == "source_uri":
+        source_uri = "https://example.invalid/limit-up-pool"
+    elif mutation == "market_view":
+        response_metadata["market_activity_view"] = "hot_rank"
+    elif mutation == "requested_date":
+        response_metadata["requested_date"] = "20260908"
+    elif mutation == "observation_date":
+        response_metadata["observation_date"] = "2026-09-08"
+    elif mutation == "listing_scope":
+        response_metadata["listing_scoped_request"] = True
+    elif mutation == "row_filtering":
+        response_metadata["row_filtering"] = "none"
+    elif mutation == "snapshot":
+        response_metadata["snapshot_scope"] = "current_trading_day_top_100"
+    elif mutation == "date_binding":
+        response_metadata["date_binding"] = "retrieval_only"
+    elif mutation == "rank_field":
+        response_metadata["rank_field"] = "当前排名"
+    elif mutation == "rank_ordering":
+        response_metadata["rank_ordering"] = "unique_positive"
+    elif mutation == "code_field":
+        response_metadata["code_field"] = "股票代码"
+    elif mutation == "entity_count":
+        response_metadata["entity_row_count"] = 99
+    elif mutation == "upstream_count":
+        response_metadata["upstream_row_count"] = 0
+    else:
+        payload[0]["成交额"] = "123456789"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=source_uri,
+        response_metadata=response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match="limit-up-pool"):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-market-limit-up-pool",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_market_limit_up_pool_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.MARKET_ACTIVITY,
+        "SH600000",
+        {"view": "limit_up_pool", "date": "20260909"},
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [("stock_zt_pool_em", {"date": "20260909"})]
 
 
 def test_hot_rank_fetch_uses_documented_no_argument_endpoint_and_filters_universe():

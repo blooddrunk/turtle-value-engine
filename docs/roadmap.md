@@ -1663,6 +1663,32 @@ fact. Live calls remain opt-in; tests use an injected client and a frozen
 fixture with cache replay, invalid-parameter, response-validation, raw-only and
 replay-scope coverage.
 
+### Phase 2.69 — A-share Eastmoney limit-up-pool raw acquisition contract (COMPLETE)
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_zt_pool_em` as the Eastmoney A-share limit-up-pool endpoint;
+the [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_ztb_em.py)
+confirms that it accepts a required `YYYYMMDD` `date` for recent data and
+returns the exact 16 fields `序号`, `代码`, `名称`, `涨跌幅`, `最新价`, `成交额`,
+`流通市值`, `总市值`, `换手率`, `封板资金`, `首次封板时间`, `最后封板时间`,
+`炸板次数`, `涨停统计`, `连板数` and `所属行业`.
+
+The provider selects this callable only under `MARKET_ACTIVITY` with explicit
+`view=limit_up_pool`, passes the requested trading date unchanged, validates the
+full response before filtering it to the requested A-share listing, and binds
+the request date, observation-date interpretation, exact fields, six-digit
+codes, strictly ascending rank, `HHMMSS` lock times, `days/ct` statistics and
+finite numeric/null values into replay metadata. Empty listing matches remain
+valid while preserving upstream and selected row counts.
+
+The normalizer emits `AKSHARE_LIMIT_UP_POOL_RAW_ONLY`; quote, limit-up activity,
+provider ranking and market-cap fields remain structured evidence only and do
+not establish issuer cash flow, shareholder return, governance, valuation or a
+canonical market metric. No calculation, gate, pipeline, CLI or input-loader
+contract is changed. Live calls remain opt-in; tests use an injected client and
+a frozen fixture with cache replay, invalid-request, response-validation,
+raw-only and replay-scope coverage.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -1672,7 +1698,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.68 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.69 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -1880,7 +1906,7 @@ Phase 2 is active. Phase 1 remains frozen: changes to formulas, hard-gate
 semantics, schemas or `strict-v1` thresholds require a separately reviewed,
 versioned change.
 
-Phase 2.68 completes the next documented structured-data boundary while
+Phase 2.69 completes the next documented structured-data boundary while
 keeping share-change, repurchase and rights-issue period, status, unit and
 economic-scope questions unresolved, and keeping ownership-pledge holder,
 governance and economic-scope questions unresolved. The A-share

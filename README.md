@@ -583,6 +583,19 @@ The normalizer emits `AKSHARE_MARKET_INSTITUTION_PARTICIPATION_RAW_ONLY`:
 provider-defined institution-participation percentages remain raw evidence and
 do not establish a canonical market, issuer-cash-flow, shareholder-return,
 governance or valuation fact.
+Phase 2.69 adds the distinct documented Eastmoney A-share limit-up-pool
+endpoint [`stock_zt_pool_em`](https://akshare.akfamily.xyz/data/stock/stock.html),
+whose current official implementation is in
+[`stock_ztb_em.py`](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_ztb_em.py),
+under `MARKET_ACTIVITY` with explicit `view=limit_up_pool` and a required
+`YYYYMMDD` `date`. It validates the exact 16-field response, six-digit codes,
+strictly ascending ranks, valid `HHMMSS` lock times, `days/ct` limit-up
+statistics, finite numeric/null fields and non-empty text, then filters the
+full recent-date universe to the requested listing. The normalizer emits
+`AKSHARE_LIMIT_UP_POOL_RAW_ONLY`: requested-date quote, limit-up activity,
+provider ranking and market-cap fields remain raw evidence and do not establish
+issuer cash flow, shareholder return, governance, valuation or a canonical
+market fact.
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

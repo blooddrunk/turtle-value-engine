@@ -21,7 +21,7 @@ the SSE/SZSE/BSE margin-detail raw slices, the A-share individual ownership-pled
 detail view, the A-share CNINFO equity-mortgage view, A-share company-litigation
 raw slice and A-share Eastmoney individual-info raw slice.
 The A-share Eastmoney individual-fund-flow, market-participation-desire,
-market-focus, institution-participation, hot-rank, A+H comparison,
+market-focus, institution-participation, hot-rank, limit-up-pool, A+H comparison,
 intraday-trade, chip-distribution, Tencent
 daily-history and Tencent latest-trading-day tick, Sina minute-history,
 intraday-history, H-share intraday-history, pre-market-history, five-level bid-ask
@@ -77,9 +77,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "68"
+AKSHARE_ADAPTER_VERSION = "69"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "69"
+AKSHARE_MAPPING_VERSION = "70"
 
 
 class ListingMarket(StrEnum):
@@ -155,6 +155,7 @@ _SOURCE_URIS = {
     "stock_comment_detail_scrd_focus_em": "https://data.eastmoney.com/stockcomment/stock/600000.html",
     "stock_comment_detail_zlkp_jgcyd_em": "https://data.eastmoney.com/stockcomment/stock/600000.html",
     "stock_hot_rank_em": "https://guba.eastmoney.com/rank/",
+    "stock_zt_pool_em": "https://quote.eastmoney.com/ztb/detail#type=ztgc",
     "stock_intraday_em": "https://quote.eastmoney.com/f1.html?newcode=0.000001",
     "stock_hk_company_profile_em": "https://emweb.securities.eastmoney.com/PC_HKF10/pages/home/index.html",
     "stock_hk_security_profile_em": "https://emweb.securities.eastmoney.com/PC_HKF10/pages/home/index.html",
@@ -509,6 +510,41 @@ _MARKET_ACTIVITY_HOT_RANK_MAX_ROWS = 100
 _MARKET_ACTIVITY_HOT_RANK_FIELDS = frozenset(
     {"当前排名", "代码", "股票名称", "最新价", "涨跌额", "涨跌幅"}
 )
+_MARKET_ACTIVITY_LIMIT_UP_POOL_PARAMETER_NAMES = frozenset({"view", "date"})
+_MARKET_ACTIVITY_LIMIT_UP_POOL_VIEW = "limit_up_pool"
+_MARKET_ACTIVITY_LIMIT_UP_POOL_FIELDS = frozenset(
+    {
+        "序号",
+        "代码",
+        "名称",
+        "涨跌幅",
+        "最新价",
+        "成交额",
+        "流通市值",
+        "总市值",
+        "换手率",
+        "封板资金",
+        "首次封板时间",
+        "最后封板时间",
+        "炸板次数",
+        "涨停统计",
+        "连板数",
+        "所属行业",
+    }
+)
+_MARKET_ACTIVITY_LIMIT_UP_POOL_NUMERIC_FIELDS = (
+    "涨跌幅",
+    "最新价",
+    "成交额",
+    "流通市值",
+    "总市值",
+    "换手率",
+    "封板资金",
+    "炸板次数",
+    "连板数",
+)
+_MARKET_ACTIVITY_LIMIT_UP_POOL_TIME_FIELDS = ("首次封板时间", "最后封板时间")
+_MARKET_ACTIVITY_LIMIT_UP_POOL_TEXT_FIELDS = ("名称", "涨停统计", "所属行业")
 _MARKET_ACTIVITY_NEW_STOCK_PARAMETER_NAMES = frozenset({"view"})
 _MARKET_ACTIVITY_NEW_STOCK_VIEW = "new_stock"
 _MARKET_ACTIVITY_NEW_STOCK_FIELDS = frozenset(
@@ -1288,7 +1324,43 @@ class AKShareProvider(StructuredDataProvider):
                 response_metadata["observation_end_date"] = max(observation_dates).isoformat()
         elif request.category is DataCategory.MARKET_ACTIVITY:
             rows = _table_rows(payload, provider=self.identity, request=request)
-            if endpoint.name == "stock_zh_a_new_em":
+            if endpoint.name == "stock_zt_pool_em":
+                requested_date = _market_activity_date_parameter(
+                    kwargs["date"],
+                    name="date",
+                    request=request,
+                )
+                _validate_market_activity_limit_up_pool_provider_rows(
+                    rows,
+                    provider=self.identity,
+                    request=request,
+                )
+                selected = _select_listing_rows(
+                    rows,
+                    listing,
+                    provider=self.identity,
+                    request=request,
+                    row_label="market-activity-limit-up-pool",
+                )
+                payload = selected
+                response_metadata["upstream_row_count"] = len(rows)
+                response_metadata["entity_row_count"] = len(selected)
+                response_metadata["entity_rows_selected"] = True
+                response_metadata["listing_scoped_request"] = False
+                response_metadata["row_filtering"] = "provider"
+                response_metadata["market_activity_view"] = (
+                    _MARKET_ACTIVITY_LIMIT_UP_POOL_VIEW
+                )
+                response_metadata["requested_date"] = kwargs["date"]
+                response_metadata["observation_date"] = requested_date.isoformat()
+                response_metadata["snapshot_scope"] = (
+                    "requested_trading_date_limit_up_pool"
+                )
+                response_metadata["date_binding"] = "request"
+                response_metadata["rank_field"] = "序号"
+                response_metadata["rank_ordering"] = "strictly_ascending"
+                response_metadata["code_field"] = "代码"
+            elif endpoint.name == "stock_zh_a_new_em":
                 _validate_market_activity_new_stock_provider_rows(
                     rows,
                     provider=self.identity,
@@ -2629,6 +2701,9 @@ class AKShareProvider(StructuredDataProvider):
                 request.parameters.get("view")
                 == _MARKET_ACTIVITY_INSTITUTION_PARTICIPATION_VIEW
             ),
+            market_activity_limit_up_pool_requested=(
+                request.parameters.get("view") == _MARKET_ACTIVITY_LIMIT_UP_POOL_VIEW
+            ),
             market_activity_hot_rank_requested=(
                 request.parameters.get("view") == _MARKET_ACTIVITY_HOT_RANK_VIEW
             ),
@@ -2991,7 +3066,17 @@ class AKShareNormalizer:
                         "AKShare market-activity raw slice supports A-share listings only"
                     )
                 endpoint_name = record.response_metadata.get("endpoint")
-                if record.request.parameters.get("view") == _MARKET_ACTIVITY_NEW_STOCK_VIEW:
+                if (
+                    record.request.parameters.get("view")
+                    == _MARKET_ACTIVITY_LIMIT_UP_POOL_VIEW
+                ):
+                    _validate_market_activity_limit_up_pool_normalizer_scope(
+                        record,
+                        listing,
+                        rows,
+                    )
+                    normalizer_flags.add("AKSHARE_LIMIT_UP_POOL_RAW_ONLY")
+                elif record.request.parameters.get("view") == _MARKET_ACTIVITY_NEW_STOCK_VIEW:
                     _validate_market_activity_new_stock_normalizer_scope(
                         record,
                         listing,
@@ -3104,7 +3189,7 @@ class AKShareNormalizer:
                         "stock_zh_a_new_em, stock_comment_detail_scrd_desire_em, "
                         "stock_comment_detail_scrd_focus_em, "
                         "stock_comment_detail_zlkp_jgcyd_em, "
-                        "stock_lhb_detail_em, stock_hot_rank_em, "
+                        "stock_zt_pool_em, stock_lhb_detail_em, stock_hot_rank_em, "
                         "stock_lhb_stock_statistic_em or stock_lhb_jgstatistic_em"
                     )
             elif record.request.category is DataCategory.MARGIN_TRADING:
@@ -4255,6 +4340,13 @@ class AKShareNormalizer:
                 "cash flow, shareholder return, governance, valuation or a canonical "
                 "market metric."
             )
+        if "AKSHARE_LIMIT_UP_POOL_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented A-share Eastmoney limit-up-pool response is retained "
+                "as raw evidence only: its requested-date quote, limit-up activity and "
+                "provider ranking fields do not establish issuer cash flow, shareholder "
+                "return, governance, valuation or a canonical market metric."
+            )
         if "AKSHARE_NEW_STOCKS_RAW_ONLY" in normalizer_flags:
             notes += (
                 " The documented A-share new-stock-board response is retained as raw "
@@ -4597,6 +4689,7 @@ def _endpoint_candidates(
     market_activity_participation_desire_requested: bool = False,
     market_activity_focus_requested: bool = False,
     market_activity_institution_participation_requested: bool = False,
+    market_activity_limit_up_pool_requested: bool = False,
     market_activity_hot_rank_requested: bool = False,
     market_activity_new_stock_requested: bool = False,
     market_quote_ah_comparison_requested: bool = False,
@@ -4679,6 +4772,8 @@ def _endpoint_candidates(
                 return ("stock_comment_detail_scrd_focus_em",)
             if market_activity_institution_participation_requested:
                 return ("stock_comment_detail_zlkp_jgcyd_em",)
+            if market_activity_limit_up_pool_requested:
+                return ("stock_zt_pool_em",)
             if market_activity_hot_rank_requested:
                 return ("stock_hot_rank_em",)
             if market_activity_institution_statistic_requested:
@@ -9212,6 +9307,147 @@ def _validate_market_activity_institution_statistic_provider_rows(
         seen_codes.add(row_code)
 
 
+def _market_activity_limit_up_pool_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef | None = None,
+) -> str | None:
+    """Return a strict-schema error for one limit-up-pool snapshot."""
+
+    seen_codes: set[str] = set()
+    seen_ranks: set[int] = set()
+    previous_rank: int | None = None
+    for index, row in enumerate(rows):
+        missing = sorted(_MARKET_ACTIVITY_LIMIT_UP_POOL_FIELDS - set(row))
+        unexpected = sorted(set(row) - _MARKET_ACTIVITY_LIMIT_UP_POOL_FIELDS)
+        if missing:
+            return (
+                f"market-activity limit-up-pool row {index} is missing field(s): "
+                + ", ".join(missing)
+            )
+        if unexpected:
+            return (
+                f"market-activity limit-up-pool row {index} contains unsupported "
+                "field(s): "
+                + ", ".join(unexpected)
+            )
+
+        raw_code = row["代码"]
+        if not isinstance(raw_code, str) or not re.fullmatch(r"\d{6}", raw_code.strip()):
+            return f"market-activity limit-up-pool row {index} has an invalid 代码"
+        row_code = raw_code.strip()
+        if listing is not None and row_code != listing.code:
+            return (
+                f"market-activity limit-up-pool row {index} entity {row_code!r} does not "
+                f"match requested listing {listing.canonical_id!r}"
+            )
+        if row_code in seen_codes:
+            return (
+                "market-activity limit-up-pool response has duplicate listing code "
+                f"{row_code!r}"
+            )
+        seen_codes.add(row_code)
+
+        rank = row["序号"]
+        if isinstance(rank, bool) or not isinstance(rank, Real):
+            return (
+                f"market-activity limit-up-pool row {index} field '序号' must be a "
+                "positive integer"
+            )
+        try:
+            numeric_rank = float(rank)
+        except (OverflowError, TypeError, ValueError):
+            return (
+                f"market-activity limit-up-pool row {index} field '序号' must be a "
+                "positive integer"
+            )
+        if not math.isfinite(numeric_rank) or not numeric_rank.is_integer() or numeric_rank < 1:
+            return (
+                f"market-activity limit-up-pool row {index} field '序号' must be a "
+                "positive integer"
+            )
+        rank_value = int(numeric_rank)
+        if rank_value in seen_ranks:
+            return (
+                "market-activity limit-up-pool response has duplicate 序号 "
+                f"{rank_value!r}"
+            )
+        if previous_rank is not None and rank_value < previous_rank:
+            return (
+                "market-activity limit-up-pool response 序号 values must be "
+                "strictly ascending"
+            )
+        seen_ranks.add(rank_value)
+        previous_rank = rank_value
+
+        for field in _MARKET_ACTIVITY_LIMIT_UP_POOL_TEXT_FIELDS:
+            value = row[field]
+            if not isinstance(value, str) or _text_value(value) is None:
+                return (
+                    f"market-activity limit-up-pool row {index} field {field!r} "
+                    "must be a non-empty string"
+                )
+        if not re.fullmatch(r"\d+/\d+", row["涨停统计"].strip()):
+            return (
+                f"market-activity limit-up-pool row {index} field '涨停统计' must "
+                "match days/ct"
+            )
+
+        for field in _MARKET_ACTIVITY_LIMIT_UP_POOL_TIME_FIELDS:
+            value = row[field]
+            if not isinstance(value, str) or not re.fullmatch(r"\d{6}", value.strip()):
+                return (
+                    f"market-activity limit-up-pool row {index} field {field!r} "
+                    "must be HHMMSS"
+                )
+            try:
+                datetime.strptime(value.strip(), "%H%M%S")
+            except ValueError:
+                return (
+                    f"market-activity limit-up-pool row {index} field {field!r} "
+                    "must be a valid HHMMSS time"
+                )
+
+        for field in _MARKET_ACTIVITY_LIMIT_UP_POOL_NUMERIC_FIELDS:
+            value = row[field]
+            if value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, Real):
+                return (
+                    f"market-activity limit-up-pool row {index} field {field!r} "
+                    "must be numeric or null"
+                )
+            try:
+                numeric = float(value)
+            except (OverflowError, TypeError, ValueError):
+                return (
+                    f"market-activity limit-up-pool row {index} field {field!r} "
+                    "must be numeric or null"
+                )
+            if not math.isfinite(numeric):
+                return (
+                    f"market-activity limit-up-pool row {index} field {field!r} "
+                    "must be finite or null"
+                )
+    return None
+
+
+def _validate_market_activity_limit_up_pool_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> None:
+    """Validate the full A-share limit-up-pool universe before filtering."""
+
+    message = _market_activity_limit_up_pool_validation_message(rows)
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message}",
+            provider=provider,
+            request=request,
+        )
+
+
 def _market_activity_new_stock_validation_message(
     rows: Sequence[Mapping[str, JSONValue]],
     listing: _ListingRef | None = None,
@@ -10609,6 +10845,91 @@ def _validate_market_activity_institution_participation_normalizer_rows(
     if message is not None:
         raise ProviderNormalizationError(message)
     return observation_dates
+
+
+def _validate_market_activity_limit_up_pool_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> None:
+    """Validate the replay scope of a filtered limit-up-pool snapshot."""
+
+    if listing.market is not ListingMarket.A:
+        raise ProviderNormalizationError(
+            "AKShare market-activity limit-up-pool raw slice supports A-share listings only"
+        )
+    if record.response_metadata.get("endpoint") != "stock_zt_pool_em":
+        raise ProviderNormalizationError(
+            "AKShare market-activity limit-up-pool record must come from stock_zt_pool_em"
+        )
+    if record.source_uri != _SOURCE_URIS["stock_zt_pool_em"]:
+        raise ProviderNormalizationError(
+            "market-activity limit-up-pool source URI does not match the documented endpoint"
+        )
+    try:
+        upstream_kwargs = _market_activity_limit_up_pool_kwargs(
+            "stock_zt_pool_em",
+            listing,
+            record.request,
+        )
+        observation_date = _market_activity_date_parameter(
+            upstream_kwargs["date"],
+            name="date",
+            request=record.request,
+        )
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+
+    expected_metadata = {
+        "market": ListingMarket.A.value,
+        "listing_code": listing.code,
+        "market_activity_view": _MARKET_ACTIVITY_LIMIT_UP_POOL_VIEW,
+        "requested_date": upstream_kwargs["date"],
+        "observation_date": observation_date.isoformat(),
+        "listing_scoped_request": False,
+        "row_filtering": "provider",
+        "snapshot_scope": "requested_trading_date_limit_up_pool",
+        "date_binding": "request",
+        "rank_field": "序号",
+        "rank_ordering": "strictly_ascending",
+        "code_field": "代码",
+        "entity_row_count": len(rows),
+        "entity_rows_selected": True,
+    }
+    boolean_fields = {"listing_scoped_request", "entity_rows_selected"}
+    count_fields = {"entity_row_count"}
+    for name, expected in expected_metadata.items():
+        actual = record.response_metadata.get(name)
+        if name in boolean_fields:
+            matches = isinstance(actual, bool) and actual is expected
+        elif name in count_fields:
+            matches = (
+                isinstance(actual, int)
+                and not isinstance(actual, bool)
+                and actual == expected
+            )
+        else:
+            matches = actual == expected
+        if not matches:
+            raise ProviderNormalizationError(
+                f"market-activity limit-up-pool response metadata {name!r} does not "
+                "match the requested replay scope"
+            )
+
+    upstream_row_count = record.response_metadata.get("upstream_row_count")
+    if (
+        isinstance(upstream_row_count, bool)
+        or not isinstance(upstream_row_count, int)
+        or upstream_row_count < len(rows)
+    ):
+        raise ProviderNormalizationError(
+            "market-activity limit-up-pool response upstream row count does not "
+            "match the requested replay scope"
+        )
+
+    message = _market_activity_limit_up_pool_validation_message(rows, listing)
+    if message is not None:
+        raise ProviderNormalizationError(message)
 
 
 def _validate_market_activity_hot_rank_normalizer_scope(
@@ -12186,6 +12507,8 @@ def _market_activity_kwargs(
 ) -> dict[str, object]:
     """Build one documented market-activity request."""
 
+    if endpoint_name == "stock_zt_pool_em":
+        return _market_activity_limit_up_pool_kwargs(endpoint_name, listing, request)
     if endpoint_name == "stock_zh_a_new_em":
         return _market_activity_new_stock_kwargs(endpoint_name, listing, request)
     if endpoint_name == "stock_comment_detail_scrd_desire_em":
@@ -12229,6 +12552,58 @@ def _market_activity_kwargs(
         "start_date": request.parameters["start_date"],
         "end_date": request.parameters["end_date"],
     }
+
+
+def _market_activity_limit_up_pool_kwargs(
+    endpoint_name: str,
+    listing: _ListingRef,
+    request: ProviderRequest,
+) -> dict[str, object]:
+    """Build the documented date-scoped A-share limit-up-pool request."""
+
+    if endpoint_name != "stock_zt_pool_em":
+        raise ProviderRequestError(
+            f"unsupported AKShare market-activity limit-up-pool endpoint {endpoint_name!r}",
+            request=request,
+            retryable=False,
+        )
+    if listing.market is not ListingMarket.A:
+        raise ProviderRequestError(
+            "the AKShare market-activity limit-up-pool endpoint supports A-share "
+            "listings only",
+            request=request,
+            retryable=False,
+        )
+    unknown = sorted(
+        set(request.parameters) - _MARKET_ACTIVITY_LIMIT_UP_POOL_PARAMETER_NAMES
+    )
+    if unknown:
+        raise ProviderRequestError(
+            "unsupported AKShare market-activity limit-up-pool parameter(s): "
+            + ", ".join(unknown),
+            request=request,
+            retryable=False,
+        )
+    if request.parameters.get("view") != _MARKET_ACTIVITY_LIMIT_UP_POOL_VIEW:
+        raise ProviderRequestError(
+            "the AKShare market-activity limit-up-pool endpoint requires "
+            f"view={_MARKET_ACTIVITY_LIMIT_UP_POOL_VIEW!r}",
+            request=request,
+            retryable=False,
+        )
+    if "date" not in request.parameters:
+        raise ProviderRequestError(
+            "the AKShare market-activity limit-up-pool endpoint requires date "
+            "(YYYYMMDD)",
+            request=request,
+            retryable=False,
+        )
+    _market_activity_date_parameter(
+        request.parameters["date"],
+        name="date",
+        request=request,
+    )
+    return {"date": request.parameters["date"]}
 
 
 def _market_activity_hot_rank_kwargs(
