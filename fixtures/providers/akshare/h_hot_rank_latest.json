@@ -1,0 +1,42 @@
+[
+  {
+    "item": "marketType",
+    "value": "000003"
+  },
+  {
+    "item": "marketAllCount",
+    "value": 2613
+  },
+  {
+    "item": "calcTime",
+    "value": "2023-03-25 23:30:00"
+  },
+  {
+    "item": "innerCode",
+    "value": "00700_2"
+  },
+  {
+    "item": "srcSecurityCode",
+    "value": "HK|00700"
+  },
+  {
+    "item": "rank",
+    "value": 1
+  },
+  {
+    "item": "rankChange",
+    "value": 0
+  },
+  {
+    "item": "hisRankChange",
+    "value": 0
+  },
+  {
+    "item": "hisRankChange_rank",
+    "value": 1253
+  },
+  {
+    "item": "flag",
+    "value": 0
+  }
+]

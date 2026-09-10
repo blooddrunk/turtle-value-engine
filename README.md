@@ -765,6 +765,21 @@ evidence, no canonical fact is emitted, and `governance_risk_level` remains
 critically missing. No H-share counterpart or calculation, gate, pipeline, CLI,
 or input-loader contract is changed.
 
+Phase 2.82 adds the distinct documented Eastmoney H-share latest stock-hot-rank
+endpoint [`stock_hk_hot_rank_latest_em`](https://akshare.akfamily.xyz/data/stock/stock.html),
+whose current [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hk_hot_rank_em.py)
+uses the `getCurrentHkUsLatest` source and returns the exact ten-row `item`/
+`value` response. Under `MARKET_ACTIVITY` with explicit
+`view=hot_rank_latest`, the adapter passes the unprefixed five-digit H-share
+code, requires `marketType=000003`, validates `innerCode` and `HK|` response
+identity, and records the H-share endpoint, symbol format, latest-rank snapshot,
+row counts and `calcTime` for replay. The normalizer emits
+`AKSHARE_HK_HOT_RANK_LATEST_RAW_ONLY`, creates no canonical fact and leaves the
+provider popularity rank outside calculations, gates, pipeline, CLI and
+input-loader contracts. Live calls remain opt-in; tests use the official-doc
+fixture with cache replay, market-specific request/response validation,
+raw-only normalization and replay-scope coverage.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

@@ -25,6 +25,7 @@ ownership-pledge market-profile view, A-share company-litigation raw slice and
 A-share Eastmoney individual-info raw slice.
 The A-share Eastmoney individual-fund-flow, market-participation-desire,
 market-focus, institution-participation, hot-rank, latest-hot-rank, limit-up-pool,
+H-share latest-hot-rank,
 A+H comparison,
 intraday-trade, Sina intraday-trade, chip-distribution, Tencent daily-history and
 Tencent latest-trading-day tick, Sina minute-history, intraday-history, H-share
@@ -84,9 +85,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "81"
+AKSHARE_ADAPTER_VERSION = "82"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "82"
+AKSHARE_MAPPING_VERSION = "83"
 
 
 class ListingMarket(StrEnum):
@@ -173,6 +174,7 @@ _SOURCE_URIS = {
     "stock_comment_detail_zlkp_jgcyd_em": "https://data.eastmoney.com/stockcomment/stock/600000.html",
     "stock_hot_rank_em": "https://guba.eastmoney.com/rank/",
     "stock_hot_rank_latest_em": "https://guba.eastmoney.com/rank/stock?code=000665",
+    "stock_hk_hot_rank_latest_em": "https://guba.eastmoney.com/rank/stock?code=HK_00700",
     "stock_zt_pool_em": "https://quote.eastmoney.com/ztb/detail#type=ztgc",
     "stock_intraday_em": "https://quote.eastmoney.com/f1.html?newcode=0.000001",
     "stock_hk_company_profile_em": "https://emweb.securities.eastmoney.com/PC_HKF10/pages/home/index.html",
@@ -710,6 +712,13 @@ _MARKET_ACTIVITY_HOT_RANK_FIELDS = frozenset(
 )
 _MARKET_ACTIVITY_HOT_RANK_LATEST_PARAMETER_NAMES = frozenset({"view"})
 _MARKET_ACTIVITY_HOT_RANK_LATEST_VIEW = "hot_rank_latest"
+_MARKET_ACTIVITY_HOT_RANK_LATEST_ENDPOINTS = frozenset(
+    {"stock_hot_rank_latest_em", "stock_hk_hot_rank_latest_em"}
+)
+_MARKET_ACTIVITY_HOT_RANK_LATEST_MARKET_TYPES = {
+    "stock_hot_rank_latest_em": "000001",
+    "stock_hk_hot_rank_latest_em": "000003",
+}
 _MARKET_ACTIVITY_HOT_RANK_LATEST_ITEMS = frozenset(
     {
         "marketType",
@@ -1433,6 +1442,11 @@ class AKShareProvider(StructuredDataProvider):
         if (
             request.category is DataCategory.MARKET_ACTIVITY
             and listing.market is not ListingMarket.A
+            and not (
+                listing.market is ListingMarket.H
+                and request.parameters.get("view")
+                == _MARKET_ACTIVITY_HOT_RANK_LATEST_VIEW
+            )
         ):
             raise ProviderRequestError(
                 "the AKShare market-activity endpoint supports A-share listings only",
@@ -1874,10 +1888,11 @@ class AKShareProvider(StructuredDataProvider):
                 response_metadata["observation_end_date"] = max(observation_dates).isoformat()
         elif request.category is DataCategory.MARKET_ACTIVITY:
             rows = _table_rows(payload, provider=self.identity, request=request)
-            if endpoint.name == "stock_hot_rank_latest_em":
+            if endpoint.name in _MARKET_ACTIVITY_HOT_RANK_LATEST_ENDPOINTS:
                 observation_time = _validate_market_activity_hot_rank_latest_provider_rows(
                     rows,
                     listing,
+                    endpoint_name=endpoint.name,
                     provider=self.identity,
                     request=request,
                 )
@@ -1890,6 +1905,14 @@ class AKShareProvider(StructuredDataProvider):
                     _MARKET_ACTIVITY_HOT_RANK_LATEST_VIEW
                 )
                 response_metadata["upstream_symbol"] = kwargs["symbol"]
+                response_metadata["upstream_market_type"] = (
+                    _MARKET_ACTIVITY_HOT_RANK_LATEST_MARKET_TYPES[endpoint.name]
+                )
+                response_metadata["upstream_symbol_format"] = (
+                    "market_prefixed"
+                    if listing.market is ListingMarket.A
+                    else "five_digit_hk"
+                )
                 response_metadata["snapshot_scope"] = "current_trading_day_latest_rank"
                 response_metadata["observation_time_field"] = "calcTime"
                 response_metadata["observation_datetime"] = observation_time.isoformat(
@@ -4003,21 +4026,28 @@ class AKShareNormalizer:
                 _validate_capital_flow_normalizer_rows(rows, listing)
                 normalizer_flags.add("AKSHARE_INDIVIDUAL_FUND_FLOW_RAW_ONLY")
             elif record.request.category is DataCategory.MARKET_ACTIVITY:
-                if listing.market is not ListingMarket.A:
-                    raise ProviderNormalizationError(
-                        "AKShare market-activity raw slice supports A-share listings only"
-                )
-                endpoint_name = record.response_metadata.get("endpoint")
-                if (
+                is_latest_hot_rank = (
                     record.request.parameters.get("view")
                     == _MARKET_ACTIVITY_HOT_RANK_LATEST_VIEW
+                )
+                if listing.market is not ListingMarket.A and not (
+                    listing.market is ListingMarket.H and is_latest_hot_rank
                 ):
+                    raise ProviderNormalizationError(
+                        "AKShare market-activity raw slice supports A-share listings only"
+                    )
+                endpoint_name = record.response_metadata.get("endpoint")
+                if is_latest_hot_rank:
                     _validate_market_activity_hot_rank_latest_normalizer_scope(
                         record,
                         listing,
                         rows,
                     )
-                    normalizer_flags.add("AKSHARE_HOT_RANK_LATEST_RAW_ONLY")
+                    normalizer_flags.add(
+                        "AKSHARE_HK_HOT_RANK_LATEST_RAW_ONLY"
+                        if listing.market is ListingMarket.H
+                        else "AKSHARE_HOT_RANK_LATEST_RAW_ONLY"
+                    )
                 elif (
                     record.request.parameters.get("view")
                     == _MARKET_ACTIVITY_LIMIT_UP_POOL_VIEW
@@ -4142,6 +4172,7 @@ class AKShareNormalizer:
                         "stock_comment_detail_scrd_focus_em, "
                         "stock_comment_detail_zlkp_jgcyd_em, "
                         "stock_zt_pool_em, stock_hot_rank_latest_em, "
+                        "stock_hk_hot_rank_latest_em, "
                         "stock_lhb_detail_em, stock_hot_rank_em, "
                         "stock_lhb_stock_statistic_em or stock_lhb_jgstatistic_em"
                     )
@@ -5531,6 +5562,13 @@ class AKShareNormalizer:
                 "timing fields do not establish issuer cash flow, shareholder return, "
                 "governance, valuation or a canonical market metric."
             )
+        if "AKSHARE_HK_HOT_RANK_LATEST_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented H-share stock latest-hot-rank response is retained as "
+                "raw evidence only: its symbol-scoped popularity rank and provider "
+                "timing fields do not establish issuer cash flow, shareholder return, "
+                "governance, valuation or a canonical market metric."
+            )
         if "AKSHARE_TOP_10_SHAREHOLDERS_RAW_ONLY" in normalizer_flags:
             notes += (
                 " The documented A-share top-ten-shareholder response is retained as "
@@ -5976,6 +6014,12 @@ def _endpoint_candidates(
             return ("stock_hk_hist_min_em",)
         return ("stock_hk_daily", "stock_zh_ah_daily")
     if category is DataCategory.MARKET_ACTIVITY:
+        if market_activity_hot_rank_latest_requested:
+            if market is ListingMarket.A:
+                return ("stock_hot_rank_latest_em",)
+            if market is ListingMarket.H:
+                return ("stock_hk_hot_rank_latest_em",)
+            return ()
         if market is ListingMarket.A:
             if market_activity_new_stock_requested:
                 return ("stock_zh_a_new_em",)
@@ -5987,8 +6031,6 @@ def _endpoint_candidates(
                 return ("stock_comment_detail_zlkp_jgcyd_em",)
             if market_activity_limit_up_pool_requested:
                 return ("stock_zt_pool_em",)
-            if market_activity_hot_rank_latest_requested:
-                return ("stock_hot_rank_latest_em",)
             if market_activity_hot_rank_requested:
                 return ("stock_hot_rank_em",)
             if market_activity_institution_statistic_requested:
@@ -11857,8 +11899,28 @@ def _validate_market_activity_hot_rank_provider_rows(
 def _market_activity_hot_rank_latest_validation_message(
     rows: Sequence[Mapping[str, JSONValue]],
     listing: _ListingRef | None = None,
+    *,
+    endpoint_name: str = "stock_hot_rank_latest_em",
 ) -> tuple[str | None, datetime | None]:
     """Return a strict-schema error and ``calcTime`` for one latest-rank slice."""
+
+    if endpoint_name not in _MARKET_ACTIVITY_HOT_RANK_LATEST_ENDPOINTS:
+        return (
+            "market-activity latest-hot-rank response uses an unsupported endpoint",
+            None,
+        )
+    expected_market = (
+        ListingMarket.H
+        if endpoint_name == "stock_hk_hot_rank_latest_em"
+        else ListingMarket.A
+    )
+    expected_market_type = _MARKET_ACTIVITY_HOT_RANK_LATEST_MARKET_TYPES[endpoint_name]
+    if listing is not None and listing.market is not expected_market:
+        return (
+            "market-activity latest-hot-rank endpoint supports "
+            f"{expected_market.value}-share listings only",
+            None,
+        )
 
     expected_fields = {"item", "value"}
     if len(rows) != len(_MARKET_ACTIVITY_HOT_RANK_LATEST_ITEMS):
@@ -11916,7 +11978,15 @@ def _market_activity_hot_rank_latest_validation_message(
                     "non-empty string",
                     None,
                 )
-            if item == "calcTime":
+            if item == "marketType":
+                if value != expected_market_type:
+                    return (
+                        "market-activity latest-hot-rank item 'marketType' must be "
+                        f"{expected_market_type!r} for the "
+                        f"{expected_market.value}-share endpoint",
+                        None,
+                    )
+            elif item == "calcTime":
                 observation_time = _intraday_history_timestamp(value)
                 if observation_time is None:
                     return (
@@ -11924,23 +11994,54 @@ def _market_activity_hot_rank_latest_validation_message(
                         "a valid YYYY-MM-DD HH:MM:SS timestamp",
                         None,
                     )
-            elif item == "innerCode" and not re.fullmatch(r"\d{6}", value):
-                return (
-                    "market-activity latest-hot-rank item 'innerCode' must be a "
-                    "six-digit security code",
-                    None,
-                )
+            elif item == "innerCode":
+                if endpoint_name == "stock_hk_hot_rank_latest_em":
+                    if not re.fullmatch(r"\d{5}(?:_\d+)?", value):
+                        return (
+                            "market-activity latest-hot-rank item 'innerCode' must be "
+                            "a five-digit H-share security code",
+                            None,
+                        )
+                    if listing is not None and value[:5] != listing.code:
+                        return (
+                            "market-activity latest-hot-rank item 'innerCode' "
+                            f"{value!r} does not match requested listing "
+                            f"{listing.code!r}",
+                            None,
+                        )
+                elif not re.fullmatch(r"\d{6}", value):
+                    return (
+                        "market-activity latest-hot-rank item 'innerCode' must be a "
+                        "six-digit security code",
+                        None,
+                    )
             elif item == "srcSecurityCode":
                 normalized_code = value.upper()
-                if not re.fullmatch(r"(?:SH|SZ|BJ)\d{6}", normalized_code):
+                if endpoint_name == "stock_hk_hot_rank_latest_em":
+                    valid_security_code = re.fullmatch(r"HK\|\d{5}", normalized_code)
+                    expected_security_code = (
+                        None if listing is None else f"HK|{listing.code}"
+                    )
+                    invalid_message = (
+                        "must be an HK| five-digit H-share code"
+                    )
+                else:
+                    valid_security_code = re.fullmatch(
+                        r"(?:SH|SZ|BJ)\d{6}", normalized_code
+                    )
+                    expected_security_code = (
+                        None if listing is None else listing.canonical_id
+                    )
+                    invalid_message = "must be a market-prefixed A-share code"
+                if valid_security_code is None:
                     return (
                         "market-activity latest-hot-rank item 'srcSecurityCode' "
-                        "must be a market-prefixed A-share code",
+                        + invalid_message,
                         None,
                     )
                 if (
                     listing is not None
-                    and normalized_code != listing.canonical_id
+                    and normalized_code != expected_security_code
                 ):
                     return (
                         "market-activity latest-hot-rank item 'srcSecurityCode' "
@@ -12003,14 +12104,16 @@ def _validate_market_activity_hot_rank_latest_provider_rows(
     rows: Sequence[Mapping[str, JSONValue]],
     listing: _ListingRef,
     *,
+    endpoint_name: str = "stock_hot_rank_latest_em",
     provider: ProviderIdentity,
     request: ProviderRequest,
 ) -> datetime:
-    """Validate the symbol-scoped latest popularity-rank response."""
+    """Validate an A/H symbol-scoped latest popularity-rank response."""
 
     message, observation_time = _market_activity_hot_rank_latest_validation_message(
         rows,
         listing,
+        endpoint_name=endpoint_name,
     )
     if message is not None:
         raise ProviderResponseError(
@@ -13786,24 +13889,33 @@ def _validate_market_activity_hot_rank_latest_normalizer_scope(
     listing: _ListingRef,
     rows: Sequence[Mapping[str, JSONValue]],
 ) -> None:
-    """Validate the replay scope of a symbol-scoped latest-rank slice."""
+    """Validate the replay scope of an A/H symbol-scoped latest-rank slice."""
 
-    if listing.market is not ListingMarket.A:
+    if listing.market is ListingMarket.A:
+        expected_endpoint = "stock_hot_rank_latest_em"
+        expected_symbol_format = "market_prefixed"
+    elif listing.market is ListingMarket.H:
+        expected_endpoint = "stock_hk_hot_rank_latest_em"
+        expected_symbol_format = "five_digit_hk"
+    else:
         raise ProviderNormalizationError(
-            "AKShare market-activity latest-hot-rank raw slice supports A-share listings only"
+            "AKShare market-activity latest-hot-rank raw slice supports A/H "
+            "listings only"
         )
-    if record.response_metadata.get("endpoint") != "stock_hot_rank_latest_em":
+
+    if record.response_metadata.get("endpoint") != expected_endpoint:
         raise ProviderNormalizationError(
             "AKShare market-activity latest-hot-rank record must come from "
-            "stock_hot_rank_latest_em"
+            f"{expected_endpoint}"
         )
-    if record.source_uri != _SOURCE_URIS["stock_hot_rank_latest_em"]:
+    endpoint_name = expected_endpoint
+    if record.source_uri != _SOURCE_URIS[endpoint_name]:
         raise ProviderNormalizationError(
             "market-activity latest-hot-rank source URI does not match the documented endpoint"
         )
     try:
         upstream_kwargs = _market_activity_hot_rank_latest_kwargs(
-            "stock_hot_rank_latest_em",
+            endpoint_name,
             listing,
             record.request,
         )
@@ -13813,16 +13925,21 @@ def _validate_market_activity_hot_rank_latest_normalizer_scope(
     message, observation_time = _market_activity_hot_rank_latest_validation_message(
         rows,
         listing,
+        endpoint_name=endpoint_name,
     )
     if message is not None:
         raise ProviderNormalizationError(message)
     assert observation_time is not None
 
     expected_metadata = {
-        "market": ListingMarket.A.value,
+        "market": listing.market.value,
         "listing_code": listing.code,
         "market_activity_view": _MARKET_ACTIVITY_HOT_RANK_LATEST_VIEW,
         "upstream_symbol": upstream_kwargs["symbol"],
+        "upstream_market_type": _MARKET_ACTIVITY_HOT_RANK_LATEST_MARKET_TYPES[
+            endpoint_name
+        ],
+        "upstream_symbol_format": expected_symbol_format,
         "listing_scoped_request": True,
         "row_filtering": "upstream",
         "snapshot_scope": "current_trading_day_latest_rank",
@@ -16398,7 +16515,7 @@ def _market_activity_kwargs(
         )
     if endpoint_name == "stock_hot_rank_em":
         return _market_activity_hot_rank_kwargs(endpoint_name, listing, request)
-    if endpoint_name == "stock_hot_rank_latest_em":
+    if endpoint_name in _MARKET_ACTIVITY_HOT_RANK_LATEST_ENDPOINTS:
         return _market_activity_hot_rank_latest_kwargs(endpoint_name, listing, request)
     if endpoint_name == "stock_lhb_stock_statistic_em":
         return _market_activity_statistic_kwargs(endpoint_name, listing, request)
@@ -16525,19 +16642,26 @@ def _market_activity_hot_rank_latest_kwargs(
     listing: _ListingRef,
     request: ProviderRequest,
 ) -> dict[str, object]:
-    """Build the documented symbol-scoped latest popularity-rank request."""
+    """Build a documented A/H symbol-scoped latest popularity-rank request."""
 
-    if endpoint_name != "stock_hot_rank_latest_em":
+    if endpoint_name not in _MARKET_ACTIVITY_HOT_RANK_LATEST_ENDPOINTS:
         raise ProviderRequestError(
             "unsupported AKShare market-activity latest-hot-rank endpoint "
             f"{endpoint_name!r}",
             request=request,
             retryable=False,
         )
-    if listing.market is not ListingMarket.A:
+    expected_market = (
+        ListingMarket.H
+        if endpoint_name == "stock_hk_hot_rank_latest_em"
+        else ListingMarket.A
+    )
+    if listing.market is not expected_market:
         raise ProviderRequestError(
             "the AKShare market-activity latest-hot-rank endpoint supports A-share "
-            "listings only",
+            "listings only"
+            if expected_market is ListingMarket.A
+            else "H-share listings only",
             request=request,
             retryable=False,
         )
@@ -16558,7 +16682,13 @@ def _market_activity_hot_rank_latest_kwargs(
             request=request,
             retryable=False,
         )
-    return {"symbol": listing.canonical_id}
+    return {
+        "symbol": (
+            listing.canonical_id
+            if expected_market is ListingMarket.A
+            else listing.code
+        )
+    }
 
 
 def _market_activity_new_stock_kwargs(
