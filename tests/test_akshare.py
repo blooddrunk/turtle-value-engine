@@ -152,6 +152,15 @@ class FakeAKShare:
             end_time=end_time,
         )
 
+    def stock_zh_a_minute(self, *, symbol: str, period: str, adjust: str):
+        return self._return(
+            "stock_zh_a_minute",
+            _fixture("a_sina_minute_history.json"),
+            symbol=symbol,
+            period=period,
+            adjust=adjust,
+        )
+
     def stock_hk_daily(self, **kwargs):
         return self._return("stock_hk_daily", _fixture("h_history.json"), **kwargs)
 
@@ -550,8 +559,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "53"
-    assert AKSHARE_MAPPING_VERSION == "54"
+    assert provider.identity.provider_version == "54"
+    assert AKSHARE_MAPPING_VERSION == "55"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -2508,6 +2517,326 @@ def test_a_pre_market_history_cache_replay_does_not_call_upstream(tmp_path: Path
         (
             "stock_zh_a_hist_pre_min_em",
             {"symbol": "600000", "start_time": "09:00:00", "end_time": "15:10:00"},
+        )
+    ]
+
+
+def test_a_sina_minute_history_fetch_uses_documented_symbol_period_and_adjustment():
+    fake = FakeAKShare()
+    record = _provider(fake).fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "SH600000",
+            {"view": "sina_minute", "period": "5", "adjust": "qfq"},
+        )
+    )
+
+    assert record.raw_payload == _fixture("a_sina_minute_history.json")
+    assert fake.calls == [
+        (
+            "stock_zh_a_minute",
+            {"symbol": "sh600000", "period": "5", "adjust": "qfq"},
+        )
+    ]
+    assert record.response_metadata["endpoint"] == "stock_zh_a_minute"
+    assert record.response_metadata["sina_minute_history_view"] == "sina_minute"
+    assert record.response_metadata["upstream_symbol"] == "sh600000"
+    assert record.response_metadata["sina_minute_period"] == "5"
+    assert record.response_metadata["sina_minute_adjust"] == "qfq"
+    assert record.response_metadata["listing_scoped_request"] is True
+    assert record.response_metadata["date_binding"] == "row_only"
+    assert record.response_metadata["range_filtering"] == "none"
+    assert record.response_metadata["snapshot_scope"] == "recent_trading_days"
+    assert record.response_metadata["observation_time_field"] == "day"
+    assert record.response_metadata["observation_start_datetime"] == (
+        "2026-09-08T09:30:00"
+    )
+    assert record.response_metadata["observation_end_datetime"] == (
+        "2026-09-09T15:00:00"
+    )
+    assert record.source_uri == (
+        "https://finance.sina.com.cn/realstock/company/sh600519/nc.shtml"
+    )
+
+
+def test_a_sina_minute_history_request_applies_documented_defaults():
+    fake = FakeAKShare()
+    record = _provider(fake).fetch(
+        _request(DataCategory.MARKET_HISTORY, "SZ000001", {"view": "sina_minute"})
+    )
+
+    assert record.response_metadata["sina_minute_period"] == "1"
+    assert record.response_metadata["sina_minute_adjust"] == ""
+    assert fake.calls == [
+        (
+            "stock_zh_a_minute",
+            {"symbol": "sz000001", "period": "1", "adjust": ""},
+        )
+    ]
+
+
+@pytest.mark.parametrize(
+    ("entity_id", "parameters", "match"),
+    [
+        (
+            "SH600000",
+            {"view": "daily", "period": "5"},
+            "unsupported AKShare history parameter",
+        ),
+        (
+            "SH600000",
+            {"view": "sina_minute", "start_date": "20260908"},
+            "unsupported AKShare Sina minute-history parameter",
+        ),
+        (
+            "SH600000",
+            {"view": "sina_minute", "period": "2"},
+            "period must be one of",
+        ),
+        (
+            "SH600000",
+            {"view": "sina_minute", "adjust": "bad"},
+            "adjust must be '', 'qfq' or 'hfq'",
+        ),
+        (
+            "HK00700",
+            {"view": "sina_minute"},
+            "A-share listings only",
+        ),
+    ],
+)
+def test_a_sina_minute_history_request_validates_parameters_and_market(
+    entity_id: str,
+    parameters: dict,
+    match: str,
+):
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError, match=match):
+        _provider(fake).fetch(
+            _request(DataCategory.MARKET_HISTORY, entity_id, parameters)
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("missing_field", "missing field"),
+        ("extra_field", "unsupported field"),
+        ("invalid_day", "invalid day"),
+        ("descending", "strictly ascending"),
+        ("duplicate_day", "duplicate day"),
+        ("invalid_numeric", "must be numeric"),
+    ],
+)
+def test_a_sina_minute_history_response_validates_documented_rows(
+    mutation: str,
+    match: str,
+):
+    class InvalidRows(FakeAKShare):
+        def stock_zh_a_minute(self, *, symbol: str, period: str, adjust: str):
+            rows = _fixture("a_sina_minute_history.json")
+            if mutation == "missing_field":
+                rows[0].pop("amount")
+            elif mutation == "extra_field":
+                rows[0]["unexpected"] = "not documented"
+            elif mutation == "invalid_day":
+                rows[0]["day"] = "not-a-timestamp"
+            elif mutation == "descending":
+                rows[1]["day"] = "2026-09-08 09:29:00"
+            elif mutation == "duplicate_day":
+                rows[1]["day"] = rows[0]["day"]
+            else:
+                rows[0]["close"] = "10.12"
+            return self._return(
+                "stock_zh_a_minute",
+                rows,
+                symbol=symbol,
+                period=period,
+                adjust=adjust,
+            )
+
+    with pytest.raises(ProviderResponseError, match=match):
+        _provider(InvalidRows()).fetch(
+            _request(
+                DataCategory.MARKET_HISTORY,
+                "SH600000",
+                {"view": "sina_minute", "period": "5"},
+            )
+        )
+
+
+def test_a_sina_minute_history_empty_response_is_a_valid_raw_snapshot():
+    class EmptyResponse(FakeAKShare):
+        def stock_zh_a_minute(self, *, symbol: str, period: str, adjust: str):
+            return self._return(
+                "stock_zh_a_minute",
+                [],
+                symbol=symbol,
+                period=period,
+                adjust=adjust,
+            )
+
+    record = _provider(EmptyResponse()).fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "SH600000",
+            {"view": "sina_minute"},
+        )
+    )
+
+    assert record.raw_payload == []
+    assert record.response_metadata["upstream_row_count"] == 0
+    assert record.response_metadata["observation_start_datetime"] is None
+    assert record.response_metadata["observation_end_datetime"] is None
+
+
+def test_a_sina_minute_history_record_is_raw_only_and_not_daily_history():
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "SH600000",
+            {"view": "sina_minute", "period": "5"},
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="a-sina-minute-history-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_SINA_MINUTE_HISTORY_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == ["market_history"]
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "Sina minute-history" in normalized.data_quality.notes
+    assert "canonical daily history" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "view",
+        "symbol",
+        "period",
+        "adjust",
+        "listing_scope",
+        "date_binding",
+        "range_filtering",
+        "snapshot",
+        "count",
+        "observation_start",
+    ],
+)
+def test_a_sina_minute_history_normalizer_rejects_replayed_scope_mismatches(
+    mutation: str,
+):
+    request = _request(
+        DataCategory.MARKET_HISTORY,
+        "SH600000",
+        {"view": "sina_minute", "period": "5", "adjust": "hfq"},
+    )
+    record = _provider().fetch(request)
+    response_metadata = dict(record.response_metadata)
+    if mutation == "view":
+        response_metadata["sina_minute_history_view"] = "daily"
+    elif mutation == "symbol":
+        response_metadata["upstream_symbol"] = "sz000001"
+    elif mutation == "period":
+        response_metadata["sina_minute_period"] = "15"
+    elif mutation == "adjust":
+        response_metadata["sina_minute_adjust"] = ""
+    elif mutation == "listing_scope":
+        response_metadata["listing_scoped_request"] = False
+    elif mutation == "date_binding":
+        response_metadata["date_binding"] = "row_and_request"
+    elif mutation == "range_filtering":
+        response_metadata["range_filtering"] = "normalizer"
+    elif mutation == "snapshot":
+        response_metadata["snapshot_scope"] = "requested_intraday_range"
+    elif mutation == "count":
+        response_metadata["entity_row_count"] = 99
+    else:
+        response_metadata["observation_start_datetime"] = "bad"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=record.raw_payload,
+        source_uri=record.source_uri,
+        response_metadata=response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match="Sina minute-history"):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-a-sina-minute-history-scope",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_a_sina_minute_history_normalizer_rejects_replayed_rows_with_invalid_day():
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "SH600000",
+            {"view": "sina_minute", "period": "5"},
+        )
+    )
+    payload = [dict(row) for row in record.raw_payload]
+    payload[0]["day"] = "not-a-timestamp"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=record.source_uri,
+        response_metadata=record.response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match="invalid day"):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="invalid-a-sina-minute-history-replay",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_a_sina_minute_history_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.MARKET_HISTORY,
+        "SH600000",
+        {"view": "sina_minute", "period": "5", "adjust": "qfq"},
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [
+        (
+            "stock_zh_a_minute",
+            {"symbol": "sh600000", "period": "5", "adjust": "qfq"},
         )
     ]
 

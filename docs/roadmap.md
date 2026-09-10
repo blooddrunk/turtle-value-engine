@@ -1320,6 +1320,27 @@ calls remain opt-in; tests use an injected client and a frozen fixture with
 cache replay, invalid-parameter, response-validation and replay-scope
 coverage.
 
+### Phase 2.54 — A-share Sina minute-history raw acquisition contract (COMPLETE)
+
+The mapping review now covers the distinct Sina
+[`stock_zh_a_minute`](https://akshare.akfamily.xyz/data/stock/stock.html)
+endpoint and its [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_zh_a_sina.py).
+It accepts a market-prefixed A-share `symbol`, a documented minute interval of
+`1`, `5`, `15`, `30` or `60`, and an adjustment mode of empty string, `qfq` or
+`hfq`. The response contains timestamped `day`, OHLC, volume and amount rows
+for a recent provider window.
+
+The provider selects this endpoint only under the existing provider-neutral
+`MARKET_HISTORY` category with explicit `view=sina_minute`, derives the
+market-prefixed symbol from the requested listing, validates the exact response
+shape, finite numeric/null values and strictly ascending timestamps, and
+records the complete listing-scoped response plus its interval, adjustment and
+recent-window replay scope. The normalizer emits
+`AKSHARE_SINA_MINUTE_HISTORY_RAW_ONLY`; the provider-window minute bars do not
+establish the canonical daily history contract or a valuation input. Live calls
+remain opt-in; tests use an injected client and a frozen fixture with cache
+replay, invalid-parameter, response-validation and replay-scope coverage.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -1329,7 +1350,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.53 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.54 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -1537,10 +1558,14 @@ Phase 2 is active. Phase 1 remains frozen: changes to formulas, hard-gate
 semantics, schemas or `strict-v1` thresholds require a separately reviewed,
 versioned change.
 
-Phase 2.53 completes the next documented structured-data boundary while
+Phase 2.54 completes the next documented structured-data boundary while
 keeping share-change, repurchase and rights-issue period, status, unit and
 economic-scope questions unresolved, and keeping ownership-pledge holder,
 governance and economic-scope questions unresolved. The A-share
+Sina minute-history response remains raw-only because its recent provider
+window, minute interval and adjustment mode do not establish canonical daily
+history or a valuation input; `view=sina_minute`, the market-prefixed symbol,
+interval and adjustment remain part of its replayable acquisition boundary.
 dividend-distribution snapshot remains raw-only because its ratios, status and
 multiple dates do not establish settled ordinary cash or a canonical payout
 denominator. Phase 2 remains active; future documented categories must be

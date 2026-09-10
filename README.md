@@ -415,6 +415,14 @@ the adapter validates the exact shape, one trading date, finite numeric values,
 ascending timestamps and time-window replay scope. The normalizer emits
 `AKSHARE_PRE_MARKET_HISTORY_RAW_ONLY`: this latest-day snapshot does not replace
 canonical daily history or become a valuation input.
+Phase 2.54 adds the distinct documented Sina
+[`stock_zh_a_minute`](https://akshare.akfamily.xyz/data/stock/stock.html)
+endpoint under `MARKET_HISTORY` with explicit `view=sina_minute`, minute
+interval and adjustment parameters. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_zh_a_sina.py)
+returns a recent timestamped minute-bar window; the adapter validates the exact
+field set, finite numeric/null values and strictly ascending timestamps. The
+normalizer emits `AKSHARE_SINA_MINUTE_HISTORY_RAW_ONLY`: the provider-window
+minute bars do not replace canonical daily history or become valuation inputs.
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

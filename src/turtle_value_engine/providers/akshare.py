@@ -20,8 +20,8 @@ latest-indicator raw slice, the A-share goodwill-impairment detail raw slice,
 the SSE/SZSE/BSE margin-detail raw slices, the A-share individual ownership-pledge
 detail view, the A-share CNINFO equity-mortgage view, A-share company-litigation
 raw slice and A-share Eastmoney individual-info raw slice.
-The A-share Eastmoney individual-fund-flow, intraday-history, pre-market-history,
-five-level bid-ask
+The A-share Eastmoney individual-fund-flow, Sina minute-history,
+intraday-history, pre-market-history, five-level bid-ask
 and Dragon-Tiger market-activity detail/statistics/institution-statistics raw
 slices are also available.
 The A-share Eastmoney top-ten, top-ten-tradable-shareholder and
@@ -72,9 +72,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "53"
+AKSHARE_ADAPTER_VERSION = "54"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "54"
+AKSHARE_MAPPING_VERSION = "55"
 
 
 class ListingMarket(StrEnum):
@@ -134,6 +134,7 @@ _SOURCE_URIS = {
     "stock_zh_a_hist": "https://quote.eastmoney.com/concept/",
     "stock_zh_a_hist_min_em": "https://quote.eastmoney.com/concept/sh603777.html?from=classic",
     "stock_zh_a_hist_pre_min_em": "https://quote.eastmoney.com/concept/sh603777.html",
+    "stock_zh_a_minute": "https://finance.sina.com.cn/realstock/company/sh600519/nc.shtml",
     "stock_zh_a_daily": "https://finance.sina.com.cn/realstock/company/",
     "stock_hk_daily": "http://stock.finance.sina.com.cn/hkstock/",
     "stock_zh_ah_daily": "https://gu.qq.com/",
@@ -320,6 +321,15 @@ _MARKET_HISTORY_PRE_MARKET_FIELDS = frozenset(
         "成交额",
         "最新价",
     }
+)
+
+_MARKET_HISTORY_SINA_MINUTE_PARAMETER_NAMES = frozenset({"view", "period", "adjust"})
+_MARKET_HISTORY_SINA_MINUTE_VIEW = "sina_minute"
+_MARKET_HISTORY_SINA_MINUTE_PERIODS = frozenset({"1", "5", "15", "30", "60"})
+_MARKET_HISTORY_SINA_MINUTE_DEFAULT_PERIOD = "1"
+_MARKET_HISTORY_SINA_MINUTE_DEFAULT_ADJUST = ""
+_MARKET_HISTORY_SINA_MINUTE_FIELDS = frozenset(
+    {"day", "open", "high", "low", "close", "volume", "amount"}
 )
 
 _HISTORY_PARAMETER_NAMES = frozenset(
@@ -598,11 +608,15 @@ class AKShareProvider(StructuredDataProvider):
         if (
             request.category is DataCategory.MARKET_HISTORY
             and request.parameters.get("view")
-            in (_MARKET_HISTORY_INTRADAY_VIEW, _MARKET_HISTORY_PRE_MARKET_VIEW)
+            in (
+                _MARKET_HISTORY_INTRADAY_VIEW,
+                _MARKET_HISTORY_PRE_MARKET_VIEW,
+                _MARKET_HISTORY_SINA_MINUTE_VIEW,
+            )
             and listing.market is not ListingMarket.A
         ):
             raise ProviderRequestError(
-                "the AKShare intraday/pre-market-history endpoints support A-share "
+                "the AKShare intraday/pre-market-history/Sina-minute endpoints support A-share "
                 "listings only",
                 provider=self.identity,
                 request=request,
@@ -1141,6 +1155,33 @@ class AKShareProvider(StructuredDataProvider):
                 response_metadata["range_filtering"] = "upstream_and_provider_validation"
                 response_metadata["snapshot_scope"] = "requested_intraday_range"
                 response_metadata["observation_time_field"] = "时间"
+                response_metadata["observation_start_datetime"] = (
+                    min(observation_times).isoformat() if observation_times else None
+                )
+                response_metadata["observation_end_datetime"] = (
+                    max(observation_times).isoformat() if observation_times else None
+                )
+            elif endpoint.name == "stock_zh_a_minute":
+                observation_times = _validate_sina_minute_history_provider_rows(
+                    rows,
+                    period=kwargs["period"],
+                    provider=self.identity,
+                    request=request,
+                )
+                response_metadata["upstream_row_count"] = len(rows)
+                response_metadata["entity_row_count"] = len(rows)
+                response_metadata["entity_rows_selected"] = True
+                response_metadata["listing_scoped_request"] = True
+                response_metadata["sina_minute_history_view"] = (
+                    _MARKET_HISTORY_SINA_MINUTE_VIEW
+                )
+                response_metadata["upstream_symbol"] = kwargs["symbol"]
+                response_metadata["sina_minute_period"] = kwargs["period"]
+                response_metadata["sina_minute_adjust"] = kwargs["adjust"]
+                response_metadata["date_binding"] = "row_only"
+                response_metadata["range_filtering"] = "none"
+                response_metadata["snapshot_scope"] = "recent_trading_days"
+                response_metadata["observation_time_field"] = "day"
                 response_metadata["observation_start_datetime"] = (
                     min(observation_times).isoformat() if observation_times else None
                 )
@@ -1880,6 +1921,9 @@ class AKShareProvider(StructuredDataProvider):
             market_history_pre_market_requested=(
                 request.parameters.get("view") == _MARKET_HISTORY_PRE_MARKET_VIEW
             ),
+            market_history_sina_minute_requested=(
+                request.parameters.get("view") == _MARKET_HISTORY_SINA_MINUTE_VIEW
+            ),
         )
         for name in candidates:
             function = getattr(client, name, None)
@@ -2438,6 +2482,12 @@ class AKShareNormalizer:
                     # interval, adjustment semantics and recent-data limits do
                     # not establish the canonical daily history contract.
                     normalizer_flags.add("AKSHARE_INTRADAY_HISTORY_RAW_ONLY")
+                elif record.response_metadata.get("endpoint") == "stock_zh_a_minute":
+                    _validate_sina_minute_history_normalizer_scope(record, listing, rows)
+                    # The endpoint is a recent multi-day minute-bar response. Its
+                    # interval, adjustment semantics and provider window do not
+                    # establish the canonical daily history contract.
+                    normalizer_flags.add("AKSHARE_SINA_MINUTE_HISTORY_RAW_ONLY")
                 elif (
                     record.response_metadata.get("endpoint")
                     == "stock_zh_a_hist_pre_min_em"
@@ -3013,6 +3063,7 @@ class AKShareNormalizer:
         if (
             {
                 "AKSHARE_INTRADAY_HISTORY_RAW_ONLY",
+                "AKSHARE_SINA_MINUTE_HISTORY_RAW_ONLY",
                 "AKSHARE_PRE_MARKET_HISTORY_RAW_ONLY",
             }
             & normalizer_flags
@@ -3386,6 +3437,13 @@ class AKShareNormalizer:
                 "limits do not establish the canonical daily history or valuation "
                 "inputs."
             )
+        if "AKSHARE_SINA_MINUTE_HISTORY_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented A-share Sina minute-history response is retained as "
+                "raw evidence only: its recent provider window, minute interval and "
+                "adjustment mode do not establish the canonical daily history or "
+                "valuation inputs."
+            )
         if "AKSHARE_PRE_MARKET_HISTORY_RAW_ONLY" in normalizer_flags:
             notes += (
                 " The documented A-share pre-market-history response is retained as "
@@ -3561,6 +3619,7 @@ def _endpoint_candidates(
     market_quote_bid_ask_requested: bool = False,
     market_history_intraday_requested: bool = False,
     market_history_pre_market_requested: bool = False,
+    market_history_sina_minute_requested: bool = False,
 ) -> tuple[str, ...]:
     market = listing.market
     if category is DataCategory.COMPANY_METADATA:
@@ -3603,6 +3662,8 @@ def _endpoint_candidates(
         if market is ListingMarket.A:
             if market_history_pre_market_requested:
                 return ("stock_zh_a_hist_pre_min_em",)
+            if market_history_sina_minute_requested:
+                return ("stock_zh_a_minute",)
             if market_history_intraday_requested:
                 return ("stock_zh_a_hist_min_em",)
             return ("stock_zh_a_hist", "stock_zh_a_daily")
@@ -6001,6 +6062,146 @@ def _validate_intraday_history_normalizer_scope(
     if record.response_metadata.get("observation_end_datetime") != expected_end:
         raise ProviderNormalizationError(
             "intraday-history response observation end does not match replayed rows"
+        )
+
+
+def _sina_minute_history_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    period: object,
+) -> tuple[str | None, list[datetime]]:
+    if not isinstance(period, str) or period not in _MARKET_HISTORY_SINA_MINUTE_PERIODS:
+        return "Sina minute-history period is not supported", []
+
+    numeric_fields = _MARKET_HISTORY_SINA_MINUTE_FIELDS - {"day"}
+    observation_times: list[datetime] = []
+    previous_time: datetime | None = None
+    for index, row in enumerate(rows):
+        missing = sorted(_MARKET_HISTORY_SINA_MINUTE_FIELDS - set(row))
+        unexpected = sorted(set(row) - _MARKET_HISTORY_SINA_MINUTE_FIELDS)
+        if missing:
+            return (
+                f"Sina minute-history row {index} is missing field(s): "
+                + ", ".join(missing),
+                [],
+            )
+        if unexpected:
+            return (
+                f"Sina minute-history row {index} contains unsupported field(s): "
+                + ", ".join(unexpected),
+                [],
+            )
+        observation_time = _intraday_history_timestamp(row["day"])
+        if observation_time is None:
+            return f"Sina minute-history row {index} has an invalid day", []
+        if previous_time is not None and observation_time <= previous_time:
+            if observation_time == previous_time:
+                return (
+                    "Sina minute-history response has duplicate day "
+                    f"{observation_time.isoformat()!r}",
+                    [],
+                )
+            return "Sina minute-history response day values must be strictly ascending", []
+        previous_time = observation_time
+        observation_times.append(observation_time)
+        for field in numeric_fields:
+            value = row[field]
+            if value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, Real):
+                return (
+                    f"Sina minute-history row {index} field {field!r} must be numeric or null",
+                    [],
+                )
+            try:
+                numeric = float(value)
+            except (OverflowError, TypeError, ValueError):
+                return (
+                    f"Sina minute-history row {index} field {field!r} must be numeric or null",
+                    [],
+                )
+            if not math.isfinite(numeric):
+                return (
+                    f"Sina minute-history row {index} field {field!r} must be finite or null",
+                    [],
+                )
+    return None, observation_times
+
+
+def _validate_sina_minute_history_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    period: object,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> list[datetime]:
+    message, observation_times = _sina_minute_history_validation_message(
+        rows,
+        period=period,
+    )
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message}",
+            provider=provider,
+            request=request,
+        )
+    return observation_times
+
+
+def _validate_sina_minute_history_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> None:
+    if listing.market is not ListingMarket.A:
+        raise ProviderNormalizationError(
+            "AKShare Sina minute-history raw slice supports A-share listings only"
+        )
+    if record.response_metadata.get("endpoint") != "stock_zh_a_minute":
+        raise ProviderNormalizationError(
+            "AKShare Sina minute-history record must come from stock_zh_a_minute"
+        )
+    try:
+        upstream_kwargs = _sina_minute_history_kwargs(listing, record.request)
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+
+    expected_metadata = {
+        "sina_minute_history_view": _MARKET_HISTORY_SINA_MINUTE_VIEW,
+        "upstream_symbol": upstream_kwargs["symbol"],
+        "sina_minute_period": upstream_kwargs["period"],
+        "sina_minute_adjust": upstream_kwargs["adjust"],
+        "listing_scoped_request": True,
+        "date_binding": "row_only",
+        "range_filtering": "none",
+        "snapshot_scope": "recent_trading_days",
+        "observation_time_field": "day",
+        "upstream_row_count": len(rows),
+        "entity_row_count": len(rows),
+        "entity_rows_selected": True,
+    }
+    for name, expected in expected_metadata.items():
+        if record.response_metadata.get(name) != expected:
+            raise ProviderNormalizationError(
+                f"Sina minute-history response metadata {name!r} does not match "
+                "the requested replay scope"
+            )
+
+    message, observation_times = _sina_minute_history_validation_message(
+        rows,
+        period=upstream_kwargs["period"],
+    )
+    if message is not None:
+        raise ProviderNormalizationError(message)
+    expected_start = min(observation_times).isoformat() if observation_times else None
+    expected_end = max(observation_times).isoformat() if observation_times else None
+    if record.response_metadata.get("observation_start_datetime") != expected_start:
+        raise ProviderNormalizationError(
+            "Sina minute-history response observation start does not match replayed rows"
+        )
+    if record.response_metadata.get("observation_end_datetime") != expected_end:
+        raise ProviderNormalizationError(
+            "Sina minute-history response observation end does not match replayed rows"
         )
 
 
@@ -8659,6 +8860,8 @@ def _history_kwargs(
     listing: _ListingRef,
     request: ProviderRequest,
 ) -> dict[str, object]:
+    if endpoint_name == "stock_zh_a_minute":
+        return _sina_minute_history_kwargs(listing, request)
     if endpoint_name == "stock_zh_a_hist_min_em":
         return _intraday_history_kwargs(listing, request)
     if endpoint_name == "stock_zh_a_hist_pre_min_em":
@@ -8729,6 +8932,55 @@ def _history_kwargs(
     if end_text is not None:
         kwargs["end_date"] = end_text
     return kwargs
+
+
+def _sina_minute_history_kwargs(
+    listing: _ListingRef,
+    request: ProviderRequest,
+) -> dict[str, object]:
+    """Build the documented recent Sina A-share minute-history request."""
+
+    if listing.market is not ListingMarket.A:
+        raise ProviderRequestError(
+            "the AKShare Sina minute-history endpoint supports A-share listings only",
+            request=request,
+            retryable=False,
+        )
+    parameters = dict(request.parameters)
+    unknown = sorted(set(parameters) - _MARKET_HISTORY_SINA_MINUTE_PARAMETER_NAMES)
+    if unknown:
+        raise ProviderRequestError(
+            "unsupported AKShare Sina minute-history parameter(s): " + ", ".join(unknown),
+            request=request,
+            retryable=False,
+        )
+    if parameters.get("view") != _MARKET_HISTORY_SINA_MINUTE_VIEW:
+        raise ProviderRequestError(
+            "the AKShare Sina minute-history endpoint requires "
+            f"view={_MARKET_HISTORY_SINA_MINUTE_VIEW!r}",
+            request=request,
+            retryable=False,
+        )
+    period = parameters.get("period", _MARKET_HISTORY_SINA_MINUTE_DEFAULT_PERIOD)
+    if not isinstance(period, str) or period not in _MARKET_HISTORY_SINA_MINUTE_PERIODS:
+        choices = ", ".join(sorted(_MARKET_HISTORY_SINA_MINUTE_PERIODS, key=int))
+        raise ProviderRequestError(
+            f"AKShare Sina minute-history period must be one of: {choices}",
+            request=request,
+            retryable=False,
+        )
+    adjust = parameters.get("adjust", _MARKET_HISTORY_SINA_MINUTE_DEFAULT_ADJUST)
+    if not isinstance(adjust, str) or adjust not in {"", "qfq", "hfq"}:
+        raise ProviderRequestError(
+            "AKShare Sina minute-history adjust must be '', 'qfq' or 'hfq'",
+            request=request,
+            retryable=False,
+        )
+    return {
+        "symbol": listing.canonical_id[:2].lower() + listing.code,
+        "period": period,
+        "adjust": adjust,
+    }
 
 
 def _pre_market_history_kwargs(

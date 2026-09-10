@@ -443,6 +443,31 @@ not a canonical daily-history or valuation fact.
 | `最新价` | Raw latest-price context within the snapshot; without an independent stable quote timestamp it does not replace `current_price`. |
 | request `view=pre_market`, derived `symbol`, `start_time`, `end_time` | Explicit endpoint-selection and latest-trading-day time-window replay scope; the response cannot be replayed under a different listing or time range. |
 
+## Phase 2.54 A-share Sina minute-history raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_zh_a_minute` as a Sina A-share stock/index minute-history
+endpoint. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_zh_a_sina.py)
+accepts a market-prefixed `symbol`, a `period` of `1`, `5`, `15`, `30` or `60`,
+and an adjustment mode of empty string, `qfq` or `hfq`. It returns a recent
+timestamped minute-bar response with `day`, OHLC, `volume` and `amount`.
+
+The provider selects this endpoint only under `MARKET_HISTORY` with explicit
+`view=sina_minute`, derives the market-prefixed symbol from the requested
+A-share listing, validates the exact field set, finite numeric/null values and
+strictly ascending timestamps, and records the effective listing, interval,
+adjustment and recent-window replay scope. The normalizer emits
+`AKSHARE_SINA_MINUTE_HISTORY_RAW_ONLY`; the provider-window minute bars are not
+a canonical daily-history or valuation fact.
+
+| Raw upstream item | Phase 2 treatment |
+| --- | --- |
+| `day` | Validated minute timestamp in ascending order; it is retained as raw observation context and is not converted into a daily-history period. |
+| `open`, `high`, `low`, `close` | Raw minute prices retained as structured evidence only; they do not replace canonical daily OHLC history. |
+| `volume` | Raw provider minute volume; unit and recent-window scope remain provider context, with no cross-frequency liquidity fact inferred. |
+| `amount` | Raw minute turnover amount; it is not issuer cash flow or a canonical valuation input. |
+| request `view=sina_minute`, derived market-prefixed `symbol`, `period`, `adjust` | Explicit endpoint-selection and recent-window replay scope; the response cannot be replayed under a different listing, interval or adjustment mode. |
+
 ## Phase 2.9 corporate-action raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
