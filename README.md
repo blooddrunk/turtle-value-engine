@@ -493,6 +493,17 @@ observations. The adapter validates the exact shape, finite numeric values,
 integer lot counts, recognized trade sides and non-decreasing times, while the
 normalizer emits `AKSHARE_INTRADAY_TRADES_RAW_ONLY`: without a trading date,
 these rows do not become canonical daily-history, liquidity or valuation facts.
+Phase 2.61 adds the distinct documented Eastmoney A-share stock-popularity
+endpoint [`stock_hot_rank_em`](https://akshare.akfamily.xyz/data/stock/stock.html),
+whose current official implementation is in
+[`stock_hot_rank_em.py`](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hot_rank_em.py),
+under `MARKET_ACTIVITY` with explicit `view=hot_rank`. It calls the documented
+no-argument top-100 universe, validates the market-prefixed listing codes,
+strictly ascending ranks, finite numeric/null quote fields and exact six-field
+shape, then filters the response to the requested A-share listing. The
+normalizer emits `AKSHARE_HOT_RANK_RAW_ONLY`: current popularity ordering and
+quote context remain raw evidence and do not become a canonical market,
+issuer-cash-flow, shareholder-return, governance or valuation fact.
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

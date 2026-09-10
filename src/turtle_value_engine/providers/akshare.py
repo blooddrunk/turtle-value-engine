@@ -21,7 +21,7 @@ the SSE/SZSE/BSE margin-detail raw slices, the A-share individual ownership-pled
 detail view, the A-share CNINFO equity-mortgage view, A-share company-litigation
 raw slice and A-share Eastmoney individual-info raw slice.
 The A-share Eastmoney individual-fund-flow, market-participation-desire,
-intraday-trade, chip-distribution, Tencent
+hot-rank, intraday-trade, chip-distribution, Tencent
 daily-history and Tencent latest-trading-day tick, Sina minute-history,
 intraday-history, H-share intraday-history, pre-market-history, five-level bid-ask
 and Dragon-Tiger market-activity detail/statistics/institution-statistics raw
@@ -74,9 +74,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "60"
+AKSHARE_ADAPTER_VERSION = "61"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "61"
+AKSHARE_MAPPING_VERSION = "62"
 
 
 class ListingMarket(StrEnum):
@@ -149,6 +149,7 @@ _SOURCE_URIS = {
     "stock_lhb_stock_statistic_em": "https://data.eastmoney.com/stock/tradedetail.html",
     "stock_lhb_jgstatistic_em": "https://data.eastmoney.com/stock/jgstatistic.html",
     "stock_comment_detail_scrd_desire_em": "https://data.eastmoney.com/stockcomment/stock/600000.html",
+    "stock_hot_rank_em": "https://guba.eastmoney.com/rank/",
     "stock_intraday_em": "https://quote.eastmoney.com/f1.html?newcode=0.000001",
     "stock_hk_company_profile_em": "https://emweb.securities.eastmoney.com/PC_HKF10/pages/home/index.html",
     "stock_hk_security_profile_em": "https://emweb.securities.eastmoney.com/PC_HKF10/pages/home/index.html",
@@ -460,6 +461,12 @@ _MARKET_ACTIVITY_PARTICIPATION_DESIRE_FIELDS = frozenset(
         "参与意愿变化",
         "5日平均变化",
     }
+)
+_MARKET_ACTIVITY_HOT_RANK_PARAMETER_NAMES = frozenset({"view"})
+_MARKET_ACTIVITY_HOT_RANK_VIEW = "hot_rank"
+_MARKET_ACTIVITY_HOT_RANK_MAX_ROWS = 100
+_MARKET_ACTIVITY_HOT_RANK_FIELDS = frozenset(
+    {"当前排名", "代码", "股票名称", "最新价", "涨跌额", "涨跌幅"}
 )
 
 _FINANCIAL_STATEMENT_PARAMETER_NAMES = frozenset({"indicator", "statement_date"})
@@ -1125,6 +1132,31 @@ class AKShareProvider(StructuredDataProvider):
                 if activity_dates:
                     response_metadata["observed_start_date"] = min(activity_dates).isoformat()
                     response_metadata["observed_end_date"] = max(activity_dates).isoformat()
+            elif endpoint.name == "stock_hot_rank_em":
+                _validate_market_activity_hot_rank_provider_rows(
+                    rows,
+                    provider=self.identity,
+                    request=request,
+                )
+                selected = _select_listing_rows(
+                    rows,
+                    listing,
+                    provider=self.identity,
+                    request=request,
+                    row_label="market-activity-hot-rank",
+                )
+                payload = selected
+                response_metadata["upstream_row_count"] = len(rows)
+                response_metadata["entity_row_count"] = len(selected)
+                response_metadata["entity_rows_selected"] = True
+                response_metadata["listing_scoped_request"] = False
+                response_metadata["row_filtering"] = "provider"
+                response_metadata["market_activity_view"] = _MARKET_ACTIVITY_HOT_RANK_VIEW
+                response_metadata["snapshot_scope"] = "current_trading_day_top_100"
+                response_metadata["rank_field"] = "当前排名"
+                response_metadata["rank_ordering"] = "strictly_ascending"
+                response_metadata["date_binding"] = "retrieval_only"
+                response_metadata["provider_row_limit"] = _MARKET_ACTIVITY_HOT_RANK_MAX_ROWS
             elif endpoint.name == "stock_lhb_stock_statistic_em":
                 statistic_period = _market_activity_statistic_period(request)
                 recent_listing_dates = _validate_market_activity_statistic_provider_rows(
@@ -2228,6 +2260,9 @@ class AKShareProvider(StructuredDataProvider):
                 request.parameters.get("view")
                 == _MARKET_ACTIVITY_PARTICIPATION_DESIRE_VIEW
             ),
+            market_activity_hot_rank_requested=(
+                request.parameters.get("view") == _MARKET_ACTIVITY_HOT_RANK_VIEW
+            ),
             market_activity_institution_statistic_requested=(
                 request.parameters.get("view")
                 == _MARKET_ACTIVITY_INSTITUTION_STATISTIC_VIEW
@@ -2581,7 +2616,14 @@ class AKShareNormalizer:
                         "AKShare market-activity raw slice supports A-share listings only"
                     )
                 endpoint_name = record.response_metadata.get("endpoint")
-                if endpoint_name == "stock_comment_detail_scrd_desire_em":
+                if record.request.parameters.get("view") == _MARKET_ACTIVITY_HOT_RANK_VIEW:
+                    _validate_market_activity_hot_rank_normalizer_scope(
+                        record,
+                        listing,
+                        rows,
+                    )
+                    normalizer_flags.add("AKSHARE_HOT_RANK_RAW_ONLY")
+                elif endpoint_name == "stock_comment_detail_scrd_desire_em":
                     _validate_market_activity_participation_desire_normalizer_scope(
                         record,
                         listing,
@@ -2662,7 +2704,8 @@ class AKShareNormalizer:
                     raise ProviderNormalizationError(
                         "AKShare market-activity record must come from "
                         "stock_comment_detail_scrd_desire_em, stock_lhb_detail_em, "
-                        "stock_lhb_stock_statistic_em or stock_lhb_jgstatistic_em"
+                        "stock_hot_rank_em, stock_lhb_stock_statistic_em or "
+                        "stock_lhb_jgstatistic_em"
                     )
             elif record.request.category is DataCategory.MARGIN_TRADING:
                 if listing.canonical_id[:2] not in {"SH", "SZ", "BJ"}:
@@ -3740,6 +3783,13 @@ class AKShareNormalizer:
                 "over a recent trading-day window do not establish issuer cash flow, "
                 "shareholder return, governance, valuation or a canonical market metric."
             )
+        if "AKSHARE_HOT_RANK_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented A-share stock hot-rank response is retained as raw "
+                "evidence only: its current popularity ordering and quote context do "
+                "not establish issuer cash flow, shareholder return, governance, "
+                "valuation or a canonical market metric."
+            )
         if "AKSHARE_TOP_10_SHAREHOLDERS_RAW_ONLY" in normalizer_flags:
             notes += (
                 " The documented A-share top-ten-shareholder response is retained as "
@@ -4036,6 +4086,7 @@ def _endpoint_candidates(
     market_activity_statistic_requested: bool = False,
     market_activity_institution_statistic_requested: bool = False,
     market_activity_participation_desire_requested: bool = False,
+    market_activity_hot_rank_requested: bool = False,
     market_quote_bid_ask_requested: bool = False,
     market_history_intraday_requested: bool = False,
     market_history_hk_intraday_requested: bool = False,
@@ -4107,6 +4158,8 @@ def _endpoint_candidates(
         if market is ListingMarket.A:
             if market_activity_participation_desire_requested:
                 return ("stock_comment_detail_scrd_desire_em",)
+            if market_activity_hot_rank_requested:
+                return ("stock_hot_rank_em",)
             if market_activity_institution_statistic_requested:
                 return ("stock_lhb_jgstatistic_em",)
             if market_activity_statistic_requested:
@@ -7993,6 +8046,147 @@ def _validate_market_activity_institution_statistic_provider_rows(
         seen_codes.add(row_code)
 
 
+def _market_activity_hot_rank_row_listing(value: object) -> _ListingRef | None:
+    """Parse the market-prefixed listing code published by the hot-rank endpoint."""
+
+    if not isinstance(value, str):
+        return None
+    text = value.strip().upper()
+    if not re.fullmatch(r"(?:SH|SZ|BJ)\d{6}", text):
+        return None
+    try:
+        return _parse_listing_id(text)
+    except ProviderError:
+        return None
+
+
+def _market_activity_hot_rank_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef | None = None,
+) -> str | None:
+    """Return a strict-schema error for one hot-rank popularity snapshot."""
+
+    if len(rows) > _MARKET_ACTIVITY_HOT_RANK_MAX_ROWS:
+        return (
+            "market-activity hot-rank response contains more than "
+            f"{_MARKET_ACTIVITY_HOT_RANK_MAX_ROWS} rows"
+        )
+
+    seen_codes: set[str] = set()
+    previous_rank: int | None = None
+    numeric_fields = ("最新价", "涨跌额", "涨跌幅")
+    for index, row in enumerate(rows):
+        missing = sorted(_MARKET_ACTIVITY_HOT_RANK_FIELDS - set(row))
+        unexpected = sorted(set(row) - _MARKET_ACTIVITY_HOT_RANK_FIELDS)
+        if missing:
+            return (
+                f"market-activity hot-rank row {index} is missing field(s): "
+                + ", ".join(missing)
+            )
+        if unexpected:
+            return (
+                f"market-activity hot-rank row {index} contains unsupported field(s): "
+                + ", ".join(unexpected)
+            )
+
+        row_listing = _market_activity_hot_rank_row_listing(row["代码"])
+        if row_listing is None:
+            return f"market-activity hot-rank row {index} has an invalid 代码"
+        if listing is not None and row_listing.canonical_id != listing.canonical_id:
+            return (
+                f"market-activity hot-rank row {index} entity "
+                f"{row_listing.code!r} does not match requested listing "
+                f"{listing.canonical_id!r}"
+            )
+        if row_listing.code in seen_codes:
+            return (
+                "market-activity hot-rank response has duplicate listing code "
+                f"{row_listing.code!r}"
+            )
+        seen_codes.add(row_listing.code)
+
+        rank = row["当前排名"]
+        if isinstance(rank, bool) or not isinstance(rank, Real):
+            return (
+                f"market-activity hot-rank row {index} field '当前排名' "
+                "must be an integer between 1 and 100"
+            )
+        try:
+            numeric_rank = float(rank)
+        except (OverflowError, TypeError, ValueError):
+            return (
+                f"market-activity hot-rank row {index} field '当前排名' "
+                "must be an integer between 1 and 100"
+            )
+        if (
+            not math.isfinite(numeric_rank)
+            or not numeric_rank.is_integer()
+            or not 1 <= numeric_rank <= _MARKET_ACTIVITY_HOT_RANK_MAX_ROWS
+        ):
+            return (
+                f"market-activity hot-rank row {index} field '当前排名' "
+                "must be an integer between 1 and 100"
+            )
+        rank_value = int(numeric_rank)
+        if previous_rank is not None:
+            if rank_value == previous_rank:
+                return (
+                    "market-activity hot-rank response has duplicate 当前排名 "
+                    f"{rank_value!r}"
+                )
+            if rank_value < previous_rank:
+                return (
+                    "market-activity hot-rank response 当前排名 values must be "
+                    "strictly ascending"
+                )
+        previous_rank = rank_value
+
+        if not isinstance(row["股票名称"], str) or _text_value(row["股票名称"]) is None:
+            return (
+                f"market-activity hot-rank row {index} field '股票名称' "
+                "must be a non-empty string"
+            )
+        for field in numeric_fields:
+            value = row[field]
+            if value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, Real):
+                return (
+                    f"market-activity hot-rank row {index} field {field!r} "
+                    "must be numeric or null"
+                )
+            try:
+                numeric = float(value)
+            except (OverflowError, TypeError, ValueError):
+                return (
+                    f"market-activity hot-rank row {index} field {field!r} "
+                    "must be numeric or null"
+                )
+            if not math.isfinite(numeric):
+                return (
+                    f"market-activity hot-rank row {index} field {field!r} "
+                    "must be finite or null"
+                )
+    return None
+
+
+def _validate_market_activity_hot_rank_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> None:
+    """Validate the full A-share popularity-rank universe before filtering."""
+
+    message = _market_activity_hot_rank_validation_message(rows)
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message}",
+            provider=provider,
+            request=request,
+        )
+
+
 def _select_esg_rating_rows(
     rows: Sequence[Mapping[str, JSONValue]],
     listing: _ListingRef,
@@ -8805,6 +8999,65 @@ def _validate_market_activity_participation_desire_normalizer_rows(
     if message is not None:
         raise ProviderNormalizationError(message)
     return observation_dates
+
+
+def _validate_market_activity_hot_rank_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> None:
+    """Validate the replay scope of a filtered popularity-rank snapshot."""
+
+    if listing.market is not ListingMarket.A:
+        raise ProviderNormalizationError(
+            "AKShare market-activity hot-rank raw slice supports A-share listings only"
+        )
+    if record.response_metadata.get("endpoint") != "stock_hot_rank_em":
+        raise ProviderNormalizationError(
+            "AKShare market-activity hot-rank record must come from stock_hot_rank_em"
+        )
+    try:
+        _market_activity_hot_rank_kwargs(
+            "stock_hot_rank_em",
+            listing,
+            record.request,
+        )
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+
+    expected_metadata = {
+        "market_activity_view": _MARKET_ACTIVITY_HOT_RANK_VIEW,
+        "listing_scoped_request": False,
+        "row_filtering": "provider",
+        "snapshot_scope": "current_trading_day_top_100",
+        "rank_field": "当前排名",
+        "rank_ordering": "strictly_ascending",
+        "date_binding": "retrieval_only",
+        "provider_row_limit": _MARKET_ACTIVITY_HOT_RANK_MAX_ROWS,
+        "entity_rows_selected": True,
+        "entity_row_count": len(rows),
+    }
+    for name, expected in expected_metadata.items():
+        if record.response_metadata.get(name) != expected:
+            raise ProviderNormalizationError(
+                f"market-activity hot-rank response metadata {name!r} does not match "
+                "the requested replay scope"
+            )
+
+    upstream_row_count = record.response_metadata.get("upstream_row_count")
+    if (
+        isinstance(upstream_row_count, bool)
+        or not isinstance(upstream_row_count, int)
+        or not len(rows) <= upstream_row_count <= _MARKET_ACTIVITY_HOT_RANK_MAX_ROWS
+    ):
+        raise ProviderNormalizationError(
+            "market-activity hot-rank response upstream row count does not match "
+            "the requested replay scope"
+        )
+
+    message = _market_activity_hot_rank_validation_message(rows, listing)
+    if message is not None:
+        raise ProviderNormalizationError(message)
 
 
 def _validate_market_activity_statistic_normalizer_rows(
@@ -10119,6 +10372,8 @@ def _market_activity_kwargs(
 
     if endpoint_name == "stock_comment_detail_scrd_desire_em":
         return _market_activity_participation_desire_kwargs(endpoint_name, listing, request)
+    if endpoint_name == "stock_hot_rank_em":
+        return _market_activity_hot_rank_kwargs(endpoint_name, listing, request)
     if endpoint_name == "stock_lhb_stock_statistic_em":
         return _market_activity_statistic_kwargs(endpoint_name, listing, request)
     if endpoint_name == "stock_lhb_jgstatistic_em":
@@ -10148,6 +10403,43 @@ def _market_activity_kwargs(
         "start_date": request.parameters["start_date"],
         "end_date": request.parameters["end_date"],
     }
+
+
+def _market_activity_hot_rank_kwargs(
+    endpoint_name: str,
+    listing: _ListingRef,
+    request: ProviderRequest,
+) -> dict[str, object]:
+    """Build the documented no-argument A-share popularity-rank request."""
+
+    if endpoint_name != "stock_hot_rank_em":
+        raise ProviderRequestError(
+            f"unsupported AKShare market-activity hot-rank endpoint {endpoint_name!r}",
+            request=request,
+            retryable=False,
+        )
+    if listing.market is not ListingMarket.A:
+        raise ProviderRequestError(
+            "the AKShare market-activity hot-rank endpoint supports A-share listings only",
+            request=request,
+            retryable=False,
+        )
+    unknown = sorted(set(request.parameters) - _MARKET_ACTIVITY_HOT_RANK_PARAMETER_NAMES)
+    if unknown:
+        raise ProviderRequestError(
+            "unsupported AKShare market-activity hot-rank parameter(s): "
+            + ", ".join(unknown),
+            request=request,
+            retryable=False,
+        )
+    if request.parameters.get("view") != _MARKET_ACTIVITY_HOT_RANK_VIEW:
+        raise ProviderRequestError(
+            "the AKShare market-activity hot-rank endpoint requires "
+            f"view={_MARKET_ACTIVITY_HOT_RANK_VIEW!r}",
+            request=request,
+            retryable=False,
+        )
+    return {}
 
 
 def _market_activity_participation_desire_kwargs(

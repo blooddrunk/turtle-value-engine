@@ -655,6 +655,37 @@ gate, pipeline, CLI and input-loader contracts. Its raw evidence is available
 for later review without being treated as canonical daily history, liquidity,
 order flow or valuation input.
 
+## Phase 2.61 A-share Eastmoney stock hot-rank raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_hot_rank_em` as an Eastmoney no-argument A-share endpoint
+returning the current-trading-day top 100 popularity rows. The [official
+implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hot_rank_em.py)
+confirms the six output fields `当前排名`, `代码`, `股票名称`, `最新价`, `涨跌额`
+and `涨跌幅`; its market-prefixed security code is preserved as raw identity
+context.
+
+The provider selects this endpoint only under the existing provider-neutral
+`MARKET_ACTIVITY` category with explicit `view=hot_rank`, validates the exact
+field set, market-prefixed A-share identity, unique strictly ascending ranks,
+finite numeric/null quote fields and the documented 100-row maximum, then
+filters the universe to the requested listing. The current-day snapshot is
+bound only to retrieval provenance because the response has no row-level date.
+The normalizer emits `AKSHARE_HOT_RANK_RAW_ONLY`; no canonical market,
+issuer-cash-flow, shareholder-return, governance or valuation fact is admitted.
+
+| Raw upstream item | Phase 2 treatment |
+| --- | --- |
+| `当前排名` | Validated positive rank in strict ascending order; no canonical popularity, sentiment or market metric is inferred. |
+| `代码`, `股票名称` | Required market-prefixed A-share identity and display context; no issuer or governance fact is inferred. |
+| `最新价`, `涨跌额`, `涨跌幅` | Raw current-day quote context; it is not used to replace the canonical quote or derive return, liquidity or valuation. |
+| request `view=hot_rank` | Explicit endpoint-selection and filtered-listing replay scope; the no-argument current-day snapshot is not replayed as a dated observation. |
+
+The provider-specific stock hot-rank response remains outside the calculation,
+gate, pipeline, CLI and input-loader contracts. Its raw evidence is available
+for later review without being treated as a canonical market metric,
+shareholder-return, governance or valuation input.
+
 ## Phase 2.9 corporate-action raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)

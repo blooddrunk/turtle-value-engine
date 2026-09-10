@@ -260,6 +260,9 @@ class FakeAKShare:
             symbol=symbol,
         )
 
+    def stock_hot_rank_em(self):
+        return self._return("stock_hot_rank_em", _fixture("a_hot_rank.json"))
+
     def stock_cash_flow_sheet_by_report_em(self, **kwargs):
         return self._return(
             "stock_cash_flow_sheet_by_report_em",
@@ -625,8 +628,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "60"
-    assert AKSHARE_MAPPING_VERSION == "61"
+    assert provider.identity.provider_version == "61"
+    assert AKSHARE_MAPPING_VERSION == "62"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -11868,6 +11871,269 @@ def test_market_participation_desire_cache_replay_does_not_call_upstream(tmp_pat
     assert fake.calls == [
         ("stock_comment_detail_scrd_desire_em", {"symbol": "600000"}),
     ]
+
+
+def test_hot_rank_fetch_uses_documented_no_argument_endpoint_and_filters_universe():
+    fake = FakeAKShare()
+    request = _request(
+        DataCategory.MARKET_ACTIVITY,
+        "SH600000",
+        {"view": "hot_rank"},
+    )
+    record = _provider(fake).fetch(request)
+
+    fixture = _fixture("a_hot_rank.json")
+    assert record.raw_payload == [row for row in fixture if row["代码"] == "SH600000"]
+    assert fake.calls == [("stock_hot_rank_em", {})]
+    assert record.response_metadata["endpoint"] == "stock_hot_rank_em"
+    assert record.response_metadata["market_activity_view"] == "hot_rank"
+    assert record.response_metadata["snapshot_scope"] == "current_trading_day_top_100"
+    assert record.response_metadata["rank_field"] == "当前排名"
+    assert record.response_metadata["rank_ordering"] == "strictly_ascending"
+    assert record.response_metadata["date_binding"] == "retrieval_only"
+    assert record.response_metadata["provider_row_limit"] == 100
+    assert record.response_metadata["upstream_row_count"] == 3
+    assert record.response_metadata["entity_row_count"] == 1
+    assert record.response_metadata["entity_rows_selected"] is True
+    assert record.response_metadata["listing_scoped_request"] is False
+    assert record.response_metadata["row_filtering"] == "provider"
+    assert record.source_uri == "https://guba.eastmoney.com/rank/"
+
+
+@pytest.mark.parametrize(
+    ("parameters", "entity_id", "match"),
+    [
+        (
+            {"view": "hot_rank", "period": "近三月"},
+            "SH600000",
+            "unsupported AKShare market-activity hot-rank parameter",
+        ),
+        (
+            {"view": "hot_rank", "start_date": "20240927"},
+            "SH600000",
+            "unsupported AKShare market-activity hot-rank parameter",
+        ),
+        (
+            {"view": "hot_rank"},
+            "HK00700",
+            "A-share listings only",
+        ),
+    ],
+)
+def test_hot_rank_request_requires_explicit_view_and_supported_market(
+    parameters: dict,
+    entity_id: str,
+    match: str,
+):
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError, match=match):
+        _provider(fake).fetch(
+            _request(DataCategory.MARKET_ACTIVITY, entity_id, parameters)
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("missing_code", "hot-rank row 0 is missing field.*代码"),
+        ("invalid_code", "hot-rank row 0 has an invalid 代码"),
+        ("missing_rank", "hot-rank row 0 is missing field.*当前排名"),
+        ("invalid_rank", "field '当前排名'.*integer"),
+        ("descending", "当前排名 values must be strictly ascending"),
+        ("duplicate_code", "duplicate listing code"),
+        ("missing_name", "hot-rank row 0 is missing field.*股票名称"),
+        ("invalid_name", "field '股票名称'.*non-empty string"),
+        ("invalid_numeric", "field '最新价'.*numeric or null"),
+        ("unexpected", "hot-rank row 0 contains unsupported field"),
+        ("too_many", "contains more than 100 rows"),
+    ],
+)
+def test_hot_rank_response_validates_exact_rows(mutation: str, match: str):
+    payload = [dict(row) for row in _fixture("a_hot_rank.json")]
+    if mutation == "missing_code":
+        payload[0].pop("代码")
+    elif mutation == "invalid_code":
+        payload[0]["代码"] = "HK00700"
+    elif mutation == "missing_rank":
+        payload[0].pop("当前排名")
+    elif mutation == "invalid_rank":
+        payload[0]["当前排名"] = 1.5
+    elif mutation == "descending":
+        payload[1]["当前排名"] = 3
+        payload[2]["当前排名"] = 2
+    elif mutation == "duplicate_code":
+        payload.append(dict(payload[0]))
+    elif mutation == "missing_name":
+        payload[0].pop("股票名称")
+    elif mutation == "invalid_name":
+        payload[0]["股票名称"] = 600000
+    elif mutation == "invalid_numeric":
+        payload[0]["最新价"] = "11.26"
+    elif mutation == "unexpected":
+        payload[0]["extra"] = 1
+    else:
+        payload.extend(dict(payload[-1]) for _ in range(98))
+
+    class InvalidHotRank(FakeAKShare):
+        def stock_hot_rank_em(self):
+            return self._return("stock_hot_rank_em", payload)
+
+    with pytest.raises(ProviderResponseError, match=match):
+        _provider(InvalidHotRank()).fetch(
+            _request(
+                DataCategory.MARKET_ACTIVITY,
+                "SH600000",
+                {"view": "hot_rank"},
+            )
+        )
+
+
+def test_hot_rank_with_no_matching_listing_is_an_empty_raw_snapshot():
+    class NoMatchingHotRank(FakeAKShare):
+        def stock_hot_rank_em(self):
+            return self._return(
+                "stock_hot_rank_em",
+                [row for row in _fixture("a_hot_rank.json") if row["代码"] != "SH600000"],
+            )
+
+    record = _provider(NoMatchingHotRank()).fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SH600000",
+            {"view": "hot_rank"},
+        )
+    )
+
+    assert record.raw_payload == []
+    assert record.response_metadata["upstream_row_count"] == 2
+    assert record.response_metadata["entity_row_count"] == 0
+
+
+def test_hot_rank_is_retained_as_raw_evidence_without_canonical_facts():
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SH600000",
+            {"view": "hot_rank"},
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="hot-rank-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_HOT_RANK_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == []
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "stock hot-rank" in normalized.data_quality.notes
+    assert "popularity ordering" in normalized.data_quality.notes
+    assert "canonical market metric" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "endpoint",
+        "view",
+        "listing_scope",
+        "row_filtering",
+        "snapshot",
+        "rank_field",
+        "rank_ordering",
+        "date_binding",
+        "limit",
+        "count",
+        "upstream_count",
+        "entity",
+        "payload",
+    ],
+)
+def test_hot_rank_normalizer_rejects_replayed_scope_mismatches(mutation: str):
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SH600000",
+            {"view": "hot_rank"},
+        )
+    )
+    payload = [dict(row) for row in record.raw_payload]
+    response_metadata = dict(record.response_metadata)
+    if mutation == "endpoint":
+        response_metadata["endpoint"] = "stock_lhb_detail_em"
+    elif mutation == "view":
+        response_metadata["market_activity_view"] = "stock_statistic"
+    elif mutation == "listing_scope":
+        response_metadata["listing_scoped_request"] = True
+    elif mutation == "row_filtering":
+        response_metadata["row_filtering"] = "normalizer"
+    elif mutation == "snapshot":
+        response_metadata["snapshot_scope"] = "current_snapshot"
+    elif mutation == "rank_field":
+        response_metadata["rank_field"] = "rank"
+    elif mutation == "rank_ordering":
+        response_metadata["rank_ordering"] = "non_decreasing"
+    elif mutation == "date_binding":
+        response_metadata["date_binding"] = "current_trading_day"
+    elif mutation == "limit":
+        response_metadata["provider_row_limit"] = 30
+    elif mutation == "count":
+        response_metadata["entity_row_count"] = 99
+    elif mutation == "upstream_count":
+        response_metadata["upstream_row_count"] = 0
+    elif mutation == "entity":
+        payload[0]["代码"] = "SZ000001"
+    else:
+        payload[0]["最新价"] = "11.26"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=record.source_uri,
+        response_metadata=response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match="market-activity hot-rank"):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-hot-rank-scope",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_hot_rank_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.MARKET_ACTIVITY,
+        "SH600000",
+        {"view": "hot_rank"},
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [("stock_hot_rank_em", {})]
 
 
 def test_tencent_tick_fetch_uses_explicit_view_and_listing_symbol():
