@@ -1253,6 +1253,44 @@ identifies candidates for review but does not establish filing contents, an
 accounting opinion, materiality or a governance-risk judgment. The response
 remains outside the calculation, gate, pipeline, CLI and input-loader contracts.
 
+## Phase 2.81 A-share Eastmoney shareholder-meeting raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_gddh_em.py)
+document `stock_gddh_em` as a no-argument Eastmoney A-share shareholder-meeting
+endpoint. The implementation requests the current published dataset and exposes
+the exact twelve fields `代码`, `简称`, `股东大会名称`, `召开开始日`, `股权登记日`,
+`现场登记日`, `网络投票时间-开始日`, `网络投票时间-结束日`, `决议公告日`,
+`公告日`, `序列号` and `提案`. The adapter exposes this callable only through
+explicit `view=shareholder_meeting` routing.
+
+The provider validates the complete response before filtering it to the
+requested six-digit A-share code. All matching rows are retained, including
+multiple meeting/proposal rows for one listing; no matching row is an error. The
+raw record records the exact field order, seven event/publication date fields,
+upstream/selected counts, current-published snapshot scope and
+`row_filtering=provider` for cache replay. Nullable dates and proposal text are
+preserved as null; no date is treated as a financial reporting period.
+
+| Raw upstream item | Phase 2.81 treatment |
+| --- | --- |
+| `代码` | Required six-digit A-share identity; validated across the complete response and used only for provider-boundary filtering/evidence context. |
+| `简称` | Required non-empty provider display name; retained as raw evidence and not used to overwrite canonical company identity. |
+| `股东大会名称` | Required non-empty meeting title; retained as event metadata, not interpreted as a governance conclusion. |
+| `召开开始日`, `股权登记日`, `现场登记日` | Nullable valid event/registration dates; retained as row-level dates and not promoted to a report period or corporate-action fact. |
+| `网络投票时间-开始日`, `网络投票时间-结束日` | Nullable valid online-voting window dates; retained as raw meeting logistics. |
+| `决议公告日`, `公告日` | Nullable valid resolution/publication dates; retained as disclosure context, not as filing contents or an accounting date. |
+| `序列号` | Required positive integer-like source sequence; retained for source identity/order only. |
+| `提案` | Nullable non-empty proposal text; retained as raw evidence and not classified into a governance risk level. |
+| request `view=shareholder_meeting` | Explicit A-share endpoint selector with no upstream arguments; source scope, field schema and provider filtering remain replay metadata and do not leak into calculations, gates, pipeline, CLI or input-loader code. |
+
+The normalizer emits `AKSHARE_SHAREHOLDER_MEETINGS_RAW_ONLY`, creates no
+canonical facts and leaves `governance_risk_level` critically missing. Meeting
+dates, proposals and announcement context require filing-backed review before
+they can support a governance judgment or corporate-action interpretation. The
+slice remains outside the calculation, gate, pipeline, CLI and input-loader
+contracts.
+
 ## Phase 2.9 corporate-action raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)

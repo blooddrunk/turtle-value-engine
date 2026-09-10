@@ -34,8 +34,8 @@ detail/statistics/institution-statistics raw slices are also available. The
 A-share Xueqiu, CNINFO and Tonghuashun company-profile raw slices are also
 available. The A-share dividend-distribution detail and
 new-stock-board raw slices are also available. The A-share CNINFO IPO-summary,
-Eastmoney individual-notice and Eastmoney market-wide notice raw slices are also
-available.
+Eastmoney individual-notice, Eastmoney market-wide notice and Eastmoney
+shareholder-meeting raw slices are also available.
 The A-share Eastmoney top-ten, top-ten-tradable-shareholder and
 top-ten-tradable-shareholder-detail raw slices are also available.
 Upstream column names are handled in this module and are never passed to the
@@ -84,9 +84,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "80"
+AKSHARE_ADAPTER_VERSION = "81"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "81"
+AKSHARE_MAPPING_VERSION = "82"
 
 
 class ListingMarket(StrEnum):
@@ -205,6 +205,7 @@ _SOURCE_URIS = {
     "stock_zh_a_disclosure_report_cninfo": "http://www.cninfo.com.cn/new/commonUrl/pageOfSearch?url=disclosure/list/search",
     "stock_individual_notice_report": "https://data.eastmoney.com/notices/stock/{symbol}.html",
     "stock_notice_report": "https://data.eastmoney.com/notices/hsa/5.html",
+    "stock_gddh_em": "https://data.eastmoney.com/gddh/",
     "stock_repurchase_em": "https://data.eastmoney.com/gphg/hglist.html",
     "stock_zh_a_gbjg_em": "https://emweb.securities.eastmoney.com/pc_hsf10/pages/index.html#/gbjg",
     "stock_share_change_cninfo": "https://webapi.cninfo.com.cn/#/apiDoc",
@@ -254,6 +255,7 @@ _NO_ARGUMENT_ENDPOINTS = frozenset(
         "stock_repurchase_em",
         "stock_esg_rate_sina",
         "stock_hold_management_detail_em",
+        "stock_gddh_em",
     }
 )
 
@@ -1025,6 +1027,33 @@ _DISCLOSURE_MARKET_VIEW = "market_notice"
 _DISCLOSURE_MARKET_DEFAULT_CATEGORY = "全部"
 _DISCLOSURE_MARKET_CATEGORIES = _DISCLOSURE_INDIVIDUAL_CATEGORIES
 _DISCLOSURE_MARKET_FIELDS = _DISCLOSURE_INDIVIDUAL_FIELDS
+_SHAREHOLDER_MEETING_PARAMETER_NAMES = frozenset({"view"})
+_SHAREHOLDER_MEETING_VIEW = "shareholder_meeting"
+_SHAREHOLDER_MEETING_FIELD_ORDER = (
+    "代码",
+    "简称",
+    "股东大会名称",
+    "召开开始日",
+    "股权登记日",
+    "现场登记日",
+    "网络投票时间-开始日",
+    "网络投票时间-结束日",
+    "决议公告日",
+    "公告日",
+    "序列号",
+    "提案",
+)
+_SHAREHOLDER_MEETING_FIELDS = frozenset(_SHAREHOLDER_MEETING_FIELD_ORDER)
+_SHAREHOLDER_MEETING_DATE_FIELDS = (
+    "召开开始日",
+    "股权登记日",
+    "现场登记日",
+    "网络投票时间-开始日",
+    "网络投票时间-结束日",
+    "决议公告日",
+    "公告日",
+)
+_SHAREHOLDER_MEETING_REQUIRED_TEXT_FIELDS = ("简称", "股东大会名称")
 _SHARE_CAPITAL_PARAMETER_NAMES = frozenset({"start_date", "end_date", "view"})
 _RESTRICTED_RELEASE_VIEW = "restricted_release_queue"
 _INDIVIDUAL_INFO_VIEW = "individual_info"
@@ -3308,7 +3337,41 @@ class AKShareProvider(StructuredDataProvider):
             response_metadata["listing_scoped_request"] = True
         elif request.category is DataCategory.DISCLOSURE_NOTICES:
             rows = _table_rows(payload, provider=self.identity, request=request)
-            if endpoint.name == "stock_notice_report":
+            if endpoint.name == "stock_gddh_em":
+                _validate_shareholder_meeting_provider_rows(
+                    rows,
+                    provider=self.identity,
+                    request=request,
+                )
+                selected = _select_listing_rows(
+                    rows,
+                    listing,
+                    provider=self.identity,
+                    request=request,
+                    row_label="shareholder-meeting",
+                )
+                payload = selected
+                response_metadata["upstream_row_count"] = len(rows)
+                response_metadata["entity_row_count"] = len(selected)
+                response_metadata["entity_rows_selected"] = True
+                response_metadata["listing_scoped_request"] = False
+                response_metadata["row_filtering"] = "provider"
+                response_metadata["disclosure_notice_view"] = _SHAREHOLDER_MEETING_VIEW
+                response_metadata["market_scope"] = "all_a_share_listings"
+                response_metadata["snapshot_scope"] = (
+                    "current_published_shareholder_meetings"
+                )
+                response_metadata["date_binding"] = "row_event_dates"
+                response_metadata["meeting_date_fields"] = list(
+                    _SHAREHOLDER_MEETING_DATE_FIELDS
+                )
+                response_metadata["meeting_field_order"] = list(
+                    _SHAREHOLDER_MEETING_FIELD_ORDER
+                )
+                response_metadata["meeting_field_count"] = len(
+                    _SHAREHOLDER_MEETING_FIELDS
+                )
+            elif endpoint.name == "stock_notice_report":
                 requested_date = _market_disclosure_notice_date_parameter(
                     kwargs["date"],
                     request=request,
@@ -3491,6 +3554,9 @@ class AKShareProvider(StructuredDataProvider):
             ),
             disclosure_market_requested=(
                 request.parameters.get("view") == _DISCLOSURE_MARKET_VIEW
+            ),
+            disclosure_shareholder_meeting_requested=(
+                request.parameters.get("view") == _SHAREHOLDER_MEETING_VIEW
             ),
             shareholder_count_date_requested="date" in request.parameters,
             shareholder_control_requested=(
@@ -4604,7 +4670,14 @@ class AKShareNormalizer:
                         "AKShare disclosure-notice raw slice supports A-share listings only"
                     )
                 endpoint_name = record.response_metadata.get("endpoint")
-                if endpoint_name == "stock_notice_report":
+                if endpoint_name == "stock_gddh_em":
+                    _validate_shareholder_meeting_normalizer_scope(
+                        record,
+                        listing,
+                        rows,
+                    )
+                    normalizer_flags.add("AKSHARE_SHAREHOLDER_MEETINGS_RAW_ONLY")
+                elif endpoint_name == "stock_notice_report":
                     _validate_market_disclosure_notice_normalizer_scope(
                         record,
                         listing,
@@ -4633,12 +4706,18 @@ class AKShareNormalizer:
                     raise ProviderNormalizationError(
                         "AKShare disclosure-notice record must come from "
                         "stock_zh_a_disclosure_report_cninfo or "
-                        "stock_individual_notice_report or stock_notice_report"
+                        "stock_individual_notice_report, stock_notice_report or "
+                        "stock_gddh_em"
                     )
                 # Notice metadata identifies a filing candidate but does not
                 # contain the filing contents, audit opinion or governance
                 # interpretation required by the normalized contract.
-                missing_fields.update({"accounting_opinion", "governance_risk_level"})
+                if endpoint_name == "stock_gddh_em":
+                    missing_fields.add("governance_risk_level")
+                else:
+                    missing_fields.update(
+                        {"accounting_opinion", "governance_risk_level"}
+                    )
             elif record.request.category is DataCategory.DIVIDENDS:
                 endpoint_name = record.response_metadata.get("endpoint")
                 if endpoint_name == "stock_fhps_detail_em":
@@ -5326,6 +5405,13 @@ class AKShareNormalizer:
                 "establish filing contents, an accounting opinion or a "
                 "governance-risk judgment."
             )
+        if "AKSHARE_SHAREHOLDER_MEETINGS_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented Eastmoney shareholder-meeting response is retained "
+                "as raw evidence only: meeting dates, proposals and announcement "
+                "context do not establish a filing-backed governance-risk judgment "
+                "or canonical corporate-action fact."
+            )
         if "AKSHARE_XUEQIU_BASIC_INFO_RAW_ONLY" in normalizer_flags:
             notes += (
                 " The documented Xueqiu individual-basic-info response is retained as "
@@ -5776,6 +5862,7 @@ def _endpoint_candidates(
     dividend_detail_requested: bool = False,
     disclosure_individual_requested: bool = False,
     disclosure_market_requested: bool = False,
+    disclosure_shareholder_meeting_requested: bool = False,
     shareholder_count_date_requested: bool = False,
     shareholder_control_requested: bool = False,
     shareholder_free_top10_requested: bool = False,
@@ -5952,6 +6039,8 @@ def _endpoint_candidates(
         return ()
     if category is DataCategory.DISCLOSURE_NOTICES:
         if market is ListingMarket.A:
+            if disclosure_shareholder_meeting_requested:
+                return ("stock_gddh_em",)
             if disclosure_market_requested:
                 return ("stock_notice_report",)
             if disclosure_individual_requested:
@@ -6538,11 +6627,43 @@ def _margin_trading_kwargs(
     return {"date": raw_date}
 
 
+def _shareholder_meeting_kwargs(
+    listing: _ListingRef,
+    request: ProviderRequest,
+) -> dict[str, object]:
+    """Build the no-argument documented shareholder-meeting request."""
+
+    if listing.market is not ListingMarket.A:
+        raise ProviderRequestError(
+            "the AKShare shareholder-meeting endpoint supports A-share listings only",
+            request=request,
+            retryable=False,
+        )
+    unknown = sorted(set(request.parameters) - _SHAREHOLDER_MEETING_PARAMETER_NAMES)
+    if unknown:
+        raise ProviderRequestError(
+            "unsupported AKShare shareholder-meeting parameter(s): "
+            + ", ".join(unknown),
+            request=request,
+            retryable=False,
+        )
+    if request.parameters.get("view") != _SHAREHOLDER_MEETING_VIEW:
+        raise ProviderRequestError(
+            "the AKShare shareholder-meeting endpoint requires "
+            f"view={_SHAREHOLDER_MEETING_VIEW!r}",
+            request=request,
+            retryable=False,
+        )
+    return {}
+
+
 def _disclosure_notices_kwargs(
     endpoint_name: str,
     listing: _ListingRef,
     request: ProviderRequest,
 ) -> dict[str, object]:
+    if endpoint_name == "stock_gddh_em":
+        return _shareholder_meeting_kwargs(listing, request)
     if endpoint_name == "stock_notice_report":
         return _market_disclosure_notice_kwargs(listing, request)
     if endpoint_name == "stock_individual_notice_report":
@@ -12728,6 +12849,96 @@ def _validate_disclosure_notice_provider_rows(
                 )
 
 
+def _shareholder_meeting_serial_is_valid(value: object) -> bool:
+    if isinstance(value, str):
+        return bool(re.fullmatch(r"\d+", value.strip()))
+    if isinstance(value, Integral) and not isinstance(value, bool):
+        return value > 0
+    if isinstance(value, Real) and not isinstance(value, bool):
+        numeric = float(value)
+        return math.isfinite(numeric) and numeric > 0 and numeric.is_integer()
+    return False
+
+
+def _shareholder_meeting_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    listing: _ListingRef | None = None,
+) -> str | None:
+    """Return strict-schema errors for the documented meeting response."""
+
+    for index, row in enumerate(rows):
+        missing = sorted(_SHAREHOLDER_MEETING_FIELDS - set(row))
+        if missing:
+            return (
+                f"shareholder-meeting row {index} is missing field(s): "
+                + ", ".join(missing)
+            )
+        unexpected = sorted(set(row) - _SHAREHOLDER_MEETING_FIELDS)
+        if unexpected:
+            return (
+                f"shareholder-meeting row {index} contains unsupported field(s): "
+                + ", ".join(unexpected)
+            )
+
+        raw_code = row["代码"]
+        if not isinstance(raw_code, str) or not re.fullmatch(r"\d{6}", raw_code.strip()):
+            return f"shareholder-meeting row {index} has an invalid 代码"
+        row_code = raw_code.strip()
+        if listing is not None and row_code != listing.code:
+            return (
+                f"shareholder-meeting row {index} entity {row_code!r} does not "
+                f"match requested listing {listing.canonical_id!r}"
+            )
+
+        for field in _SHAREHOLDER_MEETING_REQUIRED_TEXT_FIELDS:
+            value = row[field]
+            if not isinstance(value, str) or _text_value(value) is None:
+                return (
+                    f"shareholder-meeting row {index} field {field!r} "
+                    "must be a non-empty string"
+                )
+
+        proposal = row["提案"]
+        if proposal is not None and (
+            not isinstance(proposal, str) or _text_value(proposal) is None
+        ):
+            return (
+                f"shareholder-meeting row {index} field '提案' must be null or "
+                "a non-empty string"
+            )
+        if not _shareholder_meeting_serial_is_valid(row["序列号"]):
+            return f"shareholder-meeting row {index} has an invalid 序列号"
+
+        for field in _SHAREHOLDER_MEETING_DATE_FIELDS:
+            raw_date = row[field]
+            if raw_date is None:
+                continue
+            if not isinstance(raw_date, str) or _parse_date_value(raw_date) is None:
+                return (
+                    f"shareholder-meeting row {index} field {field!r} must be null "
+                    "or a valid date"
+                )
+    return None
+
+
+def _validate_shareholder_meeting_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> None:
+    """Validate the complete current A-share meeting universe before filtering."""
+
+    message = _shareholder_meeting_validation_message(rows)
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message}",
+            provider=provider,
+            request=request,
+        )
+
+
 def _market_disclosure_notice_validation_message(
     rows: Sequence[Mapping[str, JSONValue]],
     *,
@@ -14872,6 +15083,82 @@ def _validate_restricted_release_normalizer_rows(
             raise ProviderNormalizationError(
                 "restricted-share-release row has an invalid release date"
             )
+
+
+def _validate_shareholder_meeting_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> None:
+    """Validate replayed Eastmoney shareholder-meeting scope and row shape."""
+
+    if listing.market is not ListingMarket.A:
+        raise ProviderNormalizationError(
+            "AKShare shareholder-meeting raw slice supports A-share listings only"
+        )
+    if record.response_metadata.get("endpoint") != "stock_gddh_em":
+        raise ProviderNormalizationError(
+            "AKShare shareholder-meeting record must come from stock_gddh_em"
+        )
+    if record.source_uri != _SOURCE_URIS["stock_gddh_em"]:
+        raise ProviderNormalizationError(
+            "AKShare shareholder-meeting source URI does not match stock_gddh_em"
+        )
+    try:
+        _shareholder_meeting_kwargs(listing, record.request)
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+
+    expected_metadata = {
+        "endpoint": "stock_gddh_em",
+        "market": ListingMarket.A.value,
+        "listing_code": listing.code,
+        "disclosure_notice_view": _SHAREHOLDER_MEETING_VIEW,
+        "market_scope": "all_a_share_listings",
+        "snapshot_scope": "current_published_shareholder_meetings",
+        "date_binding": "row_event_dates",
+        "meeting_date_fields": list(_SHAREHOLDER_MEETING_DATE_FIELDS),
+        "meeting_field_order": list(_SHAREHOLDER_MEETING_FIELD_ORDER),
+        "meeting_field_count": len(_SHAREHOLDER_MEETING_FIELDS),
+        "listing_scoped_request": False,
+        "row_filtering": "provider",
+        "entity_rows_selected": True,
+        "entity_row_count": len(rows),
+    }
+    boolean_fields = {"listing_scoped_request", "entity_rows_selected"}
+    count_fields = {"meeting_field_count", "entity_row_count"}
+    for name, expected in expected_metadata.items():
+        actual = record.response_metadata.get(name)
+        if name in boolean_fields:
+            matches = isinstance(actual, bool) and actual is expected
+        elif name in count_fields:
+            matches = (
+                isinstance(actual, int)
+                and not isinstance(actual, bool)
+                and actual == expected
+            )
+        else:
+            matches = actual == expected
+        if not matches:
+            raise ProviderNormalizationError(
+                "shareholder-meeting response metadata "
+                f"{name!r} does not match the requested replay scope"
+            )
+
+    upstream_row_count = record.response_metadata.get("upstream_row_count")
+    if (
+        not isinstance(upstream_row_count, int)
+        or isinstance(upstream_row_count, bool)
+        or upstream_row_count < len(rows)
+    ):
+        raise ProviderNormalizationError(
+            "shareholder-meeting response metadata 'upstream_row_count' does not "
+            "match the requested replay scope"
+        )
+
+    message = _shareholder_meeting_validation_message(rows, listing=listing)
+    if message is not None:
+        raise ProviderNormalizationError(message)
 
 
 def _validate_market_disclosure_notice_normalizer_scope(

@@ -1969,6 +1969,34 @@ client and a frozen fixture with cache replay, invalid-request, exact-schema,
 response-validation, raw-only and replay-scope coverage. No calculation, gate,
 pipeline, CLI or input-loader contract changes.
 
+### Phase 2.81 — A-share Eastmoney shareholder-meeting raw acquisition contract (COMPLETE)
+
+The mapping review now covers the distinct documented AKShare Eastmoney
+`stock_gddh_em` endpoint under the existing `DISCLOSURE_NOTICES` category. The
+[AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_gddh_em.py)
+define a no-argument current-published-data call and the exact twelve fields
+`代码`, `简称`, `股东大会名称`, `召开开始日`, `股权登记日`, `现场登记日`,
+`网络投票时间-开始日`, `网络投票时间-结束日`, `决议公告日`, `公告日`,
+`序列号` and `提案`.
+
+The provider selects this callable only with explicit
+`view=shareholder_meeting`, supports A-share listings only, validates the
+complete market-wide response before selecting the requested listing, retains
+all matching rows and records field-order, event-date, provider-filter and
+selected/upstream-count metadata for replay. Nullable dates and proposal text
+are preserved, and an empty listing selection is retained as an explicit raw
+snapshot. No report-period or corporate-action date is inferred.
+
+The normalizer emits `AKSHARE_SHAREHOLDER_MEETINGS_RAW_ONLY`, marks
+`governance_risk_level` as critically missing and creates no canonical fact:
+meeting dates, proposals and announcement context do not establish a
+filing-backed governance judgment or corporate-action interpretation. H-share
+meeting coverage remains outside this slice. Live calls remain opt-in; tests use
+an injected client and a frozen fixture with cache replay, invalid-request,
+exact-schema, response-validation, raw-only and replay-scope coverage. No
+calculation, gate, pipeline, CLI or input-loader contract changes.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -1978,7 +2006,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.80 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.81 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```

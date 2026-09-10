@@ -752,6 +752,19 @@ evidence and does not establish filing contents, an accounting opinion or a
 governance-risk judgment. No H-share counterpart or calculation, gate, pipeline,
 CLI or input-loader contract is changed.
 
+Phase 2.81 adds the distinct documented A-share Eastmoney shareholder-meeting
+endpoint [`stock_gddh_em`](https://akshare.akfamily.xyz/data/stock/stock.html),
+whose current [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_gddh_em.py)
+is a no-argument current-published-data call under `DISCLOSURE_NOTICES` with
+explicit `view=shareholder_meeting`. The adapter validates the exact twelve-field
+response, validates nullable event/publication dates and integer-like sequence
+values across the full A-share response, then retains every row for the requested
+listing with provider-filter metadata. The normalizer emits
+`AKSHARE_SHAREHOLDER_MEETINGS_RAW_ONLY`: meeting dates and proposals remain raw
+evidence, no canonical fact is emitted, and `governance_risk_level` remains
+critically missing. No H-share counterpart or calculation, gate, pipeline, CLI,
+or input-loader contract is changed.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.
