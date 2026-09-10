@@ -117,6 +117,23 @@ class FakeAKShare:
     def stock_zh_a_hist(self, **kwargs):
         return self._return("stock_zh_a_hist", _fixture("a_history.json"), **kwargs)
 
+    def stock_zh_a_hist_tx(
+        self,
+        *,
+        symbol: str,
+        start_date: str,
+        end_date: str,
+        adjust: str,
+    ):
+        return self._return(
+            "stock_zh_a_hist_tx",
+            _fixture("a_tencent_daily_history.json"),
+            symbol=symbol,
+            start_date=start_date,
+            end_date=end_date,
+            adjust=adjust,
+        )
+
     def stock_zh_a_hist_min_em(
         self,
         *,
@@ -559,8 +576,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "54"
-    assert AKSHARE_MAPPING_VERSION == "55"
+    assert provider.identity.provider_version == "55"
+    assert AKSHARE_MAPPING_VERSION == "56"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -2837,6 +2854,431 @@ def test_a_sina_minute_history_cache_replay_does_not_call_upstream(tmp_path: Pat
         (
             "stock_zh_a_minute",
             {"symbol": "sh600000", "period": "5", "adjust": "qfq"},
+        )
+    ]
+
+
+def test_a_tencent_daily_history_fetch_uses_documented_symbol_range_and_adjustment():
+    fake = FakeAKShare()
+    record = _provider(fake).fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "SH600000",
+            {
+                "view": "tencent_daily",
+                "start_date": "2026-09-08",
+                "end_date": "2026-09-09",
+                "adjust": "hfq",
+            },
+        )
+    )
+
+    assert record.raw_payload == _fixture("a_tencent_daily_history.json")
+    assert fake.calls == [
+        (
+            "stock_zh_a_hist_tx",
+            {
+                "symbol": "sh600000",
+                "start_date": "20260908",
+                "end_date": "20260909",
+                "adjust": "hfq",
+            },
+        )
+    ]
+    assert record.response_metadata["endpoint"] == "stock_zh_a_hist_tx"
+    assert record.response_metadata["tencent_daily_history_view"] == "tencent_daily"
+    assert record.response_metadata["upstream_symbol"] == "sh600000"
+    assert record.response_metadata["tencent_daily_start_date"] == "20260908"
+    assert record.response_metadata["tencent_daily_end_date"] == "20260909"
+    assert record.response_metadata["tencent_daily_adjust"] == "hfq"
+    assert record.response_metadata["listing_scoped_request"] is True
+    assert record.response_metadata["date_binding"] == "row_and_request"
+    assert record.response_metadata["range_filtering"] == (
+        "upstream_and_provider_validation"
+    )
+    assert record.response_metadata["snapshot_scope"] == "requested_daily_range"
+    assert record.response_metadata["observation_date_field"] == "date"
+    assert record.response_metadata["volume_unit"] == "shares"
+    assert record.response_metadata["amount_unit"] == "CNY"
+    assert record.response_metadata["turnover_unit"] == "ratio"
+    assert record.response_metadata["upstream_row_count"] == 2
+    assert record.response_metadata["entity_row_count"] == 2
+    assert record.response_metadata["observation_start_date"] == "2026-09-08"
+    assert record.response_metadata["observation_end_date"] == "2026-09-09"
+    assert record.source_uri == "https://gu.qq.com/sh000919/zs"
+
+
+def test_a_tencent_daily_history_request_applies_documented_defaults():
+    fake = FakeAKShare()
+    record = _provider(fake).fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "SZ000001",
+            {"view": "tencent_daily"},
+        )
+    )
+
+    assert fake.calls == [
+        (
+            "stock_zh_a_hist_tx",
+            {
+                "symbol": "sz000001",
+                "start_date": "19000101",
+                "end_date": "20500101",
+                "adjust": "",
+            },
+        )
+    ]
+    assert record.response_metadata["tencent_daily_start_date"] == "19000101"
+    assert record.response_metadata["tencent_daily_end_date"] == "20500101"
+    assert record.response_metadata["tencent_daily_adjust"] == ""
+
+
+@pytest.mark.parametrize(
+    ("entity_id", "parameters", "match"),
+    [
+        (
+            "SH600000",
+            {"view": "daily"},
+            "unsupported AKShare history parameter",
+        ),
+        (
+            "SH600000",
+            {"view": "tencent_daily", "period": "daily"},
+            "unsupported AKShare Tencent daily-history parameter",
+        ),
+        (
+            "SH600000",
+            {"view": "tencent_daily", "start_date": "2026/09/08"},
+            "start_date must be YYYYMMDD or YYYY-MM-DD",
+        ),
+        (
+            "SH600000",
+            {"view": "tencent_daily", "start_date": "20260931"},
+            "start_date must be a valid date",
+        ),
+        (
+            "SH600000",
+            {
+                "view": "tencent_daily",
+                "start_date": "20260909",
+                "end_date": "20260908",
+            },
+            "start_date must not be after end_date",
+        ),
+        (
+            "SH600000",
+            {"view": "tencent_daily", "adjust": "bad"},
+            "adjust must be '', 'qfq' or 'hfq'",
+        ),
+        (
+            "HK00700",
+            {"view": "tencent_daily"},
+            "A-share listings only",
+        ),
+    ],
+)
+def test_a_tencent_daily_history_request_validates_parameters_and_market(
+    entity_id: str,
+    parameters: dict,
+    match: str,
+):
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError, match=match):
+        _provider(fake).fetch(
+            _request(DataCategory.MARKET_HISTORY, entity_id, parameters)
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("missing_field", "missing field"),
+        ("extra_field", "unsupported field"),
+        ("invalid_date", "invalid date"),
+        ("outside_range", "outside requested range"),
+        ("descending", "strictly ascending"),
+        ("duplicate_date", "duplicate date"),
+        ("invalid_numeric", "must be numeric"),
+    ],
+)
+def test_a_tencent_daily_history_response_validates_documented_rows(
+    mutation: str,
+    match: str,
+):
+    class InvalidRows(FakeAKShare):
+        def stock_zh_a_hist_tx(
+            self,
+            *,
+            symbol: str,
+            start_date: str,
+            end_date: str,
+            adjust: str,
+        ):
+            rows = _fixture("a_tencent_daily_history.json")
+            if mutation == "missing_field":
+                rows[0].pop("amount")
+            elif mutation == "extra_field":
+                rows[0]["unexpected"] = "not documented"
+            elif mutation == "invalid_date":
+                rows[0]["date"] = "not-a-date"
+            elif mutation == "outside_range":
+                rows[0]["date"] = "2026-09-07"
+            elif mutation == "descending":
+                rows[0]["date"] = "2026-09-09"
+                rows[1]["date"] = "2026-09-08"
+            elif mutation == "duplicate_date":
+                rows[1]["date"] = rows[0]["date"]
+            else:
+                rows[0]["close"] = "10.12"
+            return self._return(
+                "stock_zh_a_hist_tx",
+                rows,
+                symbol=symbol,
+                start_date=start_date,
+                end_date=end_date,
+                adjust=adjust,
+            )
+
+    with pytest.raises(ProviderResponseError, match=match):
+        _provider(InvalidRows()).fetch(
+            _request(
+                DataCategory.MARKET_HISTORY,
+                "SH600000",
+                {
+                    "view": "tencent_daily",
+                    "start_date": "20260908",
+                    "end_date": "20260909",
+                },
+            )
+        )
+
+
+def test_a_tencent_daily_history_empty_response_is_a_valid_daily_snapshot():
+    class EmptyResponse(FakeAKShare):
+        def stock_zh_a_hist_tx(
+            self,
+            *,
+            symbol: str,
+            start_date: str,
+            end_date: str,
+            adjust: str,
+        ):
+            return self._return(
+                "stock_zh_a_hist_tx",
+                [],
+                symbol=symbol,
+                start_date=start_date,
+                end_date=end_date,
+                adjust=adjust,
+            )
+
+    record = _provider(EmptyResponse()).fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "SH600000",
+            {
+                "view": "tencent_daily",
+                "start_date": "20260908",
+                "end_date": "20260909",
+            },
+        )
+    )
+
+    assert record.raw_payload == []
+    assert record.response_metadata["upstream_row_count"] == 0
+    assert record.response_metadata["observation_start_date"] is None
+    assert record.response_metadata["observation_end_date"] is None
+
+
+def test_a_tencent_daily_history_maps_to_existing_daily_history_facts():
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "SH600000",
+            {
+                "view": "tencent_daily",
+                "start_date": "20260908",
+                "end_date": "20260909",
+            },
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="a-tencent-daily-history",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    values = {(fact.field, fact.period): fact.value for fact in normalized.facts}
+    assert values[("historical_open", "2026-09-08")] == 10.1
+    assert values[("historical_close", "2026-09-09")] == 10.5
+    assert values[("historical_volume", "2026-09-09")] == 120000.0
+    volume = next(
+        fact
+        for fact in normalized.facts
+        if fact.field == "historical_volume" and fact.period == "2026-09-09"
+    )
+    turnover = next(
+        fact
+        for fact in normalized.facts
+        if fact.field == "historical_turnover" and fact.period == "2026-09-09"
+    )
+    assert volume.unit == "shares"
+    assert turnover.value == 126000000.0
+    assert turnover.currency == "CNY"
+    assert normalized.flags == []
+    assert normalized.data_quality.critical_missing_fields == []
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "view",
+        "symbol",
+        "start",
+        "end",
+        "adjust",
+        "listing_scope",
+        "date_binding",
+        "range_filtering",
+        "snapshot",
+        "volume_unit",
+        "count",
+        "observation_start",
+    ],
+)
+def test_a_tencent_daily_history_normalizer_rejects_replayed_scope_mismatches(
+    mutation: str,
+):
+    request = _request(
+        DataCategory.MARKET_HISTORY,
+        "SH600000",
+        {
+            "view": "tencent_daily",
+            "start_date": "20260908",
+            "end_date": "20260909",
+            "adjust": "hfq",
+        },
+    )
+    record = _provider().fetch(request)
+    response_metadata = dict(record.response_metadata)
+    if mutation == "view":
+        response_metadata["tencent_daily_history_view"] = "daily"
+    elif mutation == "symbol":
+        response_metadata["upstream_symbol"] = "sz000001"
+    elif mutation == "start":
+        response_metadata["tencent_daily_start_date"] = "20260907"
+    elif mutation == "end":
+        response_metadata["tencent_daily_end_date"] = "20260910"
+    elif mutation == "adjust":
+        response_metadata["tencent_daily_adjust"] = ""
+    elif mutation == "listing_scope":
+        response_metadata["listing_scoped_request"] = False
+    elif mutation == "date_binding":
+        response_metadata["date_binding"] = "row_only"
+    elif mutation == "range_filtering":
+        response_metadata["range_filtering"] = "normalizer"
+    elif mutation == "snapshot":
+        response_metadata["snapshot_scope"] = "current_snapshot"
+    elif mutation == "volume_unit":
+        response_metadata["volume_unit"] = "lots"
+    elif mutation == "count":
+        response_metadata["entity_row_count"] = 99
+    else:
+        response_metadata["observation_start_date"] = "bad"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=record.raw_payload,
+        source_uri=record.source_uri,
+        response_metadata=response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match="Tencent daily-history"):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-a-tencent-daily-history-scope",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_a_tencent_daily_history_normalizer_rejects_replayed_rows_outside_request():
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "SH600000",
+            {
+                "view": "tencent_daily",
+                "start_date": "20260908",
+                "end_date": "20260909",
+            },
+        )
+    )
+    payload = [dict(row) for row in record.raw_payload]
+    payload[0]["date"] = "2026-09-07"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=record.source_uri,
+        response_metadata=record.response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match="outside requested range"):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="out-of-range-a-tencent-daily-history",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_a_tencent_daily_history_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.MARKET_HISTORY,
+        "SH600000",
+        {
+            "view": "tencent_daily",
+            "start_date": "20260908",
+            "end_date": "20260909",
+            "adjust": "qfq",
+        },
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [
+        (
+            "stock_zh_a_hist_tx",
+            {
+                "symbol": "sh600000",
+                "start_date": "20260908",
+                "end_date": "20260909",
+                "adjust": "qfq",
+            },
         )
     ]
 

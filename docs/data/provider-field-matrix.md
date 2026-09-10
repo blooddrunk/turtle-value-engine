@@ -468,6 +468,36 @@ a canonical daily-history or valuation fact.
 | `amount` | Raw minute turnover amount; it is not issuer cash flow or a canonical valuation input. |
 | request `view=sina_minute`, derived market-prefixed `symbol`, `period`, `adjust` | Explicit endpoint-selection and recent-window replay scope; the response cannot be replayed under a different listing, interval or adjustment mode. |
 
+## Phase 2.55 A-share Tencent daily-history slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_zh_a_hist_tx` as Tencent Securities daily historical data for
+A-share stocks. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hist_tx.py)
+accepts a market-prefixed or six-digit `symbol`, `start_date` defaulting to
+`19000101`, `end_date` defaulting to `20500101`, and an adjustment mode of empty
+string, `qfq` or `hfq`. The response contains `date`, OHLC, `volume` in shares,
+decimal `turnover` and `amount` in yuan.
+
+The provider selects this endpoint only under `MARKET_HISTORY` with explicit
+`view=tencent_daily`, derives the market-prefixed symbol from the requested
+A-share listing, applies the documented date defaults, validates the exact
+field set, finite numeric/null values, strictly ascending dates and inclusive
+requested range, and records the effective symbol/date/adjustment replay scope.
+The normalizer applies the existing dated daily-history extension mapping. It
+maps OHLC, volume and amount into the already-defined historical facts; volume
+uses `shares` and amount uses `CNY`. The provider's decimal `turnover` ratio is
+retained in raw evidence but is not mapped to `historical_turnover`, whose
+existing contract represents turnover amount.
+
+| Raw upstream item | Phase 2 treatment |
+| --- | --- |
+| `date` | Validated ascending observation date inside the requested inclusive range; used as the historical fact period. |
+| `open`, `high`, `low`, `close` | Mapped to the existing dated daily-history price facts with `price_per_share` units. |
+| `volume` | Mapped to `historical_volume`; the documented and replayed unit is `shares`. |
+| `amount` | Mapped to the existing `historical_turnover` amount fact with `CNY` units; it is not issuer cash flow. |
+| `turnover` | Validated decimal provider ratio retained in raw evidence; it does not create a new canonical turnover-ratio or valuation fact. |
+| request `view=tencent_daily`, derived market-prefixed `symbol`, `start_date`, `end_date`, `adjust` | Explicit endpoint-selection, listing, date-range and adjustment replay scope; rows cannot be replayed under a different request scope. |
+
 ## Phase 2.9 corporate-action raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)

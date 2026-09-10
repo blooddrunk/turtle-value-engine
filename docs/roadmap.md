@@ -1341,6 +1341,29 @@ establish the canonical daily history contract or a valuation input. Live calls
 remain opt-in; tests use an injected client and a frozen fixture with cache
 replay, invalid-parameter, response-validation and replay-scope coverage.
 
+### Phase 2.55 — A-share Tencent daily-history acquisition contract (COMPLETE)
+
+The mapping review now covers the distinct Tencent
+[`stock_zh_a_hist_tx`](https://akshare.akfamily.xyz/data/stock/stock.html)
+endpoint and its [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hist_tx.py).
+It accepts a market-prefixed or six-digit A-share `symbol`, `start_date`
+defaulting to `19000101`, `end_date` defaulting to `20500101`, and an
+adjustment mode of empty string, `qfq` or `hfq`. The response contains dated
+OHLC rows plus `volume` in shares, decimal `turnover` and `amount` in yuan.
+
+The provider selects this endpoint only under the existing provider-neutral
+`MARKET_HISTORY` category with explicit `view=tencent_daily`, derives the
+market-prefixed symbol, applies and records the effective date/adjustment
+scope, validates the exact response shape, finite numeric/null values,
+strictly ascending dates and inclusive requested range, and preserves the
+complete raw response for replay. Because the response is a dated daily
+series, the normalizer maps the existing daily-history extension facts with
+`shares` volume and `CNY` amount units; the provider turnover ratio remains
+raw evidence and does not introduce a new canonical metric or valuation input.
+Live calls remain opt-in; tests use an injected client and a frozen fixture
+with cache replay, invalid-parameter, response-validation and replay-scope
+coverage.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -1350,7 +1373,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.54 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.55 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -1558,10 +1581,15 @@ Phase 2 is active. Phase 1 remains frozen: changes to formulas, hard-gate
 semantics, schemas or `strict-v1` thresholds require a separately reviewed,
 versioned change.
 
-Phase 2.54 completes the next documented structured-data boundary while
+Phase 2.55 completes the next documented structured-data boundary while
 keeping share-change, repurchase and rights-issue period, status, unit and
 economic-scope questions unresolved, and keeping ownership-pledge holder,
 governance and economic-scope questions unresolved. The A-share
+Tencent daily-history response is the dated-series exception among the recent
+market-history slices: it maps the existing daily-history extension facts,
+preserves volume as `shares` and amount as `CNY`, and retains its market-
+prefixed symbol, date range, adjustment and raw turnover ratio as replayable
+provider context. The A-share
 Sina minute-history response remains raw-only because its recent provider
 window, minute interval and adjustment mode do not establish canonical daily
 history or a valuation input; `view=sina_minute`, the market-prefixed symbol,

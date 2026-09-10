@@ -423,6 +423,17 @@ returns a recent timestamped minute-bar window; the adapter validates the exact
 field set, finite numeric/null values and strictly ascending timestamps. The
 normalizer emits `AKSHARE_SINA_MINUTE_HISTORY_RAW_ONLY`: the provider-window
 minute bars do not replace canonical daily history or become valuation inputs.
+Phase 2.55 adds the distinct documented Tencent
+[`stock_zh_a_hist_tx`](https://akshare.akfamily.xyz/data/stock/stock.html)
+endpoint under `MARKET_HISTORY` with explicit `view=tencent_daily`, date-range
+and adjustment parameters. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hist_tx.py)
+returns market-prefixed A-share daily rows with date, OHLC, volume, turnover
+and amount; the adapter validates the exact field set, finite numeric/null
+values, ascending dates and inclusive range binding, and preserves the
+symbol/date/adjustment replay scope. Because this is a dated daily series, the
+normalizer maps the existing daily-history extension facts; volume is preserved
+as `shares` and amount as `CNY`, while the provider turnover ratio remains raw
+context and does not introduce a new metric or valuation fact.
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.
