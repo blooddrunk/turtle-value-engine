@@ -1641,6 +1641,28 @@ shareholder-return, governance or valuation fact. Live calls remain opt-in;
 tests use an injected client and a frozen fixture with cache replay, invalid-
 parameter, response-validation, raw-only and replay-scope coverage.
 
+### Phase 2.68 — A-share Eastmoney institution-participation raw acquisition contract (COMPLETE)
+
+The mapping review now covers the distinct Eastmoney A-share institution-
+participation endpoint documented as
+[`stock_comment_detail_zlkp_jgcyd_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
+and implemented by the current [official source](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_comment_em.py).
+It accepts a six-digit `symbol`, retrieves the symbol's historical series and
+returns the exact fields `交易日` and `机构参与度`; the implementation publishes
+the participation value in percent.
+
+The provider selects this callable only under the existing provider-neutral
+`MARKET_ACTIVITY` category with explicit `view=institution_participation`, passes
+the unprefixed listing code, validates the exact two-field response, strict
+ascending ISO dates and finite numeric/null percentage values, and records the
+symbol, value unit and observed date bounds for replay. The normalizer emits
+`AKSHARE_MARKET_INSTITUTION_PARTICIPATION_RAW_ONLY`; provider-defined
+institution-participation percentages remain raw evidence and create no
+canonical market, issuer-cash-flow, shareholder-return, governance or valuation
+fact. Live calls remain opt-in; tests use an injected client and a frozen
+fixture with cache replay, invalid-parameter, response-validation, raw-only and
+replay-scope coverage.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -1650,7 +1672,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.67 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.68 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -1858,7 +1880,7 @@ Phase 2 is active. Phase 1 remains frozen: changes to formulas, hard-gate
 semantics, schemas or `strict-v1` thresholds require a separately reviewed,
 versioned change.
 
-Phase 2.67 completes the next documented structured-data boundary while
+Phase 2.68 completes the next documented structured-data boundary while
 keeping share-change, repurchase and rights-issue period, status, unit and
 economic-scope questions unresolved, and keeping ownership-pledge holder,
 governance and economic-scope questions unresolved. The A-share
@@ -1940,6 +1962,13 @@ governance or valuation fact. The explicit `view=focus`, unprefixed symbol,
 exact two-field response, strict date ordering, official 30-row limit and
 symbol-scoped observed-date replay metadata remain part of its acquisition
 boundary.
+The A-share Eastmoney institution-participation response remains raw-only
+because its provider-defined percentages and historical trading-day series do
+not establish a canonical market metric, issuer cash flow, shareholder return,
+governance or valuation fact. The explicit
+`view=institution_participation`, unprefixed symbol, exact two-field response,
+strict date ordering, percent unit and symbol-scoped observed-date replay
+metadata remain part of its acquisition boundary.
 dividend-distribution snapshot remains raw-only because its ratios, status and
 multiple dates do not establish settled ordinary cash or a canonical payout
 denominator. Phase 2 remains active; future documented categories must be

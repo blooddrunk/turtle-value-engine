@@ -270,6 +270,13 @@ class FakeAKShare:
             symbol=symbol,
         )
 
+    def stock_comment_detail_zlkp_jgcyd_em(self, *, symbol: str):
+        return self._return(
+            "stock_comment_detail_zlkp_jgcyd_em",
+            _fixture("a_market_institution_participation.json"),
+            symbol=symbol,
+        )
+
     def stock_hot_rank_em(self):
         return self._return("stock_hot_rank_em", _fixture("a_hot_rank.json"))
 
@@ -662,8 +669,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "67"
-    assert AKSHARE_MAPPING_VERSION == "68"
+    assert provider.identity.provider_version == "68"
+    assert AKSHARE_MAPPING_VERSION == "69"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -13181,6 +13188,259 @@ def test_market_focus_cache_replay_does_not_call_upstream(tmp_path: Path):
     assert replay.record == live.record
     assert fake.calls == [
         ("stock_comment_detail_scrd_focus_em", {"symbol": "600000"}),
+    ]
+
+
+def test_market_institution_participation_fetch_uses_explicit_view_and_listing_symbol():
+    fake = FakeAKShare()
+    request = _request(
+        DataCategory.MARKET_ACTIVITY,
+        "SH600000",
+        {"view": "institution_participation"},
+    )
+    record = _provider(fake).fetch(request)
+
+    assert record.raw_payload == _fixture("a_market_institution_participation.json")
+    assert fake.calls == [
+        ("stock_comment_detail_zlkp_jgcyd_em", {"symbol": "600000"}),
+    ]
+    assert record.response_metadata["endpoint"] == (
+        "stock_comment_detail_zlkp_jgcyd_em"
+    )
+    assert record.response_metadata["market_activity_view"] == (
+        "institution_participation"
+    )
+    assert record.response_metadata["upstream_symbol"] == "600000"
+    assert record.response_metadata["snapshot_scope"] == "symbol_historical_dataset"
+    assert record.response_metadata["observation_date_field"] == "交易日"
+    assert record.response_metadata["observation_value_field"] == "机构参与度"
+    assert record.response_metadata["value_unit"] == "percent"
+    assert record.response_metadata["time_ordering"] == "strictly_ascending"
+    assert record.response_metadata["date_binding"] == "row_only"
+    assert record.response_metadata["range_filtering"] == "none"
+    assert record.response_metadata["observation_start_date"] == "2026-09-03"
+    assert record.response_metadata["observation_end_date"] == "2026-09-09"
+    assert record.response_metadata["upstream_row_count"] == 5
+    assert record.response_metadata["entity_row_count"] == 5
+    assert record.response_metadata["entity_rows_selected"] is True
+    assert record.response_metadata["listing_scoped_request"] is True
+    assert record.source_uri == (
+        "https://data.eastmoney.com/stockcomment/stock/600000.html"
+    )
+
+
+@pytest.mark.parametrize(
+    ("parameters", "entity_id", "match"),
+    [
+        (
+            {"view": "institution_participation", "period": "近三月"},
+            "SH600000",
+            "unsupported AKShare institution-participation parameter",
+        ),
+        (
+            {"view": "institution_participation", "symbol": "600000"},
+            "SH600000",
+            "unsupported AKShare institution-participation parameter",
+        ),
+        (
+            {"view": "institution_participation"},
+            "HK00700",
+            "A-share listings only",
+        ),
+    ],
+)
+def test_market_institution_participation_request_validates_view_parameters_and_market(
+    parameters: dict,
+    entity_id: str,
+    match: str,
+):
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError, match=match):
+        _provider(fake).fetch(
+            _request(DataCategory.MARKET_ACTIVITY, entity_id, parameters)
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        (
+            "missing_date",
+            "institution-participation row .*missing field.*交易日",
+        ),
+        ("invalid_date", "institution-participation row .*invalid 交易日"),
+        ("out_of_order", "交易日 values must be strictly ascending"),
+        ("duplicate_date", "duplicate 交易日"),
+        (
+            "extra_field",
+            "contains unsupported field.*extra",
+        ),
+        (
+            "non_numeric",
+            "field '机构参与度'.*numeric or null",
+        ),
+        ("infinity", "contains infinity"),
+    ],
+)
+def test_market_institution_participation_response_validates_exact_rows(
+    mutation: str,
+    match: str,
+):
+    class InvalidRows(FakeAKShare):
+        def stock_comment_detail_zlkp_jgcyd_em(self, *, symbol: str):
+            rows = _fixture("a_market_institution_participation.json")
+            if mutation == "missing_date":
+                rows[0].pop("交易日")
+            elif mutation == "invalid_date":
+                rows[0]["交易日"] = "not-a-date"
+            elif mutation == "out_of_order":
+                rows[1]["交易日"] = "2026-09-02"
+            elif mutation == "duplicate_date":
+                rows[1]["交易日"] = rows[0]["交易日"]
+            elif mutation == "extra_field":
+                rows[0]["extra"] = 1
+            elif mutation == "non_numeric":
+                rows[0]["机构参与度"] = "28.9086"
+            else:
+                rows[0]["机构参与度"] = float("inf")
+            return self._return(
+                "stock_comment_detail_zlkp_jgcyd_em",
+                rows,
+                symbol=symbol,
+            )
+
+    with pytest.raises(ProviderResponseError, match=match):
+        _provider(InvalidRows()).fetch(
+            _request(
+                DataCategory.MARKET_ACTIVITY,
+                "SH600000",
+                {"view": "institution_participation"},
+            )
+        )
+
+
+def test_market_institution_participation_is_retained_as_raw_evidence_without_canonical_facts():
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SH600000",
+            {"view": "institution_participation"},
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="market-institution-participation-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == [
+        "AKSHARE_MARKET_INSTITUTION_PARTICIPATION_RAW_ONLY"
+    ]
+    assert normalized.data_quality.critical_missing_fields == []
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "institution-participation" in normalized.data_quality.notes
+    assert "institution-participation percentages" in normalized.data_quality.notes
+    assert "issuer cash flow" in normalized.data_quality.notes
+    assert "canonical market metric" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("metadata_view", "response metadata 'market_activity_view'"),
+        ("metadata_symbol", "response metadata 'upstream_symbol'"),
+        ("listing_scope", "response metadata 'listing_scoped_request'"),
+        ("snapshot", "response metadata 'snapshot_scope'"),
+        ("value_unit", "response metadata 'value_unit'"),
+        ("date_binding", "response metadata 'date_binding'"),
+        ("count", "response metadata 'entity_row_count'"),
+        ("start", "observation start does not match"),
+        ("payload", "institution-participation"),
+    ],
+)
+def test_market_institution_participation_normalizer_rejects_replayed_scope_mismatches(
+    mutation: str,
+    match: str,
+):
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SH600000",
+            {"view": "institution_participation"},
+        )
+    )
+    payload = [dict(row) for row in record.raw_payload]
+    response_metadata = dict(record.response_metadata)
+    if mutation == "metadata_view":
+        response_metadata["market_activity_view"] = "focus"
+    elif mutation == "metadata_symbol":
+        response_metadata["upstream_symbol"] = "000001"
+    elif mutation == "listing_scope":
+        response_metadata["listing_scoped_request"] = False
+    elif mutation == "snapshot":
+        response_metadata["snapshot_scope"] = "latest_30_trading_days"
+    elif mutation == "value_unit":
+        response_metadata["value_unit"] = "ratio"
+    elif mutation == "date_binding":
+        response_metadata["date_binding"] = "request"
+    elif mutation == "count":
+        response_metadata["entity_row_count"] = 99
+    elif mutation == "start":
+        response_metadata["observation_start_date"] = "2026-09-04"
+    else:
+        payload[0]["交易日"] = "not-a-date"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=record.source_uri,
+        response_metadata=response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match=match):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-market-institution-participation",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_market_institution_participation_cache_replay_does_not_call_upstream(
+    tmp_path: Path,
+):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.MARKET_ACTIVITY,
+        "SH600000",
+        {"view": "institution_participation"},
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [
+        ("stock_comment_detail_zlkp_jgcyd_em", {"symbol": "600000"}),
     ]
 
 

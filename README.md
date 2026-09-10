@@ -571,6 +571,18 @@ binds the symbol, listing, latest-window and observed-date range into replay
 metadata. The normalizer emits `AKSHARE_MARKET_FOCUS_RAW_ONLY`: provider-defined
 user-attention scores remain raw evidence and do not establish a canonical
 market, issuer-cash-flow, shareholder-return, governance or valuation fact.
+Phase 2.68 adds the distinct documented Eastmoney A-share institution-participation
+endpoint [`stock_comment_detail_zlkp_jgcyd_em`](https://akshare.akfamily.xyz/data/stock/stock.html),
+whose current official implementation is in the same
+[`stock_comment_em.py`](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_comment_em.py),
+under `MARKET_ACTIVITY` with explicit `view=institution_participation`. It passes
+the unprefixed six-digit listing code, validates the exact `交易日`/`机构参与度`
+rows, strict date ordering and finite numeric/null percentage values, then binds
+the symbol, historical-series scope and observed date range into replay metadata.
+The normalizer emits `AKSHARE_MARKET_INSTITUTION_PARTICIPATION_RAW_ONLY`:
+provider-defined institution-participation percentages remain raw evidence and
+do not establish a canonical market, issuer-cash-flow, shareholder-return,
+governance or valuation fact.
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

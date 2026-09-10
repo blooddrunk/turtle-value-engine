@@ -21,7 +21,8 @@ the SSE/SZSE/BSE margin-detail raw slices, the A-share individual ownership-pled
 detail view, the A-share CNINFO equity-mortgage view, A-share company-litigation
 raw slice and A-share Eastmoney individual-info raw slice.
 The A-share Eastmoney individual-fund-flow, market-participation-desire,
-market-focus, hot-rank, A+H comparison, intraday-trade, chip-distribution, Tencent
+market-focus, institution-participation, hot-rank, A+H comparison,
+intraday-trade, chip-distribution, Tencent
 daily-history and Tencent latest-trading-day tick, Sina minute-history,
 intraday-history, H-share intraday-history, pre-market-history, five-level bid-ask
 and Dragon-Tiger market-activity detail/statistics/institution-statistics raw
@@ -76,9 +77,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "67"
+AKSHARE_ADAPTER_VERSION = "68"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "68"
+AKSHARE_MAPPING_VERSION = "69"
 
 
 class ListingMarket(StrEnum):
@@ -152,6 +153,7 @@ _SOURCE_URIS = {
     "stock_lhb_jgstatistic_em": "https://data.eastmoney.com/stock/jgstatistic.html",
     "stock_comment_detail_scrd_desire_em": "https://data.eastmoney.com/stockcomment/stock/600000.html",
     "stock_comment_detail_scrd_focus_em": "https://data.eastmoney.com/stockcomment/stock/600000.html",
+    "stock_comment_detail_zlkp_jgcyd_em": "https://data.eastmoney.com/stockcomment/stock/600000.html",
     "stock_hot_rank_em": "https://guba.eastmoney.com/rank/",
     "stock_intraday_em": "https://quote.eastmoney.com/f1.html?newcode=0.000001",
     "stock_hk_company_profile_em": "https://emweb.securities.eastmoney.com/PC_HKF10/pages/home/index.html",
@@ -498,6 +500,9 @@ _MARKET_ACTIVITY_FOCUS_PARAMETER_NAMES = frozenset({"view"})
 _MARKET_ACTIVITY_FOCUS_VIEW = "focus"
 _MARKET_ACTIVITY_FOCUS_MAX_ROWS = 30
 _MARKET_ACTIVITY_FOCUS_FIELDS = frozenset({"交易日", "用户关注指数"})
+_MARKET_ACTIVITY_INSTITUTION_PARTICIPATION_PARAMETER_NAMES = frozenset({"view"})
+_MARKET_ACTIVITY_INSTITUTION_PARTICIPATION_VIEW = "institution_participation"
+_MARKET_ACTIVITY_INSTITUTION_PARTICIPATION_FIELDS = frozenset({"交易日", "机构参与度"})
 _MARKET_ACTIVITY_HOT_RANK_PARAMETER_NAMES = frozenset({"view"})
 _MARKET_ACTIVITY_HOT_RANK_VIEW = "hot_rank"
 _MARKET_ACTIVITY_HOT_RANK_MAX_ROWS = 100
@@ -1355,6 +1360,35 @@ class AKShareProvider(StructuredDataProvider):
                 response_metadata["date_binding"] = "row_only"
                 response_metadata["range_filtering"] = "none"
                 response_metadata["provider_row_limit"] = _MARKET_ACTIVITY_FOCUS_MAX_ROWS
+                response_metadata["observation_start_date"] = (
+                    min(observation_dates).isoformat() if observation_dates else None
+                )
+                response_metadata["observation_end_date"] = (
+                    max(observation_dates).isoformat() if observation_dates else None
+                )
+            elif endpoint.name == "stock_comment_detail_zlkp_jgcyd_em":
+                observation_dates = (
+                    _validate_market_activity_institution_participation_provider_rows(
+                        rows,
+                        provider=self.identity,
+                        request=request,
+                    )
+                )
+                response_metadata["upstream_row_count"] = len(rows)
+                response_metadata["entity_row_count"] = len(rows)
+                response_metadata["entity_rows_selected"] = True
+                response_metadata["listing_scoped_request"] = True
+                response_metadata["market_activity_view"] = (
+                    _MARKET_ACTIVITY_INSTITUTION_PARTICIPATION_VIEW
+                )
+                response_metadata["upstream_symbol"] = kwargs["symbol"]
+                response_metadata["snapshot_scope"] = "symbol_historical_dataset"
+                response_metadata["observation_date_field"] = "交易日"
+                response_metadata["observation_value_field"] = "机构参与度"
+                response_metadata["value_unit"] = "percent"
+                response_metadata["time_ordering"] = "strictly_ascending"
+                response_metadata["date_binding"] = "row_only"
+                response_metadata["range_filtering"] = "none"
                 response_metadata["observation_start_date"] = (
                     min(observation_dates).isoformat() if observation_dates else None
                 )
@@ -2591,6 +2625,10 @@ class AKShareProvider(StructuredDataProvider):
             market_activity_focus_requested=(
                 request.parameters.get("view") == _MARKET_ACTIVITY_FOCUS_VIEW
             ),
+            market_activity_institution_participation_requested=(
+                request.parameters.get("view")
+                == _MARKET_ACTIVITY_INSTITUTION_PARTICIPATION_VIEW
+            ),
             market_activity_hot_rank_requested=(
                 request.parameters.get("view") == _MARKET_ACTIVITY_HOT_RANK_VIEW
             ),
@@ -2983,6 +3021,15 @@ class AKShareNormalizer:
                         rows,
                     )
                     normalizer_flags.add("AKSHARE_MARKET_FOCUS_RAW_ONLY")
+                elif endpoint_name == "stock_comment_detail_zlkp_jgcyd_em":
+                    _validate_market_activity_institution_participation_normalizer_scope(
+                        record,
+                        listing,
+                        rows,
+                    )
+                    normalizer_flags.add(
+                        "AKSHARE_MARKET_INSTITUTION_PARTICIPATION_RAW_ONLY"
+                    )
                 elif endpoint_name == "stock_lhb_detail_em":
                     try:
                         start_date, end_date = _market_activity_date_range(record.request)
@@ -3056,6 +3103,7 @@ class AKShareNormalizer:
                         "AKShare market-activity record must come from "
                         "stock_zh_a_new_em, stock_comment_detail_scrd_desire_em, "
                         "stock_comment_detail_scrd_focus_em, "
+                        "stock_comment_detail_zlkp_jgcyd_em, "
                         "stock_lhb_detail_em, stock_hot_rank_em, "
                         "stock_lhb_stock_statistic_em or stock_lhb_jgstatistic_em"
                     )
@@ -4227,6 +4275,14 @@ class AKShareNormalizer:
                 "trading-day window do not establish issuer cash flow, shareholder "
                 "return, governance, valuation or a canonical market metric."
             )
+        if "AKSHARE_MARKET_INSTITUTION_PARTICIPATION_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented A-share institution-participation response is retained "
+                "as raw evidence only: provider-defined institution-participation "
+                "percentages over a historical trading-day series do not establish issuer "
+                "cash flow, shareholder return, governance, valuation or a canonical "
+                "market metric."
+            )
         if "AKSHARE_HOT_RANK_RAW_ONLY" in normalizer_flags:
             notes += (
                 " The documented A-share stock hot-rank response is retained as raw "
@@ -4540,6 +4596,7 @@ def _endpoint_candidates(
     market_activity_institution_statistic_requested: bool = False,
     market_activity_participation_desire_requested: bool = False,
     market_activity_focus_requested: bool = False,
+    market_activity_institution_participation_requested: bool = False,
     market_activity_hot_rank_requested: bool = False,
     market_activity_new_stock_requested: bool = False,
     market_quote_ah_comparison_requested: bool = False,
@@ -4620,6 +4677,8 @@ def _endpoint_candidates(
                 return ("stock_comment_detail_scrd_desire_em",)
             if market_activity_focus_requested:
                 return ("stock_comment_detail_scrd_focus_em",)
+            if market_activity_institution_participation_requested:
+                return ("stock_comment_detail_zlkp_jgcyd_em",)
             if market_activity_hot_rank_requested:
                 return ("stock_hot_rank_em",)
             if market_activity_institution_statistic_requested:
@@ -8975,6 +9034,108 @@ def _validate_market_activity_focus_provider_rows(
     return observation_dates
 
 
+def _market_activity_institution_participation_date(value: object) -> date | None:
+    if not isinstance(value, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _market_activity_institution_participation_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> tuple[str | None, list[date]]:
+    """Return strict-schema errors for the symbol-scoped participation history."""
+
+    observation_dates: list[date] = []
+    previous_date: date | None = None
+    for index, row in enumerate(rows):
+        missing = sorted(
+            _MARKET_ACTIVITY_INSTITUTION_PARTICIPATION_FIELDS - set(row)
+        )
+        unexpected = sorted(
+            set(row) - _MARKET_ACTIVITY_INSTITUTION_PARTICIPATION_FIELDS
+        )
+        if missing:
+            return (
+                f"institution-participation row {index} is missing field(s): "
+                + ", ".join(missing),
+                [],
+            )
+        if unexpected:
+            return (
+                f"institution-participation row {index} contains unsupported field(s): "
+                + ", ".join(unexpected),
+                [],
+            )
+
+        observation_date = _market_activity_institution_participation_date(
+            row["交易日"]
+        )
+        if observation_date is None:
+            return f"institution-participation row {index} has an invalid 交易日", []
+        if previous_date is not None and observation_date <= previous_date:
+            if observation_date == previous_date:
+                return (
+                    "institution-participation response has duplicate 交易日 "
+                    f"{observation_date.isoformat()!r}",
+                    [],
+                )
+            return (
+                "institution-participation response 交易日 values must be "
+                "strictly ascending",
+                [],
+            )
+        previous_date = observation_date
+        observation_dates.append(observation_date)
+
+        value = row["机构参与度"]
+        if value is None:
+            continue
+        if isinstance(value, bool) or not isinstance(value, Real):
+            return (
+                f"institution-participation row {index} field '机构参与度' "
+                "must be numeric or null",
+                [],
+            )
+        try:
+            numeric = float(value)
+        except (OverflowError, TypeError, ValueError):
+            return (
+                f"institution-participation row {index} field '机构参与度' "
+                "must be numeric or null",
+                [],
+            )
+        if not math.isfinite(numeric):
+            return (
+                f"institution-participation row {index} field '机构参与度' "
+                "must be finite or null",
+                [],
+            )
+    return None, observation_dates
+
+
+def _validate_market_activity_institution_participation_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> list[date]:
+    """Validate the symbol-scoped institution-participation response."""
+
+    message, observation_dates = (
+        _market_activity_institution_participation_validation_message(rows)
+    )
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message}",
+            provider=provider,
+            request=request,
+        )
+    return observation_dates
+
+
 def _validate_market_activity_statistic_provider_rows(
     rows: Sequence[Mapping[str, JSONValue]],
     *,
@@ -10368,6 +10529,83 @@ def _validate_market_activity_focus_normalizer_rows(
     """Keep replayed market-focus rows inside their symbol scope."""
 
     message, observation_dates = _market_activity_focus_validation_message(rows)
+    if message is not None:
+        raise ProviderNormalizationError(message)
+    return observation_dates
+
+
+def _validate_market_activity_institution_participation_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> None:
+    """Validate the replay scope of institution-participation history."""
+
+    if listing.market is not ListingMarket.A:
+        raise ProviderNormalizationError(
+            "AKShare institution-participation raw slice supports A-share listings only"
+        )
+    if record.response_metadata.get("endpoint") != "stock_comment_detail_zlkp_jgcyd_em":
+        raise ProviderNormalizationError(
+            "AKShare institution-participation record must come from "
+            "stock_comment_detail_zlkp_jgcyd_em"
+        )
+    try:
+        upstream_kwargs = _market_activity_institution_participation_kwargs(
+            "stock_comment_detail_zlkp_jgcyd_em",
+            listing,
+            record.request,
+        )
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+
+    expected_metadata = {
+        "market_activity_view": _MARKET_ACTIVITY_INSTITUTION_PARTICIPATION_VIEW,
+        "upstream_symbol": upstream_kwargs["symbol"],
+        "listing_scoped_request": True,
+        "snapshot_scope": "symbol_historical_dataset",
+        "observation_date_field": "交易日",
+        "observation_value_field": "机构参与度",
+        "value_unit": "percent",
+        "time_ordering": "strictly_ascending",
+        "date_binding": "row_only",
+        "range_filtering": "none",
+        "upstream_row_count": len(rows),
+        "entity_row_count": len(rows),
+        "entity_rows_selected": True,
+    }
+    for name, expected in expected_metadata.items():
+        if record.response_metadata.get(name) != expected:
+            raise ProviderNormalizationError(
+                f"institution-participation response metadata {name!r} does not "
+                "match the requested replay scope"
+            )
+
+    observation_dates = _validate_market_activity_institution_participation_normalizer_rows(
+        rows
+    )
+    expected_start = min(observation_dates).isoformat() if observation_dates else None
+    expected_end = max(observation_dates).isoformat() if observation_dates else None
+    if record.response_metadata.get("observation_start_date") != expected_start:
+        raise ProviderNormalizationError(
+            "institution-participation response observation start does not match "
+            "replayed rows"
+        )
+    if record.response_metadata.get("observation_end_date") != expected_end:
+        raise ProviderNormalizationError(
+            "institution-participation response observation end does not match "
+            "replayed rows"
+        )
+
+
+def _validate_market_activity_institution_participation_normalizer_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> list[date]:
+    """Keep replayed institution-participation rows inside their symbol scope."""
+
+    message, observation_dates = (
+        _market_activity_institution_participation_validation_message(rows)
+    )
     if message is not None:
         raise ProviderNormalizationError(message)
     return observation_dates
@@ -11954,6 +12192,12 @@ def _market_activity_kwargs(
         return _market_activity_participation_desire_kwargs(endpoint_name, listing, request)
     if endpoint_name == "stock_comment_detail_scrd_focus_em":
         return _market_activity_focus_kwargs(endpoint_name, listing, request)
+    if endpoint_name == "stock_comment_detail_zlkp_jgcyd_em":
+        return _market_activity_institution_participation_kwargs(
+            endpoint_name,
+            listing,
+            request,
+        )
     if endpoint_name == "stock_hot_rank_em":
         return _market_activity_hot_rank_kwargs(endpoint_name, listing, request)
     if endpoint_name == "stock_lhb_stock_statistic_em":
@@ -12128,6 +12372,47 @@ def _market_activity_focus_kwargs(
         raise ProviderRequestError(
             "the AKShare market-focus endpoint requires "
             f"view={_MARKET_ACTIVITY_FOCUS_VIEW!r}",
+            request=request,
+            retryable=False,
+        )
+    return {"symbol": listing.code}
+
+
+def _market_activity_institution_participation_kwargs(
+    endpoint_name: str,
+    listing: _ListingRef,
+    request: ProviderRequest,
+) -> dict[str, object]:
+    """Build the documented symbol-scoped institution-participation request."""
+
+    if endpoint_name != "stock_comment_detail_zlkp_jgcyd_em":
+        raise ProviderRequestError(
+            "unsupported AKShare institution-participation endpoint "
+            f"{endpoint_name!r}",
+            request=request,
+            retryable=False,
+        )
+    if listing.market is not ListingMarket.A:
+        raise ProviderRequestError(
+            "the AKShare institution-participation endpoint supports A-share listings only",
+            request=request,
+            retryable=False,
+        )
+    unknown = sorted(
+        set(request.parameters)
+        - _MARKET_ACTIVITY_INSTITUTION_PARTICIPATION_PARAMETER_NAMES
+    )
+    if unknown:
+        raise ProviderRequestError(
+            "unsupported AKShare institution-participation parameter(s): "
+            + ", ".join(unknown),
+            request=request,
+            retryable=False,
+        )
+    if request.parameters.get("view") != _MARKET_ACTIVITY_INSTITUTION_PARTICIPATION_VIEW:
+        raise ProviderRequestError(
+            "the AKShare institution-participation endpoint requires "
+            f"view={_MARKET_ACTIVITY_INSTITUTION_PARTICIPATION_VIEW!r}",
             request=request,
             retryable=False,
         )

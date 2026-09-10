@@ -870,6 +870,36 @@ The response remains outside the calculation, gate, pipeline, CLI and
 input-loader contracts. User-attention history alone does not establish issuer
 cash flow, shareholder return, governance severity or valuation.
 
+## Phase 2.68 A-share Eastmoney institution-participation raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_comment_em.py)
+document `stock_comment_detail_zlkp_jgcyd_em` as a symbol-scoped Eastmoney
+A-share institution-participation endpoint. Its documented request accepts a
+six-digit `symbol` and returns the exact `交易日` and `机构参与度` fields; the
+implementation publishes the participation value in percent and returns the
+symbol's historical series.
+
+The provider selects this endpoint only under `MARKET_ACTIVITY` with explicit
+`view=institution_participation`, passes the unprefixed requested listing code,
+validates the exact two-field response, strict ascending ISO dates and finite
+numeric/null percentage values, and retains observed date bounds as raw
+evidence. The normalizer emits
+`AKSHARE_MARKET_INSTITUTION_PARTICIPATION_RAW_ONLY`; it does not promote
+provider-defined institution participation into a canonical market,
+issuer-cash-flow, shareholder-return, governance or valuation fact.
+
+| Raw upstream item | Phase 2 treatment |
+| --- | --- |
+| `交易日` | Required ISO observation date in strict ascending order; retained as raw market-activity context, not an accounting, fund-flow or filing period. |
+| `机构参与度` | Provider-defined participation percentage; finite numeric/null values are retained with `value_unit=percent` without inferring a scale, denominator, sentiment judgment or canonical market metric. |
+| request `view=institution_participation`, unprefixed six-digit `symbol` | Explicit endpoint, A-share listing and symbol-scoped historical-series replay scope; observed date bounds remain provider-boundary metadata. |
+
+The response remains outside the calculation, gate, pipeline, CLI and
+input-loader contracts. Institution-participation history alone does not
+establish issuer cash flow, shareholder return, governance severity or
+valuation.
+
 ## Phase 2.9 corporate-action raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
