@@ -2316,6 +2316,31 @@ cover request/date validation, exact response shape and values, raw-only
 normalization, replay-scope rejection and cache replay. No calculation, gate,
 pipeline, CLI or input-loader contract changes.
 
+### Phase 2.93 — SSE market-summary raw acquisition contract (COMPLETE)
+
+The mapping review now covers the distinct documented AKShare `stock_sse_summary`
+endpoint under the existing `MARKET_ACTIVITY` category with explicit
+`view=sse_summary`. The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_summary.py)
+define a no-argument Shanghai Stock Exchange market summary with the eight
+metrics `流通股本`, `总市值`, `平均市盈率`, `上市公司`, `上市股票`, `流通市值`,
+`报告时间` and `总股本`. The implementation emits the source-shaped field
+order `项目`, `股票`, `主板`, `科创板`; the adapter preserves that order and
+requires a consistent valid report date in the `报告时间` row.
+
+The provider validates the complete market-level response before retention,
+including exact field and metric order, finite numeric-or-null values and the
+embedded report-date scope. It passes no arguments to the upstream callable and
+records the Shanghai Stock Exchange scope, source field/metric order, absence of
+documented numeric units and non-listing row counts for cache replay.
+
+The normalizer emits `AKSHARE_SSE_SUMMARY_RAW_ONLY` and creates no canonical
+fact: exchange-wide market/board aggregates do not establish a requested
+listing's quote, issuer cash flow, shareholder return, governance, valuation or
+canonical market metric. Tests cover explicit request validation, exact response
+shape/ordering/types, raw-only normalization, replay-scope rejection and cache
+replay. No calculation, gate, pipeline, CLI or input-loader contract changes.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -2325,7 +2350,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.92 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.93 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```

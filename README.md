@@ -939,6 +939,17 @@ replay, and the normalizer emits `AKSHARE_SSE_DEAL_DAILY_RAW_ONLY` without
 creating a canonical fact. No calculation, gate, pipeline, CLI or
 input-loader contract changes.
 
+Phase 2.93 adds the distinct official SSE market-summary endpoint
+[`stock_sse_summary`](https://akshare.akfamily.xyz/data/stock/stock.html) under
+`MARKET_ACTIVITY` with explicit `view=sse_summary`. The no-argument endpoint's
+eight market/board metrics and embedded report date are validated in the
+source-shaped order returned by the [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_summary.py),
+then retained as a market-level raw snapshot with source scope, undocumented
+numeric units and replay counts. The normalizer emits
+`AKSHARE_SSE_SUMMARY_RAW_ONLY` without creating a listing-level or canonical
+market fact. No calculation, gate, pipeline, CLI or input-loader contract
+changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

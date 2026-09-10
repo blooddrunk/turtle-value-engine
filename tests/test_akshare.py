@@ -177,6 +177,9 @@ class FakeAKShare:
             _fixture("h_main_board_quote.json"),
         )
 
+    def stock_sse_summary(self):
+        return self._return("stock_sse_summary", _fixture("a_sse_summary.json"))
+
     def stock_sse_deal_daily(self, *, date: str):
         return self._return(
             "stock_sse_deal_daily",
@@ -832,8 +835,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "92"
-    assert AKSHARE_MAPPING_VERSION == "93"
+    assert provider.identity.provider_version == "93"
+    assert AKSHARE_MAPPING_VERSION == "94"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -17403,6 +17406,309 @@ def test_market_activity_sse_deal_daily_cache_replay_does_not_call_upstream(tmp_
     assert replay.mode is RetrievalMode.CACHE_REPLAY
     assert replay.record == live.record
     assert fake.calls == [("stock_sse_deal_daily", {"date": "20250221"})]
+
+
+def test_market_activity_sse_summary_fetch_uses_documented_no_argument_endpoint():
+    fake = FakeAKShare()
+    record = _provider(fake).fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SH600000",
+            {"view": "sse_summary"},
+        )
+    )
+
+    assert record.raw_payload == _fixture("a_sse_summary.json")
+    assert fake.calls == [("stock_sse_summary", {})]
+    assert record.response_metadata["endpoint"] == "stock_sse_summary"
+    assert record.response_metadata["market"] == "A"
+    assert record.response_metadata["listing_code"] == "600000"
+    assert record.response_metadata["market_activity_view"] == "sse_summary"
+    assert record.response_metadata["market_scope"] == "Shanghai Stock Exchange"
+    assert record.response_metadata["listing_scoped_request"] is False
+    assert record.response_metadata["row_filtering"] == "none"
+    assert record.response_metadata["snapshot_scope"] == (
+        "latest_trading_day_market_summary"
+    )
+    assert record.response_metadata["observation_date"] == "2021-12-30"
+    assert record.response_metadata["report_date"] == "20211230"
+    assert record.response_metadata["date_binding"] == "response_metric"
+    assert record.response_metadata["report_date_metric"] == "报告时间"
+    assert record.response_metadata["metric_field"] == "项目"
+    assert record.response_metadata["metric_order"] == [
+        "流通股本",
+        "总市值",
+        "平均市盈率",
+        "上市公司",
+        "上市股票",
+        "流通市值",
+        "报告时间",
+        "总股本",
+    ]
+    assert record.response_metadata["value_fields"] == ["股票", "主板", "科创板"]
+    assert record.response_metadata["field_count"] == 4
+    assert record.response_metadata["source_field_order"] == [
+        "项目",
+        "股票",
+        "主板",
+        "科创板",
+    ]
+    assert record.response_metadata["undocumented_numeric_units"] == {
+        "股票": "not_documented",
+        "主板": "not_documented",
+        "科创板": "not_documented",
+    }
+    assert record.response_metadata["upstream_row_count"] == 8
+    assert record.response_metadata["entity_row_count"] == 0
+    assert record.response_metadata["entity_rows_selected"] is False
+    assert record.source_uri == (
+        "https://www.sse.com.cn/market/stockdata/statistic/"
+    )
+
+
+@pytest.mark.parametrize(
+    ("parameters", "entity_id", "match"),
+    [
+        (
+            {"view": "sse_summary", "date": "20250221"},
+            "SH600000",
+            "unsupported AKShare SSE market-summary parameter",
+        ),
+        (
+            {"view": "sse_summary", "period": "近一月"},
+            "SH600000",
+            "unsupported AKShare SSE market-summary parameter",
+        ),
+        (
+            {"view": "sse_summary"},
+            "HK00700",
+            "A-share listings only",
+        ),
+    ],
+)
+def test_market_activity_sse_summary_request_validates_explicit_scope_before_upstream_call(
+    parameters: dict,
+    entity_id: str,
+    match: str,
+):
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError, match=match):
+        _provider(fake).fetch(
+            _request(DataCategory.MARKET_ACTIVITY, entity_id, parameters)
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("missing_field", "missing field"),
+        ("extra_field", "unsupported field"),
+        ("reordered_fields", "official field order"),
+        ("wrong_metric", "field '项目' must be"),
+        ("short_response", "exactly 8 rows"),
+        ("invalid_numeric", "numeric or null"),
+        ("invalid_report_date", "valid YYYYMMDD report date"),
+        ("inconsistent_report_date", "identical"),
+    ],
+)
+def test_market_activity_sse_summary_response_validates_exact_fields_order_and_values(
+    mutation: str,
+    match: str,
+):
+    class InvalidRows(FakeAKShare):
+        def stock_sse_summary(self):
+            rows = [dict(row) for row in _fixture("a_sse_summary.json")]
+            if mutation == "missing_field":
+                rows[0].pop("科创板")
+            elif mutation == "extra_field":
+                rows[0]["unexpected"] = "not documented"
+            elif mutation == "reordered_fields":
+                rows[0] = dict(reversed(list(rows[0].items())))
+            elif mutation == "wrong_metric":
+                rows[0]["项目"] = "总市值"
+            elif mutation == "short_response":
+                rows.pop()
+            elif mutation == "invalid_numeric":
+                rows[0]["股票"] = "40403.47"
+            elif mutation == "invalid_report_date":
+                rows[6]["股票"] = 20211301
+            else:
+                rows[6]["主板"] = 20211229
+            return self._return("stock_sse_summary", rows)
+
+    with pytest.raises(ProviderResponseError, match=match):
+        _provider(InvalidRows()).fetch(
+            _request(
+                DataCategory.MARKET_ACTIVITY,
+                "SH600000",
+                {"view": "sse_summary"},
+            )
+        )
+
+
+def test_market_activity_sse_summary_is_retained_as_raw_evidence_without_listing_facts():
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SH600000",
+            {"view": "sse_summary"},
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="sse-summary-raw-only",
+        as_of=date(2026, 9, 11),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_SSE_SUMMARY_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == []
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "SSE market-summary" in normalized.data_quality.notes
+    assert "market and board aggregates" in normalized.data_quality.notes
+    assert "numeric units" in normalized.data_quality.notes
+    assert "canonical market metric" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "endpoint",
+        "source_uri",
+        "market",
+        "listing_code",
+        "view",
+        "market_scope",
+        "listing_scope",
+        "filtering",
+        "snapshot",
+        "observation_date",
+        "report_date",
+        "date_binding",
+        "report_date_metric",
+        "metric_field",
+        "metric_order",
+        "value_fields",
+        "field_count",
+        "source_field_order",
+        "units",
+        "upstream_count",
+        "entity_count",
+        "selected",
+        "payload",
+    ],
+)
+def test_market_activity_sse_summary_normalizer_rejects_replayed_scope_mismatches(
+    mutation: str,
+):
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SH600000",
+            {"view": "sse_summary"},
+        )
+    )
+    payload = [dict(row) for row in record.raw_payload]
+    response_metadata = dict(record.response_metadata)
+    source_uri = record.source_uri
+    if mutation == "endpoint":
+        response_metadata["endpoint"] = "stock_sse_deal_daily"
+    elif mutation == "source_uri":
+        source_uri = "https://example.invalid/sse-summary"
+    elif mutation == "market":
+        response_metadata["market"] = "H"
+    elif mutation == "listing_code":
+        response_metadata["listing_code"] = "000001"
+    elif mutation == "view":
+        response_metadata["market_activity_view"] = "sse_deal_daily"
+    elif mutation == "market_scope":
+        response_metadata["market_scope"] = "all_a_share_listings"
+    elif mutation == "listing_scope":
+        response_metadata["listing_scoped_request"] = True
+    elif mutation == "filtering":
+        response_metadata["row_filtering"] = "provider"
+    elif mutation == "snapshot":
+        response_metadata["snapshot_scope"] = "current_trading_day"
+    elif mutation == "observation_date":
+        response_metadata["observation_date"] = "2021-12-29"
+    elif mutation == "report_date":
+        response_metadata["report_date"] = "20211229"
+    elif mutation == "date_binding":
+        response_metadata["date_binding"] = "request_only"
+    elif mutation == "report_date_metric":
+        response_metadata["report_date_metric"] = "报告日期"
+    elif mutation == "metric_field":
+        response_metadata["metric_field"] = "单日情况"
+    elif mutation == "metric_order":
+        response_metadata["metric_order"] = list(
+            reversed(response_metadata["metric_order"])
+        )
+    elif mutation == "value_fields":
+        response_metadata["value_fields"] = ["股票"]
+    elif mutation == "field_count":
+        response_metadata["field_count"] = 3
+    elif mutation == "source_field_order":
+        response_metadata["source_field_order"] = list(
+            reversed(response_metadata["source_field_order"])
+        )
+    elif mutation == "units":
+        response_metadata["undocumented_numeric_units"] = {"股票": "CNY"}
+    elif mutation == "upstream_count":
+        response_metadata["upstream_row_count"] = 7
+    elif mutation == "entity_count":
+        response_metadata["entity_row_count"] = 1
+    elif mutation == "selected":
+        response_metadata["entity_rows_selected"] = True
+    else:
+        payload[0]["股票"] = "40403.47"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=source_uri,
+        response_metadata=response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-sse-summary",
+            as_of=date(2026, 9, 11),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_market_activity_sse_summary_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.MARKET_ACTIVITY,
+        "SH600000",
+        {"view": "sse_summary"},
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [("stock_sse_summary", {})]
 
 
 def test_market_activity_statistic_fetch_uses_explicit_view_and_period_and_filters_universe():

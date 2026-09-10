@@ -894,6 +894,35 @@ three source-shaped rows with one selected listing. The provider-specific
 response remains outside the calculation, gate, pipeline, CLI and input-loader
 contracts.
 
+## Phase 2.93 SSE market-summary raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_sse_summary` as the Shanghai Stock Exchange stock-market
+summary. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_summary.py)
+accepts no upstream arguments and returns the eight metrics `流通股本`, `总市值`,
+`平均市盈率`, `上市公司`, `上市股票`, `流通市值`, `报告时间` and `总股本`.
+The implementation's final DataFrame column order is `项目`, `股票`, `主板` and
+`科创板`; the adapter pins that source-shaped order for replay.
+
+The provider exposes this endpoint under `MARKET_ACTIVITY` only with explicit
+`view=sse_summary`, validates the complete market-level response, requires the
+three `报告时间` values to be the same valid `YYYYMMDD` date, and records that
+embedded report date, source field/metric order, the absence of documented
+numeric units and non-listing row counts for replay. The normalizer emits
+`AKSHARE_SSE_SUMMARY_RAW_ONLY`; no canonical quote, accounting, return,
+governance, valuation or market fact is admitted from the exchange-wide
+aggregate.
+
+| Raw upstream item | Phase 2.93 treatment |
+| --- | --- |
+| `项目` | Required metric label in the official eight-row order; `报告时间` is the only row used to bind the snapshot date, not a listing identity. |
+| `股票`, `主板`, `科创板` | Finite numeric-or-null exchange/board aggregates; numeric units are not documented by the endpoint and no listing-level metric is inferred. |
+| `报告时间` | Required finite integer-like `YYYYMMDD` value repeated consistently across all three value columns; retained as response scope, not as an accounting period. |
+| request `view=sse_summary` | Explicit no-argument SSE market-summary scope; `listing_scoped_request=false`, no provider filtering, source URI, field/metric order and row counts remain part of the cache replay boundary. |
+
+The provider-specific response remains outside the calculation, gate, pipeline,
+CLI and input-loader contracts.
+
 ## Phase 2.92 SSE daily-deal overview raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
