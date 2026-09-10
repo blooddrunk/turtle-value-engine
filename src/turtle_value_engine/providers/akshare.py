@@ -22,7 +22,7 @@ detail view, the A-share CNINFO equity-mortgage view, A-share company-litigation
 raw slice and A-share Eastmoney individual-info raw slice.
 The A-share Eastmoney individual-fund-flow, Tencent daily-history and Tencent
 latest-trading-day tick, Sina minute-history,
-intraday-history, pre-market-history, five-level bid-ask
+intraday-history, H-share intraday-history, pre-market-history, five-level bid-ask
 and Dragon-Tiger market-activity detail/statistics/institution-statistics raw
 slices are also available.
 The A-share Eastmoney top-ten, top-ten-tradable-shareholder and
@@ -73,9 +73,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "56"
+AKSHARE_ADAPTER_VERSION = "57"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "57"
+AKSHARE_MAPPING_VERSION = "58"
 
 
 class ListingMarket(StrEnum):
@@ -134,6 +134,7 @@ _SOURCE_URIS = {
     "stock_tfp_em": "https://data.eastmoney.com/tfpxx/",
     "stock_zh_a_hist": "https://quote.eastmoney.com/concept/",
     "stock_zh_a_hist_min_em": "https://quote.eastmoney.com/concept/sh603777.html?from=classic",
+    "stock_hk_hist_min_em": "http://quote.eastmoney.com/hk/00948.html",
     "stock_zh_a_hist_pre_min_em": "https://quote.eastmoney.com/concept/sh603777.html",
     "stock_zh_a_hist_tx": "https://gu.qq.com/sh000919/zs",
     "stock_zh_a_tick_tx_js": "http://gu.qq.com/sz300494/gp/detail",
@@ -288,6 +289,45 @@ _MARKET_HISTORY_INTRADAY_FIELDS = {
             "成交量",
             "成交额",
             "均价",
+        }
+    ),
+    "other": frozenset(
+        {
+            "时间",
+            "开盘",
+            "收盘",
+            "最高",
+            "最低",
+            "涨跌幅",
+            "涨跌额",
+            "成交量",
+            "成交额",
+            "振幅",
+            "换手率",
+        }
+    ),
+}
+
+_MARKET_HISTORY_HK_INTRADAY_PARAMETER_NAMES = frozenset(
+    {"view", "start_date", "end_date", "period", "adjust"}
+)
+_MARKET_HISTORY_HK_INTRADAY_VIEW = "hk_intraday"
+_MARKET_HISTORY_HK_INTRADAY_PERIODS = frozenset({"1", "5", "15", "30", "60"})
+_MARKET_HISTORY_HK_INTRADAY_DEFAULT_START = "1979-09-01 09:32:00"
+_MARKET_HISTORY_HK_INTRADAY_DEFAULT_END = "2222-01-01 09:32:00"
+_MARKET_HISTORY_HK_INTRADAY_DEFAULT_PERIOD = "5"
+_MARKET_HISTORY_HK_INTRADAY_DEFAULT_ADJUST = ""
+_MARKET_HISTORY_HK_INTRADAY_FIELDS = {
+    "1": frozenset(
+        {
+            "时间",
+            "开盘",
+            "收盘",
+            "最高",
+            "最低",
+            "成交量",
+            "成交额",
+            "最新价",
         }
     ),
     "other": frozenset(
@@ -641,6 +681,18 @@ class AKShareProvider(StructuredDataProvider):
         ):
             raise ProviderRequestError(
                 "the AKShare market-history specialized endpoints support A-share "
+                "listings only",
+                provider=self.identity,
+                request=request,
+                retryable=False,
+            )
+        if (
+            request.category is DataCategory.MARKET_HISTORY
+            and request.parameters.get("view") == _MARKET_HISTORY_HK_INTRADAY_VIEW
+            and listing.market is not ListingMarket.H
+        ):
+            raise ProviderRequestError(
+                "the AKShare H-share intraday-history endpoint supports H-share "
                 "listings only",
                 provider=self.identity,
                 request=request,
@@ -1213,6 +1265,51 @@ class AKShareProvider(StructuredDataProvider):
                 )
                 response_metadata["observation_end_date"] = (
                     max(observation_dates).isoformat() if observation_dates else None
+                )
+            elif endpoint.name == "stock_hk_hist_min_em":
+                start_datetime = _parse_intraday_history_datetime_parameter(
+                    kwargs["start_date"],
+                    name="start_date",
+                    request=request,
+                )
+                end_datetime = _parse_intraday_history_datetime_parameter(
+                    kwargs["end_date"],
+                    name="end_date",
+                    request=request,
+                )
+                observation_times = _validate_hk_intraday_history_provider_rows(
+                    rows,
+                    period=kwargs["period"],
+                    start_datetime=start_datetime,
+                    end_datetime=end_datetime,
+                    provider=self.identity,
+                    request=request,
+                )
+                response_metadata["upstream_row_count"] = len(rows)
+                response_metadata["entity_row_count"] = len(rows)
+                response_metadata["entity_rows_selected"] = True
+                response_metadata["listing_scoped_request"] = True
+                response_metadata["hk_intraday_history_view"] = (
+                    _MARKET_HISTORY_HK_INTRADAY_VIEW
+                )
+                response_metadata["upstream_symbol"] = kwargs["symbol"]
+                response_metadata["hk_intraday_period"] = kwargs["period"]
+                response_metadata["hk_intraday_adjust"] = kwargs["adjust"]
+                response_metadata["requested_start_datetime"] = kwargs["start_date"]
+                response_metadata["requested_end_datetime"] = kwargs["end_date"]
+                response_metadata["date_binding"] = "row_and_request"
+                response_metadata["range_filtering"] = "upstream_and_provider_validation"
+                response_metadata["snapshot_scope"] = "requested_intraday_range"
+                response_metadata["observation_time_field"] = "时间"
+                response_metadata["time_ordering"] = "strictly_ascending"
+                response_metadata["volume_unit"] = "shares"
+                response_metadata["price_unit"] = "HKD_per_share"
+                response_metadata["amount_unit"] = "HKD"
+                response_metadata["observation_start_datetime"] = (
+                    min(observation_times).isoformat() if observation_times else None
+                )
+                response_metadata["observation_end_datetime"] = (
+                    max(observation_times).isoformat() if observation_times else None
                 )
             elif endpoint.name == "stock_zh_a_hist_min_em":
                 start_datetime = _parse_intraday_history_datetime_parameter(
@@ -2010,6 +2107,9 @@ class AKShareProvider(StructuredDataProvider):
             market_history_intraday_requested=(
                 request.parameters.get("view") == _MARKET_HISTORY_INTRADAY_VIEW
             ),
+            market_history_hk_intraday_requested=(
+                request.parameters.get("view") == _MARKET_HISTORY_HK_INTRADAY_VIEW
+            ),
             market_history_pre_market_requested=(
                 request.parameters.get("view") == _MARKET_HISTORY_PRE_MARKET_VIEW
             ),
@@ -2589,6 +2689,12 @@ class AKShareNormalizer:
                     # interval, adjustment semantics and recent-data limits do
                     # not establish the canonical daily history contract.
                     normalizer_flags.add("AKSHARE_INTRADAY_HISTORY_RAW_ONLY")
+                elif endpoint == "stock_hk_hist_min_em":
+                    _validate_hk_intraday_history_normalizer_scope(record, listing, rows)
+                    # The endpoint is a range-scoped H-share minute-bar response.
+                    # Its interval, adjustment semantics and HKD market context do
+                    # not establish the canonical daily history contract.
+                    normalizer_flags.add("AKSHARE_HK_INTRADAY_HISTORY_RAW_ONLY")
                 elif endpoint == "stock_zh_a_minute":
                     _validate_sina_minute_history_normalizer_scope(record, listing, rows)
                     # The endpoint is a recent multi-day minute-bar response. Its
@@ -2606,6 +2712,7 @@ class AKShareNormalizer:
                 if endpoint not in {
                     "stock_zh_a_tick_tx_js",
                     "stock_zh_a_hist_min_em",
+                    "stock_hk_hist_min_em",
                     "stock_zh_a_minute",
                     "stock_zh_a_hist_pre_min_em",
                 }:
@@ -3175,6 +3282,7 @@ class AKShareNormalizer:
             {
                 "AKSHARE_TENCENT_TICK_RAW_ONLY",
                 "AKSHARE_INTRADAY_HISTORY_RAW_ONLY",
+                "AKSHARE_HK_INTRADAY_HISTORY_RAW_ONLY",
                 "AKSHARE_SINA_MINUTE_HISTORY_RAW_ONLY",
                 "AKSHARE_PRE_MARKET_HISTORY_RAW_ONLY",
             }
@@ -3556,6 +3664,13 @@ class AKShareNormalizer:
                 "limits do not establish the canonical daily history or valuation "
                 "inputs."
             )
+        if "AKSHARE_HK_INTRADAY_HISTORY_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented H-share intraday-history response is retained as raw "
+                "evidence only: its recent minute-bar window, interval, adjustment "
+                "mode and HKD-denominated market context do not establish a canonical "
+                "daily history series or valuation input."
+            )
         if "AKSHARE_SINA_MINUTE_HISTORY_RAW_ONLY" in normalizer_flags:
             notes += (
                 " The documented A-share Sina minute-history response is retained as "
@@ -3737,6 +3852,7 @@ def _endpoint_candidates(
     market_activity_institution_statistic_requested: bool = False,
     market_quote_bid_ask_requested: bool = False,
     market_history_intraday_requested: bool = False,
+    market_history_hk_intraday_requested: bool = False,
     market_history_pre_market_requested: bool = False,
     market_history_sina_minute_requested: bool = False,
     market_history_tencent_daily_requested: bool = False,
@@ -3792,6 +3908,8 @@ def _endpoint_candidates(
             if market_history_intraday_requested:
                 return ("stock_zh_a_hist_min_em",)
             return ("stock_zh_a_hist", "stock_zh_a_daily")
+        if market_history_hk_intraday_requested:
+            return ("stock_hk_hist_min_em",)
         return ("stock_hk_daily", "stock_zh_ah_daily")
     if category is DataCategory.MARKET_ACTIVITY:
         if market is ListingMarket.A:
@@ -6119,6 +6237,110 @@ def _validate_intraday_history_provider_rows(
     return observation_times
 
 
+def _hk_intraday_history_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    period: object,
+    start_datetime: datetime,
+    end_datetime: datetime,
+) -> tuple[str | None, list[datetime]]:
+    if not isinstance(period, str) or period not in _MARKET_HISTORY_HK_INTRADAY_PERIODS:
+        return "H-share intraday-history period is not supported", []
+    expected_fields = _MARKET_HISTORY_HK_INTRADAY_FIELDS[
+        "1" if period == "1" else "other"
+    ]
+    numeric_fields = expected_fields - {"时间"}
+    observation_times: list[datetime] = []
+    previous_time: datetime | None = None
+    for index, row in enumerate(rows):
+        missing = sorted(expected_fields - set(row))
+        unexpected = sorted(set(row) - expected_fields)
+        if missing:
+            return (
+                f"H-share intraday-history row {index} is missing field(s): "
+                + ", ".join(missing),
+                [],
+            )
+        if unexpected:
+            return (
+                f"H-share intraday-history row {index} contains unsupported field(s): "
+                + ", ".join(unexpected),
+                [],
+            )
+        observation_time = _intraday_history_timestamp(row["时间"])
+        if observation_time is None:
+            return f"H-share intraday-history row {index} has an invalid 时间", []
+        if not start_datetime <= observation_time <= end_datetime:
+            return (
+                f"H-share intraday-history row {index} 时间 "
+                f"{observation_time.isoformat()!r} is outside requested range "
+                f"{start_datetime.isoformat()!r}..{end_datetime.isoformat()!r}",
+                [],
+            )
+        if previous_time is not None and observation_time <= previous_time:
+            if observation_time == previous_time:
+                return (
+                    "H-share intraday-history response has duplicate 时间 "
+                    f"{observation_time.isoformat()!r}",
+                    [],
+                )
+            return (
+                "H-share intraday-history response 时间 values must be strictly ascending",
+                [],
+            )
+        previous_time = observation_time
+        observation_times.append(observation_time)
+        for field in numeric_fields:
+            value = row[field]
+            if value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, Real):
+                return (
+                    f"H-share intraday-history row {index} field {field!r} "
+                    "must be numeric or null",
+                    [],
+                )
+            try:
+                numeric = float(value)
+            except (OverflowError, TypeError, ValueError):
+                return (
+                    f"H-share intraday-history row {index} field {field!r} "
+                    "must be numeric or null",
+                    [],
+                )
+            if not math.isfinite(numeric):
+                return (
+                    f"H-share intraday-history row {index} field {field!r} "
+                    "must be finite or null",
+                    [],
+                )
+    return None, observation_times
+
+
+def _validate_hk_intraday_history_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    period: object,
+    start_datetime: datetime,
+    end_datetime: datetime,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> list[datetime]:
+    message, observation_times = _hk_intraday_history_validation_message(
+        rows,
+        period=period,
+        start_datetime=start_datetime,
+        end_datetime=end_datetime,
+    )
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message}",
+            provider=provider,
+            request=request,
+        )
+    return observation_times
+
+
 def _tencent_daily_history_validation_message(
     rows: Sequence[Mapping[str, JSONValue]],
     *,
@@ -6533,6 +6755,86 @@ def _validate_intraday_history_normalizer_scope(
     if record.response_metadata.get("observation_end_datetime") != expected_end:
         raise ProviderNormalizationError(
             "intraday-history response observation end does not match replayed rows"
+        )
+
+
+def _validate_hk_intraday_history_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> None:
+    if listing.market is not ListingMarket.H:
+        raise ProviderNormalizationError(
+            "AKShare H-share intraday-history raw slice supports H-share listings only"
+        )
+    if record.response_metadata.get("endpoint") != "stock_hk_hist_min_em":
+        raise ProviderNormalizationError(
+            "AKShare H-share intraday-history record must come from "
+            "stock_hk_hist_min_em"
+        )
+    try:
+        upstream_kwargs = _hk_intraday_history_kwargs(listing, record.request)
+        start_datetime = _parse_intraday_history_datetime_parameter(
+            upstream_kwargs["start_date"],
+            name="start_date",
+            request=record.request,
+            label="H-share intraday-history",
+        )
+        end_datetime = _parse_intraday_history_datetime_parameter(
+            upstream_kwargs["end_date"],
+            name="end_date",
+            request=record.request,
+            label="H-share intraday-history",
+        )
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+
+    expected_metadata = {
+        "hk_intraday_history_view": _MARKET_HISTORY_HK_INTRADAY_VIEW,
+        "upstream_symbol": upstream_kwargs["symbol"],
+        "hk_intraday_period": upstream_kwargs["period"],
+        "hk_intraday_adjust": upstream_kwargs["adjust"],
+        "requested_start_datetime": upstream_kwargs["start_date"],
+        "requested_end_datetime": upstream_kwargs["end_date"],
+        "listing_scoped_request": True,
+        "snapshot_scope": "requested_intraday_range",
+        "observation_time_field": "时间",
+        "time_ordering": "strictly_ascending",
+        "date_binding": "row_and_request",
+        "range_filtering": "upstream_and_provider_validation",
+        "volume_unit": "shares",
+        "price_unit": "HKD_per_share",
+        "amount_unit": "HKD",
+        "upstream_row_count": len(rows),
+        "entity_row_count": len(rows),
+        "entity_rows_selected": True,
+    }
+    for name, expected in expected_metadata.items():
+        if record.response_metadata.get(name) != expected:
+            raise ProviderNormalizationError(
+                f"H-share intraday-history response metadata {name!r} does not "
+                "match the requested replay scope"
+            )
+
+    message, observation_times = _hk_intraday_history_validation_message(
+        rows,
+        period=upstream_kwargs["period"],
+        start_datetime=start_datetime,
+        end_datetime=end_datetime,
+    )
+    if message is not None:
+        raise ProviderNormalizationError(message)
+    expected_start = min(observation_times).isoformat() if observation_times else None
+    expected_end = max(observation_times).isoformat() if observation_times else None
+    if record.response_metadata.get("observation_start_datetime") != expected_start:
+        raise ProviderNormalizationError(
+            "H-share intraday-history response observation start does not match "
+            "replayed rows"
+        )
+    if record.response_metadata.get("observation_end_datetime") != expected_end:
+        raise ProviderNormalizationError(
+            "H-share intraday-history response observation end does not match "
+            "replayed rows"
         )
 
 
@@ -9337,6 +9639,8 @@ def _history_kwargs(
         return _tencent_daily_history_kwargs(listing, request)
     if endpoint_name == "stock_zh_a_minute":
         return _sina_minute_history_kwargs(listing, request)
+    if endpoint_name == "stock_hk_hist_min_em":
+        return _hk_intraday_history_kwargs(listing, request)
     if endpoint_name == "stock_zh_a_hist_min_em":
         return _intraday_history_kwargs(listing, request)
     if endpoint_name == "stock_zh_a_hist_pre_min_em":
@@ -9723,15 +10027,96 @@ def _intraday_history_kwargs(
     }
 
 
+def _hk_intraday_history_kwargs(
+    listing: _ListingRef,
+    request: ProviderRequest,
+) -> dict[str, object]:
+    """Build the documented Eastmoney H-share intraday-history request."""
+
+    if listing.market is not ListingMarket.H:
+        raise ProviderRequestError(
+            "the AKShare H-share intraday-history endpoint supports H-share listings only",
+            request=request,
+            retryable=False,
+        )
+    parameters = dict(request.parameters)
+    unknown = sorted(set(parameters) - _MARKET_HISTORY_HK_INTRADAY_PARAMETER_NAMES)
+    if unknown:
+        raise ProviderRequestError(
+            "unsupported AKShare H-share intraday-history parameter(s): "
+            + ", ".join(unknown),
+            request=request,
+            retryable=False,
+        )
+    if parameters.get("view") != _MARKET_HISTORY_HK_INTRADAY_VIEW:
+        raise ProviderRequestError(
+            "the AKShare H-share intraday-history endpoint requires "
+            f"view={_MARKET_HISTORY_HK_INTRADAY_VIEW!r}",
+            request=request,
+            retryable=False,
+        )
+
+    period = parameters.get("period", _MARKET_HISTORY_HK_INTRADAY_DEFAULT_PERIOD)
+    if not isinstance(period, str) or period not in _MARKET_HISTORY_HK_INTRADAY_PERIODS:
+        choices = ", ".join(sorted(_MARKET_HISTORY_HK_INTRADAY_PERIODS, key=int))
+        raise ProviderRequestError(
+            f"AKShare H-share intraday-history period must be one of: {choices}",
+            request=request,
+            retryable=False,
+        )
+    adjust = parameters.get("adjust", _MARKET_HISTORY_HK_INTRADAY_DEFAULT_ADJUST)
+    if not isinstance(adjust, str) or adjust not in {"", "qfq", "hfq"}:
+        raise ProviderRequestError(
+            "AKShare H-share intraday-history adjust must be '', 'qfq' or 'hfq'",
+            request=request,
+            retryable=False,
+        )
+
+    start_date = parameters.get(
+        "start_date",
+        _MARKET_HISTORY_HK_INTRADAY_DEFAULT_START,
+    )
+    end_date = parameters.get(
+        "end_date",
+        _MARKET_HISTORY_HK_INTRADAY_DEFAULT_END,
+    )
+    start_datetime = _parse_intraday_history_datetime_parameter(
+        start_date,
+        name="start_date",
+        request=request,
+        label="H-share intraday-history",
+    )
+    end_datetime = _parse_intraday_history_datetime_parameter(
+        end_date,
+        name="end_date",
+        request=request,
+        label="H-share intraday-history",
+    )
+    if start_datetime > end_datetime:
+        raise ProviderRequestError(
+            "AKShare H-share intraday-history start_date must not be after end_date",
+            request=request,
+            retryable=False,
+        )
+    return {
+        "symbol": listing.code,
+        "start_date": start_datetime.strftime("%Y-%m-%d %H:%M:%S"),
+        "end_date": end_datetime.strftime("%Y-%m-%d %H:%M:%S"),
+        "period": period,
+        "adjust": adjust,
+    }
+
+
 def _parse_intraday_history_datetime_parameter(
     value: object,
     *,
     name: str,
     request: ProviderRequest,
+    label: str = "intraday-history",
 ) -> datetime:
     if not isinstance(value, str):
         raise ProviderRequestError(
-            f"AKShare intraday-history {name} must be YYYY-MM-DD HH:MM:SS",
+            f"AKShare {label} {name} must be YYYY-MM-DD HH:MM:SS",
             request=request,
             retryable=False,
         )
@@ -9739,7 +10124,7 @@ def _parse_intraday_history_datetime_parameter(
         return datetime.strptime(value, "%Y-%m-%d %H:%M:%S")
     except ValueError as exc:
         raise ProviderRequestError(
-            f"AKShare intraday-history {name} must be YYYY-MM-DD HH:MM:SS",
+            f"AKShare {label} {name} must be YYYY-MM-DD HH:MM:SS",
             request=request,
             retryable=False,
         ) from exc

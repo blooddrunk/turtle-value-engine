@@ -188,6 +188,26 @@ class FakeAKShare:
     def stock_hk_daily(self, **kwargs):
         return self._return("stock_hk_daily", _fixture("h_history.json"), **kwargs)
 
+    def stock_hk_hist_min_em(
+        self,
+        *,
+        symbol: str,
+        period: str,
+        adjust: str,
+        start_date: str,
+        end_date: str,
+    ):
+        fixture = "h_intraday_history_1m.json" if period == "1" else "h_intraday_history.json"
+        return self._return(
+            "stock_hk_hist_min_em",
+            _fixture(fixture),
+            symbol=symbol,
+            period=period,
+            adjust=adjust,
+            start_date=start_date,
+            end_date=end_date,
+        )
+
     def stock_individual_fund_flow(self, *, stock: str, market: str):
         return self._return(
             "stock_individual_fund_flow",
@@ -583,8 +603,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "56"
-    assert AKSHARE_MAPPING_VERSION == "57"
+    assert provider.identity.provider_version == "57"
+    assert AKSHARE_MAPPING_VERSION == "58"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -2235,6 +2255,418 @@ def test_a_intraday_history_cache_replay_does_not_call_upstream(tmp_path: Path):
                 "end_date": "2026-09-09 10:00:00",
                 "period": "5",
                 "adjust": "",
+            },
+        )
+    ]
+
+
+@pytest.mark.parametrize(
+    ("period", "adjust", "fixture_name", "observation_start", "observation_end"),
+    [
+        ("1", "", "h_intraday_history_1m.json", "09:30:00", "09:40:00"),
+        ("5", "hfq", "h_intraday_history.json", "09:35:00", "09:45:00"),
+    ],
+)
+def test_h_intraday_history_fetch_uses_documented_range_interval_and_adjustment(
+    period: str,
+    adjust: str,
+    fixture_name: str,
+    observation_start: str,
+    observation_end: str,
+):
+    fake = FakeAKShare()
+    request = _request(
+        DataCategory.MARKET_HISTORY,
+        "HK00700",
+        {
+            "view": "hk_intraday",
+            "start_date": "2026-09-09 09:30:00",
+            "end_date": "2026-09-09 10:00:00",
+            "period": period,
+            "adjust": adjust,
+        },
+    )
+    record = _provider(fake).fetch(request)
+
+    assert record.raw_payload == _fixture(fixture_name)
+    assert fake.calls == [
+        (
+            "stock_hk_hist_min_em",
+            {
+                "symbol": "00700",
+                "period": period,
+                "adjust": adjust,
+                "start_date": "2026-09-09 09:30:00",
+                "end_date": "2026-09-09 10:00:00",
+            },
+        )
+    ]
+    assert record.response_metadata["endpoint"] == "stock_hk_hist_min_em"
+    assert record.response_metadata["hk_intraday_history_view"] == "hk_intraday"
+    assert record.response_metadata["upstream_symbol"] == "00700"
+    assert record.response_metadata["hk_intraday_period"] == period
+    assert record.response_metadata["hk_intraday_adjust"] == adjust
+    assert record.response_metadata["requested_start_datetime"] == (
+        "2026-09-09 09:30:00"
+    )
+    assert record.response_metadata["requested_end_datetime"] == "2026-09-09 10:00:00"
+    assert record.response_metadata["listing_scoped_request"] is True
+    assert record.response_metadata["date_binding"] == "row_and_request"
+    assert record.response_metadata["range_filtering"] == "upstream_and_provider_validation"
+    assert record.response_metadata["snapshot_scope"] == "requested_intraday_range"
+    assert record.response_metadata["observation_time_field"] == "时间"
+    assert record.response_metadata["time_ordering"] == "strictly_ascending"
+    assert record.response_metadata["volume_unit"] == "shares"
+    assert record.response_metadata["price_unit"] == "HKD_per_share"
+    assert record.response_metadata["amount_unit"] == "HKD"
+    assert record.response_metadata["observation_start_datetime"] == (
+        f"2026-09-09T{observation_start}"
+    )
+    assert record.response_metadata["observation_end_datetime"] == (
+        f"2026-09-09T{observation_end}"
+    )
+    assert record.source_uri == "http://quote.eastmoney.com/hk/00948.html"
+
+
+@pytest.mark.parametrize(
+    ("entity_id", "parameters", "match"),
+    [
+        (
+            "HK00700",
+            {"view": "hk_intraday", "period": "2"},
+            "period must be one of",
+        ),
+        (
+            "HK00700",
+            {"view": "hk_intraday", "adjust": "split"},
+            "adjust must be",
+        ),
+        (
+            "HK00700",
+            {"view": "hk_intraday", "start_date": "20260909"},
+            "start_date must be YYYY-MM-DD HH:MM:SS",
+        ),
+        (
+            "HK00700",
+            {
+                "view": "hk_intraday",
+                "start_date": "2026-09-09 10:00:00",
+                "end_date": "2026-09-09 09:30:00",
+            },
+            "start_date must not be after end_date",
+        ),
+        (
+            "HK00700",
+            {"view": "hk_intraday", "unexpected": True},
+            "unsupported AKShare H-share intraday-history parameter",
+        ),
+        (
+            "SH600000",
+            {"view": "hk_intraday"},
+            "H-share listings only",
+        ),
+    ],
+)
+def test_h_intraday_history_request_validates_parameters_and_listing_market(
+    entity_id: str,
+    parameters: dict,
+    match: str,
+):
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError, match=match):
+        _provider(fake).fetch(
+            _request(DataCategory.MARKET_HISTORY, entity_id, parameters)
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("missing_field", "missing field"),
+        ("extra_field", "unsupported field"),
+        ("invalid_time", "invalid 时间"),
+        ("outside_range", "outside requested range"),
+        ("duplicate_time", "duplicate 时间"),
+        ("invalid_numeric", "must be numeric"),
+    ],
+)
+def test_h_intraday_history_response_validates_documented_rows(
+    mutation: str,
+    match: str,
+):
+    class InvalidRows(FakeAKShare):
+        def stock_hk_hist_min_em(
+            self,
+            *,
+            symbol: str,
+            period: str,
+            adjust: str,
+            start_date: str,
+            end_date: str,
+        ):
+            rows = _fixture("h_intraday_history.json")
+            if mutation == "missing_field":
+                rows[0].pop("成交额")
+            elif mutation == "extra_field":
+                rows[0]["unexpected"] = "not documented"
+            elif mutation == "invalid_time":
+                rows[0]["时间"] = "not-a-timestamp"
+            elif mutation == "outside_range":
+                rows[0]["时间"] = "2026-09-09 10:01:00"
+            elif mutation == "duplicate_time":
+                rows[1]["时间"] = rows[0]["时间"]
+            else:
+                rows[0]["收盘"] = "100.50"
+            return self._return(
+                "stock_hk_hist_min_em",
+                rows,
+                symbol=symbol,
+                period=period,
+                adjust=adjust,
+                start_date=start_date,
+                end_date=end_date,
+            )
+
+    with pytest.raises(ProviderResponseError, match=match):
+        _provider(InvalidRows()).fetch(
+            _request(
+                DataCategory.MARKET_HISTORY,
+                "HK00700",
+                {
+                    "view": "hk_intraday",
+                    "start_date": "2026-09-09 09:30:00",
+                    "end_date": "2026-09-09 10:00:00",
+                    "period": "5",
+                },
+            )
+        )
+
+
+def test_h_intraday_history_response_validates_period_specific_shape():
+    class WrongPeriodShape(FakeAKShare):
+        def stock_hk_hist_min_em(
+            self,
+            *,
+            symbol: str,
+            period: str,
+            adjust: str,
+            start_date: str,
+            end_date: str,
+        ):
+            return self._return(
+                "stock_hk_hist_min_em",
+                _fixture("h_intraday_history.json"),
+                symbol=symbol,
+                period=period,
+                adjust=adjust,
+                start_date=start_date,
+                end_date=end_date,
+            )
+
+    with pytest.raises(ProviderResponseError, match="missing field.*最新价"):
+        _provider(WrongPeriodShape()).fetch(
+            _request(
+                DataCategory.MARKET_HISTORY,
+                "HK00700",
+                {
+                    "view": "hk_intraday",
+                    "start_date": "2026-09-09 09:30:00",
+                    "end_date": "2026-09-09 10:00:00",
+                    "period": "1",
+                },
+            )
+        )
+
+
+def test_h_intraday_history_record_is_raw_only_and_not_daily_history():
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "HK00700",
+            {
+                "view": "hk_intraday",
+                "start_date": "2026-09-09 09:30:00",
+                "end_date": "2026-09-09 10:00:00",
+                "period": "5",
+            },
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="h-intraday-history-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company("HK00700"),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_HK_INTRADAY_HISTORY_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == ["market_history"]
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "H-share intraday-history" in normalized.data_quality.notes
+    assert "canonical daily history" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "view",
+        "symbol",
+        "period",
+        "adjust",
+        "start",
+        "end",
+        "listing_scope",
+        "snapshot",
+        "date_binding",
+        "range_filtering",
+        "time_ordering",
+        "volume_unit",
+        "price_unit",
+        "amount_unit",
+        "count",
+        "observation_start",
+    ],
+)
+def test_h_intraday_history_normalizer_rejects_replayed_scope_mismatches(mutation: str):
+    request = _request(
+        DataCategory.MARKET_HISTORY,
+        "HK00700",
+        {
+            "view": "hk_intraday",
+            "start_date": "2026-09-09 09:30:00",
+            "end_date": "2026-09-09 10:00:00",
+            "period": "5",
+            "adjust": "hfq",
+        },
+    )
+    record = _provider().fetch(request)
+    response_metadata = dict(record.response_metadata)
+    if mutation == "view":
+        response_metadata["hk_intraday_history_view"] = "daily"
+    elif mutation == "symbol":
+        response_metadata["upstream_symbol"] = "00005"
+    elif mutation == "period":
+        response_metadata["hk_intraday_period"] = "15"
+    elif mutation == "adjust":
+        response_metadata["hk_intraday_adjust"] = ""
+    elif mutation == "start":
+        response_metadata["requested_start_datetime"] = "1979-09-01 09:32:00"
+    elif mutation == "end":
+        response_metadata["requested_end_datetime"] = "2222-01-01 09:32:00"
+    elif mutation == "listing_scope":
+        response_metadata["listing_scoped_request"] = False
+    elif mutation == "snapshot":
+        response_metadata["snapshot_scope"] = "current_intraday_snapshot"
+    elif mutation == "date_binding":
+        response_metadata["date_binding"] = "row_only"
+    elif mutation == "range_filtering":
+        response_metadata["range_filtering"] = "none"
+    elif mutation == "time_ordering":
+        response_metadata["time_ordering"] = "non_decreasing"
+    elif mutation == "volume_unit":
+        response_metadata["volume_unit"] = "lots"
+    elif mutation == "price_unit":
+        response_metadata["price_unit"] = "CNY_per_share"
+    elif mutation == "amount_unit":
+        response_metadata["amount_unit"] = "CNY"
+    elif mutation == "count":
+        response_metadata["entity_row_count"] = 99
+    else:
+        response_metadata["observation_start_datetime"] = "bad"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=record.raw_payload,
+        source_uri=record.source_uri,
+        response_metadata=response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match="H-share intraday-history"):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-h-intraday-history-scope",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company("HK00700"),
+        )
+
+
+def test_h_intraday_history_normalizer_rejects_replayed_rows_outside_request():
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "HK00700",
+            {
+                "view": "hk_intraday",
+                "start_date": "2026-09-09 09:30:00",
+                "end_date": "2026-09-09 10:00:00",
+                "period": "5",
+            },
+        )
+    )
+    payload = [dict(row) for row in record.raw_payload]
+    payload[0]["时间"] = "2026-09-09 10:01:00"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=record.source_uri,
+        response_metadata=record.response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match="outside requested range"):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="out-of-range-h-intraday-history",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company("HK00700"),
+        )
+
+
+def test_h_intraday_history_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.MARKET_HISTORY,
+        "HK00700",
+        {
+            "view": "hk_intraday",
+            "start_date": "2026-09-09 09:30:00",
+            "end_date": "2026-09-09 10:00:00",
+            "period": "5",
+        },
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [
+        (
+            "stock_hk_hist_min_em",
+            {
+                "symbol": "00700",
+                "period": "5",
+                "adjust": "",
+                "start_date": "2026-09-09 09:30:00",
+                "end_date": "2026-09-09 10:00:00",
             },
         )
     ]

@@ -445,6 +445,18 @@ finite numeric/null values, integer volume/amount values, recognized trade sides
 and non-decreasing times. The normalizer emits
 `AKSHARE_TENCENT_TICK_RAW_ONLY`: without a trading date, these rows do not
 become canonical daily-history, liquidity or valuation facts.
+Phase 2.57 adds the distinct documented Eastmoney H-share minute-history
+endpoint [`stock_hk_hist_min_em`](https://akshare.akfamily.xyz/data/stock/stock.html),
+whose current official callable is defined in the
+[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hist_em.py),
+under `MARKET_HISTORY` with explicit `view=hk_intraday`. It passes the
+six-digit H-share code plus datetime range, interval and adjustment mode;
+the adapter validates the period-specific response fields, finite numeric/null
+values, strictly ascending timestamps and inclusive range binding, and records
+the listing, symbol, range, interval, adjustment and `shares`/`HKD` unit scope
+for replay. The normalizer emits `AKSHARE_HK_INTRADAY_HISTORY_RAW_ONLY`: the
+recent H-share minute bars remain raw evidence and do not become canonical
+daily-history or valuation facts.
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

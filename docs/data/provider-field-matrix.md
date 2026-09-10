@@ -528,6 +528,42 @@ valuation semantics.
 | `性质` | Validated marker `买盘`, `卖盘` or `中性盘`; no order-flow or governance conclusion is inferred. |
 | request `view=tencent_tick`, derived market-prefixed `symbol` | Explicit endpoint-selection, listing and latest-trading-day time-only replay scope; rows cannot be replayed under a different listing or amount shape. |
 
+## Phase 2.57 H-share intraday-history raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_hk_hist_min_em` as an Eastmoney H-share minute-history
+endpoint. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hist_em.py)
+accepts a six-digit H-share `symbol`, `period` `1`, `5`, `15`, `30` or `60`,
+adjustment mode ``, `qfq` or `hfq`, and explicit `start_date`/`end_date`
+datetimes. The provider selects it only under `MARKET_HISTORY` with explicit
+`view=hk_intraday`, passes the unprefixed H-share code, validates the exact
+period-specific field set, finite numeric/null values, strictly ascending
+timestamps and inclusive requested range, and records the effective replay
+scope and market units.
+
+For period `1`, the documented response fields are `时间`, `开盘`, `收盘`,
+`最高`, `最低`, `成交量`, `成交额` and `最新价`. For periods `5`, `15`, `30`
+and `60`, the documented fields are `时间`, `开盘`, `收盘`, `最高`, `最低`,
+`涨跌幅`, `涨跌额`, `成交量`, `成交额`, `振幅` and `换手率`. The response is
+retained as raw evidence only; minute-bar OHLC, volume, amount and provider
+ratios do not become canonical daily-history, liquidity or valuation facts.
+
+| Raw upstream item | Phase 2 treatment |
+| --- | --- |
+| `时间` | Required timestamp; it must be parseable, strictly ascending and inside the inclusive requested datetime range. |
+| `开盘`, `收盘`, `最高`, `最低` | Required raw H-share price fields; the documented market currency is retained as `HKD_per_share`, but no daily-history fact is emitted. |
+| `成交量` | Required raw volume in shares; no cross-frequency liquidity metric is inferred. |
+| `成交额` | Required raw turnover amount in HKD; it is not issuer cash flow or a canonical daily turnover fact. |
+| `最新价` (period `1`) | Required raw latest-price field for the one-minute schema; it does not replace the canonical quote. |
+| `涨跌幅`, `涨跌额`, `振幅`, `换手率` (periods other than `1`) | Required raw provider change/ratio context; no return, liquidity or valuation metric is calculated. |
+| request `view=hk_intraday`, H-share `symbol`, `start_date`, `end_date`, `period`, `adjust` | Explicit endpoint-selection, listing, datetime-range, interval and adjustment replay scope; rows cannot be replayed under a different H-share request. |
+
+The normalizer emits `AKSHARE_HK_INTRADAY_HISTORY_RAW_ONLY` and leaves
+`market_history` critically missing for this raw-only slice. `shares`,
+`HKD_per_share`, `HKD`, the period-specific schema and the observed row range
+remain replayable provider-boundary metadata; they are not imported into the
+calculation, gate, pipeline, CLI or input-loader contract.
+
 ## Phase 2.9 corporate-action raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)

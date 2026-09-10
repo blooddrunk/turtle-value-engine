@@ -1389,6 +1389,32 @@ history, liquidity or valuation fact. Live calls remain opt-in; tests use an
 injected client and a frozen fixture with cache replay, invalid-parameter,
 response-validation and replay-scope coverage.
 
+### Phase 2.57 — H-share intraday-history raw acquisition contract (COMPLETE)
+
+The mapping review now covers the distinct Eastmoney H-share minute-history
+endpoint documented as
+[`stock_hk_hist_min_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
+and implemented by the current official source in
+[`stock_hist_em.py`](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hist_em.py).
+It accepts an unprefixed six-digit H-share `symbol`, an explicit
+`start_date`/`end_date` datetime range, a `period` of `1`, `5`, `15`, `30` or
+`60`, and an adjustment mode of empty string, `qfq` or `hfq`. Period `1`
+returns `时间`, OHLC, `成交量`, `成交额` and `最新价`; the other documented
+periods return `时间`, OHLC, change fields, `成交量`, `成交额`, `振幅` and
+`换手率`.
+
+The provider selects this callable only under the existing provider-neutral
+`MARKET_HISTORY` category with explicit `view=hk_intraday`, passes the
+unprefixed H-share code and effective range/interval/adjustment, validates the
+exact period-specific fields, finite numeric/null values, strict timestamp
+ordering and inclusive range, and records the listing, symbol, request scope,
+schema mode and `shares`/`HKD_per_share`/`HKD` units for replay. The normalizer
+emits `AKSHARE_HK_INTRADAY_HISTORY_RAW_ONLY`; recent H-share minute bars remain
+raw evidence and do not become canonical daily-history, liquidity or valuation
+facts. Live calls remain opt-in; tests use an injected client and frozen
+period-specific fixtures with cache replay, invalid-parameter,
+response-validation, raw-only and replay-scope coverage.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -1398,7 +1424,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.56 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.57 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -1606,7 +1632,7 @@ Phase 2 is active. Phase 1 remains frozen: changes to formulas, hard-gate
 semantics, schemas or `strict-v1` thresholds require a separately reviewed,
 versioned change.
 
-Phase 2.56 completes the next documented structured-data boundary while
+Phase 2.57 completes the next documented structured-data boundary while
 keeping share-change, repurchase and rights-issue period, status, unit and
 economic-scope questions unresolved, and keeping ownership-pledge holder,
 governance and economic-scope questions unresolved. The A-share
@@ -1624,6 +1650,12 @@ Sina minute-history response remains raw-only because its recent provider
 window, minute interval and adjustment mode do not establish canonical daily
 history or a valuation input; `view=sina_minute`, the market-prefixed symbol,
 interval and adjustment remain part of its replayable acquisition boundary.
+The H-share intraday-history response remains raw-only because its recent
+minute-bar window, period-specific schema, adjustment mode and HKD market
+context do not establish canonical daily history or a valuation input;
+`view=hk_intraday`, the unprefixed H-share symbol, datetime range, interval,
+adjustment and `shares`/`HKD_per_share`/`HKD` units remain part of its replayable
+acquisition boundary.
 dividend-distribution snapshot remains raw-only because its ratios, status and
 multiple dates do not establish settled ordinary cash or a canonical payout
 denominator. Phase 2 remains active; future documented categories must be
