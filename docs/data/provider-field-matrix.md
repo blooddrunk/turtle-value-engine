@@ -1004,9 +1004,10 @@ listing, accepts only `view=xueqiu_basic_info`, and leaves credentials and
 timeout controls out of the provider request/cache identity.
 
 The provider validates the exact two-field row shape, unique items, the
-documented 29-item allowlist, required `org_id`/`org_name_cn`/
-`org_short_name_cn` profile identifiers, scalar values and finite numeric
-`established_date`/`reg_asset`/`staff_num`/`listed_date` values. The normalizer
+documented 39-item allowlist, required `org_id`/`org_name_cn`/
+`org_short_name_cn` profile identifiers, scalar values, the documented
+`affiliate_industry` object, and finite numeric date, asset, personnel and
+issuance fields. The normalizer
 emits `AKSHARE_XUEQIU_BASIC_INFO_RAW_ONLY`; no profile field becomes a
 canonical company or listing fact.
 
@@ -1015,7 +1016,8 @@ canonical company or listing fact.
 | `org_id`, `org_name_cn`, `org_short_name_cn` | Required profile identity/display values; validated and retained as raw evidence only, with no canonical company or listing identity replacement. |
 | descriptive, registration, personnel and control items | Raw-only provider evidence; no canonical sector, jurisdiction, control, employee, asset or governance fact is admitted. |
 | `established_date`, `listed_date` | Finite numeric provider timestamp values; raw-only because epoch/unit semantics are not verified as canonical incorporation or listing dates. |
-| `reg_asset`, `staff_num` | Finite numeric provider values; raw-only, with no balance-sheet asset or normalized employee fact. |
+| `reg_asset`, `staff_num`, `executives_nums`, `actual_issue_vol`, `issue_price`, `actual_rc_net_amt`, `pe_after_issuing`, `online_success_rate_of_issue` | Finite numeric provider values; raw-only, with no balance-sheet asset, normalized employee, issuance or valuation fact. |
+| `affiliate_industry` | Documented object value retained as raw provider context; no canonical industry classification is inferred. |
 | request `view=xueqiu_basic_info`, derived market-prefixed `symbol` | Explicit endpoint selection, A-share listing scope, symbol-scoped company-profile snapshot and replay boundary; optional Xueqiu credentials/timeouts are not request/cache identity. |
 
 The response remains outside the calculation, gate, pipeline, CLI and

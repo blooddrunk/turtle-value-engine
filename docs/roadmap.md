@@ -1749,9 +1749,10 @@ The provider selects this callable only under `COMPANY_METADATA` with explicit
 `view=xueqiu_basic_info`, derives and passes the requested market-prefixed
 A-share symbol, deliberately excludes credentials and timeout controls from
 the provider request/cache identity, validates the exact two-field response,
-documented item allowlist, required profile identifiers, scalar values and
-finite numeric date/asset/personnel fields, and records the symbol-scoped
-company-profile snapshot for replay.
+documented item allowlist, required profile identifiers, scalar values, the
+documented `affiliate_industry` object and finite numeric date/asset/personnel/
+issuance fields, and records the symbol-scoped company-profile snapshot for
+replay.
 
 The normalizer emits `AKSHARE_XUEQIU_BASIC_INFO_RAW_ONLY`; descriptive,
 registration, personnel, control and provider-specific date fields remain raw

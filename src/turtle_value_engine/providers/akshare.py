@@ -405,14 +405,36 @@ _COMPANY_METADATA_XQ_ITEMS = frozenset(
         "listed_date",
         "provincial_name",
         "actual_controller",
+        "classi_name",
+        "pre_name_cn",
+        "chairman",
+        "executives_nums",
+        "actual_issue_vol",
+        "issue_price",
+        "actual_rc_net_amt",
+        "pe_after_issuing",
+        "online_success_rate_of_issue",
+        "affiliate_industry",
     }
 )
 _COMPANY_METADATA_XQ_REQUIRED_ITEMS = frozenset(
     {"org_id", "org_name_cn", "org_short_name_cn"}
 )
 _COMPANY_METADATA_XQ_NUMERIC_ITEMS = frozenset(
-    {"established_date", "reg_asset", "staff_num", "listed_date"}
+    {
+        "established_date",
+        "reg_asset",
+        "staff_num",
+        "listed_date",
+        "executives_nums",
+        "actual_issue_vol",
+        "issue_price",
+        "actual_rc_net_amt",
+        "pe_after_issuing",
+        "online_success_rate_of_issue",
+    }
 )
+_COMPANY_METADATA_XQ_OBJECT_ITEMS = frozenset({"affiliate_industry"})
 
 _MARKET_HISTORY_INTRADAY_PARAMETER_NAMES = frozenset(
     {"view", "start_date", "end_date", "period", "adjust"}
@@ -7805,6 +7827,11 @@ def _company_metadata_xq_validation_message(
             if not math.isfinite(numeric):
                 return (
                     f"Xueqiu individual-basic-info item {item!r} must be finite or null"
+                )
+        elif item in _COMPANY_METADATA_XQ_OBJECT_ITEMS:
+            if value is not None and not isinstance(value, Mapping):
+                return (
+                    f"Xueqiu individual-basic-info item {item!r} must be an object or null"
                 )
         elif value is not None and (
             isinstance(value, bool) or not isinstance(value, (str, int, float))

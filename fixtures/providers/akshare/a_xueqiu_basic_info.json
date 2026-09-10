@@ -114,5 +114,48 @@
   {
     "item": "actual_controller",
     "value": "上海市国有资产监督管理委员会"
+  },
+  {
+    "item": "classi_name",
+    "value": "国有企业"
+  },
+  {
+    "item": "pre_name_cn",
+    "value": "上海浦东发展银行股份有限公司"
+  },
+  {
+    "item": "chairman",
+    "value": "张为忠"
+  },
+  {
+    "item": "executives_nums",
+    "value": 20
+  },
+  {
+    "item": "actual_issue_vol",
+    "value": 142500000.0
+  },
+  {
+    "item": "issue_price",
+    "value": 5.81
+  },
+  {
+    "item": "actual_rc_net_amt",
+    "value": 738451000.0
+  },
+  {
+    "item": "pe_after_issuing",
+    "value": 18.19
+  },
+  {
+    "item": "online_success_rate_of_issue",
+    "value": 0.110176
+  },
+  {
+    "item": "affiliate_industry",
+    "value": {
+      "ind_code": "BK0420",
+      "ind_name": "银行"
+    }
   }
 ]

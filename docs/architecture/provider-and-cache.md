@@ -845,9 +845,10 @@ the [official implementation](https://github.com/akfamily/akshare/blob/main/aksh
 confirms the CN company-profile callable and symbol parameter. The adapter
 accepts only the explicit `view=xueqiu_basic_info` selector, deliberately keeps
 credentials and timeout controls out of request/cache identity, validates the
-documented item allowlist, required profile identifiers, scalar values and
-numeric date/asset/personnel fields, and records the symbol-scoped profile
-snapshot for replay. The normalizer emits
+documented item allowlist, required profile identifiers, scalar values, the
+documented `affiliate_industry` object and numeric date/asset/personnel/
+issuance fields, and records the symbol-scoped profile snapshot for replay.
+The normalizer emits
 `AKSHARE_XUEQIU_BASIC_INFO_RAW_ONLY`; descriptive, registration, personnel and
 provider-specific date fields do not become canonical company or listing facts.
 The response remains outside calculations, gates, pipeline, CLI and input-loader

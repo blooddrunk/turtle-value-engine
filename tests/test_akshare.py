@@ -2263,8 +2263,8 @@ def test_xueqiu_basic_info_fetch_uses_documented_symbol_and_keeps_profile_opaque
     assert record.response_metadata["date_binding"] == "retrieval_only"
     assert record.response_metadata["item_field"] == "item"
     assert record.response_metadata["value_field"] == "value"
-    assert record.response_metadata["upstream_row_count"] == 29
-    assert record.response_metadata["entity_row_count"] == 29
+    assert record.response_metadata["upstream_row_count"] == 39
+    assert record.response_metadata["entity_row_count"] == 39
     assert record.response_metadata["entity_rows_selected"] is True
     assert record.source_uri == (
         "https://xueqiu.com/snowman/S/SH601127/detail#/GSJJ"
@@ -2316,6 +2316,7 @@ def test_xueqiu_basic_info_request_validates_view_credentials_and_market(
         ("extra_field", "contains unsupported field"),
         ("missing_required", r"missing item\(s\).*org_name_cn"),
         ("invalid_numeric", "item 'reg_asset' must be numeric"),
+        ("invalid_object", "item 'affiliate_industry' must be an object"),
         ("invalid_value", "item 'org_name_cn' must be a scalar"),
     ],
 )
@@ -2338,6 +2339,10 @@ def test_xueqiu_basic_info_response_validates_item_value_schema(
         payload = [row for row in payload if row["item"] != "org_name_cn"]
     elif mutation == "invalid_numeric":
         next(row for row in payload if row["item"] == "reg_asset")["value"] = "not-a-number"
+    elif mutation == "invalid_object":
+        next(row for row in payload if row["item"] == "affiliate_industry")[
+            "value"
+        ] = ["not", "an", "object"]
     else:
         next(row for row in payload if row["item"] == "org_name_cn")["value"] = ["not", "scalar"]
 

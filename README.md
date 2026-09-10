@@ -627,9 +627,10 @@ whose current official implementation is in
 under `COMPANY_METADATA` with explicit `view=xueqiu_basic_info`. It passes the
 derived market-prefixed symbol, accepts no credential or timeout fields in the
 provider request, validates the exact `item`/`value` row shape, documented item
-allowlist, required profile identifiers, scalar values and numeric date/asset/
-personnel fields, and records the symbol-scoped company-profile snapshot for
-replay. The normalizer emits `AKSHARE_XUEQIU_BASIC_INFO_RAW_ONLY`: descriptive,
+allowlist, required profile identifiers, scalar values, the documented
+`affiliate_industry` object and numeric date/asset/personnel/issuance fields,
+and records the symbol-scoped company-profile snapshot for replay. The
+normalizer emits `AKSHARE_XUEQIU_BASIC_INFO_RAW_ONLY`: descriptive,
 registration, personnel and provider-specific date fields remain raw evidence
 and do not become canonical company/listing facts. No calculation, gate,
 pipeline, CLI or input-loader contract is changed.
