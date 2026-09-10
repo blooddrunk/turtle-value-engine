@@ -1689,6 +1689,31 @@ contract is changed. Live calls remain opt-in; tests use an injected client and
 a frozen fixture with cache replay, invalid-request, response-validation,
 raw-only and replay-scope coverage.
 
+### Phase 2.70 — A-share Eastmoney latest stock-hot-rank raw acquisition contract (COMPLETE)
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_hot_rank_latest_em` as the Eastmoney A-share latest-rank
+endpoint; the [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hot_rank_em.py)
+confirms that it accepts a market-prefixed `symbol` and returns the exact
+`item`/`value` table for `marketType`, `marketAllCount`, `calcTime`, `innerCode`,
+`srcSecurityCode`, `rank`, `rankChange`, `hisRankChange`, `hisRankChange_rank`
+and `flag`.
+
+The provider selects this callable only under `MARKET_ACTIVITY` with explicit
+`view=hot_rank_latest`, passes the requested market-prefixed A-share symbol,
+validates the exact ten-row response, item uniqueness, symbol identity,
+`calcTime` timestamp and integer/null values, and binds the upstream symbol,
+current-day latest-rank scope, row counts and row-derived observation time into
+replay metadata.
+
+The normalizer emits `AKSHARE_HOT_RANK_LATEST_RAW_ONLY`; provider popularity
+rank and timing remain structured evidence only and do not establish issuer
+cash flow, shareholder return, governance, valuation or a canonical market
+metric. No calculation, gate, pipeline, CLI or input-loader contract is
+changed. Live calls remain opt-in; tests use an injected client and a frozen
+fixture with cache replay, invalid-request, response-validation, raw-only and
+replay-scope coverage.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -1698,7 +1723,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.69 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.70 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -1906,7 +1931,7 @@ Phase 2 is active. Phase 1 remains frozen: changes to formulas, hard-gate
 semantics, schemas or `strict-v1` thresholds require a separately reviewed,
 versioned change.
 
-Phase 2.69 completes the next documented structured-data boundary while
+Phase 2.70 completes the next documented structured-data boundary while
 keeping share-change, repurchase and rights-issue period, status, unit and
 economic-scope questions unresolved, and keeping ownership-pledge holder,
 governance and economic-scope questions unresolved. The A-share
@@ -1994,6 +2019,12 @@ not establish a canonical market metric, issuer cash flow, shareholder return,
 governance or valuation fact. The explicit
 `view=institution_participation`, unprefixed symbol, exact two-field response,
 strict date ordering, percent unit and symbol-scoped observed-date replay
+metadata remain part of its acquisition boundary.
+The A-share Eastmoney latest stock-hot-rank response remains raw-only because
+its symbol-scoped popularity rank and provider timing do not establish a
+canonical market metric, issuer cash flow, shareholder return, governance or
+valuation fact. The explicit `view=hot_rank_latest`, market-prefixed symbol,
+exact ten-row `item`/`value` response, `calcTime` row timestamp and replay
 metadata remain part of its acquisition boundary.
 dividend-distribution snapshot remains raw-only because its ratios, status and
 multiple dates do not establish settled ordinary cash or a canonical payout

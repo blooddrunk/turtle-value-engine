@@ -596,6 +596,18 @@ full recent-date universe to the requested listing. The normalizer emits
 provider ranking and market-cap fields remain raw evidence and do not establish
 issuer cash flow, shareholder return, governance, valuation or a canonical
 market fact.
+Phase 2.70 adds the distinct documented Eastmoney A-share latest stock-popularity
+endpoint [`stock_hot_rank_latest_em`](https://akshare.akfamily.xyz/data/stock/stock.html),
+whose current official implementation is in
+[`stock_hot_rank_em.py`](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hot_rank_em.py),
+under `MARKET_ACTIVITY` with explicit `view=hot_rank_latest`. It passes the
+market-prefixed A-share symbol, validates the exact ten-row `item`/`value`
+response and documented item set, checks the symbol identity, `calcTime`
+timestamp and integer rank fields, and records the symbol-scoped latest-rank
+snapshot for replay. The normalizer emits
+`AKSHARE_HOT_RANK_LATEST_RAW_ONLY`: provider popularity rank and timing remain
+raw evidence and do not become issuer cash-flow, shareholder-return,
+governance, valuation or canonical market facts.
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

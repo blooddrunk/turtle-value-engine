@@ -706,7 +706,7 @@ The cache performs no network retries. The normalizer performs no provider
 retries. The deterministic pipeline performs no provider retries and should
 not be rerun as a substitute for resolving missing facts.
 
-## 12. Phase 2.2–2.69 AKShare adapter
+## 12. Phase 2.2–2.70 AKShare adapter
 
 The first concrete adapter is intentionally limited to read-only metadata,
 market observations, three documented financial-statement slices, raw-only
@@ -726,7 +726,7 @@ individual-holdings raw slices, A-share Eastmoney individual-fund-flow,
 top-ten-shareholder/top-ten-tradable-shareholder/top-ten-tradable-shareholder-detail,
 Dragon-Tiger detail/statistics/institution-statistics and
 market-participation-desire/market-focus/institution-participation/
-stock-hot-rank/limit-up-pool/new-stock-board
+stock-hot-rank/latest-stock-hot-rank/limit-up-pool/new-stock-board
 market-activity, the A+H quote-comparison,
 SSE/SZSE/BSE insider-share-change, A-share Eastmoney management-holding,
 A-share Eastmoney intraday-trade/chip-distribution, Tencent daily-history and latest-trading-day tick, Sina minute-history,
@@ -742,7 +742,7 @@ advertises exactly these capabilities:
 | `TRADING_SUSPENSIONS` | `stock_tfp_em` (exact `date`) | — | requested-date A-share suspension/resumption rows as raw structured evidence only; no canonical status or governance fact |
 | `MARKET_QUOTE` | `stock_zh_a_spot_em`; `stock_bid_ask_em` (`view=bid_ask`, Shanghai/Shenzhen A-share only); `stock_zh_ah_spot_em` (`view=ah_comparison`, full A+H universe filtered by requested A/H side) | `stock_hk_spot_em`; `stock_zh_ah_spot_em` (`view=ah_comparison`, full A+H universe filtered by requested H-share side) | selected-listing `current_price` plus quote timestamp; bid/ask and A+H comparison views retained raw-only |
 | `MARKET_HISTORY` | `stock_zh_a_hist` (daily history); `stock_intraday_em` (`view=intraday_trades`, latest-trading-day time-only trades; A-share only); `stock_cyq_em` (`view=chip_distribution`, latest 90 trading days and adjustment; A-share only); `stock_zh_a_hist_tx` (`view=tencent_daily`, explicit date range/adjustment; A-share only); `stock_zh_a_tick_tx_js` (`view=tencent_tick`, latest-trading-day time-only ticks; A-share only); `stock_zh_a_minute` (`view=sina_minute`, explicit interval/adjustment; A-share only); `stock_zh_a_hist_min_em` (`view=intraday`, explicit datetime range/interval/adjustment; A-share only); `stock_zh_a_hist_pre_min_em` (`view=pre_market`, explicit time-of-day range; A-share only) | `stock_hk_daily`; `stock_hk_hist_min_em` (`view=hk_intraday`, explicit datetime range/interval/adjustment; H-share only) | dated daily OHLCV/turnover extension facts from standard and Tencent daily history; Eastmoney intraday-trade, chip-distribution, Tencent tick, Sina minute, A-share/H-share intraday and latest-day pre-market rows as raw structured evidence only |
-| `MARKET_ACTIVITY` | `stock_zh_a_new_em` (`view=new_stock`, current-trading-day new-stock universe; A-share only); `stock_comment_detail_scrd_desire_em` (`view=participation_desire`, latest 30 trading days; A-share only); `stock_comment_detail_scrd_focus_em` (`view=focus`, latest 30 trading days; A-share only); `stock_comment_detail_zlkp_jgcyd_em` (`view=institution_participation`, symbol-scoped historical series; A-share only); `stock_hot_rank_em` (`view=hot_rank`, current-trading-day top 100; A-share only); `stock_zt_pool_em` (`view=limit_up_pool`, requested `date` limit-up pool; A-share only); `stock_lhb_detail_em` (inclusive `start_date`/`end_date`; A-share only); `stock_lhb_stock_statistic_em` (`view=stock_statistic`, explicit `period`; A-share only); `stock_lhb_jgstatistic_em` (`view=institution_statistic`, explicit `period`; A-share only) | — | A-share new-stock-board, market-participation-desire, market-focus, institution-participation, stock-popularity-rank, limit-up-pool, Dragon-Tiger detail, per-listing statistics or institution-seat statistics rows retained as raw structured evidence only; no issuer cash-flow, shareholder-return, governance, market or valuation fact |
+| `MARKET_ACTIVITY` | `stock_zh_a_new_em` (`view=new_stock`, current-trading-day new-stock universe; A-share only); `stock_comment_detail_scrd_desire_em` (`view=participation_desire`, latest 30 trading days; A-share only); `stock_comment_detail_scrd_focus_em` (`view=focus`, latest 30 trading days; A-share only); `stock_comment_detail_zlkp_jgcyd_em` (`view=institution_participation`, symbol-scoped historical series; A-share only); `stock_hot_rank_em` (`view=hot_rank`, current-trading-day top 100; A-share only); `stock_hot_rank_latest_em` (`view=hot_rank_latest`, symbol-scoped latest rank; A-share only); `stock_zt_pool_em` (`view=limit_up_pool`, requested `date` limit-up pool; A-share only); `stock_lhb_detail_em` (inclusive `start_date`/`end_date`; A-share only); `stock_lhb_stock_statistic_em` (`view=stock_statistic`, explicit `period`; A-share only); `stock_lhb_jgstatistic_em` (`view=institution_statistic`, explicit `period`; A-share only) | — | A-share new-stock-board, market-participation-desire, market-focus, institution-participation, stock-popularity-rank/latest-rank, limit-up-pool, Dragon-Tiger detail, per-listing statistics or institution-seat statistics rows retained as raw structured evidence only; no issuer cash-flow, shareholder-return, governance, market or valuation fact |
 | `CAPITAL_FLOW` | `stock_individual_fund_flow` (A-share) | — | recent daily investor-flow rows as raw structured evidence only; no issuer cash-flow, liquidity or valuation fact |
 | `CASH_FLOW_STATEMENT` | `stock_cash_flow_sheet_by_report_em` (Sina fallback) | `stock_financial_hk_report_em` | explicit `reported_cfo` and `acquisition_cash` lines |
 | `INCOME_STATEMENT` | `stock_profit_sheet_by_report_em` (Sina fallback) | `stock_financial_hk_report_em` | explicit `parent_net_profit` and `consolidated_net_profit` lines |
@@ -810,6 +810,17 @@ full universe to the requested listing and binds the no-row-date snapshot only
 to retrieval provenance. The normalizer emits
 `AKSHARE_HOT_RANK_RAW_ONLY`; popularity ordering and quote context remain raw
 evidence and do not become a canonical market metric, issuer cash flow,
+shareholder return, governance or valuation input.
+The A-share `stock_hot_rank_latest_em` view passes the market-prefixed symbol to
+the documented Eastmoney latest stock-popularity endpoint. Its current official
+implementation returns the exact `item`/`value` rows for `marketType`,
+`marketAllCount`, `calcTime`, `innerCode`, `srcSecurityCode`, `rank`,
+`rankChange`, `hisRankChange`, `hisRankChange_rank` and `flag`. The adapter
+validates the exact ten-row shape, item uniqueness, symbol identity, timestamp
+and integer/null value rules, then records the upstream symbol, current-day
+latest-rank scope and row-derived `calcTime` for replay. The normalizer emits
+`AKSHARE_HOT_RANK_LATEST_RAW_ONLY`; provider popularity rank and timing remain
+raw evidence and do not become a canonical market metric, issuer cash flow,
 shareholder return, governance or valuation input.
 The A/H `stock_zh_ah_spot_em` view passes no upstream arguments to the
 documented Eastmoney A+H comparison endpoint. Its delayed 15-minute response
@@ -1415,7 +1426,7 @@ critically missing.
 
 ## 13. Deliberate non-goals
 
-This foundation plus the Phase 2.2–2.69 slices does not include:
+This foundation plus the Phase 2.2–2.70 slices does not include:
 
 - Tushare, BaoStock or any other additional provider;
 - automatic network scheduling, credentials or retry orchestration outside an adapter;

@@ -932,6 +932,37 @@ input-loader contracts. Quote, limit-up activity, provider ranking and
 market-cap fields remain raw evidence only and do not establish issuer cash
 flow, shareholder return, governance, valuation or a canonical market metric.
 
+## Phase 2.70 A-share Eastmoney latest stock-hot-rank raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hot_rank_em.py)
+document `stock_hot_rank_latest_em` as a symbol-scoped Eastmoney A-share
+latest-rank endpoint. Its request accepts a market-prefixed `symbol` such as
+`SZ000665`; the returned table has the exact `item` and `value` columns and the
+ten documented items `marketType`, `marketAllCount`, `calcTime`, `innerCode`,
+`srcSecurityCode`, `rank`, `rankChange`, `hisRankChange`, `hisRankChange_rank`
+and `flag`.
+
+The provider selects this endpoint only under `MARKET_ACTIVITY` with explicit
+`view=hot_rank_latest`, passes the market-prefixed A-share symbol, validates
+the exact item/value schema, item uniqueness, requested-symbol identity,
+`calcTime` timestamp and integer/null value rules, and records the
+symbol-scoped latest-rank replay boundary. The normalizer emits
+`AKSHARE_HOT_RANK_LATEST_RAW_ONLY`; it creates no canonical fact.
+
+| Raw upstream item | Phase 2 treatment |
+| --- | --- |
+| `marketType`, `innerCode` | Required non-empty text identifiers; retained as raw provider context, not normalized into an exchange or issuer identity. |
+| `srcSecurityCode` | Required market-prefixed A-share code matching the requested listing; used for request/response identity validation only. |
+| `calcTime` | Required `YYYY-MM-DD HH:MM:SS` row timestamp; binds the latest-rank observation only and is not an accounting or market-history period. |
+| `marketAllCount`, `rank`, `rankChange`, `hisRankChange`, `hisRankChange_rank`, `flag` | Integer or null provider values, with positive `marketAllCount` and `rank`; retained as popularity-rank evidence only and not as a canonical return, liquidity, valuation or market metric. |
+| request `view=hot_rank_latest`, market-prefixed `symbol` | Explicit endpoint, A-share listing, symbol-scoped current-day latest-rank snapshot and row-count replay scope. |
+
+The response remains outside the calculation, gate, pipeline, CLI and
+input-loader contracts. Popularity rank and provider timing alone do not
+establish issuer cash flow, shareholder return, governance severity or
+valuation.
+
 ## Phase 2.9 corporate-action raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)

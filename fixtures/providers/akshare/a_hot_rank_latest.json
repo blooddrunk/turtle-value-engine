@@ -1,0 +1,42 @@
+[
+  {
+    "item": "marketType",
+    "value": "000001"
+  },
+  {
+    "item": "marketAllCount",
+    "value": 4735
+  },
+  {
+    "item": "calcTime",
+    "value": "2022-02-28 13:30:00"
+  },
+  {
+    "item": "innerCode",
+    "value": "000665"
+  },
+  {
+    "item": "srcSecurityCode",
+    "value": "SZ000665"
+  },
+  {
+    "item": "rank",
+    "value": 155
+  },
+  {
+    "item": "rankChange",
+    "value": -2
+  },
+  {
+    "item": "hisRankChange",
+    "value": 141
+  },
+  {
+    "item": "hisRankChange_rank",
+    "value": 1654
+  },
+  {
+    "item": "flag",
+    "value": 0
+  }
+]
