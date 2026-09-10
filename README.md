@@ -950,6 +950,20 @@ numeric units and replay counts. The normalizer emits
 market fact. No calculation, gate, pipeline, CLI or input-loader contract
 changes.
 
+Phase 2.94 adds the distinct official SZSE market-summary endpoint
+[`stock_szse_summary`](https://akshare.akfamily.xyz/data/stock/stock.html) under
+`MARKET_ACTIVITY` with explicit `view=szse_summary` and required
+`date=YYYYMMDD`. Its exact five-field response—`证券类别`, `数量`, `成交金额`,
+`总市值`, `流通市值`—is validated row by row in the source-shaped order
+returned by the [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_summary.py),
+including category uniqueness, the required `股票` category, numeric types and
+null handling. The adapter records Shenzhen scope, requested/observation date,
+documented quantity/transaction-amount units, undocumented market-value units
+and replay metadata. The normalizer emits
+`AKSHARE_SZSE_SUMMARY_RAW_ONLY` without creating a listing-level or canonical
+market fact. No calculation, gate, pipeline, CLI or input-loader contract
+changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

@@ -923,6 +923,38 @@ aggregate.
 The provider-specific response remains outside the calculation, gate, pipeline,
 CLI and input-loader contracts.
 
+## Phase 2.94 SZSE market-summary raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_szse_summary` as a Shenzhen Stock Exchange requested-date
+market summary. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_summary.py)
+accepts `date=YYYYMMDD` and returns the exact source-shaped fields
+`证券类别`, `数量`, `成交金额`, `总市值` and `流通市值`, in that order. The
+documentation sample returns the categories `股票`, `主板A股`, `主板B股`,
+`中小板`, `创业板A股`, `基金`, `ETF`, `LOF`, `封闭式基金`, `分级基金`,
+`债券`, `债券现券`, `债券回购`, `ABS` and `期权` in that order.
+
+The provider exposes the endpoint under `MARKET_ACTIVITY` only with explicit
+`view=szse_summary`, passes only the normalized date to the upstream callable,
+and validates every returned category row before retention. It records the
+requested/observation date, Shenzhen market scope, returned category order,
+source field order, documented units, undocumented market-value units and
+non-listing row counts for cache replay. The normalizer emits
+`AKSHARE_SZSE_SUMMARY_RAW_ONLY`; no canonical quote, accounting, return,
+governance, valuation or market fact is admitted from this exchange-wide
+aggregate.
+
+| Raw upstream item | Phase 2.94 treatment |
+| --- | --- |
+| `证券类别` | Required non-empty unique category label; the returned category order is preserved as response metadata and `股票` must be present. It is a security-category scope, not a listing identity. |
+| `数量` | Non-negative integer or null security count; the documented unit is `只` (represented as `securities` in metadata). |
+| `成交金额` | Finite non-negative numeric or null transaction amount; the documented unit is `元` (represented as `CNY` in metadata). |
+| `总市值`, `流通市值` | Finite non-negative numeric or null market-value aggregates; the endpoint does not document their numeric units, so nulls are retained and no listing-level valuation is inferred. |
+| request `view=szse_summary`, `date` | Explicit requested-day SZSE market-summary scope; `listing_scoped_request=false`, no provider filtering, source URI, field/category order and row counts remain part of the cache replay boundary. |
+
+The provider-specific response remains outside the calculation, gate, pipeline,
+CLI and input-loader contracts.
+
 ## Phase 2.92 SSE daily-deal overview raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
