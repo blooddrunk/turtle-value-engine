@@ -2183,7 +2183,7 @@ The provider selects this callable only with explicit
 `view=hot_rank_detail`, passes the requested market-prefixed symbol, validates
 the complete symbol-scoped payload before retaining it, and records the
 documented Eastmoney source URI
-`http://guba.eastmoney.com/rank/stock?code=000665`, source field order, rate
+`https://guba.eastmoney.com/rank/stock?code=000665`, source field order, rate
 units/scaling, row counts and observed date bounds for cache replay. It rejects
 missing/extra/reordered fields, invalid or duplicate/descending dates, a
 non-matching market-prefixed A-share identity, non-positive/non-integer ranks

@@ -20014,7 +20014,7 @@ def test_hot_rank_detail_fetch_uses_documented_symbol_scoped_endpoint():
     assert record.response_metadata["upstream_row_count"] == 366
     assert record.response_metadata["entity_row_count"] == 366
     assert record.response_metadata["entity_rows_selected"] is True
-    assert record.source_uri == "http://guba.eastmoney.com/rank/stock?code=000665"
+    assert record.source_uri == "https://guba.eastmoney.com/rank/stock?code=000665"
 
 
 @pytest.mark.parametrize(

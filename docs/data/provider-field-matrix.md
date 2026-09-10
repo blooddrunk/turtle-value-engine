@@ -764,7 +764,7 @@ percent rates are divided by 100 into fractions by the official adapter.
 The provider selects this endpoint only under `MARKET_ACTIVITY` with explicit
 `view=hot_rank_detail`, validates the complete symbol-scoped response before
 retaining it, and preserves the documented Eastmoney source URI
-`http://guba.eastmoney.com/rank/stock?code=000665`. Dates must be valid ISO
+`https://guba.eastmoney.com/rank/stock?code=000665`. Dates must be valid ISO
 dates in strict ascending order, the code must match the requested
 market-prefixed A-share identity, ranks must be positive integers and follower
 ratios must be finite fractions in `[0, 1]`. The checked-in official snapshot

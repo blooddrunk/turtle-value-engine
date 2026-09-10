@@ -177,7 +177,7 @@ _SOURCE_URIS = {
     "stock_comment_detail_zlkp_jgcyd_em": "https://data.eastmoney.com/stockcomment/stock/600000.html",
     "stock_hot_rank_em": "https://guba.eastmoney.com/rank/",
     "stock_hot_rank_latest_em": "https://guba.eastmoney.com/rank/stock?code=000665",
-    "stock_hot_rank_detail_em": "http://guba.eastmoney.com/rank/stock?code=000665",
+    "stock_hot_rank_detail_em": "https://guba.eastmoney.com/rank/stock?code=000665",
     "stock_hk_hot_rank_detail_em": "https://guba.eastmoney.com/rank/stock?code=HK_00700",
     "stock_hk_hot_rank_latest_em": "https://guba.eastmoney.com/rank/stock?code=HK_00700",
     "stock_zh_ab_comparison_em": "https://quote.eastmoney.com/center/gridlist.html#ab_comparison",

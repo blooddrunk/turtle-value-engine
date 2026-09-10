@@ -868,7 +868,7 @@ symbol-scoped payload before retaining it, including strict dates, matching
 market-prefixed identity, positive integer rank and finite follower ratios;
 the documented percent rates are divided by 100 into fractions. The checked-in
 official snapshot uses the documented Eastmoney source URI
-`http://guba.eastmoney.com/rank/stock?code=000665`, contains 366 rows from
+`https://guba.eastmoney.com/rank/stock?code=000665`, contains 366 rows from
 `2025-09-11` through `2026-09-11`, and has no selected/non-selected universe
 filter because the request is already listing-scoped. Row counts, field order,
 units, request symbol, source URI and date bounds are retained for cache replay.
