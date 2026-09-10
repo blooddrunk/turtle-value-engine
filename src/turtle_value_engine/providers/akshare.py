@@ -26,8 +26,9 @@ A+H comparison,
 intraday-trade, chip-distribution, Tencent
 daily-history and Tencent latest-trading-day tick, Sina minute-history,
 intraday-history, H-share intraday-history, pre-market-history, five-level bid-ask
-and Dragon-Tiger market-activity detail/statistics/institution-statistics raw
-slices are also available. The A-share dividend-distribution detail and
+Xueqiu individual-spot quote and Dragon-Tiger market-activity
+detail/statistics/institution-statistics raw slices are also available. The
+A-share dividend-distribution detail and
 new-stock-board raw slices are also available. The A-share CNINFO IPO-summary
 and Eastmoney individual-notice raw slices are also available.
 The A-share Eastmoney top-ten, top-ten-tradable-shareholder and
@@ -78,9 +79,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "70"
+AKSHARE_ADAPTER_VERSION = "71"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "71"
+AKSHARE_MAPPING_VERSION = "72"
 
 
 class ListingMarket(StrEnum):
@@ -136,6 +137,7 @@ _SOURCE_URIS = {
     "stock_hk_spot_em": "http://quote.eastmoney.com/center/gridlist.html#hk_stocks",
     "stock_hk_spot": "http://stock.finance.sina.com.cn/hkstock/",
     "stock_zh_ah_spot_em": "https://quote.eastmoney.com/center/gridlist.html#ah_comparison",
+    "stock_individual_spot_xq": "https://xueqiu.com/S/SH513520",
     "stock_tfp_em": "https://data.eastmoney.com/tfpxx/",
     "stock_zh_a_hist": "https://quote.eastmoney.com/concept/",
     "stock_cyq_em": "https://quote.eastmoney.com/concept/sz000001.html",
@@ -310,6 +312,61 @@ _MARKET_QUOTE_AH_COMPARISON_NUMERIC_FIELDS = (
     "比价",
     "溢价",
 )
+
+_MARKET_QUOTE_XQ_PARAMETER_NAMES = frozenset({"view"})
+_MARKET_QUOTE_XQ_VIEW = "xueqiu_spot"
+_MARKET_QUOTE_XQ_ITEMS = frozenset(
+    {
+        "代码",
+        "名称",
+        "交易所",
+        "货币",
+        "时间",
+        "现价",
+        "今开",
+        "昨收",
+        "最高",
+        "最低",
+        "涨停",
+        "跌停",
+        "涨跌",
+        "涨幅",
+        "振幅",
+        "均价",
+        "成交量",
+        "成交额",
+        "周转率",
+        "流通股",
+        "流通值",
+        "资产净值/总市值",
+        "基金份额/总股本",
+        "市净率",
+        "市盈率(动)",
+        "市盈率(静)",
+        "市盈率(TTM)",
+        "市销率",
+        "每股收益",
+        "每股净资产",
+        "股息(TTM)",
+        "股息率(TTM)",
+        "今年以来涨幅",
+        "52周最高",
+        "52周最低",
+        "净资产中的商誉",
+        "最小交易单位",
+        "成立日期",
+        "发行日期",
+        "净值日期",
+        "单位净值",
+        "累计净值",
+        "参考净值",
+        "溢价率",
+    }
+)
+_MARKET_QUOTE_XQ_TEXT_ITEMS = frozenset(
+    {"代码", "名称", "交易所", "货币", "成立日期", "发行日期", "净值日期", "时间"}
+)
+_MARKET_QUOTE_XQ_REQUIRED_ITEMS = frozenset({"代码", "名称", "现价", "时间"})
 
 _MARKET_HISTORY_INTRADAY_PARAMETER_NAMES = frozenset(
     {"view", "start_date", "end_date", "period", "adjust"}
@@ -970,6 +1027,18 @@ class AKShareProvider(StructuredDataProvider):
                 retryable=False,
             )
         if (
+            request.category is DataCategory.MARKET_QUOTE
+            and request.parameters.get("view") == _MARKET_QUOTE_XQ_VIEW
+            and listing.market is not ListingMarket.A
+        ):
+            raise ProviderRequestError(
+                "the AKShare Xueqiu individual-spot endpoint supports A-share "
+                "listings only",
+                provider=self.identity,
+                request=request,
+                retryable=False,
+            )
+        if (
             request.category is DataCategory.MARKET_HISTORY
             and request.parameters.get("view")
             in (
@@ -1252,6 +1321,33 @@ class AKShareProvider(StructuredDataProvider):
             response_metadata["market_quote_view"] = _MARKET_QUOTE_BID_ASK_VIEW
             response_metadata["upstream_symbol"] = kwargs["symbol"]
             response_metadata["snapshot_scope"] = "current_bid_ask_snapshot"
+        elif (
+            request.category is DataCategory.MARKET_QUOTE
+            and endpoint.name == "stock_individual_spot_xq"
+        ):
+            rows = _table_rows(payload, provider=self.identity, request=request)
+            observation_time = _validate_market_quote_xq_provider_rows(
+                rows,
+                listing,
+                provider=self.identity,
+                request=request,
+            )
+            response_metadata["upstream_row_count"] = len(rows)
+            response_metadata["entity_row_count"] = len(rows)
+            response_metadata["entity_rows_selected"] = True
+            response_metadata["listing_scoped_request"] = True
+            response_metadata["row_filtering"] = "upstream"
+            response_metadata["market_quote_view"] = _MARKET_QUOTE_XQ_VIEW
+            response_metadata["upstream_symbol"] = kwargs["symbol"]
+            response_metadata["snapshot_scope"] = "current_quote_snapshot"
+            response_metadata["observation_time_field"] = "时间"
+            response_metadata["observation_datetime"] = observation_time.isoformat(
+                sep=" "
+            )
+            response_metadata["date_binding"] = "row_only"
+            response_metadata["price_field"] = "现价"
+            response_metadata["item_field"] = "item"
+            response_metadata["value_field"] = "value"
         elif (
             request.category is DataCategory.MARKET_QUOTE
             and endpoint.name == "stock_zh_ah_spot_em"
@@ -2778,6 +2874,9 @@ class AKShareProvider(StructuredDataProvider):
             market_quote_ah_comparison_requested=(
                 request.parameters.get("view") == _MARKET_QUOTE_AH_COMPARISON_VIEW
             ),
+            market_quote_xq_requested=(
+                request.parameters.get("view") == _MARKET_QUOTE_XQ_VIEW
+            ),
             market_quote_bid_ask_requested=(
                 "view" in request.parameters
             ),
@@ -3405,6 +3504,37 @@ class AKShareNormalizer:
                 # stable observation timestamp. Its latest-price row is kept
                 # as raw evidence rather than promoted to the canonical quote.
                 normalizer_flags.add("AKSHARE_BID_ASK_RAW_ONLY")
+            elif (
+                record.request.category is DataCategory.MARKET_QUOTE
+                and record.response_metadata.get("endpoint")
+                == "stock_individual_spot_xq"
+            ):
+                _validate_market_quote_xq_normalizer_scope(record, listing, rows)
+                item_values = {
+                    str(row["item"]).strip(): row["value"]
+                    for row in rows
+                }
+                field = "current_price" if primary else "listing_current_price"
+                price_value = _number_value(item_values.get("现价"), field=field)
+                add_fact(
+                    record,
+                    evidence,
+                    field=field,
+                    value=price_value,
+                    period=as_of_period,
+                    currency=_currency_for(listing.market),
+                    unit="price_per_share",
+                )
+                if price_value is None and primary:
+                    missing_fields.add("current_price")
+                add_fact(
+                    record,
+                    evidence,
+                    field="market_quote_timestamp",
+                    value=_text_value(item_values["时间"]),
+                    period=as_of_period,
+                    count_coverage=False,
+                )
             elif record.request.category is DataCategory.MARKET_QUOTE:
                 row = _single_normalization_row(rows, record)
                 field = "current_price" if primary else "listing_current_price"
@@ -4773,6 +4903,7 @@ def _endpoint_candidates(
     market_activity_hot_rank_requested: bool = False,
     market_activity_new_stock_requested: bool = False,
     market_quote_ah_comparison_requested: bool = False,
+    market_quote_xq_requested: bool = False,
     market_quote_bid_ask_requested: bool = False,
     market_history_intraday_requested: bool = False,
     market_history_hk_intraday_requested: bool = False,
@@ -4817,6 +4948,10 @@ def _endpoint_candidates(
     if category is DataCategory.MARKET_QUOTE:
         if market_quote_ah_comparison_requested:
             return ("stock_zh_ah_spot_em",)
+        if market_quote_xq_requested:
+            if market is ListingMarket.A:
+                return ("stock_individual_spot_xq",)
+            return ()
         if market is ListingMarket.A:
             if market_quote_bid_ask_requested:
                 return ("stock_bid_ask_em",)
@@ -5017,6 +5152,29 @@ def _market_quote_kwargs(
     listing: _ListingRef,
     request: ProviderRequest,
 ) -> dict[str, object]:
+    if endpoint_name == "stock_individual_spot_xq":
+        if listing.market is not ListingMarket.A:
+            raise ProviderRequestError(
+                "the AKShare Xueqiu individual-spot endpoint supports A-share listings only",
+                request=request,
+                retryable=False,
+            )
+        unknown = sorted(set(request.parameters) - _MARKET_QUOTE_XQ_PARAMETER_NAMES)
+        if unknown:
+            raise ProviderRequestError(
+                "unsupported AKShare Xueqiu individual-spot parameter(s): "
+                + ", ".join(unknown),
+                request=request,
+                retryable=False,
+            )
+        if request.parameters.get("view") != _MARKET_QUOTE_XQ_VIEW:
+            raise ProviderRequestError(
+                "the AKShare Xueqiu individual-spot endpoint requires "
+                f"view={_MARKET_QUOTE_XQ_VIEW!r}",
+                request=request,
+                retryable=False,
+            )
+        return {"symbol": listing.canonical_id}
     if endpoint_name == "stock_zh_ah_spot_em":
         unknown = sorted(
             set(request.parameters) - _MARKET_QUOTE_AH_COMPARISON_PARAMETER_NAMES
@@ -7301,6 +7459,138 @@ def _validate_bid_ask_provider_rows(
             provider=provider,
             request=request,
         )
+
+
+def _market_quote_xq_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef | None = None,
+) -> tuple[str | None, datetime | None]:
+    """Return a strict-schema error and observation time for one Xueqiu quote."""
+
+    expected_fields = {"item", "value"}
+    seen_items: set[str] = set()
+    observation_time: datetime | None = None
+    for index, row in enumerate(rows):
+        missing = sorted(expected_fields - set(row))
+        unexpected = sorted(set(row) - expected_fields)
+        if missing:
+            return (
+                f"Xueqiu individual-spot row {index} is missing field(s): "
+                + ", ".join(missing),
+                None,
+            )
+        if unexpected:
+            return (
+                f"Xueqiu individual-spot row {index} contains unsupported field(s): "
+                + ", ".join(unexpected),
+                None,
+            )
+
+        item = row["item"]
+        if not isinstance(item, str) or not item.strip():
+            return (
+                f"Xueqiu individual-spot row {index} item must be a non-empty string",
+                None,
+            )
+        if item != item.strip():
+            return (
+                f"Xueqiu individual-spot row {index} item must match the documented name exactly",
+                None,
+            )
+        if item not in _MARKET_QUOTE_XQ_ITEMS:
+            return (
+                f"Xueqiu individual-spot row {index} item {item!r} is not documented",
+                None,
+            )
+        if item in seen_items:
+            return (
+                f"Xueqiu individual-spot response has duplicate item {item!r}",
+                None,
+            )
+        seen_items.add(item)
+
+        value = row["value"]
+        if item in _MARKET_QUOTE_XQ_TEXT_ITEMS:
+            if value is not None and (not isinstance(value, str) or not value.strip()):
+                return (
+                    f"Xueqiu individual-spot item {item!r} must be a non-empty string or null",
+                    None,
+                )
+            if item in {"代码", "名称", "时间"} and (
+                not isinstance(value, str) or not value.strip()
+            ):
+                return (
+                    f"Xueqiu individual-spot item {item!r} must be a non-empty string",
+                    None,
+                )
+            if item == "时间" and value is not None:
+                observation_time = _intraday_history_timestamp(value)
+                if observation_time is None:
+                    return (
+                        "Xueqiu individual-spot item '时间' must be a valid "
+                        "YYYY-MM-DD HH:MM:SS timestamp",
+                        None,
+                    )
+            if item == "代码" and value is not None:
+                if listing is not None and value.upper() != listing.canonical_id:
+                    return (
+                        "Xueqiu individual-spot item '代码' "
+                        f"{value!r} does not match requested listing "
+                        f"{listing.canonical_id!r}",
+                        None,
+                    )
+        elif value is not None:
+            if isinstance(value, bool) or not isinstance(value, Real):
+                return (
+                    f"Xueqiu individual-spot item {item!r} must be numeric or null",
+                    None,
+                )
+            try:
+                numeric = float(value)
+            except (OverflowError, TypeError, ValueError):
+                return (
+                    f"Xueqiu individual-spot item {item!r} must be numeric or null",
+                    None,
+                )
+            if not math.isfinite(numeric):
+                return (
+                    f"Xueqiu individual-spot item {item!r} must be finite or null",
+                    None,
+                )
+
+    missing_items = sorted(_MARKET_QUOTE_XQ_REQUIRED_ITEMS - seen_items)
+    if missing_items:
+        return (
+            "Xueqiu individual-spot response is missing item(s): "
+            + ", ".join(missing_items),
+            None,
+        )
+    if observation_time is None:
+        return (
+            "Xueqiu individual-spot response is missing a valid 时间 observation",
+            None,
+        )
+    return None, observation_time
+
+
+def _validate_market_quote_xq_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> datetime:
+    """Validate the symbol-scoped Xueqiu response before storage."""
+
+    message, observation_time = _market_quote_xq_validation_message(rows, listing)
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message}",
+            provider=provider,
+            request=request,
+        )
+    assert observation_time is not None
+    return observation_time
 
 
 def _market_quote_ah_comparison_validation_message(
@@ -11464,6 +11754,85 @@ def _validate_market_quote_ah_comparison_normalizer_scope(
     message = _market_quote_ah_comparison_validation_message(rows, listing)
     if message is not None:
         raise ProviderNormalizationError(message)
+
+
+def _validate_market_quote_xq_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> datetime:
+    """Validate the replay scope of a symbol-scoped Xueqiu quote."""
+
+    if listing.market is not ListingMarket.A:
+        raise ProviderNormalizationError(
+            "AKShare Xueqiu individual-spot quote supports A-share listings only"
+        )
+    if record.response_metadata.get("endpoint") != "stock_individual_spot_xq":
+        raise ProviderNormalizationError(
+            "Xueqiu individual-spot record must come from stock_individual_spot_xq"
+        )
+    if record.source_uri != _SOURCE_URIS["stock_individual_spot_xq"]:
+        raise ProviderNormalizationError(
+            "Xueqiu individual-spot source URI does not match the documented endpoint"
+        )
+    try:
+        upstream_kwargs = _market_quote_kwargs(
+            "stock_individual_spot_xq",
+            listing,
+            record.request,
+        )
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+
+    message, observation_time = _market_quote_xq_validation_message(rows, listing)
+    if message is not None:
+        raise ProviderNormalizationError(message)
+    assert observation_time is not None
+
+    expected_metadata = {
+        "market": ListingMarket.A.value,
+        "listing_code": listing.code,
+        "market_quote_view": _MARKET_QUOTE_XQ_VIEW,
+        "upstream_symbol": upstream_kwargs["symbol"],
+        "listing_scoped_request": True,
+        "row_filtering": "upstream",
+        "snapshot_scope": "current_quote_snapshot",
+        "observation_time_field": "时间",
+        "date_binding": "row_only",
+        "price_field": "现价",
+        "item_field": "item",
+        "value_field": "value",
+        "upstream_row_count": len(rows),
+        "entity_row_count": len(rows),
+        "entity_rows_selected": True,
+    }
+    boolean_fields = {"listing_scoped_request", "entity_rows_selected"}
+    count_fields = {"upstream_row_count", "entity_row_count"}
+    for name, expected in expected_metadata.items():
+        actual = record.response_metadata.get(name)
+        if name in boolean_fields:
+            matches = isinstance(actual, bool) and actual is expected
+        elif name in count_fields:
+            matches = (
+                isinstance(actual, int)
+                and not isinstance(actual, bool)
+                and actual == expected
+            )
+        else:
+            matches = actual == expected
+        if not matches:
+            raise ProviderNormalizationError(
+                f"Xueqiu individual-spot response metadata {name!r} does not "
+                "match the requested replay scope"
+            )
+
+    expected_datetime = observation_time.isoformat(sep=" ")
+    if record.response_metadata.get("observation_datetime") != expected_datetime:
+        raise ProviderNormalizationError(
+            "Xueqiu individual-spot response observation datetime does not match "
+            "replayed rows"
+        )
+    return observation_time
 
 
 def _validate_market_activity_statistic_normalizer_rows(

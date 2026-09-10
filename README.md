@@ -608,6 +608,18 @@ snapshot for replay. The normalizer emits
 `AKSHARE_HOT_RANK_LATEST_RAW_ONLY`: provider popularity rank and timing remain
 raw evidence and do not become issuer cash-flow, shareholder-return,
 governance, valuation or canonical market facts.
+Phase 2.71 adds the distinct documented Xueqiu A-share individual-spot endpoint
+[`stock_individual_spot_xq`](https://akshare.akfamily.xyz/data/stock/stock.html),
+whose current official implementation is in
+[`stock_xq.py`](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_xq.py),
+under `MARKET_QUOTE` with explicit `view=xueqiu_spot`. It passes the derived
+market-prefixed symbol, accepts no credential or timeout fields in the
+provider request, validates the exact `item`/`value` row shape, documented item
+allowlist, A-share identity, numeric values and `时间` timestamp, and records
+the symbol-scoped snapshot for replay. The existing canonical quote contract
+maps only `现价` to `current_price` and `时间` to `market_quote_timestamp`; all
+other Xueqiu fields remain inside raw evidence. No calculation, gate, pipeline,
+CLI or input-loader contract is changed.
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

@@ -963,6 +963,35 @@ input-loader contracts. Popularity rank and provider timing alone do not
 establish issuer cash flow, shareholder return, governance severity or
 valuation.
 
+## Phase 2.71 A-share Xueqiu individual-spot quote slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_xq.py)
+document `stock_individual_spot_xq` as a symbol-scoped Xueqiu A-share quote
+endpoint. Its documented call accepts a market-prefixed `symbol` plus optional
+Xueqiu `token` and request `timeout`, and returns a two-column `item`/`value`
+table. The adapter derives the symbol from the canonical listing, accepts only
+`view=xueqiu_spot` in the provider request, and leaves credentials and timeout
+controls out of the persisted request/cache identity.
+
+The provider validates the exact two-field row shape, unique items, the
+documented item allowlist, requested A-share code, required name/current-price/
+timestamp items, finite numeric values and the `YYYY-MM-DD HH:MM:SS` quote time.
+The existing canonical quote contract applies narrowly: `现价` becomes
+`current_price` (or the existing secondary-listing quote field) and `时间`
+becomes `market_quote_timestamp`. No other Xueqiu item is normalized.
+
+| Raw upstream item | Phase 2 treatment |
+| --- | --- |
+| `代码`, `名称`, `时间` | Required symbol identity, display context and quote observation timestamp; identity and timestamp are validated at the provider boundary, while the timestamp is mapped only to the existing quote-timestamp fact. |
+| `现价` | Required numeric-or-null quote item; mapped to the existing `current_price` contract with the A-share currency and `price_per_share` unit. |
+| all other documented Xueqiu items | Retained in the opaque raw response after type/allowlist validation; they do not become market-cap, return, liquidity, valuation, dividend or financial facts. |
+| request `view=xueqiu_spot`, derived market-prefixed `symbol` | Explicit endpoint selection, A-share listing scope and current-quote replay boundary; optional Xueqiu credentials/timeouts are intentionally not accepted as provider request fields. |
+
+The slice does not change calculations, gates, pipeline, CLI or input-loader
+contracts. Only the existing quote fields are normalized; provider-specific
+Xueqiu names remain at the adapter/raw-evidence boundary.
+
 ## Phase 2.9 corporate-action raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)

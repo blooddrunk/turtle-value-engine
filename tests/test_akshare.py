@@ -104,6 +104,13 @@ class FakeAKShare:
     def stock_zh_a_spot_em(self):
         return self._return("stock_zh_a_spot_em", _fixture("a_quote.json"))
 
+    def stock_individual_spot_xq(self, *, symbol: str):
+        return self._return(
+            "stock_individual_spot_xq",
+            _fixture("a_xueqiu_spot.json"),
+            symbol=symbol,
+        )
+
     def stock_zh_ah_spot_em(self):
         return self._return("stock_zh_ah_spot_em", _fixture("ah_comparison.json"))
 
@@ -683,8 +690,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "70"
-    assert AKSHARE_MAPPING_VERSION == "71"
+    assert provider.identity.provider_version == "71"
+    assert AKSHARE_MAPPING_VERSION == "72"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -1952,6 +1959,277 @@ def test_a_bid_ask_cache_replay_does_not_call_upstream(tmp_path: Path):
     assert replay.mode is RetrievalMode.CACHE_REPLAY
     assert replay.record == live.record
     assert fake.calls == [("stock_bid_ask_em", {"symbol": "600000"})]
+
+
+def test_xueqiu_spot_fetch_uses_documented_symbol_and_maps_quote_contract():
+    fake = FakeAKShare()
+    request = _request(
+        DataCategory.MARKET_QUOTE,
+        "SH600000",
+        {"view": "xueqiu_spot"},
+    )
+    record = _provider(fake).fetch(request)
+
+    assert record.raw_payload == _fixture("a_xueqiu_spot.json")
+    assert fake.calls == [
+        ("stock_individual_spot_xq", {"symbol": "SH600000"}),
+    ]
+    assert record.response_metadata["endpoint"] == "stock_individual_spot_xq"
+    assert record.response_metadata["market"] == "A"
+    assert record.response_metadata["listing_code"] == "600000"
+    assert record.response_metadata["market_quote_view"] == "xueqiu_spot"
+    assert record.response_metadata["upstream_symbol"] == "SH600000"
+    assert record.response_metadata["listing_scoped_request"] is True
+    assert record.response_metadata["row_filtering"] == "upstream"
+    assert record.response_metadata["snapshot_scope"] == "current_quote_snapshot"
+    assert record.response_metadata["observation_time_field"] == "时间"
+    assert record.response_metadata["observation_datetime"] == "2026-09-09 15:00:00"
+    assert record.response_metadata["date_binding"] == "row_only"
+    assert record.response_metadata["price_field"] == "现价"
+    assert record.response_metadata["item_field"] == "item"
+    assert record.response_metadata["value_field"] == "value"
+    assert record.response_metadata["upstream_row_count"] == 13
+    assert record.response_metadata["entity_row_count"] == 13
+    assert record.response_metadata["entity_rows_selected"] is True
+    assert record.source_uri == "https://xueqiu.com/S/SH513520"
+
+
+@pytest.mark.parametrize(
+    ("entity_id", "parameters", "match"),
+    [
+        (
+            "SH600000",
+            {"view": "xueqiu_spot", "token": "not-persisted-here"},
+            "unsupported AKShare Xueqiu individual-spot parameter",
+        ),
+        (
+            "HK00700",
+            {"view": "xueqiu_spot"},
+            "Xueqiu individual-spot endpoint supports A-share listings only",
+        ),
+    ],
+)
+def test_xueqiu_spot_request_rejects_extra_parameters_and_wrong_market(
+    entity_id: str,
+    parameters: dict,
+    match: str,
+):
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError, match=match):
+        _provider(fake).fetch(
+            _request(DataCategory.MARKET_QUOTE, entity_id, parameters)
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("missing_item", "row 0 is missing field.*item"),
+        ("missing_value", "row 0 is missing field.*value"),
+        ("unsupported_item", "item .* is not documented"),
+        ("duplicate_item", "duplicate item"),
+        ("invalid_code", "item '代码'.*does not match requested listing"),
+        ("missing_name", r"response is missing item\(s\).*名称"),
+        ("invalid_numeric", "item '现价' must be numeric or null"),
+        ("invalid_time", "item '时间' must be a valid"),
+        ("whitespace_item", "item must match the documented name exactly"),
+        ("extra_field", "contains unsupported field"),
+    ],
+)
+def test_xueqiu_spot_response_validates_item_value_identity_and_types(
+    mutation: str,
+    match: str,
+):
+    payload = [dict(row) for row in _fixture("a_xueqiu_spot.json")]
+    if mutation == "missing_item":
+        payload[0].pop("item")
+    elif mutation == "missing_value":
+        payload[0].pop("value")
+    elif mutation == "unsupported_item":
+        payload[0]["item"] = "unexpected"
+    elif mutation == "duplicate_item":
+        payload[1]["item"] = payload[0]["item"]
+    elif mutation == "invalid_code":
+        payload[0]["value"] = "SZ600000"
+    elif mutation == "missing_name":
+        payload = [row for row in payload if row["item"] != "名称"]
+    elif mutation == "invalid_numeric":
+        payload[4]["value"] = "10.2"
+    elif mutation == "invalid_time":
+        payload[11]["value"] = "2026-09-09 15:00"
+    elif mutation == "whitespace_item":
+        payload[0]["item"] = "代码 "
+    else:
+        payload[0]["extra"] = "not documented"
+
+    class InvalidXueqiuSpot(FakeAKShare):
+        def stock_individual_spot_xq(self, *, symbol: str):
+            return self._return(
+                "stock_individual_spot_xq",
+                payload,
+                symbol=symbol,
+            )
+
+    with pytest.raises(ProviderResponseError, match=match):
+        _provider(InvalidXueqiuSpot()).fetch(
+            _request(
+                DataCategory.MARKET_QUOTE,
+                "SH600000",
+                {"view": "xueqiu_spot"},
+            )
+        )
+
+
+def test_xueqiu_spot_normalizes_only_the_existing_quote_contract():
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_QUOTE,
+            "SH600000",
+            {"view": "xueqiu_spot"},
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="xueqiu-spot-quote",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    values = {(fact.field, fact.period): fact.value for fact in normalized.facts}
+    assert values[("current_price", "AS_OF_2026-09-09")] == 10.2
+    assert values[("market_quote_timestamp", "AS_OF_2026-09-09")] == (
+        "2026-09-09 15:00:00"
+    )
+    assert normalized.flags == []
+    assert normalized.data_quality.critical_missing_fields == []
+    assert all("现价" not in fact.field for fact in normalized.facts)
+    assert all("总市值" not in fact.field for fact in normalized.facts)
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "endpoint",
+        "source_uri",
+        "market",
+        "listing_code",
+        "view",
+        "upstream_symbol",
+        "listing_scope",
+        "row_filtering",
+        "snapshot",
+        "observation_time_field",
+        "observation_datetime",
+        "date_binding",
+        "price_field",
+        "item_field",
+        "value_field",
+        "upstream_count",
+        "entity_count",
+        "selected",
+        "payload",
+    ],
+)
+def test_xueqiu_spot_normalizer_rejects_replayed_scope_mismatches(mutation: str):
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_QUOTE,
+            "SH600000",
+            {"view": "xueqiu_spot"},
+        )
+    )
+    payload = [dict(row) for row in record.raw_payload]
+    response_metadata = dict(record.response_metadata)
+    source_uri = record.source_uri
+    if mutation == "endpoint":
+        response_metadata["endpoint"] = "stock_zh_a_spot_em"
+    elif mutation == "source_uri":
+        source_uri = "https://example.invalid/xueqiu-spot"
+    elif mutation == "market":
+        response_metadata["market"] = "H"
+    elif mutation == "listing_code":
+        response_metadata["listing_code"] = "000001"
+    elif mutation == "view":
+        response_metadata["market_quote_view"] = "bid_ask"
+    elif mutation == "upstream_symbol":
+        response_metadata["upstream_symbol"] = "SZ600000"
+    elif mutation == "listing_scope":
+        response_metadata["listing_scoped_request"] = False
+    elif mutation == "row_filtering":
+        response_metadata["row_filtering"] = "provider"
+    elif mutation == "snapshot":
+        response_metadata["snapshot_scope"] = "current_bid_ask_snapshot"
+    elif mutation == "observation_time_field":
+        response_metadata["observation_time_field"] = "日期"
+    elif mutation == "observation_datetime":
+        response_metadata["observation_datetime"] = "2026-09-09 15:01:00"
+    elif mutation == "date_binding":
+        response_metadata["date_binding"] = "retrieval_only"
+    elif mutation == "price_field":
+        response_metadata["price_field"] = "最新价"
+    elif mutation == "item_field":
+        response_metadata["item_field"] = "key"
+    elif mutation == "value_field":
+        response_metadata["value_field"] = "amount"
+    elif mutation == "upstream_count":
+        response_metadata["upstream_row_count"] = 12
+    elif mutation == "entity_count":
+        response_metadata["entity_row_count"] = 12
+    elif mutation == "selected":
+        response_metadata["entity_rows_selected"] = False
+    else:
+        payload[4]["value"] = "not-a-price"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=source_uri,
+        response_metadata=response_metadata,
+    )
+
+    with pytest.raises(
+        ProviderNormalizationError,
+        match="market_quote must|Xueqiu individual-spot",
+    ):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-xueqiu-spot-scope",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_xueqiu_spot_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.MARKET_QUOTE,
+        "SH600000",
+        {"view": "xueqiu_spot"},
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [
+        ("stock_individual_spot_xq", {"symbol": "SH600000"}),
+    ]
 
 
 @pytest.mark.parametrize(
