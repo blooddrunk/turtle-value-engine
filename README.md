@@ -380,6 +380,14 @@ windows. Its full-universe per-listing activity counts, amount aggregates and
 trailing returns are validated and filtered to the requested A-share listing,
 then retained as raw evidence only; they do not become issuer cash-flow,
 shareholder-return, governance, market or valuation facts.
+Phase 2.50 adds the distinct documented Eastmoney
+[`stock_lhb_jgstatistic_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
+institution-seat tracking endpoint under the same category with explicit
+`view=institution_statistic` and the same documented period choices. Its
+full-universe per-listing institution buy/sell counts, amount aggregates and
+trailing returns are validated and filtered to the requested A-share listing,
+then retained as raw evidence only; they do not become issuer cash-flow,
+shareholder-return, governance, market or valuation facts.
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

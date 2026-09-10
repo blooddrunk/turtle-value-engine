@@ -1233,6 +1233,28 @@ not as-of calculation inputs. Live calls remain opt-in; tests use an injected
 client and a frozen fixture with cache replay, invalid-parameter,
 response-validation and replay-scope coverage.
 
+### Phase 2.50 — A-share Dragon-Tiger institution-statistic raw acquisition contract (COMPLETE)
+
+The mapping review now covers the distinct Eastmoney
+[`stock_lhb_jgstatistic_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
+endpoint and its [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_lhb_em.py).
+It accepts an explicit statistic window represented by the documented `symbol`
+choices `近一月`, `近三月`, `近六月` and `近一年`, and returns full-universe
+per-listing institution-seat tracking rows with Dragon-Tiger amount/count
+fields and trailing return context.
+
+The provider selects this boundary under the existing provider-neutral
+`MARKET_ACTIVITY` category only with `view=institution_statistic`, maps the
+explicit `period` to the upstream `symbol`, validates every returned listing
+code and filters the full-universe response to the requested A-share listing.
+The normalizer emits
+`AKSHARE_MARKET_ACTIVITY_INSTITUTION_STATISTICS_RAW_ONLY`; no issuer
+cash-flow, shareholder-return, governance, canonical market or valuation fact
+is admitted. The statistic window and trailing returns remain provider
+context, not as-of calculation inputs. Live calls remain opt-in; tests use an
+injected client and a frozen fixture with cache replay, invalid-parameter,
+response-validation and replay-scope coverage.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -1242,7 +1264,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.49 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.50 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -1450,7 +1472,7 @@ Phase 2 is active. Phase 1 remains frozen: changes to formulas, hard-gate
 semantics, schemas or `strict-v1` thresholds require a separately reviewed,
 versioned change.
 
-Phase 2.49 completes the next documented structured-data boundary while
+Phase 2.50 completes the next documented structured-data boundary while
 keeping share-change, repurchase and rights-issue period, status, unit and
 economic-scope questions unresolved, and keeping ownership-pledge holder,
 governance and economic-scope questions unresolved. The A-share
@@ -1495,6 +1517,13 @@ trailing returns are a provider-window summary rather than issuer accounting,
 shareholder-return, governance or canonical market facts. The explicit
 `view=stock_statistic` and `period` remain part of the replayable acquisition
 boundary.
+
+The A-share Dragon-Tiger institution-statistic response remains raw-only
+because its per-listing institution-seat counts, amount aggregates and
+trailing returns are a provider-window summary rather than issuer accounting,
+shareholder-return, governance or canonical market facts. The explicit
+`view=institution_statistic` and `period` remain part of the replayable
+acquisition boundary.
 
 The A-share business-composition snapshot remains raw-only because its
 overlapping product, industry and geographic rows do not establish a canonical

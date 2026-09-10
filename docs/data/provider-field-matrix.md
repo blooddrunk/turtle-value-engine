@@ -337,6 +337,33 @@ provider context rather than as-of facts.
 | `近1个月涨跌幅`, `近3个月涨跌幅`, `近6个月涨跌幅`, `近1年涨跌幅` | Trailing provider return context; it is not used as an as-of return, valuation input or calculation/gate fact. |
 | request `view=stock_statistic`, `period` | Explicit endpoint-selection and statistic-window replay scope; the full-universe response is filtered by listing before storage. |
 
+## Phase 2.50 A-share Dragon-Tiger institution-statistic raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_lhb_jgstatistic_em` as an Eastmoney full-universe endpoint
+with an explicit `symbol` window choice: `近一月`, `近三月`, `近六月` or `近一年`.
+The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_lhb_em.py)
+maps those choices to the upstream statistic-cycle filter and returns one
+institution-seat tracking row per listing.
+
+The provider selects this endpoint only for the provider-neutral
+`MARKET_ACTIVITY` request with `view=institution_statistic`, maps the explicit
+`period` to the upstream `symbol`, validates every returned listing code and
+filters the full universe to the requested A-share listing. The normalizer
+emits `AKSHARE_MARKET_ACTIVITY_INSTITUTION_STATISTICS_RAW_ONLY`; no issuer
+cash-flow, shareholder-return, governance, canonical market or valuation fact
+is admitted. The selected window and trailing returns remain provider context,
+not as-of calculation inputs.
+
+| Raw upstream item | Phase 2 treatment |
+| --- | --- |
+| `代码`, `名称` | Validated listing identity/name used to select the requested listing; no additional issuer fact is inferred. |
+| `收盘价`, `涨跌幅` | Raw market context; it is not promoted to canonical quote, history or valuation input. |
+| `龙虎榜成交金额`, `上榜次数` | Raw Dragon-Tiger institution-activity amount/count for the selected provider window; they are not issuer cash flow or a governance conclusion. |
+| `机构买入额`, `机构买入次数`, `机构卖出额`, `机构卖出次数`, `机构净买额` | Raw institution-seat amount/count fields; they do not establish beneficial ownership, shareholder return or issuer-level flow. |
+| `近1个月涨跌幅`, `近3个月涨跌幅`, `近6个月涨跌幅`, `近1年涨跌幅` | Trailing provider return context; it is not used as an as-of return, valuation input or calculation/gate fact. |
+| request `view=institution_statistic`, `period` | Explicit endpoint-selection and institution-statistic-window replay scope; the full-universe response is filtered by listing before storage. |
+
 ## Phase 2.9 corporate-action raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)

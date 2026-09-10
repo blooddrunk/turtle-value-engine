@@ -136,6 +136,13 @@ class FakeAKShare:
             symbol=symbol,
         )
 
+    def stock_lhb_jgstatistic_em(self, *, symbol: str):
+        return self._return(
+            "stock_lhb_jgstatistic_em",
+            _fixture("a_lhb_institution_statistic.json"),
+            symbol=symbol,
+        )
+
     def stock_cash_flow_sheet_by_report_em(self, **kwargs):
         return self._return(
             "stock_cash_flow_sheet_by_report_em",
@@ -501,8 +508,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "49"
-    assert AKSHARE_MAPPING_VERSION == "50"
+    assert provider.identity.provider_version == "50"
+    assert AKSHARE_MAPPING_VERSION == "51"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -8974,4 +8981,273 @@ def test_market_activity_statistic_cache_replay_does_not_call_upstream(tmp_path:
     assert replay.record == live.record
     assert fake.calls == [
         ("stock_lhb_stock_statistic_em", {"symbol": "近三月"}),
+    ]
+
+
+def test_market_activity_institution_statistic_fetch_uses_distinct_view_and_period():
+    fake = FakeAKShare()
+    request = _request(
+        DataCategory.MARKET_ACTIVITY,
+        "SH600000",
+        {"view": "institution_statistic", "period": "近三月"},
+    )
+    record = _provider(fake).fetch(request)
+
+    fixture = _fixture("a_lhb_institution_statistic.json")
+    assert record.raw_payload == [row for row in fixture if row["代码"] == "600000"]
+    assert fake.calls == [
+        ("stock_lhb_jgstatistic_em", {"symbol": "近三月"}),
+    ]
+    assert record.response_metadata["endpoint"] == "stock_lhb_jgstatistic_em"
+    assert record.response_metadata["upstream_row_count"] == 3
+    assert record.response_metadata["entity_row_count"] == 1
+    assert record.response_metadata["entity_rows_selected"] is True
+    assert record.response_metadata["listing_scoped_request"] is False
+    assert record.response_metadata["row_filtering"] == "provider"
+    assert record.response_metadata["market_activity_view"] == "institution_statistic"
+    assert record.response_metadata["statistic_period"] == "近三月"
+    assert record.response_metadata["upstream_symbol"] == "近三月"
+    assert record.response_metadata["date_binding"] == "request_period"
+    assert record.response_metadata["snapshot_scope"] == (
+        "requested_institution_statistic_period"
+    )
+    assert record.source_uri == "https://data.eastmoney.com/stock/jgstatistic.html"
+
+
+@pytest.mark.parametrize(
+    ("parameters", "match"),
+    [
+        (
+            {"period": "近三月"},
+            "requires view='stock_statistic'",
+        ),
+        (
+            {"view": "institution_statistic"},
+            "requires period",
+        ),
+        (
+            {"view": "institution_statistic", "period": "近二月"},
+            "period must be one of",
+        ),
+        (
+            {
+                "view": "institution_statistic",
+                "period": "近三月",
+                "start_date": "20240927",
+            },
+            "unsupported AKShare market-activity institution-statistic parameter",
+        ),
+    ],
+)
+def test_market_activity_institution_statistic_request_validates_view_period_and_parameters(
+    parameters: dict,
+    match: str,
+):
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError, match=match):
+        _provider(fake).fetch(
+            _request(DataCategory.MARKET_ACTIVITY, "SH600000", parameters)
+        )
+
+    assert fake.calls == []
+
+
+def test_market_activity_institution_statistic_request_is_a_share_only_before_upstream_call():
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError, match="A-share listings only"):
+        _provider(fake).fetch(
+            _request(
+                DataCategory.MARKET_ACTIVITY,
+                "HK00700",
+                {"view": "institution_statistic", "period": "近一月"},
+            )
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        (
+            "missing_code",
+            "market-activity-institution-statistic row without a listing code",
+        ),
+        (
+            "duplicate_code",
+            "duplicate market-activity-institution-statistic row",
+        ),
+    ],
+)
+def test_market_activity_institution_statistic_response_validates_listing_scope(
+    mutation: str,
+    match: str,
+):
+    class InvalidRows(FakeAKShare):
+        def stock_lhb_jgstatistic_em(self, *, symbol: str):
+            rows = _fixture("a_lhb_institution_statistic.json")
+            if mutation == "missing_code":
+                rows[0].pop("代码")
+            else:
+                rows.append(dict(rows[0]))
+            return self._return(
+                "stock_lhb_jgstatistic_em",
+                rows,
+                symbol=symbol,
+            )
+
+    with pytest.raises(ProviderResponseError, match=match):
+        _provider(InvalidRows()).fetch(
+            _request(
+                DataCategory.MARKET_ACTIVITY,
+                "SH600000",
+                {"view": "institution_statistic", "period": "近三月"},
+            )
+        )
+
+
+def test_market_activity_institution_statistic_with_no_matching_listing_is_empty():
+    class NoMatchingInstitutionStatistic(FakeAKShare):
+        def stock_lhb_jgstatistic_em(self, *, symbol: str):
+            return self._return(
+                "stock_lhb_jgstatistic_em",
+                [
+                    row
+                    for row in _fixture("a_lhb_institution_statistic.json")
+                    if row["代码"] == "000001"
+                ],
+                symbol=symbol,
+            )
+
+    record = _provider(NoMatchingInstitutionStatistic()).fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SH600000",
+            {"view": "institution_statistic", "period": "近三月"},
+        )
+    )
+
+    assert record.raw_payload == []
+    assert record.response_metadata["upstream_row_count"] == 1
+    assert record.response_metadata["entity_row_count"] == 0
+
+
+def test_market_activity_institution_statistic_is_raw_only_without_canonical_facts():
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SH600000",
+            {"view": "institution_statistic", "period": "近三月"},
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="market-activity-institution-statistic-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == [
+        "AKSHARE_MARKET_ACTIVITY_INSTITUTION_STATISTICS_RAW_ONLY"
+    ]
+    assert normalized.data_quality.critical_missing_fields == []
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "institution-seat" in normalized.data_quality.notes
+    assert "aggregate" in normalized.data_quality.notes
+    assert "issuer cash flow" in normalized.data_quality.notes
+    assert "canonical market metric" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        (
+            "entity",
+            "market-activity-institution-statistic row entity",
+        ),
+        (
+            "duplicate_code",
+            "market-activity-institution-statistic row has duplicate listing code",
+        ),
+        (
+            "metadata_period",
+            "market-activity-institution-statistic response period does not match",
+        ),
+        (
+            "metadata_view",
+            "market-activity-institution-statistic response view does not match",
+        ),
+    ],
+)
+def test_market_activity_institution_statistic_normalizer_rejects_replayed_scope_mismatches(
+    mutation: str,
+    match: str,
+):
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SH600000",
+            {"view": "institution_statistic", "period": "近三月"},
+        )
+    )
+    payload = [dict(row) for row in record.raw_payload]
+    response_metadata = dict(record.response_metadata)
+    if mutation == "entity":
+        payload[0]["代码"] = "000001"
+    elif mutation == "duplicate_code":
+        payload.append(dict(payload[0]))
+    elif mutation == "metadata_period":
+        response_metadata["statistic_period"] = "近一年"
+    else:
+        response_metadata["market_activity_view"] = "stock_statistic"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=record.source_uri,
+        response_metadata=response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match=match):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-market-activity-institution-statistic",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_market_activity_institution_statistic_cache_replay_does_not_call_upstream(
+    tmp_path: Path,
+):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.MARKET_ACTIVITY,
+        "SH600000",
+        {"view": "institution_statistic", "period": "近三月"},
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [
+        ("stock_lhb_jgstatistic_em", {"symbol": "近三月"}),
     ]
