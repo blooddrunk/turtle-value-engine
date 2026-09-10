@@ -694,6 +694,24 @@ periods and still requires primary-filing entity/scope reconciliation. No
 H-share counterpart or calculation, gate, pipeline, CLI or input-loader
 contract is changed.
 
+Phase 2.77 adds the next documented A-share Eastmoney goodwill-impairment
+forecast view, [`stock_sy_yq_em`](https://akshare.akfamily.xyz/data/stock/stock.html),
+under the same category with explicit `view=impairment_forecast` and a required
+`date=YYYYMMDD`. The current [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_sy_em.py)
+returns a date-filtered universe with the exact 14 fields for sequence, listing
+identity, change reason, latest/prior goodwill, expected-profit ranges and
+change ranges, prior-year profit, announcement date and market; its documented
+amount fields are primarily yuan and its change ranges are percent values. The adapter
+validates the full universe's exact shape, positive ascending sequence, nullable
+dates/numbers and text fields before filtering to the requested A-share code,
+then records the request-period and provider-filter scope for replay. The
+normalizer emits `AKSHARE_GOODWILL_FORECAST_RAW_ONLY`, leaves `goodwill` and
+`impairment` critically missing and creates no canonical accounting, forecast,
+profit, ratio or Business Quality fact because expected values and goodwill
+context still require primary-filing entity, period and reconciliation review.
+No H-share counterpart or calculation, gate, pipeline, CLI or input-loader
+contract is changed.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

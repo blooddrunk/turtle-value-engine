@@ -1137,6 +1137,35 @@ Business Quality fact. H-share goodwill coverage and filing-backed
 reconciliation remain unresolved. The response remains outside the
 calculation, gate, pipeline, CLI and input-loader contracts.
 
+## Phase 2.77 A-share Eastmoney goodwill-impairment forecast raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_sy_em.py)
+document `stock_sy_yq_em` as a date-filtered A-share Eastmoney goodwill-
+impairment forecast universe. The explicit adapter request is
+`GOODWILL_IMPAIRMENT` plus `view=impairment_forecast` and a required
+`date=YYYYMMDD`; the provider passes that date to the callable, validates the
+complete response, then retains only rows matching the requested A-share code.
+
+| Raw upstream item | Phase 2 treatment |
+| --- | --- |
+| `序号` | Required positive sequence; rows must be strictly ascending before listing selection. |
+| `股票代码`, `股票简称`, `业绩变动原因`, `交易市场` | Required listing/context fields; code identity is required for universe filtering, while text remains opaque raw evidence and may be null where the provider returns null. |
+| `最新商誉报告期`, `公告日期` | Nullable provider dates; validated when populated. `最新商誉报告期` is not silently substituted for the request's `REPORT_DATE` filter. |
+| `最新一期商誉`, `上年商誉` | Nullable goodwill context amounts documented primarily in yuan; raw evidence only, without filing-backed entity, accounting scope or canonical goodwill. |
+| `预计净利润-下限`, `预计净利润-上限`, `业绩变动幅度-下限`, `业绩变动幅度-上限`, `上年度同期净利润` | Nullable numeric forecast/prior-period context; documented amount fields are primarily yuan (`amount_unit=CNY`) and change-range fields are percent values (`ratio_unit=provider_reported_percent`), but remain raw evidence without canonical forecast, profit or ratio interpretation. |
+| request `view=impairment_forecast`, `date=YYYYMMDD` | Explicit endpoint routing and request-period binding to the upstream report-date filter; `listing_scoped_request=false`, `row_filtering=provider`, `entity_rows_selected=true`. |
+| date-filtered universe | Full 14-field schema is checked before matching rows are selected; upstream and selected row counts remain replay metadata. |
+
+The adapter rejects missing or unexpected fields, non-positive/non-ascending
+sequence values, invalid populated dates, non-finite or non-numeric numeric
+values and non-text context values. The normalizer emits
+`AKSHARE_GOODWILL_FORECAST_RAW_ONLY`, marks `goodwill` and `impairment` as
+critically missing and creates no canonical accounting, forecast, profit, ratio
+or Business Quality fact. H-share goodwill coverage and primary-filing
+reconciliation remain unresolved. The response remains outside the calculation,
+gate, pipeline, CLI and input-loader contracts.
+
 ## Phase 2.9 corporate-action raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)

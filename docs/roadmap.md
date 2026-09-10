@@ -1854,6 +1854,34 @@ goodwill coverage remains outside this slice. Live calls remain opt-in; tests
 use an injected client and a frozen fixture with cache replay, invalid-request,
 strict-response, raw-only and replay-scope coverage.
 
+### Phase 2.77 — A-share Eastmoney goodwill-impairment forecast raw acquisition contract (COMPLETE)
+
+The mapping review now covers the next distinct documented AKShare Eastmoney
+goodwill view, `stock_sy_yq_em`, under the existing
+`GOODWILL_IMPAIRMENT` category. The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+describes a required report-date `date` and the [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_sy_em.py)
+filters `REPORT_DATE` before returning the exact 14 fields `序号`, `股票代码`,
+`股票简称`, `业绩变动原因`, `最新商誉报告期`, `最新一期商誉`, `上年商誉`,
+`预计净利润-下限`, `预计净利润-上限`, `业绩变动幅度-下限`,
+`业绩变动幅度-上限`, `上年度同期净利润`, `公告日期` and `交易市场`.
+The documented amount fields are primarily yuan and the change-range fields
+are percent values; both remain provider-reported raw context.
+
+The provider selects this callable only with explicit
+`view=impairment_forecast`, passes the validated `date=YYYYMMDD`, validates
+the complete universe's exact schema, positive ascending sequence, nullable
+dates/numbers and text fields, then filters to the requested A-share code.
+Replay metadata distinguishes the request-period filter from the separate
+`最新商誉报告期` field and records the market-wide upstream scope plus
+provider row filtering. The normalizer emits
+`AKSHARE_GOODWILL_FORECAST_RAW_ONLY`, marks `goodwill` and `impairment` as
+critically missing and creates no canonical forecast, profit, accounting,
+ratio or Business Quality fact. Provider expectations and goodwill context
+still require primary-filing entity, period and reconciliation review; H-share
+goodwill coverage remains outside this slice. Live calls remain opt-in; tests
+use an injected client and a frozen fixture with cache replay, invalid-request,
+strict-response, raw-only and replay-scope coverage.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -1863,7 +1891,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.76 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.77 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -2085,7 +2113,17 @@ by `报告期`, records CNY/provider-ratio context and remains raw-only because
 aggregate annual/interim values do not establish listing accounting scope;
 `goodwill` and `impairment` remain critically missing pending primary-filing
 reconciliation. The milestone keeps H-share goodwill coverage and issuer-level
-accounting interpretation unresolved. The A-share
+accounting interpretation unresolved. Phase 2.77 adds the next documented
+A-share `stock_sy_yq_em` goodwill-impairment forecast view under
+`GOODWILL_IMPAIRMENT` with explicit `view=impairment_forecast` and a required
+`date=YYYYMMDD`. Its exact 14-field date-filtered universe is validated before
+listing selection, with positive ascending sequence, nullable dates/numbers,
+text checks, documented CNY/percent units and request-period/provider-filter
+replay metadata. The
+normalizer emits `AKSHARE_GOODWILL_FORECAST_RAW_ONLY`, leaves `goodwill` and
+`impairment` critically missing and creates no canonical forecast, profit,
+accounting or ratio fact pending primary-filing scope and reconciliation. H-
+share goodwill coverage remains unresolved. The A-share
 Tencent daily-history response is the dated-series exception among the recent
 market-history slices: it maps the existing daily-history extension facts,
 preserves volume as `shares` and amount as `CNY`, and retains its market-
@@ -2324,6 +2362,13 @@ The documented A-share goodwill-impairment response is retained under
 amounts, ratios, profit and announcement dates do not establish the canonical
 accounting entity, report-period scope or a filing-backed reconciliation. H-share
 coverage and filing-backed impairment interpretation remain unresolved.
+The documented A-share goodwill-impairment forecast response is retained under
+`AKSHARE_GOODWILL_FORECAST_RAW_ONLY` because its expected-profit ranges,
+change-rate bounds, prior-year profit, goodwill context and announcement date
+remain provider evidence rather than filing-backed canonical forecast, profit,
+goodwill or impairment facts. The request's `REPORT_DATE` filter is preserved
+as replay metadata, while `最新商誉报告期` remains a separate provider field;
+H-share coverage and primary-filing reconciliation remain unresolved.
 The documented Sina A/H ESG-rating response is retained under
 `AKSHARE_ESG_RATINGS_RAW_ONLY` because agency-specific scales, rating values,
 provider quarter labels and markers do not establish a comparable ESG score,
