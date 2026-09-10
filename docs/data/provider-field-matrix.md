@@ -786,6 +786,45 @@ The provider-specific A-share historical-hot-rank response remains outside the
 calculation, gate, pipeline, CLI and input-loader contracts. The normalizer
 emits `AKSHARE_HOT_RANK_DETAIL_RAW_ONLY` and creates no canonical facts.
 
+## Phase 2.89 A-share Eastmoney IPO-yield raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_dxsyl_em.py)
+document `stock_dxsyl_em` as a no-argument Eastmoney A-share IPO-yield
+universe at `https://data.eastmoney.com/xg/xg/dxsyl.html`. The official output
+order is exactly `序号`, `股票代码`, `股票简称`, `发行价`, `最新价`,
+`网上-发行中签率`, `网上-有效申购股数`, `网上-有效申购户数`, `网上-超额认购倍数`,
+`网下-配售中签率`, `网下-有效申购股数`, `网下-有效申购户数`, `网下-配售认购倍数`,
+`总发行数量`, `开盘溢价`, `首日涨幅` and `上市日期`.
+
+The provider exposes this callable only under `CORPORATE_ACTIONS` with
+explicit `view=ipo_yield`, passes no upstream arguments, validates the full
+universe and exact field order before filtering to the requested six-digit
+A-share code, and records the source URI, field order, documented units, row
+counts and listing-date bounds for replay. The checked-in official fixture
+contains three rows (`688801`, `301689` and `301699`), with one selected row
+and two non-selected rows. Rates and all other numeric values remain exactly
+as returned; no percentage rescaling or missing unit is invented.
+
+| Raw upstream item | Phase 2.89 treatment |
+| --- | --- |
+| `序号` | Required positive integer in the strictly ascending full-universe sequence; retained for raw ordering only. |
+| `股票代码` | Required exact six-digit A-share identity; used for conservative provider-boundary filtering and replay validation only. |
+| `股票简称` | Required non-empty display name; retained as raw entity context only. |
+| `发行价`, `最新价` | Finite numeric-or-null provider values; numeric units and whether `最新价` is a stable observation are not documented, so no canonical price fact is created. |
+| `网上-发行中签率`, `网下-配售中签率` | Finite provider-reported values documented as percent fields; raw values are preserved without converting to fractions or a canonical subscription metric. |
+| `网上-有效申购股数`, `网下-有效申购股数`, `总发行数量` | Finite provider-reported issue/subscription quantities; the endpoint does not establish a canonical share unit, settlement period or diluted-share scope. |
+| `网上-有效申购户数`, `网下-有效申购户数` | Finite provider-reported household counts; retained as raw participation context only. |
+| `网上-超额认购倍数`, `网下-配售认购倍数` | Finite provider-reported multiples; no canonical demand, return or valuation metric is derived. |
+| `开盘溢价`, `首日涨幅` | Finite provider-reported listing-day return context; no shareholder-return, price or valuation fact is inferred. |
+| `上市日期` | Valid date-or-null row-level IPO context; it is not promoted to canonical listing or accounting period. |
+| request `view=ipo_yield` | Explicit no-argument full-universe endpoint selector; `listing_scoped_request=false`, provider filtering, source URI, field order, documented units and full/selected row counts remain part of the cache replay boundary. |
+
+The normalizer emits `AKSHARE_IPO_YIELD_RAW_ONLY`, marks
+`share_issuance_cash` as critically missing and creates no canonical issuance,
+dilution, price, return or listing-date fact. The provider-specific response
+remains outside the calculation, gate, pipeline, CLI and input-loader contracts.
+
 ## Phase 2.63 A-share Eastmoney dividend-distribution detail raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)

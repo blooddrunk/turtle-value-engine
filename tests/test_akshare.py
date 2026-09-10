@@ -589,6 +589,9 @@ class FakeAKShare:
             symbol=symbol,
         )
 
+    def stock_dxsyl_em(self):
+        return self._return("stock_dxsyl_em", _fixture("a_ipo_yield.json"))
+
     def stock_cg_guarantee_cninfo(self, **kwargs):
         return self._return(
             "stock_cg_guarantee_cninfo",
@@ -807,8 +810,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "88"
-    assert AKSHARE_MAPPING_VERSION == "89"
+    assert provider.identity.provider_version == "89"
+    assert AKSHARE_MAPPING_VERSION == "90"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -11383,6 +11386,325 @@ def test_a_ipo_summary_cache_replay_does_not_call_upstream(tmp_path: Path):
     assert replay.mode is RetrievalMode.CACHE_REPLAY
     assert replay.record == live.record
     assert fake.calls == [("stock_ipo_summary_cninfo", {"symbol": "600000"})]
+
+
+def test_a_ipo_yield_fetch_validates_full_universe_before_filtering():
+    fake = FakeAKShare()
+    request = _request(
+        DataCategory.CORPORATE_ACTIONS,
+        "SH688801",
+        {"view": "ipo_yield"},
+    )
+    record = _provider(fake).fetch(request)
+
+    fixture = _fixture("a_ipo_yield.json")
+    assert record.raw_payload == [row for row in fixture if row["股票代码"] == "688801"]
+    assert fake.calls == [("stock_dxsyl_em", {})]
+    assert record.response_metadata["endpoint"] == "stock_dxsyl_em"
+    assert record.response_metadata["upstream_row_count"] == 3
+    assert record.response_metadata["entity_row_count"] == 1
+    assert record.response_metadata["entity_rows_selected"] is True
+    assert record.response_metadata["listing_scoped_request"] is False
+    assert record.response_metadata["row_filtering"] == "provider"
+    assert record.response_metadata["corporate_action_view"] == "ipo_yield"
+    assert record.response_metadata["action_type"] == "ipo_yield"
+    assert record.response_metadata["market_scope"] == "all_a_share_listings"
+    assert record.response_metadata["snapshot_scope"] == "historical_ipo_yield_dataset"
+    assert record.response_metadata["observation_date_field"] == "上市日期"
+    assert record.response_metadata["date_binding"] == "row_event_dates"
+    assert record.response_metadata["code_field"] == "股票代码"
+    assert record.response_metadata["field_count"] == 17
+    assert record.response_metadata["source_field_order"] == list(fixture[0])
+    assert record.response_metadata["documented_units"] == {
+        "网上-发行中签率": "percent",
+        "网上-有效申购户数": "households",
+        "网下-配售中签率": "percent",
+        "网下-有效申购户数": "households",
+    }
+    assert record.response_metadata["undocumented_numeric_units"] == {
+        "发行价": "not_documented",
+        "最新价": "not_documented",
+        "网上-有效申购股数": "not_documented",
+        "网上-超额认购倍数": "not_documented",
+        "网下-有效申购股数": "not_documented",
+        "网下-配售认购倍数": "not_documented",
+        "总发行数量": "not_documented",
+        "开盘溢价": "not_documented",
+        "首日涨幅": "not_documented",
+    }
+    assert record.response_metadata["listed_date_start"] == "2026-09-09"
+    assert record.response_metadata["listed_date_end"] == "2026-09-11"
+    assert record.source_uri == "https://data.eastmoney.com/xg/xg/dxsyl.html"
+
+
+@pytest.mark.parametrize(
+    ("entity_id", "parameters", "match"),
+    [
+        (
+            "SH688801",
+            {"view": "not-a-documented-view"},
+            "does not accept request parameters",
+        ),
+        (
+            "SH688801",
+            {"view": "ipo_yield", "start_date": "20240101"},
+            "unsupported AKShare IPO-yield parameter",
+        ),
+        ("HK00700", {"view": "ipo_yield"}, "A-share listings only"),
+    ],
+)
+def test_a_ipo_yield_request_validates_explicit_scope_before_upstream_call(
+    entity_id: str,
+    parameters: dict,
+    match: str,
+):
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError, match=match):
+        _provider(fake).fetch(
+            _request(DataCategory.CORPORATE_ACTIONS, entity_id, parameters)
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("missing_field", "missing field"),
+        ("extra_field", "unsupported field"),
+        ("reordered_fields", "official field order"),
+        ("wrong_code", "six-digit string"),
+        ("duplicate_code", "duplicate listing code"),
+        ("invalid_sequence", "positive integer"),
+        ("invalid_date", "上市日期.*valid date"),
+        ("invalid_numeric", "发行价.*numeric"),
+        ("invalid_name", "股票简称.*non-empty string"),
+        ("non_selected_invalid_numeric", "发行价.*numeric"),
+    ],
+)
+def test_a_ipo_yield_response_validates_documented_universe(
+    mutation: str,
+    match: str,
+):
+    class InvalidRows(FakeAKShare):
+        def stock_dxsyl_em(self):
+            rows = _fixture("a_ipo_yield.json")
+            if mutation == "missing_field":
+                rows[0].pop("发行价")
+            elif mutation == "extra_field":
+                rows[0]["unexpected"] = "not documented"
+            elif mutation == "reordered_fields":
+                rows[0] = dict(reversed(list(rows[0].items())))
+            elif mutation == "wrong_code":
+                rows[0]["股票代码"] = "SH688801"
+            elif mutation == "duplicate_code":
+                rows[1]["股票代码"] = rows[0]["股票代码"]
+            elif mutation == "invalid_sequence":
+                rows[0]["序号"] = 1.5
+            elif mutation == "invalid_date":
+                rows[0]["上市日期"] = "not-a-date"
+            elif mutation == "invalid_numeric":
+                rows[0]["发行价"] = "142.18"
+            elif mutation == "invalid_name":
+                rows[0]["股票简称"] = None
+            else:
+                rows[1]["发行价"] = "16.0"
+            return self._return("stock_dxsyl_em", rows)
+
+    with pytest.raises(ProviderResponseError, match=match):
+        _provider(InvalidRows()).fetch(
+            _request(
+                DataCategory.CORPORATE_ACTIONS,
+                "SH688801",
+                {"view": "ipo_yield"},
+            )
+        )
+
+
+def test_a_ipo_yield_with_no_matching_listing_is_an_empty_filtered_snapshot():
+    class NoIPOYield(FakeAKShare):
+        def stock_dxsyl_em(self):
+            return self._return("stock_dxsyl_em", _fixture("a_ipo_yield.json")[1:])
+
+    fake = NoIPOYield()
+    record = _provider(fake).fetch(
+        _request(
+            DataCategory.CORPORATE_ACTIONS,
+            "SH688801",
+            {"view": "ipo_yield"},
+        )
+    )
+
+    assert record.raw_payload == []
+    assert record.response_metadata["upstream_row_count"] == 2
+    assert record.response_metadata["entity_row_count"] == 0
+    assert record.response_metadata["entity_rows_selected"] is True
+    assert record.response_metadata["listing_scoped_request"] is False
+
+
+def test_a_ipo_yield_raw_record_is_not_promoted_to_issuance_or_share_facts():
+    record = _provider().fetch(
+        _request(
+            DataCategory.CORPORATE_ACTIONS,
+            "SH688801",
+            {"view": "ipo_yield"},
+        )
+    )
+
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="a-ipo-yield-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_IPO_YIELD_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == [
+        "share_issuance_cash",
+    ]
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "settled issuance-cash period" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "endpoint",
+        "source_uri",
+        "view",
+        "action_type",
+        "market_scope",
+        "listing_scope",
+        "filtering",
+        "snapshot",
+        "observation_date",
+        "date_binding",
+        "code_field",
+        "field_count",
+        "field_order",
+        "units",
+        "count",
+        "upstream_count",
+    ],
+)
+def test_a_ipo_yield_normalizer_rejects_replayed_scope_mismatches(mutation: str):
+    request = _request(
+        DataCategory.CORPORATE_ACTIONS,
+        "SH688801",
+        {"view": "ipo_yield"},
+    )
+    record = _provider().fetch(request)
+    response_metadata = dict(record.response_metadata)
+    source_uri = record.source_uri
+    if mutation == "endpoint":
+        response_metadata["endpoint"] = "stock_repurchase_em"
+    elif mutation == "source_uri":
+        source_uri = "https://example.invalid/ipo-yield"
+    elif mutation == "view":
+        response_metadata["corporate_action_view"] = "ipo_summary"
+    elif mutation == "action_type":
+        response_metadata["action_type"] = "ipo_summary"
+    elif mutation == "market_scope":
+        response_metadata["market_scope"] = "requested_listing"
+    elif mutation == "listing_scope":
+        response_metadata["listing_scoped_request"] = True
+    elif mutation == "filtering":
+        response_metadata["row_filtering"] = "normalizer"
+    elif mutation == "snapshot":
+        response_metadata["snapshot_scope"] = "current_snapshot"
+    elif mutation == "observation_date":
+        response_metadata["observation_date_field"] = "公告日期"
+    elif mutation == "date_binding":
+        response_metadata["date_binding"] = "retrieval_only"
+    elif mutation == "code_field":
+        response_metadata["code_field"] = "代码"
+    elif mutation == "field_count":
+        response_metadata["field_count"] = 16
+    elif mutation == "field_order":
+        response_metadata["source_field_order"] = list(
+            reversed(response_metadata["source_field_order"])
+        )
+    elif mutation == "units":
+        response_metadata["documented_units"] = {"网上-发行中签率": "ratio"}
+    elif mutation == "count":
+        response_metadata["entity_row_count"] = 99
+    else:
+        response_metadata["upstream_row_count"] = 0
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=record.raw_payload,
+        source_uri=source_uri,
+        response_metadata=response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-a-ipo-yield",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_a_ipo_yield_normalizer_rejects_replayed_invalid_rows():
+    record = _provider().fetch(
+        _request(
+            DataCategory.CORPORATE_ACTIONS,
+            "SH688801",
+            {"view": "ipo_yield"},
+        )
+    )
+    payload = [dict(row) for row in record.raw_payload]
+    payload[0]["上市日期"] = "not-a-date"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=record.source_uri,
+        response_metadata=record.response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match="上市日期.*valid date"):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="invalid-a-ipo-yield-row",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_a_ipo_yield_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.CORPORATE_ACTIONS,
+        "SH688801",
+        {"view": "ipo_yield"},
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [("stock_dxsyl_em", {})]
 
 
 def test_corporate_actions_with_no_matching_listing_is_an_empty_raw_snapshot():

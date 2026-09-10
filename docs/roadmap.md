@@ -2200,6 +2200,33 @@ request and market/parameter validation, complete response validation,
 raw-only normalization, cache replay and replay-scope rejection. No
 calculation, gate, pipeline, CLI or input-loader contract changes.
 
+### Phase 2.89 — A-share Eastmoney IPO-yield raw acquisition contract (COMPLETE)
+
+The mapping review now covers the distinct documented AKShare
+`stock_dxsyl_em` endpoint under the existing `CORPORATE_ACTIONS` category with
+explicit `view=ipo_yield`. The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_dxsyl_em.py)
+define a no-argument Eastmoney A-share IPO-yield universe at
+`https://data.eastmoney.com/xg/xg/dxsyl.html` with the exact 17-field order
+`序号`, `股票代码`, `股票简称`, `发行价`, `最新价`, `网上-发行中签率`,
+`网上-有效申购股数`, `网上-有效申购户数`, `网上-超额认购倍数`, `网下-配售中签率`,
+`网下-有效申购股数`, `网下-有效申购户数`, `网下-配售认购倍数`, `总发行数量`,
+`开盘溢价`, `首日涨幅` and `上市日期`.
+
+The provider validates the complete upstream response before filtering to the
+requested six-digit A-share code. It preserves the source order, provider
+numeric/null values, row-level listing dates, documented percent/household
+units, source URI and full/selected row counts in replay metadata. The checked-in
+fixture contains three official response rows for `688801`, `301689` and
+`301699`, with one selected row and two non-selected rows. The normalizer emits
+`AKSHARE_IPO_YIELD_RAW_ONLY`, marks `share_issuance_cash` critically missing
+and creates no issuance, dilution, price, return or listing-date fact because
+the endpoint does not establish a settled issuance-cash period, unit or
+diluted-share scope. Tests cover request/market validation, exact schema and
+field order, complete-universe validation before filtering, raw-only
+normalization, cache replay and replay-scope rejection. No calculation, gate,
+pipeline, CLI or input-loader contract changes.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -2209,7 +2236,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.88 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.89 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```

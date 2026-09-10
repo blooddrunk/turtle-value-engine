@@ -38,6 +38,7 @@ detail/statistics/institution-statistics raw slices are also available. The
 A-share Xueqiu, CNINFO and Tonghuashun company-profile raw slices are also
 available. The A-share dividend-distribution detail and
 new-stock-board raw slices are also available. The A-share CNINFO IPO-summary,
+Eastmoney IPO-yield,
 Eastmoney individual-notice, Eastmoney market-wide notice and Eastmoney
 shareholder-meeting raw slices are also available.
 The A-share Eastmoney top-ten, top-ten-tradable-shareholder and
@@ -88,9 +89,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "88"
+AKSHARE_ADAPTER_VERSION = "89"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "89"
+AKSHARE_MAPPING_VERSION = "90"
 
 
 class ListingMarket(StrEnum):
@@ -207,6 +208,7 @@ _SOURCE_URIS = {
     "stock_fhps_em": "https://data.eastmoney.com/yjfp/",
     "stock_fhps_detail_em": "https://data.eastmoney.com/yjfp/detail/300073.html",
     "stock_ipo_summary_cninfo": "https://webapi.cninfo.com.cn/#/company",
+    "stock_dxsyl_em": "https://data.eastmoney.com/xg/xg/dxsyl.html",
     "stock_zh_a_new_em": "https://quote.eastmoney.com/center/gridlist.html#newshares",
     "stock_hk_dividend_payout_em": "https://emweb.securities.eastmoney.com/PC_HKF10/pages/home/index.html",
     "stock_hk_fhpx_detail_ths": "https://stockpage.10jqka.com.cn/HK0700/bonus/",
@@ -264,6 +266,7 @@ _NO_ARGUMENT_ENDPOINTS = frozenset(
         "stock_zh_ah_spot_em",
         "stock_zh_a_st_em",
         "stock_repurchase_em",
+        "stock_dxsyl_em",
         "stock_esg_rate_sina",
         "stock_hold_management_detail_em",
         "stock_gddh_em",
@@ -1255,6 +1258,64 @@ _IPO_SUMMARY_NUMERIC_FIELDS = (
     "上网发行中签率",
 )
 _IPO_SUMMARY_TEXT_FIELDS = ("主承销商",)
+_IPO_YIELD_PARAMETER_NAMES = frozenset({"view"})
+_IPO_YIELD_VIEW = "ipo_yield"
+_IPO_YIELD_FIELDS = (
+    "序号",
+    "股票代码",
+    "股票简称",
+    "发行价",
+    "最新价",
+    "网上-发行中签率",
+    "网上-有效申购股数",
+    "网上-有效申购户数",
+    "网上-超额认购倍数",
+    "网下-配售中签率",
+    "网下-有效申购股数",
+    "网下-有效申购户数",
+    "网下-配售认购倍数",
+    "总发行数量",
+    "开盘溢价",
+    "首日涨幅",
+    "上市日期",
+)
+_IPO_YIELD_FIELD_SET = frozenset(_IPO_YIELD_FIELDS)
+_IPO_YIELD_DATE_FIELDS = ("上市日期",)
+_IPO_YIELD_NUMERIC_FIELDS = (
+    "发行价",
+    "最新价",
+    "网上-发行中签率",
+    "网上-有效申购股数",
+    "网上-有效申购户数",
+    "网上-超额认购倍数",
+    "网下-配售中签率",
+    "网下-有效申购股数",
+    "网下-有效申购户数",
+    "网下-配售认购倍数",
+    "总发行数量",
+    "开盘溢价",
+    "首日涨幅",
+)
+_IPO_YIELD_DOCUMENTED_UNITS = {
+    "网上-发行中签率": "percent",
+    "网上-有效申购户数": "households",
+    "网下-配售中签率": "percent",
+    "网下-有效申购户数": "households",
+}
+_IPO_YIELD_UNDOCUMENTED_UNITS = {
+    field: "not_documented"
+    for field in (
+        "发行价",
+        "最新价",
+        "网上-有效申购股数",
+        "网上-超额认购倍数",
+        "网下-有效申购股数",
+        "网下-配售认购倍数",
+        "总发行数量",
+        "开盘溢价",
+        "首日涨幅",
+    )
+}
 _EXTERNAL_GUARANTEES_PARAMETER_NAMES = frozenset({"start_date", "end_date"})
 _EXTERNAL_GUARANTEES_DEFAULT_START_DATE = "20180630"
 _EXTERNAL_GUARANTEES_DEFAULT_END_DATE = "20210927"
@@ -3238,6 +3299,44 @@ class AKShareProvider(StructuredDataProvider):
                 response_metadata["upstream_symbol"] = kwargs["symbol"]
                 response_metadata["snapshot_scope"] = "historical_ipo_summary"
                 response_metadata["date_binding"] = "row_dates"
+            elif endpoint.name == "stock_dxsyl_em":
+                listed_dates = _validate_ipo_yield_provider_rows(
+                    rows,
+                    provider=self.identity,
+                    request=request,
+                )
+                selected = _select_listing_rows(
+                    rows,
+                    listing,
+                    provider=self.identity,
+                    request=request,
+                    row_label="IPO-yield",
+                )
+                payload = selected
+                response_metadata["upstream_row_count"] = len(rows)
+                response_metadata["entity_row_count"] = len(selected)
+                response_metadata["entity_rows_selected"] = True
+                response_metadata["listing_scoped_request"] = False
+                response_metadata["row_filtering"] = "provider"
+                response_metadata["corporate_action_view"] = _IPO_YIELD_VIEW
+                response_metadata["action_type"] = "ipo_yield"
+                response_metadata["market_scope"] = "all_a_share_listings"
+                response_metadata["snapshot_scope"] = "historical_ipo_yield_dataset"
+                response_metadata["observation_date_field"] = "上市日期"
+                response_metadata["date_binding"] = "row_event_dates"
+                response_metadata["code_field"] = "股票代码"
+                response_metadata["field_count"] = len(_IPO_YIELD_FIELDS)
+                response_metadata["source_field_order"] = list(_IPO_YIELD_FIELDS)
+                response_metadata["documented_units"] = dict(_IPO_YIELD_DOCUMENTED_UNITS)
+                response_metadata["undocumented_numeric_units"] = dict(
+                    _IPO_YIELD_UNDOCUMENTED_UNITS
+                )
+                response_metadata["listed_date_start"] = (
+                    min(listed_dates).isoformat() if listed_dates else None
+                )
+                response_metadata["listed_date_end"] = (
+                    max(listed_dates).isoformat() if listed_dates else None
+                )
             elif endpoint.name == "stock_repurchase_em":
                 selected = _select_listing_rows(
                     rows,
@@ -4005,6 +4104,9 @@ class AKShareProvider(StructuredDataProvider):
             ),
             corporate_action_ipo_summary_requested=(
                 request.parameters.get("view") == _IPO_SUMMARY_VIEW
+            ),
+            corporate_action_ipo_yield_requested=(
+                request.parameters.get("view") == _IPO_YIELD_VIEW
             ),
             share_capital_date_requested=any(
                 name in request.parameters for name in ("start_date", "end_date")
@@ -5350,11 +5452,23 @@ class AKShareNormalizer:
                     _validate_ipo_summary_normalizer_scope(record, listing, rows)
                     missing_fields.add("share_issuance_cash")
                     normalizer_flags.add("AKSHARE_IPO_SUMMARY_RAW_ONLY")
+                elif endpoint_name == "stock_dxsyl_em":
+                    _validate_ipo_yield_normalizer_scope(record, listing, rows)
+                    missing_fields.add("share_issuance_cash")
+                    normalizer_flags.add("AKSHARE_IPO_YIELD_RAW_ONLY")
                 elif endpoint_name == "stock_allotment_cninfo":
                     _validate_corporate_action_normalizer_rows(rows, listing)
                     missing_fields.add("share_issuance_cash")
                     normalizer_flags.add("AKSHARE_ALLOTMENT_RAW_ONLY")
-                else:
+                elif endpoint_name == "stock_repurchase_em":
+                    try:
+                        _corporate_action_kwargs(
+                            "stock_repurchase_em",
+                            listing,
+                            record.request,
+                        )
+                    except ProviderRequestError as exc:
+                        raise ProviderNormalizationError(str(exc)) from exc
                     _validate_corporate_action_rows(rows, listing)
                     # The endpoint combines planned and completed repurchase
                     # fields and exposes an announcement/update date rather
@@ -5363,6 +5477,10 @@ class AKShareNormalizer:
                     # a recurrence claim.
                     missing_fields.add("buyback_cash")
                     normalizer_flags.add("AKSHARE_CORPORATE_ACTIONS_RAW_ONLY")
+                else:
+                    raise ProviderNormalizationError(
+                        "AKShare corporate-action record has an unsupported endpoint"
+                    )
             elif record.request.category is DataCategory.EXTERNAL_GUARANTEES:
                 if listing.market is not ListingMarket.A:
                     raise ProviderNormalizationError(
@@ -5883,6 +6001,13 @@ class AKShareNormalizer:
                 "evidence only: historical offering dates, proceeds, fees, share "
                 "quantities and underwriter context do not establish a settled "
                 "issuance-cash period, dilution or canonical share fact."
+            )
+        if "AKSHARE_IPO_YIELD_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented A-share Eastmoney IPO-yield response is retained "
+                "as raw evidence only: its IPO dates, provider-reported rates, "
+                "returns and issue quantities do not establish a settled "
+                "issuance-cash period, unit or diluted-share fact."
             )
         if "AKSHARE_OWNERSHIP_PLEDGE_RAW_ONLY" in normalizer_flags:
             notes += (
@@ -6507,6 +6632,7 @@ def _endpoint_candidates(
     statement_date_requested: bool = False,
     corporate_action_date_requested: bool = False,
     corporate_action_ipo_summary_requested: bool = False,
+    corporate_action_ipo_yield_requested: bool = False,
     share_capital_date_requested: bool = False,
     share_capital_restricted_release_requested: bool = False,
     share_capital_individual_info_requested: bool = False,
@@ -6761,6 +6887,8 @@ def _endpoint_candidates(
     if category is DataCategory.CORPORATE_ACTIONS:
         if corporate_action_ipo_summary_requested:
             return ("stock_ipo_summary_cninfo",)
+        if corporate_action_ipo_yield_requested:
+            return ("stock_dxsyl_em",)
         if corporate_action_date_requested:
             return ("stock_allotment_cninfo",)
         return ("stock_repurchase_em",)
@@ -8478,6 +8606,28 @@ def _corporate_action_kwargs(
                 retryable=False,
             )
         return {"symbol": listing.code}
+    if endpoint_name == "stock_dxsyl_em":
+        if listing.market is not ListingMarket.A:
+            raise ProviderRequestError(
+                "the AKShare IPO-yield endpoint supports A-share listings only",
+                request=request,
+                retryable=False,
+            )
+        unknown = sorted(set(request.parameters) - _IPO_YIELD_PARAMETER_NAMES)
+        if unknown:
+            raise ProviderRequestError(
+                "unsupported AKShare IPO-yield parameter(s): " + ", ".join(unknown),
+                request=request,
+                retryable=False,
+            )
+        if request.parameters.get("view") != _IPO_YIELD_VIEW:
+            raise ProviderRequestError(
+                "AKShare IPO-yield endpoint requires "
+                f"view={_IPO_YIELD_VIEW!r}",
+                request=request,
+                retryable=False,
+            )
+        return {}
     if endpoint_name == "stock_repurchase_em":
         _reject_unexpected_parameters(request)
         return {}
@@ -9507,6 +9657,159 @@ def _validate_ipo_summary_provider_rows(
     message = _ipo_summary_validation_message(rows, listing)
     if message is not None:
         raise ProviderResponseError(message, provider=provider, request=request)
+
+
+def _ipo_yield_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef | None = None,
+) -> tuple[str | None, list[date]]:
+    """Return a strict-schema error and listing dates for IPO-yield rows."""
+
+    seen_codes: set[str] = set()
+    previous_sequence: int | None = None
+    listed_dates: list[date] = []
+    for index, row in enumerate(rows):
+        missing = sorted(_IPO_YIELD_FIELD_SET - set(row))
+        if missing:
+            return (
+                f"A-share IPO-yield row {index} is missing field(s): "
+                + ", ".join(missing),
+                [],
+            )
+        unexpected = sorted(set(row) - _IPO_YIELD_FIELD_SET)
+        if unexpected:
+            return (
+                f"A-share IPO-yield row {index} contains unsupported field(s): "
+                + ", ".join(unexpected),
+                [],
+            )
+        if tuple(row) != _IPO_YIELD_FIELDS:
+            return (
+                f"A-share IPO-yield row {index} must preserve official field order",
+                [],
+            )
+
+        raw_code = row["股票代码"]
+        if not isinstance(raw_code, str) or re.fullmatch(r"\d{6}", raw_code.strip()) is None:
+            return (
+                f"A-share IPO-yield row {index} 股票代码 must be a six-digit string",
+                [],
+            )
+        row_code = _row_code(row, ListingMarket.A)
+        if row_code is None:
+            return f"A-share IPO-yield row {index} has no listing code", []
+        if listing is not None and row_code != listing.code:
+            return (
+                f"A-share IPO-yield row entity {row_code!r} does not match "
+                f"requested listing {listing.canonical_id!r}",
+                [],
+            )
+        if row_code in seen_codes:
+            return (
+                f"A-share IPO-yield response has duplicate listing code {row_code!r}",
+                [],
+            )
+        seen_codes.add(row_code)
+
+        name = row["股票简称"]
+        if not isinstance(name, str) or not name.strip():
+            return (
+                f"A-share IPO-yield field '股票简称' in row {index} must be a "
+                "non-empty string",
+                [],
+            )
+
+        sequence_value = row["序号"]
+        if isinstance(sequence_value, bool) or not isinstance(sequence_value, Real):
+            return (
+                f"A-share IPO-yield field '序号' in row {index} must be a "
+                "positive integer",
+                [],
+            )
+        try:
+            sequence_numeric = float(sequence_value)
+        except (OverflowError, TypeError, ValueError):
+            return (
+                f"A-share IPO-yield field '序号' in row {index} must be a "
+                "positive integer",
+                [],
+            )
+        if (
+            not math.isfinite(sequence_numeric)
+            or not sequence_numeric.is_integer()
+            or sequence_numeric < 1
+        ):
+            return (
+                f"A-share IPO-yield field '序号' in row {index} must be a "
+                "positive integer",
+                [],
+            )
+        sequence = int(sequence_numeric)
+        if previous_sequence is not None and sequence <= previous_sequence:
+            return (
+                "A-share IPO-yield response 序号 values must be strictly ascending",
+                [],
+            )
+        previous_sequence = sequence
+
+        for field in _IPO_YIELD_DATE_FIELDS:
+            value = row[field]
+            if value is None:
+                continue
+            if not isinstance(value, str):
+                return (
+                    f"A-share IPO-yield field {field!r} must be a valid date or null",
+                    [],
+                )
+            parsed = _parse_date_value(value)
+            if parsed is None:
+                return (
+                    f"A-share IPO-yield field {field!r} must be a valid date or null",
+                    [],
+                )
+            listed_dates.append(parsed)
+
+        for field in _IPO_YIELD_NUMERIC_FIELDS:
+            value = row[field]
+            if value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, Real):
+                return (
+                    f"A-share IPO-yield field {field!r} must be numeric or null",
+                    [],
+                )
+            try:
+                numeric = float(value)
+            except (OverflowError, TypeError, ValueError):
+                return (
+                    f"A-share IPO-yield field {field!r} must be numeric or null",
+                    [],
+                )
+            if not math.isfinite(numeric):
+                return (
+                    f"A-share IPO-yield field {field!r} must be finite or null",
+                    [],
+                )
+
+    return None, listed_dates
+
+
+def _validate_ipo_yield_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> list[date]:
+    """Validate the complete Eastmoney IPO-yield universe before filtering."""
+
+    message, listed_dates = _ipo_yield_validation_message(rows)
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message}",
+            provider=provider,
+            request=request,
+        )
+    return listed_dates
 
 
 def _bid_ask_validation_message(
@@ -14659,6 +14962,108 @@ def _validate_ipo_summary_normalizer_scope(
     message = _ipo_summary_validation_message(rows, listing)
     if message is not None:
         raise ProviderNormalizationError(message)
+
+
+def _validate_ipo_yield_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> None:
+    """Validate replayed A-share IPO-yield rows and full-universe scope."""
+
+    if record.response_metadata.get("endpoint") != "stock_dxsyl_em":
+        raise ProviderNormalizationError(
+            "AKShare A-share IPO-yield record must come from stock_dxsyl_em"
+        )
+    if record.source_uri != _SOURCE_URIS["stock_dxsyl_em"]:
+        raise ProviderNormalizationError(
+            "AKShare A-share IPO-yield source URI does not match the documented endpoint"
+        )
+    try:
+        _corporate_action_kwargs("stock_dxsyl_em", listing, record.request)
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+
+    expected_metadata = {
+        "market": ListingMarket.A.value,
+        "listing_code": listing.code,
+        "corporate_action_view": _IPO_YIELD_VIEW,
+        "action_type": "ipo_yield",
+        "market_scope": "all_a_share_listings",
+        "listing_scoped_request": False,
+        "row_filtering": "provider",
+        "snapshot_scope": "historical_ipo_yield_dataset",
+        "observation_date_field": "上市日期",
+        "date_binding": "row_event_dates",
+        "code_field": "股票代码",
+        "field_count": len(_IPO_YIELD_FIELDS),
+        "source_field_order": list(_IPO_YIELD_FIELDS),
+        "documented_units": dict(_IPO_YIELD_DOCUMENTED_UNITS),
+        "undocumented_numeric_units": dict(_IPO_YIELD_UNDOCUMENTED_UNITS),
+        "entity_rows_selected": True,
+        "entity_row_count": len(rows),
+    }
+    boolean_fields = {"listing_scoped_request", "entity_rows_selected"}
+    count_fields = {"field_count", "entity_row_count"}
+    for name, expected in expected_metadata.items():
+        actual = record.response_metadata.get(name)
+        if name in boolean_fields:
+            matches = isinstance(actual, bool) and actual is expected
+        elif name in count_fields:
+            matches = (
+                isinstance(actual, int)
+                and not isinstance(actual, bool)
+                and actual == expected
+            )
+        else:
+            matches = actual == expected
+        if not matches:
+            raise ProviderNormalizationError(
+                f"A-share IPO-yield response metadata {name!r} does not match "
+                "the requested replay scope"
+            )
+
+    upstream_row_count = record.response_metadata.get("upstream_row_count")
+    if (
+        isinstance(upstream_row_count, bool)
+        or not isinstance(upstream_row_count, int)
+        or upstream_row_count < len(rows)
+    ):
+        raise ProviderNormalizationError(
+            "A-share IPO-yield response metadata 'upstream_row_count' does not "
+            "match the complete upstream response boundary"
+        )
+
+    message, row_dates = _ipo_yield_validation_message(rows, listing)
+    if message is not None:
+        raise ProviderNormalizationError(message)
+
+    parsed_bounds: dict[str, date | None] = {}
+    for field in ("listed_date_start", "listed_date_end"):
+        value = record.response_metadata.get(field)
+        if value is not None and (
+            not isinstance(value, str) or _parse_date_value(value) is None
+        ):
+            raise ProviderNormalizationError(
+                f"A-share IPO-yield response metadata {field!r} is not a valid date"
+            )
+        parsed_bounds[field] = _parse_date_value(value) if isinstance(value, str) else None
+    start_date = parsed_bounds["listed_date_start"]
+    end_date = parsed_bounds["listed_date_end"]
+    if start_date is not None and end_date is not None and start_date > end_date:
+        raise ProviderNormalizationError(
+            "A-share IPO-yield response metadata date bounds are reversed"
+        )
+    if row_dates and (
+        start_date is None
+        or end_date is None
+        or min(row_dates) < start_date
+        or max(row_dates) > end_date
+    ):
+        raise ProviderNormalizationError(
+            "A-share IPO-yield response metadata date bounds do not contain "
+            "the selected rows"
+        )
 
 
 def _validate_risk_warning_normalizer_rows(

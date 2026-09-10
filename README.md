@@ -878,6 +878,23 @@ issuer cash flow, shareholder return, governance, valuation or a canonical
 market metric. No calculation, gate, pipeline, CLI or input-loader contract
 changes.
 
+Phase 2.89 adds the distinct documented Eastmoney A-share IPO-yield endpoint
+[`stock_dxsyl_em`](https://akshare.akfamily.xyz/data/stock/stock.html), whose
+[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_dxsyl_em.py)
+returns the no-argument full universe at
+`https://data.eastmoney.com/xg/xg/dxsyl.html`. Under `CORPORATE_ACTIONS` with
+explicit `view=ipo_yield`, the adapter preserves the exact 17-field source
+order, provider-reported numeric values (including the documented percent and
+household fields), listing dates and nulls; it validates every upstream row,
+including six-digit codes, unique ascending sequence numbers, dates and finite
+numeric values, before filtering to the requested A-share listing. The checked-in
+fixture contains three official response rows with one selected and two
+non-selected codes, and records the 3-to-1 upstream/selected counts and date
+bounds for replay. The normalizer emits `AKSHARE_IPO_YIELD_RAW_ONLY`: IPO
+yield, issue quantities, prices, returns and listing dates do not establish a
+settled issuance-cash period, unit or diluted-share fact. No calculation, gate,
+pipeline, CLI or input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.
