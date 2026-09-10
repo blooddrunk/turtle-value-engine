@@ -1432,6 +1432,34 @@ response remains outside the calculation, gate, pipeline, CLI and input-loader
 contracts; filing-backed person identity, legal relationship and point-in-time
 interpretation remain outside this acquisition contract.
 
+## Phase 2.86 H-share Eastmoney historical stock-hot-rank raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hk_hot_rank_em.py)
+document `stock_hk_hot_rank_detail_em` as a symbol-scoped Eastmoney H-share
+historical-rank endpoint. The request uses an unprefixed five-digit `symbol`
+such as `00700`; the implementation posts `marketType=000003` to the historical
+H-share rank source and returns exactly `时间`, `排名` and `证券代码` in that
+order. The adapter exposes it only under `MARKET_ACTIVITY` with explicit
+`view=hk_hot_rank_detail`. The checked-in official response fixture contains
+120 rows for `00700` from `2026-05-15` through `2026-09-11`; the upstream call is
+already symbol-scoped, so selected/non-selected universe rows and adapter-side
+listing filtering do not apply.
+
+| Raw upstream item | Phase 2.86 treatment |
+| --- | --- |
+| `时间` | Required `YYYY-MM-DD` historical observation date; dates must be strictly ascending and remain row-level rank evidence, not a report or accounting period. |
+| `排名` | Required positive integer provider popularity rank; retained as raw rank context and not converted into a return, liquidity, valuation or canonical market metric. |
+| `证券代码` | Required exact five-digit H-share identity matching the requested symbol; used for response identity validation only. |
+| request `view=hk_hot_rank_detail`, `symbol` | Explicit H-share endpoint selector and unprefixed five-digit upstream symbol; `marketType=000003`, source field order, symbol-scoped request, row counts and observed date bounds remain replay metadata. |
+
+The provider validates the full symbol-scoped payload before retaining it and
+rejects missing/extra/reordered fields, invalid or duplicate dates, descending
+date order, wrong code identity and non-integer/non-positive ranks. The
+normalizer emits `AKSHARE_HK_HOT_RANK_DETAIL_RAW_ONLY`, creates no canonical
+facts and leaves the dated popularity observations outside the calculation,
+gate, pipeline, CLI and input-loader contracts.
+
 ## Phase 2.9 corporate-action raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)

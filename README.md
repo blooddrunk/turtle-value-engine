@@ -824,6 +824,22 @@ raw evidence and do not establish a diluted-share series, settled cash amount or
 governance judgment. No calculation, gate, pipeline, CLI or input-loader contract
 changes.
 
+Phase 2.86 adds the distinct documented Eastmoney H-share historical-hot-rank
+endpoint [`stock_hk_hot_rank_detail_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
+with explicit `view=hk_hot_rank_detail`. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hk_hot_rank_em.py)
+posts the unprefixed five-digit H-share symbol with `marketType=000003` and
+returns the exact three fields `时间`, `排名` and `证券代码` for recent historical
+dates. The adapter validates the complete symbol-scoped payload, including exact
+field order, ISO dates in strict ascending order, exact five-digit identity and
+positive integer rank, then records the upstream symbol, H-share market type,
+row counts, source field order and observed date bounds. The checked-in official
+response fixture for `00700` contains 120 rows from `2026-05-15` through
+`2026-09-11`; because the endpoint is already symbol-scoped, no universe row
+filter is applied. The normalizer emits
+`AKSHARE_HK_HOT_RANK_DETAIL_RAW_ONLY` and creates no canonical fact: dated
+provider popularity rank remains raw evidence only. No calculation, gate,
+pipeline, CLI or input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

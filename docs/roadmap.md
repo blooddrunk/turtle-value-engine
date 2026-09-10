@@ -2110,6 +2110,35 @@ market/parameter rejection, exact field order, type/date/range response
 failures, raw-only normalization, cache replay and replay-scope rejection. No
 calculation, gate, pipeline, CLI or input-loader contract changes.
 
+### Phase 2.86 — H-share Eastmoney historical stock-hot-rank raw acquisition contract (COMPLETE)
+
+The mapping review now covers the distinct documented AKShare Eastmoney
+`stock_hk_hot_rank_detail_em` endpoint under the existing `MARKET_ACTIVITY`
+category. The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hk_hot_rank_em.py)
+define an explicit H-share historical-rank call with an unprefixed five-digit
+`symbol`, provider `marketType=000003` and the exact output fields `时间`, `排名`
+and `证券代码`.
+
+The provider selects this callable only with explicit
+`view=hk_hot_rank_detail`, supports H-share listings only, passes the requested
+five-digit symbol, validates the complete symbol-scoped response before retaining
+all rows and records the upstream symbol, market type, source field order,
+row counts, strict date ordering and observed date bounds for cache replay. It
+rejects missing, extra or reordered fields, invalid dates, duplicate or
+descending dates, wrong H-share identity and non-positive/non-integer ranks.
+The checked-in official response fixture for `00700` contains 120 rows covering
+`2026-05-15` through `2026-09-11`; no universe-level selected/non-selected row
+filter is applicable because the upstream request is already symbol-scoped.
+
+The normalizer emits `AKSHARE_HK_HOT_RANK_DETAIL_RAW_ONLY` and creates no
+canonical fact: date-bound popularity rank and provider security identity remain
+raw evidence only and do not establish issuer cash flow, shareholder return,
+governance, valuation or a canonical market metric. Tests cover explicit request
+and market validation, exact response shape, date/identity/rank failures,
+raw-only normalization, cache replay and replay-scope rejection. No calculation,
+gate, pipeline, CLI or input-loader contract changes.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -2119,7 +2148,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.85 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.86 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
