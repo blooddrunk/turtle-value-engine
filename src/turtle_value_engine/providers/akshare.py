@@ -46,7 +46,7 @@ Eastmoney individual-notice, Eastmoney market-wide notice and Eastmoney
 shareholder-meeting raw slices are also available.
 The SSE and SZSE market-summary raw slices are also available.
 The SSE daily-deal overview raw slice is also available. The SZSE area-summary
-raw slice is also available.
+and sector-summary raw slices are also available.
 The A-share Eastmoney top-ten, top-ten-tradable-shareholder and
 top-ten-tradable-shareholder-detail raw slices are also available.
 Upstream column names are handled in this module and are never passed to the
@@ -95,9 +95,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "95"
+AKSHARE_ADAPTER_VERSION = "96"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "96"
+AKSHARE_MAPPING_VERSION = "97"
 
 
 class ListingMarket(StrEnum):
@@ -192,6 +192,10 @@ _SOURCE_URIS = {
     "stock_zh_ab_comparison_em": "https://quote.eastmoney.com/center/gridlist.html#ab_comparison",
     "stock_szse_summary": "https://www.szse.cn/market/overview/index.html",
     "stock_szse_area_summary": "https://www.szse.cn/market/overview/index.html",
+    "stock_szse_sector_summary": (
+        "https://docs.static.szse.cn/www/market/periodical/month/"
+        "W020220511355248518608.html"
+    ),
     "stock_sse_summary": "https://www.sse.com.cn/market/stockdata/statistic/",
     "stock_sse_deal_daily": "https://www.sse.com.cn/market/stockdata/overview/day/",
     "stock_zt_pool_em": "https://quote.eastmoney.com/ztb/detail#type=ztgc",
@@ -928,6 +932,54 @@ _MARKET_ACTIVITY_SZSE_AREA_SUMMARY_DOCUMENTED_UNITS = {
     "债券交易额": "CNY",
     "优先股交易额": "CNY",
     "期权交易额": "CNY",
+}
+_MARKET_ACTIVITY_SZSE_SECTOR_SUMMARY_PARAMETER_NAMES = frozenset(
+    {"view", "symbol", "date"}
+)
+_MARKET_ACTIVITY_SZSE_SECTOR_SUMMARY_VIEW = "szse_sector_summary"
+_MARKET_ACTIVITY_SZSE_SECTOR_SUMMARY_SYMBOL_CHOICES = ("当月", "当年")
+_MARKET_ACTIVITY_SZSE_SECTOR_SUMMARY_FIELDS = (
+    "项目名称",
+    "项目名称-英文",
+    "交易天数",
+    "成交金额-人民币元",
+    "成交金额-占总计",
+    "成交股数-股数",
+    "成交股数-占总计",
+    "成交笔数-笔",
+    "成交笔数-占总计",
+)
+_MARKET_ACTIVITY_SZSE_SECTOR_SUMMARY_FIELD_SET = frozenset(
+    _MARKET_ACTIVITY_SZSE_SECTOR_SUMMARY_FIELDS
+)
+_MARKET_ACTIVITY_SZSE_SECTOR_SUMMARY_NUMERIC_FIELDS = (
+    "交易天数",
+    "成交金额-人民币元",
+    "成交金额-占总计",
+    "成交股数-股数",
+    "成交股数-占总计",
+    "成交笔数-笔",
+    "成交笔数-占总计",
+)
+_MARKET_ACTIVITY_SZSE_SECTOR_SUMMARY_INTEGER_FIELDS = frozenset(
+    {
+        "交易天数",
+        "成交金额-人民币元",
+        "成交股数-股数",
+        "成交笔数-笔",
+    }
+)
+_MARKET_ACTIVITY_SZSE_SECTOR_SUMMARY_TEXT_FIELDS = frozenset(
+    {"项目名称", "项目名称-英文"}
+)
+_MARKET_ACTIVITY_SZSE_SECTOR_SUMMARY_DOCUMENTED_UNITS = {
+    "交易天数": "trading_days",
+    "成交金额-人民币元": "CNY",
+    "成交金额-占总计": "percent",
+    "成交股数-股数": "shares",
+    "成交股数-占总计": "percent",
+    "成交笔数-笔": "transactions",
+    "成交笔数-占总计": "percent",
 }
 _MARKET_ACTIVITY_STATISTIC_PARAMETER_NAMES = frozenset({"view", "period"})
 _MARKET_ACTIVITY_STATISTIC_VIEW = "stock_statistic"
@@ -2479,7 +2531,63 @@ class AKShareProvider(StructuredDataProvider):
                 response_metadata["observation_end_date"] = max(observation_dates).isoformat()
         elif request.category is DataCategory.MARKET_ACTIVITY:
             rows = _table_rows(payload, provider=self.identity, request=request)
-            if endpoint.name == "stock_szse_area_summary":
+            if endpoint.name == "stock_szse_sector_summary":
+                requested_month = _market_activity_month_parameter(
+                    kwargs["date"],
+                    name="date",
+                    request=request,
+                )
+                sector_order = _validate_market_activity_szse_sector_summary_provider_rows(
+                    rows,
+                    provider=self.identity,
+                    request=request,
+                )
+                response_metadata["upstream_row_count"] = len(rows)
+                response_metadata["entity_row_count"] = 0
+                response_metadata["entity_rows_selected"] = False
+                response_metadata["listing_scoped_request"] = False
+                response_metadata["row_filtering"] = "none"
+                response_metadata["market_activity_view"] = (
+                    _MARKET_ACTIVITY_SZSE_SECTOR_SUMMARY_VIEW
+                )
+                response_metadata["market_scope"] = "Shenzhen Stock Exchange"
+                response_metadata["snapshot_scope"] = (
+                    "requested_szse_monthly_sector_trading_summary"
+                )
+                response_metadata["requested_date"] = kwargs["date"]
+                response_metadata["observation_month"] = requested_month.strftime("%Y-%m")
+                response_metadata["date_binding"] = "request_only"
+                response_metadata["upstream_symbol"] = kwargs["symbol"]
+                response_metadata["period_scope"] = (
+                    "month" if kwargs["symbol"] == "当月" else "year_to_date"
+                )
+                response_metadata["sector_field"] = "项目名称"
+                response_metadata["sector_ordering"] = "source_reported"
+                response_metadata["sector_order"] = list(sector_order)
+                response_metadata["value_fields"] = list(
+                    _MARKET_ACTIVITY_SZSE_SECTOR_SUMMARY_NUMERIC_FIELDS
+                )
+                response_metadata["integer_fields"] = [
+                    field
+                    for field in _MARKET_ACTIVITY_SZSE_SECTOR_SUMMARY_FIELDS
+                    if field in _MARKET_ACTIVITY_SZSE_SECTOR_SUMMARY_INTEGER_FIELDS
+                ]
+                response_metadata["text_fields"] = [
+                    field
+                    for field in _MARKET_ACTIVITY_SZSE_SECTOR_SUMMARY_FIELDS
+                    if field in _MARKET_ACTIVITY_SZSE_SECTOR_SUMMARY_TEXT_FIELDS
+                ]
+                response_metadata["field_count"] = len(
+                    _MARKET_ACTIVITY_SZSE_SECTOR_SUMMARY_FIELDS
+                )
+                response_metadata["source_field_order"] = list(
+                    _MARKET_ACTIVITY_SZSE_SECTOR_SUMMARY_FIELDS
+                )
+                response_metadata["documented_units"] = dict(
+                    _MARKET_ACTIVITY_SZSE_SECTOR_SUMMARY_DOCUMENTED_UNITS
+                )
+                response_metadata["undocumented_numeric_units"] = {}
+            elif endpoint.name == "stock_szse_area_summary":
                 requested_month = _market_activity_month_parameter(
                     kwargs["date"],
                     name="date",
@@ -4691,6 +4799,10 @@ class AKShareProvider(StructuredDataProvider):
                 request.parameters.get("view")
                 == _MARKET_ACTIVITY_SZSE_AREA_SUMMARY_VIEW
             ),
+            market_activity_szse_sector_summary_requested=(
+                request.parameters.get("view")
+                == _MARKET_ACTIVITY_SZSE_SECTOR_SUMMARY_VIEW
+            ),
             market_activity_szse_summary_requested=(
                 request.parameters.get("view")
                 == _MARKET_ACTIVITY_SZSE_SUMMARY_VIEW
@@ -5152,7 +5264,14 @@ class AKShareNormalizer:
                     == _MARKET_ACTIVITY_HOT_RANK_DETAIL_VIEW
                 )
                 endpoint_name = record.response_metadata.get("endpoint")
-                if endpoint_name == "stock_szse_area_summary":
+                if endpoint_name == "stock_szse_sector_summary":
+                    _validate_market_activity_szse_sector_summary_normalizer_scope(
+                        record,
+                        listing,
+                        rows,
+                    )
+                    normalizer_flags.add("AKSHARE_SZSE_SECTOR_SUMMARY_RAW_ONLY")
+                elif endpoint_name == "stock_szse_area_summary":
                     _validate_market_activity_szse_area_summary_normalizer_scope(
                         record,
                         listing,
@@ -5346,7 +5465,8 @@ class AKShareNormalizer:
                 else:
                     raise ProviderNormalizationError(
                         "AKShare market-activity record must come from "
-                        "stock_szse_area_summary, stock_szse_summary, "
+                        "stock_szse_sector_summary, stock_szse_area_summary, "
+                        "stock_szse_summary, "
                         "stock_sse_summary, stock_sse_deal_daily, "
                         "stock_zh_a_new_em, stock_comment_detail_scrd_desire_em, "
                         "stock_comment_detail_scrd_focus_em, "
@@ -6812,6 +6932,14 @@ class AKShareNormalizer:
                 "valuation or canonical market metric; transaction amounts and market-"
                 "share percentages retain their documented units."
             )
+        if "AKSHARE_SZSE_SECTOR_SUMMARY_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented SZSE sector-summary response is retained as raw evidence "
+                "only: its monthly or year-to-date industry transaction aggregates do not "
+                "establish a listing-level quote, issuer cash flow, shareholder return, "
+                "governance, valuation or canonical market metric; amount, share-count, "
+                "transaction-count and percentage units remain explicit."
+            )
         if "AKSHARE_MARKET_ACTIVITY_STATISTICS_RAW_ONLY" in normalizer_flags:
             notes += (
                 " The documented A-share Dragon-Tiger stock-statistic response is retained "
@@ -7272,6 +7400,7 @@ def _endpoint_candidates(
     market_activity_institution_statistic_requested: bool = False,
     market_activity_block_trade_requested: bool = False,
     market_activity_szse_area_summary_requested: bool = False,
+    market_activity_szse_sector_summary_requested: bool = False,
     market_activity_szse_summary_requested: bool = False,
     market_activity_sse_deal_daily_requested: bool = False,
     market_activity_sse_summary_requested: bool = False,
@@ -7392,6 +7521,10 @@ def _endpoint_candidates(
             return ("stock_hk_hist_min_em",)
         return ("stock_hk_daily", "stock_zh_ah_daily")
     if category is DataCategory.MARKET_ACTIVITY:
+        if market_activity_szse_sector_summary_requested:
+            if market is ListingMarket.A:
+                return ("stock_szse_sector_summary",)
+            return ()
         if market_activity_szse_area_summary_requested:
             if market is ListingMarket.A:
                 return ("stock_szse_area_summary",)
@@ -13402,6 +13535,129 @@ def _validate_market_activity_szse_area_summary_provider_rows(
     return source_field_order
 
 
+def _market_activity_szse_sector_summary_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> tuple[str | None, tuple[str, ...]]:
+    """Return a strict-schema error and SZSE sector order."""
+
+    if not rows:
+        return "SZSE sector-summary response must contain at least one row", ()
+
+    sector_order: list[str] = []
+    seen_sectors: set[str] = set()
+    for index, row in enumerate(rows):
+        missing = [
+            field
+            for field in _MARKET_ACTIVITY_SZSE_SECTOR_SUMMARY_FIELDS
+            if field not in row
+        ]
+        unexpected = [
+            field
+            for field in row
+            if field not in _MARKET_ACTIVITY_SZSE_SECTOR_SUMMARY_FIELD_SET
+        ]
+        if missing:
+            return (
+                f"SZSE sector-summary row {index} is missing field(s): "
+                + ", ".join(missing),
+                (),
+            )
+        if unexpected:
+            return (
+                f"SZSE sector-summary row {index} contains unsupported field(s): "
+                + ", ".join(unexpected),
+                (),
+            )
+        if tuple(row) != _MARKET_ACTIVITY_SZSE_SECTOR_SUMMARY_FIELDS:
+            return "SZSE sector-summary rows must preserve the official field order", ()
+
+        sector = row["项目名称"]
+        if not isinstance(sector, str) or not sector.strip():
+            return (
+                f"SZSE sector-summary row {index} field '项目名称' must be a "
+                "non-empty string",
+                (),
+            )
+        if sector in seen_sectors:
+            return (
+                f"SZSE sector-summary response contains duplicate 项目名称 {sector!r}",
+                (),
+            )
+        seen_sectors.add(sector)
+        sector_order.append(sector)
+
+        english_name = row["项目名称-英文"]
+        if english_name is not None and not isinstance(english_name, str):
+            return (
+                f"SZSE sector-summary row {index} field '项目名称-英文' must be "
+                "a string or null",
+                (),
+            )
+
+        for field in _MARKET_ACTIVITY_SZSE_SECTOR_SUMMARY_NUMERIC_FIELDS:
+            value = row[field]
+            if value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, Real):
+                return (
+                    f"SZSE sector-summary row {index} field {field!r} must be "
+                    "numeric or null",
+                    (),
+                )
+            try:
+                numeric = float(value)
+            except (OverflowError, TypeError, ValueError):
+                return (
+                    f"SZSE sector-summary row {index} field {field!r} must be "
+                    "numeric or null",
+                    (),
+                )
+            if not math.isfinite(numeric):
+                return (
+                    f"SZSE sector-summary row {index} field {field!r} must be "
+                    "finite or null",
+                    (),
+                )
+            if field in _MARKET_ACTIVITY_SZSE_SECTOR_SUMMARY_INTEGER_FIELDS:
+                if not numeric.is_integer() or numeric < 0:
+                    return (
+                        f"SZSE sector-summary row {index} field {field!r} must be "
+                        "a non-negative integer or null",
+                        (),
+                    )
+            elif numeric < 0:
+                return (
+                    f"SZSE sector-summary row {index} field {field!r} must be "
+                    "non-negative or null",
+                    (),
+                )
+
+    if sector_order[0] != "合计":
+        return (
+            "SZSE sector-summary response must start with 项目名称 '合计'",
+            (),
+        )
+    return None, tuple(sector_order)
+
+
+def _validate_market_activity_szse_sector_summary_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> tuple[str, ...]:
+    """Validate the complete SZSE sector report before retention."""
+
+    message, sector_order = _market_activity_szse_sector_summary_validation_message(rows)
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message}",
+            provider=provider,
+            request=request,
+        )
+    return sector_order
+
+
 def _market_activity_szse_summary_validation_message(
     rows: Sequence[Mapping[str, JSONValue]],
 ) -> tuple[str | None, list[str]]:
@@ -16845,6 +17101,107 @@ def _validate_market_activity_szse_area_summary_normalizer_scope(
         if not matches:
             raise ProviderNormalizationError(
                 f"AKShare SZSE area-summary response metadata {name!r} does not "
+                "match the requested replay scope"
+            )
+
+
+def _validate_market_activity_szse_sector_summary_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> None:
+    """Validate replay scope for the monthly SZSE sector report."""
+
+    if listing.market is not ListingMarket.A:
+        raise ProviderNormalizationError(
+            "AKShare SZSE sector-summary raw slice supports A-share listings only"
+        )
+    endpoint_name = "stock_szse_sector_summary"
+    if record.response_metadata.get("endpoint") != endpoint_name:
+        raise ProviderNormalizationError(
+            "AKShare SZSE sector-summary record must come from "
+            "stock_szse_sector_summary"
+        )
+    if record.source_uri != _SOURCE_URIS[endpoint_name]:
+        raise ProviderNormalizationError(
+            "AKShare SZSE sector-summary source URI does not match the documented endpoint"
+        )
+    try:
+        upstream_kwargs = _market_activity_szse_sector_summary_kwargs(
+            endpoint_name,
+            listing,
+            record.request,
+        )
+        requested_month = _market_activity_month_parameter(
+            upstream_kwargs["date"],
+            name="date",
+            request=record.request,
+        )
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+    if set(upstream_kwargs) != {"symbol", "date"}:
+        raise ProviderNormalizationError(
+            "AKShare SZSE sector-summary endpoint must receive only symbol and date"
+        )
+
+    message, sector_order = _market_activity_szse_sector_summary_validation_message(rows)
+    if message is not None:
+        raise ProviderNormalizationError(message)
+    expected_metadata = {
+        "endpoint": endpoint_name,
+        "market": ListingMarket.A.value,
+        "listing_code": listing.code,
+        "market_activity_view": _MARKET_ACTIVITY_SZSE_SECTOR_SUMMARY_VIEW,
+        "market_scope": "Shenzhen Stock Exchange",
+        "listing_scoped_request": False,
+        "row_filtering": "none",
+        "snapshot_scope": "requested_szse_monthly_sector_trading_summary",
+        "requested_date": upstream_kwargs["date"],
+        "observation_month": requested_month.strftime("%Y-%m"),
+        "date_binding": "request_only",
+        "upstream_symbol": upstream_kwargs["symbol"],
+        "period_scope": (
+            "month" if upstream_kwargs["symbol"] == "当月" else "year_to_date"
+        ),
+        "sector_field": "项目名称",
+        "sector_ordering": "source_reported",
+        "sector_order": list(sector_order),
+        "value_fields": list(_MARKET_ACTIVITY_SZSE_SECTOR_SUMMARY_NUMERIC_FIELDS),
+        "integer_fields": [
+            field
+            for field in _MARKET_ACTIVITY_SZSE_SECTOR_SUMMARY_FIELDS
+            if field in _MARKET_ACTIVITY_SZSE_SECTOR_SUMMARY_INTEGER_FIELDS
+        ],
+        "text_fields": [
+            field
+            for field in _MARKET_ACTIVITY_SZSE_SECTOR_SUMMARY_FIELDS
+            if field in _MARKET_ACTIVITY_SZSE_SECTOR_SUMMARY_TEXT_FIELDS
+        ],
+        "field_count": len(_MARKET_ACTIVITY_SZSE_SECTOR_SUMMARY_FIELDS),
+        "source_field_order": list(_MARKET_ACTIVITY_SZSE_SECTOR_SUMMARY_FIELDS),
+        "documented_units": dict(_MARKET_ACTIVITY_SZSE_SECTOR_SUMMARY_DOCUMENTED_UNITS),
+        "undocumented_numeric_units": {},
+        "entity_rows_selected": False,
+        "upstream_row_count": len(rows),
+        "entity_row_count": 0,
+    }
+    boolean_fields = {"listing_scoped_request", "entity_rows_selected"}
+    count_fields = {"field_count", "upstream_row_count", "entity_row_count"}
+    for name, expected in expected_metadata.items():
+        actual = record.response_metadata.get(name)
+        if name in boolean_fields:
+            matches = isinstance(actual, bool) and actual is expected
+        elif name in count_fields:
+            matches = (
+                isinstance(actual, int)
+                and not isinstance(actual, bool)
+                and actual == expected
+            )
+        else:
+            matches = actual == expected
+        if not matches:
+            raise ProviderNormalizationError(
+                f"AKShare SZSE sector-summary response metadata {name!r} does not "
                 "match the requested replay scope"
             )
 
@@ -21017,6 +21374,8 @@ def _market_activity_kwargs(
         return _market_activity_block_trade_kwargs(endpoint_name, listing, request)
     if endpoint_name == "stock_szse_area_summary":
         return _market_activity_szse_area_summary_kwargs(endpoint_name, listing, request)
+    if endpoint_name == "stock_szse_sector_summary":
+        return _market_activity_szse_sector_summary_kwargs(endpoint_name, listing, request)
     if endpoint_name == "stock_szse_summary":
         return _market_activity_szse_summary_kwargs(endpoint_name, listing, request)
     if endpoint_name == "stock_sse_summary":
@@ -21141,6 +21500,68 @@ def _market_activity_szse_area_summary_kwargs(
         request=request,
     )
     return {"date": requested_month.strftime("%Y%m")}
+
+
+def _market_activity_szse_sector_summary_kwargs(
+    endpoint_name: str,
+    listing: _ListingRef,
+    request: ProviderRequest,
+) -> dict[str, object]:
+    """Build the documented monthly SZSE sector-summary request."""
+
+    if endpoint_name != "stock_szse_sector_summary":
+        raise ProviderRequestError(
+            f"unsupported AKShare SZSE sector-summary endpoint {endpoint_name!r}",
+            request=request,
+            retryable=False,
+        )
+    if listing.market is not ListingMarket.A:
+        raise ProviderRequestError(
+            "the AKShare SZSE sector-summary endpoint supports A-share listings only",
+            request=request,
+            retryable=False,
+        )
+    unknown = sorted(
+        set(request.parameters) - _MARKET_ACTIVITY_SZSE_SECTOR_SUMMARY_PARAMETER_NAMES
+    )
+    if unknown:
+        raise ProviderRequestError(
+            "unsupported AKShare SZSE sector-summary parameter(s): "
+            + ", ".join(unknown),
+            request=request,
+            retryable=False,
+        )
+    if request.parameters.get("view") != _MARKET_ACTIVITY_SZSE_SECTOR_SUMMARY_VIEW:
+        raise ProviderRequestError(
+            "AKShare SZSE sector-summary endpoint requires "
+            f"view={_MARKET_ACTIVITY_SZSE_SECTOR_SUMMARY_VIEW!r}",
+            request=request,
+            retryable=False,
+        )
+    symbol = request.parameters.get("symbol")
+    if symbol not in _MARKET_ACTIVITY_SZSE_SECTOR_SUMMARY_SYMBOL_CHOICES:
+        choices = ", ".join(_MARKET_ACTIVITY_SZSE_SECTOR_SUMMARY_SYMBOL_CHOICES)
+        raise ProviderRequestError(
+            "the AKShare SZSE sector-summary endpoint requires symbol to be one of "
+            f"{choices!r}",
+            request=request,
+            retryable=False,
+        )
+    if "date" not in request.parameters:
+        raise ProviderRequestError(
+            "the AKShare SZSE sector-summary endpoint requires date (YYYYMM)",
+            request=request,
+            retryable=False,
+        )
+    requested_month = _market_activity_month_parameter(
+        request.parameters["date"],
+        name="date",
+        request=request,
+    )
+    return {
+        "symbol": symbol,
+        "date": requested_month.strftime("%Y%m"),
+    }
 
 
 def _market_activity_szse_summary_kwargs(

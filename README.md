@@ -977,6 +977,20 @@ month and non-listing row counts for replay. The normalizer emits
 canonical market fact. No calculation, gate, pipeline, CLI or input-loader
 contract changes.
 
+Phase 2.96 adds the distinct official A-share SZSE
+`stock_szse_sector_summary` endpoint under `MARKET_ACTIVITY` with explicit
+`view=szse_sector_summary`, `symbol` selector (`当月` or `当年`) and monthly
+`date=YYYYMM`. The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_summary.py)
+define the nine-field industry-trading response and the source's separate
+month/year-to-date tables. The provider validates the complete source order,
+non-empty unique industry order, numeric/null values and documented
+CNY/share/transaction/percentage units, and preserves the selector, month and
+non-listing row counts for replay. The normalizer emits
+`AKSHARE_SZSE_SECTOR_SUMMARY_RAW_ONLY` without creating a listing-level or
+canonical market fact. No calculation, gate, pipeline, CLI or input-loader
+contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

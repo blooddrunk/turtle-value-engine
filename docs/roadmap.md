@@ -2402,6 +2402,29 @@ validation, exact base and extended fields/order/types, raw-only normalization,
 replay-scope rejection and cache replay. No calculation, gate, pipeline, CLI
 or input-loader contract changes.
 
+### Phase 2.96 — SZSE sector-summary raw acquisition contract (COMPLETE)
+
+The mapping review now covers the next distinct documented AKShare
+`stock_szse_sector_summary` endpoint under the existing `MARKET_ACTIVITY`
+category with explicit `view=szse_sector_summary`, `symbol=当月` or `当年` and
+monthly `date=YYYYMM`. The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_summary.py)
+define the nine-field Shenzhen industry-trading response and the separate
+month/year-to-date tables selected by `symbol`.
+
+The provider validates the complete source field order, requires the source
+`合计` row to lead the unique industry order, rejects non-finite or negative
+numeric values and preserves the selector, request/observation month,
+documented CNY/share/transaction/percentage units and non-listing row counts
+for replay. The checked-in fixture freezes three source-shaped industry rows.
+The normalizer emits `AKSHARE_SZSE_SECTOR_SUMMARY_RAW_ONLY` and creates no
+canonical fact: exchange-wide industry transaction aggregates do not establish
+a requested listing's quote, issuer cash flow, shareholder return, governance,
+valuation or canonical market metric. Tests cover selector/month validation,
+exact response fields/order/types, raw-only normalization, replay-scope
+rejection and cache replay. No calculation, gate, pipeline, CLI or input-loader
+contract changes.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -2411,7 +2434,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.95 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.96 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -2630,6 +2653,12 @@ Exchange region-ranked monthly view. Its base and 2025 extended source field
 variants are validated with strict rank/region/order checks; CNY and percentage
 units remain explicit replay metadata, and no listing-level or canonical market
 fact is inferred.
+Phase 2.96 adds the documented A-share `stock_szse_sector_summary` Shenzhen
+Stock Exchange industry-trading view. Its explicit `当月`/`当年` selector and
+monthly source-shaped nine-field response are validated with strict
+field/industry/order/type checks; CNY, share, transaction and percentage units
+remain explicit replay metadata, and no listing-level or canonical market fact
+is inferred.
 Phase 2.75 completes the next documented structured-data boundary by adding
 the A-share `stock_gpzy_profile_em` market-wide historical ownership-pledge
 view. Its no-argument eight-field response is validated as an ascending raw

@@ -191,6 +191,14 @@ class FakeAKShare:
             date=date,
         )
 
+    def stock_szse_sector_summary(self, *, symbol: str, date: str):
+        return self._return(
+            "stock_szse_sector_summary",
+            _fixture("a_szse_sector_summary.json"),
+            symbol=symbol,
+            date=date,
+        )
+
     def stock_sse_summary(self):
         return self._return("stock_sse_summary", _fixture("a_sse_summary.json"))
 
@@ -849,8 +857,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "95"
-    assert AKSHARE_MAPPING_VERSION == "96"
+    assert provider.identity.provider_version == "96"
+    assert AKSHARE_MAPPING_VERSION == "97"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -18448,6 +18456,452 @@ def test_market_activity_szse_area_summary_cache_replay_does_not_call_upstream(
     assert replay.mode is RetrievalMode.CACHE_REPLAY
     assert replay.record == live.record
     assert fake.calls == [("stock_szse_area_summary", {"date": "202412"})]
+
+
+def test_market_activity_szse_sector_summary_fetch_uses_documented_symbol_and_month():
+    fake = FakeAKShare()
+    record = _provider(fake).fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SH600000",
+            {
+                "view": "szse_sector_summary",
+                "symbol": "当月",
+                "date": "202501",
+            },
+        )
+    )
+
+    fixture = _fixture("a_szse_sector_summary.json")
+    assert record.raw_payload == fixture
+    assert fake.calls == [
+        ("stock_szse_sector_summary", {"symbol": "当月", "date": "202501"}),
+    ]
+    assert record.response_metadata["endpoint"] == "stock_szse_sector_summary"
+    assert record.response_metadata["market"] == "A"
+    assert record.response_metadata["listing_code"] == "600000"
+    assert record.response_metadata["market_activity_view"] == "szse_sector_summary"
+    assert record.response_metadata["market_scope"] == "Shenzhen Stock Exchange"
+    assert record.response_metadata["listing_scoped_request"] is False
+    assert record.response_metadata["row_filtering"] == "none"
+    assert record.response_metadata["snapshot_scope"] == (
+        "requested_szse_monthly_sector_trading_summary"
+    )
+    assert record.response_metadata["requested_date"] == "202501"
+    assert record.response_metadata["observation_month"] == "2025-01"
+    assert record.response_metadata["date_binding"] == "request_only"
+    assert record.response_metadata["upstream_symbol"] == "当月"
+    assert record.response_metadata["period_scope"] == "month"
+    assert record.response_metadata["sector_field"] == "项目名称"
+    assert record.response_metadata["sector_ordering"] == "source_reported"
+    assert record.response_metadata["sector_order"] == [
+        "合计",
+        "制造业",
+        "信息技术",
+    ]
+    assert record.response_metadata["value_fields"] == [
+        "交易天数",
+        "成交金额-人民币元",
+        "成交金额-占总计",
+        "成交股数-股数",
+        "成交股数-占总计",
+        "成交笔数-笔",
+        "成交笔数-占总计",
+    ]
+    assert record.response_metadata["integer_fields"] == [
+        "交易天数",
+        "成交金额-人民币元",
+        "成交股数-股数",
+        "成交笔数-笔",
+    ]
+    assert record.response_metadata["text_fields"] == ["项目名称", "项目名称-英文"]
+    assert record.response_metadata["field_count"] == 9
+    assert record.response_metadata["source_field_order"] == [
+        "项目名称",
+        "项目名称-英文",
+        "交易天数",
+        "成交金额-人民币元",
+        "成交金额-占总计",
+        "成交股数-股数",
+        "成交股数-占总计",
+        "成交笔数-笔",
+        "成交笔数-占总计",
+    ]
+    assert record.response_metadata["documented_units"] == {
+        "交易天数": "trading_days",
+        "成交金额-人民币元": "CNY",
+        "成交金额-占总计": "percent",
+        "成交股数-股数": "shares",
+        "成交股数-占总计": "percent",
+        "成交笔数-笔": "transactions",
+        "成交笔数-占总计": "percent",
+    }
+    assert record.response_metadata["undocumented_numeric_units"] == {}
+    assert record.response_metadata["upstream_row_count"] == 3
+    assert record.response_metadata["entity_row_count"] == 0
+    assert record.response_metadata["entity_rows_selected"] is False
+    assert record.source_uri == (
+        "https://docs.static.szse.cn/www/market/periodical/month/"
+        "W020220511355248518608.html"
+    )
+
+
+def test_market_activity_szse_sector_summary_preserves_the_year_to_date_selector():
+    fake = FakeAKShare()
+    record = _provider(fake).fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SH600000",
+            {
+                "view": "szse_sector_summary",
+                "symbol": "当年",
+                "date": "202508",
+            },
+        )
+    )
+
+    assert fake.calls == [
+        ("stock_szse_sector_summary", {"symbol": "当年", "date": "202508"}),
+    ]
+    assert record.response_metadata["upstream_symbol"] == "当年"
+    assert record.response_metadata["period_scope"] == "year_to_date"
+    assert record.response_metadata["observation_month"] == "2025-08"
+
+
+@pytest.mark.parametrize(
+    ("parameters", "entity_id", "match"),
+    [
+        (
+            {"view": "szse_sector_summary", "date": "202501"},
+            "SH600000",
+            "requires symbol",
+        ),
+        (
+            {"view": "szse_sector_summary", "symbol": "当月"},
+            "SH600000",
+            "requires date",
+        ),
+        (
+            {
+                "view": "szse_sector_summary",
+                "symbol": "近一月",
+                "date": "202501",
+            },
+            "SH600000",
+            "one of",
+        ),
+        (
+            {
+                "view": "szse_sector_summary",
+                "symbol": "当月",
+                "date": "2025011",
+            },
+            "SH600000",
+            "market-activity date must be YYYYMM",
+        ),
+        (
+            {
+                "view": "szse_sector_summary",
+                "symbol": "当月",
+                "date": "202513",
+            },
+            "SH600000",
+            "market-activity date must be a valid YYYYMM month",
+        ),
+        (
+            {
+                "view": "szse_sector_summary",
+                "symbol": "当月",
+                "date": "202501",
+                "period": "monthly",
+            },
+            "SH600000",
+            "unsupported AKShare SZSE sector-summary parameter",
+        ),
+        (
+            {
+                "view": "szse_sector_summary",
+                "symbol": "当月",
+                "date": "202501",
+            },
+            "HK00700",
+            "A-share listings only",
+        ),
+    ],
+)
+def test_market_activity_szse_sector_summary_request_validates_explicit_scope_before_upstream_call(
+    parameters: dict,
+    entity_id: str,
+    match: str,
+):
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError, match=match):
+        _provider(fake).fetch(
+            _request(DataCategory.MARKET_ACTIVITY, entity_id, parameters)
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("missing_field", "missing field"),
+        ("extra_field", "unsupported field"),
+        ("reordered_fields", "official field order"),
+        ("invalid_sector", "non-empty string"),
+        ("duplicate_sector", "duplicate"),
+        ("missing_total", "must start with"),
+        ("invalid_integer", "non-negative integer"),
+        ("invalid_numeric", "numeric or null"),
+        ("negative_numeric", "non-negative or null"),
+        ("empty_response", "at least one row"),
+    ],
+)
+def test_market_activity_szse_sector_summary_response_validates_exact_fields_order_types_and_scope(
+    mutation: str,
+    match: str,
+):
+    class InvalidRows(FakeAKShare):
+        def stock_szse_sector_summary(self, *, symbol: str, date: str):
+            rows = [dict(row) for row in _fixture("a_szse_sector_summary.json")]
+            if mutation == "missing_field":
+                rows[0].pop("成交笔数-占总计")
+            elif mutation == "extra_field":
+                rows[0]["unexpected"] = "not documented"
+            elif mutation == "reordered_fields":
+                rows[0] = dict(reversed(list(rows[0].items())))
+            elif mutation == "invalid_sector":
+                rows[0]["项目名称"] = 404
+            elif mutation == "duplicate_sector":
+                rows[1]["项目名称"] = "合计"
+            elif mutation == "missing_total":
+                rows[0]["项目名称"] = "全市场"
+            elif mutation == "invalid_integer":
+                rows[0]["交易天数"] = 18.5
+            elif mutation == "invalid_numeric":
+                rows[0]["成交金额-人民币元"] = "1234567890000"
+            elif mutation == "negative_numeric":
+                rows[0]["成交金额-占总计"] = -1
+            else:
+                rows.clear()
+            return self._return(
+                "stock_szse_sector_summary",
+                rows,
+                symbol=symbol,
+                date=date,
+            )
+
+    with pytest.raises(ProviderResponseError, match=match):
+        _provider(InvalidRows()).fetch(
+            _request(
+                DataCategory.MARKET_ACTIVITY,
+                "SH600000",
+                {
+                    "view": "szse_sector_summary",
+                    "symbol": "当月",
+                    "date": "202501",
+                },
+            )
+        )
+
+
+def test_market_activity_szse_sector_summary_is_retained_as_raw_evidence_without_listing_facts():
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SH600000",
+            {
+                "view": "szse_sector_summary",
+                "symbol": "当月",
+                "date": "202501",
+            },
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="szse-sector-summary-raw-only",
+        as_of=date(2026, 9, 11),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_SZSE_SECTOR_SUMMARY_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == []
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "SZSE sector-summary" in normalized.data_quality.notes
+    assert "industry transaction aggregates" in normalized.data_quality.notes
+    assert "amount, share-count, transaction-count" in normalized.data_quality.notes
+    assert "canonical market metric" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "endpoint",
+        "source_uri",
+        "market",
+        "listing_code",
+        "view",
+        "market_scope",
+        "listing_scope",
+        "filtering",
+        "snapshot",
+        "requested_date",
+        "observation_month",
+        "date_binding",
+        "upstream_symbol",
+        "period_scope",
+        "sector_field",
+        "sector_ordering",
+        "sector_order",
+        "value_fields",
+        "integer_fields",
+        "text_fields",
+        "field_count",
+        "source_field_order",
+        "documented_units",
+        "undocumented_units",
+        "upstream_count",
+        "entity_count",
+        "selected",
+        "payload",
+    ],
+)
+def test_market_activity_szse_sector_summary_normalizer_rejects_replayed_scope_mismatches(
+    mutation: str,
+):
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SH600000",
+            {
+                "view": "szse_sector_summary",
+                "symbol": "当月",
+                "date": "202501",
+            },
+        )
+    )
+    payload = [dict(row) for row in record.raw_payload]
+    response_metadata = dict(record.response_metadata)
+    source_uri = record.source_uri
+    if mutation == "endpoint":
+        response_metadata["endpoint"] = "stock_szse_area_summary"
+    elif mutation == "source_uri":
+        source_uri = "https://example.invalid/szse-sector-summary"
+    elif mutation == "market":
+        response_metadata["market"] = "H"
+    elif mutation == "listing_code":
+        response_metadata["listing_code"] = "000001"
+    elif mutation == "view":
+        response_metadata["market_activity_view"] = "szse_area_summary"
+    elif mutation == "market_scope":
+        response_metadata["market_scope"] = "Shanghai Stock Exchange"
+    elif mutation == "listing_scope":
+        response_metadata["listing_scoped_request"] = True
+    elif mutation == "filtering":
+        response_metadata["row_filtering"] = "provider"
+    elif mutation == "snapshot":
+        response_metadata["snapshot_scope"] = "requested_szse_monthly_area_trading_summary"
+    elif mutation == "requested_date":
+        response_metadata["requested_date"] = "202412"
+    elif mutation == "observation_month":
+        response_metadata["observation_month"] = "2024-12"
+    elif mutation == "date_binding":
+        response_metadata["date_binding"] = "response_metric"
+    elif mutation == "upstream_symbol":
+        response_metadata["upstream_symbol"] = "当年"
+    elif mutation == "period_scope":
+        response_metadata["period_scope"] = "year_to_date"
+    elif mutation == "sector_field":
+        response_metadata["sector_field"] = "行业"
+    elif mutation == "sector_ordering":
+        response_metadata["sector_ordering"] = "alphabetical"
+    elif mutation == "sector_order":
+        response_metadata["sector_order"] = list(
+            reversed(response_metadata["sector_order"])
+        )
+    elif mutation == "value_fields":
+        response_metadata["value_fields"] = ["成交金额-人民币元"]
+    elif mutation == "integer_fields":
+        response_metadata["integer_fields"] = []
+    elif mutation == "text_fields":
+        response_metadata["text_fields"] = ["项目名称"]
+    elif mutation == "field_count":
+        response_metadata["field_count"] = 8
+    elif mutation == "source_field_order":
+        response_metadata["source_field_order"] = list(
+            reversed(response_metadata["source_field_order"])
+        )
+    elif mutation == "documented_units":
+        response_metadata["documented_units"] = {
+            "成交金额-人民币元": "yuan",
+        }
+    elif mutation == "undocumented_units":
+        response_metadata["undocumented_numeric_units"] = {
+            "成交金额-人民币元": "not_documented",
+        }
+    elif mutation == "upstream_count":
+        response_metadata["upstream_row_count"] = 2
+    elif mutation == "entity_count":
+        response_metadata["entity_row_count"] = 1
+    elif mutation == "selected":
+        response_metadata["entity_rows_selected"] = True
+    else:
+        payload[0]["成交金额-人民币元"] = "1234567890000"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=source_uri,
+        response_metadata=response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-szse-sector-summary",
+            as_of=date(2026, 9, 11),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_market_activity_szse_sector_summary_cache_replay_does_not_call_upstream(
+    tmp_path: Path,
+):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.MARKET_ACTIVITY,
+        "SH600000",
+        {
+            "view": "szse_sector_summary",
+            "symbol": "当月",
+            "date": "202501",
+        },
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [
+        ("stock_szse_sector_summary", {"symbol": "当月", "date": "202501"}),
+    ]
 
 
 def test_market_activity_statistic_fetch_uses_explicit_view_and_period_and_filters_universe():

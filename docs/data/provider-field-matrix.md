@@ -987,6 +987,43 @@ exchange-wide regional aggregate.
 The provider-specific response remains outside the calculation, gate, pipeline,
 CLI and input-loader contracts.
 
+## Phase 2.96 SZSE sector-summary raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_szse_sector_summary` as a Shenzhen Stock Exchange monthly
+industry-trading report. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_summary.py)
+accepts `symbol` as `当月` or `当年` and a `date=YYYYMM`; it selects the
+published month or year-to-date table and returns the nine source-shaped fields
+`项目名称`, `项目名称-英文`, `交易天数`, `成交金额-人民币元`,
+`成交金额-占总计`, `成交股数-股数`, `成交股数-占总计`, `成交笔数-笔` and
+`成交笔数-占总计`, in that order.
+
+The provider exposes the endpoint under `MARKET_ACTIVITY` only with explicit
+`view=szse_sector_summary`, passes the selector and normalized month to the
+upstream callable, and validates the complete industry response before
+retention. It records the requested/observation month, selector scope,
+Shenzhen market scope, source industry order, documented units and
+non-listing row counts for cache replay. The normalizer emits
+`AKSHARE_SZSE_SECTOR_SUMMARY_RAW_ONLY`; no canonical quote, accounting,
+return, governance, valuation or market fact is admitted from this
+exchange-wide industry aggregate.
+
+| Raw upstream item | Phase 2.96 treatment |
+| --- | --- |
+| `项目名称` | Required non-empty unique industry label; the source order is preserved and `合计` must lead the report, but no industry row is a listing identity. |
+| `项目名称-英文` | Optional source text retained as raw context; it is not used to classify the requested company. |
+| `交易天数` | Non-negative integer report context; its `trading_days` unit is explicit metadata and it is not a listing observation period. |
+| `成交金额-人民币元` | Non-negative integer transaction aggregate with documented `人民币元`/`CNY` unit. |
+| `成交金额-占总计` | Finite non-negative transaction-share value with documented `%`/`percent` unit. |
+| `成交股数-股数` | Non-negative integer transaction aggregate with documented `股数`/`shares` unit. |
+| `成交股数-占总计` | Finite non-negative share-volume proportion with documented `%`/`percent` unit. |
+| `成交笔数-笔` | Non-negative integer transaction aggregate with documented `笔`/`transactions` unit. |
+| `成交笔数-占总计` | Finite non-negative transaction-count proportion with documented `%`/`percent` unit. |
+| request `view=szse_sector_summary`, `symbol`, `date` | Explicit requested-month SZSE industry-report scope; `listing_scoped_request=false`, no provider filtering, source URI, selector, source field/industry order and row counts remain part of the cache replay boundary. |
+
+The provider-specific response remains outside the calculation, gate, pipeline,
+CLI and input-loader contracts.
+
 ## Phase 2.92 SSE daily-deal overview raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
