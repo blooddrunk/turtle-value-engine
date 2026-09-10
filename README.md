@@ -388,6 +388,15 @@ full-universe per-listing institution buy/sell counts, amount aggregates and
 trailing returns are validated and filtered to the requested A-share listing,
 then retained as raw evidence only; they do not become issuer cash-flow,
 shareholder-return, governance, market or valuation facts.
+Phase 2.51 adds the distinct documented Eastmoney
+[`stock_bid_ask_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
+endpoint under the existing provider-neutral `MARKET_QUOTE` category with
+explicit `view=bid_ask` for Shanghai and Shenzhen A-share listings. The
+[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_ask_bid_em.py)
+returns a fixed 36-row `item`/`value` order-book and quote-context snapshot;
+the adapter validates and preserves it as raw evidence only because the
+intraday response has no stable observation timestamp. It does not create a
+canonical current-price, liquidity or valuation fact.
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

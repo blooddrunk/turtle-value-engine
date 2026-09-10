@@ -20,8 +20,9 @@ latest-indicator raw slice, the A-share goodwill-impairment detail raw slice,
 the SSE/SZSE/BSE margin-detail raw slices, the A-share individual ownership-pledge
 detail view, the A-share CNINFO equity-mortgage view, A-share company-litigation
 raw slice and A-share Eastmoney individual-info raw slice.
-The A-share Eastmoney individual-fund-flow and Dragon-Tiger market-activity
-detail/statistics/institution-statistics raw slices are also available.
+The A-share Eastmoney individual-fund-flow, five-level bid-ask and Dragon-Tiger
+market-activity detail/statistics/institution-statistics raw slices are also
+available.
 The A-share Eastmoney top-ten, top-ten-tradable-shareholder and
 top-ten-tradable-shareholder-detail raw slices are also available.
 Upstream column names are handled in this module and are never passed to the
@@ -70,9 +71,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "50"
+AKSHARE_ADAPTER_VERSION = "51"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "51"
+AKSHARE_MAPPING_VERSION = "52"
 
 
 class ListingMarket(StrEnum):
@@ -122,6 +123,7 @@ _SOURCE_URIS = {
     "stock_info_a_code_name": "https://akshare.akfamily.xyz/data/stock/stock.html",
     "stock_zh_ah_name": "https://akshare.akfamily.xyz/data/stock/stock.html",
     "stock_zh_a_st_em": "https://quote.eastmoney.com/center/gridlist.html#st_board",
+    "stock_bid_ask_em": "https://quote.eastmoney.com/sz000001.html",
     "stock_zh_a_spot_em": "https://quote.eastmoney.com/center/gridlist.html#hs_a_board",
     "stock_zh_a_spot": "https://finance.sina.com.cn/realstock/company/",
     "stock_hk_spot_em": "http://quote.eastmoney.com/center/gridlist.html#hk_stocks",
@@ -216,6 +218,48 @@ _ROW_SELECT_CATEGORIES = frozenset(
         DataCategory.MARKET_QUOTE,
     }
 )
+
+_MARKET_QUOTE_BID_ASK_PARAMETER_NAMES = frozenset({"view"})
+_MARKET_QUOTE_BID_ASK_VIEW = "bid_ask"
+_BID_ASK_ITEM_NAMES = (
+    "sell_5",
+    "sell_5_vol",
+    "sell_4",
+    "sell_4_vol",
+    "sell_3",
+    "sell_3_vol",
+    "sell_2",
+    "sell_2_vol",
+    "sell_1",
+    "sell_1_vol",
+    "buy_1",
+    "buy_1_vol",
+    "buy_2",
+    "buy_2_vol",
+    "buy_3",
+    "buy_3_vol",
+    "buy_4",
+    "buy_4_vol",
+    "buy_5",
+    "buy_5_vol",
+    "最新",
+    "均价",
+    "涨幅",
+    "涨跌",
+    "总手",
+    "金额",
+    "换手",
+    "量比",
+    "最高",
+    "最低",
+    "今开",
+    "昨收",
+    "涨停",
+    "跌停",
+    "外盘",
+    "内盘",
+)
+_BID_ASK_ITEM_NAME_SET = frozenset(_BID_ASK_ITEM_NAMES)
 
 _HISTORY_PARAMETER_NAMES = frozenset(
     {
@@ -479,6 +523,18 @@ class AKShareProvider(StructuredDataProvider):
 
         listing = _parse_listing_id(request.entity_id, provider=self.identity, request=request)
         if (
+            request.category is DataCategory.MARKET_QUOTE
+            and request.parameters.get("view") == _MARKET_QUOTE_BID_ASK_VIEW
+            and listing.canonical_id[:2] not in {"SH", "SZ"}
+        ):
+            raise ProviderRequestError(
+                "the AKShare bid-ask endpoint supports Shanghai and Shenzhen "
+                "A-share listings only",
+                provider=self.identity,
+                request=request,
+                retryable=False,
+            )
+        if (
             request.category is DataCategory.CAPITAL_FLOW
             and listing.market is not ListingMarket.A
         ):
@@ -711,7 +767,24 @@ class AKShareProvider(StructuredDataProvider):
         if isinstance(library_version, str) and library_version:
             response_metadata["library_version"] = library_version
 
-        if request.category in _ROW_SELECT_CATEGORIES:
+        if (
+            request.category is DataCategory.MARKET_QUOTE
+            and endpoint.name == "stock_bid_ask_em"
+        ):
+            rows = _table_rows(payload, provider=self.identity, request=request)
+            _validate_bid_ask_provider_rows(
+                rows,
+                provider=self.identity,
+                request=request,
+            )
+            response_metadata["upstream_row_count"] = len(rows)
+            response_metadata["entity_row_count"] = len(rows)
+            response_metadata["entity_rows_selected"] = True
+            response_metadata["listing_scoped_request"] = True
+            response_metadata["market_quote_view"] = _MARKET_QUOTE_BID_ASK_VIEW
+            response_metadata["upstream_symbol"] = kwargs["symbol"]
+            response_metadata["snapshot_scope"] = "current_bid_ask_snapshot"
+        elif request.category in _ROW_SELECT_CATEGORIES:
             rows = _table_rows(payload, provider=self.identity, request=request)
             selected = _select_listing_row(
                 rows,
@@ -1641,6 +1714,9 @@ class AKShareProvider(StructuredDataProvider):
                 request.parameters.get("view")
                 == _MARKET_ACTIVITY_INSTITUTION_STATISTIC_VIEW
             ),
+            market_quote_bid_ask_requested=(
+                "view" in request.parameters
+            ),
         )
         for name in candidates:
             function = getattr(client, name, None)
@@ -1666,6 +1742,8 @@ class AKShareProvider(StructuredDataProvider):
         request: ProviderRequest,
     ) -> dict[str, object]:
         try:
+            if request.category is DataCategory.MARKET_QUOTE:
+                return _market_quote_kwargs(endpoint_name, listing, request)
             if request.category is DataCategory.MARKET_HISTORY:
                 return _history_kwargs(endpoint_name, listing, request)
             if request.category is DataCategory.MARKET_ACTIVITY:
@@ -2117,6 +2195,53 @@ class AKShareNormalizer:
                 # reconciliation required by the normalized contract.
                 missing_fields.update({"goodwill", "impairment"})
                 normalizer_flags.add("AKSHARE_GOODWILL_IMPAIRMENT_RAW_ONLY")
+            elif (
+                record.request.category is DataCategory.MARKET_QUOTE
+                and record.response_metadata.get("endpoint") == "stock_bid_ask_em"
+            ):
+                if listing.market is not ListingMarket.A or listing.canonical_id[:2] not in {
+                    "SH",
+                    "SZ",
+                }:
+                    raise ProviderNormalizationError(
+                        "AKShare bid-ask raw slice supports Shanghai and Shenzhen "
+                        "A-share listings only"
+                    )
+                try:
+                    upstream_kwargs = _market_quote_kwargs(
+                        "stock_bid_ask_em",
+                        listing,
+                        record.request,
+                    )
+                except ProviderRequestError as exc:
+                    raise ProviderNormalizationError(str(exc)) from exc
+                response_view = record.response_metadata.get("market_quote_view")
+                if response_view != _MARKET_QUOTE_BID_ASK_VIEW:
+                    raise ProviderNormalizationError(
+                        "bid-ask response view does not match "
+                        f"{_MARKET_QUOTE_BID_ASK_VIEW!r}"
+                    )
+                response_symbol = record.response_metadata.get("upstream_symbol")
+                if response_symbol != upstream_kwargs["symbol"]:
+                    raise ProviderNormalizationError(
+                        "bid-ask response symbol does not match requested listing code"
+                    )
+                if record.response_metadata.get("listing_scoped_request") is not True:
+                    raise ProviderNormalizationError(
+                        "bid-ask response is not marked as listing-scoped"
+                    )
+                if record.response_metadata.get("snapshot_scope") != "current_bid_ask_snapshot":
+                    raise ProviderNormalizationError(
+                        "bid-ask response snapshot scope does not match the documented "
+                        "current snapshot boundary"
+                    )
+                validation_message = _bid_ask_validation_message(rows)
+                if validation_message is not None:
+                    raise ProviderNormalizationError(validation_message)
+                # The endpoint exposes an intraday order-book snapshot and no
+                # stable observation timestamp. Its latest-price row is kept
+                # as raw evidence rather than promoted to the canonical quote.
+                normalizer_flags.add("AKSHARE_BID_ASK_RAW_ONLY")
             elif record.request.category is DataCategory.MARKET_QUOTE:
                 row = _single_normalization_row(rows, record)
                 field = "current_price" if primary else "listing_current_price"
@@ -2702,6 +2827,11 @@ class AKShareNormalizer:
                     f"unsupported AKShare normalization category: {record.request.category.value}"
                 )
 
+        if "AKSHARE_BID_ASK_RAW_ONLY" in normalizer_flags and not any(
+            fact.field == "current_price" and fact.value is not None for fact in facts
+        ):
+            missing_fields.add("current_price")
+
         normalized_company = _enrich_company(company, metadata_context)
         coverage = coverage_present / coverage_total if coverage_total else 0.0
         quality = (
@@ -3052,6 +3182,13 @@ class AKShareNormalizer:
                 "report dates and announcement dates require primary-filing scope "
                 "and reconciliation before canonical facts can be admitted."
             )
+        if "AKSHARE_BID_ASK_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented A-share bid-ask response is retained as raw evidence "
+                "only: five-level order-book values and intraday quote context lack "
+                "a stable observation timestamp and do not establish the canonical "
+                "current-price input."
+            )
         return NormalizedCompanyInput(
             schema_version="1.0.0",
             analysis_id=analysis_id,
@@ -3217,6 +3354,7 @@ def _endpoint_candidates(
     insider_management_detail_requested: bool = False,
     market_activity_statistic_requested: bool = False,
     market_activity_institution_statistic_requested: bool = False,
+    market_quote_bid_ask_requested: bool = False,
 ) -> tuple[str, ...]:
     market = listing.market
     if category is DataCategory.COMPANY_METADATA:
@@ -3251,6 +3389,8 @@ def _endpoint_candidates(
         return ()
     if category is DataCategory.MARKET_QUOTE:
         if market is ListingMarket.A:
+            if market_quote_bid_ask_requested:
+                return ("stock_bid_ask_em",)
             return ("stock_zh_a_spot_em", "stock_zh_a_spot")
         return ("stock_hk_spot_em", "stock_hk_spot")
     if category is DataCategory.MARKET_HISTORY:
@@ -3405,6 +3545,46 @@ def _endpoint_candidates(
             return ("stock_main_stock_holder",)
         return ()
     raise ProviderCapabilityError(f"AKShare adapter does not support {category.value!r}")
+
+
+def _market_quote_kwargs(
+    endpoint_name: str,
+    listing: _ListingRef,
+    request: ProviderRequest,
+) -> dict[str, object]:
+    if endpoint_name != "stock_bid_ask_em":
+        if endpoint_name in {"stock_zh_a_spot_em", "stock_zh_a_spot"}:
+            _reject_unexpected_parameters(request)
+            return {}
+        if endpoint_name in {"stock_hk_spot_em", "stock_hk_spot"}:
+            _reject_unexpected_parameters(request)
+            return {}
+        raise ProviderRequestError(
+            f"unsupported AKShare market-quote endpoint {endpoint_name!r}",
+            request=request,
+            retryable=False,
+        )
+    if listing.market is not ListingMarket.A or listing.canonical_id[:2] not in {"SH", "SZ"}:
+        raise ProviderRequestError(
+            "the AKShare bid-ask endpoint supports Shanghai and Shenzhen A-share listings only",
+            request=request,
+            retryable=False,
+        )
+    unknown = sorted(set(request.parameters) - _MARKET_QUOTE_BID_ASK_PARAMETER_NAMES)
+    if unknown:
+        raise ProviderRequestError(
+            "unsupported AKShare bid-ask parameter(s): " + ", ".join(unknown),
+            request=request,
+            retryable=False,
+        )
+    if request.parameters.get("view") != _MARKET_QUOTE_BID_ASK_VIEW:
+        raise ProviderRequestError(
+            "the AKShare bid-ask endpoint requires "
+            f"view={_MARKET_QUOTE_BID_ASK_VIEW!r}",
+            request=request,
+            retryable=False,
+        )
+    return {"symbol": listing.code}
 
 
 def _cash_flow_statement_kwargs(
@@ -5368,6 +5548,70 @@ def _validate_corporate_action_provider_rows(
                 provider=provider,
                 request=request,
             )
+
+
+def _bid_ask_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> str | None:
+    """Return a strict-schema error for one documented bid-ask snapshot."""
+
+    if len(rows) != len(_BID_ASK_ITEM_NAMES):
+        return (
+            "bid-ask response must contain exactly "
+            f"{len(_BID_ASK_ITEM_NAMES)} item/value rows; got {len(rows)}"
+        )
+
+    seen: set[str] = set()
+    for index, row in enumerate(rows):
+        unexpected = sorted(set(row) - {"item", "value"})
+        if unexpected:
+            return (
+                f"bid-ask row {index} contains unsupported field(s): "
+                + ", ".join(unexpected)
+            )
+        if "item" not in row:
+            return f"bid-ask row {index} has no item"
+        item = row["item"]
+        if not isinstance(item, str) or not item.strip():
+            return f"bid-ask row {index} item must be a non-empty string"
+        if item not in _BID_ASK_ITEM_NAME_SET:
+            return f"bid-ask row {index} item {item!r} is not documented"
+        if item in seen:
+            return f"bid-ask response has duplicate item {item!r}"
+        seen.add(item)
+        if "value" not in row:
+            return f"bid-ask row {index} has no value"
+        value = row["value"]
+        if value is None:
+            continue
+        if isinstance(value, bool) or not isinstance(value, Real):
+            return f"bid-ask row {index} value must be numeric or null"
+        try:
+            numeric = float(value)
+        except (OverflowError, TypeError, ValueError):
+            return f"bid-ask row {index} value must be numeric or null"
+        if not math.isfinite(numeric):
+            return f"bid-ask row {index} value must be finite or null"
+
+    missing = sorted(_BID_ASK_ITEM_NAME_SET - seen)
+    if missing:
+        return "bid-ask response is missing item(s): " + ", ".join(missing)
+    return None
+
+
+def _validate_bid_ask_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> None:
+    message = _bid_ask_validation_message(rows)
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message}",
+            provider=provider,
+            request=request,
+        )
 
 
 def _validate_dividend_snapshot_provider_rows(

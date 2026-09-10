@@ -104,6 +104,13 @@ class FakeAKShare:
     def stock_zh_a_spot_em(self):
         return self._return("stock_zh_a_spot_em", _fixture("a_quote.json"))
 
+    def stock_bid_ask_em(self, *, symbol: str):
+        return self._return(
+            "stock_bid_ask_em",
+            _fixture("a_bid_ask.json"),
+            symbol=symbol,
+        )
+
     def stock_hk_spot_em(self):
         return self._return("stock_hk_spot_em", _fixture("h_quote.json"))
 
@@ -508,8 +515,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "50"
-    assert AKSHARE_MAPPING_VERSION == "51"
+    assert provider.identity.provider_version == "51"
+    assert AKSHARE_MAPPING_VERSION == "52"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -1579,6 +1586,204 @@ def test_a_quote_is_selected_from_the_upstream_universe_and_kept_opaque():
     assert record.response_metadata["endpoint"] == "stock_zh_a_spot_em"
     assert record.response_metadata["library_version"] == "fixture-akshare"
     assert fake.calls == [("stock_zh_a_spot_em", {})]
+
+
+@pytest.mark.parametrize(
+    ("entity_id", "symbol"),
+    [("SH600000", "600000"), ("SZ000001", "000001")],
+)
+def test_a_bid_ask_fetch_uses_explicit_view_and_listing_symbol(
+    entity_id: str,
+    symbol: str,
+):
+    fake = FakeAKShare()
+    request = _request(
+        DataCategory.MARKET_QUOTE,
+        entity_id,
+        {"view": "bid_ask"},
+    )
+    record = _provider(fake).fetch(request)
+
+    fixture = _fixture("a_bid_ask.json")
+    assert record.raw_payload == fixture
+    assert record.response_metadata["endpoint"] == "stock_bid_ask_em"
+    assert record.response_metadata["upstream_row_count"] == 36
+    assert record.response_metadata["entity_row_count"] == 36
+    assert record.response_metadata["entity_rows_selected"] is True
+    assert record.response_metadata["listing_scoped_request"] is True
+    assert record.response_metadata["market_quote_view"] == "bid_ask"
+    assert record.response_metadata["upstream_symbol"] == symbol
+    assert record.response_metadata["snapshot_scope"] == "current_bid_ask_snapshot"
+    assert record.source_uri == "https://quote.eastmoney.com/sz000001.html"
+    assert fake.calls == [("stock_bid_ask_em", {"symbol": symbol})]
+
+
+@pytest.mark.parametrize(
+    ("entity_id", "parameters", "match"),
+    [
+        (
+            "SH600000",
+            {"view": "quote"},
+            "requires view='bid_ask'",
+        ),
+        (
+            "SH600000",
+            {"view": "bid_ask", "date": "20260909"},
+            "unsupported AKShare bid-ask parameter",
+        ),
+        (
+            "HK00700",
+            {"view": "bid_ask"},
+            "Shanghai and Shenzhen A-share listings only",
+        ),
+        (
+            "BJ430001",
+            {"view": "bid_ask"},
+            "Shanghai and Shenzhen A-share listings only",
+        ),
+    ],
+)
+def test_a_bid_ask_request_validates_view_parameters_and_listing_market(
+    entity_id: str,
+    parameters: dict,
+    match: str,
+):
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError, match=match):
+        _provider(fake).fetch(
+            _request(DataCategory.MARKET_QUOTE, entity_id, parameters)
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("missing_item", "bid-ask row 0 has no item"),
+        ("duplicate_item", "duplicate item"),
+        ("unknown_item", "is not documented"),
+        ("missing_value", "bid-ask row 0 has no value"),
+        ("invalid_value", "value must be numeric or null"),
+        ("extra_field", "contains unsupported field"),
+        ("missing_row", "exactly 36 item/value rows"),
+    ],
+)
+def test_a_bid_ask_response_validates_the_documented_item_value_shape(
+    mutation: str,
+    match: str,
+):
+    class InvalidRows(FakeAKShare):
+        def stock_bid_ask_em(self, *, symbol: str):
+            rows = _fixture("a_bid_ask.json")
+            if mutation == "missing_item":
+                rows[0].pop("item")
+            elif mutation == "duplicate_item":
+                rows[-1]["item"] = rows[0]["item"]
+            elif mutation == "unknown_item":
+                rows[0]["item"] = "unexpected"
+            elif mutation == "missing_value":
+                rows[0].pop("value")
+            elif mutation == "invalid_value":
+                rows[0]["value"] = "10.49"
+            elif mutation == "extra_field":
+                rows[0]["extra"] = "not documented"
+            else:
+                rows.pop()
+            return self._return("stock_bid_ask_em", rows, symbol=symbol)
+
+    with pytest.raises(ProviderResponseError, match=match):
+        _provider(InvalidRows()).fetch(
+            _request(DataCategory.MARKET_QUOTE, "SH600000", {"view": "bid_ask"})
+        )
+
+
+def test_a_bid_ask_record_is_raw_only_and_does_not_promote_quote_context():
+    record = _provider().fetch(
+        _request(DataCategory.MARKET_QUOTE, "SH600000", {"view": "bid_ask"})
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="a-bid-ask-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_BID_ASK_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == ["current_price"]
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "five-level order-book" in normalized.data_quality.notes
+    assert "canonical current-price input" in normalized.data_quality.notes
+    assert all("最新" not in fact.field for fact in normalized.facts)
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("response_view", "response view does not match"),
+        ("response_symbol", "response symbol does not match"),
+        ("listing_scope", "not marked as listing-scoped"),
+        ("snapshot_scope", "snapshot scope does not match"),
+    ],
+)
+def test_a_bid_ask_normalizer_rejects_replayed_scope_mismatches(
+    mutation: str,
+    match: str,
+):
+    record = _provider().fetch(
+        _request(DataCategory.MARKET_QUOTE, "SH600000", {"view": "bid_ask"})
+    )
+    response_metadata = dict(record.response_metadata)
+    if mutation == "response_view":
+        response_metadata["market_quote_view"] = "quote"
+    elif mutation == "response_symbol":
+        response_metadata["upstream_symbol"] = "000001"
+    elif mutation == "listing_scope":
+        response_metadata["listing_scoped_request"] = False
+    else:
+        response_metadata["snapshot_scope"] = "current_quote_snapshot"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=record.raw_payload,
+        source_uri=record.source_uri,
+        response_metadata=response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match=match):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-a-bid-ask-scope",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_a_bid_ask_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(DataCategory.MARKET_QUOTE, "SH600000", {"view": "bid_ask"})
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [("stock_bid_ask_em", {"symbol": "600000"})]
 
 
 def test_h_history_uses_hk_symbol_and_keeps_range_parameters_in_cache_identity():

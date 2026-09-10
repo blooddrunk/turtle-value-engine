@@ -364,6 +364,30 @@ not as-of calculation inputs.
 | `近1个月涨跌幅`, `近3个月涨跌幅`, `近6个月涨跌幅`, `近1年涨跌幅` | Trailing provider return context; it is not used as an as-of return, valuation input or calculation/gate fact. |
 | request `view=institution_statistic`, `period` | Explicit endpoint-selection and institution-statistic-window replay scope; the full-universe response is filtered by listing before storage. |
 
+## Phase 2.51 A-share five-level bid-ask raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_bid_ask_em` as an Eastmoney A-share endpoint with one
+six-digit `symbol` input. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_ask_bid_em.py)
+returns a fixed `item`/`value` table with five ask levels, five bid levels and
+intraday quote-context values.
+
+The provider selects this endpoint only under the provider-neutral
+`MARKET_QUOTE` category with explicit `view=bid_ask` for Shanghai and Shenzhen
+A-share listings, passes the normalized six-digit code and validates exactly
+the documented 36 item names. It records the listing, view, symbol and current
+snapshot scope for replay. The normalizer emits
+`AKSHARE_BID_ASK_RAW_ONLY`; because the endpoint does not provide a stable
+observation timestamp, no canonical current-price, liquidity or valuation fact
+is admitted.
+
+| Raw upstream item | Phase 2 treatment |
+| --- | --- |
+| `sell_5`, `sell_4`, `sell_3`, `sell_2`, `sell_1` and matching `_vol` items | Validated five-level ask prices and volumes; retained as raw order-book evidence only. |
+| `buy_1`, `buy_2`, `buy_3`, `buy_4`, `buy_5` and matching `_vol` items | Validated five-level bid prices and volumes; retained as raw order-book evidence only. |
+| `最新`, `均价`, `涨幅`, `涨跌`, `总手`, `金额`, `换手`, `量比`, `最高`, `最低`, `今开`, `昨收`, `涨停`, `跌停`, `外盘`, `内盘` | Validated intraday quote context; values are not promoted to canonical current price, history, liquidity or valuation inputs. |
+| request `view=bid_ask`, derived `symbol` | Explicit endpoint-selection and listing/snapshot replay scope; only Shanghai/Shenzhen A-share listings are accepted. |
+
 ## Phase 2.9 corporate-action raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)

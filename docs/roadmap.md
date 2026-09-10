@@ -1255,6 +1255,26 @@ context, not as-of calculation inputs. Live calls remain opt-in; tests use an
 injected client and a frozen fixture with cache replay, invalid-parameter,
 response-validation and replay-scope coverage.
 
+### Phase 2.51 — A-share five-level bid-ask raw acquisition contract (COMPLETE)
+
+The mapping review now covers the distinct Eastmoney
+[`stock_bid_ask_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
+endpoint and its [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_ask_bid_em.py).
+It accepts a six-digit A-share `symbol` and returns the documented fixed
+36-row `item`/`value` response: five ask levels, five bid levels and intraday
+quote context.
+
+The provider selects this boundary under the existing provider-neutral
+`MARKET_QUOTE` category only with explicit `view=bid_ask` for Shanghai and
+Shenzhen A-share listings. It passes the normalized listing code, validates
+the exact item vocabulary and numeric/null values, preserves the full
+listing-scoped response and records view/symbol/current-snapshot replay scope.
+The normalizer emits `AKSHARE_BID_ASK_RAW_ONLY`; the order-book and quote
+context do not become canonical current-price, liquidity or valuation facts
+because the response has no stable observation timestamp. Live calls remain
+opt-in; tests use an injected client and a frozen fixture with cache replay,
+invalid-parameter, response-validation and replay-scope coverage.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -1264,7 +1284,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.50 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.51 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -1472,7 +1492,7 @@ Phase 2 is active. Phase 1 remains frozen: changes to formulas, hard-gate
 semantics, schemas or `strict-v1` thresholds require a separately reviewed,
 versioned change.
 
-Phase 2.50 completes the next documented structured-data boundary while
+Phase 2.51 completes the next documented structured-data boundary while
 keeping share-change, repurchase and rights-issue period, status, unit and
 economic-scope questions unresolved, and keeping ownership-pledge holder,
 governance and economic-scope questions unresolved. The A-share
@@ -1524,6 +1544,12 @@ trailing returns are a provider-window summary rather than issuer accounting,
 shareholder-return, governance or canonical market facts. The explicit
 `view=institution_statistic` and `period` remain part of the replayable
 acquisition boundary.
+
+The A-share five-level bid-ask response remains raw-only because its order-book
+levels and intraday quote context have no stable observation timestamp and do
+not establish the canonical current-price, liquidity or valuation inputs. The
+explicit `view=bid_ask` and derived listing symbol remain part of the
+replayable acquisition boundary.
 
 The A-share business-composition snapshot remains raw-only because its
 overlapping product, industry and geographic rows do not establish a canonical
