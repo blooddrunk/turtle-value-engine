@@ -406,6 +406,15 @@ returns period-specific minute-bar rows; the adapter validates their field
 shape, finite numeric values, ascending timestamps and requested replay scope.
 The normalizer emits `AKSHARE_INTRADAY_HISTORY_RAW_ONLY`: minute bars do not
 replace canonical daily history or become valuation inputs.
+Phase 2.53 adds the distinct documented Eastmoney
+[`stock_zh_a_hist_pre_min_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
+endpoint under `MARKET_HISTORY` with explicit `view=pre_market` and
+time-of-day bounds. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hist_em.py)
+returns the latest trading day's minute rows including pre-market observations;
+the adapter validates the exact shape, one trading date, finite numeric values,
+ascending timestamps and time-window replay scope. The normalizer emits
+`AKSHARE_PRE_MARKET_HISTORY_RAW_ONLY`: this latest-day snapshot does not replace
+canonical daily history or become a valuation input.
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

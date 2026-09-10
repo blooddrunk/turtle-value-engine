@@ -137,6 +137,21 @@ class FakeAKShare:
             adjust=adjust,
         )
 
+    def stock_zh_a_hist_pre_min_em(
+        self,
+        *,
+        symbol: str,
+        start_time: str,
+        end_time: str,
+    ):
+        return self._return(
+            "stock_zh_a_hist_pre_min_em",
+            _fixture("a_pre_market_history.json"),
+            symbol=symbol,
+            start_time=start_time,
+            end_time=end_time,
+        )
+
     def stock_hk_daily(self, **kwargs):
         return self._return("stock_hk_daily", _fixture("h_history.json"), **kwargs)
 
@@ -535,8 +550,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "52"
-    assert AKSHARE_MAPPING_VERSION == "53"
+    assert provider.identity.provider_version == "53"
+    assert AKSHARE_MAPPING_VERSION == "54"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -2188,6 +2203,311 @@ def test_a_intraday_history_cache_replay_does_not_call_upstream(tmp_path: Path):
                 "period": "5",
                 "adjust": "",
             },
+        )
+    ]
+
+
+def test_a_pre_market_history_fetch_uses_documented_time_window():
+    fake = FakeAKShare()
+    request = _request(
+        DataCategory.MARKET_HISTORY,
+        "SH600000",
+        {
+            "view": "pre_market",
+            "start_time": "09:00:00",
+            "end_time": "15:10:00",
+        },
+    )
+    record = _provider(fake).fetch(request)
+
+    assert record.raw_payload == _fixture("a_pre_market_history.json")
+    assert fake.calls == [
+        (
+            "stock_zh_a_hist_pre_min_em",
+            {
+                "symbol": "600000",
+                "start_time": "09:00:00",
+                "end_time": "15:10:00",
+            },
+        )
+    ]
+    assert record.response_metadata["endpoint"] == "stock_zh_a_hist_pre_min_em"
+    assert record.response_metadata["pre_market_history_view"] == "pre_market"
+    assert record.response_metadata["upstream_symbol"] == "600000"
+    assert record.response_metadata["requested_start_time"] == "09:00:00"
+    assert record.response_metadata["requested_end_time"] == "15:10:00"
+    assert record.response_metadata["listing_scoped_request"] is True
+    assert record.response_metadata["snapshot_scope"] == "latest_trading_day_time_range"
+    assert record.response_metadata["date_binding"] == "row_and_time_request"
+    assert record.response_metadata["observation_date"] == "2026-09-09"
+    assert record.response_metadata["observation_start_datetime"] == (
+        "2026-09-09T09:15:00"
+    )
+    assert record.response_metadata["observation_end_datetime"] == (
+        "2026-09-09T15:00:00"
+    )
+    assert record.source_uri == "https://quote.eastmoney.com/concept/sh603777.html"
+
+
+def test_a_pre_market_history_request_applies_explicit_defaults():
+    fake = FakeAKShare()
+    record = _provider(fake).fetch(
+        _request(DataCategory.MARKET_HISTORY, "SZ000001", {"view": "pre_market"})
+    )
+
+    assert record.response_metadata["requested_start_time"] == "09:00:00"
+    assert record.response_metadata["requested_end_time"] == "15:50:00"
+    assert fake.calls == [
+        (
+            "stock_zh_a_hist_pre_min_em",
+            {"symbol": "000001", "start_time": "09:00:00", "end_time": "15:50:00"},
+        )
+    ]
+
+
+@pytest.mark.parametrize(
+    ("entity_id", "parameters", "match"),
+    [
+        (
+            "SH600000",
+            {"view": "pre_market", "start_time": "09:00"},
+            "start_time must be HH:MM:SS",
+        ),
+        (
+            "SH600000",
+            {"view": "pre_market", "end_time": "16:00:00", "unexpected": True},
+            "unsupported AKShare pre-market-history parameter",
+        ),
+        (
+            "SH600000",
+            {
+                "view": "pre_market",
+                "start_time": "10:00:00",
+                "end_time": "09:00:00",
+            },
+            "start_time must not be after end_time",
+        ),
+        ("HK00700", {"view": "pre_market"}, "A-share listings only"),
+    ],
+)
+def test_a_pre_market_history_request_validates_parameters_and_market(
+    entity_id: str,
+    parameters: dict,
+    match: str,
+):
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError, match=match):
+        _provider(fake).fetch(
+            _request(DataCategory.MARKET_HISTORY, entity_id, parameters)
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("missing_field", "missing field"),
+        ("extra_field", "unsupported field"),
+        ("invalid_time", "invalid 时间"),
+        ("outside_range", "outside requested time range"),
+        ("duplicate_time", "duplicate 时间"),
+        ("different_date", "one trading date"),
+        ("invalid_numeric", "must be numeric"),
+    ],
+)
+def test_a_pre_market_history_response_validates_documented_rows(
+    mutation: str,
+    match: str,
+):
+    class InvalidRows(FakeAKShare):
+        def stock_zh_a_hist_pre_min_em(
+            self,
+            *,
+            symbol: str,
+            start_time: str,
+            end_time: str,
+        ):
+            rows = _fixture("a_pre_market_history.json")
+            if mutation == "missing_field":
+                rows[0].pop("成交额")
+            elif mutation == "extra_field":
+                rows[0]["unexpected"] = "not documented"
+            elif mutation == "invalid_time":
+                rows[0]["时间"] = "not-a-timestamp"
+            elif mutation == "outside_range":
+                rows[0]["时间"] = "2026-09-09 08:59:00"
+            elif mutation == "duplicate_time":
+                rows[1]["时间"] = rows[0]["时间"]
+            elif mutation == "different_date":
+                rows[-1]["时间"] = "2026-09-10 15:00:00"
+            else:
+                rows[0]["收盘"] = "10.40"
+            return self._return(
+                "stock_zh_a_hist_pre_min_em",
+                rows,
+                symbol=symbol,
+                start_time=start_time,
+                end_time=end_time,
+            )
+
+    with pytest.raises(ProviderResponseError, match=match):
+        _provider(InvalidRows()).fetch(
+            _request(
+                DataCategory.MARKET_HISTORY,
+                "SH600000",
+                {
+                    "view": "pre_market",
+                    "start_time": "09:00:00",
+                    "end_time": "15:10:00",
+                },
+            )
+        )
+
+
+def test_a_pre_market_history_record_is_raw_only_and_not_daily_history():
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "SH600000",
+            {"view": "pre_market", "start_time": "09:00:00", "end_time": "15:10:00"},
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="a-pre-market-history-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_PRE_MARKET_HISTORY_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == ["market_history"]
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "pre-market-history" in normalized.data_quality.notes
+    assert "canonical daily-history" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "view",
+        "symbol",
+        "start",
+        "end",
+        "listing_scope",
+        "snapshot",
+        "count",
+        "observation_date",
+    ],
+)
+def test_a_pre_market_history_normalizer_rejects_replayed_scope_mismatches(
+    mutation: str,
+):
+    request = _request(
+        DataCategory.MARKET_HISTORY,
+        "SH600000",
+        {
+            "view": "pre_market",
+            "start_time": "09:00:00",
+            "end_time": "15:10:00",
+        },
+    )
+    record = _provider().fetch(request)
+    response_metadata = dict(record.response_metadata)
+    if mutation == "view":
+        response_metadata["pre_market_history_view"] = "daily"
+    elif mutation == "symbol":
+        response_metadata["upstream_symbol"] = "000001"
+    elif mutation == "start":
+        response_metadata["requested_start_time"] = "08:00:00"
+    elif mutation == "end":
+        response_metadata["requested_end_time"] = "15:50:00"
+    elif mutation == "listing_scope":
+        response_metadata["listing_scoped_request"] = False
+    elif mutation == "snapshot":
+        response_metadata["snapshot_scope"] = "current_intraday_snapshot"
+    elif mutation == "count":
+        response_metadata["entity_row_count"] = 99
+    else:
+        response_metadata["observation_date"] = "bad"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=record.raw_payload,
+        source_uri=record.source_uri,
+        response_metadata=response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match="pre-market-history"):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-a-pre-market-history-scope",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_a_pre_market_history_normalizer_rejects_replayed_rows_outside_request():
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "SH600000",
+            {"view": "pre_market", "start_time": "09:00:00", "end_time": "15:10:00"},
+        )
+    )
+    payload = [dict(row) for row in record.raw_payload]
+    payload[0]["时间"] = "2026-09-09 08:59:00"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=record.source_uri,
+        response_metadata=record.response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match="outside requested time range"):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="out-of-range-a-pre-market-history",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_a_pre_market_history_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.MARKET_HISTORY,
+        "SH600000",
+        {"view": "pre_market", "start_time": "09:00:00", "end_time": "15:10:00"},
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [
+        (
+            "stock_zh_a_hist_pre_min_em",
+            {"symbol": "600000", "start_time": "09:00:00", "end_time": "15:10:00"},
         )
     ]
 

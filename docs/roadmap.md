@@ -1298,6 +1298,28 @@ history contract or a valuation input. Live calls remain opt-in; tests use
 injected clients and frozen fixtures with cache replay, invalid-parameter,
 response-validation and replay-scope coverage.
 
+### Phase 2.53 — A-share pre-market-history raw acquisition contract (COMPLETE)
+
+The mapping review now covers the distinct Eastmoney
+[`stock_zh_a_hist_pre_min_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
+endpoint and its [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hist_em.py).
+It accepts a six-digit A-share `symbol` plus `start_time` and `end_time`
+time-of-day bounds, and returns the most recent trading day's minute rows
+including pre-market observations. The response contains timestamp, OHLC,
+volume, turnover and latest-price fields.
+
+The provider selects this endpoint only under the existing provider-neutral
+`MARKET_HISTORY` category with explicit `view=pre_market`, passes the normalized
+listing code and effective time window, validates the exact response shape,
+finite numeric values, one trading date, ascending timestamps and requested
+time range, and records the complete listing-scoped response plus its replay
+scope. The normalizer emits
+`AKSHARE_PRE_MARKET_HISTORY_RAW_ONLY`; the latest-day time-of-day snapshot does
+not establish the canonical daily history contract or a valuation input. Live
+calls remain opt-in; tests use an injected client and a frozen fixture with
+cache replay, invalid-parameter, response-validation and replay-scope
+coverage.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -1307,7 +1329,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.52 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.53 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -1515,7 +1537,7 @@ Phase 2 is active. Phase 1 remains frozen: changes to formulas, hard-gate
 semantics, schemas or `strict-v1` thresholds require a separately reviewed,
 versioned change.
 
-Phase 2.52 completes the next documented structured-data boundary while
+Phase 2.53 completes the next documented structured-data boundary while
 keeping share-change, repurchase and rights-issue period, status, unit and
 economic-scope questions unresolved, and keeping ownership-pledge holder,
 governance and economic-scope questions unresolved. The A-share

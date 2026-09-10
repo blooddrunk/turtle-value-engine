@@ -417,6 +417,32 @@ the canonical daily history or a valuation input.
 | `均价` for `period=1`; `涨跌幅`, `涨跌额`, `振幅`, `换手率` for other periods | Validated interval-specific quote context; provider calculations and intraday scope remain raw-only. |
 | request `view=intraday`, derived `symbol`, `start_date`, `end_date`, `period`, `adjust` | Explicit endpoint-selection and intraday replay scope; the response is listing-scoped and cannot be replayed under a different range, interval or adjustment mode. |
 
+## Phase 2.53 A-share pre-market-history raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_zh_a_hist_pre_min_em` as an Eastmoney A-share endpoint.
+The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hist_em.py)
+accepts a six-digit `symbol`, `start_time` and `end_time` time-of-day bounds,
+and returns the most recent trading day's minute rows including pre-market
+observations. Its output contains `时间`, OHLC, `成交量`, `成交额` and `最新价`.
+
+The provider selects this endpoint only under `MARKET_HISTORY` with explicit
+`view=pre_market`, passes the normalized A-share code and effective time
+window, validates the exact field set, finite numeric/null values, one trading
+date, strictly ascending timestamps and the requested time range, and records
+the listing-scoped response plus its time/date replay scope. The normalizer
+emits `AKSHARE_PRE_MARKET_HISTORY_RAW_ONLY`; the latest-day minute snapshot is
+not a canonical daily-history or valuation fact.
+
+| Raw upstream item | Phase 2 treatment |
+| --- | --- |
+| `时间` | Validated timestamp within the requested time-of-day window and one latest trading date; it is not converted into a daily-history period. |
+| `开盘`, `收盘`, `最高`, `最低` | Raw minute prices retained as structured evidence only; they do not replace canonical daily OHLC history. |
+| `成交量` | Raw provider volume, documented in lots; no cross-frequency liquidity or valuation fact is inferred. |
+| `成交额` | Raw intraday turnover amount; it is not issuer cash flow or a canonical valuation input. |
+| `最新价` | Raw latest-price context within the snapshot; without an independent stable quote timestamp it does not replace `current_price`. |
+| request `view=pre_market`, derived `symbol`, `start_time`, `end_time` | Explicit endpoint-selection and latest-trading-day time-window replay scope; the response cannot be replayed under a different listing or time range. |
+
 ## Phase 2.9 corporate-action raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
