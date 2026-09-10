@@ -434,6 +434,17 @@ symbol/date/adjustment replay scope. Because this is a dated daily series, the
 normalizer maps the existing daily-history extension facts; volume is preserved
 as `shares` and amount as `CNY`, while the provider turnover ratio remains raw
 context and does not introduce a new metric or valuation fact.
+Phase 2.56 adds the distinct documented Tencent historical-tick endpoint
+[`stock_zh_a_tick_tx`](https://akshare.akfamily.xyz/data/stock/stock.html),
+whose current official callable is
+[`stock_zh_a_tick_tx_js`](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_zh_a_tick_tx.py),
+under `MARKET_HISTORY` with explicit `view=tencent_tick`. It returns the latest
+trading day's time-only A-share trade rows; the adapter validates their exact
+base shape, one known amount-column spelling (`成交金额` or documented `成交额`),
+finite numeric/null values, integer volume/amount values, recognized trade sides
+and non-decreasing times. The normalizer emits
+`AKSHARE_TENCENT_TICK_RAW_ONLY`: without a trading date, these rows do not
+become canonical daily-history, liquidity or valuation facts.
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

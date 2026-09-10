@@ -20,8 +20,8 @@ latest-indicator raw slice, the A-share goodwill-impairment detail raw slice,
 the SSE/SZSE/BSE margin-detail raw slices, the A-share individual ownership-pledge
 detail view, the A-share CNINFO equity-mortgage view, A-share company-litigation
 raw slice and A-share Eastmoney individual-info raw slice.
-The A-share Eastmoney individual-fund-flow, Tencent daily-history,
-Sina minute-history,
+The A-share Eastmoney individual-fund-flow, Tencent daily-history and Tencent
+latest-trading-day tick, Sina minute-history,
 intraday-history, pre-market-history, five-level bid-ask
 and Dragon-Tiger market-activity detail/statistics/institution-statistics raw
 slices are also available.
@@ -73,9 +73,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "55"
+AKSHARE_ADAPTER_VERSION = "56"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "56"
+AKSHARE_MAPPING_VERSION = "57"
 
 
 class ListingMarket(StrEnum):
@@ -136,6 +136,7 @@ _SOURCE_URIS = {
     "stock_zh_a_hist_min_em": "https://quote.eastmoney.com/concept/sh603777.html?from=classic",
     "stock_zh_a_hist_pre_min_em": "https://quote.eastmoney.com/concept/sh603777.html",
     "stock_zh_a_hist_tx": "https://gu.qq.com/sh000919/zs",
+    "stock_zh_a_tick_tx_js": "http://gu.qq.com/sz300494/gp/detail",
     "stock_zh_a_minute": "https://finance.sina.com.cn/realstock/company/sh600519/nc.shtml",
     "stock_zh_a_daily": "https://finance.sina.com.cn/realstock/company/",
     "stock_hk_daily": "http://stock.finance.sina.com.cn/hkstock/",
@@ -344,6 +345,14 @@ _MARKET_HISTORY_TENCENT_DAILY_DEFAULT_ADJUST = ""
 _MARKET_HISTORY_TENCENT_DAILY_FIELDS = frozenset(
     {"date", "open", "close", "high", "low", "volume", "turnover", "amount"}
 )
+
+_MARKET_HISTORY_TENCENT_TICK_PARAMETER_NAMES = frozenset({"view"})
+_MARKET_HISTORY_TENCENT_TICK_VIEW = "tencent_tick"
+_MARKET_HISTORY_TENCENT_TICK_BASE_FIELDS = frozenset(
+    {"成交时间", "成交价格", "价格变动", "成交量", "性质"}
+)
+_MARKET_HISTORY_TENCENT_TICK_AMOUNT_FIELDS = frozenset({"成交金额", "成交额"})
+_MARKET_HISTORY_TENCENT_TICK_SIDES = frozenset({"买盘", "卖盘", "中性盘"})
 
 _HISTORY_PARAMETER_NAMES = frozenset(
     {
@@ -626,6 +635,7 @@ class AKShareProvider(StructuredDataProvider):
                 _MARKET_HISTORY_PRE_MARKET_VIEW,
                 _MARKET_HISTORY_SINA_MINUTE_VIEW,
                 _MARKET_HISTORY_TENCENT_DAILY_VIEW,
+                _MARKET_HISTORY_TENCENT_TICK_VIEW,
             )
             and listing.market is not ListingMarket.A
         ):
@@ -1136,7 +1146,33 @@ class AKShareProvider(StructuredDataProvider):
             response_metadata["snapshot_scope"] = "requested_report_date"
         elif request.category is DataCategory.MARKET_HISTORY:
             rows = _table_rows(payload, provider=self.identity, request=request)
-            if endpoint.name == "stock_zh_a_hist_tx":
+            if endpoint.name == "stock_zh_a_tick_tx_js":
+                observation_times, amount_field = _validate_tencent_tick_provider_rows(
+                    rows,
+                    provider=self.identity,
+                    request=request,
+                )
+                response_metadata["upstream_row_count"] = len(rows)
+                response_metadata["entity_row_count"] = len(rows)
+                response_metadata["entity_rows_selected"] = True
+                response_metadata["listing_scoped_request"] = True
+                response_metadata["tencent_tick_view"] = _MARKET_HISTORY_TENCENT_TICK_VIEW
+                response_metadata["upstream_symbol"] = kwargs["symbol"]
+                response_metadata["snapshot_scope"] = "latest_trading_day"
+                response_metadata["observation_time_field"] = "成交时间"
+                response_metadata["time_ordering"] = "non_decreasing"
+                response_metadata["date_binding"] = "time_only"
+                response_metadata["volume_unit"] = "lots"
+                response_metadata["price_unit"] = "CNY_per_share"
+                response_metadata["amount_unit"] = "CNY"
+                response_metadata["amount_field"] = amount_field
+                response_metadata["observation_start_time"] = (
+                    min(observation_times).isoformat() if observation_times else None
+                )
+                response_metadata["observation_end_time"] = (
+                    max(observation_times).isoformat() if observation_times else None
+                )
+            elif endpoint.name == "stock_zh_a_hist_tx":
                 start_date = _parse_tencent_daily_history_date_parameter(
                     kwargs["start_date"],
                     name="start_date",
@@ -1983,6 +2019,9 @@ class AKShareProvider(StructuredDataProvider):
             market_history_tencent_daily_requested=(
                 request.parameters.get("view") == _MARKET_HISTORY_TENCENT_DAILY_VIEW
             ),
+            market_history_tencent_tick_requested=(
+                request.parameters.get("view") == _MARKET_HISTORY_TENCENT_TICK_VIEW
+            ),
         )
         for name in candidates:
             function = getattr(client, name, None)
@@ -2536,7 +2575,13 @@ class AKShareNormalizer:
                     )
             elif record.request.category is DataCategory.MARKET_HISTORY:
                 endpoint = record.response_metadata.get("endpoint")
-                if endpoint == "stock_zh_a_hist_tx":
+                if endpoint == "stock_zh_a_tick_tx_js":
+                    _validate_tencent_tick_normalizer_scope(record, listing, rows)
+                    # The endpoint exposes only the latest trading day's
+                    # time-of-day ticks. It has no row-level trading date and
+                    # therefore cannot become a dated daily-history fact.
+                    normalizer_flags.add("AKSHARE_TENCENT_TICK_RAW_ONLY")
+                elif endpoint == "stock_zh_a_hist_tx":
                     _validate_tencent_daily_history_normalizer_scope(record, listing, rows)
                 elif endpoint == "stock_zh_a_hist_min_em":
                     _validate_intraday_history_normalizer_scope(record, listing, rows)
@@ -2559,6 +2604,7 @@ class AKShareNormalizer:
                     # series and therefore stays raw-only.
                     normalizer_flags.add("AKSHARE_PRE_MARKET_HISTORY_RAW_ONLY")
                 if endpoint not in {
+                    "stock_zh_a_tick_tx_js",
                     "stock_zh_a_hist_min_em",
                     "stock_zh_a_minute",
                     "stock_zh_a_hist_pre_min_em",
@@ -3127,6 +3173,7 @@ class AKShareNormalizer:
             missing_fields.add("current_price")
         if (
             {
+                "AKSHARE_TENCENT_TICK_RAW_ONLY",
                 "AKSHARE_INTRADAY_HISTORY_RAW_ONLY",
                 "AKSHARE_SINA_MINUTE_HISTORY_RAW_ONLY",
                 "AKSHARE_PRE_MARKET_HISTORY_RAW_ONLY",
@@ -3495,6 +3542,13 @@ class AKShareNormalizer:
                 "a stable observation timestamp and do not establish the canonical "
                 "current-price input."
             )
+        if "AKSHARE_TENCENT_TICK_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented A-share Tencent tick response is retained as raw "
+                "evidence only: its latest-trading-day time-only trade rows do not "
+                "carry a trading date and do not establish a canonical daily-history, "
+                "liquidity or valuation input."
+            )
         if "AKSHARE_INTRADAY_HISTORY_RAW_ONLY" in normalizer_flags:
             notes += (
                 " The documented A-share intraday-history response is retained as raw "
@@ -3686,6 +3740,7 @@ def _endpoint_candidates(
     market_history_pre_market_requested: bool = False,
     market_history_sina_minute_requested: bool = False,
     market_history_tencent_daily_requested: bool = False,
+    market_history_tencent_tick_requested: bool = False,
 ) -> tuple[str, ...]:
     market = listing.market
     if category is DataCategory.COMPANY_METADATA:
@@ -3730,6 +3785,8 @@ def _endpoint_candidates(
                 return ("stock_zh_a_hist_pre_min_em",)
             if market_history_sina_minute_requested:
                 return ("stock_zh_a_minute",)
+            if market_history_tencent_tick_requested:
+                return ("stock_zh_a_tick_tx_js",)
             if market_history_tencent_daily_requested:
                 return ("stock_zh_a_hist_tx",)
             if market_history_intraday_requested:
@@ -6152,6 +6209,131 @@ def _validate_tencent_daily_history_provider_rows(
     return observation_dates
 
 
+def _tencent_tick_time(value: object) -> time | None:
+    if not isinstance(value, str) or not re.fullmatch(r"\d{2}:\d{2}:\d{2}", value):
+        return None
+    try:
+        return datetime.strptime(value, "%H:%M:%S").time()
+    except ValueError:
+        return None
+
+
+def _tencent_tick_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> tuple[str | None, list[time], str]:
+    observation_times: list[time] = []
+    previous_time: time | None = None
+    amount_field = "成交金额"
+    for index, row in enumerate(rows):
+        missing_base = sorted(_MARKET_HISTORY_TENCENT_TICK_BASE_FIELDS - set(row))
+        if missing_base:
+            return (
+                f"Tencent tick row {index} is missing field(s): "
+                + ", ".join(missing_base),
+                [],
+                amount_field,
+            )
+        amount_fields = set(row) & _MARKET_HISTORY_TENCENT_TICK_AMOUNT_FIELDS
+        if not amount_fields:
+            return (
+                f"Tencent tick row {index} is missing one of: 成交金额, 成交额",
+                [],
+                amount_field,
+            )
+        if len(amount_fields) > 1:
+            return (
+                f"Tencent tick row {index} contains both 成交金额 and 成交额",
+                [],
+                amount_field,
+            )
+        row_amount_field = next(iter(amount_fields))
+        if index == 0:
+            amount_field = row_amount_field
+        elif row_amount_field != amount_field:
+            return (
+                "Tencent tick response amount field must be consistent across rows",
+                [],
+                amount_field,
+            )
+        expected_fields = _MARKET_HISTORY_TENCENT_TICK_BASE_FIELDS | {amount_field}
+        unexpected = sorted(set(row) - expected_fields)
+        if unexpected:
+            return (
+                f"Tencent tick row {index} contains unsupported field(s): "
+                + ", ".join(unexpected),
+                [],
+                amount_field,
+            )
+
+        observation_time = _tencent_tick_time(row["成交时间"])
+        if observation_time is None:
+            return f"Tencent tick row {index} has an invalid 成交时间", [], amount_field
+        if previous_time is not None and observation_time < previous_time:
+            return (
+                "Tencent tick response 成交时间 values must be non-decreasing",
+                [],
+                amount_field,
+            )
+        previous_time = observation_time
+        observation_times.append(observation_time)
+
+        side = row["性质"]
+        if not isinstance(side, str) or side not in _MARKET_HISTORY_TENCENT_TICK_SIDES:
+            return (
+                f"Tencent tick row {index} 性质 must be one of: "
+                + ", ".join(sorted(_MARKET_HISTORY_TENCENT_TICK_SIDES)),
+                [],
+                amount_field,
+            )
+        for field in ("成交价格", "价格变动", "成交量", amount_field):
+            value = row[field]
+            if value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, Real):
+                return (
+                    f"Tencent tick row {index} field {field!r} must be numeric or null",
+                    [],
+                    amount_field,
+                )
+            try:
+                numeric = float(value)
+            except (OverflowError, TypeError, ValueError):
+                return (
+                    f"Tencent tick row {index} field {field!r} must be numeric or null",
+                    [],
+                    amount_field,
+                )
+            if not math.isfinite(numeric):
+                return (
+                    f"Tencent tick row {index} field {field!r} must be finite or null",
+                    [],
+                    amount_field,
+                )
+            if field in {"成交量", amount_field} and not numeric.is_integer():
+                return (
+                    f"Tencent tick row {index} field {field!r} must be an integer or null",
+                    [],
+                    amount_field,
+                )
+    return None, observation_times, amount_field
+
+
+def _validate_tencent_tick_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> tuple[list[time], str]:
+    message, observation_times, amount_field = _tencent_tick_validation_message(rows)
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message}",
+            provider=provider,
+            request=request,
+        )
+    return observation_times, amount_field
+
+
 def _validate_tencent_daily_history_normalizer_scope(
     record: RawProviderRecord,
     listing: _ListingRef,
@@ -6221,6 +6403,65 @@ def _validate_tencent_daily_history_normalizer_scope(
     if record.response_metadata.get("observation_end_date") != expected_end:
         raise ProviderNormalizationError(
             "Tencent daily-history response observation end does not match replayed rows"
+        )
+
+
+def _validate_tencent_tick_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> None:
+    if listing.market is not ListingMarket.A:
+        raise ProviderNormalizationError(
+            "AKShare Tencent tick raw slice supports A-share listings only"
+        )
+    if record.response_metadata.get("endpoint") != "stock_zh_a_tick_tx_js":
+        raise ProviderNormalizationError(
+            "AKShare Tencent tick record must come from stock_zh_a_tick_tx_js"
+        )
+    try:
+        upstream_kwargs = _tencent_tick_kwargs(listing, record.request)
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+
+    expected_metadata = {
+        "tencent_tick_view": _MARKET_HISTORY_TENCENT_TICK_VIEW,
+        "upstream_symbol": upstream_kwargs["symbol"],
+        "listing_scoped_request": True,
+        "snapshot_scope": "latest_trading_day",
+        "observation_time_field": "成交时间",
+        "time_ordering": "non_decreasing",
+        "date_binding": "time_only",
+        "volume_unit": "lots",
+        "price_unit": "CNY_per_share",
+        "amount_unit": "CNY",
+        "upstream_row_count": len(rows),
+        "entity_row_count": len(rows),
+        "entity_rows_selected": True,
+    }
+    for name, expected in expected_metadata.items():
+        if record.response_metadata.get(name) != expected:
+            raise ProviderNormalizationError(
+                f"Tencent tick response metadata {name!r} does not match "
+                "the requested replay scope"
+            )
+
+    message, observation_times, amount_field = _tencent_tick_validation_message(rows)
+    if message is not None:
+        raise ProviderNormalizationError(message)
+    if record.response_metadata.get("amount_field") != amount_field:
+        raise ProviderNormalizationError(
+            "Tencent tick response amount field does not match replayed rows"
+        )
+    expected_start = min(observation_times).isoformat() if observation_times else None
+    expected_end = max(observation_times).isoformat() if observation_times else None
+    if record.response_metadata.get("observation_start_time") != expected_start:
+        raise ProviderNormalizationError(
+            "Tencent tick response observation start does not match replayed rows"
+        )
+    if record.response_metadata.get("observation_end_time") != expected_end:
+        raise ProviderNormalizationError(
+            "Tencent tick response observation end does not match replayed rows"
         )
 
 
@@ -9090,6 +9331,8 @@ def _history_kwargs(
     listing: _ListingRef,
     request: ProviderRequest,
 ) -> dict[str, object]:
+    if endpoint_name == "stock_zh_a_tick_tx_js":
+        return _tencent_tick_kwargs(listing, request)
     if endpoint_name == "stock_zh_a_hist_tx":
         return _tencent_daily_history_kwargs(listing, request)
     if endpoint_name == "stock_zh_a_minute":
@@ -9164,6 +9407,36 @@ def _history_kwargs(
     if end_text is not None:
         kwargs["end_date"] = end_text
     return kwargs
+
+
+def _tencent_tick_kwargs(
+    listing: _ListingRef,
+    request: ProviderRequest,
+) -> dict[str, object]:
+    """Build the documented Tencent latest-trading-day tick request."""
+
+    if listing.market is not ListingMarket.A:
+        raise ProviderRequestError(
+            "the AKShare Tencent tick endpoint supports A-share listings only",
+            request=request,
+            retryable=False,
+        )
+    parameters = dict(request.parameters)
+    unknown = sorted(set(parameters) - _MARKET_HISTORY_TENCENT_TICK_PARAMETER_NAMES)
+    if unknown:
+        raise ProviderRequestError(
+            "unsupported AKShare Tencent tick parameter(s): " + ", ".join(unknown),
+            request=request,
+            retryable=False,
+        )
+    if parameters.get("view") != _MARKET_HISTORY_TENCENT_TICK_VIEW:
+        raise ProviderRequestError(
+            "the AKShare Tencent tick endpoint requires "
+            f"view={_MARKET_HISTORY_TENCENT_TICK_VIEW!r}",
+            request=request,
+            retryable=False,
+        )
+    return {"symbol": listing.canonical_id[:2].lower() + listing.code}
 
 
 def _tencent_daily_history_kwargs(

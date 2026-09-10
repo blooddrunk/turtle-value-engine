@@ -498,6 +498,36 @@ existing contract represents turnover amount.
 | `turnover` | Validated decimal provider ratio retained in raw evidence; it does not create a new canonical turnover-ratio or valuation fact. |
 | request `view=tencent_daily`, derived market-prefixed `symbol`, `start_date`, `end_date`, `adjust` | Explicit endpoint-selection, listing, date-range and adjustment replay scope; rows cannot be replayed under a different request scope. |
 
+## Phase 2.56 A-share Tencent latest-trading-day tick raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents the Tencent historical-tick endpoint as `stock_zh_a_tick_tx`; its
+example calls the current source's `stock_zh_a_tick_tx_js` callable. The
+[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_zh_a_tick_tx.py)
+accepts a market-prefixed `symbol` and returns the latest available trading
+day's time-only trade rows. The documented output labels amount `成交额`, while
+the current implementation emits `成交金额`; these are the two known upstream
+shapes and are not mixed.
+
+The provider selects this callable only under `MARKET_HISTORY` with explicit
+`view=tencent_tick`, derives the market-prefixed symbol from the requested
+A-share listing, validates the exact base fields plus one known amount variant,
+finite numeric/null values, integer volume/amount values, recognized buy/sell
+markers and non-decreasing times, and records the listing, amount-column and
+time-only replay scope. The normalizer emits
+`AKSHARE_TENCENT_TICK_RAW_ONLY`; no canonical fact is created because the
+response has no trading date and does not establish daily-history, liquidity or
+valuation semantics.
+
+| Raw upstream item | Phase 2 treatment |
+| --- | --- |
+| `成交时间` | Validated `HH:MM:SS` trade time in non-decreasing order; it is not a dated historical period. |
+| `成交价格`, `价格变动` | Raw per-share price/change with `CNY_per_share`; they do not replace quote or daily history. |
+| `成交量` | Raw trade volume documented in lots/`手`; no cross-frequency liquidity or valuation fact is inferred. |
+| `成交金额` or documented `成交额` | Raw trade amount in yuan/`CNY`; the exact spelling is retained and it is not issuer cash flow. |
+| `性质` | Validated marker `买盘`, `卖盘` or `中性盘`; no order-flow or governance conclusion is inferred. |
+| request `view=tencent_tick`, derived market-prefixed `symbol` | Explicit endpoint-selection, listing and latest-trading-day time-only replay scope; rows cannot be replayed under a different listing or amount shape. |
+
 ## Phase 2.9 corporate-action raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)

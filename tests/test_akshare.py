@@ -134,6 +134,13 @@ class FakeAKShare:
             adjust=adjust,
         )
 
+    def stock_zh_a_tick_tx_js(self, *, symbol: str):
+        return self._return(
+            "stock_zh_a_tick_tx_js",
+            _fixture("a_tencent_tick.json"),
+            symbol=symbol,
+        )
+
     def stock_zh_a_hist_min_em(
         self,
         *,
@@ -576,8 +583,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "55"
-    assert AKSHARE_MAPPING_VERSION == "56"
+    assert provider.identity.provider_version == "56"
+    assert AKSHARE_MAPPING_VERSION == "57"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -10952,4 +10959,243 @@ def test_market_activity_institution_statistic_cache_replay_does_not_call_upstre
     assert replay.record == live.record
     assert fake.calls == [
         ("stock_lhb_jgstatistic_em", {"symbol": "近三月"}),
+    ]
+
+
+def test_tencent_tick_fetch_uses_explicit_view_and_listing_symbol():
+    fake = FakeAKShare()
+    record = _provider(fake).fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "SH600000",
+            {"view": "tencent_tick"},
+        )
+    )
+
+    assert record.raw_payload == _fixture("a_tencent_tick.json")
+    assert fake.calls == [
+        ("stock_zh_a_tick_tx_js", {"symbol": "sh600000"}),
+    ]
+    assert record.response_metadata["endpoint"] == "stock_zh_a_tick_tx_js"
+    assert record.response_metadata["tencent_tick_view"] == "tencent_tick"
+    assert record.response_metadata["upstream_symbol"] == "sh600000"
+    assert record.response_metadata["snapshot_scope"] == "latest_trading_day"
+    assert record.response_metadata["observation_time_field"] == "成交时间"
+    assert record.response_metadata["time_ordering"] == "non_decreasing"
+    assert record.response_metadata["date_binding"] == "time_only"
+    assert record.response_metadata["volume_unit"] == "lots"
+    assert record.response_metadata["price_unit"] == "CNY_per_share"
+    assert record.response_metadata["amount_unit"] == "CNY"
+    assert record.response_metadata["amount_field"] == "成交金额"
+    assert record.response_metadata["upstream_row_count"] == 4
+    assert record.response_metadata["entity_row_count"] == 4
+    assert record.response_metadata["entity_rows_selected"] is True
+    assert record.response_metadata["listing_scoped_request"] is True
+    assert record.response_metadata["observation_start_time"] == "09:25:04"
+    assert record.response_metadata["observation_end_time"] == "15:00:02"
+    assert record.source_uri == "http://gu.qq.com/sz300494/gp/detail"
+
+
+@pytest.mark.parametrize(
+    ("parameters", "match"),
+    [
+        ({"view": "tencent_tick", "date": "20260909"}, "unsupported AKShare Tencent tick"),
+        ({"view": "wrong"}, "unsupported AKShare history parameter"),
+    ],
+)
+def test_tencent_tick_request_requires_exact_view_and_no_extra_parameters(
+    parameters: dict,
+    match: str,
+):
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError, match=match):
+        _provider(fake).fetch(
+            _request(DataCategory.MARKET_HISTORY, "SH600000", parameters)
+        )
+
+    with pytest.raises(ProviderRequestError, match="A-share listings only"):
+        _provider(fake).fetch(
+            _request(
+                DataCategory.MARKET_HISTORY,
+                "HK00700",
+                {"view": "tencent_tick"},
+            )
+        )
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("missing", "Tencent tick row 0 is missing field"),
+        ("unexpected", "Tencent tick row 0 contains unsupported field"),
+        ("invalid_time", "Tencent tick row 0 has an invalid 成交时间"),
+        ("descending", "成交时间 values must be non-decreasing"),
+        ("invalid_side", "性质 must be one of"),
+        ("non_integer", "field '成交量' must be an integer"),
+    ],
+)
+def test_tencent_tick_response_rejects_invalid_shape_or_values(
+    mutation: str,
+    match: str,
+):
+    payload = [dict(row) for row in _fixture("a_tencent_tick.json")]
+    if mutation == "missing":
+        payload[0].pop("性质")
+    elif mutation == "unexpected":
+        payload[0]["extra"] = "not documented"
+    elif mutation == "invalid_time":
+        payload[0]["成交时间"] = "09:25"
+    elif mutation == "descending":
+        payload[1]["成交时间"] = "09:24:59"
+    elif mutation == "invalid_side":
+        payload[0]["性质"] = "unknown"
+    else:
+        payload[0]["成交量"] = 4.5
+
+    class InvalidTencentTick(FakeAKShare):
+        def stock_zh_a_tick_tx_js(self, *, symbol: str):
+            return self._return(
+                "stock_zh_a_tick_tx_js",
+                payload,
+                symbol=symbol,
+            )
+
+    with pytest.raises(ProviderResponseError, match=match):
+        _provider(InvalidTencentTick()).fetch(
+            _request(
+                DataCategory.MARKET_HISTORY,
+                "SH600000",
+                {"view": "tencent_tick"},
+            )
+        )
+
+
+def test_tencent_tick_accepts_the_documented_amount_column_alias():
+    payload = [dict(row) for row in _fixture("a_tencent_tick.json")]
+    for row in payload:
+        row["成交额"] = row.pop("成交金额")
+
+    class DocumentedTencentTick(FakeAKShare):
+        def stock_zh_a_tick_tx_js(self, *, symbol: str):
+            return self._return(
+                "stock_zh_a_tick_tx_js",
+                payload,
+                symbol=symbol,
+            )
+
+    record = _provider(DocumentedTencentTick()).fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "SH600000",
+            {"view": "tencent_tick"},
+        )
+    )
+
+    assert record.response_metadata["amount_field"] == "成交额"
+    assert record.raw_payload == payload
+
+
+def test_tencent_tick_is_retained_as_raw_evidence_without_canonical_facts():
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "SH600000",
+            {"view": "tencent_tick"},
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="tencent-tick-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_TENCENT_TICK_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == ["market_history"]
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "time-only" in normalized.data_quality.notes
+    assert "canonical daily-history" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("view", "metadata 'tencent_tick_view'"),
+        ("symbol", "metadata 'upstream_symbol'"),
+        ("amount_field", "amount field does not match"),
+        ("start_time", "observation start does not match"),
+        ("payload", "成交时间 values must be non-decreasing"),
+    ],
+)
+def test_tencent_tick_normalizer_rejects_replayed_scope_mismatches(
+    mutation: str,
+    match: str,
+):
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "SH600000",
+            {"view": "tencent_tick"},
+        )
+    )
+    payload = [dict(row) for row in record.raw_payload]
+    response_metadata = dict(record.response_metadata)
+    if mutation == "view":
+        response_metadata["tencent_tick_view"] = "wrong"
+    elif mutation == "symbol":
+        response_metadata["upstream_symbol"] = "sz000001"
+    elif mutation == "amount_field":
+        response_metadata["amount_field"] = "成交额"
+    elif mutation == "start_time":
+        response_metadata["observation_start_time"] = "09:30:02"
+    else:
+        payload[1]["成交时间"] = "09:24:59"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=record.source_uri,
+        response_metadata=response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match=match):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-tencent-tick-scope",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_tencent_tick_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.MARKET_HISTORY,
+        "SH600000",
+        {"view": "tencent_tick"},
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [
+        ("stock_zh_a_tick_tx_js", {"symbol": "sh600000"}),
     ]

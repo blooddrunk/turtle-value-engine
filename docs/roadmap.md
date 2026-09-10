@@ -1364,6 +1364,31 @@ Live calls remain opt-in; tests use an injected client and a frozen fixture
 with cache replay, invalid-parameter, response-validation and replay-scope
 coverage.
 
+### Phase 2.56 — A-share Tencent latest-trading-day tick acquisition contract (COMPLETE)
+
+The mapping review now covers the distinct Tencent historical-tick endpoint
+documented as
+[`stock_zh_a_tick_tx`](https://akshare.akfamily.xyz/data/stock/stock.html)
+and implemented by the current official source as
+[`stock_zh_a_tick_tx_js`](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_zh_a_tick_tx.py).
+It accepts one market-prefixed A-share `symbol` and returns the latest
+available trading day's time-only trade rows. The documented output contains
+trade time, price, price change, volume in lots, amount in yuan and a buy/sell
+marker; the current source names the amount column `成交金额` while the
+documentation table labels it `成交额`.
+
+The provider selects this callable only under the existing provider-neutral
+`MARKET_HISTORY` category with explicit `view=tencent_tick`, derives the
+market-prefixed symbol, validates one exact documented/source amount-column
+variant, finite numeric/null values, integer volume/amount values, recognized
+trade sides and non-decreasing time order, and records the complete
+listing-scoped response plus its time-only replay scope. The normalizer emits
+`AKSHARE_TENCENT_TICK_RAW_ONLY`; because the response has no trading date and
+only represents a latest-day tick snapshot, it creates no canonical daily
+history, liquidity or valuation fact. Live calls remain opt-in; tests use an
+injected client and a frozen fixture with cache replay, invalid-parameter,
+response-validation and replay-scope coverage.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -1373,7 +1398,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.55 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.56 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -1581,7 +1606,7 @@ Phase 2 is active. Phase 1 remains frozen: changes to formulas, hard-gate
 semantics, schemas or `strict-v1` thresholds require a separately reviewed,
 versioned change.
 
-Phase 2.55 completes the next documented structured-data boundary while
+Phase 2.56 completes the next documented structured-data boundary while
 keeping share-change, repurchase and rights-issue period, status, unit and
 economic-scope questions unresolved, and keeping ownership-pledge holder,
 governance and economic-scope questions unresolved. The A-share
@@ -1590,6 +1615,11 @@ market-history slices: it maps the existing daily-history extension facts,
 preserves volume as `shares` and amount as `CNY`, and retains its market-
 prefixed symbol, date range, adjustment and raw turnover ratio as replayable
 provider context. The A-share
+Tencent latest-trading-day tick response remains raw-only because its
+time-only trade rows have no trading date and do not establish canonical daily
+history, liquidity or valuation facts; `view=tencent_tick`, the derived
+market-prefixed symbol, recognized amount-column variant and time ordering
+remain part of its replayable acquisition boundary. The A-share
 Sina minute-history response remains raw-only because its recent provider
 window, minute interval and adjustment mode do not establish canonical daily
 history or a valuation input; `view=sina_minute`, the market-prefixed symbol,
