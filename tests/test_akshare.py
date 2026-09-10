@@ -149,6 +149,13 @@ class FakeAKShare:
             symbol=symbol,
         )
 
+    def stock_intraday_em(self, *, symbol: str):
+        return self._return(
+            "stock_intraday_em",
+            _fixture("a_intraday_trades.json"),
+            symbol=symbol,
+        )
+
     def stock_zh_a_hist_min_em(
         self,
         *,
@@ -618,8 +625,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "59"
-    assert AKSHARE_MAPPING_VERSION == "60"
+    assert provider.identity.provider_version == "60"
+    assert AKSHARE_MAPPING_VERSION == "61"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -1887,6 +1894,226 @@ def test_a_bid_ask_cache_replay_does_not_call_upstream(tmp_path: Path):
     assert replay.mode is RetrievalMode.CACHE_REPLAY
     assert replay.record == live.record
     assert fake.calls == [("stock_bid_ask_em", {"symbol": "600000"})]
+
+
+def test_a_intraday_trades_fetch_uses_documented_symbol_and_shape():
+    fake = FakeAKShare()
+    record = _provider(fake).fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "SH600000",
+            {"view": "intraday_trades"},
+        )
+    )
+
+    assert record.raw_payload == _fixture("a_intraday_trades.json")
+    assert fake.calls == [("stock_intraday_em", {"symbol": "600000"})]
+    assert record.response_metadata["endpoint"] == "stock_intraday_em"
+    assert record.response_metadata["intraday_trades_view"] == "intraday_trades"
+    assert record.response_metadata["upstream_symbol"] == "600000"
+    assert record.response_metadata["listing_scoped_request"] is True
+    assert record.response_metadata["snapshot_scope"] == "latest_trading_day"
+    assert record.response_metadata["observation_time_field"] == "时间"
+    assert record.response_metadata["time_ordering"] == "non_decreasing"
+    assert record.response_metadata["date_binding"] == "time_only"
+    assert record.response_metadata["range_filtering"] == "none"
+    assert record.response_metadata["observation_start_time"] == "09:15:00"
+    assert record.response_metadata["observation_end_time"] == "15:00:00"
+    assert record.response_metadata["upstream_row_count"] == 5
+    assert record.response_metadata["entity_row_count"] == 5
+    assert record.response_metadata["entity_rows_selected"] is True
+    assert record.source_uri == "https://quote.eastmoney.com/f1.html?newcode=0.000001"
+
+
+@pytest.mark.parametrize(
+    ("entity_id", "parameters", "match"),
+    [
+        (
+            "SH600000",
+            {"view": "intraday_trades", "date": "20260909"},
+            "unsupported AKShare intraday-trade",
+        ),
+        ("HK00700", {"view": "intraday_trades"}, "A-share listings only"),
+    ],
+)
+def test_a_intraday_trades_request_validates_scope_and_parameters(
+    entity_id: str,
+    parameters: dict,
+    match: str,
+):
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError, match=match):
+        _provider(fake).fetch(
+            _request(DataCategory.MARKET_HISTORY, entity_id, parameters)
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("missing_field", "missing field"),
+        ("extra_field", "unsupported field"),
+        ("invalid_time", "invalid 时间"),
+        ("descending", "non-decreasing"),
+        ("invalid_side", "买卖盘性质 must be one of"),
+        ("invalid_numeric", "must be numeric"),
+        ("non_integer", "must be an integer"),
+    ],
+)
+def test_a_intraday_trades_response_validates_documented_rows(
+    mutation: str,
+    match: str,
+):
+    class InvalidRows(FakeAKShare):
+        def stock_intraday_em(self, *, symbol: str):
+            rows = _fixture("a_intraday_trades.json")
+            if mutation == "missing_field":
+                rows[0].pop("手数")
+            elif mutation == "extra_field":
+                rows[0]["unexpected"] = "not documented"
+            elif mutation == "invalid_time":
+                rows[0]["时间"] = "09:15"
+            elif mutation == "descending":
+                rows[1]["时间"] = "09:14:59"
+            elif mutation == "invalid_side":
+                rows[0]["买卖盘性质"] = "unknown"
+            elif mutation == "invalid_numeric":
+                rows[0]["成交价"] = "10.60"
+            else:
+                rows[0]["手数"] = 1.5
+            return self._return("stock_intraday_em", rows, symbol=symbol)
+
+    with pytest.raises(ProviderResponseError, match=match):
+        _provider(InvalidRows()).fetch(
+            _request(
+                DataCategory.MARKET_HISTORY,
+                "SH600000",
+                {"view": "intraday_trades"},
+            )
+        )
+
+
+def test_a_intraday_trades_are_retained_as_raw_evidence_without_canonical_facts():
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "SH600000",
+            {"view": "intraday_trades"},
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="a-intraday-trades-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_INTRADAY_TRADES_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == ["market_history"]
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "Eastmoney intraday-trade" in normalized.data_quality.notes
+    assert "canonical daily-history" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "view",
+        "symbol",
+        "listing_scope",
+        "snapshot",
+        "date_binding",
+        "range_filtering",
+        "observation_field",
+        "ordering",
+        "count",
+        "start",
+        "end",
+        "payload",
+    ],
+)
+def test_a_intraday_trades_normalizer_rejects_replayed_scope_mismatches(mutation: str):
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "SH600000",
+            {"view": "intraday_trades"},
+        )
+    )
+    payload = [dict(row) for row in record.raw_payload]
+    response_metadata = dict(record.response_metadata)
+    if mutation == "view":
+        response_metadata["intraday_trades_view"] = "daily"
+    elif mutation == "symbol":
+        response_metadata["upstream_symbol"] = "000001"
+    elif mutation == "listing_scope":
+        response_metadata["listing_scoped_request"] = False
+    elif mutation == "snapshot":
+        response_metadata["snapshot_scope"] = "current_intraday_snapshot"
+    elif mutation == "date_binding":
+        response_metadata["date_binding"] = "row_and_request"
+    elif mutation == "range_filtering":
+        response_metadata["range_filtering"] = "normalizer"
+    elif mutation == "observation_field":
+        response_metadata["observation_time_field"] = "成交时间"
+    elif mutation == "ordering":
+        response_metadata["time_ordering"] = "strictly_ascending"
+    elif mutation == "count":
+        response_metadata["entity_row_count"] = 99
+    elif mutation == "start":
+        response_metadata["observation_start_time"] = "09:16:00"
+    elif mutation == "end":
+        response_metadata["observation_end_time"] = "15:01:00"
+    else:
+        payload[1]["时间"] = "09:14:59"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=record.source_uri,
+        response_metadata=response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match="intraday-trades"):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-a-intraday-trades-scope",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_a_intraday_trades_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.MARKET_HISTORY,
+        "SH600000",
+        {"view": "intraday_trades"},
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [("stock_intraday_em", {"symbol": "600000"})]
 
 
 @pytest.mark.parametrize(

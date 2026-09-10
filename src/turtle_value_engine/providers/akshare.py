@@ -21,7 +21,7 @@ the SSE/SZSE/BSE margin-detail raw slices, the A-share individual ownership-pled
 detail view, the A-share CNINFO equity-mortgage view, A-share company-litigation
 raw slice and A-share Eastmoney individual-info raw slice.
 The A-share Eastmoney individual-fund-flow, market-participation-desire,
-chip-distribution, Tencent
+intraday-trade, chip-distribution, Tencent
 daily-history and Tencent latest-trading-day tick, Sina minute-history,
 intraday-history, H-share intraday-history, pre-market-history, five-level bid-ask
 and Dragon-Tiger market-activity detail/statistics/institution-statistics raw
@@ -74,9 +74,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "59"
+AKSHARE_ADAPTER_VERSION = "60"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "60"
+AKSHARE_MAPPING_VERSION = "61"
 
 
 class ListingMarket(StrEnum):
@@ -149,6 +149,7 @@ _SOURCE_URIS = {
     "stock_lhb_stock_statistic_em": "https://data.eastmoney.com/stock/tradedetail.html",
     "stock_lhb_jgstatistic_em": "https://data.eastmoney.com/stock/jgstatistic.html",
     "stock_comment_detail_scrd_desire_em": "https://data.eastmoney.com/stockcomment/stock/600000.html",
+    "stock_intraday_em": "https://quote.eastmoney.com/f1.html?newcode=0.000001",
     "stock_hk_company_profile_em": "https://emweb.securities.eastmoney.com/PC_HKF10/pages/home/index.html",
     "stock_hk_security_profile_em": "https://emweb.securities.eastmoney.com/PC_HKF10/pages/home/index.html",
     "stock_cash_flow_sheet_by_report_em": "https://emweb.securities.eastmoney.com/PC_HSF10/NewFinanceAnalysis/Index",
@@ -414,6 +415,13 @@ _MARKET_HISTORY_TENCENT_TICK_BASE_FIELDS = frozenset(
 )
 _MARKET_HISTORY_TENCENT_TICK_AMOUNT_FIELDS = frozenset({"成交金额", "成交额"})
 _MARKET_HISTORY_TENCENT_TICK_SIDES = frozenset({"买盘", "卖盘", "中性盘"})
+
+_MARKET_HISTORY_INTRADAY_TRADES_PARAMETER_NAMES = frozenset({"view"})
+_MARKET_HISTORY_INTRADAY_TRADES_VIEW = "intraday_trades"
+_MARKET_HISTORY_INTRADAY_TRADES_FIELDS = frozenset(
+    {"时间", "成交价", "手数", "买卖盘性质"}
+)
+_MARKET_HISTORY_INTRADAY_TRADES_SIDES = frozenset({"买盘", "卖盘", "中性盘"})
 
 _HISTORY_PARAMETER_NAMES = frozenset(
     {
@@ -711,6 +719,7 @@ class AKShareProvider(StructuredDataProvider):
                 _MARKET_HISTORY_TENCENT_DAILY_VIEW,
                 _MARKET_HISTORY_TENCENT_TICK_VIEW,
                 _MARKET_HISTORY_CHIP_DISTRIBUTION_VIEW,
+                _MARKET_HISTORY_INTRADAY_TRADES_VIEW,
             )
             and listing.market is not ListingMarket.A
         ):
@@ -1290,6 +1299,31 @@ class AKShareProvider(StructuredDataProvider):
                 )
                 response_metadata["observation_end_date"] = (
                     max(observation_dates).isoformat() if observation_dates else None
+                )
+            elif endpoint.name == "stock_intraday_em":
+                observation_times = _validate_intraday_trades_provider_rows(
+                    rows,
+                    provider=self.identity,
+                    request=request,
+                )
+                response_metadata["upstream_row_count"] = len(rows)
+                response_metadata["entity_row_count"] = len(rows)
+                response_metadata["entity_rows_selected"] = True
+                response_metadata["listing_scoped_request"] = True
+                response_metadata["intraday_trades_view"] = (
+                    _MARKET_HISTORY_INTRADAY_TRADES_VIEW
+                )
+                response_metadata["upstream_symbol"] = kwargs["symbol"]
+                response_metadata["snapshot_scope"] = "latest_trading_day"
+                response_metadata["observation_time_field"] = "时间"
+                response_metadata["time_ordering"] = "non_decreasing"
+                response_metadata["date_binding"] = "time_only"
+                response_metadata["range_filtering"] = "none"
+                response_metadata["observation_start_time"] = (
+                    min(observation_times).isoformat() if observation_times else None
+                )
+                response_metadata["observation_end_time"] = (
+                    max(observation_times).isoformat() if observation_times else None
                 )
             elif endpoint.name == "stock_zh_a_tick_tx_js":
                 observation_times, amount_field = _validate_tencent_tick_provider_rows(
@@ -2223,6 +2257,9 @@ class AKShareProvider(StructuredDataProvider):
                 request.parameters.get("view")
                 == _MARKET_HISTORY_CHIP_DISTRIBUTION_VIEW
             ),
+            market_history_intraday_trades_requested=(
+                request.parameters.get("view") == _MARKET_HISTORY_INTRADAY_TRADES_VIEW
+            ),
         )
         for name in candidates:
             function = getattr(client, name, None)
@@ -2792,6 +2829,12 @@ class AKShareNormalizer:
                 ):
                     _validate_chip_distribution_normalizer_scope(record, listing, rows)
                     normalizer_flags.add("AKSHARE_CHIP_DISTRIBUTION_RAW_ONLY")
+                elif endpoint == "stock_intraday_em":
+                    _validate_intraday_trades_normalizer_scope(record, listing, rows)
+                    # The endpoint exposes only the latest trading day's
+                    # time-of-day trades. It has no row-level trading date and
+                    # therefore cannot become a dated daily-history fact.
+                    normalizer_flags.add("AKSHARE_INTRADAY_TRADES_RAW_ONLY")
                 elif endpoint == "stock_zh_a_tick_tx_js":
                     _validate_tencent_tick_normalizer_scope(record, listing, rows)
                     # The endpoint exposes only the latest trading day's
@@ -2829,6 +2872,7 @@ class AKShareNormalizer:
                 if endpoint not in {
                     "stock_zh_a_tick_tx_js",
                     "stock_cyq_em",
+                    "stock_intraday_em",
                     "stock_zh_a_hist_min_em",
                     "stock_hk_hist_min_em",
                     "stock_zh_a_minute",
@@ -3399,6 +3443,7 @@ class AKShareNormalizer:
         if (
             {
                 "AKSHARE_TENCENT_TICK_RAW_ONLY",
+                "AKSHARE_INTRADAY_TRADES_RAW_ONLY",
                 "AKSHARE_INTRADAY_HISTORY_RAW_ONLY",
                 "AKSHARE_HK_INTRADAY_HISTORY_RAW_ONLY",
                 "AKSHARE_SINA_MINUTE_HISTORY_RAW_ONLY",
@@ -3783,6 +3828,13 @@ class AKShareNormalizer:
                 "carry a trading date and do not establish a canonical daily-history, "
                 "liquidity or valuation input."
             )
+        if "AKSHARE_INTRADAY_TRADES_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented A-share Eastmoney intraday-trade response is retained "
+                "as raw evidence only: its latest-trading-day time-only trades do not "
+                "carry a trading date and do not establish a canonical daily-history, "
+                "liquidity or valuation input."
+            )
         if "AKSHARE_INTRADAY_HISTORY_RAW_ONLY" in normalizer_flags:
             notes += (
                 " The documented A-share intraday-history response is retained as raw "
@@ -3992,6 +4044,7 @@ def _endpoint_candidates(
     market_history_tencent_daily_requested: bool = False,
     market_history_tencent_tick_requested: bool = False,
     market_history_chip_distribution_requested: bool = False,
+    market_history_intraday_trades_requested: bool = False,
 ) -> tuple[str, ...]:
     market = listing.market
     if category is DataCategory.COMPANY_METADATA:
@@ -4032,6 +4085,8 @@ def _endpoint_candidates(
         return ("stock_hk_spot_em", "stock_hk_spot")
     if category is DataCategory.MARKET_HISTORY:
         if market is ListingMarket.A:
+            if market_history_intraday_trades_requested:
+                return ("stock_intraday_em",)
             if market_history_chip_distribution_requested:
                 return ("stock_cyq_em",)
             if market_history_pre_market_requested:
@@ -6695,6 +6750,100 @@ def _validate_tencent_tick_provider_rows(
     return observation_times, amount_field
 
 
+def _intraday_trades_time(value: object) -> time | None:
+    if not isinstance(value, str) or not re.fullmatch(r"\d{2}:\d{2}:\d{2}", value):
+        return None
+    try:
+        return datetime.strptime(value, "%H:%M:%S").time()
+    except ValueError:
+        return None
+
+
+def _intraday_trades_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> tuple[str | None, list[time]]:
+    observation_times: list[time] = []
+    previous_time: time | None = None
+    for index, row in enumerate(rows):
+        missing = sorted(_MARKET_HISTORY_INTRADAY_TRADES_FIELDS - set(row))
+        unexpected = sorted(set(row) - _MARKET_HISTORY_INTRADAY_TRADES_FIELDS)
+        if missing:
+            return (
+                f"intraday-trades row {index} is missing field(s): "
+                + ", ".join(missing),
+                [],
+            )
+        if unexpected:
+            return (
+                f"intraday-trades row {index} contains unsupported field(s): "
+                + ", ".join(unexpected),
+                [],
+            )
+
+        observation_time = _intraday_trades_time(row["时间"])
+        if observation_time is None:
+            return f"intraday-trades row {index} has an invalid 时间", []
+        if previous_time is not None and observation_time < previous_time:
+            return "intraday-trades response 时间 values must be non-decreasing", []
+        previous_time = observation_time
+        observation_times.append(observation_time)
+
+        side = row["买卖盘性质"]
+        if not isinstance(side, str) or side not in _MARKET_HISTORY_INTRADAY_TRADES_SIDES:
+            return (
+                f"intraday-trades row {index} 买卖盘性质 must be one of: "
+                + ", ".join(sorted(_MARKET_HISTORY_INTRADAY_TRADES_SIDES)),
+                [],
+            )
+        for field in ("成交价", "手数"):
+            value = row[field]
+            if value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, Real):
+                return (
+                    f"intraday-trades row {index} field {field!r} "
+                    "must be numeric or null",
+                    [],
+                )
+            try:
+                numeric = float(value)
+            except (OverflowError, TypeError, ValueError):
+                return (
+                    f"intraday-trades row {index} field {field!r} "
+                    "must be numeric or null",
+                    [],
+                )
+            if not math.isfinite(numeric):
+                return (
+                    f"intraday-trades row {index} field {field!r} "
+                    "must be finite or null",
+                    [],
+                )
+            if field == "手数" and not numeric.is_integer():
+                return (
+                    f"intraday-trades row {index} field {field!r} "
+                    "must be an integer or null",
+                    [],
+                )
+    return None, observation_times
+
+
+def _validate_intraday_trades_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> list[time]:
+    message, observation_times = _intraday_trades_validation_message(rows)
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message}",
+            provider=provider,
+            request=request,
+        )
+    return observation_times
+
+
 def _chip_distribution_date(value: object) -> date | None:
     if not isinstance(value, str):
         return None
@@ -6970,6 +7119,59 @@ def _validate_tencent_tick_normalizer_scope(
     if record.response_metadata.get("observation_end_time") != expected_end:
         raise ProviderNormalizationError(
             "Tencent tick response observation end does not match replayed rows"
+        )
+
+
+def _validate_intraday_trades_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> None:
+    if listing.market is not ListingMarket.A:
+        raise ProviderNormalizationError(
+            "AKShare intraday-trades raw slice supports A-share listings only"
+        )
+    if record.response_metadata.get("endpoint") != "stock_intraday_em":
+        raise ProviderNormalizationError(
+            "AKShare intraday-trades record must come from stock_intraday_em"
+        )
+    try:
+        upstream_kwargs = _intraday_trades_kwargs(listing, record.request)
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+
+    expected_metadata = {
+        "intraday_trades_view": _MARKET_HISTORY_INTRADAY_TRADES_VIEW,
+        "upstream_symbol": upstream_kwargs["symbol"],
+        "listing_scoped_request": True,
+        "snapshot_scope": "latest_trading_day",
+        "observation_time_field": "时间",
+        "time_ordering": "non_decreasing",
+        "date_binding": "time_only",
+        "range_filtering": "none",
+        "upstream_row_count": len(rows),
+        "entity_row_count": len(rows),
+        "entity_rows_selected": True,
+    }
+    for name, expected in expected_metadata.items():
+        if record.response_metadata.get(name) != expected:
+            raise ProviderNormalizationError(
+                f"intraday-trades response metadata {name!r} does not match "
+                "the requested replay scope"
+            )
+
+    message, observation_times = _intraday_trades_validation_message(rows)
+    if message is not None:
+        raise ProviderNormalizationError(message)
+    expected_start = min(observation_times).isoformat() if observation_times else None
+    expected_end = max(observation_times).isoformat() if observation_times else None
+    if record.response_metadata.get("observation_start_time") != expected_start:
+        raise ProviderNormalizationError(
+            "intraday-trades response observation start does not match replayed rows"
+        )
+    if record.response_metadata.get("observation_end_time") != expected_end:
+        raise ProviderNormalizationError(
+            "intraday-trades response observation end does not match replayed rows"
         )
 
 
@@ -10151,6 +10353,8 @@ def _history_kwargs(
     listing: _ListingRef,
     request: ProviderRequest,
 ) -> dict[str, object]:
+    if endpoint_name == "stock_intraday_em":
+        return _intraday_trades_kwargs(listing, request)
     if endpoint_name == "stock_cyq_em":
         return _chip_distribution_kwargs(listing, request)
     if endpoint_name == "stock_zh_a_tick_tx_js":
@@ -10304,6 +10508,37 @@ def _tencent_tick_kwargs(
             retryable=False,
         )
     return {"symbol": listing.canonical_id[:2].lower() + listing.code}
+
+
+def _intraday_trades_kwargs(
+    listing: _ListingRef,
+    request: ProviderRequest,
+) -> dict[str, object]:
+    """Build the documented symbol-scoped Eastmoney intraday-trade request."""
+
+    if listing.market is not ListingMarket.A:
+        raise ProviderRequestError(
+            "the AKShare intraday-trade endpoint supports A-share listings only",
+            request=request,
+            retryable=False,
+        )
+    unknown = sorted(
+        set(request.parameters) - _MARKET_HISTORY_INTRADAY_TRADES_PARAMETER_NAMES
+    )
+    if unknown:
+        raise ProviderRequestError(
+            "unsupported AKShare intraday-trade parameter(s): " + ", ".join(unknown),
+            request=request,
+            retryable=False,
+        )
+    if request.parameters.get("view") != _MARKET_HISTORY_INTRADAY_TRADES_VIEW:
+        raise ProviderRequestError(
+            "the AKShare intraday-trade endpoint requires "
+            f"view={_MARKET_HISTORY_INTRADAY_TRADES_VIEW!r}",
+            request=request,
+            retryable=False,
+        )
+    return {"symbol": listing.code}
 
 
 def _tencent_daily_history_kwargs(

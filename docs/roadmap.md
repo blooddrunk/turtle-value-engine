@@ -1462,6 +1462,28 @@ remain opt-in; tests use an injected client and a frozen fixture with cache
 replay, invalid-parameter, response-validation, raw-only and replay-scope
 coverage.
 
+### Phase 2.60 — A-share Eastmoney intraday-trade raw acquisition contract (COMPLETE)
+
+The mapping review now covers the distinct Eastmoney intraday-trade endpoint
+documented as
+[`stock_intraday_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
+and implemented by the current [official source](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_intraday_em.py).
+It accepts an A-share six-digit `symbol` and returns the latest trading day's
+time-only fields `时间`, `成交价`, `手数` and `买卖盘性质`, including pre-market
+observations.
+
+The provider selects this callable only under the existing provider-neutral
+`MARKET_HISTORY` category with explicit `view=intraday_trades`, passes the
+unprefixed A-share code, validates the exact response shape, finite numeric/null
+prices, integer/null lot counts, recognized trade sides and non-decreasing
+times, and records the listing, symbol, latest-day snapshot, time-only date
+binding and observed time bounds for replay. The normalizer emits
+`AKSHARE_INTRADAY_TRADES_RAW_ONLY`; without a trading date, provider trade
+prices and lot counts remain raw evidence and create no canonical daily-history,
+liquidity, order-flow or valuation fact. Live calls remain opt-in; tests use an
+injected client and a frozen fixture with cache replay, invalid-parameter,
+response-validation, raw-only and replay-scope coverage.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -1471,7 +1493,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.59 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.60 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -1679,7 +1701,7 @@ Phase 2 is active. Phase 1 remains frozen: changes to formulas, hard-gate
 semantics, schemas or `strict-v1` thresholds require a separately reviewed,
 versioned change.
 
-Phase 2.59 completes the next documented structured-data boundary while
+Phase 2.60 completes the next documented structured-data boundary while
 keeping share-change, repurchase and rights-issue period, status, unit and
 economic-scope questions unresolved, and keeping ownership-pledge holder,
 governance and economic-scope questions unresolved. The A-share
@@ -1703,6 +1725,12 @@ window do not establish a canonical market metric, issuer cash flow,
 shareholder return, governance or valuation fact; `view=participation_desire`,
 the unprefixed symbol, exact field set, row limit and observed date bounds
 remain part of its replayable acquisition boundary.
+The A-share Eastmoney intraday-trade response remains raw-only because its
+latest-trading-day `时间`, `成交价`, `手数` and `买卖盘性质` rows have no trading
+date and do not establish canonical daily history, liquidity, order flow or
+valuation facts; `view=intraday_trades`, the unprefixed symbol, exact field set,
+time ordering and observed time bounds remain part of its replayable
+acquisition boundary.
 The H-share intraday-history response remains raw-only because its recent
 minute-bar window, period-specific schema, adjustment mode and HKD market
 context do not establish canonical daily history or a valuation input;

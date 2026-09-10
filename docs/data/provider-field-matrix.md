@@ -625,6 +625,36 @@ admitted.
 | `参与意愿变化`, `5日平均变化` | Provider-defined change fields; no return, flow, governance or valuation meaning is inferred. |
 | request `view=participation_desire`, unprefixed six-digit `symbol` | Explicit endpoint/listing and latest-30-trading-day replay scope; observed date bounds are retained as metadata. |
 
+## Phase 2.60 A-share Eastmoney intraday-trade raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_intraday_em` as an Eastmoney A-share endpoint with a six-digit
+`symbol`; the latest trading day's response includes pre-market observations
+and exactly `时间`, `成交价`, `手数` and `买卖盘性质`. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_intraday_em.py)
+confirms the same symbol-only callable and maps the upstream side codes to the
+documented buy/sell/neutral labels.
+
+The provider selects this endpoint only under `MARKET_HISTORY` with explicit
+`view=intraday_trades`, passes the unprefixed A-share code, validates the exact
+field set, finite numeric/null prices, integer/null lot counts, recognized trade
+sides and non-decreasing time-of-day values, and records the listing, symbol,
+latest-trading-day snapshot, time-only date binding and observed time bounds for
+replay. The normalizer emits `AKSHARE_INTRADAY_TRADES_RAW_ONLY`; no canonical
+daily-history, liquidity, order-flow or valuation fact is admitted.
+
+| Raw upstream item | Phase 2 treatment |
+| --- | --- |
+| `时间` | Validated `HH:MM:SS` observation time in non-decreasing order; it has no row-level trading date and is not converted into a daily-history period. |
+| `成交价` | Provider trade-price field retained as raw evidence; no quote or daily-history replacement is inferred. |
+| `手数` | Provider lot-count field must be an integer or null; no cross-frequency liquidity metric is calculated. |
+| `买卖盘性质` | Validated `买盘`, `卖盘` or `中性盘` marker; no order-flow, sentiment or governance conclusion is inferred. |
+| request `view=intraday_trades`, unprefixed A-share `symbol` | Explicit endpoint/listing/latest-day/time-only replay scope; observed time bounds are retained as metadata and cannot be replayed under a different request. |
+
+The provider-specific intraday trade response remains outside the calculation,
+gate, pipeline, CLI and input-loader contracts. Its raw evidence is available
+for later review without being treated as canonical daily history, liquidity,
+order flow or valuation input.
+
 ## Phase 2.9 corporate-action raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)

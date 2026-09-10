@@ -482,6 +482,17 @@ observed-date scope for replay. The normalizer emits
 `AKSHARE_MARKET_PARTICIPATION_DESIRE_RAW_ONLY`: provider-defined participation
 scores and changes remain raw evidence and do not become issuer cash flow,
 shareholder return, governance, market or valuation facts.
+Phase 2.60 adds the distinct documented Eastmoney A-share intraday-trade
+endpoint [`stock_intraday_em`](https://akshare.akfamily.xyz/data/stock/stock.html),
+whose current official implementation is in
+[`stock_intraday_em.py`](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_intraday_em.py),
+under `MARKET_HISTORY` with explicit `view=intraday_trades`. It passes the
+unprefixed six-digit A-share listing code and returns the latest trading day's
+time-only `时间`, `成交价`, `手数` and `买卖盘性质` rows, including pre-market
+observations. The adapter validates the exact shape, finite numeric values,
+integer lot counts, recognized trade sides and non-decreasing times, while the
+normalizer emits `AKSHARE_INTRADAY_TRADES_RAW_ONLY`: without a trading date,
+these rows do not become canonical daily-history, liquidity or valuation facts.
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.
