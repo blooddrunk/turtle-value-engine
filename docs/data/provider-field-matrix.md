@@ -751,6 +751,41 @@ gate, pipeline, CLI and input-loader contracts. Its raw evidence is available
 for later review without being treated as a canonical quote, currency,
 comparison, market or valuation input.
 
+## Phase 2.88 A-share Eastmoney historical stock-hot-rank raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_hot_rank_detail_em` as a symbol-scoped Eastmoney A-share
+historical-hot-rank endpoint. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hot_rank_em.py)
+uses the market-prefixed `SZ000665` symbol with `marketType=""` and combines
+the historical rank and follower-rate sources. Its exact returned fields are
+`时间`, `排名`, `证券代码`, `新晋粉丝` and `铁杆粉丝`, in that order; the source
+percent rates are divided by 100 into fractions by the official adapter.
+
+The provider selects this endpoint only under `MARKET_ACTIVITY` with explicit
+`view=hot_rank_detail`, validates the complete symbol-scoped response before
+retaining it, and preserves the documented Eastmoney source URI
+`http://guba.eastmoney.com/rank/stock?code=000665`. Dates must be valid ISO
+dates in strict ascending order, the code must match the requested
+market-prefixed A-share identity, ranks must be positive integers and follower
+ratios must be finite fractions in `[0, 1]`. The checked-in official snapshot
+contains 366 rows from `2025-09-11` through `2026-09-11`; no selected/
+non-selected universe rows or adapter-side listing filter apply because the
+upstream request is already symbol-scoped. Request symbol, field order, rate
+units/scaling, source URI, row counts and observed date bounds remain replay
+metadata.
+
+| Raw upstream item | Phase 2.88 treatment |
+| --- | --- |
+| `时间` | Required `YYYY-MM-DD` row observation date; strict ordering is validated and the date is not promoted to a report or accounting period. |
+| `排名` | Required positive integer provider popularity rank; retained as raw rank evidence and not converted into a return, liquidity, valuation or canonical market metric. |
+| `证券代码` | Required market-prefixed A-share identity (`SH`/`SZ`/`BJ` plus six digits) matching the requested listing; used for response identity validation only. |
+| `新晋粉丝`, `铁杆粉丝` | Optional finite follower rates represented as fractions after the documented percent-to-fraction scaling; they remain raw popularity context and do not establish issuer cash flow, shareholder return or governance. |
+| request `view=hot_rank_detail`, `symbol=SZ000665` | Explicit A-share endpoint selector and listing-scoped request; `marketType=""`, source URI, field order, row counts, units/scaling and observed date bounds remain part of the cache replay boundary. |
+
+The provider-specific A-share historical-hot-rank response remains outside the
+calculation, gate, pipeline, CLI and input-loader contracts. The normalizer
+emits `AKSHARE_HOT_RANK_DETAIL_RAW_ONLY` and creates no canonical facts.
+
 ## Phase 2.63 A-share Eastmoney dividend-distribution detail raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)

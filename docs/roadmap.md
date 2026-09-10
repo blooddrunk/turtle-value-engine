@@ -2167,6 +2167,39 @@ response validation before filtering, raw-only normalization, cache replay and
 replay-scope rejection. No calculation, gate, pipeline, CLI or input-loader
 contract changes.
 
+### Phase 2.88 — A-share Eastmoney historical stock-hot-rank raw acquisition contract (COMPLETE)
+
+The mapping review now covers the distinct documented AKShare
+`stock_hot_rank_detail_em` endpoint under the existing `MARKET_ACTIVITY`
+category. The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hot_rank_em.py)
+define a symbol-scoped A-share historical-rank call with market-prefixed
+`symbol=SZ000665`, `marketType=""` and the exact output fields `时间`, `排名`,
+`证券代码`, `新晋粉丝` and `铁杆粉丝` in source order. The official adapter
+obtains the rank and follower-rate components from its historical sources and
+divides the published percent rates by 100 into fractions.
+
+The provider selects this callable only with explicit
+`view=hot_rank_detail`, passes the requested market-prefixed symbol, validates
+the complete symbol-scoped payload before retaining it, and records the
+documented Eastmoney source URI
+`http://guba.eastmoney.com/rank/stock?code=000665`, source field order, rate
+units/scaling, row counts and observed date bounds for cache replay. It rejects
+missing/extra/reordered fields, invalid or duplicate/descending dates, a
+non-matching market-prefixed A-share identity, non-positive/non-integer ranks
+and non-finite or out-of-range follower ratios. The checked-in official
+snapshot contains 366 rows from `2025-09-11` through `2026-09-11`; because the
+upstream request is already listing-scoped, no selected/non-selected universe
+filter is applicable.
+
+The normalizer emits `AKSHARE_HOT_RANK_DETAIL_RAW_ONLY` and creates no
+canonical fact: date-bound popularity rank and follower ratios remain raw
+evidence only and do not establish issuer cash flow, shareholder return,
+governance, valuation or a canonical market metric. Tests cover explicit
+request and market/parameter validation, complete response validation,
+raw-only normalization, cache replay and replay-scope rejection. No
+calculation, gate, pipeline, CLI or input-loader contract changes.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -2176,7 +2209,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.87 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.88 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```

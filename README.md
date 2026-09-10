@@ -858,6 +858,26 @@ emits `AKSHARE_AB_COMPARISON_RAW_ONLY` and creates no canonical quote,
 currency, comparison or valuation fact. No calculation, gate, pipeline, CLI
 or input-loader contract changes.
 
+Phase 2.88 adds the distinct documented Eastmoney A-share historical-hot-rank
+endpoint [`stock_hot_rank_detail_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
+with explicit `view=hot_rank_detail`. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hot_rank_em.py)
+uses the market-prefixed symbol `SZ000665`, `marketType=""` and its historical
+rank/follower sources, returning the exact fields `时间`, `排名`, `证券代码`,
+`新晋粉丝` and `铁杆粉丝` in that order. The adapter validates the complete
+symbol-scoped payload before retaining it, including strict dates, matching
+market-prefixed identity, positive integer rank and finite follower ratios;
+the documented percent rates are divided by 100 into fractions. The checked-in
+official snapshot uses the documented Eastmoney source URI
+`http://guba.eastmoney.com/rank/stock?code=000665`, contains 366 rows from
+`2025-09-11` through `2026-09-11`, and has no selected/non-selected universe
+filter because the request is already listing-scoped. Row counts, field order,
+units, request symbol, source URI and date bounds are retained for cache replay.
+The normalizer emits `AKSHARE_HOT_RANK_DETAIL_RAW_ONLY` and creates no
+canonical fact: date-bound popularity rank and follower ratios do not establish
+issuer cash flow, shareholder return, governance, valuation or a canonical
+market metric. No calculation, gate, pipeline, CLI or input-loader contract
+changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.
