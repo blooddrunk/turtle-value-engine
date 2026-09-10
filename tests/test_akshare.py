@@ -117,6 +117,14 @@ class FakeAKShare:
     def stock_zh_a_hist(self, **kwargs):
         return self._return("stock_zh_a_hist", _fixture("a_history.json"), **kwargs)
 
+    def stock_cyq_em(self, *, symbol: str, adjust: str):
+        return self._return(
+            "stock_cyq_em",
+            _fixture("a_chip_distribution.json"),
+            symbol=symbol,
+            adjust=adjust,
+        )
+
     def stock_zh_a_hist_tx(
         self,
         *,
@@ -603,8 +611,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "57"
-    assert AKSHARE_MAPPING_VERSION == "58"
+    assert provider.identity.provider_version == "58"
+    assert AKSHARE_MAPPING_VERSION == "59"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -11630,4 +11638,255 @@ def test_tencent_tick_cache_replay_does_not_call_upstream(tmp_path: Path):
     assert replay.record == live.record
     assert fake.calls == [
         ("stock_zh_a_tick_tx_js", {"symbol": "sh600000"}),
+    ]
+
+
+def test_chip_distribution_fetch_uses_documented_symbol_adjustment_and_window():
+    fake = FakeAKShare()
+    record = _provider(fake).fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "SH600000",
+            {"view": "chip_distribution", "adjust": "hfq"},
+        )
+    )
+
+    assert record.raw_payload == _fixture("a_chip_distribution.json")
+    assert fake.calls == [
+        ("stock_cyq_em", {"symbol": "600000", "adjust": "hfq"}),
+    ]
+    assert record.response_metadata["endpoint"] == "stock_cyq_em"
+    assert record.response_metadata["chip_distribution_view"] == "chip_distribution"
+    assert record.response_metadata["upstream_symbol"] == "600000"
+    assert record.response_metadata["chip_distribution_adjust"] == "hfq"
+    assert record.response_metadata["snapshot_scope"] == "latest_90_trading_days"
+    assert record.response_metadata["observation_date_field"] == "日期"
+    assert record.response_metadata["time_ordering"] == "strictly_ascending"
+    assert record.response_metadata["date_binding"] == "row_only"
+    assert record.response_metadata["range_filtering"] == "none"
+    assert record.response_metadata["provider_row_limit"] == 90
+    assert record.response_metadata["upstream_row_count"] == 3
+    assert record.response_metadata["entity_row_count"] == 3
+    assert record.response_metadata["entity_rows_selected"] is True
+    assert record.response_metadata["listing_scoped_request"] is True
+    assert record.response_metadata["observation_start_date"] == "2026-09-07"
+    assert record.response_metadata["observation_end_date"] == "2026-09-09"
+    assert record.source_uri == "https://quote.eastmoney.com/concept/sz000001.html"
+
+
+@pytest.mark.parametrize(
+    ("entity_id", "parameters", "match"),
+    [
+        (
+            "SH600000",
+            {"view": "chip_distribution", "adjust": "split"},
+            "chip-distribution adjust",
+        ),
+        (
+            "SH600000",
+            {"view": "chip_distribution", "adjust": 1},
+            "chip-distribution adjust",
+        ),
+        (
+            "SH600000",
+            {"view": "chip_distribution", "unexpected": True},
+            "unsupported AKShare chip-distribution",
+        ),
+        ("SH600000", {"view": "wrong"}, "unsupported AKShare history parameter"),
+        ("HK00700", {"view": "chip_distribution"}, "A-share listings only"),
+    ],
+)
+def test_chip_distribution_request_validates_view_parameters_and_market(
+    entity_id: str,
+    parameters: dict,
+    match: str,
+):
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError, match=match):
+        _provider(fake).fetch(
+            _request(DataCategory.MARKET_HISTORY, entity_id, parameters)
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("missing", "chip-distribution row 0 is missing field"),
+        ("unexpected", "chip-distribution row 0 contains unsupported field"),
+        ("invalid_date", "chip-distribution row 0 has an invalid 日期"),
+        ("descending", "日期 values must be strictly ascending"),
+        ("duplicate", "duplicate 日期"),
+        ("invalid_numeric", "must be numeric"),
+        ("too_many", "more than 90 rows"),
+    ],
+)
+def test_chip_distribution_response_rejects_invalid_shape_or_values(
+    mutation: str,
+    match: str,
+):
+    payload = [dict(row) for row in _fixture("a_chip_distribution.json")]
+    if mutation == "missing":
+        payload[0].pop("90集中度")
+    elif mutation == "unexpected":
+        payload[0]["unexpected"] = "not documented"
+    elif mutation == "invalid_date":
+        payload[0]["日期"] = "not-a-date"
+    elif mutation == "descending":
+        payload[1]["日期"] = "2026-09-06"
+    elif mutation == "duplicate":
+        payload[1]["日期"] = payload[0]["日期"]
+    elif mutation == "invalid_numeric":
+        payload[0]["平均成本"] = "10.25"
+    else:
+        payload.extend(dict(payload[-1]) for _ in range(88))
+
+    class InvalidChipDistribution(FakeAKShare):
+        def stock_cyq_em(self, *, symbol: str, adjust: str):
+            return self._return(
+                "stock_cyq_em",
+                payload,
+                symbol=symbol,
+                adjust=adjust,
+            )
+
+    with pytest.raises(ProviderResponseError, match=match):
+        _provider(InvalidChipDistribution()).fetch(
+            _request(
+                DataCategory.MARKET_HISTORY,
+                "SH600000",
+                {"view": "chip_distribution"},
+            )
+        )
+
+
+def test_chip_distribution_is_retained_as_raw_evidence_without_canonical_facts():
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "SH600000",
+            {"view": "chip_distribution"},
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="chip-distribution-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_CHIP_DISTRIBUTION_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == ["market_history"]
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "chip-distribution" in normalized.data_quality.notes
+    assert "canonical daily history" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "endpoint",
+        "view",
+        "symbol",
+        "adjust",
+        "listing_scope",
+        "snapshot",
+        "date_binding",
+        "range_filtering",
+        "observation_field",
+        "ordering",
+        "limit",
+        "count",
+        "start",
+        "payload",
+    ],
+)
+def test_chip_distribution_normalizer_rejects_replayed_scope_mismatches(
+    mutation: str,
+):
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "SH600000",
+            {"view": "chip_distribution", "adjust": "hfq"},
+        )
+    )
+    payload = [dict(row) for row in record.raw_payload]
+    response_metadata = dict(record.response_metadata)
+    if mutation == "endpoint":
+        response_metadata["endpoint"] = "stock_zh_a_hist"
+    elif mutation == "view":
+        response_metadata["chip_distribution_view"] = "daily"
+    elif mutation == "symbol":
+        response_metadata["upstream_symbol"] = "000001"
+    elif mutation == "adjust":
+        response_metadata["chip_distribution_adjust"] = ""
+    elif mutation == "listing_scope":
+        response_metadata["listing_scoped_request"] = False
+    elif mutation == "snapshot":
+        response_metadata["snapshot_scope"] = "current_snapshot"
+    elif mutation == "date_binding":
+        response_metadata["date_binding"] = "row_and_request"
+    elif mutation == "range_filtering":
+        response_metadata["range_filtering"] = "normalizer"
+    elif mutation == "observation_field":
+        response_metadata["observation_date_field"] = "date"
+    elif mutation == "ordering":
+        response_metadata["time_ordering"] = "non_decreasing"
+    elif mutation == "limit":
+        response_metadata["provider_row_limit"] = 30
+    elif mutation == "count":
+        response_metadata["entity_row_count"] = 99
+    elif mutation == "start":
+        response_metadata["observation_start_date"] = "bad"
+    else:
+        payload[1]["日期"] = "2026-09-06"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=record.source_uri,
+        response_metadata=response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match="chip-distribution"):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-chip-distribution-scope",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_chip_distribution_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.MARKET_HISTORY,
+        "SH600000",
+        {"view": "chip_distribution", "adjust": "qfq"},
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [
+        ("stock_cyq_em", {"symbol": "600000", "adjust": "qfq"}),
     ]

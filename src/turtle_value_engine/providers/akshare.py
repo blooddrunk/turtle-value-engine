@@ -20,8 +20,8 @@ latest-indicator raw slice, the A-share goodwill-impairment detail raw slice,
 the SSE/SZSE/BSE margin-detail raw slices, the A-share individual ownership-pledge
 detail view, the A-share CNINFO equity-mortgage view, A-share company-litigation
 raw slice and A-share Eastmoney individual-info raw slice.
-The A-share Eastmoney individual-fund-flow, Tencent daily-history and Tencent
-latest-trading-day tick, Sina minute-history,
+The A-share Eastmoney individual-fund-flow, chip-distribution, Tencent
+daily-history and Tencent latest-trading-day tick, Sina minute-history,
 intraday-history, H-share intraday-history, pre-market-history, five-level bid-ask
 and Dragon-Tiger market-activity detail/statistics/institution-statistics raw
 slices are also available.
@@ -73,9 +73,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "57"
+AKSHARE_ADAPTER_VERSION = "58"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "58"
+AKSHARE_MAPPING_VERSION = "59"
 
 
 class ListingMarket(StrEnum):
@@ -133,6 +133,7 @@ _SOURCE_URIS = {
     "stock_zh_ah_spot_em": "https://quote.eastmoney.com/center/gridlist.html#ah_comparison",
     "stock_tfp_em": "https://data.eastmoney.com/tfpxx/",
     "stock_zh_a_hist": "https://quote.eastmoney.com/concept/",
+    "stock_cyq_em": "https://quote.eastmoney.com/concept/sz000001.html",
     "stock_zh_a_hist_min_em": "https://quote.eastmoney.com/concept/sh603777.html?from=classic",
     "stock_hk_hist_min_em": "http://quote.eastmoney.com/hk/00948.html",
     "stock_zh_a_hist_pre_min_em": "https://quote.eastmoney.com/concept/sh603777.html",
@@ -346,6 +347,24 @@ _MARKET_HISTORY_HK_INTRADAY_FIELDS = {
         }
     ),
 }
+
+_MARKET_HISTORY_CHIP_DISTRIBUTION_PARAMETER_NAMES = frozenset({"view", "adjust"})
+_MARKET_HISTORY_CHIP_DISTRIBUTION_VIEW = "chip_distribution"
+_MARKET_HISTORY_CHIP_DISTRIBUTION_DEFAULT_ADJUST = ""
+_MARKET_HISTORY_CHIP_DISTRIBUTION_MAX_ROWS = 90
+_MARKET_HISTORY_CHIP_DISTRIBUTION_FIELDS = frozenset(
+    {
+        "日期",
+        "获利比例",
+        "平均成本",
+        "90成本-低",
+        "90成本-高",
+        "90集中度",
+        "70成本-低",
+        "70成本-高",
+        "70集中度",
+    }
+)
 
 _MARKET_HISTORY_PRE_MARKET_PARAMETER_NAMES = frozenset(
     {"view", "start_time", "end_time"}
@@ -676,6 +695,7 @@ class AKShareProvider(StructuredDataProvider):
                 _MARKET_HISTORY_SINA_MINUTE_VIEW,
                 _MARKET_HISTORY_TENCENT_DAILY_VIEW,
                 _MARKET_HISTORY_TENCENT_TICK_VIEW,
+                _MARKET_HISTORY_CHIP_DISTRIBUTION_VIEW,
             )
             and listing.market is not ListingMarket.A
         ):
@@ -1198,7 +1218,36 @@ class AKShareProvider(StructuredDataProvider):
             response_metadata["snapshot_scope"] = "requested_report_date"
         elif request.category is DataCategory.MARKET_HISTORY:
             rows = _table_rows(payload, provider=self.identity, request=request)
-            if endpoint.name == "stock_zh_a_tick_tx_js":
+            if endpoint.name == "stock_cyq_em":
+                observation_dates = _validate_chip_distribution_provider_rows(
+                    rows,
+                    provider=self.identity,
+                    request=request,
+                )
+                response_metadata["upstream_row_count"] = len(rows)
+                response_metadata["entity_row_count"] = len(rows)
+                response_metadata["entity_rows_selected"] = True
+                response_metadata["listing_scoped_request"] = True
+                response_metadata["chip_distribution_view"] = (
+                    _MARKET_HISTORY_CHIP_DISTRIBUTION_VIEW
+                )
+                response_metadata["upstream_symbol"] = kwargs["symbol"]
+                response_metadata["chip_distribution_adjust"] = kwargs["adjust"]
+                response_metadata["snapshot_scope"] = "latest_90_trading_days"
+                response_metadata["observation_date_field"] = "日期"
+                response_metadata["time_ordering"] = "strictly_ascending"
+                response_metadata["date_binding"] = "row_only"
+                response_metadata["range_filtering"] = "none"
+                response_metadata["provider_row_limit"] = (
+                    _MARKET_HISTORY_CHIP_DISTRIBUTION_MAX_ROWS
+                )
+                response_metadata["observation_start_date"] = (
+                    min(observation_dates).isoformat() if observation_dates else None
+                )
+                response_metadata["observation_end_date"] = (
+                    max(observation_dates).isoformat() if observation_dates else None
+                )
+            elif endpoint.name == "stock_zh_a_tick_tx_js":
                 observation_times, amount_field = _validate_tencent_tick_provider_rows(
                     rows,
                     provider=self.identity,
@@ -2122,6 +2171,10 @@ class AKShareProvider(StructuredDataProvider):
             market_history_tencent_tick_requested=(
                 request.parameters.get("view") == _MARKET_HISTORY_TENCENT_TICK_VIEW
             ),
+            market_history_chip_distribution_requested=(
+                request.parameters.get("view")
+                == _MARKET_HISTORY_CHIP_DISTRIBUTION_VIEW
+            ),
         )
         for name in candidates:
             function = getattr(client, name, None)
@@ -2675,7 +2728,14 @@ class AKShareNormalizer:
                     )
             elif record.request.category is DataCategory.MARKET_HISTORY:
                 endpoint = record.response_metadata.get("endpoint")
-                if endpoint == "stock_zh_a_tick_tx_js":
+                if (
+                    endpoint == "stock_cyq_em"
+                    or record.request.parameters.get("view")
+                    == _MARKET_HISTORY_CHIP_DISTRIBUTION_VIEW
+                ):
+                    _validate_chip_distribution_normalizer_scope(record, listing, rows)
+                    normalizer_flags.add("AKSHARE_CHIP_DISTRIBUTION_RAW_ONLY")
+                elif endpoint == "stock_zh_a_tick_tx_js":
                     _validate_tencent_tick_normalizer_scope(record, listing, rows)
                     # The endpoint exposes only the latest trading day's
                     # time-of-day ticks. It has no row-level trading date and
@@ -2711,6 +2771,7 @@ class AKShareNormalizer:
                     normalizer_flags.add("AKSHARE_PRE_MARKET_HISTORY_RAW_ONLY")
                 if endpoint not in {
                     "stock_zh_a_tick_tx_js",
+                    "stock_cyq_em",
                     "stock_zh_a_hist_min_em",
                     "stock_hk_hist_min_em",
                     "stock_zh_a_minute",
@@ -3285,6 +3346,7 @@ class AKShareNormalizer:
                 "AKSHARE_HK_INTRADAY_HISTORY_RAW_ONLY",
                 "AKSHARE_SINA_MINUTE_HISTORY_RAW_ONLY",
                 "AKSHARE_PRE_MARKET_HISTORY_RAW_ONLY",
+                "AKSHARE_CHIP_DISTRIBUTION_RAW_ONLY",
             }
             & normalizer_flags
             and not any(
@@ -3685,6 +3747,13 @@ class AKShareNormalizer:
                 "snapshot do not establish a canonical daily-history series or "
                 "valuation input."
             )
+        if "AKSHARE_CHIP_DISTRIBUTION_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented A-share chip-distribution response is retained as "
+                "raw evidence only: provider-derived benefit, cost and concentration "
+                "fields over a rolling latest-90-trading-day window do not establish "
+                "canonical daily history or valuation inputs."
+            )
         return NormalizedCompanyInput(
             schema_version="1.0.0",
             analysis_id=analysis_id,
@@ -3857,6 +3926,7 @@ def _endpoint_candidates(
     market_history_sina_minute_requested: bool = False,
     market_history_tencent_daily_requested: bool = False,
     market_history_tencent_tick_requested: bool = False,
+    market_history_chip_distribution_requested: bool = False,
 ) -> tuple[str, ...]:
     market = listing.market
     if category is DataCategory.COMPANY_METADATA:
@@ -3897,6 +3967,8 @@ def _endpoint_candidates(
         return ("stock_hk_spot_em", "stock_hk_spot")
     if category is DataCategory.MARKET_HISTORY:
         if market is ListingMarket.A:
+            if market_history_chip_distribution_requested:
+                return ("stock_cyq_em",)
             if market_history_pre_market_requested:
                 return ("stock_zh_a_hist_pre_min_em",)
             if market_history_sina_minute_requested:
@@ -6554,6 +6626,153 @@ def _validate_tencent_tick_provider_rows(
             request=request,
         )
     return observation_times, amount_field
+
+
+def _chip_distribution_date(value: object) -> date | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _chip_distribution_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> tuple[str | None, list[date]]:
+    if len(rows) > _MARKET_HISTORY_CHIP_DISTRIBUTION_MAX_ROWS:
+        return (
+            "chip-distribution response contains more than "
+            f"{_MARKET_HISTORY_CHIP_DISTRIBUTION_MAX_ROWS} rows",
+            [],
+        )
+
+    numeric_fields = _MARKET_HISTORY_CHIP_DISTRIBUTION_FIELDS - {"日期"}
+    observation_dates: list[date] = []
+    previous_date: date | None = None
+    for index, row in enumerate(rows):
+        missing = sorted(_MARKET_HISTORY_CHIP_DISTRIBUTION_FIELDS - set(row))
+        unexpected = sorted(set(row) - _MARKET_HISTORY_CHIP_DISTRIBUTION_FIELDS)
+        if missing:
+            return (
+                f"chip-distribution row {index} is missing field(s): "
+                + ", ".join(missing),
+                [],
+            )
+        if unexpected:
+            return (
+                f"chip-distribution row {index} contains unsupported field(s): "
+                + ", ".join(unexpected),
+                [],
+            )
+
+        observation_date = _chip_distribution_date(row["日期"])
+        if observation_date is None:
+            return f"chip-distribution row {index} has an invalid 日期", []
+        if previous_date is not None and observation_date <= previous_date:
+            if observation_date == previous_date:
+                return (
+                    "chip-distribution response has duplicate 日期 "
+                    f"{observation_date.isoformat()!r}",
+                    [],
+                )
+            return "chip-distribution response 日期 values must be strictly ascending", []
+        previous_date = observation_date
+        observation_dates.append(observation_date)
+
+        for field in sorted(numeric_fields):
+            value = row[field]
+            if value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, Real):
+                return (
+                    f"chip-distribution row {index} field {field!r} must be numeric or null",
+                    [],
+                )
+            try:
+                numeric = float(value)
+            except (OverflowError, TypeError, ValueError):
+                return (
+                    f"chip-distribution row {index} field {field!r} must be numeric or null",
+                    [],
+                )
+            if not math.isfinite(numeric):
+                return (
+                    f"chip-distribution row {index} field {field!r} must be finite or null",
+                    [],
+                )
+    return None, observation_dates
+
+
+def _validate_chip_distribution_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> list[date]:
+    message, observation_dates = _chip_distribution_validation_message(rows)
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message}",
+            provider=provider,
+            request=request,
+        )
+    return observation_dates
+
+
+def _validate_chip_distribution_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> None:
+    if listing.market is not ListingMarket.A:
+        raise ProviderNormalizationError(
+            "AKShare chip-distribution raw slice supports A-share listings only"
+        )
+    if record.response_metadata.get("endpoint") != "stock_cyq_em":
+        raise ProviderNormalizationError(
+            "AKShare chip-distribution record must come from stock_cyq_em"
+        )
+    try:
+        upstream_kwargs = _chip_distribution_kwargs(listing, record.request)
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+
+    expected_metadata = {
+        "chip_distribution_view": _MARKET_HISTORY_CHIP_DISTRIBUTION_VIEW,
+        "upstream_symbol": upstream_kwargs["symbol"],
+        "chip_distribution_adjust": upstream_kwargs["adjust"],
+        "listing_scoped_request": True,
+        "snapshot_scope": "latest_90_trading_days",
+        "observation_date_field": "日期",
+        "time_ordering": "strictly_ascending",
+        "date_binding": "row_only",
+        "range_filtering": "none",
+        "provider_row_limit": _MARKET_HISTORY_CHIP_DISTRIBUTION_MAX_ROWS,
+        "upstream_row_count": len(rows),
+        "entity_row_count": len(rows),
+        "entity_rows_selected": True,
+    }
+    for name, expected in expected_metadata.items():
+        if record.response_metadata.get(name) != expected:
+            raise ProviderNormalizationError(
+                f"chip-distribution response metadata {name!r} does not match "
+                "the requested replay scope"
+            )
+
+    message, observation_dates = _chip_distribution_validation_message(rows)
+    if message is not None:
+        raise ProviderNormalizationError(message)
+    expected_start = min(observation_dates).isoformat() if observation_dates else None
+    expected_end = max(observation_dates).isoformat() if observation_dates else None
+    if record.response_metadata.get("observation_start_date") != expected_start:
+        raise ProviderNormalizationError(
+            "chip-distribution response observation start does not match replayed rows"
+        )
+    if record.response_metadata.get("observation_end_date") != expected_end:
+        raise ProviderNormalizationError(
+            "chip-distribution response observation end does not match replayed rows"
+        )
 
 
 def _validate_tencent_daily_history_normalizer_scope(
@@ -9633,6 +9852,8 @@ def _history_kwargs(
     listing: _ListingRef,
     request: ProviderRequest,
 ) -> dict[str, object]:
+    if endpoint_name == "stock_cyq_em":
+        return _chip_distribution_kwargs(listing, request)
     if endpoint_name == "stock_zh_a_tick_tx_js":
         return _tencent_tick_kwargs(listing, request)
     if endpoint_name == "stock_zh_a_hist_tx":
@@ -9711,6 +9932,49 @@ def _history_kwargs(
     if end_text is not None:
         kwargs["end_date"] = end_text
     return kwargs
+
+
+def _chip_distribution_kwargs(
+    listing: _ListingRef,
+    request: ProviderRequest,
+) -> dict[str, object]:
+    """Build the documented A-share chip-distribution request."""
+
+    if listing.market is not ListingMarket.A:
+        raise ProviderRequestError(
+            "the AKShare chip-distribution endpoint supports A-share listings only",
+            request=request,
+            retryable=False,
+        )
+    parameters = dict(request.parameters)
+    unknown = sorted(
+        set(parameters) - _MARKET_HISTORY_CHIP_DISTRIBUTION_PARAMETER_NAMES
+    )
+    if unknown:
+        raise ProviderRequestError(
+            "unsupported AKShare chip-distribution parameter(s): "
+            + ", ".join(unknown),
+            request=request,
+            retryable=False,
+        )
+    if parameters.get("view") != _MARKET_HISTORY_CHIP_DISTRIBUTION_VIEW:
+        raise ProviderRequestError(
+            "the AKShare chip-distribution endpoint requires "
+            f"view={_MARKET_HISTORY_CHIP_DISTRIBUTION_VIEW!r}",
+            request=request,
+            retryable=False,
+        )
+    adjust = parameters.get(
+        "adjust",
+        _MARKET_HISTORY_CHIP_DISTRIBUTION_DEFAULT_ADJUST,
+    )
+    if not isinstance(adjust, str) or adjust not in {"", "qfq", "hfq"}:
+        raise ProviderRequestError(
+            "AKShare chip-distribution adjust must be '', 'qfq' or 'hfq'",
+            request=request,
+            retryable=False,
+        )
+    return {"symbol": listing.code, "adjust": adjust}
 
 
 def _tencent_tick_kwargs(

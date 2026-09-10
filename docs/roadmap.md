@@ -1415,6 +1415,29 @@ facts. Live calls remain opt-in; tests use an injected client and frozen
 period-specific fixtures with cache replay, invalid-parameter,
 response-validation, raw-only and replay-scope coverage.
 
+### Phase 2.58 — A-share chip-distribution raw acquisition contract (COMPLETE)
+
+The mapping review now covers the distinct Eastmoney chip-distribution endpoint
+documented as
+[`stock_cyq_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
+and implemented by the current [official source](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_cyq_em.py).
+It accepts an A-share six-digit `symbol` and an adjustment mode of empty string,
+`qfq` or `hfq`, and returns the latest approximately 90 trading days using the
+exact fields `日期`, `获利比例`, `平均成本`, `90成本-低`, `90成本-高`, `90集中度`,
+`70成本-低`, `70成本-高` and `70集中度`.
+
+The provider selects this callable only under the existing provider-neutral
+`MARKET_HISTORY` category with explicit `view=chip_distribution`, passes the
+unprefixed A-share code and adjustment mode, validates the exact response shape,
+finite numeric/null values, ISO dates in strict ascending order and the maximum
+90-row window, and records the listing, symbol, adjustment, row limit and
+observed date bounds for replay. The normalizer emits
+`AKSHARE_CHIP_DISTRIBUTION_RAW_ONLY`; provider-defined benefit, cost and
+concentration values remain raw evidence and create no canonical daily-history,
+liquidity, concentration or valuation fact. Live calls remain opt-in; tests use
+an injected client and a frozen fixture with cache replay, invalid-parameter,
+response-validation, raw-only and replay-scope coverage.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -1424,7 +1447,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.57 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.58 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -1632,7 +1655,7 @@ Phase 2 is active. Phase 1 remains frozen: changes to formulas, hard-gate
 semantics, schemas or `strict-v1` thresholds require a separately reviewed,
 versioned change.
 
-Phase 2.57 completes the next documented structured-data boundary while
+Phase 2.58 completes the next documented structured-data boundary while
 keeping share-change, repurchase and rights-issue period, status, unit and
 economic-scope questions unresolved, and keeping ownership-pledge holder,
 governance and economic-scope questions unresolved. The A-share
@@ -1655,6 +1678,12 @@ minute-bar window, period-specific schema, adjustment mode and HKD market
 context do not establish canonical daily history or a valuation input;
 `view=hk_intraday`, the unprefixed H-share symbol, datetime range, interval,
 adjustment and `shares`/`HKD_per_share`/`HKD` units remain part of its replayable
+acquisition boundary.
+The A-share chip-distribution response remains raw-only because its
+provider-defined benefit, cost and concentration fields describe a rolling
+latest-90-trading-day window rather than the canonical daily-history contract;
+`view=chip_distribution`, the unprefixed A-share symbol, adjustment mode, exact
+field set, 90-row limit and observed date bounds remain part of its replayable
 acquisition boundary.
 dividend-distribution snapshot remains raw-only because its ratios, status and
 multiple dates do not establish settled ordinary cash or a canonical payout

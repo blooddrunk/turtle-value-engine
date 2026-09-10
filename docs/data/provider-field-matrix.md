@@ -564,6 +564,41 @@ The normalizer emits `AKSHARE_HK_INTRADAY_HISTORY_RAW_ONLY` and leaves
 remain replayable provider-boundary metadata; they are not imported into the
 calculation, gate, pipeline, CLI or input-loader contract.
 
+## Phase 2.58 A-share chip-distribution raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_cyq_em` as an Eastmoney concept-board chip-distribution
+endpoint. It accepts an A-share six-digit `symbol` and an adjustment mode of
+empty string, `qfq` or `hfq`, and returns approximately the latest 90 trading
+days. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_cyq_em.py)
+normalizes the response to the exact nine fields below and keeps the final 90
+rows.
+
+The provider selects this endpoint only under the existing `MARKET_HISTORY`
+category with explicit `view=chip_distribution`, passes the unprefixed listing
+code and adjustment mode, validates the exact field set, ISO dates in strict
+ascending order, finite numeric/null values and the maximum 90-row window, and
+records the listing, symbol, adjustment, row limit and observed date bounds for
+replay. No price, ratio or concentration unit is inferred from the published
+field names. The normalizer emits
+`AKSHARE_CHIP_DISTRIBUTION_RAW_ONLY`, leaves `market_history` critically
+missing and creates no canonical history, liquidity, concentration or valuation
+fact.
+
+| Raw upstream item | Phase 2 treatment |
+| --- | --- |
+| `日期` | Required ISO observation date in strict ascending order; retained as raw row context and not silently converted into a canonical daily-history period. |
+| `获利比例` | Provider-defined benefit-ratio field retained as raw evidence; no unit, denominator or valuation meaning is inferred. |
+| `平均成本` | Provider-defined average-cost field retained as raw evidence; no currency, per-share or valuation meaning is inferred. |
+| `90成本-低`, `90成本-高`, `90集中度` | Provider-defined 90-window cost/concentration fields retained as raw evidence; no canonical range or concentration metric is calculated. |
+| `70成本-低`, `70成本-高`, `70集中度` | Provider-defined 70-window cost/concentration fields retained as raw evidence; no canonical range or concentration metric is calculated. |
+| request `view=chip_distribution`, unprefixed A-share `symbol`, `adjust` | Explicit endpoint-selection, listing, adjustment, latest-90-trading-day window, exact-field and observed-date replay scope; rows cannot be replayed under a different request. |
+
+The provider-specific benefit/cost/concentration response remains outside the
+calculation, gate, pipeline, CLI and input-loader contracts. Its raw evidence
+is available for later review without being treated as canonical daily history,
+liquidity, shareholder concentration or valuation input.
+
 ## Phase 2.9 corporate-action raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)

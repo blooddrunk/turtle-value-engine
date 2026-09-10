@@ -457,6 +457,18 @@ the listing, symbol, range, interval, adjustment and `shares`/`HKD` unit scope
 for replay. The normalizer emits `AKSHARE_HK_INTRADAY_HISTORY_RAW_ONLY`: the
 recent H-share minute bars remain raw evidence and do not become canonical
 daily-history or valuation facts.
+Phase 2.58 adds the distinct documented Eastmoney A-share chip-distribution
+endpoint [`stock_cyq_em`](https://akshare.akfamily.xyz/data/stock/stock.html),
+whose current official callable is defined in the
+[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_cyq_em.py),
+under `MARKET_HISTORY` with explicit `view=chip_distribution`. It passes the
+unprefixed six-digit listing code and empty-string/`qfq`/`hfq` adjustment mode;
+the adapter validates the exact nine-field response, finite numeric/null values,
+strictly ascending ISO dates and the maximum 90-row latest-trading-day window,
+then records the listing, symbol, adjustment and observed date scope for replay.
+The normalizer emits `AKSHARE_CHIP_DISTRIBUTION_RAW_ONLY`: provider-defined
+benefit, cost and concentration observations remain raw evidence and do not
+become canonical daily-history, liquidity, concentration or valuation facts.
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.
