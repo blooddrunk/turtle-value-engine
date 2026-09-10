@@ -634,6 +634,20 @@ normalizer emits `AKSHARE_XUEQIU_BASIC_INFO_RAW_ONLY`: descriptive,
 registration, personnel and provider-specific date fields remain raw evidence
 and do not become canonical company/listing facts. No calculation, gate,
 pipeline, CLI or input-loader contract is changed.
+
+Phase 2.73 adds the distinct documented CNINFO A-share company-profile endpoint
+[`stock_profile_cninfo`](https://akshare.akfamily.xyz/data/stock/stock.html),
+whose current official implementation is in
+[`stock_profile_cninfo.py`](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_profile_cninfo.py),
+under `COMPANY_METADATA` with explicit `view=cninfo_profile`. It passes the
+unprefixed six-digit A-share code, validates the exact 26-field single-row
+profile, A-share code identity, scalar/null values and populated dates, and
+records the symbol-scoped company-profile snapshot for replay. The normalizer
+emits `AKSHARE_CNINFO_PROFILE_RAW_ONLY`: descriptive, registration, contact
+and provider-specific date fields do not become canonical company or listing
+facts. No calculation, gate, pipeline, CLI or input-loader contract is
+changed.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

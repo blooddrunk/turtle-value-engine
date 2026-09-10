@@ -706,7 +706,7 @@ The cache performs no network retries. The normalizer performs no provider
 retries. The deterministic pipeline performs no provider retries and should
 not be rerun as a substitute for resolving missing facts.
 
-## 12. Phase 2.2–2.72 AKShare adapter
+## 12. Phase 2.2–2.73 AKShare adapter
 
 The first concrete adapter is intentionally limited to read-only metadata,
 market observations, three documented financial-statement slices, raw-only
@@ -728,7 +728,7 @@ Dragon-Tiger detail/statistics/institution-statistics and
 market-participation-desire/market-focus/institution-participation/
 stock-hot-rank/latest-stock-hot-rank/limit-up-pool/new-stock-board
 market-activity, the A+H quote-comparison and Xueqiu individual-spot quote,
-A-share Xueqiu company-profile,
+A-share Xueqiu and CNINFO company-profile,
 SSE/SZSE/BSE insider-share-change, A-share Eastmoney management-holding,
 A-share Eastmoney intraday-trade/chip-distribution, Tencent daily-history and latest-trading-day tick, Sina minute-history,
 A-share/H-share intraday-history, pre-market-history and five-level bid-ask raw
@@ -737,7 +737,7 @@ advertises exactly these capabilities:
 
 | Category | A-share endpoint | H-share endpoint | Normalized output |
 | --- | --- | --- | --- |
-| `COMPANY_METADATA` | `stock_info_a_code_name`; `stock_individual_basic_info_xq` (`view=xueqiu_basic_info`, symbol-scoped A-share profile) | `stock_hk_company_profile_em` (with conservative metadata-list fallbacks) | company metadata extension facts and nullable `Company` context enrichment from the existing metadata endpoint; Xueqiu profile remains raw-only |
+| `COMPANY_METADATA` | `stock_info_a_code_name`; `stock_individual_basic_info_xq` (`view=xueqiu_basic_info`, symbol-scoped A-share profile); `stock_profile_cninfo` (`view=cninfo_profile`, symbol-scoped A-share profile) | `stock_hk_company_profile_em` (with conservative metadata-list fallbacks) | company metadata extension facts and nullable `Company` context enrichment from the existing metadata endpoint; Xueqiu and CNINFO profiles remain raw-only |
 | `LISTING_METADATA` | `stock_info_a_code_name` | `stock_hk_security_profile_em` (with conservative listing-list fallbacks) | listing code/name/date/exchange and other explicit metadata facts |
 | `RISK_WARNING_STATUS` | `stock_zh_a_st_em` (no parameters) | — | current A-share risk-warning-board membership as raw structured evidence only; no canonical `special_treatment` fact |
 | `TRADING_SUSPENSIONS` | `stock_tfp_em` (exact `date`) | — | requested-date A-share suspension/resumption rows as raw structured evidence only; no canonical status or governance fact |
@@ -853,6 +853,23 @@ The normalizer emits
 provider-specific date fields do not become canonical company or listing facts.
 The response remains outside calculations, gates, pipeline, CLI and input-loader
 contracts.
+
+The A-share `stock_profile_cninfo` view passes the unprefixed six-digit listing
+code to the documented CNINFO company-profile endpoint. The current [AKShare
+stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_profile_cninfo.py)
+define a symbol-scoped response with the exact 26 profile fields, including
+company/display names, A/B/H codes, market/industry, registration/contact
+context, dates and business descriptions. The adapter accepts only the explicit
+`view=cninfo_profile` selector, passes the six-digit A-share code, validates
+the single row, exact field set, A-share identity, scalar/null values and
+populated dates, and records the symbol-scoped current company-profile
+snapshot for replay. The normalizer emits
+`AKSHARE_CNINFO_PROFILE_RAW_ONLY`; descriptive, registration, contact and
+provider-specific date fields do not become canonical company or listing facts.
+The response remains outside calculations, gates, pipeline, CLI and input-loader
+contracts.
+
 The A/H `stock_zh_ah_spot_em` view passes no upstream arguments to the
 documented Eastmoney A+H comparison endpoint. Its delayed 15-minute response
 contains the exact `序号`, `名称`, five-digit `H股代码`, H-share price/change,
@@ -1457,7 +1474,7 @@ critically missing.
 
 ## 13. Deliberate non-goals
 
-This foundation plus the Phase 2.2–2.72 slices does not include:
+This foundation plus the Phase 2.2–2.73 slices does not include:
 
 - Tushare, BaoStock or any other additional provider;
 - automatic network scheduling, credentials or retry orchestration outside an adapter;

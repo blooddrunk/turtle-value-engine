@@ -1024,6 +1024,34 @@ The response remains outside the calculation, gate, pipeline, CLI and
 input-loader contracts. Provider-specific Xueqiu names and profile semantics
 remain at the adapter/raw-evidence boundary.
 
+## Phase 2.73 A-share CNINFO company-profile raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_profile_cninfo.py)
+document `stock_profile_cninfo` as a symbol-scoped CNINFO A-share company
+profile. The implementation passes the six-digit `symbol` as the upstream
+`scode` and returns the documented 26-column profile table. The provider
+selects it only with `COMPANY_METADATA` plus explicit `view=cninfo_profile`,
+validates one exact row, the A-share code identity, scalar/null values and
+populated `成立日期`/`上市日期`, and records the symbol-scoped snapshot for
+replay.
+
+The normalizer emits `AKSHARE_CNINFO_PROFILE_RAW_ONLY`; no profile field
+becomes a canonical company or listing fact.
+
+| Raw upstream item | Phase 2 treatment |
+| --- | --- |
+| `公司名称`, `英文名称`, `曾用简称`, `A股代码`, `A股简称`, `B股代码`, `B股简称`, `H股代码`, `H股简称` | Profile identity and display context; the requested A-share code is validated, but cross-listing and name fields do not replace caller-supplied company identity. |
+| `入选指数`, `所属市场`, `所属行业`, `法人代表` | Raw classification and representative context; no canonical exchange, sector, control or governance fact is inferred. |
+| `注册资金`, `成立日期`, `上市日期` | Raw registration/date context; the provider validates scalar values and populated dates, but no unit, accounting basis or canonical incorporation/listing fact is admitted. |
+| `官方网站`, `电子邮箱`, `联系电话`, `传真`, `注册地址`, `办公地址`, `邮政编码` | Raw contact and location evidence; no jurisdiction, operating status or governance conclusion is inferred. |
+| `主营业务`, `经营范围`, `机构简介` | Raw descriptive evidence; overlapping descriptions do not establish canonical revenue, core business or Business Quality facts. |
+| request `view=cninfo_profile`, unprefixed six-digit `symbol` | Explicit endpoint, A-share listing scope, symbol-scoped current company-profile snapshot and replay boundary. |
+
+The response remains outside the calculation, gate, pipeline, CLI and
+input-loader contracts. CNINFO profile names, descriptions, contact fields and
+provider-specific semantics remain at the adapter/raw-evidence boundary.
+
 ## Phase 2.9 corporate-action raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)

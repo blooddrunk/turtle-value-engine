@@ -28,7 +28,7 @@ daily-history and Tencent latest-trading-day tick, Sina minute-history,
 intraday-history, H-share intraday-history, pre-market-history, five-level bid-ask
 Xueqiu individual-spot quote and Dragon-Tiger market-activity
 detail/statistics/institution-statistics raw slices are also available. The
-A-share Xueqiu company-profile raw slice is also available. The
+A-share Xueqiu and CNINFO company-profile raw slices are also available. The
 A-share dividend-distribution detail and
 new-stock-board raw slices are also available. The A-share CNINFO IPO-summary
 and Eastmoney individual-notice raw slices are also available.
@@ -80,9 +80,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "72"
+AKSHARE_ADAPTER_VERSION = "73"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "73"
+AKSHARE_MAPPING_VERSION = "74"
 
 
 class ListingMarket(StrEnum):
@@ -142,6 +142,7 @@ _SOURCE_URIS = {
     "stock_individual_basic_info_xq": (
         "https://xueqiu.com/snowman/S/SH601127/detail#/GSJJ"
     ),
+    "stock_profile_cninfo": "https://webapi.cninfo.com.cn/#/company",
     "stock_tfp_em": "https://data.eastmoney.com/tfpxx/",
     "stock_zh_a_hist": "https://quote.eastmoney.com/concept/",
     "stock_cyq_em": "https://quote.eastmoney.com/concept/sz000001.html",
@@ -435,6 +436,43 @@ _COMPANY_METADATA_XQ_NUMERIC_ITEMS = frozenset(
     }
 )
 _COMPANY_METADATA_XQ_OBJECT_ITEMS = frozenset({"affiliate_industry"})
+
+_COMPANY_METADATA_CNINFO_PARAMETER_NAMES = frozenset({"view"})
+_COMPANY_METADATA_CNINFO_PROFILE_VIEW = "cninfo_profile"
+_COMPANY_METADATA_CNINFO_PROFILE_FIELDS = frozenset(
+    {
+        "公司名称",
+        "英文名称",
+        "曾用简称",
+        "A股代码",
+        "A股简称",
+        "B股代码",
+        "B股简称",
+        "H股代码",
+        "H股简称",
+        "入选指数",
+        "所属市场",
+        "所属行业",
+        "法人代表",
+        "注册资金",
+        "成立日期",
+        "上市日期",
+        "官方网站",
+        "电子邮箱",
+        "联系电话",
+        "传真",
+        "注册地址",
+        "办公地址",
+        "邮政编码",
+        "主营业务",
+        "经营范围",
+        "机构简介",
+    }
+)
+_COMPANY_METADATA_CNINFO_PROFILE_REQUIRED_FIELDS = frozenset(
+    {"公司名称", "A股代码", "A股简称"}
+)
+_COMPANY_METADATA_CNINFO_PROFILE_DATE_FIELDS = frozenset({"成立日期", "上市日期"})
 
 _MARKET_HISTORY_INTRADAY_PARAMETER_NAMES = frozenset(
     {"view", "start_date", "end_date", "period", "adjust"}
@@ -1119,6 +1157,19 @@ class AKShareProvider(StructuredDataProvider):
                 retryable=False,
             )
         if (
+            request.category is DataCategory.COMPANY_METADATA
+            and request.parameters.get("view")
+            == _COMPANY_METADATA_CNINFO_PROFILE_VIEW
+            and listing.market is not ListingMarket.A
+        ):
+            raise ProviderRequestError(
+                "the AKShare CNINFO company-profile endpoint supports A-share "
+                "listings only",
+                provider=self.identity,
+                request=request,
+                retryable=False,
+            )
+        if (
             request.category is DataCategory.MARKET_HISTORY
             and request.parameters.get("view")
             in (
@@ -1450,6 +1501,32 @@ class AKShareProvider(StructuredDataProvider):
             response_metadata["date_binding"] = "retrieval_only"
             response_metadata["item_field"] = "item"
             response_metadata["value_field"] = "value"
+        elif (
+            request.category is DataCategory.COMPANY_METADATA
+            and endpoint.name == "stock_profile_cninfo"
+        ):
+            rows = _table_rows(payload, provider=self.identity, request=request)
+            _validate_company_metadata_cninfo_provider_rows(
+                rows,
+                listing,
+                provider=self.identity,
+                request=request,
+            )
+            response_metadata["upstream_row_count"] = len(rows)
+            response_metadata["entity_row_count"] = len(rows)
+            response_metadata["entity_rows_selected"] = True
+            response_metadata["listing_scoped_request"] = True
+            response_metadata["row_filtering"] = "upstream"
+            response_metadata["company_metadata_view"] = (
+                _COMPANY_METADATA_CNINFO_PROFILE_VIEW
+            )
+            response_metadata["upstream_symbol"] = kwargs["symbol"]
+            response_metadata["snapshot_scope"] = "current_company_profile"
+            response_metadata["date_binding"] = "retrieval_only"
+            response_metadata["profile_code_field"] = "A股代码"
+            response_metadata["profile_field_count"] = len(
+                _COMPANY_METADATA_CNINFO_PROFILE_FIELDS
+            )
         elif (
             request.category is DataCategory.MARKET_QUOTE
             and endpoint.name == "stock_zh_ah_spot_em"
@@ -2899,6 +2976,10 @@ class AKShareProvider(StructuredDataProvider):
             company_metadata_xq_basic_info_requested=(
                 request.parameters.get("view") == _COMPANY_METADATA_XQ_VIEW
             ),
+            company_metadata_cninfo_profile_requested=(
+                request.parameters.get("view")
+                == _COMPANY_METADATA_CNINFO_PROFILE_VIEW
+            ),
             statement_date_requested="statement_date" in request.parameters,
             corporate_action_date_requested=any(
                 name in request.parameters for name in ("start_date", "end_date")
@@ -3231,6 +3312,21 @@ class AKShareNormalizer:
             as_of_period = _listing_period(as_of, listing, primary=primary)
 
             if (
+                record.request.category is DataCategory.COMPANY_METADATA
+                and record.request.parameters.get("view")
+                == _COMPANY_METADATA_CNINFO_PROFILE_VIEW
+            ):
+                _validate_company_metadata_cninfo_normalizer_scope(
+                    record,
+                    listing,
+                    rows,
+                )
+                # CNINFO's profile table mixes descriptive, registration,
+                # contact and provider-specific date fields. It is useful
+                # discovery evidence, but it does not settle a canonical
+                # company/listing identity or statement-period fact.
+                normalizer_flags.add("AKSHARE_CNINFO_PROFILE_RAW_ONLY")
+            elif (
                 record.request.category is DataCategory.COMPANY_METADATA
                 and record.response_metadata.get("endpoint")
                 == "stock_individual_basic_info_xq"
@@ -4621,6 +4717,13 @@ class AKShareNormalizer:
                 "provider-specific date fields do not establish a canonical company "
                 "or listing fact."
             )
+        if "AKSHARE_CNINFO_PROFILE_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented CNINFO company-profile response is retained as raw "
+                "evidence only: its descriptive, registration, contact and "
+                "provider-specific date fields do not establish a canonical company "
+                "or listing fact."
+            )
         if "AKSHARE_HK_DIVIDEND_DETAIL_RAW_ONLY" in normalizer_flags:
             notes += (
                 " The documented H-share dividend-detail response is retained as raw "
@@ -5004,6 +5107,7 @@ def _endpoint_candidates(
     category: DataCategory,
     *,
     company_metadata_xq_basic_info_requested: bool = False,
+    company_metadata_cninfo_profile_requested: bool = False,
     statement_date_requested: bool = False,
     corporate_action_date_requested: bool = False,
     corporate_action_ipo_summary_requested: bool = False,
@@ -5048,6 +5152,10 @@ def _endpoint_candidates(
         if company_metadata_xq_basic_info_requested:
             if market is ListingMarket.A:
                 return ("stock_individual_basic_info_xq",)
+            return ()
+        if company_metadata_cninfo_profile_requested:
+            if market is ListingMarket.A:
+                return ("stock_profile_cninfo",)
             return ()
         if market is ListingMarket.A:
             return ("stock_info_a_code_name", "stock_zh_ah_name")
@@ -5395,6 +5503,33 @@ def _company_metadata_kwargs(
                 retryable=False,
             )
         return {"symbol": listing.canonical_id}
+
+    if endpoint_name == "stock_profile_cninfo":
+        if listing.market is not ListingMarket.A:
+            raise ProviderRequestError(
+                "the AKShare CNINFO company-profile endpoint supports A-share "
+                "listings only",
+                request=request,
+                retryable=False,
+            )
+        unknown = sorted(
+            set(request.parameters) - _COMPANY_METADATA_CNINFO_PARAMETER_NAMES
+        )
+        if unknown:
+            raise ProviderRequestError(
+                "unsupported AKShare CNINFO company-profile parameter(s): "
+                + ", ".join(unknown),
+                request=request,
+                retryable=False,
+            )
+        if request.parameters.get("view") != _COMPANY_METADATA_CNINFO_PROFILE_VIEW:
+            raise ProviderRequestError(
+                "the AKShare CNINFO company-profile endpoint requires "
+                f"view={_COMPANY_METADATA_CNINFO_PROFILE_VIEW!r}",
+                request=request,
+                retryable=False,
+            )
+        return {"symbol": listing.code}
 
     if endpoint_name in _NO_ARGUMENT_ENDPOINTS:
         _reject_unexpected_parameters(request)
@@ -7872,6 +8007,99 @@ def _validate_company_metadata_xq_provider_rows(
             request=request,
         )
     message = _company_metadata_xq_validation_message(rows)
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message}",
+            provider=provider,
+            request=request,
+        )
+
+
+def _company_metadata_cninfo_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef | None = None,
+) -> str | None:
+    """Return a strict-schema error for one CNINFO company profile."""
+
+    if len(rows) != 1:
+        return (
+            "CNINFO company-profile response must contain exactly one row; "
+            f"got {len(rows)}"
+        )
+
+    row = rows[0]
+    missing = sorted(_COMPANY_METADATA_CNINFO_PROFILE_FIELDS - set(row))
+    if missing:
+        return "CNINFO company-profile row is missing field(s): " + ", ".join(missing)
+    unexpected = sorted(set(row) - _COMPANY_METADATA_CNINFO_PROFILE_FIELDS)
+    if unexpected:
+        return (
+            "CNINFO company-profile row contains unsupported field(s): "
+            + ", ".join(unexpected)
+        )
+
+    for field, value in row.items():
+        if value is None:
+            continue
+        if isinstance(value, bool) or not isinstance(value, (str, Real)):
+            return (
+                f"CNINFO company-profile field {field!r} must be a scalar or null"
+            )
+        if isinstance(value, Real):
+            try:
+                numeric = float(value)
+            except (OverflowError, TypeError, ValueError):
+                return (
+                    f"CNINFO company-profile field {field!r} must be a scalar or null"
+                )
+            if not math.isfinite(numeric):
+                return (
+                    f"CNINFO company-profile field {field!r} must be finite or null"
+                )
+
+    for field in _COMPANY_METADATA_CNINFO_PROFILE_REQUIRED_FIELDS - {"A股代码"}:
+        value = row[field]
+        if not isinstance(value, str) or not value.strip():
+            return (
+                f"CNINFO company-profile field {field!r} must be a non-empty string"
+            )
+
+    row_code = _canonical_row_code(row["A股代码"], ListingMarket.A)
+    if row_code is None:
+        return "CNINFO company-profile row has no valid A股代码"
+    if listing is not None and row_code != listing.code:
+        return (
+            f"CNINFO company-profile row entity {row_code!r} does not match "
+            f"requested listing {listing.canonical_id!r}"
+        )
+
+    for field in _COMPANY_METADATA_CNINFO_PROFILE_DATE_FIELDS:
+        value = row[field]
+        if _text_value(value) in _MISSING_TEXT:
+            continue
+        if _parse_date_value(value) is None:
+            return (
+                f"CNINFO company-profile field {field!r} must be a valid date or null"
+            )
+    return None
+
+
+def _validate_company_metadata_cninfo_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> None:
+    """Validate the symbol-scoped CNINFO company profile before storage."""
+
+    if listing.market is not ListingMarket.A:
+        raise ProviderResponseError(
+            "AKShare CNINFO company-profile supports A-share listings only",
+            provider=provider,
+            request=request,
+        )
+    message = _company_metadata_cninfo_validation_message(rows, listing)
     if message is not None:
         raise ProviderResponseError(
             f"AKShare {message}",
@@ -12187,6 +12415,79 @@ def _validate_company_metadata_xq_normalizer_scope(
         if not matches:
             raise ProviderNormalizationError(
                 f"Xueqiu individual-basic-info response metadata {name!r} does not "
+                "match the requested replay scope"
+            )
+
+
+def _validate_company_metadata_cninfo_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> None:
+    """Validate the replay scope of a symbol-scoped CNINFO company profile."""
+
+    if listing.market is not ListingMarket.A:
+        raise ProviderNormalizationError(
+            "AKShare CNINFO company-profile supports A-share listings only"
+        )
+    if record.response_metadata.get("endpoint") != "stock_profile_cninfo":
+        raise ProviderNormalizationError(
+            "CNINFO company-profile record must come from stock_profile_cninfo"
+        )
+    if record.source_uri != _SOURCE_URIS["stock_profile_cninfo"]:
+        raise ProviderNormalizationError(
+            "CNINFO company-profile source URI does not match the documented endpoint"
+        )
+    try:
+        upstream_kwargs = _company_metadata_kwargs(
+            "stock_profile_cninfo",
+            listing,
+            record.request,
+        )
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+
+    message = _company_metadata_cninfo_validation_message(rows, listing)
+    if message is not None:
+        raise ProviderNormalizationError(message)
+
+    expected_metadata = {
+        "endpoint": "stock_profile_cninfo",
+        "market": ListingMarket.A.value,
+        "listing_code": listing.code,
+        "company_metadata_view": _COMPANY_METADATA_CNINFO_PROFILE_VIEW,
+        "upstream_symbol": upstream_kwargs["symbol"],
+        "listing_scoped_request": True,
+        "row_filtering": "upstream",
+        "snapshot_scope": "current_company_profile",
+        "date_binding": "retrieval_only",
+        "profile_code_field": "A股代码",
+        "profile_field_count": len(_COMPANY_METADATA_CNINFO_PROFILE_FIELDS),
+        "entity_rows_selected": True,
+        "upstream_row_count": len(rows),
+        "entity_row_count": len(rows),
+    }
+    boolean_fields = {"listing_scoped_request", "entity_rows_selected"}
+    count_fields = {
+        "profile_field_count",
+        "upstream_row_count",
+        "entity_row_count",
+    }
+    for name, expected in expected_metadata.items():
+        actual = record.response_metadata.get(name)
+        if name in boolean_fields:
+            matches = isinstance(actual, bool) and actual is expected
+        elif name in count_fields:
+            matches = (
+                isinstance(actual, int)
+                and not isinstance(actual, bool)
+                and actual == expected
+            )
+        else:
+            matches = actual == expected
+        if not matches:
+            raise ProviderNormalizationError(
+                f"CNINFO company-profile response metadata {name!r} does not "
                 "match the requested replay scope"
             )
 
