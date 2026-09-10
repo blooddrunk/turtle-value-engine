@@ -1357,6 +1357,50 @@ input-loader contracts. Quote, limit-down activity, provider ranking and
 market-cap fields remain raw evidence only and do not establish issuer cash
 flow, shareholder return, governance, valuation or a canonical market metric.
 
+## Phase 2.84 A-share Eastmoney shareholder-count-detail raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_gdhs.py)
+document `stock_zh_a_gdhs_detail_em` as a symbol-scoped Eastmoney A-share
+history endpoint. The request uses a six-digit `symbol`; this adapter exposes
+it only under `SHAREHOLDER_HOLDINGS` with explicit `view=holder_count_detail`.
+The implementation requests the `RPT_HOLDERNUM_DET` report, paginates its
+published data, converts numeric/date values and returns exactly the following
+15 fields in this order: `股东户数统计截止日`, `区间涨跌幅`, `股东户数-本次`,
+`股东户数-上次`, `股东户数-增减`, `股东户数-增减比例`, `户均持股市值`,
+`户均持股数量`, `总市值`, `总股本`, `股本变动`, `股本变动原因`,
+`股东户数公告日期`, `代码`, `名称`.
+The upstream request fixes `reportName=RPT_HOLDERNUM_DET`,
+`sortColumns=END_DATE`, `sortTypes=-1`, `pageSize=500`, one-based
+`pageNumber` pagination, `quoteColumns=f2,f3`, `source=WEB`, `client=WEB` and
+`filter=(SECURITY_CODE="{symbol}")`; only `symbol` plus the neutral view is
+exposed by this provider contract. The documented interval/change-ratio fields
+are percent values, holder counts and share-base changes are integer fields,
+and the market-value/average-holding fields retain the provider's raw scale
+without an inferred currency conversion.
+
+The provider validates the exact response schema, six-digit code equality,
+non-decreasing `股东户数统计截止日` order, nullable/parseable announcement
+dates, integer count/share-base fields, finite numeric values and non-negative
+holder-count/market-value/share-base fields. The official response fixture is a
+real 61-row snapshot for `600000`, covering `2013-03-07` through `2026-06-30`;
+the response is already upstream-filtered by symbol and the adapter records
+that scope plus the row-derived observation range.
+
+| Raw upstream item | Phase 2.84 treatment |
+| --- | --- |
+| `股东户数统计截止日` | Required historical observation date; retained as row-level evidence and sorted non-decreasingly, not treated as an accounting or governance period. |
+| `区间涨跌幅` | Raw percent field; no canonical return, valuation or market metric is inferred. |
+| `股东户数-本次`, `股东户数-上次`, `股东户数-增减`, `股东户数-增减比例` | Raw holder-count/change evidence; counts are integer-like and the ratio remains provider-defined percent context, with no concentration or ownership calculation. |
+| `户均持股市值`, `户均持股数量`, `总市值`, `总股本`, `股本变动` | Raw provider market-value, average-holding and share-base/change fields; no issuer cash, diluted-share or valuation fact is admitted. |
+| `股本变动原因`, `股东户数公告日期`, `代码`, `名称` | Raw reason, announcement date and explicit listing identity; dates are nullable/validated and identity remains bound to the requested upstream symbol. |
+| request `view=holder_count_detail`, `symbol` | Explicit endpoint selector, six-digit A-share symbol and historical published-dataset replay scope; no synthetic date or post-hoc cross-listing substitution is added. |
+
+The normalizer emits `AKSHARE_SHAREHOLDER_COUNT_DETAIL_RAW_ONLY`, leaves
+`governance_risk_level` critically missing and creates no canonical ownership,
+concentration, governance, valuation or diluted-share fact. The response
+remains outside the calculation, gate, pipeline, CLI and input-loader contracts.
+
 ## Phase 2.9 corporate-action raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)

@@ -795,6 +795,20 @@ market-cap fields remain raw evidence and do not establish issuer cash flow,
 shareholder return, governance, valuation or a canonical market fact. No
 calculation, gate, pipeline, CLI or input-loader contract changes.
 
+Phase 2.84 adds the distinct documented A-share Eastmoney shareholder-count-detail
+endpoint [`stock_zh_a_gdhs_detail_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
+with the symbol-scoped `view=holder_count_detail` selector. The [official
+implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_gdhs.py)
+returns the exact 15-field historical response, which the adapter validates for
+field order, six-digit listing identity, non-decreasing cut-off dates, nullable
+announcement dates, numeric types and finite/non-negative ranges. A real
+Eastmoney response fixture covers 61 rows from 2013-03-07 through 2026-06-30;
+cache replay and replay-scope failures are tested. The normalizer emits
+`AKSHARE_SHAREHOLDER_COUNT_DETAIL_RAW_ONLY`: holder counts, capital-change
+context and market-value fields remain raw evidence and do not establish a
+canonical concentration metric, governance judgment or diluted-share series.
+No calculation, gate, pipeline, CLI or input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

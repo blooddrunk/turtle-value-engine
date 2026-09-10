@@ -2050,6 +2050,39 @@ listing filtering including an empty selection, raw-only normalization,
 cache/raw replay and replay-scope metadata. No calculation, gate, pipeline,
 CLI or input-loader contract changes.
 
+### Phase 2.84 — A-share Eastmoney shareholder-count-detail raw acquisition contract (COMPLETE)
+
+The mapping review now covers the distinct documented AKShare
+`stock_zh_a_gdhs_detail_em` endpoint under the existing
+`SHAREHOLDER_HOLDINGS` category. The [AKShare stock-data
+documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and
+[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_gdhs.py)
+define a six-digit A-share `symbol`, the `RPT_HOLDERNUM_DET` report and the
+provider-neutral `view=holder_count_detail` selector. The adapter freezes the
+15-field response schema, including cut-off/announcement date semantics,
+integer count/share-base fields, provider-defined percent/value fields, code
+and name identity, and ascending row order by `股东户数统计截止日`. The
+upstream request is frozen to `reportName=RPT_HOLDERNUM_DET`,
+`sortColumns=END_DATE`, descending source order with adapter-side ascending
+output, `pageSize=500` pagination, `quoteColumns=f2,f3`, `source=WEB`,
+`client=WEB` and the exact `SECURITY_CODE="{symbol}"` filter. Percent fields,
+integer holder/share-base fields and provider-reported raw value scales remain
+explicitly distinct; no currency conversion is inferred.
+
+The request passes only the upstream `symbol`, relies on Eastmoney's listing
+filter and records upstream scope, view, row counts and row-derived date range.
+Validation rejects missing/extra/reordered fields, identity mismatches,
+invalid dates, non-decreasing-order violations, wrong numeric types,
+non-finite values and invalid non-negative ranges. The checked-in fixture is a
+real 61-row official response snapshot for `600000` covering
+`2013-03-07` through `2026-06-30`. The normalizer emits
+`AKSHARE_SHAREHOLDER_COUNT_DETAIL_RAW_ONLY` and creates no canonical fact;
+holder counts, capital-change context and market-value fields do not establish
+concentration, governance, valuation or a diluted-share series. Tests cover
+positive fetch, request/field/type/range/date failures, raw-only normalization,
+cache replay and replay-scope rejection. No calculation, gate, pipeline, CLI or
+input-loader contract changes.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -2059,7 +2092,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.83 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.84 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```

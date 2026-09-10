@@ -11,8 +11,9 @@ indicator raw slices, raw-only dividend event/snapshot/detail, A-share
 disclosure notice metadata, corporate-action, external-guarantee,
 ownership-pledge, SSE/SZSE/BSE insider-share-change and A-share share-capital
 slices, including the restricted-share-release view, the A-share
-risk-warning-status, trading-suspension, main-shareholder, shareholder-count
-and actual-controller holding-change raw slices, the A-share Eastmoney
+risk-warning-status, trading-suspension, main-shareholder, shareholder-count,
+shareholder-count-detail and actual-controller holding-change raw slices, the
+A-share Eastmoney
 management-holding raw slice, the A/H HSGT
 individual-holdings raw slice, the H-share
 financial-indicator raw slice, the H-share
@@ -85,9 +86,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "83"
+AKSHARE_ADAPTER_VERSION = "84"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "84"
+AKSHARE_MAPPING_VERSION = "85"
 
 
 class ListingMarket(StrEnum):
@@ -227,6 +228,7 @@ _SOURCE_URIS = {
     "stock_hold_management_detail_em": "https://data.eastmoney.com/executive/list.html",
     "stock_main_stock_holder": "https://vip.stock.finance.sina.com.cn/corp/go.php/vCI_StockHolder/stockid/600004.phtml",
     "stock_hold_num_cninfo": "https://webapi.cninfo.com.cn/#/thematicStatistics",
+    "stock_zh_a_gdhs_detail_em": "https://data.eastmoney.com/gdhs/detail/000002.html",
     "stock_hold_control_cninfo": "https://webapi.cninfo.com.cn/#/thematicStatistics",
     "stock_gdfx_top_10_em": (
         "https://emweb.securities.eastmoney.com/PC_HSF10/ShareholderResearch/"
@@ -976,6 +978,61 @@ _GOODWILL_IMPAIRMENT_DETAIL_TEXT_FIELDS = ("股票简称", "交易市场")
 _LATEST_INDICATORS_PARAMETER_NAMES = frozenset()
 _MARGIN_TRADING_PARAMETER_NAMES = frozenset({"date"})
 _SHAREHOLDER_COUNT_PARAMETER_NAMES = frozenset({"date"})
+_SHAREHOLDER_COUNT_DETAIL_PARAMETER_NAMES = frozenset({"view"})
+_SHAREHOLDER_COUNT_DETAIL_VIEW = "holder_count_detail"
+_SHAREHOLDER_COUNT_DETAIL_FIELDS = (
+    "股东户数统计截止日",
+    "区间涨跌幅",
+    "股东户数-本次",
+    "股东户数-上次",
+    "股东户数-增减",
+    "股东户数-增减比例",
+    "户均持股市值",
+    "户均持股数量",
+    "总市值",
+    "总股本",
+    "股本变动",
+    "股本变动原因",
+    "股东户数公告日期",
+    "代码",
+    "名称",
+)
+_SHAREHOLDER_COUNT_DETAIL_FIELD_SET = frozenset(_SHAREHOLDER_COUNT_DETAIL_FIELDS)
+_SHAREHOLDER_COUNT_DETAIL_NUMERIC_FIELDS = (
+    "区间涨跌幅",
+    "股东户数-本次",
+    "股东户数-上次",
+    "股东户数-增减",
+    "股东户数-增减比例",
+    "户均持股市值",
+    "户均持股数量",
+    "总市值",
+    "总股本",
+    "股本变动",
+)
+_SHAREHOLDER_COUNT_DETAIL_INTEGER_FIELDS = frozenset(
+    {
+        "股东户数-本次",
+        "股东户数-上次",
+        "股东户数-增减",
+        "总股本",
+        "股本变动",
+    }
+)
+_SHAREHOLDER_COUNT_DETAIL_NON_NEGATIVE_FIELDS = frozenset(
+    {
+        "股东户数-本次",
+        "股东户数-上次",
+        "户均持股市值",
+        "户均持股数量",
+        "总市值",
+        "总股本",
+    }
+)
+_SHAREHOLDER_COUNT_DETAIL_DATE_FIELDS = (
+    "股东户数统计截止日",
+    "股东户数公告日期",
+)
 _FINANCIAL_INDICATORS_CHOICES = {
     ListingMarket.A: frozenset({"按报告期", "按单季度"}),
     ListingMarket.H: frozenset({"年度", "报告期"}),
@@ -3142,7 +3199,38 @@ class AKShareProvider(StructuredDataProvider):
                 response_metadata["listing_scoped_request"] = True
         elif request.category is DataCategory.SHAREHOLDER_HOLDINGS:
             rows = _table_rows(payload, provider=self.identity, request=request)
-            if endpoint.name == "stock_gdfx_free_holding_detail_em":
+            if endpoint.name == "stock_zh_a_gdhs_detail_em":
+                observation_start, observation_end = (
+                    _validate_shareholder_count_detail_provider_rows(
+                        rows,
+                        listing,
+                        provider=self.identity,
+                        request=request,
+                    )
+                )
+                response_metadata["upstream_row_count"] = len(rows)
+                response_metadata["entity_row_count"] = len(rows)
+                response_metadata["entity_rows_selected"] = True
+                response_metadata["listing_scoped_request"] = True
+                response_metadata["row_filtering"] = "upstream"
+                response_metadata["shareholder_count_detail_view"] = (
+                    _SHAREHOLDER_COUNT_DETAIL_VIEW
+                )
+                response_metadata["upstream_symbol"] = kwargs["symbol"]
+                response_metadata["snapshot_scope"] = "historical_published_dataset"
+                response_metadata["observation_date_field"] = "股东户数统计截止日"
+                response_metadata["announcement_date_field"] = "股东户数公告日期"
+                response_metadata["date_binding"] = "row_only"
+                response_metadata["row_ordering"] = (
+                    "non_decreasing_by_observation_date"
+                )
+                response_metadata["observation_start_date"] = (
+                    observation_start.isoformat() if observation_start else None
+                )
+                response_metadata["observation_end_date"] = (
+                    observation_end.isoformat() if observation_end else None
+                )
+            elif endpoint.name == "stock_gdfx_free_holding_detail_em":
                 requested_date = _parse_shareholder_quarter_end_date_parameter(
                     kwargs["date"],
                     request=request,
@@ -3659,6 +3747,9 @@ class AKShareProvider(StructuredDataProvider):
                 request.parameters.get("view") == _SHAREHOLDER_MEETING_VIEW
             ),
             shareholder_count_date_requested="date" in request.parameters,
+            shareholder_count_detail_requested=(
+                request.parameters.get("view") == _SHAREHOLDER_COUNT_DETAIL_VIEW
+            ),
             shareholder_control_requested=(
                 request.parameters.get("view") == _SHAREHOLDER_CONTROL_VIEW
             ),
@@ -5106,7 +5197,25 @@ class AKShareNormalizer:
                 missing_fields.add("governance_risk_level")
             elif record.request.category is DataCategory.SHAREHOLDER_HOLDINGS:
                 endpoint_name = record.response_metadata.get("endpoint")
-                if endpoint_name == "stock_gdfx_free_holding_detail_em":
+                if endpoint_name == "stock_zh_a_gdhs_detail_em":
+                    if listing.market is not ListingMarket.A:
+                        raise ProviderNormalizationError(
+                            "AKShare shareholder-count-detail raw slice supports "
+                            "A-share listings only"
+                        )
+                    try:
+                        _shareholder_holdings_kwargs(
+                            endpoint_name,
+                            listing,
+                            record.request,
+                        )
+                    except ProviderRequestError as exc:
+                        raise ProviderNormalizationError(str(exc)) from exc
+                    _validate_shareholder_count_detail_normalizer_rows(rows, listing)
+                    normalizer_flags.add(
+                        "AKSHARE_SHAREHOLDER_COUNT_DETAIL_RAW_ONLY"
+                    )
+                elif endpoint_name == "stock_gdfx_free_holding_detail_em":
                     if listing.market is not ListingMarket.A:
                         raise ProviderNormalizationError(
                             "AKShare free-holding-detail raw slice supports A-share listings only"
@@ -5216,7 +5325,8 @@ class AKShareNormalizer:
                         "stock_gdfx_top_10_em, stock_gdfx_free_top_10_em, "
                         "stock_gdfx_free_holding_detail_em, "
                         "stock_hold_control_cninfo, stock_hsgt_individual_em, "
-                        "stock_main_stock_holder or stock_hold_num_cninfo"
+                        "stock_main_stock_holder, stock_hold_num_cninfo or "
+                        "stock_zh_a_gdhs_detail_em"
                     )
                 # These tables describe shareholder context, but do not
                 # establish beneficial control, a governance severity, a
@@ -5727,6 +5837,14 @@ class AKShareNormalizer:
                 "concentration metric, governance judgment or company-level "
                 "diluted-share series."
             )
+        if "AKSHARE_SHAREHOLDER_COUNT_DETAIL_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented A-share Eastmoney shareholder-count-detail response "
+                "is retained as raw evidence only: its historical cut-off dates, "
+                "holder counts, capital-change context and market-value fields do "
+                "not establish a canonical concentration metric, governance "
+                "judgment or company-level diluted-share series."
+            )
         if "AKSHARE_TRADING_SUSPENSIONS_RAW_ONLY" in normalizer_flags:
             notes += (
                 " The documented A-share trading-suspension response is retained as "
@@ -6000,6 +6118,7 @@ def _endpoint_candidates(
     disclosure_market_requested: bool = False,
     disclosure_shareholder_meeting_requested: bool = False,
     shareholder_count_date_requested: bool = False,
+    shareholder_count_detail_requested: bool = False,
     shareholder_control_requested: bool = False,
     shareholder_free_top10_requested: bool = False,
     shareholder_free_holding_detail_requested: bool = False,
@@ -6268,6 +6387,10 @@ def _endpoint_candidates(
             return ("stock_share_hold_change_bse",)
         return ()
     if category is DataCategory.SHAREHOLDER_HOLDINGS:
+        if shareholder_count_detail_requested:
+            if market is ListingMarket.A:
+                return ("stock_zh_a_gdhs_detail_em",)
+            return ()
         if market is ListingMarket.H:
             return ("stock_hsgt_individual_em",)
         if shareholder_control_requested:
@@ -7483,6 +7606,32 @@ def _shareholder_holdings_kwargs(
     listing: _ListingRef,
     request: ProviderRequest,
 ) -> dict[str, object]:
+    if endpoint_name == "stock_zh_a_gdhs_detail_em":
+        if listing.market is not ListingMarket.A:
+            raise ProviderRequestError(
+                "the AKShare shareholder-count-detail endpoint supports A-share "
+                "listings only",
+                request=request,
+                retryable=False,
+            )
+        unknown = sorted(
+            set(request.parameters) - _SHAREHOLDER_COUNT_DETAIL_PARAMETER_NAMES
+        )
+        if unknown:
+            raise ProviderRequestError(
+                "unsupported AKShare shareholder-count-detail parameter(s): "
+                + ", ".join(unknown),
+                request=request,
+                retryable=False,
+            )
+        if request.parameters.get("view") != _SHAREHOLDER_COUNT_DETAIL_VIEW:
+            raise ProviderRequestError(
+                "the AKShare shareholder-count-detail endpoint requires "
+                f"view={_SHAREHOLDER_COUNT_DETAIL_VIEW!r}",
+                request=request,
+                retryable=False,
+            )
+        return {"symbol": listing.code}
     if endpoint_name == "stock_gdfx_free_holding_detail_em":
         if listing.market is not ListingMarket.A:
             raise ProviderRequestError(
@@ -16536,6 +16685,156 @@ def _validate_hsgt_individual_provider_rows(
             )
 
 
+def _shareholder_count_detail_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+) -> tuple[str | None, list[date]]:
+    """Validate the exact Eastmoney shareholder-count-detail table schema."""
+
+    observation_dates: list[date] = []
+    previous_observation_date: date | None = None
+    for index, row in enumerate(rows):
+        if (
+            set(row) != _SHAREHOLDER_COUNT_DETAIL_FIELD_SET
+            or tuple(row) != _SHAREHOLDER_COUNT_DETAIL_FIELDS
+        ):
+            return (
+                f"shareholder-count-detail response row {index} fields do not match "
+                "the exact schema",
+                [],
+            )
+
+        raw_code = row["代码"]
+        if not isinstance(raw_code, str) or re.fullmatch(r"\d{6}", raw_code) is None:
+            return (
+                f"shareholder-count-detail row {index} code must be a six-digit string",
+                [],
+            )
+        if raw_code != listing.code:
+            return (
+                f"shareholder-count-detail row {index} code {raw_code!r} does not "
+                f"match requested listing {listing.canonical_id!r}",
+                [],
+            )
+
+        raw_name = row["名称"]
+        if (
+            not isinstance(raw_name, str)
+            or not raw_name.strip()
+            or raw_name.strip().lower() in _MISSING_TEXT
+        ):
+            return (
+                f"shareholder-count-detail row {index} name must be non-empty text",
+                [],
+            )
+        raw_reason = row["股本变动原因"]
+        if raw_reason is not None and not isinstance(raw_reason, str):
+            return (
+                f"shareholder-count-detail row {index} field '股本变动原因' "
+                "must be text or null",
+                [],
+            )
+
+        raw_observation_date = row["股东户数统计截止日"]
+        if (
+            not isinstance(raw_observation_date, str)
+            or not raw_observation_date.strip()
+        ):
+            return (
+                f"shareholder-count-detail row {index} has no observation date",
+                [],
+            )
+        observation_date = _parse_date_value(raw_observation_date)
+        if observation_date is None:
+            return (
+                f"shareholder-count-detail row {index} has an invalid observation date",
+                [],
+            )
+        if (
+            previous_observation_date is not None
+            and observation_date < previous_observation_date
+        ):
+            return (
+                "shareholder-count-detail observation dates must be non-decreasing",
+                [],
+            )
+        previous_observation_date = observation_date
+        observation_dates.append(observation_date)
+
+        raw_announcement_date = row["股东户数公告日期"]
+        if raw_announcement_date is not None:
+            if (
+                not isinstance(raw_announcement_date, str)
+                or _parse_date_value(raw_announcement_date) is None
+            ):
+                return (
+                    f"shareholder-count-detail row {index} has an invalid announcement "
+                    "date",
+                    [],
+                )
+
+        for field in _SHAREHOLDER_COUNT_DETAIL_NUMERIC_FIELDS:
+            value = row[field]
+            if value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, Real):
+                return (
+                    f"shareholder-count-detail row {index} field {field!r} must be "
+                    "numeric or null",
+                    [],
+                )
+            if field in _SHAREHOLDER_COUNT_DETAIL_INTEGER_FIELDS and not isinstance(
+                value, Integral
+            ):
+                return (
+                    f"shareholder-count-detail row {index} field {field!r} must be "
+                    "an integer or null",
+                    [],
+                )
+            numeric = float(value)
+            if not math.isfinite(numeric):
+                return (
+                    f"shareholder-count-detail row {index} field {field!r} must be "
+                    "finite or null",
+                    [],
+                )
+            if (
+                field in _SHAREHOLDER_COUNT_DETAIL_NON_NEGATIVE_FIELDS
+                and numeric < 0
+            ):
+                return (
+                    f"shareholder-count-detail row {index} field {field!r} must be "
+                    "non-negative or null",
+                    [],
+                )
+
+    return None, observation_dates
+
+
+def _validate_shareholder_count_detail_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> tuple[date | None, date | None]:
+    """Validate the listing-scoped Eastmoney detail response before storage."""
+
+    message, observation_dates = _shareholder_count_detail_validation_message(
+        rows,
+        listing,
+    )
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message} for {request.entity_id!r}",
+            provider=provider,
+            request=request,
+        )
+    if not observation_dates:
+        return None, None
+    return observation_dates[0], observation_dates[-1]
+
+
 def _validate_shareholder_count_provider_rows(
     rows: Sequence[Mapping[str, JSONValue]],
     listing: _ListingRef,
@@ -16774,6 +17073,17 @@ def _validate_shareholder_count_normalizer_rows(
                 f"shareholder-count row date {row_date.isoformat()!r} does not match "
                 f"requested observation date {observation_date.isoformat()!r}"
             )
+
+
+def _validate_shareholder_count_detail_normalizer_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+) -> None:
+    """Validate replayed Eastmoney detail rows inside listing/schema scope."""
+
+    message, _ = _shareholder_count_detail_validation_message(rows, listing)
+    if message is not None:
+        raise ProviderNormalizationError(message)
 
 
 def _market_activity_date_parameter(

@@ -651,6 +651,13 @@ class FakeAKShare:
             date=date,
         )
 
+    def stock_zh_a_gdhs_detail_em(self, *, symbol: str):
+        return self._return(
+            "stock_zh_a_gdhs_detail_em",
+            _fixture("a_shareholder_count_detail.json"),
+            symbol=symbol,
+        )
+
     def stock_hold_control_cninfo(self, *, symbol: str):
         return self._return(
             "stock_hold_control_cninfo",
@@ -773,8 +780,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "83"
-    assert AKSHARE_MAPPING_VERSION == "84"
+    assert provider.identity.provider_version == "84"
+    assert AKSHARE_MAPPING_VERSION == "85"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -1831,6 +1838,235 @@ def test_shareholder_count_cache_replay_does_not_call_upstream(tmp_path: Path):
     assert replay.mode is RetrievalMode.CACHE_REPLAY
     assert replay.record == live.record
     assert fake.calls == [("stock_hold_num_cninfo", {"date": "20241231"})]
+
+
+def test_shareholder_count_detail_fetch_uses_upstream_symbol_and_exact_schema():
+    fake = FakeAKShare()
+    record = _provider(fake).fetch(
+        _request(
+            DataCategory.SHAREHOLDER_HOLDINGS,
+            "SH600000",
+            {"view": "holder_count_detail"},
+        )
+    )
+
+    fixture = _fixture("a_shareholder_count_detail.json")
+    assert record.raw_payload == fixture
+    assert len(record.raw_payload) == 61
+    assert fake.calls == [
+        ("stock_zh_a_gdhs_detail_em", {"symbol": "600000"}),
+    ]
+    assert record.response_metadata["endpoint"] == "stock_zh_a_gdhs_detail_em"
+    assert record.response_metadata["upstream_row_count"] == 61
+    assert record.response_metadata["entity_row_count"] == 61
+    assert record.response_metadata["entity_rows_selected"] is True
+    assert record.response_metadata["listing_scoped_request"] is True
+    assert record.response_metadata["row_filtering"] == "upstream"
+    assert record.response_metadata["shareholder_count_detail_view"] == (
+        "holder_count_detail"
+    )
+    assert record.response_metadata["upstream_symbol"] == "600000"
+    assert record.response_metadata["snapshot_scope"] == "historical_published_dataset"
+    assert record.response_metadata["observation_date_field"] == "股东户数统计截止日"
+    assert record.response_metadata["announcement_date_field"] == "股东户数公告日期"
+    assert record.response_metadata["date_binding"] == "row_only"
+    assert record.response_metadata["row_ordering"] == (
+        "non_decreasing_by_observation_date"
+    )
+    assert record.response_metadata["observation_start_date"] == "2013-03-07"
+    assert record.response_metadata["observation_end_date"] == "2026-06-30"
+    assert record.source_uri == "https://data.eastmoney.com/gdhs/detail/000002.html"
+
+
+@pytest.mark.parametrize(
+    ("parameters", "match"),
+    [
+        (
+            {"view": "holder_count_detail", "date": "20241231"},
+            "unsupported AKShare shareholder-count-detail parameter",
+        ),
+        (
+            {"view": "holder_count_detail", "unexpected": True},
+            "unsupported AKShare shareholder-count-detail parameter",
+        ),
+    ],
+)
+def test_shareholder_count_detail_request_rejects_undocumented_parameters(
+    parameters: dict,
+    match: str,
+):
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError, match=match):
+        _provider(fake).fetch(
+            _request(DataCategory.SHAREHOLDER_HOLDINGS, "SH600000", parameters)
+        )
+
+    assert fake.calls == []
+
+
+def test_shareholder_count_detail_request_is_a_share_only_before_upstream_call():
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError, match="A-share listings only"):
+        _provider(fake).fetch(
+            _request(
+                DataCategory.SHAREHOLDER_HOLDINGS,
+                "HK00700",
+                {"view": "holder_count_detail"},
+            )
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("missing_field", "exact schema"),
+        ("extra_field", "exact schema"),
+        ("wrong_type", "numeric or null"),
+        ("wrong_integer_type", "integer or null"),
+        ("negative_range", "non-negative or null"),
+        ("invalid_announcement_date", "invalid announcement date"),
+        ("out_of_order", "non-decreasing"),
+        ("wrong_entity", "does not match requested listing"),
+    ],
+)
+def test_shareholder_count_detail_response_is_strictly_validated(
+    mutation: str,
+    match: str,
+):
+    class InvalidRows(FakeAKShare):
+        def stock_zh_a_gdhs_detail_em(self, *, symbol: str):
+            rows = _fixture("a_shareholder_count_detail.json")
+            if mutation == "missing_field":
+                rows[0].pop("总市值")
+            elif mutation == "extra_field":
+                rows[0]["unexpected"] = 1
+            elif mutation == "wrong_type":
+                rows[0]["户均持股数量"] = "not-a-number"
+            elif mutation == "wrong_integer_type":
+                rows[0]["总股本"] = 1.0
+            elif mutation == "negative_range":
+                rows[0]["总市值"] = -1.0
+            elif mutation == "invalid_announcement_date":
+                rows[0]["股东户数公告日期"] = "not-a-date"
+            elif mutation == "out_of_order":
+                rows[0], rows[1] = rows[1], rows[0]
+            elif mutation == "wrong_entity":
+                rows[0]["代码"] = "000001"
+            return self._return("stock_zh_a_gdhs_detail_em", rows, symbol=symbol)
+
+    with pytest.raises(ProviderResponseError, match=match):
+        _provider(InvalidRows()).fetch(
+            _request(
+                DataCategory.SHAREHOLDER_HOLDINGS,
+                "SH600000",
+                {"view": "holder_count_detail"},
+            )
+        )
+
+
+def test_shareholder_count_detail_raw_record_is_not_promoted_to_canonical_facts():
+    record = _provider().fetch(
+        _request(
+            DataCategory.SHAREHOLDER_HOLDINGS,
+            "SH600000",
+            {"view": "holder_count_detail"},
+        )
+    )
+
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="shareholder-count-detail-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_SHAREHOLDER_COUNT_DETAIL_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == [
+        "governance_risk_level",
+    ]
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "historical cut-off dates" in normalized.data_quality.notes
+    assert "canonical concentration metric" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    errors = list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    )
+    assert errors == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("entity", "does not match requested listing"),
+        ("wrong_type", "numeric or null"),
+        ("out_of_order", "non-decreasing"),
+    ],
+)
+def test_shareholder_count_detail_normalizer_rejects_replayed_scope_mismatches(
+    mutation: str,
+    match: str,
+):
+    record = _provider().fetch(
+        _request(
+            DataCategory.SHAREHOLDER_HOLDINGS,
+            "SH600000",
+            {"view": "holder_count_detail"},
+        )
+    )
+    payload = [dict(row) for row in record.raw_payload]
+    if mutation == "entity":
+        payload[0]["代码"] = "000001"
+    elif mutation == "wrong_type":
+        payload[0]["总市值"] = "not-a-number"
+    else:
+        payload[0], payload[1] = payload[1], payload[0]
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=record.source_uri,
+        response_metadata=record.response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match=match):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-shareholder-count-detail",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_shareholder_count_detail_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.SHAREHOLDER_HOLDINGS,
+        "SH600000",
+        {"view": "holder_count_detail"},
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [
+        ("stock_zh_a_gdhs_detail_em", {"symbol": "600000"}),
+    ]
 
 
 def test_a_quote_is_selected_from_the_upstream_universe_and_kept_opaque():

@@ -1,6 +1,6 @@
 # Provider and Cache Architecture
 
-> Status: Phase 2 foundation, read-only AKShare statement slices, earnings forecasts/quick reports/performance reports/business composition/financial abstract/financial indicators, H-share latest indicators, A-share disclosure-notice metadata including the Eastmoney individual-notice, market-wide notice and shareholder-meeting views, risk-warning status, trading-suspension, restricted-share-release, goodwill-impairment detail/goodwill-detail/impairment-forecast/market-profile, ESG-rating, SSE/SZSE/BSE margin-detail, share-capital, individual-info snapshot, corporate-action including IPO-summary, external-guarantee, company-litigation, ownership-pledge snapshot/detail, main-shareholder, shareholder-count, A-share actual-controller holding-change, A/H HSGT individual-holdings, SSE/SZSE/BSE insider-share-change, A-share Eastmoney management-holding and A-share top-ten/top-ten-tradable-shareholder/top-ten-tradable-shareholder-detail, Dragon-Tiger market-activity detail/statistics/institution-statistics/market-participation-desire/market-focus/institution-participation/hot-rank/latest-hot-rank/limit-up-pool/limit-down-pool/H-share latest-hot-rank/new-stock-board, A+H quote-comparison, A-share Eastmoney/Sina intraday-trade, Tencent daily-history/latest-trading-day tick, Sina minute-history, A-share/H-share intraday-history, pre-market-history and five-level bid-ask raw slices
+> Status: Phase 2 foundation, read-only AKShare statement slices, earnings forecasts/quick reports/performance reports/business composition/financial abstract/financial indicators, H-share latest indicators, A-share disclosure-notice metadata including the Eastmoney individual-notice, market-wide notice and shareholder-meeting views, risk-warning status, trading-suspension, restricted-share-release, goodwill-impairment detail/goodwill-detail/impairment-forecast/market-profile, ESG-rating, SSE/SZSE/BSE margin-detail, share-capital, individual-info snapshot, corporate-action including IPO-summary, external-guarantee, company-litigation, ownership-pledge snapshot/detail, main-shareholder, shareholder-count/shareholder-count-detail, A-share actual-controller holding-change, A/H HSGT individual-holdings, SSE/SZSE/BSE insider-share-change, A-share Eastmoney management-holding and A-share top-ten/top-ten-tradable-shareholder/top-ten-tradable-shareholder-detail, Dragon-Tiger market-activity detail/statistics/institution-statistics/market-participation-desire/market-focus/institution-participation/hot-rank/latest-hot-rank/limit-up-pool/limit-down-pool/H-share latest-hot-rank/new-stock-board, A+H quote-comparison, A-share Eastmoney/Sina intraday-trade, Tencent daily-history/latest-trading-day tick, Sina minute-history, A-share/H-share intraday-history, pre-market-history and five-level bid-ask raw slices
 
 This document freezes the boundary between structured-data acquisition and the
 deterministic Turtle Value Engine. It does not authorize a live provider or
@@ -755,7 +755,7 @@ The cache performs no network retries. The normalizer performs no provider
 retries. The deterministic pipeline performs no provider retries and should
 not be rerun as a substitute for resolving missing facts.
 
-## 12. Phase 2.2–2.83 AKShare adapter
+## 12. Phase 2.2–2.84 AKShare adapter
 
 The first concrete adapter is intentionally limited to read-only metadata,
 market observations, three documented financial-statement slices, raw-only
@@ -817,7 +817,7 @@ advertises exactly these capabilities:
 | `SHARE_CAPITAL` | `stock_zh_a_gbjg_em` (no parameters); `stock_share_change_cninfo` (explicit date range); `stock_restricted_release_queue_em` (`view=restricted_release_queue`); `stock_individual_info_em` (`view=individual_info`) | — | raw historical response or current item/value snapshot and provenance only; no canonical share/dilution fact |
 | `OWNERSHIP_PLEDGE` | `stock_gpzy_profile_em` (`view=market_profile`, market-wide historical A-share profile, no upstream arguments); `stock_gpzy_pledge_ratio_em` (exact `date`); `stock_gpzy_individual_pledge_ratio_detail_em` (`view=individual_pledge_detail`); `stock_cg_equity_mortgage_cninfo` (`view=equity_mortgage`, `date`) | — | market-wide historical profile, date-bound snapshot, symbol-scoped detail or CNINFO pledge-event rows as raw structured evidence only; no canonical governance, share, cash or debt-equivalent fact |
 | `INSIDER_SHARE_CHANGES` | `stock_share_hold_change_sse` (Shanghai); `stock_share_hold_change_szse` (Shenzhen); `stock_share_hold_change_bse` (Beijing); `stock_hold_management_detail_em` (`view=management_detail`, no upstream arguments, full universe filtered to requested A-share) | — | listing-scoped exchange rows or management/related-person holding-change rows as raw structured evidence only; no canonical share, dilution, governance, buyback or issuance fact |
-| `SHAREHOLDER_HOLDINGS` | `stock_main_stock_holder` (`stock`); `stock_hold_num_cninfo` (exact quarter-end `date`); `stock_hold_control_cninfo` (`view=control_changes`, optional `control_type`); `stock_gdfx_top_10_em` (`view=top_10`, exact quarter-end `date`); `stock_gdfx_free_top_10_em` (`view=free_top_10`, exact quarter-end `date`); `stock_gdfx_free_holding_detail_em` (`view=free_holding_detail`, exact quarter-end `date`); `stock_hsgt_individual_em` (`view=hsgt_individual`) | `stock_hsgt_individual_em` (`view=hsgt_individual`) | A-share main-shareholder/shareholder-count/actual-controller/top-ten/top-ten-tradable/top-ten-tradable-detail holding-change or A/H HSGT investor-holding rows as raw structured evidence only; no canonical ownership, concentration, share, dilution or governance fact |
+| `SHAREHOLDER_HOLDINGS` | `stock_main_stock_holder` (`stock`); `stock_hold_num_cninfo` (exact quarter-end `date`); `stock_zh_a_gdhs_detail_em` (`view=holder_count_detail`); `stock_hold_control_cninfo` (`view=control_changes`, optional `control_type`); `stock_gdfx_top_10_em` (`view=top_10`, exact quarter-end `date`); `stock_gdfx_free_top_10_em` (`view=free_top_10`, exact quarter-end `date`); `stock_gdfx_free_holding_detail_em` (`view=free_holding_detail`, exact quarter-end `date`); `stock_hsgt_individual_em` (`view=hsgt_individual`) | `stock_hsgt_individual_em` (`view=hsgt_individual`) | A-share main-shareholder/shareholder-count/shareholder-count-detail/actual-controller/top-ten/top-ten-tradable/top-ten-tradable-detail holding-change or A/H HSGT investor-holding rows as raw structured evidence only; no canonical ownership, concentration, share, dilution or governance fact |
 
 The adapter accepts common stable A/H identifiers such as `SH600000`,
 `000001.SZ`, `A:600000`, `HK00700`, `700.HK` and `H:00700`. A-share daily
@@ -1429,6 +1429,34 @@ endpoint; a request without `date` continues to select
 and does not calculate concentration, beneficial-control, governance or
 diluted-share facts.
 
+For the A-share Eastmoney shareholder-count-detail slice, the current [AKShare
+stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and
+[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_gdhs.py)
+define `stock_zh_a_gdhs_detail_em` with the six-digit A-share `symbol` and the
+provider-neutral selector `view=holder_count_detail`. The implementation calls
+the Eastmoney `RPT_HOLDERNUM_DET` report, paginates the published response,
+renames and selects exactly `股东户数统计截止日`, `区间涨跌幅`,
+`股东户数-本次`, `股东户数-上次`, `股东户数-增减`, `股东户数-增减比例`,
+`户均持股市值`, `户均持股数量`, `总市值`, `总股本`, `股本变动`,
+`股本变动原因`, `股东户数公告日期`, `代码` and `名称`, converts numeric
+columns and date columns, and sorts by `股东户数统计截止日` ascending. The
+upstream request fixes `reportName=RPT_HOLDERNUM_DET`, `sortColumns=END_DATE`,
+`sortTypes=-1`, `pageSize=500`, one-based `pageNumber` pagination,
+`quoteColumns=f2,f3`, `source=WEB`, `client=WEB` and
+`filter=(SECURITY_CODE="{symbol}")`; the adapter exposes only the six-digit
+symbol and neutral view selector at its provider boundary. The documented
+`区间涨跌幅` and `股东户数-增减比例` are percent fields, holder counts are
+integer counts, `总股本`/`股本变动` are integer share-base fields, and the
+provider's market-value/average-holding fields retain their documented raw
+scale without an inferred currency conversion. The
+provider requires the exact field order, upstream symbol identity, non-decreasing
+observation dates, nullable announcement dates, finite numeric values and
+non-negative count/market/share-base fields, then records the row-derived date
+range and upstream listing scope. The normalizer emits
+`AKSHARE_SHAREHOLDER_COUNT_DETAIL_RAW_ONLY`, leaves `governance_risk_level`
+critically missing and does not calculate concentration, control, governance,
+valuation or diluted-share facts.
+
 For the A-share actual-controller holding-change slice, the current [AKShare
 stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
 and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hold_control_cninfo.py)
@@ -1660,7 +1688,7 @@ critically missing.
 
 ## 13. Deliberate non-goals
 
-This foundation plus the Phase 2.2–2.83 slices does not include:
+This foundation plus the Phase 2.2–2.84 slices does not include:
 
 - Tushare, BaoStock or any other additional provider;
 - automatic network scheduling, credentials or retry orchestration outside an adapter;
