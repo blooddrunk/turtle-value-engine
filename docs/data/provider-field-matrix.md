@@ -859,6 +859,41 @@ shareholder return, governance, valuation or a canonical market metric. The
 provider-specific response remains outside the calculation, gate, pipeline,
 CLI and input-loader contracts.
 
+## Phase 2.91 H-share Eastmoney main-board quote raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hist_em.py)
+document `stock_hk_main_board_spot_em` as a no-argument Eastmoney H-share
+main-board quote universe at
+`https://quote.eastmoney.com/center/gridlist.html#hk_mainboard`. The adapter
+exposes it under `MARKET_QUOTE` only with explicit `view=hk_main_board`,
+validates the full response and filters it to the requested five-digit H-share
+code.
+
+The official output order is exactly `序号`, `代码`, `名称`, `最新价`, `涨跌额`,
+`涨跌幅`, `今开`, `最高`, `最低`, `昨收`, `成交量` and `成交额`.
+
+| Raw upstream item | Phase 2.91 treatment |
+| --- | --- |
+| `序号` | Required positive integer in the strictly ascending full-universe sequence; retained for source ordering only. |
+| `代码` | Required exact five-digit H-share identity; used for conservative provider-boundary filtering and replay validation only. |
+| `名称` | Required non-empty display name; retained as raw entity context only. |
+| `最新价`, `涨跌额` | Finite numeric-or-null values documented in HKD per share; the delayed snapshot has no stable observation timestamp, so no canonical current-price or change fact is created. |
+| `涨跌幅` | Finite numeric-or-null provider value documented as percent; retained as raw quote context only. |
+| `今开`, `最高`, `最低`, `昨收` | Finite numeric-or-null values documented in HKD per share; retained as raw session context only. |
+| `成交量` | Finite numeric-or-null value documented in shares; it does not establish a canonical dated volume or liquidity input. |
+| `成交额` | Finite numeric-or-null value documented in HKD; it is market activity, not issuer cash flow or shareholder cash. |
+| request `view=hk_main_board` | Explicit no-argument full-universe endpoint selector; `listing_scoped_request=false`, provider filtering, source URI, field order, units, delayed current-day scope and full/selected row counts remain part of the cache replay boundary. |
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+describes the endpoint as 15-minute delayed and does not provide a stable
+observation timestamp. The normalizer emits
+`AKSHARE_HK_MAIN_BOARD_QUOTE_RAW_ONLY`, marks `current_price` as critically
+missing and creates no canonical quote fact. The checked-in fixture freezes
+three source-shaped rows with one selected listing. The provider-specific
+response remains outside the calculation, gate, pipeline, CLI and input-loader
+contracts.
+
 ## Phase 2.63 A-share Eastmoney dividend-distribution detail raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)

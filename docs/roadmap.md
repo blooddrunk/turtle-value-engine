@@ -2257,6 +2257,36 @@ request and market/parameter validation, complete-universe validation before
 filtering, raw-only normalization, cache replay and replay-scope rejection. No
 calculation, gate, pipeline, CLI or input-loader contract changes.
 
+### Phase 2.91 — H-share Eastmoney main-board quote raw acquisition contract (COMPLETE)
+
+The mapping review now covers the distinct documented AKShare
+`stock_hk_main_board_spot_em` endpoint under the existing `MARKET_QUOTE`
+category with explicit `view=hk_main_board`. The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hist_em.py)
+define a no-argument Eastmoney H-share main-board universe at
+`https://quote.eastmoney.com/center/gridlist.html#hk_mainboard` with the exact
+12-field order `序号`, `代码`, `名称`, `最新价`, `涨跌额`, `涨跌幅`, `今开`, `最高`,
+`最低`, `昨收`, `成交量` and `成交额`. The documented units are HKD per share
+for prices/change amount, percent for change, shares for volume and HKD for
+turnover.
+
+The provider validates the complete upstream response before filtering to the
+requested five-digit H-share code. It enforces the official field order,
+strictly ascending positive sequence numbers, unique five-digit identities,
+non-empty names and finite numeric/null values, and records the main-board
+scope, source URI, units, source field order and full/selected row counts for
+cache replay. The checked-in fixture freezes three source-shaped rows with one
+selected listing.
+
+The official documentation describes this as a 15-minute-delayed realtime
+snapshot and does not provide a stable observation timestamp. The normalizer
+therefore emits `AKSHARE_HK_MAIN_BOARD_QUOTE_RAW_ONLY`, marks `current_price`
+critically missing and creates no canonical quote fact. Tests cover explicit
+request and market/parameter validation, exact schema and field order,
+complete-universe validation before filtering, raw-only normalization, cache
+replay and replay-scope rejection. No calculation, gate, pipeline, CLI or
+input-loader contract changes.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -2266,7 +2296,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.90 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.91 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
