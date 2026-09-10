@@ -18,8 +18,8 @@ individual-holdings raw slice, the H-share
 financial-indicator raw slice, the H-share
 latest-indicator raw slice, the A-share goodwill-impairment detail raw slice,
 the SSE/SZSE/BSE margin-detail raw slices, the A-share individual ownership-pledge
-detail view, the A-share CNINFO equity-mortgage view and A-share
-company-litigation raw slice.
+detail view, the A-share CNINFO equity-mortgage view, A-share company-litigation
+raw slice and A-share Eastmoney individual-info raw slice.
 Upstream column names are handled in this module and are never passed to the
 deterministic calculation or gate code.
 """
@@ -66,9 +66,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "42"
+AKSHARE_ADAPTER_VERSION = "43"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "43"
+AKSHARE_MAPPING_VERSION = "44"
 
 
 class ListingMarket(StrEnum):
@@ -158,6 +158,7 @@ _SOURCE_URIS = {
     "stock_cg_equity_mortgage_cninfo": "https://webapi.cninfo.com.cn/#/thematicStatistics",
     "stock_cg_guarantee_cninfo": "https://webapi.cninfo.com.cn/#/thematicStatistics",
     "stock_cg_lawsuit_cninfo": "https://webapi.cninfo.com.cn/#/thematicStatistics",
+    "stock_individual_info_em": "https://quote.eastmoney.com/concept/",
     "stock_share_hold_change_sse": "http://www.sse.com.cn/disclosure/credibility/supervision/change/",
     "stock_share_hold_change_szse": "http://www.szse.cn/disclosure/supervision/change/index.html",
     "stock_share_hold_change_bse": "https://www.bse.cn/disclosure/djg_sharehold_change.html",
@@ -250,6 +251,8 @@ _DISCLOSURE_NOTICES_PARAMETER_NAMES = frozenset(
 )
 _SHARE_CAPITAL_PARAMETER_NAMES = frozenset({"start_date", "end_date", "view"})
 _RESTRICTED_RELEASE_VIEW = "restricted_release_queue"
+_INDIVIDUAL_INFO_VIEW = "individual_info"
+_INDIVIDUAL_INFO_PARAMETER_NAMES = frozenset({"view"})
 _SHARE_CHANGE_DEFAULT_START_DATE = "20091227"
 _SHARE_CHANGE_DEFAULT_END_DATE = "20241021"
 
@@ -844,7 +847,18 @@ class AKShareProvider(StructuredDataProvider):
                 response_metadata["upstream_row_count"] = len(rows)
         elif request.category is DataCategory.SHARE_CAPITAL:
             rows = _table_rows(payload, provider=self.identity, request=request)
-            if endpoint.name == "stock_share_change_cninfo":
+            if endpoint.name == "stock_individual_info_em":
+                _validate_individual_info_provider_rows(
+                    rows,
+                    listing,
+                    provider=self.identity,
+                    request=request,
+                )
+                response_metadata["entity_row_count"] = len(rows)
+                response_metadata["entity_rows_selected"] = True
+                response_metadata["individual_info_view"] = _INDIVIDUAL_INFO_VIEW
+                response_metadata["snapshot_scope"] = "current_provider_snapshot"
+            elif endpoint.name == "stock_share_change_cninfo":
                 _validate_share_capital_provider_rows(
                     rows,
                     listing,
@@ -1342,6 +1356,9 @@ class AKShareProvider(StructuredDataProvider):
             ),
             share_capital_restricted_release_requested=(
                 request.parameters.get("view") == _RESTRICTED_RELEASE_VIEW
+            ),
+            share_capital_individual_info_requested=(
+                request.parameters.get("view") == _INDIVIDUAL_INFO_VIEW
             ),
             ownership_pledge_detail_requested=(
                 request.parameters.get("view") == _OWNERSHIP_PLEDGE_DETAIL_VIEW
@@ -2081,7 +2098,18 @@ class AKShareNormalizer:
                         "AKShare share-capital raw slice supports A-share listings only"
                     )
                 endpoint_name = record.response_metadata.get("endpoint")
-                if endpoint_name == "stock_restricted_release_queue_em":
+                if endpoint_name == "stock_individual_info_em":
+                    try:
+                        _share_capital_kwargs(
+                            "stock_individual_info_em",
+                            listing,
+                            record.request,
+                        )
+                    except ProviderRequestError as exc:
+                        raise ProviderNormalizationError(str(exc)) from exc
+                    _validate_individual_info_normalizer_rows(rows, listing)
+                    normalizer_flags.add("AKSHARE_INDIVIDUAL_INFO_RAW_ONLY")
+                elif endpoint_name == "stock_restricted_release_queue_em":
                     try:
                         _share_capital_kwargs(
                             "stock_restricted_release_queue_em",
@@ -2347,6 +2375,13 @@ class AKShareNormalizer:
                 " The documented A-share share-capital history is retained as raw "
                 "evidence only: its change-date, unit and diluted economic scope "
                 "are not sufficient for a canonical share-count fact."
+            )
+        if "AKSHARE_INDIVIDUAL_INFO_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented A-share individual-info snapshot is retained as raw "
+                "evidence only: total/float shares, market values and listing date "
+                "do not establish a canonical period, unit or diluted economic-share "
+                "scope."
             )
         if "AKSHARE_SHARE_CAPITAL_CHANGE_RAW_ONLY" in normalizer_flags:
             notes += (
@@ -2662,6 +2697,7 @@ def _endpoint_candidates(
     corporate_action_date_requested: bool = False,
     share_capital_date_requested: bool = False,
     share_capital_restricted_release_requested: bool = False,
+    share_capital_individual_info_requested: bool = False,
     ownership_pledge_detail_requested: bool = False,
     ownership_pledge_equity_mortgage_requested: bool = False,
     dividend_snapshot_date_requested: bool = False,
@@ -2790,6 +2826,10 @@ def _endpoint_candidates(
             return ("stock_cg_lawsuit_cninfo",)
         return ()
     if category is DataCategory.SHARE_CAPITAL:
+        if share_capital_individual_info_requested:
+            if market is ListingMarket.A:
+                return ("stock_individual_info_em",)
+            return ()
         if share_capital_restricted_release_requested:
             if market is ListingMarket.A:
                 return ("stock_restricted_release_queue_em",)
@@ -3347,6 +3387,28 @@ def _share_capital_kwargs(
     listing: _ListingRef,
     request: ProviderRequest,
 ) -> dict[str, object]:
+    if endpoint_name == "stock_individual_info_em":
+        if listing.market is not ListingMarket.A:
+            raise ProviderRequestError(
+                "the AKShare individual-info endpoint supports A-share listings only",
+                request=request,
+                retryable=False,
+            )
+        unknown = sorted(set(request.parameters) - _INDIVIDUAL_INFO_PARAMETER_NAMES)
+        if unknown:
+            raise ProviderRequestError(
+                "unsupported AKShare individual-info parameter(s): " + ", ".join(unknown),
+                request=request,
+                retryable=False,
+            )
+        if request.parameters.get("view") != _INDIVIDUAL_INFO_VIEW:
+            raise ProviderRequestError(
+                "the AKShare individual-info endpoint requires "
+                f"view={_INDIVIDUAL_INFO_VIEW!r}",
+                request=request,
+                retryable=False,
+            )
+        return {"symbol": listing.code}
     if endpoint_name == "stock_restricted_release_queue_em":
         if listing.market is not ListingMarket.A:
             raise ProviderRequestError(
@@ -5151,6 +5213,63 @@ def _validate_share_capital_provider_rows(
             )
 
 
+def _individual_info_item_map(
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> dict[str, JSONValue]:
+    """Return one validated item/value mapping from the Eastmoney snapshot."""
+
+    if not rows:
+        raise ValueError("response is empty")
+    items: dict[str, JSONValue] = {}
+    for row in rows:
+        item = _text_value(row.get("item")) if "item" in row else None
+        if item is None:
+            raise ValueError("row has no non-empty item")
+        if "value" not in row:
+            raise ValueError(f"item {item!r} has no value field")
+        if item in items:
+            raise ValueError(f"item {item!r} is duplicated")
+        items[item] = row["value"]
+    return items
+
+
+def _validate_individual_info_listing(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+) -> None:
+    items = _individual_info_item_map(rows)
+    row_code = _canonical_row_code(items.get("股票代码"), ListingMarket.A)
+    if row_code is None:
+        raise ValueError("response has no explicit 股票代码 item")
+    if row_code != listing.code:
+        raise ValueError(
+            f"entity {row_code!r} does not match requested listing "
+            f"{listing.canonical_id!r}"
+        )
+    if "上市时间" in items and _text_value(items["上市时间"]) is not None:
+        if _parse_date_value(items["上市时间"]) is None:
+            raise ValueError("上市时间 is not a valid date")
+
+
+def _validate_individual_info_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> None:
+    """Validate the listing identity and optional listing date before storage."""
+
+    try:
+        _validate_individual_info_listing(rows, listing)
+    except ValueError as exc:
+        raise ProviderResponseError(
+            f"AKShare individual-info response {exc}",
+            provider=provider,
+            request=request,
+        ) from exc
+
+
 def _validate_restricted_release_provider_rows(
     rows: Sequence[Mapping[str, JSONValue]],
     listing: _ListingRef,
@@ -5698,6 +5817,18 @@ def _validate_share_capital_normalizer_rows(
                 f"share-capital row entity {row_code!r} does not match "
                 f"requested listing {listing.canonical_id!r}"
             )
+
+
+def _validate_individual_info_normalizer_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+) -> None:
+    """Validate replayed item/value rows inside the requested listing scope."""
+
+    try:
+        _validate_individual_info_listing(rows, listing)
+    except ValueError as exc:
+        raise ProviderNormalizationError(f"AKShare individual-info response {exc}") from exc
 
 
 def _validate_restricted_release_normalizer_rows(

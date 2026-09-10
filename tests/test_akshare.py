@@ -199,6 +199,13 @@ class FakeAKShare:
             symbol=symbol,
         )
 
+    def stock_individual_info_em(self, *, symbol: str):
+        return self._return(
+            "stock_individual_info_em",
+            _fixture("a_individual_info.json"),
+            symbol=symbol,
+        )
+
     def stock_share_change_cninfo(self, **kwargs):
         return self._return(
             "stock_share_change_cninfo",
@@ -446,8 +453,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "42"
-    assert AKSHARE_MAPPING_VERSION == "43"
+    assert provider.identity.provider_version == "43"
+    assert AKSHARE_MAPPING_VERSION == "44"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -1609,6 +1616,156 @@ def test_a_share_capital_fetch_uses_documented_listing_scoped_history_endpoint()
     assert record.source_uri == (
         "https://emweb.securities.eastmoney.com/pc_hsf10/pages/index.html#/gbjg"
     )
+
+
+def test_individual_info_fetch_requires_explicit_view_and_preserves_snapshot_rows():
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    request = _request(
+        DataCategory.SHARE_CAPITAL,
+        "SH600000",
+        {"view": "individual_info"},
+    )
+
+    record = provider.fetch(request)
+
+    assert record.raw_payload == _fixture("a_individual_info.json")
+    assert fake.calls == [
+        ("stock_individual_info_em", {"symbol": "600000"}),
+    ]
+    assert record.response_metadata["endpoint"] == "stock_individual_info_em"
+    assert record.response_metadata["upstream_row_count"] == 9
+    assert record.response_metadata["entity_row_count"] == 9
+    assert record.response_metadata["entity_rows_selected"] is True
+    assert record.response_metadata["listing_scoped_request"] is True
+    assert record.response_metadata["individual_info_view"] == "individual_info"
+    assert record.response_metadata["snapshot_scope"] == "current_provider_snapshot"
+    assert record.source_uri == "https://quote.eastmoney.com/concept/"
+
+
+def test_individual_info_request_rejects_non_view_parameters_before_upstream_call():
+    fake = FakeAKShare()
+    provider = _provider(fake)
+
+    with pytest.raises(ProviderRequestError, match="unsupported AKShare individual-info"):
+        provider.fetch(
+            _request(
+                DataCategory.SHARE_CAPITAL,
+                "SH600000",
+                {"view": "individual_info", "date": "20240930"},
+            )
+        )
+
+    assert fake.calls == []
+
+
+def test_individual_info_response_rejects_wrong_identity_or_invalid_listing_date():
+    class WrongEntityAKShare(FakeAKShare):
+        def stock_individual_info_em(self, *, symbol: str):
+            payload = _fixture("a_individual_info.json")
+            next(row for row in payload if row["item"] == "股票代码")["value"] = "000001"
+            return self._return("stock_individual_info_em", payload, symbol=symbol)
+
+    class InvalidDateAKShare(FakeAKShare):
+        def stock_individual_info_em(self, *, symbol: str):
+            payload = _fixture("a_individual_info.json")
+            next(row for row in payload if row["item"] == "上市时间")["value"] = "not-a-date"
+            return self._return("stock_individual_info_em", payload, symbol=symbol)
+
+    request = _request(
+        DataCategory.SHARE_CAPITAL,
+        "SH600000",
+        {"view": "individual_info"},
+    )
+    with pytest.raises(ProviderResponseError, match="individual-info response entity"):
+        _provider(WrongEntityAKShare()).fetch(request)
+    with pytest.raises(ProviderResponseError, match="上市时间 is not a valid date"):
+        _provider(InvalidDateAKShare()).fetch(request)
+
+
+def test_individual_info_snapshot_is_raw_only_and_keeps_diluted_shares_missing():
+    provider = _provider()
+    record = provider.fetch(
+        _request(
+            DataCategory.SHARE_CAPITAL,
+            "SH600000",
+            {"view": "individual_info"},
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="individual-info-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_INDIVIDUAL_INFO_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == [
+        "normalized_diluted_economic_shares",
+    ]
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "canonical period, unit or diluted economic-share scope" in (
+        normalized.data_quality.notes
+    )
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    errors = list(Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json")))
+    assert errors == []
+
+
+def test_individual_info_normalizer_rejects_replayed_identity_mismatch():
+    provider = _provider()
+    record = provider.fetch(
+        _request(
+            DataCategory.SHARE_CAPITAL,
+            "SH600000",
+            {"view": "individual_info"},
+        )
+    )
+    mismatched_payload = [dict(row) for row in record.raw_payload]
+    next(row for row in mismatched_payload if row["item"] == "股票代码")["value"] = "000001"
+    mismatched = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=mismatched_payload,
+        source_uri=record.source_uri,
+        response_metadata=record.response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match="individual-info response entity"):
+        normalize_akshare_records(
+            [mismatched],
+            analysis_id="mismatched-individual-info-entity",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_individual_info_raw_record_replays_offline_without_calling_upstream(
+    tmp_path: Path,
+):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.SHARE_CAPITAL,
+        "SH600000",
+        {"view": "individual_info"},
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [("stock_individual_info_em", {"symbol": "600000"})]
 
 
 def test_share_capital_endpoint_rejects_parameters_and_h_share_requests_before_upstream_call():

@@ -1085,6 +1085,26 @@ dilution, buyback, issuance, ownership, return or valuation fact. Live calls
 remain opt-in; tests use an injected client and a frozen fixture with cache
 replay, invalid-parameter, response-validation and replay-scope coverage.
 
+### Phase 2.43 — A-share individual-info raw share snapshot (COMPLETE)
+
+The mapping review now covers the current documented Eastmoney
+[`stock_individual_info_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
+endpoint and its [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_info_em.py).
+It accepts a six-digit A-share `symbol` and returns an `item/value` snapshot
+with `股票代码`, `股票简称`, `总股本`, `流通股`, `总市值`, `流通市值`, `行业`,
+`上市时间` and `最新`. The provider selects it only for the explicit
+`SHARE_CAPITAL` request `view=individual_info`, passes the six-digit code,
+validates the returned code and any populated listing date, and retains the
+complete response with listing/view/snapshot provenance.
+
+The documented snapshot does not establish a canonical reporting period,
+amount unit/scaling or fully diluted economic-share scope. The normalizer
+therefore emits `AKSHARE_INDIVIDUAL_INFO_RAW_ONLY`, marks
+`normalized_diluted_economic_shares` as critically missing and creates no
+canonical share, market-cap or valuation fact. Live calls remain opt-in; tests
+use an injected client and a frozen fixture with cache replay, invalid-
+parameter, response-validation and replay-scope coverage.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -1094,7 +1114,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.42 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.43 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```

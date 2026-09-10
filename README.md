@@ -316,6 +316,17 @@ documented raw fields plus endpoint/view and row-count provenance. The
 normalizer emits `AKSHARE_MANAGEMENT_HOLDINGS_RAW_ONLY`, leaves
 `governance_risk_level` critically missing and creates no canonical share,
 dilution, buyback, issuance, ownership, return or valuation fact.
+Phase 2.43 adds the documented Eastmoney
+[`stock_individual_info_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
+endpoint under an explicit `SHARE_CAPITAL` request with `view=individual_info`;
+the [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_info_em.py)
+confirms the `item/value` response shape. The
+listing-scoped `item/value` snapshot is validated for its returned A-share code
+and optional `上市时间`, then retained as raw evidence. Its total/float shares,
+market values, latest price, industry and listing date do not establish a
+canonical reporting period, unit or fully diluted economic-share scope, so the
+normalizer emits `AKSHARE_INDIVIDUAL_INFO_RAW_ONLY` and no canonical share or
+valuation fact.
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

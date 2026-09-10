@@ -147,6 +147,33 @@ dividend, buyback, issuance and split classifications remain unresolved.
 | `流通受限股份`, `已流通股份`, `已上市流通A股` | Raw-only; legal circulation categories are not normalized into economic share counts. |
 | `变动原因` | Raw-only; text is not classified as buyback, issuance, split or other action. |
 
+## Phase 2.43 A-share individual-info raw share snapshot
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_individual_info_em` as an Eastmoney A-share endpoint with a
+six-digit `symbol` input and an `item/value` response. The [official
+implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_info_em.py)
+maps the published snapshot to `最新`, `股票代码`, `股票简称`, `总股本`, `流通股`,
+`总市值`, `流通市值`, `行业` and `上市时间`.
+
+The provider selects this endpoint only for the explicit `SHARE_CAPITAL` view
+`individual_info`, validates the returned code against the requested A-share
+listing and validates `上市时间` when it is populated. It retains every
+`item/value` row and its listing/view/snapshot provenance. The snapshot is not
+silently treated as a reporting-period fact: its share-count unit, current
+observation basis and fully diluted economic scope are not settled by this
+endpoint. The normalizer emits `AKSHARE_INDIVIDUAL_INFO_RAW_ONLY`, marks
+`normalized_diluted_economic_shares` as critically missing and creates no
+canonical share, market-cap or valuation fact.
+
+| Raw upstream item | Phase 2 treatment |
+| --- | --- |
+| `股票代码`, `股票简称` | Listing identity/context; the code is required to match the requested A-share listing. |
+| `总股本`, `流通股` | Raw share-count context; no unit, class, point-in-time or fully diluted economic scope is admitted. |
+| `总市值`, `流通市值`, `最新` | Raw current-snapshot market context; no provider market cap, price or valuation metric replaces the deterministic engine. |
+| `行业` | Raw provider classification; it does not overwrite the caller's sector or establish a special model. |
+| `上市时间` | Validated raw listing-date context; it is not used as a statement period or automatic diluted-share fact. |
+
 ## Phase 2.9 corporate-action raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
