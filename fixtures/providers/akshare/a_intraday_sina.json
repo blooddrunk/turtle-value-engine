@@ -1,0 +1,38 @@
+[
+  {
+    "symbol": "sh600000",
+    "name": "浦发银行",
+    "ticktime": "09:25:00",
+    "price": 10.45,
+    "volume": 437400,
+    "prev_price": 0.0,
+    "kind": "U"
+  },
+  {
+    "symbol": "sh600000",
+    "name": "浦发银行",
+    "ticktime": "09:30:03",
+    "price": 10.44,
+    "volume": 29100,
+    "prev_price": 10.45,
+    "kind": "D"
+  },
+  {
+    "symbol": "sh600000",
+    "name": "浦发银行",
+    "ticktime": "10:15:00",
+    "price": 10.46,
+    "volume": 35800,
+    "prev_price": 10.44,
+    "kind": "U"
+  },
+  {
+    "symbol": "sh600000",
+    "name": "浦发银行",
+    "ticktime": "15:00:00",
+    "price": 10.47,
+    "volume": 1472200,
+    "prev_price": 10.46,
+    "kind": "E"
+  }
+]

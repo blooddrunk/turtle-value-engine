@@ -1166,6 +1166,32 @@ or Business Quality fact. H-share goodwill coverage and primary-filing
 reconciliation remain unresolved. The response remains outside the calculation,
 gate, pipeline, CLI and input-loader contracts.
 
+## Phase 2.78 A-share Sina intraday-trade raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_intraday_sina.py)
+document `stock_intraday_sina` as a date-bound A-share large-order response.
+The adapter selects it only under `MARKET_HISTORY` with explicit
+`view=intraday_sina`, derives a lower-case market-prefixed `symbol`, and passes
+the required `date=YYYYMMDD` unchanged. The exact seven-field response is
+validated before the raw record is returned.
+
+| Raw upstream item | Phase 2 treatment |
+| --- | --- |
+| `symbol` | Must equal the requested lower-case market-prefixed A-share symbol; it is retained as raw identity context. |
+| `name` | Required non-empty provider security name; retained as raw evidence and not used to overwrite company identity. |
+| `ticktime` | Required `HH:MM:SS` time-of-day value in non-decreasing order; the request date is not silently attached as a row-level date. |
+| `price`, `prev_price` | Finite numeric or null CNY-per-share fields; raw large-order context only. |
+| `volume` | Finite integer or null share count; raw large-order context only. |
+| `kind` | Required documented trade-kind code `U`, `D` or `E`; no order-flow classification is inferred. |
+| request `view=intraday_sina`, `date=YYYYMMDD` | Explicit endpoint routing and requested-trading-day replay scope; `listing_scoped_request=true`, `date_binding=request_only`, `range_filtering=none`. |
+
+The normalizer emits `AKSHARE_SINA_INTRADAY_RAW_ONLY`, marks `market_history`
+as critically missing and creates no canonical daily-history, liquidity,
+order-flow or valuation fact. The requested date, derived symbol, units and
+observed time bounds are checked during replay. The response remains outside
+the calculation, gate, pipeline, CLI and input-loader contracts.
+
 ## Phase 2.9 corporate-action raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)

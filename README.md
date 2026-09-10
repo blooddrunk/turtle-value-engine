@@ -712,6 +712,20 @@ context still require primary-filing entity, period and reconciliation review.
 No H-share counterpart or calculation, gate, pipeline, CLI or input-loader
 contract is changed.
 
+Phase 2.78 adds the distinct documented A-share Sina large-order endpoint
+[`stock_intraday_sina`](https://akshare.akfamily.xyz/data/stock/stock.html),
+whose current [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_intraday_sina.py)
+takes a market-prefixed `symbol` and required `date=YYYYMMDD` under
+`MARKET_HISTORY` with explicit `view=intraday_sina`. The adapter validates the
+exact `symbol`, `name`, `ticktime`, `price`, `volume`, `prev_price`, `kind`
+schema, `U`/`D`/`E` kind values, finite numeric fields, integer volumes and
+non-decreasing time order. The normalizer emits
+`AKSHARE_SINA_INTRADAY_RAW_ONLY`: because the response rows are time-only even
+when the request date is explicit, they remain raw evidence and do not become
+canonical daily-history, liquidity, order-flow or valuation facts. The date,
+derived symbol, units and observed time bounds remain replay scope; no
+calculation, gate, pipeline, CLI or input-loader contract is changed.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

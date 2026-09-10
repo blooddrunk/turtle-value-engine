@@ -1882,6 +1882,35 @@ goodwill coverage remains outside this slice. Live calls remain opt-in; tests
 use an injected client and a frozen fixture with cache replay, invalid-request,
 strict-response, raw-only and replay-scope coverage.
 
+### Phase 2.78 — A-share Sina intraday-trade raw acquisition contract (COMPLETE)
+
+The mapping review now covers the distinct documented AKShare Sina
+`stock_intraday_sina` endpoint under the existing `MARKET_HISTORY` category.
+The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+defines a market-prefixed `symbol` and required `date` in `YYYYMMDD` form; the
+[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_intraday_sina.py)
+returns the exact seven fields `symbol`, `name`, `ticktime`, `price`, `volume`,
+`prev_price` and `kind` for large intraday orders on the requested trading day.
+The documented kind examples are `U`, `D` and `E`.
+
+The provider selects this callable only with explicit `view=intraday_sina`,
+derives the lower-case market-prefixed symbol from the requested A-share
+listing, passes the validated date unchanged, and rejects H-share requests or
+extra parameters. It validates the exact response shape, requested symbol,
+non-empty names, `HH:MM:SS` times in non-decreasing order, recognized kind
+values and finite numeric/null price/volume fields with integer/null volume.
+Replay metadata binds the requested date to the listing-scoped response while
+recording that the rows themselves expose only time-of-day observations.
+
+The normalizer emits `AKSHARE_SINA_INTRADAY_RAW_ONLY`, marks `market_history`
+as critically missing and creates no canonical daily-history, liquidity,
+order-flow or valuation fact: even with a requested date, the row schema does
+not carry a row-level trading date or a supported canonical mapping. Live calls
+remain opt-in; tests use an injected client and a frozen fixture with cache
+replay, invalid-request, exact-schema, response-validation, raw-only and
+replay-scope coverage. No calculation, gate, pipeline, CLI or input-loader
+contract changes.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -1891,7 +1920,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.77 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.78 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -2124,6 +2153,14 @@ normalizer emits `AKSHARE_GOODWILL_FORECAST_RAW_ONLY`, leaves `goodwill` and
 `impairment` critically missing and creates no canonical forecast, profit,
 accounting or ratio fact pending primary-filing scope and reconciliation. H-
 share goodwill coverage remains unresolved. The A-share
+Sina `stock_intraday_sina` response is a requested-date, listing-scoped large-
+order snapshot whose exact `symbol`/`name`/`ticktime`/`price`/`volume`/
+`prev_price`/`kind` schema is validated with non-decreasing time order and
+`U`/`D`/`E` kind codes. Because the rows are time-only even though the request
+date is explicit, the normalizer emits `AKSHARE_SINA_INTRADAY_RAW_ONLY`, leaves
+`market_history` critically missing and creates no canonical daily-history,
+liquidity, order-flow or valuation fact; the requested date, derived symbol,
+units and observed time bounds remain part of the replay scope. The A-share
 Tencent daily-history response is the dated-series exception among the recent
 market-history slices: it maps the existing daily-history extension facts,
 preserves volume as `shares` and amount as `CNY`, and retains its market-

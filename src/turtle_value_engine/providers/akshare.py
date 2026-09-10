@@ -25,9 +25,9 @@ A-share Eastmoney individual-info raw slice.
 The A-share Eastmoney individual-fund-flow, market-participation-desire,
 market-focus, institution-participation, hot-rank, latest-hot-rank, limit-up-pool,
 A+H comparison,
-intraday-trade, chip-distribution, Tencent
-daily-history and Tencent latest-trading-day tick, Sina minute-history,
-intraday-history, H-share intraday-history, pre-market-history, five-level bid-ask
+intraday-trade, Sina intraday-trade, chip-distribution, Tencent daily-history and
+Tencent latest-trading-day tick, Sina minute-history, intraday-history, H-share
+intraday-history, pre-market-history, five-level bid-ask
 Xueqiu individual-spot quote and Dragon-Tiger market-activity
 detail/statistics/institution-statistics raw slices are also available. The
 A-share Xueqiu, CNINFO and Tonghuashun company-profile raw slices are also
@@ -82,9 +82,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "77"
+AKSHARE_ADAPTER_VERSION = "78"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "78"
+AKSHARE_MAPPING_VERSION = "79"
 
 
 class ListingMarket(StrEnum):
@@ -155,6 +155,10 @@ _SOURCE_URIS = {
     "stock_zh_a_hist_tx": "https://gu.qq.com/sh000919/zs",
     "stock_zh_a_tick_tx_js": "http://gu.qq.com/sz300494/gp/detail",
     "stock_zh_a_minute": "https://finance.sina.com.cn/realstock/company/sh600519/nc.shtml",
+    "stock_intraday_sina": (
+        "https://vip.stock.finance.sina.com.cn/quotes_service/view/"
+        "cn_bill.php?symbol=sz000001"
+    ),
     "stock_zh_a_daily": "https://finance.sina.com.cn/realstock/company/",
     "stock_hk_daily": "http://stock.finance.sina.com.cn/hkstock/",
     "stock_zh_ah_daily": "https://gu.qq.com/",
@@ -636,6 +640,16 @@ _MARKET_HISTORY_INTRADAY_TRADES_FIELDS = frozenset(
     {"时间", "成交价", "手数", "买卖盘性质"}
 )
 _MARKET_HISTORY_INTRADAY_TRADES_SIDES = frozenset({"买盘", "卖盘", "中性盘"})
+
+_MARKET_HISTORY_SINA_INTRADAY_PARAMETER_NAMES = frozenset({"view", "date"})
+_MARKET_HISTORY_SINA_INTRADAY_VIEW = "intraday_sina"
+_MARKET_HISTORY_SINA_INTRADAY_FIELDS = frozenset(
+    {"symbol", "name", "ticktime", "price", "volume", "prev_price", "kind"}
+)
+_MARKET_HISTORY_SINA_INTRADAY_NUMERIC_FIELDS = frozenset(
+    {"price", "volume", "prev_price"}
+)
+_MARKET_HISTORY_SINA_INTRADAY_KINDS = frozenset({"U", "D", "E"})
 
 _HISTORY_PARAMETER_NAMES = frozenset(
     {
@@ -1314,6 +1328,7 @@ class AKShareProvider(StructuredDataProvider):
                 _MARKET_HISTORY_TENCENT_TICK_VIEW,
                 _MARKET_HISTORY_CHIP_DISTRIBUTION_VIEW,
                 _MARKET_HISTORY_INTRADAY_TRADES_VIEW,
+                _MARKET_HISTORY_SINA_INTRADAY_VIEW,
             )
             and listing.market is not ListingMarket.A
         ):
@@ -2282,6 +2297,38 @@ class AKShareProvider(StructuredDataProvider):
                 )
                 response_metadata["observation_end_date"] = (
                     max(observation_dates).isoformat() if observation_dates else None
+                )
+            elif endpoint.name == "stock_intraday_sina":
+                requested_date = _parse_sina_intraday_date_parameter(
+                    kwargs["date"],
+                    request=request,
+                )
+                observation_times = _validate_sina_intraday_provider_rows(
+                    rows,
+                    listing,
+                    provider=self.identity,
+                    request=request,
+                )
+                response_metadata["upstream_row_count"] = len(rows)
+                response_metadata["entity_row_count"] = len(rows)
+                response_metadata["entity_rows_selected"] = True
+                response_metadata["listing_scoped_request"] = True
+                response_metadata["sina_intraday_view"] = _MARKET_HISTORY_SINA_INTRADAY_VIEW
+                response_metadata["upstream_symbol"] = kwargs["symbol"]
+                response_metadata["requested_date"] = kwargs["date"]
+                response_metadata["observation_date"] = requested_date.isoformat()
+                response_metadata["snapshot_scope"] = "requested_trading_day"
+                response_metadata["observation_time_field"] = "ticktime"
+                response_metadata["time_ordering"] = "non_decreasing"
+                response_metadata["date_binding"] = "request_only"
+                response_metadata["range_filtering"] = "none"
+                response_metadata["volume_unit"] = "shares"
+                response_metadata["price_unit"] = "CNY_per_share"
+                response_metadata["observation_start_time"] = (
+                    min(observation_times).isoformat() if observation_times else None
+                )
+                response_metadata["observation_end_time"] = (
+                    max(observation_times).isoformat() if observation_times else None
                 )
             elif endpoint.name == "stock_intraday_em":
                 observation_times = _validate_intraday_trades_provider_rows(
@@ -3397,6 +3444,9 @@ class AKShareProvider(StructuredDataProvider):
             market_history_intraday_trades_requested=(
                 request.parameters.get("view") == _MARKET_HISTORY_INTRADAY_TRADES_VIEW
             ),
+            market_history_sina_intraday_requested=(
+                request.parameters.get("view") == _MARKET_HISTORY_SINA_INTRADAY_VIEW
+            ),
         )
         for name in candidates:
             function = getattr(client, name, None)
@@ -4146,6 +4196,16 @@ class AKShareNormalizer:
                 ):
                     _validate_chip_distribution_normalizer_scope(record, listing, rows)
                     normalizer_flags.add("AKSHARE_CHIP_DISTRIBUTION_RAW_ONLY")
+                elif (
+                    endpoint == "stock_intraday_sina"
+                    or record.request.parameters.get("view")
+                    == _MARKET_HISTORY_SINA_INTRADAY_VIEW
+                ):
+                    _validate_sina_intraday_normalizer_scope(record, listing, rows)
+                    # The request carries the trading date, but the documented
+                    # response rows expose only time-of-day large-order events.
+                    # They therefore cannot become dated daily-history facts.
+                    normalizer_flags.add("AKSHARE_SINA_INTRADAY_RAW_ONLY")
                 elif endpoint == "stock_intraday_em":
                     _validate_intraday_trades_normalizer_scope(record, listing, rows)
                     # The endpoint exposes only the latest trading day's
@@ -4190,6 +4250,7 @@ class AKShareNormalizer:
                     "stock_zh_a_tick_tx_js",
                     "stock_cyq_em",
                     "stock_intraday_em",
+                    "stock_intraday_sina",
                     "stock_zh_a_hist_min_em",
                     "stock_hk_hist_min_em",
                     "stock_zh_a_minute",
@@ -4822,6 +4883,7 @@ class AKShareNormalizer:
             {
                 "AKSHARE_TENCENT_TICK_RAW_ONLY",
                 "AKSHARE_INTRADAY_TRADES_RAW_ONLY",
+                "AKSHARE_SINA_INTRADAY_RAW_ONLY",
                 "AKSHARE_INTRADAY_HISTORY_RAW_ONLY",
                 "AKSHARE_HK_INTRADAY_HISTORY_RAW_ONLY",
                 "AKSHARE_SINA_MINUTE_HISTORY_RAW_ONLY",
@@ -5334,6 +5396,13 @@ class AKShareNormalizer:
                 "carry a trading date and do not establish a canonical daily-history, "
                 "liquidity or valuation input."
             )
+        if "AKSHARE_SINA_INTRADAY_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented A-share Sina intraday-trade response is retained "
+                "as raw evidence only: its requested-day time-only large-order rows "
+                "do not carry a row-level date and do not establish a canonical "
+                "daily-history, liquidity or valuation input."
+            )
         if "AKSHARE_INTRADAY_HISTORY_RAW_ONLY" in normalizer_flags:
             notes += (
                 " The documented A-share intraday-history response is retained as raw "
@@ -5560,6 +5629,7 @@ def _endpoint_candidates(
     market_history_tencent_tick_requested: bool = False,
     market_history_chip_distribution_requested: bool = False,
     market_history_intraday_trades_requested: bool = False,
+    market_history_sina_intraday_requested: bool = False,
 ) -> tuple[str, ...]:
     market = listing.market
     if category is DataCategory.COMPANY_METADATA:
@@ -5624,6 +5694,8 @@ def _endpoint_candidates(
         if market is ListingMarket.A:
             if market_history_intraday_trades_requested:
                 return ("stock_intraday_em",)
+            if market_history_sina_intraday_requested:
+                return ("stock_intraday_sina",)
             if market_history_chip_distribution_requested:
                 return ("stock_cyq_em",)
             if market_history_pre_market_requested:
@@ -9361,6 +9433,105 @@ def _validate_intraday_trades_provider_rows(
     return observation_times
 
 
+def _sina_intraday_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    expected_symbol: str,
+) -> tuple[str | None, list[time]]:
+    observation_times: list[time] = []
+    previous_time: time | None = None
+    for index, row in enumerate(rows):
+        missing = sorted(_MARKET_HISTORY_SINA_INTRADAY_FIELDS - set(row))
+        unexpected = sorted(set(row) - _MARKET_HISTORY_SINA_INTRADAY_FIELDS)
+        if missing:
+            return (
+                f"Sina intraday row {index} is missing field(s): "
+                + ", ".join(missing),
+                [],
+            )
+        if unexpected:
+            return (
+                f"Sina intraday row {index} contains unsupported field(s): "
+                + ", ".join(unexpected),
+                [],
+            )
+
+        symbol = row["symbol"]
+        if not isinstance(symbol, str) or symbol != expected_symbol:
+            return (
+                f"Sina intraday row {index} entity {symbol!r} does not match "
+                f"requested symbol {expected_symbol!r}",
+                [],
+            )
+        name = row["name"]
+        if not isinstance(name, str) or not name.strip():
+            return f"Sina intraday row {index} name must be a non-empty string", []
+
+        observation_time = _intraday_trades_time(row["ticktime"])
+        if observation_time is None:
+            return f"Sina intraday row {index} has an invalid ticktime", []
+        if previous_time is not None and observation_time < previous_time:
+            return "Sina intraday response ticktime values must be non-decreasing", []
+        previous_time = observation_time
+        observation_times.append(observation_time)
+
+        kind = row["kind"]
+        if not isinstance(kind, str) or kind not in _MARKET_HISTORY_SINA_INTRADAY_KINDS:
+            return (
+                f"Sina intraday row {index} kind must be one of: "
+                + ", ".join(sorted(_MARKET_HISTORY_SINA_INTRADAY_KINDS)),
+                [],
+            )
+        for field in sorted(_MARKET_HISTORY_SINA_INTRADAY_NUMERIC_FIELDS):
+            value = row[field]
+            if value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, Real):
+                return (
+                    f"Sina intraday row {index} field {field!r} must be numeric or null",
+                    [],
+                )
+            try:
+                numeric = float(value)
+            except (OverflowError, TypeError, ValueError):
+                return (
+                    f"Sina intraday row {index} field {field!r} must be numeric or null",
+                    [],
+                )
+            if not math.isfinite(numeric):
+                return (
+                    f"Sina intraday row {index} field {field!r} must be finite or null",
+                    [],
+                )
+            if field == "volume" and not numeric.is_integer():
+                return (
+                    f"Sina intraday row {index} field 'volume' must be an integer or null",
+                    [],
+                )
+    return None, observation_times
+
+
+def _validate_sina_intraday_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> list[time]:
+    expected_symbol = listing.canonical_id[:2].lower() + listing.code
+    message, observation_times = _sina_intraday_validation_message(
+        rows,
+        expected_symbol=expected_symbol,
+    )
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message}",
+            provider=provider,
+            request=request,
+        )
+    return observation_times
+
+
 def _chip_distribution_date(value: object) -> date | None:
     if not isinstance(value, str):
         return None
@@ -9689,6 +9860,74 @@ def _validate_intraday_trades_normalizer_scope(
     if record.response_metadata.get("observation_end_time") != expected_end:
         raise ProviderNormalizationError(
             "intraday-trades response observation end does not match replayed rows"
+        )
+
+
+def _validate_sina_intraday_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> None:
+    if listing.market is not ListingMarket.A:
+        raise ProviderNormalizationError(
+            "AKShare Sina intraday raw slice supports A-share listings only"
+        )
+    if record.response_metadata.get("endpoint") != "stock_intraday_sina":
+        raise ProviderNormalizationError(
+            "AKShare Sina intraday record must come from stock_intraday_sina"
+        )
+    if record.source_uri != _SOURCE_URIS["stock_intraday_sina"]:
+        raise ProviderNormalizationError(
+            "AKShare Sina intraday record source does not match stock_intraday_sina"
+        )
+    try:
+        upstream_kwargs = _sina_intraday_kwargs(listing, record.request)
+        requested_date = _parse_sina_intraday_date_parameter(
+            upstream_kwargs["date"],
+            request=record.request,
+        )
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+
+    expected_metadata = {
+        "sina_intraday_view": _MARKET_HISTORY_SINA_INTRADAY_VIEW,
+        "upstream_symbol": upstream_kwargs["symbol"],
+        "requested_date": upstream_kwargs["date"],
+        "observation_date": requested_date.isoformat(),
+        "listing_scoped_request": True,
+        "snapshot_scope": "requested_trading_day",
+        "observation_time_field": "ticktime",
+        "time_ordering": "non_decreasing",
+        "date_binding": "request_only",
+        "range_filtering": "none",
+        "volume_unit": "shares",
+        "price_unit": "CNY_per_share",
+        "upstream_row_count": len(rows),
+        "entity_row_count": len(rows),
+        "entity_rows_selected": True,
+    }
+    for name, expected in expected_metadata.items():
+        if record.response_metadata.get(name) != expected:
+            raise ProviderNormalizationError(
+                f"Sina intraday response metadata {name!r} does not match "
+                "the requested replay scope"
+            )
+
+    message, observation_times = _sina_intraday_validation_message(
+        rows,
+        expected_symbol=upstream_kwargs["symbol"],
+    )
+    if message is not None:
+        raise ProviderNormalizationError(message)
+    expected_start = min(observation_times).isoformat() if observation_times else None
+    expected_end = max(observation_times).isoformat() if observation_times else None
+    if record.response_metadata.get("observation_start_time") != expected_start:
+        raise ProviderNormalizationError(
+            "Sina intraday response observation start does not match replayed rows"
+        )
+    if record.response_metadata.get("observation_end_time") != expected_end:
+        raise ProviderNormalizationError(
+            "Sina intraday response observation end does not match replayed rows"
         )
 
 
@@ -15676,6 +15915,8 @@ def _history_kwargs(
     listing: _ListingRef,
     request: ProviderRequest,
 ) -> dict[str, object]:
+    if endpoint_name == "stock_intraday_sina":
+        return _sina_intraday_kwargs(listing, request)
     if endpoint_name == "stock_intraday_em":
         return _intraday_trades_kwargs(listing, request)
     if endpoint_name == "stock_cyq_em":
@@ -15833,6 +16074,49 @@ def _tencent_tick_kwargs(
     return {"symbol": listing.canonical_id[:2].lower() + listing.code}
 
 
+def _sina_intraday_kwargs(
+    listing: _ListingRef,
+    request: ProviderRequest,
+) -> dict[str, object]:
+    """Build the documented dated Sina A-share intraday-trade request."""
+
+    if listing.market is not ListingMarket.A:
+        raise ProviderRequestError(
+            "the AKShare Sina intraday endpoint supports A-share listings only",
+            request=request,
+            retryable=False,
+        )
+    parameters = dict(request.parameters)
+    unknown = sorted(set(parameters) - _MARKET_HISTORY_SINA_INTRADAY_PARAMETER_NAMES)
+    if unknown:
+        raise ProviderRequestError(
+            "unsupported AKShare Sina intraday parameter(s): " + ", ".join(unknown),
+            request=request,
+            retryable=False,
+        )
+    if parameters.get("view") != _MARKET_HISTORY_SINA_INTRADAY_VIEW:
+        raise ProviderRequestError(
+            "the AKShare Sina intraday endpoint requires "
+            f"view={_MARKET_HISTORY_SINA_INTRADAY_VIEW!r}",
+            request=request,
+            retryable=False,
+        )
+    if "date" not in parameters:
+        raise ProviderRequestError(
+            "the AKShare Sina intraday endpoint requires date",
+            request=request,
+            retryable=False,
+        )
+    observation_date = _parse_sina_intraday_date_parameter(
+        parameters["date"],
+        request=request,
+    )
+    return {
+        "symbol": listing.canonical_id[:2].lower() + listing.code,
+        "date": observation_date.strftime("%Y%m%d"),
+    }
+
+
 def _intraday_trades_kwargs(
     listing: _ListingRef,
     request: ProviderRequest,
@@ -15948,6 +16232,27 @@ def _parse_tencent_daily_history_date_parameter(
         request=request,
         retryable=False,
     )
+
+
+def _parse_sina_intraday_date_parameter(
+    value: object,
+    *,
+    request: ProviderRequest,
+) -> date:
+    if not isinstance(value, str) or not re.fullmatch(r"\d{8}", value):
+        raise ProviderRequestError(
+            "AKShare Sina intraday date must be YYYYMMDD",
+            request=request,
+            retryable=False,
+        )
+    try:
+        return datetime.strptime(value, "%Y%m%d").date()
+    except ValueError as exc:
+        raise ProviderRequestError(
+            "AKShare Sina intraday date must be a valid YYYYMMDD date",
+            request=request,
+            retryable=False,
+        ) from exc
 
 
 def _sina_minute_history_kwargs(
