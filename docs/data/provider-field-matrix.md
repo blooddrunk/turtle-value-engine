@@ -842,6 +842,34 @@ The slice deliberately leaves `accounting_opinion` and
 not establish filing contents, audit language, materiality or governance
 severity.
 
+## Phase 2.67 A-share Eastmoney market-focus raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_comment_em.py)
+document `stock_comment_detail_scrd_focus_em` as a symbol-scoped Eastmoney
+A-share market-focus endpoint. Its documented request accepts a six-digit
+`symbol`, requests the `RPT_STOCK_MARKETFOCUS` report with a 30-row page size,
+and maps the response to exactly `交易日` and `用户关注指数`.
+
+The provider selects this endpoint only under `MARKET_ACTIVITY` with explicit
+`view=focus`, passes the unprefixed requested listing code, validates the exact
+two-field response, strict ascending ISO dates, finite numeric/null focus values
+and the official 30-row maximum, and retains the symbol-scoped response with
+observed date bounds as raw evidence. The normalizer emits
+`AKSHARE_MARKET_FOCUS_RAW_ONLY`; it does not promote provider-defined user
+attention into a canonical market, issuer-cash-flow, shareholder-return,
+governance or valuation fact.
+
+| Raw upstream item | Phase 2 treatment |
+| --- | --- |
+| `交易日` | Required ISO observation date in strict ascending order; retained as raw market-activity context, not an accounting, fund-flow or filing period. |
+| `用户关注指数` | Provider-defined user-attention score; finite numeric/null values are retained without inferring a scale, denominator, sentiment judgment or canonical market metric. |
+| request `view=focus`, unprefixed six-digit `symbol` | Explicit endpoint, A-share listing and latest-30-trading-day replay scope; observed date bounds remain provider-boundary metadata. |
+
+The response remains outside the calculation, gate, pipeline, CLI and
+input-loader contracts. User-attention history alone does not establish issuer
+cash flow, shareholder return, governance severity or valuation.
+
 ## Phase 2.9 corporate-action raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)

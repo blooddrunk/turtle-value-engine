@@ -560,6 +560,17 @@ validates the exact six-field code/name/title/type/date/URL response. The
 normalizer emits `AKSHARE_INDIVIDUAL_NOTICES_RAW_ONLY`: announcement metadata
 remains raw evidence and does not establish filing contents, an accounting
 opinion or a governance-risk judgment.
+Phase 2.67 adds the distinct documented Eastmoney A-share market-focus endpoint
+[`stock_comment_detail_scrd_focus_em`](https://akshare.akfamily.xyz/data/stock/stock.html),
+whose current official implementation is in
+[`stock_comment_em.py`](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_comment_em.py),
+under `MARKET_ACTIVITY` with explicit `view=focus`. It passes the unprefixed
+six-digit listing code, validates the exact `交易日`/`用户关注指数` rows, strict
+date ordering, finite numeric/null values and the official 30-row limit, then
+binds the symbol, listing, latest-window and observed-date range into replay
+metadata. The normalizer emits `AKSHARE_MARKET_FOCUS_RAW_ONLY`: provider-defined
+user-attention scores remain raw evidence and do not establish a canonical
+market, issuer-cash-flow, shareholder-return, governance or valuation fact.
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

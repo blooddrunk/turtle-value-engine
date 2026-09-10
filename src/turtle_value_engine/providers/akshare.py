@@ -21,7 +21,7 @@ the SSE/SZSE/BSE margin-detail raw slices, the A-share individual ownership-pled
 detail view, the A-share CNINFO equity-mortgage view, A-share company-litigation
 raw slice and A-share Eastmoney individual-info raw slice.
 The A-share Eastmoney individual-fund-flow, market-participation-desire,
-hot-rank, A+H comparison, intraday-trade, chip-distribution, Tencent
+market-focus, hot-rank, A+H comparison, intraday-trade, chip-distribution, Tencent
 daily-history and Tencent latest-trading-day tick, Sina minute-history,
 intraday-history, H-share intraday-history, pre-market-history, five-level bid-ask
 and Dragon-Tiger market-activity detail/statistics/institution-statistics raw
@@ -76,9 +76,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "66"
+AKSHARE_ADAPTER_VERSION = "67"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "67"
+AKSHARE_MAPPING_VERSION = "68"
 
 
 class ListingMarket(StrEnum):
@@ -151,6 +151,7 @@ _SOURCE_URIS = {
     "stock_lhb_stock_statistic_em": "https://data.eastmoney.com/stock/tradedetail.html",
     "stock_lhb_jgstatistic_em": "https://data.eastmoney.com/stock/jgstatistic.html",
     "stock_comment_detail_scrd_desire_em": "https://data.eastmoney.com/stockcomment/stock/600000.html",
+    "stock_comment_detail_scrd_focus_em": "https://data.eastmoney.com/stockcomment/stock/600000.html",
     "stock_hot_rank_em": "https://guba.eastmoney.com/rank/",
     "stock_intraday_em": "https://quote.eastmoney.com/f1.html?newcode=0.000001",
     "stock_hk_company_profile_em": "https://emweb.securities.eastmoney.com/PC_HKF10/pages/home/index.html",
@@ -493,6 +494,10 @@ _MARKET_ACTIVITY_PARTICIPATION_DESIRE_FIELDS = frozenset(
         "5日平均变化",
     }
 )
+_MARKET_ACTIVITY_FOCUS_PARAMETER_NAMES = frozenset({"view"})
+_MARKET_ACTIVITY_FOCUS_VIEW = "focus"
+_MARKET_ACTIVITY_FOCUS_MAX_ROWS = 30
+_MARKET_ACTIVITY_FOCUS_FIELDS = frozenset({"交易日", "用户关注指数"})
 _MARKET_ACTIVITY_HOT_RANK_PARAMETER_NAMES = frozenset({"view"})
 _MARKET_ACTIVITY_HOT_RANK_VIEW = "hot_rank"
 _MARKET_ACTIVITY_HOT_RANK_MAX_ROWS = 100
@@ -1326,6 +1331,30 @@ class AKShareProvider(StructuredDataProvider):
                 response_metadata["provider_row_limit"] = (
                     _MARKET_ACTIVITY_PARTICIPATION_DESIRE_MAX_ROWS
                 )
+                response_metadata["observation_start_date"] = (
+                    min(observation_dates).isoformat() if observation_dates else None
+                )
+                response_metadata["observation_end_date"] = (
+                    max(observation_dates).isoformat() if observation_dates else None
+                )
+            elif endpoint.name == "stock_comment_detail_scrd_focus_em":
+                observation_dates = _validate_market_activity_focus_provider_rows(
+                    rows,
+                    provider=self.identity,
+                    request=request,
+                )
+                response_metadata["upstream_row_count"] = len(rows)
+                response_metadata["entity_row_count"] = len(rows)
+                response_metadata["entity_rows_selected"] = True
+                response_metadata["listing_scoped_request"] = True
+                response_metadata["market_activity_view"] = _MARKET_ACTIVITY_FOCUS_VIEW
+                response_metadata["upstream_symbol"] = kwargs["symbol"]
+                response_metadata["snapshot_scope"] = "latest_30_trading_days"
+                response_metadata["observation_date_field"] = "交易日"
+                response_metadata["time_ordering"] = "strictly_ascending"
+                response_metadata["date_binding"] = "row_only"
+                response_metadata["range_filtering"] = "none"
+                response_metadata["provider_row_limit"] = _MARKET_ACTIVITY_FOCUS_MAX_ROWS
                 response_metadata["observation_start_date"] = (
                     min(observation_dates).isoformat() if observation_dates else None
                 )
@@ -2559,6 +2588,9 @@ class AKShareProvider(StructuredDataProvider):
                 request.parameters.get("view")
                 == _MARKET_ACTIVITY_PARTICIPATION_DESIRE_VIEW
             ),
+            market_activity_focus_requested=(
+                request.parameters.get("view") == _MARKET_ACTIVITY_FOCUS_VIEW
+            ),
             market_activity_hot_rank_requested=(
                 request.parameters.get("view") == _MARKET_ACTIVITY_HOT_RANK_VIEW
             ),
@@ -2944,6 +2976,13 @@ class AKShareNormalizer:
                     normalizer_flags.add(
                         "AKSHARE_MARKET_PARTICIPATION_DESIRE_RAW_ONLY"
                     )
+                elif endpoint_name == "stock_comment_detail_scrd_focus_em":
+                    _validate_market_activity_focus_normalizer_scope(
+                        record,
+                        listing,
+                        rows,
+                    )
+                    normalizer_flags.add("AKSHARE_MARKET_FOCUS_RAW_ONLY")
                 elif endpoint_name == "stock_lhb_detail_em":
                     try:
                         start_date, end_date = _market_activity_date_range(record.request)
@@ -3016,6 +3055,7 @@ class AKShareNormalizer:
                     raise ProviderNormalizationError(
                         "AKShare market-activity record must come from "
                         "stock_zh_a_new_em, stock_comment_detail_scrd_desire_em, "
+                        "stock_comment_detail_scrd_focus_em, "
                         "stock_lhb_detail_em, stock_hot_rank_em, "
                         "stock_lhb_stock_statistic_em or stock_lhb_jgstatistic_em"
                     )
@@ -4180,6 +4220,13 @@ class AKShareNormalizer:
                 "over a recent trading-day window do not establish issuer cash flow, "
                 "shareholder return, governance, valuation or a canonical market metric."
             )
+        if "AKSHARE_MARKET_FOCUS_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented A-share market-focus response is retained as raw "
+                "evidence only: provider-defined user-attention scores over a recent "
+                "trading-day window do not establish issuer cash flow, shareholder "
+                "return, governance, valuation or a canonical market metric."
+            )
         if "AKSHARE_HOT_RANK_RAW_ONLY" in normalizer_flags:
             notes += (
                 " The documented A-share stock hot-rank response is retained as raw "
@@ -4492,6 +4539,7 @@ def _endpoint_candidates(
     market_activity_statistic_requested: bool = False,
     market_activity_institution_statistic_requested: bool = False,
     market_activity_participation_desire_requested: bool = False,
+    market_activity_focus_requested: bool = False,
     market_activity_hot_rank_requested: bool = False,
     market_activity_new_stock_requested: bool = False,
     market_quote_ah_comparison_requested: bool = False,
@@ -4570,6 +4618,8 @@ def _endpoint_candidates(
                 return ("stock_zh_a_new_em",)
             if market_activity_participation_desire_requested:
                 return ("stock_comment_detail_scrd_desire_em",)
+            if market_activity_focus_requested:
+                return ("stock_comment_detail_scrd_focus_em",)
             if market_activity_hot_rank_requested:
                 return ("stock_hot_rank_em",)
             if market_activity_institution_statistic_requested:
@@ -8833,6 +8883,98 @@ def _validate_market_activity_participation_desire_provider_rows(
     return observation_dates
 
 
+def _market_activity_focus_date(value: object) -> date | None:
+    if not isinstance(value, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _market_activity_focus_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> tuple[str | None, list[date]]:
+    if len(rows) > _MARKET_ACTIVITY_FOCUS_MAX_ROWS:
+        return (
+            "market-focus response contains more than "
+            f"{_MARKET_ACTIVITY_FOCUS_MAX_ROWS} rows",
+            [],
+        )
+
+    observation_dates: list[date] = []
+    previous_date: date | None = None
+    for index, row in enumerate(rows):
+        missing = sorted(_MARKET_ACTIVITY_FOCUS_FIELDS - set(row))
+        unexpected = sorted(set(row) - _MARKET_ACTIVITY_FOCUS_FIELDS)
+        if missing:
+            return (
+                f"market-focus row {index} is missing field(s): "
+                + ", ".join(missing),
+                [],
+            )
+        if unexpected:
+            return (
+                f"market-focus row {index} contains unsupported field(s): "
+                + ", ".join(unexpected),
+                [],
+            )
+
+        observation_date = _market_activity_focus_date(row["交易日"])
+        if observation_date is None:
+            return f"market-focus row {index} has an invalid 交易日", []
+        if previous_date is not None and observation_date <= previous_date:
+            if observation_date == previous_date:
+                return (
+                    "market-focus response has duplicate 交易日 "
+                    f"{observation_date.isoformat()!r}",
+                    [],
+                )
+            return "market-focus response 交易日 values must be strictly ascending", []
+        previous_date = observation_date
+        observation_dates.append(observation_date)
+
+        value = row["用户关注指数"]
+        if value is None:
+            continue
+        if isinstance(value, bool) or not isinstance(value, Real):
+            return (
+                f"market-focus row {index} field '用户关注指数' must be numeric or null",
+                [],
+            )
+        try:
+            numeric = float(value)
+        except (OverflowError, TypeError, ValueError):
+            return (
+                f"market-focus row {index} field '用户关注指数' must be numeric or null",
+                [],
+            )
+        if not math.isfinite(numeric):
+            return (
+                f"market-focus row {index} field '用户关注指数' must be finite or null",
+                [],
+            )
+    return None, observation_dates
+
+
+def _validate_market_activity_focus_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> list[date]:
+    """Validate the symbol-scoped market-focus response."""
+
+    message, observation_dates = _market_activity_focus_validation_message(rows)
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message}",
+            provider=provider,
+            request=request,
+        )
+    return observation_dates
+
+
 def _validate_market_activity_statistic_provider_rows(
     rows: Sequence[Mapping[str, JSONValue]],
     *,
@@ -10156,6 +10298,76 @@ def _validate_market_activity_participation_desire_normalizer_rows(
         rows,
         listing,
     )
+    if message is not None:
+        raise ProviderNormalizationError(message)
+    return observation_dates
+
+
+def _validate_market_activity_focus_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> None:
+    """Validate the replay scope of a market-focus response."""
+
+    if listing.market is not ListingMarket.A:
+        raise ProviderNormalizationError(
+            "AKShare market-focus raw slice supports A-share listings only"
+        )
+    if record.response_metadata.get("endpoint") != "stock_comment_detail_scrd_focus_em":
+        raise ProviderNormalizationError(
+            "AKShare market-focus record must come from "
+            "stock_comment_detail_scrd_focus_em"
+        )
+    try:
+        upstream_kwargs = _market_activity_focus_kwargs(
+            "stock_comment_detail_scrd_focus_em",
+            listing,
+            record.request,
+        )
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+
+    expected_metadata = {
+        "market_activity_view": _MARKET_ACTIVITY_FOCUS_VIEW,
+        "upstream_symbol": upstream_kwargs["symbol"],
+        "listing_scoped_request": True,
+        "snapshot_scope": "latest_30_trading_days",
+        "observation_date_field": "交易日",
+        "time_ordering": "strictly_ascending",
+        "date_binding": "row_only",
+        "range_filtering": "none",
+        "provider_row_limit": _MARKET_ACTIVITY_FOCUS_MAX_ROWS,
+        "upstream_row_count": len(rows),
+        "entity_row_count": len(rows),
+        "entity_rows_selected": True,
+    }
+    for name, expected in expected_metadata.items():
+        if record.response_metadata.get(name) != expected:
+            raise ProviderNormalizationError(
+                f"market-focus response metadata {name!r} does not match "
+                "the requested replay scope"
+            )
+
+    observation_dates = _validate_market_activity_focus_normalizer_rows(rows)
+    expected_start = min(observation_dates).isoformat() if observation_dates else None
+    expected_end = max(observation_dates).isoformat() if observation_dates else None
+    if record.response_metadata.get("observation_start_date") != expected_start:
+        raise ProviderNormalizationError(
+            "market-focus response observation start does not match replayed rows"
+        )
+    if record.response_metadata.get("observation_end_date") != expected_end:
+        raise ProviderNormalizationError(
+            "market-focus response observation end does not match replayed rows"
+        )
+
+
+def _validate_market_activity_focus_normalizer_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> list[date]:
+    """Keep replayed market-focus rows inside their symbol scope."""
+
+    message, observation_dates = _market_activity_focus_validation_message(rows)
     if message is not None:
         raise ProviderNormalizationError(message)
     return observation_dates
@@ -11740,6 +11952,8 @@ def _market_activity_kwargs(
         return _market_activity_new_stock_kwargs(endpoint_name, listing, request)
     if endpoint_name == "stock_comment_detail_scrd_desire_em":
         return _market_activity_participation_desire_kwargs(endpoint_name, listing, request)
+    if endpoint_name == "stock_comment_detail_scrd_focus_em":
+        return _market_activity_focus_kwargs(endpoint_name, listing, request)
     if endpoint_name == "stock_hot_rank_em":
         return _market_activity_hot_rank_kwargs(endpoint_name, listing, request)
     if endpoint_name == "stock_lhb_stock_statistic_em":
@@ -11878,6 +12092,42 @@ def _market_activity_participation_desire_kwargs(
         raise ProviderRequestError(
             "the AKShare market-participation endpoint requires "
             f"view={_MARKET_ACTIVITY_PARTICIPATION_DESIRE_VIEW!r}",
+            request=request,
+            retryable=False,
+        )
+    return {"symbol": listing.code}
+
+
+def _market_activity_focus_kwargs(
+    endpoint_name: str,
+    listing: _ListingRef,
+    request: ProviderRequest,
+) -> dict[str, object]:
+    """Build the documented symbol-scoped market-focus request."""
+
+    if endpoint_name != "stock_comment_detail_scrd_focus_em":
+        raise ProviderRequestError(
+            f"unsupported AKShare market-focus endpoint {endpoint_name!r}",
+            request=request,
+            retryable=False,
+        )
+    if listing.market is not ListingMarket.A:
+        raise ProviderRequestError(
+            "the AKShare market-focus endpoint supports A-share listings only",
+            request=request,
+            retryable=False,
+        )
+    unknown = sorted(set(request.parameters) - _MARKET_ACTIVITY_FOCUS_PARAMETER_NAMES)
+    if unknown:
+        raise ProviderRequestError(
+            "unsupported AKShare market-focus parameter(s): " + ", ".join(unknown),
+            request=request,
+            retryable=False,
+        )
+    if request.parameters.get("view") != _MARKET_ACTIVITY_FOCUS_VIEW:
+        raise ProviderRequestError(
+            "the AKShare market-focus endpoint requires "
+            f"view={_MARKET_ACTIVITY_FOCUS_VIEW!r}",
             request=request,
             retryable=False,
         )
