@@ -863,7 +863,7 @@ company/display names, A/B/H codes, market/industry, registration/contact
 context, dates and business descriptions. The adapter accepts only the explicit
 `view=cninfo_profile` selector, passes the six-digit A-share code, validates
 the single row, exact field set, A-share identity, scalar/null values and
-populated dates, and records the symbol-scoped current company-profile
+valid date-or-null values, and records the symbol-scoped current company-profile
 snapshot for replay. The normalizer emits
 `AKSHARE_CNINFO_PROFILE_RAW_ONLY`; descriptive, registration, contact and
 provider-specific date fields do not become canonical company or listing facts.

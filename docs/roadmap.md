@@ -1772,7 +1772,7 @@ fields.
 The provider selects this callable only under `COMPANY_METADATA` with explicit
 `view=cninfo_profile`, passes the unprefixed six-digit A-share code, validates
 the exact single-row field set, A-share code identity, scalar/null values and
-populated profile dates, and records the symbol-scoped current company-profile
+valid date-or-null profile values, and records the symbol-scoped current company-profile
 snapshot for replay.
 
 The normalizer emits `AKSHARE_CNINFO_PROFILE_RAW_ONLY`; descriptive,
@@ -2110,7 +2110,7 @@ The A-share CNINFO company-profile response remains raw-only because its
 descriptive, registration, contact and provider-specific date fields do not
 establish canonical company or listing facts. The explicit
 `view=cninfo_profile`, unprefixed six-digit symbol, exact 26-field row shape,
-A-share code identity, scalar/null and populated-date rules, and symbol-scoped
+A-share code identity, scalar/null and valid date-or-null rules, and symbol-scoped
 company-profile replay metadata remain part of its acquisition boundary.
 dividend-distribution snapshot remains raw-only because its ratios, status and
 multiple dates do not establish settled ordinary cash or a canonical payout

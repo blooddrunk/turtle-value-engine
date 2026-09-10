@@ -641,7 +641,8 @@ whose current official implementation is in
 [`stock_profile_cninfo.py`](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_profile_cninfo.py),
 under `COMPANY_METADATA` with explicit `view=cninfo_profile`. It passes the
 unprefixed six-digit A-share code, validates the exact 26-field single-row
-profile, A-share code identity, scalar/null values and populated dates, and
+profile, A-share code identity, scalar/null values and valid date-or-null
+values, and
 records the symbol-scoped company-profile snapshot for replay. The normalizer
 emits `AKSHARE_CNINFO_PROFILE_RAW_ONLY`: descriptive, registration, contact
 and provider-specific date fields do not become canonical company or listing
