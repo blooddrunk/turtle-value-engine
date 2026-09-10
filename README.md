@@ -726,6 +726,19 @@ canonical daily-history, liquidity, order-flow or valuation facts. The date,
 derived symbol, units and observed time bounds remain replay scope; no
 calculation, gate, pipeline, CLI or input-loader contract is changed.
 
+Phase 2.79 adds the distinct documented A-share Eastmoney goodwill-detail
+endpoint [`stock_sy_em`](https://akshare.akfamily.xyz/data/stock/stock.html),
+whose current [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_sy_em.py)
+takes a required `date=YYYYMMDD` under `GOODWILL_IMPAIRMENT`. The adapter
+selects it only with explicit `view=goodwill_detail`, validates the exact ten
+fields, positive ascending sequence, nullable announcement date, numeric/null
+amount and ratio fields, and text fields before filtering the full A-share
+universe to the requested listing. The normalizer emits
+`AKSHARE_GOODWILL_DETAIL_RAW_ONLY`: aggregator goodwill, profit, ratio and
+announcement values remain raw evidence and do not become canonical accounting,
+profit, ratio or Business Quality facts. No H-share counterpart or calculation,
+gate, pipeline, CLI or input-loader contract is changed.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

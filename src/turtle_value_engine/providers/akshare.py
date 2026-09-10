@@ -16,7 +16,8 @@ and actual-controller holding-change raw slices, the A-share Eastmoney
 management-holding raw slice, the A/H HSGT
 individual-holdings raw slice, the H-share
 financial-indicator raw slice, the H-share
-latest-indicator raw slice, the A-share goodwill-impairment detail,
+latest-indicator raw slice, the A-share goodwill-impairment detail and
+goodwill-detail,
 impairment-forecast and market-profile raw slices,
 the SSE/SZSE/BSE margin-detail raw slices, the A-share individual ownership-pledge
 detail view, the A-share CNINFO equity-mortgage view, the A-share Eastmoney
@@ -82,9 +83,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "78"
+AKSHARE_ADAPTER_VERSION = "79"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "79"
+AKSHARE_MAPPING_VERSION = "80"
 
 
 class ListingMarket(StrEnum):
@@ -188,6 +189,7 @@ _SOURCE_URIS = {
     "stock_sy_yq_em": "https://data.eastmoney.com/sy/yqlist.html",
     "stock_sy_profile_em": "https://data.eastmoney.com/sy/scgk.html",
     "stock_sy_jz_em": "https://data.eastmoney.com/sy/jzlist.html",
+    "stock_sy_em": "https://data.eastmoney.com/sy/list.html",
     "stock_balance_sheet_by_report_em": "https://emweb.securities.eastmoney.com/PC_HSF10/NewFinanceAnalysis/Index",
     "stock_zcfz_em": "https://data.eastmoney.com/bbsj/202003/zcfz.html",
     "stock_zcfz_bj_em": "https://data.eastmoney.com/bbsj/202003/zcfz.html",
@@ -886,6 +888,37 @@ _GOODWILL_IMPAIRMENT_MARKET_PROFILE_AMOUNT_FIELDS = frozenset(
 _GOODWILL_IMPAIRMENT_MARKET_PROFILE_RATIO_FIELDS = frozenset(
     {"商誉占净资产比例", "商誉减值占净资产比例", "商誉减值占净利润比例"}
 )
+_GOODWILL_IMPAIRMENT_DETAIL_PARAMETER_NAMES = frozenset({"date", "view"})
+_GOODWILL_IMPAIRMENT_DETAIL_VIEW = "goodwill_detail"
+_GOODWILL_IMPAIRMENT_DETAIL_FIELDS = frozenset(
+    {
+        "序号",
+        "股票代码",
+        "股票简称",
+        "商誉",
+        "商誉占净资产比例",
+        "净利润",
+        "净利润同比",
+        "上年商誉",
+        "公告日期",
+        "交易市场",
+    }
+)
+_GOODWILL_IMPAIRMENT_DETAIL_NUMERIC_FIELDS = (
+    "商誉",
+    "商誉占净资产比例",
+    "净利润",
+    "净利润同比",
+    "上年商誉",
+)
+_GOODWILL_IMPAIRMENT_DETAIL_AMOUNT_FIELDS = frozenset(
+    {"商誉", "净利润", "上年商誉"}
+)
+_GOODWILL_IMPAIRMENT_DETAIL_RATIO_FIELDS = frozenset(
+    {"商誉占净资产比例", "净利润同比"}
+)
+_GOODWILL_IMPAIRMENT_DETAIL_DATE_FIELDS = ("公告日期",)
+_GOODWILL_IMPAIRMENT_DETAIL_TEXT_FIELDS = ("股票简称", "交易市场")
 _LATEST_INDICATORS_PARAMETER_NAMES = frozenset()
 _MARGIN_TRADING_PARAMETER_NAMES = frozenset({"date"})
 _SHAREHOLDER_COUNT_PARAMETER_NAMES = frozenset({"date"})
@@ -2148,7 +2181,59 @@ class AKShareProvider(StructuredDataProvider):
             response_metadata["snapshot_scope"] = "requested_date"
         elif request.category is DataCategory.GOODWILL_IMPAIRMENT:
             rows = _table_rows(payload, provider=self.identity, request=request)
-            if endpoint.name == "stock_sy_yq_em":
+            if endpoint.name == "stock_sy_em":
+                requested_date = _parse_goodwill_impairment_date_parameter(
+                    kwargs["date"],
+                    request=request,
+                )
+                _validate_goodwill_impairment_detail_provider_rows(
+                    rows,
+                    provider=self.identity,
+                    request=request,
+                )
+                selected = _select_listing_rows(
+                    rows,
+                    listing,
+                    provider=self.identity,
+                    request=request,
+                    row_label="goodwill-detail",
+                )
+                payload = selected
+                response_metadata["upstream_row_count"] = len(rows)
+                response_metadata["entity_row_count"] = len(selected)
+                response_metadata["entity_rows_selected"] = True
+                response_metadata["listing_scoped_request"] = False
+                response_metadata["row_filtering"] = "provider"
+                response_metadata["goodwill_impairment_view"] = (
+                    _GOODWILL_IMPAIRMENT_DETAIL_VIEW
+                )
+                response_metadata["market_scope"] = "all_a_share_listings"
+                response_metadata["requested_date"] = kwargs["date"]
+                response_metadata["report_period"] = requested_date.isoformat()
+                response_metadata["snapshot_scope"] = "requested_report_date"
+                response_metadata["date_binding"] = "request_period"
+                response_metadata["goodwill_detail_sequence_field"] = "序号"
+                response_metadata["goodwill_detail_sequence_ordering"] = (
+                    "strictly_ascending"
+                )
+                response_metadata["goodwill_detail_date_fields"] = list(
+                    _GOODWILL_IMPAIRMENT_DETAIL_DATE_FIELDS
+                )
+                response_metadata["amount_unit"] = "CNY"
+                response_metadata["ratio_unit"] = "provider_reported_ratio"
+                response_metadata["amount_field_count"] = len(
+                    _GOODWILL_IMPAIRMENT_DETAIL_AMOUNT_FIELDS
+                )
+                response_metadata["ratio_field_count"] = len(
+                    _GOODWILL_IMPAIRMENT_DETAIL_RATIO_FIELDS
+                )
+                response_metadata["goodwill_detail_numeric_field_count"] = len(
+                    _GOODWILL_IMPAIRMENT_DETAIL_NUMERIC_FIELDS
+                )
+                response_metadata["goodwill_detail_field_count"] = len(
+                    _GOODWILL_IMPAIRMENT_DETAIL_FIELDS
+                )
+            elif endpoint.name == "stock_sy_yq_em":
                 requested_date = _parse_goodwill_impairment_date_parameter(
                     kwargs["date"],
                     request=request,
@@ -3345,6 +3430,9 @@ class AKShareProvider(StructuredDataProvider):
                 request.parameters.get("view")
                 == _GOODWILL_IMPAIRMENT_MARKET_PROFILE_VIEW
             ),
+            goodwill_impairment_detail_requested=(
+                request.parameters.get("view") == _GOODWILL_IMPAIRMENT_DETAIL_VIEW
+            ),
             ownership_pledge_market_profile_requested=(
                 request.parameters.get("view")
                 == _OWNERSHIP_PLEDGE_MARKET_PROFILE_VIEW
@@ -4024,6 +4112,14 @@ class AKShareNormalizer:
                     )
                 if (
                     record.request.parameters.get("view")
+                    == _GOODWILL_IMPAIRMENT_DETAIL_VIEW
+                    and endpoint_name != "stock_sy_em"
+                ):
+                    raise ProviderNormalizationError(
+                        "AKShare goodwill-detail record must come from stock_sy_em"
+                    )
+                if (
+                    record.request.parameters.get("view")
                     == _GOODWILL_IMPAIRMENT_MARKET_PROFILE_VIEW
                     and endpoint_name != "stock_sy_profile_em"
                 ):
@@ -4031,7 +4127,17 @@ class AKShareNormalizer:
                         "AKShare goodwill-impairment market-profile record must come from "
                         "stock_sy_profile_em"
                     )
-                if endpoint_name == "stock_sy_yq_em":
+                if endpoint_name == "stock_sy_em":
+                    _validate_goodwill_impairment_detail_normalizer_scope(
+                        record,
+                        listing,
+                        rows,
+                    )
+                    # The aggregator's goodwill snapshot has not been reconciled
+                    # to a filing-backed entity, scope or accounting period.
+                    missing_fields.update({"goodwill", "impairment"})
+                    normalizer_flags.add("AKSHARE_GOODWILL_DETAIL_RAW_ONLY")
+                elif endpoint_name == "stock_sy_yq_em":
                     _validate_goodwill_impairment_forecast_normalizer_scope(
                         record,
                         listing,
@@ -4070,7 +4176,8 @@ class AKShareNormalizer:
                 else:
                     raise ProviderNormalizationError(
                         "AKShare goodwill-impairment record must come from "
-                        "stock_sy_yq_em, stock_sy_profile_em or stock_sy_jz_em"
+                        "stock_sy_em, stock_sy_yq_em, stock_sy_profile_em or "
+                        "stock_sy_jz_em"
                     )
             elif (
                 record.request.category is DataCategory.MARKET_QUOTE
@@ -5354,6 +5461,13 @@ class AKShareNormalizer:
                 "report dates and announcement dates require primary-filing scope "
                 "and reconciliation before canonical facts can be admitted."
             )
+        if "AKSHARE_GOODWILL_DETAIL_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented A-share goodwill-detail response is retained as raw "
+                "evidence only: aggregator goodwill, profit, ratio and announcement "
+                "fields require primary-filing entity, accounting scope and "
+                "reconciliation before canonical facts can be admitted."
+            )
         if "AKSHARE_GOODWILL_FORECAST_RAW_ONLY" in normalizer_flags:
             notes += (
                 " The documented A-share goodwill-impairment forecast response is "
@@ -5596,6 +5710,7 @@ def _endpoint_candidates(
     share_capital_individual_info_requested: bool = False,
     goodwill_impairment_forecast_requested: bool = False,
     goodwill_impairment_market_profile_requested: bool = False,
+    goodwill_impairment_detail_requested: bool = False,
     ownership_pledge_market_profile_requested: bool = False,
     ownership_pledge_detail_requested: bool = False,
     ownership_pledge_equity_mortgage_requested: bool = False,
@@ -5672,6 +5787,8 @@ def _endpoint_candidates(
         return ()
     if category is DataCategory.GOODWILL_IMPAIRMENT:
         if market is ListingMarket.A:
+            if goodwill_impairment_detail_requested:
+                return ("stock_sy_em",)
             if goodwill_impairment_forecast_requested:
                 return ("stock_sy_yq_em",)
             if goodwill_impairment_market_profile_requested:
@@ -7167,6 +7284,39 @@ def _goodwill_impairment_kwargs(
     listing: _ListingRef,
     request: ProviderRequest,
 ) -> dict[str, object]:
+    if endpoint_name == "stock_sy_em":
+        if listing.market is not ListingMarket.A:
+            raise ProviderRequestError(
+                "the AKShare goodwill-detail endpoint supports A-share listings only",
+                request=request,
+                retryable=False,
+            )
+        unknown = sorted(
+            set(request.parameters) - _GOODWILL_IMPAIRMENT_DETAIL_PARAMETER_NAMES
+        )
+        if unknown:
+            raise ProviderRequestError(
+                "unsupported AKShare goodwill-detail parameter(s): "
+                + ", ".join(unknown),
+                request=request,
+                retryable=False,
+            )
+        if request.parameters.get("view") != _GOODWILL_IMPAIRMENT_DETAIL_VIEW:
+            raise ProviderRequestError(
+                "goodwill-detail view must be "
+                f"{_GOODWILL_IMPAIRMENT_DETAIL_VIEW!r}",
+                request=request,
+                retryable=False,
+            )
+        if "date" not in request.parameters:
+            raise ProviderRequestError(
+                "the AKShare goodwill-detail endpoint requires date (YYYYMMDD)",
+                request=request,
+                retryable=False,
+            )
+        raw_date = request.parameters["date"]
+        _parse_goodwill_impairment_date_parameter(raw_date, request=request)
+        return {"date": raw_date}
     if endpoint_name == "stock_sy_yq_em":
         if listing.market is not ListingMarket.A:
             raise ProviderRequestError(
@@ -11726,6 +11876,96 @@ def _validate_trading_suspension_provider_rows(
                     )
 
 
+def _goodwill_impairment_detail_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> str | None:
+    """Return strict-schema errors for goodwill-detail rows."""
+
+    previous_sequence: int | None = None
+    for index, row in enumerate(rows):
+        missing = sorted(_GOODWILL_IMPAIRMENT_DETAIL_FIELDS - set(row))
+        unexpected = sorted(set(row) - _GOODWILL_IMPAIRMENT_DETAIL_FIELDS)
+        if missing:
+            return (
+                f"goodwill-detail row {index} is missing field(s): "
+                + ", ".join(missing)
+            )
+        if unexpected:
+            return (
+                f"goodwill-detail row {index} contains unsupported field(s): "
+                + ", ".join(unexpected)
+            )
+
+        sequence = row["序号"]
+        if (
+            isinstance(sequence, bool)
+            or not isinstance(sequence, Integral)
+            or sequence <= 0
+        ):
+            return f"goodwill-detail row {index} field '序号' must be a positive integer"
+        if previous_sequence is not None and sequence <= previous_sequence:
+            if sequence == previous_sequence:
+                return f"goodwill-detail response has duplicate 序号 {sequence!r}"
+            return "goodwill-detail response 序号 values must be strictly ascending"
+        previous_sequence = sequence
+
+        if _row_code(row, ListingMarket.A) is None:
+            return f"goodwill-detail row {index} has no explicit listing code"
+
+        for field in _GOODWILL_IMPAIRMENT_DETAIL_DATE_FIELDS:
+            value = row[field]
+            if value is not None and _parse_date_value(value) is None:
+                return f"goodwill-detail row {index} has an invalid {field}"
+
+        for field in _GOODWILL_IMPAIRMENT_DETAIL_NUMERIC_FIELDS:
+            value = row[field]
+            if value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, Real):
+                return (
+                    f"goodwill-detail row {index} field {field!r} "
+                    "must be numeric or null"
+                )
+            try:
+                numeric = float(value)
+            except (OverflowError, TypeError, ValueError):
+                return (
+                    f"goodwill-detail row {index} field {field!r} "
+                    "must be numeric or null"
+                )
+            if not math.isfinite(numeric):
+                return (
+                    f"goodwill-detail row {index} field {field!r} "
+                    "must be finite or null"
+                )
+
+        for field in _GOODWILL_IMPAIRMENT_DETAIL_TEXT_FIELDS:
+            value = row[field]
+            if value is not None and not isinstance(value, str):
+                return (
+                    f"goodwill-detail row {index} field {field!r} "
+                    "must be a string or null"
+                )
+    return None
+
+
+def _validate_goodwill_impairment_detail_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> None:
+    """Validate the A-share goodwill-detail universe before filtering."""
+
+    message = _goodwill_impairment_detail_validation_message(rows)
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message}",
+            provider=provider,
+            request=request,
+        )
+
+
 def _goodwill_impairment_forecast_validation_message(
     rows: Sequence[Mapping[str, JSONValue]],
 ) -> str | None:
@@ -13773,6 +14013,128 @@ def _validate_goodwill_impairment_normalizer_rows(
                         f"goodwill-impairment row has an invalid announcement date in "
                         f"{field!r}"
                     )
+
+
+def _validate_goodwill_impairment_detail_normalizer_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+) -> None:
+    """Validate replayed goodwill-detail rows and their listing boundary."""
+
+    message = _goodwill_impairment_detail_validation_message(rows)
+    if message is not None:
+        raise ProviderNormalizationError(message)
+    for row in rows:
+        row_code = _row_code(row, ListingMarket.A)
+        if row_code is None:
+            raise ProviderNormalizationError(
+                "goodwill-detail row has no explicit listing code"
+            )
+        if row_code != listing.code:
+            raise ProviderNormalizationError(
+                f"goodwill-detail row entity {row_code!r} does not match "
+                f"requested listing {listing.canonical_id!r}"
+            )
+
+
+def _validate_goodwill_impairment_detail_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> None:
+    """Validate replayed scope and metadata for the dated goodwill detail."""
+
+    if listing.market is not ListingMarket.A:
+        raise ProviderNormalizationError(
+            "AKShare goodwill-detail raw slice supports A-share listings only"
+        )
+    if record.response_metadata.get("endpoint") != "stock_sy_em":
+        raise ProviderNormalizationError(
+            "AKShare goodwill-detail record must come from stock_sy_em"
+        )
+    if record.source_uri != _SOURCE_URIS["stock_sy_em"]:
+        raise ProviderNormalizationError(
+            "AKShare goodwill-detail source URI does not match the documented endpoint"
+        )
+    try:
+        upstream_kwargs = _goodwill_impairment_kwargs(
+            "stock_sy_em",
+            listing,
+            record.request,
+        )
+        requested_date = _parse_goodwill_impairment_date_parameter(
+            upstream_kwargs["date"],
+            request=record.request,
+        )
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+
+    _validate_goodwill_impairment_detail_normalizer_rows(rows, listing)
+
+    expected_metadata = {
+        "endpoint": "stock_sy_em",
+        "market": ListingMarket.A.value,
+        "listing_code": listing.code,
+        "goodwill_impairment_view": _GOODWILL_IMPAIRMENT_DETAIL_VIEW,
+        "market_scope": "all_a_share_listings",
+        "listing_scoped_request": False,
+        "row_filtering": "provider",
+        "requested_date": record.request.parameters["date"],
+        "report_period": requested_date.isoformat(),
+        "snapshot_scope": "requested_report_date",
+        "date_binding": "request_period",
+        "goodwill_detail_sequence_field": "序号",
+        "goodwill_detail_sequence_ordering": "strictly_ascending",
+        "goodwill_detail_date_fields": list(
+            _GOODWILL_IMPAIRMENT_DETAIL_DATE_FIELDS
+        ),
+        "amount_unit": "CNY",
+        "ratio_unit": "provider_reported_ratio",
+        "amount_field_count": len(_GOODWILL_IMPAIRMENT_DETAIL_AMOUNT_FIELDS),
+        "ratio_field_count": len(_GOODWILL_IMPAIRMENT_DETAIL_RATIO_FIELDS),
+        "goodwill_detail_numeric_field_count": len(
+            _GOODWILL_IMPAIRMENT_DETAIL_NUMERIC_FIELDS
+        ),
+        "goodwill_detail_field_count": len(_GOODWILL_IMPAIRMENT_DETAIL_FIELDS),
+        "entity_rows_selected": True,
+        "entity_row_count": len(rows),
+    }
+    boolean_fields = {"listing_scoped_request", "entity_rows_selected"}
+    count_fields = {
+        "amount_field_count",
+        "ratio_field_count",
+        "goodwill_detail_numeric_field_count",
+        "goodwill_detail_field_count",
+        "entity_row_count",
+    }
+    for name, expected in expected_metadata.items():
+        actual = record.response_metadata.get(name)
+        if name in boolean_fields:
+            matches = isinstance(actual, bool) and actual is expected
+        elif name in count_fields:
+            matches = (
+                isinstance(actual, int)
+                and not isinstance(actual, bool)
+                and actual == expected
+            )
+        else:
+            matches = actual == expected
+        if not matches:
+            raise ProviderNormalizationError(
+                "AKShare goodwill-detail response metadata "
+                f"{name!r} does not match the requested replay scope"
+            )
+
+    upstream_row_count = record.response_metadata.get("upstream_row_count")
+    if (
+        not isinstance(upstream_row_count, int)
+        or isinstance(upstream_row_count, bool)
+        or upstream_row_count < len(rows)
+    ):
+        raise ProviderNormalizationError(
+            "AKShare goodwill-detail response metadata "
+            "'upstream_row_count' does not match the requested replay scope"
+        )
 
 
 def _validate_goodwill_impairment_forecast_normalizer_rows(

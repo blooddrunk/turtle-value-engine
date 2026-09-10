@@ -1911,6 +1911,36 @@ replay, invalid-request, exact-schema, response-validation, raw-only and
 replay-scope coverage. No calculation, gate, pipeline, CLI or input-loader
 contract changes.
 
+### Phase 2.79 — A-share Eastmoney goodwill-detail raw acquisition contract (COMPLETE)
+
+The mapping review now covers the distinct documented AKShare Eastmoney
+`stock_sy_em` endpoint under the existing `GOODWILL_IMPAIRMENT` category. The
+[AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_sy_em.py)
+define a required `date=YYYYMMDD` report-date filter and the exact ten fields
+`序号`, `股票代码`, `股票简称`, `商誉`, `商誉占净资产比例`, `净利润`,
+`净利润同比`, `上年商誉`, `公告日期` and `交易市场`. Amounts are primarily
+in yuan and ratios remain provider-reported values.
+
+The provider selects this callable only with explicit
+`view=goodwill_detail`, supports A-share listings only, passes the validated
+date unchanged, validates the complete market-wide response before selecting
+the requested listing, and records request-period, provider-filter, sequence,
+unit and exact-field replay metadata. It rejects missing or unexpected fields,
+non-positive/non-ascending sequence values, invalid populated dates, non-finite
+or non-numeric numeric values and invalid text values. No matching listing is
+retained as an empty raw snapshot.
+
+The normalizer emits `AKSHARE_GOODWILL_DETAIL_RAW_ONLY`, marks `goodwill` and
+`impairment` as critically missing and creates no canonical accounting, profit,
+ratio or Business Quality fact: aggregator amounts, ratios, profit context and
+announcement metadata require primary-filing entity, accounting scope and
+reconciliation review. H-share goodwill coverage remains outside this slice.
+Live calls remain opt-in; tests use an injected client and a frozen fixture with
+cache replay, invalid-request, exact-schema, response-validation, raw-only and
+replay-scope coverage. No calculation, gate, pipeline, CLI or input-loader
+contract changes.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -1920,7 +1950,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.78 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.79 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -2161,6 +2191,16 @@ date is explicit, the normalizer emits `AKSHARE_SINA_INTRADAY_RAW_ONLY`, leaves
 `market_history` critically missing and creates no canonical daily-history,
 liquidity, order-flow or valuation fact; the requested date, derived symbol,
 units and observed time bounds remain part of the replay scope. The A-share
+Eastmoney `stock_sy_em` goodwill-detail response is a distinct requested-date,
+market-wide universe whose exact ten-field schema, positive ascending sequence,
+listing identity, nullable announcement date, numeric/null fields and text
+fields are validated before provider filtering. With explicit
+`view=goodwill_detail`, the normalizer emits
+`AKSHARE_GOODWILL_DETAIL_RAW_ONLY`, leaves `goodwill` and `impairment`
+critically missing and creates no canonical accounting, profit, ratio or
+Business Quality fact; CNY/provider-ratio units and request-period/provider-
+filter scope remain replay metadata pending primary-filing reconciliation. The
+A-share
 Tencent daily-history response is the dated-series exception among the recent
 market-history slices: it maps the existing daily-history extension facts,
 preserves volume as `shares` and amount as `CNY`, and retains its market-

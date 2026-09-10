@@ -114,6 +114,13 @@ class FakeAKShare:
             _fixture("a_goodwill_profile.json"),
         )
 
+    def stock_sy_em(self, *, date: str):
+        return self._return(
+            "stock_sy_em",
+            _fixture("a_goodwill_detail.json"),
+            date=date,
+        )
+
     def stock_zh_a_spot_em(self):
         return self._return("stock_zh_a_spot_em", _fixture("a_quote.json"))
 
@@ -738,8 +745,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "78"
-    assert AKSHARE_MAPPING_VERSION == "79"
+    assert provider.identity.provider_version == "79"
+    assert AKSHARE_MAPPING_VERSION == "80"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -11994,6 +12001,326 @@ def test_goodwill_market_profile_cache_replay_does_not_call_upstream(tmp_path: P
     assert replay.mode is RetrievalMode.CACHE_REPLAY
     assert replay.record == live.record
     assert fake.calls == [("stock_sy_profile_em", {})]
+
+
+def test_a_goodwill_detail_fetch_filters_the_documented_report_date_universe():
+    fake = FakeAKShare()
+    record = _provider(fake).fetch(
+        _request(
+            DataCategory.GOODWILL_IMPAIRMENT,
+            "SH600000",
+            {"view": "goodwill_detail", "date": "20250630"},
+        )
+    )
+
+    fixture = _fixture("a_goodwill_detail.json")
+    assert record.raw_payload == [row for row in fixture if row["股票代码"] == "600000"]
+    assert fake.calls == [("stock_sy_em", {"date": "20250630"})]
+    assert record.response_metadata["endpoint"] == "stock_sy_em"
+    assert record.response_metadata["upstream_row_count"] == 3
+    assert record.response_metadata["entity_row_count"] == 1
+    assert record.response_metadata["entity_rows_selected"] is True
+    assert record.response_metadata["listing_scoped_request"] is False
+    assert record.response_metadata["row_filtering"] == "provider"
+    assert record.response_metadata["goodwill_impairment_view"] == "goodwill_detail"
+    assert record.response_metadata["market_scope"] == "all_a_share_listings"
+    assert record.response_metadata["requested_date"] == "20250630"
+    assert record.response_metadata["report_period"] == "2025-06-30"
+    assert record.response_metadata["snapshot_scope"] == "requested_report_date"
+    assert record.response_metadata["date_binding"] == "request_period"
+    assert record.response_metadata["goodwill_detail_sequence_field"] == "序号"
+    assert record.response_metadata["goodwill_detail_sequence_ordering"] == (
+        "strictly_ascending"
+    )
+    assert record.response_metadata["goodwill_detail_date_fields"] == ["公告日期"]
+    assert record.response_metadata["amount_unit"] == "CNY"
+    assert record.response_metadata["ratio_unit"] == "provider_reported_ratio"
+    assert record.response_metadata["amount_field_count"] == 3
+    assert record.response_metadata["ratio_field_count"] == 2
+    assert record.response_metadata["goodwill_detail_numeric_field_count"] == 5
+    assert record.response_metadata["goodwill_detail_field_count"] == 10
+    assert record.source_uri == "https://data.eastmoney.com/sy/list.html"
+
+
+def test_goodwill_detail_request_requires_explicit_view_date_and_a_share():
+    fake = FakeAKShare()
+    provider = _provider(fake)
+
+    with pytest.raises(ProviderRequestError, match="requires date"):
+        provider.fetch(
+            _request(
+                DataCategory.GOODWILL_IMPAIRMENT,
+                "SH600000",
+                {"view": "goodwill_detail"},
+            )
+        )
+    with pytest.raises(ProviderRequestError, match="unsupported AKShare goodwill-detail"):
+        provider.fetch(
+            _request(
+                DataCategory.GOODWILL_IMPAIRMENT,
+                "SH600000",
+                {
+                    "view": "goodwill_detail",
+                    "date": "20250630",
+                    "unexpected": True,
+                },
+            )
+        )
+    with pytest.raises(ProviderRequestError, match="date must be YYYYMMDD"):
+        provider.fetch(
+            _request(
+                DataCategory.GOODWILL_IMPAIRMENT,
+                "SH600000",
+                {"view": "goodwill_detail", "date": "2025-06-30"},
+            )
+        )
+    with pytest.raises(ProviderRequestError, match="date must be a valid YYYYMMDD"):
+        provider.fetch(
+            _request(
+                DataCategory.GOODWILL_IMPAIRMENT,
+                "SH600000",
+                {"view": "goodwill_detail", "date": "20251331"},
+            )
+        )
+    with pytest.raises(ProviderRequestError, match="A-share listings only"):
+        provider.fetch(
+            _request(
+                DataCategory.GOODWILL_IMPAIRMENT,
+                "HK00700",
+                {"view": "goodwill_detail", "date": "20250630"},
+            )
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("missing_field", "missing field.*净利润同比"),
+        ("extra_field", "contains unsupported field"),
+        ("invalid_sequence", "positive integer"),
+        ("duplicate_sequence", "duplicate 序号"),
+        ("descending_sequence", "序号 values must be strictly ascending"),
+        ("missing_code", "missing field.*股票代码"),
+        ("invalid_date", "invalid 公告日期"),
+        ("invalid_numeric", "field '商誉' must be numeric"),
+        ("boolean_numeric", "field '商誉' must be numeric"),
+        ("invalid_text", "field '股票简称' must be a string"),
+    ],
+)
+def test_goodwill_detail_response_validates_exact_documented_schema(
+    mutation: str,
+    match: str,
+):
+    payload = [dict(row) for row in _fixture("a_goodwill_detail.json")]
+    if mutation == "missing_field":
+        payload[0].pop("净利润同比")
+    elif mutation == "extra_field":
+        payload[0]["未记录字段"] = "not documented"
+    elif mutation == "invalid_sequence":
+        payload[0]["序号"] = 0
+    elif mutation == "duplicate_sequence":
+        payload[1]["序号"] = payload[0]["序号"]
+    elif mutation == "descending_sequence":
+        payload[0]["序号"] = 2
+        payload[1]["序号"] = 1
+    elif mutation == "missing_code":
+        payload[0].pop("股票代码")
+    elif mutation == "invalid_date":
+        payload[0]["公告日期"] = "not-a-date"
+    elif mutation == "invalid_numeric":
+        payload[0]["商誉"] = "not-a-number"
+    elif mutation == "boolean_numeric":
+        payload[0]["商誉"] = True
+    else:
+        payload[0]["股票简称"] = 600000
+
+    class InvalidGoodwillDetail(FakeAKShare):
+        def stock_sy_em(self, *, date: str):
+            return self._return("stock_sy_em", payload, date=date)
+
+    with pytest.raises(ProviderResponseError, match=match):
+        _provider(InvalidGoodwillDetail()).fetch(
+            _request(
+                DataCategory.GOODWILL_IMPAIRMENT,
+                "SH600000",
+                {"view": "goodwill_detail", "date": "20250630"},
+            )
+        )
+
+
+def test_goodwill_detail_with_no_matching_listing_is_an_empty_raw_snapshot():
+    class NoGoodwillDetail(FakeAKShare):
+        def stock_sy_em(self, *, date: str):
+            rows = _fixture("a_goodwill_detail.json")
+            return self._return(
+                "stock_sy_em",
+                [row for row in rows if row["股票代码"] != "600000"],
+                date=date,
+            )
+
+    record = _provider(NoGoodwillDetail()).fetch(
+        _request(
+            DataCategory.GOODWILL_IMPAIRMENT,
+            "SH600000",
+            {"view": "goodwill_detail", "date": "20250630"},
+        )
+    )
+
+    assert record.raw_payload == []
+    assert record.response_metadata["upstream_row_count"] == 2
+    assert record.response_metadata["entity_row_count"] == 0
+
+
+def test_goodwill_detail_is_retained_as_raw_evidence_without_facts():
+    record = _provider().fetch(
+        _request(
+            DataCategory.GOODWILL_IMPAIRMENT,
+            "SH600000",
+            {"view": "goodwill_detail", "date": "20250630"},
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="goodwill-detail-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_GOODWILL_DETAIL_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == [
+        "goodwill",
+        "impairment",
+    ]
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "primary-filing entity" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+def test_goodwill_detail_normalizer_rejects_replayed_scope_mismatch():
+    record = _provider().fetch(
+        _request(
+            DataCategory.GOODWILL_IMPAIRMENT,
+            "SH600000",
+            {"view": "goodwill_detail", "date": "20250630"},
+        )
+    )
+    payload = [dict(row) for row in record.raw_payload]
+    payload[0]["股票代码"] = "000001"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=record.source_uri,
+        response_metadata=record.response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match="goodwill-detail row entity"):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-goodwill-detail-entity",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "endpoint",
+        "source_uri",
+        "view",
+        "requested_date",
+        "report_period",
+        "amount_unit",
+        "ratio_unit",
+        "field_count",
+        "entity_count",
+        "selected",
+        "upstream_count",
+    ],
+)
+def test_goodwill_detail_normalizer_rejects_replayed_metadata_mismatches(
+    mutation: str,
+):
+    record = _provider().fetch(
+        _request(
+            DataCategory.GOODWILL_IMPAIRMENT,
+            "SH600000",
+            {"view": "goodwill_detail", "date": "20250630"},
+        )
+    )
+    response_metadata = dict(record.response_metadata)
+    source_uri = record.source_uri
+    if mutation == "endpoint":
+        response_metadata["endpoint"] = "stock_sy_jz_em"
+    elif mutation == "source_uri":
+        source_uri = "https://example.invalid/goodwill-detail"
+    elif mutation == "view":
+        response_metadata["goodwill_impairment_view"] = "detail"
+    elif mutation == "requested_date":
+        response_metadata["requested_date"] = "20241231"
+    elif mutation == "report_period":
+        response_metadata["report_period"] = "2024-12-31"
+    elif mutation == "amount_unit":
+        response_metadata["amount_unit"] = "provider_amount"
+    elif mutation == "ratio_unit":
+        response_metadata["ratio_unit"] = "percent_fraction"
+    elif mutation == "field_count":
+        response_metadata["goodwill_detail_field_count"] = 9
+    elif mutation == "entity_count":
+        response_metadata["entity_row_count"] = 0
+    elif mutation == "selected":
+        response_metadata["entity_rows_selected"] = False
+    else:
+        response_metadata["upstream_row_count"] = 0
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=record.raw_payload,
+        source_uri=source_uri,
+        response_metadata=response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match="goodwill-detail"):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-goodwill-detail-scope",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_goodwill_detail_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.GOODWILL_IMPAIRMENT,
+        "SH600000",
+        {"view": "goodwill_detail", "date": "20250630"},
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [("stock_sy_em", {"date": "20250630"})]
 
 
 def test_a_goodwill_impairment_forecast_fetch_filters_the_report_date_universe():

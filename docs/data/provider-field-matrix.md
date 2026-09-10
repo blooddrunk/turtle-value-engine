@@ -1192,6 +1192,35 @@ order-flow or valuation fact. The requested date, derived symbol, units and
 observed time bounds are checked during replay. The response remains outside
 the calculation, gate, pipeline, CLI and input-loader contracts.
 
+## Phase 2.79 A-share Eastmoney goodwill-detail raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_sy_em.py)
+document `stock_sy_em` as a date-filtered A-share Eastmoney goodwill-detail
+universe. The adapter selects it only under `GOODWILL_IMPAIRMENT` with explicit
+`view=goodwill_detail` and required `date=YYYYMMDD`, passes the date unchanged,
+validates the complete market-wide response and then retains only the requested
+A-share code.
+
+| Raw upstream item | Phase 2 treatment |
+| --- | --- |
+| `序号` | Required positive sequence; the complete response must be strictly ascending before listing selection. |
+| `股票代码`, `股票简称`, `交易市场` | Required listing identity/context fields; the code must be an explicit A-share code matching the requested listing, while text remains opaque raw evidence. |
+| `商誉`, `净利润`, `上年商誉` | Nullable numeric amounts documented primarily in yuan; retained as aggregator evidence without filing-backed entity, accounting scope or canonical goodwill/profit interpretation. |
+| `商誉占净资产比例`, `净利润同比` | Nullable finite provider-reported ratios; no canonical denominator, growth metric or Business Quality fact is inferred. |
+| `公告日期` | Nullable `YYYY-MM-DD` provider publication date; it is not silently admitted as a report or recognition date. |
+| request `view=goodwill_detail`, `date=YYYYMMDD` | Explicit endpoint routing and request-period binding to the upstream `REPORT_DATE` filter; `listing_scoped_request=false`, `row_filtering=provider`, `entity_rows_selected=true`. |
+| date-filtered universe | Exact ten-field schema is checked before matching rows are selected; upstream and selected counts, sequence ordering, units and scope remain replay metadata. |
+
+The adapter rejects missing or unexpected fields, non-positive/non-ascending
+sequence values, invalid populated dates, non-finite or non-numeric numeric
+values and invalid text values. The normalizer emits
+`AKSHARE_GOODWILL_DETAIL_RAW_ONLY`, marks `goodwill` and `impairment` as
+critically missing and creates no canonical accounting, profit, ratio or
+Business Quality fact. H-share goodwill coverage and primary-filing
+reconciliation remain unresolved. The response remains outside the
+calculation, gate, pipeline, CLI and input-loader contracts.
+
 ## Phase 2.9 corporate-action raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
