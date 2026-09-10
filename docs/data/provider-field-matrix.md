@@ -1052,6 +1052,31 @@ The response remains outside the calculation, gate, pipeline, CLI and
 input-loader contracts. CNINFO profile names, descriptions, contact fields and
 provider-specific semantics remain at the adapter/raw-evidence boundary.
 
+## Phase 2.74 A-share Tonghuashun main-business-introduction raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_fundamental/stock_zyjs_ths.py)
+document `stock_zyjs_ths` as a symbol-scoped Tonghuashun A-share main-business-
+introduction response with the exact five fields `股票代码`, `主营业务`, `产品类型`,
+`产品名称` and `经营范围`. The provider selects it only with
+`COMPANY_METADATA` plus explicit `view=business_intro`, passes the unprefixed
+six-digit A-share code, validates one exact row, code identity and string/null
+values, and records the current business-introduction snapshot for replay.
+
+The normalizer emits `AKSHARE_BUSINESS_INTRO_RAW_ONLY`; no business,
+product or operating-scope field becomes a canonical company, revenue,
+core-business or Business Quality fact.
+
+| Raw upstream item | Phase 2 treatment |
+| --- | --- |
+| `股票代码` | Required A-share identity check against the requested listing; retained in raw evidence only and does not replace caller-supplied company/listing identity. |
+| `主营业务`, `产品类型`, `产品名称`, `经营范围` | String/null descriptive evidence; no canonical revenue, margin, core-business or Business Quality fact is inferred. |
+| request `view=business_intro`, unprefixed six-digit `symbol` | Explicit A-share endpoint selection, symbol-scoped current snapshot and replay boundary. |
+
+The response remains outside the calculation, gate, pipeline, CLI and
+input-loader contracts. Tonghuashun business-introduction names and
+descriptions remain at the adapter/raw-evidence boundary.
+
 ## Phase 2.9 corporate-action raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)

@@ -649,6 +649,19 @@ and provider-specific date fields do not become canonical company or listing
 facts. No calculation, gate, pipeline, CLI or input-loader contract is
 changed.
 
+Phase 2.74 adds the distinct documented Tonghuashun A-share main-business-
+introduction endpoint [`stock_zyjs_ths`](https://akshare.akfamily.xyz/data/stock/stock.html),
+whose current official implementation is in
+[`stock_zyjs_ths.py`](https://github.com/akfamily/akshare/blob/main/akshare/stock_fundamental/stock_zyjs_ths.py),
+under `COMPANY_METADATA` with explicit `view=business_intro`. It passes the
+unprefixed six-digit A-share code, validates the exact five-field single-row
+response (`股票代码`, `主营业务`, `产品类型`, `产品名称`, `经营范围`) and code
+identity, and records the symbol-scoped current business-introduction snapshot
+for replay. The normalizer emits `AKSHARE_BUSINESS_INTRO_RAW_ONLY`:
+descriptive business, product and operating-scope text remains raw evidence and
+does not become canonical revenue, core-business or Business Quality facts. No
+calculation, gate, pipeline, CLI or input-loader contract is changed.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

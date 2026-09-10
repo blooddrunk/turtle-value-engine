@@ -28,8 +28,8 @@ daily-history and Tencent latest-trading-day tick, Sina minute-history,
 intraday-history, H-share intraday-history, pre-market-history, five-level bid-ask
 Xueqiu individual-spot quote and Dragon-Tiger market-activity
 detail/statistics/institution-statistics raw slices are also available. The
-A-share Xueqiu and CNINFO company-profile raw slices are also available. The
-A-share dividend-distribution detail and
+A-share Xueqiu, CNINFO and Tonghuashun company-profile raw slices are also
+available. The A-share dividend-distribution detail and
 new-stock-board raw slices are also available. The A-share CNINFO IPO-summary
 and Eastmoney individual-notice raw slices are also available.
 The A-share Eastmoney top-ten, top-ten-tradable-shareholder and
@@ -80,9 +80,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "73"
+AKSHARE_ADAPTER_VERSION = "74"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "74"
+AKSHARE_MAPPING_VERSION = "75"
 
 
 class ListingMarket(StrEnum):
@@ -143,6 +143,7 @@ _SOURCE_URIS = {
         "https://xueqiu.com/snowman/S/SH601127/detail#/GSJJ"
     ),
     "stock_profile_cninfo": "https://webapi.cninfo.com.cn/#/company",
+    "stock_zyjs_ths": "https://basic.10jqka.com.cn/new/000066/operate.html",
     "stock_tfp_em": "https://data.eastmoney.com/tfpxx/",
     "stock_zh_a_hist": "https://quote.eastmoney.com/concept/",
     "stock_cyq_em": "https://quote.eastmoney.com/concept/sz000001.html",
@@ -473,6 +474,13 @@ _COMPANY_METADATA_CNINFO_PROFILE_REQUIRED_FIELDS = frozenset(
     {"公司名称", "A股代码", "A股简称"}
 )
 _COMPANY_METADATA_CNINFO_PROFILE_DATE_FIELDS = frozenset({"成立日期", "上市日期"})
+
+_COMPANY_METADATA_BUSINESS_INTRO_PARAMETER_NAMES = frozenset({"view"})
+_COMPANY_METADATA_BUSINESS_INTRO_VIEW = "business_intro"
+_COMPANY_METADATA_BUSINESS_INTRO_FIELDS = frozenset(
+    {"股票代码", "主营业务", "产品类型", "产品名称", "经营范围"}
+)
+_COMPANY_METADATA_BUSINESS_INTRO_REQUIRED_FIELDS = frozenset({"股票代码"})
 
 _MARKET_HISTORY_INTRADAY_PARAMETER_NAMES = frozenset(
     {"view", "start_date", "end_date", "period", "adjust"}
@@ -1170,6 +1178,19 @@ class AKShareProvider(StructuredDataProvider):
                 retryable=False,
             )
         if (
+            request.category is DataCategory.COMPANY_METADATA
+            and request.parameters.get("view")
+            == _COMPANY_METADATA_BUSINESS_INTRO_VIEW
+            and listing.market is not ListingMarket.A
+        ):
+            raise ProviderRequestError(
+                "the AKShare Tonghuashun main-business-introduction endpoint supports "
+                "A-share listings only",
+                provider=self.identity,
+                request=request,
+                retryable=False,
+            )
+        if (
             request.category is DataCategory.MARKET_HISTORY
             and request.parameters.get("view")
             in (
@@ -1479,6 +1500,32 @@ class AKShareProvider(StructuredDataProvider):
             response_metadata["price_field"] = "现价"
             response_metadata["item_field"] = "item"
             response_metadata["value_field"] = "value"
+        elif (
+            request.category is DataCategory.COMPANY_METADATA
+            and endpoint.name == "stock_zyjs_ths"
+        ):
+            rows = _table_rows(payload, provider=self.identity, request=request)
+            _validate_company_metadata_business_intro_provider_rows(
+                rows,
+                listing,
+                provider=self.identity,
+                request=request,
+            )
+            response_metadata["upstream_row_count"] = len(rows)
+            response_metadata["entity_row_count"] = len(rows)
+            response_metadata["entity_rows_selected"] = True
+            response_metadata["listing_scoped_request"] = True
+            response_metadata["row_filtering"] = "upstream"
+            response_metadata["company_metadata_view"] = (
+                _COMPANY_METADATA_BUSINESS_INTRO_VIEW
+            )
+            response_metadata["upstream_symbol"] = kwargs["symbol"]
+            response_metadata["snapshot_scope"] = "current_business_introduction"
+            response_metadata["date_binding"] = "retrieval_only"
+            response_metadata["profile_code_field"] = "股票代码"
+            response_metadata["profile_field_count"] = len(
+                _COMPANY_METADATA_BUSINESS_INTRO_FIELDS
+            )
         elif (
             request.category is DataCategory.COMPANY_METADATA
             and endpoint.name == "stock_individual_basic_info_xq"
@@ -2973,6 +3020,10 @@ class AKShareProvider(StructuredDataProvider):
         candidates = _endpoint_candidates(
             listing,
             category,
+            company_metadata_business_intro_requested=(
+                request.parameters.get("view")
+                == _COMPANY_METADATA_BUSINESS_INTRO_VIEW
+            ),
             company_metadata_xq_basic_info_requested=(
                 request.parameters.get("view") == _COMPANY_METADATA_XQ_VIEW
             ),
@@ -3312,6 +3363,20 @@ class AKShareNormalizer:
             as_of_period = _listing_period(as_of, listing, primary=primary)
 
             if (
+                record.request.category is DataCategory.COMPANY_METADATA
+                and record.request.parameters.get("view")
+                == _COMPANY_METADATA_BUSINESS_INTRO_VIEW
+            ):
+                _validate_company_metadata_business_intro_normalizer_scope(
+                    record,
+                    listing,
+                    rows,
+                )
+                # The business, product and operating-scope descriptions are
+                # useful discovery evidence, but they do not establish a
+                # canonical revenue series or Business Quality assessment.
+                normalizer_flags.add("AKSHARE_BUSINESS_INTRO_RAW_ONLY")
+            elif (
                 record.request.category is DataCategory.COMPANY_METADATA
                 and record.request.parameters.get("view")
                 == _COMPANY_METADATA_CNINFO_PROFILE_VIEW
@@ -4724,6 +4789,13 @@ class AKShareNormalizer:
                 "provider-specific date fields do not establish a canonical company "
                 "or listing fact."
             )
+        if "AKSHARE_BUSINESS_INTRO_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented Tonghuashun main-business-introduction response is "
+                "retained as raw evidence only: its business, product and operating-"
+                "scope descriptions do not establish canonical revenue, core-business "
+                "or Business Quality facts."
+            )
         if "AKSHARE_HK_DIVIDEND_DETAIL_RAW_ONLY" in normalizer_flags:
             notes += (
                 " The documented H-share dividend-detail response is retained as raw "
@@ -5106,6 +5178,7 @@ def _endpoint_candidates(
     listing: _ListingRef,
     category: DataCategory,
     *,
+    company_metadata_business_intro_requested: bool = False,
     company_metadata_xq_basic_info_requested: bool = False,
     company_metadata_cninfo_profile_requested: bool = False,
     statement_date_requested: bool = False,
@@ -5149,6 +5222,10 @@ def _endpoint_candidates(
 ) -> tuple[str, ...]:
     market = listing.market
     if category is DataCategory.COMPANY_METADATA:
+        if company_metadata_business_intro_requested:
+            if market is ListingMarket.A:
+                return ("stock_zyjs_ths",)
+            return ()
         if company_metadata_xq_basic_info_requested:
             if market is ListingMarket.A:
                 return ("stock_individual_basic_info_xq",)
@@ -5476,6 +5553,33 @@ def _company_metadata_kwargs(
     request: ProviderRequest,
 ) -> dict[str, object]:
     """Build the documented company-metadata request for each endpoint."""
+
+    if endpoint_name == "stock_zyjs_ths":
+        if listing.market is not ListingMarket.A:
+            raise ProviderRequestError(
+                "the AKShare Tonghuashun main-business-introduction endpoint supports "
+                "A-share listings only",
+                request=request,
+                retryable=False,
+            )
+        unknown = sorted(
+            set(request.parameters) - _COMPANY_METADATA_BUSINESS_INTRO_PARAMETER_NAMES
+        )
+        if unknown:
+            raise ProviderRequestError(
+                "unsupported AKShare Tonghuashun main-business-introduction "
+                "parameter(s): " + ", ".join(unknown),
+                request=request,
+                retryable=False,
+            )
+        if request.parameters.get("view") != _COMPANY_METADATA_BUSINESS_INTRO_VIEW:
+            raise ProviderRequestError(
+                "the AKShare Tonghuashun main-business-introduction endpoint requires "
+                f"view={_COMPANY_METADATA_BUSINESS_INTRO_VIEW!r}",
+                request=request,
+                retryable=False,
+            )
+        return {"symbol": listing.code}
 
     if endpoint_name == "stock_individual_basic_info_xq":
         if listing.market is not ListingMarket.A:
@@ -8100,6 +8204,89 @@ def _validate_company_metadata_cninfo_provider_rows(
             request=request,
         )
     message = _company_metadata_cninfo_validation_message(rows, listing)
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message}",
+            provider=provider,
+            request=request,
+        )
+
+
+def _company_metadata_business_intro_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef | None = None,
+) -> str | None:
+    """Return a strict-schema error for one Tonghuashun business introduction."""
+
+    if len(rows) != 1:
+        return (
+            "Tonghuashun main-business-introduction response must contain exactly "
+            f"one row; got {len(rows)}"
+        )
+
+    row = rows[0]
+    missing = sorted(_COMPANY_METADATA_BUSINESS_INTRO_FIELDS - set(row))
+    if missing:
+        return (
+            "Tonghuashun main-business-introduction row is missing field(s): "
+            + ", ".join(missing)
+        )
+    unexpected = sorted(set(row) - _COMPANY_METADATA_BUSINESS_INTRO_FIELDS)
+    if unexpected:
+        return (
+            "Tonghuashun main-business-introduction row contains unsupported field(s): "
+            + ", ".join(unexpected)
+        )
+
+    for field, value in row.items():
+        if value is None:
+            continue
+        if not isinstance(value, str):
+            return (
+                f"Tonghuashun main-business-introduction field {field!r} must be "
+                "a string or null"
+            )
+        if not value.strip():
+            return (
+                f"Tonghuashun main-business-introduction field {field!r} must be "
+                "a non-empty string or null"
+            )
+
+    for field in _COMPANY_METADATA_BUSINESS_INTRO_REQUIRED_FIELDS:
+        value = row[field]
+        if not isinstance(value, str) or not value.strip():
+            return (
+                f"Tonghuashun main-business-introduction field {field!r} must be "
+                "a non-empty string"
+            )
+    value = row["股票代码"]
+    row_code = _canonical_row_code(value, ListingMarket.A)
+    if row_code is None:
+        return "Tonghuashun main-business-introduction row has no valid 股票代码"
+    if listing is not None and row_code != listing.code:
+        return (
+            f"Tonghuashun main-business-introduction row entity {row_code!r} does not "
+            f"match requested listing {listing.canonical_id!r}"
+        )
+    return None
+
+
+def _validate_company_metadata_business_intro_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> None:
+    """Validate the symbol-scoped Tonghuashun business introduction before storage."""
+
+    if listing.market is not ListingMarket.A:
+        raise ProviderResponseError(
+            "AKShare Tonghuashun main-business-introduction supports A-share listings only",
+            provider=provider,
+            request=request,
+        )
+    message = _company_metadata_business_intro_validation_message(rows, listing)
     if message is not None:
         raise ProviderResponseError(
             f"AKShare {message}",
@@ -12348,6 +12535,80 @@ def _validate_market_quote_xq_normalizer_scope(
             "replayed rows"
         )
     return observation_time
+
+
+def _validate_company_metadata_business_intro_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> None:
+    """Validate replay scope for a symbol-scoped Tonghuashun introduction."""
+
+    if listing.market is not ListingMarket.A:
+        raise ProviderNormalizationError(
+            "AKShare Tonghuashun main-business-introduction supports A-share listings only"
+        )
+    if record.response_metadata.get("endpoint") != "stock_zyjs_ths":
+        raise ProviderNormalizationError(
+            "Tonghuashun main-business-introduction record must come from stock_zyjs_ths"
+        )
+    if record.source_uri != _SOURCE_URIS["stock_zyjs_ths"]:
+        raise ProviderNormalizationError(
+            "Tonghuashun main-business-introduction source URI does not match "
+            "the documented endpoint"
+        )
+    try:
+        upstream_kwargs = _company_metadata_kwargs(
+            "stock_zyjs_ths",
+            listing,
+            record.request,
+        )
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+
+    message = _company_metadata_business_intro_validation_message(rows, listing)
+    if message is not None:
+        raise ProviderNormalizationError(message)
+
+    expected_metadata = {
+        "endpoint": "stock_zyjs_ths",
+        "market": ListingMarket.A.value,
+        "listing_code": listing.code,
+        "company_metadata_view": _COMPANY_METADATA_BUSINESS_INTRO_VIEW,
+        "upstream_symbol": upstream_kwargs["symbol"],
+        "listing_scoped_request": True,
+        "row_filtering": "upstream",
+        "snapshot_scope": "current_business_introduction",
+        "date_binding": "retrieval_only",
+        "profile_code_field": "股票代码",
+        "profile_field_count": len(_COMPANY_METADATA_BUSINESS_INTRO_FIELDS),
+        "entity_rows_selected": True,
+        "upstream_row_count": len(rows),
+        "entity_row_count": len(rows),
+    }
+    boolean_fields = {"listing_scoped_request", "entity_rows_selected"}
+    count_fields = {
+        "profile_field_count",
+        "upstream_row_count",
+        "entity_row_count",
+    }
+    for name, expected in expected_metadata.items():
+        actual = record.response_metadata.get(name)
+        if name in boolean_fields:
+            matches = isinstance(actual, bool) and actual is expected
+        elif name in count_fields:
+            matches = (
+                isinstance(actual, int)
+                and not isinstance(actual, bool)
+                and actual == expected
+            )
+        else:
+            matches = actual == expected
+        if not matches:
+            raise ProviderNormalizationError(
+                "Tonghuashun main-business-introduction response metadata "
+                f"{name!r} does not match the requested replay scope"
+            )
 
 
 def _validate_company_metadata_xq_normalizer_scope(

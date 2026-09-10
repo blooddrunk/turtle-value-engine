@@ -125,6 +125,13 @@ class FakeAKShare:
             symbol=symbol,
         )
 
+    def stock_zyjs_ths(self, *, symbol: str):
+        return self._return(
+            "stock_zyjs_ths",
+            _fixture("a_business_intro.json"),
+            symbol=symbol,
+        )
+
     def stock_zh_ah_spot_em(self):
         return self._return("stock_zh_ah_spot_em", _fixture("ah_comparison.json"))
 
@@ -704,8 +711,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "73"
-    assert AKSHARE_MAPPING_VERSION == "74"
+    assert provider.identity.provider_version == "74"
+    assert AKSHARE_MAPPING_VERSION == "75"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -15851,3 +15858,266 @@ def test_chip_distribution_cache_replay_does_not_call_upstream(tmp_path: Path):
     assert fake.calls == [
         ("stock_cyq_em", {"symbol": "600000", "adjust": "qfq"}),
     ]
+
+
+def test_business_intro_fetch_uses_documented_symbol_and_keeps_profile_opaque():
+    fake = FakeAKShare()
+    request = _request(
+        DataCategory.COMPANY_METADATA,
+        "SH600000",
+        {"view": "business_intro"},
+    )
+    record = _provider(fake).fetch(request)
+
+    assert record.raw_payload == _fixture("a_business_intro.json")
+    assert fake.calls == [("stock_zyjs_ths", {"symbol": "600000"})]
+    assert record.response_metadata["endpoint"] == "stock_zyjs_ths"
+    assert record.response_metadata["market"] == "A"
+    assert record.response_metadata["listing_code"] == "600000"
+    assert record.response_metadata["company_metadata_view"] == "business_intro"
+    assert record.response_metadata["upstream_symbol"] == "600000"
+    assert record.response_metadata["listing_scoped_request"] is True
+    assert record.response_metadata["row_filtering"] == "upstream"
+    assert record.response_metadata["snapshot_scope"] == "current_business_introduction"
+    assert record.response_metadata["date_binding"] == "retrieval_only"
+    assert record.response_metadata["profile_code_field"] == "股票代码"
+    assert record.response_metadata["profile_field_count"] == 5
+    assert record.response_metadata["upstream_row_count"] == 1
+    assert record.response_metadata["entity_row_count"] == 1
+    assert record.response_metadata["entity_rows_selected"] is True
+    assert record.source_uri == (
+        "https://basic.10jqka.com.cn/new/000066/operate.html"
+    )
+
+
+@pytest.mark.parametrize(
+    ("entity_id", "parameters", "match"),
+    [
+        (
+            "SH600000",
+            {"view": "business_intro", "token": "not-persisted-here"},
+            "unsupported AKShare Tonghuashun main-business-introduction parameter",
+        ),
+        (
+            "SH600000",
+            {"view": "company_profile"},
+            "does not accept request parameters",
+        ),
+        (
+            "HK00700",
+            {"view": "business_intro"},
+            "Tonghuashun main-business-introduction endpoint supports A-share listings only",
+        ),
+    ],
+)
+def test_business_intro_request_validates_view_parameters_and_market(
+    entity_id: str,
+    parameters: dict,
+    match: str,
+):
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError, match=match):
+        _provider(fake).fetch(
+            _request(DataCategory.COMPANY_METADATA, entity_id, parameters)
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("missing_field", "missing field.*经营范围"),
+        ("extra_field", "contains unsupported field"),
+        ("multiple_rows", "must contain exactly one row"),
+        ("invalid_code", "row entity.*does not match requested listing"),
+        ("invalid_scalar", "field '产品类型' must be a string"),
+        ("blank_text", "field '主营业务' must be a non-empty string"),
+    ],
+)
+def test_business_intro_response_validates_exact_documented_schema(
+    mutation: str,
+    match: str,
+):
+    payload = [dict(row) for row in _fixture("a_business_intro.json")]
+    if mutation == "missing_field":
+        payload[0].pop("经营范围")
+    elif mutation == "extra_field":
+        payload[0]["未记录字段"] = "not documented"
+    elif mutation == "multiple_rows":
+        payload.append(dict(payload[0]))
+    elif mutation == "invalid_code":
+        payload[0]["股票代码"] = "000001"
+    elif mutation == "invalid_scalar":
+        payload[0]["产品类型"] = ["not", "a", "string"]
+    else:
+        payload[0]["主营业务"] = ""
+
+    class InvalidBusinessIntro(FakeAKShare):
+        def stock_zyjs_ths(self, *, symbol: str):
+            return self._return("stock_zyjs_ths", payload, symbol=symbol)
+
+    with pytest.raises(ProviderResponseError, match=match):
+        _provider(InvalidBusinessIntro()).fetch(
+            _request(
+                DataCategory.COMPANY_METADATA,
+                "SH600000",
+                {"view": "business_intro"},
+            )
+        )
+
+
+def test_business_intro_response_allows_nullable_descriptive_fields():
+    payload = [dict(row) for row in _fixture("a_business_intro.json")]
+    for field in ("主营业务", "产品类型", "产品名称", "经营范围"):
+        payload[0][field] = None
+
+    class NullableBusinessIntro(FakeAKShare):
+        def stock_zyjs_ths(self, *, symbol: str):
+            return self._return("stock_zyjs_ths", payload, symbol=symbol)
+
+    record = _provider(NullableBusinessIntro()).fetch(
+        _request(
+            DataCategory.COMPANY_METADATA,
+            "SH600000",
+            {"view": "business_intro"},
+        )
+    )
+
+    assert record.raw_payload == payload
+
+
+def test_business_intro_is_retained_as_raw_evidence_without_canonical_facts():
+    record = _provider().fetch(
+        _request(
+            DataCategory.COMPANY_METADATA,
+            "SH600000",
+            {"view": "business_intro"},
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="business-intro-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.company == _company()
+    assert normalized.flags == ["AKSHARE_BUSINESS_INTRO_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == []
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "Tonghuashun main-business-introduction" in normalized.data_quality.notes
+    assert "canonical revenue" in normalized.data_quality.notes
+    assert "Business Quality" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "endpoint",
+        "source_uri",
+        "market",
+        "listing_code",
+        "view",
+        "upstream_symbol",
+        "listing_scope",
+        "row_filtering",
+        "snapshot",
+        "date_binding",
+        "code_field",
+        "field_count",
+        "upstream_count",
+        "entity_count",
+        "selected",
+        "payload",
+    ],
+)
+def test_business_intro_normalizer_rejects_replayed_scope_mismatches(mutation: str):
+    record = _provider().fetch(
+        _request(
+            DataCategory.COMPANY_METADATA,
+            "SH600000",
+            {"view": "business_intro"},
+        )
+    )
+    payload = [dict(row) for row in record.raw_payload]
+    response_metadata = dict(record.response_metadata)
+    source_uri = record.source_uri
+    if mutation == "endpoint":
+        response_metadata["endpoint"] = "stock_info_a_code_name"
+    elif mutation == "source_uri":
+        source_uri = "https://example.invalid/business-intro"
+    elif mutation == "market":
+        response_metadata["market"] = "H"
+    elif mutation == "listing_code":
+        response_metadata["listing_code"] = "000001"
+    elif mutation == "view":
+        response_metadata["company_metadata_view"] = "company_profile"
+    elif mutation == "upstream_symbol":
+        response_metadata["upstream_symbol"] = "000001"
+    elif mutation == "listing_scope":
+        response_metadata["listing_scoped_request"] = False
+    elif mutation == "row_filtering":
+        response_metadata["row_filtering"] = "provider"
+    elif mutation == "snapshot":
+        response_metadata["snapshot_scope"] = "historical_company_profile"
+    elif mutation == "date_binding":
+        response_metadata["date_binding"] = "row_only"
+    elif mutation == "code_field":
+        response_metadata["profile_code_field"] = "A股代码"
+    elif mutation == "field_count":
+        response_metadata["profile_field_count"] = 26
+    elif mutation == "upstream_count":
+        response_metadata["upstream_row_count"] = 2
+    elif mutation == "entity_count":
+        response_metadata["entity_row_count"] = 2
+    elif mutation == "selected":
+        response_metadata["entity_rows_selected"] = False
+    else:
+        payload[0]["产品类型"] = {"not": "a string"}
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=source_uri,
+        response_metadata=response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match="business-introduction"):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-business-intro-scope",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_business_intro_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.COMPANY_METADATA,
+        "SH600000",
+        {"view": "business_intro"},
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [("stock_zyjs_ths", {"symbol": "600000"})]

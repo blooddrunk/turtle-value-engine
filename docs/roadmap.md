@@ -1782,6 +1782,29 @@ pipeline, CLI or input-loader contract is changed. Live calls remain opt-in;
 tests use an injected client and a frozen fixture with cache replay,
 invalid-request, response-validation, raw-only and replay-scope coverage.
 
+### Phase 2.74 — A-share Tonghuashun main-business-introduction raw acquisition contract (COMPLETE)
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_zyjs_ths` as a symbol-scoped Tonghuashun A-share
+main-business-introduction endpoint; the [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_fundamental/stock_zyjs_ths.py)
+passes the six-digit `symbol` to the upstream operate page and returns the
+documented five fields `股票代码`, `主营业务`, `产品类型`, `产品名称` and `经营范围`.
+
+The provider selects this callable only under `COMPANY_METADATA` with explicit
+`view=business_intro`, passes the unprefixed six-digit A-share code, validates
+the exact single-row field set, A-share code identity and string/null values,
+and records the symbol-scoped current business-introduction snapshot for
+replay.
+
+The normalizer emits `AKSHARE_BUSINESS_INTRO_RAW_ONLY`; descriptive business,
+product and operating-scope text remains raw evidence and does not become
+canonical revenue, core-business or Business Quality facts. No calculation,
+gate, pipeline, CLI or input-loader contract is changed. Live calls remain
+opt-in; tests use an injected client and a frozen fixture with cache replay,
+invalid-request, response-validation, raw-only and replay-scope coverage. No
+H-share counterpart is added because the selected documented slice is
+A-share-only.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -1791,7 +1814,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.73 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.74 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -1999,7 +2022,7 @@ Phase 2 is active. Phase 1 remains frozen: changes to formulas, hard-gate
 semantics, schemas or `strict-v1` thresholds require a separately reviewed,
 versioned change.
 
-Phase 2.73 completes the next documented structured-data boundary while
+Phase 2.74 completes the next documented structured-data boundary while
 keeping share-change, repurchase and rights-issue period, status, unit and
 economic-scope questions unresolved, and keeping ownership-pledge holder,
 governance and economic-scope questions unresolved. The A-share
@@ -2112,6 +2135,13 @@ establish canonical company or listing facts. The explicit
 `view=cninfo_profile`, unprefixed six-digit symbol, exact 26-field row shape,
 A-share code identity, scalar/null and valid date-or-null rules, and symbol-scoped
 company-profile replay metadata remain part of its acquisition boundary.
+The A-share Tonghuashun main-business-introduction response remains raw-only
+because its business, product and operating-scope descriptions do not establish
+canonical revenue, core-business or Business Quality facts. The explicit
+`view=business_intro`, unprefixed six-digit symbol, exact five-field row shape,
+A-share code identity, string/null rules and symbol-scoped current snapshot
+replay metadata remain part of its acquisition boundary.
+
 dividend-distribution snapshot remains raw-only because its ratios, status and
 multiple dates do not establish settled ordinary cash or a canonical payout
 denominator. Phase 2 remains active; future documented categories must be
