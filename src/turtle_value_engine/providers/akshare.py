@@ -20,9 +20,9 @@ latest-indicator raw slice, the A-share goodwill-impairment detail raw slice,
 the SSE/SZSE/BSE margin-detail raw slices, the A-share individual ownership-pledge
 detail view, the A-share CNINFO equity-mortgage view, A-share company-litigation
 raw slice and A-share Eastmoney individual-info raw slice.
-The A-share Eastmoney individual-fund-flow, five-level bid-ask and Dragon-Tiger
-market-activity detail/statistics/institution-statistics raw slices are also
-available.
+The A-share Eastmoney individual-fund-flow, intraday-history, five-level bid-ask
+and Dragon-Tiger market-activity detail/statistics/institution-statistics raw
+slices are also available.
 The A-share Eastmoney top-ten, top-ten-tradable-shareholder and
 top-ten-tradable-shareholder-detail raw slices are also available.
 Upstream column names are handled in this module and are never passed to the
@@ -71,9 +71,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "51"
+AKSHARE_ADAPTER_VERSION = "52"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "52"
+AKSHARE_MAPPING_VERSION = "53"
 
 
 class ListingMarket(StrEnum):
@@ -131,6 +131,7 @@ _SOURCE_URIS = {
     "stock_zh_ah_spot_em": "https://quote.eastmoney.com/center/gridlist.html#ah_comparison",
     "stock_tfp_em": "https://data.eastmoney.com/tfpxx/",
     "stock_zh_a_hist": "https://quote.eastmoney.com/concept/",
+    "stock_zh_a_hist_min_em": "https://quote.eastmoney.com/concept/sh603777.html?from=classic",
     "stock_zh_a_daily": "https://finance.sina.com.cn/realstock/company/",
     "stock_hk_daily": "http://stock.finance.sina.com.cn/hkstock/",
     "stock_zh_ah_daily": "https://gu.qq.com/",
@@ -260,6 +261,45 @@ _BID_ASK_ITEM_NAMES = (
     "内盘",
 )
 _BID_ASK_ITEM_NAME_SET = frozenset(_BID_ASK_ITEM_NAMES)
+
+_MARKET_HISTORY_INTRADAY_PARAMETER_NAMES = frozenset(
+    {"view", "start_date", "end_date", "period", "adjust"}
+)
+_MARKET_HISTORY_INTRADAY_VIEW = "intraday"
+_MARKET_HISTORY_INTRADAY_PERIODS = frozenset({"1", "5", "15", "30", "60"})
+_MARKET_HISTORY_INTRADAY_DEFAULT_START = "1979-09-01 09:32:00"
+_MARKET_HISTORY_INTRADAY_DEFAULT_END = "2222-01-01 09:32:00"
+_MARKET_HISTORY_INTRADAY_DEFAULT_PERIOD = "5"
+_MARKET_HISTORY_INTRADAY_DEFAULT_ADJUST = ""
+_MARKET_HISTORY_INTRADAY_FIELDS = {
+    "1": frozenset(
+        {
+            "时间",
+            "开盘",
+            "收盘",
+            "最高",
+            "最低",
+            "成交量",
+            "成交额",
+            "均价",
+        }
+    ),
+    "other": frozenset(
+        {
+            "时间",
+            "开盘",
+            "收盘",
+            "最高",
+            "最低",
+            "涨跌幅",
+            "涨跌额",
+            "成交量",
+            "成交额",
+            "振幅",
+            "换手率",
+        }
+    ),
+}
 
 _HISTORY_PARAMETER_NAMES = frozenset(
     {
@@ -530,6 +570,17 @@ class AKShareProvider(StructuredDataProvider):
             raise ProviderRequestError(
                 "the AKShare bid-ask endpoint supports Shanghai and Shenzhen "
                 "A-share listings only",
+                provider=self.identity,
+                request=request,
+                retryable=False,
+            )
+        if (
+            request.category is DataCategory.MARKET_HISTORY
+            and request.parameters.get("view") == _MARKET_HISTORY_INTRADAY_VIEW
+            and listing.market is not ListingMarket.A
+        ):
+            raise ProviderRequestError(
+                "the AKShare intraday-history endpoint supports A-share listings only",
                 provider=self.identity,
                 request=request,
                 retryable=False,
@@ -1034,9 +1085,49 @@ class AKShareProvider(StructuredDataProvider):
             response_metadata["snapshot_scope"] = "requested_report_date"
         elif request.category is DataCategory.MARKET_HISTORY:
             rows = _table_rows(payload, provider=self.identity, request=request)
-            response_metadata["upstream_row_count"] = len(rows)
-            if listing.market is ListingMarket.H and _has_history_range(request.parameters):
-                response_metadata["range_filtering"] = "normalizer"
+            if endpoint.name == "stock_zh_a_hist_min_em":
+                start_datetime = _parse_intraday_history_datetime_parameter(
+                    kwargs["start_date"],
+                    name="start_date",
+                    request=request,
+                )
+                end_datetime = _parse_intraday_history_datetime_parameter(
+                    kwargs["end_date"],
+                    name="end_date",
+                    request=request,
+                )
+                observation_times = _validate_intraday_history_provider_rows(
+                    rows,
+                    period=kwargs["period"],
+                    start_datetime=start_datetime,
+                    end_datetime=end_datetime,
+                    provider=self.identity,
+                    request=request,
+                )
+                response_metadata["upstream_row_count"] = len(rows)
+                response_metadata["entity_row_count"] = len(rows)
+                response_metadata["entity_rows_selected"] = True
+                response_metadata["listing_scoped_request"] = True
+                response_metadata["intraday_history_view"] = _MARKET_HISTORY_INTRADAY_VIEW
+                response_metadata["upstream_symbol"] = kwargs["symbol"]
+                response_metadata["intraday_period"] = kwargs["period"]
+                response_metadata["intraday_adjust"] = kwargs["adjust"]
+                response_metadata["requested_start_datetime"] = kwargs["start_date"]
+                response_metadata["requested_end_datetime"] = kwargs["end_date"]
+                response_metadata["date_binding"] = "row_and_request"
+                response_metadata["range_filtering"] = "upstream_and_provider_validation"
+                response_metadata["snapshot_scope"] = "requested_intraday_range"
+                response_metadata["observation_time_field"] = "时间"
+                response_metadata["observation_start_datetime"] = (
+                    min(observation_times).isoformat() if observation_times else None
+                )
+                response_metadata["observation_end_datetime"] = (
+                    max(observation_times).isoformat() if observation_times else None
+                )
+            else:
+                response_metadata["upstream_row_count"] = len(rows)
+                if listing.market is ListingMarket.H and _has_history_range(request.parameters):
+                    response_metadata["range_filtering"] = "normalizer"
         elif (
             request.category is DataCategory.BALANCE_SHEET
             and endpoint.name in _OFFICIAL_BALANCE_SHEET_ENDPOINTS
@@ -1717,6 +1808,9 @@ class AKShareProvider(StructuredDataProvider):
             market_quote_bid_ask_requested=(
                 "view" in request.parameters
             ),
+            market_history_intraday_requested=(
+                "view" in request.parameters
+            ),
         )
         for name in candidates:
             function = getattr(client, name, None)
@@ -2269,19 +2363,26 @@ class AKShareNormalizer:
                         count_coverage=False,
                     )
             elif record.request.category is DataCategory.MARKET_HISTORY:
-                history_result = _map_history(
-                    record,
-                    evidence,
-                    rows,
-                    listing,
-                    as_of=as_of,
-                    primary=primary,
-                    add_fact=add_fact,
-                )
-                if history_result[0] == 0:
-                    missing_fields.add("market_history")
-                if history_result[1] == 0:
-                    missing_fields.add("historical_close")
+                if record.response_metadata.get("endpoint") == "stock_zh_a_hist_min_em":
+                    _validate_intraday_history_normalizer_scope(record, listing, rows)
+                    # The endpoint is a range-scoped minute-bar response. Its
+                    # interval, adjustment semantics and recent-data limits do
+                    # not establish the canonical daily history contract.
+                    normalizer_flags.add("AKSHARE_INTRADAY_HISTORY_RAW_ONLY")
+                else:
+                    history_result = _map_history(
+                        record,
+                        evidence,
+                        rows,
+                        listing,
+                        as_of=as_of,
+                        primary=primary,
+                        add_fact=add_fact,
+                    )
+                    if history_result[0] == 0:
+                        missing_fields.add("market_history")
+                    if history_result[1] == 0:
+                        missing_fields.add("historical_close")
             elif record.request.category is DataCategory.CASH_FLOW_STATEMENT:
                 cash_flow_result = _map_cash_flow_statement(
                     record,
@@ -2831,6 +2932,10 @@ class AKShareNormalizer:
             fact.field == "current_price" and fact.value is not None for fact in facts
         ):
             missing_fields.add("current_price")
+        if "AKSHARE_INTRADAY_HISTORY_RAW_ONLY" in normalizer_flags and not any(
+            fact.field in _HISTORY_FIELDS for fact in facts
+        ):
+            missing_fields.add("market_history")
 
         normalized_company = _enrich_company(company, metadata_context)
         coverage = coverage_present / coverage_total if coverage_total else 0.0
@@ -3189,6 +3294,13 @@ class AKShareNormalizer:
                 "a stable observation timestamp and do not establish the canonical "
                 "current-price input."
             )
+        if "AKSHARE_INTRADAY_HISTORY_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented A-share intraday-history response is retained as raw "
+                "evidence only: minute-bar interval, adjustment mode and recent-data "
+                "limits do not establish the canonical daily history or valuation "
+                "inputs."
+            )
         return NormalizedCompanyInput(
             schema_version="1.0.0",
             analysis_id=analysis_id,
@@ -3355,6 +3467,7 @@ def _endpoint_candidates(
     market_activity_statistic_requested: bool = False,
     market_activity_institution_statistic_requested: bool = False,
     market_quote_bid_ask_requested: bool = False,
+    market_history_intraday_requested: bool = False,
 ) -> tuple[str, ...]:
     market = listing.market
     if category is DataCategory.COMPANY_METADATA:
@@ -3395,6 +3508,8 @@ def _endpoint_candidates(
         return ("stock_hk_spot_em", "stock_hk_spot")
     if category is DataCategory.MARKET_HISTORY:
         if market is ListingMarket.A:
+            if market_history_intraday_requested:
+                return ("stock_zh_a_hist_min_em",)
             return ("stock_zh_a_hist", "stock_zh_a_daily")
         return ("stock_hk_daily", "stock_zh_ah_daily")
     if category is DataCategory.MARKET_ACTIVITY:
@@ -5611,6 +5726,186 @@ def _validate_bid_ask_provider_rows(
             f"AKShare {message}",
             provider=provider,
             request=request,
+        )
+
+
+def _intraday_history_timestamp(value: object) -> datetime | None:
+    if not isinstance(value, str):
+        return None
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"):
+        try:
+            return datetime.strptime(value, fmt)
+        except ValueError:
+            continue
+    return None
+
+
+def _intraday_history_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    period: object,
+    start_datetime: datetime,
+    end_datetime: datetime,
+) -> tuple[str | None, list[datetime]]:
+    if not isinstance(period, str) or period not in _MARKET_HISTORY_INTRADAY_PERIODS:
+        return "intraday-history period is not supported", []
+    expected_fields = _MARKET_HISTORY_INTRADAY_FIELDS[
+        "1" if period == "1" else "other"
+    ]
+    numeric_fields = expected_fields - {"时间"}
+    observation_times: list[datetime] = []
+    previous_time: datetime | None = None
+    for index, row in enumerate(rows):
+        missing = sorted(expected_fields - set(row))
+        unexpected = sorted(set(row) - expected_fields)
+        if missing:
+            return (
+                f"intraday-history row {index} is missing field(s): "
+                + ", ".join(missing),
+                [],
+            )
+        if unexpected:
+            return (
+                f"intraday-history row {index} contains unsupported field(s): "
+                + ", ".join(unexpected),
+                [],
+            )
+        observation_time = _intraday_history_timestamp(row["时间"])
+        if observation_time is None:
+            return f"intraday-history row {index} has an invalid 时间", []
+        if not start_datetime <= observation_time <= end_datetime:
+            return (
+                f"intraday-history row {index} 时间 {observation_time.isoformat()!r} "
+                f"is outside requested range {start_datetime.isoformat()!r}.."
+                f"{end_datetime.isoformat()!r}",
+                [],
+            )
+        if previous_time is not None and observation_time <= previous_time:
+            if observation_time == previous_time:
+                return (
+                    f"intraday-history response has duplicate 时间 "
+                    f"{observation_time.isoformat()!r}",
+                    [],
+                )
+            return "intraday-history response 时间 values must be strictly ascending", []
+        previous_time = observation_time
+        observation_times.append(observation_time)
+        for field in numeric_fields:
+            value = row[field]
+            if value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, Real):
+                return (
+                    f"intraday-history row {index} field {field!r} must be numeric or null",
+                    [],
+                )
+            try:
+                numeric = float(value)
+            except (OverflowError, TypeError, ValueError):
+                return (
+                    f"intraday-history row {index} field {field!r} must be numeric or null",
+                    [],
+                )
+            if not math.isfinite(numeric):
+                return (
+                    f"intraday-history row {index} field {field!r} must be finite or null",
+                    [],
+                )
+    return None, observation_times
+
+
+def _validate_intraday_history_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    period: object,
+    start_datetime: datetime,
+    end_datetime: datetime,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> list[datetime]:
+    message, observation_times = _intraday_history_validation_message(
+        rows,
+        period=period,
+        start_datetime=start_datetime,
+        end_datetime=end_datetime,
+    )
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message}",
+            provider=provider,
+            request=request,
+        )
+    return observation_times
+
+
+def _validate_intraday_history_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> None:
+    if listing.market is not ListingMarket.A:
+        raise ProviderNormalizationError(
+            "AKShare intraday-history raw slice supports A-share listings only"
+        )
+    if record.response_metadata.get("endpoint") != "stock_zh_a_hist_min_em":
+        raise ProviderNormalizationError(
+            "AKShare intraday-history record must come from stock_zh_a_hist_min_em"
+        )
+    try:
+        upstream_kwargs = _intraday_history_kwargs(listing, record.request)
+        start_datetime = _parse_intraday_history_datetime_parameter(
+            upstream_kwargs["start_date"],
+            name="start_date",
+            request=record.request,
+        )
+        end_datetime = _parse_intraday_history_datetime_parameter(
+            upstream_kwargs["end_date"],
+            name="end_date",
+            request=record.request,
+        )
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+
+    expected_metadata = {
+        "intraday_history_view": _MARKET_HISTORY_INTRADAY_VIEW,
+        "upstream_symbol": upstream_kwargs["symbol"],
+        "intraday_period": upstream_kwargs["period"],
+        "intraday_adjust": upstream_kwargs["adjust"],
+        "requested_start_datetime": upstream_kwargs["start_date"],
+        "requested_end_datetime": upstream_kwargs["end_date"],
+        "listing_scoped_request": True,
+        "snapshot_scope": "requested_intraday_range",
+        "observation_time_field": "时间",
+        "date_binding": "row_and_request",
+        "range_filtering": "upstream_and_provider_validation",
+        "upstream_row_count": len(rows),
+        "entity_row_count": len(rows),
+        "entity_rows_selected": True,
+    }
+    for name, expected in expected_metadata.items():
+        if record.response_metadata.get(name) != expected:
+            raise ProviderNormalizationError(
+                f"intraday-history response metadata {name!r} does not match "
+                "the requested replay scope"
+            )
+
+    message, observation_times = _intraday_history_validation_message(
+        rows,
+        period=upstream_kwargs["period"],
+        start_datetime=start_datetime,
+        end_datetime=end_datetime,
+    )
+    if message is not None:
+        raise ProviderNormalizationError(message)
+    expected_start = min(observation_times).isoformat() if observation_times else None
+    expected_end = max(observation_times).isoformat() if observation_times else None
+    if record.response_metadata.get("observation_start_datetime") != expected_start:
+        raise ProviderNormalizationError(
+            "intraday-history response observation start does not match replayed rows"
+        )
+    if record.response_metadata.get("observation_end_datetime") != expected_end:
+        raise ProviderNormalizationError(
+            "intraday-history response observation end does not match replayed rows"
         )
 
 
@@ -8095,6 +8390,9 @@ def _history_kwargs(
     listing: _ListingRef,
     request: ProviderRequest,
 ) -> dict[str, object]:
+    if endpoint_name == "stock_zh_a_hist_min_em":
+        return _intraday_history_kwargs(listing, request)
+
     parameters = dict(request.parameters)
     unknown = sorted(set(parameters) - _HISTORY_PARAMETER_NAMES)
     if unknown:
@@ -8160,6 +8458,105 @@ def _history_kwargs(
     if end_text is not None:
         kwargs["end_date"] = end_text
     return kwargs
+
+
+def _intraday_history_kwargs(
+    listing: _ListingRef,
+    request: ProviderRequest,
+) -> dict[str, object]:
+    """Build the documented Eastmoney A-share intraday-history request."""
+
+    if listing.market is not ListingMarket.A:
+        raise ProviderRequestError(
+            "the AKShare intraday-history endpoint supports A-share listings only",
+            request=request,
+            retryable=False,
+        )
+    parameters = dict(request.parameters)
+    unknown = sorted(set(parameters) - _MARKET_HISTORY_INTRADAY_PARAMETER_NAMES)
+    if unknown:
+        raise ProviderRequestError(
+            "unsupported AKShare intraday-history parameter(s): " + ", ".join(unknown),
+            request=request,
+            retryable=False,
+        )
+    if parameters.get("view") != _MARKET_HISTORY_INTRADAY_VIEW:
+        raise ProviderRequestError(
+            "the AKShare intraday-history endpoint requires "
+            f"view={_MARKET_HISTORY_INTRADAY_VIEW!r}",
+            request=request,
+            retryable=False,
+        )
+
+    period = parameters.get("period", _MARKET_HISTORY_INTRADAY_DEFAULT_PERIOD)
+    if not isinstance(period, str) or period not in _MARKET_HISTORY_INTRADAY_PERIODS:
+        choices = ", ".join(sorted(_MARKET_HISTORY_INTRADAY_PERIODS, key=int))
+        raise ProviderRequestError(
+            f"AKShare intraday-history period must be one of: {choices}",
+            request=request,
+            retryable=False,
+        )
+    adjust = parameters.get("adjust", _MARKET_HISTORY_INTRADAY_DEFAULT_ADJUST)
+    if not isinstance(adjust, str) or adjust not in {"", "qfq", "hfq"}:
+        raise ProviderRequestError(
+            "AKShare intraday-history adjust must be '', 'qfq' or 'hfq'",
+            request=request,
+            retryable=False,
+        )
+
+    start_date = parameters.get(
+        "start_date",
+        _MARKET_HISTORY_INTRADAY_DEFAULT_START,
+    )
+    end_date = parameters.get(
+        "end_date",
+        _MARKET_HISTORY_INTRADAY_DEFAULT_END,
+    )
+    start_datetime = _parse_intraday_history_datetime_parameter(
+        start_date,
+        name="start_date",
+        request=request,
+    )
+    end_datetime = _parse_intraday_history_datetime_parameter(
+        end_date,
+        name="end_date",
+        request=request,
+    )
+    if start_datetime > end_datetime:
+        raise ProviderRequestError(
+            "AKShare intraday-history start_date must not be after end_date",
+            request=request,
+            retryable=False,
+        )
+    return {
+        "symbol": listing.code,
+        "start_date": start_datetime.strftime("%Y-%m-%d %H:%M:%S"),
+        "end_date": end_datetime.strftime("%Y-%m-%d %H:%M:%S"),
+        "period": period,
+        "adjust": adjust,
+    }
+
+
+def _parse_intraday_history_datetime_parameter(
+    value: object,
+    *,
+    name: str,
+    request: ProviderRequest,
+) -> datetime:
+    if not isinstance(value, str):
+        raise ProviderRequestError(
+            f"AKShare intraday-history {name} must be YYYY-MM-DD HH:MM:SS",
+            request=request,
+            retryable=False,
+        )
+    try:
+        return datetime.strptime(value, "%Y-%m-%d %H:%M:%S")
+    except ValueError as exc:
+        raise ProviderRequestError(
+            f"AKShare intraday-history {name} must be YYYY-MM-DD HH:MM:SS",
+            request=request,
+            retryable=False,
+        ) from exc
 
 
 def _date_parameter(

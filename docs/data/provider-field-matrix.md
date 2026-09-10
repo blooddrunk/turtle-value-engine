@@ -388,6 +388,35 @@ is admitted.
 | `最新`, `均价`, `涨幅`, `涨跌`, `总手`, `金额`, `换手`, `量比`, `最高`, `最低`, `今开`, `昨收`, `涨停`, `跌停`, `外盘`, `内盘` | Validated intraday quote context; values are not promoted to canonical current price, history, liquidity or valuation inputs. |
 | request `view=bid_ask`, derived `symbol` | Explicit endpoint-selection and listing/snapshot replay scope; only Shanghai/Shenzhen A-share listings are accepted. |
 
+## Phase 2.52 A-share intraday-history raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_zh_a_hist_min_em` as an Eastmoney A-share intraday-history
+endpoint. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hist_em.py)
+accepts a six-digit `symbol`, `start_date` and `end_date` datetimes, an
+interval in `1`, `5`, `15`, `30` or `60` minutes and an adjustment choice of
+empty string, `qfq` or `hfq`. The one-minute response exposes `均价`; other
+intervals expose `涨跌幅`, `涨跌额`, `振幅` and `换手率` instead.
+
+The provider selects this endpoint only under `MARKET_HISTORY` with explicit
+`view=intraday`, validates the period-specific field set, finite numeric or
+null values, strictly ascending `时间` values and the requested datetime
+range, and records the effective symbol/range/interval/adjustment and
+observation bounds. The normalizer emits
+`AKSHARE_INTRADAY_HISTORY_RAW_ONLY`, marks `market_history` as critically
+missing when no canonical daily history is present, and creates no facts:
+minute-bar interval, adjustment mode and recent-data limits do not establish
+the canonical daily history or a valuation input.
+
+| Raw upstream item | Phase 2 treatment |
+| --- | --- |
+| `时间` | Validated intraday observation timestamp inside the requested range; it is not silently converted into a daily history period. |
+| `开盘`, `收盘`, `最高`, `最低` | Raw minute-bar prices retained as structured evidence only; they do not replace canonical daily OHLC history. |
+| `成交量` | Raw provider volume, documented in lots; no cross-frequency liquidity or valuation fact is inferred. |
+| `成交额` | Raw intraday turnover amount; it is not issuer cash flow or a canonical valuation input. |
+| `均价` for `period=1`; `涨跌幅`, `涨跌额`, `振幅`, `换手率` for other periods | Validated interval-specific quote context; provider calculations and intraday scope remain raw-only. |
+| request `view=intraday`, derived `symbol`, `start_date`, `end_date`, `period`, `adjust` | Explicit endpoint-selection and intraday replay scope; the response is listing-scoped and cannot be replayed under a different range, interval or adjustment mode. |
+
 ## Phase 2.9 corporate-action raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)

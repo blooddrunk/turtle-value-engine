@@ -1,6 +1,6 @@
 # Provider and Cache Architecture
 
-> Status: Phase 2 foundation, read-only AKShare statement slices, earnings forecasts/quick reports/performance reports/business composition/financial abstract/financial indicators, H-share latest indicators, dividend events/snapshots/detail, A-share disclosure-notice metadata, risk-warning status, trading-suspension, restricted-share-release, goodwill-impairment, ESG-rating, SSE/SZSE/BSE margin-detail, share-capital, individual-info snapshot, corporate-action, external-guarantee, company-litigation, ownership-pledge snapshot/detail, main-shareholder, shareholder-count, A-share actual-controller holding-change, A/H HSGT individual-holdings, SSE/SZSE/BSE insider-share-change, A-share Eastmoney management-holding and A-share top-ten/top-ten-tradable-shareholder/top-ten-tradable-shareholder-detail, Dragon-Tiger market-activity detail/statistics/institution-statistics and A-share five-level bid-ask raw slices
+> Status: Phase 2 foundation, read-only AKShare statement slices, earnings forecasts/quick reports/performance reports/business composition/financial abstract/financial indicators, H-share latest indicators, dividend events/snapshots/detail, A-share disclosure-notice metadata, risk-warning status, trading-suspension, restricted-share-release, goodwill-impairment, ESG-rating, SSE/SZSE/BSE margin-detail, share-capital, individual-info snapshot, corporate-action, external-guarantee, company-litigation, ownership-pledge snapshot/detail, main-shareholder, shareholder-count, A-share actual-controller holding-change, A/H HSGT individual-holdings, SSE/SZSE/BSE insider-share-change, A-share Eastmoney management-holding and A-share top-ten/top-ten-tradable-shareholder/top-ten-tradable-shareholder-detail, Dragon-Tiger market-activity detail/statistics/institution-statistics, A-share intraday-history and five-level bid-ask raw slices
 
 This document freezes the boundary between structured-data acquisition and the
 deterministic Turtle Value Engine. It does not authorize a live provider or
@@ -706,7 +706,7 @@ The cache performs no network retries. The normalizer performs no provider
 retries. The deterministic pipeline performs no provider retries and should
 not be rerun as a substitute for resolving missing facts.
 
-## 12. Phase 2.2–2.51 AKShare adapter
+## 12. Phase 2.2–2.52 AKShare adapter
 
 The first concrete adapter is intentionally limited to read-only metadata,
 market observations, three documented financial-statement slices, raw-only
@@ -722,8 +722,8 @@ main-shareholder/shareholder-count/actual-controller holding-change/HSGT
 individual-holdings raw slices, A-share Eastmoney individual-fund-flow,
 top-ten-shareholder/top-ten-tradable-shareholder/top-ten-tradable-shareholder-detail,
 Dragon-Tiger detail/statistics/institution-statistics market-activity,
-SSE/SZSE/BSE insider-share-change, A-share Eastmoney management-holding and
-A-share five-level bid-ask raw slices. It
+SSE/SZSE/BSE insider-share-change, A-share Eastmoney management-holding,
+A-share intraday-history and five-level bid-ask raw slices. It
 advertises exactly these capabilities:
 
 | Category | A-share endpoint | H-share endpoint | Normalized output |
@@ -733,7 +733,7 @@ advertises exactly these capabilities:
 | `RISK_WARNING_STATUS` | `stock_zh_a_st_em` (no parameters) | — | current A-share risk-warning-board membership as raw structured evidence only; no canonical `special_treatment` fact |
 | `TRADING_SUSPENSIONS` | `stock_tfp_em` (exact `date`) | — | requested-date A-share suspension/resumption rows as raw structured evidence only; no canonical status or governance fact |
 | `MARKET_QUOTE` | `stock_zh_a_spot_em`; `stock_bid_ask_em` (`view=bid_ask`, Shanghai/Shenzhen A-share only) | `stock_hk_spot_em` | selected-listing `current_price` plus quote timestamp; bid/ask view retained raw-only |
-| `MARKET_HISTORY` | `stock_zh_a_hist` | `stock_hk_daily` | dated OHLCV/turnover extension facts |
+| `MARKET_HISTORY` | `stock_zh_a_hist` (daily history); `stock_zh_a_hist_min_em` (`view=intraday`, explicit datetime range/interval/adjustment; A-share only) | `stock_hk_daily` | dated daily OHLCV/turnover extension facts; intraday rows as raw structured evidence only |
 | `MARKET_ACTIVITY` | `stock_lhb_detail_em` (inclusive `start_date`/`end_date`; A-share only); `stock_lhb_stock_statistic_em` (`view=stock_statistic`, explicit `period`; A-share only); `stock_lhb_jgstatistic_em` (`view=institution_statistic`, explicit `period`; A-share only) | — | A-share Dragon-Tiger detail, per-listing statistics or institution-seat statistics rows filtered to the requested listing as raw structured evidence only; no issuer cash-flow, shareholder-return, governance, market or valuation fact |
 | `CAPITAL_FLOW` | `stock_individual_fund_flow` (A-share) | — | recent daily investor-flow rows as raw structured evidence only; no issuer cash-flow, liquidity or valuation fact |
 | `CASH_FLOW_STATEMENT` | `stock_cash_flow_sheet_by_report_em` (Sina fallback) | `stock_financial_hk_report_em` | explicit `reported_cfo` and `acquisition_cash` lines |
@@ -760,8 +760,13 @@ advertises exactly these capabilities:
 | `SHAREHOLDER_HOLDINGS` | `stock_main_stock_holder` (`stock`); `stock_hold_num_cninfo` (exact quarter-end `date`); `stock_hold_control_cninfo` (`view=control_changes`, optional `control_type`); `stock_gdfx_top_10_em` (`view=top_10`, exact quarter-end `date`); `stock_gdfx_free_top_10_em` (`view=free_top_10`, exact quarter-end `date`); `stock_gdfx_free_holding_detail_em` (`view=free_holding_detail`, exact quarter-end `date`); `stock_hsgt_individual_em` (`view=hsgt_individual`) | `stock_hsgt_individual_em` (`view=hsgt_individual`) | A-share main-shareholder/shareholder-count/actual-controller/top-ten/top-ten-tradable/top-ten-tradable-detail holding-change or A/H HSGT investor-holding rows as raw structured evidence only; no canonical ownership, concentration, share, dilution or governance fact |
 
 The adapter accepts common stable A/H identifiers such as `SH600000`,
-`000001.SZ`, `A:600000`, `HK00700`, `700.HK` and `H:00700`. A-share history
-passes the supported period, date-range and adjustment parameters to AKShare.
+`000001.SZ`, `A:600000`, `HK00700`, `700.HK` and `H:00700`. A-share daily
+history passes the supported period, date-range and adjustment parameters to
+AKShare. The A-share `stock_zh_a_hist_min_em` view passes an explicit datetime
+range, one of the documented minute intervals and adjustment mode, validates
+the period-specific response shape and retains the response as raw evidence;
+it does not promote minute bars into canonical daily history or valuation
+inputs.
 The current H-share daily endpoint returns a full history, so the normalizer
 applies an explicitly requested date range deterministically after replay;
 the raw record remains the upstream response.
@@ -781,7 +786,8 @@ external-guarantee, company-litigation, share-capital, ownership-pledge,
 main-shareholder, shareholder-count, top-ten-shareholder,
 top-ten-tradable-shareholder, top-ten-tradable-shareholder-detail,
 insider-share-change, management-holding,
-individual-info, individual-fund-flow and five-level bid-ask raw slices it emits
+individual-info, individual-fund-flow, intraday-history and five-level bid-ask
+raw slices it emits
 raw-record evidence only and explicit unresolved flags where needed; it does
 not emit canonical forecast-profit, revenue, margin, dividend, buyback,
 issuance, dilution, share, governance, pledged-cash, quasi-debt,
@@ -893,6 +899,17 @@ normalizer emits `AKSHARE_BID_ASK_RAW_ONLY` and retains the snapshot as raw
 evidence; because the response has no stable observation timestamp, its latest
 price, volumes, turnover and quote-context values do not replace the
 canonical current-price fact or become liquidity/valuation inputs.
+For the A-share intraday-history slice, the current [AKShare stock-data
+documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and
+[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hist_em.py)
+define `stock_zh_a_hist_min_em` with a six-digit `symbol`, explicit datetime
+range, minute interval and adjustment mode. The provider selects it only
+under `MARKET_HISTORY` with `view=intraday`, validates the period-specific
+columns, finite numeric/null values, ascending timestamps and range binding,
+and records the effective request scope. The normalizer emits
+`AKSHARE_INTRADAY_HISTORY_RAW_ONLY`; minute-bar OHLC, volume, turnover and
+provider context do not replace canonical daily history or become valuation
+inputs.
 For the A-share dividend-distribution snapshot, the explicit June-30 or
 December-31 report date and listing-filtered rows are retained, but ratio units,
 settled cash status, ordinary-versus-special classification and payout
@@ -1148,7 +1165,7 @@ critically missing.
 
 ## 13. Deliberate non-goals
 
-This foundation plus the Phase 2.2–2.51 slices does not include:
+This foundation plus the Phase 2.2–2.52 slices does not include:
 
 - Tushare, BaoStock or any other additional provider;
 - automatic network scheduling, credentials or retry orchestration outside an adapter;

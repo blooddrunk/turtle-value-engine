@@ -397,6 +397,15 @@ returns a fixed 36-row `item`/`value` order-book and quote-context snapshot;
 the adapter validates and preserves it as raw evidence only because the
 intraday response has no stable observation timestamp. It does not create a
 canonical current-price, liquidity or valuation fact.
+Phase 2.52 adds the distinct documented Eastmoney
+[`stock_zh_a_hist_min_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
+endpoint under the existing provider-neutral `MARKET_HISTORY` category with
+explicit `view=intraday`, datetime range, interval and adjustment parameters.
+The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hist_em.py)
+returns period-specific minute-bar rows; the adapter validates their field
+shape, finite numeric values, ascending timestamps and requested replay scope.
+The normalizer emits `AKSHARE_INTRADAY_HISTORY_RAW_ONLY`: minute bars do not
+replace canonical daily history or become valuation inputs.
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

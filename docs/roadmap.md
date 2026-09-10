@@ -1275,6 +1275,29 @@ because the response has no stable observation timestamp. Live calls remain
 opt-in; tests use an injected client and a frozen fixture with cache replay,
 invalid-parameter, response-validation and replay-scope coverage.
 
+### Phase 2.52 — A-share intraday-history raw acquisition contract (COMPLETE)
+
+The mapping review now covers the distinct Eastmoney
+[`stock_zh_a_hist_min_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
+endpoint and its [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hist_em.py).
+It accepts a six-digit A-share `symbol`, explicit `start_date` and `end_date`
+datetimes, a documented interval of `1`, `5`, `15`, `30` or `60` minutes and
+an adjustment choice of empty string, `qfq` or `hfq`. The official response
+shape differs for the one-minute interval (`均价`) and the other intervals
+(change, amplitude and turnover fields).
+
+The provider selects this endpoint only under the existing provider-neutral
+`MARKET_HISTORY` category with explicit `view=intraday`, passes the normalized
+listing code and effective range/interval/adjustment, validates the
+period-specific field set, finite numeric values, ascending timestamps and
+requested range, and records the complete listing-scoped response plus its
+replay scope. The normalizer emits
+`AKSHARE_INTRADAY_HISTORY_RAW_ONLY`; minute-bar interval, adjustment mode and
+the documented recent-data limitation do not establish the canonical daily
+history contract or a valuation input. Live calls remain opt-in; tests use
+injected clients and frozen fixtures with cache replay, invalid-parameter,
+response-validation and replay-scope coverage.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -1284,7 +1307,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.51 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.52 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -1492,7 +1515,7 @@ Phase 2 is active. Phase 1 remains frozen: changes to formulas, hard-gate
 semantics, schemas or `strict-v1` thresholds require a separately reviewed,
 versioned change.
 
-Phase 2.51 completes the next documented structured-data boundary while
+Phase 2.52 completes the next documented structured-data boundary while
 keeping share-change, repurchase and rights-issue period, status, unit and
 economic-scope questions unresolved, and keeping ownership-pledge holder,
 governance and economic-scope questions unresolved. The A-share
@@ -1550,6 +1573,13 @@ levels and intraday quote context have no stable observation timestamp and do
 not establish the canonical current-price, liquidity or valuation inputs. The
 explicit `view=bid_ask` and derived listing symbol remain part of the
 replayable acquisition boundary.
+
+The A-share `stock_zh_a_hist_min_em` response is retained under
+`AKSHARE_INTRADAY_HISTORY_RAW_ONLY` because its period-specific minute bars,
+adjustment mode and recent-data limitation do not establish canonical daily
+history or valuation inputs. The explicit `view=intraday`, datetime range,
+interval, adjustment and listing symbol remain part of the replayable
+acquisition boundary.
 
 The A-share business-composition snapshot remains raw-only because its
 overlapping product, industry and geographic rows do not establish a canonical
