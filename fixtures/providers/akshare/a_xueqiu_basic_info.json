@@ -1,0 +1,118 @@
+[
+  {
+    "item": "org_id",
+    "value": "T000000001"
+  },
+  {
+    "item": "org_name_cn",
+    "value": "浦发银行股份有限公司"
+  },
+  {
+    "item": "org_short_name_cn",
+    "value": "浦发银行"
+  },
+  {
+    "item": "org_name_en",
+    "value": "Shanghai Pudong Development Bank Co., Ltd."
+  },
+  {
+    "item": "org_short_name_en",
+    "value": "SPDB"
+  },
+  {
+    "item": "main_operation_business",
+    "value": "商业银行业务"
+  },
+  {
+    "item": "operating_scope",
+    "value": "吸收公众存款；发放短期、中期和长期贷款。"
+  },
+  {
+    "item": "district_encode",
+    "value": "310000"
+  },
+  {
+    "item": "org_cn_introduction",
+    "value": "全国性股份制商业银行。"
+  },
+  {
+    "item": "legal_representative",
+    "value": "张为忠"
+  },
+  {
+    "item": "general_manager",
+    "value": "张为忠"
+  },
+  {
+    "item": "secretary",
+    "value": "谢伟"
+  },
+  {
+    "item": "established_date",
+    "value": 852076800000
+  },
+  {
+    "item": "reg_asset",
+    "value": 29352080000.0
+  },
+  {
+    "item": "staff_num",
+    "value": 65000
+  },
+  {
+    "item": "telephone",
+    "value": "021-61618888"
+  },
+  {
+    "item": "postcode",
+    "value": "200001"
+  },
+  {
+    "item": "fax",
+    "value": "021-63604199"
+  },
+  {
+    "item": "email",
+    "value": "ir@spdb.com.cn"
+  },
+  {
+    "item": "org_website",
+    "value": "www.spdb.com.cn"
+  },
+  {
+    "item": "reg_address_cn",
+    "value": "上海市中山东一路12号"
+  },
+  {
+    "item": "reg_address_en",
+    "value": null
+  },
+  {
+    "item": "office_address_cn",
+    "value": "上海市中山东一路12号"
+  },
+  {
+    "item": "office_address_en",
+    "value": null
+  },
+  {
+    "item": "currency_encode",
+    "value": "019001"
+  },
+  {
+    "item": "currency",
+    "value": "CNY"
+  },
+  {
+    "item": "listed_date",
+    "value": 1123084800000
+  },
+  {
+    "item": "provincial_name",
+    "value": "上海市"
+  },
+  {
+    "item": "actual_controller",
+    "value": "上海市国有资产监督管理委员会"
+  }
+]

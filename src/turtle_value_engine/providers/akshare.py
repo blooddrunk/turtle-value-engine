@@ -28,6 +28,7 @@ daily-history and Tencent latest-trading-day tick, Sina minute-history,
 intraday-history, H-share intraday-history, pre-market-history, five-level bid-ask
 Xueqiu individual-spot quote and Dragon-Tiger market-activity
 detail/statistics/institution-statistics raw slices are also available. The
+A-share Xueqiu company-profile raw slice is also available. The
 A-share dividend-distribution detail and
 new-stock-board raw slices are also available. The A-share CNINFO IPO-summary
 and Eastmoney individual-notice raw slices are also available.
@@ -79,9 +80,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "71"
+AKSHARE_ADAPTER_VERSION = "72"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "72"
+AKSHARE_MAPPING_VERSION = "73"
 
 
 class ListingMarket(StrEnum):
@@ -138,6 +139,9 @@ _SOURCE_URIS = {
     "stock_hk_spot": "http://stock.finance.sina.com.cn/hkstock/",
     "stock_zh_ah_spot_em": "https://quote.eastmoney.com/center/gridlist.html#ah_comparison",
     "stock_individual_spot_xq": "https://xueqiu.com/S/SH513520",
+    "stock_individual_basic_info_xq": (
+        "https://xueqiu.com/snowman/S/SH601127/detail#/GSJJ"
+    ),
     "stock_tfp_em": "https://data.eastmoney.com/tfpxx/",
     "stock_zh_a_hist": "https://quote.eastmoney.com/concept/",
     "stock_cyq_em": "https://quote.eastmoney.com/concept/sz000001.html",
@@ -367,6 +371,48 @@ _MARKET_QUOTE_XQ_TEXT_ITEMS = frozenset(
     {"代码", "名称", "交易所", "货币", "成立日期", "发行日期", "净值日期", "时间"}
 )
 _MARKET_QUOTE_XQ_REQUIRED_ITEMS = frozenset({"代码", "名称", "现价", "时间"})
+
+_COMPANY_METADATA_XQ_PARAMETER_NAMES = frozenset({"view"})
+_COMPANY_METADATA_XQ_VIEW = "xueqiu_basic_info"
+_COMPANY_METADATA_XQ_ITEMS = frozenset(
+    {
+        "org_id",
+        "org_name_cn",
+        "org_short_name_cn",
+        "org_name_en",
+        "org_short_name_en",
+        "main_operation_business",
+        "operating_scope",
+        "district_encode",
+        "org_cn_introduction",
+        "legal_representative",
+        "general_manager",
+        "secretary",
+        "established_date",
+        "reg_asset",
+        "staff_num",
+        "telephone",
+        "postcode",
+        "fax",
+        "email",
+        "org_website",
+        "reg_address_cn",
+        "reg_address_en",
+        "office_address_cn",
+        "office_address_en",
+        "currency_encode",
+        "currency",
+        "listed_date",
+        "provincial_name",
+        "actual_controller",
+    }
+)
+_COMPANY_METADATA_XQ_REQUIRED_ITEMS = frozenset(
+    {"org_id", "org_name_cn", "org_short_name_cn"}
+)
+_COMPANY_METADATA_XQ_NUMERIC_ITEMS = frozenset(
+    {"established_date", "reg_asset", "staff_num", "listed_date"}
+)
 
 _MARKET_HISTORY_INTRADAY_PARAMETER_NAMES = frozenset(
     {"view", "start_date", "end_date", "period", "adjust"}
@@ -1039,6 +1085,18 @@ class AKShareProvider(StructuredDataProvider):
                 retryable=False,
             )
         if (
+            request.category is DataCategory.COMPANY_METADATA
+            and request.parameters.get("view") == _COMPANY_METADATA_XQ_VIEW
+            and listing.market is not ListingMarket.A
+        ):
+            raise ProviderRequestError(
+                "the AKShare Xueqiu individual-basic-info endpoint supports A-share "
+                "listings only",
+                provider=self.identity,
+                request=request,
+                retryable=False,
+            )
+        if (
             request.category is DataCategory.MARKET_HISTORY
             and request.parameters.get("view")
             in (
@@ -1346,6 +1404,28 @@ class AKShareProvider(StructuredDataProvider):
             )
             response_metadata["date_binding"] = "row_only"
             response_metadata["price_field"] = "现价"
+            response_metadata["item_field"] = "item"
+            response_metadata["value_field"] = "value"
+        elif (
+            request.category is DataCategory.COMPANY_METADATA
+            and endpoint.name == "stock_individual_basic_info_xq"
+        ):
+            rows = _table_rows(payload, provider=self.identity, request=request)
+            _validate_company_metadata_xq_provider_rows(
+                rows,
+                listing,
+                provider=self.identity,
+                request=request,
+            )
+            response_metadata["upstream_row_count"] = len(rows)
+            response_metadata["entity_row_count"] = len(rows)
+            response_metadata["entity_rows_selected"] = True
+            response_metadata["listing_scoped_request"] = True
+            response_metadata["row_filtering"] = "upstream"
+            response_metadata["company_metadata_view"] = _COMPANY_METADATA_XQ_VIEW
+            response_metadata["upstream_symbol"] = kwargs["symbol"]
+            response_metadata["snapshot_scope"] = "current_company_profile"
+            response_metadata["date_binding"] = "retrieval_only"
             response_metadata["item_field"] = "item"
             response_metadata["value_field"] = "value"
         elif (
@@ -2794,6 +2874,9 @@ class AKShareProvider(StructuredDataProvider):
         candidates = _endpoint_candidates(
             listing,
             category,
+            company_metadata_xq_basic_info_requested=(
+                request.parameters.get("view") == _COMPANY_METADATA_XQ_VIEW
+            ),
             statement_date_requested="statement_date" in request.parameters,
             corporate_action_date_requested=any(
                 name in request.parameters for name in ("start_date", "end_date")
@@ -2936,6 +3019,8 @@ class AKShareProvider(StructuredDataProvider):
                 return _history_kwargs(endpoint_name, listing, request)
             if request.category is DataCategory.MARKET_ACTIVITY:
                 return _market_activity_kwargs(endpoint_name, listing, request)
+            if request.category is DataCategory.COMPANY_METADATA:
+                return _company_metadata_kwargs(endpoint_name, listing, request)
             if request.category is DataCategory.CAPITAL_FLOW:
                 return _capital_flow_kwargs(endpoint_name, listing, request)
             if request.category is DataCategory.CASH_FLOW_STATEMENT:
@@ -3123,7 +3208,18 @@ class AKShareNormalizer:
             primary = _same_listing(listing.canonical_id, company.primary_listing)
             as_of_period = _listing_period(as_of, listing, primary=primary)
 
-            if record.request.category is DataCategory.COMPANY_METADATA:
+            if (
+                record.request.category is DataCategory.COMPANY_METADATA
+                and record.response_metadata.get("endpoint")
+                == "stock_individual_basic_info_xq"
+            ):
+                _validate_company_metadata_xq_normalizer_scope(record, listing, rows)
+                # The Xueqiu profile combines descriptive, registration,
+                # personnel and provider-specific timestamp fields. It is
+                # useful raw evidence, but it does not establish a canonical
+                # company or listing fact for the strict-v1 input.
+                normalizer_flags.add("AKSHARE_XUEQIU_BASIC_INFO_RAW_ONLY")
+            elif record.request.category is DataCategory.COMPANY_METADATA:
                 row = _single_normalization_row(rows, record)
                 context = _map_company_metadata(row)
                 if primary:
@@ -4318,6 +4414,9 @@ class AKShareNormalizer:
             "their delayed cross-market prices, changes, ratio and premium lack a "
             "stable observation timestamp and do not establish a canonical "
             "current-price input."
+            " Xueqiu company-profile records remain raw structured evidence because "
+            "their descriptive, registration, personnel and provider-specific date "
+            "fields do not establish a canonical company or listing fact."
         )
         if "AKSHARE_CORPORATE_ACTIONS_RAW_ONLY" in normalizer_flags:
             notes += (
@@ -4492,6 +4591,13 @@ class AKShareNormalizer:
                 "evidence only: its announcement titles, categories, dates and links "
                 "do not establish filing contents, an accounting opinion or a "
                 "governance-risk judgment."
+            )
+        if "AKSHARE_XUEQIU_BASIC_INFO_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented Xueqiu individual-basic-info response is retained as "
+                "raw evidence only: its descriptive, registration, personnel and "
+                "provider-specific date fields do not establish a canonical company "
+                "or listing fact."
             )
         if "AKSHARE_HK_DIVIDEND_DETAIL_RAW_ONLY" in normalizer_flags:
             notes += (
@@ -4875,6 +4981,7 @@ def _endpoint_candidates(
     listing: _ListingRef,
     category: DataCategory,
     *,
+    company_metadata_xq_basic_info_requested: bool = False,
     statement_date_requested: bool = False,
     corporate_action_date_requested: bool = False,
     corporate_action_ipo_summary_requested: bool = False,
@@ -4916,6 +5023,10 @@ def _endpoint_candidates(
 ) -> tuple[str, ...]:
     market = listing.market
     if category is DataCategory.COMPANY_METADATA:
+        if company_metadata_xq_basic_info_requested:
+            if market is ListingMarket.A:
+                return ("stock_individual_basic_info_xq",)
+            return ()
         if market is ListingMarket.A:
             return ("stock_info_a_code_name", "stock_zh_ah_name")
         return ("stock_hk_company_profile_em", "stock_zh_ah_name", "stock_hk_spot_em")
@@ -5226,6 +5337,47 @@ def _market_quote_kwargs(
             request=request,
             retryable=False,
         )
+    return {"symbol": listing.code}
+
+
+def _company_metadata_kwargs(
+    endpoint_name: str,
+    listing: _ListingRef,
+    request: ProviderRequest,
+) -> dict[str, object]:
+    """Build the documented company-metadata request for each endpoint."""
+
+    if endpoint_name == "stock_individual_basic_info_xq":
+        if listing.market is not ListingMarket.A:
+            raise ProviderRequestError(
+                "the AKShare Xueqiu individual-basic-info endpoint supports A-share "
+                "listings only",
+                request=request,
+                retryable=False,
+            )
+        unknown = sorted(
+            set(request.parameters) - _COMPANY_METADATA_XQ_PARAMETER_NAMES
+        )
+        if unknown:
+            raise ProviderRequestError(
+                "unsupported AKShare Xueqiu individual-basic-info parameter(s): "
+                + ", ".join(unknown),
+                request=request,
+                retryable=False,
+            )
+        if request.parameters.get("view") != _COMPANY_METADATA_XQ_VIEW:
+            raise ProviderRequestError(
+                "the AKShare Xueqiu individual-basic-info endpoint requires "
+                f"view={_COMPANY_METADATA_XQ_VIEW!r}",
+                request=request,
+                retryable=False,
+            )
+        return {"symbol": listing.canonical_id}
+
+    if endpoint_name in _NO_ARGUMENT_ENDPOINTS:
+        _reject_unexpected_parameters(request)
+        return {}
+    _reject_unexpected_parameters(request)
     return {"symbol": listing.code}
 
 
@@ -7591,6 +7743,114 @@ def _validate_market_quote_xq_provider_rows(
         )
     assert observation_time is not None
     return observation_time
+
+
+def _company_metadata_xq_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> str | None:
+    """Return a strict-schema error for one Xueqiu company profile."""
+
+    if not rows:
+        return "Xueqiu individual-basic-info response is empty"
+
+    expected_fields = {"item", "value"}
+    seen_items: set[str] = set()
+    for index, row in enumerate(rows):
+        missing = sorted(expected_fields - set(row))
+        unexpected = sorted(set(row) - expected_fields)
+        if missing:
+            return (
+                f"Xueqiu individual-basic-info row {index} is missing field(s): "
+                + ", ".join(missing)
+            )
+        if unexpected:
+            return (
+                f"Xueqiu individual-basic-info row {index} contains unsupported field(s): "
+                + ", ".join(unexpected)
+            )
+
+        item = row["item"]
+        if not isinstance(item, str) or not item.strip():
+            return (
+                f"Xueqiu individual-basic-info row {index} item must be a non-empty string"
+            )
+        if item != item.strip():
+            return (
+                f"Xueqiu individual-basic-info row {index} item must match the "
+                "documented name exactly"
+            )
+        if item not in _COMPANY_METADATA_XQ_ITEMS:
+            return (
+                f"Xueqiu individual-basic-info row {index} item {item!r} "
+                "is not documented"
+            )
+        if item in seen_items:
+            return f"Xueqiu individual-basic-info response has duplicate item {item!r}"
+        seen_items.add(item)
+
+        value = row["value"]
+        if item in _COMPANY_METADATA_XQ_NUMERIC_ITEMS:
+            if value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, Real):
+                return (
+                    f"Xueqiu individual-basic-info item {item!r} must be numeric or null"
+                )
+            try:
+                numeric = float(value)
+            except (OverflowError, TypeError, ValueError):
+                return (
+                    f"Xueqiu individual-basic-info item {item!r} must be numeric or null"
+                )
+            if not math.isfinite(numeric):
+                return (
+                    f"Xueqiu individual-basic-info item {item!r} must be finite or null"
+                )
+        elif value is not None and (
+            isinstance(value, bool) or not isinstance(value, (str, int, float))
+        ):
+            return (
+                f"Xueqiu individual-basic-info item {item!r} must be a scalar or null"
+            )
+
+        if item in _COMPANY_METADATA_XQ_REQUIRED_ITEMS and (
+            not isinstance(value, str) or not value.strip()
+        ):
+            return (
+                f"Xueqiu individual-basic-info item {item!r} must be a non-empty string"
+            )
+
+    missing_items = sorted(_COMPANY_METADATA_XQ_REQUIRED_ITEMS - seen_items)
+    if missing_items:
+        return (
+            "Xueqiu individual-basic-info response is missing item(s): "
+            + ", ".join(missing_items)
+        )
+    return None
+
+
+def _validate_company_metadata_xq_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> None:
+    """Validate the symbol-scoped Xueqiu company profile before storage."""
+
+    if listing.market is not ListingMarket.A:
+        raise ProviderResponseError(
+            "AKShare Xueqiu individual-basic-info supports A-share listings only",
+            provider=provider,
+            request=request,
+        )
+    message = _company_metadata_xq_validation_message(rows)
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message}",
+            provider=provider,
+            request=request,
+        )
 
 
 def _market_quote_ah_comparison_validation_message(
@@ -11833,6 +12093,75 @@ def _validate_market_quote_xq_normalizer_scope(
             "replayed rows"
         )
     return observation_time
+
+
+def _validate_company_metadata_xq_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> None:
+    """Validate the replay scope of a symbol-scoped Xueqiu company profile."""
+
+    if listing.market is not ListingMarket.A:
+        raise ProviderNormalizationError(
+            "AKShare Xueqiu individual-basic-info supports A-share listings only"
+        )
+    if record.response_metadata.get("endpoint") != "stock_individual_basic_info_xq":
+        raise ProviderNormalizationError(
+            "Xueqiu individual-basic-info record must come from "
+            "stock_individual_basic_info_xq"
+        )
+    if record.source_uri != _SOURCE_URIS["stock_individual_basic_info_xq"]:
+        raise ProviderNormalizationError(
+            "Xueqiu individual-basic-info source URI does not match the documented endpoint"
+        )
+    try:
+        upstream_kwargs = _company_metadata_kwargs(
+            "stock_individual_basic_info_xq",
+            listing,
+            record.request,
+        )
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+
+    message = _company_metadata_xq_validation_message(rows)
+    if message is not None:
+        raise ProviderNormalizationError(message)
+
+    expected_metadata = {
+        "market": ListingMarket.A.value,
+        "listing_code": listing.code,
+        "company_metadata_view": _COMPANY_METADATA_XQ_VIEW,
+        "upstream_symbol": upstream_kwargs["symbol"],
+        "listing_scoped_request": True,
+        "row_filtering": "upstream",
+        "snapshot_scope": "current_company_profile",
+        "date_binding": "retrieval_only",
+        "item_field": "item",
+        "value_field": "value",
+        "upstream_row_count": len(rows),
+        "entity_row_count": len(rows),
+        "entity_rows_selected": True,
+    }
+    boolean_fields = {"listing_scoped_request", "entity_rows_selected"}
+    count_fields = {"upstream_row_count", "entity_row_count"}
+    for name, expected in expected_metadata.items():
+        actual = record.response_metadata.get(name)
+        if name in boolean_fields:
+            matches = isinstance(actual, bool) and actual is expected
+        elif name in count_fields:
+            matches = (
+                isinstance(actual, int)
+                and not isinstance(actual, bool)
+                and actual == expected
+            )
+        else:
+            matches = actual == expected
+        if not matches:
+            raise ProviderNormalizationError(
+                f"Xueqiu individual-basic-info response metadata {name!r} does not "
+                "match the requested replay scope"
+            )
 
 
 def _validate_market_activity_statistic_normalizer_rows(

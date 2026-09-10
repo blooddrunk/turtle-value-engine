@@ -620,6 +620,19 @@ the symbol-scoped snapshot for replay. The existing canonical quote contract
 maps only `现价` to `current_price` and `时间` to `market_quote_timestamp`; all
 other Xueqiu fields remain inside raw evidence. No calculation, gate, pipeline,
 CLI or input-loader contract is changed.
+Phase 2.72 adds the distinct documented Xueqiu A-share company-profile endpoint
+[`stock_individual_basic_info_xq`](https://akshare.akfamily.xyz/data/stock/stock.html),
+whose current official implementation is in
+[`stock_basic_info_xq.py`](https://github.com/akfamily/akshare/blob/main/akshare/stock_fundamental/stock_basic_info_xq.py),
+under `COMPANY_METADATA` with explicit `view=xueqiu_basic_info`. It passes the
+derived market-prefixed symbol, accepts no credential or timeout fields in the
+provider request, validates the exact `item`/`value` row shape, documented item
+allowlist, required profile identifiers, scalar values and numeric date/asset/
+personnel fields, and records the symbol-scoped company-profile snapshot for
+replay. The normalizer emits `AKSHARE_XUEQIU_BASIC_INFO_RAW_ONLY`: descriptive,
+registration, personnel and provider-specific date fields remain raw evidence
+and do not become canonical company/listing facts. No calculation, gate,
+pipeline, CLI or input-loader contract is changed.
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

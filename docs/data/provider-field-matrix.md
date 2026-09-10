@@ -992,6 +992,36 @@ The slice does not change calculations, gates, pipeline, CLI or input-loader
 contracts. Only the existing quote fields are normalized; provider-specific
 Xueqiu names remain at the adapter/raw-evidence boundary.
 
+## Phase 2.72 A-share Xueqiu company-profile raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_fundamental/stock_basic_info_xq.py)
+document `stock_individual_basic_info_xq` as a symbol-scoped Xueqiu A-share
+company-profile endpoint. Its documented call accepts a market-prefixed
+`symbol`, optional Xueqiu `token` and request `timeout`, and returns the
+`item`/`value` profile table. The adapter derives the symbol from the canonical
+listing, accepts only `view=xueqiu_basic_info`, and leaves credentials and
+timeout controls out of the provider request/cache identity.
+
+The provider validates the exact two-field row shape, unique items, the
+documented 29-item allowlist, required `org_id`/`org_name_cn`/
+`org_short_name_cn` profile identifiers, scalar values and finite numeric
+`established_date`/`reg_asset`/`staff_num`/`listed_date` values. The normalizer
+emits `AKSHARE_XUEQIU_BASIC_INFO_RAW_ONLY`; no profile field becomes a
+canonical company or listing fact.
+
+| Raw upstream item | Phase 2 treatment |
+| --- | --- |
+| `org_id`, `org_name_cn`, `org_short_name_cn` | Required profile identity/display values; validated and retained as raw evidence only, with no canonical company or listing identity replacement. |
+| descriptive, registration, personnel and control items | Raw-only provider evidence; no canonical sector, jurisdiction, control, employee, asset or governance fact is admitted. |
+| `established_date`, `listed_date` | Finite numeric provider timestamp values; raw-only because epoch/unit semantics are not verified as canonical incorporation or listing dates. |
+| `reg_asset`, `staff_num` | Finite numeric provider values; raw-only, with no balance-sheet asset or normalized employee fact. |
+| request `view=xueqiu_basic_info`, derived market-prefixed `symbol` | Explicit endpoint selection, A-share listing scope, symbol-scoped company-profile snapshot and replay boundary; optional Xueqiu credentials/timeouts are not request/cache identity. |
+
+The response remains outside the calculation, gate, pipeline, CLI and
+input-loader contracts. Provider-specific Xueqiu names and profile semantics
+remain at the adapter/raw-evidence boundary.
+
 ## Phase 2.9 corporate-action raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)

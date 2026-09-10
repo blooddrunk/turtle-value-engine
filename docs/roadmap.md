@@ -1737,6 +1737,29 @@ changed. Live calls remain opt-in; tests use an injected client and a frozen
 fixture with cache replay, invalid-request, response-validation, canonical
 mapping and replay-scope coverage.
 
+### Phase 2.72 — A-share Xueqiu company-profile raw acquisition contract (COMPLETE)
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_individual_basic_info_xq` as a symbol-scoped Xueqiu A-share
+company-profile endpoint; the [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_fundamental/stock_basic_info_xq.py)
+confirms a market-prefixed `symbol`, optional Xueqiu token/timeout arguments
+and an `item`/`value` profile response.
+
+The provider selects this callable only under `COMPANY_METADATA` with explicit
+`view=xueqiu_basic_info`, derives and passes the requested market-prefixed
+A-share symbol, deliberately excludes credentials and timeout controls from
+the provider request/cache identity, validates the exact two-field response,
+documented item allowlist, required profile identifiers, scalar values and
+finite numeric date/asset/personnel fields, and records the symbol-scoped
+company-profile snapshot for replay.
+
+The normalizer emits `AKSHARE_XUEQIU_BASIC_INFO_RAW_ONLY`; descriptive,
+registration, personnel, control and provider-specific date fields remain raw
+evidence and do not become canonical company or listing facts. No calculation,
+gate, pipeline, CLI or input-loader contract is changed. Live calls remain
+opt-in; tests use an injected client and a frozen fixture with cache replay,
+invalid-request, response-validation, raw-only and replay-scope coverage.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -1746,7 +1769,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.71 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.72 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -1954,7 +1977,7 @@ Phase 2 is active. Phase 1 remains frozen: changes to formulas, hard-gate
 semantics, schemas or `strict-v1` thresholds require a separately reviewed,
 versioned change.
 
-Phase 2.71 completes the next documented structured-data boundary while
+Phase 2.72 completes the next documented structured-data boundary while
 keeping share-change, repurchase and rights-issue period, status, unit and
 economic-scope questions unresolved, and keeping ownership-pledge holder,
 governance and economic-scope questions unresolved. The A-share
@@ -2054,6 +2077,13 @@ contract narrowly: `view=xueqiu_spot`, the derived market-prefixed symbol,
 exact `item`/`value` row shape, `代码` identity, `现价` price item, `时间`
 timestamp and replay metadata remain part of its acquisition boundary; all
 other Xueqiu fields remain raw evidence.
+The A-share Xueqiu company-profile response remains raw-only because its
+descriptive, registration, personnel, control and provider-specific date
+fields do not establish canonical company or listing facts. The explicit
+`view=xueqiu_basic_info`, derived market-prefixed symbol, exact `item`/`value`
+row shape, documented item allowlist, required profile identifiers, scalar and
+finite numeric value rules, and symbol-scoped company-profile replay metadata
+remain part of its acquisition boundary.
 dividend-distribution snapshot remains raw-only because its ratios, status and
 multiple dates do not establish settled ordinary cash or a canonical payout
 denominator. Phase 2 remains active; future documented categories must be
