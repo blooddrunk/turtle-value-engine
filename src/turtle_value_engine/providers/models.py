@@ -73,6 +73,7 @@ class DataCategory(StrEnum):
     TRADING_SUSPENSIONS = "trading_suspensions"
     MARKET_QUOTE = "market_quote"
     MARKET_HISTORY = "market_history"
+    CAPITAL_FLOW = "capital_flow"
     INCOME_STATEMENT = "income_statement"
     EARNINGS_FORECAST = "earnings_forecast"
     EARNINGS_QUICK_REPORT = "earnings_quick_report"

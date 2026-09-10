@@ -327,6 +327,14 @@ market values, latest price, industry and listing date do not establish a
 canonical reporting period, unit or fully diluted economic-share scope, so the
 normalizer emits `AKSHARE_INDIVIDUAL_INFO_RAW_ONLY` and no canonical share or
 valuation fact.
+Phase 2.44 adds the documented Eastmoney
+[`stock_individual_fund_flow`](https://akshare.akfamily.xyz/data/stock/stock.html)
+endpoint under a distinct `CAPITAL_FLOW` category. Its recent daily investor
+net-flow amounts/percentages and close-price context remain raw-only: they do
+not establish issuer cash flow, an accounting period, a canonical liquidity
+metric or a valuation fact. The provider derives the documented `sh`/`sz`/`bj`
+market argument from the requested A-share identity and validates observation
+dates; the normalizer emits `AKSHARE_INDIVIDUAL_FUND_FLOW_RAW_ONLY`.
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

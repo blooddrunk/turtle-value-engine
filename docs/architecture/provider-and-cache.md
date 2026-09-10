@@ -89,6 +89,7 @@ RISK_WARNING_STATUS
 TRADING_SUSPENSIONS
 MARKET_QUOTE
 MARKET_HISTORY
+CAPITAL_FLOW
 INCOME_STATEMENT
 EARNINGS_FORECAST
 EARNINGS_QUICK_REPORT
@@ -704,7 +705,7 @@ The cache performs no network retries. The normalizer performs no provider
 retries. The deterministic pipeline performs no provider retries and should
 not be rerun as a substitute for resolving missing facts.
 
-## 12. Phase 2.2–2.43 AKShare adapter
+## 12. Phase 2.2–2.44 AKShare adapter
 
 The first concrete adapter is intentionally limited to read-only metadata,
 market observations, three documented financial-statement slices, raw-only
@@ -717,7 +718,8 @@ an H-share latest-indicator raw slice, an A-share disclosure-notice raw slice,
 an A-share risk-warning-status, trading-suspension, goodwill-impairment,
 ESG-rating, SSE/SZSE/BSE margin-detail, external-guarantee, company-litigation,
 main-shareholder/shareholder-count/actual-controller holding-change/HSGT
-individual-holdings raw slices and
+individual-holdings raw slices, an A-share Eastmoney individual-fund-flow raw
+slice and
 SSE/SZSE/BSE insider-share-change and A-share Eastmoney management-holding raw
 slices. It
 advertises exactly these capabilities:
@@ -730,6 +732,7 @@ advertises exactly these capabilities:
 | `TRADING_SUSPENSIONS` | `stock_tfp_em` (exact `date`) | — | requested-date A-share suspension/resumption rows as raw structured evidence only; no canonical status or governance fact |
 | `MARKET_QUOTE` | `stock_zh_a_spot_em` | `stock_hk_spot_em` | selected-listing `current_price` plus quote timestamp |
 | `MARKET_HISTORY` | `stock_zh_a_hist` | `stock_hk_daily` | dated OHLCV/turnover extension facts |
+| `CAPITAL_FLOW` | `stock_individual_fund_flow` (A-share) | — | recent daily investor-flow rows as raw structured evidence only; no issuer cash-flow, liquidity or valuation fact |
 | `CASH_FLOW_STATEMENT` | `stock_cash_flow_sheet_by_report_em` (Sina fallback) | `stock_financial_hk_report_em` | explicit `reported_cfo` and `acquisition_cash` lines |
 | `INCOME_STATEMENT` | `stock_profit_sheet_by_report_em` (Sina fallback) | `stock_financial_hk_report_em` | explicit `parent_net_profit` and `consolidated_net_profit` lines |
 | `EARNINGS_FORECAST` | `stock_yjyg_em` | — | A-share quarterly forecast rows as raw structured evidence only; no reported-profit fact |
@@ -772,8 +775,8 @@ financial-indicator, latest-indicator, dividend event/detail, disclosure-notice,
 risk-warning-status, trading-suspension, restricted-share-release,
 goodwill-impairment, ESG-rating, margin-trading, corporate-action,
 external-guarantee, company-litigation, share-capital, ownership-pledge,
-main-shareholder, shareholder-count, insider-share-change, management-holding
-and individual-info raw slices it emits
+main-shareholder, shareholder-count, insider-share-change, management-holding,
+individual-info and individual-fund-flow raw slices it emits
 raw-record evidence only and explicit unresolved flags where needed; it does
 not emit canonical forecast-profit, revenue, margin, dividend, buyback,
 issuance, dilution, share, governance, pledged-cash, quasi-debt,
@@ -845,6 +848,11 @@ For the A-share company-litigation slice, the date-range aggregate versus an
 event or statement period, lawsuit amount completeness, legal status,
 accounting entity/scope and materiality threshold remain unresolved; no
 litigation, quasi-debt or governance classification is admitted automatically.
+For the A-share individual-fund-flow slice, the investor bucket definitions,
+amount units, percentage denominators, netting scope and point-in-time meaning
+remain provider-specific; its close price and return columns remain market
+context rather than canonical quote/history replacements. No issuer cash-flow,
+liquidity or valuation classification is admitted automatically.
 For the A-share dividend-distribution snapshot, the explicit June-30 or
 December-31 report date and listing-filtered rows are retained, but ratio units,
 settled cash status, ordinary-versus-special classification and payout
@@ -1059,7 +1067,7 @@ filing-backed pledge interpretation remain unresolved.
 
 ## 13. Deliberate non-goals
 
-This foundation plus the Phase 2.2–2.43 slices does not include:
+This foundation plus the Phase 2.2–2.44 slices does not include:
 
 - Tushare, BaoStock or any other additional provider;
 - automatic network scheduling, credentials or retry orchestration outside an adapter;

@@ -20,6 +20,7 @@ latest-indicator raw slice, the A-share goodwill-impairment detail raw slice,
 the SSE/SZSE/BSE margin-detail raw slices, the A-share individual ownership-pledge
 detail view, the A-share CNINFO equity-mortgage view, A-share company-litigation
 raw slice and A-share Eastmoney individual-info raw slice.
+The A-share Eastmoney individual-fund-flow raw slice is also available.
 Upstream column names are handled in this module and are never passed to the
 deterministic calculation or gate code.
 """
@@ -66,9 +67,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "43"
+AKSHARE_ADAPTER_VERSION = "44"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "44"
+AKSHARE_MAPPING_VERSION = "45"
 
 
 class ListingMarket(StrEnum):
@@ -86,6 +87,7 @@ AKSHARE_CAPABILITIES = ProviderCapabilities(
         DataCategory.TRADING_SUSPENSIONS,
         DataCategory.MARKET_QUOTE,
         DataCategory.MARKET_HISTORY,
+        DataCategory.CAPITAL_FLOW,
         DataCategory.CASH_FLOW_STATEMENT,
         DataCategory.INCOME_STATEMENT,
         DataCategory.EARNINGS_FORECAST,
@@ -126,6 +128,7 @@ _SOURCE_URIS = {
     "stock_zh_a_daily": "https://finance.sina.com.cn/realstock/company/",
     "stock_hk_daily": "http://stock.finance.sina.com.cn/hkstock/",
     "stock_zh_ah_daily": "https://gu.qq.com/",
+    "stock_individual_fund_flow": "https://data.eastmoney.com/zjlx/detail.html",
     "stock_hk_company_profile_em": "https://emweb.securities.eastmoney.com/PC_HKF10/pages/home/index.html",
     "stock_hk_security_profile_em": "https://emweb.securities.eastmoney.com/PC_HKF10/pages/home/index.html",
     "stock_cash_flow_sheet_by_report_em": "https://emweb.securities.eastmoney.com/PC_HSF10/NewFinanceAnalysis/Index",
@@ -208,6 +211,8 @@ _HISTORY_PARAMETER_NAMES = frozenset(
         "start_year",
     }
 )
+_CAPITAL_FLOW_PARAMETER_NAMES = frozenset()
+_CAPITAL_FLOW_DATE_FIELDS = ("日期", "date")
 
 _FINANCIAL_STATEMENT_PARAMETER_NAMES = frozenset({"indicator", "statement_date"})
 _EARNINGS_FORECAST_PARAMETER_NAMES = frozenset({"date"})
@@ -435,6 +440,16 @@ class AKShareProvider(StructuredDataProvider):
             )
 
         listing = _parse_listing_id(request.entity_id, provider=self.identity, request=request)
+        if (
+            request.category is DataCategory.CAPITAL_FLOW
+            and listing.market is not ListingMarket.A
+        ):
+            raise ProviderRequestError(
+                "the AKShare individual-fund-flow endpoint supports A-share listings only",
+                provider=self.identity,
+                request=request,
+                retryable=False,
+            )
         if (
             request.category is DataCategory.RISK_WARNING_STATUS
             and listing.market is not ListingMarket.A
@@ -702,6 +717,23 @@ class AKShareProvider(StructuredDataProvider):
             response_metadata["listing_scoped_request"] = False
             response_metadata["row_filtering"] = "provider"
             response_metadata["snapshot_scope"] = "current_published_dataset"
+        elif request.category is DataCategory.CAPITAL_FLOW:
+            rows = _table_rows(payload, provider=self.identity, request=request)
+            observation_dates = _validate_capital_flow_provider_rows(
+                rows,
+                listing,
+                provider=self.identity,
+                request=request,
+            )
+            response_metadata["upstream_row_count"] = len(rows)
+            response_metadata["entity_row_count"] = len(rows)
+            response_metadata["entity_rows_selected"] = True
+            response_metadata["listing_scoped_request"] = True
+            response_metadata["snapshot_scope"] = "recent_trading_days"
+            response_metadata["observation_date_field"] = "日期"
+            if observation_dates:
+                response_metadata["observation_start_date"] = min(observation_dates).isoformat()
+                response_metadata["observation_end_date"] = max(observation_dates).isoformat()
         elif request.category is DataCategory.MARGIN_TRADING:
             rows = _table_rows(payload, provider=self.identity, request=request)
             requested_date = _parse_margin_trading_date_parameter(
@@ -1405,6 +1437,8 @@ class AKShareProvider(StructuredDataProvider):
         try:
             if request.category is DataCategory.MARKET_HISTORY:
                 return _history_kwargs(endpoint_name, listing, request)
+            if request.category is DataCategory.CAPITAL_FLOW:
+                return _capital_flow_kwargs(endpoint_name, listing, request)
             if request.category is DataCategory.CASH_FLOW_STATEMENT:
                 return _cash_flow_statement_kwargs(endpoint_name, listing, request)
             if request.category is DataCategory.INCOME_STATEMENT:
@@ -1667,6 +1701,26 @@ class AKShareNormalizer:
                 # assessment.
                 missing_fields.add("governance_risk_level")
                 normalizer_flags.add("AKSHARE_ESG_RATINGS_RAW_ONLY")
+            elif record.request.category is DataCategory.CAPITAL_FLOW:
+                if listing.market is not ListingMarket.A:
+                    raise ProviderNormalizationError(
+                        "AKShare individual-fund-flow raw slice supports A-share listings only"
+                    )
+                if record.response_metadata.get("endpoint") != "stock_individual_fund_flow":
+                    raise ProviderNormalizationError(
+                        "AKShare capital-flow record must come from "
+                        "stock_individual_fund_flow"
+                    )
+                try:
+                    _capital_flow_kwargs(
+                        "stock_individual_fund_flow",
+                        listing,
+                        record.request,
+                    )
+                except ProviderRequestError as exc:
+                    raise ProviderNormalizationError(str(exc)) from exc
+                _validate_capital_flow_normalizer_rows(rows, listing)
+                normalizer_flags.add("AKSHARE_INDIVIDUAL_FUND_FLOW_RAW_ONLY")
             elif record.request.category is DataCategory.MARGIN_TRADING:
                 if listing.canonical_id[:2] not in {"SH", "SZ", "BJ"}:
                     raise ProviderNormalizationError(
@@ -2348,7 +2402,10 @@ class AKShareNormalizer:
             "suspension events and reasons do not establish a complete status or "
             "governance conclusion. Goodwill-impairment records remain raw "
             "structured evidence because aggregator amounts and announcement "
-            "dates do not establish filing-backed accounting scope."
+            "dates do not establish filing-backed accounting scope. Individual "
+            "fund-flow records remain raw structured evidence because investor-flow "
+            "amounts and percentages do not establish issuer cash flow, accounting "
+            "period, liquidity or valuation facts."
         )
         if "AKSHARE_CORPORATE_ACTIONS_RAW_ONLY" in normalizer_flags:
             notes += (
@@ -2521,6 +2578,13 @@ class AKShareNormalizer:
                 " The documented Sina ESG-rating response is retained as raw evidence "
                 "only: its agency-specific ratings and quarter labels do not establish "
                 "a comparable score, governance-risk level or Business Quality judgment."
+            )
+        if "AKSHARE_INDIVIDUAL_FUND_FLOW_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented A-share individual-fund-flow response is retained as "
+                "raw evidence only: its daily investor-flow amounts and percentages, "
+                "even when paired with close-price context, do not establish issuer "
+                "cash flow, an accounting period, a liquidity metric or a valuation fact."
             )
         if "AKSHARE_MARGIN_TRADING_RAW_ONLY" in normalizer_flags:
             notes += (
@@ -2746,6 +2810,10 @@ def _endpoint_candidates(
         if market is ListingMarket.A:
             return ("stock_zh_a_hist", "stock_zh_a_daily")
         return ("stock_hk_daily", "stock_zh_ah_daily")
+    if category is DataCategory.CAPITAL_FLOW:
+        if market is ListingMarket.A:
+            return ("stock_individual_fund_flow",)
+        return ()
     if category is DataCategory.CASH_FLOW_STATEMENT:
         if market is ListingMarket.A:
             return ("stock_cash_flow_sheet_by_report_em", "stock_financial_report_sina")
@@ -4802,6 +4870,54 @@ def _validate_esg_rating_provider_rows(
             )
 
 
+def _validate_capital_flow_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> list[date]:
+    """Validate the dated, listing-scoped individual-fund-flow response."""
+
+    dates: list[date] = []
+    seen_dates: set[date] = set()
+    for row in rows:
+        row_code = _row_code(row, ListingMarket.A)
+        if row_code is not None and row_code != listing.code:
+            raise ProviderResponseError(
+                f"AKShare returned a capital-flow row entity {row_code!r} for "
+                f"requested listing {listing.canonical_id!r}",
+                provider=provider,
+                request=request,
+            )
+        found, raw_date = _lookup(row, _CAPITAL_FLOW_DATE_FIELDS)
+        if not found or _text_value(raw_date) in _MISSING_TEXT:
+            raise ProviderResponseError(
+                f"AKShare returned a capital-flow row without an observation date for "
+                f"{request.entity_id!r}",
+                provider=provider,
+                request=request,
+            )
+        row_date = _parse_date_value(raw_date)
+        if row_date is None:
+            raise ProviderResponseError(
+                f"AKShare returned an invalid capital-flow observation date for "
+                f"{request.entity_id!r}",
+                provider=provider,
+                request=request,
+            )
+        if row_date in seen_dates:
+            raise ProviderResponseError(
+                f"AKShare returned duplicate capital-flow observation date "
+                f"{row_date.isoformat()!r} for {request.entity_id!r}",
+                provider=provider,
+                request=request,
+            )
+        seen_dates.add(row_date)
+        dates.append(row_date)
+    return dates
+
+
 def _select_esg_rating_rows(
     rows: Sequence[Mapping[str, JSONValue]],
     listing: _ListingRef,
@@ -5469,6 +5585,37 @@ def _validate_esg_rating_normalizer_rows(
                 f"ESG-rating row entity {row_listing.canonical_id!r} does not match "
                 f"requested listing {listing.canonical_id!r}"
             )
+
+
+def _validate_capital_flow_normalizer_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+) -> None:
+    """Keep replayed individual-fund-flow rows inside their request scope."""
+
+    seen_dates: set[date] = set()
+    for row in rows:
+        row_code = _row_code(row, ListingMarket.A)
+        if row_code is not None and row_code != listing.code:
+            raise ProviderNormalizationError(
+                f"capital-flow row entity {row_code!r} does not match "
+                f"requested listing {listing.canonical_id!r}"
+            )
+        found, raw_date = _lookup(row, _CAPITAL_FLOW_DATE_FIELDS)
+        if not found or _text_value(raw_date) in _MISSING_TEXT:
+            raise ProviderNormalizationError(
+                "capital-flow row has no exact observation date"
+            )
+        row_date = _parse_date_value(raw_date)
+        if row_date is None:
+            raise ProviderNormalizationError(
+                "capital-flow row has an invalid observation date"
+            )
+        if row_date in seen_dates:
+            raise ProviderNormalizationError(
+                f"capital-flow row has duplicate observation date {row_date.isoformat()!r}"
+            )
+        seen_dates.add(row_date)
 
 
 def _validate_margin_trading_normalizer_rows(
@@ -6432,6 +6579,43 @@ def _validate_shareholder_count_normalizer_rows(
                 f"shareholder-count row date {row_date.isoformat()!r} does not match "
                 f"requested observation date {observation_date.isoformat()!r}"
             )
+
+
+def _capital_flow_kwargs(
+    endpoint_name: str,
+    listing: _ListingRef,
+    request: ProviderRequest,
+) -> dict[str, object]:
+    """Build the documented A-share individual-fund-flow request."""
+
+    if endpoint_name != "stock_individual_fund_flow":
+        raise ProviderRequestError(
+            f"unsupported AKShare capital-flow endpoint {endpoint_name!r}",
+            request=request,
+            retryable=False,
+        )
+    if listing.market is not ListingMarket.A:
+        raise ProviderRequestError(
+            "the AKShare individual-fund-flow endpoint supports A-share listings only",
+            request=request,
+            retryable=False,
+        )
+    unknown = sorted(set(request.parameters) - _CAPITAL_FLOW_PARAMETER_NAMES)
+    if unknown:
+        raise ProviderRequestError(
+            "unsupported AKShare capital-flow parameter(s): " + ", ".join(unknown),
+            request=request,
+            retryable=False,
+        )
+    market_names = {"SH": "sh", "SZ": "sz", "BJ": "bj"}
+    market = market_names.get(listing.canonical_id[:2])
+    if market is None:
+        raise ProviderRequestError(
+            "the AKShare individual-fund-flow endpoint requires a mainland A-share listing",
+            request=request,
+            retryable=False,
+        )
+    return {"stock": listing.code, "market": market}
 
 
 def _history_kwargs(

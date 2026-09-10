@@ -174,6 +174,33 @@ canonical share, market-cap or valuation fact.
 | `行业` | Raw provider classification; it does not overwrite the caller's sector or establish a special model. |
 | `上市时间` | Validated raw listing-date context; it is not used as a statement period or automatic diluted-share fact. |
 
+## Phase 2.44 A-share individual-fund-flow raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_individual_fund_flow` as an Eastmoney A-share endpoint with
+`stock` and `market` inputs. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_fund_em.py)
+accepts the six-digit stock code and `sh`, `sz` or `bj` market selector, and
+returns recent daily rows (approximately 100 trading days) with the fields
+listed below.
+
+The provider derives the documented market selector from the explicit A-share
+listing identity, passes the six-digit code and market, validates the optional
+row code when present, rejects missing/invalid/duplicate observation dates and
+records the observed date range and request-bound listing provenance. The
+normalizer retains the response as evidence under
+`AKSHARE_INDIVIDUAL_FUND_FLOW_RAW_ONLY`; no normalized field or canonical fact
+is admitted by this slice. These values describe daily investor-flow aggregates
+and market-price context, not issuer cash flow, an accounting period, a
+canonical liquidity metric or a valuation input.
+
+| Raw upstream item | Phase 2 treatment |
+| --- | --- |
+| `日期` | Validated observation date for a recent trading-day row; it is not an accounting or statement period. |
+| `收盘价`, `涨跌幅` | Raw market context only; these values do not replace the quote or market-history contracts. |
+| `主力净流入-净额`, `超大单净流入-净额`, `大单净流入-净额`, `中单净流入-净额`, `小单净流入-净额` | Raw investor-flow amounts only; they are not issuer CFO, financing cash flow, shareholder return or liquidity facts. |
+| `主力净流入-净占比`, `超大单净流入-净占比`, `大单净流入-净占比`, `中单净流入-净占比`, `小单净流入-净占比` | Raw provider percentages only; denominator and investor-flow scope are not normalized into a canonical metric or valuation input. |
+| request `stock`, derived `market` | Explicit A-share endpoint selection and replayable listing provenance; no provider-specific identity leaks into the calculation layer. |
+
 ## Phase 2.9 corporate-action raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)

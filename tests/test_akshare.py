@@ -113,6 +113,14 @@ class FakeAKShare:
     def stock_hk_daily(self, **kwargs):
         return self._return("stock_hk_daily", _fixture("h_history.json"), **kwargs)
 
+    def stock_individual_fund_flow(self, *, stock: str, market: str):
+        return self._return(
+            "stock_individual_fund_flow",
+            _fixture("a_individual_fund_flow.json"),
+            stock=stock,
+            market=market,
+        )
+
     def stock_cash_flow_sheet_by_report_em(self, **kwargs):
         return self._return(
             "stock_cash_flow_sheet_by_report_em",
@@ -425,6 +433,7 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
     assert provider.capabilities.as_values() == (
         "balance_sheet",
         "business_composition",
+        "capital_flow",
         "cash_flow_statement",
         "company_metadata",
         "corporate_actions",
@@ -453,8 +462,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "43"
-    assert AKSHARE_MAPPING_VERSION == "44"
+    assert provider.identity.provider_version == "44"
+    assert AKSHARE_MAPPING_VERSION == "45"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -7468,3 +7477,160 @@ def test_bse_margin_detail_cache_replay_does_not_call_upstream(tmp_path: Path):
     assert replay.mode is RetrievalMode.CACHE_REPLAY
     assert replay.record == live.record
     assert fake.calls == [("stock_margin_detail_bse", {"date": "20260721"})]
+
+
+@pytest.mark.parametrize(
+    ("listing", "market"),
+    [("SH600000", "sh"), ("SZ000001", "sz"), ("BJ920000", "bj")],
+)
+def test_individual_fund_flow_fetch_uses_documented_listing_market_scope(
+    listing: str,
+    market: str,
+):
+    fake = FakeAKShare()
+    record = _provider(fake).fetch(_request(DataCategory.CAPITAL_FLOW, listing))
+
+    assert record.raw_payload == _fixture("a_individual_fund_flow.json")
+    assert fake.calls == [
+        ("stock_individual_fund_flow", {"stock": listing[-6:], "market": market}),
+    ]
+    assert record.response_metadata["endpoint"] == "stock_individual_fund_flow"
+    assert record.response_metadata["upstream_row_count"] == 3
+    assert record.response_metadata["entity_row_count"] == 3
+    assert record.response_metadata["entity_rows_selected"] is True
+    assert record.response_metadata["listing_scoped_request"] is True
+    assert record.response_metadata["snapshot_scope"] == "recent_trading_days"
+    assert record.response_metadata["observation_date_field"] == "日期"
+    assert record.response_metadata["observation_start_date"] == "2026-08-26"
+    assert record.response_metadata["observation_end_date"] == "2026-08-28"
+    assert record.source_uri == "https://data.eastmoney.com/zjlx/detail.html"
+
+
+def test_individual_fund_flow_request_rejects_h_shares_and_extra_parameters():
+    fake = FakeAKShare()
+    provider = _provider(fake)
+
+    with pytest.raises(ProviderRequestError, match="A-share listings only"):
+        provider.fetch(_request(DataCategory.CAPITAL_FLOW, "HK00700"))
+    with pytest.raises(ProviderRequestError, match="unsupported AKShare capital-flow"):
+        provider.fetch(
+            _request(
+                DataCategory.CAPITAL_FLOW,
+                "SH600000",
+                {"start_date": "20260101"},
+            )
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("missing_date", "capital-flow row without an observation date"),
+        ("invalid_date", "invalid capital-flow observation date"),
+        ("wrong_identity", "capital-flow row entity"),
+        ("duplicate_date", "duplicate capital-flow observation date"),
+    ],
+)
+def test_individual_fund_flow_response_validates_dates_and_optional_identity(
+    mutation: str,
+    match: str,
+):
+    class InvalidRows(FakeAKShare):
+        def stock_individual_fund_flow(self, *, stock: str, market: str):
+            rows = _fixture("a_individual_fund_flow.json")
+            if mutation == "missing_date":
+                rows[0].pop("日期")
+            elif mutation == "invalid_date":
+                rows[0]["日期"] = "not-a-date"
+            elif mutation == "wrong_identity":
+                rows[0]["代码"] = "000001"
+            else:
+                rows[1]["日期"] = rows[0]["日期"]
+            return self._return(
+                "stock_individual_fund_flow",
+                rows,
+                stock=stock,
+                market=market,
+            )
+
+    with pytest.raises(ProviderResponseError, match=match):
+        _provider(InvalidRows()).fetch(_request(DataCategory.CAPITAL_FLOW, "SH600000"))
+
+
+def test_individual_fund_flow_is_retained_as_raw_evidence_without_canonical_facts():
+    record = _provider().fetch(_request(DataCategory.CAPITAL_FLOW, "SH600000"))
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="individual-fund-flow-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_INDIVIDUAL_FUND_FLOW_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == []
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "investor-flow amounts and percentages" in normalized.data_quality.notes
+    assert "issuer cash flow" in normalized.data_quality.notes
+    assert "valuation fact" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "match"),
+    [
+        ("日期", "not-a-date", "capital-flow row has an invalid observation date"),
+        ("代码", "000001", "capital-flow row entity"),
+    ],
+)
+def test_individual_fund_flow_normalizer_rejects_replayed_scope_mismatches(
+    field: str,
+    value: str,
+    match: str,
+):
+    record = _provider().fetch(_request(DataCategory.CAPITAL_FLOW, "SH600000"))
+    payload = [dict(row) for row in record.raw_payload]
+    payload[0][field] = value
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=record.source_uri,
+        response_metadata=record.response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match=match):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-individual-fund-flow",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_individual_fund_flow_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(DataCategory.CAPITAL_FLOW, "SH600000")
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [
+        ("stock_individual_fund_flow", {"stock": "600000", "market": "sh"}),
+    ]
