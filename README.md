@@ -469,6 +469,19 @@ then records the listing, symbol, adjustment and observed date scope for replay.
 The normalizer emits `AKSHARE_CHIP_DISTRIBUTION_RAW_ONLY`: provider-defined
 benefit, cost and concentration observations remain raw evidence and do not
 become canonical daily-history, liquidity, concentration or valuation facts.
+Phase 2.59 adds the distinct documented Eastmoney A-share
+market-participation-desire endpoint
+[`stock_comment_detail_scrd_desire_em`](https://akshare.akfamily.xyz/data/stock/stock.html),
+whose current callable is defined in the
+[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_comment_em.py),
+under `MARKET_ACTIVITY` with explicit `view=participation_desire`. It passes the
+unprefixed six-digit A-share listing code; the adapter validates the exact six
+fields, finite numeric/null values, strictly ascending ISO dates and the
+implementation's maximum 30-row window, and records the listing, symbol and
+observed-date scope for replay. The normalizer emits
+`AKSHARE_MARKET_PARTICIPATION_DESIRE_RAW_ONLY`: provider-defined participation
+scores and changes remain raw evidence and do not become issuer cash flow,
+shareholder return, governance, market or valuation facts.
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

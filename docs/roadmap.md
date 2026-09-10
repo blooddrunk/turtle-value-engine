@@ -1438,6 +1438,30 @@ liquidity, concentration or valuation fact. Live calls remain opt-in; tests use
 an injected client and a frozen fixture with cache replay, invalid-parameter,
 response-validation, raw-only and replay-scope coverage.
 
+### Phase 2.59 — A-share market-participation desire raw acquisition contract (COMPLETE)
+
+The mapping review now covers the distinct Eastmoney market-participation-desire
+endpoint documented as
+[`stock_comment_detail_scrd_desire_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
+and implemented by the current [official source](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_comment_em.py).
+It accepts an A-share six-digit `symbol` and returns the exact fields `交易日期`,
+`股票代码`, `参与意愿`, `5日平均参与意愿`, `参与意愿变化` and `5日平均变化`;
+the current implementation requests a maximum 30-row window and orders the
+response by `交易日期`.
+
+The provider selects this callable only under the existing provider-neutral
+`MARKET_ACTIVITY` category with explicit `view=participation_desire`, passes the
+unprefixed A-share code, validates the exact response shape, listing identity,
+finite numeric/null values, strict ascending ISO dates and the maximum 30-row
+window, and records the listing, symbol, row limit and observed date bounds for
+replay. The normalizer emits
+`AKSHARE_MARKET_PARTICIPATION_DESIRE_RAW_ONLY`; provider-defined participation
+scores and changes remain raw evidence and create no canonical market,
+issuer-cash-flow, shareholder-return, governance or valuation fact. Live calls
+remain opt-in; tests use an injected client and a frozen fixture with cache
+replay, invalid-parameter, response-validation, raw-only and replay-scope
+coverage.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -1447,7 +1471,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.58 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.59 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -1655,7 +1679,7 @@ Phase 2 is active. Phase 1 remains frozen: changes to formulas, hard-gate
 semantics, schemas or `strict-v1` thresholds require a separately reviewed,
 versioned change.
 
-Phase 2.58 completes the next documented structured-data boundary while
+Phase 2.59 completes the next documented structured-data boundary while
 keeping share-change, repurchase and rights-issue period, status, unit and
 economic-scope questions unresolved, and keeping ownership-pledge holder,
 governance and economic-scope questions unresolved. The A-share
@@ -1673,6 +1697,12 @@ Sina minute-history response remains raw-only because its recent provider
 window, minute interval and adjustment mode do not establish canonical daily
 history or a valuation input; `view=sina_minute`, the market-prefixed symbol,
 interval and adjustment remain part of its replayable acquisition boundary.
+The A-share market-participation-desire response remains raw-only because its
+provider-defined participation scores/change fields and latest 30-trading-day
+window do not establish a canonical market metric, issuer cash flow,
+shareholder return, governance or valuation fact; `view=participation_desire`,
+the unprefixed symbol, exact field set, row limit and observed date bounds
+remain part of its replayable acquisition boundary.
 The H-share intraday-history response remains raw-only because its recent
 minute-bar window, period-specific schema, adjustment mode and HKD market
 context do not establish canonical daily history or a valuation input;

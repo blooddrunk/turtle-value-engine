@@ -20,7 +20,8 @@ latest-indicator raw slice, the A-share goodwill-impairment detail raw slice,
 the SSE/SZSE/BSE margin-detail raw slices, the A-share individual ownership-pledge
 detail view, the A-share CNINFO equity-mortgage view, A-share company-litigation
 raw slice and A-share Eastmoney individual-info raw slice.
-The A-share Eastmoney individual-fund-flow, chip-distribution, Tencent
+The A-share Eastmoney individual-fund-flow, market-participation-desire,
+chip-distribution, Tencent
 daily-history and Tencent latest-trading-day tick, Sina minute-history,
 intraday-history, H-share intraday-history, pre-market-history, five-level bid-ask
 and Dragon-Tiger market-activity detail/statistics/institution-statistics raw
@@ -73,9 +74,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "58"
+AKSHARE_ADAPTER_VERSION = "59"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "59"
+AKSHARE_MAPPING_VERSION = "60"
 
 
 class ListingMarket(StrEnum):
@@ -147,6 +148,7 @@ _SOURCE_URIS = {
     "stock_lhb_detail_em": "https://data.eastmoney.com/stock/tradedetail.html",
     "stock_lhb_stock_statistic_em": "https://data.eastmoney.com/stock/tradedetail.html",
     "stock_lhb_jgstatistic_em": "https://data.eastmoney.com/stock/jgstatistic.html",
+    "stock_comment_detail_scrd_desire_em": "https://data.eastmoney.com/stockcomment/stock/600000.html",
     "stock_hk_company_profile_em": "https://emweb.securities.eastmoney.com/PC_HKF10/pages/home/index.html",
     "stock_hk_security_profile_em": "https://emweb.securities.eastmoney.com/PC_HKF10/pages/home/index.html",
     "stock_cash_flow_sheet_by_report_em": "https://emweb.securities.eastmoney.com/PC_HSF10/NewFinanceAnalysis/Index",
@@ -438,6 +440,19 @@ _MARKET_ACTIVITY_STATISTIC_PERIODS = frozenset(_MARKET_ACTIVITY_STATISTIC_PERIOD
 _MARKET_ACTIVITY_INSTITUTION_STATISTIC_PARAMETER_NAMES = frozenset({"view", "period"})
 _MARKET_ACTIVITY_INSTITUTION_STATISTIC_VIEW = "institution_statistic"
 _MARKET_ACTIVITY_INSTITUTION_STATISTIC_PERIODS = _MARKET_ACTIVITY_STATISTIC_PERIODS
+_MARKET_ACTIVITY_PARTICIPATION_DESIRE_PARAMETER_NAMES = frozenset({"view"})
+_MARKET_ACTIVITY_PARTICIPATION_DESIRE_VIEW = "participation_desire"
+_MARKET_ACTIVITY_PARTICIPATION_DESIRE_MAX_ROWS = 30
+_MARKET_ACTIVITY_PARTICIPATION_DESIRE_FIELDS = frozenset(
+    {
+        "交易日期",
+        "股票代码",
+        "参与意愿",
+        "5日平均参与意愿",
+        "参与意愿变化",
+        "5日平均变化",
+    }
+)
 
 _FINANCIAL_STATEMENT_PARAMETER_NAMES = frozenset({"indicator", "statement_date"})
 _EARNINGS_FORECAST_PARAMETER_NAMES = frozenset({"date"})
@@ -1041,7 +1056,36 @@ class AKShareProvider(StructuredDataProvider):
                 response_metadata["observation_end_date"] = max(observation_dates).isoformat()
         elif request.category is DataCategory.MARKET_ACTIVITY:
             rows = _table_rows(payload, provider=self.identity, request=request)
-            if endpoint.name == "stock_lhb_detail_em":
+            if endpoint.name == "stock_comment_detail_scrd_desire_em":
+                observation_dates = _validate_market_activity_participation_desire_provider_rows(
+                    rows,
+                    listing,
+                    provider=self.identity,
+                    request=request,
+                )
+                response_metadata["upstream_row_count"] = len(rows)
+                response_metadata["entity_row_count"] = len(rows)
+                response_metadata["entity_rows_selected"] = True
+                response_metadata["listing_scoped_request"] = True
+                response_metadata["market_activity_view"] = (
+                    _MARKET_ACTIVITY_PARTICIPATION_DESIRE_VIEW
+                )
+                response_metadata["upstream_symbol"] = kwargs["symbol"]
+                response_metadata["snapshot_scope"] = "latest_30_trading_days"
+                response_metadata["observation_date_field"] = "交易日期"
+                response_metadata["time_ordering"] = "strictly_ascending"
+                response_metadata["date_binding"] = "row_only"
+                response_metadata["range_filtering"] = "none"
+                response_metadata["provider_row_limit"] = (
+                    _MARKET_ACTIVITY_PARTICIPATION_DESIRE_MAX_ROWS
+                )
+                response_metadata["observation_start_date"] = (
+                    min(observation_dates).isoformat() if observation_dates else None
+                )
+                response_metadata["observation_end_date"] = (
+                    max(observation_dates).isoformat() if observation_dates else None
+                )
+            elif endpoint.name == "stock_lhb_detail_em":
                 start_date, end_date = _market_activity_date_range(request)
                 activity_dates = _validate_market_activity_provider_rows(
                     rows,
@@ -2146,6 +2190,10 @@ class AKShareProvider(StructuredDataProvider):
             market_activity_statistic_requested=(
                 "view" in request.parameters or "period" in request.parameters
             ),
+            market_activity_participation_desire_requested=(
+                request.parameters.get("view")
+                == _MARKET_ACTIVITY_PARTICIPATION_DESIRE_VIEW
+            ),
             market_activity_institution_statistic_requested=(
                 request.parameters.get("view")
                 == _MARKET_ACTIVITY_INSTITUTION_STATISTIC_VIEW
@@ -2496,7 +2544,16 @@ class AKShareNormalizer:
                         "AKShare market-activity raw slice supports A-share listings only"
                     )
                 endpoint_name = record.response_metadata.get("endpoint")
-                if endpoint_name == "stock_lhb_detail_em":
+                if endpoint_name == "stock_comment_detail_scrd_desire_em":
+                    _validate_market_activity_participation_desire_normalizer_scope(
+                        record,
+                        listing,
+                        rows,
+                    )
+                    normalizer_flags.add(
+                        "AKSHARE_MARKET_PARTICIPATION_DESIRE_RAW_ONLY"
+                    )
+                elif endpoint_name == "stock_lhb_detail_em":
                     try:
                         start_date, end_date = _market_activity_date_range(record.request)
                     except ProviderRequestError as exc:
@@ -2567,8 +2624,8 @@ class AKShareNormalizer:
                 else:
                     raise ProviderNormalizationError(
                         "AKShare market-activity record must come from "
-                        "stock_lhb_detail_em, stock_lhb_stock_statistic_em or "
-                        "stock_lhb_jgstatistic_em"
+                        "stock_comment_detail_scrd_desire_em, stock_lhb_detail_em, "
+                        "stock_lhb_stock_statistic_em or stock_lhb_jgstatistic_em"
                     )
             elif record.request.category is DataCategory.MARGIN_TRADING:
                 if listing.canonical_id[:2] not in {"SH", "SZ", "BJ"}:
@@ -3631,6 +3688,13 @@ class AKShareNormalizer:
                 "cash flow, shareholder return, governance, valuation or a canonical "
                 "market metric."
             )
+        if "AKSHARE_MARKET_PARTICIPATION_DESIRE_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented A-share market-participation response is retained as "
+                "raw evidence only: provider-defined participation scores and changes "
+                "over a recent trading-day window do not establish issuer cash flow, "
+                "shareholder return, governance, valuation or a canonical market metric."
+            )
         if "AKSHARE_TOP_10_SHAREHOLDERS_RAW_ONLY" in normalizer_flags:
             notes += (
                 " The documented A-share top-ten-shareholder response is retained as "
@@ -3919,6 +3983,7 @@ def _endpoint_candidates(
     insider_management_detail_requested: bool = False,
     market_activity_statistic_requested: bool = False,
     market_activity_institution_statistic_requested: bool = False,
+    market_activity_participation_desire_requested: bool = False,
     market_quote_bid_ask_requested: bool = False,
     market_history_intraday_requested: bool = False,
     market_history_hk_intraday_requested: bool = False,
@@ -3985,6 +4050,8 @@ def _endpoint_candidates(
         return ("stock_hk_daily", "stock_zh_ah_daily")
     if category is DataCategory.MARKET_ACTIVITY:
         if market is ListingMarket.A:
+            if market_activity_participation_desire_requested:
+                return ("stock_comment_detail_scrd_desire_em",)
             if market_activity_institution_statistic_requested:
                 return ("stock_lhb_jgstatistic_em",)
             if market_activity_statistic_requested:
@@ -7533,6 +7600,121 @@ def _validate_market_activity_provider_rows(
     return dates
 
 
+def _market_activity_participation_desire_date(value: object) -> date | None:
+    if not isinstance(value, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _market_activity_participation_desire_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+) -> tuple[str | None, list[date]]:
+    if len(rows) > _MARKET_ACTIVITY_PARTICIPATION_DESIRE_MAX_ROWS:
+        return (
+            "market-participation response contains more than "
+            f"{_MARKET_ACTIVITY_PARTICIPATION_DESIRE_MAX_ROWS} rows",
+            [],
+        )
+
+    numeric_fields = _MARKET_ACTIVITY_PARTICIPATION_DESIRE_FIELDS - {
+        "交易日期",
+        "股票代码",
+    }
+    observation_dates: list[date] = []
+    previous_date: date | None = None
+    for index, row in enumerate(rows):
+        missing = sorted(_MARKET_ACTIVITY_PARTICIPATION_DESIRE_FIELDS - set(row))
+        unexpected = sorted(set(row) - _MARKET_ACTIVITY_PARTICIPATION_DESIRE_FIELDS)
+        if missing:
+            return (
+                f"market-participation row {index} is missing field(s): "
+                + ", ".join(missing),
+                [],
+            )
+        if unexpected:
+            return (
+                f"market-participation row {index} contains unsupported field(s): "
+                + ", ".join(unexpected),
+                [],
+            )
+
+        row_code = _canonical_row_code(row["股票代码"], ListingMarket.A)
+        if row_code is None:
+            return f"market-participation row {index} has an invalid 股票代码", []
+        if row_code != listing.code:
+            return (
+                f"market-participation row {index} entity {row_code!r} does not match "
+                f"requested listing {listing.canonical_id!r}",
+                [],
+            )
+
+        observation_date = _market_activity_participation_desire_date(row["交易日期"])
+        if observation_date is None:
+            return f"market-participation row {index} has an invalid 交易日期", []
+        if previous_date is not None and observation_date <= previous_date:
+            if observation_date == previous_date:
+                return (
+                    "market-participation response has duplicate 交易日期 "
+                    f"{observation_date.isoformat()!r}",
+                    [],
+                )
+            return "market-participation response 交易日期 values must be strictly ascending", []
+        previous_date = observation_date
+        observation_dates.append(observation_date)
+
+        for field in sorted(numeric_fields):
+            value = row[field]
+            if value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, Real):
+                return (
+                    f"market-participation row {index} field {field!r} "
+                    "must be numeric or null",
+                    [],
+                )
+            try:
+                numeric = float(value)
+            except (OverflowError, TypeError, ValueError):
+                return (
+                    f"market-participation row {index} field {field!r} "
+                    "must be numeric or null",
+                    [],
+                )
+            if not math.isfinite(numeric):
+                return (
+                    f"market-participation row {index} field {field!r} "
+                    "must be finite or null",
+                    [],
+                )
+    return None, observation_dates
+
+
+def _validate_market_activity_participation_desire_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> list[date]:
+    """Validate the symbol-scoped market-participation response."""
+
+    message, observation_dates = _market_activity_participation_desire_validation_message(
+        rows,
+        listing,
+    )
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message}",
+            provider=provider,
+            request=request,
+        )
+    return observation_dates
+
+
 def _validate_market_activity_statistic_provider_rows(
     rows: Sequence[Mapping[str, JSONValue]],
     *,
@@ -8344,6 +8526,83 @@ def _validate_market_activity_normalizer_rows(
                 f"market-activity row date {row_date.isoformat()!r} is outside "
                 f"requested range {start_date.isoformat()!r}..{end_date.isoformat()!r}"
             )
+
+
+def _validate_market_activity_participation_desire_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> None:
+    """Validate the replay scope of a market-participation response."""
+
+    if listing.market is not ListingMarket.A:
+        raise ProviderNormalizationError(
+            "AKShare market-participation raw slice supports A-share listings only"
+        )
+    if record.response_metadata.get("endpoint") != "stock_comment_detail_scrd_desire_em":
+        raise ProviderNormalizationError(
+            "AKShare market-participation record must come from "
+            "stock_comment_detail_scrd_desire_em"
+        )
+    try:
+        upstream_kwargs = _market_activity_participation_desire_kwargs(
+            "stock_comment_detail_scrd_desire_em",
+            listing,
+            record.request,
+        )
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+
+    expected_metadata = {
+        "market_activity_view": _MARKET_ACTIVITY_PARTICIPATION_DESIRE_VIEW,
+        "upstream_symbol": upstream_kwargs["symbol"],
+        "listing_scoped_request": True,
+        "snapshot_scope": "latest_30_trading_days",
+        "observation_date_field": "交易日期",
+        "time_ordering": "strictly_ascending",
+        "date_binding": "row_only",
+        "range_filtering": "none",
+        "provider_row_limit": _MARKET_ACTIVITY_PARTICIPATION_DESIRE_MAX_ROWS,
+        "upstream_row_count": len(rows),
+        "entity_row_count": len(rows),
+        "entity_rows_selected": True,
+    }
+    for name, expected in expected_metadata.items():
+        if record.response_metadata.get(name) != expected:
+            raise ProviderNormalizationError(
+                f"market-participation response metadata {name!r} does not match "
+                "the requested replay scope"
+            )
+
+    observation_dates = _validate_market_activity_participation_desire_normalizer_rows(
+        rows,
+        listing,
+    )
+    expected_start = min(observation_dates).isoformat() if observation_dates else None
+    expected_end = max(observation_dates).isoformat() if observation_dates else None
+    if record.response_metadata.get("observation_start_date") != expected_start:
+        raise ProviderNormalizationError(
+            "market-participation response observation start does not match replayed rows"
+        )
+    if record.response_metadata.get("observation_end_date") != expected_end:
+        raise ProviderNormalizationError(
+            "market-participation response observation end does not match replayed rows"
+        )
+
+
+def _validate_market_activity_participation_desire_normalizer_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+) -> list[date]:
+    """Keep replayed market-participation rows inside the listing/date scope."""
+
+    message, observation_dates = _market_activity_participation_desire_validation_message(
+        rows,
+        listing,
+    )
+    if message is not None:
+        raise ProviderNormalizationError(message)
+    return observation_dates
 
 
 def _validate_market_activity_statistic_normalizer_rows(
@@ -9654,8 +9913,10 @@ def _market_activity_kwargs(
     listing: _ListingRef,
     request: ProviderRequest,
 ) -> dict[str, object]:
-    """Build one documented full-universe Dragon-Tiger request."""
+    """Build one documented market-activity request."""
 
+    if endpoint_name == "stock_comment_detail_scrd_desire_em":
+        return _market_activity_participation_desire_kwargs(endpoint_name, listing, request)
     if endpoint_name == "stock_lhb_stock_statistic_em":
         return _market_activity_statistic_kwargs(endpoint_name, listing, request)
     if endpoint_name == "stock_lhb_jgstatistic_em":
@@ -9685,6 +9946,44 @@ def _market_activity_kwargs(
         "start_date": request.parameters["start_date"],
         "end_date": request.parameters["end_date"],
     }
+
+
+def _market_activity_participation_desire_kwargs(
+    endpoint_name: str,
+    listing: _ListingRef,
+    request: ProviderRequest,
+) -> dict[str, object]:
+    """Build the documented symbol-scoped market-participation request."""
+
+    if endpoint_name != "stock_comment_detail_scrd_desire_em":
+        raise ProviderRequestError(
+            f"unsupported AKShare market-participation endpoint {endpoint_name!r}",
+            request=request,
+            retryable=False,
+        )
+    if listing.market is not ListingMarket.A:
+        raise ProviderRequestError(
+            "the AKShare market-participation endpoint supports A-share listings only",
+            request=request,
+            retryable=False,
+        )
+    unknown = sorted(
+        set(request.parameters) - _MARKET_ACTIVITY_PARTICIPATION_DESIRE_PARAMETER_NAMES
+    )
+    if unknown:
+        raise ProviderRequestError(
+            "unsupported AKShare market-participation parameter(s): " + ", ".join(unknown),
+            request=request,
+            retryable=False,
+        )
+    if request.parameters.get("view") != _MARKET_ACTIVITY_PARTICIPATION_DESIRE_VIEW:
+        raise ProviderRequestError(
+            "the AKShare market-participation endpoint requires "
+            f"view={_MARKET_ACTIVITY_PARTICIPATION_DESIRE_VIEW!r}",
+            request=request,
+            retryable=False,
+        )
+    return {"symbol": listing.code}
 
 
 def _market_activity_statistic_period(request: ProviderRequest) -> str:

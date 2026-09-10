@@ -599,6 +599,32 @@ calculation, gate, pipeline, CLI and input-loader contracts. Its raw evidence
 is available for later review without being treated as canonical daily history,
 liquidity, shareholder concentration or valuation input.
 
+## Phase 2.59 A-share market-participation desire raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_comment_detail_scrd_desire_em` as an Eastmoney symbol-scoped
+A-share endpoint with a six-digit `symbol`. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_comment_em.py)
+requests the participation report with a 30-row page size, maps the response
+to exactly the six fields below and sorts by `交易日期`.
+
+The provider selects this endpoint only under the existing provider-neutral
+`MARKET_ACTIVITY` category with explicit `view=participation_desire`, passes the
+unprefixed listing code, validates the exact field set, listing identity,
+finite numeric/null values, strictly ascending ISO dates and the maximum
+30-row window, and records the listing, symbol and observed-date scope for
+replay. The normalizer emits
+`AKSHARE_MARKET_PARTICIPATION_DESIRE_RAW_ONLY`; no canonical market,
+issuer-cash-flow, shareholder-return, governance, valuation or other fact is
+admitted.
+
+| Raw upstream item | Phase 2 treatment |
+| --- | --- |
+| `交易日期` | Validated ISO observation date in strict ascending order; raw market-activity context, not an accounting, fund-flow or filing period. |
+| `股票代码` | Required to match the requested A-share listing; no additional issuer fact is inferred. |
+| `参与意愿`, `5日平均参与意愿` | Provider-defined participation scores; no scale, denominator, canonical sentiment or market metric is inferred. |
+| `参与意愿变化`, `5日平均变化` | Provider-defined change fields; no return, flow, governance or valuation meaning is inferred. |
+| request `view=participation_desire`, unprefixed six-digit `symbol` | Explicit endpoint/listing and latest-30-trading-day replay scope; observed date bounds are retained as metadata. |
+
 ## Phase 2.9 corporate-action raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)

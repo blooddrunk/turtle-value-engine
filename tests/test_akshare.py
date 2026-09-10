@@ -246,6 +246,13 @@ class FakeAKShare:
             symbol=symbol,
         )
 
+    def stock_comment_detail_scrd_desire_em(self, *, symbol: str):
+        return self._return(
+            "stock_comment_detail_scrd_desire_em",
+            _fixture("a_market_participation_desire.json"),
+            symbol=symbol,
+        )
+
     def stock_cash_flow_sheet_by_report_em(self, **kwargs):
         return self._return(
             "stock_cash_flow_sheet_by_report_em",
@@ -611,8 +618,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "58"
-    assert AKSHARE_MAPPING_VERSION == "59"
+    assert provider.identity.provider_version == "59"
+    assert AKSHARE_MAPPING_VERSION == "60"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -11399,6 +11406,240 @@ def test_market_activity_institution_statistic_cache_replay_does_not_call_upstre
     assert replay.record == live.record
     assert fake.calls == [
         ("stock_lhb_jgstatistic_em", {"symbol": "近三月"}),
+    ]
+
+
+def test_market_participation_desire_fetch_uses_explicit_view_and_listing_symbol():
+    fake = FakeAKShare()
+    request = _request(
+        DataCategory.MARKET_ACTIVITY,
+        "SH600000",
+        {"view": "participation_desire"},
+    )
+    record = _provider(fake).fetch(request)
+
+    assert record.raw_payload == _fixture("a_market_participation_desire.json")
+    assert fake.calls == [
+        ("stock_comment_detail_scrd_desire_em", {"symbol": "600000"}),
+    ]
+    assert record.response_metadata["endpoint"] == "stock_comment_detail_scrd_desire_em"
+    assert record.response_metadata["market_activity_view"] == "participation_desire"
+    assert record.response_metadata["upstream_symbol"] == "600000"
+    assert record.response_metadata["snapshot_scope"] == "latest_30_trading_days"
+    assert record.response_metadata["observation_date_field"] == "交易日期"
+    assert record.response_metadata["time_ordering"] == "strictly_ascending"
+    assert record.response_metadata["date_binding"] == "row_only"
+    assert record.response_metadata["range_filtering"] == "none"
+    assert record.response_metadata["provider_row_limit"] == 30
+    assert record.response_metadata["observation_start_date"] == "2026-09-03"
+    assert record.response_metadata["observation_end_date"] == "2026-09-09"
+    assert record.response_metadata["upstream_row_count"] == 5
+    assert record.response_metadata["entity_row_count"] == 5
+    assert record.response_metadata["entity_rows_selected"] is True
+    assert record.response_metadata["listing_scoped_request"] is True
+    assert record.source_uri == (
+        "https://data.eastmoney.com/stockcomment/stock/600000.html"
+    )
+
+
+@pytest.mark.parametrize(
+    ("parameters", "entity_id", "match"),
+    [
+        (
+            {"view": "participation_desire", "period": "近三月"},
+            "SH600000",
+            "unsupported AKShare market-participation parameter",
+        ),
+        (
+            {"view": "participation_desire", "symbol": "600000"},
+            "SH600000",
+            "unsupported AKShare market-participation parameter",
+        ),
+        (
+            {"view": "not-a-view"},
+            "SH600000",
+            "requires view='stock_statistic'",
+        ),
+        (
+            {"view": "participation_desire"},
+            "HK00700",
+            "A-share listings only",
+        ),
+    ],
+)
+def test_market_participation_desire_request_validates_view_parameters_and_market(
+    parameters: dict,
+    entity_id: str,
+    match: str,
+):
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError, match=match):
+        _provider(fake).fetch(
+            _request(DataCategory.MARKET_ACTIVITY, entity_id, parameters)
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("missing_code", "market-participation row .*missing field.*股票代码"),
+        ("wrong_code", "market-participation row .*entity '000001'.*requested listing"),
+        ("missing_date", "market-participation row .*missing field.*交易日期"),
+        ("invalid_date", "market-participation row .*invalid 交易日期"),
+        ("out_of_order", "交易日期 values must be strictly ascending"),
+        ("duplicate_date", "duplicate 交易日期"),
+        ("extra_field", "contains unsupported field.*extra"),
+        ("non_numeric", "field '参与意愿'.*numeric or null"),
+        ("too_many_rows", "contains more than 30 rows"),
+    ],
+)
+def test_market_participation_desire_response_validates_exact_rows(
+    mutation: str,
+    match: str,
+):
+    class InvalidRows(FakeAKShare):
+        def stock_comment_detail_scrd_desire_em(self, *, symbol: str):
+            rows = _fixture("a_market_participation_desire.json")
+            if mutation == "missing_code":
+                rows[0].pop("股票代码")
+            elif mutation == "wrong_code":
+                rows[0]["股票代码"] = "000001"
+            elif mutation == "missing_date":
+                rows[0].pop("交易日期")
+            elif mutation == "invalid_date":
+                rows[0]["交易日期"] = "not-a-date"
+            elif mutation == "out_of_order":
+                rows[1]["交易日期"] = "2026-09-02"
+            elif mutation == "duplicate_date":
+                rows[1]["交易日期"] = rows[0]["交易日期"]
+            elif mutation == "extra_field":
+                rows[0]["extra"] = 1
+            elif mutation == "non_numeric":
+                rows[0]["参与意愿"] = "47.31"
+            else:
+                rows.extend([dict(row) for row in rows] * 6)
+            return self._return(
+                "stock_comment_detail_scrd_desire_em",
+                rows,
+                symbol=symbol,
+            )
+
+    with pytest.raises(ProviderResponseError, match=match):
+        _provider(InvalidRows()).fetch(
+            _request(
+                DataCategory.MARKET_ACTIVITY,
+                "SH600000",
+                {"view": "participation_desire"},
+            )
+        )
+
+
+def test_market_participation_desire_is_retained_as_raw_evidence_without_canonical_facts():
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SH600000",
+            {"view": "participation_desire"},
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="market-participation-desire-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_MARKET_PARTICIPATION_DESIRE_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == []
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "market-participation" in normalized.data_quality.notes
+    assert "participation scores" in normalized.data_quality.notes
+    assert "issuer cash flow" in normalized.data_quality.notes
+    assert "canonical market metric" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("entity", "market-participation row .*entity '000001'.*requested listing"),
+        ("missing_date", "missing field.*交易日期"),
+        ("invalid_date", "invalid 交易日期"),
+        ("metadata_view", "response metadata 'market_activity_view'"),
+        ("metadata_start", "observation start does not match"),
+    ],
+)
+def test_market_participation_desire_normalizer_rejects_replayed_scope_mismatches(
+    mutation: str,
+    match: str,
+):
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SH600000",
+            {"view": "participation_desire"},
+        )
+    )
+    payload = [dict(row) for row in record.raw_payload]
+    response_metadata = dict(record.response_metadata)
+    if mutation == "entity":
+        payload[0]["股票代码"] = "000001"
+    elif mutation == "missing_date":
+        payload[0].pop("交易日期")
+    elif mutation == "invalid_date":
+        payload[0]["交易日期"] = "not-a-date"
+    elif mutation == "metadata_view":
+        response_metadata["market_activity_view"] = "stock_statistic"
+    else:
+        response_metadata["observation_start_date"] = "2026-09-04"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=record.source_uri,
+        response_metadata=response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match=match):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-market-participation-desire",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_market_participation_desire_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.MARKET_ACTIVITY,
+        "SH600000",
+        {"view": "participation_desire"},
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [
+        ("stock_comment_detail_scrd_desire_em", {"symbol": "600000"}),
     ]
 
 
