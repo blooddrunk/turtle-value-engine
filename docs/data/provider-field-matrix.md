@@ -227,6 +227,32 @@ share, dilution, governance or valuation fact is admitted.
 | `增减`, `变动比率` | Raw change context; it is not classified as issuance, buyback, transfer or dilution. |
 | request `symbol`, `view=top_10`, exact quarter-end `date` | Explicit endpoint and replay scope; the report-period date is not treated as filing availability or an accounting fact. |
 
+## Phase 2.46 A-share top-ten-tradable-shareholder raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_gdfx_free_top_10_em` as an Eastmoney endpoint with a
+market-prefixed A-share `symbol` and an exact quarter-end `date`. The [official
+implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_gdfx_em.py)
+publishes rank, holder, holder type, share type, holding quantity, float-share
+ratio and change fields for the requested report period.
+
+The provider selects this endpoint only for the explicit
+`SHAREHOLDER_HOLDINGS` request `view=free_top_10`, validates the quarter-end
+date, rank and holder identity, and retains the symbol-scoped response without
+inventing a row-level listing code or filing date. The normalizer emits
+`AKSHARE_FREE_TOP_10_SHAREHOLDERS_RAW_ONLY`; no canonical ownership,
+concentration, share, dilution, governance or valuation fact is admitted.
+
+| Raw upstream item | Phase 2 treatment |
+| --- | --- |
+| `名次` | Raw report-period ordering; no deterministic beneficial-owner or concentration ranking is inferred. |
+| `股东名称`, `股东性质` | Raw holder identity/type; no beneficial control or legal ownership fact is admitted. |
+| `股份类型` | Raw provider share-class label; no A/H equivalence or dilution treatment is inferred. |
+| `持股数` | Raw tradable-holding quantity; unit and fully diluted economic-share scope remain unresolved. |
+| `占总流通股本持股比例` | Raw provider float-share ratio; it is not normalized into a canonical concentration metric. |
+| `增减`, `变动比率` | Raw change context; it is not classified as issuance, buyback, transfer or dilution. |
+| request `symbol`, `view=free_top_10`, exact quarter-end `date` | Explicit endpoint and replay scope; the report-period date is not treated as filing availability or an accounting fact. |
+
 ## Phase 2.9 corporate-action raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)

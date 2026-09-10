@@ -21,7 +21,8 @@ the SSE/SZSE/BSE margin-detail raw slices, the A-share individual ownership-pled
 detail view, the A-share CNINFO equity-mortgage view, A-share company-litigation
 raw slice and A-share Eastmoney individual-info raw slice.
 The A-share Eastmoney individual-fund-flow raw slice is also available.
-The A-share Eastmoney top-ten-shareholder raw slice is also available.
+The A-share Eastmoney top-ten and top-ten-tradable-shareholder raw slices are
+also available.
 Upstream column names are handled in this module and are never passed to the
 deterministic calculation or gate code.
 """
@@ -68,9 +69,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "45"
+AKSHARE_ADAPTER_VERSION = "46"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "46"
+AKSHARE_MAPPING_VERSION = "47"
 
 
 class ListingMarket(StrEnum):
@@ -173,6 +174,10 @@ _SOURCE_URIS = {
     "stock_gdfx_top_10_em": (
         "https://emweb.securities.eastmoney.com/PC_HSF10/ShareholderResearch/"
         "Index?type=web&code=SH688686#sdgd-0"
+    ),
+    "stock_gdfx_free_top_10_em": (
+        "https://emweb.securities.eastmoney.com/PC_HSF10/ShareholderResearch/"
+        "Index?type=web&code=SH688686#sdltgd-0"
     ),
     "stock_financial_report_sina": "https://vip.stock.finance.sina.com.cn/corp/go.php/vFD_FinanceSummary/",
     "stock_financial_hk_report_em": "https://emweb.securities.eastmoney.com/PC_HKF10/FinancialAnalysis/index",
@@ -284,6 +289,10 @@ _HSGT_INDIVIDUAL_VIEW = "hsgt_individual"
 _SHAREHOLDER_TOP10_PARAMETER_NAMES = frozenset({"date", "view"})
 _SHAREHOLDER_TOP10_VIEW = "top_10"
 _SHAREHOLDER_TOP10_QUARTER_ENDS = frozenset({(3, 31), (6, 30), (9, 30), (12, 31)})
+_SHAREHOLDER_FREE_TOP10_VIEW = "free_top_10"
+_SHAREHOLDER_TOP10_ENDPOINTS = frozenset(
+    {"stock_gdfx_top_10_em", "stock_gdfx_free_top_10_em"}
+)
 _SHAREHOLDER_CONTROL_PARAMETER_NAMES = frozenset({"view", "control_type"})
 _SHAREHOLDER_CONTROL_VIEW = "control_changes"
 _SHAREHOLDER_CONTROL_TYPES = frozenset(
@@ -1095,22 +1104,36 @@ class AKShareProvider(StructuredDataProvider):
                 response_metadata["listing_scoped_request"] = True
         elif request.category is DataCategory.SHAREHOLDER_HOLDINGS:
             rows = _table_rows(payload, provider=self.identity, request=request)
-            if endpoint.name == "stock_gdfx_top_10_em":
+            if endpoint.name in _SHAREHOLDER_TOP10_ENDPOINTS:
                 requested_date = _parse_shareholder_top10_date_parameter(
                     kwargs["date"],
                     request=request,
+                    label=(
+                        "free-top-ten-shareholder"
+                        if endpoint.name == "stock_gdfx_free_top_10_em"
+                        else "top-ten-shareholder"
+                    ),
                 )
                 _validate_shareholder_top10_provider_rows(
                     rows,
                     listing,
                     provider=self.identity,
                     request=request,
+                    label=(
+                        "free-top-ten-shareholder"
+                        if endpoint.name == "stock_gdfx_free_top_10_em"
+                        else "top-ten-shareholder"
+                    ),
                 )
                 response_metadata["upstream_row_count"] = len(rows)
                 response_metadata["entity_row_count"] = len(rows)
                 response_metadata["entity_rows_selected"] = True
                 response_metadata["listing_scoped_request"] = True
-                response_metadata["top10_view"] = _SHAREHOLDER_TOP10_VIEW
+                response_metadata["top10_view"] = (
+                    _SHAREHOLDER_FREE_TOP10_VIEW
+                    if endpoint.name == "stock_gdfx_free_top_10_em"
+                    else _SHAREHOLDER_TOP10_VIEW
+                )
                 response_metadata["requested_date"] = kwargs["date"]
                 response_metadata["report_period"] = requested_date.isoformat()
                 response_metadata["snapshot_scope"] = "requested_report_period"
@@ -1431,6 +1454,9 @@ class AKShareProvider(StructuredDataProvider):
             shareholder_count_date_requested="date" in request.parameters,
             shareholder_control_requested=(
                 request.parameters.get("view") == _SHAREHOLDER_CONTROL_VIEW
+            ),
+            shareholder_free_top10_requested=(
+                request.parameters.get("view") == _SHAREHOLDER_FREE_TOP10_VIEW
             ),
             shareholder_top10_requested=(
                 request.parameters.get("view") == _SHAREHOLDER_TOP10_VIEW
@@ -2299,21 +2325,34 @@ class AKShareNormalizer:
                 missing_fields.add("governance_risk_level")
             elif record.request.category is DataCategory.SHAREHOLDER_HOLDINGS:
                 endpoint_name = record.response_metadata.get("endpoint")
-                if endpoint_name == "stock_gdfx_top_10_em":
+                if endpoint_name in _SHAREHOLDER_TOP10_ENDPOINTS:
                     if listing.market is not ListingMarket.A:
                         raise ProviderNormalizationError(
-                            "AKShare top-ten-shareholder raw slice supports A-share listings only"
+                            "AKShare top-ten-shareholder raw slices support A-share listings only"
                         )
                     try:
                         _shareholder_holdings_kwargs(
-                            "stock_gdfx_top_10_em",
+                            endpoint_name,
                             listing,
                             record.request,
                         )
                     except ProviderRequestError as exc:
                         raise ProviderNormalizationError(str(exc)) from exc
-                    _validate_shareholder_top10_normalizer_rows(rows, listing)
-                    normalizer_flags.add("AKSHARE_TOP_10_SHAREHOLDERS_RAW_ONLY")
+                    label = (
+                        "free-top-ten-shareholder"
+                        if endpoint_name == "stock_gdfx_free_top_10_em"
+                        else "top-ten-shareholder"
+                    )
+                    _validate_shareholder_top10_normalizer_rows(
+                        rows,
+                        listing,
+                        label=label,
+                    )
+                    normalizer_flags.add(
+                        "AKSHARE_FREE_TOP_10_SHAREHOLDERS_RAW_ONLY"
+                        if endpoint_name == "stock_gdfx_free_top_10_em"
+                        else "AKSHARE_TOP_10_SHAREHOLDERS_RAW_ONLY"
+                    )
                 elif endpoint_name == "stock_hold_control_cninfo":
                     if listing.market is not ListingMarket.A:
                         raise ProviderNormalizationError(
@@ -2369,6 +2408,7 @@ class AKShareNormalizer:
                 else:
                     raise ProviderNormalizationError(
                         "AKShare shareholder-holdings record must come from "
+                        "stock_gdfx_top_10_em, stock_gdfx_free_top_10_em, "
                         "stock_hold_control_cninfo, stock_hsgt_individual_em, "
                         "stock_main_stock_holder or stock_hold_num_cninfo"
                     )
@@ -2642,6 +2682,14 @@ class AKShareNormalizer:
                 "and ratio fields do not establish beneficial control, a canonical "
                 "concentration metric or a company-level diluted-share series."
             )
+        if "AKSHARE_FREE_TOP_10_SHAREHOLDERS_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented A-share top-ten-tradable-shareholder response is "
+                "retained as raw evidence only: report-period rank, holder, share "
+                "type, quantity and float-share ratio fields do not establish "
+                "beneficial control, a canonical concentration metric or a "
+                "company-level diluted-share series."
+            )
         if "AKSHARE_MARGIN_TRADING_RAW_ONLY" in normalizer_flags:
             notes += (
                 " The documented SSE/SZSE/BSE margin-detail response is retained as raw "
@@ -2826,6 +2874,7 @@ def _endpoint_candidates(
     dividend_detail_requested: bool = False,
     shareholder_count_date_requested: bool = False,
     shareholder_control_requested: bool = False,
+    shareholder_free_top10_requested: bool = False,
     shareholder_top10_requested: bool = False,
     shareholder_hsgt_individual_requested: bool = False,
     insider_management_detail_requested: bool = False,
@@ -2989,6 +3038,10 @@ def _endpoint_candidates(
             return ("stock_hsgt_individual_em",)
         if shareholder_control_requested:
             return ("stock_hold_control_cninfo",)
+        if shareholder_free_top10_requested:
+            if market is ListingMarket.A:
+                return ("stock_gdfx_free_top_10_em",)
+            return ()
         if shareholder_top10_requested:
             if market is ListingMarket.A:
                 return ("stock_gdfx_top_10_em",)
@@ -3766,36 +3819,37 @@ def _shareholder_holdings_kwargs(
     listing: _ListingRef,
     request: ProviderRequest,
 ) -> dict[str, object]:
-    if endpoint_name == "stock_gdfx_top_10_em":
+    if endpoint_name in _SHAREHOLDER_TOP10_ENDPOINTS:
         if listing.market is not ListingMarket.A:
             raise ProviderRequestError(
-                "the AKShare top-ten-shareholder endpoint supports A-share listings only",
+                "the AKShare top-ten-shareholder endpoints support A-share listings only",
                 request=request,
                 retryable=False,
             )
+        is_free_top10 = endpoint_name == "stock_gdfx_free_top_10_em"
+        label = "free-top-ten-shareholder" if is_free_top10 else "top-ten-shareholder"
+        view = _SHAREHOLDER_FREE_TOP10_VIEW if is_free_top10 else _SHAREHOLDER_TOP10_VIEW
         unknown = sorted(set(request.parameters) - _SHAREHOLDER_TOP10_PARAMETER_NAMES)
         if unknown:
             raise ProviderRequestError(
-                "unsupported AKShare top-ten-shareholder parameter(s): "
-                + ", ".join(unknown),
+                f"unsupported AKShare {label} parameter(s): " + ", ".join(unknown),
                 request=request,
                 retryable=False,
             )
-        if request.parameters.get("view") != _SHAREHOLDER_TOP10_VIEW:
+        if request.parameters.get("view") != view:
             raise ProviderRequestError(
-                "the AKShare top-ten-shareholder endpoint requires "
-                f"view={_SHAREHOLDER_TOP10_VIEW!r}",
+                f"the AKShare {label} endpoint requires view={view!r}",
                 request=request,
                 retryable=False,
             )
         if "date" not in request.parameters:
             raise ProviderRequestError(
-                "the AKShare top-ten-shareholder endpoint requires date (YYYYMMDD)",
+                f"the AKShare {label} endpoint requires date (YYYYMMDD)",
                 request=request,
                 retryable=False,
             )
         raw_date = request.parameters["date"]
-        _parse_shareholder_top10_date_parameter(raw_date, request=request)
+        _parse_shareholder_top10_date_parameter(raw_date, request=request, label=label)
         return {"symbol": listing.canonical_id, "date": raw_date}
     if endpoint_name == "stock_hold_control_cninfo":
         if listing.market is not ListingMarket.A:
@@ -4311,10 +4365,11 @@ def _parse_shareholder_top10_date_parameter(
     raw_value: object,
     *,
     request: ProviderRequest | None = None,
+    label: str = "top-ten-shareholder",
 ) -> date:
     if not isinstance(raw_value, str) or not re.fullmatch(r"\d{8}", raw_value):
         raise ProviderRequestError(
-            "top-ten-shareholder date must be YYYYMMDD",
+            f"{label} date must be YYYYMMDD",
             request=request,
             retryable=False,
         )
@@ -4322,13 +4377,13 @@ def _parse_shareholder_top10_date_parameter(
         parsed = datetime.strptime(raw_value, "%Y%m%d").date()
     except ValueError as exc:
         raise ProviderRequestError(
-            "top-ten-shareholder date must be a valid YYYYMMDD date",
+            f"{label} date must be a valid YYYYMMDD date",
             request=request,
             retryable=False,
         ) from exc
     if (parsed.month, parsed.day) not in _SHAREHOLDER_TOP10_QUARTER_ENDS:
         raise ProviderRequestError(
-            "top-ten-shareholder date must be an exact quarter-end report date",
+            f"{label} date must be an exact quarter-end report date",
             request=request,
             retryable=False,
         )
@@ -6511,15 +6566,16 @@ def _validate_shareholder_top10_provider_rows(
     *,
     provider: ProviderIdentity,
     request: ProviderRequest,
+    label: str = "top-ten-shareholder",
 ) -> None:
-    """Validate identity fields in the symbol-scoped top-ten response."""
+    """Validate identity fields in a symbol-scoped ranked-holder response."""
 
     seen_ranks: set[int] = set()
     for row in rows:
         row_code = _row_code(row, ListingMarket.A)
         if row_code is not None and row_code != listing.code:
             raise ProviderResponseError(
-                f"AKShare returned a top-ten-shareholder row entity {row_code!r} "
+                f"AKShare returned a {label} row entity {row_code!r} "
                 f"for requested listing {listing.canonical_id!r}",
                 provider=provider,
                 request=request,
@@ -6528,14 +6584,14 @@ def _validate_shareholder_top10_provider_rows(
         rank = _top10_rank_value(raw_rank) if found_rank else None
         if rank is None:
             raise ProviderResponseError(
-                f"AKShare returned a top-ten-shareholder row without a valid rank "
+                f"AKShare returned a {label} row without a valid rank "
                 f"for {request.entity_id!r}",
                 provider=provider,
                 request=request,
             )
         if rank in seen_ranks:
             raise ProviderResponseError(
-                f"AKShare returned duplicate top-ten-shareholder rank {rank!r} "
+                f"AKShare returned duplicate {label} rank {rank!r} "
                 f"for {request.entity_id!r}",
                 provider=provider,
                 request=request,
@@ -6543,7 +6599,7 @@ def _validate_shareholder_top10_provider_rows(
         found_holder, raw_holder = _lookup(row, _SHAREHOLDER_TOP10_HOLDER_FIELDS)
         if not found_holder or _text_value(raw_holder) is None:
             raise ProviderResponseError(
-                f"AKShare returned a top-ten-shareholder row without a holder name "
+                f"AKShare returned a {label} row without a holder name "
                 f"for {request.entity_id!r}",
                 provider=provider,
                 request=request,
@@ -6682,31 +6738,33 @@ def _validate_shareholder_holdings_normalizer_rows(
 def _validate_shareholder_top10_normalizer_rows(
     rows: Sequence[Mapping[str, JSONValue]],
     listing: _ListingRef,
+    *,
+    label: str = "top-ten-shareholder",
 ) -> None:
-    """Keep replayed top-ten rows inside their optional listing scope."""
+    """Keep replayed ranked-holder rows inside their optional listing scope."""
 
     seen_ranks: set[int] = set()
     for row in rows:
         row_code = _row_code(row, ListingMarket.A)
         if row_code is not None and row_code != listing.code:
             raise ProviderNormalizationError(
-                f"top-ten-shareholder row entity {row_code!r} does not match "
+                f"{label} row entity {row_code!r} does not match "
                 f"requested listing {listing.canonical_id!r}"
             )
         found_rank, raw_rank = _lookup(row, _SHAREHOLDER_TOP10_RANK_FIELDS)
         rank = _top10_rank_value(raw_rank) if found_rank else None
         if rank is None:
             raise ProviderNormalizationError(
-                "top-ten-shareholder row has no valid rank"
+                f"{label} row has no valid rank"
             )
         if rank in seen_ranks:
             raise ProviderNormalizationError(
-                f"top-ten-shareholder row has duplicate rank {rank!r}"
+                f"{label} row has duplicate rank {rank!r}"
             )
         found_holder, raw_holder = _lookup(row, _SHAREHOLDER_TOP10_HOLDER_FIELDS)
         if not found_holder or _text_value(raw_holder) is None:
             raise ProviderNormalizationError(
-                "top-ten-shareholder row has no holder name"
+                f"{label} row has no holder name"
             )
         seen_ranks.add(rank)
 

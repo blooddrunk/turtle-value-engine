@@ -344,6 +344,16 @@ change fields remain raw evidence only: they do not establish beneficial
 control, a canonical concentration metric or a company-level diluted-share
 series. The provider preserves the requested report period and listing scope,
 and the normalizer emits `AKSHARE_TOP_10_SHAREHOLDERS_RAW_ONLY`.
+Phase 2.46 adds the distinct Eastmoney
+[`stock_gdfx_free_top_10_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
+endpoint and its [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_gdfx_em.py)
+under `SHAREHOLDER_HOLDINGS` with the explicit `view=free_top_10` selector and
+the same exact quarter-end report `date`. Its tradable-shareholder rank,
+holder, share type, quantity, float-share ratio and change fields remain raw
+evidence only: they do not establish beneficial control, a canonical
+concentration metric or a company-level diluted-share series. The provider
+preserves the requested report period and listing scope, and the normalizer
+emits `AKSHARE_FREE_TOP_10_SHAREHOLDERS_RAW_ONLY`.
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.
