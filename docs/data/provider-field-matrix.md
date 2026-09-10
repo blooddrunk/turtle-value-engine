@@ -825,6 +825,40 @@ The normalizer emits `AKSHARE_IPO_YIELD_RAW_ONLY`, marks
 dilution, price, return or listing-date fact. The provider-specific response
 remains outside the calculation, gate, pipeline, CLI and input-loader contracts.
 
+## Phase 2.90 A-share Eastmoney block-trade detail raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_dzjy_em.py)
+document `stock_dzjy_mrmx` as an Eastmoney A-share block-trade detail
+universe at `https://data.eastmoney.com/dzjy/dzjy_mrmx.html`. The adapter
+exposes it under `MARKET_ACTIVITY` only with explicit
+`view=block_trade_detail`, passes `symbol="A股"` with the requested
+`start_date`/`end_date`, validates the full date-range response and filters it
+to the requested six-digit A-share code.
+
+The official A-share output order is exactly `序号`, `交易日期`, `证券代码`,
+`证券简称`, `涨跌幅`, `收盘价`, `成交价`, `折溢率`, `成交量`, `成交额`,
+`成交额/流通市值`, `买方营业部` and `卖方营业部`.
+
+| Raw upstream item | Phase 2.90 treatment |
+| --- | --- |
+| `序号` | Required positive integer in the strictly ascending provider sequence; retained for source ordering only. |
+| `交易日期` | Required `YYYY-MM-DD` observation date and must fall within the requested inclusive date range. It is retained as raw trade context, not an accounting period. |
+| `证券代码` | Required exact six-digit A-share identity; used for conservative provider-boundary filtering and replay validation only. |
+| `证券简称`, `买方营业部`, `卖方营业部` | Required non-empty source text; retained as entity and brokerage context only. |
+| `涨跌幅`, `成交额/流通市值` | Finite provider values documented as percent fields; no canonical return, liquidity or valuation metric is derived. |
+| `成交量` | Finite provider value documented in shares; its block-trade context does not establish a canonical volume or shareholder-return fact. |
+| `成交额` | Finite provider value documented in CNY; it is trade activity, not issuer cash flow or shareholder cash. |
+| `收盘价`, `成交价`, `折溢率` | Finite provider numeric values; the current documentation does not establish their units/scaling for a canonical price or discount metric. |
+| request `view=block_trade_detail`, `symbol="A股"`, `start_date`, `end_date` | Explicit A-share full-universe selector; `listing_scoped_request=false`, provider filtering, source URI, field order, units, request-date binding and full/selected row counts remain part of the cache replay boundary. |
+
+The normalizer emits `AKSHARE_BLOCK_TRADE_RAW_ONLY` and creates no canonical
+fact. Date-bound trade prices, quantities, amounts, discount/premium and
+brokerage context remain raw evidence and do not establish issuer cash flow,
+shareholder return, governance, valuation or a canonical market metric. The
+provider-specific response remains outside the calculation, gate, pipeline,
+CLI and input-loader contracts.
+
 ## Phase 2.63 A-share Eastmoney dividend-distribution detail raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)

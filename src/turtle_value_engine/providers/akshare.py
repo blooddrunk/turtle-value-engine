@@ -34,7 +34,8 @@ intraday-trade, Sina intraday-trade, chip-distribution, Tencent daily-history an
 Tencent latest-trading-day tick, Sina minute-history, intraday-history, H-share
 intraday-history, pre-market-history, five-level bid-ask
 Xueqiu individual-spot quote and Dragon-Tiger market-activity
-detail/statistics/institution-statistics raw slices are also available. The
+detail/statistics/institution-statistics/block-trade-detail raw slices are also
+available. The
 A-share Xueqiu, CNINFO and Tonghuashun company-profile raw slices are also
 available. The A-share dividend-distribution detail and
 new-stock-board raw slices are also available. The A-share CNINFO IPO-summary,
@@ -89,9 +90,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "89"
+AKSHARE_ADAPTER_VERSION = "90"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "90"
+AKSHARE_MAPPING_VERSION = "91"
 
 
 class ListingMarket(StrEnum):
@@ -173,6 +174,7 @@ _SOURCE_URIS = {
     "stock_lhb_detail_em": "https://data.eastmoney.com/stock/tradedetail.html",
     "stock_lhb_stock_statistic_em": "https://data.eastmoney.com/stock/tradedetail.html",
     "stock_lhb_jgstatistic_em": "https://data.eastmoney.com/stock/jgstatistic.html",
+    "stock_dzjy_mrmx": "https://data.eastmoney.com/dzjy/dzjy_mrmx.html",
     "stock_comment_detail_scrd_desire_em": "https://data.eastmoney.com/stockcomment/stock/600000.html",
     "stock_comment_detail_scrd_focus_em": "https://data.eastmoney.com/stockcomment/stock/600000.html",
     "stock_comment_detail_zlkp_jgcyd_em": "https://data.eastmoney.com/stockcomment/stock/600000.html",
@@ -708,6 +710,55 @@ _HISTORY_PARAMETER_NAMES = frozenset(
 _CAPITAL_FLOW_PARAMETER_NAMES = frozenset()
 _CAPITAL_FLOW_DATE_FIELDS = ("日期", "date")
 _MARKET_ACTIVITY_PARAMETER_NAMES = frozenset({"start_date", "end_date"})
+_MARKET_ACTIVITY_BLOCK_TRADE_PARAMETER_NAMES = frozenset(
+    {"view", "start_date", "end_date"}
+)
+_MARKET_ACTIVITY_BLOCK_TRADE_VIEW = "block_trade_detail"
+_MARKET_ACTIVITY_BLOCK_TRADE_SYMBOL = "A股"
+_MARKET_ACTIVITY_BLOCK_TRADE_FIELDS = (
+    "序号",
+    "交易日期",
+    "证券代码",
+    "证券简称",
+    "涨跌幅",
+    "收盘价",
+    "成交价",
+    "折溢率",
+    "成交量",
+    "成交额",
+    "成交额/流通市值",
+    "买方营业部",
+    "卖方营业部",
+)
+_MARKET_ACTIVITY_BLOCK_TRADE_FIELD_SET = frozenset(
+    _MARKET_ACTIVITY_BLOCK_TRADE_FIELDS
+)
+_MARKET_ACTIVITY_BLOCK_TRADE_DATE_FIELDS = ("交易日期",)
+_MARKET_ACTIVITY_BLOCK_TRADE_NUMERIC_FIELDS = (
+    "涨跌幅",
+    "收盘价",
+    "成交价",
+    "折溢率",
+    "成交量",
+    "成交额",
+    "成交额/流通市值",
+)
+_MARKET_ACTIVITY_BLOCK_TRADE_TEXT_FIELDS = (
+    "证券简称",
+    "买方营业部",
+    "卖方营业部",
+)
+_MARKET_ACTIVITY_BLOCK_TRADE_DOCUMENTED_UNITS = {
+    "涨跌幅": "percent",
+    "成交量": "shares",
+    "成交额": "CNY",
+    "成交额/流通市值": "percent",
+}
+_MARKET_ACTIVITY_BLOCK_TRADE_UNDOCUMENTED_NUMERIC_UNITS = {
+    "收盘价": "not_documented",
+    "成交价": "not_documented",
+    "折溢率": "not_documented",
+}
 _MARKET_ACTIVITY_STATISTIC_PARAMETER_NAMES = frozenset({"view", "period"})
 _MARKET_ACTIVITY_STATISTIC_VIEW = "stock_statistic"
 _MARKET_ACTIVITY_STATISTIC_PERIOD_CHOICES = (
@@ -2510,6 +2561,57 @@ class AKShareProvider(StructuredDataProvider):
                 response_metadata["observation_end_date"] = (
                     max(observation_dates).isoformat() if observation_dates else None
                 )
+            elif endpoint.name == "stock_dzjy_mrmx":
+                start_date, end_date = _market_activity_date_range(request)
+                observation_dates = _validate_market_activity_block_trade_provider_rows(
+                    rows,
+                    start_date=start_date,
+                    end_date=end_date,
+                    provider=self.identity,
+                    request=request,
+                )
+                selected = _select_listing_rows(
+                    rows,
+                    listing,
+                    provider=self.identity,
+                    request=request,
+                    row_label="market-activity-block-trade",
+                )
+                payload = selected
+                response_metadata["upstream_row_count"] = len(rows)
+                response_metadata["entity_row_count"] = len(selected)
+                response_metadata["entity_rows_selected"] = True
+                response_metadata["listing_scoped_request"] = False
+                response_metadata["row_filtering"] = "provider"
+                response_metadata["market_activity_view"] = (
+                    _MARKET_ACTIVITY_BLOCK_TRADE_VIEW
+                )
+                response_metadata["market_scope"] = "all_a_share_listings"
+                response_metadata["upstream_symbol"] = kwargs["symbol"]
+                response_metadata["start_date"] = kwargs["start_date"]
+                response_metadata["end_date"] = kwargs["end_date"]
+                response_metadata["snapshot_scope"] = "requested_date_range"
+                response_metadata["observation_date_field"] = "交易日期"
+                response_metadata["date_binding"] = "row_and_request"
+                response_metadata["code_field"] = "证券代码"
+                response_metadata["field_count"] = len(
+                    _MARKET_ACTIVITY_BLOCK_TRADE_FIELDS
+                )
+                response_metadata["source_field_order"] = list(
+                    _MARKET_ACTIVITY_BLOCK_TRADE_FIELDS
+                )
+                response_metadata["documented_units"] = dict(
+                    _MARKET_ACTIVITY_BLOCK_TRADE_DOCUMENTED_UNITS
+                )
+                response_metadata["undocumented_numeric_units"] = dict(
+                    _MARKET_ACTIVITY_BLOCK_TRADE_UNDOCUMENTED_NUMERIC_UNITS
+                )
+                response_metadata["observation_start_date"] = (
+                    min(observation_dates).isoformat() if observation_dates else None
+                )
+                response_metadata["observation_end_date"] = (
+                    max(observation_dates).isoformat() if observation_dates else None
+                )
             elif endpoint.name == "stock_lhb_detail_em":
                 start_date, end_date = _market_activity_date_range(request)
                 activity_dates = _validate_market_activity_provider_rows(
@@ -4190,6 +4292,10 @@ class AKShareProvider(StructuredDataProvider):
                 request.parameters.get("view")
                 == _MARKET_ACTIVITY_INSTITUTION_PARTICIPATION_VIEW
             ),
+            market_activity_block_trade_requested=(
+                request.parameters.get("view")
+                == _MARKET_ACTIVITY_BLOCK_TRADE_VIEW
+            ),
             market_activity_limit_up_pool_requested=(
                 request.parameters.get("view") == _MARKET_ACTIVITY_LIMIT_UP_POOL_VIEW
             ),
@@ -4724,6 +4830,13 @@ class AKShareNormalizer:
                     normalizer_flags.add(
                         "AKSHARE_MARKET_INSTITUTION_PARTICIPATION_RAW_ONLY"
                     )
+                elif endpoint_name == "stock_dzjy_mrmx":
+                    _validate_market_activity_block_trade_normalizer_scope(
+                        record,
+                        listing,
+                        rows,
+                    )
+                    normalizer_flags.add("AKSHARE_BLOCK_TRADE_RAW_ONLY")
                 elif endpoint_name == "stock_lhb_detail_em":
                     try:
                         start_date, end_date = _market_activity_date_range(record.request)
@@ -4798,6 +4911,7 @@ class AKShareNormalizer:
                         "stock_zh_a_new_em, stock_comment_detail_scrd_desire_em, "
                         "stock_comment_detail_scrd_focus_em, "
                         "stock_comment_detail_zlkp_jgcyd_em, "
+                        "stock_dzjy_mrmx, "
                         "stock_zt_pool_em, stock_hot_rank_latest_em, "
                         "stock_zt_pool_dtgc_em, "
                         "stock_hk_hot_rank_latest_em, "
@@ -6207,6 +6321,13 @@ class AKShareNormalizer:
                 "forward-looking post-listing returns do not establish issuer cash flow, "
                 "shareholder return, governance, valuation or a canonical market metric."
             )
+        if "AKSHARE_BLOCK_TRADE_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented A-share Eastmoney block-trade detail response is retained "
+                "as raw evidence only: its date-range trades, prices, quantities, amounts, "
+                "discount/premium and brokerage context do not establish issuer cash flow, "
+                "shareholder return, governance, valuation or a canonical market metric."
+            )
         if "AKSHARE_MARKET_ACTIVITY_STATISTICS_RAW_ONLY" in normalizer_flags:
             notes += (
                 " The documented A-share Dragon-Tiger stock-statistic response is retained "
@@ -6658,6 +6779,7 @@ def _endpoint_candidates(
     insider_management_detail_requested: bool = False,
     market_activity_statistic_requested: bool = False,
     market_activity_institution_statistic_requested: bool = False,
+    market_activity_block_trade_requested: bool = False,
     market_activity_hot_rank_latest_requested: bool = False,
     market_activity_hk_hot_rank_detail_requested: bool = False,
     market_activity_hot_rank_detail_requested: bool = False,
@@ -6783,6 +6905,10 @@ def _endpoint_candidates(
                 return ("stock_hot_rank_latest_em",)
             if market is ListingMarket.H:
                 return ("stock_hk_hot_rank_latest_em",)
+            return ()
+        if market_activity_block_trade_requested:
+            if market is ListingMarket.A:
+                return ("stock_dzjy_mrmx",)
             return ()
         if market is ListingMarket.A:
             if market_activity_new_stock_requested:
@@ -12278,6 +12404,176 @@ def _validate_market_activity_provider_rows(
     return dates
 
 
+def _market_activity_block_trade_date(value: object) -> date | None:
+    if not isinstance(value, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _market_activity_block_trade_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    start_date: date,
+    end_date: date,
+    listing: _ListingRef | None = None,
+) -> tuple[str | None, list[date]]:
+    """Return a strict-schema error and dates for block-trade detail rows."""
+
+    observation_dates: list[date] = []
+    previous_sequence: int | None = None
+    for index, row in enumerate(rows):
+        missing = sorted(_MARKET_ACTIVITY_BLOCK_TRADE_FIELD_SET - set(row))
+        if missing:
+            return (
+                f"A-share block-trade row {index} is missing field(s): "
+                + ", ".join(missing),
+                [],
+            )
+        unexpected = sorted(set(row) - _MARKET_ACTIVITY_BLOCK_TRADE_FIELD_SET)
+        if unexpected:
+            return (
+                f"A-share block-trade row {index} contains unsupported field(s): "
+                + ", ".join(unexpected),
+                [],
+            )
+        if tuple(row) != _MARKET_ACTIVITY_BLOCK_TRADE_FIELDS:
+            return (
+                f"A-share block-trade row {index} must preserve official field order",
+                [],
+            )
+
+        raw_code = row["证券代码"]
+        if not isinstance(raw_code, str) or re.fullmatch(r"\d{6}", raw_code.strip()) is None:
+            return (
+                f"A-share block-trade row {index} 证券代码 must be a six-digit string",
+                [],
+            )
+        row_code = _row_code(row, ListingMarket.A)
+        if row_code is None:
+            return f"A-share block-trade row {index} has no listing code", []
+        if listing is not None and row_code != listing.code:
+            return (
+                f"A-share block-trade row entity {row_code!r} does not match "
+                f"requested listing {listing.canonical_id!r}",
+                [],
+            )
+
+        name = row["证券简称"]
+        if not isinstance(name, str) or not name.strip():
+            return (
+                f"A-share block-trade field '证券简称' in row {index} must be a "
+                "non-empty string",
+                [],
+            )
+
+        sequence_value = row["序号"]
+        if isinstance(sequence_value, bool) or not isinstance(sequence_value, Real):
+            return (
+                f"A-share block-trade field '序号' in row {index} must be a "
+                "positive integer",
+                [],
+            )
+        try:
+            sequence_numeric = float(sequence_value)
+        except (OverflowError, TypeError, ValueError):
+            return (
+                f"A-share block-trade field '序号' in row {index} must be a "
+                "positive integer",
+                [],
+            )
+        if (
+            not math.isfinite(sequence_numeric)
+            or not sequence_numeric.is_integer()
+            or sequence_numeric < 1
+        ):
+            return (
+                f"A-share block-trade field '序号' in row {index} must be a "
+                "positive integer",
+                [],
+            )
+        sequence = int(sequence_numeric)
+        if previous_sequence is not None and sequence <= previous_sequence:
+            return (
+                "A-share block-trade response 序号 values must be strictly ascending",
+                [],
+            )
+        previous_sequence = sequence
+
+        observation_date = _market_activity_block_trade_date(row["交易日期"])
+        if observation_date is None:
+            return (
+                "A-share block-trade field '交易日期' must be a valid YYYY-MM-DD date",
+                [],
+            )
+        if not start_date <= observation_date <= end_date:
+            return (
+                f"A-share block-trade row date {observation_date.isoformat()!r} "
+                f"outside requested range {start_date.isoformat()!r}.."
+                f"{end_date.isoformat()!r}",
+                [],
+            )
+        observation_dates.append(observation_date)
+
+        for field in _MARKET_ACTIVITY_BLOCK_TRADE_NUMERIC_FIELDS:
+            value = row[field]
+            if value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, Real):
+                return (
+                    f"A-share block-trade field {field!r} must be numeric or null",
+                    [],
+                )
+            try:
+                numeric = float(value)
+            except (OverflowError, TypeError, ValueError):
+                return (
+                    f"A-share block-trade field {field!r} must be numeric or null",
+                    [],
+                )
+            if not math.isfinite(numeric):
+                return (
+                    f"A-share block-trade field {field!r} must be finite or null",
+                    [],
+                )
+
+        for field in _MARKET_ACTIVITY_BLOCK_TRADE_TEXT_FIELDS[1:]:
+            value = row[field]
+            if not isinstance(value, str) or not value.strip():
+                return (
+                    f"A-share block-trade field {field!r} must be a non-empty string",
+                    [],
+                )
+
+    return None, observation_dates
+
+
+def _validate_market_activity_block_trade_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    start_date: date,
+    end_date: date,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> list[date]:
+    """Validate the complete A-share block-trade universe before filtering."""
+
+    message, observation_dates = _market_activity_block_trade_validation_message(
+        rows,
+        start_date=start_date,
+        end_date=end_date,
+    )
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message}",
+            provider=provider,
+            request=request,
+        )
+    return observation_dates
+
+
 def _market_activity_participation_desire_date(value: object) -> date | None:
     if not isinstance(value, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
         return None
@@ -15171,6 +15467,141 @@ def _validate_market_activity_normalizer_rows(
                 f"market-activity row date {row_date.isoformat()!r} is outside "
                 f"requested range {start_date.isoformat()!r}..{end_date.isoformat()!r}"
             )
+
+
+def _validate_market_activity_block_trade_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> None:
+    """Validate replay scope for the filtered block-trade detail slice."""
+
+    if listing.market is not ListingMarket.A:
+        raise ProviderNormalizationError(
+            "AKShare block-trade detail raw slice supports A-share listings only"
+        )
+    endpoint_name = "stock_dzjy_mrmx"
+    if record.response_metadata.get("endpoint") != endpoint_name:
+        raise ProviderNormalizationError(
+            "AKShare block-trade detail record must come from stock_dzjy_mrmx"
+        )
+    if record.source_uri != _SOURCE_URIS[endpoint_name]:
+        raise ProviderNormalizationError(
+            "AKShare block-trade detail source URI does not match the documented endpoint"
+        )
+    try:
+        upstream_kwargs = _market_activity_block_trade_kwargs(
+            endpoint_name,
+            listing,
+            record.request,
+        )
+        start_date, end_date = _market_activity_date_range(record.request)
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+
+    expected_metadata = {
+        "market": ListingMarket.A.value,
+        "listing_code": listing.code,
+        "market_activity_view": _MARKET_ACTIVITY_BLOCK_TRADE_VIEW,
+        "market_scope": "all_a_share_listings",
+        "upstream_symbol": upstream_kwargs["symbol"],
+        "start_date": upstream_kwargs["start_date"],
+        "end_date": upstream_kwargs["end_date"],
+        "listing_scoped_request": False,
+        "row_filtering": "provider",
+        "snapshot_scope": "requested_date_range",
+        "observation_date_field": "交易日期",
+        "date_binding": "row_and_request",
+        "code_field": "证券代码",
+        "field_count": len(_MARKET_ACTIVITY_BLOCK_TRADE_FIELDS),
+        "source_field_order": list(_MARKET_ACTIVITY_BLOCK_TRADE_FIELDS),
+        "documented_units": dict(_MARKET_ACTIVITY_BLOCK_TRADE_DOCUMENTED_UNITS),
+        "undocumented_numeric_units": dict(
+            _MARKET_ACTIVITY_BLOCK_TRADE_UNDOCUMENTED_NUMERIC_UNITS
+        ),
+        "entity_rows_selected": True,
+        "entity_row_count": len(rows),
+    }
+    boolean_fields = {"listing_scoped_request", "entity_rows_selected"}
+    count_fields = {"field_count", "entity_row_count"}
+    for name, expected in expected_metadata.items():
+        actual = record.response_metadata.get(name)
+        if name in boolean_fields:
+            matches = isinstance(actual, bool) and actual is expected
+        elif name in count_fields:
+            matches = (
+                isinstance(actual, int)
+                and not isinstance(actual, bool)
+                and actual == expected
+            )
+        else:
+            matches = actual == expected
+        if not matches:
+            raise ProviderNormalizationError(
+                f"A-share block-trade response metadata {name!r} does not match "
+                "the requested replay scope"
+            )
+
+    upstream_row_count = record.response_metadata.get("upstream_row_count")
+    if (
+        isinstance(upstream_row_count, bool)
+        or not isinstance(upstream_row_count, int)
+        or upstream_row_count < len(rows)
+    ):
+        raise ProviderNormalizationError(
+            "A-share block-trade response metadata 'upstream_row_count' does not "
+            "match the complete upstream response boundary"
+        )
+
+    message, row_dates = _market_activity_block_trade_validation_message(
+        rows,
+        start_date=start_date,
+        end_date=end_date,
+        listing=listing,
+    )
+    if message is not None:
+        raise ProviderNormalizationError(message)
+
+    parsed_bounds: dict[str, date | None] = {}
+    for field in ("observation_start_date", "observation_end_date"):
+        value = record.response_metadata.get(field)
+        if value is not None and _market_activity_block_trade_date(value) is None:
+            raise ProviderNormalizationError(
+                f"A-share block-trade response metadata {field!r} is not a valid date"
+            )
+        parsed_bounds[field] = (
+            _market_activity_block_trade_date(value) if isinstance(value, str) else None
+        )
+    observed_start = parsed_bounds["observation_start_date"]
+    observed_end = parsed_bounds["observation_end_date"]
+    if observed_start is not None and observed_end is not None and observed_start > observed_end:
+        raise ProviderNormalizationError(
+            "A-share block-trade response metadata date bounds are reversed"
+        )
+    if upstream_row_count and (observed_start is None or observed_end is None):
+        raise ProviderNormalizationError(
+            "A-share block-trade response metadata date bounds are missing"
+        )
+    if (
+        observed_start is not None
+        and (observed_start < start_date or observed_start > end_date)
+    ) or (
+        observed_end is not None and (observed_end < start_date or observed_end > end_date)
+    ):
+        raise ProviderNormalizationError(
+            "A-share block-trade response metadata date bounds fall outside "
+            "the requested range"
+        )
+    if row_dates and (
+        observed_start is None
+        or observed_end is None
+        or min(row_dates) < observed_start
+        or max(row_dates) > observed_end
+    ):
+        raise ProviderNormalizationError(
+            "A-share block-trade response metadata date bounds do not contain "
+            "the selected rows"
+        )
 
 
 def _validate_market_activity_participation_desire_normalizer_scope(
@@ -18957,6 +19388,8 @@ def _market_activity_kwargs(
         return _market_activity_statistic_kwargs(endpoint_name, listing, request)
     if endpoint_name == "stock_lhb_jgstatistic_em":
         return _market_activity_institution_statistic_kwargs(endpoint_name, listing, request)
+    if endpoint_name == "stock_dzjy_mrmx":
+        return _market_activity_block_trade_kwargs(endpoint_name, listing, request)
 
     if endpoint_name != "stock_lhb_detail_em":
         raise ProviderRequestError(
@@ -18979,6 +19412,49 @@ def _market_activity_kwargs(
         )
     _market_activity_date_range(request)
     return {
+        "start_date": request.parameters["start_date"],
+        "end_date": request.parameters["end_date"],
+    }
+
+
+def _market_activity_block_trade_kwargs(
+    endpoint_name: str,
+    listing: _ListingRef,
+    request: ProviderRequest,
+) -> dict[str, object]:
+    """Build the documented A-share block-trade detail request."""
+
+    if endpoint_name != "stock_dzjy_mrmx":
+        raise ProviderRequestError(
+            f"unsupported AKShare block-trade endpoint {endpoint_name!r}",
+            request=request,
+            retryable=False,
+        )
+    if listing.market is not ListingMarket.A:
+        raise ProviderRequestError(
+            "the AKShare block-trade detail endpoint supports A-share listings only",
+            request=request,
+            retryable=False,
+        )
+    unknown = sorted(
+        set(request.parameters) - _MARKET_ACTIVITY_BLOCK_TRADE_PARAMETER_NAMES
+    )
+    if unknown:
+        raise ProviderRequestError(
+            "unsupported AKShare block-trade parameter(s): " + ", ".join(unknown),
+            request=request,
+            retryable=False,
+        )
+    if request.parameters.get("view") != _MARKET_ACTIVITY_BLOCK_TRADE_VIEW:
+        raise ProviderRequestError(
+            "AKShare block-trade detail endpoint requires "
+            f"view={_MARKET_ACTIVITY_BLOCK_TRADE_VIEW!r}",
+            request=request,
+            retryable=False,
+        )
+    _market_activity_date_range(request)
+    return {
+        "symbol": _MARKET_ACTIVITY_BLOCK_TRADE_SYMBOL,
         "start_date": request.parameters["start_date"],
         "end_date": request.parameters["end_date"],
     }

@@ -2227,6 +2227,36 @@ field order, complete-universe validation before filtering, raw-only
 normalization, cache replay and replay-scope rejection. No calculation, gate,
 pipeline, CLI or input-loader contract changes.
 
+### Phase 2.90 — A-share Eastmoney block-trade detail raw acquisition contract (COMPLETE)
+
+The mapping review now covers the distinct documented AKShare
+`stock_dzjy_mrmx` endpoint under the existing `MARKET_ACTIVITY` category with
+explicit `view=block_trade_detail`. The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_dzjy_em.py)
+define the A-share full-universe request parameters `symbol="A股"`,
+`start_date` and `end_date`, returning the exact 13-field order `序号`, `交易日期`,
+`证券代码`, `证券简称`, `涨跌幅`, `收盘价`, `成交价`, `折溢率`, `成交量`, `成交额`,
+`成交额/流通市值`, `买方营业部` and `卖方营业部`.
+
+The provider validates every upstream row before filtering by the requested
+six-digit A-share code. It enforces the documented date-range binding, exact
+field order, six-digit security identity, strictly ascending sequence numbers,
+valid observation dates, finite numeric/null values and non-empty security and
+brokerage text. It records the Eastmoney source URI, upstream symbol, request
+dates, source field order, documented units (`涨跌幅`/`成交额/流通市值` as
+percent, `成交量` as shares and `成交额` as CNY), unresolved price/discount
+units and full/selected row counts for cache replay. The checked-in fixture
+contains three source rows for `2026-09-10`, with two selected trades for
+`001335` and one non-selected `001309` trade.
+
+The normalizer emits `AKSHARE_BLOCK_TRADE_RAW_ONLY` and creates no canonical
+fact: date-bound trade prices, quantities, amounts, discount/premium and
+brokerage context do not establish issuer cash flow, shareholder return,
+governance, valuation or a canonical market metric. Tests cover explicit
+request and market/parameter validation, complete-universe validation before
+filtering, raw-only normalization, cache replay and replay-scope rejection. No
+calculation, gate, pipeline, CLI or input-loader contract changes.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -2236,7 +2266,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.89 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.90 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```

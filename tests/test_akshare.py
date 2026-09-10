@@ -318,6 +318,15 @@ class FakeAKShare:
             symbol=symbol,
         )
 
+    def stock_dzjy_mrmx(self, *, symbol: str, start_date: str, end_date: str):
+        return self._return(
+            "stock_dzjy_mrmx",
+            _fixture("a_block_trade_detail.json"),
+            symbol=symbol,
+            start_date=start_date,
+            end_date=end_date,
+        )
+
     def stock_comment_detail_scrd_desire_em(self, *, symbol: str):
         return self._return(
             "stock_comment_detail_scrd_desire_em",
@@ -810,8 +819,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "89"
-    assert AKSHARE_MAPPING_VERSION == "90"
+    assert provider.identity.provider_version == "90"
+    assert AKSHARE_MAPPING_VERSION == "91"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -16334,6 +16343,398 @@ def test_market_activity_cache_replay_does_not_call_upstream(tmp_path: Path):
         (
             "stock_lhb_detail_em",
             {"start_date": "20240927", "end_date": "20240930"},
+        )
+    ]
+
+
+def test_market_activity_block_trade_fetch_uses_documented_date_range_universe():
+    fake = FakeAKShare()
+    request = _request(
+        DataCategory.MARKET_ACTIVITY,
+        "SZ001335",
+        {
+            "view": "block_trade_detail",
+            "start_date": "20260910",
+            "end_date": "20260910",
+        },
+    )
+    record = _provider(fake).fetch(request)
+
+    fixture = _fixture("a_block_trade_detail.json")
+    assert record.raw_payload == [
+        row for row in fixture if row["证券代码"] == "001335"
+    ]
+    assert fake.calls == [
+        (
+            "stock_dzjy_mrmx",
+            {
+                "symbol": "A股",
+                "start_date": "20260910",
+                "end_date": "20260910",
+            },
+        )
+    ]
+    assert record.response_metadata["endpoint"] == "stock_dzjy_mrmx"
+    assert record.response_metadata["market"] == "A"
+    assert record.response_metadata["listing_code"] == "001335"
+    assert record.response_metadata["market_activity_view"] == "block_trade_detail"
+    assert record.response_metadata["market_scope"] == "all_a_share_listings"
+    assert record.response_metadata["upstream_symbol"] == "A股"
+    assert record.response_metadata["start_date"] == "20260910"
+    assert record.response_metadata["end_date"] == "20260910"
+    assert record.response_metadata["listing_scoped_request"] is False
+    assert record.response_metadata["row_filtering"] == "provider"
+    assert record.response_metadata["snapshot_scope"] == "requested_date_range"
+    assert record.response_metadata["observation_date_field"] == "交易日期"
+    assert record.response_metadata["date_binding"] == "row_and_request"
+    assert record.response_metadata["code_field"] == "证券代码"
+    assert record.response_metadata["field_count"] == 13
+    assert record.response_metadata["source_field_order"] == list(fixture[0])
+    assert record.response_metadata["documented_units"] == {
+        "涨跌幅": "percent",
+        "成交量": "shares",
+        "成交额": "CNY",
+        "成交额/流通市值": "percent",
+    }
+    assert record.response_metadata["undocumented_numeric_units"] == {
+        "收盘价": "not_documented",
+        "成交价": "not_documented",
+        "折溢率": "not_documented",
+    }
+    assert record.response_metadata["observation_start_date"] == "2026-09-10"
+    assert record.response_metadata["observation_end_date"] == "2026-09-10"
+    assert record.response_metadata["upstream_row_count"] == 3
+    assert record.response_metadata["entity_row_count"] == 2
+    assert record.response_metadata["entity_rows_selected"] is True
+    assert record.source_uri == "https://data.eastmoney.com/dzjy/dzjy_mrmx.html"
+
+
+@pytest.mark.parametrize(
+    ("parameters", "entity_id", "match"),
+    [
+        (
+            {"view": "block_trade_detail"},
+            "SZ001335",
+            "requires start_date and end_date",
+        ),
+        (
+            {
+                "view": "block_trade_detail",
+                "start_date": "20260910",
+                "end_date": "20260910",
+                "market": "A",
+            },
+            "SZ001335",
+            "unsupported AKShare block-trade parameter",
+        ),
+        (
+            {
+                "view": "block_trade_detail",
+                "start_date": "20260911",
+                "end_date": "20260910",
+            },
+            "SZ001335",
+            "start_date must not be after end_date",
+        ),
+        (
+            {
+                "view": "block_trade_detail",
+                "start_date": "20260910",
+                "end_date": "20260910",
+            },
+            "HK00700",
+            "A-share listings only",
+        ),
+    ],
+)
+def test_market_activity_block_trade_request_validates_explicit_scope_before_upstream_call(
+    parameters: dict,
+    entity_id: str,
+    match: str,
+):
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError, match=match):
+        _provider(fake).fetch(
+            _request(DataCategory.MARKET_ACTIVITY, entity_id, parameters)
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("missing_field", "missing field"),
+        ("extra_field", "unsupported field"),
+        ("reordered_fields", "official field order"),
+        ("invalid_code", "six-digit string"),
+        ("invalid_sequence", "positive integer"),
+        ("descending_sequence", "strictly ascending"),
+        ("invalid_date", "valid YYYY-MM-DD date"),
+        ("outside_range", "outside requested range"),
+        ("invalid_numeric", "成交价.*numeric"),
+        ("invalid_name", "证券简称.*non-empty string"),
+        ("invalid_broker", "买方营业部.*non-empty string"),
+        ("non_selected_invalid_numeric", "收盘价.*numeric"),
+    ],
+)
+def test_market_activity_block_trade_response_validates_documented_universe(
+    mutation: str,
+    match: str,
+):
+    class InvalidRows(FakeAKShare):
+        def stock_dzjy_mrmx(self, *, symbol: str, start_date: str, end_date: str):
+            rows = _fixture("a_block_trade_detail.json")
+            if mutation == "missing_field":
+                rows[0].pop("成交额")
+            elif mutation == "extra_field":
+                rows[0]["unexpected"] = "not documented"
+            elif mutation == "reordered_fields":
+                rows[0] = dict(reversed(list(rows[0].items())))
+            elif mutation == "invalid_code":
+                rows[0]["证券代码"] = "SZ001335"
+            elif mutation == "invalid_sequence":
+                rows[0]["序号"] = 1.5
+            elif mutation == "descending_sequence":
+                rows[1]["序号"] = 1
+            elif mutation == "invalid_date":
+                rows[0]["交易日期"] = "2026-02-30"
+            elif mutation == "outside_range":
+                rows[0]["交易日期"] = "2026-09-09"
+            elif mutation == "invalid_numeric":
+                rows[0]["成交价"] = "418.22"
+            elif mutation == "invalid_name":
+                rows[0]["证券简称"] = None
+            elif mutation == "invalid_broker":
+                rows[0]["买方营业部"] = None
+            else:
+                rows[0]["收盘价"] = "418.22"
+            return self._return(
+                "stock_dzjy_mrmx",
+                rows,
+                symbol=symbol,
+                start_date=start_date,
+                end_date=end_date,
+            )
+
+    with pytest.raises(ProviderResponseError, match=match):
+        _provider(InvalidRows()).fetch(
+            _request(
+                DataCategory.MARKET_ACTIVITY,
+                "SZ001335",
+                {
+                    "view": "block_trade_detail",
+                    "start_date": "20260910",
+                    "end_date": "20260910",
+                },
+            )
+        )
+
+
+def test_market_activity_block_trade_with_no_matching_listing_is_empty():
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SZ000007",
+            {
+                "view": "block_trade_detail",
+                "start_date": "20260910",
+                "end_date": "20260910",
+            },
+        )
+    )
+
+    assert record.raw_payload == []
+    assert record.response_metadata["upstream_row_count"] == 3
+    assert record.response_metadata["entity_row_count"] == 0
+    assert record.response_metadata["entity_rows_selected"] is True
+
+
+def test_market_activity_block_trade_is_retained_as_raw_evidence_without_facts():
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SZ001335",
+            {
+                "view": "block_trade_detail",
+                "start_date": "20260910",
+                "end_date": "20260910",
+            },
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="market-activity-block-trade-raw-only",
+        as_of=date(2026, 9, 11),
+        profile_id="strict-v1",
+        company=_company(primary_listing="SZ001335"),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_BLOCK_TRADE_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == []
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "block-trade detail" in normalized.data_quality.notes
+    assert "issuer cash flow" in normalized.data_quality.notes
+    assert "canonical market metric" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "endpoint",
+        "source_uri",
+        "market",
+        "listing_code",
+        "view",
+        "market_scope",
+        "upstream_symbol",
+        "start_date",
+        "end_date",
+        "listing_scope",
+        "filtering",
+        "snapshot",
+        "observation_date_field",
+        "date_binding",
+        "code_field",
+        "field_count",
+        "source_field_order",
+        "documented_units",
+        "undocumented_units",
+        "upstream_count",
+        "entity_count",
+        "selected",
+        "observation_start_date",
+        "payload",
+    ],
+)
+def test_market_activity_block_trade_normalizer_rejects_replayed_scope_mismatches(
+    mutation: str,
+):
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SZ001335",
+            {
+                "view": "block_trade_detail",
+                "start_date": "20260910",
+                "end_date": "20260910",
+            },
+        )
+    )
+    payload = [dict(row) for row in record.raw_payload]
+    response_metadata = dict(record.response_metadata)
+    source_uri = record.source_uri
+    if mutation == "endpoint":
+        response_metadata["endpoint"] = "stock_lhb_detail_em"
+    elif mutation == "source_uri":
+        source_uri = "https://example.invalid/block-trade-detail"
+    elif mutation == "market":
+        response_metadata["market"] = "H"
+    elif mutation == "listing_code":
+        response_metadata["listing_code"] = "600000"
+    elif mutation == "view":
+        response_metadata["market_activity_view"] = "stock_statistic"
+    elif mutation == "market_scope":
+        response_metadata["market_scope"] = "requested_listing"
+    elif mutation == "upstream_symbol":
+        response_metadata["upstream_symbol"] = "基金"
+    elif mutation == "start_date":
+        response_metadata["start_date"] = "20260909"
+    elif mutation == "end_date":
+        response_metadata["end_date"] = "20260911"
+    elif mutation == "listing_scope":
+        response_metadata["listing_scoped_request"] = True
+    elif mutation == "filtering":
+        response_metadata["row_filtering"] = "upstream"
+    elif mutation == "snapshot":
+        response_metadata["snapshot_scope"] = "current_snapshot"
+    elif mutation == "observation_date_field":
+        response_metadata["observation_date_field"] = "上榜日"
+    elif mutation == "date_binding":
+        response_metadata["date_binding"] = "retrieval_only"
+    elif mutation == "code_field":
+        response_metadata["code_field"] = "代码"
+    elif mutation == "field_count":
+        response_metadata["field_count"] = 12
+    elif mutation == "source_field_order":
+        response_metadata["source_field_order"] = list(
+            reversed(response_metadata["source_field_order"])
+        )
+    elif mutation == "documented_units":
+        response_metadata["documented_units"] = {"成交额": "yuan"}
+    elif mutation == "undocumented_units":
+        response_metadata["undocumented_numeric_units"] = {
+            "收盘价": "CNY_per_share"
+        }
+    elif mutation == "upstream_count":
+        response_metadata["upstream_row_count"] = 1
+    elif mutation == "entity_count":
+        response_metadata["entity_row_count"] = 3
+    elif mutation == "selected":
+        response_metadata["entity_rows_selected"] = False
+    elif mutation == "observation_start_date":
+        response_metadata["observation_start_date"] = "2026-09-11"
+    else:
+        payload[0]["成交价"] = "30.0"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=source_uri,
+        response_metadata=response_metadata,
+    )
+
+    with pytest.raises(
+        ProviderNormalizationError,
+        match="(block-trade|market-activity)",
+    ):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-market-activity-block-trade",
+            as_of=date(2026, 9, 11),
+            profile_id="strict-v1",
+            company=_company(primary_listing="SZ001335"),
+        )
+
+
+def test_market_activity_block_trade_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.MARKET_ACTIVITY,
+        "SZ001335",
+        {
+            "view": "block_trade_detail",
+            "start_date": "20260910",
+            "end_date": "20260910",
+        },
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [
+        (
+            "stock_dzjy_mrmx",
+            {
+                "symbol": "A股",
+                "start_date": "20260910",
+                "end_date": "20260910",
+            },
         )
     ]
 

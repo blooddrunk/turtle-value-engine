@@ -895,6 +895,20 @@ yield, issue quantities, prices, returns and listing dates do not establish a
 settled issuance-cash period, unit or diluted-share fact. No calculation, gate,
 pipeline, CLI or input-loader contract changes.
 
+Phase 2.90 adds the distinct documented Eastmoney A-share block-trade detail
+endpoint [`stock_dzjy_mrmx`](https://akshare.akfamily.xyz/data/stock/stock.html)
+under `MARKET_ACTIVITY` with explicit `view=block_trade_detail`,
+`symbol="A股"`, `start_date` and `end_date`. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_dzjy_em.py)
+returns the exact 13 fields `序号`, `交易日期`, `证券代码`, `证券简称`, `涨跌幅`,
+`收盘价`, `成交价`, `折溢率`, `成交量`, `成交额`, `成交额/流通市值`, `买方营业部`
+and `卖方营业部`. The provider validates the complete requested date-range
+universe, field order, six-digit identities, sequence numbers, dates, finite
+numeric values and non-empty text before filtering to the requested A-share.
+The normalizer emits `AKSHARE_BLOCK_TRADE_RAW_ONLY`: trade prices, quantities,
+amounts, discount/premium and brokerage context do not establish issuer cash
+flow, shareholder return, governance, valuation or a canonical market metric.
+No calculation, gate, pipeline, CLI or input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.
