@@ -184,6 +184,13 @@ class FakeAKShare:
             date=date,
         )
 
+    def stock_szse_area_summary(self, *, date: str):
+        return self._return(
+            "stock_szse_area_summary",
+            _fixture("a_szse_area_summary.json"),
+            date=date,
+        )
+
     def stock_sse_summary(self):
         return self._return("stock_sse_summary", _fixture("a_sse_summary.json"))
 
@@ -842,8 +849,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "94"
-    assert AKSHARE_MAPPING_VERSION == "95"
+    assert provider.identity.provider_version == "95"
+    assert AKSHARE_MAPPING_VERSION == "96"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -18058,6 +18065,389 @@ def test_market_activity_szse_summary_cache_replay_does_not_call_upstream(tmp_pa
     assert replay.mode is RetrievalMode.CACHE_REPLAY
     assert replay.record == live.record
     assert fake.calls == [("stock_szse_summary", {"date": "20200619"})]
+
+
+def test_market_activity_szse_area_summary_fetch_uses_documented_month_and_preserves_snapshot():
+    fake = FakeAKShare()
+    record = _provider(fake).fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SH600000",
+            {"view": "szse_area_summary", "date": "202412"},
+        )
+    )
+
+    fixture = _fixture("a_szse_area_summary.json")
+    assert record.raw_payload == fixture
+    assert fake.calls == [
+        ("stock_szse_area_summary", {"date": "202412"}),
+    ]
+    assert record.response_metadata["endpoint"] == "stock_szse_area_summary"
+    assert record.response_metadata["market"] == "A"
+    assert record.response_metadata["listing_code"] == "600000"
+    assert record.response_metadata["market_activity_view"] == "szse_area_summary"
+    assert record.response_metadata["market_scope"] == "Shenzhen Stock Exchange"
+    assert record.response_metadata["listing_scoped_request"] is False
+    assert record.response_metadata["row_filtering"] == "none"
+    assert record.response_metadata["snapshot_scope"] == (
+        "requested_szse_monthly_area_trading_summary"
+    )
+    assert record.response_metadata["requested_date"] == "202412"
+    assert record.response_metadata["observation_month"] == "2024-12"
+    assert record.response_metadata["date_binding"] == "request_only"
+    assert record.response_metadata["rank_field"] == "序号"
+    assert record.response_metadata["rank_ordering"] == "strictly_ascending"
+    assert record.response_metadata["region_field"] == "地区"
+    assert record.response_metadata["region_ordering"] == "source_ranked"
+    assert record.response_metadata["value_fields"] == [
+        "总交易额",
+        "占市场",
+        "股票交易额",
+        "基金交易额",
+        "债券交易额",
+    ]
+    assert record.response_metadata["integer_fields"] == ["序号"]
+    assert record.response_metadata["field_count"] == 7
+    assert record.response_metadata["source_field_order"] == [
+        "序号",
+        "地区",
+        "总交易额",
+        "占市场",
+        "股票交易额",
+        "基金交易额",
+        "债券交易额",
+    ]
+    assert record.response_metadata["documented_units"] == {
+        "总交易额": "CNY",
+        "占市场": "percent",
+        "股票交易额": "CNY",
+        "基金交易额": "CNY",
+        "债券交易额": "CNY",
+    }
+    assert record.response_metadata["undocumented_numeric_units"] == {}
+    assert record.response_metadata["upstream_row_count"] == 3
+    assert record.response_metadata["entity_row_count"] == 0
+    assert record.response_metadata["entity_rows_selected"] is False
+    assert record.source_uri == "https://www.szse.cn/market/overview/index.html"
+
+
+def test_market_activity_szse_area_summary_accepts_the_documented_extended_columns():
+    class ExtendedRows(FakeAKShare):
+        def stock_szse_area_summary(self, *, date: str):
+            rows = [dict(row) for row in _fixture("a_szse_area_summary.json")]
+            for row in rows:
+                row["优先股交易额"] = 0.0
+                row["期权交易额"] = 0.0
+            return self._return("stock_szse_area_summary", rows, date=date)
+
+    record = _provider(ExtendedRows()).fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SH600000",
+            {"view": "szse_area_summary", "date": "202508"},
+        )
+    )
+
+    assert record.response_metadata["field_count"] == 9
+    assert record.response_metadata["source_field_order"] == [
+        "序号",
+        "地区",
+        "总交易额",
+        "占市场",
+        "股票交易额",
+        "基金交易额",
+        "债券交易额",
+        "优先股交易额",
+        "期权交易额",
+    ]
+    assert record.response_metadata["value_fields"] == [
+        "总交易额",
+        "占市场",
+        "股票交易额",
+        "基金交易额",
+        "债券交易额",
+        "优先股交易额",
+        "期权交易额",
+    ]
+    assert record.response_metadata["documented_units"] == {
+        "总交易额": "CNY",
+        "占市场": "percent",
+        "股票交易额": "CNY",
+        "基金交易额": "CNY",
+        "债券交易额": "CNY",
+        "优先股交易额": "CNY",
+        "期权交易额": "CNY",
+    }
+
+
+@pytest.mark.parametrize(
+    ("parameters", "entity_id", "match"),
+    [
+        (
+            {"view": "szse_area_summary"},
+            "SH600000",
+            "requires date",
+        ),
+        (
+            {"view": "szse_area_summary", "date": "202412", "period": "近一月"},
+            "SH600000",
+            "unsupported AKShare SZSE area-summary parameter",
+        ),
+        (
+            {"view": "szse_area_summary", "date": "2024121"},
+            "SH600000",
+            "market-activity date must be YYYYMM",
+        ),
+        (
+            {"view": "szse_area_summary", "date": "202413"},
+            "SH600000",
+            "market-activity date must be a valid YYYYMM month",
+        ),
+        (
+            {"view": "szse_area_summary", "date": "202412"},
+            "HK00700",
+            "A-share listings only",
+        ),
+    ],
+)
+def test_market_activity_szse_area_summary_request_validates_explicit_scope_before_upstream_call(
+    parameters: dict,
+    entity_id: str,
+    match: str,
+):
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError, match=match):
+        _provider(fake).fetch(
+            _request(DataCategory.MARKET_ACTIVITY, entity_id, parameters)
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("missing_field", "missing field"),
+        ("extra_field", "unsupported field"),
+        ("reordered_fields", "official field order"),
+        ("invalid_rank", "positive integer"),
+        ("descending_rank", "strictly ascending"),
+        ("invalid_region", "non-empty string"),
+        ("duplicate_region", "duplicate"),
+        ("invalid_numeric", "numeric or null"),
+        ("negative_numeric", "non-negative or null"),
+        ("empty_response", "at least one row"),
+    ],
+)
+def test_market_activity_szse_area_summary_response_validates_exact_fields_order_types_and_scope(
+    mutation: str,
+    match: str,
+):
+    class InvalidRows(FakeAKShare):
+        def stock_szse_area_summary(self, *, date: str):
+            rows = [dict(row) for row in _fixture("a_szse_area_summary.json")]
+            if mutation == "missing_field":
+                rows[0].pop("债券交易额")
+            elif mutation == "extra_field":
+                rows[0]["unexpected"] = "not documented"
+            elif mutation == "reordered_fields":
+                rows[0] = dict(reversed(list(rows[0].items())))
+            elif mutation == "invalid_rank":
+                rows[0]["序号"] = 1.5
+            elif mutation == "descending_rank":
+                rows[1]["序号"] = 1
+            elif mutation == "invalid_region":
+                rows[0]["地区"] = 404
+            elif mutation == "duplicate_region":
+                rows[1]["地区"] = "上海"
+            elif mutation == "invalid_numeric":
+                rows[0]["总交易额"] = "9487525000000"
+            elif mutation == "negative_numeric":
+                rows[0]["股票交易额"] = -1
+            else:
+                rows.clear()
+            return self._return("stock_szse_area_summary", rows, date=date)
+
+    with pytest.raises(ProviderResponseError, match=match):
+        _provider(InvalidRows()).fetch(
+            _request(
+                DataCategory.MARKET_ACTIVITY,
+                "SH600000",
+                {"view": "szse_area_summary", "date": "202412"},
+            )
+        )
+
+
+def test_market_activity_szse_area_summary_is_retained_as_raw_evidence_without_listing_facts():
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SH600000",
+            {"view": "szse_area_summary", "date": "202412"},
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="szse-area-summary-raw-only",
+        as_of=date(2026, 9, 11),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_SZSE_AREA_SUMMARY_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == []
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "SZSE area-summary" in normalized.data_quality.notes
+    assert "monthly region-level transaction aggregates" in normalized.data_quality.notes
+    assert "documented units" in normalized.data_quality.notes
+    assert "canonical market metric" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "endpoint",
+        "source_uri",
+        "market",
+        "listing_code",
+        "view",
+        "market_scope",
+        "listing_scope",
+        "filtering",
+        "snapshot",
+        "requested_date",
+        "observation_month",
+        "date_binding",
+        "rank_field",
+        "rank_ordering",
+        "region_field",
+        "region_ordering",
+        "value_fields",
+        "integer_fields",
+        "field_count",
+        "source_field_order",
+        "documented_units",
+        "undocumented_units",
+        "upstream_count",
+        "entity_count",
+        "selected",
+        "payload",
+    ],
+)
+def test_market_activity_szse_area_summary_normalizer_rejects_replayed_scope_mismatches(
+    mutation: str,
+):
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SH600000",
+            {"view": "szse_area_summary", "date": "202412"},
+        )
+    )
+    payload = [dict(row) for row in record.raw_payload]
+    response_metadata = dict(record.response_metadata)
+    source_uri = record.source_uri
+    if mutation == "endpoint":
+        response_metadata["endpoint"] = "stock_szse_summary"
+    elif mutation == "source_uri":
+        source_uri = "https://example.invalid/szse-area-summary"
+    elif mutation == "market":
+        response_metadata["market"] = "H"
+    elif mutation == "listing_code":
+        response_metadata["listing_code"] = "000001"
+    elif mutation == "view":
+        response_metadata["market_activity_view"] = "szse_summary"
+    elif mutation == "market_scope":
+        response_metadata["market_scope"] = "Shanghai Stock Exchange"
+    elif mutation == "listing_scope":
+        response_metadata["listing_scoped_request"] = True
+    elif mutation == "filtering":
+        response_metadata["row_filtering"] = "provider"
+    elif mutation == "snapshot":
+        response_metadata["snapshot_scope"] = "requested_szse_trading_day_market_summary"
+    elif mutation == "requested_date":
+        response_metadata["requested_date"] = "202411"
+    elif mutation == "observation_month":
+        response_metadata["observation_month"] = "2024-11"
+    elif mutation == "date_binding":
+        response_metadata["date_binding"] = "response_metric"
+    elif mutation == "rank_field":
+        response_metadata["rank_field"] = "排名"
+    elif mutation == "rank_ordering":
+        response_metadata["rank_ordering"] = "provider_reported"
+    elif mutation == "region_field":
+        response_metadata["region_field"] = "省份"
+    elif mutation == "region_ordering":
+        response_metadata["region_ordering"] = "alphabetical"
+    elif mutation == "value_fields":
+        response_metadata["value_fields"] = ["总交易额"]
+    elif mutation == "integer_fields":
+        response_metadata["integer_fields"] = []
+    elif mutation == "field_count":
+        response_metadata["field_count"] = 6
+    elif mutation == "source_field_order":
+        response_metadata["source_field_order"] = list(
+            reversed(response_metadata["source_field_order"])
+        )
+    elif mutation == "documented_units":
+        response_metadata["documented_units"] = {"总交易额": "yuan"}
+    elif mutation == "undocumented_units":
+        response_metadata["undocumented_numeric_units"] = {"占市场": "not_documented"}
+    elif mutation == "upstream_count":
+        response_metadata["upstream_row_count"] = 2
+    elif mutation == "entity_count":
+        response_metadata["entity_row_count"] = 1
+    elif mutation == "selected":
+        response_metadata["entity_rows_selected"] = True
+    else:
+        payload[0]["总交易额"] = "9487525000000"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=source_uri,
+        response_metadata=response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-szse-area-summary",
+            as_of=date(2026, 9, 11),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_market_activity_szse_area_summary_cache_replay_does_not_call_upstream(
+    tmp_path: Path,
+):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.MARKET_ACTIVITY,
+        "SH600000",
+        {"view": "szse_area_summary", "date": "202412"},
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [("stock_szse_area_summary", {"date": "202412"})]
 
 
 def test_market_activity_statistic_fetch_uses_explicit_view_and_period_and_filters_universe():

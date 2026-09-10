@@ -955,6 +955,38 @@ aggregate.
 The provider-specific response remains outside the calculation, gate, pipeline,
 CLI and input-loader contracts.
 
+## Phase 2.95 SZSE area-summary raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_szse_area_summary` as a Shenzhen Stock Exchange monthly
+region-ranked trading summary. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_summary.py)
+accepts `date=YYYYMM` and returns the base source-shaped fields `序号`, `地区`,
+`总交易额`, `占市场`, `股票交易额`, `基金交易额` and `债券交易额`, in that
+order. The documentation adds `优先股交易额` and `期权交易额` from 2025
+onward; the adapter accepts either exact documented variant and does not
+silently fill a missing variant.
+
+The provider exposes the endpoint under `MARKET_ACTIVITY` only with explicit
+`view=szse_area_summary`, passes only the normalized month to the upstream
+callable, and validates the complete region-ranked response before retention.
+It records the requested/observation month, Shenzhen market scope, strict rank
+and source order, documented units and non-listing row counts for cache replay.
+The normalizer emits `AKSHARE_SZSE_AREA_SUMMARY_RAW_ONLY`; no canonical quote,
+accounting, return, governance, valuation or market fact is admitted from this
+exchange-wide regional aggregate.
+
+| Raw upstream item | Phase 2.95 treatment |
+| --- | --- |
+| `序号` | Required positive integer rank with strict ascending order; it orders the source response and is not a listing identifier. |
+| `地区` | Required non-empty unique region label; it is geographic scope only and does not establish an issuer identity. |
+| `总交易额`, `股票交易额`, `基金交易额`, `债券交易额` | Finite non-negative numeric or null transaction aggregates; the documented unit is `元` (represented as `CNY` in metadata). |
+| `优先股交易额`, `期权交易额` | Optional only as the documented 2025 extended variant; finite non-negative numeric or null transaction aggregates with documented `元`/`CNY` units. |
+| `占市场` | Finite non-negative numeric or null market-share value; the documented unit is `%` (represented as `percent` in metadata), not a canonical liquidity or valuation metric. |
+| request `view=szse_area_summary`, `date` | Explicit requested-month SZSE region-ranking scope; `listing_scoped_request=false`, no provider filtering, source URI, field order and row counts remain part of the cache replay boundary. |
+
+The provider-specific response remains outside the calculation, gate, pipeline,
+CLI and input-loader contracts.
+
 ## Phase 2.92 SSE daily-deal overview raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)

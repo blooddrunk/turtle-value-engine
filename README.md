@@ -964,6 +964,19 @@ and replay metadata. The normalizer emits
 market fact. No calculation, gate, pipeline, CLI or input-loader contract
 changes.
 
+Phase 2.95 adds the distinct official SZSE `stock_szse_area_summary` endpoint
+under `MARKET_ACTIVITY` with explicit `view=szse_area_summary` and required
+monthly `date=YYYYMM`. The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_summary.py)
+define a region-ranked base response with seven fields and a 2025 extended
+response adding preferred-stock and options turnover. The provider validates
+the exact source order, positive ascending ranks, unique regions, finite
+numeric values and documented CNY/percentage units, and preserves the request
+month and non-listing row counts for replay. The normalizer emits
+`AKSHARE_SZSE_AREA_SUMMARY_RAW_ONLY` without creating a listing-level or
+canonical market fact. No calculation, gate, pipeline, CLI or input-loader
+contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

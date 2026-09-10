@@ -2372,6 +2372,36 @@ and numeric validation, raw-only normalization, replay-scope rejection and
 cache replay. No calculation, gate, pipeline, CLI or input-loader contract
 changes.
 
+### Phase 2.95 — SZSE area-summary raw acquisition contract (COMPLETE)
+
+The mapping review now covers the distinct documented AKShare
+`stock_szse_area_summary` endpoint under the existing `MARKET_ACTIVITY`
+category with explicit `view=szse_area_summary` and required monthly
+`date=YYYYMM`. The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_summary.py)
+define a Shenzhen Stock Exchange region-ranked report with the source-shaped
+base fields `序号`, `地区`, `总交易额`, `占市场`, `股票交易额`, `基金交易额` and
+`债券交易额`; the documentation also adds `优先股交易额` and `期权交易额`
+from 2025 onward. The adapter accepts either exact documented field order and
+retains the requested month as request-bound provenance.
+
+The provider validates the complete area-ranked response before retention,
+including positive strictly ascending ranks, unique non-empty region labels,
+finite non-negative numeric-or-null values and exact base/extended field
+ordering. It passes only the normalized month to the upstream callable and
+records the Shenzhen scope, requested/observation month, documented CNY and
+percentage units, source field order and non-listing row counts for cache
+replay. The checked-in fixture freezes the documented base-column sample, and
+tests also exercise the extended 2025 shape.
+
+The normalizer emits `AKSHARE_SZSE_AREA_SUMMARY_RAW_ONLY` and creates no
+canonical fact: region-level monthly transaction aggregates do not establish
+a requested listing's quote, issuer cash flow, shareholder return, governance,
+valuation or canonical market metric. Tests cover explicit request/month
+validation, exact base and extended fields/order/types, raw-only normalization,
+replay-scope rejection and cache replay. No calculation, gate, pipeline, CLI
+or input-loader contract changes.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -2381,7 +2411,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.94 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.95 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -2593,6 +2623,11 @@ Phase 2.94 completes the next documented structured-data boundary by adding
 the A-share `stock_szse_summary` Shenzhen Stock Exchange market-summary view.
 Its requested-date security-category rows are validated as raw-only evidence;
 documented quantity/transaction-amount units and undocumented market-value
+units remain explicit replay metadata, and no listing-level or canonical market
+fact is inferred.
+Phase 2.95 adds the documented A-share `stock_szse_area_summary` Shenzhen Stock
+Exchange region-ranked monthly view. Its base and 2025 extended source field
+variants are validated with strict rank/region/order checks; CNY and percentage
 units remain explicit replay metadata, and no listing-level or canonical market
 fact is inferred.
 Phase 2.75 completes the next documented structured-data boundary by adding
