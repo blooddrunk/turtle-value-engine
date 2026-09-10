@@ -104,6 +104,9 @@ class FakeAKShare:
     def stock_zh_a_spot_em(self):
         return self._return("stock_zh_a_spot_em", _fixture("a_quote.json"))
 
+    def stock_zh_ah_spot_em(self):
+        return self._return("stock_zh_ah_spot_em", _fixture("ah_comparison.json"))
+
     def stock_bid_ask_em(self, *, symbol: str):
         return self._return(
             "stock_bid_ask_em",
@@ -628,8 +631,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "61"
-    assert AKSHARE_MAPPING_VERSION == "62"
+    assert provider.identity.provider_version == "62"
+    assert AKSHARE_MAPPING_VERSION == "63"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -1897,6 +1900,276 @@ def test_a_bid_ask_cache_replay_does_not_call_upstream(tmp_path: Path):
     assert replay.mode is RetrievalMode.CACHE_REPLAY
     assert replay.record == live.record
     assert fake.calls == [("stock_bid_ask_em", {"symbol": "600000"})]
+
+
+@pytest.mark.parametrize(
+    ("entity_id", "code_field"),
+    [("SH688385", "A股代码"), ("HK01385", "H股代码")],
+)
+def test_ah_comparison_fetch_uses_documented_no_argument_endpoint_and_side_filter(
+    entity_id: str,
+    code_field: str,
+):
+    fake = FakeAKShare()
+    request = _request(
+        DataCategory.MARKET_QUOTE,
+        entity_id,
+        {"view": "ah_comparison"},
+    )
+    record = _provider(fake).fetch(request)
+
+    fixture = _fixture("ah_comparison.json")
+    code = entity_id[2:]
+    assert record.raw_payload == [row for row in fixture if row[code_field] == code]
+    assert fake.calls == [("stock_zh_ah_spot_em", {})]
+    assert record.response_metadata["endpoint"] == "stock_zh_ah_spot_em"
+    assert record.response_metadata["market_quote_view"] == "ah_comparison"
+    assert record.response_metadata["snapshot_scope"] == "current_trading_day_delayed_15m"
+    assert record.response_metadata["rank_field"] == "序号"
+    assert record.response_metadata["rank_ordering"] == "strictly_ascending"
+    assert record.response_metadata["date_binding"] == "retrieval_only"
+    assert record.response_metadata["listing_code_field"] == code_field
+    assert record.response_metadata["h_price_unit"] == "HKD_per_share"
+    assert record.response_metadata["a_price_unit"] == "RMB_per_share"
+    assert record.response_metadata["change_unit"] == "percent"
+    assert record.response_metadata["comparison_unit"] == "ratio"
+    assert record.response_metadata["premium_unit"] == "percent"
+    assert record.response_metadata["upstream_row_count"] == 3
+    assert record.response_metadata["entity_row_count"] == 1
+    assert record.response_metadata["entity_rows_selected"] is True
+    assert record.response_metadata["listing_scoped_request"] is False
+    assert record.response_metadata["row_filtering"] == "provider"
+    assert record.source_uri == "https://quote.eastmoney.com/center/gridlist.html#ah_comparison"
+
+
+@pytest.mark.parametrize(
+    ("entity_id", "parameters", "match"),
+    [
+        (
+            "SH688385",
+            {"view": "ah_comparison", "date": "20260909"},
+            "unsupported AKShare A\\+H comparison parameter",
+        ),
+        (
+            "HK01385",
+            {"view": "ah_comparison", "symbol": "01385"},
+            "unsupported AKShare A\\+H comparison parameter",
+        ),
+        (
+            "SH688385",
+            {"view": "quote"},
+            "requires view='bid_ask'",
+        ),
+    ],
+)
+def test_ah_comparison_request_requires_explicit_view_and_no_extra_parameters(
+    entity_id: str,
+    parameters: dict,
+    match: str,
+):
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError, match=match):
+        _provider(fake).fetch(
+            _request(DataCategory.MARKET_QUOTE, entity_id, parameters)
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("missing", "A\\+H comparison row 0 is missing field"),
+        ("unexpected", "A\\+H comparison row 0 contains unsupported field"),
+        ("invalid_rank", "field '序号' must be a positive integer"),
+        ("duplicate_rank", "序号 values must be strictly ascending"),
+        ("invalid_h_code", "has an invalid H股代码"),
+        ("invalid_a_code", "has an invalid A股代码"),
+        ("duplicate_h_code", "duplicate H股代码"),
+        ("invalid_name", "field '名称' must be a non-empty string"),
+        ("invalid_numeric", "field '最新价-HKD' must be numeric or null"),
+    ],
+)
+def test_ah_comparison_response_validates_exact_fields_identity_order_and_values(
+    mutation: str,
+    match: str,
+):
+    class InvalidRows(FakeAKShare):
+        def stock_zh_ah_spot_em(self):
+            rows = [dict(row) for row in _fixture("ah_comparison.json")]
+            if mutation == "missing":
+                rows[0].pop("比价")
+            elif mutation == "unexpected":
+                rows[0]["unexpected"] = "not documented"
+            elif mutation == "invalid_rank":
+                rows[0]["序号"] = 0
+            elif mutation == "duplicate_rank":
+                rows[1]["序号"] = rows[0]["序号"]
+            elif mutation == "invalid_h_code":
+                rows[0]["H股代码"] = "1385"
+            elif mutation == "invalid_a_code":
+                rows[0]["A股代码"] = "68838"
+            elif mutation == "duplicate_h_code":
+                rows[1]["H股代码"] = rows[0]["H股代码"]
+            elif mutation == "invalid_name":
+                rows[0]["名称"] = ""
+            else:
+                rows[0]["最新价-HKD"] = "25.65"
+            return self._return("stock_zh_ah_spot_em", rows)
+
+    with pytest.raises(ProviderResponseError, match=match):
+        _provider(InvalidRows()).fetch(
+            _request(DataCategory.MARKET_QUOTE, "SH688385", {"view": "ah_comparison"})
+        )
+
+
+def test_ah_comparison_provider_rejects_invalid_rows_before_side_filtering():
+    class InvalidUnrequestedRows(FakeAKShare):
+        def stock_zh_ah_spot_em(self):
+            rows = [dict(row) for row in _fixture("ah_comparison.json")]
+            rows[1]["A股代码"] = "60186"
+            return self._return("stock_zh_ah_spot_em", rows)
+
+    with pytest.raises(ProviderResponseError, match="invalid A股代码"):
+        _provider(InvalidUnrequestedRows()).fetch(
+            _request(DataCategory.MARKET_QUOTE, "SH688385", {"view": "ah_comparison"})
+        )
+
+
+def test_ah_comparison_empty_side_selection_is_a_valid_filtered_snapshot():
+    class NoMatchingAListing(FakeAKShare):
+        def stock_zh_ah_spot_em(self):
+            rows = [
+                row
+                for row in _fixture("ah_comparison.json")
+                if row["A股代码"] != "688385"
+            ]
+            return self._return("stock_zh_ah_spot_em", rows)
+
+    record = _provider(NoMatchingAListing()).fetch(
+        _request(DataCategory.MARKET_QUOTE, "SH688385", {"view": "ah_comparison"})
+    )
+
+    assert record.raw_payload == []
+    assert record.response_metadata["upstream_row_count"] == 2
+    assert record.response_metadata["entity_row_count"] == 0
+    assert record.response_metadata["entity_rows_selected"] is True
+
+
+def test_ah_comparison_record_is_raw_only_and_does_not_promote_cross_market_quote_context():
+    record = _provider().fetch(
+        _request(DataCategory.MARKET_QUOTE, "SH688385", {"view": "ah_comparison"})
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="ah-comparison-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company("SH688385"),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_AH_COMPARISON_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == ["current_price"]
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "A+H comparison" in normalized.data_quality.notes
+    assert "canonical current-price input" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("response_view", "metadata 'market_quote_view'"),
+        ("market", "response market"),
+        ("listing_code", "response listing code"),
+        ("listing_scope", "metadata 'listing_scoped_request'"),
+        ("row_filtering", "metadata 'row_filtering'"),
+        ("snapshot_scope", "metadata 'snapshot_scope'"),
+        ("rank_ordering", "metadata 'rank_ordering'"),
+        ("date_binding", "metadata 'date_binding'"),
+        ("price_unit", "metadata 'h_price_unit'"),
+        ("entity_count", "metadata 'entity_row_count'"),
+        ("upstream_count", "upstream row count"),
+        ("payload_entity", "entity '601869'")
+    ],
+)
+def test_ah_comparison_normalizer_rejects_replayed_scope_mismatches(
+    mutation: str,
+    match: str,
+):
+    record = _provider().fetch(
+        _request(DataCategory.MARKET_QUOTE, "SH688385", {"view": "ah_comparison"})
+    )
+    response_metadata = dict(record.response_metadata)
+    payload = [dict(row) for row in record.raw_payload]
+    if mutation == "response_view":
+        response_metadata["market_quote_view"] = "quote"
+    elif mutation == "market":
+        response_metadata["market"] = "H"
+    elif mutation == "listing_code":
+        response_metadata["listing_code"] = "601869"
+    elif mutation == "listing_scope":
+        response_metadata["listing_scoped_request"] = True
+    elif mutation == "row_filtering":
+        response_metadata["row_filtering"] = "client"
+    elif mutation == "snapshot_scope":
+        response_metadata["snapshot_scope"] = "current_quote_snapshot"
+    elif mutation == "rank_ordering":
+        response_metadata["rank_ordering"] = "descending"
+    elif mutation == "date_binding":
+        response_metadata["date_binding"] = "row"
+    elif mutation == "price_unit":
+        response_metadata["h_price_unit"] = "HKD"
+    elif mutation == "entity_count":
+        response_metadata["entity_row_count"] = 2
+    elif mutation == "upstream_count":
+        response_metadata["upstream_row_count"] = 0
+    else:
+        payload[0]["A股代码"] = "601869"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=record.source_uri,
+        response_metadata=response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match=match):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-ah-comparison-scope",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company("SH688385"),
+        )
+
+
+def test_ah_comparison_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.MARKET_QUOTE,
+        "SH688385",
+        {"view": "ah_comparison"},
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [("stock_zh_ah_spot_em", {})]
 
 
 def test_a_intraday_trades_fetch_uses_documented_symbol_and_shape():

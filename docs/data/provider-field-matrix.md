@@ -686,6 +686,38 @@ gate, pipeline, CLI and input-loader contracts. Its raw evidence is available
 for later review without being treated as a canonical market metric,
 shareholder-return, governance or valuation input.
 
+## Phase 2.62 A+H Eastmoney quote-comparison raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_zh_ah_spot_em` as an Eastmoney no-argument A+H comparison
+endpoint, delayed by 15 minutes. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hsgt_em.py)
+confirms the exact ten output fields `序号`, `名称`, `H股代码`, `最新价-HKD`,
+`H股-涨跌幅`, `A股代码`, `最新价-RMB`, `A股-涨跌幅`, `比价` and `溢价`.
+
+The provider selects this endpoint only under `MARKET_QUOTE` with explicit
+`view=ah_comparison`, validates the full response before filtering it to the
+requested A- or H-share code, and records the side-specific code field,
+`HKD_per_share`/`RMB_per_share` price units, percent change/premium units,
+ratio units and filtered row counts for replay. The normalizer emits
+`AKSHARE_AH_COMPARISON_RAW_ONLY`; no canonical current-price, FX, comparison,
+valuation or calculation fact is admitted because the cross-market snapshot is
+delayed and has no stable row-level observation timestamp.
+
+| Raw upstream item | Phase 2 treatment |
+| --- | --- |
+| `序号` | Required positive integer in a strictly ascending full-universe sequence; no canonical rank or market metric is inferred. |
+| `名称` | Required non-empty display name; it is retained as raw entity context only. |
+| `H股代码`, `A股代码` | Required five-/six-digit string identities; the requested side is used only for provider-boundary filtering and replay scope. |
+| `最新价-HKD`, `最新价-RMB` | Raw H-share/HKD and A-share/RMB quote context; neither replaces canonical current price or establishes FX/share equivalence. |
+| `H股-涨跌幅`, `A股-涨跌幅` | Raw percentage changes; no return or valuation fact is inferred. |
+| `比价`, `溢价` | Raw provider comparison/premium fields; no canonical ratio, FX or valuation fact is inferred. |
+| request `view=ah_comparison` | Explicit no-argument endpoint-selection, side-filtered-listing and delayed-snapshot replay scope. |
+
+The provider-specific A+H comparison response remains outside the calculation,
+gate, pipeline, CLI and input-loader contracts. Its raw evidence is available
+for later review without being treated as a canonical quote, FX, comparison,
+market or valuation input.
+
 ## Phase 2.9 corporate-action raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)

@@ -1,6 +1,6 @@
 # Provider and Cache Architecture
 
-> Status: Phase 2 foundation, read-only AKShare statement slices, earnings forecasts/quick reports/performance reports/business composition/financial abstract/financial indicators, H-share latest indicators, dividend events/snapshots/detail, A-share disclosure-notice metadata, risk-warning status, trading-suspension, restricted-share-release, goodwill-impairment, ESG-rating, SSE/SZSE/BSE margin-detail, share-capital, individual-info snapshot, corporate-action, external-guarantee, company-litigation, ownership-pledge snapshot/detail, main-shareholder, shareholder-count, A-share actual-controller holding-change, A/H HSGT individual-holdings, SSE/SZSE/BSE insider-share-change, A-share Eastmoney management-holding and A-share top-ten/top-ten-tradable-shareholder/top-ten-tradable-shareholder-detail, Dragon-Tiger market-activity detail/statistics/institution-statistics/market-participation-desire/hot-rank, A-share Eastmoney intraday-trade, Tencent daily-history/latest-trading-day tick, Sina minute-history, A-share/H-share intraday-history, pre-market-history and five-level bid-ask raw slices
+> Status: Phase 2 foundation, read-only AKShare statement slices, earnings forecasts/quick reports/performance reports/business composition/financial abstract/financial indicators, H-share latest indicators, dividend events/snapshots/detail, A-share disclosure-notice metadata, risk-warning status, trading-suspension, restricted-share-release, goodwill-impairment, ESG-rating, SSE/SZSE/BSE margin-detail, share-capital, individual-info snapshot, corporate-action, external-guarantee, company-litigation, ownership-pledge snapshot/detail, main-shareholder, shareholder-count, A-share actual-controller holding-change, A/H HSGT individual-holdings, SSE/SZSE/BSE insider-share-change, A-share Eastmoney management-holding and A-share top-ten/top-ten-tradable-shareholder/top-ten-tradable-shareholder-detail, Dragon-Tiger market-activity detail/statistics/institution-statistics/market-participation-desire/hot-rank, A+H quote-comparison, A-share Eastmoney intraday-trade, Tencent daily-history/latest-trading-day tick, Sina minute-history, A-share/H-share intraday-history, pre-market-history and five-level bid-ask raw slices
 
 This document freezes the boundary between structured-data acquisition and the
 deterministic Turtle Value Engine. It does not authorize a live provider or
@@ -706,7 +706,7 @@ The cache performs no network retries. The normalizer performs no provider
 retries. The deterministic pipeline performs no provider retries and should
 not be rerun as a substitute for resolving missing facts.
 
-## 12. Phase 2.2–2.61 AKShare adapter
+## 12. Phase 2.2–2.62 AKShare adapter
 
 The first concrete adapter is intentionally limited to read-only metadata,
 market observations, three documented financial-statement slices, raw-only
@@ -722,7 +722,7 @@ main-shareholder/shareholder-count/actual-controller holding-change/HSGT
 individual-holdings raw slices, A-share Eastmoney individual-fund-flow,
 top-ten-shareholder/top-ten-tradable-shareholder/top-ten-tradable-shareholder-detail,
 Dragon-Tiger detail/statistics/institution-statistics/market-participation-desire and
-stock-hot-rank market-activity,
+stock-hot-rank market-activity, the A+H quote-comparison,
 SSE/SZSE/BSE insider-share-change, A-share Eastmoney management-holding,
 A-share Eastmoney intraday-trade/chip-distribution, Tencent daily-history and latest-trading-day tick, Sina minute-history,
 A-share/H-share intraday-history, pre-market-history and five-level bid-ask raw
@@ -735,7 +735,7 @@ advertises exactly these capabilities:
 | `LISTING_METADATA` | `stock_info_a_code_name` | `stock_hk_security_profile_em` (with conservative listing-list fallbacks) | listing code/name/date/exchange and other explicit metadata facts |
 | `RISK_WARNING_STATUS` | `stock_zh_a_st_em` (no parameters) | — | current A-share risk-warning-board membership as raw structured evidence only; no canonical `special_treatment` fact |
 | `TRADING_SUSPENSIONS` | `stock_tfp_em` (exact `date`) | — | requested-date A-share suspension/resumption rows as raw structured evidence only; no canonical status or governance fact |
-| `MARKET_QUOTE` | `stock_zh_a_spot_em`; `stock_bid_ask_em` (`view=bid_ask`, Shanghai/Shenzhen A-share only) | `stock_hk_spot_em` | selected-listing `current_price` plus quote timestamp; bid/ask view retained raw-only |
+| `MARKET_QUOTE` | `stock_zh_a_spot_em`; `stock_bid_ask_em` (`view=bid_ask`, Shanghai/Shenzhen A-share only); `stock_zh_ah_spot_em` (`view=ah_comparison`, full A+H universe filtered by requested A/H side) | `stock_hk_spot_em`; `stock_zh_ah_spot_em` (`view=ah_comparison`, full A+H universe filtered by requested H-share side) | selected-listing `current_price` plus quote timestamp; bid/ask and A+H comparison views retained raw-only |
 | `MARKET_HISTORY` | `stock_zh_a_hist` (daily history); `stock_intraday_em` (`view=intraday_trades`, latest-trading-day time-only trades; A-share only); `stock_cyq_em` (`view=chip_distribution`, latest 90 trading days and adjustment; A-share only); `stock_zh_a_hist_tx` (`view=tencent_daily`, explicit date range/adjustment; A-share only); `stock_zh_a_tick_tx_js` (`view=tencent_tick`, latest-trading-day time-only ticks; A-share only); `stock_zh_a_minute` (`view=sina_minute`, explicit interval/adjustment; A-share only); `stock_zh_a_hist_min_em` (`view=intraday`, explicit datetime range/interval/adjustment; A-share only); `stock_zh_a_hist_pre_min_em` (`view=pre_market`, explicit time-of-day range; A-share only) | `stock_hk_daily`; `stock_hk_hist_min_em` (`view=hk_intraday`, explicit datetime range/interval/adjustment; H-share only) | dated daily OHLCV/turnover extension facts from standard and Tencent daily history; Eastmoney intraday-trade, chip-distribution, Tencent tick, Sina minute, A-share/H-share intraday and latest-day pre-market rows as raw structured evidence only |
 | `MARKET_ACTIVITY` | `stock_comment_detail_scrd_desire_em` (`view=participation_desire`, latest 30 trading days; A-share only); `stock_hot_rank_em` (`view=hot_rank`, current-trading-day top 100; A-share only); `stock_lhb_detail_em` (inclusive `start_date`/`end_date`; A-share only); `stock_lhb_stock_statistic_em` (`view=stock_statistic`, explicit `period`; A-share only); `stock_lhb_jgstatistic_em` (`view=institution_statistic`, explicit `period`; A-share only) | — | A-share market-participation-desire, stock-popularity-rank, Dragon-Tiger detail, per-listing statistics or institution-seat statistics rows filtered to the requested listing as raw structured evidence only; no issuer cash-flow, shareholder-return, governance, market or valuation fact |
 | `CAPITAL_FLOW` | `stock_individual_fund_flow` (A-share) | — | recent daily investor-flow rows as raw structured evidence only; no issuer cash-flow, liquidity or valuation fact |
@@ -806,6 +806,18 @@ to retrieval provenance. The normalizer emits
 `AKSHARE_HOT_RANK_RAW_ONLY`; popularity ordering and quote context remain raw
 evidence and do not become a canonical market metric, issuer cash flow,
 shareholder return, governance or valuation input.
+The A/H `stock_zh_ah_spot_em` view passes no upstream arguments to the
+documented Eastmoney A+H comparison endpoint. Its delayed 15-minute response
+contains the exact `序号`, `名称`, five-digit `H股代码`, H-share price/change,
+six-digit `A股代码`, A-share price/change, `比价` and `溢价` fields. The adapter
+validates the full universe, unique ascending sequence, code widths and finite
+numeric/null values before filtering by the requested A- or H-share side. It
+records `HKD_per_share` and `RMB_per_share` price units, percent/ratio/premium
+units, the delayed current-day snapshot and retrieval-only date binding. The
+normalizer emits `AKSHARE_AH_COMPARISON_RAW_ONLY`; because the response has no
+stable row-level observation timestamp, its cross-market prices and comparison
+fields do not replace canonical current price or become FX, comparison,
+valuation or calculation inputs.
 The A-share `stock_intraday_em` view passes the unprefixed six-digit listing
 code to the documented Eastmoney intraday-trade endpoint. Its latest-trading-day
 response contains the exact time-only fields `时间`, `成交价`, `手数` and
@@ -850,7 +862,8 @@ external-guarantee, company-litigation, share-capital, ownership-pledge,
 main-shareholder, shareholder-count, top-ten-shareholder,
 top-ten-tradable-shareholder, top-ten-tradable-shareholder-detail,
 insider-share-change, management-holding,
-individual-info, individual-fund-flow, market-participation-desire, hot-rank, chip-distribution, Tencent latest-trading-day tick, Sina minute-history, A-share/H-share intraday-history, pre-market-history and
+individual-info, individual-fund-flow, market-participation-desire, hot-rank,
+A+H quote-comparison, chip-distribution, Tencent latest-trading-day tick, Sina minute-history, A-share/H-share intraday-history, pre-market-history and
 five-level bid-ask
 raw slices it emits
 raw-record evidence only and explicit unresolved flags where needed; it does
@@ -881,6 +894,12 @@ The stock hot-rank slice remains raw evidence because current popularity
 ordering and quote context do not establish a canonical market metric. Its
 explicit view, no-argument endpoint, exact field set, top-100 limit and
 filtered-listing replay scope remain part of the replay boundary.
+The A+H quote-comparison slice remains raw evidence because its delayed
+cross-market prices, changes, ratio and premium do not establish a canonical
+current-price, FX, comparison or valuation fact. Its explicit view,
+no-argument endpoint, exact ten-field set, five-/six-digit code identities,
+side-specific filtered-listing scope, units and retrieval-only snapshot remain
+part of the replay boundary.
 Margin-trading rows remain raw evidence because security-level investor
 financing balances and quantities are not issuer accounting debt or cash.
 Shareholder-count rows remain raw evidence because quarter-end shareholder
@@ -1300,7 +1319,7 @@ critically missing.
 
 ## 13. Deliberate non-goals
 
-This foundation plus the Phase 2.2–2.61 slices does not include:
+This foundation plus the Phase 2.2–2.62 slices does not include:
 
 - Tushare, BaoStock or any other additional provider;
 - automatic network scheduling, credentials or retry orchestration outside an adapter;

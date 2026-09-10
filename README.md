@@ -504,6 +504,18 @@ shape, then filters the response to the requested A-share listing. The
 normalizer emits `AKSHARE_HOT_RANK_RAW_ONLY`: current popularity ordering and
 quote context remain raw evidence and do not become a canonical market,
 issuer-cash-flow, shareholder-return, governance or valuation fact.
+Phase 2.62 adds the distinct documented Eastmoney A+H comparison endpoint
+[`stock_zh_ah_spot_em`](https://akshare.akfamily.xyz/data/stock/stock.html),
+whose current official implementation is in
+[`stock_hsgt_em.py`](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hsgt_em.py),
+under `MARKET_QUOTE` with explicit `view=ah_comparison`. It calls the
+documented no-argument full A+H universe, validates the exact ten-field
+response, five-/six-digit H/A identities, unique ascending sequence and finite
+numeric/null comparison fields, then filters by the requested A- or H-share
+side. The normalizer emits `AKSHARE_AH_COMPARISON_RAW_ONLY`: the documented
+15-minute-delayed cross-market prices, changes, ratio and premium have no
+stable observation timestamp and do not replace canonical current price or
+become FX, comparison, valuation or calculation inputs.
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

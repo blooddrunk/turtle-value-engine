@@ -21,7 +21,7 @@ the SSE/SZSE/BSE margin-detail raw slices, the A-share individual ownership-pled
 detail view, the A-share CNINFO equity-mortgage view, A-share company-litigation
 raw slice and A-share Eastmoney individual-info raw slice.
 The A-share Eastmoney individual-fund-flow, market-participation-desire,
-hot-rank, intraday-trade, chip-distribution, Tencent
+hot-rank, A+H comparison, intraday-trade, chip-distribution, Tencent
 daily-history and Tencent latest-trading-day tick, Sina minute-history,
 intraday-history, H-share intraday-history, pre-market-history, five-level bid-ask
 and Dragon-Tiger market-activity detail/statistics/institution-statistics raw
@@ -74,9 +74,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "61"
+AKSHARE_ADAPTER_VERSION = "62"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "62"
+AKSHARE_MAPPING_VERSION = "63"
 
 
 class ListingMarket(StrEnum):
@@ -273,6 +273,31 @@ _BID_ASK_ITEM_NAMES = (
     "内盘",
 )
 _BID_ASK_ITEM_NAME_SET = frozenset(_BID_ASK_ITEM_NAMES)
+
+_MARKET_QUOTE_AH_COMPARISON_PARAMETER_NAMES = frozenset({"view"})
+_MARKET_QUOTE_AH_COMPARISON_VIEW = "ah_comparison"
+_MARKET_QUOTE_AH_COMPARISON_FIELDS = frozenset(
+    {
+        "序号",
+        "名称",
+        "H股代码",
+        "最新价-HKD",
+        "H股-涨跌幅",
+        "A股代码",
+        "最新价-RMB",
+        "A股-涨跌幅",
+        "比价",
+        "溢价",
+    }
+)
+_MARKET_QUOTE_AH_COMPARISON_NUMERIC_FIELDS = (
+    "最新价-HKD",
+    "H股-涨跌幅",
+    "最新价-RMB",
+    "A股-涨跌幅",
+    "比价",
+    "溢价",
+)
 
 _MARKET_HISTORY_INTRADAY_PARAMETER_NAMES = frozenset(
     {"view", "start_date", "end_date", "period", "adjust"}
@@ -999,6 +1024,36 @@ class AKShareProvider(StructuredDataProvider):
             response_metadata["market_quote_view"] = _MARKET_QUOTE_BID_ASK_VIEW
             response_metadata["upstream_symbol"] = kwargs["symbol"]
             response_metadata["snapshot_scope"] = "current_bid_ask_snapshot"
+        elif (
+            request.category is DataCategory.MARKET_QUOTE
+            and endpoint.name == "stock_zh_ah_spot_em"
+        ):
+            rows = _table_rows(payload, provider=self.identity, request=request)
+            _validate_market_quote_ah_comparison_provider_rows(
+                rows,
+                provider=self.identity,
+                request=request,
+            )
+            selected = _select_market_quote_ah_comparison_rows(rows, listing)
+            payload = selected
+            response_metadata["upstream_row_count"] = len(rows)
+            response_metadata["entity_row_count"] = len(selected)
+            response_metadata["entity_rows_selected"] = True
+            response_metadata["listing_scoped_request"] = False
+            response_metadata["row_filtering"] = "provider"
+            response_metadata["market_quote_view"] = _MARKET_QUOTE_AH_COMPARISON_VIEW
+            response_metadata["snapshot_scope"] = "current_trading_day_delayed_15m"
+            response_metadata["rank_field"] = "序号"
+            response_metadata["rank_ordering"] = "strictly_ascending"
+            response_metadata["date_binding"] = "retrieval_only"
+            response_metadata["listing_code_field"] = (
+                "A股代码" if listing.market is ListingMarket.A else "H股代码"
+            )
+            response_metadata["h_price_unit"] = "HKD_per_share"
+            response_metadata["a_price_unit"] = "RMB_per_share"
+            response_metadata["change_unit"] = "percent"
+            response_metadata["comparison_unit"] = "ratio"
+            response_metadata["premium_unit"] = "percent"
         elif request.category in _ROW_SELECT_CATEGORIES:
             rows = _table_rows(payload, provider=self.identity, request=request)
             selected = _select_listing_row(
@@ -2267,6 +2322,9 @@ class AKShareProvider(StructuredDataProvider):
                 request.parameters.get("view")
                 == _MARKET_ACTIVITY_INSTITUTION_STATISTIC_VIEW
             ),
+            market_quote_ah_comparison_requested=(
+                request.parameters.get("view") == _MARKET_QUOTE_AH_COMPARISON_VIEW
+            ),
             market_quote_bid_ask_requested=(
                 "view" in request.parameters
             ),
@@ -2790,6 +2848,17 @@ class AKShareNormalizer:
                 # reconciliation required by the normalized contract.
                 missing_fields.update({"goodwill", "impairment"})
                 normalizer_flags.add("AKSHARE_GOODWILL_IMPAIRMENT_RAW_ONLY")
+            elif (
+                record.request.category is DataCategory.MARKET_QUOTE
+                and record.response_metadata.get("endpoint")
+                == "stock_zh_ah_spot_em"
+            ):
+                _validate_market_quote_ah_comparison_normalizer_scope(
+                    record,
+                    listing,
+                    rows,
+                )
+                normalizer_flags.add("AKSHARE_AH_COMPARISON_RAW_ONLY")
             elif (
                 record.request.category is DataCategory.MARKET_QUOTE
                 and record.response_metadata.get("endpoint") == "stock_bid_ask_em"
@@ -3479,8 +3548,15 @@ class AKShareNormalizer:
                     f"unsupported AKShare normalization category: {record.request.category.value}"
                 )
 
-        if "AKSHARE_BID_ASK_RAW_ONLY" in normalizer_flags and not any(
-            fact.field == "current_price" and fact.value is not None for fact in facts
+        if (
+            {
+                "AKSHARE_BID_ASK_RAW_ONLY",
+                "AKSHARE_AH_COMPARISON_RAW_ONLY",
+            }
+            & normalizer_flags
+            and not any(
+                fact.field == "current_price" and fact.value is not None for fact in facts
+            )
         ):
             missing_fields.add("current_price")
         if (
@@ -3573,7 +3649,11 @@ class AKShareNormalizer:
             "period, liquidity or valuation facts. Top-ten-shareholder records remain "
             "raw structured evidence because holder rank, quantities, ratios and "
             "report-date context do not establish beneficial control, canonical "
-            "concentration or a company-level diluted-share series."
+            "concentration or a company-level diluted-share series. "
+            "A+H comparison snapshots also remain raw structured evidence because "
+            "their delayed cross-market prices, changes, ratio and premium lack a "
+            "stable observation timestamp and do not establish a canonical "
+            "current-price input."
         )
         if "AKSHARE_CORPORATE_ACTIONS_RAW_ONLY" in normalizer_flags:
             notes += (
@@ -3871,6 +3951,13 @@ class AKShareNormalizer:
                 "a stable observation timestamp and do not establish the canonical "
                 "current-price input."
             )
+        if "AKSHARE_AH_COMPARISON_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented A+H comparison response is retained as raw evidence "
+                "only: its delayed cross-market prices, changes, ratio and premium "
+                "lack a stable observation timestamp and do not establish a canonical "
+                "current-price input."
+            )
         if "AKSHARE_TENCENT_TICK_RAW_ONLY" in normalizer_flags:
             notes += (
                 " The documented A-share Tencent tick response is retained as raw "
@@ -4087,6 +4174,7 @@ def _endpoint_candidates(
     market_activity_institution_statistic_requested: bool = False,
     market_activity_participation_desire_requested: bool = False,
     market_activity_hot_rank_requested: bool = False,
+    market_quote_ah_comparison_requested: bool = False,
     market_quote_bid_ask_requested: bool = False,
     market_history_intraday_requested: bool = False,
     market_history_hk_intraday_requested: bool = False,
@@ -4129,6 +4217,8 @@ def _endpoint_candidates(
             return ("stock_sy_jz_em",)
         return ()
     if category is DataCategory.MARKET_QUOTE:
+        if market_quote_ah_comparison_requested:
+            return ("stock_zh_ah_spot_em",)
         if market is ListingMarket.A:
             if market_quote_bid_ask_requested:
                 return ("stock_bid_ask_em",)
@@ -4313,6 +4403,25 @@ def _market_quote_kwargs(
     listing: _ListingRef,
     request: ProviderRequest,
 ) -> dict[str, object]:
+    if endpoint_name == "stock_zh_ah_spot_em":
+        unknown = sorted(
+            set(request.parameters) - _MARKET_QUOTE_AH_COMPARISON_PARAMETER_NAMES
+        )
+        if unknown:
+            raise ProviderRequestError(
+                "unsupported AKShare A+H comparison parameter(s): "
+                + ", ".join(unknown),
+                request=request,
+                retryable=False,
+            )
+        if request.parameters.get("view") != _MARKET_QUOTE_AH_COMPARISON_VIEW:
+            raise ProviderRequestError(
+                "the AKShare A+H comparison endpoint requires "
+                f"view={_MARKET_QUOTE_AH_COMPARISON_VIEW!r}",
+                request=request,
+                retryable=False,
+            )
+        return {}
     if endpoint_name != "stock_bid_ask_em":
         if endpoint_name in {"stock_zh_a_spot_em", "stock_zh_a_spot"}:
             _reject_unexpected_parameters(request)
@@ -6373,6 +6482,115 @@ def _validate_bid_ask_provider_rows(
             provider=provider,
             request=request,
         )
+
+
+def _market_quote_ah_comparison_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef | None = None,
+) -> str | None:
+    """Return a strict-schema error for an A+H comparison snapshot."""
+
+    seen_h_codes: set[str] = set()
+    seen_a_codes: set[str] = set()
+    previous_rank: int | None = None
+    for index, row in enumerate(rows):
+        missing = sorted(_MARKET_QUOTE_AH_COMPARISON_FIELDS - set(row))
+        unexpected = sorted(set(row) - _MARKET_QUOTE_AH_COMPARISON_FIELDS)
+        if missing:
+            return (
+                f"A+H comparison row {index} is missing field(s): "
+                + ", ".join(missing)
+            )
+        if unexpected:
+            return (
+                f"A+H comparison row {index} contains unsupported field(s): "
+                + ", ".join(unexpected)
+            )
+
+        rank = row["序号"]
+        if isinstance(rank, bool) or not isinstance(rank, Real):
+            return f"A+H comparison row {index} field '序号' must be a positive integer"
+        try:
+            numeric_rank = float(rank)
+        except (OverflowError, TypeError, ValueError):
+            return f"A+H comparison row {index} field '序号' must be a positive integer"
+        if not math.isfinite(numeric_rank) or not numeric_rank.is_integer() or numeric_rank < 1:
+            return f"A+H comparison row {index} field '序号' must be a positive integer"
+        normalized_rank = int(numeric_rank)
+        if previous_rank is not None and normalized_rank <= previous_rank:
+            return "A+H comparison 序号 values must be strictly ascending"
+        previous_rank = normalized_rank
+
+        name = row["名称"]
+        if not isinstance(name, str) or not name.strip():
+            return f"A+H comparison row {index} field '名称' must be a non-empty string"
+
+        h_code = row["H股代码"]
+        if not isinstance(h_code, str) or not re.fullmatch(r"\d{5}", h_code):
+            return f"A+H comparison row {index} has an invalid H股代码"
+        if h_code in seen_h_codes:
+            return f"A+H comparison response has duplicate H股代码 {h_code!r}"
+        seen_h_codes.add(h_code)
+
+        a_code = row["A股代码"]
+        if not isinstance(a_code, str) or not re.fullmatch(r"\d{6}", a_code):
+            return f"A+H comparison row {index} has an invalid A股代码"
+        if a_code in seen_a_codes:
+            return f"A+H comparison response has duplicate A股代码 {a_code!r}"
+        seen_a_codes.add(a_code)
+
+        if listing is not None:
+            code_field = "A股代码" if listing.market is ListingMarket.A else "H股代码"
+            if row[code_field] != listing.code:
+                return (
+                    f"A+H comparison row {index} entity {row[code_field]!r} does not "
+                    f"match requested listing {listing.canonical_id!r}"
+                )
+
+        for field in _MARKET_QUOTE_AH_COMPARISON_NUMERIC_FIELDS:
+            value = row[field]
+            if value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, Real):
+                return (
+                    f"A+H comparison row {index} field {field!r} must be numeric or null"
+                )
+            try:
+                numeric = float(value)
+            except (OverflowError, TypeError, ValueError):
+                return (
+                    f"A+H comparison row {index} field {field!r} must be numeric or null"
+                )
+            if not math.isfinite(numeric):
+                return (
+                    f"A+H comparison row {index} field {field!r} must be finite or null"
+                )
+    return None
+
+
+def _validate_market_quote_ah_comparison_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> None:
+    message = _market_quote_ah_comparison_validation_message(rows)
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message}",
+            provider=provider,
+            request=request,
+        )
+
+
+def _select_market_quote_ah_comparison_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+) -> list[dict[str, JSONValue]]:
+    """Filter the full A+H universe by the requested listing side."""
+
+    code_field = "A股代码" if listing.market is ListingMarket.A else "H股代码"
+    return [dict(row) for row in rows if row[code_field] == listing.code]
 
 
 def _intraday_history_timestamp(value: object) -> datetime | None:
@@ -9056,6 +9274,89 @@ def _validate_market_activity_hot_rank_normalizer_scope(
         )
 
     message = _market_activity_hot_rank_validation_message(rows, listing)
+    if message is not None:
+        raise ProviderNormalizationError(message)
+
+
+def _validate_market_quote_ah_comparison_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> None:
+    """Validate the replay scope of a filtered A+H comparison snapshot."""
+
+    if record.response_metadata.get("endpoint") != "stock_zh_ah_spot_em":
+        raise ProviderNormalizationError(
+            "A+H comparison record must come from stock_zh_ah_spot_em"
+        )
+    if record.response_metadata.get("market") != listing.market.value:
+        raise ProviderNormalizationError(
+            "A+H comparison response market does not match requested listing"
+        )
+    if record.response_metadata.get("listing_code") != listing.code:
+        raise ProviderNormalizationError(
+            "A+H comparison response listing code does not match requested listing"
+        )
+    try:
+        _market_quote_kwargs(
+            "stock_zh_ah_spot_em",
+            listing,
+            record.request,
+        )
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+
+    expected_metadata = {
+        "market_quote_view": _MARKET_QUOTE_AH_COMPARISON_VIEW,
+        "listing_scoped_request": False,
+        "row_filtering": "provider",
+        "snapshot_scope": "current_trading_day_delayed_15m",
+        "rank_field": "序号",
+        "rank_ordering": "strictly_ascending",
+        "date_binding": "retrieval_only",
+        "listing_code_field": (
+            "A股代码" if listing.market is ListingMarket.A else "H股代码"
+        ),
+        "h_price_unit": "HKD_per_share",
+        "a_price_unit": "RMB_per_share",
+        "change_unit": "percent",
+        "comparison_unit": "ratio",
+        "premium_unit": "percent",
+        "entity_rows_selected": True,
+        "entity_row_count": len(rows),
+    }
+    boolean_fields = {"listing_scoped_request", "entity_rows_selected"}
+    count_fields = {"entity_row_count"}
+    for name, expected in expected_metadata.items():
+        actual = record.response_metadata.get(name)
+        if name in boolean_fields:
+            matches = isinstance(actual, bool) and actual is expected
+        elif name in count_fields:
+            matches = (
+                isinstance(actual, int)
+                and not isinstance(actual, bool)
+                and actual == expected
+            )
+        else:
+            matches = actual == expected
+        if not matches:
+            raise ProviderNormalizationError(
+                f"A+H comparison response metadata {name!r} does not match "
+                "the requested replay scope"
+            )
+
+    upstream_row_count = record.response_metadata.get("upstream_row_count")
+    if (
+        isinstance(upstream_row_count, bool)
+        or not isinstance(upstream_row_count, int)
+        or upstream_row_count < len(rows)
+    ):
+        raise ProviderNormalizationError(
+            "A+H comparison response upstream row count does not match "
+            "the requested replay scope"
+        )
+
+    message = _market_quote_ah_comparison_validation_message(rows, listing)
     if message is not None:
         raise ProviderNormalizationError(message)
 

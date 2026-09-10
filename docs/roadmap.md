@@ -1506,6 +1506,31 @@ governance or valuation fact. Live calls remain opt-in; tests use an injected
 client and a frozen fixture with cache replay, invalid-parameter,
 response-validation, raw-only and replay-scope coverage.
 
+### Phase 2.62 — A+H Eastmoney quote-comparison raw acquisition contract (COMPLETE)
+
+The mapping review now covers the distinct Eastmoney A+H comparison endpoint
+documented as
+[`stock_zh_ah_spot_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
+and implemented by the current [official source](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hsgt_em.py).
+It accepts no upstream arguments and returns the full A+H comparison snapshot
+with the exact fields `序号`, `名称`, `H股代码`, `最新价-HKD`, `H股-涨跌幅`,
+`A股代码`, `最新价-RMB`, `A股-涨跌幅`, `比价` and `溢价`; the documentation
+describes the quote as delayed by 15 minutes.
+
+The provider selects this callable only under the existing provider-neutral
+`MARKET_QUOTE` category with explicit `view=ah_comparison`, validates the exact
+field set, five-/six-digit H/A codes, unique strictly ascending sequence and
+finite numeric/null price, change, ratio and premium values, and filters the
+full response by the requested A- or H-share code. It records the side-specific
+code field, units, delayed current-day snapshot, retrieval-only date binding
+and filtered row counts for replay. The normalizer emits
+`AKSHARE_AH_COMPARISON_RAW_ONLY`; cross-market values remain raw evidence
+because the response has no stable observation timestamp and does not establish
+canonical current price, FX, comparison, valuation or calculation facts. Live
+calls remain opt-in; tests use an injected client and a frozen fixture with
+cache replay, invalid-parameter, response-validation, raw-only and replay-scope
+coverage.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -1515,7 +1540,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.61 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.62 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -1723,7 +1748,7 @@ Phase 2 is active. Phase 1 remains frozen: changes to formulas, hard-gate
 semantics, schemas or `strict-v1` thresholds require a separately reviewed,
 versioned change.
 
-Phase 2.61 completes the next documented structured-data boundary while
+Phase 2.62 completes the next documented structured-data boundary while
 keeping share-change, repurchase and rights-issue period, status, unit and
 economic-scope questions unresolved, and keeping ownership-pledge holder,
 governance and economic-scope questions unresolved. The A-share
@@ -1765,6 +1790,13 @@ latest-90-trading-day window rather than the canonical daily-history contract;
 `view=chip_distribution`, the unprefixed A-share symbol, adjustment mode, exact
 field set, 90-row limit and observed date bounds remain part of its replayable
 acquisition boundary.
+The A+H Eastmoney quote-comparison response remains raw-only because its
+15-minute-delayed cross-market prices, changes, ratio and premium have no
+stable observation timestamp and do not establish canonical current price, FX,
+comparison, valuation or calculation facts. The explicit
+`view=ah_comparison`, no-argument endpoint, exact ten-field response,
+five-/six-digit code identities, side-specific filtering, units and
+retrieval-only snapshot remain part of its replayable acquisition boundary.
 dividend-distribution snapshot remains raw-only because its ratios, status and
 multiple dates do not establish settled ordinary cash or a canonical payout
 denominator. Phase 2 remains active; future documented categories must be
