@@ -1003,6 +1003,20 @@ non-listing row counts for replay. The normalizer emits
 market fact. No calculation, gate, pipeline, CLI or input-loader contract
 changes.
 
+Phase 2.98 adds the distinct official A-share Eastmoney
+`stock_ggcg_em` endpoint under `INSIDER_SHARE_CHANGES` with explicit
+`view=executive_share_changes` and `direction` (`全部`, `股东增持` or
+`股东减持`). The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_gdzjc_em.py)
+define a direction-filtered full-universe response with 16 source-shaped
+identity, holder, quote, quantity/ratio and event-date fields. The provider
+validates the complete response before filtering it to the requested listing,
+and preserves direction, field order, documented 万股/% units, the
+undocumented latest-price unit, event-date bounds and replay row counts. The
+normalizer emits `AKSHARE_EXECUTIVE_SHARE_CHANGES_RAW_ONLY` without creating a
+canonical share, dilution, cash, governance or shareholder-return fact. No
+calculation, gate, pipeline, CLI or input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

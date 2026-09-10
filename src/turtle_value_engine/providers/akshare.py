@@ -24,8 +24,9 @@ the SSE/SZSE/BSE margin-detail raw slices, the A-share individual ownership-pled
 detail view, the A-share CNINFO equity-mortgage view, the A-share Eastmoney
 ownership-pledge market-profile view, A-share company-litigation raw slice and
 A-share Eastmoney individual-info raw slice.
-The A-share Eastmoney and CNINFO management-holding raw slices are also
-available. The A-share Eastmoney individual-fund-flow, market-participation-desire,
+The A-share Eastmoney and CNINFO management-holding raw slices and the
+Eastmoney executive/shareholder-change raw slice are also available. The A-share
+Eastmoney individual-fund-flow, market-participation-desire,
 market-focus, institution-participation, hot-rank, latest-hot-rank,
 historical-hot-rank, limit-up-pool, limit-down-pool, H-share latest-hot-rank and
 historical-hot-rank,
@@ -96,9 +97,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "97"
+AKSHARE_ADAPTER_VERSION = "98"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "98"
+AKSHARE_MAPPING_VERSION = "99"
 
 
 class ListingMarket(StrEnum):
@@ -253,6 +254,7 @@ _SOURCE_URIS = {
     "stock_share_hold_change_szse": "http://www.szse.cn/disclosure/supervision/change/index.html",
     "stock_share_hold_change_bse": "https://www.bse.cn/disclosure/djg_sharehold_change.html",
     "stock_hold_management_detail_em": "https://data.eastmoney.com/executive/list.html",
+    "stock_ggcg_em": "https://data.eastmoney.com/executive/gdzjc.html",
     "stock_hold_management_detail_cninfo": "https://webapi.cninfo.com.cn/#/thematicStatistics",
     "stock_main_stock_holder": "https://vip.stock.finance.sina.com.cn/corp/go.php/vCI_StockHolder/stockid/600004.phtml",
     "stock_hold_num_cninfo": "https://webapi.cninfo.com.cn/#/thematicStatistics",
@@ -1722,6 +1724,65 @@ _INSIDER_SHARE_CHANGE_PARAMETER_NAMES = frozenset()
 _INSIDER_MANAGEMENT_DETAIL_PARAMETER_NAMES = frozenset({"view"})
 _INSIDER_MANAGEMENT_DETAIL_VIEW = "management_detail"
 _INSIDER_MANAGEMENT_DETAIL_DATE_FIELDS = ("日期",)
+_EXECUTIVE_SHARE_CHANGES_PARAMETER_NAMES = frozenset({"view", "direction"})
+_EXECUTIVE_SHARE_CHANGES_VIEW = "executive_share_changes"
+_EXECUTIVE_SHARE_CHANGES_DIRECTION_CHOICES = ("全部", "股东增持", "股东减持")
+_EXECUTIVE_SHARE_CHANGES_DIRECTIONS = frozenset(
+    _EXECUTIVE_SHARE_CHANGES_DIRECTION_CHOICES
+)
+_EXECUTIVE_SHARE_CHANGES_ROW_DIRECTIONS = frozenset({"增持", "减持"})
+_EXECUTIVE_SHARE_CHANGES_FIELDS = (
+    "代码",
+    "名称",
+    "最新价",
+    "涨跌幅",
+    "股东名称",
+    "持股变动信息-增减",
+    "持股变动信息-变动数量",
+    "持股变动信息-占总股本比例",
+    "持股变动信息-占流通股比例",
+    "变动后持股情况-持股总数",
+    "变动后持股情况-占总股本比例",
+    "变动后持股情况-持流通股数",
+    "变动后持股情况-占流通股比例",
+    "变动开始日",
+    "变动截止日",
+    "公告日",
+)
+_EXECUTIVE_SHARE_CHANGES_TEXT_FIELDS = (
+    "代码",
+    "名称",
+    "股东名称",
+    "持股变动信息-增减",
+)
+_EXECUTIVE_SHARE_CHANGES_DATE_FIELDS = ("变动开始日", "变动截止日", "公告日")
+_EXECUTIVE_SHARE_CHANGES_NUMERIC_FIELDS = (
+    "最新价",
+    "涨跌幅",
+    "持股变动信息-变动数量",
+    "持股变动信息-占总股本比例",
+    "持股变动信息-占流通股比例",
+    "变动后持股情况-持股总数",
+    "变动后持股情况-占总股本比例",
+    "变动后持股情况-持流通股数",
+    "变动后持股情况-占流通股比例",
+)
+_EXECUTIVE_SHARE_CHANGES_NON_NEGATIVE_FIELDS = frozenset(
+    set(_EXECUTIVE_SHARE_CHANGES_NUMERIC_FIELDS) - {"涨跌幅"}
+)
+_EXECUTIVE_SHARE_CHANGES_DOCUMENTED_UNITS = {
+    "涨跌幅": "%",
+    "持股变动信息-变动数量": "万股",
+    "持股变动信息-占总股本比例": "%",
+    "持股变动信息-占流通股比例": "%",
+    "变动后持股情况-持股总数": "万股",
+    "变动后持股情况-占总股本比例": "%",
+    "变动后持股情况-持流通股数": "万股",
+    "变动后持股情况-占流通股比例": "%",
+}
+_EXECUTIVE_SHARE_CHANGES_UNDOCUMENTED_NUMERIC_UNITS = {
+    "最新价": "not_documented",
+}
 _INSIDER_CNINFO_MANAGEMENT_DETAIL_PARAMETER_NAMES = frozenset(
     {"view", "direction"}
 )
@@ -4219,7 +4280,76 @@ class AKShareProvider(StructuredDataProvider):
                 response_metadata["observation_date"] = requested_date.isoformat()
         elif request.category is DataCategory.INSIDER_SHARE_CHANGES:
             rows = _table_rows(payload, provider=self.identity, request=request)
-            if endpoint.name == "stock_hold_management_detail_cninfo":
+            if endpoint.name == "stock_ggcg_em":
+                observation_start, observation_end = (
+                    _validate_executive_share_changes_provider_rows(
+                        rows,
+                        direction=kwargs["symbol"],
+                        provider=self.identity,
+                        request=request,
+                    )
+                )
+                selected = _select_listing_rows(
+                    rows,
+                    listing,
+                    provider=self.identity,
+                    request=request,
+                    row_label="executive share-change",
+                )
+                payload = selected
+                response_metadata["upstream_row_count"] = len(rows)
+                response_metadata["entity_row_count"] = len(selected)
+                response_metadata["entity_rows_selected"] = True
+                response_metadata["listing_scoped_request"] = False
+                response_metadata["row_filtering"] = "provider"
+                response_metadata["executive_share_changes_view"] = (
+                    _EXECUTIVE_SHARE_CHANGES_VIEW
+                )
+                response_metadata["executive_share_changes_direction"] = (
+                    kwargs["symbol"]
+                )
+                response_metadata["upstream_direction"] = kwargs["symbol"]
+                response_metadata["upstream_symbol"] = kwargs["symbol"]
+                response_metadata["market_scope"] = "all_a_share_listings"
+                response_metadata["snapshot_scope"] = "historical_published_dataset"
+                response_metadata["date_binding"] = "row_event_dates"
+                response_metadata["quantity_unit"] = "万股"
+                response_metadata["ratio_unit"] = "%"
+                response_metadata["price_unit"] = "not_documented"
+                response_metadata["observation_date_field"] = "变动截止日"
+                response_metadata["observation_date_fields"] = list(
+                    _EXECUTIVE_SHARE_CHANGES_DATE_FIELDS
+                )
+                response_metadata["observation_start_date"] = (
+                    observation_start.isoformat() if observation_start else None
+                )
+                response_metadata["observation_end_date"] = (
+                    observation_end.isoformat() if observation_end else None
+                )
+                response_metadata["field_count"] = len(_EXECUTIVE_SHARE_CHANGES_FIELDS)
+                response_metadata["source_field_order"] = list(
+                    _EXECUTIVE_SHARE_CHANGES_FIELDS
+                )
+                response_metadata["text_fields"] = list(
+                    _EXECUTIVE_SHARE_CHANGES_TEXT_FIELDS
+                )
+                response_metadata["date_fields"] = list(
+                    _EXECUTIVE_SHARE_CHANGES_DATE_FIELDS
+                )
+                response_metadata["value_fields"] = list(
+                    _EXECUTIVE_SHARE_CHANGES_NUMERIC_FIELDS
+                )
+                response_metadata["non_negative_fields"] = sorted(
+                    _EXECUTIVE_SHARE_CHANGES_NON_NEGATIVE_FIELDS
+                )
+                response_metadata["documented_units"] = dict(
+                    _EXECUTIVE_SHARE_CHANGES_DOCUMENTED_UNITS
+                )
+                response_metadata["undocumented_numeric_units"] = dict(
+                    _EXECUTIVE_SHARE_CHANGES_UNDOCUMENTED_NUMERIC_UNITS
+                )
+                response_metadata["upstream_page_size"] = 500
+            elif endpoint.name == "stock_hold_management_detail_cninfo":
                 observation_start, observation_end = (
                     _validate_insider_cninfo_management_detail_provider_rows(
                         rows,
@@ -4880,6 +5010,9 @@ class AKShareProvider(StructuredDataProvider):
                 request.parameters.get("view")
                 == _INSIDER_CNINFO_MANAGEMENT_DETAIL_VIEW
                 or "direction" in request.parameters
+            ),
+            insider_executive_share_changes_requested=(
+                request.parameters.get("view") == _EXECUTIVE_SHARE_CHANGES_VIEW
             ),
             insider_management_detail_requested=(
                 request.parameters.get("view") == _INSIDER_MANAGEMENT_DETAIL_VIEW
@@ -6449,7 +6582,24 @@ class AKShareNormalizer:
                         "Shanghai, Shenzhen and Beijing A-share listings only"
                     )
                 endpoint_name = record.response_metadata.get("endpoint")
-                if endpoint_name == "stock_hold_management_detail_cninfo":
+                if endpoint_name == "stock_ggcg_em":
+                    try:
+                        _insider_share_change_kwargs(
+                            "stock_ggcg_em",
+                            listing,
+                            record.request,
+                        )
+                    except ProviderRequestError as exc:
+                        raise ProviderNormalizationError(str(exc)) from exc
+                    _validate_executive_share_changes_normalizer_scope(
+                        record,
+                        listing,
+                        rows,
+                    )
+                    normalizer_flags.add(
+                        "AKSHARE_EXECUTIVE_SHARE_CHANGES_RAW_ONLY"
+                    )
+                elif endpoint_name == "stock_hold_management_detail_cninfo":
                     try:
                         _insider_share_change_kwargs(
                             "stock_hold_management_detail_cninfo",
@@ -6484,8 +6634,8 @@ class AKShareNormalizer:
                     raise ProviderNormalizationError(
                         "AKShare insider-share-change record must come from "
                         "stock_share_hold_change_sse, stock_share_hold_change_szse, "
-                        "stock_share_hold_change_bse, stock_hold_management_detail_em "
-                        "or stock_hold_management_detail_cninfo"
+                        "stock_share_hold_change_bse, stock_hold_management_detail_em or "
+                        "stock_hold_management_detail_cninfo or stock_ggcg_em"
                     )
                 # Insider transactions are event evidence, not a settled
                 # company share-count series or a governance verdict.
@@ -6862,6 +7012,14 @@ class AKShareNormalizer:
                 " The documented A-share CNINFO management-holding-detail response is "
                 "retained as raw evidence only: its direction, person/role fields, "
                 "quantities, prices, values and dates do not establish a company-level "
+                "diluted-share series, settled transaction cash or governance-risk "
+                "judgment."
+            )
+        if "AKSHARE_EXECUTIVE_SHARE_CHANGES_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented Eastmoney executive share-change response is retained "
+                "as raw evidence only: direction-filtered holder changes, quantities, "
+                "ratios, prices and event dates do not establish a company-level "
                 "diluted-share series, settled transaction cash or governance-risk "
                 "judgment."
             )
@@ -7520,6 +7678,7 @@ def _endpoint_candidates(
     shareholder_top10_requested: bool = False,
     shareholder_hsgt_individual_requested: bool = False,
     insider_cninfo_management_detail_requested: bool = False,
+    insider_executive_share_changes_requested: bool = False,
     insider_management_detail_requested: bool = False,
     market_activity_statistic_requested: bool = False,
     market_activity_institution_statistic_requested: bool = False,
@@ -7828,6 +7987,10 @@ def _endpoint_candidates(
             return ("stock_gpzy_pledge_ratio_em",)
         return ()
     if category is DataCategory.INSIDER_SHARE_CHANGES:
+        if insider_executive_share_changes_requested:
+            if market is ListingMarket.A:
+                return ("stock_ggcg_em",)
+            return ()
         if insider_cninfo_management_detail_requested:
             if market is ListingMarket.A:
                 return ("stock_hold_management_detail_cninfo",)
@@ -9057,6 +9220,49 @@ def _insider_share_change_kwargs(
     listing: _ListingRef,
     request: ProviderRequest,
 ) -> dict[str, object]:
+    if endpoint_name == "stock_ggcg_em":
+        if listing.market is not ListingMarket.A:
+            raise ProviderRequestError(
+                "the AKShare executive share-change endpoint supports A-share "
+                "listings only",
+                request=request,
+                retryable=False,
+            )
+        unknown = sorted(
+            set(request.parameters) - _EXECUTIVE_SHARE_CHANGES_PARAMETER_NAMES
+        )
+        if unknown:
+            raise ProviderRequestError(
+                "unsupported AKShare executive share-change parameter(s): "
+                + ", ".join(unknown),
+                request=request,
+                retryable=False,
+            )
+        if request.parameters.get("view") != _EXECUTIVE_SHARE_CHANGES_VIEW:
+            raise ProviderRequestError(
+                "the AKShare executive share-change endpoint requires "
+                f"view={_EXECUTIVE_SHARE_CHANGES_VIEW!r}",
+                request=request,
+                retryable=False,
+            )
+        direction = request.parameters.get("direction")
+        if not isinstance(direction, str):
+            raise ProviderRequestError(
+                "the AKShare executive share-change endpoint requires a string "
+                "direction parameter",
+                request=request,
+                retryable=False,
+            )
+        if direction not in _EXECUTIVE_SHARE_CHANGES_DIRECTIONS:
+            choices = ", ".join(_EXECUTIVE_SHARE_CHANGES_DIRECTION_CHOICES)
+            raise ProviderRequestError(
+                "the AKShare executive share-change direction must be one of: "
+                + choices,
+                request=request,
+                retryable=False,
+            )
+        return {"symbol": direction}
+
     if endpoint_name == "stock_hold_management_detail_cninfo":
         if listing.market is not ListingMarket.A:
             raise ProviderRequestError(
@@ -20531,6 +20737,145 @@ def _validate_insider_share_change_normalizer_rows(
                 )
 
 
+def _executive_share_changes_row_validation_error(
+    row: Mapping[str, JSONValue],
+    index: int,
+    *,
+    direction: str,
+) -> tuple[str | None, date | None]:
+    """Return a strict-schema error and the row's cutoff date."""
+
+    if tuple(row) != _EXECUTIVE_SHARE_CHANGES_FIELDS:
+        return (
+            f"executive share-change row {index} has an unexpected field "
+            "schema or order",
+            None,
+        )
+
+    code = row["代码"]
+    if not isinstance(code, str) or re.fullmatch(r"\d{6}", code) is None:
+        return (
+            f"executive share-change row {index} has an invalid 代码",
+            None,
+        )
+
+    for field in _EXECUTIVE_SHARE_CHANGES_TEXT_FIELDS:
+        value = row[field]
+        if value is None:
+            if field in {"代码", "持股变动信息-增减"}:
+                return (
+                    f"executive share-change row {index} field {field!r} "
+                    "must be non-empty text",
+                    None,
+                )
+            continue
+        if not isinstance(value, str):
+            return (
+                f"executive share-change row {index} field {field!r} "
+                "must be text or null",
+                None,
+            )
+        if not value.strip():
+            return (
+                f"executive share-change row {index} field {field!r} "
+                "must be non-empty text or null",
+                None,
+            )
+
+    row_direction = row["持股变动信息-增减"]
+    if row_direction not in _EXECUTIVE_SHARE_CHANGES_ROW_DIRECTIONS:
+        choices = ", ".join(sorted(_EXECUTIVE_SHARE_CHANGES_ROW_DIRECTIONS))
+        return (
+            f"executive share-change row {index} has an invalid direction; "
+            f"expected one of: {choices}",
+            None,
+        )
+    expected_row_direction = {
+        "股东增持": "增持",
+        "股东减持": "减持",
+    }.get(direction)
+    if expected_row_direction is not None and row_direction != expected_row_direction:
+        return (
+            f"executive share-change row {index} direction {row_direction!r} does not "
+            f"match requested {direction!r}",
+            None,
+        )
+
+    cutoff_date: date | None = None
+    for field in _EXECUTIVE_SHARE_CHANGES_DATE_FIELDS:
+        value = row[field]
+        if value is None:
+            continue
+        if not isinstance(value, str):
+            return (
+                f"executive share-change row {index} field {field!r} "
+                "must be an ISO date string or null",
+                None,
+            )
+        parsed = _parse_date_value(value)
+        if parsed is None:
+            return (
+                f"executive share-change row {index} has an invalid {field}",
+                None,
+            )
+        if field == "变动截止日":
+            cutoff_date = parsed
+
+    for field in _EXECUTIVE_SHARE_CHANGES_NUMERIC_FIELDS:
+        value = row[field]
+        if value is None:
+            continue
+        if isinstance(value, bool) or not isinstance(value, Real):
+            return (
+                f"executive share-change row {index} field {field!r} "
+                "must be numeric or null",
+                None,
+            )
+        try:
+            numeric = float(value)
+        except (OverflowError, TypeError, ValueError):
+            return (
+                f"executive share-change row {index} field {field!r} "
+                "must be numeric or null",
+                None,
+            )
+        if not math.isfinite(numeric):
+            return (
+                f"executive share-change row {index} field {field!r} "
+                "must be finite or null",
+                None,
+            )
+        if field in _EXECUTIVE_SHARE_CHANGES_NON_NEGATIVE_FIELDS and numeric < 0:
+            return (
+                f"executive share-change row {index} field {field!r} "
+                "must be non-negative or null",
+                None,
+            )
+
+    return None, cutoff_date
+
+
+def _executive_share_changes_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    direction: str,
+) -> tuple[str | None, list[date]]:
+    """Validate the source-shaped executive/shareholder-change response."""
+
+    cutoff_dates: list[date] = []
+    for index, row in enumerate(rows):
+        message, cutoff_date = _executive_share_changes_row_validation_error(
+            row,
+            index,
+            direction=direction,
+        )
+        if message is not None:
+            return message, []
+        if cutoff_date is not None:
+            cutoff_dates.append(cutoff_date)
+    return None, cutoff_dates
+
+
 def _cninfo_management_detail_row_validation_error(
     row: Mapping[str, JSONValue],
     index: int,
@@ -20754,6 +21099,150 @@ def _validate_insider_cninfo_management_detail_normalizer_scope(
                 )
 
 
+def _validate_executive_share_changes_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> None:
+    """Validate the executive/shareholder-change endpoint and replay scope."""
+
+    if listing.market is not ListingMarket.A:
+        raise ProviderNormalizationError(
+            "AKShare executive share-change raw slice supports A-share listings only"
+        )
+    if record.response_metadata.get("endpoint") != "stock_ggcg_em":
+        raise ProviderNormalizationError(
+            "AKShare executive share-change record must come from stock_ggcg_em"
+        )
+    if record.source_uri != _SOURCE_URIS["stock_ggcg_em"]:
+        raise ProviderNormalizationError(
+            "AKShare executive share-change source URI does not match the "
+            "documented endpoint"
+        )
+    try:
+        upstream_kwargs = _insider_share_change_kwargs(
+            "stock_ggcg_em",
+            listing,
+            record.request,
+        )
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+
+    direction = upstream_kwargs["symbol"]
+    if not isinstance(direction, str):
+        raise ProviderNormalizationError(
+            "AKShare executive share-change upstream direction is not text"
+        )
+    message, cutoff_dates = _executive_share_changes_validation_message(
+        rows,
+        direction=direction,
+    )
+    if message is not None:
+        raise ProviderNormalizationError(message)
+    for row in rows:
+        row_code = row["代码"]
+        if row_code != listing.code:
+            raise ProviderNormalizationError(
+                f"executive share-change row entity {row_code!r} does not match "
+                f"requested listing {listing.canonical_id!r}"
+            )
+
+    expected_metadata: dict[str, JSONValue] = {
+        "endpoint": "stock_ggcg_em",
+        "market": ListingMarket.A.value,
+        "listing_code": listing.code,
+        "executive_share_changes_view": _EXECUTIVE_SHARE_CHANGES_VIEW,
+        "executive_share_changes_direction": direction,
+        "upstream_direction": direction,
+        "upstream_symbol": direction,
+        "market_scope": "all_a_share_listings",
+        "listing_scoped_request": False,
+        "row_filtering": "provider",
+        "snapshot_scope": "historical_published_dataset",
+        "date_binding": "row_event_dates",
+        "quantity_unit": "万股",
+        "ratio_unit": "%",
+        "price_unit": "not_documented",
+        "observation_date_field": "变动截止日",
+        "observation_date_fields": list(_EXECUTIVE_SHARE_CHANGES_DATE_FIELDS),
+        "field_count": len(_EXECUTIVE_SHARE_CHANGES_FIELDS),
+        "source_field_order": list(_EXECUTIVE_SHARE_CHANGES_FIELDS),
+        "text_fields": list(_EXECUTIVE_SHARE_CHANGES_TEXT_FIELDS),
+        "date_fields": list(_EXECUTIVE_SHARE_CHANGES_DATE_FIELDS),
+        "value_fields": list(_EXECUTIVE_SHARE_CHANGES_NUMERIC_FIELDS),
+        "non_negative_fields": sorted(_EXECUTIVE_SHARE_CHANGES_NON_NEGATIVE_FIELDS),
+        "documented_units": dict(_EXECUTIVE_SHARE_CHANGES_DOCUMENTED_UNITS),
+        "undocumented_numeric_units": dict(
+            _EXECUTIVE_SHARE_CHANGES_UNDOCUMENTED_NUMERIC_UNITS
+        ),
+        "upstream_page_size": 500,
+        "entity_rows_selected": True,
+        "entity_row_count": len(rows),
+    }
+    for name, expected in expected_metadata.items():
+        if name not in record.response_metadata:
+            matches = False
+        elif name in {"listing_scoped_request", "entity_rows_selected"}:
+            actual = record.response_metadata[name]
+            matches = isinstance(actual, bool) and actual is expected
+        elif name in {"field_count", "entity_row_count", "upstream_page_size"}:
+            actual = record.response_metadata[name]
+            matches = (
+                isinstance(actual, int)
+                and not isinstance(actual, bool)
+                and actual == expected
+            )
+        else:
+            matches = record.response_metadata[name] == expected
+        if not matches:
+            raise ProviderNormalizationError(
+                "AKShare executive share-change response metadata "
+                f"{name!r} does not match the requested replay scope"
+            )
+
+    upstream_count = record.response_metadata.get("upstream_row_count")
+    if (
+        not isinstance(upstream_count, int)
+        or isinstance(upstream_count, bool)
+        or upstream_count < len(rows)
+    ):
+        raise ProviderNormalizationError(
+            "AKShare executive share-change response metadata "
+            "'upstream_row_count' does not match the requested replay scope"
+        )
+
+    for name in ("observation_start_date", "observation_end_date"):
+        if name not in record.response_metadata:
+            raise ProviderNormalizationError(
+                "AKShare executive share-change response metadata "
+                f"{name!r} does not match the requested replay scope"
+            )
+        actual = record.response_metadata.get(name)
+        actual_date = _parse_date_value(actual) if actual is not None else None
+        if actual is not None and actual_date is None:
+            raise ProviderNormalizationError(
+                "AKShare executive share-change response metadata "
+                f"{name!r} is not a valid date"
+            )
+        if not cutoff_dates:
+            continue
+        if actual_date is None:
+            raise ProviderNormalizationError(
+                "AKShare executive share-change response metadata "
+                f"{name!r} does not cover the selected row dates"
+            )
+        boundary_ok = (
+            actual_date <= min(cutoff_dates)
+            if name == "observation_start_date"
+            else actual_date >= max(cutoff_dates)
+        )
+        if not boundary_ok:
+            raise ProviderNormalizationError(
+                "AKShare executive share-change response metadata "
+                f"{name!r} does not cover the selected row dates"
+            )
+
+
 def _validate_insider_management_detail_normalizer_rows(
     rows: Sequence[Mapping[str, JSONValue]],
     listing: _ListingRef,
@@ -20814,6 +21303,38 @@ def _validate_insider_cninfo_management_detail_provider_rows(
             )
         if cutoff_date is not None:
             cutoff_dates.append(cutoff_date)
+    return (
+        min(cutoff_dates) if cutoff_dates else None,
+        max(cutoff_dates) if cutoff_dates else None,
+    )
+
+
+def _validate_executive_share_changes_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    direction: object,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> tuple[date | None, date | None]:
+    """Validate the full Eastmoney executive/shareholder-change universe."""
+
+    if not isinstance(direction, str):
+        raise ProviderResponseError(
+            f"AKShare executive share-change direction is not text for "
+            f"{request.entity_id!r}",
+            provider=provider,
+            request=request,
+        )
+    message, cutoff_dates = _executive_share_changes_validation_message(
+        rows,
+        direction=direction,
+    )
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message} for {request.entity_id!r}",
+            provider=provider,
+            request=request,
+        )
     return (
         min(cutoff_dates) if cutoff_dates else None,
         max(cutoff_dates) if cutoff_dates else None,

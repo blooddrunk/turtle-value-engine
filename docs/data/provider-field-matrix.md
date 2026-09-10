@@ -1055,6 +1055,43 @@ industry-board snapshot.
 The provider-specific response remains outside the calculation, gate, pipeline,
 CLI and input-loader contracts.
 
+## Phase 2.98 A-share Eastmoney executive/shareholder-change raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_ggcg_em` as an Eastmoney full A-share universe for executive
+and shareholder holding changes. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_gdzjc_em.py)
+accepts `symbol="全部"`, `symbol="股东增持"` or `symbol="股东减持"`, applies the
+corresponding direction filter upstream and returns the exact 16 fields
+`代码`, `名称`, `最新价`, `涨跌幅`, `股东名称`, `持股变动信息-增减`,
+`持股变动信息-变动数量`, `持股变动信息-占总股本比例`,
+`持股变动信息-占流通股比例`, `变动后持股情况-持股总数`,
+`变动后持股情况-占总股本比例`, `变动后持股情况-持流通股数`,
+`变动后持股情况-占流通股比例`, `变动开始日`, `变动截止日` and `公告日`,
+in that order.
+
+The provider exposes this endpoint under `INSIDER_SHARE_CHANGES` only with
+explicit `view=executive_share_changes` and a direction, validates the full
+direction-filtered response before listing selection, and records direction,
+source field order, documented units, undocumented price units, event-date
+bounds and upstream/selected row counts for replay. The normalizer emits
+`AKSHARE_EXECUTIVE_SHARE_CHANGES_RAW_ONLY`; no canonical share, dilution,
+transaction-cash, governance, shareholder-return or valuation fact is admitted
+from holder-change evidence.
+
+| Raw upstream item | Phase 2.98 treatment |
+| --- | --- |
+| `代码`, `名称` | Required six-digit A-share code and source security name; the provider filters by code, but no security-master or canonical issuer fact is inferred. |
+| `最新价` | Finite numeric-or-null quote context; the documentation does not specify a unit, so it remains `not_documented` metadata and is not promoted to a quote fact. |
+| `涨跌幅` | Finite quote-change value retained with the documented `%` unit; it is not a dated canonical return. |
+| `股东名称`, `持股变动信息-增减` | Holder identity and source direction text retained as raw evidence; the latter is validated as `增持` or `减持` even though the documentation table labels its type inconsistently. |
+| `持股变动信息-变动数量`, `变动后持股情况-持股总数`, `变动后持股情况-持流通股数` | Finite non-negative quantities retained with the documented `万股` unit; they do not establish a fully diluted share series or settled transaction cash. |
+| `持股变动信息-占总股本比例`, `持股变动信息-占流通股比例`, `变动后持股情况-占总股本比例`, `变动后持股情况-占流通股比例` | Finite non-negative provider ratios retained with the documented `%` unit; no ownership, dilution or governance conclusion is inferred. |
+| `变动开始日`, `变动截止日`, `公告日` | Nullable parsed event/publication dates retained as row-date evidence; `变动截止日` supplies replay bounds and does not create a reporting period. |
+| request `view=executive_share_changes`, `direction` / upstream `symbol` | Explicit direction scope retained in request/evidence metadata; the provider sends the direction to the full A-share universe, filters the requested listing locally, and records `listing_scoped_request=false`, source order, page size and both row counts for replay. |
+
+The provider-specific response remains outside the calculation, gate, pipeline,
+CLI and input-loader contracts.
+
 ## Phase 2.92 SSE daily-deal overview raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)

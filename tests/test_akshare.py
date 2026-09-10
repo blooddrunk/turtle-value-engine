@@ -713,6 +713,20 @@ class FakeAKShare:
             _fixture("a_management_holdings.json"),
         )
 
+    def stock_ggcg_em(self, *, symbol: str):
+        rows = _fixture("a_executive_share_changes.json")
+        if symbol != "全部":
+            expected_direction = {
+                "股东增持": "增持",
+                "股东减持": "减持",
+            }[symbol]
+            rows = [
+                row
+                for row in rows
+                if row["持股变动信息-增减"] == expected_direction
+            ]
+        return self._return("stock_ggcg_em", rows, symbol=symbol)
+
     def stock_hold_management_detail_cninfo(self, *, symbol: str):
         return self._return(
             "stock_hold_management_detail_cninfo",
@@ -863,8 +877,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "97"
-    assert AKSHARE_MAPPING_VERSION == "98"
+    assert provider.identity.provider_version == "98"
+    assert AKSHARE_MAPPING_VERSION == "99"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -8248,6 +8262,291 @@ def test_management_holdings_cache_replay_does_not_call_upstream(tmp_path: Path)
     assert replay.mode is RetrievalMode.CACHE_REPLAY
     assert replay.record == live.record
     assert fake.calls == [("stock_hold_management_detail_em", {})]
+
+
+def _executive_share_changes_request(
+    entity_id: str = "SH600000",
+    direction: str = "全部",
+    parameters: dict | None = None,
+):
+    return _request(
+        DataCategory.INSIDER_SHARE_CHANGES,
+        entity_id,
+        {
+            "view": "executive_share_changes",
+            "direction": direction,
+            **({} if parameters is None else parameters),
+        },
+    )
+
+
+def test_executive_share_changes_fetch_filters_the_documented_directional_universe():
+    fake = FakeAKShare()
+    record = _provider(fake).fetch(_executive_share_changes_request())
+
+    fixture = _fixture("a_executive_share_changes.json")
+    assert record.raw_payload == [row for row in fixture if row["代码"] == "600000"]
+    assert fake.calls == [("stock_ggcg_em", {"symbol": "全部"})]
+    assert record.response_metadata["endpoint"] == "stock_ggcg_em"
+    assert record.response_metadata["upstream_row_count"] == 4
+    assert record.response_metadata["entity_row_count"] == 2
+    assert record.response_metadata["entity_rows_selected"] is True
+    assert record.response_metadata["listing_scoped_request"] is False
+    assert record.response_metadata["row_filtering"] == "provider"
+    assert record.response_metadata["executive_share_changes_view"] == (
+        "executive_share_changes"
+    )
+    assert record.response_metadata["executive_share_changes_direction"] == "全部"
+    assert record.response_metadata["upstream_direction"] == "全部"
+    assert record.response_metadata["upstream_symbol"] == "全部"
+    assert record.response_metadata["market_scope"] == "all_a_share_listings"
+    assert record.response_metadata["snapshot_scope"] == "historical_published_dataset"
+    assert record.response_metadata["date_binding"] == "row_event_dates"
+    assert record.response_metadata["quantity_unit"] == "万股"
+    assert record.response_metadata["ratio_unit"] == "%"
+    assert record.response_metadata["price_unit"] == "not_documented"
+    assert record.response_metadata["observation_date_field"] == "变动截止日"
+    assert record.response_metadata["observation_date_fields"] == [
+        "变动开始日",
+        "变动截止日",
+        "公告日",
+    ]
+    assert record.response_metadata["observation_start_date"] == "2026-06-30"
+    assert record.response_metadata["observation_end_date"] == "2026-08-03"
+    assert record.response_metadata["field_count"] == 16
+    assert record.response_metadata["source_field_order"] == list(record.raw_payload[0])
+    assert record.response_metadata["documented_units"] == {
+        "涨跌幅": "%",
+        "持股变动信息-变动数量": "万股",
+        "持股变动信息-占总股本比例": "%",
+        "持股变动信息-占流通股比例": "%",
+        "变动后持股情况-持股总数": "万股",
+        "变动后持股情况-占总股本比例": "%",
+        "变动后持股情况-持流通股数": "万股",
+        "变动后持股情况-占流通股比例": "%",
+    }
+    assert record.response_metadata["undocumented_numeric_units"] == {
+        "最新价": "not_documented",
+    }
+    assert record.response_metadata["upstream_page_size"] == 500
+    assert record.source_uri == "https://data.eastmoney.com/executive/gdzjc.html"
+
+
+def test_executive_share_changes_fetch_passes_direction_and_filters_selected_listing():
+    fake = FakeAKShare()
+    record = _provider(fake).fetch(
+        _executive_share_changes_request(direction="股东增持")
+    )
+
+    fixture = _fixture("a_executive_share_changes.json")
+    assert record.raw_payload == [
+        row
+        for row in fixture
+        if row["代码"] == "600000" and row["持股变动信息-增减"] == "增持"
+    ]
+    assert fake.calls == [("stock_ggcg_em", {"symbol": "股东增持"})]
+    assert record.response_metadata["upstream_row_count"] == 2
+    assert record.response_metadata["entity_row_count"] == 1
+    assert record.response_metadata["executive_share_changes_direction"] == "股东增持"
+    assert record.response_metadata["observation_start_date"] == "2026-08-01"
+    assert record.response_metadata["observation_end_date"] == "2026-08-03"
+
+
+@pytest.mark.parametrize(
+    ("parameters", "entity_id", "match"),
+    [
+        (
+            {"view": "executive_share_changes"},
+            "SH600000",
+            "requires a string direction parameter",
+        ),
+        (
+            {"view": "executive_share_changes", "direction": 1},
+            "SH600000",
+            "requires a string direction parameter",
+        ),
+        (
+            {"view": "executive_share_changes", "direction": "持平"},
+            "SH600000",
+            "direction must be one of",
+        ),
+        (
+            {
+                "view": "executive_share_changes",
+                "direction": "全部",
+                "date": "20260101",
+            },
+            "SH600000",
+            "unsupported AKShare executive share-change parameter",
+        ),
+        (
+            {"view": "executive_share_changes", "direction": "全部"},
+            "HK00700",
+            "Shanghai, Shenzhen and Beijing A-share listings only",
+        ),
+    ],
+)
+def test_executive_share_changes_request_requires_explicit_scope_and_a_share(
+    parameters: dict,
+    entity_id: str,
+    match: str,
+):
+    fake = FakeAKShare()
+    with pytest.raises(ProviderRequestError, match=match):
+        _provider(fake).fetch(
+            _request(DataCategory.INSIDER_SHARE_CHANGES, entity_id, parameters)
+        )
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("missing_field", "unexpected field schema"),
+        ("extra_field", "unexpected field schema"),
+        ("reordered_fields", "unexpected field schema"),
+        ("numeric_type", "must be numeric or null"),
+        ("invalid_date", "invalid 变动截止日"),
+        ("negative_range", "must be non-negative or null"),
+    ],
+)
+def test_executive_share_changes_response_rejects_schema_type_date_and_range_failures(
+    mutation: str,
+    match: str,
+):
+    class InvalidRows(FakeAKShare):
+        def stock_ggcg_em(self, *, symbol: str):
+            payload = _fixture("a_executive_share_changes.json")
+            if mutation == "missing_field":
+                payload[0].pop("公告日")
+            elif mutation == "extra_field":
+                payload[0]["未记录字段"] = "unexpected"
+            elif mutation == "reordered_fields":
+                payload[0] = dict(reversed(list(payload[0].items())))
+            elif mutation == "numeric_type":
+                payload[0]["最新价"] = "11.2"
+            elif mutation == "invalid_date":
+                payload[0]["变动截止日"] = "not-a-date"
+            else:
+                payload[0]["持股变动信息-变动数量"] = -1
+            return self._return("stock_ggcg_em", payload, symbol=symbol)
+
+    with pytest.raises(ProviderResponseError, match=match):
+        _provider(InvalidRows()).fetch(_executive_share_changes_request())
+
+
+def test_executive_share_changes_response_rejects_direction_scope_mismatch():
+    class UnfilteredRows(FakeAKShare):
+        def stock_ggcg_em(self, *, symbol: str):
+            return self._return(
+                "stock_ggcg_em",
+                _fixture("a_executive_share_changes.json"),
+                symbol=symbol,
+            )
+
+    with pytest.raises(ProviderResponseError, match="does not match requested"):
+        _provider(UnfilteredRows()).fetch(
+            _executive_share_changes_request(direction="股东增持")
+        )
+
+
+def test_executive_share_changes_raw_record_is_not_promoted_to_facts():
+    record = _provider().fetch(_executive_share_changes_request())
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="executive-share-changes-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_EXECUTIVE_SHARE_CHANGES_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == [
+        "governance_risk_level",
+    ]
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "executive share-change response" in normalized.data_quality.notes
+    assert "diluted-share series" in normalized.data_quality.notes
+    assert "governance-risk judgment" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    errors = list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    )
+    assert errors == []
+
+
+@pytest.mark.parametrize("scope_mutation", ["direction", "source_uri", "date_range"])
+def test_executive_share_changes_normalizer_rejects_replayed_scope_mismatches(
+    scope_mutation: str,
+):
+    record = _provider().fetch(_executive_share_changes_request())
+    metadata = dict(record.response_metadata)
+    source_uri = record.source_uri
+    if scope_mutation == "direction":
+        metadata["executive_share_changes_direction"] = "股东增持"
+    elif scope_mutation == "source_uri":
+        source_uri = "https://data.eastmoney.com/executive/wrong.html"
+    else:
+        metadata["observation_start_date"] = "2026-08-01"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=record.raw_payload,
+        source_uri=source_uri,
+        response_metadata=metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match="executive share-change"):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-executive-share-changes",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_executive_share_changes_normalizer_rejects_cross_listing_rows():
+    record = _provider().fetch(_executive_share_changes_request())
+    payload = [dict(row) for row in record.raw_payload]
+    payload[0]["代码"] = "000001"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=record.source_uri,
+        response_metadata=record.response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match="row entity"):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-executive-share-change-row",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_executive_share_changes_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _executive_share_changes_request()
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [("stock_ggcg_em", {"symbol": "全部"})]
 
 
 def _cninfo_management_detail_request(

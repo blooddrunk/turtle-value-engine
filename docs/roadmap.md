@@ -2448,6 +2448,34 @@ metric. Tests cover explicit view/A-share validation, exact response
 fields/order/types, raw-only normalization, replay-scope rejection and cache
 replay. No calculation, gate, pipeline, CLI or input-loader contract changes.
 
+### Phase 2.98 — A-share Eastmoney executive/shareholder-change raw acquisition contract (COMPLETE)
+
+The mapping review now covers the distinct documented AKShare Eastmoney
+`stock_ggcg_em` endpoint under the existing `INSIDER_SHARE_CHANGES` category
+with explicit `view=executive_share_changes` and `direction` values `全部`,
+`股东增持` or `股东减持`. The [AKShare stock-data
+documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and
+[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_gdzjc_em.py)
+define a direction-filtered full A-share universe with 16 source-shaped fields
+covering security identity, latest quote context, holder, direction,
+quantity/ratio fields and start/end/announcement dates.
+
+The provider passes the documented direction selector, validates the complete
+source field order, six-digit codes, direction scope, finite numeric/null
+values, non-negative holding quantities/ratios and nullable event dates, then
+filters the full response to the requested A-share listing. It records the
+direction, source field order, documented 万股/% units, undocumented latest-price
+unit, event-date bounds, upstream page size and upstream/selected row counts
+for replay. The checked-in fixture freezes four source-shaped rows across
+Shanghai, Shenzhen and Beijing listings. The normalizer emits
+`AKSHARE_EXECUTIVE_SHARE_CHANGES_RAW_ONLY` and creates no canonical fact:
+direction-filtered holder changes, quote context and event dates do not
+establish a company-level diluted-share series, settled transaction cash,
+governance judgment or shareholder-return fact. Tests cover explicit
+view/direction/A-share validation, exact response fields/order/types,
+direction-filtering, raw-only normalization, replay-scope rejection and cache
+replay. No calculation, gate, pipeline, CLI or input-loader contract changes.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -2457,7 +2485,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.97 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.98 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -2688,6 +2716,13 @@ Phase 2.97 adds the documented A-share Eastmoney
 validated with strict field/order/identity/type checks; percentage units and
 undocumented price/market-value units remain explicit replay metadata, and no
 listing-level or canonical market fact is inferred.
+Phase 2.98 adds the documented A-share Eastmoney `stock_ggcg_em`
+executive/shareholder-change view. Its explicit `executive_share_changes` view
+and `全部`/`股东增持`/`股东减持` direction selector are validated against the
+16-field full-universe response before provider filtering; documented 万股/%
+units, the undocumented latest-price unit, event-date bounds and replay row
+counts remain explicit metadata, and no listing-level share, dilution, cash,
+governance or shareholder-return fact is inferred.
 Phase 2.75 completes the next documented structured-data boundary by adding
 the A-share `stock_gpzy_profile_em` market-wide historical ownership-pledge
 view. Its no-argument eight-field response is validated as an ascending raw
