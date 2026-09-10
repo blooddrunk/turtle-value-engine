@@ -662,6 +662,21 @@ descriptive business, product and operating-scope text remains raw evidence and
 does not become canonical revenue, core-business or Business Quality facts. No
 calculation, gate, pipeline, CLI or input-loader contract is changed.
 
+Phase 2.75 adds the next documented A-share Eastmoney ownership-pledge view,
+[`stock_gpzy_profile_em`](https://akshare.akfamily.xyz/data/stock/stock.html),
+under the existing `OWNERSHIP_PLEDGE` category with explicit
+`view=market_profile`. The current [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_gpzy_em.py)
+accepts no upstream arguments and returns the historical market-wide fields
+`交易日期`, `A股质押总比例`, `质押公司数量`, `质押笔数`, `质押总股数`,
+`质押总市值`, `沪深300指数` and `涨跌幅`. The adapter validates the exact
+shape and ascending row dates, records the A-share market scope and preserves
+the source-returned ratio fraction; the source divides its documented percent
+input by 100, so that scaling is explicit replay metadata. Because these rows
+have no issuer identity, the normalizer emits
+`AKSHARE_OWNERSHIP_PLEDGE_PROFILE_RAW_ONLY` with no canonical pledge,
+governance, cash, debt-equivalent or share fact. No H-share counterpart or
+calculation, gate, pipeline, CLI or input-loader contract is added.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

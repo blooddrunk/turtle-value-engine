@@ -1077,6 +1077,38 @@ The response remains outside the calculation, gate, pipeline, CLI and
 input-loader contracts. Tonghuashun business-introduction names and
 descriptions remain at the adapter/raw-evidence boundary.
 
+## Phase 2.75 A-share Eastmoney ownership-pledge market-profile raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_gpzy_em.py)
+document `stock_gpzy_profile_em` as a no-argument, historical A-share
+market-wide ownership-pledge profile. The provider selects it only with
+`OWNERSHIP_PLEDGE` plus explicit `view=market_profile`, validates each row's
+exact field set and strictly ascending `交易日期`, and retains the complete
+response. The requested A-share code is provenance context only because the
+market-profile rows have no issuer/listing identity; no rows are filtered or
+marked as entity-selected.
+
+The official implementation divides the documented percent input for
+`A股质押总比例` by 100 before returning it. The adapter preserves those
+source-returned fractions and records the source scale explicitly, so raw
+replay does not rescale the ratio twice.
+
+| Raw upstream item | Phase 2 treatment |
+| --- | --- |
+| `交易日期` | Required market observation date; rows must be strictly ascending and are retained as raw evidence, not a listing-specific statement period. |
+| `A股质押总比例` | Source-returned fraction of total A-share shares; the source percent-to-fraction conversion is recorded as replay metadata, with no canonical pledge ratio fact. |
+| `质押公司数量`, `质押笔数` | Non-negative aggregate market counts; raw evidence only, with no issuer-level count or governance inference. |
+| `质押总股数`, `质押总市值` | Non-negative aggregate market shares/value; raw evidence only, without a settled issuer cash, debt-equivalent or diluted-share basis. |
+| `沪深300指数`, `涨跌幅` | Market-index and change context; raw evidence only, not a canonical price, return or valuation input. |
+| request `view=market_profile` | Explicit A-share endpoint selection, no-argument upstream call, market-wide historical scope and replay boundary; `listing_scoped_request=false`, `row_filtering=none`, `entity_rows_selected=false`. |
+
+The normalizer emits `AKSHARE_OWNERSHIP_PLEDGE_PROFILE_RAW_ONLY`, leaves
+`governance_risk_level` critically missing and creates no canonical pledge,
+governance, cash, debt-equivalent or share fact. The response remains outside
+the calculation, gate, pipeline, CLI and input-loader contracts. No H-share
+counterpart or filing-backed pledge interpretation is added.
+
 ## Phase 2.9 corporate-action raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)

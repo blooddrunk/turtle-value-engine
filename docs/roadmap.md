@@ -1805,6 +1805,30 @@ invalid-request, response-validation, raw-only and replay-scope coverage. No
 H-share counterpart is added because the selected documented slice is
 A-share-only.
 
+### Phase 2.75 — A-share Eastmoney ownership-pledge market-profile raw acquisition contract (COMPLETE)
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_gpzy_profile_em` as an A-share Eastmoney market-wide
+historical ownership-pledge profile; the [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_gpzy_em.py)
+accepts no upstream arguments and returns the exact eight fields `交易日期`,
+`A股质押总比例`, `质押公司数量`, `质押笔数`, `质押总股数`, `质押总市值`,
+`沪深300指数` and `涨跌幅`. The implementation converts its percent ratio to
+a fraction by dividing by 100 before returning the table, so the adapter
+preserves that source-returned scale and records it explicitly.
+
+The provider selects this callable only under `OWNERSHIP_PLEDGE` with explicit
+`view=market_profile`, passes no upstream arguments, validates the exact row
+shape and strictly ascending `交易日期` values, and retains the complete
+market-wide response. The requested A-share listing is provenance context only:
+the response has no issuer identity, so no listing-row filtering or entity-row
+selection is claimed. The normalizer emits
+`AKSHARE_OWNERSHIP_PLEDGE_PROFILE_RAW_ONLY`, leaves
+`governance_risk_level` critically missing and creates no canonical pledge,
+governance, cash, debt-equivalent or share fact. No H-share counterpart or
+calculation, gate, pipeline, CLI or input-loader contract is added. Live calls
+remain opt-in; tests use an injected client and a frozen fixture with cache
+replay, invalid-request, strict-response, raw-only and replay-scope coverage.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -1814,7 +1838,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.74 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.75 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -2022,9 +2046,13 @@ Phase 2 is active. Phase 1 remains frozen: changes to formulas, hard-gate
 semantics, schemas or `strict-v1` thresholds require a separately reviewed,
 versioned change.
 
-Phase 2.74 completes the next documented structured-data boundary while
-keeping share-change, repurchase and rights-issue period, status, unit and
-economic-scope questions unresolved, and keeping ownership-pledge holder,
+Phase 2.75 completes the next documented structured-data boundary by adding
+the A-share `stock_gpzy_profile_em` market-wide historical ownership-pledge
+view. Its no-argument eight-field response is validated as an ascending raw
+date series, preserves the source percent-to-fraction ratio scaling and does
+not claim listing-level rows or facts. The milestone continues to keep
+share-change, repurchase and rights-issue period, status, unit and
+economic-scope questions unresolved, and keeps ownership-pledge holder,
 governance and economic-scope questions unresolved. The A-share
 Tencent daily-history response is the dated-series exception among the recent
 market-history slices: it maps the existing daily-history extension facts,
