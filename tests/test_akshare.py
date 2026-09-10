@@ -433,6 +433,13 @@ class FakeAKShare:
             **kwargs,
         )
 
+    def stock_individual_notice_report(self, **kwargs):
+        return self._return(
+            "stock_individual_notice_report",
+            _fixture("a_individual_notice_report.json"),
+            **kwargs,
+        )
+
     def stock_repurchase_em(self):
         return self._return("stock_repurchase_em", _fixture("a_repurchase.json"))
 
@@ -648,8 +655,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "65"
-    assert AKSHARE_MAPPING_VERSION == "66"
+    assert provider.identity.provider_version == "66"
+    assert AKSHARE_MAPPING_VERSION == "67"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -6972,6 +6979,305 @@ def test_disclosure_notice_cache_replay_does_not_call_upstream(tmp_path: Path):
                 "keyword": "",
                 "category": "公司治理",
                 "start_date": "20240101",
+                "end_date": "20241231",
+            },
+        )
+    ]
+
+
+def test_a_individual_disclosure_notice_fetch_uses_documented_eastmoney_contract():
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    request = _request(
+        DataCategory.DISCLOSURE_NOTICES,
+        "SH600000",
+        {
+            "view": "individual_notice",
+            "category": "财务报告",
+            "start_date": "20240101",
+            "end_date": "20241231",
+        },
+    )
+
+    record = provider.fetch(request)
+
+    assert record.raw_payload == _fixture("a_individual_notice_report.json")
+    assert fake.calls == [
+        (
+            "stock_individual_notice_report",
+            {
+                "security": "600000",
+                "symbol": "财务报告",
+                "begin_date": "20240101",
+                "end_date": "20241231",
+            },
+        )
+    ]
+    assert record.response_metadata["endpoint"] == "stock_individual_notice_report"
+    assert record.response_metadata["upstream_row_count"] == 2
+    assert record.response_metadata["entity_row_count"] == 2
+    assert record.response_metadata["entity_rows_selected"] is True
+    assert record.response_metadata["listing_scoped_request"] is True
+    assert record.response_metadata["row_filtering"] == "upstream"
+    assert record.response_metadata["disclosure_notice_view"] == "individual_notice"
+    assert record.response_metadata["upstream_security"] == "600000"
+    assert record.response_metadata["notice_category"] == "财务报告"
+    assert record.response_metadata["start_date"] == "20240101"
+    assert record.response_metadata["end_date"] == "20241231"
+    assert record.response_metadata["snapshot_scope"] == "requested_listing_notice_range"
+    assert record.response_metadata["notice_date_field"] == "公告日期"
+    assert record.response_metadata["date_binding"] == (
+        "row_dates_and_optional_request_bounds"
+    )
+    assert record.source_uri == "https://data.eastmoney.com/notices/stock/{symbol}.html"
+
+
+def test_a_individual_disclosure_notice_request_uses_official_defaults_and_rejects_scope():
+    fake = FakeAKShare()
+    provider = _provider(fake)
+
+    provider.fetch(
+        _request(
+            DataCategory.DISCLOSURE_NOTICES,
+            "SH600000",
+            {"view": "individual_notice"},
+        )
+    )
+    assert fake.calls == [
+        (
+            "stock_individual_notice_report",
+            {
+                "security": "600000",
+                "symbol": "全部",
+                "begin_date": None,
+                "end_date": None,
+            },
+        )
+    ]
+
+    with pytest.raises(ProviderRequestError, match="A-share listings only"):
+        provider.fetch(
+            _request(
+                DataCategory.DISCLOSURE_NOTICES,
+                "HK00700",
+                {"view": "individual_notice"},
+            )
+        )
+    with pytest.raises(ProviderRequestError, match="unsupported.*parameter"):
+        provider.fetch(
+            _request(
+                DataCategory.DISCLOSURE_NOTICES,
+                "SH600000",
+                {"view": "individual_notice", "keyword": "年度"},
+            )
+        )
+    with pytest.raises(ProviderRequestError, match="category must be"):
+        provider.fetch(
+            _request(
+                DataCategory.DISCLOSURE_NOTICES,
+                "SH600000",
+                {"view": "individual_notice", "category": "公司治理"},
+            )
+        )
+    with pytest.raises(ProviderRequestError, match="must be YYYYMMDD"):
+        provider.fetch(
+            _request(
+                DataCategory.DISCLOSURE_NOTICES,
+                "SH600000",
+                {"view": "individual_notice", "start_date": "2024-01-01"},
+            )
+        )
+    with pytest.raises(ProviderRequestError, match="start_date must not be after"):
+        provider.fetch(
+            _request(
+                DataCategory.DISCLOSURE_NOTICES,
+                "SH600000",
+                {
+                    "view": "individual_notice",
+                    "start_date": "20250101",
+                    "end_date": "20240101",
+                },
+            )
+        )
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("missing", "missing field"),
+        ("unexpected", "unsupported field"),
+        ("entity", "does not match requested listing"),
+        ("date", "must be a valid date"),
+        ("url", "valid HTTP"),
+        ("out_of_range", "after requested end_date"),
+    ],
+)
+def test_a_individual_disclosure_notice_response_is_strictly_validated(
+    mutation: str,
+    match: str,
+):
+    class MutatedIndividualNoticeAKShare(FakeAKShare):
+        def stock_individual_notice_report(self, **kwargs):
+            payload = _fixture("a_individual_notice_report.json")
+            if mutation == "missing":
+                payload[0].pop("网址")
+            elif mutation == "unexpected":
+                payload[0]["extra"] = "not documented"
+            elif mutation == "entity":
+                payload[0]["代码"] = "000001"
+            elif mutation == "date":
+                payload[0]["公告日期"] = "not-a-date"
+            elif mutation == "url":
+                payload[0]["网址"] = "not-a-url"
+            elif mutation == "out_of_range":
+                payload[0]["公告日期"] = "2025-01-01"
+            return self._return("stock_individual_notice_report", payload, **kwargs)
+
+    with pytest.raises(ProviderResponseError, match=match):
+        _provider(MutatedIndividualNoticeAKShare()).fetch(
+            _request(
+                DataCategory.DISCLOSURE_NOTICES,
+                "SH600000",
+                {
+                    "view": "individual_notice",
+                    "start_date": "20240101",
+                    "end_date": "20241231",
+                },
+            )
+        )
+
+
+def test_a_individual_disclosure_notice_raw_record_is_not_promoted_to_facts():
+    provider = _provider()
+    record = provider.fetch(
+        _request(
+            DataCategory.DISCLOSURE_NOTICES,
+            "SH600000",
+            {
+                "view": "individual_notice",
+                "category": "财务报告",
+                "start_date": "20240101",
+                "end_date": "20241231",
+            },
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="individual-disclosure-notices-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_INDIVIDUAL_NOTICES_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == [
+        "accounting_opinion",
+        "governance_risk_level",
+    ]
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "Eastmoney individual-notice response" in normalized.data_quality.notes
+    assert "filing contents" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("view", "metadata 'disclosure_notice_view'"),
+        ("security", "metadata 'upstream_security'"),
+        ("row_filtering", "metadata 'row_filtering'"),
+        ("row_count", "metadata 'entity_row_count'"),
+        ("source_uri", "source URI"),
+        ("payload", "does not match requested listing"),
+    ],
+)
+def test_a_individual_disclosure_notice_normalizer_rejects_replayed_scope_mismatches(
+    mutation: str,
+    match: str,
+):
+    provider = _provider()
+    request = _request(
+        DataCategory.DISCLOSURE_NOTICES,
+        "SH600000",
+        {
+            "view": "individual_notice",
+            "category": "财务报告",
+            "start_date": "20240101",
+            "end_date": "20241231",
+        },
+    )
+    record = provider.fetch(request)
+    metadata = dict(record.response_metadata)
+    source_uri = record.source_uri
+    payload = [dict(row) for row in record.raw_payload]
+    if mutation == "view":
+        metadata["disclosure_notice_view"] = "wrong-view"
+    elif mutation == "security":
+        metadata["upstream_security"] = "000001"
+    elif mutation == "row_filtering":
+        metadata["row_filtering"] = "provider"
+    elif mutation == "row_count":
+        metadata["entity_row_count"] = 99
+    elif mutation == "source_uri":
+        source_uri = "https://example.test/notices"
+    elif mutation == "payload":
+        payload[0]["代码"] = "000001"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=source_uri,
+        response_metadata=metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match=match):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="individual-disclosure-notice-replay-scope",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_a_individual_disclosure_notice_cache_replay_does_not_call_upstream(
+    tmp_path: Path,
+):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.DISCLOSURE_NOTICES,
+        "SH600000",
+        {
+            "view": "individual_notice",
+            "category": "财务报告",
+            "start_date": "20240101",
+            "end_date": "20241231",
+        },
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [
+        (
+            "stock_individual_notice_report",
+            {
+                "security": "600000",
+                "symbol": "财务报告",
+                "begin_date": "20240101",
                 "end_date": "20241231",
             },
         )

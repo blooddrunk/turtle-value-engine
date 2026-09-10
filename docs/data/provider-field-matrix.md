@@ -810,6 +810,38 @@ gate, pipeline, CLI and input-loader contracts. Its raw evidence is available
 for later review without being treated as a canonical listing, return,
 valuation, governance or market input.
 
+## Phase 2.66 A-share Eastmoney individual-notice raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_fundamental/stock_notice.py)
+document `stock_individual_notice_report` as a symbol-scoped Eastmoney A-share
+individual-notice endpoint. Its documented request uses `security`, category
+`symbol` (default `全部`) and optional `begin_date`/`end_date` bounds; its exact
+response fields are `代码`, `名称`, `公告标题`, `公告类型`, `公告日期` and `网址`.
+
+The provider selects this endpoint only under `DISCLOSURE_NOTICES` with explicit
+`view=individual_notice`, passes the requested six-digit code as `security`,
+maps the provider-neutral category and optional `YYYYMMDD` bounds to the
+documented upstream names, validates every exact six-field row and inclusive
+date bound, and retains the complete listing-scoped response as raw evidence.
+The normalizer emits `AKSHARE_INDIVIDUAL_NOTICES_RAW_ONLY` and marks
+`accounting_opinion` and `governance_risk_level` as critically missing; it does
+not fetch or classify the linked notice and creates no filing-derived financial
+or governance fact.
+
+| Raw upstream item | Phase 2 treatment |
+| --- | --- |
+| `代码`, `名称` | Required six-digit listing identity and non-empty display name; used only for request-boundary validation and evidence context. |
+| `公告标题`, `公告类型` | Required non-empty discovery metadata; announcement text/type is not classified as an accounting, filing or governance conclusion. |
+| `公告日期` | Required date-or-null output field; validated against optional request bounds, but not promoted to a financial-statement period or point-in-time governance fact. |
+| `网址` | Required HTTP(S) retrieval locator; the linked notice remains outside this structured-data slice and requires the Phase 3 filing/evidence workflow. |
+| request `view=individual_notice`, `category`, `start_date`, `end_date` | Explicit endpoint selector, category and optional inclusive listing-notice history/range replay scope; upstream names are not exposed to calculations, gates, pipeline, CLI or input-loader code. |
+
+The slice deliberately leaves `accounting_opinion` and
+`governance_risk_level` unresolved: announcement metadata and links alone do
+not establish filing contents, audit language, materiality or governance
+severity.
+
 ## Phase 2.9 corporate-action raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)

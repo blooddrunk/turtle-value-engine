@@ -549,6 +549,17 @@ non-empty names, then filters to the requested listing. The normalizer emits
 `AKSHARE_NEW_STOCKS_RAW_ONLY`: the current-trading-day quote universe remains
 raw evidence and does not establish a dated listing, return, valuation,
 governance or canonical market fact.
+Phase 2.66 adds the distinct documented Eastmoney A-share individual-notice
+endpoint [`stock_individual_notice_report`](https://akshare.akfamily.xyz/data/stock/stock.html),
+whose current official implementation is in
+[`stock_notice.py`](https://github.com/akfamily/akshare/blob/main/akshare/stock_fundamental/stock_notice.py),
+under `DISCLOSURE_NOTICES` with explicit `view=individual_notice`. It passes the
+six-digit listing as `security`, maps the provider-neutral category and optional
+`YYYYMMDD` bounds to the documented `symbol`, `begin_date` and `end_date`, and
+validates the exact six-field code/name/title/type/date/URL response. The
+normalizer emits `AKSHARE_INDIVIDUAL_NOTICES_RAW_ONLY`: announcement metadata
+remains raw evidence and does not establish filing contents, an accounting
+opinion or a governance-risk judgment.
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.
