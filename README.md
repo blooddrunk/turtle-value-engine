@@ -365,6 +365,13 @@ quantity/change, float-market-value and announcement fields remain raw evidence
 only: they do not establish beneficial control, a canonical concentration metric,
 a company-level diluted-share series or a filing-backed governance conclusion.
 The normalizer emits `AKSHARE_FREE_HOLDING_DETAIL_RAW_ONLY`.
+Phase 2.48 adds the documented Eastmoney
+[`stock_lhb_detail_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
+endpoint under a new provider-neutral `MARKET_ACTIVITY` category. Its
+inclusive date-range universe is validated and filtered to the requested
+A-share listing, then retained as raw evidence; Dragon-Tiger amounts, activity
+labels and forward-looking post-listing returns do not become issuer
+cash-flow, shareholder-return, governance, market or valuation facts.
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

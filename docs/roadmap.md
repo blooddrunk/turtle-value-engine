@@ -1189,6 +1189,27 @@ critically missing and creates no canonical fact. Live calls remain opt-in;
 tests use an injected client and a frozen fixture with cache replay,
 invalid-parameter, response-validation and replay-scope coverage.
 
+### Phase 2.48 — A-share Dragon-Tiger market-activity raw acquisition contract (COMPLETE)
+
+The mapping review now covers the current Eastmoney
+[`stock_lhb_detail_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
+endpoint and its [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_lhb_em.py).
+It accepts explicit inclusive `start_date` and `end_date` values in `YYYYMMDD`
+form and returns the documented full-universe listing-day Dragon-Tiger detail
+rows: listing identity, activity labels, close/return context, amount/ratio
+fields, turnover/float-market-value context, listing reasons and post-listing
+return columns.
+
+The provider selects this boundary under the new provider-neutral
+`MARKET_ACTIVITY` category for A-share listings only, validates every returned
+listing code and `上榜日` against the requested range, and filters the
+full-universe response to the requested listing. The normalizer emits
+`AKSHARE_MARKET_ACTIVITY_RAW_ONLY`; no canonical market, issuer cash-flow,
+shareholder-return, governance or valuation fact is admitted. Post-listing
+returns remain forward-looking raw evidence and are never used as as-of facts.
+Live calls remain opt-in; tests use an injected client and a frozen fixture with
+cache replay, invalid-parameter, response-validation and replay-scope coverage.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -1198,7 +1219,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.47 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.48 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -1406,7 +1427,7 @@ Phase 2 is active. Phase 1 remains frozen: changes to formulas, hard-gate
 semantics, schemas or `strict-v1` thresholds require a separately reviewed,
 versioned change.
 
-Phase 2.47 completes the next documented structured-data boundary while
+Phase 2.48 completes the next documented structured-data boundary while
 keeping share-change, repurchase and rights-issue period, status, unit and
 economic-scope questions unresolved, and keeping ownership-pledge holder,
 governance and economic-scope questions unresolved. The A-share

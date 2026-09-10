@@ -121,6 +121,14 @@ class FakeAKShare:
             market=market,
         )
 
+    def stock_lhb_detail_em(self, *, start_date: str, end_date: str):
+        return self._return(
+            "stock_lhb_detail_em",
+            _fixture("a_lhb_detail.json"),
+            start_date=start_date,
+            end_date=end_date,
+        )
+
     def stock_cash_flow_sheet_by_report_em(self, **kwargs):
         return self._return(
             "stock_cash_flow_sheet_by_report_em",
@@ -475,6 +483,7 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "listing_metadata",
         "litigation",
         "margin_trading",
+        "market_activity",
         "market_history",
         "market_quote",
         "ownership_pledge",
@@ -485,8 +494,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "47"
-    assert AKSHARE_MAPPING_VERSION == "48"
+    assert provider.identity.provider_version == "48"
+    assert AKSHARE_MAPPING_VERSION == "49"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -8404,4 +8413,266 @@ def test_free_holding_detail_cache_replay_does_not_call_upstream(tmp_path: Path)
     assert replay.record == live.record
     assert fake.calls == [
         ("stock_gdfx_free_holding_detail_em", {"date": "20240930"}),
+    ]
+
+
+def test_market_activity_fetch_filters_the_documented_date_range_universe():
+    fake = FakeAKShare()
+    request = _request(
+        DataCategory.MARKET_ACTIVITY,
+        "SH600000",
+        {"start_date": "20240927", "end_date": "20240930"},
+    )
+    record = _provider(fake).fetch(request)
+
+    fixture = _fixture("a_lhb_detail.json")
+    assert record.raw_payload == [row for row in fixture if row["代码"] == "600000"]
+    assert fake.calls == [
+        (
+            "stock_lhb_detail_em",
+            {"start_date": "20240927", "end_date": "20240930"},
+        )
+    ]
+    assert record.response_metadata["endpoint"] == "stock_lhb_detail_em"
+    assert record.response_metadata["upstream_row_count"] == 3
+    assert record.response_metadata["entity_row_count"] == 2
+    assert record.response_metadata["entity_rows_selected"] is True
+    assert record.response_metadata["listing_scoped_request"] is False
+    assert record.response_metadata["row_filtering"] == "provider"
+    assert record.response_metadata["start_date"] == "20240927"
+    assert record.response_metadata["end_date"] == "20240930"
+    assert record.response_metadata["date_binding"] == "row_and_request"
+    assert record.response_metadata["snapshot_scope"] == "requested_date_range"
+    assert record.response_metadata["observation_date_field"] == "上榜日"
+    assert record.response_metadata["observed_start_date"] == "2024-09-27"
+    assert record.response_metadata["observed_end_date"] == "2024-09-30"
+    assert record.source_uri == "https://data.eastmoney.com/stock/tradedetail.html"
+
+
+@pytest.mark.parametrize(
+    ("parameters", "match"),
+    [
+        ({"end_date": "20240930"}, "requires start_date and end_date"),
+        ({"start_date": "20240927"}, "requires start_date and end_date"),
+        (
+            {"start_date": "2024-09-27", "end_date": "20240930"},
+            "start_date must be YYYYMMDD",
+        ),
+        (
+            {"start_date": "20240931", "end_date": "20240930"},
+            "start_date must be a valid YYYYMMDD date",
+        ),
+        (
+            {"start_date": "20241001", "end_date": "20240930"},
+            "start_date must not be after end_date",
+        ),
+        (
+            {
+                "start_date": "20240927",
+                "end_date": "20240930",
+                "market": "A",
+            },
+            "unsupported AKShare market-activity parameter",
+        ),
+    ],
+)
+def test_market_activity_request_validates_explicit_date_range(
+    parameters: dict,
+    match: str,
+):
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError, match=match):
+        _provider(fake).fetch(
+            _request(DataCategory.MARKET_ACTIVITY, "SH600000", parameters)
+        )
+
+    assert fake.calls == []
+
+
+def test_market_activity_request_is_a_share_only_before_upstream_call():
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError, match="A-share listings only"):
+        _provider(fake).fetch(
+            _request(
+                DataCategory.MARKET_ACTIVITY,
+                "HK00700",
+                {"start_date": "20240927", "end_date": "20240930"},
+            )
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("missing_code", "market-activity row without a listing code"),
+        ("missing_date", "market-activity row without an activity date"),
+        ("invalid_date", "invalid market-activity date"),
+        ("outside_range", "market-activity row date .*outside requested range"),
+    ],
+)
+def test_market_activity_response_validates_identity_and_date_range(
+    mutation: str,
+    match: str,
+):
+    class InvalidRows(FakeAKShare):
+        def stock_lhb_detail_em(self, *, start_date: str, end_date: str):
+            rows = _fixture("a_lhb_detail.json")
+            if mutation == "missing_code":
+                rows[0].pop("代码")
+            elif mutation == "missing_date":
+                rows[0].pop("上榜日")
+            elif mutation == "invalid_date":
+                rows[0]["上榜日"] = "not-a-date"
+            else:
+                rows[0]["上榜日"] = "2024-09-26"
+            return self._return(
+                "stock_lhb_detail_em",
+                rows,
+                start_date=start_date,
+                end_date=end_date,
+            )
+
+    with pytest.raises(ProviderResponseError, match=match):
+        _provider(InvalidRows()).fetch(
+            _request(
+                DataCategory.MARKET_ACTIVITY,
+                "SH600000",
+                {"start_date": "20240927", "end_date": "20240930"},
+            )
+        )
+
+
+def test_market_activity_with_no_matching_listing_is_an_empty_raw_snapshot():
+    class NoMatchingMarketActivity(FakeAKShare):
+        def stock_lhb_detail_em(self, *, start_date: str, end_date: str):
+            return self._return(
+                "stock_lhb_detail_em",
+                [
+                    row
+                    for row in _fixture("a_lhb_detail.json")
+                    if row["代码"] == "000001"
+                ],
+                start_date=start_date,
+                end_date=end_date,
+            )
+
+    record = _provider(NoMatchingMarketActivity()).fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SH600000",
+            {"start_date": "20240927", "end_date": "20240930"},
+        )
+    )
+
+    assert record.raw_payload == []
+    assert record.response_metadata["upstream_row_count"] == 1
+    assert record.response_metadata["entity_row_count"] == 0
+
+
+def test_market_activity_is_retained_as_raw_evidence_without_canonical_facts():
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SH600000",
+            {"start_date": "20240927", "end_date": "20240930"},
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="market-activity-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_MARKET_ACTIVITY_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == []
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "Dragon-Tiger-board" in normalized.data_quality.notes
+    assert "forward-looking post-listing returns" in normalized.data_quality.notes
+    assert "issuer cash flow" in normalized.data_quality.notes
+    assert "canonical market metric" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("entity", "market-activity row entity"),
+        ("outside_range", "market-activity row date .*outside requested range"),
+        ("missing_date", "market-activity row has no exact activity date"),
+        ("invalid_date", "market-activity row has an invalid activity date"),
+    ],
+)
+def test_market_activity_normalizer_rejects_replayed_scope_mismatches(
+    mutation: str,
+    match: str,
+):
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SH600000",
+            {"start_date": "20240927", "end_date": "20240930"},
+        )
+    )
+    payload = [dict(row) for row in record.raw_payload]
+    if mutation == "entity":
+        payload[0]["代码"] = "000001"
+    elif mutation == "outside_range":
+        payload[0]["上榜日"] = "2024-09-26"
+    elif mutation == "missing_date":
+        payload[0].pop("上榜日")
+    else:
+        payload[0]["上榜日"] = "not-a-date"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=record.source_uri,
+        response_metadata=record.response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match=match):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-market-activity",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_market_activity_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.MARKET_ACTIVITY,
+        "SH600000",
+        {"start_date": "20240927", "end_date": "20240930"},
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [
+        (
+            "stock_lhb_detail_em",
+            {"start_date": "20240927", "end_date": "20240930"},
+        )
     ]

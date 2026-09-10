@@ -20,7 +20,8 @@ latest-indicator raw slice, the A-share goodwill-impairment detail raw slice,
 the SSE/SZSE/BSE margin-detail raw slices, the A-share individual ownership-pledge
 detail view, the A-share CNINFO equity-mortgage view, A-share company-litigation
 raw slice and A-share Eastmoney individual-info raw slice.
-The A-share Eastmoney individual-fund-flow raw slice is also available.
+The A-share Eastmoney individual-fund-flow and Dragon-Tiger market-activity
+raw slices are also available.
 The A-share Eastmoney top-ten, top-ten-tradable-shareholder and
 top-ten-tradable-shareholder-detail raw slices are also available.
 Upstream column names are handled in this module and are never passed to the
@@ -69,9 +70,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "47"
+AKSHARE_ADAPTER_VERSION = "48"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "48"
+AKSHARE_MAPPING_VERSION = "49"
 
 
 class ListingMarket(StrEnum):
@@ -89,6 +90,7 @@ AKSHARE_CAPABILITIES = ProviderCapabilities(
         DataCategory.TRADING_SUSPENSIONS,
         DataCategory.MARKET_QUOTE,
         DataCategory.MARKET_HISTORY,
+        DataCategory.MARKET_ACTIVITY,
         DataCategory.CAPITAL_FLOW,
         DataCategory.CASH_FLOW_STATEMENT,
         DataCategory.INCOME_STATEMENT,
@@ -131,6 +133,7 @@ _SOURCE_URIS = {
     "stock_hk_daily": "http://stock.finance.sina.com.cn/hkstock/",
     "stock_zh_ah_daily": "https://gu.qq.com/",
     "stock_individual_fund_flow": "https://data.eastmoney.com/zjlx/detail.html",
+    "stock_lhb_detail_em": "https://data.eastmoney.com/stock/tradedetail.html",
     "stock_hk_company_profile_em": "https://emweb.securities.eastmoney.com/PC_HKF10/pages/home/index.html",
     "stock_hk_security_profile_em": "https://emweb.securities.eastmoney.com/PC_HKF10/pages/home/index.html",
     "stock_cash_flow_sheet_by_report_em": "https://emweb.securities.eastmoney.com/PC_HSF10/NewFinanceAnalysis/Index",
@@ -224,6 +227,7 @@ _HISTORY_PARAMETER_NAMES = frozenset(
 )
 _CAPITAL_FLOW_PARAMETER_NAMES = frozenset()
 _CAPITAL_FLOW_DATE_FIELDS = ("日期", "date")
+_MARKET_ACTIVITY_PARAMETER_NAMES = frozenset({"start_date", "end_date"})
 
 _FINANCIAL_STATEMENT_PARAMETER_NAMES = frozenset({"indicator", "statement_date"})
 _EARNINGS_FORECAST_PARAMETER_NAMES = frozenset({"date"})
@@ -466,6 +470,16 @@ class AKShareProvider(StructuredDataProvider):
         ):
             raise ProviderRequestError(
                 "the AKShare individual-fund-flow endpoint supports A-share listings only",
+                provider=self.identity,
+                request=request,
+                retryable=False,
+            )
+        if (
+            request.category is DataCategory.MARKET_ACTIVITY
+            and listing.market is not ListingMarket.A
+        ):
+            raise ProviderRequestError(
+                "the AKShare market-activity endpoint supports A-share listings only",
                 provider=self.identity,
                 request=request,
                 retryable=False,
@@ -754,6 +768,38 @@ class AKShareProvider(StructuredDataProvider):
             if observation_dates:
                 response_metadata["observation_start_date"] = min(observation_dates).isoformat()
                 response_metadata["observation_end_date"] = max(observation_dates).isoformat()
+        elif request.category is DataCategory.MARKET_ACTIVITY:
+            rows = _table_rows(payload, provider=self.identity, request=request)
+            start_date, end_date = _market_activity_date_range(request)
+            activity_dates = _validate_market_activity_provider_rows(
+                rows,
+                listing,
+                start_date=start_date,
+                end_date=end_date,
+                provider=self.identity,
+                request=request,
+            )
+            selected = _select_listing_rows(
+                rows,
+                listing,
+                provider=self.identity,
+                request=request,
+                row_label="market-activity",
+            )
+            payload = selected
+            response_metadata["upstream_row_count"] = len(rows)
+            response_metadata["entity_row_count"] = len(selected)
+            response_metadata["entity_rows_selected"] = True
+            response_metadata["listing_scoped_request"] = False
+            response_metadata["row_filtering"] = "provider"
+            response_metadata["start_date"] = kwargs["start_date"]
+            response_metadata["end_date"] = kwargs["end_date"]
+            response_metadata["date_binding"] = "row_and_request"
+            response_metadata["snapshot_scope"] = "requested_date_range"
+            response_metadata["observation_date_field"] = "上榜日"
+            if activity_dates:
+                response_metadata["observed_start_date"] = min(activity_dates).isoformat()
+                response_metadata["observed_end_date"] = max(activity_dates).isoformat()
         elif request.category is DataCategory.MARGIN_TRADING:
             rows = _table_rows(payload, provider=self.identity, request=request)
             requested_date = _parse_margin_trading_date_parameter(
@@ -1534,6 +1580,8 @@ class AKShareProvider(StructuredDataProvider):
         try:
             if request.category is DataCategory.MARKET_HISTORY:
                 return _history_kwargs(endpoint_name, listing, request)
+            if request.category is DataCategory.MARKET_ACTIVITY:
+                return _market_activity_kwargs(endpoint_name, listing, request)
             if request.category is DataCategory.CAPITAL_FLOW:
                 return _capital_flow_kwargs(endpoint_name, listing, request)
             if request.category is DataCategory.CASH_FLOW_STATEMENT:
@@ -1818,6 +1866,26 @@ class AKShareNormalizer:
                     raise ProviderNormalizationError(str(exc)) from exc
                 _validate_capital_flow_normalizer_rows(rows, listing)
                 normalizer_flags.add("AKSHARE_INDIVIDUAL_FUND_FLOW_RAW_ONLY")
+            elif record.request.category is DataCategory.MARKET_ACTIVITY:
+                if listing.market is not ListingMarket.A:
+                    raise ProviderNormalizationError(
+                        "AKShare market-activity raw slice supports A-share listings only"
+                    )
+                if record.response_metadata.get("endpoint") != "stock_lhb_detail_em":
+                    raise ProviderNormalizationError(
+                        "AKShare market-activity record must come from stock_lhb_detail_em"
+                    )
+                try:
+                    start_date, end_date = _market_activity_date_range(record.request)
+                except ProviderRequestError as exc:
+                    raise ProviderNormalizationError(str(exc)) from exc
+                _validate_market_activity_normalizer_rows(
+                    rows,
+                    listing,
+                    start_date=start_date,
+                    end_date=end_date,
+                )
+                normalizer_flags.add("AKSHARE_MARKET_ACTIVITY_RAW_ONLY")
             elif record.request.category is DataCategory.MARGIN_TRADING:
                 if listing.canonical_id[:2] not in {"SH", "SZ", "BJ"}:
                     raise ProviderNormalizationError(
@@ -2740,6 +2808,13 @@ class AKShareNormalizer:
                 "even when paired with close-price context, do not establish issuer "
                 "cash flow, an accounting period, a liquidity metric or a valuation fact."
             )
+        if "AKSHARE_MARKET_ACTIVITY_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented A-share Dragon-Tiger-board detail response is retained as "
+                "raw evidence only: its listing-day activity amounts, labels and "
+                "forward-looking post-listing returns do not establish issuer cash flow, "
+                "shareholder return, governance, valuation or a canonical market metric."
+            )
         if "AKSHARE_TOP_10_SHAREHOLDERS_RAW_ONLY" in normalizer_flags:
             notes += (
                 " The documented A-share top-ten-shareholder response is retained as "
@@ -2901,6 +2976,7 @@ _ESG_RATING_CODE_FIELDS = (
     "symbol",
 )
 _ESG_RATING_MARKET_FIELDS = ("交易市场", "market")
+_MARKET_ACTIVITY_DATE_FIELDS = ("上榜日", "TRADE_DATE", "trade_date", "date")
 _SHAREHOLDER_HOLDINGS_DATE_FIELDS = ("截至日期", "公告日期")
 _SHAREHOLDER_COUNT_DATE_FIELDS = ("变动日期",)
 _HSGT_INDIVIDUAL_DATE_FIELDS = ("持股日期", "HOLD_DATE", "date")
@@ -3010,6 +3086,10 @@ def _endpoint_candidates(
         if market is ListingMarket.A:
             return ("stock_zh_a_hist", "stock_zh_a_daily")
         return ("stock_hk_daily", "stock_zh_ah_daily")
+    if category is DataCategory.MARKET_ACTIVITY:
+        if market is ListingMarket.A:
+            return ("stock_lhb_detail_em",)
+        return ()
     if category is DataCategory.CAPITAL_FLOW:
         if market is ListingMarket.A:
             return ("stock_individual_fund_flow",)
@@ -5228,6 +5308,55 @@ def _validate_capital_flow_provider_rows(
     return dates
 
 
+def _validate_market_activity_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+    *,
+    start_date: date,
+    end_date: date,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> list[date]:
+    """Validate the full-universe Dragon-Tiger response before filtering."""
+
+    dates: list[date] = []
+    for row in rows:
+        row_code = _row_code(row, ListingMarket.A)
+        if row_code is None:
+            raise ProviderResponseError(
+                f"AKShare returned a market-activity row without a listing code for "
+                f"{request.entity_id!r}",
+                provider=provider,
+                request=request,
+            )
+        found, raw_date = _lookup(row, _MARKET_ACTIVITY_DATE_FIELDS)
+        if not found or _text_value(raw_date) in _MISSING_TEXT:
+            raise ProviderResponseError(
+                f"AKShare returned a market-activity row without an activity date for "
+                f"{request.entity_id!r}",
+                provider=provider,
+                request=request,
+            )
+        row_date = _parse_date_value(raw_date)
+        if row_date is None:
+            raise ProviderResponseError(
+                f"AKShare returned an invalid market-activity date for "
+                f"{request.entity_id!r}",
+                provider=provider,
+                request=request,
+            )
+        if not start_date <= row_date <= end_date:
+            raise ProviderResponseError(
+                f"AKShare returned market-activity row date {row_date.isoformat()!r} "
+                f"outside requested range {start_date.isoformat()!r}.."
+                f"{end_date.isoformat()!r} for {request.entity_id!r}",
+                provider=provider,
+                request=request,
+            )
+        dates.append(row_date)
+    return dates
+
+
 def _select_esg_rating_rows(
     rows: Sequence[Mapping[str, JSONValue]],
     listing: _ListingRef,
@@ -5926,6 +6055,43 @@ def _validate_capital_flow_normalizer_rows(
                 f"capital-flow row has duplicate observation date {row_date.isoformat()!r}"
             )
         seen_dates.add(row_date)
+
+
+def _validate_market_activity_normalizer_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+    *,
+    start_date: date,
+    end_date: date,
+) -> None:
+    """Keep replayed Dragon-Tiger rows inside their listing/date scope."""
+
+    for row in rows:
+        row_code = _row_code(row, ListingMarket.A)
+        if row_code is None:
+            raise ProviderNormalizationError(
+                "market-activity row has no explicit listing code"
+            )
+        if row_code != listing.code:
+            raise ProviderNormalizationError(
+                f"market-activity row entity {row_code!r} does not match "
+                f"requested listing {listing.canonical_id!r}"
+            )
+        found, raw_date = _lookup(row, _MARKET_ACTIVITY_DATE_FIELDS)
+        if not found or _text_value(raw_date) in _MISSING_TEXT:
+            raise ProviderNormalizationError(
+                "market-activity row has no exact activity date"
+            )
+        row_date = _parse_date_value(raw_date)
+        if row_date is None:
+            raise ProviderNormalizationError(
+                "market-activity row has an invalid activity date"
+            )
+        if not start_date <= row_date <= end_date:
+            raise ProviderNormalizationError(
+                f"market-activity row date {row_date.isoformat()!r} is outside "
+                f"requested range {start_date.isoformat()!r}..{end_date.isoformat()!r}"
+            )
 
 
 def _validate_margin_trading_normalizer_rows(
@@ -7119,6 +7285,88 @@ def _validate_shareholder_count_normalizer_rows(
                 f"shareholder-count row date {row_date.isoformat()!r} does not match "
                 f"requested observation date {observation_date.isoformat()!r}"
             )
+
+
+def _market_activity_date_parameter(
+    raw_value: object,
+    *,
+    name: str,
+    request: ProviderRequest,
+) -> date:
+    if not isinstance(raw_value, str) or not re.fullmatch(r"\d{8}", raw_value):
+        raise ProviderRequestError(
+            f"market-activity {name} must be YYYYMMDD",
+            request=request,
+            retryable=False,
+        )
+    try:
+        return datetime.strptime(raw_value, "%Y%m%d").date()
+    except ValueError as exc:
+        raise ProviderRequestError(
+            f"market-activity {name} must be a valid YYYYMMDD date",
+            request=request,
+            retryable=False,
+        ) from exc
+
+
+def _market_activity_date_range(request: ProviderRequest) -> tuple[date, date]:
+    if not {"start_date", "end_date"}.issubset(request.parameters):
+        raise ProviderRequestError(
+            "the AKShare market-activity endpoint requires start_date and end_date "
+            "(YYYYMMDD)",
+            request=request,
+            retryable=False,
+        )
+    start_date = _market_activity_date_parameter(
+        request.parameters["start_date"],
+        name="start_date",
+        request=request,
+    )
+    end_date = _market_activity_date_parameter(
+        request.parameters["end_date"],
+        name="end_date",
+        request=request,
+    )
+    if start_date > end_date:
+        raise ProviderRequestError(
+            "market-activity start_date must not be after end_date",
+            request=request,
+            retryable=False,
+        )
+    return start_date, end_date
+
+
+def _market_activity_kwargs(
+    endpoint_name: str,
+    listing: _ListingRef,
+    request: ProviderRequest,
+) -> dict[str, object]:
+    """Build the documented full-universe Dragon-Tiger date-range request."""
+
+    if endpoint_name != "stock_lhb_detail_em":
+        raise ProviderRequestError(
+            f"unsupported AKShare market-activity endpoint {endpoint_name!r}",
+            request=request,
+            retryable=False,
+        )
+    if listing.market is not ListingMarket.A:
+        raise ProviderRequestError(
+            "the AKShare market-activity endpoint supports A-share listings only",
+            request=request,
+            retryable=False,
+        )
+    unknown = sorted(set(request.parameters) - _MARKET_ACTIVITY_PARAMETER_NAMES)
+    if unknown:
+        raise ProviderRequestError(
+            "unsupported AKShare market-activity parameter(s): " + ", ".join(unknown),
+            request=request,
+            retryable=False,
+        )
+    _market_activity_date_range(request)
+    return {
+        "start_date": request.parameters["start_date"],
+        "end_date": request.parameters["end_date"],
+    }
 
 
 def _capital_flow_kwargs(

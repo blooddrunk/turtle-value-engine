@@ -1,6 +1,6 @@
 # Provider and Cache Architecture
 
-> Status: Phase 2 foundation, read-only AKShare statement slices, earnings forecasts/quick reports/performance reports/business composition/financial abstract/financial indicators, H-share latest indicators, dividend events/snapshots/detail, A-share disclosure-notice metadata, risk-warning status, trading-suspension, restricted-share-release, goodwill-impairment, ESG-rating, SSE/SZSE/BSE margin-detail, share-capital, individual-info snapshot, corporate-action, external-guarantee, company-litigation, ownership-pledge snapshot/detail, main-shareholder, shareholder-count, A-share actual-controller holding-change, A/H HSGT individual-holdings, SSE/SZSE/BSE insider-share-change, A-share Eastmoney management-holding and A-share Eastmoney top-ten/top-ten-tradable-shareholder and top-ten-tradable-shareholder-detail raw slices
+> Status: Phase 2 foundation, read-only AKShare statement slices, earnings forecasts/quick reports/performance reports/business composition/financial abstract/financial indicators, H-share latest indicators, dividend events/snapshots/detail, A-share disclosure-notice metadata, risk-warning status, trading-suspension, restricted-share-release, goodwill-impairment, ESG-rating, SSE/SZSE/BSE margin-detail, share-capital, individual-info snapshot, corporate-action, external-guarantee, company-litigation, ownership-pledge snapshot/detail, main-shareholder, shareholder-count, A-share actual-controller holding-change, A/H HSGT individual-holdings, SSE/SZSE/BSE insider-share-change, A-share Eastmoney management-holding and A-share top-ten/top-ten-tradable-shareholder/top-ten-tradable-shareholder-detail and Dragon-Tiger market-activity raw slices
 
 This document freezes the boundary between structured-data acquisition and the
 deterministic Turtle Value Engine. It does not authorize a live provider or
@@ -89,6 +89,7 @@ RISK_WARNING_STATUS
 TRADING_SUSPENSIONS
 MARKET_QUOTE
 MARKET_HISTORY
+MARKET_ACTIVITY
 CAPITAL_FLOW
 INCOME_STATEMENT
 EARNINGS_FORECAST
@@ -705,7 +706,7 @@ The cache performs no network retries. The normalizer performs no provider
 retries. The deterministic pipeline performs no provider retries and should
 not be rerun as a substitute for resolving missing facts.
 
-## 12. Phase 2.2–2.47 AKShare adapter
+## 12. Phase 2.2–2.48 AKShare adapter
 
 The first concrete adapter is intentionally limited to read-only metadata,
 market observations, three documented financial-statement slices, raw-only
@@ -720,6 +721,7 @@ ESG-rating, SSE/SZSE/BSE margin-detail, external-guarantee, company-litigation,
 main-shareholder/shareholder-count/actual-controller holding-change/HSGT
 individual-holdings raw slices, A-share Eastmoney individual-fund-flow,
 top-ten-shareholder/top-ten-tradable-shareholder/top-ten-tradable-shareholder-detail,
+Dragon-Tiger market-activity,
 SSE/SZSE/BSE insider-share-change and A-share Eastmoney management-holding raw
 slices. It
 advertises exactly these capabilities:
@@ -732,6 +734,7 @@ advertises exactly these capabilities:
 | `TRADING_SUSPENSIONS` | `stock_tfp_em` (exact `date`) | — | requested-date A-share suspension/resumption rows as raw structured evidence only; no canonical status or governance fact |
 | `MARKET_QUOTE` | `stock_zh_a_spot_em` | `stock_hk_spot_em` | selected-listing `current_price` plus quote timestamp |
 | `MARKET_HISTORY` | `stock_zh_a_hist` | `stock_hk_daily` | dated OHLCV/turnover extension facts |
+| `MARKET_ACTIVITY` | `stock_lhb_detail_em` (inclusive `start_date`/`end_date`; A-share only) | — | A-share Dragon-Tiger activity rows filtered to the requested listing as raw structured evidence only; no issuer cash-flow, shareholder-return, governance, market or valuation fact |
 | `CAPITAL_FLOW` | `stock_individual_fund_flow` (A-share) | — | recent daily investor-flow rows as raw structured evidence only; no issuer cash-flow, liquidity or valuation fact |
 | `CASH_FLOW_STATEMENT` | `stock_cash_flow_sheet_by_report_em` (Sina fallback) | `stock_financial_hk_report_em` | explicit `reported_cfo` and `acquisition_cash` lines |
 | `INCOME_STATEMENT` | `stock_profit_sheet_by_report_em` (Sina fallback) | `stock_financial_hk_report_em` | explicit `parent_net_profit` and `consolidated_net_profit` lines |
@@ -855,6 +858,13 @@ amount units, percentage denominators, netting scope and point-in-time meaning
 remain provider-specific; its close price and return columns remain market
 context rather than canonical quote/history replacements. No issuer cash-flow,
 liquidity or valuation classification is admitted automatically.
+For the A-share Dragon-Tiger market-activity slice, the full-universe date
+range, listing code, `上榜日`, activity amounts and post-listing return columns
+remain provider fields. The provider validates every code and inclusive event
+date before filtering the response to the requested listing; the normalizer
+retains the result as raw evidence only. No issuer cash-flow,
+shareholder-return, governance, canonical market or valuation classification is
+admitted automatically, and post-listing returns are not used as as-of facts.
 For the A-share dividend-distribution snapshot, the explicit June-30 or
 December-31 report date and listing-filtered rows are retained, but ratio units,
 settled cash status, ordinary-versus-special classification and payout
@@ -1110,7 +1120,7 @@ critically missing.
 
 ## 13. Deliberate non-goals
 
-This foundation plus the Phase 2.2–2.47 slices does not include:
+This foundation plus the Phase 2.2–2.48 slices does not include:
 
 - Tushare, BaoStock or any other additional provider;
 - automatic network scheduling, credentials or retry orchestration outside an adapter;

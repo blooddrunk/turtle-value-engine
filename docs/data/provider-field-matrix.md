@@ -281,6 +281,33 @@ share, dilution, governance or valuation fact is admitted.
 | `公告日` | Validated announcement-date context; it is not treated as a filing's contents or an accounting period. |
 | request `view=free_holding_detail`, exact quarter-end `date` | Explicit endpoint and replay scope; the full-universe response is filtered by listing before storage. |
 
+## Phase 2.48 A-share Dragon-Tiger market-activity raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_lhb_detail_em` as an Eastmoney full-universe endpoint with
+explicit inclusive `start_date` and `end_date` parameters in `YYYYMMDD` form.
+The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_lhb_em.py)
+returns listing-day activity, provider amount/ratio fields, listing reasons and
+post-listing return columns.
+
+The provider selects this endpoint only for the provider-neutral
+`MARKET_ACTIVITY` category and an A-share listing, validates every returned
+listing code and `上榜日` against the requested date range, then filters the
+full universe to the requested listing. The normalizer emits
+`AKSHARE_MARKET_ACTIVITY_RAW_ONLY`; no canonical market, issuer cash-flow,
+shareholder-return, governance or valuation fact is admitted. Post-listing
+returns remain forward-looking raw context and are never used as as-of facts.
+
+| Raw upstream item | Phase 2 treatment |
+| --- | --- |
+| `代码`, `名称` | Validated listing identity/name used to select the requested listing; no additional issuer fact is inferred. |
+| `上榜日` | Validated listing-day event date inside the inclusive request range; it is not an accounting or fund-flow period. |
+| `解读`, `上榜原因` | Raw provider activity labels; no governance, causality or investment conclusion is inferred. |
+| `收盘价`, `涨跌幅`, `换手率`, `流通市值` | Raw market context; it is not promoted to canonical quote, history or valuation input. |
+| `龙虎榜净买额`, `龙虎榜买入额`, `龙虎榜卖出额`, `龙虎榜成交额`, `市场总成交额`, percentage fields | Raw provider market-activity amounts/ratios; they are not issuer cash flow, shareholder return or a canonical liquidity metric. |
+| `上榜后1日`, `上榜后2日`, `上榜后5日`, `上榜后10日` | Forward-looking post-listing context; never normalized into as-of facts or used by calculations/gates. |
+| request `start_date`, `end_date` | Explicit inclusive date-range and replay scope; the full-universe response is filtered by listing before storage. |
+
 ## Phase 2.9 corporate-action raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
