@@ -372,6 +372,14 @@ inclusive date-range universe is validated and filtered to the requested
 A-share listing, then retained as raw evidence; Dragon-Tiger amounts, activity
 labels and forward-looking post-listing returns do not become issuer
 cash-flow, shareholder-return, governance, market or valuation facts.
+Phase 2.49 adds the distinct documented Eastmoney
+[`stock_lhb_stock_statistic_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
+endpoint under the same category with explicit `view=stock_statistic` and a
+`period` selected from the documented one-, three-, six- or twelve-month
+windows. Its full-universe per-listing activity counts, amount aggregates and
+trailing returns are validated and filtered to the requested A-share listing,
+then retained as raw evidence only; they do not become issuer cash-flow,
+shareholder-return, governance, market or valuation facts.
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

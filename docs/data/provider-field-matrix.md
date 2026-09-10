@@ -308,6 +308,35 @@ returns remain forward-looking raw context and are never used as as-of facts.
 | `上榜后1日`, `上榜后2日`, `上榜后5日`, `上榜后10日` | Forward-looking post-listing context; never normalized into as-of facts or used by calculations/gates. |
 | request `start_date`, `end_date` | Explicit inclusive date-range and replay scope; the full-universe response is filtered by listing before storage. |
 
+## Phase 2.49 A-share Dragon-Tiger stock-statistic raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_lhb_stock_statistic_em` as an Eastmoney full-universe endpoint
+with an explicit `symbol` window choice: `近一月`, `近三月`, `近六月` or `近一年`.
+The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_lhb_em.py)
+maps those choices to the upstream statistic-cycle filter and returns one
+aggregate row per listing.
+
+The provider selects this endpoint only for the provider-neutral
+`MARKET_ACTIVITY` request with `view=stock_statistic`, maps the explicit
+`period` to the upstream `symbol`, validates every returned listing code and
+`最近上榜日`, then filters the full universe to the requested A-share listing.
+The normalizer emits `AKSHARE_MARKET_ACTIVITY_STATISTICS_RAW_ONLY`; no issuer
+cash-flow, shareholder-return, governance, canonical market or valuation fact
+is admitted. The selected window is replay scope, while trailing returns remain
+provider context rather than as-of facts.
+
+| Raw upstream item | Phase 2 treatment |
+| --- | --- |
+| `代码`, `名称` | Validated listing identity/name used to select the requested listing; no additional issuer fact is inferred. |
+| `最近上榜日` | Validated recent Dragon-Tiger listing-day context; it is not an accounting, fund-flow or filing period. |
+| `收盘价`, `涨跌幅` | Raw market context; it is not promoted to canonical quote, history or valuation input. |
+| `上榜次数` | Raw activity count for the selected provider window; it is not a shareholder or governance conclusion. |
+| `龙虎榜净买额`, `龙虎榜买入额`, `龙虎榜卖出额`, `龙虎榜总成交额` | Raw Dragon-Tiger amount aggregates; they are not issuer cash flow, shareholder return or a canonical liquidity metric. |
+| `买方机构次数`, `卖方机构次数`, `机构买入净额`, `机构买入总额`, `机构卖出总额` | Raw institution-activity aggregates; institution labels and amounts do not establish beneficial ownership, governance or issuer-level flows. |
+| `近1个月涨跌幅`, `近3个月涨跌幅`, `近6个月涨跌幅`, `近1年涨跌幅` | Trailing provider return context; it is not used as an as-of return, valuation input or calculation/gate fact. |
+| request `view=stock_statistic`, `period` | Explicit endpoint-selection and statistic-window replay scope; the full-universe response is filtered by listing before storage. |
+
 ## Phase 2.9 corporate-action raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)

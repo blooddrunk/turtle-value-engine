@@ -21,7 +21,7 @@ the SSE/SZSE/BSE margin-detail raw slices, the A-share individual ownership-pled
 detail view, the A-share CNINFO equity-mortgage view, A-share company-litigation
 raw slice and A-share Eastmoney individual-info raw slice.
 The A-share Eastmoney individual-fund-flow and Dragon-Tiger market-activity
-raw slices are also available.
+detail/statistics raw slices are also available.
 The A-share Eastmoney top-ten, top-ten-tradable-shareholder and
 top-ten-tradable-shareholder-detail raw slices are also available.
 Upstream column names are handled in this module and are never passed to the
@@ -70,9 +70,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "48"
+AKSHARE_ADAPTER_VERSION = "49"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "49"
+AKSHARE_MAPPING_VERSION = "50"
 
 
 class ListingMarket(StrEnum):
@@ -134,6 +134,7 @@ _SOURCE_URIS = {
     "stock_zh_ah_daily": "https://gu.qq.com/",
     "stock_individual_fund_flow": "https://data.eastmoney.com/zjlx/detail.html",
     "stock_lhb_detail_em": "https://data.eastmoney.com/stock/tradedetail.html",
+    "stock_lhb_stock_statistic_em": "https://data.eastmoney.com/stock/tradedetail.html",
     "stock_hk_company_profile_em": "https://emweb.securities.eastmoney.com/PC_HKF10/pages/home/index.html",
     "stock_hk_security_profile_em": "https://emweb.securities.eastmoney.com/PC_HKF10/pages/home/index.html",
     "stock_cash_flow_sheet_by_report_em": "https://emweb.securities.eastmoney.com/PC_HSF10/NewFinanceAnalysis/Index",
@@ -228,6 +229,15 @@ _HISTORY_PARAMETER_NAMES = frozenset(
 _CAPITAL_FLOW_PARAMETER_NAMES = frozenset()
 _CAPITAL_FLOW_DATE_FIELDS = ("日期", "date")
 _MARKET_ACTIVITY_PARAMETER_NAMES = frozenset({"start_date", "end_date"})
+_MARKET_ACTIVITY_STATISTIC_PARAMETER_NAMES = frozenset({"view", "period"})
+_MARKET_ACTIVITY_STATISTIC_VIEW = "stock_statistic"
+_MARKET_ACTIVITY_STATISTIC_PERIOD_CHOICES = (
+    "近一月",
+    "近三月",
+    "近六月",
+    "近一年",
+)
+_MARKET_ACTIVITY_STATISTIC_PERIODS = frozenset(_MARKET_ACTIVITY_STATISTIC_PERIOD_CHOICES)
 
 _FINANCIAL_STATEMENT_PARAMETER_NAMES = frozenset({"indicator", "statement_date"})
 _EARNINGS_FORECAST_PARAMETER_NAMES = frozenset({"date"})
@@ -770,36 +780,76 @@ class AKShareProvider(StructuredDataProvider):
                 response_metadata["observation_end_date"] = max(observation_dates).isoformat()
         elif request.category is DataCategory.MARKET_ACTIVITY:
             rows = _table_rows(payload, provider=self.identity, request=request)
-            start_date, end_date = _market_activity_date_range(request)
-            activity_dates = _validate_market_activity_provider_rows(
-                rows,
-                listing,
-                start_date=start_date,
-                end_date=end_date,
-                provider=self.identity,
-                request=request,
-            )
-            selected = _select_listing_rows(
-                rows,
-                listing,
-                provider=self.identity,
-                request=request,
-                row_label="market-activity",
-            )
-            payload = selected
-            response_metadata["upstream_row_count"] = len(rows)
-            response_metadata["entity_row_count"] = len(selected)
-            response_metadata["entity_rows_selected"] = True
-            response_metadata["listing_scoped_request"] = False
-            response_metadata["row_filtering"] = "provider"
-            response_metadata["start_date"] = kwargs["start_date"]
-            response_metadata["end_date"] = kwargs["end_date"]
-            response_metadata["date_binding"] = "row_and_request"
-            response_metadata["snapshot_scope"] = "requested_date_range"
-            response_metadata["observation_date_field"] = "上榜日"
-            if activity_dates:
-                response_metadata["observed_start_date"] = min(activity_dates).isoformat()
-                response_metadata["observed_end_date"] = max(activity_dates).isoformat()
+            if endpoint.name == "stock_lhb_detail_em":
+                start_date, end_date = _market_activity_date_range(request)
+                activity_dates = _validate_market_activity_provider_rows(
+                    rows,
+                    listing,
+                    start_date=start_date,
+                    end_date=end_date,
+                    provider=self.identity,
+                    request=request,
+                )
+                selected = _select_listing_rows(
+                    rows,
+                    listing,
+                    provider=self.identity,
+                    request=request,
+                    row_label="market-activity",
+                )
+                payload = selected
+                response_metadata["upstream_row_count"] = len(rows)
+                response_metadata["entity_row_count"] = len(selected)
+                response_metadata["entity_rows_selected"] = True
+                response_metadata["listing_scoped_request"] = False
+                response_metadata["row_filtering"] = "provider"
+                response_metadata["start_date"] = kwargs["start_date"]
+                response_metadata["end_date"] = kwargs["end_date"]
+                response_metadata["date_binding"] = "row_and_request"
+                response_metadata["snapshot_scope"] = "requested_date_range"
+                response_metadata["observation_date_field"] = "上榜日"
+                if activity_dates:
+                    response_metadata["observed_start_date"] = min(activity_dates).isoformat()
+                    response_metadata["observed_end_date"] = max(activity_dates).isoformat()
+            elif endpoint.name == "stock_lhb_stock_statistic_em":
+                statistic_period = _market_activity_statistic_period(request)
+                recent_listing_dates = _validate_market_activity_statistic_provider_rows(
+                    rows,
+                    provider=self.identity,
+                    request=request,
+                )
+                selected = _select_listing_rows(
+                    rows,
+                    listing,
+                    provider=self.identity,
+                    request=request,
+                    row_label="market-activity-statistic",
+                )
+                payload = selected
+                response_metadata["upstream_row_count"] = len(rows)
+                response_metadata["entity_row_count"] = len(selected)
+                response_metadata["entity_rows_selected"] = True
+                response_metadata["listing_scoped_request"] = False
+                response_metadata["row_filtering"] = "provider"
+                response_metadata["market_activity_view"] = _MARKET_ACTIVITY_STATISTIC_VIEW
+                response_metadata["statistic_period"] = statistic_period
+                response_metadata["upstream_symbol"] = kwargs["symbol"]
+                response_metadata["date_binding"] = "request_period"
+                response_metadata["snapshot_scope"] = "requested_statistic_period"
+                response_metadata["observation_date_field"] = "最近上榜日"
+                if recent_listing_dates:
+                    response_metadata["observed_earliest_recent_listing_date"] = min(
+                        recent_listing_dates
+                    ).isoformat()
+                    response_metadata["observed_latest_recent_listing_date"] = max(
+                        recent_listing_dates
+                    ).isoformat()
+            else:
+                raise ProviderResponseError(
+                    "AKShare market-activity record came from an unsupported endpoint",
+                    provider=self.identity,
+                    request=request,
+                )
         elif request.category is DataCategory.MARGIN_TRADING:
             rows = _table_rows(payload, provider=self.identity, request=request)
             requested_date = _parse_margin_trading_date_parameter(
@@ -1553,6 +1603,9 @@ class AKShareProvider(StructuredDataProvider):
             insider_management_detail_requested=(
                 request.parameters.get("view") == _INSIDER_MANAGEMENT_DETAIL_VIEW
             ),
+            market_activity_statistic_requested=(
+                "view" in request.parameters or "period" in request.parameters
+            ),
         )
         for name in candidates:
             function = getattr(client, name, None)
@@ -1871,21 +1924,48 @@ class AKShareNormalizer:
                     raise ProviderNormalizationError(
                         "AKShare market-activity raw slice supports A-share listings only"
                     )
-                if record.response_metadata.get("endpoint") != "stock_lhb_detail_em":
-                    raise ProviderNormalizationError(
-                        "AKShare market-activity record must come from stock_lhb_detail_em"
+                endpoint_name = record.response_metadata.get("endpoint")
+                if endpoint_name == "stock_lhb_detail_em":
+                    try:
+                        start_date, end_date = _market_activity_date_range(record.request)
+                    except ProviderRequestError as exc:
+                        raise ProviderNormalizationError(str(exc)) from exc
+                    _validate_market_activity_normalizer_rows(
+                        rows,
+                        listing,
+                        start_date=start_date,
+                        end_date=end_date,
                     )
-                try:
-                    start_date, end_date = _market_activity_date_range(record.request)
-                except ProviderRequestError as exc:
-                    raise ProviderNormalizationError(str(exc)) from exc
-                _validate_market_activity_normalizer_rows(
-                    rows,
-                    listing,
-                    start_date=start_date,
-                    end_date=end_date,
-                )
-                normalizer_flags.add("AKSHARE_MARKET_ACTIVITY_RAW_ONLY")
+                    normalizer_flags.add("AKSHARE_MARKET_ACTIVITY_RAW_ONLY")
+                elif endpoint_name == "stock_lhb_stock_statistic_em":
+                    try:
+                        upstream_kwargs = _market_activity_statistic_kwargs(
+                            endpoint_name,
+                            listing,
+                            record.request,
+                        )
+                    except ProviderRequestError as exc:
+                        raise ProviderNormalizationError(str(exc)) from exc
+                    expected_period = upstream_kwargs["symbol"]
+                    response_view = record.response_metadata.get("market_activity_view")
+                    if response_view not in (None, _MARKET_ACTIVITY_STATISTIC_VIEW):
+                        raise ProviderNormalizationError(
+                            "market-activity-statistic response view does not match "
+                            f"{_MARKET_ACTIVITY_STATISTIC_VIEW!r}"
+                        )
+                    response_period = record.response_metadata.get("statistic_period")
+                    if response_period not in (None, expected_period):
+                        raise ProviderNormalizationError(
+                            "market-activity-statistic response period does not match "
+                            f"requested period {expected_period!r}"
+                        )
+                    _validate_market_activity_statistic_normalizer_rows(rows, listing)
+                    normalizer_flags.add("AKSHARE_MARKET_ACTIVITY_STATISTICS_RAW_ONLY")
+                else:
+                    raise ProviderNormalizationError(
+                        "AKShare market-activity record must come from "
+                        "stock_lhb_detail_em or stock_lhb_stock_statistic_em"
+                    )
             elif record.request.category is DataCategory.MARGIN_TRADING:
                 if listing.canonical_id[:2] not in {"SH", "SZ", "BJ"}:
                     raise ProviderNormalizationError(
@@ -2815,6 +2895,13 @@ class AKShareNormalizer:
                 "forward-looking post-listing returns do not establish issuer cash flow, "
                 "shareholder return, governance, valuation or a canonical market metric."
             )
+        if "AKSHARE_MARKET_ACTIVITY_STATISTICS_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented A-share Dragon-Tiger stock-statistic response is retained "
+                "as raw evidence only: its per-listing activity counts, amount aggregates "
+                "and trailing return context do not establish issuer cash flow, shareholder "
+                "return, governance, valuation or a canonical market metric."
+            )
         if "AKSHARE_TOP_10_SHAREHOLDERS_RAW_ONLY" in normalizer_flags:
             notes += (
                 " The documented A-share top-ten-shareholder response is retained as "
@@ -2977,6 +3064,12 @@ _ESG_RATING_CODE_FIELDS = (
 )
 _ESG_RATING_MARKET_FIELDS = ("交易市场", "market")
 _MARKET_ACTIVITY_DATE_FIELDS = ("上榜日", "TRADE_DATE", "trade_date", "date")
+_MARKET_ACTIVITY_STATISTIC_DATE_FIELDS = (
+    "最近上榜日",
+    "LATEST_TDATE",
+    "latest_tdate",
+    "date",
+)
 _SHAREHOLDER_HOLDINGS_DATE_FIELDS = ("截至日期", "公告日期")
 _SHAREHOLDER_COUNT_DATE_FIELDS = ("变动日期",)
 _HSGT_INDIVIDUAL_DATE_FIELDS = ("持股日期", "HOLD_DATE", "date")
@@ -3046,6 +3139,7 @@ def _endpoint_candidates(
     shareholder_top10_requested: bool = False,
     shareholder_hsgt_individual_requested: bool = False,
     insider_management_detail_requested: bool = False,
+    market_activity_statistic_requested: bool = False,
 ) -> tuple[str, ...]:
     market = listing.market
     if category is DataCategory.COMPANY_METADATA:
@@ -3088,6 +3182,8 @@ def _endpoint_candidates(
         return ("stock_hk_daily", "stock_zh_ah_daily")
     if category is DataCategory.MARKET_ACTIVITY:
         if market is ListingMarket.A:
+            if market_activity_statistic_requested:
+                return ("stock_lhb_stock_statistic_em",)
             return ("stock_lhb_detail_em",)
         return ()
     if category is DataCategory.CAPITAL_FLOW:
@@ -5357,6 +5453,54 @@ def _validate_market_activity_provider_rows(
     return dates
 
 
+def _validate_market_activity_statistic_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> list[date]:
+    """Validate the per-listing Dragon-Tiger statistic universe before filtering."""
+
+    dates: list[date] = []
+    seen_codes: set[str] = set()
+    for row in rows:
+        row_code = _row_code(row, ListingMarket.A)
+        if row_code is None:
+            raise ProviderResponseError(
+                f"AKShare returned a market-activity-statistic row without a listing code "
+                f"for {request.entity_id!r}",
+                provider=provider,
+                request=request,
+            )
+        if row_code in seen_codes:
+            raise ProviderResponseError(
+                f"AKShare returned duplicate market-activity-statistic row for "
+                f"listing code {row_code!r} and {request.entity_id!r}",
+                provider=provider,
+                request=request,
+            )
+        seen_codes.add(row_code)
+
+        found, raw_date = _lookup(row, _MARKET_ACTIVITY_STATISTIC_DATE_FIELDS)
+        if not found or _text_value(raw_date) in _MISSING_TEXT:
+            raise ProviderResponseError(
+                f"AKShare returned a market-activity-statistic row without a recent "
+                f"listing date for {request.entity_id!r}",
+                provider=provider,
+                request=request,
+            )
+        row_date = _parse_date_value(raw_date)
+        if row_date is None:
+            raise ProviderResponseError(
+                f"AKShare returned an invalid market-activity-statistic recent listing "
+                f"date for {request.entity_id!r}",
+                provider=provider,
+                request=request,
+            )
+        dates.append(row_date)
+    return dates
+
+
 def _select_esg_rating_rows(
     rows: Sequence[Mapping[str, JSONValue]],
     listing: _ListingRef,
@@ -6091,6 +6235,41 @@ def _validate_market_activity_normalizer_rows(
             raise ProviderNormalizationError(
                 f"market-activity row date {row_date.isoformat()!r} is outside "
                 f"requested range {start_date.isoformat()!r}..{end_date.isoformat()!r}"
+            )
+
+
+def _validate_market_activity_statistic_normalizer_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+) -> None:
+    """Keep replayed Dragon-Tiger statistic rows inside their listing scope."""
+
+    seen_codes: set[str] = set()
+    for row in rows:
+        row_code = _row_code(row, ListingMarket.A)
+        if row_code is None:
+            raise ProviderNormalizationError(
+                "market-activity-statistic row has no explicit listing code"
+            )
+        if row_code != listing.code:
+            raise ProviderNormalizationError(
+                f"market-activity-statistic row entity {row_code!r} does not match "
+                f"requested listing {listing.canonical_id!r}"
+            )
+        if row_code in seen_codes:
+            raise ProviderNormalizationError(
+                f"market-activity-statistic row has duplicate listing code {row_code!r}"
+            )
+        seen_codes.add(row_code)
+
+        found, raw_date = _lookup(row, _MARKET_ACTIVITY_STATISTIC_DATE_FIELDS)
+        if not found or _text_value(raw_date) in _MISSING_TEXT:
+            raise ProviderNormalizationError(
+                "market-activity-statistic row has no exact recent listing date"
+            )
+        if _parse_date_value(raw_date) is None:
+            raise ProviderNormalizationError(
+                "market-activity-statistic row has an invalid recent listing date"
             )
 
 
@@ -7341,7 +7520,10 @@ def _market_activity_kwargs(
     listing: _ListingRef,
     request: ProviderRequest,
 ) -> dict[str, object]:
-    """Build the documented full-universe Dragon-Tiger date-range request."""
+    """Build one documented full-universe Dragon-Tiger request."""
+
+    if endpoint_name == "stock_lhb_stock_statistic_em":
+        return _market_activity_statistic_kwargs(endpoint_name, listing, request)
 
     if endpoint_name != "stock_lhb_detail_em":
         raise ProviderRequestError(
@@ -7367,6 +7549,64 @@ def _market_activity_kwargs(
         "start_date": request.parameters["start_date"],
         "end_date": request.parameters["end_date"],
     }
+
+
+def _market_activity_statistic_period(request: ProviderRequest) -> str:
+    """Return the explicit documented Dragon-Tiger statistic window."""
+
+    if request.parameters.get("view") != _MARKET_ACTIVITY_STATISTIC_VIEW:
+        raise ProviderRequestError(
+            "the AKShare market-activity statistic endpoint requires "
+            f"view={_MARKET_ACTIVITY_STATISTIC_VIEW!r}",
+            request=request,
+            retryable=False,
+        )
+    if "period" not in request.parameters:
+        raise ProviderRequestError(
+            "the AKShare market-activity statistic endpoint requires period",
+            request=request,
+            retryable=False,
+        )
+    period = request.parameters["period"]
+    if not isinstance(period, str) or period not in _MARKET_ACTIVITY_STATISTIC_PERIODS:
+        choices = ", ".join(_MARKET_ACTIVITY_STATISTIC_PERIOD_CHOICES)
+        raise ProviderRequestError(
+            "market-activity statistic period must be one of: " + choices,
+            request=request,
+            retryable=False,
+        )
+    return period
+
+
+def _market_activity_statistic_kwargs(
+    endpoint_name: str,
+    listing: _ListingRef,
+    request: ProviderRequest,
+) -> dict[str, object]:
+    """Build the documented per-stock Dragon-Tiger statistics request."""
+
+    if endpoint_name != "stock_lhb_stock_statistic_em":
+        raise ProviderRequestError(
+            f"unsupported AKShare market-activity-statistic endpoint {endpoint_name!r}",
+            request=request,
+            retryable=False,
+        )
+    if listing.market is not ListingMarket.A:
+        raise ProviderRequestError(
+            "the AKShare market-activity statistic endpoint supports A-share listings only",
+            request=request,
+            retryable=False,
+        )
+    unknown = sorted(set(request.parameters) - _MARKET_ACTIVITY_STATISTIC_PARAMETER_NAMES)
+    if unknown:
+        raise ProviderRequestError(
+            "unsupported AKShare market-activity-statistic parameter(s): "
+            + ", ".join(unknown),
+            request=request,
+            retryable=False,
+        )
+    period = _market_activity_statistic_period(request)
+    return {"symbol": period}
 
 
 def _capital_flow_kwargs(
