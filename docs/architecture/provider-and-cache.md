@@ -706,13 +706,14 @@ The cache performs no network retries. The normalizer performs no provider
 retries. The deterministic pipeline performs no provider retries and should
 not be rerun as a substitute for resolving missing facts.
 
-## 12. Phase 2.2–2.62 AKShare adapter
+## 12. Phase 2.2–2.63 AKShare adapter
 
 The first concrete adapter is intentionally limited to read-only metadata,
 market observations, three documented financial-statement slices, raw-only
 earnings-forecast, earnings-quick-report, performance-report,
 business-composition and financial-abstract categories, A/H financial-indicator
-raw slices, raw-only dividend event/snapshot/detail, corporate-action,
+raw slices, raw-only dividend event/snapshot/detail including the A-share
+Eastmoney distribution-detail view, corporate-action,
 external-guarantee and company-litigation categories,
 four A-share share-capital raw slices, three A-share ownership-pledge raw views,
 an H-share latest-indicator raw slice, an A-share disclosure-notice raw slice,
@@ -754,7 +755,7 @@ advertises exactly these capabilities:
 | `LITIGATION` | `stock_cg_lawsuit_cninfo` (`symbol=全部`, date range; A-share only) | — | A-share date-range company-litigation universe filtered to the requested listing as raw evidence only; no canonical litigation, quasi-debt or governance fact |
 | `LATEST_INDICATORS` | — | `stock_hk_financial_indicator_em` | H-share symbol-scoped latest-indicator row as raw structured evidence only; no canonical financial, share, dividend, market-cap, metric or valuation input |
 | `BALANCE_SHEET` | `stock_zcfz_em` / `stock_zcfz_bj_em` (detailed report-period and Sina fallbacks) | `stock_financial_hk_report_em` | explicit `book_cash`, equity totals and aggregate interest-bearing debt when labeled |
-| `DIVIDENDS` | `stock_dividend_cninfo`; `stock_fhps_em` (explicit report date) | `stock_hk_dividend_payout_em`; `stock_hk_fhpx_detail_ths` (`view=event_detail`) | raw structured evidence only; no canonical dividend cash or payout ratio |
+| `DIVIDENDS` | `stock_dividend_cninfo`; `stock_fhps_em` (explicit report date); `stock_fhps_detail_em` (`view=event_detail`) | `stock_hk_dividend_payout_em`; `stock_hk_fhpx_detail_ths` (`view=event_detail`) | raw structured evidence only; no canonical dividend cash or payout ratio |
 | `DISCLOSURE_NOTICES` | `stock_zh_a_disclosure_report_cninfo` (`market=沪深京`, optional filters/date range) | — | listing-bound announcement metadata as raw structured evidence only; no filing-content, accounting or governance fact |
 | `CORPORATE_ACTIONS` | `stock_repurchase_em` (no parameters); `stock_allotment_cninfo` (date-range request) | — | A-share repurchase or rights-issue rows; raw structured evidence only; no canonical buyback, issuance or dilution fact |
 | `SHARE_CAPITAL` | `stock_zh_a_gbjg_em` (no parameters); `stock_share_change_cninfo` (explicit date range); `stock_restricted_release_queue_em` (`view=restricted_release_queue`); `stock_individual_info_em` (`view=individual_info`) | — | raw historical response or current item/value snapshot and provenance only; no canonical share/dilution fact |
@@ -818,6 +819,16 @@ normalizer emits `AKSHARE_AH_COMPARISON_RAW_ONLY`; because the response has no
 stable row-level observation timestamp, its cross-market prices and comparison
 fields do not replace canonical current price or become FX, comparison,
 valuation or calculation inputs.
+The A-share `stock_fhps_detail_em` view passes the unprefixed six-digit listing
+code to the documented Eastmoney dividend-distribution detail endpoint. The
+adapter requires the explicit `view=event_detail`, validates the exact 19-field
+symbol-scoped table, strictly ascending `报告期` values, valid optional event
+dates, finite numeric/null fields, non-negative integer `总股本` and string/null
+status fields, and binds the upstream symbol, row counts and historical-detail
+scope into replay metadata. The normalizer emits
+`AKSHARE_A_DIVIDEND_DETAIL_RAW_ONLY`; its distribution ratios, event plans,
+per-share indicators and share-count context remain raw evidence and do not
+establish settled ordinary dividend cash or a canonical payout denominator.
 The A-share `stock_intraday_em` view passes the unprefixed six-digit listing
 code to the documented Eastmoney intraday-trade endpoint. Its latest-trading-day
 response contains the exact time-only fields `时间`, `成交价`, `手数` and
@@ -1319,7 +1330,7 @@ critically missing.
 
 ## 13. Deliberate non-goals
 
-This foundation plus the Phase 2.2–2.62 slices does not include:
+This foundation plus the Phase 2.2–2.63 slices does not include:
 
 - Tushare, BaoStock or any other additional provider;
 - automatic network scheduling, credentials or retry orchestration outside an adapter;

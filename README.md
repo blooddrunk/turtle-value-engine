@@ -516,6 +516,17 @@ side. The normalizer emits `AKSHARE_AH_COMPARISON_RAW_ONLY`: the documented
 15-minute-delayed cross-market prices, changes, ratio and premium have no
 stable observation timestamp and do not replace canonical current price or
 become FX, comparison, valuation or calculation inputs.
+Phase 2.63 adds the distinct documented Eastmoney A-share dividend-distribution
+detail endpoint [`stock_fhps_detail_em`](https://akshare.akfamily.xyz/data/stock/stock.html),
+whose current official implementation is in
+[`stock_fhps_em.py`](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_fhps_em.py),
+under `DIVIDENDS` with explicit `view=event_detail`. It passes the unprefixed
+six-digit A-share code, validates the exact 19-field response, report-date
+ordering, finite numeric/null values, optional event dates and text fields, and
+records the symbol-scoped historical-detail replay boundary. The normalizer
+emits `AKSHARE_A_DIVIDEND_DETAIL_RAW_ONLY`: report-period distribution rows,
+event dates, ratios, per-share indicators and share-count context do not establish
+settled ordinary dividend cash or a canonical payout denominator.
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

@@ -25,7 +25,8 @@ hot-rank, A+H comparison, intraday-trade, chip-distribution, Tencent
 daily-history and Tencent latest-trading-day tick, Sina minute-history,
 intraday-history, H-share intraday-history, pre-market-history, five-level bid-ask
 and Dragon-Tiger market-activity detail/statistics/institution-statistics raw
-slices are also available.
+slices are also available. The A-share dividend-distribution detail raw slice is
+also available.
 The A-share Eastmoney top-ten, top-ten-tradable-shareholder and
 top-ten-tradable-shareholder-detail raw slices are also available.
 Upstream column names are handled in this module and are never passed to the
@@ -74,9 +75,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "62"
+AKSHARE_ADAPTER_VERSION = "63"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "63"
+AKSHARE_MAPPING_VERSION = "64"
 
 
 class ListingMarket(StrEnum):
@@ -169,6 +170,7 @@ _SOURCE_URIS = {
     "stock_zcfz_bj_em": "https://data.eastmoney.com/bbsj/202003/zcfz.html",
     "stock_dividend_cninfo": "http://webapi.cninfo.com.cn/#/company",
     "stock_fhps_em": "https://data.eastmoney.com/yjfp/",
+    "stock_fhps_detail_em": "https://data.eastmoney.com/yjfp/detail/300073.html",
     "stock_hk_dividend_payout_em": "https://emweb.securities.eastmoney.com/PC_HKF10/pages/home/index.html",
     "stock_hk_fhpx_detail_ths": "https://stockpage.10jqka.com.cn/HK0700/bonus/",
     "stock_hsgt_individual_em": "https://data.eastmoney.com/hsgt/StockHdDetail/002008.html",
@@ -529,6 +531,53 @@ _MARGIN_TRADING_MARKET_NAMES = {
 }
 
 _DIVIDEND_SNAPSHOT_PARAMETER_NAMES = frozenset({"date"})
+_A_DIVIDEND_DETAIL_PARAMETER_NAMES = frozenset({"view"})
+_A_DIVIDEND_DETAIL_VIEW = "event_detail"
+_A_DIVIDEND_DETAIL_FIELDS = frozenset(
+    {
+        "报告期",
+        "业绩披露日期",
+        "送转股份-送转总比例",
+        "送转股份-送股比例",
+        "送转股份-转股比例",
+        "现金分红-现金分红比例",
+        "现金分红-现金分红比例描述",
+        "现金分红-股息率",
+        "每股收益",
+        "每股净资产",
+        "每股公积金",
+        "每股未分配利润",
+        "净利润同比增长",
+        "总股本",
+        "预案公告日",
+        "股权登记日",
+        "除权除息日",
+        "方案进度",
+        "最新公告日期",
+    }
+)
+_A_DIVIDEND_DETAIL_DATE_FIELDS = (
+    "报告期",
+    "业绩披露日期",
+    "预案公告日",
+    "股权登记日",
+    "除权除息日",
+    "最新公告日期",
+)
+_A_DIVIDEND_DETAIL_NUMERIC_FIELDS = (
+    "送转股份-送转总比例",
+    "送转股份-送股比例",
+    "送转股份-转股比例",
+    "现金分红-现金分红比例",
+    "现金分红-股息率",
+    "每股收益",
+    "每股净资产",
+    "每股公积金",
+    "每股未分配利润",
+    "净利润同比增长",
+)
+_A_DIVIDEND_DETAIL_INTEGER_FIELDS = ("总股本",)
+_A_DIVIDEND_DETAIL_TEXT_FIELDS = ("现金分红-现金分红比例描述", "方案进度")
 _H_DIVIDEND_DETAIL_PARAMETER_NAMES = frozenset({"view"})
 _H_DIVIDEND_DETAIL_VIEW = "event_detail"
 _DISCLOSURE_NOTICES_PARAMETER_NAMES = frozenset(
@@ -1684,6 +1733,23 @@ class AKShareProvider(StructuredDataProvider):
                 response_metadata["row_filtering"] = "provider"
                 response_metadata["requested_date"] = kwargs["date"]
                 response_metadata["report_period"] = requested_date.isoformat()
+            elif endpoint.name == "stock_fhps_detail_em":
+                _validate_a_dividend_detail_provider_rows(
+                    rows,
+                    listing,
+                    provider=self.identity,
+                    request=request,
+                )
+                response_metadata["upstream_row_count"] = len(rows)
+                response_metadata["entity_row_count"] = len(rows)
+                response_metadata["entity_rows_selected"] = True
+                response_metadata["listing_scoped_request"] = True
+                response_metadata["dividend_detail_view"] = _A_DIVIDEND_DETAIL_VIEW
+                response_metadata["upstream_symbol"] = kwargs["symbol"]
+                response_metadata["snapshot_scope"] = "historical_distribution_detail"
+                response_metadata["report_period_field"] = "报告期"
+                response_metadata["report_period_ordering"] = "strictly_ascending"
+                response_metadata["date_binding"] = "row_dates"
             elif endpoint.name == "stock_hk_fhpx_detail_ths":
                 _validate_hk_dividend_detail_provider_rows(
                     rows,
@@ -3202,7 +3268,23 @@ class AKShareNormalizer:
                 normalizer_flags.add("AKSHARE_DISCLOSURE_NOTICES_RAW_ONLY")
             elif record.request.category is DataCategory.DIVIDENDS:
                 endpoint_name = record.response_metadata.get("endpoint")
-                if endpoint_name == "stock_fhps_em":
+                if endpoint_name == "stock_fhps_detail_em":
+                    if listing.market is not ListingMarket.A:
+                        raise ProviderNormalizationError(
+                            "AKShare A-share dividend-detail raw slice supports "
+                            "A-share listings only"
+                        )
+                    try:
+                        _dividends_kwargs(
+                            "stock_fhps_detail_em",
+                            listing,
+                            record.request,
+                        )
+                    except ProviderRequestError as exc:
+                        raise ProviderNormalizationError(str(exc)) from exc
+                    _validate_a_dividend_detail_normalizer_scope(record, listing, rows)
+                    normalizer_flags.add("AKSHARE_A_DIVIDEND_DETAIL_RAW_ONLY")
+                elif endpoint_name == "stock_fhps_em":
                     if listing.market is not ListingMarket.A:
                         raise ProviderNormalizationError(
                             "AKShare dividend-snapshot raw slice supports A-share listings only"
@@ -3751,6 +3833,14 @@ class AKShareNormalizer:
                 "as raw evidence only: its report-date ratios, distribution status "
                 "and announcement/record/ex-rights dates do not establish settled "
                 "ordinary dividend cash or a canonical payout ratio."
+            )
+        if "AKSHARE_A_DIVIDEND_DETAIL_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented A-share dividend-distribution detail response is "
+                "retained as raw evidence only: its historical report periods, event "
+                "dates, distribution ratios, per-share indicators and share-count "
+                "context do not establish settled ordinary dividend cash or a "
+                "canonical payout denominator."
             )
         if "AKSHARE_EARNINGS_FORECAST_RAW_ONLY" in normalizer_flags:
             notes += (
@@ -4321,6 +4411,8 @@ def _endpoint_candidates(
         return ("stock_financial_hk_report_em",)
     if category is DataCategory.DIVIDENDS:
         if market is ListingMarket.A:
+            if dividend_detail_requested:
+                return ("stock_fhps_detail_em",)
             if dividend_snapshot_date_requested:
                 return ("stock_fhps_em",)
             return ("stock_dividend_cninfo",)
@@ -4894,6 +4986,28 @@ def _dividends_kwargs(
     listing: _ListingRef,
     request: ProviderRequest,
 ) -> dict[str, object]:
+    if endpoint_name == "stock_fhps_detail_em":
+        if listing.market is not ListingMarket.A:
+            raise ProviderRequestError(
+                "the AKShare A-share dividend-detail endpoint supports A-share listings only",
+                request=request,
+                retryable=False,
+            )
+        unknown = sorted(set(request.parameters) - _A_DIVIDEND_DETAIL_PARAMETER_NAMES)
+        if unknown:
+            raise ProviderRequestError(
+                "unsupported AKShare A-share dividend-detail parameter(s): "
+                + ", ".join(unknown),
+                request=request,
+                retryable=False,
+            )
+        if request.parameters.get("view") != _A_DIVIDEND_DETAIL_VIEW:
+            raise ProviderRequestError(
+                "A-share dividend-detail view must be 'event_detail'",
+                request=request,
+                retryable=False,
+            )
+        return {"symbol": listing.code}
     if endpoint_name == "stock_fhps_em":
         if listing.market is not ListingMarket.A:
             raise ProviderRequestError(
@@ -7930,6 +8044,118 @@ def _validate_dividend_snapshot_provider_rows(
             )
 
 
+def _a_dividend_detail_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> str | None:
+    """Return a strict-schema error for the A-share dividend-detail table."""
+
+    previous_report_period: date | None = None
+    for index, row in enumerate(rows):
+        missing = sorted(_A_DIVIDEND_DETAIL_FIELDS - set(row))
+        unexpected = sorted(set(row) - _A_DIVIDEND_DETAIL_FIELDS)
+        if missing:
+            return (
+                f"A-share dividend-detail row {index} is missing field(s): "
+                + ", ".join(missing)
+            )
+        if unexpected:
+            return (
+                f"A-share dividend-detail row {index} contains unsupported field(s): "
+                + ", ".join(unexpected)
+            )
+
+        raw_report_period = row["报告期"]
+        report_period = _parse_date_value(raw_report_period)
+        if report_period is None:
+            return (
+                f"A-share dividend-detail row {index} field '报告期' must be a valid date"
+            )
+        if previous_report_period is not None and report_period <= previous_report_period:
+            return "A-share dividend-detail 报告期 values must be strictly ascending"
+        previous_report_period = report_period
+
+        for field in _A_DIVIDEND_DETAIL_DATE_FIELDS[1:]:
+            value = row[field]
+            if value is None:
+                continue
+            if _parse_date_value(value) is None:
+                return (
+                    f"A-share dividend-detail row {index} field {field!r} "
+                    "must be a valid date or null"
+                )
+
+        for field in _A_DIVIDEND_DETAIL_NUMERIC_FIELDS:
+            value = row[field]
+            if value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, Real):
+                return (
+                    f"A-share dividend-detail row {index} field {field!r} "
+                    "must be numeric or null"
+                )
+            try:
+                numeric = float(value)
+            except (OverflowError, TypeError, ValueError):
+                return (
+                    f"A-share dividend-detail row {index} field {field!r} "
+                    "must be numeric or null"
+                )
+            if not math.isfinite(numeric):
+                return (
+                    f"A-share dividend-detail row {index} field {field!r} "
+                    "must be finite or null"
+                )
+
+        for field in _A_DIVIDEND_DETAIL_INTEGER_FIELDS:
+            value = row[field]
+            if value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, Real):
+                return (
+                    f"A-share dividend-detail row {index} field {field!r} "
+                    "must be an integer or null"
+                )
+            try:
+                numeric = float(value)
+            except (OverflowError, TypeError, ValueError):
+                return (
+                    f"A-share dividend-detail row {index} field {field!r} "
+                    "must be an integer or null"
+                )
+            if not math.isfinite(numeric) or not numeric.is_integer() or numeric < 0:
+                return (
+                    f"A-share dividend-detail row {index} field {field!r} "
+                    "must be a non-negative integer or null"
+                )
+
+        for field in _A_DIVIDEND_DETAIL_TEXT_FIELDS:
+            value = row[field]
+            if value is not None and not isinstance(value, str):
+                return (
+                    f"A-share dividend-detail row {index} field {field!r} "
+                    "must be a string or null"
+                )
+    return None
+
+
+def _validate_a_dividend_detail_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> None:
+    """Validate the symbol-scoped A-share dividend-detail response."""
+
+    message = _a_dividend_detail_validation_message(rows)
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message} for {listing.canonical_id!r}",
+            provider=provider,
+            request=request,
+        )
+
+
 def _validate_risk_warning_provider_rows(
     rows: Sequence[Mapping[str, JSONValue]],
     listing: _ListingRef,
@@ -9033,6 +9259,50 @@ def _validate_dividend_snapshot_normalizer_rows(
                 f"dividend-snapshot row entity {row_code!r} does not match "
                 f"requested listing {listing.canonical_id!r}"
             )
+
+
+def _validate_a_dividend_detail_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> None:
+    """Validate replayed A-share dividend-detail rows and request metadata."""
+
+    if record.response_metadata.get("endpoint") != "stock_fhps_detail_em":
+        raise ProviderNormalizationError(
+            "AKShare A-share dividend-detail record must come from stock_fhps_detail_em"
+        )
+    try:
+        upstream_kwargs = _dividends_kwargs(
+            "stock_fhps_detail_em",
+            listing,
+            record.request,
+        )
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+
+    expected_metadata = {
+        "dividend_detail_view": _A_DIVIDEND_DETAIL_VIEW,
+        "upstream_symbol": upstream_kwargs["symbol"],
+        "listing_scoped_request": True,
+        "snapshot_scope": "historical_distribution_detail",
+        "report_period_field": "报告期",
+        "report_period_ordering": "strictly_ascending",
+        "date_binding": "row_dates",
+        "upstream_row_count": len(rows),
+        "entity_row_count": len(rows),
+        "entity_rows_selected": True,
+    }
+    for name, expected in expected_metadata.items():
+        if record.response_metadata.get(name) != expected:
+            raise ProviderNormalizationError(
+                f"A-share dividend-detail response metadata {name!r} does not match "
+                "the requested replay scope"
+            )
+
+    message = _a_dividend_detail_validation_message(rows)
+    if message is not None:
+        raise ProviderNormalizationError(message)
 
 
 def _validate_risk_warning_normalizer_rows(

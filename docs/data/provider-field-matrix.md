@@ -718,6 +718,39 @@ gate, pipeline, CLI and input-loader contracts. Its raw evidence is available
 for later review without being treated as a canonical quote, FX, comparison,
 market or valuation input.
 
+## Phase 2.63 A-share Eastmoney dividend-distribution detail raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_fhps_detail_em` as a symbol-scoped Eastmoney A-share
+dividend-distribution detail endpoint. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_fhps_em.py)
+accepts a six-digit `symbol` and returns the exact 19 fields `报告期`,
+`业绩披露日期`, the distribution and cash-ratio fields, per-share indicators,
+`总股本`, and the announcement/record/ex-rights/progress dates.
+
+The provider selects this endpoint only under `DIVIDENDS` with explicit
+`view=event_detail`, passes the unprefixed A-share code, validates the exact
+field set, strictly ascending report periods, valid optional dates, finite
+numeric/null values, non-negative integer share counts and string/null text
+fields, and records the symbol-scoped historical-detail request for replay.
+The normalizer emits `AKSHARE_A_DIVIDEND_DETAIL_RAW_ONLY`; no canonical dividend
+cash or payout denominator is admitted because provider ratios, event plans,
+per-share indicators and total-share context do not establish settled ordinary
+cash with the accepted entity, unit and period semantics.
+
+| Raw upstream item | Phase 2 treatment |
+| --- | --- |
+| `报告期`, `业绩披露日期` | Required/validated report and disclosure dates; retained as raw historical context, not treated as a settled cash period. |
+| `送转股份-*`, `现金分红-*` | Raw distribution ratios, description and yield context; no canonical ordinary-dividend cash or payout ratio is inferred. |
+| `每股收益`, `每股净资产`, `每股公积金`, `每股未分配利润`, `净利润同比增长` | Raw per-share/ratio indicators; they do not replace the canonical income or equity facts. |
+| `总股本` | Validated non-negative integer raw share-count context; its economic/diluted scope is not admitted as a canonical share fact. |
+| `预案公告日`, `股权登记日`, `除权除息日`, `最新公告日期`, `方案进度` | Raw event/progress context; dates and status do not prove settlement or filing-backed classification. |
+| request `view=event_detail`, unprefixed A-share `symbol` | Explicit endpoint, listing and historical-detail replay scope; the complete symbol-scoped response remains opaque. |
+
+The provider-specific dividend-distribution detail response remains outside the
+calculation, gate, pipeline, CLI and input-loader contracts. Its raw evidence is
+available for later review without being treated as a canonical dividend-cash,
+payout, share-count, income or valuation input.
+
 ## Phase 2.9 corporate-action raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)

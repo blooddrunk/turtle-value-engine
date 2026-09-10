@@ -1531,6 +1531,29 @@ calls remain opt-in; tests use an injected client and a frozen fixture with
 cache replay, invalid-parameter, response-validation, raw-only and replay-scope
 coverage.
 
+### Phase 2.63 — A-share Eastmoney dividend-distribution detail raw acquisition contract (COMPLETE)
+
+The mapping review now covers the distinct Eastmoney A-share dividend-distribution
+detail endpoint documented as
+[`stock_fhps_detail_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
+and implemented by the current [official source](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_fhps_em.py).
+It accepts a six-digit A-share `symbol` and returns the exact 19 fields
+`报告期`, `业绩披露日期`, distribution and cash-ratio fields, per-share
+indicators, `总股本`, and announcement/record/ex-rights/progress dates.
+
+The provider selects this callable only under the existing provider-neutral
+`DIVIDENDS` category with explicit `view=event_detail`, passes the unprefixed
+A-share code, validates the exact field set, strictly ascending report periods,
+valid optional event dates, finite numeric/null values, non-negative integer
+share counts and string/null status fields, and records the upstream symbol,
+row counts, historical-detail scope and row-date binding for replay. The
+normalizer emits `AKSHARE_A_DIVIDEND_DETAIL_RAW_ONLY`; distribution ratios,
+event plans, per-share indicators and share-count context remain raw evidence
+because they do not establish settled ordinary dividend cash or a canonical
+payout denominator. Live calls remain opt-in; tests use an injected client and
+a frozen fixture with cache replay, invalid-parameter, response-validation,
+raw-only and replay-scope coverage.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -1540,7 +1563,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.62 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.63 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -1748,7 +1771,7 @@ Phase 2 is active. Phase 1 remains frozen: changes to formulas, hard-gate
 semantics, schemas or `strict-v1` thresholds require a separately reviewed,
 versioned change.
 
-Phase 2.62 completes the next documented structured-data boundary while
+Phase 2.63 completes the next documented structured-data boundary while
 keeping share-change, repurchase and rights-issue period, status, unit and
 economic-scope questions unresolved, and keeping ownership-pledge holder,
 governance and economic-scope questions unresolved. The A-share
@@ -1797,6 +1820,13 @@ comparison, valuation or calculation facts. The explicit
 `view=ah_comparison`, no-argument endpoint, exact ten-field response,
 five-/six-digit code identities, side-specific filtering, units and
 retrieval-only snapshot remain part of its replayable acquisition boundary.
+The A-share dividend-distribution detail response remains raw-only because its
+historical report periods, event dates, distribution ratios, per-share
+indicators and share-count context do not establish settled ordinary dividend
+cash or a canonical payout denominator. The explicit `view=event_detail`,
+unprefixed symbol, exact 19-field response, ascending report-period ordering,
+row-date binding and symbol-scoped historical-detail snapshot remain part of
+its replayable acquisition boundary.
 dividend-distribution snapshot remains raw-only because its ratios, status and
 multiple dates do not establish settled ordinary cash or a canonical payout
 denominator. Phase 2 remains active; future documented categories must be
