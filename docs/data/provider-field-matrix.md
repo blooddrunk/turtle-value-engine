@@ -718,6 +718,39 @@ gate, pipeline, CLI and input-loader contracts. Its raw evidence is available
 for later review without being treated as a canonical quote, FX, comparison,
 market or valuation input.
 
+## Phase 2.87 A-share Eastmoney A+B quote-comparison raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_zh_ab_comparison_em` as a no-argument Eastmoney universe
+endpoint for all A/B share pairs. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hist_em.py)
+returns the exact ten fields `序号`, `B股代码`, `B股名称`, `最新价B`,
+`涨跌幅B`, `A股代码`, `A股名称`, `最新价A`, `涨跌幅A` and `比价`, dividing
+the upstream quote/change/ratio values by 100 before returning the table.
+
+The provider selects this endpoint only under `MARKET_QUOTE` with explicit
+`view=ab_comparison`, validates the complete response and official field order
+before filtering to the requested six-digit A-share code, and records the
+retrieval-only current-trading-day scope, field order, row counts and units.
+The endpoint does not document the B-share currency; the adapter retains the
+returned per-share values without inventing a currency. The normalizer emits
+`AKSHARE_AB_COMPARISON_RAW_ONLY`, leaves `current_price` critically missing
+and creates no canonical quote, currency, comparison or valuation fact.
+
+| Raw upstream item | Phase 2 treatment |
+| --- | --- |
+| `序号` | Required positive integer in the strictly ascending full-universe sequence; no canonical rank or market metric is inferred. |
+| `B股代码`, `A股代码` | Required six-digit B/A identities; the A-share code is used only for provider-boundary filtering and replay scope. |
+| `B股名称`, `A股名称` | Required non-empty display names; retained as raw entity context only. |
+| `最新价B`, `最新价A` | Provider-returned per-share quote values; the B-share currency is undocumented and neither side replaces canonical `current_price`. |
+| `涨跌幅B`, `涨跌幅A` | Raw percentage-change values; no return or valuation fact is inferred. |
+| `比价` | Raw provider comparison ratio; no canonical ratio, currency conversion or valuation fact is inferred. |
+| request `view=ab_comparison` | Explicit no-argument endpoint selection, A-share-only filtered-listing scope and retrieval-only snapshot boundary. |
+
+The provider-specific A+B comparison response remains outside the calculation,
+gate, pipeline, CLI and input-loader contracts. Its raw evidence is available
+for later review without being treated as a canonical quote, currency,
+comparison, market or valuation input.
+
 ## Phase 2.63 A-share Eastmoney dividend-distribution detail raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)

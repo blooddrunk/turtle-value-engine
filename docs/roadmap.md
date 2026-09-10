@@ -2139,6 +2139,34 @@ and market validation, exact response shape, date/identity/rank failures,
 raw-only normalization, cache replay and replay-scope rejection. No calculation,
 gate, pipeline, CLI or input-loader contract changes.
 
+### Phase 2.87 — A-share Eastmoney A+B quote-comparison raw acquisition contract (COMPLETE)
+
+The mapping review now covers the distinct documented AKShare
+`stock_zh_ab_comparison_em` endpoint under the existing `MARKET_QUOTE`
+category. The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hist_em.py)
+define a no-argument A/B comparison universe with the exact output fields
+`序号`, `B股代码`, `B股名称`, `最新价B`, `涨跌幅B`, `A股代码`, `A股名称`,
+`最新价A`, `涨跌幅A` and `比价`; the implementation divides the published
+quote/change/ratio values by 100 before returning the table.
+
+The provider selects this callable only with explicit `view=ab_comparison`,
+supports A-share listings only, validates the complete universe and official
+field order before filtering by the requested A-share code, and records the
+retrieval-only current-trading-day scope, field order, provider-reported
+per-share values, percent/ratio units and row counts for cache replay. The
+checked-in fixture preserves three official documentation sample rows with
+one selected and two non-selected A-share codes. The endpoint does not
+document the B-share currency, so no currency is invented.
+
+The normalizer emits `AKSHARE_AB_COMPARISON_RAW_ONLY` and creates no canonical
+fact: cross-share-class prices, changes and ratio remain raw evidence and do
+not establish current price, currency, comparison, valuation or calculation
+inputs. Tests cover explicit request and market/parameter validation, complete
+response validation before filtering, raw-only normalization, cache replay and
+replay-scope rejection. No calculation, gate, pipeline, CLI or input-loader
+contract changes.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -2148,7 +2176,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.86 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.87 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```

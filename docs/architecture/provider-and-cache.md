@@ -1,6 +1,6 @@
 # Provider and Cache Architecture
 
-> Status: Phase 2 foundation, read-only AKShare statement slices, earnings forecasts/quick reports/performance reports/business composition/financial abstract/financial indicators, H-share latest indicators, A-share disclosure-notice metadata including the Eastmoney individual-notice, market-wide notice and shareholder-meeting views, risk-warning status, trading-suspension, restricted-share-release, goodwill-impairment detail/goodwill-detail/impairment-forecast/market-profile, ESG-rating, SSE/SZSE/BSE margin-detail, share-capital, individual-info snapshot, corporate-action including IPO-summary, external-guarantee, company-litigation, ownership-pledge snapshot/detail, main-shareholder, shareholder-count/shareholder-count-detail, A-share actual-controller holding-change, A/H HSGT individual-holdings, SSE/SZSE/BSE insider-share-change, A-share Eastmoney/CNINFO management-holding and A-share top-ten/top-ten-tradable-shareholder/top-ten-tradable-shareholder-detail, Dragon-Tiger market-activity detail/statistics/institution-statistics/market-participation-desire/market-focus/institution-participation/hot-rank/latest-hot-rank/limit-up-pool/limit-down-pool/H-share latest-hot-rank/H-share historical-hot-rank/new-stock-board, A+H quote-comparison, A-share Eastmoney/Sina intraday-trade, Tencent daily-history/latest-trading-day tick, Sina minute-history, A-share/H-share intraday-history, pre-market-history and five-level bid-ask raw slices
+> Status: Phase 2 foundation, read-only AKShare statement slices, earnings forecasts/quick reports/performance reports/business composition/financial abstract/financial indicators, H-share latest indicators, A-share disclosure-notice metadata including the Eastmoney individual-notice, market-wide notice and shareholder-meeting views, risk-warning status, trading-suspension, restricted-share-release, goodwill-impairment detail/goodwill-detail/impairment-forecast/market-profile, ESG-rating, SSE/SZSE/BSE margin-detail, share-capital, individual-info snapshot, corporate-action including IPO-summary, external-guarantee, company-litigation, ownership-pledge snapshot/detail, main-shareholder, shareholder-count/shareholder-count-detail, A-share actual-controller holding-change, A/H HSGT individual-holdings, SSE/SZSE/BSE insider-share-change, A-share Eastmoney/CNINFO management-holding and A-share top-ten/top-ten-tradable-shareholder/top-ten-tradable-shareholder-detail, Dragon-Tiger market-activity detail/statistics/institution-statistics/market-participation-desire/market-focus/institution-participation/hot-rank/latest-hot-rank/limit-up-pool/limit-down-pool/H-share latest-hot-rank/H-share historical-hot-rank/new-stock-board, A+B/A+H quote-comparison, A-share Eastmoney/Sina intraday-trade, Tencent daily-history/latest-trading-day tick, Sina minute-history, A-share/H-share intraday-history, pre-market-history and five-level bid-ask raw slices
 
 This document freezes the boundary between structured-data acquisition and the
 deterministic Turtle Value Engine. It does not authorize a live provider or
@@ -792,7 +792,7 @@ advertises exactly these capabilities:
 | `LISTING_METADATA` | `stock_info_a_code_name` | `stock_hk_security_profile_em` (with conservative listing-list fallbacks) | listing code/name/date/exchange and other explicit metadata facts |
 | `RISK_WARNING_STATUS` | `stock_zh_a_st_em` (no parameters) | — | current A-share risk-warning-board membership as raw structured evidence only; no canonical `special_treatment` fact |
 | `TRADING_SUSPENSIONS` | `stock_tfp_em` (exact `date`) | — | requested-date A-share suspension/resumption rows as raw structured evidence only; no canonical status or governance fact |
-| `MARKET_QUOTE` | `stock_zh_a_spot_em`; `stock_bid_ask_em` (`view=bid_ask`, Shanghai/Shenzhen A-share only); `stock_individual_spot_xq` (`view=xueqiu_spot`, symbol-scoped A-share quote); `stock_zh_ah_spot_em` (`view=ah_comparison`, full A+H universe filtered by requested A/H side) | `stock_hk_spot_em`; `stock_zh_ah_spot_em` (`view=ah_comparison`, full A+H universe filtered by requested H-share side) | selected-listing `current_price` plus quote timestamp; Xueqiu current price/timestamp use the existing quote contract while other Xueqiu fields, bid/ask and A+H comparison views remain raw-only |
+| `MARKET_QUOTE` | `stock_zh_a_spot_em`; `stock_bid_ask_em` (`view=bid_ask`, Shanghai/Shenzhen A-share only); `stock_individual_spot_xq` (`view=xueqiu_spot`, symbol-scoped A-share quote); `stock_zh_ah_spot_em` (`view=ah_comparison`, full A+H universe filtered by requested A/H side); `stock_zh_ab_comparison_em` (`view=ab_comparison`, full A+B universe filtered by requested A-share side) | `stock_hk_spot_em`; `stock_zh_ah_spot_em` (`view=ah_comparison`, full A+H universe filtered by requested H-share side) | selected-listing `current_price` plus quote timestamp; Xueqiu current price/timestamp use the existing quote contract while other Xueqiu fields, bid/ask, A+B and A+H comparison views remain raw-only |
 | `MARKET_HISTORY` | `stock_zh_a_hist` (daily history); `stock_intraday_em` (`view=intraday_trades`, latest-trading-day time-only trades; A-share only); `stock_intraday_sina` (`view=intraday_sina`, requested-date time-only large-order rows; A-share only); `stock_cyq_em` (`view=chip_distribution`, latest 90 trading days and adjustment; A-share only); `stock_zh_a_hist_tx` (`view=tencent_daily`, explicit date range/adjustment; A-share only); `stock_zh_a_tick_tx_js` (`view=tencent_tick`, latest-trading-day time-only ticks; A-share only); `stock_zh_a_minute` (`view=sina_minute`, explicit interval/adjustment; A-share only); `stock_zh_a_hist_min_em` (`view=intraday`, explicit datetime range/interval/adjustment; A-share only); `stock_zh_a_hist_pre_min_em` (`view=pre_market`, explicit time-of-day range; A-share only) | `stock_hk_daily`; `stock_hk_hist_min_em` (`view=hk_intraday`, explicit datetime range/interval/adjustment; H-share only) | dated daily OHLCV/turnover extension facts from standard and Tencent daily history; Eastmoney/Sina intraday-trade, chip-distribution, Tencent tick, Sina minute, A-share/H-share intraday and latest-day pre-market rows as raw structured evidence only |
 | `MARKET_ACTIVITY` | `stock_zh_a_new_em` (`view=new_stock`, current-trading-day new-stock universe; A-share only); `stock_comment_detail_scrd_desire_em` (`view=participation_desire`, latest 30 trading days; A-share only); `stock_comment_detail_scrd_focus_em` (`view=focus`, latest 30 trading days; A-share only); `stock_comment_detail_zlkp_jgcyd_em` (`view=institution_participation`, symbol-scoped historical series; A-share only); `stock_hot_rank_em` (`view=hot_rank`, current-trading-day top 100; A-share only); `stock_hot_rank_latest_em` (`view=hot_rank_latest`, symbol-scoped latest rank; A-share only); `stock_zt_pool_em` (`view=limit_up_pool`, requested `date` limit-up pool; A-share only); `stock_zt_pool_dtgc_em` (`view=limit_down_pool`, requested `date` limit-down pool; A-share only); `stock_lhb_detail_em` (inclusive `start_date`/`end_date`; A-share only); `stock_lhb_stock_statistic_em` (`view=stock_statistic`, explicit `period`; A-share only); `stock_lhb_jgstatistic_em` (`view=institution_statistic`, explicit `period`; A-share only) | `stock_hk_hot_rank_latest_em` (`view=hot_rank_latest`, symbol-scoped latest rank; H-share only); `stock_hk_hot_rank_detail_em` (`view=hk_hot_rank_detail`, symbol-scoped historical dates; H-share only) | A-share/H-share latest stock-popularity rank and H-share historical stock-popularity rank plus the existing A-share new-stock-board, market-participation-desire, market-focus, institution-participation, limit-up-pool, limit-down-pool, Dragon-Tiger detail, per-listing statistics or institution-seat statistics rows retained as raw structured evidence only; no issuer cash-flow, shareholder-return, governance, market or valuation fact |
 | `CAPITAL_FLOW` | `stock_individual_fund_flow` (A-share) | — | recent daily investor-flow rows as raw structured evidence only; no issuer cash-flow, liquidity or valuation fact |
@@ -965,6 +965,24 @@ normalizer emits `AKSHARE_AH_COMPARISON_RAW_ONLY`; because the response has no
 stable row-level observation timestamp, its cross-market prices and comparison
 fields do not replace canonical current price or become FX, comparison,
 valuation or calculation inputs.
+
+The A-share `stock_zh_ab_comparison_em` view passes no upstream arguments to
+the documented Eastmoney A+B comparison endpoint. The current [AKShare
+stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hist_em.py)
+define the exact ten fields `序号`, `B股代码`, `B股名称`, `最新价B`,
+`涨跌幅B`, `A股代码`, `A股名称`, `最新价A`, `涨跌幅A` and `比价`. The
+official implementation divides the published quote, change and ratio values
+by 100 before returning the table. The adapter accepts only
+`MARKET_QUOTE` with explicit `view=ab_comparison`, validates the complete
+universe and official field order before filtering by the requested A-share
+code, and records the current-trading-day retrieval-only snapshot, field
+order, provider-reported per-share values, percent/ratio units and row counts.
+The endpoint does not document the B-share currency, so the provider does not
+invent one. The normalizer emits `AKSHARE_AB_COMPARISON_RAW_ONLY`; its
+cross-share-class prices, changes and ratio do not replace canonical current
+price or become currency, comparison, valuation or calculation inputs.
+
 The A-share `stock_fhps_detail_em` view passes the unprefixed six-digit listing
 code to the documented Eastmoney dividend-distribution detail endpoint. The
 adapter requires the explicit `view=event_detail`, validates the exact 19-field
@@ -1156,7 +1174,7 @@ top-ten-tradable-shareholder, top-ten-tradable-shareholder-detail,
 insider-share-change, management-holding,
 individual-info, individual-fund-flow, market-participation-desire, hot-rank,
 H-share historical-hot-rank,
-A+H quote-comparison, chip-distribution, Eastmoney/Sina intraday-trade, Tencent latest-trading-day tick, Sina minute-history, A-share/H-share intraday-history, pre-market-history and
+A+B/A+H quote-comparison, chip-distribution, Eastmoney/Sina intraday-trade, Tencent latest-trading-day tick, Sina minute-history, A-share/H-share intraday-history, pre-market-history and
 five-level bid-ask
 raw slices it emits
 raw-record evidence only and explicit unresolved flags where needed; it does
@@ -1199,6 +1217,13 @@ current-price, FX, comparison or valuation fact. Its explicit view,
 no-argument endpoint, exact ten-field set, five-/six-digit code identities,
 side-specific filtered-listing scope, units and retrieval-only snapshot remain
 part of the replay boundary.
+The A+B quote-comparison slice remains raw evidence because its current-day
+cross-share-class prices, changes and ratio do not establish a canonical
+current-price, currency, comparison or valuation fact. Its explicit view,
+no-argument endpoint, exact ten-field order, six-digit A/B identities,
+A-side filtered-listing scope, provider-reported per-share values,
+percent/ratio units and retrieval-only snapshot remain part of the replay
+boundary; the B-share currency is not documented by the endpoint.
 Margin-trading rows remain raw evidence because security-level investor
 financing balances and quantities are not issuer accounting debt or cash.
 Shareholder-count rows remain raw evidence because quarter-end shareholder

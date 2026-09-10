@@ -155,6 +155,12 @@ class FakeAKShare:
     def stock_zh_ah_spot_em(self):
         return self._return("stock_zh_ah_spot_em", _fixture("ah_comparison.json"))
 
+    def stock_zh_ab_comparison_em(self):
+        return self._return(
+            "stock_zh_ab_comparison_em",
+            _fixture("a_ab_comparison.json"),
+        )
+
     def stock_bid_ask_em(self, *, symbol: str):
         return self._return(
             "stock_bid_ask_em",
@@ -794,8 +800,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "86"
-    assert AKSHARE_MAPPING_VERSION == "87"
+    assert provider.identity.provider_version == "87"
+    assert AKSHARE_MAPPING_VERSION == "88"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -3342,6 +3348,323 @@ def test_ah_comparison_cache_replay_does_not_call_upstream(tmp_path: Path):
     assert replay.mode is RetrievalMode.CACHE_REPLAY
     assert replay.record == live.record
     assert fake.calls == [("stock_zh_ah_spot_em", {})]
+
+
+def test_ab_comparison_fetch_uses_documented_no_argument_endpoint_and_a_side_filter():
+    fake = FakeAKShare()
+    request = _request(
+        DataCategory.MARKET_QUOTE,
+        "SZ000026",
+        {"view": "ab_comparison"},
+    )
+    record = _provider(fake).fetch(request)
+
+    fixture = _fixture("a_ab_comparison.json")
+    assert record.raw_payload == [row for row in fixture if row["A股代码"] == "000026"]
+    assert fake.calls == [("stock_zh_ab_comparison_em", {})]
+    assert record.response_metadata["endpoint"] == "stock_zh_ab_comparison_em"
+    assert record.response_metadata["market"] == "A"
+    assert record.response_metadata["listing_code"] == "000026"
+    assert record.response_metadata["market_quote_view"] == "ab_comparison"
+    assert record.response_metadata["snapshot_scope"] == "current_trading_day_realtime"
+    assert record.response_metadata["rank_field"] == "序号"
+    assert record.response_metadata["rank_ordering"] == "strictly_ascending"
+    assert record.response_metadata["date_binding"] == "retrieval_only"
+    assert record.response_metadata["listing_code_field"] == "A股代码"
+    assert record.response_metadata["field_count"] == 10
+    assert record.response_metadata["source_field_order"] == [
+        "序号",
+        "B股代码",
+        "B股名称",
+        "最新价B",
+        "涨跌幅B",
+        "A股代码",
+        "A股名称",
+        "最新价A",
+        "涨跌幅A",
+        "比价",
+    ]
+    assert record.response_metadata["a_price_unit"] == "provider_reported_per_share"
+    assert record.response_metadata["b_price_unit"] == "provider_reported_per_share"
+    assert record.response_metadata["change_unit"] == "percent"
+    assert record.response_metadata["comparison_unit"] == "ratio"
+    assert record.response_metadata["upstream_row_count"] == 3
+    assert record.response_metadata["entity_row_count"] == 1
+    assert record.response_metadata["entity_rows_selected"] is True
+    assert record.response_metadata["listing_scoped_request"] is False
+    assert record.response_metadata["row_filtering"] == "provider"
+    assert record.source_uri == "https://quote.eastmoney.com/center/gridlist.html#ab_comparison"
+
+
+@pytest.mark.parametrize(
+    ("entity_id", "parameters", "match"),
+    [
+        (
+            "SZ000026",
+            {"view": "ab_comparison", "date": "20260911"},
+            "unsupported AKShare A\\+B comparison parameter",
+        ),
+        (
+            "HK00700",
+            {"view": "ab_comparison"},
+            "A\\+B comparison endpoint supports A-share listings only",
+        ),
+    ],
+)
+def test_ab_comparison_request_requires_explicit_view_supported_market_and_no_extras(
+    entity_id: str,
+    parameters: dict,
+    match: str,
+):
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError, match=match):
+        _provider(fake).fetch(
+            _request(DataCategory.MARKET_QUOTE, entity_id, parameters)
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("missing", "A\\+B comparison row 0 is missing field"),
+        ("unexpected", "A\\+B comparison row 0 contains unsupported field"),
+        ("reordered", "must preserve the official field order"),
+        ("invalid_rank", "field '序号' must be a positive integer"),
+        ("duplicate_rank", "序号 values must be strictly ascending"),
+        ("invalid_b_code", "has an invalid B股代码"),
+        ("invalid_a_code", "has an invalid A股代码"),
+        ("duplicate_a_code", "duplicate A股代码"),
+        ("invalid_name", "field 'B股名称' must be a non-empty string"),
+        ("invalid_numeric", "field '最新价B' must be numeric or null"),
+    ],
+)
+def test_ab_comparison_response_validates_exact_fields_identity_order_and_values(
+    mutation: str,
+    match: str,
+):
+    class InvalidRows(FakeAKShare):
+        def stock_zh_ab_comparison_em(self):
+            rows = [dict(row) for row in _fixture("a_ab_comparison.json")]
+            if mutation == "missing":
+                rows[0].pop("比价")
+            elif mutation == "unexpected":
+                rows[0]["unexpected"] = "not documented"
+            elif mutation == "reordered":
+                rows[0] = {
+                    "B股代码": rows[0]["B股代码"],
+                    "序号": rows[0]["序号"],
+                    "B股名称": rows[0]["B股名称"],
+                    "最新价B": rows[0]["最新价B"],
+                    "涨跌幅B": rows[0]["涨跌幅B"],
+                    "A股代码": rows[0]["A股代码"],
+                    "A股名称": rows[0]["A股名称"],
+                    "最新价A": rows[0]["最新价A"],
+                    "涨跌幅A": rows[0]["涨跌幅A"],
+                    "比价": rows[0]["比价"],
+                }
+            elif mutation == "invalid_rank":
+                rows[0]["序号"] = 0
+            elif mutation == "duplicate_rank":
+                rows[1]["序号"] = rows[0]["序号"]
+            elif mutation == "invalid_b_code":
+                rows[0]["B股代码"] = "20026"
+            elif mutation == "invalid_a_code":
+                rows[0]["A股代码"] = "00026"
+            elif mutation == "duplicate_a_code":
+                rows[1]["A股代码"] = rows[0]["A股代码"]
+            elif mutation == "invalid_name":
+                rows[0]["B股名称"] = ""
+            else:
+                rows[0]["最新价B"] = "14.38"
+            return self._return("stock_zh_ab_comparison_em", rows)
+
+    with pytest.raises(ProviderResponseError, match=match):
+        _provider(InvalidRows()).fetch(
+            _request(
+                DataCategory.MARKET_QUOTE,
+                "SZ000026",
+                {"view": "ab_comparison"},
+            )
+        )
+
+
+def test_ab_comparison_provider_rejects_invalid_unrequested_rows_before_filtering():
+    class InvalidUnrequestedRows(FakeAKShare):
+        def stock_zh_ab_comparison_em(self):
+            rows = [dict(row) for row in _fixture("a_ab_comparison.json")]
+            rows[1]["A股代码"] = "00003"
+            return self._return("stock_zh_ab_comparison_em", rows)
+
+    with pytest.raises(ProviderResponseError, match="invalid A股代码"):
+        _provider(InvalidUnrequestedRows()).fetch(
+            _request(
+                DataCategory.MARKET_QUOTE,
+                "SZ000026",
+                {"view": "ab_comparison"},
+            )
+        )
+
+
+def test_ab_comparison_empty_side_selection_is_a_valid_filtered_snapshot():
+    class NoMatchingAListing(FakeAKShare):
+        def stock_zh_ab_comparison_em(self):
+            rows = [
+                row
+                for row in _fixture("a_ab_comparison.json")
+                if row["A股代码"] != "000026"
+            ]
+            return self._return("stock_zh_ab_comparison_em", rows)
+
+    record = _provider(NoMatchingAListing()).fetch(
+        _request(
+            DataCategory.MARKET_QUOTE,
+            "SZ000026",
+            {"view": "ab_comparison"},
+        )
+    )
+
+    assert record.raw_payload == []
+    assert record.response_metadata["upstream_row_count"] == 2
+    assert record.response_metadata["entity_row_count"] == 0
+    assert record.response_metadata["entity_rows_selected"] is True
+
+
+def test_ab_comparison_record_is_raw_only_and_does_not_promote_cross_class_quote_context():
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_QUOTE,
+            "SZ000026",
+            {"view": "ab_comparison"},
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="ab-comparison-raw-only",
+        as_of=date(2026, 9, 11),
+        profile_id="strict-v1",
+        company=_company("SZ000026"),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_AB_COMPARISON_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == ["current_price"]
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "A+B comparison" in normalized.data_quality.notes
+    assert "canonical current-price" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("source_uri", "A\\+B comparison source URI"),
+        ("view", "metadata 'market_quote_view'"),
+        ("market", "response market"),
+        ("listing_code", "response listing code"),
+        ("listing_scope", "metadata 'listing_scoped_request'"),
+        ("row_filtering", "metadata 'row_filtering'"),
+        ("snapshot_scope", "metadata 'snapshot_scope'"),
+        ("field_order", "metadata 'source_field_order'"),
+        ("price_unit", "metadata 'b_price_unit'"),
+        ("entity_count", "metadata 'entity_row_count'"),
+        ("upstream_count", "upstream row count"),
+        ("payload_entity", "entity '000030'"),
+    ],
+)
+def test_ab_comparison_normalizer_rejects_replayed_scope_mismatches(
+    mutation: str,
+    match: str,
+):
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_QUOTE,
+            "SZ000026",
+            {"view": "ab_comparison"},
+        )
+    )
+    response_metadata = dict(record.response_metadata)
+    payload = [dict(row) for row in record.raw_payload]
+    source_uri = record.source_uri
+    if mutation == "source_uri":
+        source_uri = "https://example.invalid/ab-comparison"
+    elif mutation == "view":
+        response_metadata["market_quote_view"] = "ah_comparison"
+    elif mutation == "market":
+        response_metadata["market"] = "H"
+    elif mutation == "listing_code":
+        response_metadata["listing_code"] = "000030"
+    elif mutation == "listing_scope":
+        response_metadata["listing_scoped_request"] = True
+    elif mutation == "row_filtering":
+        response_metadata["row_filtering"] = "client"
+    elif mutation == "snapshot_scope":
+        response_metadata["snapshot_scope"] = "current_quote_snapshot"
+    elif mutation == "field_order":
+        response_metadata["source_field_order"] = [
+            "B股代码",
+            "序号",
+            "B股名称",
+            "最新价B",
+            "涨跌幅B",
+            "A股代码",
+            "A股名称",
+            "最新价A",
+            "涨跌幅A",
+            "比价",
+        ]
+    elif mutation == "price_unit":
+        response_metadata["b_price_unit"] = "B_share_currency"
+    elif mutation == "entity_count":
+        response_metadata["entity_row_count"] = 2
+    elif mutation == "upstream_count":
+        response_metadata["upstream_row_count"] = 0
+    else:
+        payload[0]["A股代码"] = "000030"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=source_uri,
+        response_metadata=response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match=match):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-ab-comparison-scope",
+            as_of=date(2026, 9, 11),
+            profile_id="strict-v1",
+            company=_company("SZ000026"),
+        )
+
+
+def test_ab_comparison_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.MARKET_QUOTE,
+        "SZ000026",
+        {"view": "ab_comparison"},
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [("stock_zh_ab_comparison_em", {})]
 
 
 def test_a_intraday_trades_fetch_uses_documented_symbol_and_shape():

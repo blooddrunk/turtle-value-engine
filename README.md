@@ -840,6 +840,24 @@ filter is applied. The normalizer emits
 provider popularity rank remains raw evidence only. No calculation, gate,
 pipeline, CLI or input-loader contract changes.
 
+Phase 2.87 adds the distinct documented Eastmoney A-share A+B comparison
+endpoint [`stock_zh_ab_comparison_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
+with explicit `view=ab_comparison`. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hist_em.py)
+returns the exact ten fields `序号`, `B股代码`, `B股名称`, `最新价B`,
+`涨跌幅B`, `A股代码`, `A股名称`, `最新价A`, `涨跌幅A` and `比价`, scaling
+the published quote/change/ratio values by 100 before returning them. The
+adapter validates the complete no-argument A/B universe, including exact
+field order, six-digit A/B identities, unique strictly ascending ranks,
+finite numeric/null values and non-empty names, before filtering to the
+requested A-share listing. The checked-in fixture preserves the official
+documentation sample rows with both selected and non-selected A-share codes;
+the B-share currency is not documented by the endpoint and is left
+unresolved. The adapter records the field order, units, retrieval-only
+current-trading-day scope and row counts for cache replay. The normalizer
+emits `AKSHARE_AB_COMPARISON_RAW_ONLY` and creates no canonical quote,
+currency, comparison or valuation fact. No calculation, gate, pipeline, CLI
+or input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.
