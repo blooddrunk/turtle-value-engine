@@ -782,6 +782,34 @@ pipeline, CLI and input-loader contracts. Its raw evidence is available for
 later review without being treated as canonical issuance cash, dilution,
 share-count, listing-date, income or valuation input.
 
+## Phase 2.65 A-share Eastmoney new-stock-board raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_zh_a_new_em` as a no-argument Eastmoney A-share new-stock
+universe. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_info.py)
+confirms the exact 17 fields `序号`, `代码`, `名称`, quote/change fields,
+`成交量`, `成交额`, `振幅`, OHLC, `量比`, `换手率`, `市盈率-动态` and `市净率`.
+
+The provider selects this endpoint only under `MARKET_ACTIVITY` with explicit
+`view=new_stock`, validates the exact response shape, six-digit A-share codes,
+unique positive sequence numbers, finite numeric/null values and non-empty names,
+then filters the current-trading-day universe to the requested listing. The
+normalizer emits `AKSHARE_NEW_STOCKS_RAW_ONLY`; no canonical listing date,
+return, valuation, governance or market fact is admitted because the response
+is a current quote universe without a stable row-level observation date.
+
+| Raw upstream item | Phase 2 treatment |
+| --- | --- |
+| `序号` | Validated positive integer with no duplicate; raw display order only, not a canonical rank or market metric. |
+| `代码`, `名称` | Required six-digit A-share identity and non-empty display name; used only for provider-boundary filtering and evidence context. |
+| `最新价`, `涨跌幅`, `涨跌额`, `成交量`, `成交额`, `振幅`, `最高`, `最低`, `今开`, `昨收`, `量比`, `换手率`, `市盈率-动态`, `市净率` | Finite numeric/null current-trading-day quote, activity and provider-metric context; no return, liquidity, valuation or calculation fact is inferred. |
+| request `view=new_stock` | Explicit no-argument endpoint, A-share listing filter and retrieval-only current-day snapshot scope; no synthetic observation date is added. |
+
+The provider-specific new-stock-board response remains outside the calculation,
+gate, pipeline, CLI and input-loader contracts. Its raw evidence is available
+for later review without being treated as a canonical listing, return,
+valuation, governance or market input.
+
 ## Phase 2.9 corporate-action raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)

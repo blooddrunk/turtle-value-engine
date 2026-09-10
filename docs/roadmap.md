@@ -1578,6 +1578,27 @@ opt-in; tests use an injected client and frozen fixture coverage for cache
 replay, invalid requests, response validation, raw-only normalization and
 replayed-scope validation.
 
+### Phase 2.65 — A-share Eastmoney new-stock-board raw acquisition contract (COMPLETE)
+
+The mapping review now covers the distinct Eastmoney A-share new-stock-board
+endpoint documented as
+[`stock_zh_a_new_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
+and implemented by the current [official source](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_info.py).
+It accepts no upstream arguments and returns the exact fields `序号`, `代码`,
+`名称`, `最新价`, `涨跌幅`, `涨跌额`, `成交量`, `成交额`, `振幅`, `最高`, `最低`,
+`今开`, `昨收`, `量比`, `换手率`, `市盈率-动态` and `市净率`.
+
+The provider selects this callable only under the existing provider-neutral
+`MARKET_ACTIVITY` category with explicit `view=new_stock`, validates the exact
+field set, six-digit A-share identity, unique positive sequence numbers,
+finite numeric/null quote fields and non-empty names, and filters the current
+trading-day universe to the requested listing. The normalizer emits
+`AKSHARE_NEW_STOCKS_RAW_ONLY`; the retrieval-only quote snapshot does not
+establish a dated listing, return, valuation, governance or canonical market
+fact. Live calls remain opt-in; tests use an injected client and a frozen
+fixture with cache replay, invalid-parameter, response-validation, raw-only
+and replay-scope coverage.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -1587,7 +1608,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.64 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.65 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -1795,7 +1816,7 @@ Phase 2 is active. Phase 1 remains frozen: changes to formulas, hard-gate
 semantics, schemas or `strict-v1` thresholds require a separately reviewed,
 versioned change.
 
-Phase 2.64 completes the next documented structured-data boundary while
+Phase 2.65 completes the next documented structured-data boundary while
 keeping share-change, repurchase and rights-issue period, status, unit and
 economic-scope questions unresolved, and keeping ownership-pledge holder,
 governance and economic-scope questions unresolved. The A-share
@@ -1857,6 +1878,12 @@ settled issuance-cash period, dilution or a canonical share fact. The explicit
 `view=ipo_summary`, unprefixed symbol, exact 15-field response, symbol-scoped
 historical scope and row-date binding remain part of its replayable acquisition
 boundary.
+The A-share Eastmoney new-stock-board response remains raw-only because its
+current-trading-day quote universe does not establish a dated listing, return,
+valuation, governance or canonical market fact. The explicit
+`view=new_stock`, no-argument upstream request, exact 17-field response,
+six-digit code validation, provider filtering, unique sequence validation and
+retrieval-only date binding remain part of its replayable acquisition boundary.
 dividend-distribution snapshot remains raw-only because its ratios, status and
 multiple dates do not establish settled ordinary cash or a canonical payout
 denominator. Phase 2 remains active; future documented categories must be

@@ -25,8 +25,9 @@ hot-rank, A+H comparison, intraday-trade, chip-distribution, Tencent
 daily-history and Tencent latest-trading-day tick, Sina minute-history,
 intraday-history, H-share intraday-history, pre-market-history, five-level bid-ask
 and Dragon-Tiger market-activity detail/statistics/institution-statistics raw
-slices are also available. The A-share dividend-distribution detail raw slice is
-also available. The A-share CNINFO IPO-summary raw slice is also available.
+slices are also available. The A-share dividend-distribution detail and
+new-stock-board raw slices are also available. The A-share CNINFO IPO-summary
+raw slice is also available.
 The A-share Eastmoney top-ten, top-ten-tradable-shareholder and
 top-ten-tradable-shareholder-detail raw slices are also available.
 Upstream column names are handled in this module and are never passed to the
@@ -75,9 +76,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "64"
+AKSHARE_ADAPTER_VERSION = "65"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "65"
+AKSHARE_MAPPING_VERSION = "66"
 
 
 class ListingMarket(StrEnum):
@@ -172,6 +173,7 @@ _SOURCE_URIS = {
     "stock_fhps_em": "https://data.eastmoney.com/yjfp/",
     "stock_fhps_detail_em": "https://data.eastmoney.com/yjfp/detail/300073.html",
     "stock_ipo_summary_cninfo": "https://webapi.cninfo.com.cn/#/company",
+    "stock_zh_a_new_em": "https://quote.eastmoney.com/center/gridlist.html#newshares",
     "stock_hk_dividend_payout_em": "https://emweb.securities.eastmoney.com/PC_HKF10/pages/home/index.html",
     "stock_hk_fhpx_detail_ths": "https://stockpage.10jqka.com.cn/HK0700/bonus/",
     "stock_hsgt_individual_em": "https://data.eastmoney.com/hsgt/StockHdDetail/002008.html",
@@ -495,6 +497,45 @@ _MARKET_ACTIVITY_HOT_RANK_VIEW = "hot_rank"
 _MARKET_ACTIVITY_HOT_RANK_MAX_ROWS = 100
 _MARKET_ACTIVITY_HOT_RANK_FIELDS = frozenset(
     {"当前排名", "代码", "股票名称", "最新价", "涨跌额", "涨跌幅"}
+)
+_MARKET_ACTIVITY_NEW_STOCK_PARAMETER_NAMES = frozenset({"view"})
+_MARKET_ACTIVITY_NEW_STOCK_VIEW = "new_stock"
+_MARKET_ACTIVITY_NEW_STOCK_FIELDS = frozenset(
+    {
+        "序号",
+        "代码",
+        "名称",
+        "最新价",
+        "涨跌幅",
+        "涨跌额",
+        "成交量",
+        "成交额",
+        "振幅",
+        "最高",
+        "最低",
+        "今开",
+        "昨收",
+        "量比",
+        "换手率",
+        "市盈率-动态",
+        "市净率",
+    }
+)
+_MARKET_ACTIVITY_NEW_STOCK_NUMERIC_FIELDS = (
+    "最新价",
+    "涨跌幅",
+    "涨跌额",
+    "成交量",
+    "成交额",
+    "振幅",
+    "最高",
+    "最低",
+    "今开",
+    "昨收",
+    "量比",
+    "换手率",
+    "市盈率-动态",
+    "市净率",
 )
 
 _FINANCIAL_STATEMENT_PARAMETER_NAMES = frozenset({"indicator", "statement_date"})
@@ -1216,7 +1257,32 @@ class AKShareProvider(StructuredDataProvider):
                 response_metadata["observation_end_date"] = max(observation_dates).isoformat()
         elif request.category is DataCategory.MARKET_ACTIVITY:
             rows = _table_rows(payload, provider=self.identity, request=request)
-            if endpoint.name == "stock_comment_detail_scrd_desire_em":
+            if endpoint.name == "stock_zh_a_new_em":
+                _validate_market_activity_new_stock_provider_rows(
+                    rows,
+                    provider=self.identity,
+                    request=request,
+                )
+                selected = _select_listing_rows(
+                    rows,
+                    listing,
+                    provider=self.identity,
+                    request=request,
+                    row_label="market-activity-new-stock",
+                )
+                payload = selected
+                response_metadata["upstream_row_count"] = len(rows)
+                response_metadata["entity_row_count"] = len(selected)
+                response_metadata["entity_rows_selected"] = True
+                response_metadata["listing_scoped_request"] = False
+                response_metadata["row_filtering"] = "provider"
+                response_metadata["market_activity_view"] = _MARKET_ACTIVITY_NEW_STOCK_VIEW
+                response_metadata["snapshot_scope"] = "current_trading_day_new_stock_universe"
+                response_metadata["rank_field"] = "序号"
+                response_metadata["rank_ordering"] = "unique_positive"
+                response_metadata["code_field"] = "代码"
+                response_metadata["date_binding"] = "retrieval_only"
+            elif endpoint.name == "stock_comment_detail_scrd_desire_em":
                 observation_dates = _validate_market_activity_participation_desire_provider_rows(
                     rows,
                     listing,
@@ -2443,6 +2509,9 @@ class AKShareProvider(StructuredDataProvider):
             market_activity_hot_rank_requested=(
                 request.parameters.get("view") == _MARKET_ACTIVITY_HOT_RANK_VIEW
             ),
+            market_activity_new_stock_requested=(
+                request.parameters.get("view") == _MARKET_ACTIVITY_NEW_STOCK_VIEW
+            ),
             market_activity_institution_statistic_requested=(
                 request.parameters.get("view")
                 == _MARKET_ACTIVITY_INSTITUTION_STATISTIC_VIEW
@@ -2799,7 +2868,14 @@ class AKShareNormalizer:
                         "AKShare market-activity raw slice supports A-share listings only"
                     )
                 endpoint_name = record.response_metadata.get("endpoint")
-                if record.request.parameters.get("view") == _MARKET_ACTIVITY_HOT_RANK_VIEW:
+                if record.request.parameters.get("view") == _MARKET_ACTIVITY_NEW_STOCK_VIEW:
+                    _validate_market_activity_new_stock_normalizer_scope(
+                        record,
+                        listing,
+                        rows,
+                    )
+                    normalizer_flags.add("AKSHARE_NEW_STOCKS_RAW_ONLY")
+                elif record.request.parameters.get("view") == _MARKET_ACTIVITY_HOT_RANK_VIEW:
                     _validate_market_activity_hot_rank_normalizer_scope(
                         record,
                         listing,
@@ -2886,9 +2962,9 @@ class AKShareNormalizer:
                 else:
                     raise ProviderNormalizationError(
                         "AKShare market-activity record must come from "
-                        "stock_comment_detail_scrd_desire_em, stock_lhb_detail_em, "
-                        "stock_hot_rank_em, stock_lhb_stock_statistic_em or "
-                        "stock_lhb_jgstatistic_em"
+                        "stock_zh_a_new_em, stock_comment_detail_scrd_desire_em, "
+                        "stock_lhb_detail_em, stock_hot_rank_em, "
+                        "stock_lhb_stock_statistic_em or stock_lhb_jgstatistic_em"
                     )
             elif record.request.category is DataCategory.MARGIN_TRADING:
                 if listing.canonical_id[:2] not in {"SH", "SZ", "BJ"}:
@@ -4016,6 +4092,12 @@ class AKShareNormalizer:
                 "cash flow, shareholder return, governance, valuation or a canonical "
                 "market metric."
             )
+        if "AKSHARE_NEW_STOCKS_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented A-share new-stock-board response is retained as raw "
+                "evidence only: its current-trading-day quote universe does not establish "
+                "a dated listing, return, valuation, governance or canonical market fact."
+            )
         if "AKSHARE_MARKET_PARTICIPATION_DESIRE_RAW_ONLY" in normalizer_flags:
             notes += (
                 " The documented A-share market-participation response is retained as "
@@ -4335,6 +4417,7 @@ def _endpoint_candidates(
     market_activity_institution_statistic_requested: bool = False,
     market_activity_participation_desire_requested: bool = False,
     market_activity_hot_rank_requested: bool = False,
+    market_activity_new_stock_requested: bool = False,
     market_quote_ah_comparison_requested: bool = False,
     market_quote_bid_ask_requested: bool = False,
     market_history_intraday_requested: bool = False,
@@ -4407,6 +4490,8 @@ def _endpoint_candidates(
         return ("stock_hk_daily", "stock_zh_ah_daily")
     if category is DataCategory.MARKET_ACTIVITY:
         if market is ListingMarket.A:
+            if market_activity_new_stock_requested:
+                return ("stock_zh_a_new_em",)
             if market_activity_participation_desire_requested:
                 return ("stock_comment_detail_scrd_desire_em",)
             if market_activity_hot_rank_requested:
@@ -8652,6 +8737,116 @@ def _validate_market_activity_institution_statistic_provider_rows(
         seen_codes.add(row_code)
 
 
+def _market_activity_new_stock_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef | None = None,
+) -> str | None:
+    """Return a strict-schema error for one new-stock board snapshot."""
+
+    seen_codes: set[str] = set()
+    seen_ranks: set[int] = set()
+    for index, row in enumerate(rows):
+        missing = sorted(_MARKET_ACTIVITY_NEW_STOCK_FIELDS - set(row))
+        unexpected = sorted(set(row) - _MARKET_ACTIVITY_NEW_STOCK_FIELDS)
+        if missing:
+            return (
+                f"market-activity new-stock row {index} is missing field(s): "
+                + ", ".join(missing)
+            )
+        if unexpected:
+            return (
+                f"market-activity new-stock row {index} contains unsupported field(s): "
+                + ", ".join(unexpected)
+            )
+
+        raw_code = row["代码"]
+        if not isinstance(raw_code, str) or not re.fullmatch(r"\d{6}", raw_code.strip()):
+            return f"market-activity new-stock row {index} has an invalid 代码"
+        row_code = raw_code.strip()
+        if listing is not None and row_code != listing.code:
+            return (
+                f"market-activity new-stock row {index} entity {row_code!r} does not "
+                f"match requested listing {listing.canonical_id!r}"
+            )
+        if row_code in seen_codes:
+            return (
+                "market-activity new-stock response has duplicate listing code "
+                f"{row_code!r}"
+            )
+        seen_codes.add(row_code)
+
+        rank = row["序号"]
+        if isinstance(rank, bool) or not isinstance(rank, Real):
+            return (
+                f"market-activity new-stock row {index} field '序号' must be a "
+                "positive integer"
+            )
+        try:
+            numeric_rank = float(rank)
+        except (OverflowError, TypeError, ValueError):
+            return (
+                f"market-activity new-stock row {index} field '序号' must be a "
+                "positive integer"
+            )
+        if not math.isfinite(numeric_rank) or not numeric_rank.is_integer() or numeric_rank < 1:
+            return (
+                f"market-activity new-stock row {index} field '序号' must be a "
+                "positive integer"
+            )
+        rank_value = int(numeric_rank)
+        if rank_value in seen_ranks:
+            return (
+                "market-activity new-stock response has duplicate 序号 "
+                f"{rank_value!r}"
+            )
+        seen_ranks.add(rank_value)
+
+        if not isinstance(row["名称"], str) or _text_value(row["名称"]) is None:
+            return (
+                f"market-activity new-stock row {index} field '名称' must be a "
+                "non-empty string"
+            )
+        for field in _MARKET_ACTIVITY_NEW_STOCK_NUMERIC_FIELDS:
+            value = row[field]
+            if value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, Real):
+                return (
+                    f"market-activity new-stock row {index} field {field!r} "
+                    "must be numeric or null"
+                )
+            try:
+                numeric = float(value)
+            except (OverflowError, TypeError, ValueError):
+                return (
+                    f"market-activity new-stock row {index} field {field!r} "
+                    "must be numeric or null"
+                )
+            if not math.isfinite(numeric):
+                return (
+                    f"market-activity new-stock row {index} field {field!r} "
+                    "must be finite or null"
+                )
+    return None
+
+
+def _validate_market_activity_new_stock_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> None:
+    """Validate the full A-share new-stock universe before filtering."""
+
+    message = _market_activity_new_stock_validation_message(rows)
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message}",
+            provider=provider,
+            request=request,
+        )
+
+
 def _market_activity_hot_rank_row_listing(value: object) -> _ListingRef | None:
     """Parse the market-prefixed listing code published by the hot-rank endpoint."""
 
@@ -9750,6 +9945,65 @@ def _validate_market_activity_hot_rank_normalizer_scope(
         )
 
     message = _market_activity_hot_rank_validation_message(rows, listing)
+    if message is not None:
+        raise ProviderNormalizationError(message)
+
+
+def _validate_market_activity_new_stock_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> None:
+    """Validate the replay scope of a filtered new-stock board snapshot."""
+
+    if listing.market is not ListingMarket.A:
+        raise ProviderNormalizationError(
+            "AKShare market-activity new-stock raw slice supports A-share listings only"
+        )
+    if record.response_metadata.get("endpoint") != "stock_zh_a_new_em":
+        raise ProviderNormalizationError(
+            "AKShare market-activity new-stock record must come from stock_zh_a_new_em"
+        )
+    try:
+        _market_activity_new_stock_kwargs(
+            "stock_zh_a_new_em",
+            listing,
+            record.request,
+        )
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+
+    expected_metadata = {
+        "market_activity_view": _MARKET_ACTIVITY_NEW_STOCK_VIEW,
+        "listing_scoped_request": False,
+        "row_filtering": "provider",
+        "snapshot_scope": "current_trading_day_new_stock_universe",
+        "rank_field": "序号",
+        "rank_ordering": "unique_positive",
+        "code_field": "代码",
+        "date_binding": "retrieval_only",
+        "entity_rows_selected": True,
+        "entity_row_count": len(rows),
+    }
+    for name, expected in expected_metadata.items():
+        if record.response_metadata.get(name) != expected:
+            raise ProviderNormalizationError(
+                f"market-activity new-stock response metadata {name!r} does not "
+                "match the requested replay scope"
+            )
+
+    upstream_row_count = record.response_metadata.get("upstream_row_count")
+    if (
+        isinstance(upstream_row_count, bool)
+        or not isinstance(upstream_row_count, int)
+        or len(rows) > upstream_row_count
+    ):
+        raise ProviderNormalizationError(
+            "market-activity new-stock response upstream row count does not match "
+            "the requested replay scope"
+        )
+
+    message = _market_activity_new_stock_validation_message(rows, listing)
     if message is not None:
         raise ProviderNormalizationError(message)
 
@@ -11147,6 +11401,8 @@ def _market_activity_kwargs(
 ) -> dict[str, object]:
     """Build one documented market-activity request."""
 
+    if endpoint_name == "stock_zh_a_new_em":
+        return _market_activity_new_stock_kwargs(endpoint_name, listing, request)
     if endpoint_name == "stock_comment_detail_scrd_desire_em":
         return _market_activity_participation_desire_kwargs(endpoint_name, listing, request)
     if endpoint_name == "stock_hot_rank_em":
@@ -11213,6 +11469,42 @@ def _market_activity_hot_rank_kwargs(
         raise ProviderRequestError(
             "the AKShare market-activity hot-rank endpoint requires "
             f"view={_MARKET_ACTIVITY_HOT_RANK_VIEW!r}",
+            request=request,
+            retryable=False,
+        )
+    return {}
+
+
+def _market_activity_new_stock_kwargs(
+    endpoint_name: str,
+    listing: _ListingRef,
+    request: ProviderRequest,
+) -> dict[str, object]:
+    """Build the documented no-argument A-share new-stock request."""
+
+    if endpoint_name != "stock_zh_a_new_em":
+        raise ProviderRequestError(
+            f"unsupported AKShare new-stock endpoint {endpoint_name!r}",
+            request=request,
+            retryable=False,
+        )
+    if listing.market is not ListingMarket.A:
+        raise ProviderRequestError(
+            "the AKShare new-stock endpoint supports A-share listings only",
+            request=request,
+            retryable=False,
+        )
+    unknown = sorted(set(request.parameters) - _MARKET_ACTIVITY_NEW_STOCK_PARAMETER_NAMES)
+    if unknown:
+        raise ProviderRequestError(
+            "unsupported AKShare new-stock parameter(s): " + ", ".join(unknown),
+            request=request,
+            retryable=False,
+        )
+    if request.parameters.get("view") != _MARKET_ACTIVITY_NEW_STOCK_VIEW:
+        raise ProviderRequestError(
+            "the AKShare new-stock endpoint requires "
+            f"view={_MARKET_ACTIVITY_NEW_STOCK_VIEW!r}",
             request=request,
             retryable=False,
         )

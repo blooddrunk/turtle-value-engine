@@ -538,6 +538,17 @@ the historical IPO-summary replay scope. The normalizer emits
 `AKSHARE_IPO_SUMMARY_RAW_ONLY`: offering dates, proceeds, fees and share
 quantities do not establish settled issuance cash, dilution or a canonical
 share fact.
+Phase 2.65 adds the distinct documented Eastmoney A-share new-stock-board
+endpoint [`stock_zh_a_new_em`](https://akshare.akfamily.xyz/data/stock/stock.html),
+whose current official implementation is in
+[`stock_info.py`](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_info.py),
+under `MARKET_ACTIVITY` with explicit `view=new_stock`. It calls the documented
+no-argument universe, validates the exact 17-field response, six-digit A-share
+codes, unique positive sequence numbers, finite numeric/null quote fields and
+non-empty names, then filters to the requested listing. The normalizer emits
+`AKSHARE_NEW_STOCKS_RAW_ONLY`: the current-trading-day quote universe remains
+raw evidence and does not establish a dated listing, return, valuation,
+governance or canonical market fact.
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.
