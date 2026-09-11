@@ -1801,6 +1801,25 @@ factor schemas, invalid rows, raw-only normalization, replay metadata
 tampering, out-of-range replay and offline cache replay. No calculation, gate,
 pipeline, CLI or input-loader contract changes.
 
+Phase 3.48 adds the documented Sina B-share minute-history endpoint
+[`stock_zh_b_minute`](https://akshare.akfamily.xyz/data/stock/stock.html) under
+`MARKET_HISTORY` with explicit `view=b_minute`, Shanghai 900xxx or Shenzhen
+200xxx listing context, a `period` of `1`, `5`, `15`, `30` or `60`, and an
+adjustment mode of `''`, `qfq` or `hfq`. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_zh_b_sina.py)
+requests Sina's JSONP K-line endpoint with the market-prefixed symbol, the
+period as `scale` and fixed `datalen=1970`, then preserves the exact six-field
+`day`, `open`, `high`, `low`, `close` and `volume` output. The effective symbol,
+interval, adjustment, recent-trading-day scope, source parameters, JSONP
+decoder and adjustment transform remain replay metadata.
+
+The B-share minute-history response remains raw evidence only: it is a recent
+minute window with undocumented price/volume units and does not establish the
+canonical daily-history, currency or valuation inputs. The normalizer emits
+`AKSHARE_B_MINUTE_HISTORY_RAW_ONLY` and creates no canonical fact. Tests cover
+both mainland exchanges, defaults, parameter and row validation, empty output,
+raw-only normalization, replay metadata tampering and offline cache replay.
+No calculation, gate, pipeline, CLI or input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

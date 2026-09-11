@@ -3768,6 +3768,30 @@ regular/factor schemas, invalid rows, raw-only normalization, replay metadata
 tampering, out-of-range replay and offline cache replay. No calculation, gate,
 pipeline, CLI or input-loader contract changes.
 
+### Phase 3.48 — Sina B-share minute-history raw acquisition contract (COMPLETE)
+
+The mapping review now covers the documented Sina
+[`stock_zh_b_minute`](https://akshare.akfamily.xyz/data/stock/stock.html)
+B-share minute-history endpoint under `MARKET_HISTORY` with explicit
+`view=b_minute`, Shanghai 900xxx or Shenzhen 200xxx listing context, periods
+`1`, `5`, `15`, `30` or `60`, and adjustment modes `''`, `qfq` or `hfq`. The
+[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_zh_b_sina.py)
+requests the Sina JSONP K-line endpoint with the market-prefixed symbol,
+`scale` equal to the requested period and fixed `datalen=1970`. The provider
+preserves the exact six-field `day`, `open`, `high`, `low`, `close`, `volume`
+response and records the symbol, interval, adjustment, recent-trading-day
+scope, source parameters, JSONP decoder and adjustment transform in replay
+metadata.
+
+The B-share minute-history response remains raw evidence only because it is a
+recent minute window with undocumented price/volume units and does not
+establish the canonical daily-history, currency or valuation inputs. The
+normalizer emits `AKSHARE_B_MINUTE_HISTORY_RAW_ONLY` and creates no canonical
+fact. Tests cover both mainland exchanges, defaults, parameter and row
+validation, empty output, raw-only normalization, replay metadata tampering
+and offline cache replay. No calculation, gate, pipeline, CLI or input-loader
+contract changes.
+
 ### Future structured-provider deliverables
 
 ```text
@@ -3777,7 +3801,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–3.47 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–3.48 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```

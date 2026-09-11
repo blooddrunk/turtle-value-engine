@@ -535,6 +535,15 @@ class FakeAKShare:
             adjust=adjust,
         )
 
+    def stock_zh_b_minute(self, *, symbol: str, period: str, adjust: str):
+        return self._return(
+            "stock_zh_b_minute",
+            _fixture("b_sina_minute_history.json"),
+            symbol=symbol,
+            period=period,
+            adjust=adjust,
+        )
+
     def stock_cyq_em(self, *, symbol: str, adjust: str):
         return self._return(
             "stock_cyq_em",
@@ -1317,8 +1326,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "150"
-    assert AKSHARE_MAPPING_VERSION == "151"
+    assert provider.identity.provider_version == "152"
+    assert AKSHARE_MAPPING_VERSION == "153"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -26627,6 +26636,428 @@ def test_individual_fund_flow_cache_replay_does_not_call_upstream(tmp_path: Path
     assert replay.record == live.record
     assert fake.calls == [
         ("stock_individual_fund_flow", {"stock": "600000", "market": "sh"}),
+    ]
+
+
+def test_b_minute_history_fetch_uses_documented_symbol_period_and_adjustment():
+    fake = FakeAKShare()
+    record = _provider(fake).fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "SH900901",
+            {"view": "b_minute", "period": "5", "adjust": "qfq"},
+        )
+    )
+
+    fields = ["day", "open", "high", "low", "close", "volume"]
+    assert record.raw_payload == _fixture("b_sina_minute_history.json")
+    assert fake.calls == [
+        (
+            "stock_zh_b_minute",
+            {"symbol": "sh900901", "period": "5", "adjust": "qfq"},
+        )
+    ]
+    assert record.source_uri == (
+        "https://finance.sina.com.cn/realstock/company/sh900901/nc.shtml"
+    )
+    assert record.response_metadata["endpoint"] == "stock_zh_b_minute"
+    assert record.response_metadata["market"] == "A"
+    assert record.response_metadata["listing_code"] == "900901"
+    assert record.response_metadata["market_history_view"] == "b_minute"
+    assert record.response_metadata["b_minute_history_view"] == "b_minute"
+    assert record.response_metadata["upstream_symbol"] == "sh900901"
+    assert record.response_metadata["b_minute_period"] == "5"
+    assert record.response_metadata["b_minute_adjust"] == "qfq"
+    assert record.response_metadata["listing_scoped_request"] is True
+    assert record.response_metadata["date_binding"] == "row_only"
+    assert record.response_metadata["range_filtering"] == "none"
+    assert record.response_metadata["snapshot_scope"] == "recent_trading_day"
+    assert record.response_metadata["observation_time_field"] == "day"
+    assert record.response_metadata["time_ordering"] == "strictly_ascending"
+    assert record.response_metadata["price_unit"] == "not_documented"
+    assert record.response_metadata["volume_unit"] == "not_documented"
+    assert record.response_metadata["field_count"] == 6
+    assert record.response_metadata["source_field_order"] == fields
+    assert record.response_metadata["date_fields"] == ["day"]
+    assert record.response_metadata["value_fields"] == fields[1:]
+    assert record.response_metadata["required_numeric_fields"] == fields[1:]
+    assert record.response_metadata["documented_units"] == {}
+    assert record.response_metadata["undocumented_numeric_units"] == {
+        field: "not_documented" for field in fields[1:]
+    }
+    assert record.response_metadata["field_types"] == {
+        "day": "datetime",
+        "open": "number",
+        "high": "number",
+        "low": "number",
+        "close": "number",
+        "volume": "number",
+    }
+    assert record.response_metadata["upstream_url"] == (
+        "https://quotes.sina.cn/cn/api/jsonp_v2.php/=/"
+        "CN_MarketDataService.getKLineData"
+    )
+    assert record.response_metadata["upstream_urls"] == [
+        record.response_metadata["upstream_url"]
+    ]
+    assert record.response_metadata["upstream_auxiliary_urls"] == []
+    assert record.response_metadata["upstream_auxiliary_roles"] == []
+    assert record.response_metadata["upstream_protocol"] == "https_jsonp"
+    assert record.response_metadata["upstream_parameters"] == [
+        "symbol",
+        "scale",
+        "datalen",
+    ]
+    assert record.response_metadata["upstream_dynamic_parameters"] == {
+        "symbol": "sh900901",
+        "scale": "5",
+    }
+    assert record.response_metadata["upstream_fixed_parameters"] == {
+        "datalen": "1970"
+    }
+    assert record.response_metadata["upstream_authentication"] == "none"
+    assert record.response_metadata["wrapper_source_page_uri"] == record.source_uri
+    assert record.response_metadata["wrapper_date_filtering"] == "none"
+    assert record.response_metadata["wrapper_decoder"] == "json.loads"
+    assert record.response_metadata["wrapper_transformations"] == [
+        "jsonp_extract",
+        "json_loads",
+        "take_first_six_columns",
+        "qfq_daily_close_ratio_scale",
+    ]
+    assert record.response_metadata["upstream_page_size"] == 1970
+    assert record.response_metadata["pagination"] == (
+        "single_recent_window_response"
+    )
+    assert record.response_metadata["upstream_row_count"] == 3
+    assert record.response_metadata["entity_row_count"] == 3
+    assert record.response_metadata["entity_rows_selected"] is True
+    assert record.response_metadata["observation_start_datetime"] == (
+        "2026-09-09T09:31:00"
+    )
+    assert record.response_metadata["observation_end_datetime"] == (
+        "2026-09-09T15:00:00"
+    )
+
+
+def test_b_minute_history_fetch_accepts_shenzhen_b_share_listing():
+    fake = FakeAKShare()
+    record = _provider(fake).fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "SZ200625",
+            {"view": "b_minute", "period": "15"},
+        )
+    )
+
+    assert fake.calls == [
+        (
+            "stock_zh_b_minute",
+            {"symbol": "sz200625", "period": "15", "adjust": ""},
+        )
+    ]
+    assert record.response_metadata["upstream_symbol"] == "sz200625"
+
+
+def test_b_minute_history_request_applies_documented_defaults():
+    fake = FakeAKShare()
+    record = _provider(fake).fetch(
+        _request(DataCategory.MARKET_HISTORY, "SH900901", {"view": "b_minute"})
+    )
+
+    assert fake.calls == [
+        (
+            "stock_zh_b_minute",
+            {"symbol": "sh900901", "period": "1", "adjust": ""},
+        )
+    ]
+    assert record.response_metadata["b_minute_period"] == "1"
+    assert record.response_metadata["b_minute_adjust"] == ""
+
+
+@pytest.mark.parametrize(
+    ("entity_id", "parameters", "match"),
+    [
+        (
+            "SH600000",
+            {"view": "b_minute"},
+            "supports Shanghai 900xxx",
+        ),
+        (
+            "HK00700",
+            {"view": "b_minute"},
+            "supports Shanghai 900xxx",
+        ),
+        (
+            "SH900901",
+            {"view": "b_minute", "period": "2"},
+            "period must be one of",
+        ),
+        (
+            "SH900901",
+            {"view": "b_minute", "period": 5},
+            "period must be one of",
+        ),
+        (
+            "SH900901",
+            {"view": "b_minute", "adjust": "split"},
+            "adjust must be '', 'qfq' or 'hfq'",
+        ),
+        (
+            "SH900901",
+            {"view": "b_minute", "unexpected": True},
+            "unsupported AKShare B-share minute-history parameter",
+        ),
+    ],
+)
+def test_b_minute_history_request_validates_parameters_and_market(
+    entity_id: str,
+    parameters: dict,
+    match: str,
+):
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError, match=match):
+        _provider(fake).fetch(
+            _request(DataCategory.MARKET_HISTORY, entity_id, parameters)
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("missing_field", "missing field"),
+        ("extra_field", "unsupported field"),
+        ("reordered_fields", "documented field order"),
+        ("invalid_day", "invalid day"),
+        ("descending", "strictly ascending"),
+        ("duplicate_day", "duplicate day"),
+        ("invalid_numeric", "must be numeric or null"),
+        ("bool_numeric", "must be numeric or null"),
+        ("infinite_numeric", "contains infinity"),
+    ],
+)
+def test_b_minute_history_response_validates_documented_rows(
+    mutation: str,
+    match: str,
+):
+    class InvalidRows(FakeAKShare):
+        def stock_zh_b_minute(self, *, symbol: str, period: str, adjust: str):
+            rows = [dict(row) for row in _fixture("b_sina_minute_history.json")]
+            if mutation == "missing_field":
+                rows[0].pop("volume")
+            elif mutation == "extra_field":
+                rows[0]["unexpected"] = "not documented"
+            elif mutation == "reordered_fields":
+                first = rows[0]
+                rows[0] = {
+                    "open": first["open"],
+                    **{key: value for key, value in first.items() if key != "open"},
+                }
+            elif mutation == "invalid_day":
+                rows[0]["day"] = "not-a-timestamp"
+            elif mutation == "descending":
+                rows.reverse()
+            elif mutation == "duplicate_day":
+                rows[1]["day"] = rows[0]["day"]
+            elif mutation == "invalid_numeric":
+                rows[0]["close"] = "0.451"
+            elif mutation == "bool_numeric":
+                rows[0]["volume"] = True
+            else:
+                rows[0]["high"] = float("inf")
+            return self._return(
+                "stock_zh_b_minute",
+                rows,
+                symbol=symbol,
+                period=period,
+                adjust=adjust,
+            )
+
+    with pytest.raises(ProviderResponseError, match=match):
+        _provider(InvalidRows()).fetch(
+            _request(
+                DataCategory.MARKET_HISTORY,
+                "SH900901",
+                {"view": "b_minute", "period": "5"},
+            )
+        )
+
+
+def test_b_minute_history_empty_response_is_a_valid_raw_snapshot():
+    class EmptyResponse(FakeAKShare):
+        def stock_zh_b_minute(self, *, symbol: str, period: str, adjust: str):
+            return self._return(
+                "stock_zh_b_minute",
+                [],
+                symbol=symbol,
+                period=period,
+                adjust=adjust,
+            )
+
+    record = _provider(EmptyResponse()).fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "SH900901",
+            {"view": "b_minute", "period": "5"},
+        )
+    )
+
+    assert record.raw_payload == []
+    assert record.response_metadata["upstream_row_count"] == 0
+    assert record.response_metadata["entity_row_count"] == 0
+    assert record.response_metadata["observation_start_datetime"] is None
+    assert record.response_metadata["observation_end_datetime"] is None
+
+
+def test_b_minute_history_is_retained_as_raw_evidence_without_canonical_facts():
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "SH900901",
+            {"view": "b_minute", "period": "5"},
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="b-minute-history-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company("SH900901"),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_B_MINUTE_HISTORY_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == ["market_history"]
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "Sina B-share minute-history" in normalized.data_quality.notes
+    assert "undocumented price/volume units" in normalized.data_quality.notes
+    assert "canonical daily-history" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "endpoint",
+        "source_uri",
+        "view",
+        "symbol",
+        "period",
+        "adjust",
+        "listing_scope",
+        "date_binding",
+        "range_filtering",
+        "snapshot",
+        "time_ordering",
+        "field_count",
+        "source_order",
+        "upstream_url",
+        "wrapper_decoder",
+        "pagination",
+        "count",
+        "observation_start",
+        "payload",
+    ],
+)
+def test_b_minute_history_normalizer_rejects_replayed_scope_mismatches(mutation: str):
+    request = _request(
+        DataCategory.MARKET_HISTORY,
+        "SH900901",
+        {"view": "b_minute", "period": "5", "adjust": "hfq"},
+    )
+    record = _provider().fetch(request)
+    response_metadata = dict(record.response_metadata)
+    payload = [dict(row) for row in record.raw_payload]
+    source_uri = record.source_uri
+    if mutation == "endpoint":
+        response_metadata["endpoint"] = "stock_zh_a_minute"
+    elif mutation == "source_uri":
+        source_uri = "https://example.invalid/b-minute"
+    elif mutation == "view":
+        response_metadata["market_history_view"] = "sina_minute"
+    elif mutation == "symbol":
+        response_metadata["upstream_symbol"] = "sz200625"
+    elif mutation == "period":
+        response_metadata["b_minute_period"] = "15"
+    elif mutation == "adjust":
+        response_metadata["b_minute_adjust"] = ""
+    elif mutation == "listing_scope":
+        response_metadata["listing_scoped_request"] = False
+    elif mutation == "date_binding":
+        response_metadata["date_binding"] = "request_only"
+    elif mutation == "range_filtering":
+        response_metadata["range_filtering"] = "normalizer"
+    elif mutation == "snapshot":
+        response_metadata["snapshot_scope"] = "current_snapshot"
+    elif mutation == "time_ordering":
+        response_metadata["time_ordering"] = "non_decreasing"
+    elif mutation == "field_count":
+        response_metadata["field_count"] = 5
+    elif mutation == "source_order":
+        response_metadata["source_field_order"] = list(
+            reversed(response_metadata["source_field_order"])
+        )
+    elif mutation == "upstream_url":
+        response_metadata["upstream_url"] = "https://example.invalid/b-minute.js"
+    elif mutation == "wrapper_decoder":
+        response_metadata["wrapper_decoder"] = "plain_json"
+    elif mutation == "pagination":
+        response_metadata["pagination"] = "paged"
+    elif mutation == "count":
+        response_metadata["entity_row_count"] = 99
+    elif mutation == "observation_start":
+        response_metadata["observation_start_datetime"] = "2026-09-09T09:30:00"
+    else:
+        payload[0]["day"] = "2026-09-09 09:30:00"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=source_uri,
+        response_metadata=response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match="B-share minute-history"):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-b-minute-history-scope",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company("SH900901"),
+        )
+
+
+def test_b_minute_history_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.MARKET_HISTORY,
+        "SH900901",
+        {"view": "b_minute", "period": "5", "adjust": "qfq"},
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [
+        (
+            "stock_zh_b_minute",
+            {"symbol": "sh900901", "period": "5", "adjust": "qfq"},
+        )
     ]
 
 
