@@ -3696,6 +3696,29 @@ unrequested rows, empty selections, raw-only normalization, replay metadata
 tampering and offline cache replay. No calculation, gate, pipeline, CLI or
 input-loader contract changes.
 
+### Phase 3.45 — B-share quote raw acquisition contract (COMPLETE)
+
+The mapping review now covers the documented Eastmoney
+`stock_zh_b_spot_em` B-share real-time quote endpoint under `MARKET_QUOTE` with
+explicit `view=b_spot` and Shanghai 900xxx or Shenzhen 200xxx listing context.
+The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hist_em.py)
+define the no-argument `28.push2.eastmoney.com/api/qt/clist/get` JSON universe,
+fixed `m:0 t:7,m:1 t:3` filter, `fid=f12`, `f3` descending sort, page size `100`
+and provider-driven all-page pagination. The provider preserves the exact
+23-field wrapper order, 33-column source mapping, documented lots/CNY/percentage
+units and complete-universe code order before selecting the requested listing;
+the B-share currency remains undocumented.
+
+The current-day quote has no stable observation timestamp and is retained as
+raw evidence only. The normalizer emits
+`AKSHARE_B_SPOT_QUOTE_RAW_ONLY` and creates no canonical current-price or other
+market fact. Tests cover B-share routing for both mainland exchanges, exact
+upstream parameters, complete-response schema/rank/code/type boundaries,
+invalid unrequested rows, empty selections, raw-only normalization, replay
+metadata tampering and offline cache replay. No calculation, gate, pipeline,
+CLI or input-loader contract changes.
+
 ### Future structured-provider deliverables
 
 ```text
