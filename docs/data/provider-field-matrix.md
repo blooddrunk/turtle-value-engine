@@ -1234,6 +1234,43 @@ cash flow, shareholder return, governance, valuation or market facts.
 The provider-specific response remains outside the calculation, gate, pipeline,
 CLI and input-loader contracts.
 
+## Phase 3.03 A-share Eastmoney important-shareholder pledge-detail raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_gpzy_pledge_ratio_detail_em` as the important-shareholder
+pledge-detail endpoint. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_gpzy_em.py)
+uses the no-argument Eastmoney `RPTA_APP_ACCUMDETAILS` report, fetches all
+500-row pages ordered by descending `NOTICE_DATE`, generates one-based `序号`
+values, and returns the following final DataFrame/record order:
+`序号`, `股票代码`, `股票简称`, `股东名称`, `质押股份数量`, `占所持股份比例`,
+`占总股本比例`, `质押机构`, `最新价`, `质押日收盘价`, `预估平仓线`,
+`质押开始日期`, `质押结束日期`, `状态`, `公告日期`. The adapter exposes it
+only under `OWNERSHIP_PLEDGE` with explicit `view=market_pledge_detail`,
+validates the complete response before filtering to the requested A-share
+code, and retains source order, nullability, date bounds, pagination and full/
+selected row counts for deterministic replay.
+
+| Raw upstream item | Phase 3.03 treatment |
+| --- | --- |
+| `序号` | Required positive integer; the full response must use one-based source positions and the selected response must remain strictly ascending. It is not a report period or listing metric. |
+| `股票代码` | Required six-digit string identity validated across the full response and used only for provider filtering; it does not replace caller-supplied company identity. |
+| `股票简称`, `股东名称`, `质押机构`, `状态` | Required non-empty source text retained as raw evidence; holder and counterparty names are not interpreted as beneficial control, governance severity or debt ownership. |
+| `质押股份数量` | Finite non-negative numeric-or-null value in shares; no canonical diluted-share or pledged-cash fact is inferred. |
+| `占所持股份比例`, `占总股本比例` | Finite numeric-or-null values in percent, bounded to 0–100; provider ratios do not become canonical ownership or governance metrics. |
+| `最新价`, `质押日收盘价`, `预估平仓线` | Finite non-negative numeric-or-null values in CNY per share; no canonical quote, valuation, cash or liquidation conclusion is inferred. |
+| `质押开始日期`, `公告日期` | Required ISO `YYYY-MM-DD` dates; pledge start must not follow announcement, and announcement dates must be non-increasing in source order. Neither date is treated as an accounting or filing period. |
+| `质押结束日期` | Nullable ISO `YYYY-MM-DD` date; when present it must not precede pledge start. Null is preserved as an active/undetermined end date, not zero-filled. |
+| row identity | Duplicate `(股票代码, 股东名称, 质押机构, 质押股份数量, 质押开始日期, 质押结束日期, 公告日期, 状态)` identities are rejected before filtering. |
+| request `view=market_pledge_detail` | No upstream arguments; full A-share current-published important-shareholder detail, `listing_scoped_request=false`, `row_filtering=provider`, page size 500, all pages and `NOTICE_DATE` descending remain replay metadata. |
+
+The normalizer emits
+`AKSHARE_OWNERSHIP_PLEDGE_MARKET_DETAIL_RAW_ONLY`, leaves
+`governance_risk_level` critically missing and creates no canonical share,
+cash, debt-equivalent or governance fact. Holder, counterparty, quantity,
+ratio, price, status and event-date context remain structured evidence pending
+the official filing/evidence workflow. The response remains outside the
+calculation, gate, pipeline, CLI and input-loader contracts.
+
 ## Phase 2.92 SSE daily-deal overview raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)

@@ -694,6 +694,12 @@ class FakeAKShare:
             _fixture("a_ownership_pledge_profile.json"),
         )
 
+    def stock_gpzy_pledge_ratio_detail_em(self):
+        return self._return(
+            "stock_gpzy_pledge_ratio_detail_em",
+            _fixture("a_ownership_pledge_market_detail.json"),
+        )
+
     def stock_gpzy_individual_pledge_ratio_detail_em(self, *, symbol: str):
         return self._return(
             "stock_gpzy_individual_pledge_ratio_detail_em",
@@ -913,8 +919,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "102"
-    assert AKSHARE_MAPPING_VERSION == "103"
+    assert provider.identity.provider_version == "103"
+    assert AKSHARE_MAPPING_VERSION == "104"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -8065,6 +8071,426 @@ def test_ownership_pledge_market_profile_cache_replay_does_not_call_upstream(
     assert replay.mode is RetrievalMode.CACHE_REPLAY
     assert replay.record == live.record
     assert fake.calls == [("stock_gpzy_profile_em", {})]
+
+
+def test_a_ownership_pledge_market_detail_fetch_filters_after_full_response_validation():
+    fake = FakeAKShare()
+    request = _request(
+        DataCategory.OWNERSHIP_PLEDGE,
+        "SH600000",
+        {"view": "market_pledge_detail"},
+    )
+
+    record = _provider(fake).fetch(request)
+    fixture = _fixture("a_ownership_pledge_market_detail.json")
+
+    assert record.raw_payload == fixture[:2]
+    assert fake.calls == [("stock_gpzy_pledge_ratio_detail_em", {})]
+    assert record.response_metadata["endpoint"] == (
+        "stock_gpzy_pledge_ratio_detail_em"
+    )
+    assert record.response_metadata["market"] == "A"
+    assert record.response_metadata["listing_code"] == "600000"
+    assert record.response_metadata["ownership_pledge_view"] == "market_pledge_detail"
+    assert record.response_metadata["market_scope"] == "all_a_share_listings"
+    assert record.response_metadata["snapshot_scope"] == (
+        "current_published_important_shareholder_pledge_detail"
+    )
+    assert record.response_metadata["listing_scoped_request"] is False
+    assert record.response_metadata["row_filtering"] == "provider"
+    assert record.response_metadata["upstream_row_count"] == 3
+    assert record.response_metadata["entity_row_count"] == 2
+    assert record.response_metadata["entity_rows_selected"] is True
+    assert record.response_metadata["field_count"] == 15
+    assert record.response_metadata["source_field_order"] == list(fixture[0])
+    assert record.response_metadata["sequence_ordering"] == "strictly_ascending"
+    assert record.response_metadata["announcement_date_ordering"] == "non_increasing"
+    assert record.response_metadata["non_negative_fields"] == [
+        "占总股本比例",
+        "占所持股份比例",
+        "最新价",
+        "质押日收盘价",
+        "质押股份数量",
+        "预估平仓线",
+    ]
+    assert record.response_metadata["percent_fields"] == [
+        "占总股本比例",
+        "占所持股份比例",
+    ]
+    assert record.response_metadata["percent_bounds"] == [0, 100]
+    assert record.response_metadata["nullable_fields"] == [
+        "质押股份数量",
+        "占所持股份比例",
+        "占总股本比例",
+        "最新价",
+        "质押日收盘价",
+        "预估平仓线",
+        "质押结束日期",
+    ]
+    assert record.response_metadata["documented_units"] == {
+        "质押股份数量": "shares",
+        "占所持股份比例": "percent",
+        "占总股本比例": "percent",
+        "最新价": "CNY_per_share",
+        "质押日收盘价": "CNY_per_share",
+        "预估平仓线": "CNY_per_share",
+    }
+    assert record.response_metadata["upstream_report_name"] == "RPTA_APP_ACCUMDETAILS"
+    assert record.response_metadata["upstream_page_size"] == 500
+    assert record.response_metadata["pagination"] == "all_pages"
+    assert record.response_metadata["upstream_sort_column"] == "NOTICE_DATE"
+    assert record.response_metadata["upstream_sort_direction"] == "descending"
+    assert record.response_metadata["announcement_date_start"] == "2024-12-17"
+    assert record.response_metadata["announcement_date_end"] == "2024-12-20"
+    assert record.response_metadata["pledge_start_date_start"] == "2024-12-15"
+    assert record.response_metadata["pledge_start_date_end"] == "2024-12-18"
+    assert record.response_metadata["pledge_end_date_start"] == "2025-06-15"
+    assert record.response_metadata["pledge_end_date_end"] == "2025-12-17"
+    assert record.source_uri == "https://data.eastmoney.com/gpzy/pledgeDetail.aspx"
+
+
+def test_ownership_pledge_market_detail_request_requires_explicit_view_and_a_share():
+    fake = FakeAKShare()
+    provider = _provider(fake)
+
+    with pytest.raises(ProviderRequestError, match="unsupported AKShare ownership-pledge"):
+        provider.fetch(
+            _request(
+                DataCategory.OWNERSHIP_PLEDGE,
+                "SH600000",
+                {"view": "market_pledge_detail", "date": "20241220"},
+            )
+        )
+    with pytest.raises(ProviderRequestError, match="unsupported AKShare ownership-pledge"):
+        provider.fetch(
+            _request(
+                DataCategory.OWNERSHIP_PLEDGE,
+                "SH600000",
+                {"view": "other"},
+            )
+        )
+    with pytest.raises(ProviderRequestError, match="requires date"):
+        provider.fetch(
+            _request(DataCategory.OWNERSHIP_PLEDGE, "SH600000")
+        )
+    with pytest.raises(ProviderRequestError):
+        provider.fetch(
+            _request(
+                DataCategory.OWNERSHIP_PLEDGE,
+                "HK00700",
+                {"view": "market_pledge_detail"},
+            )
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("missing_field", "missing field.*预估平仓线"),
+        ("extra_field", "contains unsupported field"),
+        ("reordered_fields", "field order"),
+        ("invalid_sequence", "序号.*positive"),
+        ("invalid_code", "股票代码.*six-digit"),
+        ("invalid_numeric", "最新价.*numeric"),
+        ("negative_value", "质押股份数量.*non-negative"),
+        ("invalid_percent", "占所持股份比例.*between 0 and 100"),
+        ("invalid_date", "公告日期.*ISO date"),
+        ("start_after_announcement", "start date.*after the announcement"),
+        ("end_before_start", "end date.*before the pledge-start"),
+        ("date_order", "公告日期.*non-increasing"),
+        ("duplicate_identity", "duplicate.*identity"),
+    ],
+)
+def test_ownership_pledge_market_detail_response_validates_schema_boundaries_and_identity(
+    mutation: str,
+    match: str,
+):
+    payload = [dict(row) for row in _fixture("a_ownership_pledge_market_detail.json")]
+    if mutation == "missing_field":
+        payload[0].pop("预估平仓线")
+    elif mutation == "extra_field":
+        payload[0]["未记录字段"] = "not documented"
+    elif mutation == "reordered_fields":
+        payload[0] = {
+            key: payload[0][key] for key in reversed(payload[0])
+        }
+    elif mutation == "invalid_sequence":
+        payload[0]["序号"] = 0
+    elif mutation == "invalid_code":
+        payload[0]["股票代码"] = "60000"
+    elif mutation == "invalid_numeric":
+        payload[0]["最新价"] = "not-a-number"
+    elif mutation == "negative_value":
+        payload[0]["质押股份数量"] = -1.0
+    elif mutation == "invalid_percent":
+        payload[0]["占所持股份比例"] = 100.1
+    elif mutation == "invalid_date":
+        payload[0]["公告日期"] = "2024/12/20"
+    elif mutation == "start_after_announcement":
+        payload[0]["质押开始日期"] = "2025-01-01"
+    elif mutation == "end_before_start":
+        payload[0]["质押结束日期"] = "2024-12-17"
+    elif mutation == "date_order":
+        payload[1]["公告日期"] = "2024-12-21"
+    else:
+        payload[1] = dict(payload[0])
+        payload[1]["序号"] = 2
+
+    class InvalidMarketDetail(FakeAKShare):
+        def stock_gpzy_pledge_ratio_detail_em(self):
+            return self._return("stock_gpzy_pledge_ratio_detail_em", payload)
+
+    with pytest.raises(ProviderResponseError, match=match):
+        _provider(InvalidMarketDetail()).fetch(
+            _request(
+                DataCategory.OWNERSHIP_PLEDGE,
+                "SH600000",
+                {"view": "market_pledge_detail"},
+            )
+        )
+
+
+def test_ownership_pledge_market_detail_with_no_matching_listing_keeps_full_response_metadata():
+    class NoMatchingMarketDetail(FakeAKShare):
+        def stock_gpzy_pledge_ratio_detail_em(self):
+            row = next(
+                row
+                for row in _fixture("a_ownership_pledge_market_detail.json")
+                if row["股票代码"] == "000001"
+            )
+            row = dict(row)
+            row["序号"] = 1
+            return self._return("stock_gpzy_pledge_ratio_detail_em", [row])
+
+    record = _provider(NoMatchingMarketDetail()).fetch(
+        _request(
+            DataCategory.OWNERSHIP_PLEDGE,
+            "SH600000",
+            {"view": "market_pledge_detail"},
+        )
+    )
+
+    assert record.raw_payload == []
+    assert record.response_metadata["upstream_row_count"] == 1
+    assert record.response_metadata["entity_row_count"] == 0
+    assert record.response_metadata["announcement_date_start"] == "2024-12-17"
+    assert record.response_metadata["announcement_date_end"] == "2024-12-17"
+
+
+def test_ownership_pledge_market_detail_is_retained_as_raw_evidence_without_facts():
+    record = _provider().fetch(
+        _request(
+            DataCategory.OWNERSHIP_PLEDGE,
+            "SH600000",
+            {"view": "market_pledge_detail"},
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="ownership-pledge-market-detail-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == [
+        "AKSHARE_OWNERSHIP_PLEDGE_MARKET_DETAIL_RAW_ONLY"
+    ]
+    assert normalized.data_quality.critical_missing_fields == [
+        "governance_risk_level",
+    ]
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "important-shareholder pledge-detail" in normalized.data_quality.notes
+    assert "canonical share" in normalized.data_quality.notes
+    assert "governance fact" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "endpoint",
+        "source_uri",
+        "market",
+        "listing_code",
+        "view",
+        "market_scope",
+        "listing_scope",
+        "row_filtering",
+        "snapshot",
+        "date_binding",
+        "code_field",
+        "sequence_field",
+        "sequence_ordering",
+        "announcement_ordering",
+        "date_fields",
+        "value_fields",
+        "non_negative_fields",
+        "percent_fields",
+        "percent_bounds",
+        "integer_fields",
+        "text_fields",
+        "field_types",
+        "nullable_fields",
+        "identity_fields",
+        "field_count",
+        "source_order",
+        "units",
+        "undocumented_units",
+        "report_name",
+        "page_size",
+        "pagination",
+        "sort_column",
+        "sort_direction",
+        "filter",
+        "entity_count",
+        "selected",
+        "upstream_count",
+        "announcement_start",
+        "payload",
+        "listing_row",
+    ],
+)
+def test_ownership_pledge_market_detail_normalizer_rejects_replayed_scope_mismatches(
+    mutation: str,
+):
+    record = _provider().fetch(
+        _request(
+            DataCategory.OWNERSHIP_PLEDGE,
+            "SH600000",
+            {"view": "market_pledge_detail"},
+        )
+    )
+    payload = [dict(row) for row in record.raw_payload]
+    response_metadata = dict(record.response_metadata)
+    source_uri = record.source_uri
+    if mutation == "endpoint":
+        response_metadata["endpoint"] = "stock_gpzy_profile_em"
+    elif mutation == "source_uri":
+        source_uri = "https://example.invalid/pledge-detail"
+    elif mutation == "market":
+        response_metadata["market"] = "H"
+    elif mutation == "listing_code":
+        response_metadata["listing_code"] = "000001"
+    elif mutation == "view":
+        response_metadata["ownership_pledge_view"] = "market_profile"
+    elif mutation == "market_scope":
+        response_metadata["market_scope"] = "requested_listing"
+    elif mutation == "listing_scope":
+        response_metadata["listing_scoped_request"] = True
+    elif mutation == "row_filtering":
+        response_metadata["row_filtering"] = "none"
+    elif mutation == "snapshot":
+        response_metadata["snapshot_scope"] = "current_market_profile"
+    elif mutation == "date_binding":
+        response_metadata["date_binding"] = "retrieval_only"
+    elif mutation == "code_field":
+        response_metadata["code_field"] = "证券代码"
+    elif mutation == "sequence_field":
+        response_metadata["sequence_field"] = "排名"
+    elif mutation == "sequence_ordering":
+        response_metadata["sequence_ordering"] = "provider_order"
+    elif mutation == "announcement_ordering":
+        response_metadata["announcement_date_ordering"] = "ascending"
+    elif mutation == "date_fields":
+        response_metadata["date_fields"] = ["公告日期"]
+    elif mutation == "value_fields":
+        response_metadata["value_fields"] = ["最新价"]
+    elif mutation == "non_negative_fields":
+        response_metadata["non_negative_fields"] = []
+    elif mutation == "percent_fields":
+        response_metadata["percent_fields"] = ["最新价"]
+    elif mutation == "percent_bounds":
+        response_metadata["percent_bounds"] = [0, 1]
+    elif mutation == "integer_fields":
+        response_metadata["integer_fields"] = []
+    elif mutation == "text_fields":
+        response_metadata["text_fields"] = ["股票代码"]
+    elif mutation == "field_types":
+        response_metadata["field_types"] = {"序号": "number"}
+    elif mutation == "nullable_fields":
+        response_metadata["nullable_fields"] = []
+    elif mutation == "identity_fields":
+        response_metadata["identity_fields"] = ["股票代码"]
+    elif mutation == "field_count":
+        response_metadata["field_count"] = 14
+    elif mutation == "source_order":
+        response_metadata["source_field_order"] = list(reversed(payload[0]))
+    elif mutation == "units":
+        response_metadata["documented_units"] = {"最新价": "percent"}
+    elif mutation == "undocumented_units":
+        response_metadata["undocumented_numeric_units"] = {"最新价": "unknown"}
+    elif mutation == "report_name":
+        response_metadata["upstream_report_name"] = "OTHER_REPORT"
+    elif mutation == "page_size":
+        response_metadata["upstream_page_size"] = 100
+    elif mutation == "pagination":
+        response_metadata["pagination"] = "first_page_only"
+    elif mutation == "sort_column":
+        response_metadata["upstream_sort_column"] = "NOTICE_TIME"
+    elif mutation == "sort_direction":
+        response_metadata["upstream_sort_direction"] = "ascending"
+    elif mutation == "filter":
+        response_metadata["upstream_filter"] = "SECURITY_CODE=600000"
+    elif mutation == "entity_count":
+        response_metadata["entity_row_count"] = 1
+    elif mutation == "selected":
+        response_metadata["entity_rows_selected"] = False
+    elif mutation == "upstream_count":
+        response_metadata["upstream_row_count"] = 1
+    elif mutation == "announcement_start":
+        response_metadata["announcement_date_start"] = "2024-12-20"
+    elif mutation == "payload":
+        payload[0]["最新价"] = {"not": "numeric"}
+    else:
+        payload[0]["股票代码"] = "000001"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=source_uri,
+        response_metadata=response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match="market-detail"):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-ownership-pledge-market-detail",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_ownership_pledge_market_detail_cache_replay_does_not_call_upstream(
+    tmp_path: Path,
+):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.OWNERSHIP_PLEDGE,
+        "SH600000",
+        {"view": "market_pledge_detail"},
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [("stock_gpzy_pledge_ratio_detail_em", {})]
 
 
 def test_insider_share_change_fetch_uses_listing_scoped_sse_endpoint():

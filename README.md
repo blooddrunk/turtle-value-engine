@@ -1072,6 +1072,22 @@ normalizer emits
 creating a canonical cash-flow, return, governance, valuation or market fact.
 No calculation, gate, pipeline, CLI or input-loader contract changes.
 
+Phase 3.03 adds the next distinct official A-share Eastmoney pledge endpoint,
+`stock_gpzy_pledge_ratio_detail_em`, under `OWNERSHIP_PLEDGE` with explicit
+`view=market_pledge_detail` and no upstream arguments. The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_gpzy_em.py)
+define a full-universe important-shareholder pledge-detail response with 15
+source-shaped fields, 500-row pagination and descending announcement-date
+ordering. The provider validates exact field order, six-digit identity,
+sequence/date boundaries, duplicate pledge identity, finite non-negative
+numeric values and explicit shares/percent/CNY-per-share units before filtering
+to the requested A-share listing, and records source order, nullability, date
+bounds and pagination for replay. The normalizer emits
+`AKSHARE_OWNERSHIP_PLEDGE_MARKET_DETAIL_RAW_ONLY`; holder, counterparty,
+quantity, ratio, price, status and event-date context remain raw evidence and
+do not become canonical share, cash, debt-equivalent or governance facts. No
+calculation, gate, pipeline, CLI or input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

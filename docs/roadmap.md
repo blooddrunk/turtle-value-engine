@@ -2601,6 +2601,41 @@ replay. No calculation, gate, pipeline, CLI or input-loader contract changes.
 This numbered 3.02 increment remains structured acquisition; the top-level
 Phase 3 filing/evidence deliverables below are still unimplemented.
 
+### Phase 3.03 — A-share Eastmoney important-shareholder pledge-detail raw acquisition contract (COMPLETE)
+
+The mapping review now covers the next distinct documented AKShare Eastmoney
+`stock_gpzy_pledge_ratio_detail_em` endpoint under the existing
+`OWNERSHIP_PLEDGE` category with explicit `view=market_pledge_detail` and no
+upstream arguments. The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_gpzy_em.py)
+define a full A-share response backed by `RPTA_APP_ACCUMDETAILS`, fetched in
+500-row pages ordered by descending `NOTICE_DATE`, with the exact 15-field
+source-shaped order `序号`, `股票代码`, `股票简称`, `股东名称`, `质押股份数量`,
+`占所持股份比例`, `占总股本比例`, `质押机构`, `最新价`, `质押日收盘价`,
+`预估平仓线`, `质押开始日期`, `质押结束日期`, `状态`, `公告日期`.
+
+The provider validates the complete response before filtering it to the
+requested A-share listing. It enforces exact source field order, six-digit
+code/text identity, one-based source sequence, finite non-negative numeric
+values, 0–100 percent ratios, explicit nullability, ISO date boundaries,
+non-increasing announcement dates and duplicate pledge identity. It records
+field types, source order, shares/percent/CNY-per-share units, date bounds,
+page size, all-page pagination, sort order and full/selected counts for replay.
+The fixture freezes three source-shaped rows across two listings, including a
+nullable active pledge end date and a future scheduled end date.
+
+The normalizer emits
+`AKSHARE_OWNERSHIP_PLEDGE_MARKET_DETAIL_RAW_ONLY`, leaves
+`governance_risk_level` critically missing and creates no canonical share,
+cash, debt-equivalent or governance fact: holder, counterparty, quantity,
+ratio, price, status and event-date context remain raw evidence. Tests cover
+explicit view/A-share/no-argument routing, exact schema/order/types, date and
+numeric boundaries, duplicate identity, provider filtering, no-match metadata,
+raw-only normalization, replay metadata tampering and offline cache replay.
+No calculation, gate, pipeline, CLI or input-loader contract changes. This
+numbered 3.03 increment remains structured acquisition; the top-level Phase 3
+filing/evidence deliverables below are still unimplemented.
+
 ### Future structured-provider deliverables
 
 ```text
@@ -2610,7 +2645,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–3.02 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–3.03 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -2815,7 +2850,7 @@ This is the project's definition of safe “self-evolution.”
 # Current milestone
 
 Phase 2 remains active for structured-provider coverage. The numbered Phase
-3.02 increment is also acquisition-only; the top-level Phase 3 filing/evidence
+3.03 increment is also acquisition-only; the top-level Phase 3 filing/evidence
 layer remains unimplemented. Phase 1 remains frozen: changes to formulas,
 hard-gate semantics, schemas or `strict-v1` thresholds require a separately
 reviewed, versioned change.
@@ -2885,6 +2920,15 @@ boundary, two date fields, institution/reception identity context, documented
 percentage unit, undocumented price unit, exact sequence checks and replay
 scope remain explicit metadata. The raw-only normalizer flag creates no issuer
 cash-flow, shareholder-return, governance, valuation or canonical market fact.
+Phase 3.03 adds the documented A-share Eastmoney
+`stock_gpzy_pledge_ratio_detail_em` important-shareholder pledge-detail view
+under `OWNERSHIP_PLEDGE`. Its explicit `market_pledge_detail` view and
+no-argument full-universe response are validated against the exact 15-field
+source order before provider filtering; 500-row all-page pagination,
+descending announcement ordering, shares/percent/CNY-per-share units, explicit
+nullability, pledge-date boundaries, duplicate identity and replay metadata
+remain explicit. The raw-only normalizer flag creates no canonical share,
+cash, debt-equivalent or governance fact.
 Phase 2.75 completes the next documented structured-data boundary by adding
 the A-share `stock_gpzy_profile_em` market-wide historical ownership-pledge
 view. Its no-argument eight-field response is validated as an ascending raw

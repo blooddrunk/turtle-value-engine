@@ -22,8 +22,9 @@ goodwill-detail,
 impairment-forecast and market-profile raw slices,
 the SSE/SZSE/BSE margin-detail raw slices, the A-share individual ownership-pledge
 detail view, the A-share CNINFO equity-mortgage view, the A-share Eastmoney
-ownership-pledge market-profile view, A-share company-litigation raw slice and
-A-share Eastmoney individual-info raw slice.
+ownership-pledge market-profile and important-shareholder pledge-detail views,
+A-share company-litigation raw slice and A-share Eastmoney individual-info raw
+slice.
 The A-share Eastmoney and CNINFO management-holding raw slices and the
 Eastmoney executive/shareholder-change raw slice are also available. The A-share
 Eastmoney individual-fund-flow, market-participation-desire,
@@ -100,9 +101,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "102"
+AKSHARE_ADAPTER_VERSION = "103"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "103"
+AKSHARE_MAPPING_VERSION = "104"
 
 
 class ListingMarket(StrEnum):
@@ -252,6 +253,7 @@ _SOURCE_URIS = {
     "stock_gpzy_pledge_ratio_em": "https://data.eastmoney.com/gpzy/pledgeRatio.aspx",
     "stock_gpzy_individual_pledge_ratio_detail_em": "https://data.eastmoney.com/gpzy/detail/{symbol}.html",
     "stock_gpzy_profile_em": "https://data.eastmoney.com/gpzy/marketProfile.aspx",
+    "stock_gpzy_pledge_ratio_detail_em": "https://data.eastmoney.com/gpzy/pledgeDetail.aspx",
     "stock_cg_equity_mortgage_cninfo": "https://webapi.cninfo.com.cn/#/thematicStatistics",
     "stock_cg_guarantee_cninfo": "https://webapi.cninfo.com.cn/#/thematicStatistics",
     "stock_cg_lawsuit_cninfo": "https://webapi.cninfo.com.cn/#/thematicStatistics",
@@ -1833,6 +1835,8 @@ _LITIGATION_DEFAULT_END_DATE = "20210927"
 _OWNERSHIP_PLEDGE_PARAMETER_NAMES = frozenset({"date"})
 _OWNERSHIP_PLEDGE_MARKET_PROFILE_PARAMETER_NAMES = frozenset({"view"})
 _OWNERSHIP_PLEDGE_MARKET_PROFILE_VIEW = "market_profile"
+_OWNERSHIP_PLEDGE_MARKET_DETAIL_PARAMETER_NAMES = frozenset({"view"})
+_OWNERSHIP_PLEDGE_MARKET_DETAIL_VIEW = "market_pledge_detail"
 _OWNERSHIP_PLEDGE_DETAIL_PARAMETER_NAMES = frozenset({"view"})
 _OWNERSHIP_PLEDGE_DETAIL_VIEW = "individual_pledge_detail"
 _OWNERSHIP_PLEDGE_EQUITY_MORTGAGE_PARAMETER_NAMES = frozenset({"date", "view"})
@@ -1898,6 +1902,95 @@ _OWNERSHIP_PLEDGE_MARKET_PROFILE_NONNEGATIVE_FIELDS = frozenset(
         "质押总市值",
         "沪深300指数",
     }
+)
+_OWNERSHIP_PLEDGE_MARKET_DETAIL_FIELDS = (
+    "序号",
+    "股票代码",
+    "股票简称",
+    "股东名称",
+    "质押股份数量",
+    "占所持股份比例",
+    "占总股本比例",
+    "质押机构",
+    "最新价",
+    "质押日收盘价",
+    "预估平仓线",
+    "质押开始日期",
+    "质押结束日期",
+    "状态",
+    "公告日期",
+)
+_OWNERSHIP_PLEDGE_MARKET_DETAIL_TEXT_FIELDS = (
+    "股票代码",
+    "股票简称",
+    "股东名称",
+    "质押机构",
+    "状态",
+)
+_OWNERSHIP_PLEDGE_MARKET_DETAIL_NUMERIC_FIELDS = (
+    "质押股份数量",
+    "占所持股份比例",
+    "占总股本比例",
+    "最新价",
+    "质押日收盘价",
+    "预估平仓线",
+)
+_OWNERSHIP_PLEDGE_MARKET_DETAIL_INTEGER_FIELDS = frozenset({"序号"})
+_OWNERSHIP_PLEDGE_MARKET_DETAIL_NONNEGATIVE_FIELDS = frozenset(
+    _OWNERSHIP_PLEDGE_MARKET_DETAIL_NUMERIC_FIELDS
+)
+_OWNERSHIP_PLEDGE_MARKET_DETAIL_PERCENT_FIELDS = frozenset(
+    {"占所持股份比例", "占总股本比例"}
+)
+_OWNERSHIP_PLEDGE_MARKET_DETAIL_DATE_FIELDS = (
+    "质押开始日期",
+    "质押结束日期",
+    "公告日期",
+)
+_OWNERSHIP_PLEDGE_MARKET_DETAIL_NULLABLE_FIELDS = (
+    *_OWNERSHIP_PLEDGE_MARKET_DETAIL_NUMERIC_FIELDS,
+    "质押结束日期",
+)
+_OWNERSHIP_PLEDGE_MARKET_DETAIL_IDENTITY_FIELDS = (
+    "股票代码",
+    "股东名称",
+    "质押机构",
+    "质押股份数量",
+    "质押开始日期",
+    "质押结束日期",
+    "公告日期",
+    "状态",
+)
+_OWNERSHIP_PLEDGE_MARKET_DETAIL_FIELD_TYPES = {
+    "序号": "integer",
+    "股票代码": "string",
+    "股票简称": "string",
+    "股东名称": "string",
+    "质押股份数量": "number",
+    "占所持股份比例": "number",
+    "占总股本比例": "number",
+    "质押机构": "string",
+    "最新价": "number",
+    "质押日收盘价": "number",
+    "预估平仓线": "number",
+    "质押开始日期": "date",
+    "质押结束日期": "date",
+    "状态": "string",
+    "公告日期": "date",
+}
+_OWNERSHIP_PLEDGE_MARKET_DETAIL_DOCUMENTED_UNITS = {
+    "质押股份数量": "shares",
+    "占所持股份比例": "percent",
+    "占总股本比例": "percent",
+    "最新价": "CNY_per_share",
+    "质押日收盘价": "CNY_per_share",
+    "预估平仓线": "CNY_per_share",
+}
+_OWNERSHIP_PLEDGE_MARKET_DETAIL_UNDOCUMENTED_NUMERIC_UNITS: dict[str, str] = {}
+_OWNERSHIP_PLEDGE_MARKET_DETAIL_DATE_BOUND_FIELDS = (
+    ("公告日期", "announcement_date"),
+    ("质押开始日期", "pledge_start_date"),
+    ("质押结束日期", "pledge_end_date"),
 )
 _INSIDER_SHARE_CHANGE_PARAMETER_NAMES = frozenset()
 _INSIDER_MANAGEMENT_DETAIL_PARAMETER_NAMES = frozenset({"view"})
@@ -4657,6 +4750,91 @@ class AKShareProvider(StructuredDataProvider):
                 else:
                     response_metadata["observation_start_date"] = None
                     response_metadata["observation_end_date"] = None
+            elif endpoint.name == "stock_gpzy_pledge_ratio_detail_em":
+                date_bounds = _validate_ownership_pledge_market_detail_provider_rows(
+                    rows,
+                    provider=self.identity,
+                    request=request,
+                )
+                selected = _select_listing_rows(
+                    rows,
+                    listing,
+                    provider=self.identity,
+                    request=request,
+                    row_label="ownership-pledge-market-detail",
+                )
+                payload = selected
+                response_metadata["upstream_row_count"] = len(rows)
+                response_metadata["entity_row_count"] = len(selected)
+                response_metadata["entity_rows_selected"] = True
+                response_metadata["listing_scoped_request"] = False
+                response_metadata["row_filtering"] = "provider"
+                response_metadata["ownership_pledge_view"] = (
+                    _OWNERSHIP_PLEDGE_MARKET_DETAIL_VIEW
+                )
+                response_metadata["market_scope"] = "all_a_share_listings"
+                response_metadata["snapshot_scope"] = (
+                    "current_published_important_shareholder_pledge_detail"
+                )
+                response_metadata["date_binding"] = "row_dates"
+                response_metadata["code_field"] = "股票代码"
+                response_metadata["sequence_field"] = "序号"
+                response_metadata["sequence_ordering"] = "strictly_ascending"
+                response_metadata["announcement_date_ordering"] = "non_increasing"
+                response_metadata["date_fields"] = list(
+                    _OWNERSHIP_PLEDGE_MARKET_DETAIL_DATE_FIELDS
+                )
+                response_metadata["value_fields"] = list(
+                    _OWNERSHIP_PLEDGE_MARKET_DETAIL_NUMERIC_FIELDS
+                )
+                response_metadata["non_negative_fields"] = sorted(
+                    _OWNERSHIP_PLEDGE_MARKET_DETAIL_NONNEGATIVE_FIELDS
+                )
+                response_metadata["percent_fields"] = sorted(
+                    _OWNERSHIP_PLEDGE_MARKET_DETAIL_PERCENT_FIELDS
+                )
+                response_metadata["percent_bounds"] = [0, 100]
+                response_metadata["integer_fields"] = list(
+                    _OWNERSHIP_PLEDGE_MARKET_DETAIL_INTEGER_FIELDS
+                )
+                response_metadata["text_fields"] = list(
+                    _OWNERSHIP_PLEDGE_MARKET_DETAIL_TEXT_FIELDS
+                )
+                response_metadata["field_types"] = dict(
+                    _OWNERSHIP_PLEDGE_MARKET_DETAIL_FIELD_TYPES
+                )
+                response_metadata["nullable_fields"] = list(
+                    _OWNERSHIP_PLEDGE_MARKET_DETAIL_NULLABLE_FIELDS
+                )
+                response_metadata["identity_fields"] = list(
+                    _OWNERSHIP_PLEDGE_MARKET_DETAIL_IDENTITY_FIELDS
+                )
+                response_metadata["field_count"] = len(
+                    _OWNERSHIP_PLEDGE_MARKET_DETAIL_FIELDS
+                )
+                response_metadata["source_field_order"] = list(
+                    _OWNERSHIP_PLEDGE_MARKET_DETAIL_FIELDS
+                )
+                response_metadata["documented_units"] = dict(
+                    _OWNERSHIP_PLEDGE_MARKET_DETAIL_DOCUMENTED_UNITS
+                )
+                response_metadata["undocumented_numeric_units"] = dict(
+                    _OWNERSHIP_PLEDGE_MARKET_DETAIL_UNDOCUMENTED_NUMERIC_UNITS
+                )
+                response_metadata["upstream_report_name"] = "RPTA_APP_ACCUMDETAILS"
+                response_metadata["upstream_page_size"] = 500
+                response_metadata["pagination"] = "all_pages"
+                response_metadata["upstream_sort_column"] = "NOTICE_DATE"
+                response_metadata["upstream_sort_direction"] = "descending"
+                response_metadata["upstream_filter"] = None
+                for field, prefix in _OWNERSHIP_PLEDGE_MARKET_DETAIL_DATE_BOUND_FIELDS:
+                    start_date, end_date = date_bounds[field]
+                    response_metadata[f"{prefix}_start"] = (
+                        start_date.isoformat() if start_date else None
+                    )
+                    response_metadata[f"{prefix}_end"] = (
+                        end_date.isoformat() if end_date else None
+                    )
             elif endpoint.name == "stock_gpzy_individual_pledge_ratio_detail_em":
                 _validate_ownership_pledge_detail_provider_rows(
                     rows,
@@ -5477,6 +5655,10 @@ class AKShareProvider(StructuredDataProvider):
             ownership_pledge_market_profile_requested=(
                 request.parameters.get("view")
                 == _OWNERSHIP_PLEDGE_MARKET_PROFILE_VIEW
+            ),
+            ownership_pledge_market_detail_requested=(
+                request.parameters.get("view")
+                == _OWNERSHIP_PLEDGE_MARKET_DETAIL_VIEW
             ),
             ownership_pledge_detail_requested=(
                 request.parameters.get("view") == _OWNERSHIP_PLEDGE_DETAIL_VIEW
@@ -7069,6 +7251,15 @@ class AKShareNormalizer:
                         "AKShare ownership-pledge market-profile record must come from "
                         "stock_gpzy_profile_em"
                     )
+                if (
+                    record.request.parameters.get("view")
+                    == _OWNERSHIP_PLEDGE_MARKET_DETAIL_VIEW
+                    and endpoint_name != "stock_gpzy_pledge_ratio_detail_em"
+                ):
+                    raise ProviderNormalizationError(
+                        "AKShare ownership-pledge market-detail record must come "
+                        "from stock_gpzy_pledge_ratio_detail_em"
+                    )
                 if endpoint_name == "stock_gpzy_profile_em":
                     _validate_ownership_pledge_market_profile_normalizer_scope(
                         record,
@@ -7077,6 +7268,15 @@ class AKShareNormalizer:
                     )
                     normalizer_flags.add(
                         "AKSHARE_OWNERSHIP_PLEDGE_PROFILE_RAW_ONLY"
+                    )
+                elif endpoint_name == "stock_gpzy_pledge_ratio_detail_em":
+                    _validate_ownership_pledge_market_detail_normalizer_scope(
+                        record,
+                        listing,
+                        rows,
+                    )
+                    normalizer_flags.add(
+                        "AKSHARE_OWNERSHIP_PLEDGE_MARKET_DETAIL_RAW_ONLY"
                     )
                 elif endpoint_name == "stock_gpzy_individual_pledge_ratio_detail_em":
                     try:
@@ -7121,6 +7321,7 @@ class AKShareNormalizer:
                     raise ProviderNormalizationError(
                         "AKShare ownership-pledge record must come from "
                         "stock_gpzy_profile_em, "
+                        "stock_gpzy_pledge_ratio_detail_em, "
                         "stock_gpzy_pledge_ratio_em or "
                         "stock_gpzy_individual_pledge_ratio_detail_em or "
                         "stock_cg_equity_mortgage_cninfo"
@@ -7547,6 +7748,13 @@ class AKShareNormalizer:
                 "identity, and its ratio scaling, aggregate counts and index context "
                 "do not establish a listing-level governance, cash, debt-equivalent "
                 "or share fact."
+            )
+        if "AKSHARE_OWNERSHIP_PLEDGE_MARKET_DETAIL_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented A-share Eastmoney important-shareholder pledge-detail "
+                "response is retained as raw evidence only: holder, counterparty, "
+                "quantities, ratios, prices, status and event dates do not establish "
+                "a canonical share, cash, debt-equivalent or governance fact."
             )
         if "AKSHARE_INDIVIDUAL_PLEDGE_DETAIL_RAW_ONLY" in normalizer_flags:
             notes += (
@@ -8266,6 +8474,7 @@ def _endpoint_candidates(
     goodwill_impairment_market_profile_requested: bool = False,
     goodwill_impairment_detail_requested: bool = False,
     ownership_pledge_market_profile_requested: bool = False,
+    ownership_pledge_market_detail_requested: bool = False,
     ownership_pledge_detail_requested: bool = False,
     ownership_pledge_equity_mortgage_requested: bool = False,
     dividend_snapshot_date_requested: bool = False,
@@ -8599,6 +8808,8 @@ def _endpoint_candidates(
         if market is ListingMarket.A:
             if ownership_pledge_market_profile_requested:
                 return ("stock_gpzy_profile_em",)
+            if ownership_pledge_market_detail_requested:
+                return ("stock_gpzy_pledge_ratio_detail_em",)
             if ownership_pledge_detail_requested:
                 return ("stock_gpzy_individual_pledge_ratio_detail_em",)
             if ownership_pledge_equity_mortgage_requested:
@@ -9727,6 +9938,32 @@ def _ownership_pledge_kwargs(
     listing: _ListingRef,
     request: ProviderRequest,
 ) -> dict[str, object]:
+    if endpoint_name == "stock_gpzy_pledge_ratio_detail_em":
+        if listing.market is not ListingMarket.A:
+            raise ProviderRequestError(
+                "the AKShare ownership-pledge market-detail endpoint supports "
+                "A-share listings only",
+                request=request,
+                retryable=False,
+            )
+        unknown = sorted(
+            set(request.parameters) - _OWNERSHIP_PLEDGE_MARKET_DETAIL_PARAMETER_NAMES
+        )
+        if unknown:
+            raise ProviderRequestError(
+                "unsupported AKShare ownership-pledge market-detail parameter(s): "
+                + ", ".join(unknown),
+                request=request,
+                retryable=False,
+            )
+        if request.parameters.get("view") != _OWNERSHIP_PLEDGE_MARKET_DETAIL_VIEW:
+            raise ProviderRequestError(
+                "ownership-pledge market-detail view must be "
+                f"{_OWNERSHIP_PLEDGE_MARKET_DETAIL_VIEW!r}",
+                request=request,
+                retryable=False,
+            )
+        return {}
     if endpoint_name == "stock_gpzy_profile_em":
         if listing.market is not ListingMarket.A:
             raise ProviderRequestError(
@@ -22340,6 +22577,179 @@ def _ownership_pledge_market_profile_validation_message(
     return None, observation_dates
 
 
+def _ownership_pledge_market_detail_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    require_source_sequence: bool,
+) -> tuple[str | None, dict[str, tuple[date | None, date | None]]]:
+    """Return strict-schema errors for the full pledge-detail response."""
+
+    date_values: dict[str, list[date]] = {
+        field: [] for field in _OWNERSHIP_PLEDGE_MARKET_DETAIL_DATE_FIELDS
+    }
+    seen_identities: set[tuple[JSONValue, ...]] = set()
+    previous_sequence: int | None = None
+    previous_announcement: date | None = None
+
+    def failure(message: str) -> tuple[str, dict[str, tuple[date | None, date | None]]]:
+        return message, {}
+
+    for index, row in enumerate(rows):
+        missing = [field for field in _OWNERSHIP_PLEDGE_MARKET_DETAIL_FIELDS if field not in row]
+        unexpected = [
+            field for field in row if field not in _OWNERSHIP_PLEDGE_MARKET_DETAIL_FIELDS
+        ]
+        if missing:
+            return failure(
+                "ownership-pledge market-detail row "
+                f"{index} is missing field(s): {', '.join(missing)}"
+            )
+        if unexpected:
+            return failure(
+                "ownership-pledge market-detail row "
+                f"{index} contains unsupported field(s): {', '.join(unexpected)}"
+            )
+        if tuple(row) != _OWNERSHIP_PLEDGE_MARKET_DETAIL_FIELDS:
+            return failure(
+                "ownership-pledge market-detail row "
+                f"{index} field order must match the documented source order"
+            )
+
+        sequence = row["序号"]
+        if isinstance(sequence, bool) or not isinstance(sequence, int):
+            return failure(
+                f"ownership-pledge market-detail row {index} field '序号' "
+                "must be an integer"
+            )
+        if sequence <= 0:
+            return failure(
+                f"ownership-pledge market-detail row {index} field '序号' "
+                "must be positive"
+            )
+        if require_source_sequence and sequence != index + 1:
+            return failure(
+                "ownership-pledge market-detail response 序号 values must be "
+                "generated as one-based row positions"
+            )
+        if previous_sequence is not None and sequence <= previous_sequence:
+            return failure(
+                "ownership-pledge market-detail response 序号 values must be "
+                "strictly ascending"
+            )
+        previous_sequence = sequence
+
+        for field in _OWNERSHIP_PLEDGE_MARKET_DETAIL_TEXT_FIELDS:
+            value = row[field]
+            if not isinstance(value, str) or not value.strip():
+                return failure(
+                    f"ownership-pledge market-detail row {index} field {field!r} "
+                    "must be a non-empty string"
+                )
+        if re.fullmatch(r"\d{6}", row["股票代码"]) is None:
+            return failure(
+                f"ownership-pledge market-detail row {index} field '股票代码' "
+                "must be a six-digit string"
+            )
+
+        for field in _OWNERSHIP_PLEDGE_MARKET_DETAIL_NUMERIC_FIELDS:
+            value = row[field]
+            if value is None:
+                if field not in _OWNERSHIP_PLEDGE_MARKET_DETAIL_NULLABLE_FIELDS:
+                    return failure(
+                        f"ownership-pledge market-detail row {index} field {field!r} "
+                        "must not be null"
+                    )
+                continue
+            if isinstance(value, bool) or not isinstance(value, Real):
+                return failure(
+                    f"ownership-pledge market-detail row {index} field {field!r} "
+                    "must be numeric or null"
+                )
+            numeric = float(value)
+            if not math.isfinite(numeric):
+                return failure(
+                    f"ownership-pledge market-detail row {index} field {field!r} "
+                    "must be finite or null"
+                )
+            if numeric < 0:
+                return failure(
+                    f"ownership-pledge market-detail row {index} field {field!r} "
+                    "must be non-negative or null"
+                )
+            if field in _OWNERSHIP_PLEDGE_MARKET_DETAIL_PERCENT_FIELDS and numeric > 100:
+                return failure(
+                    f"ownership-pledge market-detail row {index} field {field!r} "
+                    "must be between 0 and 100 percent"
+                )
+
+        parsed_dates: dict[str, date | None] = {}
+        for field in _OWNERSHIP_PLEDGE_MARKET_DETAIL_DATE_FIELDS:
+            value = row[field]
+            if value is None and field in _OWNERSHIP_PLEDGE_MARKET_DETAIL_NULLABLE_FIELDS:
+                parsed_dates[field] = None
+                continue
+            if not isinstance(value, str) or re.fullmatch(r"\d{4}-\d{2}-\d{2}", value) is None:
+                return failure(
+                    f"ownership-pledge market-detail row {index} field {field!r} "
+                    "must be an ISO date or null"
+                )
+            try:
+                parsed = date.fromisoformat(value)
+            except ValueError:
+                return failure(
+                    f"ownership-pledge market-detail row {index} field {field!r} "
+                    "must be an ISO date or null"
+                )
+            parsed_dates[field] = parsed
+            date_values[field].append(parsed)
+
+        start_date = parsed_dates["质押开始日期"]
+        end_date = parsed_dates["质押结束日期"]
+        announcement_date = parsed_dates["公告日期"]
+        if start_date is None or announcement_date is None:
+            return failure(
+                "ownership-pledge market-detail pledge-start and announcement "
+                "dates must not be null"
+            )
+        if start_date > announcement_date:
+            return failure(
+                "ownership-pledge market-detail pledge-start date must not be "
+                "after the announcement date"
+            )
+        if end_date is not None and start_date > end_date:
+            return failure(
+                "ownership-pledge market-detail pledge-end date must not be "
+                "before the pledge-start date"
+            )
+        if (
+            previous_announcement is not None
+            and announcement_date > previous_announcement
+        ):
+            return failure(
+                "ownership-pledge market-detail 公告日期 values must be "
+                "non-increasing"
+            )
+        previous_announcement = announcement_date
+
+        identity = tuple(
+            row[field] for field in _OWNERSHIP_PLEDGE_MARKET_DETAIL_IDENTITY_FIELDS
+        )
+        if identity in seen_identities:
+            return failure(
+                "ownership-pledge market-detail response has a duplicate "
+                "important-shareholder pledge identity"
+            )
+        seen_identities.add(identity)
+
+    return None, {
+        field: (
+            min(values) if values else None,
+            max(values) if values else None,
+        )
+        for field, values in date_values.items()
+    }
+
+
 def _validate_ownership_pledge_market_profile_normalizer_scope(
     record: RawProviderRecord,
     listing: _ListingRef,
@@ -22431,6 +22841,190 @@ def _validate_ownership_pledge_market_profile_normalizer_scope(
             raise ProviderNormalizationError(
                 "AKShare ownership-pledge market-profile response metadata "
                 f"{name!r} does not match the requested replay scope"
+            )
+
+
+def _validate_ownership_pledge_market_detail_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> None:
+    """Validate replayed scope and rows for the market-wide pledge detail."""
+
+    if listing.market is not ListingMarket.A:
+        raise ProviderNormalizationError(
+            "AKShare ownership-pledge market-detail raw slice supports A-share "
+            "listings only"
+        )
+    if record.response_metadata.get("endpoint") != "stock_gpzy_pledge_ratio_detail_em":
+        raise ProviderNormalizationError(
+            "AKShare ownership-pledge market-detail record must come from "
+            "stock_gpzy_pledge_ratio_detail_em"
+        )
+    if record.source_uri != _SOURCE_URIS["stock_gpzy_pledge_ratio_detail_em"]:
+        raise ProviderNormalizationError(
+            "AKShare ownership-pledge market-detail source URI does not match "
+            "stock_gpzy_pledge_ratio_detail_em"
+        )
+    try:
+        upstream_kwargs = _ownership_pledge_kwargs(
+            "stock_gpzy_pledge_ratio_detail_em",
+            listing,
+            record.request,
+        )
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+    if upstream_kwargs:
+        raise ProviderNormalizationError(
+            "AKShare ownership-pledge market-detail endpoint must receive no "
+            "upstream arguments"
+        )
+
+    message, date_bounds = _ownership_pledge_market_detail_validation_message(
+        rows,
+        require_source_sequence=False,
+    )
+    if message is not None:
+        raise ProviderNormalizationError(message)
+
+    expected_metadata = {
+        "endpoint": "stock_gpzy_pledge_ratio_detail_em",
+        "market": ListingMarket.A.value,
+        "listing_code": listing.code,
+        "ownership_pledge_view": _OWNERSHIP_PLEDGE_MARKET_DETAIL_VIEW,
+        "market_scope": "all_a_share_listings",
+        "listing_scoped_request": False,
+        "row_filtering": "provider",
+        "snapshot_scope": "current_published_important_shareholder_pledge_detail",
+        "date_binding": "row_dates",
+        "code_field": "股票代码",
+        "sequence_field": "序号",
+        "sequence_ordering": "strictly_ascending",
+        "announcement_date_ordering": "non_increasing",
+        "date_fields": list(_OWNERSHIP_PLEDGE_MARKET_DETAIL_DATE_FIELDS),
+        "value_fields": list(_OWNERSHIP_PLEDGE_MARKET_DETAIL_NUMERIC_FIELDS),
+        "non_negative_fields": sorted(
+            _OWNERSHIP_PLEDGE_MARKET_DETAIL_NONNEGATIVE_FIELDS
+        ),
+        "percent_fields": sorted(_OWNERSHIP_PLEDGE_MARKET_DETAIL_PERCENT_FIELDS),
+        "percent_bounds": [0, 100],
+        "integer_fields": list(_OWNERSHIP_PLEDGE_MARKET_DETAIL_INTEGER_FIELDS),
+        "text_fields": list(_OWNERSHIP_PLEDGE_MARKET_DETAIL_TEXT_FIELDS),
+        "field_types": dict(_OWNERSHIP_PLEDGE_MARKET_DETAIL_FIELD_TYPES),
+        "nullable_fields": list(_OWNERSHIP_PLEDGE_MARKET_DETAIL_NULLABLE_FIELDS),
+        "identity_fields": list(_OWNERSHIP_PLEDGE_MARKET_DETAIL_IDENTITY_FIELDS),
+        "field_count": len(_OWNERSHIP_PLEDGE_MARKET_DETAIL_FIELDS),
+        "source_field_order": list(_OWNERSHIP_PLEDGE_MARKET_DETAIL_FIELDS),
+        "documented_units": dict(_OWNERSHIP_PLEDGE_MARKET_DETAIL_DOCUMENTED_UNITS),
+        "undocumented_numeric_units": dict(
+            _OWNERSHIP_PLEDGE_MARKET_DETAIL_UNDOCUMENTED_NUMERIC_UNITS
+        ),
+        "upstream_report_name": "RPTA_APP_ACCUMDETAILS",
+        "upstream_page_size": 500,
+        "pagination": "all_pages",
+        "upstream_sort_column": "NOTICE_DATE",
+        "upstream_sort_direction": "descending",
+        "upstream_filter": None,
+        "entity_rows_selected": True,
+        "entity_row_count": len(rows),
+    }
+    boolean_fields = {"listing_scoped_request", "entity_rows_selected"}
+    count_fields = {"field_count", "upstream_page_size", "entity_row_count"}
+    for name, expected in expected_metadata.items():
+        if name not in record.response_metadata:
+            matches = False
+        elif name in boolean_fields:
+            actual = record.response_metadata[name]
+            matches = isinstance(actual, bool) and actual is expected
+        elif name in count_fields:
+            actual = record.response_metadata[name]
+            matches = (
+                isinstance(actual, int)
+                and not isinstance(actual, bool)
+                and actual == expected
+            )
+        else:
+            matches = record.response_metadata[name] == expected
+        if not matches:
+            raise ProviderNormalizationError(
+                "AKShare ownership-pledge market-detail response metadata "
+                f"{name!r} does not match the requested replay scope"
+            )
+
+    upstream_row_count = record.response_metadata.get("upstream_row_count")
+    if (
+        not isinstance(upstream_row_count, int)
+        or isinstance(upstream_row_count, bool)
+        or upstream_row_count < len(rows)
+    ):
+        raise ProviderNormalizationError(
+            "AKShare ownership-pledge market-detail response metadata "
+            "'upstream_row_count' does not match the requested replay scope"
+        )
+
+    for field, prefix in _OWNERSHIP_PLEDGE_MARKET_DETAIL_DATE_BOUND_FIELDS:
+        actual_start_name = f"{prefix}_start"
+        actual_end_name = f"{prefix}_end"
+        if (
+            actual_start_name not in record.response_metadata
+            or actual_end_name not in record.response_metadata
+        ):
+            raise ProviderNormalizationError(
+                "AKShare ownership-pledge market-detail response metadata date "
+                f"bounds for {field!r} are incomplete"
+            )
+        actual_dates: list[date | None] = []
+        for name in (actual_start_name, actual_end_name):
+            raw_date = record.response_metadata[name]
+            if raw_date is None:
+                actual_dates.append(None)
+                continue
+            if (
+                not isinstance(raw_date, str)
+                or re.fullmatch(r"\d{4}-\d{2}-\d{2}", raw_date) is None
+            ):
+                raise ProviderNormalizationError(
+                    "AKShare ownership-pledge market-detail response metadata "
+                    f"{name!r} is not an ISO date or null"
+                )
+            try:
+                actual_dates.append(date.fromisoformat(raw_date))
+            except ValueError as exc:
+                raise ProviderNormalizationError(
+                    "AKShare ownership-pledge market-detail response metadata "
+                    f"{name!r} is not an ISO date or null"
+                ) from exc
+        actual_start, actual_end = actual_dates
+        if (
+            actual_start is not None
+            and actual_end is not None
+            and actual_start > actual_end
+        ):
+            raise ProviderNormalizationError(
+                "AKShare ownership-pledge market-detail response metadata date "
+                f"bounds for {field!r} are reversed"
+            )
+        selected_start, selected_end = date_bounds[field]
+        if selected_start is not None and (
+            actual_start is None or selected_start < actual_start
+        ):
+            raise ProviderNormalizationError(
+                "AKShare ownership-pledge market-detail response metadata date "
+                f"bounds for {field!r} exclude replayed rows"
+            )
+        if selected_end is not None and (
+            actual_end is None or selected_end > actual_end
+        ):
+            raise ProviderNormalizationError(
+                "AKShare ownership-pledge market-detail response metadata date "
+                f"bounds for {field!r} exclude replayed rows"
+            )
+
+    for row in rows:
+        if row["股票代码"] != listing.code:
+            raise ProviderNormalizationError(
+                f"ownership-pledge market-detail row entity {row['股票代码']!r} "
+                f"does not match requested listing {listing.canonical_id!r}"
             )
 
 
@@ -23479,6 +24073,27 @@ def _validate_ownership_pledge_market_profile_provider_rows(
             request=request,
         )
     return observation_dates
+
+
+def _validate_ownership_pledge_market_detail_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> dict[str, tuple[date | None, date | None]]:
+    """Validate the full important-shareholder pledge-detail universe."""
+
+    message, date_bounds = _ownership_pledge_market_detail_validation_message(
+        rows,
+        require_source_sequence=True,
+    )
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message}",
+            provider=provider,
+            request=request,
+        )
+    return date_bounds
 
 
 def _validate_ownership_pledge_detail_provider_rows(
