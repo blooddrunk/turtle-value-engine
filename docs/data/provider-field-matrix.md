@@ -1874,6 +1874,30 @@ the table is raw evidence only until its provider-defined periods, units and
 accounting scope are reconciled. The response remains outside the calculation,
 gate, pipeline, CLI and input-loader contracts.
 
+## Phase 3.26 A-share Eastmoney company-scale comparison raw snapshot
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_zh_comparison_em.py)
+document `stock_zh_scale_comparison_em` as a listing-scoped company-scale
+comparison row. The adapter exposes it only under `MARKET_ACTIVITY` with
+explicit `view=scale_comparison`; an A-share listing is converted to the
+exchange-prefixed six-digit upstream `symbol` expected by the wrapper.
+
+| Raw upstream item | Phase 3.26 treatment |
+| --- | --- |
+| `代码`, `简称` | Required wrapper text fields; the returned six-digit `代码` must match the requested A-share listing and exactly one row is retained. |
+| `总市值`, `流通市值`, `营业收入`, `净利润` | Nullable finite numeric company-scale values; the provider-defined units and periods are not documented sufficiently for canonical market, valuation or accounting facts, and signed values are preserved. |
+| `总市值排名`, `流通市值排名`, `营业收入排名`, `净利润排名` | Required positive integer provider ranks; each remains raw comparison metadata and is not converted into a canonical score. |
+| request `view=scale_comparison` | Explicit A-share-only listing-scoped routing. The Eastmoney JSON request freezes `RPT_PCF10_INDUSTRY_MARKET`, the official 17-column list, the dual listing filter (SECUCODE="<code>.<exchange>")(CORRE_SECUCODE="<code>.<exchange>"), `pageNumber=1`, `pageSize=5`, `sortTypes=-1`, `sortColumns=TOTAL_CAP`, `source=HSF10`, `client=PC` and the wrapper version parameter. Exact field order, one-row scope, upstream fields, dropped fields and replay metadata remain part of the raw contract. |
+
+The provider rejects unsupported views/parameters, non-A listings,
+missing/unexpected/reordered fields, wrong listing identity, non-finite or
+non-numeric metrics and non-positive/non-integer ranks. The normalizer emits
+`AKSHARE_SCALE_COMPARISON_RAW_ONLY` and creates no canonical market, valuation
+or accounting fact: the row is raw evidence only until its provider-defined
+units, periods and economic scope are reconciled. The response remains outside
+the calculation, gate, pipeline, CLI and input-loader contracts.
+
 ## Phase 2.92 SSE daily-deal overview raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)

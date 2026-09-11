@@ -3227,7 +3227,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–3.25 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–3.26 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -3608,6 +3608,29 @@ raw-only normalizer flag creates no canonical market, return, valuation,
 governance or accounting fact because the index/market-capitalization/GDP
 context has no listing/entity accounting scope. No calculation, gate, pipeline,
 CLI or input-loader contract changes.
+
+### Phase 3.26 — A-share Eastmoney company-scale comparison raw acquisition contract (COMPLETE)
+
+The mapping review now covers the documented A-share Eastmoney
+`stock_zh_scale_comparison_em` company-scale comparison endpoint under
+`MARKET_ACTIVITY` with explicit `view=scale_comparison` and the
+exchange-prefixed six-digit listing symbol expected by the wrapper. The
+[AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_zh_comparison_em.py)
+define the current 10-field single-listing output: two text identity fields,
+four nullable numeric scale metrics and four positive integer rank fields. The
+provider freezes the Eastmoney report/columns/filter/page/sort/source/client/
+version parameters, validates the exact wrapper schema and listing identity,
+and preserves the official row as raw evidence with replay metadata.
+
+The normalizer emits `AKSHARE_SCALE_COMPARISON_RAW_ONLY` and creates no
+canonical market, valuation or accounting fact because the provider-defined
+values are not reconciled to filing-backed periods, units or economic scope.
+Tests cover the official output schema, explicit view and A-share routing,
+derived upstream symbol/filter, nullable and signed metrics, positive rank
+boundaries, raw-only normalization, replay metadata tampering and offline
+cache replay. No calculation, gate, pipeline, CLI or input-loader contract
+changes.
 Phase 3.13 adds the documented A-share Legu
 `stock_a_ttm_lyr` PE history under `MARKET_ACTIVITY` with explicit
 `view=ttm_lyr` and no user-supplied arguments. Its token-backed JSON response is

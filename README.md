@@ -1438,6 +1438,22 @@ raw evidence and does not become a canonical profitability, growth, valuation,
 market, return, governance or accounting fact. No calculation, gate, pipeline,
 CLI or input-loader contract changes.
 
+Phase 3.26 adds the documented A-share Eastmoney
+`stock_zh_scale_comparison_em` company-scale comparison endpoint under
+`MARKET_ACTIVITY` with explicit `view=scale_comparison` and a derived
+exchange-prefixed six-digit listing symbol. The [AKShare stock-data
+documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and [official
+implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_zh_comparison_em.py)
+define the exact 10-field single-listing output: two text identity fields,
+four nullable numeric scale metrics and four positive integer rank fields. The
+provider freezes the Eastmoney report/columns, dual listing filter, single-page
+sort, source/client/version parameters and dropped fields, validates the
+listing identity and preserves the official row as raw structured evidence.
+The normalizer emits `AKSHARE_SCALE_COMPARISON_RAW_ONLY`; this
+provider-defined company-scale snapshot does not become a canonical market,
+valuation or accounting fact. No calculation, gate, pipeline, CLI or
+input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

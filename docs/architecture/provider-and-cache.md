@@ -771,7 +771,7 @@ The cache performs no network retries. The normalizer performs no provider
 retries. The deterministic pipeline performs no provider retries and should
 not be rerun as a substitute for resolving missing facts.
 
-## 12. Phase 2.2–3.25 AKShare adapter
+## 12. Phase 2.2–3.26 AKShare adapter
 
 The first concrete adapter is intentionally limited to read-only metadata,
 market observations, three documented financial-statement slices, raw-only
@@ -819,6 +819,7 @@ advertises exactly these capabilities:
 | `MARKET_ACTIVITY` (growth comparison) | `stock_zh_growth_comparison_em` (`view=growth_comparison`, A-share listing-scoped peer table) | — | industry-average/industry-median, ranked-peer and target growth-comparison rows retained as raw structured evidence only; no canonical growth or valuation fact |
 | `MARKET_ACTIVITY` (growth comparison) | — | `stock_hk_growth_comparison_em` (`view=growth_comparison_hk`, H-share listing-scoped single row) | H-share growth-comparison row retained as raw structured evidence only; no canonical growth or valuation fact |
 | `MARKET_ACTIVITY` (DuPont comparison) | `stock_zh_dupont_comparison_em` (`view=dupont_comparison`, A-share listing-scoped peer table) | — | industry-summary and ranked-comparison DuPont rows retained as raw structured evidence only; no canonical profitability or accounting fact |
+| `MARKET_ACTIVITY` (scale comparison) | `stock_zh_scale_comparison_em` (`view=scale_comparison`, A-share listing-scoped single row) | — | A-share company-scale row retained as raw structured evidence only; no canonical market, valuation or accounting fact |
 | `CAPITAL_FLOW` | `stock_individual_fund_flow` (A-share) | — | recent daily investor-flow rows as raw structured evidence only; no issuer cash-flow, liquidity or valuation fact |
 | `CASH_FLOW_STATEMENT` | `stock_cash_flow_sheet_by_report_em` (Sina fallback) | `stock_financial_hk_report_em` | explicit `reported_cfo` and `acquisition_cash` lines |
 | `INCOME_STATEMENT` | `stock_profit_sheet_by_report_em` (Sina fallback) | `stock_financial_hk_report_em` | explicit `parent_net_profit` and `consolidated_net_profit` lines |
@@ -2397,6 +2398,28 @@ only and create no canonical profitability, growth, valuation, market, return,
 governance or accounting fact. H-share requests and any calculation, gate,
 pipeline, CLI or input-loader use remain outside this slice.
 
+The A-share Eastmoney company-scale comparison slice is also acquisition-only.
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_zh_comparison_em.py)
+document `stock_zh_scale_comparison_em` as a single-listing company-scale row.
+The adapter exposes it only under `MARKET_ACTIVITY` with explicit
+`view=scale_comparison`; the requested A-share listing supplies the
+exchange-prefixed six-digit upstream `symbol`, and the wrapper derives the
+dual (`SECUCODE="<code>.<exchange>"`)(`CORRE_SECUCODE="<code>.<exchange>"`)
+filter. The current wrapper emits exactly 10 fields: `代码`, `简称`, `总市值`,
+`总市值排名`, `流通市值`, `流通市值排名`, `营业收入`, `营业收入排名`,
+`净利润` and `净利润排名`. The provider freezes the
+`RPT_PCF10_INDUSTRY_MARKET` report, official column list, single-page
+`TOTAL_CAP` descending sort, `HSF10` source, `PC` client and version
+parameters, validates the one-row listing identity and preserves the
+documented numeric scale values and positive integer ranks without inferring
+units or filing periods.
+
+The normalizer emits `AKSHARE_SCALE_COMPARISON_RAW_ONLY`; this provider-defined
+company-scale row remains raw evidence only and creates no canonical market,
+valuation or accounting fact. H-share requests and any calculation, gate,
+pipeline, CLI or input-loader use remain outside this slice.
+
 The H-share Baidu valuation-history slice is also acquisition-only. The current
 [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
 and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hk_valuation_baidu.py)
@@ -2443,7 +2466,7 @@ outside this slice.
 
 ## 13. Deliberate non-goals
 
-This foundation plus the Phase 2.2–3.25 structured slices does not include:
+This foundation plus the Phase 2.2–3.26 structured slices does not include:
 
 - Tushare, BaoStock or any other additional provider;
 - automatic network scheduling, credentials or retry orchestration outside an adapter;
