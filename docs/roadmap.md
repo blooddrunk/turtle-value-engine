@@ -3027,6 +3027,30 @@ boundary validation, raw-only normalization, replay metadata tampering and
 offline cache replay. No calculation, gate, pipeline, CLI or input-loader
 contract changes.
 
+### Phase 3.18 — A-share Legu index PB raw acquisition contract (COMPLETE)
+
+The mapping review now covers the documented A-share Legu `stock_index_pb_lg`
+index-PB history under `MARKET_ACTIVITY` with explicit `view=index_pb` and a
+required symbol in the same 12 documented index choices. The [AKShare stock-data
+documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and [official
+implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_a_pe_and_pb.py)
+define the exact five-field `日期`/`指数`/PB output. All symbols use the Legu
+`index-basic-pb` API with the documented fixed index code. The provider records
+the fixed code and source/API metadata, validates the complete exact schema,
+strict ascending all-history dates, finite numerics and the non-negative index
+boundary, while retaining signed PB as raw context because no PB unit or
+universal domain is documented. The documented `sz50-pb` source page and the
+official wrapper's actual `zz500-ttm-lyr` CSRF transport page are retained as
+separate provenance fields.
+
+The normalizer emits `AKSHARE_INDEX_PB_RAW_ONLY` and creates no canonical
+market, return, valuation, governance or accounting fact because the index
+history has no listing/entity accounting scope. Tests cover all 12 symbols,
+explicit view and A-share routing, exact schema and metadata, signed PB and
+boundary validation, raw-only normalization, replay metadata tampering and
+offline cache replay. No calculation, gate, pipeline, CLI or input-loader
+contract changes.
+
 ### Future structured-provider deliverables
 
 ```text
@@ -3036,7 +3060,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–3.17 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–3.18 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -3457,6 +3481,13 @@ strict all-history validation and signed-PE raw-only boundary are recorded;
 no canonical market, return, valuation, governance or accounting fact is
 created and no calculation, gate, pipeline, CLI or input-loader contract
 changes.
+Phase 3.18 adds the documented A-share Legu `stock_index_pb_lg` index-PB
+history under `MARKET_ACTIVITY` with explicit `view=index_pb` and a required
+index symbol. Its five-field schema, official fixed index-code mapping, strict
+all-history validation and signed-PB raw-only boundary are recorded; the
+documented `sz50-pb` source page and actual `zz500-ttm-lyr` CSRF transport page
+remain distinct provenance metadata, and no calculation, gate, pipeline, CLI or
+input-loader contract changes.
 Phase 2.75 completes the next documented structured-data boundary by adding
 the A-share `stock_gpzy_profile_em` market-wide historical ownership-pledge
 view. Its no-argument eight-field response is validated as an ascending raw

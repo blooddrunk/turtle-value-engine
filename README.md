@@ -1308,6 +1308,22 @@ context does not become a canonical market, return, valuation, governance or
 accounting fact. No calculation, gate, pipeline, CLI or input-loader contract
 changes.
 
+Phase 3.18 adds the documented A-share Legu `stock_index_pb_lg` endpoint under
+`MARKET_ACTIVITY` with explicit `view=index_pb` and a required `symbol` in the
+same 12 documented index choices. The [AKShare stock-data
+documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and [official
+implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_a_pe_and_pb.py)
+define the exact five-field `日期`, `指数`, `市净率`, `等权市净率` and
+`市净率中位数` history. The provider preserves the fixed Legu `indexCode`
+mapping and `index-basic-pb` API metadata, validates complete strictly ascending
+all-history rows, and retains signed PB values as raw context because the
+official contract documents no unit or PB domain. The documented source page is
+`sz50-pb`; the official wrapper's CSRF transport currently uses
+`zz500-ttm-lyr`, and both are retained distinctly in metadata. The normalizer
+emits `AKSHARE_INDEX_PB_RAW_ONLY`; this index-wide context does not become a
+canonical market, return, valuation, governance or accounting fact. No
+calculation, gate, pipeline, CLI or input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.
