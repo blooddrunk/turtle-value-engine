@@ -1126,6 +1126,43 @@ dilution, transaction-cash or shareholder-return fact. The provider-specific
 response remains outside the calculation, gate, pipeline, CLI and input-loader
 contracts.
 
+## Phase 3.00 A-share Eastmoney Dragon-Tiger institution-daily raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_lhb_jgmmtj_em` as the Eastmoney Dragon-Tiger institution
+buy/sell daily-statistics endpoint. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_lhb_em.py)
+accepts `start_date` and `end_date` as `YYYYMMDD` strings, applies the inclusive
+date filter to the all-history response and returns the exact 16 fields
+`序号`, `代码`, `名称`, `收盘价`, `涨跌幅`, `买方机构数`, `卖方机构数`,
+`机构买入总额`, `机构卖出总额`, `机构买入净额`, `市场总成交额`,
+`机构净买额占总成交额比`, `换手率`, `流通市值`, `上榜原因` and `上榜日期`,
+in that order.
+
+The provider exposes this endpoint under `MARKET_ACTIVITY` only with explicit
+`view=institution_daily`, validates the complete full-universe response before
+filtering it to the requested A-share listing, and preserves the requested
+range, source sequence, exact field order, date bounds and both row counts for
+cache replay. The documented monetary units are CNY for the four institution/
+market totals and 亿元 for `流通市值`; every other numeric unit remains
+`not_documented`. The normalizer emits
+`AKSHARE_MARKET_ACTIVITY_INSTITUTION_DAILY_RAW_ONLY`; no canonical issuer cash
+flow, shareholder return, governance, valuation or market fact is admitted.
+
+| Raw upstream item | Phase 3.00 treatment |
+| --- | --- |
+| `序号` | Required positive integer source ordering, validated as strictly ascending; it is not a report-period or listing metric. |
+| `代码`, `名称` | Required six-digit listing identity and source security name; the provider validates every full-universe row and filters by code without inferring a security-master or issuer fact. |
+| `收盘价`, `涨跌幅` | Finite numeric-or-null quote context retained with `not_documented` units; no dated canonical quote or return is inferred. |
+| `买方机构数`, `卖方机构数` | Finite non-negative institution-count context retained with `not_documented` units; counts do not establish ownership or issuer cash flow. |
+| `机构买入总额`, `机构卖出总额`, `机构买入净额`, `市场总成交额` | Finite trading aggregates retained in documented CNY units; they are market activity evidence, not issuer cash-flow facts. |
+| `机构净买额占总成交额比`, `换手率` | Finite numeric-or-null provider ratios retained with `not_documented` units; no canonical liquidity, return or valuation metric is inferred. |
+| `流通市值` | Finite non-negative market-value context retained in documented 亿元 units; it is not promoted to a canonical market-cap or valuation input. |
+| `上榜原因`, `上榜日期` | Required reason text and ISO row date retained as raw evidence; the date must fall inside the requested inclusive range and is not a filing or accounting period. |
+| request `view=institution_daily`, `start_date`, `end_date` | Explicit all-A-share date-range scope; `listing_scoped_request=false`, provider filtering, source order, date bounds and upstream/selected row counts remain part of the replay contract. |
+
+The provider-specific response remains outside the calculation, gate, pipeline,
+CLI and input-loader contracts.
+
 ## Phase 2.92 SSE daily-deal overview raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)

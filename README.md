@@ -1029,6 +1029,20 @@ emits `AKSHARE_MANAGEMENT_PERSON_RAW_ONLY` without creating canonical share,
 dilution, cash, governance or shareholder-return facts. No calculation, gate,
 pipeline, CLI or input-loader contract changes.
 
+Phase 3.00 adds the distinct official A-share Eastmoney
+`stock_lhb_jgmmtj_em` institution-daily Dragon-Tiger view under
+`MARKET_ACTIVITY` with explicit `view=institution_daily` and an inclusive
+`start_date`/`end_date` range. The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_lhb_em.py)
+define the exact 16-field full-universe response. The provider validates source
+order, six-digit listing identity, date range, sequence, finite numeric/null
+values and non-negative fields before filtering to the requested listing; it
+records the documented CNY/亿元 units and leaves all other numeric units
+`not_documented`. The normalizer emits
+`AKSHARE_MARKET_ACTIVITY_INSTITUTION_DAILY_RAW_ONLY` without creating a
+canonical cash-flow, return, governance, valuation or market fact. No
+calculation, gate, pipeline, CLI or input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.
