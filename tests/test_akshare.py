@@ -232,6 +232,21 @@ class FakeAKShare:
             symbol=symbol,
         )
 
+    def stock_hsgt_hist_em(self, *, symbol: str):
+        fixtures = {
+            "北向资金": "hsgt_hist_north.json",
+            "沪股通": "hsgt_hist_sh.json",
+            "深股通": "hsgt_hist_sz.json",
+            "南向资金": "hsgt_hist_south.json",
+            "港股通沪": "hsgt_hist_hk_sh.json",
+            "港股通深": "hsgt_hist_hk_sz.json",
+        }
+        return self._return(
+            "stock_hsgt_hist_em",
+            _fixture(fixtures[symbol]),
+            symbol=symbol,
+        )
+
     def stock_szse_summary(self, *, date: str):
         return self._return(
             "stock_szse_summary",
@@ -1209,8 +1224,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "137"
-    assert AKSHARE_MAPPING_VERSION == "138"
+    assert provider.identity.provider_version == "138"
+    assert AKSHARE_MAPPING_VERSION == "139"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -22676,6 +22691,456 @@ def test_hsgt_minute_fund_flow_cache_replay_does_not_call_upstream(tmp_path: Pat
     assert replay.mode is RetrievalMode.CACHE_REPLAY
     assert replay.record == live.record
     assert fake.calls == [("stock_hsgt_fund_min_em", {"symbol": "北向资金"})]
+
+
+@pytest.mark.parametrize(
+    (
+        "listing",
+        "symbol",
+        "fixture",
+        "market",
+        "direction",
+        "index_name",
+        "symbol_code",
+    ),
+    [
+        (
+            "SH600000",
+            "北向资金",
+            "hsgt_hist_north.json",
+            "A",
+            "northbound",
+            "沪深300",
+            "5",
+        ),
+        (
+            "SH600000",
+            "沪股通",
+            "hsgt_hist_sh.json",
+            "A",
+            "northbound",
+            "上证指数",
+            "1",
+        ),
+        (
+            "SZ000001",
+            "深股通",
+            "hsgt_hist_sz.json",
+            "A",
+            "northbound",
+            "深证指数",
+            "3",
+        ),
+        (
+            "HK00700",
+            "南向资金",
+            "hsgt_hist_south.json",
+            "H",
+            "southbound",
+            "沪深300",
+            "6",
+        ),
+        (
+            "HK00700",
+            "港股通沪",
+            "hsgt_hist_hk_sh.json",
+            "H",
+            "southbound",
+            "恒生指数",
+            "2",
+        ),
+        (
+            "HK00700",
+            "港股通深",
+            "hsgt_hist_hk_sz.json",
+            "H",
+            "southbound",
+            "恒生指数",
+            "4",
+        ),
+    ],
+)
+def test_hsgt_historical_flow_fetch_preserves_official_symbol_scope_and_metadata(
+    listing: str,
+    symbol: str,
+    fixture: str,
+    market: str,
+    direction: str,
+    index_name: str,
+    symbol_code: str,
+):
+    fake = FakeAKShare()
+    record = _provider(fake).fetch(
+        _request(
+            DataCategory.CAPITAL_FLOW,
+            listing,
+            {"view": "hsgt_hist", "symbol": symbol},
+        )
+    )
+
+    expected = _fixture(fixture)
+    fields = list(expected[0])
+    assert record.raw_payload == expected
+    assert fake.calls == [("stock_hsgt_hist_em", {"symbol": symbol})]
+    assert record.source_uri == "https://data.eastmoney.com/hsgt/index.html"
+    assert record.response_metadata["endpoint"] == "stock_hsgt_hist_em"
+    assert record.response_metadata["market"] == market
+    assert record.response_metadata["listing_code"] == listing[2:]
+    assert record.response_metadata["capital_flow_view"] == "hsgt_hist"
+    assert record.response_metadata["market_scope"] == (
+        f"Eastmoney {direction} HSGT historical-flow universe"
+    )
+    assert record.response_metadata["flow_symbol"] == symbol
+    assert record.response_metadata["flow_direction"] == direction
+    assert record.response_metadata["listing_scoped_request"] is False
+    assert record.response_metadata["row_filtering"] == "none"
+    assert record.response_metadata["snapshot_scope"] == (
+        "market_wide_hsgt_historical_flow"
+    )
+    assert record.response_metadata["date_binding"] == "row_dates"
+    assert record.response_metadata["observation_date_field"] == "日期"
+    assert record.response_metadata["observation_date_ordering"] == (
+        "strictly_ascending"
+    )
+    assert record.response_metadata["observation_start_date"] == "2024-01-09"
+    assert record.response_metadata["observation_end_date"] == "2024-01-10"
+    assert record.response_metadata["value_fields"] == [
+        *fields[1:8],
+        fields[9],
+        fields[10],
+        fields[11],
+    ]
+    assert record.response_metadata["text_fields"] == [fields[8], fields[12]]
+    assert record.response_metadata["field_count"] == 13
+    assert record.response_metadata["source_field_order"] == fields
+    assert record.response_metadata["upstream_url"] == (
+        "https://datacenter-web.eastmoney.com/api/data/v1/get"
+    )
+    assert record.response_metadata["upstream_protocol"] == "JSON"
+    assert record.response_metadata["upstream_parameters"] == [
+        "sortColumns",
+        "sortTypes",
+        "pageSize",
+        "pageNumber",
+        "reportName",
+        "columns",
+        "source",
+        "client",
+        "filter",
+    ]
+    assert record.response_metadata["upstream_fixed_parameters"] == {
+        "sortColumns": "TRADE_DATE",
+        "sortTypes": "-1",
+        "pageSize": "1000",
+        "pageNumber": "1",
+        "reportName": "RPT_MUTUAL_DEAL_HISTORY",
+        "columns": "ALL",
+        "source": "WEB",
+        "client": "WEB",
+    }
+    assert record.response_metadata["upstream_dynamic_parameters"] == {
+        "symbol": symbol,
+        "symbol_code": symbol_code,
+        "filter": f'(MUTUAL_TYPE="00{symbol_code}")',
+    }
+    assert record.response_metadata["upstream_symbol"] == symbol
+    assert record.response_metadata["upstream_authentication"] == "none"
+    assert record.response_metadata["upstream_page_size"] == 1000
+    assert record.response_metadata["pagination"] == "all_pages"
+    assert record.response_metadata["pagination_parameter"] == "pageNumber"
+    assert record.response_metadata["upstream_sort_column"] == "TRADE_DATE"
+    assert record.response_metadata["upstream_sort_direction"] == "descending"
+    assert record.response_metadata["upstream_filter"] == (
+        f'(MUTUAL_TYPE="00{symbol_code}")'
+    )
+    assert record.response_metadata["wrapper_source_page_uri"] == (
+        "https://data.eastmoney.com/hsgt/index.html"
+    )
+    assert record.response_metadata["wrapper_output_ordering"] == "ascending_by_date"
+    assert record.response_metadata["entity_rows_selected"] is False
+    assert record.response_metadata["upstream_row_count"] == len(expected)
+    assert record.response_metadata["entity_row_count"] == 0
+    assert record.response_metadata["index_field"] == index_name
+
+
+@pytest.mark.parametrize(
+    ("listing", "parameters", "match"),
+    [
+        (
+            "SH600000",
+            {"view": "hsgt_hist", "symbol": "南向资金"},
+            "southbound historical-flow endpoint supports H-share listing context only",
+        ),
+        (
+            "HK00700",
+            {"view": "hsgt_hist", "symbol": "北向资金"},
+            "northbound historical-flow endpoint supports A-share listing context only",
+        ),
+        (
+            "SH600000",
+            {"view": "hsgt_hist", "symbol": "invalid"},
+            "symbol must be one of",
+        ),
+        (
+            "SH600000",
+            {"view": "hsgt_hist"},
+            "symbol must be one of",
+        ),
+        (
+            "SH600000",
+            {"view": "hsgt_hist", "symbol": "北向资金", "date": "20240109"},
+            "unsupported AKShare HSGT historical-flow parameter",
+        ),
+    ],
+)
+def test_hsgt_historical_flow_request_validates_direction_symbol_and_parameters(
+    listing: str,
+    parameters: dict,
+    match: str,
+):
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError, match=match):
+        _provider(fake).fetch(
+            _request(DataCategory.CAPITAL_FLOW, listing, parameters)
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("missing", "HSGT historical-flow row 0 is missing field"),
+        ("unexpected", "HSGT historical-flow row 0 contains unsupported field"),
+        ("field_order", "must preserve the official field order"),
+        ("invalid_date", "has an invalid 日期"),
+        ("non_ascending", "response dates must be strictly ascending"),
+        ("invalid_numeric", "field '当日成交净买额' must be numeric or null"),
+        ("invalid_text", "field '领涨股' must be a string or null"),
+    ],
+)
+def test_hsgt_historical_flow_response_validates_exact_rows_and_values(
+    mutation: str,
+    match: str,
+):
+    class InvalidRows(FakeAKShare):
+        def stock_hsgt_hist_em(self, *, symbol: str):
+            rows = [dict(row) for row in _fixture("hsgt_hist_north.json")]
+            if mutation == "missing":
+                rows[0].pop("沪深300")
+            elif mutation == "unexpected":
+                rows[0]["unexpected"] = "not documented"
+            elif mutation == "field_order":
+                first = rows[0]
+                rows[0] = {
+                    "沪深300": first["沪深300"],
+                    **{key: value for key, value in first.items() if key != "沪深300"},
+                }
+            elif mutation == "invalid_date":
+                rows[0]["日期"] = "not-a-date"
+            elif mutation == "non_ascending":
+                rows[1]["日期"] = rows[0]["日期"]
+            elif mutation == "invalid_numeric":
+                rows[0]["当日成交净买额"] = "12.34"
+            else:
+                rows[0]["领涨股"] = 123
+            return self._return("stock_hsgt_hist_em", rows, symbol=symbol)
+
+    with pytest.raises(ProviderResponseError, match=match):
+        _provider(InvalidRows()).fetch(
+            _request(
+                DataCategory.CAPITAL_FLOW,
+                "SH600000",
+                {"view": "hsgt_hist", "symbol": "北向资金"},
+            )
+        )
+
+
+def test_hsgt_historical_flow_empty_response_retains_direction_metadata():
+    class EmptyRows(FakeAKShare):
+        def stock_hsgt_hist_em(self, *, symbol: str):
+            return self._return("stock_hsgt_hist_em", [], symbol=symbol)
+
+    record = _provider(EmptyRows()).fetch(
+        _request(
+            DataCategory.CAPITAL_FLOW,
+            "SH600000",
+            {"view": "hsgt_hist", "symbol": "北向资金"},
+        )
+    )
+
+    assert record.raw_payload == []
+    assert record.response_metadata["upstream_row_count"] == 0
+    assert record.response_metadata["observation_start_date"] is None
+    assert record.response_metadata["observation_end_date"] is None
+    assert record.response_metadata["entity_rows_selected"] is False
+    assert record.response_metadata["entity_row_count"] == 0
+
+
+@pytest.mark.parametrize(
+    ("listing", "symbol", "analysis_id"),
+    [
+        ("SH600000", "北向资金", "hsgt-north-historical-raw-only"),
+        ("HK00700", "港股通沪", "hsgt-south-historical-raw-only"),
+    ],
+)
+def test_hsgt_historical_flow_is_raw_only_without_issuer_cash_flow_facts(
+    listing: str,
+    symbol: str,
+    analysis_id: str,
+):
+    record = _provider().fetch(
+        _request(
+            DataCategory.CAPITAL_FLOW,
+            listing,
+            {"view": "hsgt_hist", "symbol": symbol},
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id=analysis_id,
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company(listing),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_HSGT_HIST_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == []
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "market-wide north-/southbound historical amounts" in (
+        normalized.data_quality.notes
+    )
+    assert "issuer cash flow" in normalized.data_quality.notes
+    assert "listing-specific" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("source_uri", "source URI"),
+        ("endpoint", "record must come from"),
+        ("capital_flow_view", "metadata 'capital_flow_view'"),
+        ("flow_symbol", "metadata 'flow_symbol'"),
+        ("market", "metadata 'market'"),
+        ("listing_scope", "metadata 'listing_scoped_request'"),
+        ("row_filtering", "metadata 'row_filtering'"),
+        ("snapshot_scope", "metadata 'snapshot_scope'"),
+        ("date_binding", "metadata 'date_binding'"),
+        ("date_ordering", "metadata 'observation_date_ordering'"),
+        ("field_order", "metadata 'source_field_order'"),
+        ("units", "metadata 'documented_units'"),
+        ("dynamic", "metadata 'upstream_dynamic_parameters'"),
+        ("pagination", "metadata 'pagination'"),
+        ("sort_direction", "metadata 'upstream_sort_direction'"),
+        ("wrapper_ordering", "metadata 'wrapper_output_ordering'"),
+        ("entity_selected", "metadata 'entity_rows_selected'"),
+        ("entity_count", "metadata 'entity_row_count'"),
+        ("payload_date", "invalid 日期"),
+    ],
+)
+def test_hsgt_historical_flow_normalizer_rejects_replayed_scope_mismatches(
+    mutation: str,
+    match: str,
+):
+    record = _provider().fetch(
+        _request(
+            DataCategory.CAPITAL_FLOW,
+            "SH600000",
+            {"view": "hsgt_hist", "symbol": "北向资金"},
+        )
+    )
+    response_metadata = dict(record.response_metadata)
+    payload = [dict(row) for row in record.raw_payload]
+    source_uri = record.source_uri
+    if mutation == "source_uri":
+        source_uri = "https://example.test/not-the-documented-endpoint"
+    elif mutation == "endpoint":
+        response_metadata["endpoint"] = "stock_individual_fund_flow"
+    elif mutation == "capital_flow_view":
+        response_metadata["capital_flow_view"] = "capital_flow"
+    elif mutation == "flow_symbol":
+        response_metadata["flow_symbol"] = "沪股通"
+    elif mutation == "market":
+        response_metadata["market"] = "H"
+    elif mutation == "listing_scope":
+        response_metadata["listing_scoped_request"] = True
+    elif mutation == "row_filtering":
+        response_metadata["row_filtering"] = "provider"
+    elif mutation == "snapshot_scope":
+        response_metadata["snapshot_scope"] = "current_quote"
+    elif mutation == "date_binding":
+        response_metadata["date_binding"] = "request_only"
+    elif mutation == "date_ordering":
+        response_metadata["observation_date_ordering"] = "descending"
+    elif mutation == "field_order":
+        response_metadata["source_field_order"] = list(
+            reversed(response_metadata["source_field_order"])
+        )
+    elif mutation == "units":
+        response_metadata["documented_units"] = {}
+    elif mutation == "dynamic":
+        response_metadata["upstream_dynamic_parameters"] = {
+            "symbol": "沪股通",
+            "symbol_code": "1",
+            "filter": '(MUTUAL_TYPE="001")',
+        }
+    elif mutation == "pagination":
+        response_metadata["pagination"] = "single_page"
+    elif mutation == "sort_direction":
+        response_metadata["upstream_sort_direction"] = "ascending"
+    elif mutation == "wrapper_ordering":
+        response_metadata["wrapper_output_ordering"] = "row_order"
+    elif mutation == "entity_selected":
+        response_metadata["entity_rows_selected"] = True
+    elif mutation == "entity_count":
+        response_metadata["entity_row_count"] = len(payload)
+    else:
+        payload[0]["日期"] = "not-a-date"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=source_uri,
+        response_metadata=response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match=match):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-hsgt-historical-scope",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company("SH600000"),
+        )
+
+
+def test_hsgt_historical_flow_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.CAPITAL_FLOW,
+        "SH600000",
+        {"view": "hsgt_hist", "symbol": "北向资金"},
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [("stock_hsgt_hist_em", {"symbol": "北向资金"})]
 
 
 def test_top_10_shareholders_fetch_uses_explicit_view_and_report_date():

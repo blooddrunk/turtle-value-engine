@@ -3472,6 +3472,34 @@ selected listings, raw-only normalization, replay metadata tampering and
 offline cache replay. No calculation, gate, pipeline, CLI or input-loader
 contract changes.
 
+### Phase 3.36 — HSGT historical-flow raw acquisition contract (COMPLETE)
+
+The mapping review now covers the documented Eastmoney
+`stock_hsgt_hist_em` HSGT historical-flow endpoint under
+`CAPITAL_FLOW` with explicit `view=hsgt_hist` and
+the six official symbols `北向资金`, `沪股通`,
+`深股通`, `南向资金`, `港股通沪` and
+`港股通深`. The [AKShare stock-data
+documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and
+[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hsgt_em.py)
+define the symbol-to-`MUTUAL_TYPE` mapping and the exact
+13-field output, including direction-specific index names. The provider
+freezes the `RPT_MUTUAL_DEAL_HISTORY` JSON report, exact
+filters, descending `TRADE_DATE` upstream order, page size
+`1000` and all-page pagination, validates the complete
+ascending-date response and records documented money/index/percentage units
+and transforms for replay.
+
+Northbound symbols require A-share listing context and southbound symbols require
+H-share context, but the response has no listing-row identity and is never
+filtered to a company. The normalizer emits
+`AKSHARE_HSGT_HIST_RAW_ONLY` and creates no canonical issuer
+cash-flow, liquidity, return or valuation fact. Tests cover all six symbols,
+exact fields, filters, unit metadata and routing, parameter/context rejection,
+complete-response date/numeric/text boundaries, raw-only normalization,
+replay metadata tampering and offline cache replay. No calculation, gate,
+pipeline, CLI or input-loader contract changes.
+
 ### Future structured-provider deliverables
 
 ```text
@@ -3481,7 +3509,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–3.35 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–3.36 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```

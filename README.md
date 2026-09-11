@@ -1608,6 +1608,23 @@ normalizer emits `AKSHARE_HK_SH_SPOT_QUOTE_RAW_ONLY` and does not establish
 `current_price`. No calculation, gate, pipeline, CLI or input-loader contract
 changes.
 
+Phase 3.36 adds the documented Eastmoney HSGT historical-flow endpoint
+[`stock_hsgt_hist_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
+under `CAPITAL_FLOW` with explicit `view=hsgt_hist` and the six documented
+symbols `北向资金`, `沪股通`, `深股通`, `南向资金`, `港股通沪` and `港股通深`.
+The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hsgt_em.py)
+calls the paginated `RPT_MUTUAL_DEAL_HISTORY` JSON report with exact
+`MUTUAL_TYPE` filters, then returns the symbol-specific 13-field date, flow,
+holding-value, leading-stock and index context. The provider freezes the
+official report, descending upstream order, page size `1000`, all-page
+pagination, symbol-to-market mapping, field order and documented unit/transform
+metadata, validating the complete ascending-date response before storage.
+Because this is market-wide northbound/southbound history rather than
+listing-scoped issuer data, the normalizer emits
+`AKSHARE_HSGT_HIST_RAW_ONLY` and creates no issuer cash-flow, liquidity, return
+or valuation fact. No calculation, gate, pipeline, CLI or input-loader contract
+changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

@@ -46,7 +46,8 @@ raw slices are also
 available. A-share and H-share market-quote snapshots, including the H-share
 main-board, famous-stock, Hong Kong Stock Connect constituent and Shanghai
 Stock Connect quote raw slices, are retained with their upstream scope and
-source metadata.
+source metadata. A/H HSGT minute-fund-flow and historical-flow raw slices are
+also retained with their market-wide direction and upstream pagination metadata.
 A-share Xueqiu, CNINFO and Tonghuashun company-profile raw slices are also
 available. The A-share dividend-distribution detail and
 new-stock-board raw slices are also available. The A-share CNINFO IPO-summary,
@@ -112,9 +113,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "137"
+AKSHARE_ADAPTER_VERSION = "138"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "138"
+AKSHARE_MAPPING_VERSION = "139"
 
 
 class ListingMarket(StrEnum):
@@ -201,6 +202,7 @@ _SOURCE_URIS = {
     "stock_zh_ah_daily": "https://gu.qq.com/",
     "stock_individual_fund_flow": "https://data.eastmoney.com/zjlx/detail.html",
     "stock_hsgt_fund_min_em": "https://data.eastmoney.com/hsgt/hsgtDetail/scgk.html",
+    "stock_hsgt_hist_em": "https://data.eastmoney.com/hsgt/index.html",
     "stock_hsgt_board_rank_em": "https://data.eastmoney.com/hsgtcg/bk.html",
     "stock_hsgt_hold_stock_em": "https://data.eastmoney.com/hsgtcg/list.html",
     "stock_hsgt_stock_statistics_em": (
@@ -1149,6 +1151,133 @@ _CAPITAL_FLOW_HSGT_FUND_MIN_UPSTREAM_FIXED_PARAMETERS = {
 _CAPITAL_FLOW_HSGT_FUND_MIN_DIRECTION_MARKETS = {
     "北向资金": ListingMarket.A,
     "南向资金": ListingMarket.H,
+}
+_CAPITAL_FLOW_HSGT_HIST_ENDPOINT = "stock_hsgt_hist_em"
+_CAPITAL_FLOW_HSGT_HIST_PARAMETER_NAMES = frozenset({"view", "symbol"})
+_CAPITAL_FLOW_HSGT_HIST_VIEW = "hsgt_hist"
+_CAPITAL_FLOW_HSGT_HIST_SYMBOLS = (
+    "北向资金",
+    "沪股通",
+    "深股通",
+    "南向资金",
+    "港股通沪",
+    "港股通深",
+)
+_CAPITAL_FLOW_HSGT_HIST_SYMBOL_SET = frozenset(
+    _CAPITAL_FLOW_HSGT_HIST_SYMBOLS
+)
+_CAPITAL_FLOW_HSGT_HIST_SYMBOL_CODES = {
+    "北向资金": "5",
+    "沪股通": "1",
+    "深股通": "3",
+    "南向资金": "6",
+    "港股通沪": "2",
+    "港股通深": "4",
+}
+_CAPITAL_FLOW_HSGT_HIST_DIRECTION_MARKETS = {
+    "北向资金": ListingMarket.A,
+    "沪股通": ListingMarket.A,
+    "深股通": ListingMarket.A,
+    "南向资金": ListingMarket.H,
+    "港股通沪": ListingMarket.H,
+    "港股通深": ListingMarket.H,
+}
+_CAPITAL_FLOW_HSGT_HIST_INDEX_NAMES = {
+    "北向资金": "沪深300",
+    "沪股通": "上证指数",
+    "深股通": "深证指数",
+    "南向资金": "沪深300",
+    "港股通沪": "恒生指数",
+    "港股通深": "恒生指数",
+}
+_CAPITAL_FLOW_HSGT_HIST_FIELDS = {
+    symbol: (
+        "日期",
+        "当日成交净买额",
+        "买入成交额",
+        "卖出成交额",
+        "历史累计净买额",
+        "当日资金流入",
+        "当日余额",
+        "持股市值",
+        "领涨股",
+        "领涨股-涨跌幅",
+        index_name,
+        f"{index_name}-涨跌幅",
+        "领涨股-代码",
+    )
+    for symbol, index_name in _CAPITAL_FLOW_HSGT_HIST_INDEX_NAMES.items()
+}
+_CAPITAL_FLOW_HSGT_HIST_NUMERIC_FIELDS = {
+    symbol: fields[1:8] + (fields[9], fields[10], fields[11])
+    for symbol, fields in _CAPITAL_FLOW_HSGT_HIST_FIELDS.items()
+}
+_CAPITAL_FLOW_HSGT_HIST_TEXT_FIELDS = {
+    symbol: (fields[8], fields[12])
+    for symbol, fields in _CAPITAL_FLOW_HSGT_HIST_FIELDS.items()
+}
+_CAPITAL_FLOW_HSGT_HIST_SOURCE_URI = (
+    "https://data.eastmoney.com/hsgt/index.html"
+)
+_CAPITAL_FLOW_HSGT_HIST_UPSTREAM_URL = (
+    "https://datacenter-web.eastmoney.com/api/data/v1/get"
+)
+_CAPITAL_FLOW_HSGT_HIST_UPSTREAM_PARAMETERS = (
+    "sortColumns",
+    "sortTypes",
+    "pageSize",
+    "pageNumber",
+    "reportName",
+    "columns",
+    "source",
+    "client",
+    "filter",
+)
+_CAPITAL_FLOW_HSGT_HIST_UPSTREAM_FIXED_PARAMETERS = {
+    "sortColumns": "TRADE_DATE",
+    "sortTypes": "-1",
+    "pageSize": "1000",
+    "pageNumber": "1",
+    "reportName": "RPT_MUTUAL_DEAL_HISTORY",
+    "columns": "ALL",
+    "source": "WEB",
+    "client": "WEB",
+}
+_CAPITAL_FLOW_HSGT_HIST_DAILY_AMOUNT_FIELDS = (
+    "当日成交净买额",
+    "买入成交额",
+    "卖出成交额",
+    "当日资金流入",
+    "当日余额",
+)
+_CAPITAL_FLOW_HSGT_HIST_HK_DAILY_AMOUNT_FIELDS = (
+    "当日成交净买额",
+    "买入成交额",
+    "卖出成交额",
+)
+_CAPITAL_FLOW_HSGT_HIST_DOCUMENTED_UNITS = {
+    symbol: {
+        **{
+            field: (
+                "HKD_100_million"
+                if symbol in {"南向资金", "港股通沪", "港股通深"}
+                and field in _CAPITAL_FLOW_HSGT_HIST_HK_DAILY_AMOUNT_FIELDS
+                else "CNY_100_million"
+            )
+            for field in _CAPITAL_FLOW_HSGT_HIST_DAILY_AMOUNT_FIELDS
+        },
+        "历史累计净买额": "10_thousand_billion",
+        "持股市值": "CNY",
+        "领涨股-涨跌幅": "percent",
+        f"{_CAPITAL_FLOW_HSGT_HIST_INDEX_NAMES[symbol]}-涨跌幅": "percent",
+    }
+    for symbol in _CAPITAL_FLOW_HSGT_HIST_SYMBOLS
+}
+_CAPITAL_FLOW_HSGT_HIST_UNDOCUMENTED_NUMERIC_UNITS = {
+    symbol: {
+        _CAPITAL_FLOW_HSGT_HIST_INDEX_NAMES[symbol]: "index_points",
+    }
+    for symbol in _CAPITAL_FLOW_HSGT_HIST_SYMBOLS
 }
 _MARKET_ACTIVITY_PARAMETER_NAMES = frozenset({"start_date", "end_date"})
 _MARKET_ACTIVITY_HSGT_BOARD_RANK_ENDPOINT = "stock_hsgt_board_rank_em"
@@ -5017,11 +5146,26 @@ class AKShareProvider(StructuredDataProvider):
         if (
             request.category is DataCategory.CAPITAL_FLOW
             and request.parameters.get("view")
-            != _CAPITAL_FLOW_HSGT_FUND_MIN_VIEW
+            not in {
+                _CAPITAL_FLOW_HSGT_FUND_MIN_VIEW,
+                _CAPITAL_FLOW_HSGT_HIST_VIEW,
+            }
             and listing.market is not ListingMarket.A
         ):
             raise ProviderRequestError(
                 "the AKShare individual-fund-flow endpoint supports A-share listings only",
+                provider=self.identity,
+                request=request,
+                retryable=False,
+            )
+        if (
+            request.category is DataCategory.CAPITAL_FLOW
+            and request.parameters.get("view") == _CAPITAL_FLOW_HSGT_HIST_VIEW
+            and listing.market not in {ListingMarket.A, ListingMarket.H}
+        ):
+            raise ProviderRequestError(
+                "the AKShare HSGT historical-flow endpoint supports A- and H-share "
+                "listing context only",
                 provider=self.identity,
                 request=request,
                 retryable=False,
@@ -5750,6 +5894,22 @@ class AKShareProvider(StructuredDataProvider):
                         symbol=flow_symbol,
                         observation_dates=observation_dates,
                         observation_times=observation_times,
+                        row_count=len(rows),
+                    )
+                )
+            elif endpoint.name == _CAPITAL_FLOW_HSGT_HIST_ENDPOINT:
+                flow_symbol = kwargs["symbol"]
+                observation_dates = _validate_capital_flow_hsgt_hist_provider_rows(
+                    rows,
+                    symbol=flow_symbol,
+                    provider=self.identity,
+                    request=request,
+                )
+                response_metadata.update(
+                    _capital_flow_hsgt_hist_response_metadata(
+                        listing_code=listing.code,
+                        symbol=flow_symbol,
+                        observation_dates=observation_dates,
                         row_count=len(rows),
                     )
                 )
@@ -9389,6 +9549,10 @@ class AKShareProvider(StructuredDataProvider):
                 request.parameters.get("view")
                 == _CAPITAL_FLOW_HSGT_FUND_MIN_VIEW
             ),
+            capital_flow_hsgt_hist_requested=(
+                request.parameters.get("view")
+                == _CAPITAL_FLOW_HSGT_HIST_VIEW
+            ),
             market_quote_ah_comparison_requested=(
                 request.parameters.get("view") == _MARKET_QUOTE_AH_COMPARISON_VIEW
             ),
@@ -9789,6 +9953,18 @@ class AKShareNormalizer:
                     )
                     normalizer_flags.add(
                         "AKSHARE_HSGT_FUND_MIN_RAW_ONLY"
+                    )
+                elif (
+                    record.request.parameters.get("view")
+                    == _CAPITAL_FLOW_HSGT_HIST_VIEW
+                ):
+                    _validate_capital_flow_hsgt_hist_normalizer_scope(
+                        record,
+                        listing,
+                        rows,
+                    )
+                    normalizer_flags.add(
+                        "AKSHARE_HSGT_HIST_RAW_ONLY"
                     )
                 else:
                     if listing.market is not ListingMarket.A:
@@ -11977,6 +12153,14 @@ class AKShareNormalizer:
                 "official documentation states that the source stopped providing "
                 "data from 2024-05-13."
             )
+        if "AKSHARE_HSGT_HIST_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented HSGT historical-flow response is retained as raw "
+                "evidence only: its market-wide north-/southbound historical amounts, "
+                "index context and leading-stock fields are not issuer cash flow, are "
+                "not listing-specific and do not establish a canonical liquidity, "
+                "return or valuation fact."
+            )
         if "AKSHARE_HSGT_BOARD_RANK_RAW_ONLY" in normalizer_flags:
             notes += (
                 " The documented HSGT board-rank response is retained as raw evidence "
@@ -12785,6 +12969,7 @@ def _endpoint_candidates(
     market_quote_hk_ggt_components_requested: bool = False,
     market_quote_hk_sh_spot_requested: bool = False,
     capital_flow_hsgt_fund_min_requested: bool = False,
+    capital_flow_hsgt_hist_requested: bool = False,
     market_quote_ah_comparison_requested: bool = False,
     market_quote_ab_comparison_requested: bool = False,
     market_quote_xq_requested: bool = False,
@@ -13067,6 +13252,10 @@ def _endpoint_candidates(
         if capital_flow_hsgt_fund_min_requested:
             if market in {ListingMarket.A, ListingMarket.H}:
                 return (_CAPITAL_FLOW_HSGT_FUND_MIN_ENDPOINT,)
+            return ()
+        if capital_flow_hsgt_hist_requested:
+            if market in {ListingMarket.A, ListingMarket.H}:
+                return (_CAPITAL_FLOW_HSGT_HIST_ENDPOINT,)
             return ()
         if market is ListingMarket.A:
             return ("stock_individual_fund_flow",)
@@ -20208,6 +20397,195 @@ def _capital_flow_hsgt_fund_min_response_metadata(
         "entity_rows_selected": False,
         "upstream_row_count": row_count,
         "entity_row_count": 0,
+    }
+
+
+def _capital_flow_hsgt_hist_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    symbol: str,
+) -> tuple[str | None, list[date]]:
+    """Return strict-schema errors and the ordered HSGT history dates."""
+
+    fields = _CAPITAL_FLOW_HSGT_HIST_FIELDS[symbol]
+    field_set = set(fields)
+    numeric_fields = _CAPITAL_FLOW_HSGT_HIST_NUMERIC_FIELDS[symbol]
+    text_fields = _CAPITAL_FLOW_HSGT_HIST_TEXT_FIELDS[symbol]
+    observation_dates: list[date] = []
+    previous_date: date | None = None
+    for index, row in enumerate(rows):
+        missing = sorted(field_set - set(row))
+        unexpected = sorted(set(row) - field_set)
+        if missing:
+            return (
+                f"HSGT historical-flow row {index} is missing field(s): "
+                + ", ".join(missing),
+                [],
+            )
+        if unexpected:
+            return (
+                f"HSGT historical-flow row {index} contains unsupported field(s): "
+                + ", ".join(unexpected),
+                [],
+            )
+        if tuple(row) != fields:
+            return (
+                f"HSGT historical-flow row {index} must preserve the official field order",
+                [],
+            )
+
+        observation_date = _parse_date_value(row["日期"])
+        if observation_date is None:
+            return (
+                f"HSGT historical-flow row {index} has an invalid 日期",
+                [],
+            )
+        if previous_date is not None and observation_date <= previous_date:
+            return (
+                "HSGT historical-flow response dates must be strictly ascending",
+                [],
+            )
+        previous_date = observation_date
+        observation_dates.append(observation_date)
+
+        for field in numeric_fields:
+            value = row[field]
+            if value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, Real):
+                return (
+                    f"HSGT historical-flow row {index} field {field!r} must be "
+                    "numeric or null",
+                    [],
+                )
+            try:
+                numeric = float(value)
+            except (OverflowError, TypeError, ValueError):
+                return (
+                    f"HSGT historical-flow row {index} field {field!r} must be "
+                    "numeric or null",
+                    [],
+                )
+            if not math.isfinite(numeric):
+                return (
+                    f"HSGT historical-flow row {index} field {field!r} must be "
+                    "finite or null",
+                    [],
+                )
+
+        for field in text_fields:
+            value = row[field]
+            if value is not None and not isinstance(value, str):
+                return (
+                    f"HSGT historical-flow row {index} field {field!r} must be "
+                    "a string or null",
+                    [],
+                )
+
+    return None, observation_dates
+
+
+def _validate_capital_flow_hsgt_hist_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    symbol: str,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> list[date]:
+    """Validate the complete market-wide HSGT historical-flow response."""
+
+    message, observation_dates = _capital_flow_hsgt_hist_validation_message(
+        rows,
+        symbol=symbol,
+    )
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message}",
+            provider=provider,
+            request=request,
+        )
+    return observation_dates
+
+
+def _capital_flow_hsgt_hist_filter(*, symbol: str) -> str:
+    """Build the exact Eastmoney mutual-type filter used by AKShare."""
+
+    symbol_code = _CAPITAL_FLOW_HSGT_HIST_SYMBOL_CODES[symbol]
+    return f'(MUTUAL_TYPE="00{symbol_code}")'
+
+
+def _capital_flow_hsgt_hist_response_metadata(
+    *,
+    listing_code: str,
+    symbol: str,
+    observation_dates: Sequence[date],
+    row_count: int,
+) -> dict[str, JSONValue]:
+    """Build the replay contract for one HSGT historical-flow direction."""
+
+    fields = _CAPITAL_FLOW_HSGT_HIST_FIELDS[symbol]
+    numeric_fields = _CAPITAL_FLOW_HSGT_HIST_NUMERIC_FIELDS[symbol]
+    index_name = _CAPITAL_FLOW_HSGT_HIST_INDEX_NAMES[symbol]
+    upstream_filter = _capital_flow_hsgt_hist_filter(symbol=symbol)
+    expected_market = _CAPITAL_FLOW_HSGT_HIST_DIRECTION_MARKETS[symbol]
+    direction = "northbound" if expected_market is ListingMarket.A else "southbound"
+    return {
+        "endpoint": _CAPITAL_FLOW_HSGT_HIST_ENDPOINT,
+        "market": expected_market.value,
+        "listing_code": listing_code,
+        "capital_flow_view": _CAPITAL_FLOW_HSGT_HIST_VIEW,
+        "market_scope": f"Eastmoney {direction} HSGT historical-flow universe",
+        "flow_symbol": symbol,
+        "flow_direction": direction,
+        "listing_scoped_request": False,
+        "row_filtering": "none",
+        "snapshot_scope": "market_wide_hsgt_historical_flow",
+        "date_binding": "row_dates",
+        "observation_date_field": "日期",
+        "observation_date_ordering": "strictly_ascending",
+        "observation_start_date": (
+            min(observation_dates).isoformat() if observation_dates else None
+        ),
+        "observation_end_date": (
+            max(observation_dates).isoformat() if observation_dates else None
+        ),
+        "value_fields": list(numeric_fields),
+        "text_fields": list(_CAPITAL_FLOW_HSGT_HIST_TEXT_FIELDS[symbol]),
+        "field_count": len(fields),
+        "source_field_order": list(fields),
+        "documented_units": dict(
+            _CAPITAL_FLOW_HSGT_HIST_DOCUMENTED_UNITS[symbol]
+        ),
+        "undocumented_numeric_units": dict(
+            _CAPITAL_FLOW_HSGT_HIST_UNDOCUMENTED_NUMERIC_UNITS[symbol]
+        ),
+        "upstream_url": _CAPITAL_FLOW_HSGT_HIST_UPSTREAM_URL,
+        "upstream_protocol": "JSON",
+        "upstream_parameters": list(
+            _CAPITAL_FLOW_HSGT_HIST_UPSTREAM_PARAMETERS
+        ),
+        "upstream_fixed_parameters": dict(
+            _CAPITAL_FLOW_HSGT_HIST_UPSTREAM_FIXED_PARAMETERS
+        ),
+        "upstream_dynamic_parameters": {
+            "symbol": symbol,
+            "symbol_code": _CAPITAL_FLOW_HSGT_HIST_SYMBOL_CODES[symbol],
+            "filter": upstream_filter,
+        },
+        "upstream_symbol": symbol,
+        "upstream_authentication": "none",
+        "upstream_page_size": 1000,
+        "pagination": "all_pages",
+        "pagination_parameter": "pageNumber",
+        "upstream_sort_column": "TRADE_DATE",
+        "upstream_sort_direction": "descending",
+        "upstream_filter": upstream_filter,
+        "wrapper_source_page_uri": _CAPITAL_FLOW_HSGT_HIST_SOURCE_URI,
+        "wrapper_output_ordering": "ascending_by_date",
+        "entity_rows_selected": False,
+        "upstream_row_count": row_count,
+        "entity_row_count": 0,
+        "index_field": index_name,
     }
 
 
@@ -28496,6 +28874,65 @@ def _validate_capital_flow_hsgt_fund_min_normalizer_scope(
         if not matches:
             raise ProviderNormalizationError(
                 "HSGT minute-fund-flow response metadata "
+                f"{name!r} does not match the requested replay scope"
+            )
+
+
+def _validate_capital_flow_hsgt_hist_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> None:
+    """Validate replay scope for market-wide HSGT historical flow."""
+
+    endpoint_name = _CAPITAL_FLOW_HSGT_HIST_ENDPOINT
+    if record.source_uri != _CAPITAL_FLOW_HSGT_HIST_SOURCE_URI:
+        raise ProviderNormalizationError(
+            "HSGT historical-flow source URI does not match the documented endpoint"
+        )
+    if record.response_metadata.get("endpoint") != endpoint_name:
+        raise ProviderNormalizationError(
+            "HSGT historical-flow record must come from "
+            f"{endpoint_name}"
+        )
+    try:
+        upstream_kwargs = _capital_flow_kwargs(
+            endpoint_name,
+            listing,
+            record.request,
+        )
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+    symbol = upstream_kwargs["symbol"]
+    message, observation_dates = _capital_flow_hsgt_hist_validation_message(
+        rows,
+        symbol=symbol,
+    )
+    if message is not None:
+        raise ProviderNormalizationError(message)
+    expected_metadata = _capital_flow_hsgt_hist_response_metadata(
+        listing_code=listing.code,
+        symbol=symbol,
+        observation_dates=observation_dates,
+        row_count=len(rows),
+    )
+    boolean_fields = {"listing_scoped_request", "entity_rows_selected"}
+    count_fields = {"field_count", "upstream_row_count", "entity_row_count"}
+    for name, expected in expected_metadata.items():
+        actual = record.response_metadata.get(name)
+        if name in boolean_fields:
+            matches = isinstance(actual, bool) and actual is expected
+        elif name in count_fields:
+            matches = (
+                isinstance(actual, int)
+                and not isinstance(actual, bool)
+                and actual == expected
+            )
+        else:
+            matches = actual == expected
+        if not matches:
+            raise ProviderNormalizationError(
+                "HSGT historical-flow response metadata "
                 f"{name!r} does not match the requested replay scope"
             )
 
@@ -41887,6 +42324,49 @@ def _capital_flow_kwargs(
     request: ProviderRequest,
 ) -> dict[str, object]:
     """Build the documented capital-flow request for each endpoint."""
+
+    if endpoint_name == _CAPITAL_FLOW_HSGT_HIST_ENDPOINT:
+        unknown = sorted(
+            set(request.parameters) - _CAPITAL_FLOW_HSGT_HIST_PARAMETER_NAMES
+        )
+        if unknown:
+            raise ProviderRequestError(
+                "unsupported AKShare HSGT historical-flow parameter(s): "
+                + ", ".join(unknown),
+                request=request,
+                retryable=False,
+            )
+        if request.parameters.get("view") != _CAPITAL_FLOW_HSGT_HIST_VIEW:
+            raise ProviderRequestError(
+                "the AKShare HSGT historical-flow endpoint requires "
+                f"view={_CAPITAL_FLOW_HSGT_HIST_VIEW!r}",
+                request=request,
+                retryable=False,
+            )
+        symbol = request.parameters.get("symbol")
+        if (
+            not isinstance(symbol, str)
+            or symbol not in _CAPITAL_FLOW_HSGT_HIST_SYMBOL_SET
+        ):
+            raise ProviderRequestError(
+                "HSGT historical-flow symbol must be one of: "
+                + ", ".join(_CAPITAL_FLOW_HSGT_HIST_SYMBOLS),
+                request=request,
+                retryable=False,
+            )
+        expected_market = _CAPITAL_FLOW_HSGT_HIST_DIRECTION_MARKETS[symbol]
+        if listing.market is not expected_market:
+            direction = (
+                "northbound" if expected_market is ListingMarket.A else "southbound"
+            )
+            market_label = "A-share" if expected_market is ListingMarket.A else "H-share"
+            raise ProviderRequestError(
+                f"the AKShare HSGT {direction} historical-flow endpoint supports "
+                f"{market_label} listing context only",
+                request=request,
+                retryable=False,
+            )
+        return {"symbol": symbol}
 
     if endpoint_name == _CAPITAL_FLOW_HSGT_FUND_MIN_ENDPOINT:
         unknown = sorted(
