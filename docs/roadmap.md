@@ -3075,6 +3075,30 @@ signed values and boundary validation, raw-only normalization, replay metadata
 tampering and offline cache replay. No calculation, gate, pipeline, CLI or
 input-loader contract changes.
 
+### Phase 3.20 — H-share Baidu valuation raw acquisition contract (COMPLETE)
+
+The mapping review now covers the documented H-share Baidu
+`stock_hk_valuation_baidu` endpoint under `MARKET_ACTIVITY` with explicit
+`view=valuation_baidu_hk`, the requested five-digit H-share listing code, one of
+five documented indicators and one of three documented periods. The [AKShare
+stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hk_valuation_baidu.py)
+define the exact `date`/`value` output and Baidu JSON parameters. The provider
+freezes the documented fixed request parameters including `market=hk`, records
+the dynamic indicator/code/period mapping and validates the complete non-empty
+history, strict ascending dates and finite numeric values; signed values remain
+raw because no unit or universal valuation domain is documented.
+
+The normalizer emits `AKSHARE_HK_BAIDU_VALUATION_RAW_ONLY` and creates no
+canonical valuation, market, return, governance or accounting fact because the
+provider-defined indicator/period semantics are not yet reconciled to
+filing-backed accounting periods, units or the canonical valuation contract.
+Tests cover all indicator/period choices, explicit view and H-share routing,
+five-digit symbol derivation, exact schema and fixed/dynamic request metadata,
+signed values and boundary validation, raw-only normalization, replay metadata
+tampering and offline cache replay. No calculation, gate, pipeline, CLI or
+input-loader contract changes.
+
 ### Future structured-provider deliverables
 
 ```text
@@ -3084,7 +3108,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–3.19 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–3.20 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -3521,6 +3545,15 @@ validation are recorded; the normalizer emits
 `AKSHARE_BAIDU_VALUATION_RAW_ONLY` and creates no canonical valuation, market,
 return, governance or accounting fact, and no calculation, gate, pipeline, CLI
 or input-loader contract changes.
+Phase 3.20 adds the documented H-share Baidu `stock_hk_valuation_baidu`
+valuation-history endpoint under `MARKET_ACTIVITY` with explicit
+`view=valuation_baidu_hk`, a derived five-digit listing symbol, five indicator
+choices and three period choices. Its exact `date`/`value` schema, official
+fixed/dynamic JSON parameters including `market=hk`, listing-scoped date bounds
+and strict history validation are recorded; the normalizer emits
+`AKSHARE_HK_BAIDU_VALUATION_RAW_ONLY` and creates no canonical valuation,
+market, return, governance or accounting fact, and no calculation, gate,
+pipeline, CLI or input-loader contract changes.
 Phase 2.75 completes the next documented structured-data boundary by adding
 the A-share `stock_gpzy_profile_em` market-wide historical ownership-pledge
 view. Its no-argument eight-field response is validated as an ascending raw

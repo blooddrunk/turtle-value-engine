@@ -304,6 +304,21 @@ class FakeAKShare:
             period=period,
         )
 
+    def stock_hk_valuation_baidu(
+        self,
+        *,
+        symbol: str,
+        indicator: str,
+        period: str,
+    ):
+        return self._return(
+            "stock_hk_valuation_baidu",
+            _fixture("hk_baidu_valuation.json"),
+            symbol=symbol,
+            indicator=indicator,
+            period=period,
+        )
+
     def stock_sse_deal_daily(self, *, date: str):
         return self._return(
             "stock_sse_deal_daily",
@@ -1033,8 +1048,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "120"
-    assert AKSHARE_MAPPING_VERSION == "121"
+    assert provider.identity.provider_version == "121"
+    assert AKSHARE_MAPPING_VERSION == "122"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -23497,6 +23512,539 @@ def test_market_activity_baidu_valuation_cache_replay_does_not_call_upstream(
         (
             "stock_zh_valuation_baidu",
             {"symbol": "600000", "indicator": "总市值", "period": "全部"},
+        )
+    ]
+
+
+@pytest.mark.parametrize(
+    "indicator",
+    ["总市值", "市盈率(TTM)", "市盈率(静)", "市净率", "市现率"],
+)
+@pytest.mark.parametrize("period", ["近一年", "近三年", "全部"])
+def test_market_activity_hk_baidu_valuation_fetch_preserves_documented_history(
+    indicator: str,
+    period: str,
+):
+    fake = FakeAKShare()
+    request = _request(
+        DataCategory.MARKET_ACTIVITY,
+        "HK00700",
+        {
+            "view": "valuation_baidu_hk",
+            "indicator": indicator,
+            "period": period,
+        },
+    )
+
+    record = _provider(fake).fetch(request)
+    fixture = _fixture("hk_baidu_valuation.json")
+    metadata = record.response_metadata
+
+    assert record.raw_payload == fixture
+    assert fake.calls == [
+        (
+            "stock_hk_valuation_baidu",
+            {"symbol": "00700", "indicator": indicator, "period": period},
+        )
+    ]
+    assert metadata["endpoint"] == "stock_hk_valuation_baidu"
+    assert metadata["market"] == "H"
+    assert metadata["listing_code"] == "00700"
+    assert metadata["market_activity_view"] == "valuation_baidu_hk"
+    assert metadata["upstream_symbol"] == "00700"
+    assert metadata["indicator"] == indicator
+    assert metadata["period"] == period
+    assert metadata["market_scope"] == "requested_h_share_listing"
+    assert metadata["listing_scoped_request"] is True
+    assert metadata["row_filtering"] == "upstream"
+    assert metadata["snapshot_scope"] == "requested_baidu_hk_valuation_period_history"
+    assert metadata["date_binding"] == "row_dates"
+    assert metadata["observation_date_field"] == "date"
+    assert metadata["observation_date_format"] == "YYYY-MM-DD"
+    assert metadata["observation_date_ordering"] == "strictly_ascending"
+    assert metadata["observation_start_date"] == fixture[0]["date"]
+    assert metadata["observation_end_date"] == fixture[-1]["date"]
+    assert metadata["observation_count_contract"] == "non_empty_requested_history"
+    assert metadata["value_fields"] == ["value"]
+    assert metadata["non_negative_fields"] == []
+    assert metadata["integer_fields"] == []
+    assert metadata["text_fields"] == []
+    assert metadata["date_fields"] == ["date"]
+    assert metadata["required_date_fields"] == ["date"]
+    assert metadata["required_numeric_fields"] == ["value"]
+    assert metadata["field_types"] == {"date": "date", "value": "number"}
+    assert metadata["nullable_fields"] == []
+    assert metadata["field_count"] == 2
+    assert metadata["source_field_order"] == ["date", "value"]
+    assert metadata["documented_units"] == {}
+    assert metadata["undocumented_numeric_units"] == {"value": "not_documented"}
+    assert metadata["upstream_url"] == "https://finance.baidu.com/opendata"
+    assert metadata["upstream_protocol"] == "JSON"
+    assert metadata["upstream_report_name"] is None
+    assert metadata["upstream_parameters"] == [
+        "openapi",
+        "dspName",
+        "tn",
+        "client",
+        "query",
+        "code",
+        "word",
+        "resource_id",
+        "market",
+        "tag",
+        "chart_select",
+        "industry_select",
+        "skip_industry",
+        "finClientType",
+    ]
+    assert metadata["upstream_fixed_parameters"] == {
+        "openapi": "1",
+        "dspName": "iphone",
+        "tn": "tangram",
+        "client": "app",
+        "word": "",
+        "resource_id": "51171",
+        "market": "hk",
+        "industry_select": "",
+        "skip_industry": "1",
+        "finClientType": "pc",
+    }
+    assert metadata["upstream_dynamic_parameters"] == {
+        "query": indicator,
+        "code": "00700",
+        "tag": indicator,
+        "chart_select": period,
+    }
+    assert metadata["upstream_authentication"] == "none"
+    assert metadata["wrapper_dropped_fields"] == []
+    assert metadata["upstream_page_size"] is None
+    assert metadata["pagination"] == "single_snapshot"
+    assert metadata["upstream_sort_column"] is None
+    assert metadata["upstream_sort_direction"] is None
+    assert metadata["upstream_filter"] is None
+    assert metadata["wrapper_source_page_uri"] == (
+        "https://gushitong.baidu.com/stock/hk-06969"
+    )
+    assert metadata["wrapper_output_ordering"] == "ascending_by_date"
+    assert metadata["upstream_row_count"] == len(fixture)
+    assert metadata["entity_row_count"] == len(fixture)
+    assert metadata["entity_rows_selected"] is True
+    assert record.source_uri == "https://gushitong.baidu.com/stock/hk-06969"
+
+
+@pytest.mark.parametrize(
+    ("parameters", "entity_id", "match"),
+    [
+        (
+            {"view": "valuation_baidu_hk", "period": "近一年"},
+            "HK00700",
+            "requires indicator in",
+        ),
+        (
+            {"view": "valuation_baidu_hk", "indicator": "总市值"},
+            "HK00700",
+            "requires period in",
+        ),
+        (
+            {
+                "view": "valuation_baidu_hk",
+                "indicator": "ROE",
+                "period": "近一年",
+            },
+            "HK00700",
+            "requires indicator in",
+        ),
+        (
+            {
+                "view": "valuation_baidu_hk",
+                "indicator": "总市值",
+                "period": "最近一年",
+            },
+            "HK00700",
+            "requires period in",
+        ),
+        (
+            {
+                "view": "valuation_baidu_hk",
+                "indicator": "总市值",
+                "period": "近一年",
+                "symbol": "00700",
+            },
+            "HK00700",
+            "unsupported AKShare H-share Baidu valuation parameter",
+        ),
+        (
+            {
+                "view": "valuation_baidu_hk",
+                "indicator": "总市值",
+                "period": "近一年",
+            },
+            "SH600000",
+            "H-share Baidu valuation endpoint supports H-share listings only",
+        ),
+    ],
+)
+def test_market_activity_hk_baidu_valuation_request_validates_scope_before_upstream_call(
+    parameters: dict,
+    entity_id: str,
+    match: str,
+):
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError, match=match):
+        _provider(fake).fetch(
+            _request(DataCategory.MARKET_ACTIVITY, entity_id, parameters)
+        )
+
+    assert fake.calls == []
+
+
+def test_market_activity_hk_baidu_valuation_derives_five_digit_symbol_from_h_listing():
+    fake = FakeAKShare()
+
+    _provider(fake).fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "700.HK",
+            {
+                "view": "valuation_baidu_hk",
+                "indicator": "总市值",
+                "period": "近一年",
+            },
+        )
+    )
+
+    assert fake.calls == [
+        (
+            "stock_hk_valuation_baidu",
+            {"symbol": "00700", "indicator": "总市值", "period": "近一年"},
+        )
+    ]
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "empty",
+        "missing_field",
+        "extra_field",
+        "reordered_fields",
+        "invalid_date",
+        "duplicate_date",
+        "descending_dates",
+        "invalid_numeric",
+        "boolean_numeric",
+        "null_numeric",
+    ],
+)
+def test_market_activity_hk_baidu_valuation_response_validates_schema_boundaries(
+    mutation: str,
+):
+    payload = [dict(row) for row in _fixture("hk_baidu_valuation.json")]
+    if mutation == "empty":
+        payload = []
+    elif mutation == "missing_field":
+        payload[0].pop("value")
+    elif mutation == "extra_field":
+        payload[0]["unexpected"] = "not documented"
+    elif mutation == "reordered_fields":
+        payload[0] = dict(reversed(list(payload[0].items())))
+    elif mutation == "invalid_date":
+        payload[0]["date"] = "2023-11-1"
+    elif mutation == "duplicate_date":
+        payload[1]["date"] = payload[0]["date"]
+    elif mutation == "descending_dates":
+        payload.reverse()
+    elif mutation == "invalid_numeric":
+        payload[0]["value"] = "not-a-number"
+    elif mutation == "boolean_numeric":
+        payload[0]["value"] = True
+    else:
+        payload[0]["value"] = None
+
+    class InvalidHKBaiduValuation(FakeAKShare):
+        def stock_hk_valuation_baidu(
+            self,
+            *,
+            symbol: str,
+            indicator: str,
+            period: str,
+        ):
+            return self._return(
+                "stock_hk_valuation_baidu",
+                payload,
+                symbol=symbol,
+                indicator=indicator,
+                period=period,
+            )
+
+    with pytest.raises(ProviderResponseError):
+        _provider(InvalidHKBaiduValuation()).fetch(
+            _request(
+                DataCategory.MARKET_ACTIVITY,
+                "HK00700",
+                {
+                    "view": "valuation_baidu_hk",
+                    "indicator": "市盈率(TTM)",
+                    "period": "全部",
+                },
+            )
+        )
+
+
+def test_market_activity_hk_baidu_valuation_allows_signed_values_as_raw_context():
+    payload = [dict(row) for row in _fixture("hk_baidu_valuation.json")]
+    payload[0]["value"] = -4.5
+
+    class SignedHKBaiduValuation(FakeAKShare):
+        def stock_hk_valuation_baidu(
+            self,
+            *,
+            symbol: str,
+            indicator: str,
+            period: str,
+        ):
+            return self._return(
+                "stock_hk_valuation_baidu",
+                payload,
+                symbol=symbol,
+                indicator=indicator,
+                period=period,
+            )
+
+    record = _provider(SignedHKBaiduValuation()).fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "HK00700",
+            {
+                "view": "valuation_baidu_hk",
+                "indicator": "市盈率(TTM)",
+                "period": "近一年",
+            },
+        )
+    )
+
+    assert record.raw_payload[0]["value"] == -4.5
+
+
+def test_market_activity_hk_baidu_valuation_is_retained_as_raw_evidence_without_facts():
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "HK00700",
+            {
+                "view": "valuation_baidu_hk",
+                "indicator": "市净率",
+                "period": "近三年",
+            },
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="hk-baidu-valuation-raw-only",
+        as_of=date(2026, 9, 11),
+        profile_id="strict-v1",
+        company=_company("HK00700"),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_HK_BAIDU_VALUATION_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == []
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "H-share" in normalized.data_quality.notes
+    assert "Baidu" in normalized.data_quality.notes
+    assert "valuation" in normalized.data_quality.notes
+    assert "canonical" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "endpoint",
+        "source_uri",
+        "market",
+        "listing_code",
+        "view",
+        "upstream_symbol",
+        "indicator",
+        "period",
+        "market_scope",
+        "listing_scope",
+        "filtering",
+        "snapshot",
+        "date_binding",
+        "observation_date_field",
+        "observation_start_date",
+        "value_fields",
+        "non_negative_fields",
+        "date_fields",
+        "required_date_fields",
+        "required_numeric_fields",
+        "field_types",
+        "nullable_fields",
+        "field_count",
+        "source_field_order",
+        "undocumented_units",
+        "upstream_url",
+        "upstream_protocol",
+        "upstream_parameters",
+        "upstream_fixed_parameters",
+        "upstream_dynamic_parameters",
+        "upstream_authentication",
+        "wrapper_dropped_fields",
+        "pagination",
+        "wrapper_source_page_uri",
+        "upstream_count",
+        "entity_count",
+        "selected",
+        "payload",
+    ],
+)
+def test_market_activity_hk_baidu_valuation_normalizer_rejects_replayed_scope_mismatches(
+    mutation: str,
+):
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "HK00700",
+            {
+                "view": "valuation_baidu_hk",
+                "indicator": "市盈率(TTM)",
+                "period": "近一年",
+            },
+        )
+    )
+    payload = [dict(row) for row in record.raw_payload]
+    response_metadata = dict(record.response_metadata)
+    source_uri = record.source_uri
+    if mutation == "endpoint":
+        response_metadata["endpoint"] = "stock_sse_summary"
+    elif mutation == "source_uri":
+        source_uri = "https://example.invalid/baidu-valuation-hk"
+    elif mutation == "market":
+        response_metadata["market"] = "A"
+    elif mutation == "listing_code":
+        response_metadata["listing_code"] = "600000"
+    elif mutation == "view":
+        response_metadata["market_activity_view"] = "valuation_baidu"
+    elif mutation == "upstream_symbol":
+        response_metadata["upstream_symbol"] = "600000"
+    elif mutation == "indicator":
+        response_metadata["indicator"] = "市净率"
+    elif mutation == "period":
+        response_metadata["period"] = "近三年"
+    elif mutation == "market_scope":
+        response_metadata["market_scope"] = "all_h_share_listings"
+    elif mutation == "listing_scope":
+        response_metadata["listing_scoped_request"] = False
+    elif mutation == "filtering":
+        response_metadata["row_filtering"] = "provider"
+    elif mutation == "snapshot":
+        response_metadata["snapshot_scope"] = "current_trading_day"
+    elif mutation == "date_binding":
+        response_metadata["date_binding"] = "request_only"
+    elif mutation == "observation_date_field":
+        response_metadata["observation_date_field"] = "交易日"
+    elif mutation == "observation_start_date":
+        response_metadata["observation_start_date"] = "2005-01-05"
+    elif mutation == "value_fields":
+        response_metadata["value_fields"] = []
+    elif mutation == "non_negative_fields":
+        response_metadata["non_negative_fields"] = ["value"]
+    elif mutation == "date_fields":
+        response_metadata["date_fields"] = []
+    elif mutation == "required_date_fields":
+        response_metadata["required_date_fields"] = []
+    elif mutation == "required_numeric_fields":
+        response_metadata["required_numeric_fields"] = []
+    elif mutation == "field_types":
+        response_metadata["field_types"] = {"date": "string", "value": "number"}
+    elif mutation == "nullable_fields":
+        response_metadata["nullable_fields"] = ["value"]
+    elif mutation == "field_count":
+        response_metadata["field_count"] = 1
+    elif mutation == "source_field_order":
+        response_metadata["source_field_order"] = ["value", "date"]
+    elif mutation == "undocumented_units":
+        response_metadata["undocumented_numeric_units"] = {"value": "ratio"}
+    elif mutation == "upstream_url":
+        response_metadata["upstream_url"] = "https://example.invalid/api"
+    elif mutation == "upstream_protocol":
+        response_metadata["upstream_protocol"] = "HTML"
+    elif mutation == "upstream_parameters":
+        response_metadata["upstream_parameters"] = ["code"]
+    elif mutation == "upstream_fixed_parameters":
+        response_metadata["upstream_fixed_parameters"] = {"market": "wrong"}
+    elif mutation == "upstream_dynamic_parameters":
+        response_metadata["upstream_dynamic_parameters"] = {"code": "00696"}
+    elif mutation == "upstream_authentication":
+        response_metadata["upstream_authentication"] = "token"
+    elif mutation == "wrapper_dropped_fields":
+        response_metadata["wrapper_dropped_fields"] = ["value"]
+    elif mutation == "pagination":
+        response_metadata["pagination"] = "paged"
+    elif mutation == "wrapper_source_page_uri":
+        response_metadata["wrapper_source_page_uri"] = "https://example.invalid/page"
+    elif mutation == "upstream_count":
+        response_metadata["upstream_row_count"] = len(payload) - 1
+    elif mutation == "entity_count":
+        response_metadata["entity_row_count"] = len(payload) - 1
+    elif mutation == "selected":
+        response_metadata["entity_rows_selected"] = False
+    else:
+        payload[0]["unexpected"] = "not documented"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=source_uri,
+        response_metadata=response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-hk-baidu-valuation",
+            as_of=date(2026, 9, 11),
+            profile_id="strict-v1",
+            company=_company("HK00700"),
+        )
+
+
+def test_market_activity_hk_baidu_valuation_cache_replay_does_not_call_upstream(
+    tmp_path: Path,
+):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.MARKET_ACTIVITY,
+        "HK00700",
+        {
+            "view": "valuation_baidu_hk",
+            "indicator": "总市值",
+            "period": "全部",
+        },
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [
+        (
+            "stock_hk_valuation_baidu",
+            {"symbol": "00700", "indicator": "总市值", "period": "全部"},
         )
     ]
 

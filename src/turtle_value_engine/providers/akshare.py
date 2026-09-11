@@ -55,7 +55,7 @@ The SSE daily-deal overview raw slice is also available. The SZSE area-summary
 and sector-summary raw slices are also available. The Eastmoney industry-board
 snapshot, Dragon-Tiger institution-daily raw slice, stock-account-statistics
 history and Legu market-activity/congestion/equity-bond-spread/Buffett-index/
-A-share PE/PB-history, index-PE/index-PB, market-PE/market-PB and Baidu
+A-share PE/PB-history, index-PE/index-PB, market-PE/market-PB and A/H Baidu
 valuation-history snapshots are also available.
 The A-share Eastmoney top-ten, top-ten-tradable-shareholder and
 top-ten-tradable-shareholder-detail raw slices are also available.
@@ -107,9 +107,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "120"
+AKSHARE_ADAPTER_VERSION = "121"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "121"
+AKSHARE_MAPPING_VERSION = "122"
 
 
 class ListingMarket(StrEnum):
@@ -228,6 +228,7 @@ _SOURCE_URIS = {
     "stock_market_pb_lg": "https://legulegu.com/stockdata/shanghaiPB",
     "stock_index_pb_lg": "https://legulegu.com/stockdata/sz50-pb",
     "stock_zh_valuation_baidu": "https://gushitong.baidu.com/stock/ab-002044",
+    "stock_hk_valuation_baidu": "https://gushitong.baidu.com/stock/hk-06969",
     "stock_zt_pool_em": "https://quote.eastmoney.com/ztb/detail#type=ztgc",
     "stock_zt_pool_dtgc_em": "https://quote.eastmoney.com/ztb/detail#type=dtgc",
     "stock_intraday_em": "https://quote.eastmoney.com/f1.html?newcode=0.000001",
@@ -1655,6 +1656,74 @@ _MARKET_ACTIVITY_BAIDU_VALUATION_UPSTREAM_FIXED_PARAMETERS = {
 }
 _MARKET_ACTIVITY_BAIDU_VALUATION_DOCUMENTED_UNITS: dict[str, str] = {}
 _MARKET_ACTIVITY_BAIDU_VALUATION_UNDOCUMENTED_NUMERIC_UNITS = {
+    "value": "not_documented"
+}
+_MARKET_ACTIVITY_HK_BAIDU_VALUATION_PARAMETER_NAMES = frozenset(
+    {"view", "indicator", "period"}
+)
+_MARKET_ACTIVITY_HK_BAIDU_VALUATION_VIEW = "valuation_baidu_hk"
+_MARKET_ACTIVITY_HK_BAIDU_VALUATION_INDICATORS = (
+    "总市值",
+    "市盈率(TTM)",
+    "市盈率(静)",
+    "市净率",
+    "市现率",
+)
+_MARKET_ACTIVITY_HK_BAIDU_VALUATION_PERIODS = (
+    "近一年",
+    "近三年",
+    "全部",
+)
+_MARKET_ACTIVITY_HK_BAIDU_VALUATION_FIELDS = ("date", "value")
+_MARKET_ACTIVITY_HK_BAIDU_VALUATION_FIELD_SET = frozenset(
+    _MARKET_ACTIVITY_HK_BAIDU_VALUATION_FIELDS
+)
+_MARKET_ACTIVITY_HK_BAIDU_VALUATION_DATE_FIELDS = ("date",)
+_MARKET_ACTIVITY_HK_BAIDU_VALUATION_NUMERIC_FIELDS = ("value",)
+_MARKET_ACTIVITY_HK_BAIDU_VALUATION_NON_NEGATIVE_FIELDS: frozenset[str] = frozenset()
+_MARKET_ACTIVITY_HK_BAIDU_VALUATION_TEXT_FIELDS: tuple[str, ...] = ()
+_MARKET_ACTIVITY_HK_BAIDU_VALUATION_REQUIRED_DATE_FIELDS = ("date",)
+_MARKET_ACTIVITY_HK_BAIDU_VALUATION_REQUIRED_NUMERIC_FIELDS = ("value",)
+_MARKET_ACTIVITY_HK_BAIDU_VALUATION_FIELD_TYPES = {
+    "date": "date",
+    "value": "number",
+}
+_MARKET_ACTIVITY_HK_BAIDU_VALUATION_SOURCE_URI = (
+    "https://gushitong.baidu.com/stock/hk-06969"
+)
+_MARKET_ACTIVITY_HK_BAIDU_VALUATION_UPSTREAM_URL = (
+    "https://finance.baidu.com/opendata"
+)
+_MARKET_ACTIVITY_HK_BAIDU_VALUATION_UPSTREAM_PARAMETERS = (
+    "openapi",
+    "dspName",
+    "tn",
+    "client",
+    "query",
+    "code",
+    "word",
+    "resource_id",
+    "market",
+    "tag",
+    "chart_select",
+    "industry_select",
+    "skip_industry",
+    "finClientType",
+)
+_MARKET_ACTIVITY_HK_BAIDU_VALUATION_UPSTREAM_FIXED_PARAMETERS = {
+    "openapi": "1",
+    "dspName": "iphone",
+    "tn": "tangram",
+    "client": "app",
+    "word": "",
+    "resource_id": "51171",
+    "market": "hk",
+    "industry_select": "",
+    "skip_industry": "1",
+    "finClientType": "pc",
+}
+_MARKET_ACTIVITY_HK_BAIDU_VALUATION_DOCUMENTED_UNITS: dict[str, str] = {}
+_MARKET_ACTIVITY_HK_BAIDU_VALUATION_UNDOCUMENTED_NUMERIC_UNITS = {
     "value": "not_documented"
 }
 _MARKET_ACTIVITY_SZSE_SUMMARY_PARAMETER_NAMES = frozenset({"view", "date"})
@@ -3250,6 +3319,19 @@ class AKShareProvider(StructuredDataProvider):
         if (
             request.category is DataCategory.MARKET_ACTIVITY
             and request.parameters.get("view")
+            == _MARKET_ACTIVITY_HK_BAIDU_VALUATION_VIEW
+            and listing.market is not ListingMarket.H
+        ):
+            raise ProviderRequestError(
+                "the AKShare H-share Baidu valuation endpoint supports H-share "
+                "listings only",
+                provider=self.identity,
+                request=request,
+                retryable=False,
+            )
+        if (
+            request.category is DataCategory.MARKET_ACTIVITY
+            and request.parameters.get("view")
             == _MARKET_ACTIVITY_HOT_RANK_DETAIL_VIEW
             and listing.market is not ListingMarket.A
         ):
@@ -3269,6 +3351,7 @@ class AKShareProvider(StructuredDataProvider):
                 in {
                     _MARKET_ACTIVITY_HOT_RANK_LATEST_VIEW,
                     _MARKET_ACTIVITY_HK_HOT_RANK_DETAIL_VIEW,
+                    _MARKET_ACTIVITY_HK_BAIDU_VALUATION_VIEW,
                 }
             )
         ):
@@ -4093,6 +4176,45 @@ class AKShareProvider(StructuredDataProvider):
                 )
                 response_metadata.update(
                     _market_activity_baidu_valuation_response_metadata(
+                        listing_code=listing.code,
+                        symbol=symbol,
+                        indicator=indicator,
+                        period=period,
+                        observation_dates=observation_dates,
+                        row_count=len(rows),
+                    )
+                )
+            elif endpoint.name == "stock_hk_valuation_baidu":
+                symbol = kwargs["symbol"]
+                indicator = kwargs["indicator"]
+                period = kwargs["period"]
+                if not isinstance(symbol, str):
+                    raise ProviderResponseError(
+                        "AKShare H-share Baidu valuation upstream symbol must be text",
+                        provider=self.identity,
+                        request=request,
+                    )
+                if not isinstance(indicator, str):
+                    raise ProviderResponseError(
+                        "AKShare H-share Baidu valuation indicator must be text",
+                        provider=self.identity,
+                        request=request,
+                    )
+                if not isinstance(period, str):
+                    raise ProviderResponseError(
+                        "AKShare H-share Baidu valuation period must be text",
+                        provider=self.identity,
+                        request=request,
+                    )
+                observation_dates = (
+                    _validate_market_activity_hk_baidu_valuation_provider_rows(
+                        rows,
+                        provider=self.identity,
+                        request=request,
+                    )
+                )
+                response_metadata.update(
+                    _market_activity_hk_baidu_valuation_response_metadata(
                         listing_code=listing.code,
                         symbol=symbol,
                         indicator=indicator,
@@ -7003,6 +7125,10 @@ class AKShareProvider(StructuredDataProvider):
                 request.parameters.get("view")
                 == _MARKET_ACTIVITY_BAIDU_VALUATION_VIEW
             ),
+            market_activity_hk_baidu_valuation_requested=(
+                request.parameters.get("view")
+                == _MARKET_ACTIVITY_HK_BAIDU_VALUATION_VIEW
+            ),
             market_activity_market_pb_requested=(
                 request.parameters.get("view") == _MARKET_ACTIVITY_MARKET_PB_VIEW
             ),
@@ -7431,9 +7557,17 @@ class AKShareNormalizer:
                     record.request.parameters.get("view")
                     == _MARKET_ACTIVITY_HK_HOT_RANK_DETAIL_VIEW
                 )
+                is_hk_baidu_valuation = (
+                    record.request.parameters.get("view")
+                    == _MARKET_ACTIVITY_HK_BAIDU_VALUATION_VIEW
+                )
                 if listing.market is not ListingMarket.A and not (
                     listing.market is ListingMarket.H
-                    and (is_latest_hot_rank or is_hk_hot_rank_detail)
+                    and (
+                        is_latest_hot_rank
+                        or is_hk_hot_rank_detail
+                        or is_hk_baidu_valuation
+                    )
                 ):
                     raise ProviderNormalizationError(
                         "AKShare market-activity raw slice supports A-share listings only"
@@ -7513,6 +7647,13 @@ class AKShareNormalizer:
                         rows,
                     )
                     normalizer_flags.add("AKSHARE_BAIDU_VALUATION_RAW_ONLY")
+                elif endpoint_name == "stock_hk_valuation_baidu":
+                    _validate_market_activity_hk_baidu_valuation_normalizer_scope(
+                        record,
+                        listing,
+                        rows,
+                    )
+                    normalizer_flags.add("AKSHARE_HK_BAIDU_VALUATION_RAW_ONLY")
                 elif endpoint_name == "stock_market_pb_lg":
                     _validate_market_activity_market_pb_normalizer_scope(
                         record,
@@ -7767,6 +7908,7 @@ class AKShareNormalizer:
                         "stock_sse_summary, stock_sse_deal_daily, "
                         "stock_a_all_pb, stock_index_pe_lg, stock_index_pb_lg, "
                         "stock_zh_valuation_baidu, "
+                        "stock_hk_valuation_baidu, "
                         "stock_market_pe_lg, "
                         "stock_market_pb_lg, "
                         "stock_a_ttm_lyr, "
@@ -9508,6 +9650,14 @@ class AKShareNormalizer:
                 "indicator/period semantics are not reconciled to filing-backed "
                 "accounting scope, units or the canonical valuation contract."
             )
+        if "AKSHARE_HK_BAIDU_VALUATION_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented H-share Baidu valuation-history response is retained "
+                "as raw evidence only: its provider-defined valuation series and "
+                "selected indicator/period semantics are not reconciled to "
+                "filing-backed accounting scope, units or the canonical valuation "
+                "contract."
+            )
         if "AKSHARE_MARKET_PB_RAW_ONLY" in normalizer_flags:
             notes += (
                 " The documented Legu market-PB response is retained as raw evidence "
@@ -10029,6 +10179,7 @@ def _endpoint_candidates(
     market_activity_index_pe_requested: bool = False,
     market_activity_index_pb_requested: bool = False,
     market_activity_baidu_valuation_requested: bool = False,
+    market_activity_hk_baidu_valuation_requested: bool = False,
     market_activity_market_pb_requested: bool = False,
     market_activity_account_statistics_requested: bool = False,
     market_activity_block_trade_requested: bool = False,
@@ -10199,6 +10350,10 @@ def _endpoint_candidates(
         if market_activity_baidu_valuation_requested:
             if market is ListingMarket.A:
                 return ("stock_zh_valuation_baidu",)
+            return ()
+        if market_activity_hk_baidu_valuation_requested:
+            if market is ListingMarket.H:
+                return ("stock_hk_valuation_baidu",)
             return ()
         if market_activity_market_pb_requested:
             if market is ListingMarket.A:
@@ -19170,6 +19325,129 @@ def _validate_market_activity_baidu_valuation_provider_rows(
     return observation_dates
 
 
+def _market_activity_hk_baidu_valuation_date(value: object) -> date | None:
+    """Parse the H-share Baidu valuation wrapper's strict ISO date field."""
+
+    if not isinstance(value, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _market_activity_hk_baidu_valuation_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> tuple[str | None, list[date]]:
+    """Return strict-schema errors and dates for one H-share valuation history."""
+
+    if not rows:
+        return (
+            "market-activity H-share Baidu valuation response must not be empty",
+            [],
+        )
+
+    observation_dates: list[date] = []
+    previous_date: date | None = None
+    for index, row in enumerate(rows):
+        missing = [
+            field
+            for field in _MARKET_ACTIVITY_HK_BAIDU_VALUATION_FIELDS
+            if field not in row
+        ]
+        unexpected = [
+            field
+            for field in row
+            if field not in _MARKET_ACTIVITY_HK_BAIDU_VALUATION_FIELD_SET
+        ]
+        if missing:
+            return (
+                "market-activity H-share Baidu valuation row "
+                f"{index} is missing field(s): "
+                + ", ".join(missing),
+                [],
+            )
+        if unexpected:
+            return (
+                "market-activity H-share Baidu valuation row "
+                f"{index} contains unsupported field(s): "
+                + ", ".join(unexpected),
+                [],
+            )
+        if tuple(row) != _MARKET_ACTIVITY_HK_BAIDU_VALUATION_FIELDS:
+            return (
+                "market-activity H-share Baidu valuation rows must preserve the "
+                "official field order",
+                [],
+            )
+
+        observation_date = _market_activity_hk_baidu_valuation_date(row["date"])
+        if observation_date is None:
+            return (
+                "market-activity H-share Baidu valuation row "
+                f"{index} has an invalid date",
+                [],
+            )
+        if previous_date is not None and observation_date <= previous_date:
+            if observation_date == previous_date:
+                return (
+                    "market-activity H-share Baidu valuation response has duplicate "
+                    f"date {row['date']!r}",
+                    [],
+                )
+            return (
+                "market-activity H-share Baidu valuation response date values must "
+                "be strictly ascending",
+                [],
+            )
+        previous_date = observation_date
+        observation_dates.append(observation_date)
+
+        value = row["value"]
+        if isinstance(value, bool) or not isinstance(value, Real):
+            return (
+                "market-activity H-share Baidu valuation row "
+                f"{index} field 'value' must be numeric",
+                [],
+            )
+        try:
+            numeric = float(value)
+        except (OverflowError, TypeError, ValueError):
+            return (
+                "market-activity H-share Baidu valuation row "
+                f"{index} field 'value' must be numeric",
+                [],
+            )
+        if not math.isfinite(numeric):
+            return (
+                "market-activity H-share Baidu valuation row "
+                f"{index} field 'value' must be finite",
+                [],
+            )
+
+    return None, observation_dates
+
+
+def _validate_market_activity_hk_baidu_valuation_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> list[date]:
+    """Validate one complete H-share Baidu valuation-history response."""
+
+    message, observation_dates = (
+        _market_activity_hk_baidu_valuation_validation_message(rows)
+    )
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message}",
+            provider=provider,
+            request=request,
+        )
+    return observation_dates
+
+
 def _market_activity_sse_deal_daily_validation_message(
     rows: Sequence[Mapping[str, JSONValue]],
 ) -> str | None:
@@ -24422,6 +24700,179 @@ def _validate_market_activity_baidu_valuation_normalizer_scope(
             raise ProviderNormalizationError(
                 f"AKShare Baidu valuation response metadata {name!r} does not "
                 "match the requested replay scope"
+            )
+
+
+def _market_activity_hk_baidu_valuation_response_metadata(
+    *,
+    listing_code: str,
+    symbol: str,
+    indicator: str,
+    period: str,
+    observation_dates: Sequence[date],
+    row_count: int,
+) -> dict[str, JSONValue]:
+    """Build the replay contract for one H-share Baidu valuation history."""
+
+    if indicator not in _MARKET_ACTIVITY_HK_BAIDU_VALUATION_INDICATORS:
+        raise ValueError(f"unsupported H-share Baidu valuation indicator {indicator!r}")
+    if period not in _MARKET_ACTIVITY_HK_BAIDU_VALUATION_PERIODS:
+        raise ValueError(f"unsupported H-share Baidu valuation period {period!r}")
+    if not observation_dates:
+        raise ValueError(
+            "H-share Baidu valuation response must contain observation dates"
+        )
+    return {
+        "endpoint": "stock_hk_valuation_baidu",
+        "market": ListingMarket.H.value,
+        "listing_code": listing_code,
+        "market_activity_view": _MARKET_ACTIVITY_HK_BAIDU_VALUATION_VIEW,
+        "upstream_symbol": symbol,
+        "indicator": indicator,
+        "period": period,
+        "market_scope": "requested_h_share_listing",
+        "listing_scoped_request": True,
+        "row_filtering": "upstream",
+        "snapshot_scope": "requested_baidu_hk_valuation_period_history",
+        "date_binding": "row_dates",
+        "observation_date_field": "date",
+        "observation_date_format": "YYYY-MM-DD",
+        "observation_date_ordering": "strictly_ascending",
+        "observation_start_date": min(observation_dates).isoformat(),
+        "observation_end_date": max(observation_dates).isoformat(),
+        "observation_count_contract": "non_empty_requested_history",
+        "value_fields": list(
+            _MARKET_ACTIVITY_HK_BAIDU_VALUATION_NUMERIC_FIELDS
+        ),
+        "non_negative_fields": list(
+            _MARKET_ACTIVITY_HK_BAIDU_VALUATION_NON_NEGATIVE_FIELDS
+        ),
+        "integer_fields": [],
+        "text_fields": list(_MARKET_ACTIVITY_HK_BAIDU_VALUATION_TEXT_FIELDS),
+        "date_fields": list(_MARKET_ACTIVITY_HK_BAIDU_VALUATION_DATE_FIELDS),
+        "required_date_fields": list(
+            _MARKET_ACTIVITY_HK_BAIDU_VALUATION_REQUIRED_DATE_FIELDS
+        ),
+        "required_numeric_fields": list(
+            _MARKET_ACTIVITY_HK_BAIDU_VALUATION_REQUIRED_NUMERIC_FIELDS
+        ),
+        "field_types": dict(_MARKET_ACTIVITY_HK_BAIDU_VALUATION_FIELD_TYPES),
+        "nullable_fields": [],
+        "field_count": len(_MARKET_ACTIVITY_HK_BAIDU_VALUATION_FIELDS),
+        "source_field_order": list(_MARKET_ACTIVITY_HK_BAIDU_VALUATION_FIELDS),
+        "documented_units": dict(
+            _MARKET_ACTIVITY_HK_BAIDU_VALUATION_DOCUMENTED_UNITS
+        ),
+        "undocumented_numeric_units": dict(
+            _MARKET_ACTIVITY_HK_BAIDU_VALUATION_UNDOCUMENTED_NUMERIC_UNITS
+        ),
+        "upstream_url": _MARKET_ACTIVITY_HK_BAIDU_VALUATION_UPSTREAM_URL,
+        "upstream_protocol": "JSON",
+        "upstream_report_name": None,
+        "upstream_parameters": list(
+            _MARKET_ACTIVITY_HK_BAIDU_VALUATION_UPSTREAM_PARAMETERS
+        ),
+        "upstream_fixed_parameters": dict(
+            _MARKET_ACTIVITY_HK_BAIDU_VALUATION_UPSTREAM_FIXED_PARAMETERS
+        ),
+        "upstream_dynamic_parameters": {
+            "query": indicator,
+            "code": symbol,
+            "tag": indicator,
+            "chart_select": period,
+        },
+        "upstream_authentication": "none",
+        "wrapper_dropped_fields": [],
+        "upstream_page_size": None,
+        "pagination": "single_snapshot",
+        "upstream_sort_column": None,
+        "upstream_sort_direction": None,
+        "upstream_filter": None,
+        "wrapper_source_page_uri": _MARKET_ACTIVITY_HK_BAIDU_VALUATION_SOURCE_URI,
+        "wrapper_output_ordering": "ascending_by_date",
+        "entity_rows_selected": True,
+        "upstream_row_count": row_count,
+        "entity_row_count": row_count,
+    }
+
+
+def _validate_market_activity_hk_baidu_valuation_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> None:
+    """Validate replay scope and metadata for one H-share valuation history."""
+
+    if listing.market is not ListingMarket.H:
+        raise ProviderNormalizationError(
+            "AKShare H-share Baidu valuation raw slice supports H-share listings only"
+        )
+    endpoint_name = "stock_hk_valuation_baidu"
+    if record.response_metadata.get("endpoint") != endpoint_name:
+        raise ProviderNormalizationError(
+            "AKShare H-share Baidu valuation record must come from "
+            "stock_hk_valuation_baidu"
+        )
+    if record.source_uri != _SOURCE_URIS[endpoint_name]:
+        raise ProviderNormalizationError(
+            "AKShare H-share Baidu valuation source URI does not match the "
+            "documented endpoint"
+        )
+    try:
+        upstream_kwargs = _market_activity_hk_baidu_valuation_kwargs(
+            endpoint_name,
+            listing,
+            record.request,
+        )
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+    symbol = upstream_kwargs["symbol"]
+    indicator = upstream_kwargs["indicator"]
+    period = upstream_kwargs["period"]
+    if not isinstance(symbol, str):
+        raise ProviderNormalizationError(
+            "AKShare H-share Baidu valuation symbol must be text"
+        )
+    if not isinstance(indicator, str):
+        raise ProviderNormalizationError(
+            "AKShare H-share Baidu valuation indicator must be text"
+        )
+    if not isinstance(period, str):
+        raise ProviderNormalizationError(
+            "AKShare H-share Baidu valuation period must be text"
+        )
+
+    message, observation_dates = (
+        _market_activity_hk_baidu_valuation_validation_message(rows)
+    )
+    if message is not None:
+        raise ProviderNormalizationError(message)
+    expected_metadata = _market_activity_hk_baidu_valuation_response_metadata(
+        listing_code=listing.code,
+        symbol=symbol,
+        indicator=indicator,
+        period=period,
+        observation_dates=observation_dates,
+        row_count=len(rows),
+    )
+    boolean_fields = {"listing_scoped_request", "entity_rows_selected"}
+    count_fields = {"field_count", "upstream_row_count", "entity_row_count"}
+    for name, expected in expected_metadata.items():
+        actual = record.response_metadata.get(name)
+        if name in boolean_fields:
+            matches = isinstance(actual, bool) and actual is expected
+        elif name in count_fields:
+            matches = (
+                isinstance(actual, int)
+                and not isinstance(actual, bool)
+                and actual == expected
+            )
+        else:
+            matches = actual == expected
+        if not matches:
+            raise ProviderNormalizationError(
+                f"AKShare H-share Baidu valuation response metadata {name!r} "
+                "does not match the requested replay scope"
             )
 
 
@@ -31122,6 +31573,12 @@ def _market_activity_kwargs(
             listing,
             request,
         )
+    if endpoint_name == "stock_hk_valuation_baidu":
+        return _market_activity_hk_baidu_valuation_kwargs(
+            endpoint_name,
+            listing,
+            request,
+        )
     if endpoint_name == "stock_market_pb_lg":
         return _market_activity_market_pb_kwargs(endpoint_name, listing, request)
     if endpoint_name == "stock_a_all_pb":
@@ -31412,6 +31869,67 @@ def _market_activity_baidu_valuation_kwargs(
         raise ProviderRequestError(
             "AKShare Baidu valuation endpoint requires period in "
             + repr(_MARKET_ACTIVITY_BAIDU_VALUATION_PERIODS),
+            request=request,
+            retryable=False,
+        )
+    return {
+        "symbol": listing.code,
+        "indicator": indicator,
+        "period": period,
+    }
+
+
+def _market_activity_hk_baidu_valuation_kwargs(
+    endpoint_name: str,
+    listing: _ListingRef,
+    request: ProviderRequest,
+) -> dict[str, object]:
+    """Build the H-share listing-scoped Baidu valuation-history request."""
+
+    if endpoint_name != "stock_hk_valuation_baidu":
+        raise ProviderRequestError(
+            f"unsupported AKShare H-share Baidu valuation endpoint {endpoint_name!r}",
+            request=request,
+            retryable=False,
+        )
+    if listing.market is not ListingMarket.H:
+        raise ProviderRequestError(
+            "the AKShare H-share Baidu valuation endpoint supports H-share listings "
+            "only",
+            request=request,
+            retryable=False,
+        )
+    unknown = sorted(
+        set(request.parameters)
+        - _MARKET_ACTIVITY_HK_BAIDU_VALUATION_PARAMETER_NAMES
+    )
+    if unknown:
+        raise ProviderRequestError(
+            "unsupported AKShare H-share Baidu valuation parameter(s): "
+            + ", ".join(unknown),
+            request=request,
+            retryable=False,
+        )
+    if request.parameters.get("view") != _MARKET_ACTIVITY_HK_BAIDU_VALUATION_VIEW:
+        raise ProviderRequestError(
+            "AKShare H-share Baidu valuation endpoint requires "
+            f"view={_MARKET_ACTIVITY_HK_BAIDU_VALUATION_VIEW!r}",
+            request=request,
+            retryable=False,
+        )
+    indicator = request.parameters.get("indicator")
+    if indicator not in _MARKET_ACTIVITY_HK_BAIDU_VALUATION_INDICATORS:
+        raise ProviderRequestError(
+            "AKShare H-share Baidu valuation endpoint requires indicator in "
+            + repr(_MARKET_ACTIVITY_HK_BAIDU_VALUATION_INDICATORS),
+            request=request,
+            retryable=False,
+        )
+    period = request.parameters.get("period")
+    if period not in _MARKET_ACTIVITY_HK_BAIDU_VALUATION_PERIODS:
+        raise ProviderRequestError(
+            "AKShare H-share Baidu valuation endpoint requires period in "
+            + repr(_MARKET_ACTIVITY_HK_BAIDU_VALUATION_PERIODS),
             request=request,
             retryable=False,
         )
