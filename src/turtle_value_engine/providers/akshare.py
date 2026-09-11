@@ -559,7 +559,7 @@ _MARKET_QUOTE_HK_FAMOUS_UPSTREAM_FIXED_PARAMETERS = {
     "fltt": "2",
     "invt": "2",
     "dect": "1",
-    "wbp2u": "|0|0|web",
+    "wbp2u": "|0|0|0|web",
     "fid": "f3",
     "fs": "b:DLMK0106",
     "fields": (

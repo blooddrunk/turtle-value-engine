@@ -4067,7 +4067,7 @@ def test_hk_famous_quote_fetch_uses_documented_no_argument_endpoint_and_filters_
         "fltt": "2",
         "invt": "2",
         "dect": "1",
-        "wbp2u": "|0|0|web",
+        "wbp2u": "|0|0|0|web",
         "fid": "f3",
         "fs": "b:DLMK0106",
         "fields": (
