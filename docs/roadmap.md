@@ -3719,6 +3719,30 @@ invalid unrequested rows, empty selections, raw-only normalization, replay
 metadata tampering and offline cache replay. No calculation, gate, pipeline,
 CLI or input-loader contract changes.
 
+### Phase 3.46 — Sina B-share quote raw acquisition contract (COMPLETE)
+
+The mapping review now covers the documented Sina
+[`stock_zh_b_spot`](https://akshare.akfamily.xyz/data/stock/stock.html)
+B-share real-time quote endpoint under `MARKET_QUOTE` with explicit
+`view=b_sina_spot` and Shanghai 900xxx or Shenzhen 200xxx listing context. The
+[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_zh_b_sina.py)
+defines a `Market_Center.getHQNodeStockCount` page-count request followed by
+`Market_Center.getHQNodeData` JSON pages of 80 rows with fixed `node=hs_b`,
+empty `symbol`, `_s_r_a=page` and ascending `symbol` order. The provider
+preserves the exact 13-field wrapper order, 23-column source mapping,
+documented percentage/share/CNY units and lower-prefixed source symbols before
+selecting the requested listing.
+
+The current-day Sina B-share quote has no stable observation timestamp and is
+retained as raw evidence only. The normalizer emits
+`AKSHARE_B_SINA_SPOT_QUOTE_RAW_ONLY` and creates no canonical current-price or
+other market fact. Repeated upstream calls may be temporarily IP-blocked, so
+that limitation is recorded as provenance rather than hidden by retry logic.
+Tests cover both mainland exchanges, exact upstream parameters,
+complete-response field/order/code/type boundaries, invalid unrequested rows,
+empty selection, raw-only normalization and offline cache replay. No
+calculation, gate, pipeline, CLI or input-loader contract changes.
+
 ### Future structured-provider deliverables
 
 ```text

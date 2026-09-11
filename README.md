@@ -1758,6 +1758,26 @@ invalid unrequested rows, empty selection, raw-only normalization, replay
 metadata tampering and offline cache replay. No calculation, gate, pipeline,
 CLI or input-loader contract changes.
 
+Phase 3.46 adds the documented Sina B-share real-time quote endpoint
+[`stock_zh_b_spot`](https://akshare.akfamily.xyz/data/stock/stock.html) under
+`MARKET_QUOTE` with explicit `view=b_sina_spot` and Shanghai 900xxx or Shenzhen
+200xxx B-share listing context. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_zh_b_sina.py)
+uses the `Market_Center.getHQNodeStockCount` page-count request and paginated
+`Market_Center.getHQNodeData` JSON response with `node=hs_b`, page size 80 and
+ascending symbol order. The provider preserves the exact 13-field output,
+23-column source mapping, documented percentage/share/CNY units and
+lower-prefixed source symbols before selecting the requested listing.
+
+The current-day Sina B-share quote has no stable observation timestamp and is
+retained as raw evidence only. The normalizer emits
+`AKSHARE_B_SINA_SPOT_QUOTE_RAW_ONLY` and creates no canonical current-price or
+other market fact. Sina documents that repeated calls may be temporarily
+IP-blocked; the adapter records that limitation without retrying or inventing
+an observation time. Tests cover both mainland exchanges, exact fields and
+upstream parameters, complete-universe validation, invalid unrequested rows,
+empty selection, raw-only normalization and offline cache replay. No
+calculation, gate, pipeline, CLI or input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

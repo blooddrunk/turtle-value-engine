@@ -1,6 +1,6 @@
 # Provider and Cache Architecture
 
-> Status: Phase 2 foundation and Phase 3.45 structured acquisition, read-only AKShare statement slices, earnings forecasts/quick reports/performance reports/business composition/financial abstract/financial indicators, H-share latest indicators, A-share disclosure-notice metadata including the Eastmoney individual-notice, market-wide notice and shareholder-meeting views, risk-warning status, trading-suspension, restricted-share-release, goodwill-impairment detail/goodwill-detail/impairment-forecast/market-profile/industry-data, ESG-rating, SSE/SZSE/BSE margin-detail, share-capital, individual-info snapshot, corporate-action including IPO-summary and Eastmoney IPO-yield, external-guarantee, company-litigation, ownership-pledge snapshot/detail/company-distribution/bank-distribution/industry-data/market-profile/important-shareholder-detail, main-shareholder, shareholder-count/shareholder-count-detail, A-share actual-controller holding-change, A/H HSGT individual-holdings/A-share individual-detail/individual-ranking/daily-stock-statistics/institution-statistics, SSE/SZSE/BSE insider-share-change, A-share Eastmoney/CNINFO management-holding and executive/shareholder-change, A-share top-ten/top-ten-tradable-shareholder/top-ten-tradable-shareholder-detail, Dragon-Tiger market-activity detail/statistics/institution-statistics/institution-daily/institutional-research/institutional-research-detail/market-participation-desire/market-focus/institution-participation/block-trade-detail/hot-rank/latest-hot-rank/A-share historical-hot-rank/limit-up-pool/limit-down-pool/H-share latest-hot-rank/H-share historical-hot-rank/new-stock-board, A+B/A+H quote-comparison, Shanghai, Shenzhen, Beijing, Growth Enterprise Market, STAR Market, B-share and new-stock A-share and H-share main-board/famous-stock/Stock Connect constituent/Shanghai Stock Connect quotes, A-share Eastmoney/Sina intraday-trade, Tencent daily-history/latest-trading-day tick, Sina minute-history, A-share/H-share intraday-history, pre-market-history and five-level bid-ask raw slices, SSE/SZSE market-summary, SZSE area-summary/sector-summary and Eastmoney industry-board, HSGT board-rank, stock-account-statistics and Legu market-activity/congestion/equity-bond-spread/Buffett-index/A-share PE/PB-history, index-PE/index-PB, A-share growth-comparison, A/H Eastmoney valuation-comparison, A/H Eastmoney growth-comparison and A/H Baidu valuation-history raw slices, the deprecated HSGT minute-fund-flow raw slice, HSGT historical-flow raw slice and HSGT fund-flow-summary raw slice
+> Status: Phase 2 foundation and Phase 3.46 structured acquisition, read-only AKShare statement slices, earnings forecasts/quick reports/performance reports/business composition/financial abstract/financial indicators, H-share latest indicators, A-share disclosure-notice metadata including the Eastmoney individual-notice, market-wide notice and shareholder-meeting views, risk-warning status, trading-suspension, restricted-share-release, goodwill-impairment detail/goodwill-detail/impairment-forecast/market-profile/industry-data, ESG-rating, SSE/SZSE/BSE margin-detail, share-capital, individual-info snapshot, corporate-action including IPO-summary and Eastmoney IPO-yield, external-guarantee, company-litigation, ownership-pledge snapshot/detail/company-distribution/bank-distribution/industry-data/market-profile/important-shareholder-detail, main-shareholder, shareholder-count/shareholder-count-detail, A-share actual-controller holding-change, A/H HSGT individual-holdings/A-share individual-detail/individual-ranking/daily-stock-statistics/institution-statistics, SSE/SZSE/BSE insider-share-change, A-share Eastmoney/CNINFO management-holding and executive/shareholder-change, A-share top-ten/top-ten-tradable-shareholder/top-ten-tradable-shareholder-detail, Dragon-Tiger market-activity detail/statistics/institution-statistics/institution-daily/institutional-research/institutional-research-detail/market-participation-desire/market-focus/institution-participation/block-trade-detail/hot-rank/latest-hot-rank/A-share historical-hot-rank/limit-up-pool/limit-down-pool/H-share latest-hot-rank/H-share historical-hot-rank/new-stock-board, A+B/A+H quote-comparison, Shanghai, Shenzhen, Beijing, Growth Enterprise Market, STAR Market, B-share, Sina B-share and new-stock A-share and H-share main-board/famous-stock/Stock Connect constituent/Shanghai Stock Connect quotes, A-share Eastmoney/Sina intraday-trade, Tencent daily-history/latest-trading-day tick, Sina minute-history, A-share/H-share intraday-history, pre-market-history and five-level bid-ask raw slices, SSE/SZSE market-summary, SZSE area-summary/sector-summary and Eastmoney industry-board, HSGT board-rank, stock-account-statistics and Legu market-activity/congestion/equity-bond-spread/Buffett-index/A-share PE/PB-history, index-PE/index-PB, A-share growth-comparison, A/H Eastmoney valuation-comparison, A/H Eastmoney growth-comparison and A/H Baidu valuation-history raw slices, the deprecated HSGT minute-fund-flow raw slice, HSGT historical-flow raw slice and HSGT fund-flow-summary raw slice
 
 This document freezes the boundary between structured-data acquisition and the
 deterministic Turtle Value Engine. It does not authorize a live provider or
@@ -2839,6 +2839,29 @@ upstream parameters, complete-universe schema/rank/code/type boundaries,
 invalid unrequested rows, empty selection, raw-only normalization, replay
 metadata tampering and offline cache replay. No calculation, gate, pipeline,
 CLI or input-loader contract changes.
+
+The Sina B-share quote slice is also acquisition-only. The current [AKShare
+stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_zh_b_sina.py)
+document `stock_zh_b_spot` as a no-argument Shanghai 900xxx or Shenzhen 200xxx
+B-share real-time snapshot for the `#hs_b` page. The adapter exposes it with
+explicit `view=b_sina_spot`, calls the HTTPS
+`Market_Center.getHQNodeStockCount` request with `node=hs_b`, then the HTTP
+`Market_Center.getHQNodeData` JSON endpoint with page size 80, fixed
+`sort=symbol`, `asc=1`, `node=hs_b`, empty `symbol` and `_s_r_a=page`, and
+preserves the exact 13-field wrapper order. It also preserves the wrapper's
+23-column source mapping, documented percentage/share/CNY units, lower-prefixed
+source symbols and complete-universe code order before selecting the requested
+B-share listing.
+
+The current-day Sina B-share quote has no stable observation timestamp. The
+normalizer emits `AKSHARE_B_SINA_SPOT_QUOTE_RAW_ONLY`; no canonical current-price
+or other market fact is created. Repeated calls may be temporarily IP-blocked,
+which is retained as a source limitation. Tests cover B-share-only routing for
+both mainland exchanges, exact fields and upstream parameters,
+complete-universe validation, invalid unrequested rows, empty selection,
+raw-only normalization and offline cache replay. No calculation, gate,
+pipeline, CLI or input-loader contract changes.
 
 The H-share Baidu valuation-history slice is also acquisition-only. The current
 [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
