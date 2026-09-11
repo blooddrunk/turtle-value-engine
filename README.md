@@ -1518,6 +1518,24 @@ emits `AKSHARE_HSGT_FUND_MIN_RAW_ONLY` and creates no issuer cash-flow,
 liquidity, return or valuation fact. No calculation, gate, pipeline, CLI or
 input-loader contract changes.
 
+Phase 3.31 adds the documented Eastmoney HSGT board-rank endpoint
+[`stock_hsgt_board_rank_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
+under `MARKET_ACTIVITY` with explicit `view=hsgt_board_rank`, one of the three
+documented board selectors (`北向资金增持行业板块排行`, `北向资金增持概念板块排行`
+or `北向资金增持地域板块排行`) and one of the seven documented periods
+(`今日`, `3日`, `5日`, `10日`, `1月`, `1季` or `1年`). The [official
+implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hsgt_em.py)
+derives the current report date from the wrapper page and calls the Eastmoney
+JSON report `RPT_MUTUAL_BOARD_HOLDRANK_WEB` with the exact board-type and
+interval filters. The provider validates the complete 17-field source order,
+strict ascending rank, unique board names, constant report date, numeric/null
+fields and text-valued largest-increase/decrease fields, while preserving the
+market-wide northbound board ranking and upstream filter in replay metadata.
+The normalizer emits `AKSHARE_HSGT_BOARD_RANK_RAW_ONLY`: this aggregate does
+not establish issuer cash flow, shareholder return, governance, valuation or a
+canonical market fact. No calculation, gate, pipeline, CLI or input-loader
+contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

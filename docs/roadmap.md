@@ -3334,6 +3334,33 @@ date/time/numeric boundaries, raw-only normalization, replay metadata tampering
 and offline cache replay. No calculation, gate, pipeline, CLI or input-loader
 contract changes.
 
+### Phase 3.31 — HSGT board-rank raw acquisition contract (COMPLETE)
+
+The mapping review now covers the documented Eastmoney
+`stock_hsgt_board_rank_em` HSGT board-rank endpoint under `MARKET_ACTIVITY`
+with explicit `view=hsgt_board_rank`. The
+[AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hsgt_em.py)
+define the three board selectors `北向资金增持行业板块排行`,
+`北向资金增持概念板块排行` and `北向资金增持地域板块排行`, plus the seven
+period selectors `今日`, `3日`, `5日`, `10日`, `1月`, `1季` and `1年`. The
+provider maps these choices to the exact Eastmoney `BOARD_TYPE` and
+`INTERVAL_TYPE` filters, derives the report date from `bkph_date`, validates
+the complete 17-field source order and ranked board universe, and retains
+the report date, source order, numeric/text field contract, upstream JSON
+report/filter, sort and pagination metadata for cache replay. The last four
+largest-increase/decrease fields are preserved as text because that is the
+current official wrapper behavior even where documentation typing is broader.
+
+The normalizer emits `AKSHARE_HSGT_BOARD_RANK_RAW_ONLY` and creates no
+canonical issuer cash-flow, shareholder-return, governance, valuation or market
+fact: this is market-wide northbound board context rather than a listing-scoped
+or issuer-accounting observation. Tests cover all selector families, exact
+fields and values, request/context rejection, schema and rank/date/type
+boundaries, raw-only normalization, replay metadata tampering and offline
+cache replay. No calculation, gate, pipeline, CLI or input-loader contract
+changes.
+
 ### Future structured-provider deliverables
 
 ```text
@@ -3343,7 +3370,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–3.30 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–3.31 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```

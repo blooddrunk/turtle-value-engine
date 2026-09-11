@@ -236,6 +236,14 @@ class FakeAKShare:
             _fixture("a_industry_board.json"),
         )
 
+    def stock_hsgt_board_rank_em(self, *, symbol: str, indicator: str):
+        return self._return(
+            "stock_hsgt_board_rank_em",
+            _fixture("a_hsgt_board_rank.json"),
+            symbol=symbol,
+            indicator=indicator,
+        )
+
     def stock_sse_summary(self):
         return self._return("stock_sse_summary", _fixture("a_sse_summary.json"))
 
@@ -1129,8 +1137,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "132"
-    assert AKSHARE_MAPPING_VERSION == "133"
+    assert provider.identity.provider_version == "133"
+    assert AKSHARE_MAPPING_VERSION == "134"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -22233,6 +22241,588 @@ def test_market_activity_sse_deal_daily_cache_replay_does_not_call_upstream(tmp_
     assert replay.mode is RetrievalMode.CACHE_REPLAY
     assert replay.record == live.record
     assert fake.calls == [("stock_sse_deal_daily", {"date": "20250221"})]
+
+
+@pytest.mark.parametrize(
+    ("symbol", "indicator", "board_code", "interval_code"),
+    [
+        (
+            "北向资金增持行业板块排行",
+            "今日",
+            "5",
+            "1",
+        ),
+        (
+            "北向资金增持概念板块排行",
+            "3日",
+            "4",
+            "3",
+        ),
+        (
+            "北向资金增持地域板块排行",
+            "1年",
+            "3",
+            "Y",
+        ),
+    ],
+)
+def test_hsgt_board_rank_fetch_preserves_documented_scope_and_filter(
+    symbol: str,
+    indicator: str,
+    board_code: str,
+    interval_code: str,
+):
+    fake = FakeAKShare()
+    record = _provider(fake).fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SH600000",
+            {
+                "view": "hsgt_board_rank",
+                "symbol": symbol,
+                "indicator": indicator,
+            },
+        )
+    )
+
+    expected = _fixture("a_hsgt_board_rank.json")
+    metadata = record.response_metadata
+    upstream_filter = (
+        f'(BOARD_TYPE="{board_code}")(TRADE_DATE=\'2024-01-11\')'
+        f'(INTERVAL_TYPE="{interval_code}")'
+    )
+    assert record.raw_payload == expected
+    assert fake.calls == [
+        (
+            "stock_hsgt_board_rank_em",
+            {"symbol": symbol, "indicator": indicator},
+        )
+    ]
+    assert metadata["endpoint"] == "stock_hsgt_board_rank_em"
+    assert metadata["market"] == "A"
+    assert metadata["listing_code"] == "600000"
+    assert metadata["market_activity_view"] == "hsgt_board_rank"
+    assert metadata["market_scope"] == (
+        "Eastmoney northbound HSGT board-rank universe"
+    )
+    assert metadata["listing_scoped_request"] is False
+    assert metadata["row_filtering"] == "none"
+    assert metadata["snapshot_scope"] == "current_northbound_hsgt_board_rank"
+    assert metadata["date_binding"] == "report_date_and_upstream_filter"
+    assert metadata["report_date_field"] == "报告时间"
+    assert metadata["report_date_ordering"] == "constant"
+    assert metadata["report_date"] == "2024-01-11"
+    assert metadata["board_type"] == symbol
+    assert metadata["board_type_code"] == board_code
+    assert metadata["interval"] == indicator
+    assert metadata["interval_type"] == interval_code
+    assert metadata["rank_field"] == "序号"
+    assert metadata["rank_ordering"] == "strictly_ascending_from_one"
+    assert metadata["rank_order"] == [1, 2, 3]
+    assert metadata["board_name_field"] == "名称"
+    assert metadata["board_ordering"] == "source_ranked"
+    assert metadata["board_order"] == ["软件开发", "互联网服务", "煤炭行业"]
+    assert metadata["value_fields"] == [
+        "最新涨跌幅",
+        "北向资金今日持股-股票只数",
+        "北向资金今日持股-市值",
+        "北向资金今日持股-占板块比",
+        "北向资金今日持股-占北向资金比",
+        "北向资金今日增持估计-股票只数",
+        "北向资金今日增持估计-市值",
+        "北向资金今日增持估计-市值增幅",
+        "北向资金今日增持估计-占板块比",
+        "北向资金今日增持估计-占北向资金比",
+    ]
+    assert metadata["integer_fields"] == ["序号"]
+    assert metadata["text_fields"] == [
+        "名称",
+        "今日增持最大股-市值",
+        "今日增持最大股-占总市值比",
+        "今日减持最大股-市值",
+        "今日减持最大股-占总市值比",
+    ]
+    assert metadata["required_text_fields"] == ["名称"]
+    assert metadata["field_count"] == 17
+    assert metadata["source_field_order"] == list(expected[0])
+    assert metadata["documented_units"] == {
+        "最新涨跌幅": "percent",
+        "北向资金今日持股-市值": "CNY",
+        "北向资金今日增持估计-市值": "CNY",
+    }
+    assert metadata["undocumented_numeric_units"] == {
+        "北向资金今日持股-股票只数": "not_documented",
+        "北向资金今日持股-占板块比": "not_documented",
+        "北向资金今日持股-占北向资金比": "not_documented",
+        "北向资金今日增持估计-股票只数": "not_documented",
+        "北向资金今日增持估计-市值增幅": "not_documented",
+        "北向资金今日增持估计-占板块比": "not_documented",
+        "北向资金今日增持估计-占北向资金比": "not_documented",
+    }
+    assert metadata["upstream_url"] == (
+        "https://datacenter-web.eastmoney.com/api/data/v1/get"
+    )
+    assert metadata["upstream_protocol"] == "JSON"
+    assert metadata["upstream_report_name"] == "RPT_MUTUAL_BOARD_HOLDRANK_WEB"
+    assert metadata["upstream_columns_selector"] == "ALL"
+    assert metadata["upstream_quote_columns"] == (
+        "f3~05~SECURITY_CODE~INDEX_CHANGE_RATIO"
+    )
+    assert metadata["upstream_parameters"] == [
+        "sortColumns",
+        "sortTypes",
+        "pageSize",
+        "pageNumber",
+        "reportName",
+        "columns",
+        "quoteColumns",
+        "source",
+        "client",
+        "filter",
+    ]
+    assert metadata["upstream_fixed_parameters"] == {
+        "sortColumns": "ADD_MARKET_CAP",
+        "sortTypes": "-1",
+        "pageSize": "500",
+        "pageNumber": "1",
+        "reportName": "RPT_MUTUAL_BOARD_HOLDRANK_WEB",
+        "columns": "ALL",
+        "quoteColumns": "f3~05~SECURITY_CODE~INDEX_CHANGE_RATIO",
+        "source": "WEB",
+        "client": "WEB",
+    }
+    assert metadata["upstream_dynamic_parameters"] == {
+        "symbol": symbol,
+        "indicator": indicator,
+        "board_type": board_code,
+        "interval_type": interval_code,
+        "trade_date": "2024-01-11",
+        "filter": upstream_filter,
+    }
+    assert metadata["upstream_symbol"] == symbol
+    assert metadata["upstream_indicator"] == indicator
+    assert metadata["upstream_date_source_page_uri"] == (
+        "https://data.eastmoney.com/hsgtcg/hy.html"
+    )
+    assert metadata["upstream_date_source_field"] == "bkph_date"
+    assert metadata["upstream_authentication"] == "none"
+    assert metadata["upstream_page_size"] == 500
+    assert metadata["pagination"] == "single_page"
+    assert metadata["upstream_sort_column"] == "ADD_MARKET_CAP"
+    assert metadata["upstream_sort_direction"] == "descending"
+    assert metadata["upstream_filter"] == upstream_filter
+    assert metadata["wrapper_source_page_uri"] == (
+        "https://data.eastmoney.com/hsgtcg/bk.html"
+    )
+    assert metadata["wrapper_output_ordering"] == "source_ranked"
+    assert metadata["upstream_row_count"] == len(expected)
+    assert metadata["entity_row_count"] == 0
+    assert metadata["entity_rows_selected"] is False
+    assert record.source_uri == "https://data.eastmoney.com/hsgtcg/bk.html"
+
+
+@pytest.mark.parametrize(
+    ("entity_id", "parameters", "match"),
+    [
+        (
+            "HK00700",
+            {
+                "view": "hsgt_board_rank",
+                "symbol": "北向资金增持行业板块排行",
+                "indicator": "今日",
+            },
+            "A-share listings only",
+        ),
+        (
+            "SH600000",
+            {"view": "hsgt_board_rank", "symbol": "not-documented", "indicator": "今日"},
+            "symbol must be one of",
+        ),
+        (
+            "SH600000",
+            {"view": "hsgt_board_rank", "symbol": "北向资金增持行业板块排行"},
+            "indicator must be one of",
+        ),
+        (
+            "SH600000",
+            {
+                "view": "hsgt_board_rank",
+                "symbol": "北向资金增持行业板块排行",
+                "indicator": "今日",
+                "date": "20240111",
+            },
+            "unsupported AKShare HSGT board-rank parameter",
+        ),
+        (
+            "SH600000",
+            {
+                "view": "wrong-view",
+                "symbol": "北向资金增持行业板块排行",
+                "indicator": "今日",
+            },
+            "unsupported AKShare market-activity",
+        ),
+    ],
+)
+def test_hsgt_board_rank_request_validates_market_and_parameters(
+    entity_id: str,
+    parameters: dict,
+    match: str,
+):
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError, match=match):
+        _provider(fake).fetch(
+            _request(DataCategory.MARKET_ACTIVITY, entity_id, parameters)
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "missing_field",
+        "extra_field",
+        "reordered_fields",
+        "invalid_rank",
+        "non_ascending_rank",
+        "duplicate_name",
+        "invalid_text",
+        "invalid_numeric",
+        "invalid_report_date",
+        "multiple_report_dates",
+        "empty_response",
+    ],
+)
+def test_hsgt_board_rank_response_validates_exact_schema_and_scope(mutation: str):
+    class InvalidRows(FakeAKShare):
+        def stock_hsgt_board_rank_em(self, *, symbol: str, indicator: str):
+            rows = [dict(row) for row in _fixture("a_hsgt_board_rank.json")]
+            if mutation == "missing_field":
+                rows[0].pop("北向资金今日持股-市值")
+            elif mutation == "extra_field":
+                rows[0]["unexpected"] = "not documented"
+            elif mutation == "reordered_fields":
+                rows[0] = dict(reversed(list(rows[0].items())))
+            elif mutation == "invalid_rank":
+                rows[0]["序号"] = 1.5
+            elif mutation == "non_ascending_rank":
+                rows[1]["序号"] = 3
+            elif mutation == "duplicate_name":
+                rows[1]["名称"] = rows[0]["名称"]
+            elif mutation == "invalid_text":
+                rows[0]["今日增持最大股-市值"] = 123
+            elif mutation == "invalid_numeric":
+                rows[0]["最新涨跌幅"] = "-3.17"
+            elif mutation == "invalid_report_date":
+                rows[0]["报告时间"] = "not-a-date"
+            elif mutation == "multiple_report_dates":
+                rows[1]["报告时间"] = "2024-01-12"
+            else:
+                rows.clear()
+            return self._return(
+                "stock_hsgt_board_rank_em",
+                rows,
+                symbol=symbol,
+                indicator=indicator,
+            )
+
+    with pytest.raises(ProviderResponseError):
+        _provider(InvalidRows()).fetch(
+            _request(
+                DataCategory.MARKET_ACTIVITY,
+                "SH600000",
+                {
+                    "view": "hsgt_board_rank",
+                    "symbol": "北向资金增持行业板块排行",
+                    "indicator": "今日",
+                },
+            )
+        )
+
+
+def test_hsgt_board_rank_is_retained_as_raw_evidence_without_listing_facts():
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SH600000",
+            {
+                "view": "hsgt_board_rank",
+                "symbol": "北向资金增持行业板块排行",
+                "indicator": "今日",
+            },
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="hsgt-board-rank-raw-only",
+        as_of=date(2026, 9, 11),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_HSGT_BOARD_RANK_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == []
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "HSGT board-rank" in normalized.data_quality.notes
+    assert "canonical market metric" in normalized.data_quality.notes
+    assert "issuer cash flow" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "endpoint",
+        "source_uri",
+        "market",
+        "listing_code",
+        "view",
+        "market_scope",
+        "listing_scope",
+        "filtering",
+        "snapshot",
+        "date_binding",
+        "report_date_field",
+        "report_date_ordering",
+        "report_date",
+        "board_type",
+        "board_type_code",
+        "interval",
+        "interval_type",
+        "rank_field",
+        "rank_ordering",
+        "rank_order",
+        "board_name_field",
+        "board_ordering",
+        "board_order",
+        "value_fields",
+        "integer_fields",
+        "text_fields",
+        "required_text_fields",
+        "field_count",
+        "source_field_order",
+        "documented_units",
+        "undocumented_units",
+        "upstream_url",
+        "upstream_protocol",
+        "upstream_report_name",
+        "upstream_columns_selector",
+        "upstream_quote_columns",
+        "upstream_parameters",
+        "upstream_fixed_parameters",
+        "upstream_dynamic_parameters",
+        "upstream_symbol",
+        "upstream_indicator",
+        "upstream_date_source_page",
+        "upstream_date_source_field",
+        "authentication",
+        "page_size",
+        "pagination",
+        "sort_column",
+        "sort_direction",
+        "filter",
+        "wrapper_source_page",
+        "wrapper_ordering",
+        "upstream_count",
+        "entity_count",
+        "selected",
+        "payload",
+    ],
+)
+def test_hsgt_board_rank_normalizer_rejects_replayed_scope_mismatches(
+    mutation: str,
+):
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SH600000",
+            {
+                "view": "hsgt_board_rank",
+                "symbol": "北向资金增持行业板块排行",
+                "indicator": "今日",
+            },
+        )
+    )
+    payload = [dict(row) for row in record.raw_payload]
+    response_metadata = dict(record.response_metadata)
+    source_uri = record.source_uri
+    if mutation == "endpoint":
+        response_metadata["endpoint"] = "stock_board_industry_name_em"
+    elif mutation == "source_uri":
+        source_uri = "https://example.invalid/hsgt-board-rank"
+    elif mutation == "market":
+        response_metadata["market"] = "H"
+    elif mutation == "listing_code":
+        response_metadata["listing_code"] = "000001"
+    elif mutation == "view":
+        response_metadata["market_activity_view"] = "industry_board"
+    elif mutation == "market_scope":
+        response_metadata["market_scope"] = "all_a_share_listings"
+    elif mutation == "listing_scope":
+        response_metadata["listing_scoped_request"] = True
+    elif mutation == "filtering":
+        response_metadata["row_filtering"] = "provider"
+    elif mutation == "snapshot":
+        response_metadata["snapshot_scope"] = "current_trading_day"
+    elif mutation == "date_binding":
+        response_metadata["date_binding"] = "retrieval_only"
+    elif mutation == "report_date_field":
+        response_metadata["report_date_field"] = "日期"
+    elif mutation == "report_date_ordering":
+        response_metadata["report_date_ordering"] = "ascending"
+    elif mutation == "report_date":
+        response_metadata["report_date"] = "2024-01-12"
+    elif mutation == "board_type":
+        response_metadata["board_type"] = "北向资金增持概念板块排行"
+    elif mutation == "board_type_code":
+        response_metadata["board_type_code"] = "4"
+    elif mutation == "interval":
+        response_metadata["interval"] = "3日"
+    elif mutation == "interval_type":
+        response_metadata["interval_type"] = "3"
+    elif mutation == "rank_field":
+        response_metadata["rank_field"] = "排名"
+    elif mutation == "rank_ordering":
+        response_metadata["rank_ordering"] = "alphabetical"
+    elif mutation == "rank_order":
+        response_metadata["rank_order"] = [1, 3, 2]
+    elif mutation == "board_name_field":
+        response_metadata["board_name_field"] = "板块名称"
+    elif mutation == "board_ordering":
+        response_metadata["board_ordering"] = "alphabetical"
+    elif mutation == "board_order":
+        response_metadata["board_order"] = list(
+            reversed(response_metadata["board_order"])
+        )
+    elif mutation == "value_fields":
+        response_metadata["value_fields"] = ["最新涨跌幅"]
+    elif mutation == "integer_fields":
+        response_metadata["integer_fields"] = []
+    elif mutation == "text_fields":
+        response_metadata["text_fields"] = ["名称"]
+    elif mutation == "required_text_fields":
+        response_metadata["required_text_fields"] = []
+    elif mutation == "field_count":
+        response_metadata["field_count"] = 16
+    elif mutation == "source_field_order":
+        response_metadata["source_field_order"] = list(
+            reversed(response_metadata["source_field_order"])
+        )
+    elif mutation == "documented_units":
+        response_metadata["documented_units"] = {}
+    elif mutation == "undocumented_units":
+        response_metadata["undocumented_numeric_units"] = {
+            "最新涨跌幅": "percent"
+        }
+    elif mutation == "upstream_url":
+        response_metadata["upstream_url"] = "https://example.invalid/api"
+    elif mutation == "upstream_protocol":
+        response_metadata["upstream_protocol"] = "CSV"
+    elif mutation == "upstream_report_name":
+        response_metadata["upstream_report_name"] = "other"
+    elif mutation == "upstream_columns_selector":
+        response_metadata["upstream_columns_selector"] = "SOME"
+    elif mutation == "upstream_quote_columns":
+        response_metadata["upstream_quote_columns"] = "f3"
+    elif mutation == "upstream_parameters":
+        response_metadata["upstream_parameters"] = ["filter"]
+    elif mutation == "upstream_fixed_parameters":
+        response_metadata["upstream_fixed_parameters"] = {}
+    elif mutation == "upstream_dynamic_parameters":
+        response_metadata["upstream_dynamic_parameters"] = {}
+    elif mutation == "upstream_symbol":
+        response_metadata["upstream_symbol"] = "北向资金增持概念板块排行"
+    elif mutation == "upstream_indicator":
+        response_metadata["upstream_indicator"] = "3日"
+    elif mutation == "upstream_date_source_page":
+        response_metadata["upstream_date_source_page_uri"] = (
+            "https://example.invalid/hy.html"
+        )
+    elif mutation == "upstream_date_source_field":
+        response_metadata["upstream_date_source_field"] = "date"
+    elif mutation == "authentication":
+        response_metadata["upstream_authentication"] = "cookie"
+    elif mutation == "page_size":
+        response_metadata["upstream_page_size"] = 100
+    elif mutation == "pagination":
+        response_metadata["pagination"] = "paged"
+    elif mutation == "sort_column":
+        response_metadata["upstream_sort_column"] = "序号"
+    elif mutation == "sort_direction":
+        response_metadata["upstream_sort_direction"] = "ascending"
+    elif mutation == "filter":
+        response_metadata["upstream_filter"] = "northbound"
+    elif mutation == "wrapper_source_page":
+        response_metadata["wrapper_source_page_uri"] = (
+            "https://example.invalid/bk.html"
+        )
+    elif mutation == "wrapper_ordering":
+        response_metadata["wrapper_output_ordering"] = "row_order"
+    elif mutation == "upstream_count":
+        response_metadata["upstream_row_count"] = 2
+    elif mutation == "entity_count":
+        response_metadata["entity_row_count"] = 1
+    elif mutation == "selected":
+        response_metadata["entity_rows_selected"] = True
+    else:
+        payload[0]["最新涨跌幅"] = "-3.17"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=source_uri,
+        response_metadata=response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-hsgt-board-rank",
+            as_of=date(2026, 9, 11),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_hsgt_board_rank_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.MARKET_ACTIVITY,
+        "SH600000",
+        {
+            "view": "hsgt_board_rank",
+            "symbol": "北向资金增持行业板块排行",
+            "indicator": "今日",
+        },
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [
+        (
+            "stock_hsgt_board_rank_em",
+            {
+                "symbol": "北向资金增持行业板块排行",
+                "indicator": "今日",
+            },
+        )
+    ]
 
 
 def test_market_activity_industry_board_fetch_uses_documented_no_argument_endpoint():

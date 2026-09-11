@@ -111,9 +111,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "132"
+AKSHARE_ADAPTER_VERSION = "133"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "133"
+AKSHARE_MAPPING_VERSION = "134"
 
 
 class ListingMarket(StrEnum):
@@ -199,6 +199,7 @@ _SOURCE_URIS = {
     "stock_zh_ah_daily": "https://gu.qq.com/",
     "stock_individual_fund_flow": "https://data.eastmoney.com/zjlx/detail.html",
     "stock_hsgt_fund_min_em": "https://data.eastmoney.com/hsgt/hsgtDetail/scgk.html",
+    "stock_hsgt_board_rank_em": "https://data.eastmoney.com/hsgtcg/bk.html",
     "stock_lhb_detail_em": "https://data.eastmoney.com/stock/tradedetail.html",
     "stock_lhb_stock_statistic_em": "https://data.eastmoney.com/stock/tradedetail.html",
     "stock_lhb_jgstatistic_em": "https://data.eastmoney.com/stock/jgstatistic.html",
@@ -1053,6 +1054,131 @@ _CAPITAL_FLOW_HSGT_FUND_MIN_DIRECTION_MARKETS = {
     "南向资金": ListingMarket.H,
 }
 _MARKET_ACTIVITY_PARAMETER_NAMES = frozenset({"start_date", "end_date"})
+_MARKET_ACTIVITY_HSGT_BOARD_RANK_ENDPOINT = "stock_hsgt_board_rank_em"
+_MARKET_ACTIVITY_HSGT_BOARD_RANK_PARAMETER_NAMES = frozenset(
+    {"view", "symbol", "indicator"}
+)
+_MARKET_ACTIVITY_HSGT_BOARD_RANK_VIEW = "hsgt_board_rank"
+_MARKET_ACTIVITY_HSGT_BOARD_RANK_SYMBOLS = (
+    "北向资金增持行业板块排行",
+    "北向资金增持概念板块排行",
+    "北向资金增持地域板块排行",
+)
+_MARKET_ACTIVITY_HSGT_BOARD_RANK_SYMBOL_SET = frozenset(
+    _MARKET_ACTIVITY_HSGT_BOARD_RANK_SYMBOLS
+)
+_MARKET_ACTIVITY_HSGT_BOARD_RANK_SYMBOL_CODES = {
+    "北向资金增持行业板块排行": "5",
+    "北向资金增持概念板块排行": "4",
+    "北向资金增持地域板块排行": "3",
+}
+_MARKET_ACTIVITY_HSGT_BOARD_RANK_INDICATORS = (
+    "今日",
+    "3日",
+    "5日",
+    "10日",
+    "1月",
+    "1季",
+    "1年",
+)
+_MARKET_ACTIVITY_HSGT_BOARD_RANK_INDICATOR_SET = frozenset(
+    _MARKET_ACTIVITY_HSGT_BOARD_RANK_INDICATORS
+)
+_MARKET_ACTIVITY_HSGT_BOARD_RANK_INDICATOR_CODES = {
+    "今日": "1",
+    "3日": "3",
+    "5日": "5",
+    "10日": "10",
+    "1月": "M",
+    "1季": "Q",
+    "1年": "Y",
+}
+_MARKET_ACTIVITY_HSGT_BOARD_RANK_FIELDS = (
+    "序号",
+    "名称",
+    "最新涨跌幅",
+    "北向资金今日持股-股票只数",
+    "北向资金今日持股-市值",
+    "北向资金今日持股-占板块比",
+    "北向资金今日持股-占北向资金比",
+    "北向资金今日增持估计-股票只数",
+    "北向资金今日增持估计-市值",
+    "北向资金今日增持估计-市值增幅",
+    "北向资金今日增持估计-占板块比",
+    "北向资金今日增持估计-占北向资金比",
+    "今日增持最大股-市值",
+    "今日增持最大股-占总市值比",
+    "今日减持最大股-市值",
+    "今日减持最大股-占总市值比",
+    "报告时间",
+)
+_MARKET_ACTIVITY_HSGT_BOARD_RANK_FIELD_SET = frozenset(
+    _MARKET_ACTIVITY_HSGT_BOARD_RANK_FIELDS
+)
+_MARKET_ACTIVITY_HSGT_BOARD_RANK_NUMERIC_FIELDS = (
+    "最新涨跌幅",
+    "北向资金今日持股-股票只数",
+    "北向资金今日持股-市值",
+    "北向资金今日持股-占板块比",
+    "北向资金今日持股-占北向资金比",
+    "北向资金今日增持估计-股票只数",
+    "北向资金今日增持估计-市值",
+    "北向资金今日增持估计-市值增幅",
+    "北向资金今日增持估计-占板块比",
+    "北向资金今日增持估计-占北向资金比",
+)
+_MARKET_ACTIVITY_HSGT_BOARD_RANK_INTEGER_FIELDS = frozenset({"序号"})
+_MARKET_ACTIVITY_HSGT_BOARD_RANK_TEXT_FIELDS = (
+    "名称",
+    "今日增持最大股-市值",
+    "今日增持最大股-占总市值比",
+    "今日减持最大股-市值",
+    "今日减持最大股-占总市值比",
+)
+_MARKET_ACTIVITY_HSGT_BOARD_RANK_REQUIRED_TEXT_FIELDS = ("名称",)
+_MARKET_ACTIVITY_HSGT_BOARD_RANK_DATE_FIELDS = ("报告时间",)
+_MARKET_ACTIVITY_HSGT_BOARD_RANK_SOURCE_URI = (
+    "https://data.eastmoney.com/hsgtcg/bk.html"
+)
+_MARKET_ACTIVITY_HSGT_BOARD_RANK_WRAPPER_URI = (
+    "https://data.eastmoney.com/hsgtcg/hy.html"
+)
+_MARKET_ACTIVITY_HSGT_BOARD_RANK_UPSTREAM_URL = (
+    "https://datacenter-web.eastmoney.com/api/data/v1/get"
+)
+_MARKET_ACTIVITY_HSGT_BOARD_RANK_UPSTREAM_PARAMETERS = (
+    "sortColumns",
+    "sortTypes",
+    "pageSize",
+    "pageNumber",
+    "reportName",
+    "columns",
+    "quoteColumns",
+    "source",
+    "client",
+    "filter",
+)
+_MARKET_ACTIVITY_HSGT_BOARD_RANK_UPSTREAM_FIXED_PARAMETERS = {
+    "sortColumns": "ADD_MARKET_CAP",
+    "sortTypes": "-1",
+    "pageSize": "500",
+    "pageNumber": "1",
+    "reportName": "RPT_MUTUAL_BOARD_HOLDRANK_WEB",
+    "columns": "ALL",
+    "quoteColumns": "f3~05~SECURITY_CODE~INDEX_CHANGE_RATIO",
+    "source": "WEB",
+    "client": "WEB",
+}
+_MARKET_ACTIVITY_HSGT_BOARD_RANK_DOCUMENTED_UNITS = {
+    "最新涨跌幅": "percent",
+    "北向资金今日持股-市值": "CNY",
+    "北向资金今日增持估计-市值": "CNY",
+}
+_MARKET_ACTIVITY_HSGT_BOARD_RANK_UNDOCUMENTED_NUMERIC_UNITS = {
+    field: "not_documented"
+    for field in _MARKET_ACTIVITY_HSGT_BOARD_RANK_NUMERIC_FIELDS
+    if field not in _MARKET_ACTIVITY_HSGT_BOARD_RANK_DOCUMENTED_UNITS
+}
 _MARKET_ACTIVITY_BLOCK_TRADE_PARAMETER_NAMES = frozenset(
     {"view", "start_date", "end_date"}
 )
@@ -4401,6 +4527,18 @@ class AKShareProvider(StructuredDataProvider):
         if (
             request.category is DataCategory.MARKET_ACTIVITY
             and request.parameters.get("view")
+            == _MARKET_ACTIVITY_HSGT_BOARD_RANK_VIEW
+            and listing.market is not ListingMarket.A
+        ):
+            raise ProviderRequestError(
+                "the AKShare HSGT board-rank endpoint supports A-share listings only",
+                provider=self.identity,
+                request=request,
+                retryable=False,
+            )
+        if (
+            request.category is DataCategory.MARKET_ACTIVITY
+            and request.parameters.get("view")
             == _MARKET_ACTIVITY_HK_HOT_RANK_DETAIL_VIEW
             and listing.market is not ListingMarket.H
         ):
@@ -5080,7 +5218,30 @@ class AKShareProvider(StructuredDataProvider):
                     response_metadata["observation_end_date"] = max(observation_dates).isoformat()
         elif request.category is DataCategory.MARKET_ACTIVITY:
             rows = _table_rows(payload, provider=self.identity, request=request)
-            if endpoint.name == "stock_board_industry_name_em":
+            if endpoint.name == _MARKET_ACTIVITY_HSGT_BOARD_RANK_ENDPOINT:
+                symbol = kwargs["symbol"]
+                indicator = kwargs["indicator"]
+                report_dates, rank_order, board_order = (
+                    _validate_market_activity_hsgt_board_rank_provider_rows(
+                        rows,
+                        symbol=symbol,
+                        indicator=indicator,
+                        provider=self.identity,
+                        request=request,
+                    )
+                )
+                response_metadata.update(
+                    _market_activity_hsgt_board_rank_response_metadata(
+                        listing_code=listing.code,
+                        symbol=symbol,
+                        indicator=indicator,
+                        report_dates=report_dates,
+                        rank_order=rank_order,
+                        board_order=board_order,
+                        row_count=len(rows),
+                    )
+                )
+            elif endpoint.name == "stock_board_industry_name_em":
                 board_order = _validate_market_activity_industry_board_provider_rows(
                     rows,
                     provider=self.identity,
@@ -8403,6 +8564,10 @@ class AKShareProvider(StructuredDataProvider):
             market_activity_statistic_requested=(
                 "view" in request.parameters or "period" in request.parameters
             ),
+            market_activity_hsgt_board_rank_requested=(
+                request.parameters.get("view")
+                == _MARKET_ACTIVITY_HSGT_BOARD_RANK_VIEW
+            ),
             market_activity_participation_desire_requested=(
                 request.parameters.get("view")
                 == _MARKET_ACTIVITY_PARTICIPATION_DESIRE_VIEW
@@ -9004,6 +9169,10 @@ class AKShareNormalizer:
                     record.request.parameters.get("view")
                     == _MARKET_ACTIVITY_HK_GROWTH_COMPARISON_VIEW
                 )
+                is_hsgt_board_rank = (
+                    record.request.parameters.get("view")
+                    == _MARKET_ACTIVITY_HSGT_BOARD_RANK_VIEW
+                )
                 if listing.market is not ListingMarket.A and not (
                     listing.market is ListingMarket.H
                     and (
@@ -9022,7 +9191,21 @@ class AKShareNormalizer:
                     == _MARKET_ACTIVITY_HOT_RANK_DETAIL_VIEW
                 )
                 endpoint_name = record.response_metadata.get("endpoint")
-                if endpoint_name == "stock_board_industry_name_em":
+                if is_hsgt_board_rank:
+                    if endpoint_name != _MARKET_ACTIVITY_HSGT_BOARD_RANK_ENDPOINT:
+                        raise ProviderNormalizationError(
+                            "AKShare HSGT board-rank record must come from "
+                            f"{_MARKET_ACTIVITY_HSGT_BOARD_RANK_ENDPOINT}"
+                        )
+                    _validate_market_activity_hsgt_board_rank_normalizer_scope(
+                        record,
+                        listing,
+                        rows,
+                    )
+                    normalizer_flags.add(
+                        "AKSHARE_HSGT_BOARD_RANK_RAW_ONLY"
+                    )
+                elif endpoint_name == "stock_board_industry_name_em":
                     _validate_market_activity_industry_board_normalizer_scope(
                         record,
                         listing,
@@ -11057,6 +11240,14 @@ class AKShareNormalizer:
                 "official documentation states that the source stopped providing "
                 "data from 2024-05-13."
             )
+        if "AKSHARE_HSGT_BOARD_RANK_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented HSGT board-rank response is retained as raw evidence "
+                "only: its market-wide northbound board rankings, capital estimates "
+                "and quote context lack listing/entity accounting scope and do not "
+                "establish issuer cash flow, shareholder return, governance, valuation "
+                "or a canonical market metric."
+            )
         if "AKSHARE_MARKET_ACTIVITY_RAW_ONLY" in normalizer_flags:
             notes += (
                 " The documented A-share Dragon-Tiger-board detail response is retained as "
@@ -11777,6 +11968,7 @@ def _endpoint_candidates(
     insider_executive_share_changes_requested: bool = False,
     insider_management_detail_requested: bool = False,
     market_activity_statistic_requested: bool = False,
+    market_activity_hsgt_board_rank_requested: bool = False,
     market_activity_institution_statistic_requested: bool = False,
     market_activity_legu_requested: bool = False,
     market_activity_congestion_requested: bool = False,
@@ -11940,6 +12132,10 @@ def _endpoint_candidates(
             return ("stock_hk_hist_min_em",)
         return ("stock_hk_daily", "stock_zh_ah_daily")
     if category is DataCategory.MARKET_ACTIVITY:
+        if market_activity_hsgt_board_rank_requested:
+            if market is ListingMarket.A:
+                return (_MARKET_ACTIVITY_HSGT_BOARD_RANK_ENDPOINT,)
+            return ()
         if market_activity_legu_requested:
             if market is ListingMarket.A:
                 return ("stock_market_activity_legu",)
@@ -18800,6 +18996,319 @@ def _validate_market_activity_provider_rows(
             )
         dates.append(row_date)
     return dates
+
+
+def _market_activity_hsgt_board_rank_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> tuple[str | None, list[date], list[int], list[str]]:
+    """Return strict-schema errors and the ordered HSGT board observations."""
+
+    if not rows:
+        return (
+            "HSGT board-rank response must contain at least one row",
+            [],
+            [],
+            [],
+        )
+
+    report_dates: list[date] = []
+    rank_order: list[int] = []
+    board_order: list[str] = []
+    seen_names: set[str] = set()
+    for index, row in enumerate(rows):
+        missing = [
+            field
+            for field in _MARKET_ACTIVITY_HSGT_BOARD_RANK_FIELDS
+            if field not in row
+        ]
+        unexpected = sorted(
+            set(row) - _MARKET_ACTIVITY_HSGT_BOARD_RANK_FIELD_SET
+        )
+        if missing:
+            return (
+                f"HSGT board-rank row {index} is missing field(s): "
+                + ", ".join(missing),
+                [],
+                [],
+                [],
+            )
+        if unexpected:
+            return (
+                f"HSGT board-rank row {index} contains unsupported field(s): "
+                + ", ".join(unexpected),
+                [],
+                [],
+                [],
+            )
+        if tuple(row) != _MARKET_ACTIVITY_HSGT_BOARD_RANK_FIELDS:
+            return (
+                "HSGT board-rank rows must preserve the official field order",
+                [],
+                [],
+                [],
+            )
+
+        raw_rank = row["序号"]
+        if isinstance(raw_rank, bool) or not isinstance(raw_rank, Real):
+            return (
+                f"HSGT board-rank row {index} field '序号' must be a positive integer",
+                [],
+                [],
+                [],
+            )
+        rank_value = float(raw_rank)
+        if not math.isfinite(rank_value) or not rank_value.is_integer():
+            return (
+                f"HSGT board-rank row {index} field '序号' must be a positive integer",
+                [],
+                [],
+                [],
+            )
+        rank = int(rank_value)
+        if rank != index + 1:
+            return (
+                "HSGT board-rank 序号 values must be strictly ascending from 1",
+                [],
+                [],
+                [],
+            )
+        rank_order.append(rank)
+
+        name = row["名称"]
+        if not isinstance(name, str) or not name.strip():
+            return (
+                f"HSGT board-rank row {index} field '名称' must be a non-empty string",
+                [],
+                [],
+                [],
+            )
+        if name in seen_names:
+            return (
+                f"HSGT board-rank response contains duplicate 名称 {name!r}",
+                [],
+                [],
+                [],
+            )
+        seen_names.add(name)
+        board_order.append(name)
+
+        raw_report_date = row["报告时间"]
+        report_date = _parse_date_value(raw_report_date)
+        if report_date is None:
+            return (
+                f"HSGT board-rank row {index} has an invalid 报告时间",
+                [],
+                [],
+                [],
+            )
+        if report_dates and report_date != report_dates[0]:
+            return (
+                "HSGT board-rank response must contain one report date",
+                [],
+                [],
+                [],
+            )
+        report_dates.append(report_date)
+
+        for field in _MARKET_ACTIVITY_HSGT_BOARD_RANK_NUMERIC_FIELDS:
+            value = row[field]
+            if value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, Real):
+                return (
+                    f"HSGT board-rank row {index} field {field!r} must be "
+                    "numeric or null",
+                    [],
+                    [],
+                    [],
+                )
+            try:
+                numeric = float(value)
+            except (OverflowError, TypeError, ValueError):
+                return (
+                    f"HSGT board-rank row {index} field {field!r} must be "
+                    "numeric or null",
+                    [],
+                    [],
+                    [],
+                )
+            if not math.isfinite(numeric):
+                return (
+                    f"HSGT board-rank row {index} field {field!r} must be "
+                    "finite or null",
+                    [],
+                    [],
+                    [],
+                )
+
+        for field in _MARKET_ACTIVITY_HSGT_BOARD_RANK_TEXT_FIELDS:
+            value = row[field]
+            if value is not None and not isinstance(value, str):
+                return (
+                    f"HSGT board-rank row {index} field {field!r} must be "
+                    "a string or null",
+                    [],
+                    [],
+                    [],
+                )
+
+    return None, report_dates, rank_order, board_order
+
+
+def _validate_market_activity_hsgt_board_rank_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    symbol: str,
+    indicator: str,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> tuple[list[date], list[int], list[str]]:
+    """Validate the complete market-wide HSGT board-rank response."""
+
+    message, report_dates, rank_order, board_order = (
+        _market_activity_hsgt_board_rank_validation_message(rows)
+    )
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message}",
+            provider=provider,
+            request=request,
+        )
+    if symbol not in _MARKET_ACTIVITY_HSGT_BOARD_RANK_SYMBOL_SET:
+        raise ProviderResponseError(
+            f"AKShare HSGT board-rank symbol {symbol!r} is not documented",
+            provider=provider,
+            request=request,
+        )
+    if indicator not in _MARKET_ACTIVITY_HSGT_BOARD_RANK_INDICATOR_SET:
+        raise ProviderResponseError(
+            f"AKShare HSGT board-rank indicator {indicator!r} is not documented",
+            provider=provider,
+            request=request,
+        )
+    return report_dates, rank_order, board_order
+
+
+def _market_activity_hsgt_board_rank_filter(
+    *,
+    symbol: str,
+    indicator: str,
+    report_date: str,
+) -> str:
+    """Build the exact Eastmoney board-rank filter used by AKShare."""
+
+    board_type = _MARKET_ACTIVITY_HSGT_BOARD_RANK_SYMBOL_CODES[symbol]
+    interval_type = _MARKET_ACTIVITY_HSGT_BOARD_RANK_INDICATOR_CODES[indicator]
+    return (
+        f'(BOARD_TYPE="{board_type}")(TRADE_DATE=\'{report_date}\')'
+        f'(INTERVAL_TYPE="{interval_type}")'
+    )
+
+
+def _market_activity_hsgt_board_rank_response_metadata(
+    *,
+    listing_code: str,
+    symbol: str,
+    indicator: str,
+    report_dates: Sequence[date],
+    rank_order: Sequence[int],
+    board_order: Sequence[str],
+    row_count: int,
+) -> dict[str, JSONValue]:
+    """Build the replay contract for one HSGT board-rank snapshot."""
+
+    report_date = report_dates[0].isoformat() if report_dates else None
+    upstream_filter = (
+        _market_activity_hsgt_board_rank_filter(
+            symbol=symbol,
+            indicator=indicator,
+            report_date=report_date,
+        )
+        if report_date is not None
+        else None
+    )
+    return {
+        "endpoint": _MARKET_ACTIVITY_HSGT_BOARD_RANK_ENDPOINT,
+        "market": ListingMarket.A.value,
+        "listing_code": listing_code,
+        "market_activity_view": _MARKET_ACTIVITY_HSGT_BOARD_RANK_VIEW,
+        "market_scope": "Eastmoney northbound HSGT board-rank universe",
+        "listing_scoped_request": False,
+        "row_filtering": "none",
+        "snapshot_scope": "current_northbound_hsgt_board_rank",
+        "date_binding": "report_date_and_upstream_filter",
+        "report_date_field": "报告时间",
+        "report_date_ordering": "constant",
+        "report_date": report_date,
+        "board_type": symbol,
+        "board_type_code": _MARKET_ACTIVITY_HSGT_BOARD_RANK_SYMBOL_CODES[symbol],
+        "interval": indicator,
+        "interval_type": _MARKET_ACTIVITY_HSGT_BOARD_RANK_INDICATOR_CODES[indicator],
+        "rank_field": "序号",
+        "rank_ordering": "strictly_ascending_from_one",
+        "rank_order": list(rank_order),
+        "board_name_field": "名称",
+        "board_ordering": "source_ranked",
+        "board_order": list(board_order),
+        "value_fields": list(_MARKET_ACTIVITY_HSGT_BOARD_RANK_NUMERIC_FIELDS),
+        "integer_fields": list(_MARKET_ACTIVITY_HSGT_BOARD_RANK_INTEGER_FIELDS),
+        "text_fields": list(_MARKET_ACTIVITY_HSGT_BOARD_RANK_TEXT_FIELDS),
+        "required_text_fields": list(
+            _MARKET_ACTIVITY_HSGT_BOARD_RANK_REQUIRED_TEXT_FIELDS
+        ),
+        "field_count": len(_MARKET_ACTIVITY_HSGT_BOARD_RANK_FIELDS),
+        "source_field_order": list(_MARKET_ACTIVITY_HSGT_BOARD_RANK_FIELDS),
+        "documented_units": dict(
+            _MARKET_ACTIVITY_HSGT_BOARD_RANK_DOCUMENTED_UNITS
+        ),
+        "undocumented_numeric_units": dict(
+            _MARKET_ACTIVITY_HSGT_BOARD_RANK_UNDOCUMENTED_NUMERIC_UNITS
+        ),
+        "upstream_url": _MARKET_ACTIVITY_HSGT_BOARD_RANK_UPSTREAM_URL,
+        "upstream_protocol": "JSON",
+        "upstream_report_name": (
+            _MARKET_ACTIVITY_HSGT_BOARD_RANK_UPSTREAM_FIXED_PARAMETERS[
+                "reportName"
+            ]
+        ),
+        "upstream_columns_selector": "ALL",
+        "upstream_quote_columns": (
+            _MARKET_ACTIVITY_HSGT_BOARD_RANK_UPSTREAM_FIXED_PARAMETERS[
+                "quoteColumns"
+            ]
+        ),
+        "upstream_parameters": list(
+            _MARKET_ACTIVITY_HSGT_BOARD_RANK_UPSTREAM_PARAMETERS
+        ),
+        "upstream_fixed_parameters": dict(
+            _MARKET_ACTIVITY_HSGT_BOARD_RANK_UPSTREAM_FIXED_PARAMETERS
+        ),
+        "upstream_dynamic_parameters": {
+            "symbol": symbol,
+            "indicator": indicator,
+            "board_type": _MARKET_ACTIVITY_HSGT_BOARD_RANK_SYMBOL_CODES[symbol],
+            "interval_type": _MARKET_ACTIVITY_HSGT_BOARD_RANK_INDICATOR_CODES[
+                indicator
+            ],
+            "trade_date": report_date,
+            "filter": upstream_filter,
+        },
+        "upstream_symbol": symbol,
+        "upstream_indicator": indicator,
+        "upstream_date_source_page_uri": _MARKET_ACTIVITY_HSGT_BOARD_RANK_WRAPPER_URI,
+        "upstream_date_source_field": "bkph_date",
+        "upstream_authentication": "none",
+        "upstream_page_size": 500,
+        "pagination": "single_page",
+        "upstream_sort_column": "ADD_MARKET_CAP",
+        "upstream_sort_direction": "descending",
+        "upstream_filter": upstream_filter,
+        "wrapper_source_page_uri": _MARKET_ACTIVITY_HSGT_BOARD_RANK_SOURCE_URI,
+        "wrapper_output_ordering": "source_ranked",
+        "entity_rows_selected": False,
+        "upstream_row_count": row_count,
+        "entity_row_count": 0,
+    }
 
 
 def _market_activity_block_trade_date(value: object) -> date | None:
@@ -27388,6 +27897,72 @@ def _validate_market_activity_institution_daily_normalizer_scope(
             "A-share institution-daily response metadata date bounds do not contain "
             "the selected rows"
         )
+
+
+def _validate_market_activity_hsgt_board_rank_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> None:
+    """Validate replay scope for the market-wide HSGT board-rank snapshot."""
+
+    if listing.market is not ListingMarket.A:
+        raise ProviderNormalizationError(
+            "AKShare HSGT board-rank raw slice supports A-share listings only"
+        )
+    endpoint_name = _MARKET_ACTIVITY_HSGT_BOARD_RANK_ENDPOINT
+    if record.response_metadata.get("endpoint") != endpoint_name:
+        raise ProviderNormalizationError(
+            "AKShare HSGT board-rank record must come from "
+            f"{endpoint_name}"
+        )
+    if record.source_uri != _MARKET_ACTIVITY_HSGT_BOARD_RANK_SOURCE_URI:
+        raise ProviderNormalizationError(
+            "AKShare HSGT board-rank source URI does not match the documented endpoint"
+        )
+    try:
+        upstream_kwargs = _market_activity_hsgt_board_rank_kwargs(
+            endpoint_name,
+            listing,
+            record.request,
+        )
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+    symbol = upstream_kwargs["symbol"]
+    indicator = upstream_kwargs["indicator"]
+    message, report_dates, rank_order, board_order = (
+        _market_activity_hsgt_board_rank_validation_message(rows)
+    )
+    if message is not None:
+        raise ProviderNormalizationError(message)
+    expected_metadata = _market_activity_hsgt_board_rank_response_metadata(
+        listing_code=listing.code,
+        symbol=symbol,
+        indicator=indicator,
+        report_dates=report_dates,
+        rank_order=rank_order,
+        board_order=board_order,
+        row_count=len(rows),
+    )
+    boolean_fields = {"listing_scoped_request", "entity_rows_selected"}
+    count_fields = {"field_count", "upstream_row_count", "entity_row_count"}
+    for name, expected in expected_metadata.items():
+        actual = record.response_metadata.get(name)
+        if name in boolean_fields:
+            matches = isinstance(actual, bool) and actual is expected
+        elif name in count_fields:
+            matches = (
+                isinstance(actual, int)
+                and not isinstance(actual, bool)
+                and actual == expected
+            )
+        else:
+            matches = actual == expected
+        if not matches:
+            raise ProviderNormalizationError(
+                "HSGT board-rank response metadata "
+                f"{name!r} does not match the requested replay scope"
+            )
 
 
 def _validate_market_activity_industry_board_normalizer_scope(
@@ -36388,6 +36963,68 @@ def _market_activity_date_range(request: ProviderRequest) -> tuple[date, date]:
     return start_date, end_date
 
 
+def _market_activity_hsgt_board_rank_kwargs(
+    endpoint_name: str,
+    listing: _ListingRef,
+    request: ProviderRequest,
+) -> dict[str, object]:
+    """Build the documented northbound HSGT board-rank request."""
+
+    if endpoint_name != _MARKET_ACTIVITY_HSGT_BOARD_RANK_ENDPOINT:
+        raise ProviderRequestError(
+            "unsupported AKShare HSGT board-rank endpoint "
+            f"{endpoint_name!r}",
+            request=request,
+            retryable=False,
+        )
+    if listing.market is not ListingMarket.A:
+        raise ProviderRequestError(
+            "the AKShare HSGT board-rank endpoint supports A-share listings only",
+            request=request,
+            retryable=False,
+        )
+    unknown = sorted(
+        set(request.parameters) - _MARKET_ACTIVITY_HSGT_BOARD_RANK_PARAMETER_NAMES
+    )
+    if unknown:
+        raise ProviderRequestError(
+            "unsupported AKShare HSGT board-rank parameter(s): "
+            + ", ".join(unknown),
+            request=request,
+            retryable=False,
+        )
+    if request.parameters.get("view") != _MARKET_ACTIVITY_HSGT_BOARD_RANK_VIEW:
+        raise ProviderRequestError(
+            "the AKShare HSGT board-rank endpoint requires "
+            f"view={_MARKET_ACTIVITY_HSGT_BOARD_RANK_VIEW!r}",
+            request=request,
+            retryable=False,
+        )
+    symbol = request.parameters.get("symbol")
+    if (
+        not isinstance(symbol, str)
+        or symbol not in _MARKET_ACTIVITY_HSGT_BOARD_RANK_SYMBOL_SET
+    ):
+        raise ProviderRequestError(
+            "AKShare HSGT board-rank symbol must be one of: "
+            + ", ".join(_MARKET_ACTIVITY_HSGT_BOARD_RANK_SYMBOLS),
+            request=request,
+            retryable=False,
+        )
+    indicator = request.parameters.get("indicator")
+    if (
+        not isinstance(indicator, str)
+        or indicator not in _MARKET_ACTIVITY_HSGT_BOARD_RANK_INDICATOR_SET
+    ):
+        raise ProviderRequestError(
+            "AKShare HSGT board-rank indicator must be one of: "
+            + ", ".join(_MARKET_ACTIVITY_HSGT_BOARD_RANK_INDICATORS),
+            request=request,
+            retryable=False,
+        )
+    return {"symbol": symbol, "indicator": indicator}
+
+
 def _market_activity_kwargs(
     endpoint_name: str,
     listing: _ListingRef,
@@ -36395,6 +37032,12 @@ def _market_activity_kwargs(
 ) -> dict[str, object]:
     """Build one documented market-activity request."""
 
+    if endpoint_name == _MARKET_ACTIVITY_HSGT_BOARD_RANK_ENDPOINT:
+        return _market_activity_hsgt_board_rank_kwargs(
+            endpoint_name,
+            listing,
+            request,
+        )
     if endpoint_name == "stock_market_pe_lg":
         return _market_activity_market_pe_kwargs(endpoint_name, listing, request)
     if endpoint_name == "stock_index_pe_lg":
