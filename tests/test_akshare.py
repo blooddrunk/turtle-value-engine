@@ -245,6 +245,12 @@ class FakeAKShare:
             _fixture("a_buffett_index.json"),
         )
 
+    def stock_a_ttm_lyr(self):
+        return self._return(
+            "stock_a_ttm_lyr",
+            _fixture("a_ttm_lyr.json"),
+        )
+
     def stock_sse_deal_daily(self, *, date: str):
         return self._return(
             "stock_sse_deal_daily",
@@ -974,8 +980,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "113"
-    assert AKSHARE_MAPPING_VERSION == "114"
+    assert provider.identity.provider_version == "114"
+    assert AKSHARE_MAPPING_VERSION == "115"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -22083,6 +22089,421 @@ def test_market_activity_congestion_cache_replay_does_not_call_upstream(tmp_path
     assert replay.mode is RetrievalMode.CACHE_REPLAY
     assert replay.record == live.record
     assert fake.calls == [("stock_a_congestion_lg", {})]
+
+
+def test_market_activity_ttm_lyr_fetch_preserves_a_share_pe_history():
+    fake = FakeAKShare()
+    request = _request(
+        DataCategory.MARKET_ACTIVITY,
+        "SH600000",
+        {"view": "ttm_lyr"},
+    )
+
+    record = _provider(fake).fetch(request)
+    fixture = _fixture("a_ttm_lyr.json")
+
+    assert record.raw_payload == fixture
+    assert fake.calls == [("stock_a_ttm_lyr", {})]
+    assert record.response_metadata["endpoint"] == "stock_a_ttm_lyr"
+    assert record.response_metadata["market"] == "A"
+    assert record.response_metadata["listing_code"] == "600000"
+    assert record.response_metadata["market_activity_view"] == "ttm_lyr"
+    assert record.response_metadata["market_scope"] == (
+        "all A-share PE and CSI 300 market context"
+    )
+    assert record.response_metadata["listing_scoped_request"] is False
+    assert record.response_metadata["row_filtering"] == "none"
+    assert record.response_metadata["snapshot_scope"] == (
+        "all_historical_a_share_ttm_lyr_history"
+    )
+    assert record.response_metadata["date_binding"] == "row_dates"
+    assert record.response_metadata["observation_date_field"] == "date"
+    assert record.response_metadata["observation_date_format"] == "YYYY-MM-DD"
+    assert record.response_metadata["observation_date_ordering"] == (
+        "strictly_ascending"
+    )
+    assert record.response_metadata["observation_start_date"] == "2005-01-05"
+    assert record.response_metadata["observation_end_date"] == "2024-10-17"
+    assert record.response_metadata["observation_count_contract"] == (
+        "non_empty_all_historical_history"
+    )
+    assert record.response_metadata["value_fields"] == [
+        "middlePETTM",
+        "averagePETTM",
+        "middlePELYR",
+        "averagePELYR",
+        "quantileInAllHistoryMiddlePeTtm",
+        "quantileInRecent10YearsMiddlePeTtm",
+        "quantileInAllHistoryAveragePeTtm",
+        "quantileInRecent10YearsAveragePeTtm",
+        "quantileInAllHistoryMiddlePeLyr",
+        "quantileInRecent10YearsMiddlePeLyr",
+        "quantileInAllHistoryAveragePeLyr",
+        "quantileInRecent10YearsAveragePeLyr",
+        "close",
+    ]
+    assert record.response_metadata["non_negative_fields"] == ["close"]
+    assert record.response_metadata["integer_fields"] == []
+    assert record.response_metadata["text_fields"] == []
+    assert record.response_metadata["date_fields"] == ["date"]
+    assert record.response_metadata["required_date_fields"] == ["date"]
+    assert record.response_metadata["required_numeric_fields"] == [
+        "middlePETTM",
+        "averagePETTM",
+        "middlePELYR",
+        "averagePELYR",
+        "quantileInAllHistoryMiddlePeTtm",
+        "quantileInRecent10YearsMiddlePeTtm",
+        "quantileInAllHistoryAveragePeTtm",
+        "quantileInRecent10YearsAveragePeTtm",
+        "quantileInAllHistoryMiddlePeLyr",
+        "quantileInRecent10YearsMiddlePeLyr",
+        "quantileInAllHistoryAveragePeLyr",
+        "quantileInRecent10YearsAveragePeLyr",
+        "close",
+    ]
+    assert record.response_metadata["field_types"] == {
+        "date": "date",
+        "middlePETTM": "number",
+        "averagePETTM": "number",
+        "middlePELYR": "number",
+        "averagePELYR": "number",
+        "quantileInAllHistoryMiddlePeTtm": "number",
+        "quantileInRecent10YearsMiddlePeTtm": "number",
+        "quantileInAllHistoryAveragePeTtm": "number",
+        "quantileInRecent10YearsAveragePeTtm": "number",
+        "quantileInAllHistoryMiddlePeLyr": "number",
+        "quantileInRecent10YearsMiddlePeLyr": "number",
+        "quantileInAllHistoryAveragePeLyr": "number",
+        "quantileInRecent10YearsAveragePeLyr": "number",
+        "close": "number",
+    }
+    assert record.response_metadata["nullable_fields"] == []
+    assert record.response_metadata["field_count"] == 14
+    assert record.response_metadata["source_field_order"] == list(fixture[0])
+    assert record.response_metadata["documented_units"] == {}
+    assert record.response_metadata["undocumented_numeric_units"] == {
+        field: "not_documented" for field in record.response_metadata["value_fields"]
+    }
+    assert record.response_metadata["upstream_url"] == (
+        "https://legulegu.com/api/stock-data/market-ttm-lyr"
+    )
+    assert record.response_metadata["upstream_protocol"] == "JSON"
+    assert record.response_metadata["upstream_report_name"] is None
+    assert record.response_metadata["upstream_parameters"] == ["marketId", "token"]
+    assert record.response_metadata["upstream_fixed_parameters"] == {"marketId": "5"}
+    assert record.response_metadata["upstream_authentication"] == (
+        "token_and_cookie_csrf"
+    )
+    assert record.response_metadata["wrapper_dropped_fields"] == []
+    assert record.response_metadata["upstream_page_size"] is None
+    assert record.response_metadata["pagination"] == "single_snapshot"
+    assert record.response_metadata["upstream_sort_column"] is None
+    assert record.response_metadata["upstream_sort_direction"] is None
+    assert record.response_metadata["upstream_filter"] is None
+    assert record.response_metadata["wrapper_output_ordering"] == (
+        "ascending_by_date"
+    )
+    assert record.response_metadata["upstream_row_count"] == len(fixture)
+    assert record.response_metadata["entity_row_count"] == 0
+    assert record.response_metadata["entity_rows_selected"] is False
+    assert record.source_uri == "https://www.legulegu.com/stockdata/a-ttm-lyr"
+
+
+@pytest.mark.parametrize(
+    ("parameters", "entity_id", "match"),
+    [
+        (
+            {"view": "ttm_lyr", "date": "20241017"},
+            "SH600000",
+            "unsupported AKShare A-share TTM/LYR parameter",
+        ),
+        (
+            {"view": "ttm_lyr"},
+            "HK00700",
+            "A-share listings only",
+        ),
+    ],
+)
+def test_market_activity_ttm_lyr_request_validates_explicit_scope_before_upstream_call(
+    parameters: dict,
+    entity_id: str,
+    match: str,
+):
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError, match=match):
+        _provider(fake).fetch(
+            _request(DataCategory.MARKET_ACTIVITY, entity_id, parameters)
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("empty", "must not be empty"),
+        ("missing_field", "row 0 is missing field.*middlePETTM"),
+        ("extra_field", "row 0 contains unsupported field"),
+        ("reordered_fields", "official field order"),
+        ("invalid_date", "row 0 has an invalid date"),
+        ("duplicate_date", "duplicate date"),
+        ("descending_dates", "strictly ascending"),
+        ("invalid_numeric", "field 'averagePETTM'.*numeric"),
+        ("boolean_numeric", "field 'averagePETTM'.*numeric"),
+        ("negative_close", "field 'close'.*non-negative"),
+        ("null_numeric", "field 'middlePELYR'.*numeric"),
+    ],
+)
+def test_market_activity_ttm_lyr_response_validates_schema_boundaries(
+    mutation: str,
+    match: str,
+):
+    payload = [dict(row) for row in _fixture("a_ttm_lyr.json")]
+    if mutation == "empty":
+        payload = []
+    elif mutation == "missing_field":
+        payload[0].pop("middlePETTM")
+    elif mutation == "extra_field":
+        payload[0]["unexpected"] = "not documented"
+    elif mutation == "reordered_fields":
+        payload[0] = dict(reversed(list(payload[0].items())))
+    elif mutation == "invalid_date":
+        payload[0]["date"] = "2005-1-5"
+    elif mutation == "duplicate_date":
+        payload[1]["date"] = payload[0]["date"]
+    elif mutation == "descending_dates":
+        payload.reverse()
+    elif mutation == "invalid_numeric":
+        payload[0]["averagePETTM"] = "34.12"
+    elif mutation == "boolean_numeric":
+        payload[0]["averagePETTM"] = True
+    elif mutation == "negative_close":
+        payload[0]["close"] = -1
+    else:
+        payload[0]["middlePELYR"] = None
+
+    class InvalidTtmLyr(FakeAKShare):
+        def stock_a_ttm_lyr(self):
+            return self._return("stock_a_ttm_lyr", payload)
+
+    with pytest.raises(ProviderResponseError, match=match):
+        _provider(InvalidTtmLyr()).fetch(
+            _request(
+                DataCategory.MARKET_ACTIVITY,
+                "SH600000",
+                {"view": "ttm_lyr"},
+            )
+        )
+
+
+def test_market_activity_ttm_lyr_allows_signed_pe_values_as_raw_context():
+    payload = [dict(row) for row in _fixture("a_ttm_lyr.json")]
+    payload[0]["middlePETTM"] = -4.5
+    payload[0]["averagePELYR"] = -3.25
+
+    class SignedTtmLyr(FakeAKShare):
+        def stock_a_ttm_lyr(self):
+            return self._return("stock_a_ttm_lyr", payload)
+
+    record = _provider(SignedTtmLyr()).fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SH600000",
+            {"view": "ttm_lyr"},
+        )
+    )
+
+    assert record.raw_payload[0]["middlePETTM"] == -4.5
+    assert record.raw_payload[0]["averagePELYR"] == -3.25
+
+
+def test_market_activity_ttm_lyr_is_retained_as_raw_evidence_without_facts():
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SH600000",
+            {"view": "ttm_lyr"},
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="ttm-lyr-raw-only",
+        as_of=date(2026, 9, 11),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_A_TTM_LYR_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == []
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "TTM/LYR" in normalized.data_quality.notes
+    assert "market-wide" in normalized.data_quality.notes
+    assert "canonical" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "endpoint",
+        "source_uri",
+        "market",
+        "listing_code",
+        "view",
+        "market_scope",
+        "listing_scope",
+        "filtering",
+        "snapshot",
+        "date_binding",
+        "observation_date_field",
+        "observation_start_date",
+        "value_fields",
+        "non_negative_fields",
+        "date_fields",
+        "required_date_fields",
+        "required_numeric_fields",
+        "field_types",
+        "nullable_fields",
+        "field_count",
+        "source_field_order",
+        "undocumented_units",
+        "upstream_url",
+        "upstream_protocol",
+        "upstream_parameters",
+        "upstream_fixed_parameters",
+        "upstream_authentication",
+        "pagination",
+        "upstream_count",
+        "entity_count",
+        "selected",
+        "payload",
+    ],
+)
+def test_market_activity_ttm_lyr_normalizer_rejects_replayed_scope_mismatches(
+    mutation: str,
+):
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SH600000",
+            {"view": "ttm_lyr"},
+        )
+    )
+    payload = [dict(row) for row in record.raw_payload]
+    response_metadata = dict(record.response_metadata)
+    source_uri = record.source_uri
+    if mutation == "endpoint":
+        response_metadata["endpoint"] = "stock_sse_summary"
+    elif mutation == "source_uri":
+        source_uri = "https://example.invalid/ttm-lyr"
+    elif mutation == "market":
+        response_metadata["market"] = "H"
+    elif mutation == "listing_code":
+        response_metadata["listing_code"] = "000001"
+    elif mutation == "view":
+        response_metadata["market_activity_view"] = "sse_summary"
+    elif mutation == "market_scope":
+        response_metadata["market_scope"] = "all_a_share_listings"
+    elif mutation == "listing_scope":
+        response_metadata["listing_scoped_request"] = True
+    elif mutation == "filtering":
+        response_metadata["row_filtering"] = "provider"
+    elif mutation == "snapshot":
+        response_metadata["snapshot_scope"] = "current_trading_day"
+    elif mutation == "date_binding":
+        response_metadata["date_binding"] = "request_only"
+    elif mutation == "observation_date_field":
+        response_metadata["observation_date_field"] = "交易日"
+    elif mutation == "observation_start_date":
+        response_metadata["observation_start_date"] = "2005-01-06"
+    elif mutation == "value_fields":
+        response_metadata["value_fields"] = ["close"]
+    elif mutation == "non_negative_fields":
+        response_metadata["non_negative_fields"] = ["middlePETTM"]
+    elif mutation == "date_fields":
+        response_metadata["date_fields"] = []
+    elif mutation == "required_date_fields":
+        response_metadata["required_date_fields"] = []
+    elif mutation == "required_numeric_fields":
+        response_metadata["required_numeric_fields"] = ["close"]
+    elif mutation == "field_types":
+        response_metadata["field_types"] = {"date": "string"}
+    elif mutation == "nullable_fields":
+        response_metadata["nullable_fields"] = ["close"]
+    elif mutation == "field_count":
+        response_metadata["field_count"] = 13
+    elif mutation == "source_field_order":
+        response_metadata["source_field_order"] = [
+            "middlePETTM",
+            *list(record.response_metadata["source_field_order"])[1:],
+        ]
+    elif mutation == "undocumented_units":
+        response_metadata["undocumented_numeric_units"] = {"close": "index_points"}
+    elif mutation == "upstream_url":
+        response_metadata["upstream_url"] = "https://example.invalid/api"
+    elif mutation == "upstream_protocol":
+        response_metadata["upstream_protocol"] = "HTML"
+    elif mutation == "upstream_parameters":
+        response_metadata["upstream_parameters"] = ["token"]
+    elif mutation == "upstream_fixed_parameters":
+        response_metadata["upstream_fixed_parameters"] = {"marketId": "1"}
+    elif mutation == "upstream_authentication":
+        response_metadata["upstream_authentication"] = "none"
+    elif mutation == "pagination":
+        response_metadata["pagination"] = "paged"
+    elif mutation == "upstream_count":
+        response_metadata["upstream_row_count"] = len(payload) - 1
+    elif mutation == "entity_count":
+        response_metadata["entity_row_count"] = 1
+    elif mutation == "selected":
+        response_metadata["entity_rows_selected"] = True
+    else:
+        payload[0]["GDP"] = "not-a-number"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=source_uri,
+        response_metadata=response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-ttm-lyr",
+            as_of=date(2026, 9, 11),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_market_activity_ttm_lyr_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.MARKET_ACTIVITY,
+        "SH600000",
+        {"view": "ttm_lyr"},
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [("stock_a_ttm_lyr", {})]
 
 
 def test_market_activity_buffett_fetch_preserves_market_history():

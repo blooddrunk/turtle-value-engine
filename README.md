@@ -1234,6 +1234,20 @@ GDP context does not become a canonical market, return, valuation, governance
 or accounting fact. No calculation, gate, pipeline, CLI or input-loader
 contract changes.
 
+Phase 3.13 adds the documented A-share Legu
+`stock_a_ttm_lyr` endpoint under `MARKET_ACTIVITY` with explicit
+`view=ttm_lyr` and no user-supplied arguments. The [AKShare stock-data
+documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and [official
+implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_ttm_lyr.py)
+define a token-backed JSON history with the documented date, equal-weight and
+median TTM/LYR PE fields, their percentile context and CSI 300 close. The
+provider validates the complete 14-field schema, strict ascending ISO dates,
+finite numeric values and a non-negative index-close field without inferring
+units or PE semantics. The normalizer emits
+`AKSHARE_A_TTM_LYR_RAW_ONLY`; this market-wide valuation context does not become
+a canonical market, return, valuation, governance or accounting fact. No
+calculation, gate, pipeline, CLI or input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

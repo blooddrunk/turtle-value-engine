@@ -1538,6 +1538,33 @@ normalizer emits `AKSHARE_BUFFETT_INDEX_RAW_ONLY` and creates no canonical
 market, return, valuation, governance or accounting fact. The response remains
 outside the calculation, gate, pipeline, CLI and input-loader contracts.
 
+## Phase 3.13 A-share Legu TTM/LYR PE raw history
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_ttm_lyr.py)
+document `stock_a_ttm_lyr()` as a no-argument token-backed JSON history for
+the all-A-share TTM/LYR price-earnings context. The adapter exposes it only
+under `MARKET_ACTIVITY` with explicit `view=ttm_lyr` and an A-share provenance
+listing. The wrapper returns the exact 14 fields below in this order; no
+numeric units or percentile scale are documented, so none is inferred.
+
+| Raw upstream item | Phase 3.13 treatment |
+| --- | --- |
+| `date` | Required strict `YYYY-MM-DD` observation date for the market-wide history; it is not an accounting, filing or listing period. |
+| `middlePETTM`, `averagePETTM`, `middlePELYR`, `averagePELYR` | Required finite signed TTM/LYR PE aggregates; signed values are retained as raw evidence and are not promoted to a listing valuation fact. |
+| `quantileInAllHistoryMiddlePeTtm`, `quantileInRecent10YearsMiddlePeTtm`, `quantileInAllHistoryAveragePeTtm`, `quantileInRecent10YearsAveragePeTtm`, `quantileInAllHistoryMiddlePeLyr`, `quantileInRecent10YearsMiddlePeLyr`, `quantileInAllHistoryAveragePeLyr`, `quantileInRecent10YearsAveragePeLyr` | Required finite percentile-context values; the endpoint does not document a numeric unit or scale, and no percentile interpretation is inferred. |
+| `close` | Required finite non-negative CSI 300/index-close context; the endpoint does not document a canonical unit and it is not promoted to a listing quote, return or valuation input. |
+| request `view=ttm_lyr` | Explicit A-share-only, no-user-parameter routing; token/cookie-CSRF transport, fixed upstream `marketId=5`, source/API URIs, exact field order, no filtering and complete row counts remain part of cache replay. |
+
+The provider rejects empty responses, missing/unexpected/reordered fields,
+invalid or non-ascending dates, null required values, non-numeric/boolean/
+non-finite values and negative `close` values. Signed PE and percentile fields
+are deliberately accepted because the upstream contract does not establish a
+non-negative domain for them. The normalizer emits
+`AKSHARE_A_TTM_LYR_RAW_ONLY` and creates no canonical market, return,
+valuation, governance or accounting fact. The response remains outside the
+calculation, gate, pipeline, CLI and input-loader contracts.
+
 ## Phase 2.92 SSE daily-deal overview raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
