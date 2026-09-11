@@ -371,6 +371,21 @@ class FakeAKShare:
     def stock_zh_a_hist(self, **kwargs):
         return self._return("stock_zh_a_hist", _fixture("a_history.json"), **kwargs)
 
+    def stock_zh_a_cdr_daily(
+        self,
+        *,
+        symbol: str,
+        start_date: str,
+        end_date: str,
+    ):
+        return self._return(
+            "stock_zh_a_cdr_daily",
+            _fixture("a_cdr_daily_history.json"),
+            symbol=symbol,
+            start_date=start_date,
+            end_date=end_date,
+        )
+
     def stock_cyq_em(self, *, symbol: str, adjust: str):
         return self._return(
             "stock_cyq_em",
@@ -1090,8 +1105,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "128"
-    assert AKSHARE_MAPPING_VERSION == "129"
+    assert provider.identity.provider_version == "129"
+    assert AKSHARE_MAPPING_VERSION == "130"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -6667,6 +6682,490 @@ def test_a_tencent_daily_history_cache_replay_does_not_call_upstream(tmp_path: P
                 "start_date": "20260908",
                 "end_date": "20260909",
                 "adjust": "qfq",
+            },
+        )
+    ]
+
+
+def test_a_cdr_daily_history_fetch_uses_documented_symbol_and_range():
+    fake = FakeAKShare()
+    record = _provider(fake).fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "SH689009",
+            {
+                "view": "cdr_daily",
+                "start_date": "2020-10-29",
+                "end_date": "2020-11-03",
+            },
+        )
+    )
+
+    fields = ["date", "open", "high", "low", "close", "volume"]
+    assert record.raw_payload == _fixture("a_cdr_daily_history.json")
+    assert fake.calls == [
+        (
+            "stock_zh_a_cdr_daily",
+            {
+                "symbol": "sh689009",
+                "start_date": "20201029",
+                "end_date": "20201103",
+            },
+        )
+    ]
+    assert record.source_uri == (
+        "https://finance.sina.com.cn/realstock/company/sh689009/nc.shtml"
+    )
+    assert record.response_metadata["endpoint"] == "stock_zh_a_cdr_daily"
+    assert record.response_metadata["market"] == "A"
+    assert record.response_metadata["cdr_daily_history_view"] == "cdr_daily"
+    assert record.response_metadata["upstream_symbol"] == "sh689009"
+    assert record.response_metadata["market_scope"] == "requested_a_share_cdr_listing"
+    assert record.response_metadata["listing_scoped_request"] is True
+    assert record.response_metadata["row_filtering"] == "upstream"
+    assert record.response_metadata["snapshot_scope"] == (
+        "requested_cdr_daily_history_range"
+    )
+    assert record.response_metadata["date_binding"] == "row_and_request"
+    assert record.response_metadata["range_filtering"] == (
+        "provider_wrapper_and_validation"
+    )
+    assert record.response_metadata["cdr_daily_start_date"] == "20201029"
+    assert record.response_metadata["cdr_daily_end_date"] == "20201103"
+    assert record.response_metadata["observation_date_field"] == "date"
+    assert record.response_metadata["date_ordering"] == "strictly_ascending"
+    assert record.response_metadata["volume_unit"] == "lots"
+    assert record.response_metadata["price_unit"] == "not_documented"
+    assert record.response_metadata["field_count"] == 6
+    assert record.response_metadata["source_field_order"] == fields
+    assert record.response_metadata["date_fields"] == ["date"]
+    assert record.response_metadata["value_fields"] == fields[1:]
+    assert record.response_metadata["required_numeric_fields"] == fields[1:]
+    assert record.response_metadata["non_negative_fields"] == []
+    assert record.response_metadata["documented_units"] == {"volume": "lots"}
+    assert record.response_metadata["undocumented_numeric_units"] == {
+        "open": "not_documented",
+        "high": "not_documented",
+        "low": "not_documented",
+        "close": "not_documented",
+    }
+    assert record.response_metadata["field_types"] == {
+        "date": "date",
+        "open": "number",
+        "high": "number",
+        "low": "number",
+        "close": "number",
+        "volume": "number",
+    }
+    assert record.response_metadata["upstream_url"] == (
+        "https://finance.sina.com.cn/realstock/company/"
+        "sh689009/hisdata_klc2/klc_kl.js"
+    )
+    assert record.response_metadata["upstream_protocol"] == "encrypted_javascript"
+    assert record.response_metadata["upstream_parameters"] == ["symbol"]
+    assert record.response_metadata["upstream_dynamic_parameters"] == {
+        "symbol": "sh689009"
+    }
+    assert record.response_metadata["upstream_fixed_parameters"] == {}
+    assert record.response_metadata["upstream_authentication"] == "none"
+    assert record.response_metadata["wrapper_source_page_uri"] == record.source_uri
+    assert record.response_metadata["wrapper_date_filtering"] == (
+        "inclusive_slice_after_full_history_fetch"
+    )
+    assert record.response_metadata["wrapper_decoder"] == "hk_js_decode"
+    assert record.response_metadata["upstream_page_size"] is None
+    assert record.response_metadata["pagination"] == "single_full_history_response"
+    assert record.response_metadata["upstream_row_count"] == 4
+    assert record.response_metadata["entity_row_count"] == 4
+    assert record.response_metadata["entity_rows_selected"] is True
+    assert record.response_metadata["observation_start_date"] == "2020-10-29"
+    assert record.response_metadata["observation_end_date"] == "2020-11-03"
+
+
+def test_a_cdr_daily_history_request_applies_documented_defaults():
+    fake = FakeAKShare()
+    record = _provider(fake).fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "SH689009",
+            {"view": "cdr_daily"},
+        )
+    )
+
+    assert fake.calls == [
+        (
+            "stock_zh_a_cdr_daily",
+            {
+                "symbol": "sh689009",
+                "start_date": "19900101",
+                "end_date": "22201116",
+            },
+        )
+    ]
+    assert record.response_metadata["cdr_daily_start_date"] == "19900101"
+    assert record.response_metadata["cdr_daily_end_date"] == "22201116"
+
+
+@pytest.mark.parametrize(
+    ("entity_id", "parameters", "match"),
+    [
+        (
+            "SH689009",
+            {"view": "daily"},
+            "unsupported AKShare history parameter",
+        ),
+        (
+            "SH689009",
+            {"view": "cdr_daily", "adjust": ""},
+            "unsupported AKShare CDR daily-history parameter",
+        ),
+        (
+            "SH689009",
+            {"view": "cdr_daily", "start_date": "2020/10/29"},
+            "start_date must be YYYYMMDD or YYYY-MM-DD",
+        ),
+        (
+            "SH689009",
+            {"view": "cdr_daily", "start_date": "20201032"},
+            "start_date must be a valid date",
+        ),
+        (
+            "SH689009",
+            {
+                "view": "cdr_daily",
+                "start_date": "20201103",
+                "end_date": "20201029",
+            },
+            "start_date must not be after end_date",
+        ),
+        (
+            "HK00700",
+            {"view": "cdr_daily"},
+            "A-share listings only",
+        ),
+    ],
+)
+def test_a_cdr_daily_history_request_validates_parameters_and_market(
+    entity_id: str,
+    parameters: dict,
+    match: str,
+):
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError, match=match):
+        _provider(fake).fetch(
+            _request(DataCategory.MARKET_HISTORY, entity_id, parameters)
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("missing_field", "missing field"),
+        ("extra_field", "unsupported field"),
+        ("reordered_fields", "documented field order"),
+        ("invalid_date", "invalid date"),
+        ("outside_range", "outside requested range"),
+        ("descending", "strictly ascending"),
+        ("duplicate_date", "duplicate date"),
+        ("invalid_numeric", "must be numeric"),
+        ("bool_numeric", "must be numeric"),
+        ("infinite_numeric", "contains infinity"),
+    ],
+)
+def test_a_cdr_daily_history_response_validates_documented_rows(
+    mutation: str,
+    match: str,
+):
+    class InvalidRows(FakeAKShare):
+        def stock_zh_a_cdr_daily(
+            self,
+            *,
+            symbol: str,
+            start_date: str,
+            end_date: str,
+        ):
+            rows = [dict(row) for row in _fixture("a_cdr_daily_history.json")]
+            if mutation == "missing_field":
+                rows[0].pop("volume")
+            elif mutation == "extra_field":
+                rows[0]["unexpected"] = "not documented"
+            elif mutation == "reordered_fields":
+                rows[0] = {
+                    "open": rows[0]["open"],
+                    "date": rows[0]["date"],
+                    "high": rows[0]["high"],
+                    "low": rows[0]["low"],
+                    "close": rows[0]["close"],
+                    "volume": rows[0]["volume"],
+                }
+            elif mutation == "invalid_date":
+                rows[0]["date"] = "not-a-date"
+            elif mutation == "outside_range":
+                rows[0]["date"] = "2020-10-28"
+            elif mutation == "descending":
+                rows[0]["date"] = "2020-11-02"
+                rows[1]["date"] = "2020-10-30"
+            elif mutation == "duplicate_date":
+                rows[1]["date"] = rows[0]["date"]
+            elif mutation == "invalid_numeric":
+                rows[0]["close"] = "38.5"
+            elif mutation == "bool_numeric":
+                rows[0]["volume"] = True
+            else:
+                rows[0]["high"] = float("inf")
+            return self._return(
+                "stock_zh_a_cdr_daily",
+                rows,
+                symbol=symbol,
+                start_date=start_date,
+                end_date=end_date,
+            )
+
+    with pytest.raises(ProviderResponseError, match=match):
+        _provider(InvalidRows()).fetch(
+            _request(
+                DataCategory.MARKET_HISTORY,
+                "SH689009",
+                {
+                    "view": "cdr_daily",
+                    "start_date": "20201029",
+                    "end_date": "20201103",
+                },
+            )
+        )
+
+
+def test_a_cdr_daily_history_empty_response_is_a_valid_raw_snapshot():
+    class EmptyResponse(FakeAKShare):
+        def stock_zh_a_cdr_daily(
+            self,
+            *,
+            symbol: str,
+            start_date: str,
+            end_date: str,
+        ):
+            return self._return(
+                "stock_zh_a_cdr_daily",
+                [],
+                symbol=symbol,
+                start_date=start_date,
+                end_date=end_date,
+            )
+
+    record = _provider(EmptyResponse()).fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "SH689009",
+            {
+                "view": "cdr_daily",
+                "start_date": "20201029",
+                "end_date": "20201103",
+            },
+        )
+    )
+
+    assert record.raw_payload == []
+    assert record.response_metadata["upstream_row_count"] == 0
+    assert record.response_metadata["entity_row_count"] == 0
+    assert record.response_metadata["observation_start_date"] is None
+    assert record.response_metadata["observation_end_date"] is None
+
+
+def test_a_cdr_daily_history_is_retained_as_raw_evidence_without_canonical_facts():
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "SH689009",
+            {
+                "view": "cdr_daily",
+                "start_date": "2020-10-29",
+                "end_date": "2020-11-03",
+            },
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="a-cdr-daily-history-raw-only",
+        as_of=date(2020, 11, 3),
+        profile_id="strict-v1",
+        company=_company("SH689009"),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_CDR_DAILY_HISTORY_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == ["market_history"]
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "CDR daily-history" in normalized.data_quality.notes
+    assert "canonical listing market-history" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "view",
+        "symbol",
+        "market_scope",
+        "listing_scope",
+        "snapshot",
+        "date_binding",
+        "range_filtering",
+        "start",
+        "end",
+        "date_ordering",
+        "volume_unit",
+        "price_unit",
+        "field_count",
+        "source_order",
+        "upstream_url",
+        "wrapper_decoder",
+        "pagination",
+        "count",
+        "observation_start",
+    ],
+)
+def test_a_cdr_daily_history_normalizer_rejects_replayed_scope_mismatches(
+    mutation: str,
+):
+    request = _request(
+        DataCategory.MARKET_HISTORY,
+        "SH689009",
+        {
+            "view": "cdr_daily",
+            "start_date": "20201029",
+            "end_date": "20201103",
+        },
+    )
+    record = _provider().fetch(request)
+    response_metadata = dict(record.response_metadata)
+    if mutation == "view":
+        response_metadata["cdr_daily_history_view"] = "daily"
+    elif mutation == "symbol":
+        response_metadata["upstream_symbol"] = "sh600000"
+    elif mutation == "market_scope":
+        response_metadata["market_scope"] = "requested_a_share_listing"
+    elif mutation == "listing_scope":
+        response_metadata["listing_scoped_request"] = False
+    elif mutation == "snapshot":
+        response_metadata["snapshot_scope"] = "current_snapshot"
+    elif mutation == "date_binding":
+        response_metadata["date_binding"] = "row_only"
+    elif mutation == "range_filtering":
+        response_metadata["range_filtering"] = "normalizer"
+    elif mutation == "start":
+        response_metadata["cdr_daily_start_date"] = "20201028"
+    elif mutation == "end":
+        response_metadata["cdr_daily_end_date"] = "20201104"
+    elif mutation == "date_ordering":
+        response_metadata["date_ordering"] = "non_decreasing"
+    elif mutation == "volume_unit":
+        response_metadata["volume_unit"] = "shares"
+    elif mutation == "price_unit":
+        response_metadata["price_unit"] = "CNY_per_share"
+    elif mutation == "field_count":
+        response_metadata["field_count"] = 99
+    elif mutation == "source_order":
+        response_metadata["source_field_order"] = list(reversed(
+            response_metadata["source_field_order"]
+        ))
+    elif mutation == "upstream_url":
+        response_metadata["upstream_url"] = "https://example.invalid/cdr.js"
+    elif mutation == "wrapper_decoder":
+        response_metadata["wrapper_decoder"] = "plain_json"
+    elif mutation == "pagination":
+        response_metadata["pagination"] = "paged"
+    elif mutation == "count":
+        response_metadata["entity_row_count"] = 99
+    else:
+        response_metadata["observation_start_date"] = "2020-10-30"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=record.raw_payload,
+        source_uri=record.source_uri,
+        response_metadata=response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match="CDR daily-history"):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-a-cdr-daily-history-scope",
+            as_of=date(2020, 11, 3),
+            profile_id="strict-v1",
+            company=_company("SH689009"),
+        )
+
+
+def test_a_cdr_daily_history_normalizer_rejects_replayed_rows_outside_request():
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "SH689009",
+            {
+                "view": "cdr_daily",
+                "start_date": "20201029",
+                "end_date": "20201103",
+            },
+        )
+    )
+    payload = [dict(row) for row in record.raw_payload]
+    payload[0]["date"] = "2020-10-28"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=record.source_uri,
+        response_metadata=record.response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match="outside requested range"):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="out-of-range-a-cdr-daily-history",
+            as_of=date(2020, 11, 3),
+            profile_id="strict-v1",
+            company=_company("SH689009"),
+        )
+
+
+def test_a_cdr_daily_history_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.MARKET_HISTORY,
+        "SH689009",
+        {
+            "view": "cdr_daily",
+            "start_date": "20201029",
+            "end_date": "20201103",
+        },
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [
+        (
+            "stock_zh_a_cdr_daily",
+            {
+                "symbol": "sh689009",
+                "start_date": "20201029",
+                "end_date": "20201103",
             },
         )
     ]

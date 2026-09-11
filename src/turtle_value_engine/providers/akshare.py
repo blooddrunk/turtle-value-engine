@@ -36,7 +36,8 @@ historical-hot-rank, limit-up-pool, limit-down-pool, H-share latest-hot-rank and
 historical-hot-rank,
 A+H and A+B comparison,
 intraday-trade, Sina intraday-trade, chip-distribution, Tencent daily-history and
-Tencent latest-trading-day tick, Sina minute-history, intraday-history, H-share
+Tencent latest-trading-day tick, Sina minute-history, CDR daily-history,
+intraday-history, H-share
 intraday-history, pre-market-history, five-level bid-ask
 Xueqiu individual-spot quote and Dragon-Tiger market-activity
 detail/statistics/institution-statistics/institutional-research/block-trade-detail
@@ -109,9 +110,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "128"
+AKSHARE_ADAPTER_VERSION = "129"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "129"
+AKSHARE_MAPPING_VERSION = "130"
 
 
 class ListingMarket(StrEnum):
@@ -188,6 +189,9 @@ _SOURCE_URIS = {
         "cn_bill.php?symbol=sz000001"
     ),
     "stock_zh_a_daily": "https://finance.sina.com.cn/realstock/company/",
+    "stock_zh_a_cdr_daily": (
+        "https://finance.sina.com.cn/realstock/company/sh689009/nc.shtml"
+    ),
     "stock_hk_daily": "http://stock.finance.sina.com.cn/hkstock/",
     "stock_zh_ah_daily": "https://gu.qq.com/",
     "stock_individual_fund_flow": "https://data.eastmoney.com/zjlx/detail.html",
@@ -791,6 +795,51 @@ _MARKET_HISTORY_TENCENT_DAILY_DEFAULT_END = "20500101"
 _MARKET_HISTORY_TENCENT_DAILY_DEFAULT_ADJUST = ""
 _MARKET_HISTORY_TENCENT_DAILY_FIELDS = frozenset(
     {"date", "open", "close", "high", "low", "volume", "turnover", "amount"}
+)
+
+_MARKET_HISTORY_CDR_DAILY_PARAMETER_NAMES = frozenset(
+    {"view", "start_date", "end_date"}
+)
+_MARKET_HISTORY_CDR_DAILY_VIEW = "cdr_daily"
+_MARKET_HISTORY_CDR_DAILY_DEFAULT_START = "19900101"
+_MARKET_HISTORY_CDR_DAILY_DEFAULT_END = "22201116"
+_MARKET_HISTORY_CDR_DAILY_FIELDS = (
+    "date",
+    "open",
+    "high",
+    "low",
+    "close",
+    "volume",
+)
+_MARKET_HISTORY_CDR_DAILY_FIELD_SET = frozenset(_MARKET_HISTORY_CDR_DAILY_FIELDS)
+_MARKET_HISTORY_CDR_DAILY_DATE_FIELDS = ("date",)
+_MARKET_HISTORY_CDR_DAILY_NUMERIC_FIELDS = (
+    "open",
+    "high",
+    "low",
+    "close",
+    "volume",
+)
+_MARKET_HISTORY_CDR_DAILY_REQUIRED_NUMERIC_FIELDS = (
+    *_MARKET_HISTORY_CDR_DAILY_NUMERIC_FIELDS,
+)
+_MARKET_HISTORY_CDR_DAILY_NON_NEGATIVE_FIELDS: frozenset[str] = frozenset()
+_MARKET_HISTORY_CDR_DAILY_DOCUMENTED_UNITS = {"volume": "lots"}
+_MARKET_HISTORY_CDR_DAILY_UNDOCUMENTED_NUMERIC_UNITS = {
+    field: "not_documented"
+    for field in _MARKET_HISTORY_CDR_DAILY_NUMERIC_FIELDS
+    if field not in _MARKET_HISTORY_CDR_DAILY_DOCUMENTED_UNITS
+}
+_MARKET_HISTORY_CDR_DAILY_FIELD_TYPES = {
+    "date": "date",
+    **{field: "number" for field in _MARKET_HISTORY_CDR_DAILY_NUMERIC_FIELDS},
+}
+_MARKET_HISTORY_CDR_DAILY_SOURCE_URI = (
+    "https://finance.sina.com.cn/realstock/company/sh689009/nc.shtml"
+)
+_MARKET_HISTORY_CDR_DAILY_UPSTREAM_URL_TEMPLATE = (
+    "https://finance.sina.com.cn/realstock/company/"
+    "{symbol}/hisdata_klc2/klc_kl.js"
 )
 
 _MARKET_HISTORY_TENCENT_TICK_PARAMETER_NAMES = frozenset({"view"})
@@ -4104,6 +4153,7 @@ class AKShareProvider(StructuredDataProvider):
                 _MARKET_HISTORY_CHIP_DISTRIBUTION_VIEW,
                 _MARKET_HISTORY_INTRADAY_TRADES_VIEW,
                 _MARKET_HISTORY_SINA_INTRADAY_VIEW,
+                _MARKET_HISTORY_CDR_DAILY_VIEW,
             )
             and listing.market is not ListingMarket.A
         ):
@@ -6529,6 +6579,32 @@ class AKShareProvider(StructuredDataProvider):
                 response_metadata["observation_end_date"] = (
                     max(observation_dates).isoformat() if observation_dates else None
                 )
+            elif endpoint.name == "stock_zh_a_cdr_daily":
+                start_date = _parse_cdr_daily_history_date_parameter(
+                    kwargs["start_date"],
+                    name="start_date",
+                    request=request,
+                )
+                end_date = _parse_cdr_daily_history_date_parameter(
+                    kwargs["end_date"],
+                    name="end_date",
+                    request=request,
+                )
+                observation_dates = _validate_cdr_daily_history_provider_rows(
+                    rows,
+                    start_date=start_date,
+                    end_date=end_date,
+                    provider=self.identity,
+                    request=request,
+                )
+                response_metadata.update(
+                    _cdr_daily_history_response_metadata(
+                        symbol=kwargs["symbol"],
+                        start_date=kwargs["start_date"],
+                        end_date=kwargs["end_date"],
+                        observation_dates=observation_dates,
+                    )
+                )
             elif endpoint.name == "stock_hk_hist_min_em":
                 start_datetime = _parse_intraday_history_datetime_parameter(
                     kwargs["start_date"],
@@ -8232,6 +8308,9 @@ class AKShareProvider(StructuredDataProvider):
             market_history_tencent_daily_requested=(
                 request.parameters.get("view") == _MARKET_HISTORY_TENCENT_DAILY_VIEW
             ),
+            market_history_cdr_daily_requested=(
+                request.parameters.get("view") == _MARKET_HISTORY_CDR_DAILY_VIEW
+            ),
             market_history_tencent_tick_requested=(
                 request.parameters.get("view") == _MARKET_HISTORY_TENCENT_TICK_VIEW
             ),
@@ -9386,6 +9465,9 @@ class AKShareNormalizer:
                     normalizer_flags.add("AKSHARE_TENCENT_TICK_RAW_ONLY")
                 elif endpoint == "stock_zh_a_hist_tx":
                     _validate_tencent_daily_history_normalizer_scope(record, listing, rows)
+                elif endpoint == "stock_zh_a_cdr_daily":
+                    _validate_cdr_daily_history_normalizer_scope(record, listing, rows)
+                    normalizer_flags.add("AKSHARE_CDR_DAILY_HISTORY_RAW_ONLY")
                 elif endpoint == "stock_zh_a_hist_min_em":
                     _validate_intraday_history_normalizer_scope(record, listing, rows)
                     # The endpoint is a range-scoped minute-bar response. Its
@@ -9421,6 +9503,7 @@ class AKShareNormalizer:
                     "stock_hk_hist_min_em",
                     "stock_zh_a_minute",
                     "stock_zh_a_hist_pre_min_em",
+                    "stock_zh_a_cdr_daily",
                 }:
                     history_result = _map_history(
                         record,
@@ -10239,6 +10322,7 @@ class AKShareNormalizer:
                 "AKSHARE_SINA_MINUTE_HISTORY_RAW_ONLY",
                 "AKSHARE_PRE_MARKET_HISTORY_RAW_ONLY",
                 "AKSHARE_CHIP_DISTRIBUTION_RAW_ONLY",
+                "AKSHARE_CDR_DAILY_HISTORY_RAW_ONLY",
             }
             & normalizer_flags
             and not any(
@@ -10809,6 +10893,13 @@ class AKShareNormalizer:
                 "free-float-cap, revenue, profit and ranking values are not "
                 "reconciled to filing-backed periods, units or canonical market, "
                 "valuation or accounting facts."
+            )
+        if "AKSHARE_CDR_DAILY_HISTORY_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented Sina A-share CDR daily-history response is retained "
+                "as raw evidence only: its CDR-specific daily prices and lot volume "
+                "are not reconciled to the canonical listing market-history contract "
+                "or a broader adjustment and trading-calendar basis."
             )
         if "AKSHARE_HK_VALUATION_COMPARISON_RAW_ONLY" in normalizer_flags:
             notes += (
@@ -11384,6 +11475,7 @@ def _endpoint_candidates(
     market_history_pre_market_requested: bool = False,
     market_history_sina_minute_requested: bool = False,
     market_history_tencent_daily_requested: bool = False,
+    market_history_cdr_daily_requested: bool = False,
     market_history_tencent_tick_requested: bool = False,
     market_history_chip_distribution_requested: bool = False,
     market_history_intraday_trades_requested: bool = False,
@@ -11476,6 +11568,8 @@ def _endpoint_candidates(
                 return ("stock_zh_a_tick_tx_js",)
             if market_history_tencent_daily_requested:
                 return ("stock_zh_a_hist_tx",)
+            if market_history_cdr_daily_requested:
+                return ("stock_zh_a_cdr_daily",)
             if market_history_intraday_requested:
                 return ("stock_zh_a_hist_min_em",)
             return ("stock_zh_a_hist", "stock_zh_a_daily")
@@ -16037,6 +16131,172 @@ def _validate_tencent_daily_history_provider_rows(
     return observation_dates
 
 
+def _cdr_daily_history_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    start_date: date,
+    end_date: date,
+) -> tuple[str | None, list[date]]:
+    """Return strict-schema errors for the Sina CDR daily-history rows."""
+
+    observation_dates: list[date] = []
+    previous_date: date | None = None
+    for index, row in enumerate(rows):
+        missing = [
+            field for field in _MARKET_HISTORY_CDR_DAILY_FIELDS if field not in row
+        ]
+        unexpected = [
+            field
+            for field in row
+            if field not in _MARKET_HISTORY_CDR_DAILY_FIELD_SET
+        ]
+        if missing:
+            return (
+                f"CDR daily-history row {index} is missing field(s): "
+                + ", ".join(missing),
+                [],
+            )
+        if unexpected:
+            return (
+                f"CDR daily-history row {index} contains unsupported field(s): "
+                + ", ".join(unexpected),
+                [],
+            )
+        if tuple(row) != _MARKET_HISTORY_CDR_DAILY_FIELDS:
+            return (
+                "CDR daily-history rows must preserve the documented field order",
+                [],
+            )
+
+        observation_date = _parse_date_value(row["date"])
+        if observation_date is None:
+            return f"CDR daily-history row {index} has an invalid date", []
+        if not start_date <= observation_date <= end_date:
+            return (
+                f"CDR daily-history row {index} date {observation_date.isoformat()!r} "
+                f"is outside requested range {start_date.isoformat()!r}.."
+                f"{end_date.isoformat()!r}",
+                [],
+            )
+        if previous_date is not None and observation_date <= previous_date:
+            if observation_date == previous_date:
+                return (
+                    "CDR daily-history response has duplicate date "
+                    f"{observation_date.isoformat()!r}",
+                    [],
+                )
+            return "CDR daily-history response date values must be strictly ascending", []
+        previous_date = observation_date
+        observation_dates.append(observation_date)
+
+        for field in _MARKET_HISTORY_CDR_DAILY_NUMERIC_FIELDS:
+            value = row[field]
+            if isinstance(value, bool) or not isinstance(value, Real):
+                return (
+                    f"CDR daily-history row {index} field {field!r} must be numeric",
+                    [],
+                )
+            try:
+                numeric = float(value)
+            except (OverflowError, TypeError, ValueError):
+                return (
+                    f"CDR daily-history row {index} field {field!r} must be numeric",
+                    [],
+                )
+            if not math.isfinite(numeric):
+                return (
+                    f"CDR daily-history row {index} field {field!r} must be finite",
+                    [],
+                )
+    return None, observation_dates
+
+
+def _validate_cdr_daily_history_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    start_date: date,
+    end_date: date,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> list[date]:
+    message, observation_dates = _cdr_daily_history_validation_message(
+        rows,
+        start_date=start_date,
+        end_date=end_date,
+    )
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message}",
+            provider=provider,
+            request=request,
+        )
+    return observation_dates
+
+
+def _cdr_daily_history_response_metadata(
+    *,
+    symbol: str,
+    start_date: str,
+    end_date: str,
+    observation_dates: Sequence[date],
+) -> dict[str, JSONValue]:
+    """Build the replay contract for one Sina CDR daily-history snapshot."""
+
+    return {
+        "endpoint": "stock_zh_a_cdr_daily",
+        "market": ListingMarket.A.value,
+        "cdr_daily_history_view": _MARKET_HISTORY_CDR_DAILY_VIEW,
+        "upstream_symbol": symbol,
+        "market_scope": "requested_a_share_cdr_listing",
+        "listing_scoped_request": True,
+        "row_filtering": "upstream",
+        "snapshot_scope": "requested_cdr_daily_history_range",
+        "date_binding": "row_and_request",
+        "range_filtering": "provider_wrapper_and_validation",
+        "cdr_daily_start_date": start_date,
+        "cdr_daily_end_date": end_date,
+        "observation_date_field": "date",
+        "date_ordering": "strictly_ascending",
+        "volume_unit": "lots",
+        "price_unit": "not_documented",
+        "field_count": len(_MARKET_HISTORY_CDR_DAILY_FIELDS),
+        "source_field_order": list(_MARKET_HISTORY_CDR_DAILY_FIELDS),
+        "date_fields": list(_MARKET_HISTORY_CDR_DAILY_DATE_FIELDS),
+        "value_fields": list(_MARKET_HISTORY_CDR_DAILY_NUMERIC_FIELDS),
+        "required_numeric_fields": list(
+            _MARKET_HISTORY_CDR_DAILY_REQUIRED_NUMERIC_FIELDS
+        ),
+        "non_negative_fields": list(_MARKET_HISTORY_CDR_DAILY_NON_NEGATIVE_FIELDS),
+        "documented_units": dict(_MARKET_HISTORY_CDR_DAILY_DOCUMENTED_UNITS),
+        "undocumented_numeric_units": dict(
+            _MARKET_HISTORY_CDR_DAILY_UNDOCUMENTED_NUMERIC_UNITS
+        ),
+        "field_types": dict(_MARKET_HISTORY_CDR_DAILY_FIELD_TYPES),
+        "upstream_url": _MARKET_HISTORY_CDR_DAILY_UPSTREAM_URL_TEMPLATE.format(
+            symbol=symbol
+        ),
+        "upstream_protocol": "encrypted_javascript",
+        "upstream_parameters": ["symbol"],
+        "upstream_dynamic_parameters": {"symbol": symbol},
+        "upstream_fixed_parameters": {},
+        "upstream_authentication": "none",
+        "wrapper_source_page_uri": _MARKET_HISTORY_CDR_DAILY_SOURCE_URI,
+        "wrapper_date_filtering": "inclusive_slice_after_full_history_fetch",
+        "wrapper_decoder": "hk_js_decode",
+        "upstream_page_size": None,
+        "pagination": "single_full_history_response",
+        "upstream_row_count": len(observation_dates),
+        "entity_row_count": len(observation_dates),
+        "entity_rows_selected": True,
+        "observation_start_date": (
+            min(observation_dates).isoformat() if observation_dates else None
+        ),
+        "observation_end_date": (
+            max(observation_dates).isoformat() if observation_dates else None
+        ),
+    }
+
+
 def _tencent_tick_time(value: object) -> time | None:
     if not isinstance(value, str) or not re.fullmatch(r"\d{2}:\d{2}:\d{2}", value):
         return None
@@ -16572,6 +16832,62 @@ def _validate_tencent_daily_history_normalizer_scope(
         raise ProviderNormalizationError(
             "Tencent daily-history response observation end does not match replayed rows"
         )
+
+
+def _validate_cdr_daily_history_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> None:
+    """Validate the replay scope for a raw Sina CDR daily-history record."""
+
+    if listing.market is not ListingMarket.A:
+        raise ProviderNormalizationError(
+            "AKShare CDR daily-history raw slice supports A-share listings only"
+        )
+    if record.source_uri != _MARKET_HISTORY_CDR_DAILY_SOURCE_URI:
+        raise ProviderNormalizationError(
+            "AKShare CDR daily-history record has an unexpected source URI"
+        )
+    if record.response_metadata.get("endpoint") != "stock_zh_a_cdr_daily":
+        raise ProviderNormalizationError(
+            "AKShare CDR daily-history record must come from stock_zh_a_cdr_daily"
+        )
+    try:
+        upstream_kwargs = _cdr_daily_history_kwargs(listing, record.request)
+        start_date = _parse_cdr_daily_history_date_parameter(
+            upstream_kwargs["start_date"],
+            name="start_date",
+            request=record.request,
+        )
+        end_date = _parse_cdr_daily_history_date_parameter(
+            upstream_kwargs["end_date"],
+            name="end_date",
+            request=record.request,
+        )
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+
+    message, observation_dates = _cdr_daily_history_validation_message(
+        rows,
+        start_date=start_date,
+        end_date=end_date,
+    )
+    if message is not None:
+        raise ProviderNormalizationError(message)
+
+    expected_metadata = _cdr_daily_history_response_metadata(
+        symbol=str(upstream_kwargs["symbol"]),
+        start_date=str(upstream_kwargs["start_date"]),
+        end_date=str(upstream_kwargs["end_date"]),
+        observation_dates=observation_dates,
+    )
+    for name, expected in expected_metadata.items():
+        if record.response_metadata.get(name) != expected:
+            raise ProviderNormalizationError(
+                f"CDR daily-history response metadata {name!r} does not match "
+                "the requested replay scope"
+            )
 
 
 def _validate_tencent_tick_normalizer_scope(
@@ -36914,6 +37230,8 @@ def _history_kwargs(
         return _tencent_tick_kwargs(listing, request)
     if endpoint_name == "stock_zh_a_hist_tx":
         return _tencent_daily_history_kwargs(listing, request)
+    if endpoint_name == "stock_zh_a_cdr_daily":
+        return _cdr_daily_history_kwargs(listing, request)
     if endpoint_name == "stock_zh_a_minute":
         return _sina_minute_history_kwargs(listing, request)
     if endpoint_name == "stock_hk_hist_min_em":
@@ -37197,6 +37515,89 @@ def _tencent_daily_history_kwargs(
         "end_date": end_date.strftime("%Y%m%d"),
         "adjust": adjust,
     }
+
+
+def _cdr_daily_history_kwargs(
+    listing: _ListingRef,
+    request: ProviderRequest,
+) -> dict[str, object]:
+    """Build the documented Sina A-share CDR daily-history request."""
+
+    if listing.market is not ListingMarket.A:
+        raise ProviderRequestError(
+            "the AKShare CDR daily-history endpoint supports A-share listings only",
+            request=request,
+            retryable=False,
+        )
+    parameters = dict(request.parameters)
+    unknown = sorted(set(parameters) - _MARKET_HISTORY_CDR_DAILY_PARAMETER_NAMES)
+    if unknown:
+        raise ProviderRequestError(
+            "unsupported AKShare CDR daily-history parameter(s): "
+            + ", ".join(unknown),
+            request=request,
+            retryable=False,
+        )
+    if parameters.get("view") != _MARKET_HISTORY_CDR_DAILY_VIEW:
+        raise ProviderRequestError(
+            "the AKShare CDR daily-history endpoint requires "
+            f"view={_MARKET_HISTORY_CDR_DAILY_VIEW!r}",
+            request=request,
+            retryable=False,
+        )
+    start_date = _parse_cdr_daily_history_date_parameter(
+        parameters.get(
+            "start_date",
+            _MARKET_HISTORY_CDR_DAILY_DEFAULT_START,
+        ),
+        name="start_date",
+        request=request,
+    )
+    end_date = _parse_cdr_daily_history_date_parameter(
+        parameters.get(
+            "end_date",
+            _MARKET_HISTORY_CDR_DAILY_DEFAULT_END,
+        ),
+        name="end_date",
+        request=request,
+    )
+    if start_date > end_date:
+        raise ProviderRequestError(
+            "AKShare CDR daily-history start_date must not be after end_date",
+            request=request,
+            retryable=False,
+        )
+    return {
+        "symbol": listing.canonical_id[:2].lower() + listing.code,
+        "start_date": start_date.strftime("%Y%m%d"),
+        "end_date": end_date.strftime("%Y%m%d"),
+    }
+
+
+def _parse_cdr_daily_history_date_parameter(
+    value: object,
+    *,
+    name: str,
+    request: ProviderRequest,
+) -> date:
+    if not isinstance(value, str) or not re.fullmatch(
+        r"(?:\d{8}|\d{4}-\d{2}-\d{2})", value
+    ):
+        raise ProviderRequestError(
+            f"AKShare CDR daily-history {name} must be YYYYMMDD or YYYY-MM-DD",
+            request=request,
+            retryable=False,
+        )
+    for fmt in ("%Y%m%d", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(value, fmt).date()
+        except ValueError:
+            continue
+    raise ProviderRequestError(
+        f"AKShare CDR daily-history {name} must be a valid date",
+        request=request,
+        retryable=False,
+    )
 
 
 def _parse_tencent_daily_history_date_parameter(

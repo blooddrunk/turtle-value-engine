@@ -771,7 +771,7 @@ The cache performs no network retries. The normalizer performs no provider
 retries. The deterministic pipeline performs no provider retries and should
 not be rerun as a substitute for resolving missing facts.
 
-## 12. Phase 2.2–3.26 AKShare adapter
+## 12. Phase 2.2–3.27 AKShare adapter
 
 The first concrete adapter is intentionally limited to read-only metadata,
 market observations, three documented financial-statement slices, raw-only
@@ -820,6 +820,7 @@ advertises exactly these capabilities:
 | `MARKET_ACTIVITY` (growth comparison) | — | `stock_hk_growth_comparison_em` (`view=growth_comparison_hk`, H-share listing-scoped single row) | H-share growth-comparison row retained as raw structured evidence only; no canonical growth or valuation fact |
 | `MARKET_ACTIVITY` (DuPont comparison) | `stock_zh_dupont_comparison_em` (`view=dupont_comparison`, A-share listing-scoped peer table) | — | industry-summary and ranked-comparison DuPont rows retained as raw structured evidence only; no canonical profitability or accounting fact |
 | `MARKET_ACTIVITY` (scale comparison) | `stock_zh_scale_comparison_em` (`view=scale_comparison`, A-share listing-scoped single row) | — | A-share company-scale row retained as raw structured evidence only; no canonical market, valuation or accounting fact |
+| `MARKET_HISTORY` (CDR daily history) | `stock_zh_a_cdr_daily` (`view=cdr_daily`, A-share CDR listing-scoped date range) | — | CDR daily OHLC and lot-volume rows retained as raw structured evidence only; no canonical daily market-history fact |
 | `CAPITAL_FLOW` | `stock_individual_fund_flow` (A-share) | — | recent daily investor-flow rows as raw structured evidence only; no issuer cash-flow, liquidity or valuation fact |
 | `CASH_FLOW_STATEMENT` | `stock_cash_flow_sheet_by_report_em` (Sina fallback) | `stock_financial_hk_report_em` | explicit `reported_cfo` and `acquisition_cash` lines |
 | `INCOME_STATEMENT` | `stock_profit_sheet_by_report_em` (Sina fallback) | `stock_financial_hk_report_em` | explicit `parent_net_profit` and `consolidated_net_profit` lines |
@@ -2420,6 +2421,25 @@ company-scale row remains raw evidence only and creates no canonical market,
 valuation or accounting fact. H-share requests and any calculation, gate,
 pipeline, CLI or input-loader use remain outside this slice.
 
+The A-share CDR daily-history slice is also acquisition-only. The current
+[AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_zh_a_sina.py)
+document `stock_zh_a_cdr_daily` as a Sina CDR daily series with
+`symbol`, inclusive `start_date` and `end_date` parameters. The adapter exposes
+it under `MARKET_HISTORY` with explicit `view=cdr_daily`, derives the
+exchange-prefixed symbol (for example, `sh689009`), and preserves the exact
+six-field `date`, `open`, `high`, `low`, `close` and `volume` wrapper output.
+The provider records the full-history encrypted-JavaScript upstream URL,
+`hk_js_decode` wrapper decoder, inclusive date filtering, strict ascending
+dates, the documented lot-volume unit and the absence of documented price
+units.
+
+The normalizer emits `AKSHARE_CDR_DAILY_HISTORY_RAW_ONLY`; the CDR-specific
+daily prices and lot volumes remain raw evidence only and create no canonical
+daily market-history, return, valuation or accounting fact. H-share requests
+and any calculation, gate, pipeline, CLI or input-loader use remain outside
+this slice.
+
 The H-share Baidu valuation-history slice is also acquisition-only. The current
 [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
 and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hk_valuation_baidu.py)
@@ -2466,7 +2486,7 @@ outside this slice.
 
 ## 13. Deliberate non-goals
 
-This foundation plus the Phase 2.2–3.26 structured slices does not include:
+This foundation plus the Phase 2.2–3.27 structured slices does not include:
 
 - Tushare, BaoStock or any other additional provider;
 - automatic network scheduling, credentials or retry orchestration outside an adapter;

@@ -1898,6 +1898,32 @@ or accounting fact: the row is raw evidence only until its provider-defined
 units, periods and economic scope are reconciled. The response remains outside
 the calculation, gate, pipeline, CLI and input-loader contracts.
 
+## Phase 3.27 A-share CDR daily-history raw snapshot
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_zh_a_sina.py)
+document `stock_zh_a_cdr_daily` as a Sina CDR daily-history endpoint. The
+adapter exposes it under `MARKET_HISTORY` with explicit `view=cdr_daily`,
+derives the exchange-prefixed upstream symbol and applies the requested
+inclusive date range after the full encrypted-JavaScript history response.
+
+| Raw upstream item | Phase 3.27 treatment |
+| --- | --- |
+| `date` | Required ISO trading date; rows must be within the requested inclusive range and strictly ascending. |
+| `open`, `high`, `low`, `close` | Required finite numeric daily prices; the upstream documentation does not establish a canonical unit or adjustment basis. |
+| `volume` | Required finite numeric volume retained with the documented unit `lots` (手); it is not converted into the canonical daily-history share unit. |
+| request `view=cdr_daily`, `start_date`, `end_date` | Explicit A-share CDR listing-scoped routing. The adapter freezes the Sina source page, symbol-derived encrypted-JavaScript URL, `hk_js_decode` decoder, inclusive wrapper date slicing, field order, row counts and replay metadata. |
+
+The provider rejects unsupported views/parameters, non-A listings,
+missing/unexpected/reordered fields, invalid or out-of-range dates,
+non-ascending or duplicate dates, non-finite/non-numeric values and reversed
+date ranges. The normalizer emits
+`AKSHARE_CDR_DAILY_HISTORY_RAW_ONLY` and creates no canonical daily
+market-history, return, valuation or accounting fact: the response remains raw
+evidence until its CDR-specific adjustment, calendar and economic scope are
+reconciled. The response remains outside the calculation, gate, pipeline, CLI
+and input-loader contracts.
+
 ## Phase 2.92 SSE daily-deal overview raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)

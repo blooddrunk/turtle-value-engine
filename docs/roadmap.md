@@ -3241,6 +3241,29 @@ boundaries, raw-only normalization, replay metadata tampering and offline
 cache replay. No calculation, gate, pipeline, CLI or input-loader contract
 changes.
 
+### Phase 3.27 — A-share CDR daily-history raw acquisition contract (COMPLETE)
+
+The mapping review now covers the documented A-share CDR
+`stock_zh_a_cdr_daily` daily-history endpoint under `MARKET_HISTORY` with
+explicit `view=cdr_daily`, an exchange-prefixed Sina symbol and inclusive
+date-range parameters. The
+[AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_zh_a_sina.py)
+define the exact six-field `date`/OHLC/`volume` wrapper output. The provider
+freezes the CDR source page, encrypted-JavaScript upstream URL, `hk_js_decode`
+decoder, date filtering and replay metadata, records the documented lot-volume
+unit, validates strict date ordering and finite numeric rows, and preserves
+the response as raw evidence.
+
+The normalizer emits `AKSHARE_CDR_DAILY_HISTORY_RAW_ONLY` and creates no
+canonical daily market-history, return, valuation or accounting fact because
+the CDR-specific series is not reconciled to the canonical adjustment,
+trading-calendar or unit contract. Tests cover the official output schema,
+explicit view and A-share routing, derived symbol and date range, invalid
+schema/value/date boundaries, raw-only normalization, replay metadata
+tampering and offline cache replay. No calculation, gate, pipeline, CLI or
+input-loader contract changes.
+
 ### Future structured-provider deliverables
 
 ```text
@@ -3250,7 +3273,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–3.26 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–3.27 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```

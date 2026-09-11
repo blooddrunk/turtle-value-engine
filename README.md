@@ -1454,6 +1454,19 @@ provider-defined company-scale snapshot does not become a canonical market,
 valuation or accounting fact. No calculation, gate, pipeline, CLI or
 input-loader contract changes.
 
+Phase 3.27 adds the documented A-share CDR daily-history endpoint
+`stock_zh_a_cdr_daily` under `MARKET_HISTORY` with explicit
+`view=cdr_daily`, an exchange-prefixed Sina symbol and inclusive date-range
+parameters. The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_zh_a_sina.py)
+define the exact six-field `date`/OHLC/`volume` output. The provider freezes
+the CDR source page, encrypted-JavaScript upstream, decoder and date-slice
+metadata, records the documented lot-volume unit, validates strict date order
+and finite numeric rows, and preserves the response as raw evidence.
+The normalizer emits `AKSHARE_CDR_DAILY_HISTORY_RAW_ONLY`; this CDR-specific
+series does not become a canonical daily market-history fact. No calculation,
+gate, pipeline, CLI or input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.
