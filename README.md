@@ -1176,6 +1176,21 @@ index history remains raw evidence and does not become canonical accounting,
 shareholder-return, governance or valuation facts. No calculation, gate,
 pipeline, CLI or input-loader contract changes.
 
+Phase 3.09 adds the documented A-share Legu
+`stock_market_activity_legu` endpoint under `MARKET_ACTIVITY` with explicit
+`view=market_activity_legu` and no upstream arguments. The [AKShare stock-data
+documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and [official
+implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_market_legu.py)
+define the HTML-backed current Shanghai/Shenzhen A-share market snapshot with
+12 exact `item`/`value` rows: rise/fall and limit-up/down counts, flat/suspended
+counts, activity text and the provider timestamp. The provider validates the
+official metric order, finite non-negative numeric values, non-empty activity
+text, strict timestamp format and complete market-wide row counts, while
+retaining the absence of documented units. The normalizer emits
+`AKSHARE_MARKET_ACTIVITY_LEGU_RAW_ONLY`; the market-wide snapshot creates no
+canonical market, return, governance, valuation or accounting fact. No
+calculation, gate, pipeline, CLI or input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

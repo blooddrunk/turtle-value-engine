@@ -1439,6 +1439,30 @@ fact: the market-wide history has no listing/entity accounting scope. The
 response remains outside the calculation, gate, pipeline, CLI and input-loader
 contracts.
 
+## Phase 3.09 A-share Legu market-activity raw snapshot
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_market_legu.py)
+document `stock_market_activity_legu()` as a no-argument HTML-backed current
+market snapshot. The adapter exposes it only under `MARKET_ACTIVITY` with
+explicit `view=market_activity_legu` and an A-share provenance listing. The
+wrapper returns exactly 12 ordered rows with the fields `item` and `value`.
+
+| Raw upstream item | Phase 3.09 treatment |
+| --- | --- |
+| `上涨`, `下跌`, `平盘`, `停牌` | Required finite non-negative market-wide counts; the endpoint does not document their numeric units and they do not become listing-level quote, return or liquidity facts. |
+| `涨停`, `真实涨停`, `st st*涨停`, `跌停`, `真实跌停`, `st st*跌停` | Required finite non-negative limit-up/down counts; provider category labels remain raw activity evidence and do not establish a canonical market metric or governance conclusion. |
+| `活跃度` | Required non-empty provider text, including the documented percent-style sample; no canonical activity or return ratio is inferred. |
+| `统计日期` | Required strict `YYYY-MM-DD HH:MM:SS` provider timestamp binding the current snapshot; it is not an accounting or filing period. |
+| request `view=market_activity_legu` | Explicit A-share-only, no-upstream-argument routing; the market-wide response is retained with no row filtering, exact item order, mixed value types and complete row counts for cache replay. |
+
+The provider rejects empty/short/long responses, missing or unexpected fields,
+reordered rows, wrong metric labels, non-numeric/boolean/non-finite/negative
+numeric values, blank activity text and invalid timestamps. The normalizer
+emits `AKSHARE_MARKET_ACTIVITY_LEGU_RAW_ONLY` and creates no canonical market,
+return, governance, valuation or accounting fact. The response remains outside
+the calculation, gate, pipeline, CLI and input-loader contracts.
+
 ## Phase 2.92 SSE daily-deal overview raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)

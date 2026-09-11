@@ -221,6 +221,12 @@ class FakeAKShare:
             _fixture("a_account_statistics.json"),
         )
 
+    def stock_market_activity_legu(self):
+        return self._return(
+            "stock_market_activity_legu",
+            _fixture("a_market_activity_legu.json"),
+        )
+
     def stock_sse_deal_daily(self, *, date: str):
         return self._return(
             "stock_sse_deal_daily",
@@ -950,8 +956,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "109"
-    assert AKSHARE_MAPPING_VERSION == "110"
+    assert provider.identity.provider_version == "110"
+    assert AKSHARE_MAPPING_VERSION == "111"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -21344,6 +21350,372 @@ def test_market_activity_account_statistics_cache_replay_does_not_call_upstream(
     assert replay.mode is RetrievalMode.CACHE_REPLAY
     assert replay.record == live.record
     assert fake.calls == [("stock_account_statistics_em", {})]
+
+
+def test_market_activity_legu_fetch_preserves_current_market_snapshot():
+    fake = FakeAKShare()
+    request = _request(
+        DataCategory.MARKET_ACTIVITY,
+        "SH600000",
+        {"view": "market_activity_legu"},
+    )
+
+    record = _provider(fake).fetch(request)
+    fixture = _fixture("a_market_activity_legu.json")
+
+    assert record.raw_payload == fixture
+    assert fake.calls == [("stock_market_activity_legu", {})]
+    assert record.response_metadata["endpoint"] == "stock_market_activity_legu"
+    assert record.response_metadata["market"] == "A"
+    assert record.response_metadata["listing_code"] == "600000"
+    assert record.response_metadata["market_activity_view"] == "market_activity_legu"
+    assert record.response_metadata["market_scope"] == (
+        "Shanghai and Shenzhen A-share market"
+    )
+    assert record.response_metadata["listing_scoped_request"] is False
+    assert record.response_metadata["row_filtering"] == "none"
+    assert record.response_metadata["snapshot_scope"] == (
+        "current_market_activity_snapshot"
+    )
+    assert record.response_metadata["date_binding"] == "response_metric"
+    assert record.response_metadata["observation_datetime_field"] == "统计日期"
+    assert record.response_metadata["observation_datetime_format"] == (
+        "YYYY-MM-DD HH:MM:SS"
+    )
+    assert record.response_metadata["observation_datetime"] == (
+        "2024-10-14 15:00:00"
+    )
+    assert record.response_metadata["metric_field"] == "item"
+    assert record.response_metadata["metric_order"] == [
+        "上涨",
+        "涨停",
+        "真实涨停",
+        "st st*涨停",
+        "下跌",
+        "跌停",
+        "真实跌停",
+        "st st*跌停",
+        "平盘",
+        "停牌",
+        "活跃度",
+        "统计日期",
+    ]
+    assert record.response_metadata["item_field"] == "item"
+    assert record.response_metadata["value_field"] == "value"
+    assert record.response_metadata["numeric_items"] == [
+        "上涨",
+        "涨停",
+        "真实涨停",
+        "st st*涨停",
+        "下跌",
+        "跌停",
+        "真实跌停",
+        "st st*跌停",
+        "平盘",
+        "停牌",
+    ]
+    assert record.response_metadata["text_items"] == ["活跃度", "统计日期"]
+    assert record.response_metadata["activity_item"] == "活跃度"
+    assert record.response_metadata["date_item"] == "统计日期"
+    assert record.response_metadata["activity_value_format"] == (
+        "provider_percent_text"
+    )
+    assert record.response_metadata["value_fields"] == ["value"]
+    assert record.response_metadata["field_types"] == {
+        "item": "string",
+        "value": "object",
+    }
+    assert record.response_metadata["nullable_fields"] == []
+    assert record.response_metadata["required_items"] == record.response_metadata[
+        "metric_order"
+    ]
+    assert record.response_metadata["field_count"] == 2
+    assert record.response_metadata["source_field_order"] == ["item", "value"]
+    assert record.response_metadata["documented_units"] == {}
+    assert record.response_metadata["undocumented_numeric_units"] == {
+        "上涨": "not_documented",
+        "涨停": "not_documented",
+        "真实涨停": "not_documented",
+        "st st*涨停": "not_documented",
+        "下跌": "not_documented",
+        "跌停": "not_documented",
+        "真实跌停": "not_documented",
+        "st st*跌停": "not_documented",
+        "平盘": "not_documented",
+        "停牌": "not_documented",
+    }
+    assert record.response_metadata["upstream_protocol"] == "HTML"
+    assert record.response_metadata["upstream_report_name"] is None
+    assert record.response_metadata["upstream_parameters"] == []
+    assert record.response_metadata["wrapper_dropped_fields"] == []
+    assert record.response_metadata["upstream_page_size"] is None
+    assert record.response_metadata["pagination"] == "single_snapshot"
+    assert record.response_metadata["upstream_sort_column"] is None
+    assert record.response_metadata["upstream_sort_direction"] is None
+    assert record.response_metadata["upstream_filter"] is None
+    assert record.response_metadata["wrapper_output_ordering"] == (
+        "provider_metric_order"
+    )
+    assert record.response_metadata["upstream_row_count"] == len(fixture)
+    assert record.response_metadata["entity_row_count"] == 0
+    assert record.response_metadata["entity_rows_selected"] is False
+    assert record.source_uri == "https://legulegu.com/stockdata/market-activity"
+
+
+@pytest.mark.parametrize(
+    ("parameters", "entity_id", "match"),
+    [
+        (
+            {"view": "market_activity_legu", "date": "20241014"},
+            "SH600000",
+            "unsupported AKShare Legu market-activity parameter",
+        ),
+        (
+            {"view": "market_activity_legu"},
+            "HK00700",
+            "A-share listings only",
+        ),
+    ],
+)
+def test_market_activity_legu_request_validates_explicit_scope_before_upstream_call(
+    parameters: dict,
+    entity_id: str,
+    match: str,
+):
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError, match=match):
+        _provider(fake).fetch(
+            _request(DataCategory.MARKET_ACTIVITY, entity_id, parameters)
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("short_response", "exactly 12 item/value rows"),
+        ("missing_field", "row 0 is missing field.*item"),
+        ("extra_field", "row 0 contains unsupported field"),
+        ("reordered_fields", "official field order"),
+        ("wrong_item", "row 0 field 'item'.*上涨"),
+        ("invalid_numeric", "item '上涨'.*numeric"),
+        ("boolean_numeric", "item '上涨'.*numeric"),
+        ("negative_numeric", "item '上涨'.*non-negative"),
+        ("invalid_activity", "item '活跃度'.*non-empty string"),
+        ("blank_activity", "item '活跃度'.*non-empty string"),
+        ("invalid_datetime", "item '统计日期'.*valid"),
+        ("non_string_datetime", "item '统计日期'.*non-empty string"),
+    ],
+)
+def test_market_activity_legu_response_validates_exact_item_value_schema(
+    mutation: str,
+    match: str,
+):
+    payload = [dict(row) for row in _fixture("a_market_activity_legu.json")]
+    if mutation == "short_response":
+        payload.pop()
+    elif mutation == "missing_field":
+        payload[0].pop("item")
+    elif mutation == "extra_field":
+        payload[0]["unexpected"] = "not documented"
+    elif mutation == "reordered_fields":
+        payload[0] = dict(reversed(list(payload[0].items())))
+    elif mutation == "wrong_item":
+        payload[0]["item"] = "下跌"
+    elif mutation == "invalid_numeric":
+        payload[0]["value"] = "4770"
+    elif mutation == "boolean_numeric":
+        payload[0]["value"] = True
+    elif mutation == "negative_numeric":
+        payload[0]["value"] = -1
+    elif mutation == "invalid_activity":
+        payload[10]["value"] = 93.53
+    elif mutation == "blank_activity":
+        payload[10]["value"] = ""
+    elif mutation == "invalid_datetime":
+        payload[11]["value"] = "2024-02-30 15:00:00"
+    else:
+        payload[11]["value"] = 20241014
+
+    class InvalidLegu(FakeAKShare):
+        def stock_market_activity_legu(self):
+            return self._return("stock_market_activity_legu", payload)
+
+    with pytest.raises(ProviderResponseError, match=match):
+        _provider(InvalidLegu()).fetch(
+            _request(
+                DataCategory.MARKET_ACTIVITY,
+                "SH600000",
+                {"view": "market_activity_legu"},
+            )
+        )
+
+
+def test_market_activity_legu_is_retained_as_raw_evidence_without_listing_facts():
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SH600000",
+            {"view": "market_activity_legu"},
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="market-activity-legu-raw-only",
+        as_of=date(2026, 9, 11),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_MARKET_ACTIVITY_LEGU_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == []
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "Legu market-activity" in normalized.data_quality.notes
+    assert "market-wide rise/fall" in normalized.data_quality.notes
+    assert "canonical" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "endpoint",
+        "source_uri",
+        "market",
+        "listing_code",
+        "view",
+        "market_scope",
+        "listing_scope",
+        "filtering",
+        "snapshot",
+        "date_binding",
+        "observation_datetime_field",
+        "observation_datetime",
+        "metric_order",
+        "value_fields",
+        "field_types",
+        "nullable_fields",
+        "field_count",
+        "source_field_order",
+        "undocumented_units",
+        "upstream_parameters",
+        "pagination",
+        "upstream_count",
+        "entity_count",
+        "selected",
+        "payload",
+    ],
+)
+def test_market_activity_legu_normalizer_rejects_replayed_scope_mismatches(
+    mutation: str,
+):
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SH600000",
+            {"view": "market_activity_legu"},
+        )
+    )
+    payload = [dict(row) for row in record.raw_payload]
+    response_metadata = dict(record.response_metadata)
+    source_uri = record.source_uri
+    if mutation == "endpoint":
+        response_metadata["endpoint"] = "stock_sse_summary"
+    elif mutation == "source_uri":
+        source_uri = "https://example.invalid/market-activity-legu"
+    elif mutation == "market":
+        response_metadata["market"] = "H"
+    elif mutation == "listing_code":
+        response_metadata["listing_code"] = "000001"
+    elif mutation == "view":
+        response_metadata["market_activity_view"] = "sse_summary"
+    elif mutation == "market_scope":
+        response_metadata["market_scope"] = "all_a_share_listings"
+    elif mutation == "listing_scope":
+        response_metadata["listing_scoped_request"] = True
+    elif mutation == "filtering":
+        response_metadata["row_filtering"] = "provider"
+    elif mutation == "snapshot":
+        response_metadata["snapshot_scope"] = "current_trading_day"
+    elif mutation == "date_binding":
+        response_metadata["date_binding"] = "request_only"
+    elif mutation == "observation_datetime_field":
+        response_metadata["observation_datetime_field"] = "时间"
+    elif mutation == "observation_datetime":
+        response_metadata["observation_datetime"] = "2024-10-15 15:00:00"
+    elif mutation == "metric_order":
+        response_metadata["metric_order"] = list(
+            reversed(response_metadata["metric_order"])
+        )
+    elif mutation == "value_fields":
+        response_metadata["value_fields"] = ["amount"]
+    elif mutation == "field_types":
+        response_metadata["field_types"] = {"item": "string"}
+    elif mutation == "nullable_fields":
+        response_metadata["nullable_fields"] = ["value"]
+    elif mutation == "field_count":
+        response_metadata["field_count"] = 3
+    elif mutation == "source_field_order":
+        response_metadata["source_field_order"] = ["value", "item"]
+    elif mutation == "undocumented_units":
+        response_metadata["undocumented_numeric_units"] = {"上涨": "shares"}
+    elif mutation == "upstream_parameters":
+        response_metadata["upstream_parameters"] = ["date"]
+    elif mutation == "pagination":
+        response_metadata["pagination"] = "paged"
+    elif mutation == "upstream_count":
+        response_metadata["upstream_row_count"] = 11
+    elif mutation == "entity_count":
+        response_metadata["entity_row_count"] = 1
+    elif mutation == "selected":
+        response_metadata["entity_rows_selected"] = True
+    else:
+        payload[0]["value"] = "not-a-number"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=source_uri,
+        response_metadata=response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-market-activity-legu",
+            as_of=date(2026, 9, 11),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_market_activity_legu_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.MARKET_ACTIVITY,
+        "SH600000",
+        {"view": "market_activity_legu"},
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [("stock_market_activity_legu", {})]
 
 
 def test_market_activity_szse_summary_fetch_uses_documented_date_and_preserves_market_snapshot():

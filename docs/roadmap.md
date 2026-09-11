@@ -2820,6 +2820,31 @@ routing, exact schema/order/types, date and numeric boundaries, nullable
 changes, raw-only normalization, replay metadata tampering and offline cache
 replay. No calculation, gate, pipeline, CLI or input-loader contract changes.
 
+### Phase 3.09 — A-share Legu market-activity raw acquisition contract (COMPLETE)
+
+The mapping review now covers the documented A-share Legu
+`stock_market_activity_legu` endpoint under the existing `MARKET_ACTIVITY`
+category with explicit `view=market_activity_legu` and no upstream arguments.
+The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_market_legu.py)
+define an HTML-backed current Shanghai/Shenzhen A-share market snapshot with
+the exact 12-row `item`/`value` response: rise/fall, limit-up/down,
+flat/suspended, activity and statistic-date metrics. Numeric counts are
+validated as finite and non-negative; `活跃度` remains provider text and
+`统计日期` is validated as a strict `YYYY-MM-DD HH:MM:SS` timestamp. No units
+are inferred because the endpoint documents only object-valued output fields.
+
+The provider records the official item order, mixed value types, timestamp,
+HTML/no-parameter upstream boundary, no filtering and complete market-wide row
+counts for deterministic cache replay. The normalizer emits
+`AKSHARE_MARKET_ACTIVITY_LEGU_RAW_ONLY` and creates no canonical market,
+return, governance, valuation or accounting fact: this current market-wide
+snapshot has no listing/entity accounting scope. Tests cover explicit view,
+A-share/no-argument routing, exact item/value schema and ordering, numeric/text
+and timestamp boundaries, raw-only normalization, replay metadata tampering and
+offline cache replay. No calculation, gate, pipeline, CLI or input-loader
+contract changes.
+
 ### Future structured-provider deliverables
 
 ```text
@@ -2829,7 +2854,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–3.08 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–3.09 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -3170,6 +3195,17 @@ source/drop/sort/unit metadata. The raw-only normalizer flag creates no
 canonical accounting, shareholder-return, governance, market or valuation
 fact because the history is market-wide and has no listing/entity accounting
 scope.
+Phase 3.09 adds the documented A-share Legu
+`stock_market_activity_legu` market-activity view under `MARKET_ACTIVITY` with
+explicit `view=market_activity_legu` and no upstream arguments. Its HTML-backed
+current Shanghai/Shenzhen snapshot is validated as exactly 12 ordered
+`item`/`value` rows covering rise/fall, limit-up/down, flat/suspended, activity
+and statistic-date metrics. Numeric counts remain finite non-negative raw
+values, `活跃度` remains provider text, and `统计日期` is a strict
+`YYYY-MM-DD HH:MM:SS` response timestamp. The raw-only normalizer flag creates
+no canonical market, return, governance, valuation or accounting fact because
+the snapshot is market-wide and has no listing/entity accounting scope. No
+calculation, gate, pipeline, CLI or input-loader contract changes.
 Phase 2.75 completes the next documented structured-data boundary by adding
 the A-share `stock_gpzy_profile_em` market-wide historical ownership-pledge
 view. Its no-argument eight-field response is validated as an ascending raw

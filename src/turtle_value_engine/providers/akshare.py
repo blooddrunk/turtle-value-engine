@@ -53,8 +53,8 @@ shareholder-meeting raw slices are also available.
 The SSE and SZSE market-summary raw slices are also available.
 The SSE daily-deal overview raw slice is also available. The SZSE area-summary
 and sector-summary raw slices are also available. The Eastmoney industry-board
-snapshot, Dragon-Tiger institution-daily raw slice and stock-account-statistics
-history are also available.
+snapshot, Dragon-Tiger institution-daily raw slice, stock-account-statistics
+history and Legu market-activity snapshot are also available.
 The A-share Eastmoney top-ten, top-ten-tradable-shareholder and
 top-ten-tradable-shareholder-detail raw slices are also available.
 The A-share Eastmoney institutional-research statistics and detail raw slices
@@ -105,9 +105,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "109"
+AKSHARE_ADAPTER_VERSION = "110"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "110"
+AKSHARE_MAPPING_VERSION = "111"
 
 
 class ListingMarket(StrEnum):
@@ -215,6 +215,7 @@ _SOURCE_URIS = {
     "stock_sse_summary": "https://www.sse.com.cn/market/stockdata/statistic/",
     "stock_sse_deal_daily": "https://www.sse.com.cn/market/stockdata/overview/day/",
     "stock_account_statistics_em": "https://data.eastmoney.com/cjsj/gpkhsj.html",
+    "stock_market_activity_legu": "https://legulegu.com/stockdata/market-activity",
     "stock_zt_pool_em": "https://quote.eastmoney.com/ztb/detail#type=ztgc",
     "stock_zt_pool_dtgc_em": "https://quote.eastmoney.com/ztb/detail#type=dtgc",
     "stock_intraday_em": "https://quote.eastmoney.com/f1.html?newcode=0.000001",
@@ -317,6 +318,7 @@ _NO_ARGUMENT_ENDPOINTS = frozenset(
         "stock_zh_ab_comparison_em",
         "stock_board_industry_name_em",
         "stock_account_statistics_em",
+        "stock_market_activity_legu",
     }
 )
 
@@ -1150,6 +1152,31 @@ _MARKET_ACTIVITY_ACCOUNT_STATISTICS_UNDOCUMENTED_NUMERIC_UNITS = {
     for field in _MARKET_ACTIVITY_ACCOUNT_STATISTICS_NUMERIC_FIELDS
     if field not in _MARKET_ACTIVITY_ACCOUNT_STATISTICS_DOCUMENTED_UNITS
 }
+_MARKET_ACTIVITY_LEGU_PARAMETER_NAMES = frozenset({"view"})
+_MARKET_ACTIVITY_LEGU_VIEW = "market_activity_legu"
+_MARKET_ACTIVITY_LEGU_FIELDS = ("item", "value")
+_MARKET_ACTIVITY_LEGU_FIELD_SET = frozenset(_MARKET_ACTIVITY_LEGU_FIELDS)
+_MARKET_ACTIVITY_LEGU_ITEMS = (
+    "上涨",
+    "涨停",
+    "真实涨停",
+    "st st*涨停",
+    "下跌",
+    "跌停",
+    "真实跌停",
+    "st st*跌停",
+    "平盘",
+    "停牌",
+    "活跃度",
+    "统计日期",
+)
+_MARKET_ACTIVITY_LEGU_NUMERIC_ITEMS = frozenset(_MARKET_ACTIVITY_LEGU_ITEMS[:10])
+_MARKET_ACTIVITY_LEGU_TEXT_ITEMS = frozenset(_MARKET_ACTIVITY_LEGU_ITEMS[10:])
+_MARKET_ACTIVITY_LEGU_DOCUMENTED_UNITS: dict[str, str] = {}
+_MARKET_ACTIVITY_LEGU_UNDOCUMENTED_NUMERIC_UNITS = {
+    item: "not_documented" for item in _MARKET_ACTIVITY_LEGU_NUMERIC_ITEMS
+}
+_MARKET_ACTIVITY_LEGU_FIELD_TYPES = {"item": "string", "value": "object"}
 _MARKET_ACTIVITY_SZSE_SUMMARY_PARAMETER_NAMES = frozenset({"view", "date"})
 _MARKET_ACTIVITY_SZSE_SUMMARY_VIEW = "szse_summary"
 _MARKET_ACTIVITY_SZSE_SUMMARY_FIELDS = (
@@ -3477,6 +3504,19 @@ class AKShareProvider(StructuredDataProvider):
                 )
                 response_metadata["undocumented_numeric_units"] = dict(
                     _MARKET_ACTIVITY_SZSE_SUMMARY_UNDOCUMENTED_UNITS
+                )
+            elif endpoint.name == "stock_market_activity_legu":
+                observation_datetime = _validate_market_activity_legu_provider_rows(
+                    rows,
+                    provider=self.identity,
+                    request=request,
+                )
+                response_metadata.update(
+                    _market_activity_legu_response_metadata(
+                        listing_code=listing.code,
+                        observation_datetime=observation_datetime,
+                        row_count=len(rows),
+                    )
                 )
             elif endpoint.name == "stock_account_statistics_em":
                 observation_dates = (
@@ -6260,6 +6300,9 @@ class AKShareProvider(StructuredDataProvider):
                 request.parameters.get("view")
                 == _MARKET_ACTIVITY_INSTITUTION_STATISTIC_VIEW
             ),
+            market_activity_legu_requested=(
+                request.parameters.get("view") == _MARKET_ACTIVITY_LEGU_VIEW
+            ),
             market_activity_account_statistics_requested=(
                 request.parameters.get("view")
                 == _MARKET_ACTIVITY_ACCOUNT_STATISTICS_VIEW
@@ -6732,6 +6775,13 @@ class AKShareNormalizer:
                         rows,
                     )
                     normalizer_flags.add("AKSHARE_SSE_SUMMARY_RAW_ONLY")
+                elif endpoint_name == "stock_market_activity_legu":
+                    _validate_market_activity_legu_normalizer_scope(
+                        record,
+                        listing,
+                        rows,
+                    )
+                    normalizer_flags.add("AKSHARE_MARKET_ACTIVITY_LEGU_RAW_ONLY")
                 elif endpoint_name == "stock_account_statistics_em":
                     _validate_market_activity_account_statistics_normalizer_scope(
                         record,
@@ -6942,7 +6992,7 @@ class AKShareNormalizer:
                         "stock_szse_sector_summary, stock_szse_area_summary, "
                         "stock_szse_summary, "
                         "stock_sse_summary, stock_sse_deal_daily, "
-                        "stock_account_statistics_em, "
+                        "stock_market_activity_legu, stock_account_statistics_em, "
                         "stock_zh_a_new_em, stock_comment_detail_scrd_desire_em, "
                         "stock_comment_detail_scrd_focus_em, "
                         "stock_comment_detail_zlkp_jgcyd_em, "
@@ -8604,6 +8654,13 @@ class AKShareNormalizer:
                 "not establish canonical accounting, shareholder-return, governance or "
                 "valuation facts."
             )
+        if "AKSHARE_MARKET_ACTIVITY_LEGU_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented Legu market-activity response is retained as raw evidence "
+                "only: its market-wide rise/fall, limit-up/down, activity and timestamp "
+                "metrics lack listing/entity accounting scope and do not establish a "
+                "canonical market, return, governance, valuation or accounting fact."
+            )
         if "AKSHARE_SZSE_SUMMARY_RAW_ONLY" in normalizer_flags:
             notes += (
                 " The documented SZSE market-summary response is retained as raw evidence "
@@ -9108,6 +9165,7 @@ def _endpoint_candidates(
     insider_management_detail_requested: bool = False,
     market_activity_statistic_requested: bool = False,
     market_activity_institution_statistic_requested: bool = False,
+    market_activity_legu_requested: bool = False,
     market_activity_account_statistics_requested: bool = False,
     market_activity_block_trade_requested: bool = False,
     market_activity_institution_daily_requested: bool = False,
@@ -9238,6 +9296,10 @@ def _endpoint_candidates(
             return ("stock_hk_hist_min_em",)
         return ("stock_hk_daily", "stock_zh_ah_daily")
     if category is DataCategory.MARKET_ACTIVITY:
+        if market_activity_legu_requested:
+            if market is ListingMarket.A:
+                return ("stock_market_activity_legu",)
+            return ()
         if market_activity_account_statistics_requested:
             if market is ListingMarket.A:
                 return ("stock_account_statistics_em",)
@@ -16850,6 +16912,128 @@ def _validate_market_activity_account_statistics_provider_rows(
     return observation_dates
 
 
+def _market_activity_legu_datetime(value: object) -> datetime | None:
+    """Parse the Legu snapshot's strict provider timestamp."""
+
+    if not isinstance(value, str) or not re.fullmatch(
+        r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}", value
+    ):
+        return None
+    try:
+        return datetime.strptime(value, "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        return None
+
+
+def _market_activity_legu_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> tuple[str | None, datetime | None]:
+    """Return strict-schema errors and the Legu snapshot timestamp."""
+
+    if len(rows) != len(_MARKET_ACTIVITY_LEGU_ITEMS):
+        return (
+            "market-activity Legu response must contain exactly "
+            f"{len(_MARKET_ACTIVITY_LEGU_ITEMS)} item/value rows",
+            None,
+        )
+
+    observation_datetime: datetime | None = None
+    for index, row in enumerate(rows):
+        missing = [field for field in _MARKET_ACTIVITY_LEGU_FIELDS if field not in row]
+        unexpected = [
+            field for field in row if field not in _MARKET_ACTIVITY_LEGU_FIELD_SET
+        ]
+        if missing:
+            return (
+                f"market-activity Legu row {index} is missing field(s): "
+                + ", ".join(missing),
+                None,
+            )
+        if unexpected:
+            return (
+                f"market-activity Legu row {index} contains unsupported field(s): "
+                + ", ".join(unexpected),
+                None,
+            )
+        if tuple(row) != _MARKET_ACTIVITY_LEGU_FIELDS:
+            return "market-activity Legu rows must preserve the official field order", None
+
+        item = row["item"]
+        expected_item = _MARKET_ACTIVITY_LEGU_ITEMS[index]
+        if item != expected_item:
+            return (
+                f"market-activity Legu row {index} field 'item' must be "
+                f"{expected_item!r}",
+                None,
+            )
+
+        value = row["value"]
+        if item in _MARKET_ACTIVITY_LEGU_NUMERIC_ITEMS:
+            if isinstance(value, bool) or not isinstance(value, Real):
+                return (
+                    f"market-activity Legu item {item!r} must be numeric",
+                    None,
+                )
+            try:
+                numeric = float(value)
+            except (OverflowError, TypeError, ValueError):
+                return (
+                    f"market-activity Legu item {item!r} must be numeric",
+                    None,
+                )
+            if not math.isfinite(numeric):
+                return (
+                    f"market-activity Legu item {item!r} must be finite",
+                    None,
+                )
+            if numeric < 0:
+                return (
+                    f"market-activity Legu item {item!r} must be non-negative",
+                    None,
+                )
+        elif item == "活跃度":
+            if not isinstance(value, str) or not value.strip():
+                return (
+                    "market-activity Legu item '活跃度' must be a non-empty string",
+                    None,
+                )
+        else:
+            if not isinstance(value, str) or not value.strip():
+                return (
+                    "market-activity Legu item '统计日期' must be a non-empty string",
+                    None,
+                )
+            observation_datetime = _market_activity_legu_datetime(value)
+            if observation_datetime is None:
+                return (
+                    "market-activity Legu item '统计日期' must be a valid "
+                    "YYYY-MM-DD HH:MM:SS timestamp",
+                    None,
+                )
+
+    assert observation_datetime is not None
+    return None, observation_datetime
+
+
+def _validate_market_activity_legu_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> datetime:
+    """Validate the complete Legu current market-activity snapshot."""
+
+    message, observation_datetime = _market_activity_legu_validation_message(rows)
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message}",
+            provider=provider,
+            request=request,
+        )
+    assert observation_datetime is not None
+    return observation_datetime
+
+
 def _market_activity_sse_deal_daily_validation_message(
     rows: Sequence[Mapping[str, JSONValue]],
 ) -> str | None:
@@ -21211,6 +21395,127 @@ def _market_activity_account_statistics_response_metadata(
         "upstream_row_count": row_count,
         "entity_row_count": 0,
     }
+
+
+def _market_activity_legu_response_metadata(
+    *,
+    listing_code: str,
+    observation_datetime: datetime,
+    row_count: int,
+) -> dict[str, JSONValue]:
+    """Build the replay contract for the Legu market snapshot."""
+
+    return {
+        "endpoint": "stock_market_activity_legu",
+        "market": ListingMarket.A.value,
+        "listing_code": listing_code,
+        "market_activity_view": _MARKET_ACTIVITY_LEGU_VIEW,
+        "market_scope": "Shanghai and Shenzhen A-share market",
+        "listing_scoped_request": False,
+        "row_filtering": "none",
+        "snapshot_scope": "current_market_activity_snapshot",
+        "date_binding": "response_metric",
+        "observation_datetime_field": "统计日期",
+        "observation_datetime_format": "YYYY-MM-DD HH:MM:SS",
+        "observation_datetime": observation_datetime.isoformat(sep=" "),
+        "metric_field": "item",
+        "metric_order": list(_MARKET_ACTIVITY_LEGU_ITEMS),
+        "item_field": "item",
+        "value_field": "value",
+        "numeric_items": list(_MARKET_ACTIVITY_LEGU_ITEMS[:10]),
+        "text_items": list(_MARKET_ACTIVITY_LEGU_ITEMS[10:]),
+        "activity_item": "活跃度",
+        "date_item": "统计日期",
+        "activity_value_format": "provider_percent_text",
+        "value_fields": ["value"],
+        "field_types": dict(_MARKET_ACTIVITY_LEGU_FIELD_TYPES),
+        "nullable_fields": [],
+        "required_items": list(_MARKET_ACTIVITY_LEGU_ITEMS),
+        "field_count": len(_MARKET_ACTIVITY_LEGU_FIELDS),
+        "source_field_order": list(_MARKET_ACTIVITY_LEGU_FIELDS),
+        "documented_units": dict(_MARKET_ACTIVITY_LEGU_DOCUMENTED_UNITS),
+        "undocumented_numeric_units": dict(
+            _MARKET_ACTIVITY_LEGU_UNDOCUMENTED_NUMERIC_UNITS
+        ),
+        "upstream_protocol": "HTML",
+        "upstream_report_name": None,
+        "upstream_parameters": [],
+        "wrapper_dropped_fields": [],
+        "upstream_page_size": None,
+        "pagination": "single_snapshot",
+        "upstream_sort_column": None,
+        "upstream_sort_direction": None,
+        "upstream_filter": None,
+        "wrapper_output_ordering": "provider_metric_order",
+        "entity_rows_selected": False,
+        "upstream_row_count": row_count,
+        "entity_row_count": 0,
+    }
+
+
+def _validate_market_activity_legu_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> None:
+    """Validate replay scope and metadata for the Legu snapshot."""
+
+    if listing.market is not ListingMarket.A:
+        raise ProviderNormalizationError(
+            "AKShare Legu market-activity raw slice supports A-share listings only"
+        )
+    endpoint_name = "stock_market_activity_legu"
+    if record.response_metadata.get("endpoint") != endpoint_name:
+        raise ProviderNormalizationError(
+            "AKShare Legu market-activity record must come from "
+            "stock_market_activity_legu"
+        )
+    if record.source_uri != _SOURCE_URIS[endpoint_name]:
+        raise ProviderNormalizationError(
+            "AKShare Legu market-activity source URI does not match the documented "
+            "endpoint"
+        )
+    try:
+        upstream_kwargs = _market_activity_legu_kwargs(
+            endpoint_name,
+            listing,
+            record.request,
+        )
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+    if upstream_kwargs:
+        raise ProviderNormalizationError(
+            "AKShare Legu market-activity endpoint must receive no upstream arguments"
+        )
+
+    message, observation_datetime = _market_activity_legu_validation_message(rows)
+    if message is not None:
+        raise ProviderNormalizationError(message)
+    assert observation_datetime is not None
+    expected_metadata = _market_activity_legu_response_metadata(
+        listing_code=listing.code,
+        observation_datetime=observation_datetime,
+        row_count=len(rows),
+    )
+    boolean_fields = {"listing_scoped_request", "entity_rows_selected"}
+    count_fields = {"field_count", "upstream_row_count", "entity_row_count"}
+    for name, expected in expected_metadata.items():
+        actual = record.response_metadata.get(name)
+        if name in boolean_fields:
+            matches = isinstance(actual, bool) and actual is expected
+        elif name in count_fields:
+            matches = (
+                isinstance(actual, int)
+                and not isinstance(actual, bool)
+                and actual == expected
+            )
+        else:
+            matches = actual == expected
+        if not matches:
+            raise ProviderNormalizationError(
+                f"AKShare Legu market-activity response metadata {name!r} does "
+                "not match the requested replay scope"
+            )
 
 
 def _validate_market_activity_account_statistics_normalizer_scope(
@@ -27288,6 +27593,8 @@ def _market_activity_kwargs(
 ) -> dict[str, object]:
     """Build one documented market-activity request."""
 
+    if endpoint_name == "stock_market_activity_legu":
+        return _market_activity_legu_kwargs(endpoint_name, listing, request)
     if endpoint_name == "stock_account_statistics_em":
         return _market_activity_account_statistics_kwargs(
             endpoint_name,
@@ -27375,6 +27682,43 @@ def _market_activity_kwargs(
         "start_date": request.parameters["start_date"],
         "end_date": request.parameters["end_date"],
     }
+
+
+def _market_activity_legu_kwargs(
+    endpoint_name: str,
+    listing: _ListingRef,
+    request: ProviderRequest,
+) -> dict[str, object]:
+    """Build the documented no-argument A-share Legu snapshot request."""
+
+    if endpoint_name != "stock_market_activity_legu":
+        raise ProviderRequestError(
+            f"unsupported AKShare Legu market-activity endpoint {endpoint_name!r}",
+            request=request,
+            retryable=False,
+        )
+    if listing.market is not ListingMarket.A:
+        raise ProviderRequestError(
+            "the AKShare Legu market-activity endpoint supports A-share listings only",
+            request=request,
+            retryable=False,
+        )
+    unknown = sorted(set(request.parameters) - _MARKET_ACTIVITY_LEGU_PARAMETER_NAMES)
+    if unknown:
+        raise ProviderRequestError(
+            "unsupported AKShare Legu market-activity parameter(s): "
+            + ", ".join(unknown),
+            request=request,
+            retryable=False,
+        )
+    if request.parameters.get("view") != _MARKET_ACTIVITY_LEGU_VIEW:
+        raise ProviderRequestError(
+            "AKShare Legu market-activity endpoint requires "
+            f"view={_MARKET_ACTIVITY_LEGU_VIEW!r}",
+            request=request,
+            retryable=False,
+        )
+    return {}
 
 
 def _market_activity_account_statistics_kwargs(
