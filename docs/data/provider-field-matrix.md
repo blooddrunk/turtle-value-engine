@@ -1621,6 +1621,30 @@ canonical market, return, valuation, governance or accounting fact. The
 response remains outside the calculation, gate, pipeline, CLI and input-loader
 contracts.
 
+## Phase 3.16 A-share Legu market PB raw history
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_a_pe_and_pb.py)
+document `stock_market_pb_lg` as a symbol-selected Legu market history. The
+adapter exposes it only under `MARKET_ACTIVITY` with explicit
+`view=market_pb`, a required A-share provenance listing and one of `上证`,
+`深证`, `创业板` or `科创版`. All variants return the exact five fields below;
+no numeric unit or PB domain is documented, so none is inferred.
+
+| Raw upstream item | Phase 3.16 treatment |
+| --- | --- |
+| `日期` | Required strict `YYYY-MM-DD` observation date for the complete market history; it is not an accounting, filing or listing period. |
+| `指数` | Required finite non-negative index value; it is context for the selected market and is not promoted to a listing quote or return fact. |
+| `市净率`, `等权市净率`, `市净率中位数` | Required finite numeric PB aggregates; signed values remain raw context because the upstream contract does not document a non-negative domain or unit. |
+| request `view=market_pb`, `symbol` | Explicit A-share-only routing. All four symbols use `https://legulegu.com/api/stockdata/index-basic-pb` with fixed `indexCode=1`/`2`/`4`/`7` for 上证/深证/创业板/科创版. Symbol-specific source pages, exact field order, token/cookie-CSRF transport, no filtering and complete row counts remain part of cache replay. |
+
+The provider rejects unsupported symbols, empty responses,
+missing/unexpected/reordered fields, invalid or non-ascending dates,
+null/non-numeric/boolean/non-finite values and negative index values. The
+normalizer emits `AKSHARE_MARKET_PB_RAW_ONLY` and creates no canonical market,
+return, valuation, governance or accounting fact. The response remains outside
+the calculation, gate, pipeline, CLI and input-loader contracts.
+
 ## Phase 2.92 SSE daily-deal overview raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)

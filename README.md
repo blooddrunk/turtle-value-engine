@@ -1278,6 +1278,20 @@ the official contract documents no unit or PE domain. The normalizer emits
 canonical market, return, valuation, governance or accounting fact. No
 calculation, gate, pipeline, CLI or input-loader contract changes.
 
+Phase 3.16 adds the documented A-share Legu `stock_market_pb_lg` endpoint under
+`MARKET_ACTIVITY` with explicit `view=market_pb` and a required `symbol` in the
+same four-board set. The [AKShare stock-data
+documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and [official
+implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_a_pe_and_pb.py)
+define the exact five-field output `日期`, `指数`, `市净率`, `等权市净率`,
+`市净率中位数`. The provider preserves symbol-specific source pages and the
+fixed upstream `indexCode` values 1/2/4/7, validates the complete strictly
+ascending all-history response, and retains signed PB values as raw context
+because the official contract documents no unit or PB domain. The normalizer
+emits `AKSHARE_MARKET_PB_RAW_ONLY`; this market-wide context does not become a
+canonical market, return, valuation, governance or accounting fact. No
+calculation, gate, pipeline, CLI or input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

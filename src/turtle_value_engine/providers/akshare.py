@@ -55,7 +55,7 @@ The SSE daily-deal overview raw slice is also available. The SZSE area-summary
 and sector-summary raw slices are also available. The Eastmoney industry-board
 snapshot, Dragon-Tiger institution-daily raw slice, stock-account-statistics
 history and Legu market-activity/congestion/equity-bond-spread/Buffett-index/
-A-share PE/PB-history and market-PE snapshots are also available.
+A-share PE/PB-history, market-PE and market-PB snapshots are also available.
 The A-share Eastmoney top-ten, top-ten-tradable-shareholder and
 top-ten-tradable-shareholder-detail raw slices are also available.
 The A-share Eastmoney institutional-research statistics and detail raw slices
@@ -106,9 +106,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "116"
+AKSHARE_ADAPTER_VERSION = "117"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "117"
+AKSHARE_MAPPING_VERSION = "118"
 
 
 class ListingMarket(StrEnum):
@@ -223,6 +223,7 @@ _SOURCE_URIS = {
     "stock_a_ttm_lyr": "https://www.legulegu.com/stockdata/a-ttm-lyr",
     "stock_a_all_pb": "https://www.legulegu.com/stockdata/all-pb",
     "stock_market_pe_lg": "https://legulegu.com/stockdata/shanghaiPE",
+    "stock_market_pb_lg": "https://legulegu.com/stockdata/shanghaiPB",
     "stock_zt_pool_em": "https://quote.eastmoney.com/ztb/detail#type=ztgc",
     "stock_zt_pool_dtgc_em": "https://quote.eastmoney.com/ztb/detail#type=dtgc",
     "stock_intraday_em": "https://quote.eastmoney.com/f1.html?newcode=0.000001",
@@ -1433,6 +1434,50 @@ _MARKET_ACTIVITY_MARKET_PE_UPSTREAM_FIXED_PARAMETERS = {
     "科创版": {},
 }
 _MARKET_ACTIVITY_MARKET_PE_DOCUMENTED_UNITS: dict[str, str] = {}
+_MARKET_ACTIVITY_MARKET_PB_PARAMETER_NAMES = frozenset({"view", "symbol"})
+_MARKET_ACTIVITY_MARKET_PB_VIEW = "market_pb"
+_MARKET_ACTIVITY_MARKET_PB_SYMBOLS = ("上证", "深证", "创业板", "科创版")
+_MARKET_ACTIVITY_MARKET_PB_FIELDS = (
+    "日期",
+    "指数",
+    "市净率",
+    "等权市净率",
+    "市净率中位数",
+)
+_MARKET_ACTIVITY_MARKET_PB_DATE_FIELDS = ("日期",)
+_MARKET_ACTIVITY_MARKET_PB_NUMERIC_FIELDS = (
+    "指数",
+    "市净率",
+    "等权市净率",
+    "市净率中位数",
+)
+_MARKET_ACTIVITY_MARKET_PB_NON_NEGATIVE_FIELDS = frozenset({"指数"})
+_MARKET_ACTIVITY_MARKET_PB_TEXT_FIELDS: tuple[str, ...] = ()
+_MARKET_ACTIVITY_MARKET_PB_REQUIRED_DATE_FIELDS = ("日期",)
+_MARKET_ACTIVITY_MARKET_PB_REQUIRED_NUMERIC_FIELDS = (
+    *_MARKET_ACTIVITY_MARKET_PB_NUMERIC_FIELDS,
+)
+_MARKET_ACTIVITY_MARKET_PB_FIELD_TYPES = {
+    "日期": "date",
+    **{field: "number" for field in _MARKET_ACTIVITY_MARKET_PB_NUMERIC_FIELDS},
+}
+_MARKET_ACTIVITY_MARKET_PB_SOURCE_URIS = {
+    "上证": "https://legulegu.com/stockdata/shanghaiPB",
+    "深证": "https://legulegu.com/stockdata/shenzhenPB",
+    "创业板": "https://legulegu.com/stockdata/cybPB",
+    "科创版": "https://legulegu.com/stockdata/ke-chuang-ban-pb",
+}
+_MARKET_ACTIVITY_MARKET_PB_UPSTREAM_URL = (
+    "https://legulegu.com/api/stockdata/index-basic-pb"
+)
+_MARKET_ACTIVITY_MARKET_PB_UPSTREAM_PARAMETERS = ("indexCode", "token")
+_MARKET_ACTIVITY_MARKET_PB_UPSTREAM_FIXED_PARAMETERS = {
+    "上证": {"indexCode": "1"},
+    "深证": {"indexCode": "2"},
+    "创业板": {"indexCode": "4"},
+    "科创版": {"indexCode": "7"},
+}
+_MARKET_ACTIVITY_MARKET_PB_DOCUMENTED_UNITS: dict[str, str] = {}
 _MARKET_ACTIVITY_SZSE_SUMMARY_PARAMETER_NAMES = frozenset({"view", "date"})
 _MARKET_ACTIVITY_SZSE_SUMMARY_VIEW = "szse_summary"
 _MARKET_ACTIVITY_SZSE_SUMMARY_FIELDS = (
@@ -3790,6 +3835,27 @@ class AKShareProvider(StructuredDataProvider):
                 )
                 response_metadata.update(
                     _market_activity_market_pe_response_metadata(
+                        listing_code=listing.code,
+                        symbol=symbol,
+                        observation_dates=observation_dates,
+                        row_count=len(rows),
+                    )
+                )
+            elif endpoint.name == "stock_market_pb_lg":
+                symbol = kwargs["symbol"]
+                if not isinstance(symbol, str):
+                    raise ProviderResponseError(
+                        "AKShare market-PB upstream symbol must be text",
+                        provider=self.identity,
+                        request=request,
+                    )
+                observation_dates = _validate_market_activity_market_pb_provider_rows(
+                    rows,
+                    provider=self.identity,
+                    request=request,
+                )
+                response_metadata.update(
+                    _market_activity_market_pb_response_metadata(
                         listing_code=listing.code,
                         symbol=symbol,
                         observation_dates=observation_dates,
@@ -6667,6 +6733,9 @@ class AKShareProvider(StructuredDataProvider):
             market_activity_market_pe_requested=(
                 request.parameters.get("view") == _MARKET_ACTIVITY_MARKET_PE_VIEW
             ),
+            market_activity_market_pb_requested=(
+                request.parameters.get("view") == _MARKET_ACTIVITY_MARKET_PB_VIEW
+            ),
             market_activity_account_statistics_requested=(
                 request.parameters.get("view")
                 == _MARKET_ACTIVITY_ACCOUNT_STATISTICS_VIEW
@@ -7153,6 +7222,13 @@ class AKShareNormalizer:
                         rows,
                     )
                     normalizer_flags.add("AKSHARE_MARKET_PE_RAW_ONLY")
+                elif endpoint_name == "stock_market_pb_lg":
+                    _validate_market_activity_market_pb_normalizer_scope(
+                        record,
+                        listing,
+                        rows,
+                    )
+                    normalizer_flags.add("AKSHARE_MARKET_PB_RAW_ONLY")
                 elif endpoint_name == "stock_a_ttm_lyr":
                     _validate_market_activity_ttm_lyr_normalizer_scope(
                         record,
@@ -7398,7 +7474,8 @@ class AKShareNormalizer:
                         "stock_szse_sector_summary, stock_szse_area_summary, "
                         "stock_szse_summary, "
                         "stock_sse_summary, stock_sse_deal_daily, "
-                        "stock_a_all_pb, stock_market_pe_lg, stock_a_ttm_lyr, "
+                        "stock_a_all_pb, stock_market_pe_lg, stock_market_pb_lg, "
+                        "stock_a_ttm_lyr, "
                         "stock_buffett_index_lg, "
                         "stock_ebs_lg, "
                         "stock_a_congestion_lg, "
@@ -9116,6 +9193,13 @@ class AKShareNormalizer:
                 "listing/entity accounting scope and do not establish a canonical "
                 "market, return, governance, valuation or accounting fact."
             )
+        if "AKSHARE_MARKET_PB_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented Legu market-PB response is retained as raw evidence "
+                "only: its market-wide board/index PB series and index context lack "
+                "listing/entity accounting scope and do not establish a canonical "
+                "market, return, governance, valuation or accounting fact."
+            )
         if "AKSHARE_SZSE_SUMMARY_RAW_ONLY" in normalizer_flags:
             notes += (
                 " The documented SZSE market-summary response is retained as raw evidence "
@@ -9627,6 +9711,7 @@ def _endpoint_candidates(
     market_activity_ttm_lyr_requested: bool = False,
     market_activity_all_pb_requested: bool = False,
     market_activity_market_pe_requested: bool = False,
+    market_activity_market_pb_requested: bool = False,
     market_activity_account_statistics_requested: bool = False,
     market_activity_block_trade_requested: bool = False,
     market_activity_institution_daily_requested: bool = False,
@@ -9784,6 +9869,10 @@ def _endpoint_candidates(
         if market_activity_market_pe_requested:
             if market is ListingMarket.A:
                 return ("stock_market_pe_lg",)
+            return ()
+        if market_activity_market_pb_requested:
+            if market is ListingMarket.A:
+                return ("stock_market_pb_lg",)
             return ()
         if market_activity_account_statistics_requested:
             if market is ListingMarket.A:
@@ -18284,6 +18373,123 @@ def _validate_market_activity_market_pe_provider_rows(
     return observation_dates
 
 
+def _market_activity_market_pb_date(value: object) -> date | None:
+    """Parse the market-PB wrapper's strict ISO date field."""
+
+    if not isinstance(value, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _market_activity_market_pb_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> tuple[str | None, list[date]]:
+    """Return strict-schema errors and dates for one market PB history."""
+
+    if not rows:
+        return "market-activity market-PB response must not be empty", []
+
+    field_set = frozenset(_MARKET_ACTIVITY_MARKET_PB_FIELDS)
+    observation_dates: list[date] = []
+    previous_date: date | None = None
+    for index, row in enumerate(rows):
+        missing = [
+            field for field in _MARKET_ACTIVITY_MARKET_PB_FIELDS if field not in row
+        ]
+        unexpected = [field for field in row if field not in field_set]
+        if missing:
+            return (
+                f"market-activity market-PB row {index} is missing field(s): "
+                + ", ".join(missing),
+                [],
+            )
+        if unexpected:
+            return (
+                f"market-activity market-PB row {index} contains unsupported "
+                "field(s): "
+                + ", ".join(unexpected),
+                [],
+            )
+        if tuple(row) != _MARKET_ACTIVITY_MARKET_PB_FIELDS:
+            return (
+                "market-activity market-PB rows must preserve the official field order",
+                [],
+            )
+
+        observation_date = _market_activity_market_pb_date(row["日期"])
+        if observation_date is None:
+            return (
+                f"market-activity market-PB row {index} has an invalid 日期",
+                [],
+            )
+        if previous_date is not None and observation_date <= previous_date:
+            if observation_date == previous_date:
+                return (
+                    "market-activity market-PB response has duplicate "
+                    f"日期 {row['日期']!r}",
+                    [],
+                )
+            return (
+                "market-activity market-PB response 日期 values must be strictly "
+                "ascending",
+                [],
+            )
+        previous_date = observation_date
+        observation_dates.append(observation_date)
+
+        for field in _MARKET_ACTIVITY_MARKET_PB_NUMERIC_FIELDS:
+            value = row[field]
+            if isinstance(value, bool) or not isinstance(value, Real):
+                return (
+                    f"market-activity market-PB row {index} field {field!r} must "
+                    "be numeric",
+                    [],
+                )
+            try:
+                numeric = float(value)
+            except (OverflowError, TypeError, ValueError):
+                return (
+                    f"market-activity market-PB row {index} field {field!r} must "
+                    "be numeric",
+                    [],
+                )
+            if not math.isfinite(numeric):
+                return (
+                    f"market-activity market-PB row {index} field {field!r} must "
+                    "be finite",
+                    [],
+                )
+            if field in _MARKET_ACTIVITY_MARKET_PB_NON_NEGATIVE_FIELDS and numeric < 0:
+                return (
+                    f"market-activity market-PB row {index} field {field!r} must "
+                    "be non-negative",
+                    [],
+                )
+
+    return None, observation_dates
+
+
+def _validate_market_activity_market_pb_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> list[date]:
+    """Validate one complete Legu market-PB history."""
+
+    message, observation_dates = _market_activity_market_pb_validation_message(rows)
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message}",
+            provider=provider,
+            request=request,
+        )
+    return observation_dates
+
+
 def _market_activity_sse_deal_daily_validation_message(
     rows: Sequence[Mapping[str, JSONValue]],
 ) -> str | None:
@@ -23096,6 +23302,144 @@ def _validate_market_activity_market_pe_normalizer_scope(
         if not matches:
             raise ProviderNormalizationError(
                 f"AKShare market-PE response metadata {name!r} does not match "
+                "the requested replay scope"
+            )
+
+
+def _market_activity_market_pb_response_metadata(
+    *,
+    listing_code: str,
+    symbol: str,
+    observation_dates: Sequence[date],
+    row_count: int,
+) -> dict[str, JSONValue]:
+    """Build the replay contract for one Legu market-PB history."""
+
+    if symbol not in _MARKET_ACTIVITY_MARKET_PB_SYMBOLS:
+        raise ValueError(f"unsupported market-PB symbol {symbol!r}")
+    if not observation_dates:
+        raise ValueError("market-PB response must contain observation dates")
+    return {
+        "endpoint": "stock_market_pb_lg",
+        "market": ListingMarket.A.value,
+        "listing_code": listing_code,
+        "market_activity_view": _MARKET_ACTIVITY_MARKET_PB_VIEW,
+        "upstream_symbol": symbol,
+        "market_scope": f"Legu {symbol} market PB and index context",
+        "listing_scoped_request": False,
+        "row_filtering": "none",
+        "snapshot_scope": "all_historical_legu_market_pb_history",
+        "date_binding": "row_dates",
+        "observation_date_field": "日期",
+        "observation_date_format": "YYYY-MM-DD",
+        "observation_date_ordering": "strictly_ascending",
+        "observation_start_date": min(observation_dates).isoformat(),
+        "observation_end_date": max(observation_dates).isoformat(),
+        "observation_count_contract": "non_empty_all_historical_history",
+        "value_fields": list(_MARKET_ACTIVITY_MARKET_PB_NUMERIC_FIELDS),
+        "non_negative_fields": [
+            field
+            for field in _MARKET_ACTIVITY_MARKET_PB_FIELDS
+            if field in _MARKET_ACTIVITY_MARKET_PB_NON_NEGATIVE_FIELDS
+        ],
+        "integer_fields": [],
+        "text_fields": list(_MARKET_ACTIVITY_MARKET_PB_TEXT_FIELDS),
+        "date_fields": list(_MARKET_ACTIVITY_MARKET_PB_DATE_FIELDS),
+        "required_date_fields": list(
+            _MARKET_ACTIVITY_MARKET_PB_REQUIRED_DATE_FIELDS
+        ),
+        "required_numeric_fields": list(
+            _MARKET_ACTIVITY_MARKET_PB_REQUIRED_NUMERIC_FIELDS
+        ),
+        "field_types": dict(_MARKET_ACTIVITY_MARKET_PB_FIELD_TYPES),
+        "nullable_fields": [],
+        "field_count": len(_MARKET_ACTIVITY_MARKET_PB_FIELDS),
+        "source_field_order": list(_MARKET_ACTIVITY_MARKET_PB_FIELDS),
+        "documented_units": dict(_MARKET_ACTIVITY_MARKET_PB_DOCUMENTED_UNITS),
+        "undocumented_numeric_units": {
+            field: "not_documented"
+            for field in _MARKET_ACTIVITY_MARKET_PB_NUMERIC_FIELDS
+        },
+        "upstream_url": _MARKET_ACTIVITY_MARKET_PB_UPSTREAM_URL,
+        "upstream_protocol": "JSON",
+        "upstream_report_name": None,
+        "upstream_parameters": list(_MARKET_ACTIVITY_MARKET_PB_UPSTREAM_PARAMETERS),
+        "upstream_fixed_parameters": dict(
+            _MARKET_ACTIVITY_MARKET_PB_UPSTREAM_FIXED_PARAMETERS[symbol]
+        ),
+        "upstream_authentication": "token_and_cookie_csrf",
+        "wrapper_dropped_fields": [],
+        "upstream_page_size": None,
+        "pagination": "single_snapshot",
+        "upstream_sort_column": None,
+        "upstream_sort_direction": None,
+        "upstream_filter": None,
+        "wrapper_source_page_uri": _MARKET_ACTIVITY_MARKET_PB_SOURCE_URIS[symbol],
+        "wrapper_output_ordering": "ascending_by_date",
+        "entity_rows_selected": False,
+        "upstream_row_count": row_count,
+        "entity_row_count": 0,
+    }
+
+
+def _validate_market_activity_market_pb_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> None:
+    """Validate replay scope and metadata for one market PB history."""
+
+    if listing.market is not ListingMarket.A:
+        raise ProviderNormalizationError(
+            "AKShare market-PB raw slice supports A-share listings only"
+        )
+    endpoint_name = "stock_market_pb_lg"
+    if record.response_metadata.get("endpoint") != endpoint_name:
+        raise ProviderNormalizationError(
+            "AKShare market-PB record must come from stock_market_pb_lg"
+        )
+    if record.source_uri != _SOURCE_URIS[endpoint_name]:
+        raise ProviderNormalizationError(
+            "AKShare market-PB source URI does not match the documented endpoint"
+        )
+    try:
+        upstream_kwargs = _market_activity_market_pb_kwargs(
+            endpoint_name,
+            listing,
+            record.request,
+        )
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+    symbol = upstream_kwargs["symbol"]
+    if not isinstance(symbol, str):
+        raise ProviderNormalizationError("AKShare market-PB symbol must be text")
+
+    message, observation_dates = _market_activity_market_pb_validation_message(rows)
+    if message is not None:
+        raise ProviderNormalizationError(message)
+    expected_metadata = _market_activity_market_pb_response_metadata(
+        listing_code=listing.code,
+        symbol=symbol,
+        observation_dates=observation_dates,
+        row_count=len(rows),
+    )
+    boolean_fields = {"listing_scoped_request", "entity_rows_selected"}
+    count_fields = {"field_count", "upstream_row_count", "entity_row_count"}
+    for name, expected in expected_metadata.items():
+        actual = record.response_metadata.get(name)
+        if name in boolean_fields:
+            matches = isinstance(actual, bool) and actual is expected
+        elif name in count_fields:
+            matches = (
+                isinstance(actual, int)
+                and not isinstance(actual, bool)
+                and actual == expected
+            )
+        else:
+            matches = actual == expected
+        if not matches:
+            raise ProviderNormalizationError(
+                f"AKShare market-PB response metadata {name!r} does not match "
                 "the requested replay scope"
             )
 
@@ -29649,6 +29993,8 @@ def _market_activity_kwargs(
 
     if endpoint_name == "stock_market_pe_lg":
         return _market_activity_market_pe_kwargs(endpoint_name, listing, request)
+    if endpoint_name == "stock_market_pb_lg":
+        return _market_activity_market_pb_kwargs(endpoint_name, listing, request)
     if endpoint_name == "stock_a_all_pb":
         return _market_activity_all_pb_kwargs(endpoint_name, listing, request)
     if endpoint_name == "stock_a_ttm_lyr":
@@ -29790,6 +30136,52 @@ def _market_activity_market_pe_kwargs(
         raise ProviderRequestError(
             "AKShare market-PE endpoint requires symbol in "
             + repr(_MARKET_ACTIVITY_MARKET_PE_SYMBOLS),
+            request=request,
+            retryable=False,
+        )
+    return {"symbol": symbol}
+
+
+def _market_activity_market_pb_kwargs(
+    endpoint_name: str,
+    listing: _ListingRef,
+    request: ProviderRequest,
+) -> dict[str, object]:
+    """Build the documented market-PB request with an explicit board symbol."""
+
+    if endpoint_name != "stock_market_pb_lg":
+        raise ProviderRequestError(
+            f"unsupported AKShare market-PB endpoint {endpoint_name!r}",
+            request=request,
+            retryable=False,
+        )
+    if listing.market is not ListingMarket.A:
+        raise ProviderRequestError(
+            "the AKShare market-PB endpoint supports A-share listings only",
+            request=request,
+            retryable=False,
+        )
+    unknown = sorted(
+        set(request.parameters) - _MARKET_ACTIVITY_MARKET_PB_PARAMETER_NAMES
+    )
+    if unknown:
+        raise ProviderRequestError(
+            "unsupported AKShare market-PB parameter(s): " + ", ".join(unknown),
+            request=request,
+            retryable=False,
+        )
+    if request.parameters.get("view") != _MARKET_ACTIVITY_MARKET_PB_VIEW:
+        raise ProviderRequestError(
+            "AKShare market-PB endpoint requires "
+            f"view={_MARKET_ACTIVITY_MARKET_PB_VIEW!r}",
+            request=request,
+            retryable=False,
+        )
+    symbol = request.parameters.get("symbol")
+    if symbol not in _MARKET_ACTIVITY_MARKET_PB_SYMBOLS:
+        raise ProviderRequestError(
+            "AKShare market-PB endpoint requires symbol in "
+            + repr(_MARKET_ACTIVITY_MARKET_PB_SYMBOLS),
             request=request,
             retryable=False,
         )
