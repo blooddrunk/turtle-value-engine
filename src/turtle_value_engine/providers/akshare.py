@@ -55,9 +55,9 @@ The SSE daily-deal overview raw slice is also available. The SZSE area-summary
 and sector-summary raw slices are also available. The Eastmoney industry-board
 snapshot, Dragon-Tiger institution-daily raw slice, stock-account-statistics
 history and Legu market-activity/congestion/equity-bond-spread/Buffett-index/
-A-share PE/PB-history, index-PE/index-PB, market-PE/market-PB, A/H Eastmoney
-valuation-comparison and A/H Baidu valuation-history snapshots are also
-available.
+A-share PE/PB-history, index-PE/index-PB, market-PE/market-PB, A-share Eastmoney
+growth-comparison, A/H Eastmoney valuation-comparison and A/H Baidu
+valuation-history snapshots are also available.
 The A-share Eastmoney top-ten, top-ten-tradable-shareholder and
 top-ten-tradable-shareholder-detail raw slices are also available.
 The A-share Eastmoney institutional-research statistics and detail raw slices
@@ -108,9 +108,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "123"
+AKSHARE_ADAPTER_VERSION = "124"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "124"
+AKSHARE_MAPPING_VERSION = "125"
 
 
 class ListingMarket(StrEnum):
@@ -233,6 +233,10 @@ _SOURCE_URIS = {
     "stock_zh_valuation_comparison_em": (
         "https://emweb.securities.eastmoney.com/pc_hsf10/pages/"
         "index.html?type=web&code=000895&color=b#/thbj/gzbj"
+    ),
+    "stock_zh_growth_comparison_em": (
+        "https://emweb.securities.eastmoney.com/pc_hsf10/pages/"
+        "index.html?type=web&code=000895&color=b#/thbj/czxbj"
     ),
     "stock_hk_valuation_comparison_em": (
         "https://emweb.securities.eastmoney.com/PC_HKF10/pages/"
@@ -1734,6 +1738,134 @@ _MARKET_ACTIVITY_HK_BAIDU_VALUATION_UPSTREAM_FIXED_PARAMETERS = {
 _MARKET_ACTIVITY_HK_BAIDU_VALUATION_DOCUMENTED_UNITS: dict[str, str] = {}
 _MARKET_ACTIVITY_HK_BAIDU_VALUATION_UNDOCUMENTED_NUMERIC_UNITS = {
     "value": "not_documented"
+}
+_MARKET_ACTIVITY_GROWTH_COMPARISON_ENDPOINT = "stock_zh_growth_comparison_em"
+_MARKET_ACTIVITY_GROWTH_COMPARISON_PARAMETER_NAMES = frozenset({"view"})
+_MARKET_ACTIVITY_GROWTH_COMPARISON_VIEW = "growth_comparison"
+_MARKET_ACTIVITY_GROWTH_COMPARISON_FIELDS = (
+    "代码",
+    "简称",
+    "基本每股收益增长率-3年复合",
+    "基本每股收益增长率-24A",
+    "基本每股收益增长率-TTM",
+    "基本每股收益增长率-25E",
+    "基本每股收益增长率-26E",
+    "基本每股收益增长率-27E",
+    "营业收入增长率-3年复合",
+    "营业收入增长率-24A",
+    "营业收入增长率-TTM",
+    "营业收入增长率-25E",
+    "营业收入增长率-26E",
+    "营业收入增长率-27E",
+    "净利润增长率-3年复合",
+    "净利润增长率-24A",
+    "净利润增长率-TTM",
+    "净利润增长率-25E",
+    "净利润增长率-26E",
+    "净利润增长率-27E",
+    "基本每股收益增长率-3年复合排名",
+)
+_MARKET_ACTIVITY_GROWTH_COMPARISON_FIELD_SET = frozenset(
+    _MARKET_ACTIVITY_GROWTH_COMPARISON_FIELDS
+)
+_MARKET_ACTIVITY_GROWTH_COMPARISON_TEXT_FIELDS = ("代码", "简称")
+_MARKET_ACTIVITY_GROWTH_COMPARISON_METRIC_FIELDS = (
+    *_MARKET_ACTIVITY_GROWTH_COMPARISON_FIELDS[2:-1],
+)
+_MARKET_ACTIVITY_GROWTH_COMPARISON_RANK_FIELD = (
+    "基本每股收益增长率-3年复合排名"
+)
+_MARKET_ACTIVITY_GROWTH_COMPARISON_NUMERIC_FIELDS = (
+    *_MARKET_ACTIVITY_GROWTH_COMPARISON_METRIC_FIELDS,
+    _MARKET_ACTIVITY_GROWTH_COMPARISON_RANK_FIELD,
+)
+_MARKET_ACTIVITY_GROWTH_COMPARISON_NULLABLE_FIELDS = frozenset(
+    _MARKET_ACTIVITY_GROWTH_COMPARISON_NUMERIC_FIELDS
+)
+_MARKET_ACTIVITY_GROWTH_COMPARISON_REQUIRED_NUMERIC_FIELDS: tuple[str, ...] = ()
+_MARKET_ACTIVITY_GROWTH_COMPARISON_NON_NEGATIVE_FIELDS: frozenset[str] = frozenset()
+_MARKET_ACTIVITY_GROWTH_COMPARISON_INTEGER_FIELDS: frozenset[str] = frozenset()
+_MARKET_ACTIVITY_GROWTH_COMPARISON_FIELD_TYPES = {
+    **{
+        field: "string"
+        for field in _MARKET_ACTIVITY_GROWTH_COMPARISON_TEXT_FIELDS
+    },
+    **{
+        field: "number"
+        for field in _MARKET_ACTIVITY_GROWTH_COMPARISON_NUMERIC_FIELDS
+    },
+}
+_MARKET_ACTIVITY_GROWTH_COMPARISON_SOURCE_URI = (
+    "https://emweb.securities.eastmoney.com/pc_hsf10/pages/"
+    "index.html?type=web&code=000895&color=b#/thbj/czxbj"
+)
+_MARKET_ACTIVITY_GROWTH_COMPARISON_UPSTREAM_URL = (
+    "https://datacenter.eastmoney.com/securities/api/data/v1/get"
+)
+_MARKET_ACTIVITY_GROWTH_COMPARISON_UPSTREAM_PARAMETERS = (
+    "reportName",
+    "columns",
+    "quoteColumns",
+    "filter",
+    "pageNumber",
+    "pageSize",
+    "sortTypes",
+    "sortColumns",
+    "source",
+    "client",
+    "v",
+)
+_MARKET_ACTIVITY_GROWTH_COMPARISON_UPSTREAM_FIXED_PARAMETERS = {
+    "reportName": "RPT_PCF10_INDUSTRY_GROWTH",
+    "columns": "ALL",
+    "quoteColumns": "",
+    "pageNumber": "",
+    "pageSize": "",
+    "sortTypes": "1",
+    "sortColumns": "PAIMING",
+    "source": "HSF10",
+    "client": "PC",
+    "v": "02747607708067783",
+}
+_MARKET_ACTIVITY_GROWTH_COMPARISON_UPSTREAM_COLUMNS = (
+    "SECUCODE",
+    "SECURITY_CODE",
+    "CORRE_SECUCODE",
+    "CORRE_SECURITY_CODE",
+    "CORRE_SECURITY_NAME",
+    "YYSRTB",
+    "MGSYTB",
+    "JLRTB",
+    "JLR_3Y",
+    "YYSR_3Y",
+    "MGSY_3Y",
+    "YYSRTTM",
+    "MGSYTTM",
+    "JLRTTM",
+    "MGSY_1E",
+    "MGSY_2E",
+    "MGSY_3E",
+    "JLR_1E",
+    "JLR_2E",
+    "JLR_3E",
+    "YYSR_1E",
+    "YYSR_2E",
+    "YYSR_3E",
+    "PAIMING",
+    "REPORT_DATE",
+    "TOTAL_COUNT",
+)
+_MARKET_ACTIVITY_GROWTH_COMPARISON_WRAPPER_DROPPED_FIELDS = (
+    "SECUCODE",
+    "SECURITY_CODE",
+    "CORRE_SECUCODE",
+    "REPORT_DATE",
+    "TOTAL_COUNT",
+)
+_MARKET_ACTIVITY_GROWTH_COMPARISON_DOCUMENTED_UNITS: dict[str, str] = {}
+_MARKET_ACTIVITY_GROWTH_COMPARISON_UNDOCUMENTED_NUMERIC_UNITS = {
+    field: "not_documented"
+    for field in _MARKET_ACTIVITY_GROWTH_COMPARISON_NUMERIC_FIELDS
 }
 _MARKET_ACTIVITY_VALUATION_COMPARISON_PARAMETER_NAMES = frozenset({"view"})
 _MARKET_ACTIVITY_VALUATION_COMPARISON_VIEW = "valuation_comparison"
@@ -3640,6 +3772,18 @@ class AKShareProvider(StructuredDataProvider):
         if (
             request.category is DataCategory.MARKET_ACTIVITY
             and request.parameters.get("view")
+            == _MARKET_ACTIVITY_GROWTH_COMPARISON_VIEW
+            and listing.market is not ListingMarket.A
+        ):
+            raise ProviderRequestError(
+                "the AKShare growth-comparison endpoint supports A-share listings only",
+                provider=self.identity,
+                request=request,
+                retryable=False,
+            )
+        if (
+            request.category is DataCategory.MARKET_ACTIVITY
+            and request.parameters.get("view")
             == _MARKET_ACTIVITY_HOT_RANK_DETAIL_VIEW
             and listing.market is not ListingMarket.A
         ):
@@ -4548,6 +4692,28 @@ class AKShareProvider(StructuredDataProvider):
                 )
                 response_metadata.update(
                     _market_activity_valuation_comparison_response_metadata(
+                        listing_code=listing.code,
+                        symbol=symbol,
+                        rows=rows,
+                        row_count=len(rows),
+                    )
+                )
+            elif endpoint.name == _MARKET_ACTIVITY_GROWTH_COMPARISON_ENDPOINT:
+                symbol = kwargs["symbol"]
+                if not isinstance(symbol, str):
+                    raise ProviderResponseError(
+                        "AKShare growth-comparison upstream symbol must be text",
+                        provider=self.identity,
+                        request=request,
+                    )
+                _validate_market_activity_growth_comparison_provider_rows(
+                    rows,
+                    listing=listing,
+                    provider=self.identity,
+                    request=request,
+                )
+                response_metadata.update(
+                    _market_activity_growth_comparison_response_metadata(
                         listing_code=listing.code,
                         symbol=symbol,
                         rows=rows,
@@ -7486,6 +7652,10 @@ class AKShareProvider(StructuredDataProvider):
                 request.parameters.get("view")
                 == _MARKET_ACTIVITY_HK_VALUATION_COMPARISON_VIEW
             ),
+            market_activity_growth_comparison_requested=(
+                request.parameters.get("view")
+                == _MARKET_ACTIVITY_GROWTH_COMPARISON_VIEW
+            ),
             market_activity_valuation_comparison_requested=(
                 request.parameters.get("view")
                 == _MARKET_ACTIVITY_VALUATION_COMPARISON_VIEW
@@ -8029,6 +8199,15 @@ class AKShareNormalizer:
                     normalizer_flags.add(
                         "AKSHARE_VALUATION_COMPARISON_RAW_ONLY"
                     )
+                elif endpoint_name == _MARKET_ACTIVITY_GROWTH_COMPARISON_ENDPOINT:
+                    _validate_market_activity_growth_comparison_normalizer_scope(
+                        record,
+                        listing,
+                        rows,
+                    )
+                    normalizer_flags.add(
+                        "AKSHARE_GROWTH_COMPARISON_RAW_ONLY"
+                    )
                 elif endpoint_name == _MARKET_ACTIVITY_HK_VALUATION_COMPARISON_ENDPOINT:
                     _validate_market_activity_hk_valuation_comparison_normalizer_scope(
                         record,
@@ -8294,6 +8473,7 @@ class AKShareNormalizer:
                         "stock_zh_valuation_baidu, "
                         "stock_hk_valuation_baidu, "
                         "stock_zh_valuation_comparison_em, "
+                        "stock_zh_growth_comparison_em, "
                         "stock_hk_valuation_comparison_em, "
                         "stock_market_pe_lg, "
                         "stock_market_pb_lg, "
@@ -10051,6 +10231,13 @@ class AKShareNormalizer:
                 "valuation-multiple semantics are not reconciled to filing-backed "
                 "accounting scope, units or the canonical valuation contract."
             )
+        if "AKSHARE_GROWTH_COMPARISON_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented Eastmoney growth-comparison response is retained "
+                "as raw evidence only: its provider-defined growth rates and "
+                "peer ranks are not reconciled to filing-backed periods, units or "
+                "a canonical growth or valuation contract."
+            )
         if "AKSHARE_HK_VALUATION_COMPARISON_RAW_ONLY" in normalizer_flags:
             notes += (
                 " The documented H-share Eastmoney valuation-comparison response is "
@@ -10581,6 +10768,7 @@ def _endpoint_candidates(
     market_activity_baidu_valuation_requested: bool = False,
     market_activity_hk_baidu_valuation_requested: bool = False,
     market_activity_hk_valuation_comparison_requested: bool = False,
+    market_activity_growth_comparison_requested: bool = False,
     market_activity_valuation_comparison_requested: bool = False,
     market_activity_market_pb_requested: bool = False,
     market_activity_account_statistics_requested: bool = False,
@@ -10760,6 +10948,10 @@ def _endpoint_candidates(
         if market_activity_hk_valuation_comparison_requested:
             if market is ListingMarket.H:
                 return (_MARKET_ACTIVITY_HK_VALUATION_COMPARISON_ENDPOINT,)
+            return ()
+        if market_activity_growth_comparison_requested:
+            if market is ListingMarket.A:
+                return (_MARKET_ACTIVITY_GROWTH_COMPARISON_ENDPOINT,)
             return ()
         if market_activity_valuation_comparison_requested:
             if market is ListingMarket.A:
@@ -20216,6 +20408,310 @@ def _market_activity_valuation_comparison_response_metadata(
     }
 
 
+def _market_activity_growth_comparison_rank(value: object) -> float | None:
+    """Read the positive integer rank emitted as a numeric wrapper value."""
+
+    if isinstance(value, bool) or not isinstance(value, Real):
+        return None
+    rank = float(value)
+    if not math.isfinite(rank) or not rank.is_integer() or rank < 1:
+        return None
+    return rank
+
+
+def _market_activity_growth_comparison_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef | None = None,
+) -> str | None:
+    """Return strict-schema errors for the current growth-comparison wrapper."""
+
+    if len(rows) < 3:
+        return (
+            "market-activity growth-comparison response must contain the two "
+            "industry-summary rows and a target row"
+        )
+
+    for index, row in enumerate(rows):
+        missing = [
+            field
+            for field in _MARKET_ACTIVITY_GROWTH_COMPARISON_FIELDS
+            if field not in row
+        ]
+        unexpected = [
+            field
+            for field in row
+            if field not in _MARKET_ACTIVITY_GROWTH_COMPARISON_FIELD_SET
+        ]
+        if missing:
+            return (
+                "market-activity growth-comparison row "
+                f"{index} is missing field(s): "
+                + ", ".join(missing)
+            )
+        if unexpected:
+            return (
+                "market-activity growth-comparison row "
+                f"{index} contains unsupported field(s): "
+                + ", ".join(unexpected)
+            )
+        if tuple(row) != _MARKET_ACTIVITY_GROWTH_COMPARISON_FIELDS:
+            return (
+                "market-activity growth-comparison rows must preserve the "
+                "official field order"
+            )
+
+        for field in _MARKET_ACTIVITY_GROWTH_COMPARISON_TEXT_FIELDS:
+            value = row[field]
+            if not isinstance(value, str) or not value.strip():
+                return (
+                    "market-activity growth-comparison row "
+                    f"{index} field {field!r} must be a non-empty string"
+                )
+
+        for field in _MARKET_ACTIVITY_GROWTH_COMPARISON_NUMERIC_FIELDS:
+            value = row[field]
+            if value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, Real):
+                return (
+                    "market-activity growth-comparison row "
+                    f"{index} field {field!r} must be numeric or null"
+                )
+            try:
+                numeric = float(value)
+            except (OverflowError, TypeError, ValueError):
+                return (
+                    "market-activity growth-comparison row "
+                    f"{index} field {field!r} must be numeric or null"
+                )
+            if not math.isfinite(numeric):
+                return (
+                    "market-activity growth-comparison row "
+                    f"{index} field {field!r} must be finite or null"
+                )
+
+    summary_labels = ("行业平均", "行业中值")
+    for index, expected_label in enumerate(summary_labels):
+        row = rows[index]
+        if row["代码"] != expected_label or row["简称"] != expected_label:
+            return (
+                "market-activity growth-comparison row "
+                f"{index} must be the {expected_label} summary row"
+            )
+        if row[_MARKET_ACTIVITY_GROWTH_COMPARISON_RANK_FIELD] is not None:
+            return (
+                "market-activity growth-comparison industry-summary rows must "
+                "have a null rank"
+            )
+
+    peer_codes: set[str] = set()
+    previous_peer_rank: float | None = None
+    for index, row in enumerate(rows[2:-1], start=2):
+        code = row["代码"]
+        if not isinstance(code, str) or re.fullmatch(r"\d{6}", code) is None:
+            return (
+                "market-activity growth-comparison peer row "
+                f"{index} must have a six-digit 代码"
+            )
+        if code in peer_codes:
+            return (
+                "market-activity growth-comparison response has duplicate peer "
+                f"代码 {code!r}"
+            )
+        peer_codes.add(code)
+        rank = _market_activity_growth_comparison_rank(
+            row[_MARKET_ACTIVITY_GROWTH_COMPARISON_RANK_FIELD]
+        )
+        if rank is None:
+            return (
+                "market-activity growth-comparison peer row "
+                f"{index} rank must be a positive integer"
+            )
+        if previous_peer_rank is not None and rank <= previous_peer_rank:
+            return (
+                "market-activity growth-comparison peer ranks must be strictly "
+                "ascending"
+            )
+        previous_peer_rank = rank
+
+    target = rows[-1]
+    target_code = target["代码"]
+    if not isinstance(target_code, str) or re.fullmatch(r"\d{6}", target_code) is None:
+        return "market-activity growth-comparison target row must have a six-digit 代码"
+    if listing is not None and target_code != listing.code:
+        return (
+            "market-activity growth-comparison target row entity "
+            f"{target_code!r} does not match requested listing "
+            f"{listing.canonical_id!r}"
+        )
+    if target_code in peer_codes:
+        return (
+            "market-activity growth-comparison response contains the target in "
+            "both the peer rows and target row"
+        )
+    if (
+        _market_activity_growth_comparison_rank(
+            target[_MARKET_ACTIVITY_GROWTH_COMPARISON_RANK_FIELD]
+        )
+        is None
+    ):
+        return "market-activity growth-comparison target rank must be a positive integer"
+    return None
+
+
+def _validate_market_activity_growth_comparison_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    listing: _ListingRef,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> None:
+    """Validate one listing-scoped Eastmoney growth-comparison response."""
+
+    message = _market_activity_growth_comparison_validation_message(rows, listing)
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message}",
+            provider=provider,
+            request=request,
+        )
+
+
+def _market_activity_growth_comparison_row_roles(
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> list[str]:
+    """Describe the wrapper's summary, peer and target row ordering."""
+
+    roles = ["industry_average", "industry_median"]
+    for row in rows[2:-1]:
+        rank = _market_activity_growth_comparison_rank(
+            row[_MARKET_ACTIVITY_GROWTH_COMPARISON_RANK_FIELD]
+        )
+        roles.append(f"peer_rank_{int(rank)}")
+    roles.append("target")
+    return roles
+
+
+def _market_activity_growth_comparison_response_metadata(
+    *,
+    listing_code: str,
+    symbol: str,
+    rows: Sequence[Mapping[str, JSONValue]],
+    row_count: int,
+) -> dict[str, JSONValue]:
+    """Build the replay contract for one growth-comparison snapshot."""
+
+    if not rows:
+        raise ValueError("growth-comparison response must contain rows")
+    upstream_filter = _market_activity_valuation_comparison_filter(symbol)
+    peer_ranks = [
+        int(
+            _market_activity_growth_comparison_rank(
+                row[_MARKET_ACTIVITY_GROWTH_COMPARISON_RANK_FIELD]
+            )
+        )
+        for row in rows[2:-1]
+    ]
+    target_rank = _market_activity_growth_comparison_rank(
+        rows[-1][_MARKET_ACTIVITY_GROWTH_COMPARISON_RANK_FIELD]
+    )
+    return {
+        "endpoint": _MARKET_ACTIVITY_GROWTH_COMPARISON_ENDPOINT,
+        "market": ListingMarket.A.value,
+        "listing_code": listing_code,
+        "market_activity_view": _MARKET_ACTIVITY_GROWTH_COMPARISON_VIEW,
+        "upstream_symbol": symbol,
+        "market_scope": "requested_a_share_listing_industry_growth_comparison",
+        "listing_scoped_request": True,
+        "row_filtering": "upstream",
+        "snapshot_scope": "requested_a_share_growth_comparison_snapshot",
+        "date_binding": "retrieval_only",
+        "rank_field": _MARKET_ACTIVITY_GROWTH_COMPARISON_RANK_FIELD,
+        "rank_constraint": "positive_integer_for_target_and_peers_null_for_summaries",
+        "rank_ordering": (
+            "two_industry_summary_rows_then_ascending_peer_rank_then_target"
+        ),
+        "target_code_field": "代码",
+        "target_row_position": len(rows) - 1,
+        "target_row_count": 1,
+        "target_rank": int(target_rank),
+        "target_rank_field": _MARKET_ACTIVITY_GROWTH_COMPARISON_RANK_FIELD,
+        "industry_summary_code_field": "代码",
+        "industry_summary_labels": [rows[0]["代码"], rows[1]["代码"]],
+        "industry_summary_row_count": 2,
+        "peer_rank_field": _MARKET_ACTIVITY_GROWTH_COMPARISON_RANK_FIELD,
+        "peer_rank_ordering": "strictly_ascending_positive_integer_numbers",
+        "peer_rank_order": peer_ranks,
+        "peer_row_count": len(rows) - 3,
+        "comparison_row_roles": _market_activity_growth_comparison_row_roles(rows),
+        "value_fields": list(_MARKET_ACTIVITY_GROWTH_COMPARISON_METRIC_FIELDS),
+        "rank_fields": [_MARKET_ACTIVITY_GROWTH_COMPARISON_RANK_FIELD],
+        "signed_fields": list(_MARKET_ACTIVITY_GROWTH_COMPARISON_METRIC_FIELDS),
+        "non_negative_fields": list(
+            _MARKET_ACTIVITY_GROWTH_COMPARISON_NON_NEGATIVE_FIELDS
+        ),
+        "integer_fields": list(_MARKET_ACTIVITY_GROWTH_COMPARISON_INTEGER_FIELDS),
+        "text_fields": list(_MARKET_ACTIVITY_GROWTH_COMPARISON_TEXT_FIELDS),
+        "required_text_fields": list(
+            _MARKET_ACTIVITY_GROWTH_COMPARISON_TEXT_FIELDS
+        ),
+        "required_numeric_fields": list(
+            _MARKET_ACTIVITY_GROWTH_COMPARISON_REQUIRED_NUMERIC_FIELDS
+        ),
+        "field_types": dict(_MARKET_ACTIVITY_GROWTH_COMPARISON_FIELD_TYPES),
+        "nullable_fields": [
+            field
+            for field in _MARKET_ACTIVITY_GROWTH_COMPARISON_FIELDS
+            if field in _MARKET_ACTIVITY_GROWTH_COMPARISON_NULLABLE_FIELDS
+        ],
+        "field_count": len(_MARKET_ACTIVITY_GROWTH_COMPARISON_FIELDS),
+        "source_field_order": list(_MARKET_ACTIVITY_GROWTH_COMPARISON_FIELDS),
+        "documented_units": dict(
+            _MARKET_ACTIVITY_GROWTH_COMPARISON_DOCUMENTED_UNITS
+        ),
+        "undocumented_numeric_units": dict(
+            _MARKET_ACTIVITY_GROWTH_COMPARISON_UNDOCUMENTED_NUMERIC_UNITS
+        ),
+        "upstream_url": _MARKET_ACTIVITY_GROWTH_COMPARISON_UPSTREAM_URL,
+        "upstream_protocol": "JSON",
+        "upstream_report_name": (
+            _MARKET_ACTIVITY_GROWTH_COMPARISON_UPSTREAM_FIXED_PARAMETERS[
+                "reportName"
+            ]
+        ),
+        "upstream_columns_selector": "ALL",
+        "upstream_columns": list(
+            _MARKET_ACTIVITY_GROWTH_COMPARISON_UPSTREAM_COLUMNS
+        ),
+        "upstream_parameters": list(
+            _MARKET_ACTIVITY_GROWTH_COMPARISON_UPSTREAM_PARAMETERS
+        ),
+        "upstream_fixed_parameters": dict(
+            _MARKET_ACTIVITY_GROWTH_COMPARISON_UPSTREAM_FIXED_PARAMETERS
+        ),
+        "upstream_dynamic_parameters": {
+            "symbol": symbol,
+            "filter": upstream_filter,
+        },
+        "upstream_authentication": "none",
+        "wrapper_dropped_fields": list(
+            _MARKET_ACTIVITY_GROWTH_COMPARISON_WRAPPER_DROPPED_FIELDS
+        ),
+        "upstream_page_size": None,
+        "pagination": "single_snapshot",
+        "upstream_sort_column": "PAIMING",
+        "upstream_sort_direction": "ascending",
+        "upstream_filter": upstream_filter,
+        "wrapper_source_page_uri": _MARKET_ACTIVITY_GROWTH_COMPARISON_SOURCE_URI,
+        "wrapper_output_ordering": (
+            "two_industry_summary_rows_then_ascending_peer_rank_then_target"
+        ),
+        "entity_rows_selected": True,
+        "upstream_row_count": row_count,
+        "entity_row_count": row_count,
+    }
+
+
 def _market_activity_hk_valuation_comparison_validation_message(
     rows: Sequence[Mapping[str, JSONValue]],
     listing: _ListingRef | None = None,
@@ -25947,6 +26443,81 @@ def _validate_market_activity_valuation_comparison_normalizer_scope(
             raise ProviderNormalizationError(
                 f"AKShare valuation-comparison response metadata {name!r} "
                 "does not match the requested replay scope"
+            )
+
+
+def _validate_market_activity_growth_comparison_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> None:
+    """Validate replay scope and metadata for the growth comparison."""
+
+    if listing.market is not ListingMarket.A:
+        raise ProviderNormalizationError(
+            "AKShare growth-comparison raw slice supports A-share listings only"
+        )
+    endpoint_name = _MARKET_ACTIVITY_GROWTH_COMPARISON_ENDPOINT
+    if record.response_metadata.get("endpoint") != endpoint_name:
+        raise ProviderNormalizationError(
+            "AKShare growth-comparison record must come from "
+            "stock_zh_growth_comparison_em"
+        )
+    if record.source_uri != _SOURCE_URIS[endpoint_name]:
+        raise ProviderNormalizationError(
+            "AKShare growth-comparison source URI does not match the documented "
+            "endpoint"
+        )
+    try:
+        upstream_kwargs = _market_activity_growth_comparison_kwargs(
+            endpoint_name,
+            listing,
+            record.request,
+        )
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+    symbol = upstream_kwargs["symbol"]
+    if not isinstance(symbol, str):
+        raise ProviderNormalizationError(
+            "AKShare growth-comparison upstream symbol must be text"
+        )
+
+    message = _market_activity_growth_comparison_validation_message(rows, listing)
+    if message is not None:
+        raise ProviderNormalizationError(message)
+    expected_metadata = _market_activity_growth_comparison_response_metadata(
+        listing_code=listing.code,
+        symbol=symbol,
+        rows=rows,
+        row_count=len(rows),
+    )
+    boolean_fields = {"listing_scoped_request", "entity_rows_selected"}
+    count_fields = {
+        "field_count",
+        "target_row_position",
+        "target_row_count",
+        "target_rank",
+        "industry_summary_row_count",
+        "peer_row_count",
+        "upstream_row_count",
+        "entity_row_count",
+    }
+    for name, expected in expected_metadata.items():
+        actual = record.response_metadata.get(name)
+        if name in boolean_fields:
+            matches = isinstance(actual, bool) and actual is expected
+        elif name in count_fields:
+            matches = (
+                isinstance(actual, int)
+                and not isinstance(actual, bool)
+                and actual == expected
+            )
+        else:
+            matches = actual == expected
+        if not matches:
+            raise ProviderNormalizationError(
+                f"AKShare growth-comparison response metadata {name!r} does not "
+                "match the requested replay scope"
             )
 
 
@@ -32731,6 +33302,12 @@ def _market_activity_kwargs(
             listing,
             request,
         )
+    if endpoint_name == _MARKET_ACTIVITY_GROWTH_COMPARISON_ENDPOINT:
+        return _market_activity_growth_comparison_kwargs(
+            endpoint_name,
+            listing,
+            request,
+        )
     if endpoint_name == "stock_zh_valuation_comparison_em":
         return _market_activity_valuation_comparison_kwargs(
             endpoint_name,
@@ -33102,6 +33679,46 @@ def _market_activity_hk_baidu_valuation_kwargs(
         "indicator": indicator,
         "period": period,
     }
+
+
+def _market_activity_growth_comparison_kwargs(
+    endpoint_name: str,
+    listing: _ListingRef,
+    request: ProviderRequest,
+) -> dict[str, object]:
+    """Build the A-share listing-scoped Eastmoney growth request."""
+
+    if endpoint_name != _MARKET_ACTIVITY_GROWTH_COMPARISON_ENDPOINT:
+        raise ProviderRequestError(
+            f"unsupported AKShare growth-comparison endpoint {endpoint_name!r}",
+            request=request,
+            retryable=False,
+        )
+    if listing.market is not ListingMarket.A:
+        raise ProviderRequestError(
+            "the AKShare growth-comparison endpoint supports A-share listings only",
+            request=request,
+            retryable=False,
+        )
+    unknown = sorted(
+        set(request.parameters)
+        - _MARKET_ACTIVITY_GROWTH_COMPARISON_PARAMETER_NAMES
+    )
+    if unknown:
+        raise ProviderRequestError(
+            "unsupported AKShare growth-comparison parameter(s): "
+            + ", ".join(unknown),
+            request=request,
+            retryable=False,
+        )
+    if request.parameters.get("view") != _MARKET_ACTIVITY_GROWTH_COMPARISON_VIEW:
+        raise ProviderRequestError(
+            "AKShare growth-comparison endpoint requires "
+            f"view={_MARKET_ACTIVITY_GROWTH_COMPARISON_VIEW!r}",
+            request=request,
+            retryable=False,
+        )
+    return {"symbol": listing.canonical_id}
 
 
 def _market_activity_valuation_comparison_kwargs(

@@ -1799,6 +1799,31 @@ until its provider-defined periods, units and accounting scope are reconciled.
 The response remains outside the calculation, gate, pipeline, CLI and
 input-loader contracts.
 
+## Phase 3.23 A-share Eastmoney growth-comparison raw snapshot
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_zh_comparison_em.py)
+document `stock_zh_growth_comparison_em` as a single-symbol industry growth
+table. The adapter exposes it only under `MARKET_ACTIVITY` with explicit
+`view=growth_comparison`; an A-share listing is converted to the
+exchange-prefixed six-digit upstream `symbol` expected by the wrapper.
+
+| Raw upstream item | Phase 3.23 treatment |
+| --- | --- |
+| `代码`, `简称` | Required wrapper text fields; the first two rows are `行业平均` and `行业中值`, and the final row must match the requested A-share listing. |
+| 18 growth-rate fields | Nullable finite numeric provider-defined growth values; signed values are preserved and no unit or universal non-negative domain is inferred. |
+| `基本每股收益增长率-3年复合排名` | Nullable for the two industry summaries and a positive integer-valued provider rank for peers and the target; it remains raw comparison metadata. |
+| request `view=growth_comparison` | Explicit A-share-only listing-scoped routing. The Eastmoney JSON request freezes `RPT_PCF10_INDUSTRY_GROWTH`, `columns=ALL`, `sortTypes=1`, `sortColumns=PAIMING`, `source=HSF10`, `client=PC` and the wrapper's version parameter, while deriving `filter=(SECUCODE="<code>.<exchange>")` from the requested listing. Exact field order, row roles, rank order, upstream fields and replay metadata remain part of the raw contract. |
+
+The provider rejects unsupported views/parameters, non-A listings,
+missing/unexpected/reordered fields, malformed summary/peer/target rows,
+duplicate or non-ascending peer ranks and non-finite/non-numeric values. The
+normalizer emits `AKSHARE_GROWTH_COMPARISON_RAW_ONLY` and creates no canonical
+growth, valuation, market, return, governance or accounting fact: the table is
+raw evidence only until its provider-defined periods, units and accounting
+scope are reconciled. The response remains outside the calculation, gate,
+pipeline, CLI and input-loader contracts.
+
 ## Phase 2.92 SSE daily-deal overview raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)

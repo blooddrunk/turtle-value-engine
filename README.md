@@ -1391,6 +1391,21 @@ remains raw evidence and does not become a canonical valuation, market, return,
 governance or accounting fact. No calculation, gate, pipeline, CLI or
 input-loader contract changes.
 
+Phase 3.23 adds the documented A-share Eastmoney
+`stock_zh_growth_comparison_em` growth-comparison endpoint under
+`MARKET_ACTIVITY` with explicit `view=growth_comparison` and a derived
+exchange-prefixed six-digit listing symbol. The [AKShare stock-data
+documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and [official
+implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_zh_comparison_em.py)
+define the exact 21-field industry-average/industry-median/peer/target table.
+The provider freezes the Eastmoney JSON report, filter, sort, client and
+version parameters, preserves the wrapper row roles and ranks, accepts
+nullable and signed growth values, and validates the exact output schema. The
+normalizer emits `AKSHARE_GROWTH_COMPARISON_RAW_ONLY`; this provider-defined
+growth comparison remains raw evidence and does not become a canonical growth,
+valuation, market, return, governance or accounting fact. No calculation,
+gate, pipeline, CLI or input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.
