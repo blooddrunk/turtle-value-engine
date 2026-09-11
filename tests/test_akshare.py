@@ -326,6 +326,13 @@ class FakeAKShare:
             symbol=symbol,
         )
 
+    def stock_hk_valuation_comparison_em(self, *, symbol: str):
+        return self._return(
+            "stock_hk_valuation_comparison_em",
+            _fixture("hk_valuation_comparison.json"),
+            symbol=symbol,
+        )
+
     def stock_sse_deal_daily(self, *, date: str):
         return self._return(
             "stock_sse_deal_daily",
@@ -1055,8 +1062,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "122"
-    assert AKSHARE_MAPPING_VERSION == "123"
+    assert provider.identity.provider_version == "123"
+    assert AKSHARE_MAPPING_VERSION == "124"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -24624,6 +24631,461 @@ def test_market_activity_valuation_comparison_cache_replay_does_not_call_upstrea
     assert replay.record == live.record
     assert fake.calls == [
         ("stock_zh_valuation_comparison_em", {"symbol": "SZ000895"})
+    ]
+
+
+def test_market_activity_hk_valuation_comparison_fetch_preserves_official_row():
+    fake = FakeAKShare()
+    request = _request(
+        DataCategory.MARKET_ACTIVITY,
+        "HK00700",
+        {"view": "valuation_comparison_hk"},
+    )
+
+    record = _provider(fake).fetch(request)
+    fixture = _fixture("hk_valuation_comparison.json")
+    metadata = record.response_metadata
+    metric_fields = [
+        "市盈率-TTM",
+        "市盈率-LYR",
+        "市净率-MRQ",
+        "市净率-LYR",
+        "市销率-TTM",
+        "市销率-LYR",
+        "市现率-TTM",
+        "市现率-LYR",
+    ]
+    rank_fields = [
+        "市盈率-TTM排名",
+        "市盈率-LYR排名",
+        "市净率-MRQ排名",
+        "市净率-LYR排名",
+        "市销率-TTM排名",
+        "市销率-LYR排名",
+        "市现率-TTM排名",
+        "市现率-LYR排名",
+    ]
+    upstream_columns = [
+        "SECUCODE",
+        "SECURITY_CODE",
+        "ORG_CODE",
+        "REPORT_DATE",
+        "TYPE_ID",
+        "TYPE_TYPE",
+        "TYPE_NAME",
+        "TYPE_NAME_EN",
+        "CORRE_SECURITY_CODE",
+        "CORRE_SECUCODE",
+        "CORRE_SECURITY_NAME",
+        "PE_TTM",
+        "PE_LYR",
+        "PB_MQR",
+        "PB_LYR",
+        "PS_TTM",
+        "PS_LYR",
+        "PCE_TTM",
+        "PCE_LYR",
+        "PE_TTM_RANK",
+        "PE_LYR_RANK",
+        "PB_MQR_RANK",
+        "PB_LYR_RANK",
+        "PS_TTM_RANK",
+        "PS_LYR_RANK",
+        "PCE_TTM_RANK",
+        "PCE_LYR_RANK",
+    ]
+
+    assert record.raw_payload == fixture
+    assert fake.calls == [
+        ("stock_hk_valuation_comparison_em", {"symbol": "00700"})
+    ]
+    assert metadata["endpoint"] == "stock_hk_valuation_comparison_em"
+    assert metadata["market"] == "H"
+    assert metadata["listing_code"] == "00700"
+    assert metadata["market_activity_view"] == "valuation_comparison_hk"
+    assert metadata["upstream_symbol"] == "00700"
+    assert metadata["market_scope"] == "requested_h_share_listing_industry_comparison"
+    assert metadata["listing_scoped_request"] is True
+    assert metadata["row_filtering"] == "upstream"
+    assert metadata["snapshot_scope"] == (
+        "requested_h_share_valuation_comparison_snapshot"
+    )
+    assert metadata["date_binding"] == "retrieval_only"
+    assert metadata["listing_code_field"] == "代码"
+    assert metadata["listing_row_position"] == 0
+    assert metadata["listing_row_count"] == 1
+    assert metadata["rank_fields"] == rank_fields
+    assert metadata["rank_constraint"] == "positive_integer"
+    assert metadata["value_fields"] == metric_fields
+    assert metadata["signed_fields"] == metric_fields
+    assert metadata["non_negative_fields"] == []
+    assert metadata["integer_fields"] == rank_fields
+    assert metadata["text_fields"] == ["代码", "简称"]
+    assert metadata["required_text_fields"] == ["代码", "简称"]
+    assert metadata["required_numeric_fields"] == rank_fields
+    assert metadata["field_types"] == {
+        "代码": "string",
+        "简称": "string",
+        **{field: "number" for field in metric_fields},
+        **{field: "integer" for field in rank_fields},
+    }
+    assert metadata["nullable_fields"] == metric_fields
+    assert metadata["field_count"] == 18
+    assert metadata["source_field_order"] == list(fixture[0])
+    assert metadata["documented_units"] == {}
+    assert metadata["undocumented_numeric_units"] == {
+        field: "not_documented" for field in [*metric_fields, *rank_fields]
+    }
+    assert metadata["upstream_url"] == (
+        "https://datacenter.eastmoney.com/securities/api/data/v1/get"
+    )
+    assert metadata["upstream_protocol"] == "JSON"
+    assert metadata["upstream_report_name"] == "RPT_PCF10_INDUSTRY_HKCVALUE"
+    assert metadata["upstream_columns_selector"] == "explicit"
+    assert metadata["upstream_columns"] == upstream_columns
+    assert metadata["upstream_parameters"] == [
+        "reportName",
+        "columns",
+        "quoteColumns",
+        "filter",
+        "pageNumber",
+        "pageSize",
+        "sortTypes",
+        "sortColumns",
+        "source",
+        "client",
+    ]
+    assert metadata["upstream_fixed_parameters"] == {
+        "reportName": "RPT_PCF10_INDUSTRY_HKCVALUE",
+        "columns": ",".join(upstream_columns),
+        "quoteColumns": "",
+        "pageNumber": "1",
+        "pageSize": "",
+        "sortTypes": "",
+        "sortColumns": "",
+        "source": "F10",
+        "client": "PC",
+    }
+    assert metadata["upstream_dynamic_parameters"] == {
+        "symbol": "00700",
+        "filter": '(SECUCODE="00700.HK")(CORRE_SECUCODE="00700.HK")',
+    }
+    assert metadata["upstream_authentication"] == "none"
+    assert metadata["wrapper_dropped_fields"] == [
+        "SECUCODE",
+        "SECURITY_CODE",
+        "ORG_CODE",
+        "REPORT_DATE",
+        "TYPE_ID",
+        "TYPE_TYPE",
+        "TYPE_NAME",
+        "TYPE_NAME_EN",
+        "CORRE_SECUCODE",
+    ]
+    assert metadata["upstream_page_size"] is None
+    assert metadata["pagination"] == "single_snapshot"
+    assert metadata["upstream_sort_column"] is None
+    assert metadata["upstream_sort_direction"] is None
+    assert metadata["upstream_filter"] == (
+        '(SECUCODE="00700.HK")(CORRE_SECUCODE="00700.HK")'
+    )
+    assert metadata["wrapper_source_page_uri"] == (
+        "https://emweb.securities.eastmoney.com/PC_HKF10/pages/"
+        "home/index.html?code=03900&type=web&color=w#/IndustryComparison"
+    )
+    assert metadata["wrapper_output_ordering"] == "single_listing_row"
+    assert metadata["entity_rows_selected"] is True
+    assert metadata["upstream_row_count"] == 1
+    assert metadata["entity_row_count"] == 1
+    assert record.source_uri == metadata["wrapper_source_page_uri"]
+
+
+def test_market_activity_hk_valuation_comparison_derives_five_digit_symbol():
+    fake = FakeAKShare()
+
+    _provider(fake).fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "700.HK",
+            {"view": "valuation_comparison_hk"},
+        )
+    )
+
+    assert fake.calls == [
+        ("stock_hk_valuation_comparison_em", {"symbol": "00700"})
+    ]
+
+
+@pytest.mark.parametrize(
+    ("parameters", "entity_id"),
+    [
+        ({"view": "valuation_comparison_hk", "symbol": "00700"}, "HK00700"),
+        ({"view": "valuation_comparison_hk"}, "SH600000"),
+        ({"view": "valuation_comparison"}, "HK00700"),
+        ({}, "HK00700"),
+    ],
+)
+def test_market_activity_hk_valuation_comparison_validates_scope_before_call(
+    parameters: dict,
+    entity_id: str,
+):
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError):
+        _provider(fake).fetch(
+            _request(DataCategory.MARKET_ACTIVITY, entity_id, parameters)
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "empty",
+        "two_rows",
+        "missing_field",
+        "extra_field",
+        "reordered_fields",
+        "wrong_code",
+        "blank_name",
+        "invalid_metric",
+        "boolean_metric",
+        "null_rank",
+        "fractional_rank",
+        "boolean_rank",
+        "zero_rank",
+        "negative_rank",
+        "string_rank",
+    ],
+)
+def test_market_activity_hk_valuation_comparison_response_validates_boundaries(
+    mutation: str,
+):
+    payload = [dict(row) for row in _fixture("hk_valuation_comparison.json")]
+    if mutation == "empty":
+        payload = []
+    elif mutation == "two_rows":
+        payload.append(dict(payload[0]))
+    elif mutation == "missing_field":
+        payload[0].pop("市盈率-TTM")
+    elif mutation == "extra_field":
+        payload[0]["unexpected"] = "not documented"
+    elif mutation == "reordered_fields":
+        payload[0] = dict(reversed(list(payload[0].items())))
+    elif mutation == "wrong_code":
+        payload[0]["代码"] = "00005"
+    elif mutation == "blank_name":
+        payload[0]["简称"] = ""
+    elif mutation == "invalid_metric":
+        payload[0]["市盈率-TTM"] = "not-a-number"
+    elif mutation == "boolean_metric":
+        payload[0]["市盈率-TTM"] = True
+    elif mutation == "null_rank":
+        payload[0]["市盈率-TTM排名"] = None
+    elif mutation == "fractional_rank":
+        payload[0]["市盈率-TTM排名"] = 1.5
+    elif mutation == "boolean_rank":
+        payload[0]["市盈率-TTM排名"] = False
+    elif mutation == "zero_rank":
+        payload[0]["市盈率-TTM排名"] = 0
+    elif mutation == "negative_rank":
+        payload[0]["市盈率-TTM排名"] = -1
+    else:
+        payload[0]["市盈率-TTM排名"] = "1"
+
+    class InvalidHKValuationComparison(FakeAKShare):
+        def stock_hk_valuation_comparison_em(self, *, symbol: str):
+            return self._return(
+                "stock_hk_valuation_comparison_em",
+                payload,
+                symbol=symbol,
+            )
+
+    with pytest.raises(ProviderResponseError):
+        _provider(InvalidHKValuationComparison()).fetch(
+            _request(
+                DataCategory.MARKET_ACTIVITY,
+                "HK00700",
+                {"view": "valuation_comparison_hk"},
+            )
+        )
+
+
+def test_market_activity_hk_valuation_comparison_allows_nullable_signed_metrics():
+    payload = [dict(row) for row in _fixture("hk_valuation_comparison.json")]
+    payload[0]["市盈率-TTM"] = None
+    payload[0]["市现率-LYR"] = -12.5
+
+    class NullableSignedHKValuationComparison(FakeAKShare):
+        def stock_hk_valuation_comparison_em(self, *, symbol: str):
+            return self._return(
+                "stock_hk_valuation_comparison_em",
+                payload,
+                symbol=symbol,
+            )
+
+    record = _provider(NullableSignedHKValuationComparison()).fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "HK00700",
+            {"view": "valuation_comparison_hk"},
+        )
+    )
+
+    assert record.raw_payload[0]["市盈率-TTM"] is None
+    assert record.raw_payload[0]["市现率-LYR"] == -12.5
+    assert record.response_metadata["nullable_fields"] == record.response_metadata[
+        "value_fields"
+    ]
+    assert record.response_metadata["signed_fields"] == record.response_metadata[
+        "value_fields"
+    ]
+
+
+def test_market_activity_hk_valuation_comparison_is_raw_only_without_facts():
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "HK00700",
+            {"view": "valuation_comparison_hk"},
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="hk-valuation-comparison-raw-only",
+        as_of=date(2026, 9, 11),
+        profile_id="strict-v1",
+        company=_company("HK00700"),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_HK_VALUATION_COMPARISON_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == []
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "H-share" in normalized.data_quality.notes
+    assert "Eastmoney" in normalized.data_quality.notes
+    assert "valuation-comparison" in normalized.data_quality.notes
+    assert "canonical valuation" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "endpoint",
+        "source_uri",
+        "market",
+        "listing_code",
+        "view",
+        "upstream_symbol",
+        "snapshot_scope",
+        "listing_code_field",
+        "listing_row_position",
+        "value_fields",
+        "nullable_fields",
+        "integer_fields",
+        "field_types",
+        "upstream_columns_selector",
+        "upstream_columns",
+        "upstream_fixed_parameters",
+        "upstream_dynamic_parameters",
+        "wrapper_dropped_fields",
+        "upstream_filter",
+        "wrapper_output_ordering",
+        "entity_row_count",
+        "payload",
+    ],
+)
+def test_market_activity_hk_valuation_comparison_rejects_replayed_tampering(
+    mutation: str,
+):
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "HK00700",
+            {"view": "valuation_comparison_hk"},
+        )
+    )
+    payload = [dict(row) for row in record.raw_payload]
+    response_metadata = dict(record.response_metadata)
+    source_uri = record.source_uri
+    wrong_values = {
+        "endpoint": "stock_sse_summary",
+        "market": "A",
+        "listing_code": "000895",
+        "view": "valuation_comparison",
+        "upstream_symbol": "000895",
+        "snapshot_scope": "current_trading_day",
+        "listing_code_field": "证券代码",
+        "listing_row_position": 1,
+        "value_fields": [],
+        "nullable_fields": [],
+        "integer_fields": [],
+        "field_types": {"代码": "string"},
+        "upstream_columns_selector": "ALL",
+        "upstream_columns": ["SECUCODE"],
+        "upstream_fixed_parameters": {"client": "mobile"},
+        "upstream_dynamic_parameters": {"symbol": "000895"},
+        "wrapper_dropped_fields": [],
+        "upstream_filter": None,
+        "wrapper_output_ordering": "source_order",
+        "entity_row_count": 0,
+    }
+    if mutation == "source_uri":
+        source_uri = "https://example.invalid/hk-valuation-comparison"
+    elif mutation == "view":
+        response_metadata["market_activity_view"] = wrong_values["view"]
+    elif mutation == "payload":
+        payload[0]["代码"] = "00005"
+    else:
+        response_metadata[mutation] = wrong_values[mutation]
+
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=source_uri,
+        response_metadata=response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-hk-valuation-comparison",
+            as_of=date(2026, 9, 11),
+            profile_id="strict-v1",
+            company=_company("HK00700"),
+        )
+
+
+def test_market_activity_hk_valuation_comparison_cache_replay_does_not_call_upstream(
+    tmp_path: Path,
+):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.MARKET_ACTIVITY,
+        "HK00700",
+        {"view": "valuation_comparison_hk"},
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [
+        ("stock_hk_valuation_comparison_em", {"symbol": "00700"})
     ]
 
 

@@ -55,9 +55,9 @@ The SSE daily-deal overview raw slice is also available. The SZSE area-summary
 and sector-summary raw slices are also available. The Eastmoney industry-board
 snapshot, Dragon-Tiger institution-daily raw slice, stock-account-statistics
 history and Legu market-activity/congestion/equity-bond-spread/Buffett-index/
-A-share PE/PB-history, index-PE/index-PB, market-PE/market-PB, A-share
-Eastmoney valuation-comparison and A/H Baidu valuation-history snapshots are
-also available.
+A-share PE/PB-history, index-PE/index-PB, market-PE/market-PB, A/H Eastmoney
+valuation-comparison and A/H Baidu valuation-history snapshots are also
+available.
 The A-share Eastmoney top-ten, top-ten-tradable-shareholder and
 top-ten-tradable-shareholder-detail raw slices are also available.
 The A-share Eastmoney institutional-research statistics and detail raw slices
@@ -108,9 +108,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "122"
+AKSHARE_ADAPTER_VERSION = "123"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "123"
+AKSHARE_MAPPING_VERSION = "124"
 
 
 class ListingMarket(StrEnum):
@@ -233,6 +233,10 @@ _SOURCE_URIS = {
     "stock_zh_valuation_comparison_em": (
         "https://emweb.securities.eastmoney.com/pc_hsf10/pages/"
         "index.html?type=web&code=000895&color=b#/thbj/gzbj"
+    ),
+    "stock_hk_valuation_comparison_em": (
+        "https://emweb.securities.eastmoney.com/PC_HKF10/pages/"
+        "home/index.html?code=03900&type=web&color=w#/IndustryComparison"
     ),
     "stock_zt_pool_em": "https://quote.eastmoney.com/ztb/detail#type=ztgc",
     "stock_zt_pool_dtgc_em": "https://quote.eastmoney.com/ztb/detail#type=dtgc",
@@ -1862,6 +1866,161 @@ _MARKET_ACTIVITY_VALUATION_COMPARISON_UNDOCUMENTED_NUMERIC_UNITS = {
     field: "not_documented"
     for field in _MARKET_ACTIVITY_VALUATION_COMPARISON_NUMERIC_FIELDS
 }
+_MARKET_ACTIVITY_HK_VALUATION_COMPARISON_ENDPOINT = (
+    "stock_hk_valuation_comparison_em"
+)
+_MARKET_ACTIVITY_HK_VALUATION_COMPARISON_PARAMETER_NAMES = frozenset({"view"})
+_MARKET_ACTIVITY_HK_VALUATION_COMPARISON_VIEW = "valuation_comparison_hk"
+_MARKET_ACTIVITY_HK_VALUATION_COMPARISON_FIELDS = (
+    "代码",
+    "简称",
+    "市盈率-TTM",
+    "市盈率-TTM排名",
+    "市盈率-LYR",
+    "市盈率-LYR排名",
+    "市净率-MRQ",
+    "市净率-MRQ排名",
+    "市净率-LYR",
+    "市净率-LYR排名",
+    "市销率-TTM",
+    "市销率-TTM排名",
+    "市销率-LYR",
+    "市销率-LYR排名",
+    "市现率-TTM",
+    "市现率-TTM排名",
+    "市现率-LYR",
+    "市现率-LYR排名",
+)
+_MARKET_ACTIVITY_HK_VALUATION_COMPARISON_FIELD_SET = frozenset(
+    _MARKET_ACTIVITY_HK_VALUATION_COMPARISON_FIELDS
+)
+_MARKET_ACTIVITY_HK_VALUATION_COMPARISON_TEXT_FIELDS = ("代码", "简称")
+_MARKET_ACTIVITY_HK_VALUATION_COMPARISON_METRIC_FIELDS = (
+    "市盈率-TTM",
+    "市盈率-LYR",
+    "市净率-MRQ",
+    "市净率-LYR",
+    "市销率-TTM",
+    "市销率-LYR",
+    "市现率-TTM",
+    "市现率-LYR",
+)
+_MARKET_ACTIVITY_HK_VALUATION_COMPARISON_INTEGER_FIELDS = (
+    "市盈率-TTM排名",
+    "市盈率-LYR排名",
+    "市净率-MRQ排名",
+    "市净率-LYR排名",
+    "市销率-TTM排名",
+    "市销率-LYR排名",
+    "市现率-TTM排名",
+    "市现率-LYR排名",
+)
+_MARKET_ACTIVITY_HK_VALUATION_COMPARISON_NUMERIC_FIELDS = tuple(
+    field
+    for field in _MARKET_ACTIVITY_HK_VALUATION_COMPARISON_FIELDS
+    if field not in _MARKET_ACTIVITY_HK_VALUATION_COMPARISON_TEXT_FIELDS
+)
+_MARKET_ACTIVITY_HK_VALUATION_COMPARISON_NULLABLE_FIELDS = frozenset(
+    _MARKET_ACTIVITY_HK_VALUATION_COMPARISON_METRIC_FIELDS
+)
+_MARKET_ACTIVITY_HK_VALUATION_COMPARISON_NON_NEGATIVE_FIELDS: frozenset[str] = (
+    frozenset()
+)
+_MARKET_ACTIVITY_HK_VALUATION_COMPARISON_REQUIRED_TEXT_FIELDS = (
+    *_MARKET_ACTIVITY_HK_VALUATION_COMPARISON_TEXT_FIELDS,
+)
+_MARKET_ACTIVITY_HK_VALUATION_COMPARISON_REQUIRED_NUMERIC_FIELDS = (
+    *_MARKET_ACTIVITY_HK_VALUATION_COMPARISON_INTEGER_FIELDS,
+)
+_MARKET_ACTIVITY_HK_VALUATION_COMPARISON_FIELD_TYPES = {
+    **{
+        field: "string"
+        for field in _MARKET_ACTIVITY_HK_VALUATION_COMPARISON_TEXT_FIELDS
+    },
+    **{
+        field: "number"
+        for field in _MARKET_ACTIVITY_HK_VALUATION_COMPARISON_METRIC_FIELDS
+    },
+    **{
+        field: "integer"
+        for field in _MARKET_ACTIVITY_HK_VALUATION_COMPARISON_INTEGER_FIELDS
+    },
+}
+_MARKET_ACTIVITY_HK_VALUATION_COMPARISON_SOURCE_URI = (
+    "https://emweb.securities.eastmoney.com/PC_HKF10/pages/"
+    "home/index.html?code=03900&type=web&color=w#/IndustryComparison"
+)
+_MARKET_ACTIVITY_HK_VALUATION_COMPARISON_UPSTREAM_URL = (
+    "https://datacenter.eastmoney.com/securities/api/data/v1/get"
+)
+_MARKET_ACTIVITY_HK_VALUATION_COMPARISON_UPSTREAM_COLUMNS = (
+    "SECUCODE",
+    "SECURITY_CODE",
+    "ORG_CODE",
+    "REPORT_DATE",
+    "TYPE_ID",
+    "TYPE_TYPE",
+    "TYPE_NAME",
+    "TYPE_NAME_EN",
+    "CORRE_SECURITY_CODE",
+    "CORRE_SECUCODE",
+    "CORRE_SECURITY_NAME",
+    "PE_TTM",
+    "PE_LYR",
+    "PB_MQR",
+    "PB_LYR",
+    "PS_TTM",
+    "PS_LYR",
+    "PCE_TTM",
+    "PCE_LYR",
+    "PE_TTM_RANK",
+    "PE_LYR_RANK",
+    "PB_MQR_RANK",
+    "PB_LYR_RANK",
+    "PS_TTM_RANK",
+    "PS_LYR_RANK",
+    "PCE_TTM_RANK",
+    "PCE_LYR_RANK",
+)
+_MARKET_ACTIVITY_HK_VALUATION_COMPARISON_UPSTREAM_PARAMETERS = (
+    "reportName",
+    "columns",
+    "quoteColumns",
+    "filter",
+    "pageNumber",
+    "pageSize",
+    "sortTypes",
+    "sortColumns",
+    "source",
+    "client",
+)
+_MARKET_ACTIVITY_HK_VALUATION_COMPARISON_UPSTREAM_FIXED_PARAMETERS = {
+    "reportName": "RPT_PCF10_INDUSTRY_HKCVALUE",
+    "columns": ",".join(_MARKET_ACTIVITY_HK_VALUATION_COMPARISON_UPSTREAM_COLUMNS),
+    "quoteColumns": "",
+    "pageNumber": "1",
+    "pageSize": "",
+    "sortTypes": "",
+    "sortColumns": "",
+    "source": "F10",
+    "client": "PC",
+}
+_MARKET_ACTIVITY_HK_VALUATION_COMPARISON_WRAPPER_DROPPED_FIELDS = (
+    "SECUCODE",
+    "SECURITY_CODE",
+    "ORG_CODE",
+    "REPORT_DATE",
+    "TYPE_ID",
+    "TYPE_TYPE",
+    "TYPE_NAME",
+    "TYPE_NAME_EN",
+    "CORRE_SECUCODE",
+)
+_MARKET_ACTIVITY_HK_VALUATION_COMPARISON_DOCUMENTED_UNITS: dict[str, str] = {}
+_MARKET_ACTIVITY_HK_VALUATION_COMPARISON_UNDOCUMENTED_NUMERIC_UNITS = {
+    field: "not_documented"
+    for field in _MARKET_ACTIVITY_HK_VALUATION_COMPARISON_NUMERIC_FIELDS
+}
 _MARKET_ACTIVITY_SZSE_SUMMARY_PARAMETER_NAMES = frozenset({"view", "date"})
 _MARKET_ACTIVITY_SZSE_SUMMARY_VIEW = "szse_summary"
 _MARKET_ACTIVITY_SZSE_SUMMARY_FIELDS = (
@@ -3468,6 +3627,19 @@ class AKShareProvider(StructuredDataProvider):
         if (
             request.category is DataCategory.MARKET_ACTIVITY
             and request.parameters.get("view")
+            == _MARKET_ACTIVITY_HK_VALUATION_COMPARISON_VIEW
+            and listing.market is not ListingMarket.H
+        ):
+            raise ProviderRequestError(
+                "the AKShare H-share valuation-comparison endpoint supports H-share "
+                "listings only",
+                provider=self.identity,
+                request=request,
+                retryable=False,
+            )
+        if (
+            request.category is DataCategory.MARKET_ACTIVITY
+            and request.parameters.get("view")
             == _MARKET_ACTIVITY_HOT_RANK_DETAIL_VIEW
             and listing.market is not ListingMarket.A
         ):
@@ -3488,6 +3660,7 @@ class AKShareProvider(StructuredDataProvider):
                     _MARKET_ACTIVITY_HOT_RANK_LATEST_VIEW,
                     _MARKET_ACTIVITY_HK_HOT_RANK_DETAIL_VIEW,
                     _MARKET_ACTIVITY_HK_BAIDU_VALUATION_VIEW,
+                    _MARKET_ACTIVITY_HK_VALUATION_COMPARISON_VIEW,
                 }
             )
         ):
@@ -4379,6 +4552,28 @@ class AKShareProvider(StructuredDataProvider):
                         symbol=symbol,
                         rows=rows,
                         row_count=len(rows),
+                    )
+                )
+            elif endpoint.name == _MARKET_ACTIVITY_HK_VALUATION_COMPARISON_ENDPOINT:
+                symbol = kwargs["symbol"]
+                if not isinstance(symbol, str):
+                    raise ProviderResponseError(
+                        "AKShare H-share valuation-comparison upstream symbol must be "
+                        "text",
+                        provider=self.identity,
+                        request=request,
+                    )
+                _validate_market_activity_hk_valuation_comparison_provider_rows(
+                    rows,
+                    listing=listing,
+                    provider=self.identity,
+                    request=request,
+                )
+                response_metadata.update(
+                    _market_activity_hk_valuation_comparison_response_metadata(
+                        listing_code=listing.code,
+                        symbol=symbol,
+                        row=rows[0],
                     )
                 )
             elif endpoint.name == "stock_market_pb_lg":
@@ -7287,6 +7482,10 @@ class AKShareProvider(StructuredDataProvider):
                 request.parameters.get("view")
                 == _MARKET_ACTIVITY_HK_BAIDU_VALUATION_VIEW
             ),
+            market_activity_hk_valuation_comparison_requested=(
+                request.parameters.get("view")
+                == _MARKET_ACTIVITY_HK_VALUATION_COMPARISON_VIEW
+            ),
             market_activity_valuation_comparison_requested=(
                 request.parameters.get("view")
                 == _MARKET_ACTIVITY_VALUATION_COMPARISON_VIEW
@@ -7723,12 +7922,17 @@ class AKShareNormalizer:
                     record.request.parameters.get("view")
                     == _MARKET_ACTIVITY_HK_BAIDU_VALUATION_VIEW
                 )
+                is_hk_valuation_comparison = (
+                    record.request.parameters.get("view")
+                    == _MARKET_ACTIVITY_HK_VALUATION_COMPARISON_VIEW
+                )
                 if listing.market is not ListingMarket.A and not (
                     listing.market is ListingMarket.H
                     and (
                         is_latest_hot_rank
                         or is_hk_hot_rank_detail
                         or is_hk_baidu_valuation
+                        or is_hk_valuation_comparison
                     )
                 ):
                     raise ProviderNormalizationError(
@@ -7824,6 +8028,15 @@ class AKShareNormalizer:
                     )
                     normalizer_flags.add(
                         "AKSHARE_VALUATION_COMPARISON_RAW_ONLY"
+                    )
+                elif endpoint_name == _MARKET_ACTIVITY_HK_VALUATION_COMPARISON_ENDPOINT:
+                    _validate_market_activity_hk_valuation_comparison_normalizer_scope(
+                        record,
+                        listing,
+                        rows,
+                    )
+                    normalizer_flags.add(
+                        "AKSHARE_HK_VALUATION_COMPARISON_RAW_ONLY"
                     )
                 elif endpoint_name == "stock_market_pb_lg":
                     _validate_market_activity_market_pb_normalizer_scope(
@@ -8081,6 +8294,7 @@ class AKShareNormalizer:
                         "stock_zh_valuation_baidu, "
                         "stock_hk_valuation_baidu, "
                         "stock_zh_valuation_comparison_em, "
+                        "stock_hk_valuation_comparison_em, "
                         "stock_market_pe_lg, "
                         "stock_market_pb_lg, "
                         "stock_a_ttm_lyr, "
@@ -9837,6 +10051,13 @@ class AKShareNormalizer:
                 "valuation-multiple semantics are not reconciled to filing-backed "
                 "accounting scope, units or the canonical valuation contract."
             )
+        if "AKSHARE_HK_VALUATION_COMPARISON_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented H-share Eastmoney valuation-comparison response is "
+                "retained as raw evidence only: its provider-reported valuation "
+                "multiples and integer ranks are not reconciled to filing-backed "
+                "accounting scope, units or the canonical valuation contract."
+            )
         if "AKSHARE_MARKET_PB_RAW_ONLY" in normalizer_flags:
             notes += (
                 " The documented Legu market-PB response is retained as raw evidence "
@@ -10359,6 +10580,7 @@ def _endpoint_candidates(
     market_activity_index_pb_requested: bool = False,
     market_activity_baidu_valuation_requested: bool = False,
     market_activity_hk_baidu_valuation_requested: bool = False,
+    market_activity_hk_valuation_comparison_requested: bool = False,
     market_activity_valuation_comparison_requested: bool = False,
     market_activity_market_pb_requested: bool = False,
     market_activity_account_statistics_requested: bool = False,
@@ -10534,6 +10756,10 @@ def _endpoint_candidates(
         if market_activity_hk_baidu_valuation_requested:
             if market is ListingMarket.H:
                 return ("stock_hk_valuation_baidu",)
+            return ()
+        if market_activity_hk_valuation_comparison_requested:
+            if market is ListingMarket.H:
+                return (_MARKET_ACTIVITY_HK_VALUATION_COMPARISON_ENDPOINT,)
             return ()
         if market_activity_valuation_comparison_requested:
             if market is ListingMarket.A:
@@ -19640,6 +19866,16 @@ def _market_activity_valuation_comparison_filter(symbol: str) -> str:
     return f'(SECUCODE="{symbol[2:]}.{symbol[:2]}")'
 
 
+def _market_activity_hk_valuation_comparison_filter(symbol: str) -> str:
+    """Build the official Eastmoney filter from an unprefixed H-share symbol."""
+
+    if re.fullmatch(r"\d{5}", symbol) is None:
+        raise ValueError(
+            f"invalid H-share valuation-comparison symbol {symbol!r}"
+        )
+    return f'(SECUCODE="{symbol}.HK")(CORRE_SECUCODE="{symbol}.HK")'
+
+
 def _market_activity_valuation_comparison_rank(
     value: object,
     *,
@@ -19977,6 +20213,238 @@ def _market_activity_valuation_comparison_response_metadata(
         "entity_rows_selected": True,
         "upstream_row_count": row_count,
         "entity_row_count": row_count,
+    }
+
+
+def _market_activity_hk_valuation_comparison_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef | None = None,
+) -> str | None:
+    """Return strict-schema errors for the official one-row H-share table."""
+
+    if len(rows) != 1:
+        return (
+            "market-activity H-share valuation-comparison response must contain "
+            f"exactly one listing row; got {len(rows)}"
+        )
+
+    row = rows[0]
+    missing = [
+        field
+        for field in _MARKET_ACTIVITY_HK_VALUATION_COMPARISON_FIELDS
+        if field not in row
+    ]
+    unexpected = [
+        field
+        for field in row
+        if field not in _MARKET_ACTIVITY_HK_VALUATION_COMPARISON_FIELD_SET
+    ]
+    if missing:
+        return (
+            "market-activity H-share valuation-comparison row is missing "
+            "field(s): "
+            + ", ".join(missing)
+        )
+    if unexpected:
+        return (
+            "market-activity H-share valuation-comparison row contains "
+            "unsupported field(s): "
+            + ", ".join(unexpected)
+        )
+    if tuple(row) != _MARKET_ACTIVITY_HK_VALUATION_COMPARISON_FIELDS:
+        return (
+            "market-activity H-share valuation-comparison row must preserve "
+            "the official field order"
+        )
+
+    code = row["代码"]
+    if not isinstance(code, str) or re.fullmatch(r"\d{5}", code) is None:
+        return (
+            "market-activity H-share valuation-comparison row field '代码' "
+            "must be a five-digit string"
+        )
+    if listing is not None and code != listing.code:
+        return (
+            "market-activity H-share valuation-comparison row entity "
+            f"{code!r} does not match requested listing {listing.canonical_id!r}"
+        )
+
+    name = row["简称"]
+    if not isinstance(name, str) or not name.strip():
+        return (
+            "market-activity H-share valuation-comparison row field '简称' "
+            "must be a non-empty string"
+        )
+
+    for field in _MARKET_ACTIVITY_HK_VALUATION_COMPARISON_METRIC_FIELDS:
+        value = row[field]
+        if value is None:
+            continue
+        if isinstance(value, bool) or not isinstance(value, Real):
+            return (
+                "market-activity H-share valuation-comparison field "
+                f"{field!r} must be numeric or null"
+            )
+        try:
+            numeric = float(value)
+        except (OverflowError, TypeError, ValueError):
+            return (
+                "market-activity H-share valuation-comparison field "
+                f"{field!r} must be numeric or null"
+            )
+        if not math.isfinite(numeric):
+            return (
+                "market-activity H-share valuation-comparison field "
+                f"{field!r} must be finite or null"
+            )
+
+    for field in _MARKET_ACTIVITY_HK_VALUATION_COMPARISON_INTEGER_FIELDS:
+        value = row[field]
+        if isinstance(value, bool) or not isinstance(value, Real):
+            return (
+                "market-activity H-share valuation-comparison field "
+                f"{field!r} must be a positive integer"
+            )
+        try:
+            numeric = float(value)
+        except (OverflowError, TypeError, ValueError):
+            return (
+                "market-activity H-share valuation-comparison field "
+                f"{field!r} must be a positive integer"
+            )
+        if not math.isfinite(numeric) or not numeric.is_integer() or numeric < 1:
+            return (
+                "market-activity H-share valuation-comparison field "
+                f"{field!r} must be a positive integer"
+            )
+
+    return None
+
+
+def _validate_market_activity_hk_valuation_comparison_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    listing: _ListingRef,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> None:
+    """Validate the complete listing-scoped H-share comparison response."""
+
+    message = _market_activity_hk_valuation_comparison_validation_message(
+        rows,
+        listing,
+    )
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message}",
+            provider=provider,
+            request=request,
+        )
+
+
+def _market_activity_hk_valuation_comparison_response_metadata(
+    *,
+    listing_code: str,
+    symbol: str,
+    row: Mapping[str, JSONValue],
+) -> dict[str, JSONValue]:
+    """Build the replay contract for one H-share comparison snapshot."""
+
+    upstream_filter = _market_activity_hk_valuation_comparison_filter(symbol)
+    return {
+        "endpoint": _MARKET_ACTIVITY_HK_VALUATION_COMPARISON_ENDPOINT,
+        "market": ListingMarket.H.value,
+        "listing_code": listing_code,
+        "market_activity_view": _MARKET_ACTIVITY_HK_VALUATION_COMPARISON_VIEW,
+        "upstream_symbol": symbol,
+        "market_scope": "requested_h_share_listing_industry_comparison",
+        "listing_scoped_request": True,
+        "row_filtering": "upstream",
+        "snapshot_scope": "requested_h_share_valuation_comparison_snapshot",
+        "date_binding": "retrieval_only",
+        "listing_code_field": "代码",
+        "listing_row_position": 0,
+        "listing_row_count": 1,
+        "rank_fields": list(
+            _MARKET_ACTIVITY_HK_VALUATION_COMPARISON_INTEGER_FIELDS
+        ),
+        "rank_constraint": "positive_integer",
+        "value_fields": list(
+            _MARKET_ACTIVITY_HK_VALUATION_COMPARISON_METRIC_FIELDS
+        ),
+        "signed_fields": list(
+            _MARKET_ACTIVITY_HK_VALUATION_COMPARISON_METRIC_FIELDS
+        ),
+        "non_negative_fields": list(
+            _MARKET_ACTIVITY_HK_VALUATION_COMPARISON_NON_NEGATIVE_FIELDS
+        ),
+        "integer_fields": [
+            field
+            for field in _MARKET_ACTIVITY_HK_VALUATION_COMPARISON_FIELDS
+            if field in _MARKET_ACTIVITY_HK_VALUATION_COMPARISON_INTEGER_FIELDS
+        ],
+        "text_fields": list(_MARKET_ACTIVITY_HK_VALUATION_COMPARISON_TEXT_FIELDS),
+        "required_text_fields": list(
+            _MARKET_ACTIVITY_HK_VALUATION_COMPARISON_REQUIRED_TEXT_FIELDS
+        ),
+        "required_numeric_fields": list(
+            _MARKET_ACTIVITY_HK_VALUATION_COMPARISON_REQUIRED_NUMERIC_FIELDS
+        ),
+        "field_types": dict(
+            _MARKET_ACTIVITY_HK_VALUATION_COMPARISON_FIELD_TYPES
+        ),
+        "nullable_fields": [
+            field
+            for field in _MARKET_ACTIVITY_HK_VALUATION_COMPARISON_FIELDS
+            if field in _MARKET_ACTIVITY_HK_VALUATION_COMPARISON_NULLABLE_FIELDS
+        ],
+        "field_count": len(_MARKET_ACTIVITY_HK_VALUATION_COMPARISON_FIELDS),
+        "source_field_order": list(
+            _MARKET_ACTIVITY_HK_VALUATION_COMPARISON_FIELDS
+        ),
+        "documented_units": dict(
+            _MARKET_ACTIVITY_HK_VALUATION_COMPARISON_DOCUMENTED_UNITS
+        ),
+        "undocumented_numeric_units": dict(
+            _MARKET_ACTIVITY_HK_VALUATION_COMPARISON_UNDOCUMENTED_NUMERIC_UNITS
+        ),
+        "upstream_url": _MARKET_ACTIVITY_HK_VALUATION_COMPARISON_UPSTREAM_URL,
+        "upstream_protocol": "JSON",
+        "upstream_report_name": (
+            _MARKET_ACTIVITY_HK_VALUATION_COMPARISON_UPSTREAM_FIXED_PARAMETERS[
+                "reportName"
+            ]
+        ),
+        "upstream_columns_selector": "explicit",
+        "upstream_columns": list(
+            _MARKET_ACTIVITY_HK_VALUATION_COMPARISON_UPSTREAM_COLUMNS
+        ),
+        "upstream_parameters": list(
+            _MARKET_ACTIVITY_HK_VALUATION_COMPARISON_UPSTREAM_PARAMETERS
+        ),
+        "upstream_fixed_parameters": dict(
+            _MARKET_ACTIVITY_HK_VALUATION_COMPARISON_UPSTREAM_FIXED_PARAMETERS
+        ),
+        "upstream_dynamic_parameters": {
+            "symbol": symbol,
+            "filter": upstream_filter,
+        },
+        "upstream_authentication": "none",
+        "wrapper_dropped_fields": list(
+            _MARKET_ACTIVITY_HK_VALUATION_COMPARISON_WRAPPER_DROPPED_FIELDS
+        ),
+        "upstream_page_size": None,
+        "pagination": "single_snapshot",
+        "upstream_sort_column": None,
+        "upstream_sort_direction": None,
+        "upstream_filter": upstream_filter,
+        "wrapper_source_page_uri": (
+            _MARKET_ACTIVITY_HK_VALUATION_COMPARISON_SOURCE_URI
+        ),
+        "wrapper_output_ordering": "single_listing_row",
+        "entity_rows_selected": True,
+        "upstream_row_count": 1,
+        "entity_row_count": 1,
     }
 
 
@@ -25479,6 +25947,84 @@ def _validate_market_activity_valuation_comparison_normalizer_scope(
             raise ProviderNormalizationError(
                 f"AKShare valuation-comparison response metadata {name!r} "
                 "does not match the requested replay scope"
+            )
+
+
+def _validate_market_activity_hk_valuation_comparison_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> None:
+    """Validate replay scope and metadata for one H-share comparison snapshot."""
+
+    if listing.market is not ListingMarket.H:
+        raise ProviderNormalizationError(
+            "AKShare H-share valuation-comparison raw slice supports H-share "
+            "listings only"
+        )
+    endpoint_name = _MARKET_ACTIVITY_HK_VALUATION_COMPARISON_ENDPOINT
+    if record.response_metadata.get("endpoint") != endpoint_name:
+        raise ProviderNormalizationError(
+            "AKShare H-share valuation-comparison record must come from "
+            f"{endpoint_name}"
+        )
+    if record.source_uri != _SOURCE_URIS[endpoint_name]:
+        raise ProviderNormalizationError(
+            "AKShare H-share valuation-comparison source URI does not match the "
+            "documented endpoint"
+        )
+    try:
+        upstream_kwargs = _market_activity_hk_valuation_comparison_kwargs(
+            endpoint_name,
+            listing,
+            record.request,
+        )
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+    symbol = upstream_kwargs["symbol"]
+    if not isinstance(symbol, str):
+        raise ProviderNormalizationError(
+            "AKShare H-share valuation-comparison upstream symbol must be text"
+        )
+
+    message = _market_activity_hk_valuation_comparison_validation_message(
+        rows,
+        listing,
+    )
+    if message is not None:
+        raise ProviderNormalizationError(message)
+    expected_metadata = _market_activity_hk_valuation_comparison_response_metadata(
+        listing_code=listing.code,
+        symbol=symbol,
+        row=rows[0],
+    )
+    boolean_fields = {"listing_scoped_request", "entity_rows_selected"}
+    count_fields = {
+        "field_count",
+        "listing_row_position",
+        "listing_row_count",
+        "upstream_row_count",
+        "entity_row_count",
+    }
+    for name, expected in expected_metadata.items():
+        if name not in record.response_metadata:
+            matches = False
+        elif name in boolean_fields:
+            actual = record.response_metadata[name]
+            matches = isinstance(actual, bool) and actual is expected
+        elif name in count_fields:
+            actual = record.response_metadata[name]
+            matches = (
+                isinstance(actual, int)
+                and not isinstance(actual, bool)
+                and actual == expected
+            )
+        else:
+            matches = record.response_metadata[name] == expected
+        if not matches:
+            raise ProviderNormalizationError(
+                f"AKShare H-share valuation-comparison response metadata "
+                f"{name!r} does not match the requested replay scope"
             )
 
 
@@ -32191,6 +32737,12 @@ def _market_activity_kwargs(
             listing,
             request,
         )
+    if endpoint_name == _MARKET_ACTIVITY_HK_VALUATION_COMPARISON_ENDPOINT:
+        return _market_activity_hk_valuation_comparison_kwargs(
+            endpoint_name,
+            listing,
+            request,
+        )
     if endpoint_name == "stock_market_pb_lg":
         return _market_activity_market_pb_kwargs(endpoint_name, listing, request)
     if endpoint_name == "stock_a_all_pb":
@@ -32590,6 +33142,48 @@ def _market_activity_valuation_comparison_kwargs(
             retryable=False,
         )
     return {"symbol": listing.canonical_id}
+
+
+def _market_activity_hk_valuation_comparison_kwargs(
+    endpoint_name: str,
+    listing: _ListingRef,
+    request: ProviderRequest,
+) -> dict[str, object]:
+    """Build the H-share listing-scoped Eastmoney comparison request."""
+
+    if endpoint_name != _MARKET_ACTIVITY_HK_VALUATION_COMPARISON_ENDPOINT:
+        raise ProviderRequestError(
+            "unsupported AKShare H-share valuation-comparison endpoint "
+            f"{endpoint_name!r}",
+            request=request,
+            retryable=False,
+        )
+    if listing.market is not ListingMarket.H:
+        raise ProviderRequestError(
+            "the AKShare H-share valuation-comparison endpoint supports H-share "
+            "listings only",
+            request=request,
+            retryable=False,
+        )
+    unknown = sorted(
+        set(request.parameters)
+        - _MARKET_ACTIVITY_HK_VALUATION_COMPARISON_PARAMETER_NAMES
+    )
+    if unknown:
+        raise ProviderRequestError(
+            "unsupported AKShare H-share valuation-comparison parameter(s): "
+            + ", ".join(unknown),
+            request=request,
+            retryable=False,
+        )
+    if request.parameters.get("view") != _MARKET_ACTIVITY_HK_VALUATION_COMPARISON_VIEW:
+        raise ProviderRequestError(
+            "AKShare H-share valuation-comparison endpoint requires "
+            f"view={_MARKET_ACTIVITY_HK_VALUATION_COMPARISON_VIEW!r}",
+            request=request,
+            retryable=False,
+        )
+    return {"symbol": listing.code}
 
 
 def _market_activity_market_pb_kwargs(

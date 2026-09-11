@@ -1375,6 +1375,22 @@ provider-defined peer comparison remains raw evidence and does not become a
 canonical valuation, market, return, governance or accounting fact. No
 calculation, gate, pipeline, CLI or input-loader contract changes.
 
+Phase 3.22 adds the documented H-share Eastmoney
+`stock_hk_valuation_comparison_em` valuation-comparison endpoint under
+`MARKET_ACTIVITY` with explicit `view=valuation_comparison_hk` and a derived
+five-digit H-share listing symbol. The [AKShare stock-data
+documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and [official
+implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hk_comparison_em.py)
+define the exact 18-field single-listing output: two text identity fields,
+eight nullable/signed valuation multiples and eight positive integer rank
+fields. The provider freezes the Eastmoney JSON report, explicit columns,
+listing filter and client parameters, records the wrapper's one-row scope and
+validates the exact output schema. The normalizer emits
+`AKSHARE_HK_VALUATION_COMPARISON_RAW_ONLY`; this provider-defined comparison
+remains raw evidence and does not become a canonical valuation, market, return,
+governance or accounting fact. No calculation, gate, pipeline, CLI or
+input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.
