@@ -370,6 +370,13 @@ class FakeAKShare:
             end_date=end_date,
         )
 
+    def stock_jgdy_tj_em(self, *, date: str):
+        return self._return(
+            "stock_jgdy_tj_em",
+            _fixture("a_institution_research.json"),
+            date=date,
+        )
+
     def stock_dzjy_mrmx(self, *, symbol: str, start_date: str, end_date: str):
         return self._return(
             "stock_dzjy_mrmx",
@@ -899,8 +906,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "100"
-    assert AKSHARE_MAPPING_VERSION == "101"
+    assert provider.identity.provider_version == "101"
+    assert AKSHARE_MAPPING_VERSION == "102"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -24639,3 +24646,408 @@ def test_market_activity_institution_daily_cache_replay_does_not_call_upstream(
             {"start_date": "20240927", "end_date": "20240930"},
         )
     ]
+
+
+def test_market_activity_institution_research_fetch_uses_documented_date_universe():
+    fake = FakeAKShare()
+    request = _request(
+        DataCategory.MARKET_ACTIVITY,
+        "SH600000",
+        {"view": "institution_research", "date": "20240927"},
+    )
+    record = _provider(fake).fetch(request)
+
+    fixture = _fixture("a_institution_research.json")
+    assert record.raw_payload == [row for row in fixture if row["代码"] == "600000"]
+    assert fake.calls == [("stock_jgdy_tj_em", {"date": "20240927"})]
+    assert record.response_metadata["endpoint"] == "stock_jgdy_tj_em"
+    assert record.response_metadata["market"] == "A"
+    assert record.response_metadata["listing_code"] == "600000"
+    assert record.response_metadata["market_activity_view"] == "institution_research"
+    assert record.response_metadata["market_scope"] == "all_a_share_listings"
+    assert record.response_metadata["requested_date"] == "20240927"
+    assert record.response_metadata["listing_scoped_request"] is False
+    assert record.response_metadata["row_filtering"] == "provider"
+    assert (
+        record.response_metadata["snapshot_scope"]
+        == "notice_date_strictly_after_requested_date"
+    )
+    assert record.response_metadata["observation_date_field"] == "公告日期"
+    assert record.response_metadata["event_date_field"] == "接待日期"
+    assert record.response_metadata["date_binding"] == "row_and_request"
+    assert record.response_metadata["date_filter_operator"] == "strictly_after"
+    assert record.response_metadata["code_field"] == "代码"
+    assert record.response_metadata["sequence_field"] == "序号"
+    assert record.response_metadata["sequence_ordering"] == "strictly_ascending"
+    assert record.response_metadata["date_fields"] == ["接待日期", "公告日期"]
+    assert record.response_metadata["value_fields"] == ["最新价", "涨跌幅", "接待机构数量"]
+    assert record.response_metadata["integer_fields"] == ["序号", "接待机构数量"]
+    assert record.response_metadata["text_fields"] == [
+        "代码",
+        "名称",
+        "接待方式",
+        "接待人员",
+        "接待地点",
+    ]
+    assert record.response_metadata["field_count"] == 11
+    assert record.response_metadata["source_field_order"] == list(fixture[0])
+    assert record.response_metadata["documented_units"] == {"涨跌幅": "percent"}
+    assert record.response_metadata["undocumented_numeric_units"] == {
+        "最新价": "not_documented",
+        "接待机构数量": "not_documented",
+    }
+    assert record.response_metadata["observation_start_date"] == "2024-10-01"
+    assert record.response_metadata["observation_end_date"] == "2024-10-16"
+    assert record.response_metadata["event_start_date"] == "2024-09-30"
+    assert record.response_metadata["event_end_date"] == "2024-10-15"
+    assert record.response_metadata["upstream_row_count"] == 3
+    assert record.response_metadata["entity_row_count"] == 2
+    assert record.response_metadata["entity_rows_selected"] is True
+    assert record.source_uri == "https://data.eastmoney.com/jgdy/tj.html"
+
+
+@pytest.mark.parametrize(
+    ("parameters", "entity_id", "match"),
+    [
+        (
+            {"view": "institution_research"},
+            "SH600000",
+            "requires date",
+        ),
+        (
+            {"view": "institution_research", "date": "2024-09-27"},
+            "SH600000",
+            "date must be YYYYMMDD",
+        ),
+        (
+            {"view": "institution_research", "date": "20240931"},
+            "SH600000",
+            "date must be a valid YYYYMMDD date",
+        ),
+        (
+            {"date": "20240927"},
+            "SH600000",
+            "unsupported AKShare market-activity parameter",
+        ),
+        (
+            {"view": "institution_daily", "date": "20240927"},
+            "SH600000",
+            "unsupported AKShare institution-daily parameter",
+        ),
+        (
+            {"view": "institution_research", "date": "20240927", "period": "近三月"},
+            "SH600000",
+            "unsupported AKShare institutional-research parameter",
+        ),
+        (
+            {"view": "institution_research", "date": "20240927"},
+            "HK00700",
+            "A-share listings only",
+        ),
+    ],
+)
+def test_market_activity_institution_research_request_validates_scope_before_upstream_call(
+    parameters: dict,
+    entity_id: str,
+    match: str,
+):
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError, match=match):
+        _provider(fake).fetch(_request(DataCategory.MARKET_ACTIVITY, entity_id, parameters))
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("missing_field", "missing field"),
+        ("extra_field", "unsupported field"),
+        ("reordered_fields", "official field order"),
+        ("invalid_code", "代码 must be a six-digit string"),
+        ("invalid_date", "valid YYYY-MM-DD date"),
+        ("outside_request", "strictly after"),
+        ("duplicate_identity", "duplicate listing/date identity"),
+        ("invalid_sequence", "strictly ascending"),
+        ("invalid_numeric", "numeric or null"),
+        ("fractional_integer", "integer or null"),
+        ("negative_numeric", "non-negative or null"),
+        ("invalid_text", "non-empty string"),
+    ],
+)
+def test_market_activity_institution_research_response_validates_shape_identity_dates_and_numerics(
+    mutation: str,
+    match: str,
+):
+    class InvalidRows(FakeAKShare):
+        def stock_jgdy_tj_em(self, *, date: str):
+            rows = _fixture("a_institution_research.json")
+            if mutation == "missing_field":
+                rows[0].pop("接待机构数量")
+            elif mutation == "extra_field":
+                rows[0]["unexpected"] = "not documented"
+            elif mutation == "reordered_fields":
+                rows[0] = dict(reversed(list(rows[0].items())))
+            elif mutation == "invalid_code":
+                rows[0]["代码"] = "SH600000"
+            elif mutation == "invalid_date":
+                rows[0]["接待日期"] = "2024-02-30"
+            elif mutation == "outside_request":
+                rows[0]["公告日期"] = "2024-09-27"
+            elif mutation == "duplicate_identity":
+                duplicate = dict(rows[0])
+                duplicate["序号"] = 4
+                rows.append(duplicate)
+            elif mutation == "invalid_sequence":
+                rows[1]["序号"] = 1
+            elif mutation == "invalid_numeric":
+                rows[0]["最新价"] = "10.4"
+            elif mutation == "fractional_integer":
+                rows[0]["接待机构数量"] = 12.5
+            elif mutation == "negative_numeric":
+                rows[0]["接待机构数量"] = -1
+            else:
+                rows[0]["名称"] = ""
+            return self._return("stock_jgdy_tj_em", rows, date=date)
+
+    with pytest.raises(ProviderResponseError, match=match):
+        _provider(InvalidRows()).fetch(
+            _request(
+                DataCategory.MARKET_ACTIVITY,
+                "SH600000",
+                {"view": "institution_research", "date": "20240927"},
+            )
+        )
+
+
+def test_market_activity_institution_research_with_no_matching_listing_is_empty():
+    class NoMatchingInstitutionResearch(FakeAKShare):
+        def stock_jgdy_tj_em(self, *, date: str):
+            return self._return(
+                "stock_jgdy_tj_em",
+                [
+                    row
+                    for row in _fixture("a_institution_research.json")
+                    if row["代码"] == "000001"
+                ],
+                date=date,
+            )
+
+    record = _provider(NoMatchingInstitutionResearch()).fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SH600000",
+            {"view": "institution_research", "date": "20240927"},
+        )
+    )
+
+    assert record.raw_payload == []
+    assert record.response_metadata["upstream_row_count"] == 1
+    assert record.response_metadata["entity_row_count"] == 0
+    assert record.response_metadata["observation_start_date"] == "2024-10-03"
+    assert record.response_metadata["observation_end_date"] == "2024-10-03"
+    assert record.response_metadata["event_start_date"] == "2024-10-02"
+    assert record.response_metadata["event_end_date"] == "2024-10-02"
+
+
+def test_market_activity_institution_research_is_raw_only_without_canonical_facts():
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SH600000",
+            {"view": "institution_research", "date": "20240927"},
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="market-activity-institution-research-raw-only",
+        as_of=date(2026, 9, 11),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == [
+        "AKSHARE_MARKET_ACTIVITY_INSTITUTION_RESEARCH_RAW_ONLY"
+    ]
+    assert normalized.data_quality.critical_missing_fields == []
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "institutional-research" in normalized.data_quality.notes
+    assert "research-visit dates" in normalized.data_quality.notes
+    assert "issuer cash flow" in normalized.data_quality.notes
+    assert "canonical market metric" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "endpoint",
+        "source_uri",
+        "market",
+        "listing_code",
+        "view",
+        "requested_date",
+        "market_scope",
+        "listing_scope",
+        "filtering",
+        "snapshot",
+        "observation_date_field",
+        "event_date_field",
+        "date_binding",
+        "date_filter_operator",
+        "code_field",
+        "sequence_field",
+        "sequence_ordering",
+        "date_fields",
+        "value_fields",
+        "integer_fields",
+        "text_fields",
+        "field_count",
+        "source_field_order",
+        "documented_units",
+        "undocumented_units",
+        "upstream_count",
+        "entity_count",
+        "selected",
+        "observation_start_date",
+        "observation_end_date",
+        "event_start_date",
+        "event_end_date",
+        "entity",
+        "duplicate_identity",
+        "payload",
+    ],
+)
+def test_market_activity_institution_research_normalizer_rejects_replayed_scope_mismatches(
+    mutation: str,
+):
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SH600000",
+            {"view": "institution_research", "date": "20240927"},
+        )
+    )
+    payload = [dict(row) for row in record.raw_payload]
+    response_metadata = dict(record.response_metadata)
+    source_uri = record.source_uri
+    if mutation == "endpoint":
+        response_metadata["endpoint"] = "stock_lhb_jgmmtj_em"
+    elif mutation == "source_uri":
+        source_uri = "https://example.invalid/institution-research"
+    elif mutation == "market":
+        response_metadata["market"] = "H"
+    elif mutation == "listing_code":
+        response_metadata["listing_code"] = "000001"
+    elif mutation == "view":
+        response_metadata["market_activity_view"] = "institution_daily"
+    elif mutation == "requested_date":
+        response_metadata["requested_date"] = "20240928"
+    elif mutation == "market_scope":
+        response_metadata["market_scope"] = "requested_listing"
+    elif mutation == "listing_scope":
+        response_metadata["listing_scoped_request"] = True
+    elif mutation == "filtering":
+        response_metadata["row_filtering"] = "upstream"
+    elif mutation == "snapshot":
+        response_metadata["snapshot_scope"] = "current_snapshot"
+    elif mutation == "observation_date_field":
+        response_metadata["observation_date_field"] = "接待日期"
+    elif mutation == "event_date_field":
+        response_metadata["event_date_field"] = "公告日期"
+    elif mutation == "date_binding":
+        response_metadata["date_binding"] = "retrieval_only"
+    elif mutation == "date_filter_operator":
+        response_metadata["date_filter_operator"] = "inclusive"
+    elif mutation == "code_field":
+        response_metadata["code_field"] = "证券代码"
+    elif mutation == "sequence_field":
+        response_metadata["sequence_field"] = "排名"
+    elif mutation == "sequence_ordering":
+        response_metadata["sequence_ordering"] = "provider_reported"
+    elif mutation == "date_fields":
+        response_metadata["date_fields"] = ["公告日期"]
+    elif mutation == "value_fields":
+        response_metadata["value_fields"] = ["最新价"]
+    elif mutation == "integer_fields":
+        response_metadata["integer_fields"] = ["序号"]
+    elif mutation == "text_fields":
+        response_metadata["text_fields"] = ["名称"]
+    elif mutation == "field_count":
+        response_metadata["field_count"] = 10
+    elif mutation == "source_field_order":
+        response_metadata["source_field_order"] = list(
+            reversed(response_metadata["source_field_order"])
+        )
+    elif mutation == "documented_units":
+        response_metadata["documented_units"] = {"涨跌幅": "percentage"}
+    elif mutation == "undocumented_units":
+        response_metadata["undocumented_numeric_units"] = {"最新价": "CNY"}
+    elif mutation == "upstream_count":
+        response_metadata["upstream_row_count"] = 1
+    elif mutation == "entity_count":
+        response_metadata["entity_row_count"] = 1
+    elif mutation == "selected":
+        response_metadata["entity_rows_selected"] = False
+    elif mutation == "observation_start_date":
+        response_metadata["observation_start_date"] = "2024-10-02"
+    elif mutation == "observation_end_date":
+        response_metadata["observation_end_date"] = "2024-10-15"
+    elif mutation == "event_start_date":
+        response_metadata["event_start_date"] = "2024-10-02"
+    elif mutation == "event_end_date":
+        response_metadata["event_end_date"] = "2024-10-14"
+    elif mutation == "entity":
+        payload[0]["代码"] = "000001"
+    elif mutation == "duplicate_identity":
+        duplicate = dict(payload[0])
+        duplicate["序号"] = 4
+        payload.append(duplicate)
+    else:
+        payload[0]["最新价"] = "10.4"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=source_uri,
+        response_metadata=response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-market-activity-institution-research",
+            as_of=date(2026, 9, 11),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_market_activity_institution_research_cache_replay_does_not_call_upstream(
+    tmp_path: Path,
+):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.MARKET_ACTIVITY,
+        "SH600000",
+        {"view": "institution_research", "date": "20240927"},
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [("stock_jgdy_tj_em", {"date": "20240927"})]

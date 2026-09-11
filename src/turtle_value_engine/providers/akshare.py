@@ -51,6 +51,8 @@ and sector-summary raw slices are also available. The Eastmoney industry-board
 snapshot and Dragon-Tiger institution-daily raw slices are also available.
 The A-share Eastmoney top-ten, top-ten-tradable-shareholder and
 top-ten-tradable-shareholder-detail raw slices are also available.
+The A-share Eastmoney institutional-research statistics raw slice is also
+available.
 Upstream column names are handled in this module and are never passed to the
 deterministic calculation or gate code.
 """
@@ -97,9 +99,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "100"
+AKSHARE_ADAPTER_VERSION = "101"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "101"
+AKSHARE_MAPPING_VERSION = "102"
 
 
 class ListingMarket(StrEnum):
@@ -183,6 +185,7 @@ _SOURCE_URIS = {
     "stock_lhb_stock_statistic_em": "https://data.eastmoney.com/stock/tradedetail.html",
     "stock_lhb_jgstatistic_em": "https://data.eastmoney.com/stock/jgstatistic.html",
     "stock_lhb_jgmmtj_em": "https://data.eastmoney.com/stock/jgmmtj.html",
+    "stock_jgdy_tj_em": "https://data.eastmoney.com/jgdy/tj.html",
     "stock_dzjy_mrmx": "https://data.eastmoney.com/dzjy/dzjy_mrmx.html",
     "stock_comment_detail_scrd_desire_em": "https://data.eastmoney.com/stockcomment/stock/600000.html",
     "stock_comment_detail_scrd_focus_em": "https://data.eastmoney.com/stockcomment/stock/600000.html",
@@ -880,6 +883,49 @@ _MARKET_ACTIVITY_INSTITUTION_DAILY_UNDOCUMENTED_NUMERIC_UNITS = {
     field: "not_documented"
     for field in _MARKET_ACTIVITY_INSTITUTION_DAILY_NUMERIC_FIELDS
     if field not in _MARKET_ACTIVITY_INSTITUTION_DAILY_DOCUMENTED_UNITS
+}
+_MARKET_ACTIVITY_INSTITUTION_RESEARCH_PARAMETER_NAMES = frozenset(
+    {"view", "date"}
+)
+_MARKET_ACTIVITY_INSTITUTION_RESEARCH_VIEW = "institution_research"
+_MARKET_ACTIVITY_INSTITUTION_RESEARCH_FIELDS = (
+    "序号",
+    "代码",
+    "名称",
+    "最新价",
+    "涨跌幅",
+    "接待机构数量",
+    "接待方式",
+    "接待人员",
+    "接待地点",
+    "接待日期",
+    "公告日期",
+)
+_MARKET_ACTIVITY_INSTITUTION_RESEARCH_FIELD_SET = frozenset(
+    _MARKET_ACTIVITY_INSTITUTION_RESEARCH_FIELDS
+)
+_MARKET_ACTIVITY_INSTITUTION_RESEARCH_DATE_FIELDS = ("接待日期", "公告日期")
+_MARKET_ACTIVITY_INSTITUTION_RESEARCH_NUMERIC_FIELDS = (
+    "最新价",
+    "涨跌幅",
+    "接待机构数量",
+)
+_MARKET_ACTIVITY_INSTITUTION_RESEARCH_INTEGER_FIELDS = frozenset(
+    {"序号", "接待机构数量"}
+)
+_MARKET_ACTIVITY_INSTITUTION_RESEARCH_TEXT_FIELDS = frozenset(
+    {"代码", "名称", "接待方式", "接待人员", "接待地点"}
+)
+_MARKET_ACTIVITY_INSTITUTION_RESEARCH_NON_NEGATIVE_FIELDS = frozenset(
+    {"最新价", "接待机构数量"}
+)
+_MARKET_ACTIVITY_INSTITUTION_RESEARCH_DOCUMENTED_UNITS = {
+    "涨跌幅": "percent",
+}
+_MARKET_ACTIVITY_INSTITUTION_RESEARCH_UNDOCUMENTED_NUMERIC_UNITS = {
+    field: "not_documented"
+    for field in _MARKET_ACTIVITY_INSTITUTION_RESEARCH_NUMERIC_FIELDS
+    if field not in _MARKET_ACTIVITY_INSTITUTION_RESEARCH_DOCUMENTED_UNITS
 }
 _MARKET_ACTIVITY_SSE_DEAL_DAILY_PARAMETER_NAMES = frozenset({"view", "date"})
 _MARKET_ACTIVITY_SSE_DEAL_DAILY_VIEW = "sse_deal_daily"
@@ -3394,6 +3440,84 @@ class AKShareProvider(StructuredDataProvider):
                 response_metadata["observation_end_date"] = (
                     max(observation_dates).isoformat() if observation_dates else None
                 )
+            elif endpoint.name == "stock_jgdy_tj_em":
+                requested_date = _market_activity_institution_research_date(request)
+                notice_dates, research_dates = (
+                    _validate_market_activity_institution_research_provider_rows(
+                        rows,
+                        requested_date=requested_date,
+                        provider=self.identity,
+                        request=request,
+                    )
+                )
+                selected = _select_listing_rows(
+                    rows,
+                    listing,
+                    provider=self.identity,
+                    request=request,
+                    row_label="market-activity-institution-research",
+                )
+                payload = selected
+                response_metadata["upstream_row_count"] = len(rows)
+                response_metadata["entity_row_count"] = len(selected)
+                response_metadata["entity_rows_selected"] = True
+                response_metadata["listing_scoped_request"] = False
+                response_metadata["row_filtering"] = "provider"
+                response_metadata["market_activity_view"] = (
+                    _MARKET_ACTIVITY_INSTITUTION_RESEARCH_VIEW
+                )
+                response_metadata["market_scope"] = "all_a_share_listings"
+                response_metadata["requested_date"] = kwargs["date"]
+                response_metadata["snapshot_scope"] = (
+                    "notice_date_strictly_after_requested_date"
+                )
+                response_metadata["observation_date_field"] = "公告日期"
+                response_metadata["event_date_field"] = "接待日期"
+                response_metadata["date_binding"] = "row_and_request"
+                response_metadata["date_filter_operator"] = "strictly_after"
+                response_metadata["code_field"] = "代码"
+                response_metadata["sequence_field"] = "序号"
+                response_metadata["sequence_ordering"] = "strictly_ascending"
+                response_metadata["date_fields"] = list(
+                    _MARKET_ACTIVITY_INSTITUTION_RESEARCH_DATE_FIELDS
+                )
+                response_metadata["value_fields"] = list(
+                    _MARKET_ACTIVITY_INSTITUTION_RESEARCH_NUMERIC_FIELDS
+                )
+                response_metadata["integer_fields"] = [
+                    field
+                    for field in _MARKET_ACTIVITY_INSTITUTION_RESEARCH_FIELDS
+                    if field in _MARKET_ACTIVITY_INSTITUTION_RESEARCH_INTEGER_FIELDS
+                ]
+                response_metadata["text_fields"] = [
+                    field
+                    for field in _MARKET_ACTIVITY_INSTITUTION_RESEARCH_FIELDS
+                    if field in _MARKET_ACTIVITY_INSTITUTION_RESEARCH_TEXT_FIELDS
+                ]
+                response_metadata["field_count"] = len(
+                    _MARKET_ACTIVITY_INSTITUTION_RESEARCH_FIELDS
+                )
+                response_metadata["source_field_order"] = list(
+                    _MARKET_ACTIVITY_INSTITUTION_RESEARCH_FIELDS
+                )
+                response_metadata["documented_units"] = dict(
+                    _MARKET_ACTIVITY_INSTITUTION_RESEARCH_DOCUMENTED_UNITS
+                )
+                response_metadata["undocumented_numeric_units"] = dict(
+                    _MARKET_ACTIVITY_INSTITUTION_RESEARCH_UNDOCUMENTED_NUMERIC_UNITS
+                )
+                response_metadata["observation_start_date"] = (
+                    min(notice_dates).isoformat() if notice_dates else None
+                )
+                response_metadata["observation_end_date"] = (
+                    max(notice_dates).isoformat() if notice_dates else None
+                )
+                response_metadata["event_start_date"] = (
+                    min(research_dates).isoformat() if research_dates else None
+                )
+                response_metadata["event_end_date"] = (
+                    max(research_dates).isoformat() if research_dates else None
+                )
             elif endpoint.name == "stock_lhb_jgmmtj_em":
                 start_date, end_date = _market_activity_date_range(request)
                 observation_dates = (
@@ -5282,6 +5406,10 @@ class AKShareProvider(StructuredDataProvider):
                 request.parameters.get("view")
                 == _MARKET_ACTIVITY_INSTITUTION_DAILY_VIEW
             ),
+            market_activity_institution_research_requested=(
+                request.parameters.get("view")
+                == _MARKET_ACTIVITY_INSTITUTION_RESEARCH_VIEW
+            ),
             market_activity_industry_board_requested=(
                 request.parameters.get("view")
                 == _MARKET_ACTIVITY_INDUSTRY_BOARD_VIEW
@@ -5892,6 +6020,15 @@ class AKShareNormalizer:
                         rows,
                     )
                     normalizer_flags.add("AKSHARE_BLOCK_TRADE_RAW_ONLY")
+                elif endpoint_name == "stock_jgdy_tj_em":
+                    _validate_market_activity_institution_research_normalizer_scope(
+                        record,
+                        listing,
+                        rows,
+                    )
+                    normalizer_flags.add(
+                        "AKSHARE_MARKET_ACTIVITY_INSTITUTION_RESEARCH_RAW_ONLY"
+                    )
                 elif endpoint_name == "stock_lhb_jgmmtj_em":
                     _validate_market_activity_institution_daily_normalizer_scope(
                         record,
@@ -5979,6 +6116,7 @@ class AKShareNormalizer:
                         "stock_comment_detail_scrd_focus_em, "
                         "stock_comment_detail_zlkp_jgcyd_em, "
                         "stock_dzjy_mrmx, "
+                        "stock_jgdy_tj_em, "
                         "stock_lhb_jgmmtj_em, "
                         "stock_zt_pool_em, stock_hot_rank_latest_em, "
                         "stock_zt_pool_dtgc_em, "
@@ -7464,6 +7602,13 @@ class AKShareNormalizer:
                 "cash flow, shareholder return, governance, valuation or a canonical market "
                 "metric."
             )
+        if "AKSHARE_MARKET_ACTIVITY_INSTITUTION_RESEARCH_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented A-share Eastmoney institutional-research statistics "
+                "response is retained as raw evidence only: its research-visit dates, "
+                "institution counts and quote context do not establish issuer cash flow, "
+                "shareholder return, governance, valuation or a canonical market metric."
+            )
         if "AKSHARE_SSE_DEAL_DAILY_RAW_ONLY" in normalizer_flags:
             notes += (
                 " The documented SSE daily-deal response is retained as raw evidence only: "
@@ -7973,6 +8118,7 @@ def _endpoint_candidates(
     market_activity_institution_statistic_requested: bool = False,
     market_activity_block_trade_requested: bool = False,
     market_activity_institution_daily_requested: bool = False,
+    market_activity_institution_research_requested: bool = False,
     market_activity_industry_board_requested: bool = False,
     market_activity_szse_area_summary_requested: bool = False,
     market_activity_szse_sector_summary_requested: bool = False,
@@ -8141,6 +8287,10 @@ def _endpoint_candidates(
         if market_activity_institution_daily_requested:
             if market is ListingMarket.A:
                 return ("stock_lhb_jgmmtj_em",)
+            return ()
+        if market_activity_institution_research_requested:
+            if market is ListingMarket.A:
+                return ("stock_jgdy_tj_em",)
             return ()
         if market is ListingMarket.A:
             if market_activity_new_stock_requested:
@@ -14232,6 +14382,235 @@ def _validate_market_activity_institution_daily_provider_rows(
     return observation_dates
 
 
+def _market_activity_institution_research_date_value(value: object) -> date | None:
+    if not isinstance(value, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _market_activity_institution_research_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    requested_date: date,
+    listing: _ListingRef | None = None,
+) -> tuple[str | None, list[date], list[date]]:
+    """Return schema errors and announcement/research dates."""
+
+    observation_dates: list[date] = []
+    research_dates: list[date] = []
+    seen_identities: set[tuple[str, date, date]] = set()
+    previous_sequence: int | None = None
+    for index, row in enumerate(rows):
+        missing = [
+            field
+            for field in _MARKET_ACTIVITY_INSTITUTION_RESEARCH_FIELDS
+            if field not in row
+        ]
+        if missing:
+            return (
+                f"A-share institutional-research row {index} is missing field(s): "
+                + ", ".join(missing),
+                [],
+                [],
+            )
+        unexpected = [
+            field
+            for field in row
+            if field not in _MARKET_ACTIVITY_INSTITUTION_RESEARCH_FIELD_SET
+        ]
+        if unexpected:
+            return (
+                f"A-share institutional-research row {index} contains unsupported "
+                "field(s): "
+                + ", ".join(unexpected),
+                [],
+                [],
+            )
+        if tuple(row) != _MARKET_ACTIVITY_INSTITUTION_RESEARCH_FIELDS:
+            return (
+                f"A-share institutional-research row {index} must preserve official "
+                "field order",
+                [],
+                [],
+            )
+
+        raw_code = row["代码"]
+        if not isinstance(raw_code, str) or re.fullmatch(r"\d{6}", raw_code) is None:
+            return (
+                f"A-share institutional-research row {index} 代码 must be a "
+                "six-digit string",
+                [],
+                [],
+            )
+        row_code = _row_code(row, ListingMarket.A)
+        if row_code is None:
+            return f"A-share institutional-research row {index} has no listing code", [], []
+        if listing is not None and row_code != listing.code:
+            return (
+                f"A-share institutional-research row entity {row_code!r} does not "
+                f"match requested listing {listing.canonical_id!r}",
+                [],
+                [],
+            )
+
+        for field in _MARKET_ACTIVITY_INSTITUTION_RESEARCH_TEXT_FIELDS:
+            value = row[field]
+            if not isinstance(value, str) or not value.strip():
+                return (
+                    f"A-share institutional-research field {field!r} in row {index} "
+                    "must be a non-empty string",
+                    [],
+                    [],
+                )
+
+        sequence_value = row["序号"]
+        if isinstance(sequence_value, bool) or not isinstance(sequence_value, Real):
+            return (
+                f"A-share institutional-research field '序号' in row {index} must be "
+                "a positive integer",
+                [],
+                [],
+            )
+        try:
+            sequence_numeric = float(sequence_value)
+        except (OverflowError, TypeError, ValueError):
+            return (
+                f"A-share institutional-research field '序号' in row {index} must be "
+                "a positive integer",
+                [],
+                [],
+            )
+        if (
+            not math.isfinite(sequence_numeric)
+            or not sequence_numeric.is_integer()
+            or sequence_numeric < 1
+        ):
+            return (
+                f"A-share institutional-research field '序号' in row {index} must be "
+                "a positive integer",
+                [],
+                [],
+            )
+        sequence = int(sequence_numeric)
+        if previous_sequence is not None and sequence <= previous_sequence:
+            return (
+                "A-share institutional-research response 序号 values must be "
+                "strictly ascending",
+                [],
+                [],
+            )
+        previous_sequence = sequence
+
+        parsed_dates: dict[str, date] = {}
+        for field in _MARKET_ACTIVITY_INSTITUTION_RESEARCH_DATE_FIELDS:
+            parsed = _market_activity_institution_research_date_value(row[field])
+            if parsed is None:
+                return (
+                    f"A-share institutional-research field {field!r} must be a valid "
+                    "YYYY-MM-DD date",
+                    [],
+                    [],
+                )
+            parsed_dates[field] = parsed
+        notice_date = parsed_dates["公告日期"]
+        if notice_date <= requested_date:
+            return (
+                "A-share institutional-research row 公告日期 must be strictly after "
+                f"requested date {requested_date.isoformat()!r}",
+                [],
+                [],
+            )
+        identity = (row_code, parsed_dates["接待日期"], notice_date)
+        if identity in seen_identities:
+            return (
+                "A-share institutional-research response has duplicate listing/date "
+                f"identity {row_code!r}/{parsed_dates['接待日期'].isoformat()!r}/"
+                f"{notice_date.isoformat()!r}",
+                [],
+                [],
+            )
+        seen_identities.add(identity)
+        research_dates.append(parsed_dates["接待日期"])
+        observation_dates.append(notice_date)
+
+        for field in _MARKET_ACTIVITY_INSTITUTION_RESEARCH_NUMERIC_FIELDS:
+            value = row[field]
+            if value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, Real):
+                return (
+                    f"A-share institutional-research field {field!r} must be numeric "
+                    "or null",
+                    [],
+                    [],
+                )
+            try:
+                numeric = float(value)
+            except (OverflowError, TypeError, ValueError):
+                return (
+                    f"A-share institutional-research field {field!r} must be numeric "
+                    "or null",
+                    [],
+                    [],
+                )
+            if not math.isfinite(numeric):
+                return (
+                    f"A-share institutional-research field {field!r} must be finite "
+                    "or null",
+                    [],
+                    [],
+                )
+            if (
+                field in _MARKET_ACTIVITY_INSTITUTION_RESEARCH_INTEGER_FIELDS
+                and not numeric.is_integer()
+            ):
+                return (
+                    f"A-share institutional-research field {field!r} must be an "
+                    "integer or null",
+                    [],
+                    [],
+                )
+            if (
+                field in _MARKET_ACTIVITY_INSTITUTION_RESEARCH_NON_NEGATIVE_FIELDS
+                and numeric < 0
+            ):
+                return (
+                    f"A-share institutional-research field {field!r} must be "
+                    "non-negative or null",
+                    [],
+                    [],
+                )
+
+    return None, observation_dates, research_dates
+
+
+def _validate_market_activity_institution_research_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    requested_date: date,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> tuple[list[date], list[date]]:
+    """Validate the complete institutional-research universe before filtering."""
+
+    message, observation_dates, research_dates = (
+        _market_activity_institution_research_validation_message(
+            rows,
+            requested_date=requested_date,
+        )
+    )
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message}",
+            provider=provider,
+            request=request,
+        )
+    return observation_dates, research_dates
+
+
 def _market_activity_szse_area_summary_validation_message(
     rows: Sequence[Mapping[str, JSONValue]],
 ) -> tuple[str | None, tuple[str, ...]]:
@@ -18016,6 +18395,172 @@ def _validate_market_activity_block_trade_normalizer_scope(
             "A-share block-trade response metadata date bounds do not contain "
             "the selected rows"
         )
+
+
+def _validate_market_activity_institution_research_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> None:
+    """Validate replay scope for the filtered institutional-research slice."""
+
+    if listing.market is not ListingMarket.A:
+        raise ProviderNormalizationError(
+            "AKShare institutional-research raw slice supports A-share listings only"
+        )
+    endpoint_name = "stock_jgdy_tj_em"
+    if record.response_metadata.get("endpoint") != endpoint_name:
+        raise ProviderNormalizationError(
+            "AKShare institutional-research record must come from stock_jgdy_tj_em"
+        )
+    if record.source_uri != _SOURCE_URIS[endpoint_name]:
+        raise ProviderNormalizationError(
+            "AKShare institutional-research source URI does not match the documented "
+            "endpoint"
+        )
+    try:
+        upstream_kwargs = _market_activity_institution_research_kwargs(
+            endpoint_name,
+            listing,
+            record.request,
+        )
+        requested_date = _market_activity_institution_research_date(record.request)
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+
+    expected_metadata = {
+        "market": ListingMarket.A.value,
+        "listing_code": listing.code,
+        "market_activity_view": _MARKET_ACTIVITY_INSTITUTION_RESEARCH_VIEW,
+        "market_scope": "all_a_share_listings",
+        "requested_date": upstream_kwargs["date"],
+        "listing_scoped_request": False,
+        "row_filtering": "provider",
+        "snapshot_scope": "notice_date_strictly_after_requested_date",
+        "observation_date_field": "公告日期",
+        "event_date_field": "接待日期",
+        "date_binding": "row_and_request",
+        "date_filter_operator": "strictly_after",
+        "code_field": "代码",
+        "sequence_field": "序号",
+        "sequence_ordering": "strictly_ascending",
+        "date_fields": list(_MARKET_ACTIVITY_INSTITUTION_RESEARCH_DATE_FIELDS),
+        "value_fields": list(_MARKET_ACTIVITY_INSTITUTION_RESEARCH_NUMERIC_FIELDS),
+        "integer_fields": [
+            field
+            for field in _MARKET_ACTIVITY_INSTITUTION_RESEARCH_FIELDS
+            if field in _MARKET_ACTIVITY_INSTITUTION_RESEARCH_INTEGER_FIELDS
+        ],
+        "text_fields": [
+            field
+            for field in _MARKET_ACTIVITY_INSTITUTION_RESEARCH_FIELDS
+            if field in _MARKET_ACTIVITY_INSTITUTION_RESEARCH_TEXT_FIELDS
+        ],
+        "field_count": len(_MARKET_ACTIVITY_INSTITUTION_RESEARCH_FIELDS),
+        "source_field_order": list(_MARKET_ACTIVITY_INSTITUTION_RESEARCH_FIELDS),
+        "documented_units": dict(
+            _MARKET_ACTIVITY_INSTITUTION_RESEARCH_DOCUMENTED_UNITS
+        ),
+        "undocumented_numeric_units": dict(
+            _MARKET_ACTIVITY_INSTITUTION_RESEARCH_UNDOCUMENTED_NUMERIC_UNITS
+        ),
+        "entity_rows_selected": True,
+        "entity_row_count": len(rows),
+    }
+    boolean_fields = {"listing_scoped_request", "entity_rows_selected"}
+    count_fields = {"field_count", "entity_row_count"}
+    for name, expected in expected_metadata.items():
+        actual = record.response_metadata.get(name)
+        if name in boolean_fields:
+            matches = isinstance(actual, bool) and actual is expected
+        elif name in count_fields:
+            matches = (
+                isinstance(actual, int)
+                and not isinstance(actual, bool)
+                and actual == expected
+            )
+        else:
+            matches = actual == expected
+        if not matches:
+            raise ProviderNormalizationError(
+                f"A-share institutional-research response metadata {name!r} does "
+                "not match the requested replay scope"
+            )
+
+    upstream_row_count = record.response_metadata.get("upstream_row_count")
+    if (
+        isinstance(upstream_row_count, bool)
+        or not isinstance(upstream_row_count, int)
+        or upstream_row_count < len(rows)
+    ):
+        raise ProviderNormalizationError(
+            "A-share institutional-research response metadata 'upstream_row_count' "
+            "does not match the complete upstream response boundary"
+        )
+
+    message, row_dates, research_dates = (
+        _market_activity_institution_research_validation_message(
+            rows,
+            requested_date=requested_date,
+            listing=listing,
+        )
+    )
+    if message is not None:
+        raise ProviderNormalizationError(message)
+
+    bound_specs = (
+        ("observation_start_date", "observation_end_date", row_dates, "announcement"),
+        ("event_start_date", "event_end_date", research_dates, "research"),
+    )
+    parsed_bounds: dict[str, date | None] = {}
+    for start_field, end_field, _, label in bound_specs:
+        for field in (start_field, end_field):
+            value = record.response_metadata.get(field)
+            parsed = _market_activity_institution_research_date_value(value)
+            if value is not None and parsed is None:
+                raise ProviderNormalizationError(
+                    f"A-share institutional-research response metadata {field!r} "
+                    "is not a valid date"
+                )
+            parsed_bounds[field] = parsed
+        observed_start = parsed_bounds[start_field]
+        observed_end = parsed_bounds[end_field]
+        if (
+            observed_start is not None
+            and observed_end is not None
+            and observed_start > observed_end
+        ):
+            raise ProviderNormalizationError(
+                f"A-share institutional-research {label} date bounds are reversed"
+            )
+        if upstream_row_count and (observed_start is None or observed_end is None):
+            raise ProviderNormalizationError(
+                f"A-share institutional-research {label} date bounds are missing"
+            )
+        if label == "announcement" and (
+            observed_start is not None
+            and observed_start <= requested_date
+            or observed_end is not None
+            and observed_end <= requested_date
+        ):
+            raise ProviderNormalizationError(
+                "A-share institutional-research announcement date bounds must be "
+                "strictly after the requested date"
+            )
+
+    for start_field, end_field, row_dates_for_bounds, label in bound_specs:
+        observed_start = parsed_bounds[start_field]
+        observed_end = parsed_bounds[end_field]
+        if row_dates_for_bounds and (
+            observed_start is None
+            or observed_end is None
+            or min(row_dates_for_bounds) < observed_start
+            or max(row_dates_for_bounds) > observed_end
+        ):
+            raise ProviderNormalizationError(
+                f"A-share institutional-research {label} date bounds do not contain "
+                "the selected rows"
+            )
 
 
 def _validate_market_activity_institution_daily_normalizer_scope(
@@ -23224,6 +23769,12 @@ def _market_activity_kwargs(
         return _market_activity_institution_statistic_kwargs(endpoint_name, listing, request)
     if endpoint_name == "stock_lhb_jgmmtj_em":
         return _market_activity_institution_daily_kwargs(endpoint_name, listing, request)
+    if endpoint_name == "stock_jgdy_tj_em":
+        return _market_activity_institution_research_kwargs(
+            endpoint_name,
+            listing,
+            request,
+        )
     if endpoint_name == "stock_dzjy_mrmx":
         return _market_activity_block_trade_kwargs(endpoint_name, listing, request)
     if endpoint_name == "stock_board_industry_name_em":
@@ -23349,6 +23900,62 @@ def _market_activity_institution_daily_kwargs(
         "start_date": request.parameters["start_date"],
         "end_date": request.parameters["end_date"],
     }
+
+
+def _market_activity_institution_research_date(
+    request: ProviderRequest,
+) -> date:
+    if "date" not in request.parameters:
+        raise ProviderRequestError(
+            "AKShare institutional-research endpoint requires date (YYYYMMDD)",
+            request=request,
+            retryable=False,
+        )
+    return _market_activity_date_parameter(
+        request.parameters["date"],
+        name="date",
+        request=request,
+    )
+
+
+def _market_activity_institution_research_kwargs(
+    endpoint_name: str,
+    listing: _ListingRef,
+    request: ProviderRequest,
+) -> dict[str, object]:
+    """Build the documented A-share institutional-research request."""
+
+    if endpoint_name != "stock_jgdy_tj_em":
+        raise ProviderRequestError(
+            f"unsupported AKShare institutional-research endpoint {endpoint_name!r}",
+            request=request,
+            retryable=False,
+        )
+    if listing.market is not ListingMarket.A:
+        raise ProviderRequestError(
+            "the AKShare institutional-research endpoint supports A-share listings only",
+            request=request,
+            retryable=False,
+        )
+    unknown = sorted(
+        set(request.parameters) - _MARKET_ACTIVITY_INSTITUTION_RESEARCH_PARAMETER_NAMES
+    )
+    if unknown:
+        raise ProviderRequestError(
+            "unsupported AKShare institutional-research parameter(s): "
+            + ", ".join(unknown),
+            request=request,
+            retryable=False,
+        )
+    if request.parameters.get("view") != _MARKET_ACTIVITY_INSTITUTION_RESEARCH_VIEW:
+        raise ProviderRequestError(
+            "AKShare institutional-research endpoint requires "
+            f"view={_MARKET_ACTIVITY_INSTITUTION_RESEARCH_VIEW!r}",
+            request=request,
+            retryable=False,
+        )
+    _market_activity_institution_research_date(request)
+    return {"date": request.parameters["date"]}
 
 
 def _market_activity_industry_board_kwargs(

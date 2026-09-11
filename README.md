@@ -1043,6 +1043,20 @@ records the documented CNY/亿元 units and leaves all other numeric units
 canonical cash-flow, return, governance, valuation or market fact. No
 calculation, gate, pipeline, CLI or input-loader contract changes.
 
+Phase 3.01 adds the distinct official A-share Eastmoney
+`stock_jgdy_tj_em` institutional-research statistics view under
+`MARKET_ACTIVITY` with explicit `view=institution_research` and a
+`date=YYYYMMDD` notice-date cutoff. The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_jgdy_em.py)
+define the exact 11-field full-universe response. The provider validates source
+order, six-digit listing identity, reception/announcement dates, the strict
+announcement-date boundary, finite numeric/null values and non-negative fields
+before filtering to the requested listing; only the documented percentage unit
+is recorded and other numeric units remain `not_documented`. The normalizer
+emits `AKSHARE_MARKET_ACTIVITY_INSTITUTION_RESEARCH_RAW_ONLY` without creating
+a canonical cash-flow, return, governance, valuation or market fact. No
+calculation, gate, pipeline, CLI or input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.
