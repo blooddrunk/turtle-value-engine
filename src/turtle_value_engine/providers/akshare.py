@@ -101,9 +101,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "103"
+AKSHARE_ADAPTER_VERSION = "104"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "104"
+AKSHARE_MAPPING_VERSION = "105"
 
 
 class ListingMarket(StrEnum):
@@ -1927,6 +1927,12 @@ _OWNERSHIP_PLEDGE_MARKET_DETAIL_TEXT_FIELDS = (
     "质押机构",
     "状态",
 )
+_OWNERSHIP_PLEDGE_MARKET_DETAIL_REQUIRED_TEXT_FIELDS = (
+    "股票代码",
+    "股票简称",
+    "股东名称",
+    "状态",
+)
 _OWNERSHIP_PLEDGE_MARKET_DETAIL_NUMERIC_FIELDS = (
     "质押股份数量",
     "占所持股份比例",
@@ -1947,8 +1953,16 @@ _OWNERSHIP_PLEDGE_MARKET_DETAIL_DATE_FIELDS = (
     "质押结束日期",
     "公告日期",
 )
+_OWNERSHIP_PLEDGE_MARKET_DETAIL_REQUIRED_DATE_FIELDS = ("公告日期",)
 _OWNERSHIP_PLEDGE_MARKET_DETAIL_NULLABLE_FIELDS = (
-    *_OWNERSHIP_PLEDGE_MARKET_DETAIL_NUMERIC_FIELDS,
+    "质押股份数量",
+    "占所持股份比例",
+    "占总股本比例",
+    "质押机构",
+    "最新价",
+    "质押日收盘价",
+    "预估平仓线",
+    "质押开始日期",
     "质押结束日期",
 )
 _OWNERSHIP_PLEDGE_MARKET_DETAIL_IDENTITY_FIELDS = (
@@ -1960,6 +1974,11 @@ _OWNERSHIP_PLEDGE_MARKET_DETAIL_IDENTITY_FIELDS = (
     "质押结束日期",
     "公告日期",
     "状态",
+)
+_OWNERSHIP_PLEDGE_MARKET_DETAIL_NULLABLE_IDENTITY_FIELDS = tuple(
+    field
+    for field in _OWNERSHIP_PLEDGE_MARKET_DETAIL_IDENTITY_FIELDS
+    if field in _OWNERSHIP_PLEDGE_MARKET_DETAIL_NULLABLE_FIELDS
 )
 _OWNERSHIP_PLEDGE_MARKET_DETAIL_FIELD_TYPES = {
     "序号": "integer",
@@ -4800,6 +4819,12 @@ class AKShareProvider(StructuredDataProvider):
                 response_metadata["text_fields"] = list(
                     _OWNERSHIP_PLEDGE_MARKET_DETAIL_TEXT_FIELDS
                 )
+                response_metadata["required_text_fields"] = list(
+                    _OWNERSHIP_PLEDGE_MARKET_DETAIL_REQUIRED_TEXT_FIELDS
+                )
+                response_metadata["required_date_fields"] = list(
+                    _OWNERSHIP_PLEDGE_MARKET_DETAIL_REQUIRED_DATE_FIELDS
+                )
                 response_metadata["field_types"] = dict(
                     _OWNERSHIP_PLEDGE_MARKET_DETAIL_FIELD_TYPES
                 )
@@ -4808,6 +4833,9 @@ class AKShareProvider(StructuredDataProvider):
                 )
                 response_metadata["identity_fields"] = list(
                     _OWNERSHIP_PLEDGE_MARKET_DETAIL_IDENTITY_FIELDS
+                )
+                response_metadata["nullable_identity_fields"] = list(
+                    _OWNERSHIP_PLEDGE_MARKET_DETAIL_NULLABLE_IDENTITY_FIELDS
                 )
                 response_metadata["field_count"] = len(
                     _OWNERSHIP_PLEDGE_MARKET_DETAIL_FIELDS
@@ -22640,6 +22668,13 @@ def _ownership_pledge_market_detail_validation_message(
 
         for field in _OWNERSHIP_PLEDGE_MARKET_DETAIL_TEXT_FIELDS:
             value = row[field]
+            if value is None:
+                if field in _OWNERSHIP_PLEDGE_MARKET_DETAIL_NULLABLE_FIELDS:
+                    continue
+                return failure(
+                    f"ownership-pledge market-detail row {index} field {field!r} "
+                    "must be a non-empty string"
+                )
             if not isinstance(value, str) or not value.strip():
                 return failure(
                     f"ownership-pledge market-detail row {index} field {field!r} "
@@ -22706,17 +22741,16 @@ def _ownership_pledge_market_detail_validation_message(
         start_date = parsed_dates["质押开始日期"]
         end_date = parsed_dates["质押结束日期"]
         announcement_date = parsed_dates["公告日期"]
-        if start_date is None or announcement_date is None:
+        if announcement_date is None:
             return failure(
-                "ownership-pledge market-detail pledge-start and announcement "
-                "dates must not be null"
+                "ownership-pledge market-detail announcement date must not be null"
             )
-        if start_date > announcement_date:
+        if start_date is not None and start_date > announcement_date:
             return failure(
                 "ownership-pledge market-detail pledge-start date must not be "
                 "after the announcement date"
             )
-        if end_date is not None and start_date > end_date:
+        if start_date is not None and end_date is not None and start_date > end_date:
             return failure(
                 "ownership-pledge market-detail pledge-end date must not be "
                 "before the pledge-start date"
@@ -22910,9 +22944,18 @@ def _validate_ownership_pledge_market_detail_normalizer_scope(
         "percent_bounds": [0, 100],
         "integer_fields": list(_OWNERSHIP_PLEDGE_MARKET_DETAIL_INTEGER_FIELDS),
         "text_fields": list(_OWNERSHIP_PLEDGE_MARKET_DETAIL_TEXT_FIELDS),
+        "required_text_fields": list(
+            _OWNERSHIP_PLEDGE_MARKET_DETAIL_REQUIRED_TEXT_FIELDS
+        ),
+        "required_date_fields": list(
+            _OWNERSHIP_PLEDGE_MARKET_DETAIL_REQUIRED_DATE_FIELDS
+        ),
         "field_types": dict(_OWNERSHIP_PLEDGE_MARKET_DETAIL_FIELD_TYPES),
         "nullable_fields": list(_OWNERSHIP_PLEDGE_MARKET_DETAIL_NULLABLE_FIELDS),
         "identity_fields": list(_OWNERSHIP_PLEDGE_MARKET_DETAIL_IDENTITY_FIELDS),
+        "nullable_identity_fields": list(
+            _OWNERSHIP_PLEDGE_MARKET_DETAIL_NULLABLE_IDENTITY_FIELDS
+        ),
         "field_count": len(_OWNERSHIP_PLEDGE_MARKET_DETAIL_FIELDS),
         "source_field_order": list(_OWNERSHIP_PLEDGE_MARKET_DETAIL_FIELDS),
         "documented_units": dict(_OWNERSHIP_PLEDGE_MARKET_DETAIL_DOCUMENTED_UNITS),

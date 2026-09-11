@@ -1079,10 +1079,12 @@ and [official implementation](https://github.com/akfamily/akshare/blob/main/aksh
 define a full-universe important-shareholder pledge-detail response with 15
 source-shaped fields, 500-row pagination and descending announcement-date
 ordering. The provider validates exact field order, six-digit identity,
-sequence/date boundaries, duplicate pledge identity, finite non-negative
-numeric values and explicit shares/percent/CNY-per-share units before filtering
-to the requested A-share listing, and records source order, nullability, date
-bounds and pagination for replay. The normalizer emits
+required text/announcement fields, source-coerced nullable `质押机构` and
+`质押开始日期`, sequence/date boundaries, duplicate pledge identity, finite
+non-negative numeric values and explicit shares/percent/CNY-per-share units
+before filtering to the requested A-share listing, and records source order,
+required/nullable fields, nullable identity fields, date bounds and pagination
+for replay. The normalizer emits
 `AKSHARE_OWNERSHIP_PLEDGE_MARKET_DETAIL_RAW_ONLY`; holder, counterparty,
 quantity, ratio, price, status and event-date context remain raw evidence and
 do not become canonical share, cash, debt-equivalent or governance facts. No

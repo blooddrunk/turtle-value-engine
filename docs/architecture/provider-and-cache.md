@@ -1805,6 +1805,13 @@ sequence and announcement-date boundaries, rejects duplicate pledge identity,
 and records field types, nullability, identity fields, shares/percent/CNY per
 share units, date bounds, pagination and row counts for replay.
 
+AKShare's documented coercion can return JSON null for `质押机构` and
+`质押开始日期`; populated institution values must be non-empty text, while
+populated start dates must be ISO dates. `公告日期` remains required, and
+pledge-start/end boundary comparisons are applied only when a start date is
+present. Null institution/start values remain part of the explicit row
+identity and duplicate detection rather than being replaced or discarded.
+
 The requested A-share code is used only for provider-boundary filtering; the
 normalizer emits
 `AKSHARE_OWNERSHIP_PLEDGE_MARKET_DETAIL_RAW_ONLY`, leaves

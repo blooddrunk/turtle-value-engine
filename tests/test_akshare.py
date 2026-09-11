@@ -919,8 +919,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "103"
-    assert AKSHARE_MAPPING_VERSION == "104"
+    assert provider.identity.provider_version == "104"
+    assert AKSHARE_MAPPING_VERSION == "105"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -8085,6 +8085,8 @@ def test_a_ownership_pledge_market_detail_fetch_filters_after_full_response_vali
     fixture = _fixture("a_ownership_pledge_market_detail.json")
 
     assert record.raw_payload == fixture[:2]
+    assert record.raw_payload[0]["质押机构"] is None
+    assert record.raw_payload[1]["质押开始日期"] is None
     assert fake.calls == [("stock_gpzy_pledge_ratio_detail_em", {})]
     assert record.response_metadata["endpoint"] == (
         "stock_gpzy_pledge_ratio_detail_em"
@@ -8122,9 +8124,24 @@ def test_a_ownership_pledge_market_detail_fetch_filters_after_full_response_vali
         "质押股份数量",
         "占所持股份比例",
         "占总股本比例",
+        "质押机构",
         "最新价",
         "质押日收盘价",
         "预估平仓线",
+        "质押开始日期",
+        "质押结束日期",
+    ]
+    assert record.response_metadata["required_text_fields"] == [
+        "股票代码",
+        "股票简称",
+        "股东名称",
+        "状态",
+    ]
+    assert record.response_metadata["required_date_fields"] == ["公告日期"]
+    assert record.response_metadata["nullable_identity_fields"] == [
+        "质押机构",
+        "质押股份数量",
+        "质押开始日期",
         "质押结束日期",
     ]
     assert record.response_metadata["documented_units"] == {
@@ -8338,9 +8355,12 @@ def test_ownership_pledge_market_detail_is_retained_as_raw_evidence_without_fact
         "percent_bounds",
         "integer_fields",
         "text_fields",
+        "required_text_fields",
+        "required_date_fields",
         "field_types",
         "nullable_fields",
         "identity_fields",
+        "nullable_identity_fields",
         "field_count",
         "source_order",
         "units",
@@ -8414,12 +8434,18 @@ def test_ownership_pledge_market_detail_normalizer_rejects_replayed_scope_mismat
         response_metadata["integer_fields"] = []
     elif mutation == "text_fields":
         response_metadata["text_fields"] = ["股票代码"]
+    elif mutation == "required_text_fields":
+        response_metadata["required_text_fields"] = ["股票代码"]
+    elif mutation == "required_date_fields":
+        response_metadata["required_date_fields"] = ["质押开始日期"]
     elif mutation == "field_types":
         response_metadata["field_types"] = {"序号": "number"}
     elif mutation == "nullable_fields":
         response_metadata["nullable_fields"] = []
     elif mutation == "identity_fields":
         response_metadata["identity_fields"] = ["股票代码"]
+    elif mutation == "nullable_identity_fields":
+        response_metadata["nullable_identity_fields"] = []
     elif mutation == "field_count":
         response_metadata["field_count"] = 14
     elif mutation == "source_order":

@@ -2616,13 +2616,15 @@ source-shaped order `序号`, `股票代码`, `股票简称`, `股东名称`, `�
 
 The provider validates the complete response before filtering it to the
 requested A-share listing. It enforces exact source field order, six-digit
-code/text identity, one-based source sequence, finite non-negative numeric
-values, 0–100 percent ratios, explicit nullability, ISO date boundaries,
-non-increasing announcement dates and duplicate pledge identity. It records
-field types, source order, shares/percent/CNY-per-share units, date bounds,
-page size, all-page pagination, sort order and full/selected counts for replay.
-The fixture freezes three source-shaped rows across two listings, including a
-nullable active pledge end date and a future scheduled end date.
+code identity, required text/announcement fields, nullable source-coerced
+`质押机构` and `质押开始日期`, one-based source sequence, finite non-negative
+numeric values, 0–100 percent ratios, ISO date boundaries, non-increasing
+announcement dates and duplicate pledge identity. It records field types,
+required/nullable fields, nullable identity fields, source order,
+shares/percent/CNY-per-share units, date bounds, page size, all-page
+pagination, sort order and full/selected counts for replay. The fixture
+freezes three source-shaped rows across two listings, including nullable
+institution/start/end values and a future scheduled end date.
 
 The normalizer emits
 `AKSHARE_OWNERSHIP_PLEDGE_MARKET_DETAIL_RAW_ONLY`, leaves

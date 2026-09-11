@@ -1254,13 +1254,15 @@ selected row counts for deterministic replay.
 | --- | --- |
 | `序号` | Required positive integer; the full response must use one-based source positions and the selected response must remain strictly ascending. It is not a report period or listing metric. |
 | `股票代码` | Required six-digit string identity validated across the full response and used only for provider filtering; it does not replace caller-supplied company identity. |
-| `股票简称`, `股东名称`, `质押机构`, `状态` | Required non-empty source text retained as raw evidence; holder and counterparty names are not interpreted as beneficial control, governance severity or debt ownership. |
+| `股票简称`, `股东名称`, `状态` | Required non-empty source text retained as raw evidence; holder names are not interpreted as beneficial control, governance severity or debt ownership. |
+| `质押机构` | Nullable source text; when populated it must be non-empty. A null counterparty is preserved in the raw row and its explicit identity tuple rather than inferred or zero-filled. |
 | `质押股份数量` | Finite non-negative numeric-or-null value in shares; no canonical diluted-share or pledged-cash fact is inferred. |
 | `占所持股份比例`, `占总股本比例` | Finite numeric-or-null values in percent, bounded to 0–100; provider ratios do not become canonical ownership or governance metrics. |
 | `最新价`, `质押日收盘价`, `预估平仓线` | Finite non-negative numeric-or-null values in CNY per share; no canonical quote, valuation, cash or liquidation conclusion is inferred. |
-| `质押开始日期`, `公告日期` | Required ISO `YYYY-MM-DD` dates; pledge start must not follow announcement, and announcement dates must be non-increasing in source order. Neither date is treated as an accounting or filing period. |
-| `质押结束日期` | Nullable ISO `YYYY-MM-DD` date; when present it must not precede pledge start. Null is preserved as an active/undetermined end date, not zero-filled. |
-| row identity | Duplicate `(股票代码, 股东名称, 质押机构, 质押股份数量, 质押开始日期, 质押结束日期, 公告日期, 状态)` identities are rejected before filtering. |
+| `质押开始日期` | Nullable ISO `YYYY-MM-DD` date; when populated it must not follow the announcement date or a populated pledge-end date. Null is preserved when the provider's date coercion has no source value. |
+| `公告日期` | Required ISO `YYYY-MM-DD` date; announcement dates must be non-increasing in source order. It is not treated as an accounting or filing period. |
+| `质押结束日期` | Nullable ISO `YYYY-MM-DD` date; when both end and pledge-start dates are present, end must not precede start. Null is preserved as an active/undetermined end date, not zero-filled. |
+| row identity | Duplicate `(股票代码, 股东名称, 质押机构, 质押股份数量, 质押开始日期, 质押结束日期, 公告日期, 状态)` identities are rejected before filtering; nullable institution/start/quantity/end values remain identity components. |
 | request `view=market_pledge_detail` | No upstream arguments; full A-share current-published important-shareholder detail, `listing_scoped_request=false`, `row_filtering=provider`, page size 500, all pages and `NOTICE_DATE` descending remain replay metadata. |
 
 The normalizer emits
