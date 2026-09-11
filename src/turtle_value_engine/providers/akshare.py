@@ -22,7 +22,8 @@ goodwill-detail,
 impairment-forecast and market-profile raw slices,
 the SSE/SZSE/BSE margin-detail raw slices, the A-share individual ownership-pledge
 detail view, the A-share CNINFO equity-mortgage view, the A-share Eastmoney
-ownership-pledge company-distribution, bank-distribution, market-profile and
+ownership-pledge company-distribution, bank-distribution, industry-data,
+market-profile and
 important-shareholder pledge-detail views,
 A-share company-litigation raw slice and A-share Eastmoney individual-info raw
 slice.
@@ -102,9 +103,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "106"
+AKSHARE_ADAPTER_VERSION = "107"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "107"
+AKSHARE_MAPPING_VERSION = "108"
 
 
 class ListingMarket(StrEnum):
@@ -257,6 +258,7 @@ _SOURCE_URIS = {
     "stock_gpzy_pledge_ratio_detail_em": "https://data.eastmoney.com/gpzy/pledgeDetail.aspx",
     "stock_gpzy_distribute_statistics_company_em": "https://data.eastmoney.com/gpzy/distributeStatistics.aspx",
     "stock_gpzy_distribute_statistics_bank_em": "https://data.eastmoney.com/gpzy/distributeStatistics.aspx",
+    "stock_gpzy_industry_data_em": "https://data.eastmoney.com/gpzy/industryData.aspx",
     "stock_cg_equity_mortgage_cninfo": "https://webapi.cninfo.com.cn/#/thematicStatistics",
     "stock_cg_guarantee_cninfo": "https://webapi.cninfo.com.cn/#/thematicStatistics",
     "stock_cg_lawsuit_cninfo": "https://webapi.cninfo.com.cn/#/thematicStatistics",
@@ -304,6 +306,7 @@ _NO_ARGUMENT_ENDPOINTS = frozenset(
         "stock_dxsyl_em",
         "stock_gpzy_distribute_statistics_company_em",
         "stock_gpzy_distribute_statistics_bank_em",
+        "stock_gpzy_industry_data_em",
         "stock_esg_rate_sina",
         "stock_hold_management_detail_em",
         "stock_gddh_em",
@@ -1842,6 +1845,71 @@ _OWNERSHIP_PLEDGE_COMPANY_DISTRIBUTION_PARAMETER_NAMES = frozenset({"view"})
 _OWNERSHIP_PLEDGE_COMPANY_DISTRIBUTION_VIEW = "company_distribution"
 _OWNERSHIP_PLEDGE_BANK_DISTRIBUTION_PARAMETER_NAMES = frozenset({"view"})
 _OWNERSHIP_PLEDGE_BANK_DISTRIBUTION_VIEW = "bank_distribution"
+_OWNERSHIP_PLEDGE_INDUSTRY_DATA_PARAMETER_NAMES = frozenset({"view"})
+_OWNERSHIP_PLEDGE_INDUSTRY_DATA_VIEW = "industry_data"
+_OWNERSHIP_PLEDGE_INDUSTRY_DATA_FIELDS = (
+    "序号",
+    "行业",
+    "平均质押比例",
+    "公司家数",
+    "质押总笔数",
+    "质押总股本",
+    "最新质押市值",
+    "统计时间",
+)
+_OWNERSHIP_PLEDGE_INDUSTRY_DATA_UPSTREAM_COLUMNS = (
+    "INDUSTRY_CODE",
+    "INDUSTRY",
+    "TRADE_DATE",
+    "AVERAGE_PLEDGE_RATIO",
+    "ORG_NUM",
+    "PLEDGE_TOTAL_NUM",
+    "TOTAL_PLEDGE_SHARES",
+    "PLEDGE_TOTAL_MARKETCAP",
+)
+_OWNERSHIP_PLEDGE_INDUSTRY_DATA_FIELD_SET = frozenset(
+    _OWNERSHIP_PLEDGE_INDUSTRY_DATA_FIELDS
+)
+_OWNERSHIP_PLEDGE_INDUSTRY_DATA_IDENTITY_FIELDS = ("行业",)
+_OWNERSHIP_PLEDGE_INDUSTRY_DATA_NULLABLE_IDENTITY_FIELDS: tuple[str, ...] = ()
+_OWNERSHIP_PLEDGE_INDUSTRY_DATA_TEXT_FIELDS = ("行业",)
+_OWNERSHIP_PLEDGE_INDUSTRY_DATA_REQUIRED_TEXT_FIELDS = ("行业",)
+_OWNERSHIP_PLEDGE_INDUSTRY_DATA_NUMERIC_FIELDS = (
+    "平均质押比例",
+    "公司家数",
+    "质押总笔数",
+    "质押总股本",
+    "最新质押市值",
+)
+_OWNERSHIP_PLEDGE_INDUSTRY_DATA_INTEGER_FIELDS = frozenset(
+    {"序号", "公司家数", "质押总笔数"}
+)
+_OWNERSHIP_PLEDGE_INDUSTRY_DATA_NONNEGATIVE_FIELDS = frozenset(
+    {"序号", *_OWNERSHIP_PLEDGE_INDUSTRY_DATA_NUMERIC_FIELDS}
+)
+_OWNERSHIP_PLEDGE_INDUSTRY_DATA_PERCENT_FIELDS = frozenset({"平均质押比例"})
+_OWNERSHIP_PLEDGE_INDUSTRY_DATA_DATE_FIELDS = ("统计时间",)
+_OWNERSHIP_PLEDGE_INDUSTRY_DATA_REQUIRED_DATE_FIELDS = ("统计时间",)
+_OWNERSHIP_PLEDGE_INDUSTRY_DATA_NULLABLE_FIELDS: tuple[str, ...] = ()
+_OWNERSHIP_PLEDGE_INDUSTRY_DATA_FIELD_TYPES = {
+    "序号": "integer",
+    "行业": "string",
+    "平均质押比例": "number",
+    "公司家数": "integer",
+    "质押总笔数": "integer",
+    "质押总股本": "number",
+    "最新质押市值": "number",
+    "统计时间": "date",
+}
+_OWNERSHIP_PLEDGE_INDUSTRY_DATA_DOCUMENTED_UNITS = {
+    "平均质押比例": "percent",
+    "质押总股本": "shares",
+    "最新质押市值": "CNY",
+}
+_OWNERSHIP_PLEDGE_INDUSTRY_DATA_UNDOCUMENTED_NUMERIC_UNITS = {
+    "公司家数": "not_documented",
+    "质押总笔数": "not_documented",
+}
 _OWNERSHIP_PLEDGE_MARKET_PROFILE_PARAMETER_NAMES = frozenset({"view"})
 _OWNERSHIP_PLEDGE_MARKET_PROFILE_VIEW = "market_profile"
 _OWNERSHIP_PLEDGE_MARKET_DETAIL_PARAMETER_NAMES = frozenset({"view"})
@@ -4799,7 +4867,20 @@ class AKShareProvider(StructuredDataProvider):
             response_metadata["end_date"] = kwargs["end_date"]
         elif request.category is DataCategory.OWNERSHIP_PLEDGE:
             rows = _table_rows(payload, provider=self.identity, request=request)
-            if endpoint.name == "stock_gpzy_distribute_statistics_bank_em":
+            if endpoint.name == "stock_gpzy_industry_data_em":
+                industry_order, observation_dates = (
+                    _validate_ownership_pledge_industry_data_provider_rows(
+                        rows,
+                        provider=self.identity,
+                        request=request,
+                    )
+                )
+                _set_ownership_pledge_industry_data_response_metadata(
+                    response_metadata,
+                    industry_order=industry_order,
+                    observation_dates=observation_dates,
+                )
+            elif endpoint.name == "stock_gpzy_distribute_statistics_bank_em":
                 institution_order = (
                     _validate_ownership_pledge_bank_distribution_provider_rows(
                         rows,
@@ -5854,6 +5935,10 @@ class AKShareProvider(StructuredDataProvider):
             ownership_pledge_bank_distribution_requested=(
                 request.parameters.get("view")
                 == _OWNERSHIP_PLEDGE_BANK_DISTRIBUTION_VIEW
+            ),
+            ownership_pledge_industry_data_requested=(
+                request.parameters.get("view")
+                == _OWNERSHIP_PLEDGE_INDUSTRY_DATA_VIEW
             ),
             ownership_pledge_market_profile_requested=(
                 request.parameters.get("view")
@@ -7481,7 +7566,25 @@ class AKShareNormalizer:
                         "AKShare ownership-pledge bank-distribution record must "
                         "come from stock_gpzy_distribute_statistics_bank_em"
                     )
-                if endpoint_name == "stock_gpzy_distribute_statistics_bank_em":
+                if (
+                    record.request.parameters.get("view")
+                    == _OWNERSHIP_PLEDGE_INDUSTRY_DATA_VIEW
+                    and endpoint_name != "stock_gpzy_industry_data_em"
+                ):
+                    raise ProviderNormalizationError(
+                        "AKShare ownership-pledge industry-data record must come "
+                        "from stock_gpzy_industry_data_em"
+                    )
+                if endpoint_name == "stock_gpzy_industry_data_em":
+                    _validate_ownership_pledge_industry_data_normalizer_scope(
+                        record,
+                        listing,
+                        rows,
+                    )
+                    normalizer_flags.add(
+                        "AKSHARE_OWNERSHIP_PLEDGE_INDUSTRY_DATA_RAW_ONLY"
+                    )
+                elif endpoint_name == "stock_gpzy_distribute_statistics_bank_em":
                     _validate_ownership_pledge_bank_distribution_normalizer_scope(
                         record,
                         listing,
@@ -7561,6 +7664,7 @@ class AKShareNormalizer:
                         "AKShare ownership-pledge record must come from "
                         "stock_gpzy_distribute_statistics_bank_em, "
                         "stock_gpzy_distribute_statistics_company_em, "
+                        "stock_gpzy_industry_data_em, "
                         "stock_gpzy_profile_em, "
                         "stock_gpzy_pledge_ratio_detail_em, "
                         "stock_gpzy_pledge_ratio_em or "
@@ -8007,6 +8111,14 @@ class AKShareNormalizer:
                 "pledged-share counts and provider-reported percentages do not "
                 "establish a canonical listing-level governance, share, cash or "
                 "debt-equivalent fact."
+            )
+        if "AKSHARE_OWNERSHIP_PLEDGE_INDUSTRY_DATA_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented A-share Eastmoney ownership-pledge industry-"
+                "data response is retained as raw evidence only: its market-wide "
+                "industry rows, provider-reported ratio, counts, shares, market "
+                "values and row-specific dates do not establish a canonical "
+                "listing-level governance, share, cash or debt-equivalent fact."
             )
         if "AKSHARE_OWNERSHIP_PLEDGE_MARKET_DETAIL_RAW_ONLY" in normalizer_flags:
             notes += (
@@ -8734,6 +8846,7 @@ def _endpoint_candidates(
     goodwill_impairment_detail_requested: bool = False,
     ownership_pledge_company_distribution_requested: bool = False,
     ownership_pledge_bank_distribution_requested: bool = False,
+    ownership_pledge_industry_data_requested: bool = False,
     ownership_pledge_market_profile_requested: bool = False,
     ownership_pledge_market_detail_requested: bool = False,
     ownership_pledge_detail_requested: bool = False,
@@ -9067,6 +9180,8 @@ def _endpoint_candidates(
         return ("stock_zh_a_gbjg_em",)
     if category is DataCategory.OWNERSHIP_PLEDGE:
         if market is ListingMarket.A:
+            if ownership_pledge_industry_data_requested:
+                return ("stock_gpzy_industry_data_em",)
             if ownership_pledge_company_distribution_requested:
                 return ("stock_gpzy_distribute_statistics_company_em",)
             if ownership_pledge_bank_distribution_requested:
@@ -10203,6 +10318,33 @@ def _ownership_pledge_kwargs(
     listing: _ListingRef,
     request: ProviderRequest,
 ) -> dict[str, object]:
+    if endpoint_name == "stock_gpzy_industry_data_em":
+        if listing.market is not ListingMarket.A:
+            raise ProviderRequestError(
+                "the AKShare ownership-pledge industry-data endpoint "
+                "supports A-share listings only",
+                request=request,
+                retryable=False,
+            )
+        unknown = sorted(
+            set(request.parameters)
+            - _OWNERSHIP_PLEDGE_INDUSTRY_DATA_PARAMETER_NAMES
+        )
+        if unknown:
+            raise ProviderRequestError(
+                "unsupported AKShare ownership-pledge industry-data "
+                "parameter(s): " + ", ".join(unknown),
+                request=request,
+                retryable=False,
+            )
+        if request.parameters.get("view") != _OWNERSHIP_PLEDGE_INDUSTRY_DATA_VIEW:
+            raise ProviderRequestError(
+                "ownership-pledge industry-data view must be "
+                f"{_OWNERSHIP_PLEDGE_INDUSTRY_DATA_VIEW!r}",
+                request=request,
+                retryable=False,
+            )
+        return {}
     if endpoint_name == "stock_gpzy_distribute_statistics_bank_em":
         if listing.market is not ListingMarket.A:
             raise ProviderRequestError(
@@ -22905,6 +23047,164 @@ def _ownership_pledge_company_distribution_validation_message(
     )
 
 
+def _ownership_pledge_industry_data_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> tuple[str | None, list[str], list[date]]:
+    """Return strict-schema errors for the full industry pledge response."""
+
+    if not rows:
+        return "ownership-pledge industry-data response must not be empty", [], []
+
+    industries: list[str] = []
+    observation_dates: list[date] = []
+    seen_industries: set[str] = set()
+    previous_sequence: int | None = None
+    previous_average: float | None = None
+
+    def failure(message: str) -> tuple[str, list[str], list[date]]:
+        return message, [], []
+
+    for index, row in enumerate(rows):
+        missing = [
+            field
+            for field in _OWNERSHIP_PLEDGE_INDUSTRY_DATA_FIELDS
+            if field not in row
+        ]
+        unexpected = [
+            field
+            for field in row
+            if field not in _OWNERSHIP_PLEDGE_INDUSTRY_DATA_FIELD_SET
+        ]
+        if missing:
+            return failure(
+                "ownership-pledge industry-data row "
+                f"{index} is missing field(s): {', '.join(missing)}"
+            )
+        if unexpected:
+            return failure(
+                "ownership-pledge industry-data row "
+                f"{index} contains unsupported field(s): {', '.join(unexpected)}"
+            )
+        if tuple(row) != _OWNERSHIP_PLEDGE_INDUSTRY_DATA_FIELDS:
+            return failure(
+                "ownership-pledge industry-data row "
+                f"{index} field order must match the documented source order"
+            )
+
+        sequence = row["序号"]
+        if isinstance(sequence, bool) or not isinstance(sequence, int):
+            return failure(
+                f"ownership-pledge industry-data row {index} field '序号' "
+                "must be an integer"
+            )
+        if sequence <= 0:
+            return failure(
+                f"ownership-pledge industry-data row {index} field '序号' "
+                "must be positive"
+            )
+        if sequence != index + 1:
+            return failure(
+                "ownership-pledge industry-data response 序号 values must be "
+                "generated as one-based row positions"
+            )
+        if previous_sequence is not None and sequence <= previous_sequence:
+            return failure(
+                "ownership-pledge industry-data response 序号 values must be "
+                "strictly ascending"
+            )
+        previous_sequence = sequence
+
+        industry = row["行业"]
+        if not isinstance(industry, str) or not industry.strip():
+            return failure(
+                f"ownership-pledge industry-data row {index} field '行业' "
+                "must be a non-empty string"
+            )
+        if industry in seen_industries:
+            return failure(
+                "ownership-pledge industry-data response has a duplicate "
+                "行业 identity"
+            )
+        seen_industries.add(industry)
+        industries.append(industry)
+
+        numeric_values: dict[str, float] = {}
+        for field in _OWNERSHIP_PLEDGE_INDUSTRY_DATA_NUMERIC_FIELDS:
+            value = row[field]
+            if value is None:
+                return failure(
+                    f"ownership-pledge industry-data row {index} field {field!r} "
+                    "must not be null"
+                )
+            if isinstance(value, bool) or not isinstance(value, Real):
+                return failure(
+                    f"ownership-pledge industry-data row {index} field {field!r} "
+                    "must be numeric"
+                )
+            try:
+                numeric = float(value)
+            except (OverflowError, TypeError, ValueError):
+                return failure(
+                    f"ownership-pledge industry-data row {index} field {field!r} "
+                    "must be numeric"
+                )
+            if not math.isfinite(numeric):
+                return failure(
+                    f"ownership-pledge industry-data row {index} field {field!r} "
+                    "must be finite"
+                )
+            if (
+                field in _OWNERSHIP_PLEDGE_INDUSTRY_DATA_INTEGER_FIELDS
+                and not numeric.is_integer()
+            ):
+                return failure(
+                    f"ownership-pledge industry-data row {index} field {field!r} "
+                    "must be an integer"
+                )
+            if numeric < 0:
+                return failure(
+                    f"ownership-pledge industry-data row {index} field {field!r} "
+                    "must be non-negative"
+                )
+            if (
+                field in _OWNERSHIP_PLEDGE_INDUSTRY_DATA_PERCENT_FIELDS
+                and numeric > 100
+            ):
+                return failure(
+                    f"ownership-pledge industry-data row {index} field {field!r} "
+                    "must be between 0 and 100 percent"
+                )
+            numeric_values[field] = numeric
+
+        average = numeric_values["平均质押比例"]
+        if previous_average is not None and average > previous_average:
+            return failure(
+                "ownership-pledge industry-data 平均质押比例 values must be "
+                "non-increasing in source order"
+            )
+        previous_average = average
+
+        raw_date = row["统计时间"]
+        if (
+            not isinstance(raw_date, str)
+            or re.fullmatch(r"\d{4}-\d{2}-\d{2}", raw_date) is None
+        ):
+            return failure(
+                f"ownership-pledge industry-data row {index} field '统计时间' "
+                "must be an ISO date string"
+            )
+        try:
+            observation_date = date.fromisoformat(raw_date)
+        except ValueError:
+            return failure(
+                f"ownership-pledge industry-data row {index} field '统计时间' "
+                "must be an ISO date string"
+            )
+        observation_dates.append(observation_date)
+
+    return None, industries, observation_dates
+
+
 def _ownership_pledge_bank_distribution_validation_message(
     rows: Sequence[Mapping[str, JSONValue]],
 ) -> tuple[str | None, list[str]]:
@@ -23126,6 +23426,98 @@ def _set_ownership_pledge_distribution_response_metadata(
             "upstream_sort_column": "ORG_NUM",
             "upstream_sort_direction": "descending",
             "upstream_filter": upstream_filter,
+        }
+    )
+
+
+def _set_ownership_pledge_industry_data_response_metadata(
+    response_metadata: dict[str, JSONValue],
+    *,
+    industry_order: list[str],
+    observation_dates: list[date],
+) -> None:
+    """Record the replay contract for the market-wide industry snapshot."""
+
+    response_metadata.update(
+        {
+            "upstream_row_count": len(industry_order),
+            "entity_row_count": 0,
+            "entity_rows_selected": False,
+            "listing_scoped_request": False,
+            "row_filtering": "none",
+            "ownership_pledge_view": _OWNERSHIP_PLEDGE_INDUSTRY_DATA_VIEW,
+            "market_scope": "all_a_share_listings",
+            "snapshot_scope": "current_published_pledge_industry_data",
+            "date_binding": "row_dates",
+            "date_fields": list(_OWNERSHIP_PLEDGE_INDUSTRY_DATA_DATE_FIELDS),
+            "required_date_fields": list(
+                _OWNERSHIP_PLEDGE_INDUSTRY_DATA_REQUIRED_DATE_FIELDS
+            ),
+            "date_boundary": "row_min_max",
+            "observation_date_field": "统计时间",
+            "observation_date_fields": list(
+                _OWNERSHIP_PLEDGE_INDUSTRY_DATA_DATE_FIELDS
+            ),
+            "observation_date_ordering": "row_specific",
+            "observation_start_date": (
+                min(observation_dates).isoformat() if observation_dates else None
+            ),
+            "observation_end_date": (
+                max(observation_dates).isoformat() if observation_dates else None
+            ),
+            "sequence_field": "序号",
+            "sequence_ordering": "strictly_ascending",
+            "average_pledge_ratio_field": "平均质押比例",
+            "average_pledge_ratio_ordering": "non_increasing",
+            "industry_field": "行业",
+            "industry_ordering": "source_order_sorted_by_average_pledge_ratio",
+            "industry_order": industry_order,
+            "identity_fields": list(_OWNERSHIP_PLEDGE_INDUSTRY_DATA_IDENTITY_FIELDS),
+            "nullable_identity_fields": list(
+                _OWNERSHIP_PLEDGE_INDUSTRY_DATA_NULLABLE_IDENTITY_FIELDS
+            ),
+            "value_fields": list(_OWNERSHIP_PLEDGE_INDUSTRY_DATA_NUMERIC_FIELDS),
+            "non_negative_fields": sorted(
+                _OWNERSHIP_PLEDGE_INDUSTRY_DATA_NONNEGATIVE_FIELDS - {"序号"}
+            ),
+            "percent_fields": sorted(
+                _OWNERSHIP_PLEDGE_INDUSTRY_DATA_PERCENT_FIELDS
+            ),
+            "percent_bounds": [0, 100],
+            "percent_semantics": "provider_reported_percent_value",
+            "percent_source_scale": "unchanged",
+            "integer_fields": [
+                field
+                for field in _OWNERSHIP_PLEDGE_INDUSTRY_DATA_FIELDS
+                if field in _OWNERSHIP_PLEDGE_INDUSTRY_DATA_INTEGER_FIELDS
+            ],
+            "text_fields": list(_OWNERSHIP_PLEDGE_INDUSTRY_DATA_TEXT_FIELDS),
+            "required_text_fields": list(
+                _OWNERSHIP_PLEDGE_INDUSTRY_DATA_REQUIRED_TEXT_FIELDS
+            ),
+            "required_numeric_fields": list(
+                _OWNERSHIP_PLEDGE_INDUSTRY_DATA_NUMERIC_FIELDS
+            ),
+            "field_types": dict(_OWNERSHIP_PLEDGE_INDUSTRY_DATA_FIELD_TYPES),
+            "nullable_fields": list(_OWNERSHIP_PLEDGE_INDUSTRY_DATA_NULLABLE_FIELDS),
+            "field_count": len(_OWNERSHIP_PLEDGE_INDUSTRY_DATA_FIELDS),
+            "source_field_order": list(_OWNERSHIP_PLEDGE_INDUSTRY_DATA_FIELDS),
+            "documented_units": dict(
+                _OWNERSHIP_PLEDGE_INDUSTRY_DATA_DOCUMENTED_UNITS
+            ),
+            "undocumented_numeric_units": dict(
+                _OWNERSHIP_PLEDGE_INDUSTRY_DATA_UNDOCUMENTED_NUMERIC_UNITS
+            ),
+            "upstream_report_name": "RPT_CSDC_INDUSTRY_STATISTICS",
+            "upstream_page_size": 500,
+            "pagination": "single_page",
+            "upstream_sort_column": "AVERAGE_PLEDGE_RATIO",
+            "upstream_sort_direction": "descending",
+            "upstream_filter": None,
+            "upstream_columns": list(_OWNERSHIP_PLEDGE_INDUSTRY_DATA_UPSTREAM_COLUMNS),
+            "wrapper_dropped_fields": ["INDUSTRY_CODE"],
+            "industry_label_policy": "preserve_provider_text",
+            "live_label_observation": "provider labels may include suffix Ⅱ",
         }
     )
 
@@ -23734,6 +24126,157 @@ def _validate_ownership_pledge_company_distribution_normalizer_scope(
         if not matches:
             raise ProviderNormalizationError(
                 "AKShare ownership-pledge company-distribution response metadata "
+                f"{name!r} does not match the requested replay scope"
+            )
+
+
+def _validate_ownership_pledge_industry_data_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> None:
+    """Validate replayed scope and rows for the market-wide industry snapshot."""
+
+    endpoint_name = "stock_gpzy_industry_data_em"
+    if listing.market is not ListingMarket.A:
+        raise ProviderNormalizationError(
+            "AKShare ownership-pledge industry-data raw slice supports A-share "
+            "listings only"
+        )
+    if record.response_metadata.get("endpoint") != endpoint_name:
+        raise ProviderNormalizationError(
+            "AKShare ownership-pledge industry-data record must come from "
+            f"{endpoint_name}"
+        )
+    if record.source_uri != _SOURCE_URIS[endpoint_name]:
+        raise ProviderNormalizationError(
+            "AKShare ownership-pledge industry-data source URI does not match "
+            "the documented endpoint"
+        )
+    try:
+        upstream_kwargs = _ownership_pledge_kwargs(
+            endpoint_name,
+            listing,
+            record.request,
+        )
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+    if upstream_kwargs:
+        raise ProviderNormalizationError(
+            "AKShare ownership-pledge industry-data endpoint must receive no "
+            "upstream arguments"
+        )
+
+    message, industries, observation_dates = (
+        _ownership_pledge_industry_data_validation_message(rows)
+    )
+    if message is not None:
+        raise ProviderNormalizationError(message)
+
+    expected_metadata = {
+        "endpoint": endpoint_name,
+        "market": ListingMarket.A.value,
+        "listing_code": listing.code,
+        "ownership_pledge_view": _OWNERSHIP_PLEDGE_INDUSTRY_DATA_VIEW,
+        "market_scope": "all_a_share_listings",
+        "listing_scoped_request": False,
+        "row_filtering": "none",
+        "snapshot_scope": "current_published_pledge_industry_data",
+        "date_binding": "row_dates",
+        "date_fields": list(_OWNERSHIP_PLEDGE_INDUSTRY_DATA_DATE_FIELDS),
+        "required_date_fields": list(
+            _OWNERSHIP_PLEDGE_INDUSTRY_DATA_REQUIRED_DATE_FIELDS
+        ),
+        "date_boundary": "row_min_max",
+        "observation_date_field": "统计时间",
+        "observation_date_fields": list(
+            _OWNERSHIP_PLEDGE_INDUSTRY_DATA_DATE_FIELDS
+        ),
+        "observation_date_ordering": "row_specific",
+        "observation_start_date": (
+            min(observation_dates).isoformat() if observation_dates else None
+        ),
+        "observation_end_date": (
+            max(observation_dates).isoformat() if observation_dates else None
+        ),
+        "sequence_field": "序号",
+        "sequence_ordering": "strictly_ascending",
+        "average_pledge_ratio_field": "平均质押比例",
+        "average_pledge_ratio_ordering": "non_increasing",
+        "industry_field": "行业",
+        "industry_ordering": "source_order_sorted_by_average_pledge_ratio",
+        "industry_order": industries,
+        "identity_fields": list(_OWNERSHIP_PLEDGE_INDUSTRY_DATA_IDENTITY_FIELDS),
+        "nullable_identity_fields": list(
+            _OWNERSHIP_PLEDGE_INDUSTRY_DATA_NULLABLE_IDENTITY_FIELDS
+        ),
+        "value_fields": list(_OWNERSHIP_PLEDGE_INDUSTRY_DATA_NUMERIC_FIELDS),
+        "non_negative_fields": sorted(
+            _OWNERSHIP_PLEDGE_INDUSTRY_DATA_NONNEGATIVE_FIELDS - {"序号"}
+        ),
+        "percent_fields": sorted(_OWNERSHIP_PLEDGE_INDUSTRY_DATA_PERCENT_FIELDS),
+        "percent_bounds": [0, 100],
+        "percent_semantics": "provider_reported_percent_value",
+        "percent_source_scale": "unchanged",
+        "integer_fields": [
+            field
+            for field in _OWNERSHIP_PLEDGE_INDUSTRY_DATA_FIELDS
+            if field in _OWNERSHIP_PLEDGE_INDUSTRY_DATA_INTEGER_FIELDS
+        ],
+        "text_fields": list(_OWNERSHIP_PLEDGE_INDUSTRY_DATA_TEXT_FIELDS),
+        "required_text_fields": list(
+            _OWNERSHIP_PLEDGE_INDUSTRY_DATA_REQUIRED_TEXT_FIELDS
+        ),
+        "required_numeric_fields": list(
+            _OWNERSHIP_PLEDGE_INDUSTRY_DATA_NUMERIC_FIELDS
+        ),
+        "field_types": dict(_OWNERSHIP_PLEDGE_INDUSTRY_DATA_FIELD_TYPES),
+        "nullable_fields": list(_OWNERSHIP_PLEDGE_INDUSTRY_DATA_NULLABLE_FIELDS),
+        "field_count": len(_OWNERSHIP_PLEDGE_INDUSTRY_DATA_FIELDS),
+        "source_field_order": list(_OWNERSHIP_PLEDGE_INDUSTRY_DATA_FIELDS),
+        "documented_units": dict(_OWNERSHIP_PLEDGE_INDUSTRY_DATA_DOCUMENTED_UNITS),
+        "undocumented_numeric_units": dict(
+            _OWNERSHIP_PLEDGE_INDUSTRY_DATA_UNDOCUMENTED_NUMERIC_UNITS
+        ),
+        "upstream_report_name": "RPT_CSDC_INDUSTRY_STATISTICS",
+        "upstream_page_size": 500,
+        "pagination": "single_page",
+        "upstream_sort_column": "AVERAGE_PLEDGE_RATIO",
+        "upstream_sort_direction": "descending",
+        "upstream_filter": None,
+        "upstream_columns": list(_OWNERSHIP_PLEDGE_INDUSTRY_DATA_UPSTREAM_COLUMNS),
+        "wrapper_dropped_fields": ["INDUSTRY_CODE"],
+        "industry_label_policy": "preserve_provider_text",
+        "live_label_observation": "provider labels may include suffix Ⅱ",
+        "entity_rows_selected": False,
+        "upstream_row_count": len(rows),
+        "entity_row_count": 0,
+    }
+    boolean_fields = {"listing_scoped_request", "entity_rows_selected"}
+    count_fields = {
+        "field_count",
+        "upstream_page_size",
+        "upstream_row_count",
+        "entity_row_count",
+    }
+    for name, expected in expected_metadata.items():
+        if name not in record.response_metadata:
+            matches = False
+        elif name in boolean_fields:
+            actual = record.response_metadata[name]
+            matches = isinstance(actual, bool) and actual is expected
+        elif name in count_fields:
+            actual = record.response_metadata[name]
+            matches = (
+                isinstance(actual, int)
+                and not isinstance(actual, bool)
+                and actual == expected
+            )
+        else:
+            matches = record.response_metadata[name] == expected
+        if not matches:
+            raise ProviderNormalizationError(
+                "AKShare ownership-pledge industry-data response metadata "
                 f"{name!r} does not match the requested replay scope"
             )
 
@@ -24962,6 +25505,26 @@ def _validate_ownership_pledge_bank_distribution_provider_rows(
             request=request,
         )
     return institutions
+
+
+def _validate_ownership_pledge_industry_data_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> tuple[list[str], list[date]]:
+    """Validate the full industry pledge snapshot before storage."""
+
+    message, industries, observation_dates = (
+        _ownership_pledge_industry_data_validation_message(rows)
+    )
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message}",
+            provider=provider,
+            request=request,
+        )
+    return industries, observation_dates
 
 
 def _validate_ownership_pledge_market_detail_provider_rows(

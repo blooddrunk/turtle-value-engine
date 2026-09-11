@@ -1127,6 +1127,23 @@ filter contract and does not silently reinterpret or merge the suffixed report
 labels; that upstream drift requires a separately reviewed adapter/upstream
 fix. No calculation, gate, pipeline, CLI or input-loader contract changes.
 
+Phase 3.06 adds the next distinct official A-share Eastmoney pledge endpoint,
+`stock_gpzy_industry_data_em`, under `OWNERSHIP_PLEDGE` with explicit
+`view=industry_data` and no upstream arguments. The [AKShare stock-data
+documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and [official
+implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_gpzy_em.py)
+define the current `RPT_CSDC_INDUSTRY_STATISTICS` industry snapshot with eight
+source-shaped fields, one 500-row page and descending
+`AVERAGE_PLEDGE_RATIO` ordering. The provider validates the complete
+market-wide response, preserves row-specific `统计时间`, documented
+percent/shares/CNY units and provider industry text, and records the fixed
+report/page/sort contract for replay. A live probe observed labels with the
+`Ⅱ` suffix; the adapter does not merge or relabel them. The normalizer emits
+`AKSHARE_OWNERSHIP_PLEDGE_INDUSTRY_DATA_RAW_ONLY`; industry rows and metrics
+remain raw evidence and do not become canonical share, cash, debt-equivalent
+or governance facts. No calculation, gate, pipeline, CLI or input-loader
+contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

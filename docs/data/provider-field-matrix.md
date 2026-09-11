@@ -1342,6 +1342,43 @@ The normalizer emits
 cash, debt-equivalent or governance fact. The response remains outside the
 calculation, gate, pipeline, CLI and input-loader contracts.
 
+## Phase 3.06 A-share Eastmoney ownership-pledge industry-data raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_gpzy_em.py)
+document `stock_gpzy_industry_data_em` as a no-argument, market-wide industry
+pledge snapshot backed by `RPT_CSDC_INDUSTRY_STATISTICS`. The implementation
+requests one 500-row page ordered by descending `AVERAGE_PLEDGE_RATIO` and
+uses upstream columns `INDUSTRY_CODE`, `INDUSTRY`, `TRADE_DATE`,
+`AVERAGE_PLEDGE_RATIO`, `ORG_NUM`, `PLEDGE_TOTAL_NUM`, `TOTAL_PLEDGE_SHARES`
+and `PLEDGE_TOTAL_MARKETCAP`. It drops `INDUSTRY_CODE`, generates one-based
+`序号` values and returns the exact eight-field source order `序号`, `行业`,
+`平均质押比例`, `公司家数`, `质押总笔数`, `质押总股本`, `最新质押市值`,
+`统计时间`. The adapter exposes it only under `OWNERSHIP_PLEDGE` with
+explicit `view=industry_data`, validates the complete response before
+retention and keeps the requested listing code as provenance rather than
+filtering the market-wide rows.
+
+| Raw upstream item | Phase 3.06 treatment |
+| --- | --- |
+| `序号` | Required positive integer generated as the one-based source row position and validated as strictly ascending; it is rank/order context, not a listing metric. |
+| `行业` | Required non-empty industry identity; duplicate labels are rejected in the full response and source order is preserved. Provider labels, including a live-observed `Ⅱ` suffix, are retained as text without merging or relabeling. |
+| `平均质押比例` | Required finite non-negative value in the provider-reported percent unit, bounded to 0–100 and non-increasing in the official source order; it does not become a canonical ownership or governance metric. |
+| `公司家数`, `质押总笔数` | Required finite non-negative integer counts; their units are not separately documented and they do not become canonical listing or pledge-event counts. |
+| `质押总股本` | Required finite non-negative numeric value in shares (`股`); it remains raw and does not become a canonical diluted-share, pledged-cash or debt-equivalent fact. |
+| `最新质押市值` | Required finite non-negative numeric value in CNY (`元`); it remains provider market-value context and does not become a valuation or cash fact. |
+| `统计时间` | Required ISO `YYYY-MM-DD` row date sourced from `TRADE_DATE`; row-specific dates are retained with their min/max range and are not treated as an accounting or filing period. |
+| row identity and ordering | Duplicate `行业` identities are rejected; exact field order/types, non-nullability, one-based sequence, industry order, ratio ordering and full row count are retained for replay. |
+| request `view=industry_data` | No upstream arguments beyond the implementation's fixed report/page/sort request; current market-wide industry snapshot, `listing_scoped_request=false`, `row_filtering=none`, `date_binding=row_dates`, `date_boundary=row_min_max` and upstream column/drop metadata remain explicit. |
+
+The normalizer emits
+`AKSHARE_OWNERSHIP_PLEDGE_INDUSTRY_DATA_RAW_ONLY`, leaves
+`governance_risk_level` critically missing and creates no canonical share,
+cash, debt-equivalent or governance fact. Industry rows, ratios, counts,
+shares, market values and row dates remain structured evidence pending the
+filing/evidence workflow. The response remains outside the calculation, gate,
+pipeline, CLI and input-loader contracts.
+
 ## Phase 2.92 SSE daily-deal overview raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)

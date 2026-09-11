@@ -2716,6 +2716,46 @@ cache replay. No calculation, gate, pipeline, CLI or input-loader contract
 changes. This numbered 3.05 increment remains structured acquisition; the
 top-level Phase 3 filing/evidence deliverables below are still unimplemented.
 
+### Phase 3.06 — A-share Eastmoney ownership-pledge industry-data raw acquisition contract (COMPLETE)
+
+The mapping review now covers the next distinct documented AKShare Eastmoney
+`stock_gpzy_industry_data_em` endpoint under the existing
+`OWNERSHIP_PLEDGE` category with explicit `view=industry_data` and no upstream
+arguments. The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_gpzy_em.py)
+define a current market-wide industry response backed by the
+`RPT_CSDC_INDUSTRY_STATISTICS` report, requested in one 500-row page ordered by
+descending `AVERAGE_PLEDGE_RATIO`. The wrapper requests the upstream columns
+`INDUSTRY_CODE`, `INDUSTRY`, `TRADE_DATE`, `AVERAGE_PLEDGE_RATIO`, `ORG_NUM`,
+`PLEDGE_TOTAL_NUM`, `TOTAL_PLEDGE_SHARES` and `PLEDGE_TOTAL_MARKETCAP`, drops
+the code column and returns the exact eight-field source order `序号`, `行业`,
+`平均质押比例`, `公司家数`, `质押总笔数`, `质押总股本`, `最新质押市值`,
+`统计时间`.
+
+The provider validates the complete response before retention. It enforces
+one-based source sequence, unique non-empty industry identity, non-increasing
+average-pledge-ratio ordering, finite non-negative numeric values, integer
+count fields, a 0–100 percent bound for `平均质押比例` and required ISO row
+dates from `统计时间`.
+It records the row-specific date range, source field order/types, documented
+percent/shares/CNY units, undocumented count units, fixed report/page/sort
+contract and non-listing row counts for replay. A live probe on 2026-09-11
+observed provider industry labels with the `Ⅱ` suffix; the adapter preserves
+those labels and does not normalize or merge provider text.
+
+The normalizer emits
+`AKSHARE_OWNERSHIP_PLEDGE_INDUSTRY_DATA_RAW_ONLY`, leaves
+`governance_risk_level` critically missing and creates no canonical share,
+cash, debt-equivalent or governance fact: market-wide industry rows,
+provider-reported ratio, counts, shares, market values and row dates remain
+raw structured evidence. Tests cover explicit view/A-share/no-argument
+routing, exact schema/order/types, sequence, industry identity, ratio/date and
+numeric boundaries, raw-only normalization, replay metadata tampering and
+offline cache replay. No calculation, gate, pipeline, CLI or input-loader
+contract changes. This numbered 3.06 increment remains structured acquisition;
+the top-level Phase 3 filing/evidence deliverables below are still
+unimplemented.
+
 ### Future structured-provider deliverables
 
 ```text
@@ -2725,7 +2765,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–3.05 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–3.06 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -2930,7 +2970,7 @@ This is the project's definition of safe “self-evolution.”
 # Current milestone
 
 Phase 2 remains active for structured-provider coverage. The numbered Phase
-3.05 increment is also acquisition-only; the top-level Phase 3 filing/evidence
+3.06 increment is also acquisition-only; the top-level Phase 3 filing/evidence
 layer remains unimplemented. Phase 1 remains frozen: changes to formulas,
 hard-gate semantics, schemas or `strict-v1` thresholds require a separately
 reviewed, versioned change.
@@ -3031,6 +3071,17 @@ while the documented `银行` wrapper filter returned no rows; this contract is
 recorded without silently merging the suffixed labels. The raw-only normalizer
 flag creates no canonical share, cash, debt-equivalent or governance fact and
 leaves `governance_risk_level` critically missing.
+Phase 3.06 adds the documented A-share Eastmoney
+`stock_gpzy_industry_data_em` ownership-pledge industry-data view under
+`OWNERSHIP_PLEDGE`. Its explicit `industry_data` view and no-argument
+`RPT_CSDC_INDUSTRY_STATISTICS` response are validated as a complete
+industry-ranked snapshot before retention, with one-based sequence, unique
+industry identity, non-increasing average pledge ratio, required row dates,
+documented percent/shares/CNY units, fixed report/page/sort metadata and no
+listing filtering. A live probe observed industry labels with the `Ⅱ` suffix;
+the adapter preserves provider text. The raw-only normalizer flag creates no
+canonical share, cash, debt-equivalent or governance fact and leaves
+`governance_risk_level` critically missing.
 Phase 2.75 completes the next documented structured-data boundary by adding
 the A-share `stock_gpzy_profile_em` market-wide historical ownership-pledge
 view. Its no-argument eight-field response is validated as an ascending raw

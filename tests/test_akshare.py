@@ -712,6 +712,12 @@ class FakeAKShare:
             _fixture("a_ownership_pledge_bank_distribution.json"),
         )
 
+    def stock_gpzy_industry_data_em(self):
+        return self._return(
+            "stock_gpzy_industry_data_em",
+            _fixture("a_ownership_pledge_industry_data.json"),
+        )
+
     def stock_gpzy_individual_pledge_ratio_detail_em(self, *, symbol: str):
         return self._return(
             "stock_gpzy_individual_pledge_ratio_detail_em",
@@ -931,8 +937,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "106"
-    assert AKSHARE_MAPPING_VERSION == "107"
+    assert provider.identity.provider_version == "107"
+    assert AKSHARE_MAPPING_VERSION == "108"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -8934,6 +8940,380 @@ def test_ownership_pledge_bank_distribution_cache_replay_does_not_call_upstream(
     assert replay.mode is RetrievalMode.CACHE_REPLAY
     assert replay.record == live.record
     assert fake.calls == [("stock_gpzy_distribute_statistics_bank_em", {})]
+
+
+def test_a_ownership_pledge_industry_data_fetch_keeps_full_market_rows():
+    fake = FakeAKShare()
+    record = _provider(fake).fetch(
+        _request(
+            DataCategory.OWNERSHIP_PLEDGE,
+            "SH600000",
+            {"view": "industry_data"},
+        )
+    )
+    fixture = _fixture("a_ownership_pledge_industry_data.json")
+
+    assert record.raw_payload == fixture
+    assert fake.calls == [("stock_gpzy_industry_data_em", {})]
+    assert record.response_metadata["endpoint"] == "stock_gpzy_industry_data_em"
+    assert record.response_metadata["market"] == "A"
+    assert record.response_metadata["listing_code"] == "600000"
+    assert record.response_metadata["ownership_pledge_view"] == "industry_data"
+    assert record.response_metadata["market_scope"] == "all_a_share_listings"
+    assert record.response_metadata["listing_scoped_request"] is False
+    assert record.response_metadata["row_filtering"] == "none"
+    assert record.response_metadata["snapshot_scope"] == (
+        "current_published_pledge_industry_data"
+    )
+    assert record.response_metadata["date_binding"] == "row_dates"
+    assert record.response_metadata["date_fields"] == ["统计时间"]
+    assert record.response_metadata["required_date_fields"] == ["统计时间"]
+    assert record.response_metadata["date_boundary"] == "row_min_max"
+    assert record.response_metadata["observation_date_field"] == "统计时间"
+    assert record.response_metadata["observation_date_fields"] == ["统计时间"]
+    assert record.response_metadata["observation_date_ordering"] == "row_specific"
+    assert record.response_metadata["observation_start_date"] == "2026-06-12"
+    assert record.response_metadata["observation_end_date"] == "2026-09-04"
+    assert record.response_metadata["sequence_field"] == "序号"
+    assert record.response_metadata["sequence_ordering"] == "strictly_ascending"
+    assert record.response_metadata["average_pledge_ratio_field"] == "平均质押比例"
+    assert record.response_metadata["average_pledge_ratio_ordering"] == (
+        "non_increasing"
+    )
+    assert record.response_metadata["industry_field"] == "行业"
+    assert record.response_metadata["industry_ordering"] == (
+        "source_order_sorted_by_average_pledge_ratio"
+    )
+    assert record.response_metadata["industry_order"] == [
+        row["行业"] for row in fixture
+    ]
+    assert record.response_metadata["identity_fields"] == ["行业"]
+    assert record.response_metadata["nullable_identity_fields"] == []
+    assert record.response_metadata["value_fields"] == [
+        "平均质押比例",
+        "公司家数",
+        "质押总笔数",
+        "质押总股本",
+        "最新质押市值",
+    ]
+    assert record.response_metadata["non_negative_fields"] == sorted(
+        [
+            "平均质押比例",
+            "公司家数",
+            "质押总笔数",
+            "质押总股本",
+            "最新质押市值",
+        ]
+    )
+    assert record.response_metadata["percent_fields"] == ["平均质押比例"]
+    assert record.response_metadata["percent_bounds"] == [0, 100]
+    assert record.response_metadata["percent_semantics"] == (
+        "provider_reported_percent_value"
+    )
+    assert record.response_metadata["percent_source_scale"] == "unchanged"
+    assert record.response_metadata["integer_fields"] == [
+        "序号",
+        "公司家数",
+        "质押总笔数",
+    ]
+    assert record.response_metadata["text_fields"] == ["行业"]
+    assert record.response_metadata["required_text_fields"] == ["行业"]
+    assert record.response_metadata["required_numeric_fields"] == [
+        "平均质押比例",
+        "公司家数",
+        "质押总笔数",
+        "质押总股本",
+        "最新质押市值",
+    ]
+    assert record.response_metadata["field_types"] == {
+        "序号": "integer",
+        "行业": "string",
+        "平均质押比例": "number",
+        "公司家数": "integer",
+        "质押总笔数": "integer",
+        "质押总股本": "number",
+        "最新质押市值": "number",
+        "统计时间": "date",
+    }
+    assert record.response_metadata["nullable_fields"] == []
+    assert record.response_metadata["field_count"] == 8
+    assert record.response_metadata["source_field_order"] == list(fixture[0])
+    assert record.response_metadata["documented_units"] == {
+        "平均质押比例": "percent",
+        "质押总股本": "shares",
+        "最新质押市值": "CNY",
+    }
+    assert record.response_metadata["undocumented_numeric_units"] == {
+        "公司家数": "not_documented",
+        "质押总笔数": "not_documented",
+    }
+    assert record.response_metadata["upstream_report_name"] == (
+        "RPT_CSDC_INDUSTRY_STATISTICS"
+    )
+    assert record.response_metadata["upstream_page_size"] == 500
+    assert record.response_metadata["pagination"] == "single_page"
+    assert record.response_metadata["upstream_sort_column"] == (
+        "AVERAGE_PLEDGE_RATIO"
+    )
+    assert record.response_metadata["upstream_sort_direction"] == "descending"
+    assert record.response_metadata["upstream_filter"] is None
+    assert record.response_metadata["upstream_columns"] == [
+        "INDUSTRY_CODE",
+        "INDUSTRY",
+        "TRADE_DATE",
+        "AVERAGE_PLEDGE_RATIO",
+        "ORG_NUM",
+        "PLEDGE_TOTAL_NUM",
+        "TOTAL_PLEDGE_SHARES",
+        "PLEDGE_TOTAL_MARKETCAP",
+    ]
+    assert record.response_metadata["wrapper_dropped_fields"] == ["INDUSTRY_CODE"]
+    assert record.response_metadata["industry_label_policy"] == "preserve_provider_text"
+    assert record.response_metadata["live_label_observation"] == (
+        "provider labels may include suffix Ⅱ"
+    )
+    assert record.response_metadata["upstream_row_count"] == len(fixture)
+    assert record.response_metadata["entity_row_count"] == 0
+    assert record.response_metadata["entity_rows_selected"] is False
+    assert record.source_uri == "https://data.eastmoney.com/gpzy/industryData.aspx"
+
+
+def test_ownership_pledge_industry_data_request_requires_explicit_view_and_a_share():
+    fake = FakeAKShare()
+    provider = _provider(fake)
+
+    with pytest.raises(ProviderRequestError, match="unsupported AKShare ownership-pledge"):
+        provider.fetch(
+            _request(
+                DataCategory.OWNERSHIP_PLEDGE,
+                "SH600000",
+                {"view": "industry_data", "date": "20241220"},
+            )
+        )
+    with pytest.raises(ProviderRequestError, match="unsupported AKShare ownership-pledge"):
+        provider.fetch(
+            _request(
+                DataCategory.OWNERSHIP_PLEDGE,
+                "SH600000",
+                {"view": "other"},
+            )
+        )
+    with pytest.raises(ProviderRequestError, match="requires date"):
+        provider.fetch(_request(DataCategory.OWNERSHIP_PLEDGE, "SH600000"))
+    with pytest.raises(ProviderRequestError, match="A-share listings only"):
+        provider.fetch(
+            _request(
+                DataCategory.OWNERSHIP_PLEDGE,
+                "HK00700",
+                {"view": "industry_data"},
+            )
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("empty", "must not be empty"),
+        ("missing_field", "missing field.*统计时间"),
+        ("extra_field", "contains unsupported field"),
+        ("reordered_fields", "field order"),
+        ("invalid_sequence", "序号.*positive"),
+        ("fractional_sequence", "序号.*integer"),
+        ("invalid_industry", "行业.*non-empty"),
+        ("duplicate_identity", "duplicate.*identity"),
+        ("invalid_numeric", "平均质押比例.*numeric"),
+        ("null_numeric", "平均质押比例.*must not be null"),
+        ("fractional_count", "质押总笔数.*integer"),
+        ("negative_value", "质押总股本.*non-negative"),
+        ("invalid_percent", "平均质押比例.*between 0 and 100"),
+        ("invalid_date", "统计时间.*ISO date"),
+        ("null_date", "统计时间.*ISO date"),
+        ("ratio_order", "平均质押比例.*non-increasing"),
+    ],
+)
+def test_ownership_pledge_industry_data_response_validates_schema_boundaries_and_identity(
+    mutation: str,
+    match: str,
+):
+    payload = [dict(row) for row in _fixture("a_ownership_pledge_industry_data.json")]
+    if mutation == "empty":
+        payload = []
+    elif mutation == "missing_field":
+        payload[0].pop("统计时间")
+    elif mutation == "extra_field":
+        payload[0]["未记录字段"] = "not documented"
+    elif mutation == "reordered_fields":
+        payload[0] = {key: payload[0][key] for key in reversed(payload[0])}
+    elif mutation == "invalid_sequence":
+        payload[0]["序号"] = 0
+    elif mutation == "fractional_sequence":
+        payload[0]["序号"] = 1.5
+    elif mutation == "invalid_industry":
+        payload[0]["行业"] = None
+    elif mutation == "duplicate_identity":
+        payload[1] = dict(payload[0])
+        payload[1]["序号"] = 2
+    elif mutation == "invalid_numeric":
+        payload[0]["平均质押比例"] = "not-a-number"
+    elif mutation == "null_numeric":
+        payload[0]["平均质押比例"] = None
+    elif mutation == "fractional_count":
+        payload[0]["质押总笔数"] = 1.5
+    elif mutation == "negative_value":
+        payload[0]["质押总股本"] = -1.0
+    elif mutation == "invalid_percent":
+        payload[0]["平均质押比例"] = 100.1
+    elif mutation == "invalid_date":
+        payload[0]["统计时间"] = "2026/06/12"
+    elif mutation == "null_date":
+        payload[0]["统计时间"] = None
+    else:
+        payload[1]["平均质押比例"] = payload[0]["平均质押比例"] + 1
+
+    class InvalidIndustryData(FakeAKShare):
+        def stock_gpzy_industry_data_em(self):
+            return self._return("stock_gpzy_industry_data_em", payload)
+
+    with pytest.raises(ProviderResponseError, match=match):
+        _provider(InvalidIndustryData()).fetch(
+            _request(
+                DataCategory.OWNERSHIP_PLEDGE,
+                "SH600000",
+                {"view": "industry_data"},
+            )
+        )
+
+
+def test_ownership_pledge_industry_data_accepts_zero_and_percent_boundaries():
+    payload = [
+        dict(row) for row in _fixture("a_ownership_pledge_industry_data.json")
+    ]
+    for row in payload:
+        row["平均质押比例"] = 0.0
+        row["公司家数"] = 0
+        row["质押总笔数"] = 0
+        row["质押总股本"] = 0.0
+        row["最新质押市值"] = 0.0
+    payload[0]["平均质押比例"] = 100.0
+    payload[1]["平均质押比例"] = 0.0
+    payload[2]["平均质押比例"] = 0.0
+
+    class BoundaryIndustryData(FakeAKShare):
+        def stock_gpzy_industry_data_em(self):
+            return self._return("stock_gpzy_industry_data_em", payload)
+
+    record = _provider(BoundaryIndustryData()).fetch(
+        _request(
+            DataCategory.OWNERSHIP_PLEDGE,
+            "SH600000",
+            {"view": "industry_data"},
+        )
+    )
+
+    assert record.raw_payload[0]["平均质押比例"] == 100.0
+    assert record.raw_payload[1]["质押总股本"] == 0.0
+
+
+def test_ownership_pledge_industry_data_is_retained_as_raw_evidence_without_facts():
+    record = _provider().fetch(
+        _request(
+            DataCategory.OWNERSHIP_PLEDGE,
+            "SH600000",
+            {"view": "industry_data"},
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="ownership-pledge-industry-data-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == [
+        "AKSHARE_OWNERSHIP_PLEDGE_INDUSTRY_DATA_RAW_ONLY"
+    ]
+    assert normalized.data_quality.critical_missing_fields == [
+        "governance_risk_level",
+    ]
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "industry-data response" in normalized.data_quality.notes
+    assert "market-wide industry rows" in normalized.data_quality.notes
+    assert "canonical listing-level" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+@pytest.mark.parametrize("mutation", ["endpoint", "view", "report", "sort", "payload"])
+def test_ownership_pledge_industry_data_normalizer_rejects_replayed_scope_mismatches(
+    mutation: str,
+):
+    record = _provider().fetch(
+        _request(
+            DataCategory.OWNERSHIP_PLEDGE,
+            "SH600000",
+            {"view": "industry_data"},
+        )
+    )
+    payload = [dict(row) for row in record.raw_payload]
+    response_metadata = dict(record.response_metadata)
+    if mutation == "endpoint":
+        response_metadata["endpoint"] = "stock_gpzy_distribute_statistics_bank_em"
+    elif mutation == "view":
+        response_metadata["ownership_pledge_view"] = "bank_distribution"
+    elif mutation == "report":
+        response_metadata["upstream_report_name"] = "OTHER_REPORT"
+    elif mutation == "sort":
+        response_metadata["upstream_sort_direction"] = "ascending"
+    else:
+        payload[0]["平均质押比例"] = {"not": "numeric"}
+
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=record.source_uri,
+        response_metadata=response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match="industry-data"):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-ownership-pledge-industry-data",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_ownership_pledge_industry_data_cache_replay_does_not_call_upstream(
+    tmp_path: Path,
+):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.OWNERSHIP_PLEDGE,
+        "SH600000",
+        {"view": "industry_data"},
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [("stock_gpzy_industry_data_em", {})]
 
 
 def test_a_ownership_pledge_market_detail_fetch_filters_after_full_response_validation():
