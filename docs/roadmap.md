@@ -3419,6 +3419,36 @@ full-universe schema/date/type boundaries, empty selected listings, raw-only
 normalization, replay metadata tampering and offline cache replay. No
 calculation, gate, pipeline, CLI or input-loader contract changes.
 
+### Phase 3.34 — HSGT institution-statistics raw acquisition contract (COMPLETE)
+
+The mapping review now covers the documented Eastmoney
+`stock_hsgt_institution_statistics_em` HSGT institution-statistics endpoint
+under `SHAREHOLDER_HOLDINGS` with explicit
+`view=hsgt_institution_statistics`, the four documented `market` selectors
+`北向持股`, `沪股通持股`, `深股通持股` and `南向持股`, and inclusive
+`start_date`/`end_date` date ranges. The [AKShare stock-data
+documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and
+[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hsgt_em.py)
+define the exact seven-field output and call the
+`PRT_MUTUAL_ORG_STA` Eastmoney JSON report with descending `HOLD_DATE`, page
+size `500` and market-type filters `N`, `001`, `003` or `S`. The provider
+freezes the official date filter, report, sort, page and fixed parameters,
+validates the complete market-wide response, and preserves the official
+19-column source mapping (date `0`, count `2`, value `4`, 1/5/10-day changes
+`5`/`6`/`7`, institution `9`). Northbound branches retain provider-driven
+pagination while the southbound branch is the documented single-page path.
+
+Because the wrapper rows contain no listing or security code, the provider
+retains the full market-wide institution response and records requested A/H
+listing identity as context only; it does not invent a row-level listing key
+or filter institutions to a company. The normalizer emits
+`AKSHARE_HSGT_INSTITUTION_STATISTICS_RAW_ONLY` and creates no canonical
+ownership, concentration, share, dilution, governance or issuer cash-flow
+fact. Tests cover all market branches, exact filters/units and field order,
+request/context/date rejection, full-response schema and value boundaries,
+raw-only normalization, replay metadata tampering and offline cache replay. No
+calculation, gate, pipeline, CLI or input-loader contract changes.
+
 ### Future structured-provider deliverables
 
 ```text
@@ -3428,7 +3458,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–3.33 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–3.34 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```

@@ -1,6 +1,6 @@
 # Provider and Cache Architecture
 
-> Status: Phase 2 foundation and Phase 3.33 structured acquisition, read-only AKShare statement slices, earnings forecasts/quick reports/performance reports/business composition/financial abstract/financial indicators, H-share latest indicators, A-share disclosure-notice metadata including the Eastmoney individual-notice, market-wide notice and shareholder-meeting views, risk-warning status, trading-suspension, restricted-share-release, goodwill-impairment detail/goodwill-detail/impairment-forecast/market-profile/industry-data, ESG-rating, SSE/SZSE/BSE margin-detail, share-capital, individual-info snapshot, corporate-action including IPO-summary and Eastmoney IPO-yield, external-guarantee, company-litigation, ownership-pledge snapshot/detail/company-distribution/bank-distribution/industry-data/market-profile/important-shareholder-detail, main-shareholder, shareholder-count/shareholder-count-detail, A-share actual-controller holding-change, A/H HSGT individual-holdings/individual-ranking/daily-stock-statistics, SSE/SZSE/BSE insider-share-change, A-share Eastmoney/CNINFO management-holding and executive/shareholder-change, A-share top-ten/top-ten-tradable-shareholder/top-ten-tradable-shareholder-detail, Dragon-Tiger market-activity detail/statistics/institution-statistics/institution-daily/institutional-research/institutional-research-detail/market-participation-desire/market-focus/institution-participation/block-trade-detail/hot-rank/latest-hot-rank/A-share historical-hot-rank/limit-up-pool/limit-down-pool/H-share latest-hot-rank/H-share historical-hot-rank/new-stock-board, A+B/A+H quote-comparison, A-share Eastmoney/Sina intraday-trade, Tencent daily-history/latest-trading-day tick, Sina minute-history, A-share/H-share intraday-history, pre-market-history and five-level bid-ask raw slices, H-share main-board/famous-stock/Stock Connect constituent quotes, SSE/SZSE market-summary, SZSE area-summary/sector-summary and Eastmoney industry-board, HSGT board-rank, stock-account-statistics and Legu market-activity/congestion/equity-bond-spread/Buffett-index/A-share PE/PB-history, index-PE/index-PB, A-share growth-comparison, A/H Eastmoney valuation-comparison, A/H Eastmoney growth-comparison and A/H Baidu valuation-history raw slices, and the deprecated HSGT minute-fund-flow raw slice
+> Status: Phase 2 foundation and Phase 3.34 structured acquisition, read-only AKShare statement slices, earnings forecasts/quick reports/performance reports/business composition/financial abstract/financial indicators, H-share latest indicators, A-share disclosure-notice metadata including the Eastmoney individual-notice, market-wide notice and shareholder-meeting views, risk-warning status, trading-suspension, restricted-share-release, goodwill-impairment detail/goodwill-detail/impairment-forecast/market-profile/industry-data, ESG-rating, SSE/SZSE/BSE margin-detail, share-capital, individual-info snapshot, corporate-action including IPO-summary and Eastmoney IPO-yield, external-guarantee, company-litigation, ownership-pledge snapshot/detail/company-distribution/bank-distribution/industry-data/market-profile/important-shareholder-detail, main-shareholder, shareholder-count/shareholder-count-detail, A-share actual-controller holding-change, A/H HSGT individual-holdings/individual-ranking/daily-stock-statistics/institution-statistics, SSE/SZSE/BSE insider-share-change, A-share Eastmoney/CNINFO management-holding and executive/shareholder-change, A-share top-ten/top-ten-tradable-shareholder/top-ten-tradable-shareholder-detail, Dragon-Tiger market-activity detail/statistics/institution-statistics/institution-daily/institutional-research/institutional-research-detail/market-participation-desire/market-focus/institution-participation/block-trade-detail/hot-rank/latest-hot-rank/A-share historical-hot-rank/limit-up-pool/limit-down-pool/H-share latest-hot-rank/H-share historical-hot-rank/new-stock-board, A+B/A+H quote-comparison, A-share Eastmoney/Sina intraday-trade, Tencent daily-history/latest-trading-day tick, Sina minute-history, A-share/H-share intraday-history, pre-market-history and five-level bid-ask raw slices, H-share main-board/famous-stock/Stock Connect constituent quotes, SSE/SZSE market-summary, SZSE area-summary/sector-summary and Eastmoney industry-board, HSGT board-rank, stock-account-statistics and Legu market-activity/congestion/equity-bond-spread/Buffett-index/A-share PE/PB-history, index-PE/index-PB, A-share growth-comparison, A/H Eastmoney valuation-comparison, A/H Eastmoney growth-comparison and A/H Baidu valuation-history raw slices, and the deprecated HSGT minute-fund-flow raw slice
 
 This document freezes the boundary between structured-data acquisition and the
 deterministic Turtle Value Engine. It does not authorize a live provider or
@@ -789,7 +789,7 @@ an A-share risk-warning-status, trading-suspension, goodwill-impairment
 detail/goodwill-detail/impairment-forecast/market-profile/industry-data,
 ESG-rating, SSE/SZSE/BSE margin-detail, external-guarantee, company-litigation,
 main-shareholder/shareholder-count/actual-controller holding-change/HSGT
-individual-holdings and individual-ranking raw slices, A-share Eastmoney individual-fund-flow,
+individual-holdings, individual-ranking, daily-stock-statistics and institution-statistics raw slices, A-share Eastmoney individual-fund-flow,
 top-ten-shareholder/top-ten-tradable-shareholder/top-ten-tradable-shareholder-detail,
 Dragon-Tiger detail/statistics/institution-statistics/block-trade-detail and
 market-participation-desire/market-focus/institution-participation/
@@ -804,7 +804,7 @@ A-share Eastmoney intraday-trade/chip-distribution, Tencent daily-history and la
 A-share/H-share intraday-history, pre-market-history and five-level bid-ask raw
 slices, the H-share Eastmoney main-board, famous-stock and Stock Connect
 constituent quote raw slices, and the deprecated HSGT minute-fund-flow raw
-slice, HSGT board-rank and HSGT individual-ranking raw slices. It
+slice, HSGT board-rank, individual-ranking, daily-stock-statistics and institution-statistics raw slices. It
 advertises exactly these capabilities:
 
 | Category | A-share endpoint | H-share endpoint | Normalized output |
@@ -845,7 +845,7 @@ advertises exactly these capabilities:
 | `SHARE_CAPITAL` | `stock_zh_a_gbjg_em` (no parameters); `stock_share_change_cninfo` (explicit date range); `stock_restricted_release_queue_em` (`view=restricted_release_queue`); `stock_individual_info_em` (`view=individual_info`) | — | raw historical response or current item/value snapshot and provenance only; no canonical share/dilution fact |
 | `OWNERSHIP_PLEDGE` | `stock_gpzy_distribute_statistics_bank_em` (`view=bank_distribution`, market-wide bank pledge-institution distribution, no upstream arguments); `stock_gpzy_distribute_statistics_company_em` (`view=company_distribution`, market-wide pledge-institution distribution, no upstream arguments); `stock_gpzy_industry_data_em` (`view=industry_data`, market-wide pledge-industry snapshot, no upstream arguments); `stock_gpzy_profile_em` (`view=market_profile`, market-wide historical A-share profile, no upstream arguments); `stock_gpzy_pledge_ratio_detail_em` (`view=market_pledge_detail`, market-wide important-shareholder detail, no upstream arguments); `stock_gpzy_pledge_ratio_em` (exact `date`); `stock_gpzy_individual_pledge_ratio_detail_em` (`view=individual_pledge_detail`); `stock_cg_equity_mortgage_cninfo` (`view=equity_mortgage`, `date`) | — | market-wide bank/company/industry pledge-institution snapshots, historical profile, important-shareholder detail, date-bound snapshot, symbol-scoped detail or CNINFO pledge-event rows as raw structured evidence only; no canonical governance, share, cash or debt-equivalent fact |
 | `INSIDER_SHARE_CHANGES` | `stock_share_hold_change_sse` (Shanghai); `stock_share_hold_change_szse` (Shenzhen); `stock_share_hold_change_bse` (Beijing); `stock_hold_management_detail_em` (`view=management_detail`, no upstream arguments, full universe filtered to requested A-share); `stock_hold_management_person_em` (`view=management_person`, symbol-and-person scoped); `stock_ggcg_em` (`view=executive_share_changes`, explicit direction, full universe filtered to requested A-share) | — | listing-scoped exchange rows or management/management-person/executive/shareholder holding-change rows as raw structured evidence only; no canonical share, dilution, governance, buyback or issuance fact |
-| `SHAREHOLDER_HOLDINGS` | `stock_main_stock_holder` (`stock`); `stock_hold_num_cninfo` (exact quarter-end `date`); `stock_zh_a_gdhs_detail_em` (`view=holder_count_detail`); `stock_hold_control_cninfo` (`view=control_changes`, optional `control_type`); `stock_gdfx_top_10_em` (`view=top_10`, exact quarter-end `date`); `stock_gdfx_free_top_10_em` (`view=free_top_10`, exact quarter-end `date`); `stock_gdfx_free_holding_detail_em` (`view=free_holding_detail`, exact quarter-end `date`); `stock_hsgt_individual_em` (`view=hsgt_individual`); `stock_hsgt_hold_stock_em` (`view=hsgt_hold_stock`, three A-share HSGT markets and seven periods); `stock_hsgt_stock_statistics_em` (`view=hsgt_stock_statistics`, four A/H HSGT symbols and inclusive date range) | `stock_hsgt_individual_em` (`view=hsgt_individual`); `stock_hsgt_stock_statistics_em` (`view=hsgt_stock_statistics`, `symbol=南向持股`, inclusive date range) | A-share main-shareholder/shareholder-count/shareholder-count-detail/actual-controller/top-ten/top-ten-tradable/top-ten-tradable-detail holding-change, A/H HSGT investor-holding, individual-ranking or daily-stock-statistics rows as raw structured evidence only; no canonical ownership, concentration, share, dilution or governance fact |
+| `SHAREHOLDER_HOLDINGS` | `stock_main_stock_holder` (`stock`); `stock_hold_num_cninfo` (exact quarter-end `date`); `stock_zh_a_gdhs_detail_em` (`view=holder_count_detail`); `stock_hold_control_cninfo` (`view=control_changes`, optional `control_type`); `stock_gdfx_top_10_em` (`view=top_10`, exact quarter-end `date`); `stock_gdfx_free_top_10_em` (`view=free_top_10`, exact quarter-end `date`); `stock_gdfx_free_holding_detail_em` (`view=free_holding_detail`, exact quarter-end `date`); `stock_hsgt_individual_em` (`view=hsgt_individual`); `stock_hsgt_hold_stock_em` (`view=hsgt_hold_stock`, three A-share HSGT markets and seven periods); `stock_hsgt_stock_statistics_em` (`view=hsgt_stock_statistics`, four A/H HSGT symbols and inclusive date range); `stock_hsgt_institution_statistics_em` (`view=hsgt_institution_statistics`, four A/H HSGT markets and inclusive date range) | `stock_hsgt_individual_em` (`view=hsgt_individual`); `stock_hsgt_stock_statistics_em` (`view=hsgt_stock_statistics`, `symbol=南向持股`, inclusive date range); `stock_hsgt_institution_statistics_em` (`view=hsgt_institution_statistics`, four A/H HSGT markets and inclusive date range) | A-share main-shareholder/shareholder-count/shareholder-count-detail/actual-controller/top-ten/top-ten-tradable/top-ten-tradable-detail holding-change, A/H HSGT investor-holding, individual-ranking, daily-stock-statistics or market-wide institution-statistics rows as raw structured evidence only; no canonical ownership, concentration, share, dilution or governance fact |
 
 The adapter accepts common stable A/H identifiers such as `SH600000`,
 `000001.SZ`, `A:600000`, `HK00700`, `700.HK` and `H:00700`. A-share daily
@@ -2572,6 +2572,36 @@ selected listings, raw-only normalization, replay metadata tampering and
 offline cache replay. No calculation, gate, pipeline, CLI or input-loader
 contract changes.
 
+The HSGT institution-statistics slice is also acquisition-only. The current
+[AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hsgt_em.py)
+document `stock_hsgt_institution_statistics_em` as a date-range market-wide
+response with the four selectors `北向持股`, `沪股通持股`, `深股通持股` and
+`南向持股`. The adapter exposes it with explicit
+`view=hsgt_institution_statistics`, maps the selectors to `MARKET_TYPE=N`,
+`001`, `003` or `S`, and freezes the exact `PRT_MUTUAL_ORG_STA` JSON request:
+descending `HOLD_DATE`, page size `500`, `columns=ALL`, `source=WEB` and
+`client=WEB`, plus the inclusive `HOLD_DATE` range filter. The exact seven
+output fields are preserved in official order: date, institution, count,
+market value and the provider-reported 1/5/10-day market-value changes. The
+wrapper maps date `0`, count `2`, value `4`, changes `5`/`6`/`7` and institution
+`9` from its 19 raw source columns; northbound branches use provider-driven
+pagination while southbound is the documented single-page path.
+
+The official rows have no listing or security-code identity, so the provider
+retains the complete market-wide response and binds requested A/H listing
+identity only in request/replay metadata. `row_filtering=none`,
+`entity_rows_selected=false` and the explicit full-universe marker prevent
+institution rows from being mistaken for company-level holdings. The
+normalizer emits `AKSHARE_HSGT_INSTITUTION_STATISTICS_RAW_ONLY`; institution
+counts, market values and provider-reported changes do not establish
+beneficial control, shareholder concentration, issuer cash flow or a
+company-level diluted-share series. Tests cover all four market selectors,
+exact filters, units and raw mapping, request/context/date rejection,
+complete-response schema and numeric boundaries, raw-only normalization,
+replay metadata tampering and offline cache replay. No calculation, gate,
+pipeline, CLI or input-loader contract changes.
+
 The H-share Baidu valuation-history slice is also acquisition-only. The current
 [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
 and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hk_valuation_baidu.py)
@@ -2618,7 +2648,7 @@ outside this slice.
 
 ## 13. Deliberate non-goals
 
-This foundation plus the Phase 2.2–3.33 structured slices does not include:
+This foundation plus the Phase 2.2–3.34 structured slices does not include:
 
 - Tushare, BaoStock or any other additional provider;
 - automatic network scheduling, credentials or retry orchestration outside an adapter;

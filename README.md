@@ -1575,6 +1575,23 @@ holding quantities, market values, ratios and changes do not establish
 beneficial control, issuer cash flow or a canonical diluted-share series. No
 calculation, gate, pipeline, CLI or input-loader contract changes.
 
+Phase 3.34 adds the documented Eastmoney HSGT institution-statistics endpoint
+[`stock_hsgt_institution_statistics_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
+under `SHAREHOLDER_HOLDINGS` with explicit `view=hsgt_institution_statistics`,
+required `market` of `北向持股`, `沪股通持股`, `深股通持股` or `南向持股`, and
+inclusive `start_date`/`end_date` values in `YYYYMMDD` form. The [official
+implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hsgt_em.py)
+calls `PRT_MUTUAL_ORG_STA` with `HOLD_DATE` descending, page size `500` and
+market-type filters `N`, `001`, `003` or `S`, returning the exact seven fields
+for date, institution, count, value and 1/5/10-day changes. The provider
+preserves the official 19-column raw mapping, validates the complete
+market-wide response before storage, and keeps A/H listing identity as request
+context only because the rows have no listing code. The normalizer emits
+`AKSHARE_HSGT_INSTITUTION_STATISTICS_RAW_ONLY`; institution counts, market
+values and changes do not establish ownership, concentration, issuer cash flow
+or a canonical diluted-share series. No calculation, gate, pipeline, CLI or
+input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

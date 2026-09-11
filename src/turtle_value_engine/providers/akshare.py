@@ -15,7 +15,7 @@ risk-warning-status, trading-suspension, main-shareholder, shareholder-count,
 shareholder-count-detail and actual-controller holding-change raw slices, the
 A-share Eastmoney
 management-holding and management-person raw slices, the A/H HSGT
-individual-holdings and daily stock-statistics raw slices, the H-share
+individual-holdings, daily stock-statistics and institution-statistics raw slices, the H-share
 financial-indicator raw slice, the H-share
 latest-indicator raw slice, the A-share goodwill-impairment detail and
 goodwill-detail,
@@ -111,9 +111,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "135"
+AKSHARE_ADAPTER_VERSION = "136"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "136"
+AKSHARE_MAPPING_VERSION = "137"
 
 
 class ListingMarket(StrEnum):
@@ -203,6 +203,9 @@ _SOURCE_URIS = {
     "stock_hsgt_hold_stock_em": "https://data.eastmoney.com/hsgtcg/list.html",
     "stock_hsgt_stock_statistics_em": (
         "https://data.eastmoney.com/hsgtcg/StockStatistics.aspx"
+    ),
+    "stock_hsgt_institution_statistics_em": (
+        "http://data.eastmoney.com/hsgtcg/InstitutionStatistics.aspx"
     ),
     "stock_lhb_detail_em": "https://data.eastmoney.com/stock/tradedetail.html",
     "stock_lhb_stock_statistic_em": "https://data.eastmoney.com/stock/tradedetail.html",
@@ -4099,6 +4102,146 @@ _HSGT_STOCK_STATISTICS_DOCUMENTED_UNITS = {
         "持股市值变化-10日": "HKD",
     },
 }
+_HSGT_INSTITUTION_STATISTICS_ENDPOINT = "stock_hsgt_institution_statistics_em"
+_HSGT_INSTITUTION_STATISTICS_PARAMETER_NAMES = frozenset(
+    {"view", "market", "start_date", "end_date"}
+)
+_HSGT_INSTITUTION_STATISTICS_VIEW = "hsgt_institution_statistics"
+_HSGT_INSTITUTION_STATISTICS_MARKETS = (
+    "北向持股",
+    "沪股通持股",
+    "深股通持股",
+    "南向持股",
+)
+_HSGT_INSTITUTION_STATISTICS_MARKET_SET = frozenset(
+    _HSGT_INSTITUTION_STATISTICS_MARKETS
+)
+_HSGT_INSTITUTION_STATISTICS_MARKET_TYPES = {
+    "北向持股": "N",
+    "沪股通持股": "001",
+    "深股通持股": "003",
+    "南向持股": "S",
+}
+_HSGT_INSTITUTION_STATISTICS_MARKET_LISTING_MARKETS = {
+    "北向持股": ListingMarket.A,
+    "沪股通持股": ListingMarket.A,
+    "深股通持股": ListingMarket.A,
+    "南向持股": ListingMarket.H,
+}
+_HSGT_INSTITUTION_STATISTICS_MARKET_DIRECTIONS = {
+    "北向持股": "northbound",
+    "沪股通持股": "northbound",
+    "深股通持股": "northbound",
+    "南向持股": "southbound",
+}
+_HSGT_INSTITUTION_STATISTICS_SOURCE_URI = (
+    "http://data.eastmoney.com/hsgtcg/InstitutionStatistics.aspx"
+)
+_HSGT_INSTITUTION_STATISTICS_UPSTREAM_URL = (
+    "https://datacenter-web.eastmoney.com/api/data/v1/get"
+)
+_HSGT_INSTITUTION_STATISTICS_REPORT_NAME = "PRT_MUTUAL_ORG_STA"
+_HSGT_INSTITUTION_STATISTICS_PAGE_SIZE = 500
+_HSGT_INSTITUTION_STATISTICS_FIELDS = (
+    "持股日期",
+    "机构名称",
+    "持股只数",
+    "持股市值",
+    "持股市值变化-1日",
+    "持股市值变化-5日",
+    "持股市值变化-10日",
+)
+_HSGT_INSTITUTION_STATISTICS_FIELD_SET = frozenset(
+    _HSGT_INSTITUTION_STATISTICS_FIELDS
+)
+_HSGT_INSTITUTION_STATISTICS_DATE_FIELDS = ("持股日期",)
+_HSGT_INSTITUTION_STATISTICS_TEXT_FIELDS = ("机构名称",)
+_HSGT_INSTITUTION_STATISTICS_REQUIRED_TEXT_FIELDS = (
+    "机构名称",
+)
+_HSGT_INSTITUTION_STATISTICS_NUMERIC_FIELDS = (
+    "持股只数",
+    "持股市值",
+    "持股市值变化-1日",
+    "持股市值变化-5日",
+    "持股市值变化-10日",
+)
+_HSGT_INSTITUTION_STATISTICS_INTEGER_FIELDS = frozenset()
+_HSGT_INSTITUTION_STATISTICS_NULLABLE_FIELDS = (
+    *_HSGT_INSTITUTION_STATISTICS_NUMERIC_FIELDS,
+)
+_HSGT_INSTITUTION_STATISTICS_FIELD_TYPES = {
+    "持股日期": "date",
+    "机构名称": "string",
+    **{field: "number" for field in _HSGT_INSTITUTION_STATISTICS_NUMERIC_FIELDS},
+}
+_HSGT_INSTITUTION_STATISTICS_DOCUMENTED_UNITS = {
+    "北向持股": {
+        "持股只数": "count",
+        "持股市值": "CNY",
+        "持股市值变化-1日": "CNY",
+        "持股市值变化-5日": "CNY",
+        "持股市值变化-10日": "CNY",
+    },
+    "沪股通持股": {
+        "持股只数": "count",
+        "持股市值": "CNY",
+        "持股市值变化-1日": "CNY",
+        "持股市值变化-5日": "CNY",
+        "持股市值变化-10日": "CNY",
+    },
+    "深股通持股": {
+        "持股只数": "count",
+        "持股市值": "CNY",
+        "持股市值变化-1日": "CNY",
+        "持股市值变化-5日": "CNY",
+        "持股市值变化-10日": "CNY",
+    },
+    "南向持股": {
+        "持股只数": "count",
+        "持股市值": "HKD",
+        "持股市值变化-1日": "HKD",
+        "持股市值变化-5日": "HKD",
+        "持股市值变化-10日": "HKD",
+    },
+}
+_HSGT_INSTITUTION_STATISTICS_UPSTREAM_PARAMETER_ORDER = (
+    "sortColumns",
+    "sortTypes",
+    "pageSize",
+    "pageNumber",
+    "reportName",
+    "columns",
+    "source",
+    "client",
+    "filter",
+)
+_HSGT_INSTITUTION_STATISTICS_UPSTREAM_FIXED_PARAMETERS = {
+    "sortColumns": "HOLD_DATE",
+    "sortTypes": "-1",
+    "pageSize": "500",
+    "pageNumber": "1",
+    "reportName": _HSGT_INSTITUTION_STATISTICS_REPORT_NAME,
+    "columns": "ALL",
+    "source": "WEB",
+    "client": "WEB",
+}
+_HSGT_INSTITUTION_STATISTICS_WRAPPER_COLUMN_MAPPINGS = {
+    direction: {
+        "持股日期": 0,
+        "持股只数": 2,
+        "持股市值": 4,
+        "持股市值变化-1日": 5,
+        "持股市值变化-5日": 6,
+        "持股市值变化-10日": 7,
+        "机构名称": 9,
+    }
+    for direction in _HSGT_INSTITUTION_STATISTICS_MARKET_DIRECTIONS.values()
+}
+_HSGT_INSTITUTION_STATISTICS_WRAPPER_SOURCE_COLUMN_COUNTS = {
+    direction: 19
+    for direction in _HSGT_INSTITUTION_STATISTICS_MARKET_DIRECTIONS.values()
+}
 _SHAREHOLDER_TOP10_PARAMETER_NAMES = frozenset({"date", "view"})
 _SHAREHOLDER_TOP10_VIEW = "top_10"
 _SHAREHOLDER_QUARTER_ENDS = frozenset({(3, 31), (6, 30), (9, 30), (12, 31)})
@@ -5039,11 +5182,16 @@ class AKShareProvider(StructuredDataProvider):
             request.category is DataCategory.SHAREHOLDER_HOLDINGS
             and listing.market is ListingMarket.H
             and request.parameters.get("view")
-            not in {_HSGT_INDIVIDUAL_VIEW, _HSGT_STOCK_STATISTICS_VIEW}
+            not in {
+                _HSGT_INDIVIDUAL_VIEW,
+                _HSGT_STOCK_STATISTICS_VIEW,
+                _HSGT_INSTITUTION_STATISTICS_VIEW,
+            }
         ):
             raise ProviderRequestError(
                 "the AKShare shareholder-holdings endpoints support A-share listings only "
-                "unless view='hsgt_individual' or view='hsgt_stock_statistics' "
+                "unless view='hsgt_individual', view='hsgt_stock_statistics' or "
+                "view='hsgt_institution_statistics' "
                 "selects a documented A/H endpoint",
                 provider=self.identity,
                 request=request,
@@ -8362,6 +8510,36 @@ class AKShareProvider(StructuredDataProvider):
                 response_metadata["control_view"] = _SHAREHOLDER_CONTROL_VIEW
                 response_metadata["snapshot_scope"] = "historical_published_dataset"
                 response_metadata["observation_date_field"] = "变动日期"
+            elif endpoint.name == _HSGT_INSTITUTION_STATISTICS_ENDPOINT:
+                market = kwargs["market"]
+                start_date = kwargs["start_date"]
+                end_date = kwargs["end_date"]
+                observation_dates, row_identity_order = (
+                    _validate_hsgt_institution_statistics_provider_rows(
+                        rows,
+                        market=market,
+                        start_date=start_date,
+                        end_date=end_date,
+                        provider=self.identity,
+                        request=request,
+                    )
+                )
+                # The official institution wrapper has no listing/code column.
+                # Retain the complete market-wide response and bind the requested
+                # A/H listing only as request context in replay metadata.
+                selected = [dict(row) for row in rows]
+                payload = selected
+                response_metadata.update(
+                    _hsgt_institution_statistics_response_metadata(
+                        listing=listing,
+                        market=market,
+                        start_date=start_date,
+                        end_date=end_date,
+                        observation_dates=observation_dates,
+                        row_identity_order=row_identity_order,
+                        row_count=len(rows),
+                    )
+                )
             elif endpoint.name == _HSGT_STOCK_STATISTICS_ENDPOINT:
                 symbol = kwargs["symbol"]
                 start_date = kwargs["start_date"]
@@ -8898,6 +9076,10 @@ class AKShareProvider(StructuredDataProvider):
             ),
             shareholder_hsgt_stock_statistics_requested=(
                 request.parameters.get("view") == _HSGT_STOCK_STATISTICS_VIEW
+            ),
+            shareholder_hsgt_institution_statistics_requested=(
+                request.parameters.get("view")
+                == _HSGT_INSTITUTION_STATISTICS_VIEW
             ),
             insider_cninfo_management_detail_requested=(
                 request.parameters.get("view")
@@ -11107,6 +11289,23 @@ class AKShareNormalizer:
                         raise ProviderNormalizationError(str(exc)) from exc
                     _validate_shareholder_control_normalizer_rows(rows, listing)
                     normalizer_flags.add("AKSHARE_CONTROL_HOLDINGS_RAW_ONLY")
+                elif endpoint_name == _HSGT_INSTITUTION_STATISTICS_ENDPOINT:
+                    try:
+                        _shareholder_holdings_kwargs(
+                            endpoint_name,
+                            listing,
+                            record.request,
+                        )
+                    except ProviderRequestError as exc:
+                        raise ProviderNormalizationError(str(exc)) from exc
+                    _validate_hsgt_institution_statistics_normalizer_scope(
+                        record,
+                        listing,
+                        rows,
+                    )
+                    normalizer_flags.add(
+                        "AKSHARE_HSGT_INSTITUTION_STATISTICS_RAW_ONLY"
+                    )
                 elif endpoint_name == _HSGT_STOCK_STATISTICS_ENDPOINT:
                     try:
                         _shareholder_holdings_kwargs(
@@ -11185,6 +11384,7 @@ class AKShareNormalizer:
                         "stock_gdfx_top_10_em, stock_gdfx_free_top_10_em, "
                         "stock_gdfx_free_holding_detail_em, "
                         "stock_hold_control_cninfo, stock_hsgt_individual_em, "
+                        "stock_hsgt_institution_statistics_em, "
                         "stock_hsgt_stock_statistics_em, "
                         "stock_main_stock_holder, stock_hold_num_cninfo or "
                         "stock_zh_a_gdhs_detail_em"
@@ -12038,6 +12238,14 @@ class AKShareNormalizer:
                 "beneficial control, issuer cash flow or a company-level "
                 "diluted-share series."
             )
+        if "AKSHARE_HSGT_INSTITUTION_STATISTICS_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented HSGT institution-statistics response is retained "
+                "as raw evidence only: its market-wide institution counts, market "
+                "values and provider-reported changes do not establish beneficial "
+                "control, issuer cash flow, shareholder concentration or a "
+                "company-level diluted-share series."
+            )
         if "AKSHARE_SHAREHOLDER_COUNTS_RAW_ONLY" in normalizer_flags:
             notes += (
                 " The documented A-share shareholder-count response is retained as "
@@ -12378,6 +12586,7 @@ def _endpoint_candidates(
     shareholder_hsgt_individual_requested: bool = False,
     shareholder_hsgt_hold_stock_requested: bool = False,
     shareholder_hsgt_stock_statistics_requested: bool = False,
+    shareholder_hsgt_institution_statistics_requested: bool = False,
     insider_cninfo_management_detail_requested: bool = False,
     insider_management_person_requested: bool = False,
     insider_executive_share_changes_requested: bool = False,
@@ -12863,6 +13072,10 @@ def _endpoint_candidates(
         if shareholder_hsgt_stock_statistics_requested:
             if market in {ListingMarket.A, ListingMarket.H}:
                 return (_HSGT_STOCK_STATISTICS_ENDPOINT,)
+            return ()
+        if shareholder_hsgt_institution_statistics_requested:
+            if market in {ListingMarket.A, ListingMarket.H}:
+                return (_HSGT_INSTITUTION_STATISTICS_ENDPOINT,)
             return ()
         if market is ListingMarket.H:
             return ("stock_hsgt_individual_em",)
@@ -14606,6 +14819,80 @@ def _shareholder_holdings_kwargs(
                 retryable=False,
             )
         return {"market": market, "indicator": indicator}
+    if endpoint_name == _HSGT_INSTITUTION_STATISTICS_ENDPOINT:
+        unknown = sorted(
+            set(request.parameters) - _HSGT_INSTITUTION_STATISTICS_PARAMETER_NAMES
+        )
+        if unknown:
+            raise ProviderRequestError(
+                "unsupported AKShare HSGT institution-statistics parameter(s): "
+                + ", ".join(unknown),
+                request=request,
+                retryable=False,
+            )
+        if request.parameters.get("view") != _HSGT_INSTITUTION_STATISTICS_VIEW:
+            raise ProviderRequestError(
+                "the AKShare HSGT institution-statistics endpoint requires "
+                f"view={_HSGT_INSTITUTION_STATISTICS_VIEW!r}",
+                request=request,
+                retryable=False,
+            )
+        market = request.parameters.get("market")
+        if (
+            not isinstance(market, str)
+            or market not in _HSGT_INSTITUTION_STATISTICS_MARKET_SET
+        ):
+            choices = ", ".join(_HSGT_INSTITUTION_STATISTICS_MARKETS)
+            raise ProviderRequestError(
+                "AKShare HSGT institution-statistics market must be one of: "
+                + choices,
+                request=request,
+                retryable=False,
+            )
+        expected_market = _HSGT_INSTITUTION_STATISTICS_MARKET_LISTING_MARKETS[market]
+        if listing.market is not expected_market:
+            market_label = "A-share" if expected_market is ListingMarket.A else "H-share"
+            raise ProviderRequestError(
+                "the AKShare HSGT institution-statistics "
+                f"{market} endpoint supports {market_label} listing context only",
+                request=request,
+                retryable=False,
+            )
+        if "start_date" not in request.parameters:
+            raise ProviderRequestError(
+                "the AKShare HSGT institution-statistics endpoint requires start_date "
+                "(YYYYMMDD)",
+                request=request,
+                retryable=False,
+            )
+        if "end_date" not in request.parameters:
+            raise ProviderRequestError(
+                "the AKShare HSGT institution-statistics endpoint requires end_date "
+                "(YYYYMMDD)",
+                request=request,
+                retryable=False,
+            )
+        start_text, start_value = _hsgt_institution_statistics_date_parameter(
+            request.parameters["start_date"],
+            name="start_date",
+            request=request,
+        )
+        end_text, end_value = _hsgt_institution_statistics_date_parameter(
+            request.parameters["end_date"],
+            name="end_date",
+            request=request,
+        )
+        if start_value > end_value:
+            raise ProviderRequestError(
+                "HSGT institution-statistics start_date must not be after end_date",
+                request=request,
+                retryable=False,
+            )
+        return {
+            "market": market,
+            "start_date": start_text,
+            "end_date": end_text,
+        }
     if endpoint_name == _HSGT_STOCK_STATISTICS_ENDPOINT:
         unknown = sorted(
             set(request.parameters) - _HSGT_STOCK_STATISTICS_PARAMETER_NAMES
@@ -15211,6 +15498,29 @@ def _hsgt_stock_statistics_date_parameter(
     except ValueError as exc:
         raise ProviderRequestError(
             f"HSGT stock-statistics {name} must be a valid YYYYMMDD date",
+            request=request,
+            retryable=False,
+        ) from exc
+    return raw_value, parsed
+
+
+def _hsgt_institution_statistics_date_parameter(
+    raw_value: object,
+    *,
+    name: str,
+    request: ProviderRequest,
+) -> tuple[str, date]:
+    if not isinstance(raw_value, str) or not re.fullmatch(r"\d{8}", raw_value):
+        raise ProviderRequestError(
+            f"HSGT institution-statistics {name} must be YYYYMMDD",
+            request=request,
+            retryable=False,
+        )
+    try:
+        parsed = datetime.strptime(raw_value, "%Y%m%d").date()
+    except ValueError as exc:
+        raise ProviderRequestError(
+            f"HSGT institution-statistics {name} must be a valid YYYYMMDD date",
             request=request,
             retryable=False,
         ) from exc
@@ -37531,6 +37841,399 @@ def _validate_hsgt_hold_stock_normalizer_scope(
         if not matches:
             raise ProviderNormalizationError(
                 "HSGT hold-stock response metadata "
+                f"{name!r} does not match the requested replay scope"
+            )
+
+
+def _hsgt_institution_statistics_filter(
+    *,
+    market: str,
+    start_date: date,
+    end_date: date,
+) -> str:
+    """Build the exact range filter emitted by the official wrapper."""
+
+    market_type = _HSGT_INSTITUTION_STATISTICS_MARKET_TYPES[market]
+    return (
+        f'(MARKET_TYPE="{market_type}")'
+        f"(HOLD_DATE>='{start_date.isoformat()}')"
+        f"(HOLD_DATE<='{end_date.isoformat()}')"
+    )
+
+
+def _hsgt_institution_statistics_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    market: str,
+    start_date: date,
+    end_date: date,
+) -> tuple[str | None, list[date], list[dict[str, JSONValue]]]:
+    """Return strict errors and source order for institution-statistics rows."""
+
+    if not rows:
+        return (
+            "HSGT institution-statistics response must contain at least one row",
+            [],
+            [],
+        )
+
+    observation_dates: list[date] = []
+    unique_dates: list[date] = []
+    row_identity_order: list[dict[str, JSONValue]] = []
+    seen_identities: set[tuple[date, str]] = set()
+    previous_date: date | None = None
+    for index, row in enumerate(rows):
+        missing = sorted(_HSGT_INSTITUTION_STATISTICS_FIELD_SET - set(row))
+        if missing:
+            return (
+                f"HSGT institution-statistics row {index} is missing field(s): "
+                + ", ".join(missing),
+                [],
+                [],
+            )
+        unexpected = sorted(
+            set(row) - _HSGT_INSTITUTION_STATISTICS_FIELD_SET
+        )
+        if unexpected:
+            return (
+                f"HSGT institution-statistics row {index} contains unsupported "
+                "field(s): "
+                + ", ".join(unexpected),
+                [],
+                [],
+            )
+        if tuple(row) != _HSGT_INSTITUTION_STATISTICS_FIELDS:
+            return (
+                "HSGT institution-statistics rows must preserve the official "
+                "field order",
+                [],
+                [],
+            )
+
+        row_date = _parse_date_value(row["持股日期"])
+        if row_date is None:
+            return (
+                f"HSGT institution-statistics row {index} has an invalid 持股日期",
+                [],
+                [],
+            )
+        if not start_date <= row_date <= end_date:
+            return (
+                f"HSGT institution-statistics row date {row_date.isoformat()!r} "
+                f"is outside requested range {start_date.isoformat()!r}.."
+                f"{end_date.isoformat()!r}",
+                [],
+                [],
+            )
+        if previous_date is not None and row_date > previous_date:
+            return (
+                "HSGT institution-statistics rows must be ordered by 持股日期 "
+                "descending",
+                [],
+                [],
+            )
+        previous_date = row_date
+        observation_dates.append(row_date)
+        if not unique_dates or unique_dates[-1] != row_date:
+            unique_dates.append(row_date)
+
+        institution = row["机构名称"]
+        if not isinstance(institution, str) or _text_value(institution) is None:
+            return (
+                f"HSGT institution-statistics row {index} field '机构名称' must be "
+                "a non-empty string",
+                [],
+                [],
+            )
+        identity = (row_date, institution)
+        if identity in seen_identities:
+            return (
+                "HSGT institution-statistics response contains duplicate "
+                "date/institution rows",
+                [],
+                [],
+            )
+        seen_identities.add(identity)
+        row_identity_order.append(
+            {"date": row_date.isoformat(), "institution": institution}
+        )
+
+        for field in _HSGT_INSTITUTION_STATISTICS_NUMERIC_FIELDS:
+            value = row[field]
+            if value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, Real):
+                return (
+                    f"HSGT institution-statistics row {index} field {field!r} "
+                    "must be numeric or null",
+                    [],
+                    [],
+                )
+            try:
+                numeric = float(value)
+            except (OverflowError, TypeError, ValueError):
+                return (
+                    f"HSGT institution-statistics row {index} field {field!r} "
+                    "must be numeric or null",
+                    [],
+                    [],
+                )
+            if not math.isfinite(numeric):
+                return (
+                    f"HSGT institution-statistics row {index} field {field!r} "
+                    "must be finite or null",
+                    [],
+                    [],
+                )
+
+    return None, unique_dates, row_identity_order
+
+
+def _validate_hsgt_institution_statistics_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    market: str,
+    start_date: str,
+    end_date: str,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> tuple[list[date], list[dict[str, JSONValue]]]:
+    """Validate the complete market-wide institution response before storage."""
+
+    if market not in _HSGT_INSTITUTION_STATISTICS_MARKET_SET:
+        raise ProviderResponseError(
+            f"AKShare HSGT institution-statistics market {market!r} is not "
+            "documented",
+            provider=provider,
+            request=request,
+        )
+    try:
+        start_value = datetime.strptime(start_date, "%Y%m%d").date()
+        end_value = datetime.strptime(end_date, "%Y%m%d").date()
+    except ValueError as exc:
+        raise ProviderResponseError(
+            "AKShare HSGT institution-statistics request dates are invalid",
+            provider=provider,
+            request=request,
+        ) from exc
+    message, observation_dates, row_identity_order = (
+        _hsgt_institution_statistics_validation_message(
+            rows,
+            market=market,
+            start_date=start_value,
+            end_date=end_value,
+        )
+    )
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message}",
+            provider=provider,
+            request=request,
+        )
+    return observation_dates, row_identity_order
+
+
+def _hsgt_institution_statistics_row_identity(
+    row: Mapping[str, JSONValue],
+) -> dict[str, JSONValue]:
+    """Return the date/institution identity available in the official rows."""
+
+    row_date = _parse_date_value(row["持股日期"])
+    institution = row["机构名称"]
+    assert row_date is not None
+    assert isinstance(institution, str)
+    return {"date": row_date.isoformat(), "institution": institution}
+
+
+def _hsgt_institution_statistics_response_metadata(
+    *,
+    listing: _ListingRef,
+    market: str,
+    start_date: str,
+    end_date: str,
+    observation_dates: Sequence[date],
+    row_identity_order: Sequence[Mapping[str, JSONValue]],
+    row_count: int,
+) -> dict[str, JSONValue]:
+    """Build replay metadata for a market-wide institution-statistics slice."""
+
+    start_value = datetime.strptime(start_date, "%Y%m%d").date()
+    end_value = datetime.strptime(end_date, "%Y%m%d").date()
+    direction = _HSGT_INSTITUTION_STATISTICS_MARKET_DIRECTIONS[market]
+    upstream_filter = _hsgt_institution_statistics_filter(
+        market=market,
+        start_date=start_value,
+        end_date=end_value,
+    )
+    pagination = (
+        "single_page"
+        if market == "南向持股"
+        else "provider_driven_all_pages"
+    )
+    return {
+        "endpoint": _HSGT_INSTITUTION_STATISTICS_ENDPOINT,
+        "market": listing.market.value,
+        "listing_code": listing.code,
+        "shareholder_holdings_view": _HSGT_INSTITUTION_STATISTICS_VIEW,
+        "market_scope": (
+            f"Eastmoney {direction} HSGT institution-statistics full market universe"
+        ),
+        "upstream_market": market,
+        "upstream_market_type": _HSGT_INSTITUTION_STATISTICS_MARKET_TYPES[market],
+        "upstream_direction": direction,
+        "listing_scoped_request": False,
+        "listing_context_only": True,
+        "row_filtering": "none",
+        "entity_row_selection": (
+            "full_market_universe_no_listing_or_security_key"
+        ),
+        "snapshot_scope": "requested_hsgt_institution_statistics_date_range",
+        "date_binding": "row_and_request",
+        "observation_date_field": "持股日期",
+        "observation_date_ordering": "non_increasing",
+        "observation_dates": [value.isoformat() for value in observation_dates],
+        "requested_start_date": start_date,
+        "requested_end_date": end_date,
+        "observed_start_date": min(observation_dates).isoformat(),
+        "observed_end_date": max(observation_dates).isoformat(),
+        "identity_fields": list(_HSGT_INSTITUTION_STATISTICS_DATE_FIELDS)
+        + list(_HSGT_INSTITUTION_STATISTICS_TEXT_FIELDS),
+        "identity_ordering": "source_row_order",
+        "row_identity_order": list(row_identity_order),
+        "value_fields": list(_HSGT_INSTITUTION_STATISTICS_NUMERIC_FIELDS),
+        "integer_fields": list(_HSGT_INSTITUTION_STATISTICS_INTEGER_FIELDS),
+        "text_fields": list(_HSGT_INSTITUTION_STATISTICS_TEXT_FIELDS),
+        "required_text_fields": list(
+            _HSGT_INSTITUTION_STATISTICS_REQUIRED_TEXT_FIELDS
+        ),
+        "nullable_fields": list(_HSGT_INSTITUTION_STATISTICS_NULLABLE_FIELDS),
+        "field_types": dict(_HSGT_INSTITUTION_STATISTICS_FIELD_TYPES),
+        "field_count": len(_HSGT_INSTITUTION_STATISTICS_FIELDS),
+        "source_field_order": list(_HSGT_INSTITUTION_STATISTICS_FIELDS),
+        "documented_units": dict(
+            _HSGT_INSTITUTION_STATISTICS_DOCUMENTED_UNITS[market]
+        ),
+        "undocumented_numeric_units": {},
+        "upstream_url": _HSGT_INSTITUTION_STATISTICS_UPSTREAM_URL,
+        "upstream_protocol": "JSON",
+        "upstream_report_name": _HSGT_INSTITUTION_STATISTICS_REPORT_NAME,
+        "upstream_parameters": list(
+            _HSGT_INSTITUTION_STATISTICS_UPSTREAM_PARAMETER_ORDER
+        ),
+        "upstream_fixed_parameters": dict(
+            _HSGT_INSTITUTION_STATISTICS_UPSTREAM_FIXED_PARAMETERS
+        ),
+        "upstream_dynamic_parameters": {
+            "market": market,
+            "market_type": _HSGT_INSTITUTION_STATISTICS_MARKET_TYPES[market],
+            "start_date": start_value.isoformat(),
+            "end_date": end_value.isoformat(),
+            "filter": upstream_filter,
+        },
+        "upstream_authentication": "none",
+        "upstream_page_size": _HSGT_INSTITUTION_STATISTICS_PAGE_SIZE,
+        "pagination": pagination,
+        "upstream_sort_column": "HOLD_DATE",
+        "upstream_sort_direction": "descending",
+        "upstream_filter": upstream_filter,
+        "wrapper_source_page_uri": _HSGT_INSTITUTION_STATISTICS_SOURCE_URI,
+        "wrapper_output_ordering": "source_row_order",
+        "wrapper_source_column_count": _HSGT_INSTITUTION_STATISTICS_WRAPPER_SOURCE_COLUMN_COUNTS[
+            direction
+        ],
+        "wrapper_column_mapping": dict(
+            _HSGT_INSTITUTION_STATISTICS_WRAPPER_COLUMN_MAPPINGS[direction]
+        ),
+        "full_universe_response": True,
+        "entity_rows_selected": False,
+        "upstream_row_count": row_count,
+        "entity_row_count": 0,
+    }
+
+
+def _validate_hsgt_institution_statistics_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> None:
+    """Validate replayed market-wide institution rows and their scope metadata."""
+
+    metadata = record.response_metadata
+    if metadata.get("endpoint") != _HSGT_INSTITUTION_STATISTICS_ENDPOINT:
+        raise ProviderNormalizationError(
+            "AKShare HSGT institution-statistics record must come from "
+            f"{_HSGT_INSTITUTION_STATISTICS_ENDPOINT}"
+        )
+    if record.source_uri != _HSGT_INSTITUTION_STATISTICS_SOURCE_URI:
+        raise ProviderNormalizationError(
+            "AKShare HSGT institution-statistics source URI does not match the "
+            "documented endpoint"
+        )
+    try:
+        upstream_kwargs = _shareholder_holdings_kwargs(
+            _HSGT_INSTITUTION_STATISTICS_ENDPOINT,
+            listing,
+            record.request,
+        )
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+    market = upstream_kwargs["market"]
+    start_date = upstream_kwargs["start_date"]
+    end_date = upstream_kwargs["end_date"]
+    assert isinstance(market, str)
+    assert isinstance(start_date, str)
+    assert isinstance(end_date, str)
+    start_value = datetime.strptime(start_date, "%Y%m%d").date()
+    end_value = datetime.strptime(end_date, "%Y%m%d").date()
+
+    message, observation_dates, row_identity_order = (
+        _hsgt_institution_statistics_validation_message(
+            rows,
+            market=market,
+            start_date=start_value,
+            end_date=end_value,
+        )
+    )
+    if message is not None:
+        raise ProviderNormalizationError(message)
+
+    expected_metadata = _hsgt_institution_statistics_response_metadata(
+        listing=listing,
+        market=market,
+        start_date=start_date,
+        end_date=end_date,
+        observation_dates=observation_dates,
+        row_identity_order=row_identity_order,
+        row_count=len(rows),
+    )
+    boolean_fields = {
+        "listing_scoped_request",
+        "listing_context_only",
+        "full_universe_response",
+        "entity_rows_selected",
+    }
+    integer_fields = {
+        "field_count",
+        "upstream_page_size",
+        "wrapper_source_column_count",
+        "upstream_row_count",
+        "entity_row_count",
+    }
+    for name, expected in expected_metadata.items():
+        actual = metadata.get(name)
+        if name in boolean_fields:
+            matches = isinstance(actual, bool) and actual is expected
+        elif name in integer_fields:
+            matches = (
+                isinstance(actual, int)
+                and not isinstance(actual, bool)
+                and actual == expected
+            )
+        else:
+            matches = actual == expected
+        if not matches:
+            raise ProviderNormalizationError(
+                "HSGT institution-statistics response metadata "
                 f"{name!r} does not match the requested replay scope"
             )
 

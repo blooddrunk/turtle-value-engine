@@ -1103,6 +1103,26 @@ class FakeAKShare:
             end_date=end_date,
         )
 
+    def stock_hsgt_institution_statistics_em(
+        self,
+        *,
+        market: str,
+        start_date: str,
+        end_date: str,
+    ):
+        fixture = (
+            "h_hsgt_institution_statistics.json"
+            if market == "南向持股"
+            else "a_hsgt_institution_statistics.json"
+        )
+        return self._return(
+            "stock_hsgt_institution_statistics_em",
+            _fixture(fixture),
+            market=market,
+            start_date=start_date,
+            end_date=end_date,
+        )
+
 
 class OfficialBalanceAKShare:
     __version__ = "fixture-akshare-official-balance"
@@ -1183,8 +1203,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "135"
-    assert AKSHARE_MAPPING_VERSION == "136"
+    assert provider.identity.provider_version == "136"
+    assert AKSHARE_MAPPING_VERSION == "137"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -2769,6 +2789,542 @@ def test_hsgt_stock_statistics_cache_replay_does_not_call_upstream(tmp_path: Pat
             "stock_hsgt_stock_statistics_em",
             {
                 "symbol": "北向持股",
+                "start_date": "20240109",
+                "end_date": "20240110",
+            },
+        )
+    ]
+
+
+@pytest.mark.parametrize(
+    (
+        "entity_id",
+        "market",
+        "direction",
+        "market_type",
+        "currency",
+        "pagination",
+    ),
+    [
+        ("SH600000", "北向持股", "northbound", "N", "CNY", "provider_driven_all_pages"),
+        ("SH600000", "沪股通持股", "northbound", "001", "CNY", "provider_driven_all_pages"),
+        ("SZ000001", "深股通持股", "northbound", "003", "CNY", "provider_driven_all_pages"),
+        ("HK00700", "南向持股", "southbound", "S", "HKD", "single_page"),
+    ],
+)
+def test_hsgt_institution_statistics_fetch_preserves_market_wide_contract(
+    entity_id: str,
+    market: str,
+    direction: str,
+    market_type: str,
+    currency: str,
+    pagination: str,
+):
+    fake = FakeAKShare()
+    record = _provider(fake).fetch(
+        _request(
+            DataCategory.SHAREHOLDER_HOLDINGS,
+            entity_id,
+            {
+                "view": "hsgt_institution_statistics",
+                "market": market,
+                "start_date": "20240109",
+                "end_date": "20240110",
+            },
+        )
+    )
+
+    fixture_name = (
+        "h_hsgt_institution_statistics.json"
+        if entity_id.startswith("HK")
+        else "a_hsgt_institution_statistics.json"
+    )
+    fixture = _fixture(fixture_name)
+    metadata = record.response_metadata
+    expected_fields = list(fixture[0])
+    expected_filter = (
+        f'(MARKET_TYPE="{market_type}")'
+        "(HOLD_DATE>='2024-01-09')(HOLD_DATE<='2024-01-10')"
+    )
+    expected_identities = [
+        {"date": row["持股日期"], "institution": row["机构名称"]}
+        for row in fixture
+    ]
+    expected_fixed = {
+        "sortColumns": "HOLD_DATE",
+        "sortTypes": "-1",
+        "pageSize": "500",
+        "pageNumber": "1",
+        "reportName": "PRT_MUTUAL_ORG_STA",
+        "columns": "ALL",
+        "source": "WEB",
+        "client": "WEB",
+    }
+
+    assert record.raw_payload == fixture
+    assert fake.calls == [
+        (
+            "stock_hsgt_institution_statistics_em",
+            {
+                "market": market,
+                "start_date": "20240109",
+                "end_date": "20240110",
+            },
+        )
+    ]
+    assert metadata["endpoint"] == "stock_hsgt_institution_statistics_em"
+    assert metadata["market"] == ("H" if entity_id.startswith("HK") else "A")
+    assert metadata["listing_code"] == entity_id[2:]
+    assert metadata["shareholder_holdings_view"] == "hsgt_institution_statistics"
+    assert metadata["market_scope"] == (
+        f"Eastmoney {direction} HSGT institution-statistics full market universe"
+    )
+    assert metadata["upstream_market"] == market
+    assert metadata["upstream_market_type"] == market_type
+    assert metadata["upstream_direction"] == direction
+    assert metadata["listing_scoped_request"] is False
+    assert metadata["listing_context_only"] is True
+    assert metadata["row_filtering"] == "none"
+    assert metadata["entity_row_selection"] == (
+        "full_market_universe_no_listing_or_security_key"
+    )
+    assert metadata["full_universe_response"] is True
+    assert metadata["snapshot_scope"] == (
+        "requested_hsgt_institution_statistics_date_range"
+    )
+    assert metadata["date_binding"] == "row_and_request"
+    assert metadata["observation_date_field"] == "持股日期"
+    assert metadata["observation_date_ordering"] == "non_increasing"
+    assert metadata["observation_dates"] == ["2024-01-10", "2024-01-09"]
+    assert metadata["requested_start_date"] == "20240109"
+    assert metadata["requested_end_date"] == "20240110"
+    assert metadata["observed_start_date"] == "2024-01-09"
+    assert metadata["observed_end_date"] == "2024-01-10"
+    assert metadata["identity_fields"] == ["持股日期", "机构名称"]
+    assert metadata["identity_ordering"] == "source_row_order"
+    assert metadata["row_identity_order"] == expected_identities
+    assert "selected_row_identity_order" not in metadata
+    assert metadata["value_fields"] == expected_fields[2:]
+    assert metadata["integer_fields"] == []
+    assert metadata["text_fields"] == ["机构名称"]
+    assert metadata["required_text_fields"] == ["机构名称"]
+    assert metadata["nullable_fields"] == expected_fields[2:]
+    assert metadata["field_count"] == 7
+    assert metadata["source_field_order"] == expected_fields
+    assert metadata["field_types"] == {
+        "持股日期": "date",
+        "机构名称": "string",
+        "持股只数": "number",
+        "持股市值": "number",
+        "持股市值变化-1日": "number",
+        "持股市值变化-5日": "number",
+        "持股市值变化-10日": "number",
+    }
+    assert metadata["documented_units"] == {
+        "持股只数": "count",
+        "持股市值": currency,
+        "持股市值变化-1日": currency,
+        "持股市值变化-5日": currency,
+        "持股市值变化-10日": currency,
+    }
+    assert metadata["undocumented_numeric_units"] == {}
+    assert metadata["upstream_url"] == (
+        "https://datacenter-web.eastmoney.com/api/data/v1/get"
+    )
+    assert metadata["upstream_protocol"] == "JSON"
+    assert metadata["upstream_report_name"] == "PRT_MUTUAL_ORG_STA"
+    assert metadata["upstream_parameters"] == [
+        "sortColumns",
+        "sortTypes",
+        "pageSize",
+        "pageNumber",
+        "reportName",
+        "columns",
+        "source",
+        "client",
+        "filter",
+    ]
+    assert metadata["upstream_fixed_parameters"] == expected_fixed
+    assert metadata["upstream_dynamic_parameters"] == {
+        "market": market,
+        "market_type": market_type,
+        "start_date": "2024-01-09",
+        "end_date": "2024-01-10",
+        "filter": expected_filter,
+    }
+    assert metadata["upstream_authentication"] == "none"
+    assert metadata["upstream_page_size"] == 500
+    assert metadata["pagination"] == pagination
+    assert metadata["upstream_sort_column"] == "HOLD_DATE"
+    assert metadata["upstream_sort_direction"] == "descending"
+    assert metadata["upstream_filter"] == expected_filter
+    assert metadata["wrapper_source_page_uri"] == (
+        "http://data.eastmoney.com/hsgtcg/InstitutionStatistics.aspx"
+    )
+    assert metadata["wrapper_output_ordering"] == "source_row_order"
+    assert metadata["wrapper_source_column_count"] == 19
+    assert metadata["wrapper_column_mapping"] == {
+        "持股日期": 0,
+        "持股只数": 2,
+        "持股市值": 4,
+        "持股市值变化-1日": 5,
+        "持股市值变化-5日": 6,
+        "持股市值变化-10日": 7,
+        "机构名称": 9,
+    }
+    assert metadata["entity_rows_selected"] is False
+    assert metadata["upstream_row_count"] == 4
+    assert metadata["entity_row_count"] == 0
+    assert record.source_uri == (
+        "http://data.eastmoney.com/hsgtcg/InstitutionStatistics.aspx"
+    )
+
+
+@pytest.mark.parametrize(
+    ("entity_id", "parameters", "match"),
+    [
+        (
+            "SH600000",
+            {
+                "view": "hsgt_institution_statistics",
+                "market": "南向持股",
+                "start_date": "20240109",
+                "end_date": "20240110",
+            },
+            "H-share listing context",
+        ),
+        (
+            "HK00700",
+            {
+                "view": "hsgt_institution_statistics",
+                "market": "北向持股",
+                "start_date": "20240109",
+                "end_date": "20240110",
+            },
+            "A-share listing context",
+        ),
+        (
+            "SH600000",
+            {
+                "view": "hsgt_institution_statistics",
+                "market": "not-documented",
+                "start_date": "20240109",
+                "end_date": "20240110",
+            },
+            "market must be one of",
+        ),
+        (
+            "SH600000",
+            {
+                "view": "hsgt_institution_statistics",
+                "market": "北向持股",
+                "end_date": "20240110",
+            },
+            "requires start_date",
+        ),
+        (
+            "SH600000",
+            {
+                "view": "hsgt_institution_statistics",
+                "market": "北向持股",
+                "start_date": "20240109",
+            },
+            "requires end_date",
+        ),
+        (
+            "SH600000",
+            {
+                "view": "hsgt_institution_statistics",
+                "market": "北向持股",
+                "start_date": "2024011",
+                "end_date": "20240110",
+            },
+            "must be YYYYMMDD",
+        ),
+        (
+            "SH600000",
+            {
+                "view": "hsgt_institution_statistics",
+                "market": "北向持股",
+                "start_date": "20240230",
+                "end_date": "20240301",
+            },
+            "must be a valid YYYYMMDD date",
+        ),
+        (
+            "SH600000",
+            {
+                "view": "hsgt_institution_statistics",
+                "market": "北向持股",
+                "start_date": "20240110",
+                "end_date": "20240109",
+            },
+            "start_date must not be after end_date",
+        ),
+        (
+            "SH600000",
+            {
+                "view": "hsgt_institution_statistics",
+                "market": "北向持股",
+                "start_date": "20240109",
+                "end_date": "20240110",
+                "unexpected": True,
+            },
+            "unsupported AKShare HSGT institution-statistics parameter",
+        ),
+    ],
+)
+def test_hsgt_institution_statistics_request_validates_scope_and_parameters(
+    entity_id: str,
+    parameters: dict,
+    match: str,
+):
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError, match=match):
+        _provider(fake).fetch(
+            _request(DataCategory.SHAREHOLDER_HOLDINGS, entity_id, parameters)
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "missing_field",
+        "extra_field",
+        "reordered_fields",
+        "invalid_date",
+        "out_of_range",
+        "ascending_dates",
+        "invalid_institution",
+        "invalid_numeric",
+        "duplicate_identity",
+        "empty_response",
+    ],
+)
+def test_hsgt_institution_statistics_response_validates_full_schema(
+    mutation: str,
+):
+    class InvalidRows(FakeAKShare):
+        def stock_hsgt_institution_statistics_em(
+            self,
+            *,
+            market: str,
+            start_date: str,
+            end_date: str,
+        ):
+            rows = [dict(row) for row in _fixture("a_hsgt_institution_statistics.json")]
+            if mutation == "missing_field":
+                rows[0].pop("持股市值")
+            elif mutation == "extra_field":
+                rows[0]["unexpected"] = "not documented"
+            elif mutation == "reordered_fields":
+                rows[0] = dict(reversed(list(rows[0].items())))
+            elif mutation == "invalid_date":
+                rows[0]["持股日期"] = "not-a-date"
+            elif mutation == "out_of_range":
+                rows[0]["持股日期"] = "2024-01-11"
+            elif mutation == "ascending_dates":
+                rows[0]["持股日期"] = "2024-01-09"
+                rows[1]["持股日期"] = "2024-01-10"
+            elif mutation == "invalid_institution":
+                rows[0]["机构名称"] = ""
+            elif mutation == "invalid_numeric":
+                rows[0]["持股只数"] = "123"
+            elif mutation == "duplicate_identity":
+                rows[1]["机构名称"] = rows[0]["机构名称"]
+            else:
+                rows.clear()
+            return self._return(
+                "stock_hsgt_institution_statistics_em",
+                rows,
+                market=market,
+                start_date=start_date,
+                end_date=end_date,
+            )
+
+    with pytest.raises(ProviderResponseError):
+        _provider(InvalidRows()).fetch(
+            _request(
+                DataCategory.SHAREHOLDER_HOLDINGS,
+                "SH600000",
+                {
+                    "view": "hsgt_institution_statistics",
+                    "market": "北向持股",
+                    "start_date": "20240109",
+                    "end_date": "20240110",
+                },
+            )
+        )
+
+
+@pytest.mark.parametrize(
+    ("entity_id", "market"),
+    [("SH600000", "北向持股"), ("HK00700", "南向持股")],
+)
+def test_hsgt_institution_statistics_is_raw_only_without_entity_facts(
+    entity_id: str,
+    market: str,
+):
+    record = _provider().fetch(
+        _request(
+            DataCategory.SHAREHOLDER_HOLDINGS,
+            entity_id,
+            {
+                "view": "hsgt_institution_statistics",
+                "market": market,
+                "start_date": "20240109",
+                "end_date": "20240110",
+            },
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="hsgt-institution-statistics-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company(entity_id),
+    )
+
+    assert record.raw_payload
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == [
+        "AKSHARE_HSGT_INSTITUTION_STATISTICS_RAW_ONLY"
+    ]
+    assert normalized.data_quality.critical_missing_fields == [
+        "governance_risk_level",
+    ]
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "institution-statistics" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "endpoint",
+        "source_uri",
+        "market",
+        "listing_code",
+        "view",
+        "upstream_market",
+        "market_type",
+        "direction",
+        "requested_start_date",
+        "requested_end_date",
+        "upstream_filter",
+        "row_identity_order",
+        "documented_units",
+        "entity_rows_selected",
+        "entity_row_count",
+        "payload",
+    ],
+)
+def test_hsgt_institution_statistics_normalizer_rejects_replayed_scope_mismatches(
+    mutation: str,
+):
+    record = _provider().fetch(
+        _request(
+            DataCategory.SHAREHOLDER_HOLDINGS,
+            "SH600000",
+            {
+                "view": "hsgt_institution_statistics",
+                "market": "北向持股",
+                "start_date": "20240109",
+                "end_date": "20240110",
+            },
+        )
+    )
+    payload = [dict(row) for row in record.raw_payload]
+    metadata = json.loads(json.dumps(record.response_metadata))
+    source_uri = record.source_uri
+    if mutation == "endpoint":
+        metadata["endpoint"] = "stock_hsgt_individual_em"
+    elif mutation == "source_uri":
+        source_uri = "https://example.invalid/hsgt"
+    elif mutation == "market":
+        metadata["market"] = "H"
+    elif mutation == "listing_code":
+        metadata["listing_code"] = "000001"
+    elif mutation == "view":
+        metadata["shareholder_holdings_view"] = "hsgt_individual"
+    elif mutation == "upstream_market":
+        metadata["upstream_market"] = "沪股通持股"
+    elif mutation == "market_type":
+        metadata["upstream_market_type"] = "001"
+    elif mutation == "direction":
+        metadata["upstream_direction"] = "southbound"
+    elif mutation == "requested_start_date":
+        metadata["requested_start_date"] = "20240108"
+    elif mutation == "requested_end_date":
+        metadata["requested_end_date"] = "20240111"
+    elif mutation == "upstream_filter":
+        metadata["upstream_filter"] = "tampered"
+    elif mutation == "row_identity_order":
+        metadata["row_identity_order"] = metadata["row_identity_order"][:-1]
+    elif mutation == "documented_units":
+        metadata["documented_units"] = {"持股市值": "HKD"}
+    elif mutation == "entity_rows_selected":
+        metadata["entity_rows_selected"] = True
+    elif mutation == "entity_row_count":
+        metadata["entity_row_count"] = len(payload)
+    else:
+        payload[0]["机构名称"] = "篡改后的机构"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=source_uri,
+        response_metadata=metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="invalid-hsgt-institution-statistics-replay",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company("SH600000"),
+        )
+
+
+def test_hsgt_institution_statistics_cache_replay_does_not_call_upstream(
+    tmp_path: Path,
+):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.SHAREHOLDER_HOLDINGS,
+        "SH600000",
+        {
+            "view": "hsgt_institution_statistics",
+            "market": "北向持股",
+            "start_date": "20240109",
+            "end_date": "20240110",
+        },
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [
+        (
+            "stock_hsgt_institution_statistics_em",
+            {
+                "market": "北向持股",
                 "start_date": "20240109",
                 "end_date": "20240110",
             },
