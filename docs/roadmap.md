@@ -3449,6 +3449,29 @@ request/context/date rejection, full-response schema and value boundaries,
 raw-only normalization, replay metadata tampering and offline cache replay. No
 calculation, gate, pipeline, CLI or input-loader contract changes.
 
+### Phase 3.35 — HSGT Shanghai-to-Hong Kong quote raw acquisition contract (COMPLETE)
+
+The mapping review now covers the documented Eastmoney
+`stock_hsgt_sh_hk_spot_em` HSGT Shanghai-to-Hong Kong real-time quote endpoint
+under `MARKET_QUOTE` with explicit `view=hk_sh_spot` and H-share listing
+context. The [AKShare stock-data
+documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and
+[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hsgt_em.py)
+define the no-argument `b:DLMK0144` universe and exact 12-field wrapper
+output. The provider freezes the `push2.eastmoney.com/api/qt/clist/get` JSON
+request, field mapping and HKD/share, percent, shares and HKD transforms,
+validates every five-digit-code row and code-ascending reset sequence before
+filtering the full response, and records full/selected identity order for
+cache replay.
+
+The delayed current-day snapshot has no stable observation timestamp, so the
+normalizer emits `AKSHARE_HK_SH_SPOT_QUOTE_RAW_ONLY` and creates no canonical
+current-price fact. Tests cover request/context rejection, exact field order,
+full-universe code/rank/type boundaries, invalid unrequested rows, empty
+selected listings, raw-only normalization, replay metadata tampering and
+offline cache replay. No calculation, gate, pipeline, CLI or input-loader
+contract changes.
+
 ### Future structured-provider deliverables
 
 ```text
@@ -3458,7 +3481,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–3.34 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–3.35 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```

@@ -1592,6 +1592,22 @@ values and changes do not establish ownership, concentration, issuer cash flow
 or a canonical diluted-share series. No calculation, gate, pipeline, CLI or
 input-loader contract changes.
 
+Phase 3.35 adds the documented Eastmoney HSGT Shanghai-to-Hong Kong real-time
+quote endpoint
+[`stock_hsgt_sh_hk_spot_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
+under `MARKET_QUOTE` with explicit `view=hk_sh_spot` and H-share listing
+context. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hsgt_em.py)
+uses the no-argument `b:DLMK0144` quote universe and returns the exact 12
+fields for sequence, code, name, price, change, open/high/low/previous close,
+volume and turnover. The provider freezes the Eastmoney JSON field mapping and
+unit transforms, validates the complete five-digit-code universe in ascending
+code order before filtering to the requested H-share listing, and records the
+full and selected identity order in replay metadata. The snapshot is a
+current-trading-day delayed quote with no stable observation timestamp, so the
+normalizer emits `AKSHARE_HK_SH_SPOT_QUOTE_RAW_ONLY` and does not establish
+`current_price`. No calculation, gate, pipeline, CLI or input-loader contract
+changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.
