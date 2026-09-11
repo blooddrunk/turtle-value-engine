@@ -54,8 +54,8 @@ The SSE and SZSE market-summary raw slices are also available.
 The SSE daily-deal overview raw slice is also available. The SZSE area-summary
 and sector-summary raw slices are also available. The Eastmoney industry-board
 snapshot, Dragon-Tiger institution-daily raw slice, stock-account-statistics
-history and Legu market-activity/congestion/equity-bond-spread snapshots are
-also available.
+history and Legu market-activity/congestion/equity-bond-spread/Buffett-index
+snapshots are also available.
 The A-share Eastmoney top-ten, top-ten-tradable-shareholder and
 top-ten-tradable-shareholder-detail raw slices are also available.
 The A-share Eastmoney institutional-research statistics and detail raw slices
@@ -106,9 +106,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "112"
+AKSHARE_ADAPTER_VERSION = "113"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "113"
+AKSHARE_MAPPING_VERSION = "114"
 
 
 class ListingMarket(StrEnum):
@@ -219,6 +219,7 @@ _SOURCE_URIS = {
     "stock_market_activity_legu": "https://legulegu.com/stockdata/market-activity",
     "stock_a_congestion_lg": "https://legulegu.com/stockdata/ashares-congestion",
     "stock_ebs_lg": "https://legulegu.com/stockdata/equity-bond-spread",
+    "stock_buffett_index_lg": "https://legulegu.com/stockdata/marketcap-gdp",
     "stock_zt_pool_em": "https://quote.eastmoney.com/ztb/detail#type=ztgc",
     "stock_zt_pool_dtgc_em": "https://quote.eastmoney.com/ztb/detail#type=dtgc",
     "stock_intraday_em": "https://quote.eastmoney.com/f1.html?newcode=0.000001",
@@ -324,6 +325,7 @@ _NO_ARGUMENT_ENDPOINTS = frozenset(
         "stock_market_activity_legu",
         "stock_a_congestion_lg",
         "stock_ebs_lg",
+        "stock_buffett_index_lg",
     }
 )
 
@@ -1237,6 +1239,57 @@ _MARKET_ACTIVITY_EBS_FIELD_TYPES = {
 _MARKET_ACTIVITY_EBS_DOCUMENTED_UNITS: dict[str, str] = {}
 _MARKET_ACTIVITY_EBS_UNDOCUMENTED_NUMERIC_UNITS = {
     field: "not_documented" for field in _MARKET_ACTIVITY_EBS_NUMERIC_FIELDS
+}
+_MARKET_ACTIVITY_BUFFETT_PARAMETER_NAMES = frozenset({"view"})
+_MARKET_ACTIVITY_BUFFETT_VIEW = "buffett_index"
+_MARKET_ACTIVITY_BUFFETT_BASE_FIELDS = (
+    "日期",
+    "收盘价",
+    "总市值",
+    "GDP",
+)
+_MARKET_ACTIVITY_BUFFETT_OPTIONAL_FIELDS = (
+    "近十年分位数",
+    "总历史分位数",
+)
+_MARKET_ACTIVITY_BUFFETT_FIELDS = (
+    *_MARKET_ACTIVITY_BUFFETT_BASE_FIELDS,
+    *_MARKET_ACTIVITY_BUFFETT_OPTIONAL_FIELDS,
+)
+_MARKET_ACTIVITY_BUFFETT_FIELD_VARIANTS = (
+    _MARKET_ACTIVITY_BUFFETT_BASE_FIELDS,
+    _MARKET_ACTIVITY_BUFFETT_FIELDS,
+)
+_MARKET_ACTIVITY_BUFFETT_FIELD_SET = frozenset(_MARKET_ACTIVITY_BUFFETT_FIELDS)
+_MARKET_ACTIVITY_BUFFETT_DATE_FIELDS = ("日期",)
+_MARKET_ACTIVITY_BUFFETT_NUMERIC_FIELDS = (
+    "收盘价",
+    "总市值",
+    "GDP",
+    "近十年分位数",
+    "总历史分位数",
+)
+_MARKET_ACTIVITY_BUFFETT_REQUIRED_NUMERIC_FIELDS = (
+    "收盘价",
+    "总市值",
+    "GDP",
+)
+_MARKET_ACTIVITY_BUFFETT_NON_NEGATIVE_FIELDS = frozenset(
+    _MARKET_ACTIVITY_BUFFETT_REQUIRED_NUMERIC_FIELDS
+)
+_MARKET_ACTIVITY_BUFFETT_TEXT_FIELDS: tuple[str, ...] = ()
+_MARKET_ACTIVITY_BUFFETT_REQUIRED_DATE_FIELDS = ("日期",)
+_MARKET_ACTIVITY_BUFFETT_FIELD_TYPES = {
+    "日期": "date",
+    "收盘价": "number",
+    "总市值": "number",
+    "GDP": "number",
+    "近十年分位数": "number",
+    "总历史分位数": "number",
+}
+_MARKET_ACTIVITY_BUFFETT_DOCUMENTED_UNITS: dict[str, str] = {}
+_MARKET_ACTIVITY_BUFFETT_UNDOCUMENTED_NUMERIC_UNITS = {
+    field: "not_documented" for field in _MARKET_ACTIVITY_BUFFETT_NUMERIC_FIELDS
 }
 _MARKET_ACTIVITY_SZSE_SUMMARY_PARAMETER_NAMES = frozenset({"view", "date"})
 _MARKET_ACTIVITY_SZSE_SUMMARY_VIEW = "szse_summary"
@@ -3565,6 +3618,22 @@ class AKShareProvider(StructuredDataProvider):
                 )
                 response_metadata["undocumented_numeric_units"] = dict(
                     _MARKET_ACTIVITY_SZSE_SUMMARY_UNDOCUMENTED_UNITS
+                )
+            elif endpoint.name == "stock_buffett_index_lg":
+                observation_dates, source_field_order = (
+                    _validate_market_activity_buffett_provider_rows(
+                        rows,
+                        provider=self.identity,
+                        request=request,
+                    )
+                )
+                response_metadata.update(
+                    _market_activity_buffett_response_metadata(
+                        listing_code=listing.code,
+                        observation_dates=observation_dates,
+                        source_field_order=source_field_order,
+                        row_count=len(rows),
+                    )
                 )
             elif endpoint.name == "stock_ebs_lg":
                 observation_dates = _validate_market_activity_ebs_provider_rows(
@@ -6396,6 +6465,9 @@ class AKShareProvider(StructuredDataProvider):
             market_activity_ebs_requested=(
                 request.parameters.get("view") == _MARKET_ACTIVITY_EBS_VIEW
             ),
+            market_activity_buffett_requested=(
+                request.parameters.get("view") == _MARKET_ACTIVITY_BUFFETT_VIEW
+            ),
             market_activity_account_statistics_requested=(
                 request.parameters.get("view")
                 == _MARKET_ACTIVITY_ACCOUNT_STATISTICS_VIEW
@@ -6868,6 +6940,13 @@ class AKShareNormalizer:
                         rows,
                     )
                     normalizer_flags.add("AKSHARE_SSE_SUMMARY_RAW_ONLY")
+                elif endpoint_name == "stock_buffett_index_lg":
+                    _validate_market_activity_buffett_normalizer_scope(
+                        record,
+                        listing,
+                        rows,
+                    )
+                    normalizer_flags.add("AKSHARE_BUFFETT_INDEX_RAW_ONLY")
                 elif endpoint_name == "stock_ebs_lg":
                     _validate_market_activity_ebs_normalizer_scope(
                         record,
@@ -7099,7 +7178,8 @@ class AKShareNormalizer:
                         "stock_szse_sector_summary, stock_szse_area_summary, "
                         "stock_szse_summary, "
                         "stock_sse_summary, stock_sse_deal_daily, "
-                        "stock_ebs_lg, stock_a_congestion_lg, stock_market_activity_legu, "
+                        "stock_buffett_index_lg, stock_ebs_lg, stock_a_congestion_lg, "
+                        "stock_market_activity_legu, "
                         "stock_account_statistics_em, "
                         "stock_zh_a_new_em, stock_comment_detail_scrd_desire_em, "
                         "stock_comment_detail_scrd_focus_em, "
@@ -8783,6 +8863,13 @@ class AKShareNormalizer:
                 "context lack listing/entity accounting scope and do not establish a "
                 "canonical market, return, governance, valuation or accounting fact."
             )
+        if "AKSHARE_BUFFETT_INDEX_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented Legu Buffett-index response is retained as raw evidence "
+                "only: its market-wide index, market-capitalization and GDP context lack "
+                "listing/entity accounting scope and do not establish a canonical market, "
+                "return, governance, valuation or accounting fact."
+            )
         if "AKSHARE_SZSE_SUMMARY_RAW_ONLY" in normalizer_flags:
             notes += (
                 " The documented SZSE market-summary response is retained as raw evidence "
@@ -9290,6 +9377,7 @@ def _endpoint_candidates(
     market_activity_legu_requested: bool = False,
     market_activity_congestion_requested: bool = False,
     market_activity_ebs_requested: bool = False,
+    market_activity_buffett_requested: bool = False,
     market_activity_account_statistics_requested: bool = False,
     market_activity_block_trade_requested: bool = False,
     market_activity_institution_daily_requested: bool = False,
@@ -9431,6 +9519,10 @@ def _endpoint_candidates(
         if market_activity_ebs_requested:
             if market is ListingMarket.A:
                 return ("stock_ebs_lg",)
+            return ()
+        if market_activity_buffett_requested:
+            if market is ListingMarket.A:
+                return ("stock_buffett_index_lg",)
             return ()
         if market_activity_account_statistics_requested:
             if market is ListingMarket.A:
@@ -17395,6 +17487,170 @@ def _validate_market_activity_ebs_provider_rows(
     return observation_dates
 
 
+def _market_activity_buffett_date(value: object) -> date | None:
+    """Parse the Buffett-index wrapper's strict ISO date field."""
+
+    if not isinstance(value, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _market_activity_buffett_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> tuple[str | None, list[date], tuple[str, ...]]:
+    """Return strict-schema errors, dates and the observed field variant."""
+
+    if not rows:
+        return "market-activity Buffett-index response must not be empty", [], ()
+
+    source_field_order = tuple(rows[0])
+    if source_field_order not in _MARKET_ACTIVITY_BUFFETT_FIELD_VARIANTS:
+        missing = [
+            field
+            for field in _MARKET_ACTIVITY_BUFFETT_BASE_FIELDS
+            if field not in rows[0]
+        ]
+        unexpected = [
+            field
+            for field in rows[0]
+            if field not in _MARKET_ACTIVITY_BUFFETT_FIELD_SET
+        ]
+        if missing:
+            return (
+                "market-activity Buffett-index row 0 is missing field(s): "
+                + ", ".join(missing),
+                [],
+                (),
+            )
+        if unexpected:
+            return (
+                "market-activity Buffett-index row 0 contains unsupported field(s): "
+                + ", ".join(unexpected),
+                [],
+                (),
+            )
+        return (
+            "market-activity Buffett-index rows must preserve the official base or "
+            "extended field order",
+            [],
+            (),
+        )
+
+    optional_fields = set(_MARKET_ACTIVITY_BUFFETT_OPTIONAL_FIELDS)
+    observation_dates: list[date] = []
+    previous_date: date | None = None
+    for index, row in enumerate(rows):
+        missing = [field for field in source_field_order if field not in row]
+        unexpected = [field for field in row if field not in source_field_order]
+        if missing:
+            return (
+                f"market-activity Buffett-index row {index} is missing field(s): "
+                + ", ".join(missing),
+                [],
+                (),
+            )
+        if unexpected:
+            return (
+                f"market-activity Buffett-index row {index} contains unsupported field(s): "
+                + ", ".join(unexpected),
+                [],
+                (),
+            )
+        if tuple(row) != source_field_order:
+            return (
+                "market-activity Buffett-index rows must preserve the official field "
+                "order",
+                [],
+                (),
+            )
+
+        observation_date = _market_activity_buffett_date(row["日期"])
+        if observation_date is None:
+            return (
+                f"market-activity Buffett-index row {index} has an invalid 日期",
+                [],
+                (),
+            )
+        if previous_date is not None and observation_date <= previous_date:
+            if observation_date == previous_date:
+                return (
+                    "market-activity Buffett-index response has duplicate 日期 "
+                    f"{row['日期']!r}",
+                    [],
+                    (),
+                )
+            return (
+                "market-activity Buffett-index response 日期 values must be strictly "
+                "ascending",
+                [],
+                (),
+            )
+        previous_date = observation_date
+        observation_dates.append(observation_date)
+
+        for field in _MARKET_ACTIVITY_BUFFETT_NUMERIC_FIELDS:
+            if field not in source_field_order:
+                continue
+            value = row[field]
+            if value is None and field in optional_fields:
+                continue
+            if isinstance(value, bool) or not isinstance(value, Real):
+                return (
+                    f"market-activity Buffett-index row {index} field {field!r} "
+                    "must be numeric",
+                    [],
+                    (),
+                )
+            try:
+                numeric = float(value)
+            except (OverflowError, TypeError, ValueError):
+                return (
+                    f"market-activity Buffett-index row {index} field {field!r} "
+                    "must be numeric",
+                    [],
+                    (),
+                )
+            if not math.isfinite(numeric):
+                return (
+                    f"market-activity Buffett-index row {index} field {field!r} "
+                    "must be finite",
+                    [],
+                    (),
+                )
+            if field in _MARKET_ACTIVITY_BUFFETT_NON_NEGATIVE_FIELDS and numeric < 0:
+                return (
+                    f"market-activity Buffett-index row {index} field {field!r} "
+                    "must be non-negative",
+                    [],
+                    (),
+                )
+
+    return None, observation_dates, source_field_order
+
+
+def _validate_market_activity_buffett_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> tuple[list[date], tuple[str, ...]]:
+    """Validate the complete Legu Buffett-index history."""
+
+    message, observation_dates, source_field_order = (
+        _market_activity_buffett_validation_message(rows)
+    )
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message}",
+            provider=provider,
+            request=request,
+        )
+    return observation_dates, source_field_order
+
+
 def _market_activity_sse_deal_daily_validation_message(
     rows: Sequence[Mapping[str, JSONValue]],
 ) -> str | None:
@@ -21937,6 +22193,156 @@ def _validate_market_activity_congestion_normalizer_scope(
         if not matches:
             raise ProviderNormalizationError(
                 f"AKShare congestion response metadata {name!r} does not match "
+                "the requested replay scope"
+            )
+
+
+def _market_activity_buffett_response_metadata(
+    *,
+    listing_code: str,
+    observation_dates: Sequence[date],
+    source_field_order: Sequence[str],
+    row_count: int,
+) -> dict[str, JSONValue]:
+    """Build the replay contract for the Buffett-index history."""
+
+    if not observation_dates:
+        raise ValueError("Buffett-index response must contain observation dates")
+    observed_fields = tuple(source_field_order)
+    observed_numeric_fields = [
+        field
+        for field in observed_fields
+        if field in _MARKET_ACTIVITY_BUFFETT_NUMERIC_FIELDS
+    ]
+    optional_fields = [
+        field
+        for field in observed_fields
+        if field in _MARKET_ACTIVITY_BUFFETT_OPTIONAL_FIELDS
+    ]
+    return {
+        "endpoint": "stock_buffett_index_lg",
+        "market": ListingMarket.A.value,
+        "listing_code": listing_code,
+        "market_activity_view": _MARKET_ACTIVITY_BUFFETT_VIEW,
+        "market_scope": "A-share market capitalization and GDP context",
+        "listing_scoped_request": False,
+        "row_filtering": "none",
+        "snapshot_scope": "all_historical_buffett_index_history",
+        "date_binding": "row_dates",
+        "observation_date_field": "日期",
+        "observation_date_format": "YYYY-MM-DD",
+        "observation_date_ordering": "strictly_ascending",
+        "observation_start_date": min(observation_dates).isoformat(),
+        "observation_end_date": max(observation_dates).isoformat(),
+        "observation_count_contract": "non_empty_all_historical_history",
+        "value_fields": observed_numeric_fields,
+        "non_negative_fields": [
+            field
+            for field in observed_fields
+            if field in _MARKET_ACTIVITY_BUFFETT_NON_NEGATIVE_FIELDS
+        ],
+        "integer_fields": [],
+        "text_fields": list(_MARKET_ACTIVITY_BUFFETT_TEXT_FIELDS),
+        "date_fields": list(_MARKET_ACTIVITY_BUFFETT_DATE_FIELDS),
+        "required_date_fields": list(_MARKET_ACTIVITY_BUFFETT_REQUIRED_DATE_FIELDS),
+        "required_numeric_fields": list(
+            _MARKET_ACTIVITY_BUFFETT_REQUIRED_NUMERIC_FIELDS
+        ),
+        "optional_fields": optional_fields,
+        "field_types": {
+            field: _MARKET_ACTIVITY_BUFFETT_FIELD_TYPES[field]
+            for field in observed_fields
+        },
+        "nullable_fields": optional_fields,
+        "field_count": len(observed_fields),
+        "source_field_order": list(observed_fields),
+        "documented_units": {},
+        "undocumented_numeric_units": {
+            field: _MARKET_ACTIVITY_BUFFETT_UNDOCUMENTED_NUMERIC_UNITS[field]
+            for field in observed_numeric_fields
+        },
+        "upstream_url": (
+            "https://legulegu.com/api/stockdata/marketcap-gdp/"
+            "get-marketcap-gdp"
+        ),
+        "upstream_protocol": "JSON",
+        "upstream_report_name": None,
+        "upstream_parameters": ["token"],
+        "upstream_authentication": "token_and_cookie_csrf",
+        "wrapper_dropped_fields": [],
+        "upstream_page_size": None,
+        "pagination": "single_snapshot",
+        "upstream_sort_column": None,
+        "upstream_sort_direction": None,
+        "upstream_filter": None,
+        "wrapper_output_ordering": "ascending_by_date",
+        "entity_rows_selected": False,
+        "upstream_row_count": row_count,
+        "entity_row_count": 0,
+    }
+
+
+def _validate_market_activity_buffett_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> None:
+    """Validate replay scope and metadata for the Buffett-index history."""
+
+    if listing.market is not ListingMarket.A:
+        raise ProviderNormalizationError(
+            "AKShare Buffett-index raw slice supports A-share listings only"
+        )
+    endpoint_name = "stock_buffett_index_lg"
+    if record.response_metadata.get("endpoint") != endpoint_name:
+        raise ProviderNormalizationError(
+            "AKShare Buffett-index record must come from stock_buffett_index_lg"
+        )
+    if record.source_uri != _SOURCE_URIS[endpoint_name]:
+        raise ProviderNormalizationError(
+            "AKShare Buffett-index source URI does not match the documented endpoint"
+        )
+    try:
+        upstream_kwargs = _market_activity_buffett_kwargs(
+            endpoint_name,
+            listing,
+            record.request,
+        )
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+    if upstream_kwargs:
+        raise ProviderNormalizationError(
+            "AKShare Buffett-index endpoint must receive no user arguments"
+        )
+
+    message, observation_dates, source_field_order = (
+        _market_activity_buffett_validation_message(rows)
+    )
+    if message is not None:
+        raise ProviderNormalizationError(message)
+    expected_metadata = _market_activity_buffett_response_metadata(
+        listing_code=listing.code,
+        observation_dates=observation_dates,
+        source_field_order=source_field_order,
+        row_count=len(rows),
+    )
+    boolean_fields = {"listing_scoped_request", "entity_rows_selected"}
+    count_fields = {"field_count", "upstream_row_count", "entity_row_count"}
+    for name, expected in expected_metadata.items():
+        actual = record.response_metadata.get(name)
+        if name in boolean_fields:
+            matches = isinstance(actual, bool) and actual is expected
+        elif name in count_fields:
+            matches = (
+                isinstance(actual, int)
+                and not isinstance(actual, bool)
+                and actual == expected
+            )
+        else:
+            matches = actual == expected
+        if not matches:
+            raise ProviderNormalizationError(
+                f"AKShare Buffett-index response metadata {name!r} does not match "
                 "the requested replay scope"
             )
 
@@ -28208,6 +28614,8 @@ def _market_activity_kwargs(
 ) -> dict[str, object]:
     """Build one documented market-activity request."""
 
+    if endpoint_name == "stock_buffett_index_lg":
+        return _market_activity_buffett_kwargs(endpoint_name, listing, request)
     if endpoint_name == "stock_ebs_lg":
         return _market_activity_ebs_kwargs(endpoint_name, listing, request)
     if endpoint_name == "stock_a_congestion_lg":
@@ -28301,6 +28709,44 @@ def _market_activity_kwargs(
         "start_date": request.parameters["start_date"],
         "end_date": request.parameters["end_date"],
     }
+
+
+def _market_activity_buffett_kwargs(
+    endpoint_name: str,
+    listing: _ListingRef,
+    request: ProviderRequest,
+) -> dict[str, object]:
+    """Build the documented no-argument A-share Buffett-index request."""
+
+    if endpoint_name != "stock_buffett_index_lg":
+        raise ProviderRequestError(
+            f"unsupported AKShare Buffett-index endpoint {endpoint_name!r}",
+            request=request,
+            retryable=False,
+        )
+    if listing.market is not ListingMarket.A:
+        raise ProviderRequestError(
+            "the AKShare Buffett-index endpoint supports A-share listings only",
+            request=request,
+            retryable=False,
+        )
+    unknown = sorted(
+        set(request.parameters) - _MARKET_ACTIVITY_BUFFETT_PARAMETER_NAMES
+    )
+    if unknown:
+        raise ProviderRequestError(
+            "unsupported AKShare Buffett-index parameter(s): " + ", ".join(unknown),
+            request=request,
+            retryable=False,
+        )
+    if request.parameters.get("view") != _MARKET_ACTIVITY_BUFFETT_VIEW:
+        raise ProviderRequestError(
+            "AKShare Buffett-index endpoint requires "
+            f"view={_MARKET_ACTIVITY_BUFFETT_VIEW!r}",
+            request=request,
+            retryable=False,
+        )
+    return {}
 
 
 def _market_activity_ebs_kwargs(

@@ -1510,6 +1510,34 @@ negative CSI 300 index values. The normalizer emits
 valuation, governance or accounting fact. The response remains outside the
 calculation, gate, pipeline, CLI and input-loader contracts.
 
+## Phase 3.12 A-share Legu Buffett-index raw history
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_buffett_index_lg.py)
+document `stock_buffett_index_lg()` as a no-argument token-backed JSON history
+with four documented output fields. The adapter exposes it only under
+`MARKET_ACTIVITY` with explicit `view=buffett_index` and an A-share provenance
+listing. The wrapper's two named percentile extensions are accepted in their
+documented optional order when the upstream API supplies them; they remain raw
+and no percentile unit or interpretation is inferred.
+
+| Raw upstream item | Phase 3.12 treatment |
+| --- | --- |
+| `日期` | Required strict `YYYY-MM-DD` observation date in the all-history response; it is not an accounting, filing or listing period. |
+| `收盘价` | Required finite non-negative index-close context; the endpoint does not document a canonical unit and it is not promoted to a listing quote, return or valuation input. |
+| `总市值` | Required finite non-negative market-capitalization context. The documentation describes the A-share close times issued A+B+H share capital but does not provide a numeric unit; no issuer market-cap or valuation fact is inferred. |
+| `GDP` | Required finite non-negative prior-year domestic-GDP context; no numeric unit or issuer accounting fact is inferred. |
+| `近十年分位数`, `总历史分位数` | Optional finite numeric wrapper extensions, accepted only together in the official extended field order when present; no percentile scale or valuation interpretation is inferred. |
+| request `view=buffett_index` | Explicit A-share-only, no-user-parameter routing; token/cookie-CSRF transport, source/API URIs, observed field variant/order, no filtering and complete market-wide row counts remain part of cache replay. |
+
+The provider rejects empty responses, missing/unexpected/reordered fields,
+invalid or non-ascending dates, null required values, non-numeric/boolean/
+non-finite values and negative base values. Optional percentile fields may be
+null because the official wrapper coerces optional output columns. The
+normalizer emits `AKSHARE_BUFFETT_INDEX_RAW_ONLY` and creates no canonical
+market, return, valuation, governance or accounting fact. The response remains
+outside the calculation, gate, pipeline, CLI and input-loader contracts.
+
 ## Phase 2.92 SSE daily-deal overview raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)

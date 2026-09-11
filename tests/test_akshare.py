@@ -239,6 +239,12 @@ class FakeAKShare:
             _fixture("a_equity_bond_spread.json"),
         )
 
+    def stock_buffett_index_lg(self):
+        return self._return(
+            "stock_buffett_index_lg",
+            _fixture("a_buffett_index.json"),
+        )
+
     def stock_sse_deal_daily(self, *, date: str):
         return self._return(
             "stock_sse_deal_daily",
@@ -968,8 +974,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "112"
-    assert AKSHARE_MAPPING_VERSION == "113"
+    assert provider.identity.provider_version == "113"
+    assert AKSHARE_MAPPING_VERSION == "114"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -22077,6 +22083,412 @@ def test_market_activity_congestion_cache_replay_does_not_call_upstream(tmp_path
     assert replay.mode is RetrievalMode.CACHE_REPLAY
     assert replay.record == live.record
     assert fake.calls == [("stock_a_congestion_lg", {})]
+
+
+def test_market_activity_buffett_fetch_preserves_market_history():
+    fake = FakeAKShare()
+    request = _request(
+        DataCategory.MARKET_ACTIVITY,
+        "SH600000",
+        {"view": "buffett_index"},
+    )
+
+    record = _provider(fake).fetch(request)
+    fixture = _fixture("a_buffett_index.json")
+
+    assert record.raw_payload == fixture
+    assert fake.calls == [("stock_buffett_index_lg", {})]
+    assert record.response_metadata["endpoint"] == "stock_buffett_index_lg"
+    assert record.response_metadata["market"] == "A"
+    assert record.response_metadata["listing_code"] == "600000"
+    assert record.response_metadata["market_activity_view"] == "buffett_index"
+    assert record.response_metadata["market_scope"] == (
+        "A-share market capitalization and GDP context"
+    )
+    assert record.response_metadata["listing_scoped_request"] is False
+    assert record.response_metadata["row_filtering"] == "none"
+    assert record.response_metadata["snapshot_scope"] == (
+        "all_historical_buffett_index_history"
+    )
+    assert record.response_metadata["date_binding"] == "row_dates"
+    assert record.response_metadata["observation_date_field"] == "日期"
+    assert record.response_metadata["observation_date_format"] == "YYYY-MM-DD"
+    assert record.response_metadata["observation_date_ordering"] == (
+        "strictly_ascending"
+    )
+    assert record.response_metadata["observation_start_date"] == "2005-04-08"
+    assert record.response_metadata["observation_end_date"] == "2026-05-26"
+    assert record.response_metadata["observation_count_contract"] == (
+        "non_empty_all_historical_history"
+    )
+    assert record.response_metadata["value_fields"] == ["收盘价", "总市值", "GDP"]
+    assert record.response_metadata["non_negative_fields"] == [
+        "收盘价",
+        "总市值",
+        "GDP",
+    ]
+    assert record.response_metadata["integer_fields"] == []
+    assert record.response_metadata["text_fields"] == []
+    assert record.response_metadata["date_fields"] == ["日期"]
+    assert record.response_metadata["required_date_fields"] == ["日期"]
+    assert record.response_metadata["required_numeric_fields"] == [
+        "收盘价",
+        "总市值",
+        "GDP",
+    ]
+    assert record.response_metadata["optional_fields"] == []
+    assert record.response_metadata["field_types"] == {
+        "日期": "date",
+        "收盘价": "number",
+        "总市值": "number",
+        "GDP": "number",
+    }
+    assert record.response_metadata["nullable_fields"] == []
+    assert record.response_metadata["field_count"] == 4
+    assert record.response_metadata["source_field_order"] == list(fixture[0])
+    assert record.response_metadata["documented_units"] == {}
+    assert record.response_metadata["undocumented_numeric_units"] == {
+        "收盘价": "not_documented",
+        "总市值": "not_documented",
+        "GDP": "not_documented",
+    }
+    assert record.response_metadata["upstream_url"] == (
+        "https://legulegu.com/api/stockdata/marketcap-gdp/get-marketcap-gdp"
+    )
+    assert record.response_metadata["upstream_protocol"] == "JSON"
+    assert record.response_metadata["upstream_report_name"] is None
+    assert record.response_metadata["upstream_parameters"] == ["token"]
+    assert record.response_metadata["upstream_authentication"] == (
+        "token_and_cookie_csrf"
+    )
+    assert record.response_metadata["wrapper_dropped_fields"] == []
+    assert record.response_metadata["upstream_page_size"] is None
+    assert record.response_metadata["pagination"] == "single_snapshot"
+    assert record.response_metadata["upstream_sort_column"] is None
+    assert record.response_metadata["upstream_sort_direction"] is None
+    assert record.response_metadata["upstream_filter"] is None
+    assert record.response_metadata["wrapper_output_ordering"] == (
+        "ascending_by_date"
+    )
+    assert record.response_metadata["upstream_row_count"] == len(fixture)
+    assert record.response_metadata["entity_row_count"] == 0
+    assert record.response_metadata["entity_rows_selected"] is False
+    assert record.source_uri == "https://legulegu.com/stockdata/marketcap-gdp"
+
+
+@pytest.mark.parametrize(
+    ("parameters", "entity_id", "match"),
+    [
+        (
+            {"view": "buffett_index", "date": "20260526"},
+            "SH600000",
+            "unsupported AKShare Buffett-index parameter",
+        ),
+        (
+            {"view": "buffett_index"},
+            "HK00700",
+            "A-share listings only",
+        ),
+    ],
+)
+def test_market_activity_buffett_request_validates_explicit_scope_before_upstream_call(
+    parameters: dict,
+    entity_id: str,
+    match: str,
+):
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError, match=match):
+        _provider(fake).fetch(
+            _request(DataCategory.MARKET_ACTIVITY, entity_id, parameters)
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("empty", "must not be empty"),
+        ("missing_field", "row 0 is missing field.*收盘价"),
+        ("extra_field", "row 0 contains unsupported field"),
+        ("reordered_fields", "official base or extended field order"),
+        ("invalid_date", "row 0 has an invalid 日期"),
+        ("duplicate_date", "duplicate 日期"),
+        ("descending_dates", "strictly ascending"),
+        ("invalid_numeric", "field '总市值'.*numeric"),
+        ("boolean_numeric", "field '总市值'.*numeric"),
+        ("negative_numeric", "field '收盘价'.*non-negative"),
+        ("null_numeric", "field 'GDP'.*numeric"),
+    ],
+)
+def test_market_activity_buffett_response_validates_schema_boundaries(
+    mutation: str,
+    match: str,
+):
+    payload = [dict(row) for row in _fixture("a_buffett_index.json")]
+    if mutation == "empty":
+        payload = []
+    elif mutation == "missing_field":
+        payload[0].pop("收盘价")
+    elif mutation == "extra_field":
+        payload[0]["unexpected"] = "not documented"
+    elif mutation == "reordered_fields":
+        payload[0] = dict(reversed(list(payload[0].items())))
+    elif mutation == "invalid_date":
+        payload[0]["日期"] = "2005-4-8"
+    elif mutation == "duplicate_date":
+        payload[1]["日期"] = payload[0]["日期"]
+    elif mutation == "descending_dates":
+        payload.reverse()
+    elif mutation == "invalid_numeric":
+        payload[0]["总市值"] = "38470.47"
+    elif mutation == "boolean_numeric":
+        payload[0]["总市值"] = True
+    elif mutation == "negative_numeric":
+        payload[0]["收盘价"] = -1
+    else:
+        payload[0]["GDP"] = None
+
+    class InvalidBuffett(FakeAKShare):
+        def stock_buffett_index_lg(self):
+            return self._return("stock_buffett_index_lg", payload)
+
+    with pytest.raises(ProviderResponseError, match=match):
+        _provider(InvalidBuffett()).fetch(
+            _request(
+                DataCategory.MARKET_ACTIVITY,
+                "SH600000",
+                {"view": "buffett_index"},
+            )
+        )
+
+
+def test_market_activity_buffett_preserves_documented_optional_percentile_fields():
+    payload = [dict(row) for row in _fixture("a_buffett_index.json")]
+    for row in payload:
+        row["近十年分位数"] = 0.2
+        row["总历史分位数"] = 0.3
+
+    class ExtendedBuffett(FakeAKShare):
+        def stock_buffett_index_lg(self):
+            return self._return("stock_buffett_index_lg", payload)
+
+    record = _provider(ExtendedBuffett()).fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SH600000",
+            {"view": "buffett_index"},
+        )
+    )
+
+    assert record.raw_payload == payload
+    assert record.response_metadata["optional_fields"] == [
+        "近十年分位数",
+        "总历史分位数",
+    ]
+    assert record.response_metadata["value_fields"] == [
+        "收盘价",
+        "总市值",
+        "GDP",
+        "近十年分位数",
+        "总历史分位数",
+    ]
+    assert record.response_metadata["nullable_fields"] == [
+        "近十年分位数",
+        "总历史分位数",
+    ]
+    assert record.response_metadata["field_count"] == 6
+    assert record.response_metadata["source_field_order"] == list(payload[0])
+
+
+def test_market_activity_buffett_is_retained_as_raw_evidence_without_facts():
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SH600000",
+            {"view": "buffett_index"},
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="buffett-index-raw-only",
+        as_of=date(2026, 9, 11),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_BUFFETT_INDEX_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == []
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "Buffett-index" in normalized.data_quality.notes
+    assert "market-wide" in normalized.data_quality.notes
+    assert "canonical" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "endpoint",
+        "source_uri",
+        "market",
+        "listing_code",
+        "view",
+        "market_scope",
+        "listing_scope",
+        "filtering",
+        "snapshot",
+        "date_binding",
+        "observation_date_field",
+        "observation_start_date",
+        "value_fields",
+        "non_negative_fields",
+        "date_fields",
+        "required_date_fields",
+        "required_numeric_fields",
+        "optional_fields",
+        "field_types",
+        "nullable_fields",
+        "field_count",
+        "source_field_order",
+        "undocumented_units",
+        "upstream_url",
+        "upstream_protocol",
+        "upstream_parameters",
+        "upstream_authentication",
+        "pagination",
+        "upstream_count",
+        "entity_count",
+        "selected",
+        "payload",
+    ],
+)
+def test_market_activity_buffett_normalizer_rejects_replayed_scope_mismatches(
+    mutation: str,
+):
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SH600000",
+            {"view": "buffett_index"},
+        )
+    )
+    payload = [dict(row) for row in record.raw_payload]
+    response_metadata = dict(record.response_metadata)
+    source_uri = record.source_uri
+    if mutation == "endpoint":
+        response_metadata["endpoint"] = "stock_sse_summary"
+    elif mutation == "source_uri":
+        source_uri = "https://example.invalid/buffett-index"
+    elif mutation == "market":
+        response_metadata["market"] = "H"
+    elif mutation == "listing_code":
+        response_metadata["listing_code"] = "000001"
+    elif mutation == "view":
+        response_metadata["market_activity_view"] = "sse_summary"
+    elif mutation == "market_scope":
+        response_metadata["market_scope"] = "all_a_share_listings"
+    elif mutation == "listing_scope":
+        response_metadata["listing_scoped_request"] = True
+    elif mutation == "filtering":
+        response_metadata["row_filtering"] = "provider"
+    elif mutation == "snapshot":
+        response_metadata["snapshot_scope"] = "current_trading_day"
+    elif mutation == "date_binding":
+        response_metadata["date_binding"] = "request_only"
+    elif mutation == "observation_date_field":
+        response_metadata["observation_date_field"] = "交易日"
+    elif mutation == "observation_start_date":
+        response_metadata["observation_start_date"] = "2005-04-09"
+    elif mutation == "value_fields":
+        response_metadata["value_fields"] = ["GDP"]
+    elif mutation == "non_negative_fields":
+        response_metadata["non_negative_fields"] = ["GDP"]
+    elif mutation == "date_fields":
+        response_metadata["date_fields"] = []
+    elif mutation == "required_date_fields":
+        response_metadata["required_date_fields"] = []
+    elif mutation == "required_numeric_fields":
+        response_metadata["required_numeric_fields"] = ["GDP"]
+    elif mutation == "optional_fields":
+        response_metadata["optional_fields"] = ["近十年分位数"]
+    elif mutation == "field_types":
+        response_metadata["field_types"] = {"日期": "string"}
+    elif mutation == "nullable_fields":
+        response_metadata["nullable_fields"] = ["GDP"]
+    elif mutation == "field_count":
+        response_metadata["field_count"] = 3
+    elif mutation == "source_field_order":
+        response_metadata["source_field_order"] = [
+            "收盘价",
+            "日期",
+            "总市值",
+            "GDP",
+        ]
+    elif mutation == "undocumented_units":
+        response_metadata["undocumented_numeric_units"] = {"GDP": "CNY"}
+    elif mutation == "upstream_url":
+        response_metadata["upstream_url"] = "https://example.invalid/api"
+    elif mutation == "upstream_protocol":
+        response_metadata["upstream_protocol"] = "HTML"
+    elif mutation == "upstream_parameters":
+        response_metadata["upstream_parameters"] = []
+    elif mutation == "upstream_authentication":
+        response_metadata["upstream_authentication"] = "none"
+    elif mutation == "pagination":
+        response_metadata["pagination"] = "paged"
+    elif mutation == "upstream_count":
+        response_metadata["upstream_row_count"] = len(payload) - 1
+    elif mutation == "entity_count":
+        response_metadata["entity_row_count"] = 1
+    elif mutation == "selected":
+        response_metadata["entity_rows_selected"] = True
+    else:
+        payload[0]["GDP"] = "not-a-number"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=source_uri,
+        response_metadata=response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-buffett-index",
+            as_of=date(2026, 9, 11),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_market_activity_buffett_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.MARKET_ACTIVITY,
+        "SH600000",
+        {"view": "buffett_index"},
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [("stock_buffett_index_lg", {})]
 
 
 def test_market_activity_ebs_fetch_preserves_equity_bond_spread_history():

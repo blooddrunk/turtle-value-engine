@@ -2891,6 +2891,29 @@ routing, exact schema/order/types, date/numeric and signed-spread boundaries,
 raw-only normalization, replay metadata tampering and offline cache replay. No
 calculation, gate, pipeline, CLI or input-loader contract changes.
 
+### Phase 3.12 — A-share Legu Buffett-index raw acquisition contract (COMPLETE)
+
+The mapping review now covers the documented A-share Legu
+`stock_buffett_index_lg` endpoint under the existing `MARKET_ACTIVITY` category
+with explicit `view=buffett_index` and no user-supplied arguments. The [AKShare
+stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_buffett_index_lg.py)
+define a token-backed JSON history with the four documented fields `日期`,
+`收盘价`, `总市值` and `GDP` in ascending date order. The provider validates a
+non-empty history, strict ISO dates and finite non-negative base values; the
+wrapper's two named percentile extensions are accepted only in their official
+optional order and remain raw without inferred units.
+
+The provider records the all-history boundary, token/cookie-CSRF transport, no
+user parameters, no filtering and complete market-wide row counts for
+deterministic cache replay. The normalizer emits
+`AKSHARE_BUFFETT_INDEX_RAW_ONLY` and creates no canonical market, return,
+valuation, governance or accounting fact: the index, market-capitalization and
+GDP context has no listing/entity accounting scope. Tests cover explicit view,
+A-share/no-argument routing, exact base and optional schemas, date/numeric
+boundaries, raw-only normalization, replay metadata tampering and offline cache
+replay. No calculation, gate, pipeline, CLI or input-loader contract changes.
+
 ### Future structured-provider deliverables
 
 ```text
@@ -2900,7 +2923,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–3.11 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–3.12 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -3271,6 +3294,16 @@ The raw-only normalizer flag creates no canonical market, return, valuation,
 governance or accounting fact because this index/spread context has no
 listing/entity accounting scope. No calculation, gate, pipeline, CLI or
 input-loader contract changes.
+Phase 3.12 adds the documented A-share Legu
+`stock_buffett_index_lg` Buffett-index history under `MARKET_ACTIVITY` with
+explicit `view=buffett_index` and no user-supplied arguments. Its token-backed
+JSON response is validated as a non-empty, strictly ascending all-history
+series with the four documented `日期`, `收盘价`, `总市值` and `GDP` fields,
+finite non-negative base values and optional named percentile extensions. The
+raw-only normalizer flag creates no canonical market, return, valuation,
+governance or accounting fact because the index/market-capitalization/GDP
+context has no listing/entity accounting scope. No calculation, gate, pipeline,
+CLI or input-loader contract changes.
 Phase 2.75 completes the next documented structured-data boundary by adding
 the A-share `stock_gpzy_profile_em` market-wide historical ownership-pledge
 view. Its no-argument eight-field response is validated as an ascending raw

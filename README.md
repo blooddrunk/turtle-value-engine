@@ -1219,6 +1219,21 @@ undocumented units. The normalizer emits
 not become a canonical market, return, valuation, governance or accounting
 fact. No calculation, gate, pipeline, CLI or input-loader contract changes.
 
+Phase 3.12 adds the documented A-share Legu
+`stock_buffett_index_lg` endpoint under `MARKET_ACTIVITY` with explicit
+`view=buffett_index` and no user-supplied arguments. The [AKShare stock-data
+documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and [official
+implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_buffett_index_lg.py)
+define a token-backed JSON history with four documented fields: `日期`, `收盘价`,
+`总市值` and `GDP`. The provider validates a non-empty strictly ascending
+history, strict ISO dates and finite non-negative base values; the two named
+percentile extensions emitted by the wrapper, when present, remain optional
+raw fields with no inferred units. The normalizer emits
+`AKSHARE_BUFFETT_INDEX_RAW_ONLY`; this market-wide index/market-capitalization/
+GDP context does not become a canonical market, return, valuation, governance
+or accounting fact. No calculation, gate, pipeline, CLI or input-loader
+contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.
