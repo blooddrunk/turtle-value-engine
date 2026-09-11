@@ -3099,6 +3099,30 @@ signed values and boundary validation, raw-only normalization, replay metadata
 tampering and offline cache replay. No calculation, gate, pipeline, CLI or
 input-loader contract changes.
 
+### Phase 3.21 — A-share Eastmoney valuation-comparison raw acquisition contract (COMPLETE)
+
+The mapping review now covers the documented A-share Eastmoney
+`stock_zh_valuation_comparison_em` endpoint under `MARKET_ACTIVITY` with
+explicit `view=valuation_comparison` and the exchange-prefixed six-digit
+listing symbol expected by the wrapper. The [AKShare stock-data
+documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and [official
+implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_zh_comparison_em.py)
+define the current 20-field target/industry-summary/peer output; the current
+wrapper does not select the separately listed `市盈率-24A` field. The provider
+freezes the Eastmoney JSON report, filter, sort and client parameters, records
+the target/summary/peer row roles and strict peer rank order, and validates
+nullable finite numeric comparison values without inferring units or a
+universal non-negative domain.
+
+The normalizer emits `AKSHARE_VALUATION_COMPARISON_RAW_ONLY` and creates no
+canonical valuation, market, return, governance or accounting fact because the
+provider-defined peer comparison is not reconciled to filing-backed periods,
+units or accounting scope. Tests cover the official output schema, explicit
+view and A-share routing, derived upstream symbol/filter, nullable and signed
+values, boundary validation, raw-only normalization, replay metadata tampering
+and offline cache replay. No calculation, gate, pipeline, CLI or input-loader
+contract changes.
+
 ### Future structured-provider deliverables
 
 ```text
@@ -3108,7 +3132,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–3.20 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–3.21 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -3552,6 +3576,16 @@ choices and three period choices. Its exact `date`/`value` schema, official
 fixed/dynamic JSON parameters including `market=hk`, listing-scoped date bounds
 and strict history validation are recorded; the normalizer emits
 `AKSHARE_HK_BAIDU_VALUATION_RAW_ONLY` and creates no canonical valuation,
+market, return, governance or accounting fact, and no calculation, gate,
+pipeline, CLI or input-loader contract changes.
+Phase 3.21 adds the documented A-share Eastmoney
+`stock_zh_valuation_comparison_em` valuation-comparison endpoint under
+`MARKET_ACTIVITY` with explicit `view=valuation_comparison` and an
+exchange-prefixed six-digit listing symbol. Its current 20-field target,
+industry-summary and ranked-peer output, exact Eastmoney JSON report/filter/
+sort parameters, nullable/signed numeric boundary and replay metadata are
+recorded; the normalizer emits
+`AKSHARE_VALUATION_COMPARISON_RAW_ONLY` and creates no canonical valuation,
 market, return, governance or accounting fact, and no calculation, gate,
 pipeline, CLI or input-loader contract changes.
 Phase 2.75 completes the next documented structured-data boundary by adding

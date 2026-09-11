@@ -1747,6 +1747,32 @@ raw evidence only until its period, units and accounting scope are reconciled.
 The response remains outside the calculation, gate, pipeline, CLI and
 input-loader contracts.
 
+## Phase 3.21 A-share Eastmoney valuation-comparison raw snapshot
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_zh_comparison_em.py)
+document `stock_zh_valuation_comparison_em` as a single-symbol industry
+valuation-comparison table. The adapter exposes it only under
+`MARKET_ACTIVITY` with explicit `view=valuation_comparison`; an A-share listing
+is converted to the exchange-prefixed six-digit upstream `symbol` expected by
+the wrapper. The current implementation selects 20 output fields and does not
+select the separately listed `市盈率-24A` field.
+
+| Raw upstream item | Phase 3.21 treatment |
+| --- | --- |
+| `排名`, `代码`, `简称` | Required wrapper text fields; the first row is the requested listing, the next two are `行业平均`/`行业中值` summary rows, and remaining rows are ranked peers. |
+| `PEG`, PE/PS/PB/cash-flow multiple fields, `EV/EBITDA-24A` | Nullable finite numeric provider-defined comparison values; signed values are preserved and no unit or universal non-negative domain is inferred. |
+| request `view=valuation_comparison` | Explicit A-share-only listing-scoped routing. The Eastmoney JSON request freezes `RPT_PCF10_INDUSTRY_CVALUE`, `columns=ALL`, `sortColumns=PAIMING`, `source=HSF10` and `client=PC`, while deriving `filter=(SECUCODE="<code>.<exchange>")` from the requested listing. Exact wrapper field order, row roles, peer ranks, upstream fields and replay metadata remain part of the raw contract. |
+
+The provider rejects unsupported views/parameters, non-A listings, missing or
+unexpected/reordered fields, malformed target/summary/peer rows, duplicate or
+non-ascending peer ranks and non-finite/non-numeric values. The normalizer
+emits `AKSHARE_VALUATION_COMPARISON_RAW_ONLY` and creates no canonical
+valuation, market, return, governance or accounting fact: the peer table is
+raw evidence only until its provider-defined scope, periods and units are
+reconciled. The response remains outside the calculation, gate, pipeline, CLI
+and input-loader contracts.
+
 ## Phase 2.92 SSE daily-deal overview raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)

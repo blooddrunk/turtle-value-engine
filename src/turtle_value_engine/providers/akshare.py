@@ -55,8 +55,9 @@ The SSE daily-deal overview raw slice is also available. The SZSE area-summary
 and sector-summary raw slices are also available. The Eastmoney industry-board
 snapshot, Dragon-Tiger institution-daily raw slice, stock-account-statistics
 history and Legu market-activity/congestion/equity-bond-spread/Buffett-index/
-A-share PE/PB-history, index-PE/index-PB, market-PE/market-PB and A/H Baidu
-valuation-history snapshots are also available.
+A-share PE/PB-history, index-PE/index-PB, market-PE/market-PB, A-share
+Eastmoney valuation-comparison and A/H Baidu valuation-history snapshots are
+also available.
 The A-share Eastmoney top-ten, top-ten-tradable-shareholder and
 top-ten-tradable-shareholder-detail raw slices are also available.
 The A-share Eastmoney institutional-research statistics and detail raw slices
@@ -107,9 +108,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "121"
+AKSHARE_ADAPTER_VERSION = "122"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "122"
+AKSHARE_MAPPING_VERSION = "123"
 
 
 class ListingMarket(StrEnum):
@@ -229,6 +230,10 @@ _SOURCE_URIS = {
     "stock_index_pb_lg": "https://legulegu.com/stockdata/sz50-pb",
     "stock_zh_valuation_baidu": "https://gushitong.baidu.com/stock/ab-002044",
     "stock_hk_valuation_baidu": "https://gushitong.baidu.com/stock/hk-06969",
+    "stock_zh_valuation_comparison_em": (
+        "https://emweb.securities.eastmoney.com/pc_hsf10/pages/"
+        "index.html?type=web&code=000895&color=b#/thbj/gzbj"
+    ),
     "stock_zt_pool_em": "https://quote.eastmoney.com/ztb/detail#type=ztgc",
     "stock_zt_pool_dtgc_em": "https://quote.eastmoney.com/ztb/detail#type=dtgc",
     "stock_intraday_em": "https://quote.eastmoney.com/f1.html?newcode=0.000001",
@@ -1725,6 +1730,137 @@ _MARKET_ACTIVITY_HK_BAIDU_VALUATION_UPSTREAM_FIXED_PARAMETERS = {
 _MARKET_ACTIVITY_HK_BAIDU_VALUATION_DOCUMENTED_UNITS: dict[str, str] = {}
 _MARKET_ACTIVITY_HK_BAIDU_VALUATION_UNDOCUMENTED_NUMERIC_UNITS = {
     "value": "not_documented"
+}
+_MARKET_ACTIVITY_VALUATION_COMPARISON_PARAMETER_NAMES = frozenset({"view"})
+_MARKET_ACTIVITY_VALUATION_COMPARISON_VIEW = "valuation_comparison"
+_MARKET_ACTIVITY_VALUATION_COMPARISON_FIELDS = (
+    "排名",
+    "代码",
+    "简称",
+    "PEG",
+    "市盈率-TTM",
+    "市盈率-25E",
+    "市盈率-26E",
+    "市盈率-27E",
+    "市销率-24A",
+    "市销率-TTM",
+    "市销率-25E",
+    "市销率-26E",
+    "市销率-27E",
+    "市净率-24A",
+    "市净率-MRQ",
+    "市现率1-24A",
+    "市现率1-TTM",
+    "市现率2-24A",
+    "市现率2-TTM",
+    "EV/EBITDA-24A",
+)
+_MARKET_ACTIVITY_VALUATION_COMPARISON_FIELD_SET = frozenset(
+    _MARKET_ACTIVITY_VALUATION_COMPARISON_FIELDS
+)
+_MARKET_ACTIVITY_VALUATION_COMPARISON_TEXT_FIELDS = (
+    "排名",
+    "代码",
+    "简称",
+)
+_MARKET_ACTIVITY_VALUATION_COMPARISON_REQUIRED_TEXT_FIELDS = (
+    *_MARKET_ACTIVITY_VALUATION_COMPARISON_TEXT_FIELDS,
+)
+_MARKET_ACTIVITY_VALUATION_COMPARISON_NUMERIC_FIELDS = (
+    *_MARKET_ACTIVITY_VALUATION_COMPARISON_FIELDS[3:],
+)
+_MARKET_ACTIVITY_VALUATION_COMPARISON_NULLABLE_FIELDS = frozenset(
+    _MARKET_ACTIVITY_VALUATION_COMPARISON_NUMERIC_FIELDS
+)
+_MARKET_ACTIVITY_VALUATION_COMPARISON_REQUIRED_NUMERIC_FIELDS = tuple(
+    field
+    for field in _MARKET_ACTIVITY_VALUATION_COMPARISON_NUMERIC_FIELDS
+    if field not in _MARKET_ACTIVITY_VALUATION_COMPARISON_NULLABLE_FIELDS
+)
+_MARKET_ACTIVITY_VALUATION_COMPARISON_NON_NEGATIVE_FIELDS: frozenset[str] = (
+    frozenset()
+)
+_MARKET_ACTIVITY_VALUATION_COMPARISON_INTEGER_FIELDS: frozenset[str] = frozenset()
+_MARKET_ACTIVITY_VALUATION_COMPARISON_FIELD_TYPES = {
+    **{
+        field: "string"
+        for field in _MARKET_ACTIVITY_VALUATION_COMPARISON_TEXT_FIELDS
+    },
+    **{
+        field: "number"
+        for field in _MARKET_ACTIVITY_VALUATION_COMPARISON_NUMERIC_FIELDS
+    },
+}
+_MARKET_ACTIVITY_VALUATION_COMPARISON_SOURCE_URI = (
+    "https://emweb.securities.eastmoney.com/pc_hsf10/pages/"
+    "index.html?type=web&code=000895&color=b#/thbj/gzbj"
+)
+_MARKET_ACTIVITY_VALUATION_COMPARISON_UPSTREAM_URL = (
+    "https://datacenter.eastmoney.com/securities/api/data/v1/get"
+)
+_MARKET_ACTIVITY_VALUATION_COMPARISON_UPSTREAM_PARAMETERS = (
+    "reportName",
+    "columns",
+    "quoteColumns",
+    "filter",
+    "pageNumber",
+    "pageSize",
+    "sortTypes",
+    "sortColumns",
+    "source",
+    "client",
+)
+_MARKET_ACTIVITY_VALUATION_COMPARISON_UPSTREAM_FIXED_PARAMETERS = {
+    "reportName": "RPT_PCF10_INDUSTRY_CVALUE",
+    "columns": "ALL",
+    "quoteColumns": "",
+    "pageNumber": "",
+    "pageSize": "",
+    "sortTypes": "1",
+    "sortColumns": "PAIMING",
+    "source": "HSF10",
+    "client": "PC",
+}
+_MARKET_ACTIVITY_VALUATION_COMPARISON_UPSTREAM_COLUMNS = (
+    "SECUCODE",
+    "SECURITY_CODE",
+    "CORRE_SECUCODE",
+    "CORRE_SECURITY_CODE",
+    "CORRE_SECURITY_NAME",
+    "PE",
+    "PE_TTM",
+    "PE_1Y",
+    "PE_2Y",
+    "PE_3Y",
+    "PS",
+    "PS_TTM",
+    "PS_1Y",
+    "PS_2Y",
+    "PS_3Y",
+    "PB",
+    "PB_MRQ",
+    "PCE_TTM",
+    "PCE",
+    "PCF_TTM",
+    "PCF",
+    "QYBS",
+    "PEG",
+    "REPORT_DATE",
+    "TOTAL_COUNT",
+    "PAIMING",
+)
+_MARKET_ACTIVITY_VALUATION_COMPARISON_WRAPPER_DROPPED_FIELDS = (
+    "SECUCODE",
+    "SECURITY_CODE",
+    "CORRE_SECUCODE",
+    "PE",
+    "REPORT_DATE",
+    "TOTAL_COUNT",
+)
+_MARKET_ACTIVITY_VALUATION_COMPARISON_DOCUMENTED_UNITS: dict[str, str] = {}
+_MARKET_ACTIVITY_VALUATION_COMPARISON_UNDOCUMENTED_NUMERIC_UNITS = {
+    field: "not_documented"
+    for field in _MARKET_ACTIVITY_VALUATION_COMPARISON_NUMERIC_FIELDS
 }
 _MARKET_ACTIVITY_SZSE_SUMMARY_PARAMETER_NAMES = frozenset({"view", "date"})
 _MARKET_ACTIVITY_SZSE_SUMMARY_VIEW = "szse_summary"
@@ -4220,6 +4356,28 @@ class AKShareProvider(StructuredDataProvider):
                         indicator=indicator,
                         period=period,
                         observation_dates=observation_dates,
+                        row_count=len(rows),
+                    )
+                )
+            elif endpoint.name == "stock_zh_valuation_comparison_em":
+                symbol = kwargs["symbol"]
+                if not isinstance(symbol, str):
+                    raise ProviderResponseError(
+                        "AKShare valuation-comparison upstream symbol must be text",
+                        provider=self.identity,
+                        request=request,
+                    )
+                _validate_market_activity_valuation_comparison_provider_rows(
+                    rows,
+                    listing=listing,
+                    provider=self.identity,
+                    request=request,
+                )
+                response_metadata.update(
+                    _market_activity_valuation_comparison_response_metadata(
+                        listing_code=listing.code,
+                        symbol=symbol,
+                        rows=rows,
                         row_count=len(rows),
                     )
                 )
@@ -7129,6 +7287,10 @@ class AKShareProvider(StructuredDataProvider):
                 request.parameters.get("view")
                 == _MARKET_ACTIVITY_HK_BAIDU_VALUATION_VIEW
             ),
+            market_activity_valuation_comparison_requested=(
+                request.parameters.get("view")
+                == _MARKET_ACTIVITY_VALUATION_COMPARISON_VIEW
+            ),
             market_activity_market_pb_requested=(
                 request.parameters.get("view") == _MARKET_ACTIVITY_MARKET_PB_VIEW
             ),
@@ -7654,6 +7816,15 @@ class AKShareNormalizer:
                         rows,
                     )
                     normalizer_flags.add("AKSHARE_HK_BAIDU_VALUATION_RAW_ONLY")
+                elif endpoint_name == "stock_zh_valuation_comparison_em":
+                    _validate_market_activity_valuation_comparison_normalizer_scope(
+                        record,
+                        listing,
+                        rows,
+                    )
+                    normalizer_flags.add(
+                        "AKSHARE_VALUATION_COMPARISON_RAW_ONLY"
+                    )
                 elif endpoint_name == "stock_market_pb_lg":
                     _validate_market_activity_market_pb_normalizer_scope(
                         record,
@@ -7909,6 +8080,7 @@ class AKShareNormalizer:
                         "stock_a_all_pb, stock_index_pe_lg, stock_index_pb_lg, "
                         "stock_zh_valuation_baidu, "
                         "stock_hk_valuation_baidu, "
+                        "stock_zh_valuation_comparison_em, "
                         "stock_market_pe_lg, "
                         "stock_market_pb_lg, "
                         "stock_a_ttm_lyr, "
@@ -9658,6 +9830,13 @@ class AKShareNormalizer:
                 "filing-backed accounting scope, units or the canonical valuation "
                 "contract."
             )
+        if "AKSHARE_VALUATION_COMPARISON_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented Eastmoney valuation-comparison response is retained "
+                "as raw evidence only: its provider-defined peer ranking and "
+                "valuation-multiple semantics are not reconciled to filing-backed "
+                "accounting scope, units or the canonical valuation contract."
+            )
         if "AKSHARE_MARKET_PB_RAW_ONLY" in normalizer_flags:
             notes += (
                 " The documented Legu market-PB response is retained as raw evidence "
@@ -10180,6 +10359,7 @@ def _endpoint_candidates(
     market_activity_index_pb_requested: bool = False,
     market_activity_baidu_valuation_requested: bool = False,
     market_activity_hk_baidu_valuation_requested: bool = False,
+    market_activity_valuation_comparison_requested: bool = False,
     market_activity_market_pb_requested: bool = False,
     market_activity_account_statistics_requested: bool = False,
     market_activity_block_trade_requested: bool = False,
@@ -10354,6 +10534,10 @@ def _endpoint_candidates(
         if market_activity_hk_baidu_valuation_requested:
             if market is ListingMarket.H:
                 return ("stock_hk_valuation_baidu",)
+            return ()
+        if market_activity_valuation_comparison_requested:
+            if market is ListingMarket.A:
+                return ("stock_zh_valuation_comparison_em",)
             return ()
         if market_activity_market_pb_requested:
             if market is ListingMarket.A:
@@ -19448,6 +19632,354 @@ def _validate_market_activity_hk_baidu_valuation_provider_rows(
     return observation_dates
 
 
+def _market_activity_valuation_comparison_filter(symbol: str) -> str:
+    """Build the official Eastmoney filter from an AKShare A-share symbol."""
+
+    if re.fullmatch(r"(?:SH|SZ|BJ)\d{6}", symbol) is None:
+        raise ValueError(f"invalid A-share valuation-comparison symbol {symbol!r}")
+    return f'(SECUCODE="{symbol[2:]}.{symbol[:2]}")'
+
+
+def _market_activity_valuation_comparison_rank(
+    value: object,
+    *,
+    target: bool,
+) -> float | None:
+    """Parse one stringified rank from the official comparison wrapper."""
+
+    if not isinstance(value, str) or not value.strip():
+        return None
+    text = value.strip()
+    if target:
+        parts = text.split("/")
+        if len(parts) != 2:
+            return None
+        rank_text, total_text = parts
+        try:
+            rank = float(rank_text)
+            total = float(total_text)
+        except (TypeError, ValueError):
+            return None
+        if (
+            not math.isfinite(rank)
+            or not math.isfinite(total)
+            or not rank.is_integer()
+            or not total.is_integer()
+            or rank < 1
+            or total < 1
+            or rank > total
+        ):
+            return None
+        return rank
+    if "/" in text:
+        return None
+    try:
+        rank = float(text)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(rank) or not rank.is_integer() or rank < 1:
+        return None
+    return rank
+
+
+def _market_activity_valuation_comparison_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef | None = None,
+) -> str | None:
+    """Return strict-schema errors for the official comparison table."""
+
+    if len(rows) < 3:
+        return (
+            "market-activity valuation-comparison response must contain a target "
+            "row and two industry-summary rows"
+        )
+
+    seen_codes: set[str] = set()
+    for index, row in enumerate(rows):
+        missing = [
+            field
+            for field in _MARKET_ACTIVITY_VALUATION_COMPARISON_FIELDS
+            if field not in row
+        ]
+        unexpected = [
+            field
+            for field in row
+            if field not in _MARKET_ACTIVITY_VALUATION_COMPARISON_FIELD_SET
+        ]
+        if missing:
+            return (
+                "market-activity valuation-comparison row "
+                f"{index} is missing field(s): "
+                + ", ".join(missing)
+            )
+        if unexpected:
+            return (
+                "market-activity valuation-comparison row "
+                f"{index} contains unsupported field(s): "
+                + ", ".join(unexpected)
+            )
+        if tuple(row) != _MARKET_ACTIVITY_VALUATION_COMPARISON_FIELDS:
+            return (
+                "market-activity valuation-comparison rows must preserve the "
+                "official field order"
+            )
+
+        for field in _MARKET_ACTIVITY_VALUATION_COMPARISON_TEXT_FIELDS:
+            value = row[field]
+            if not isinstance(value, str) or not value.strip():
+                return (
+                    "market-activity valuation-comparison row "
+                    f"{index} field {field!r} must be a non-empty string"
+                )
+
+        for field in _MARKET_ACTIVITY_VALUATION_COMPARISON_NUMERIC_FIELDS:
+            value = row[field]
+            if value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, Real):
+                return (
+                    "market-activity valuation-comparison row "
+                    f"{index} field {field!r} must be numeric or null"
+                )
+            try:
+                numeric = float(value)
+            except (OverflowError, TypeError, ValueError):
+                return (
+                    "market-activity valuation-comparison row "
+                    f"{index} field {field!r} must be numeric or null"
+                )
+            if not math.isfinite(numeric):
+                return (
+                    "market-activity valuation-comparison row "
+                    f"{index} field {field!r} must be finite or null"
+                )
+
+        code = row["代码"]
+        if index < 3:
+            expected_summary = {"行业平均", "行业中值"}
+            if index == 0:
+                if not isinstance(code, str) or re.fullmatch(r"\d{6}", code) is None:
+                    return (
+                        "market-activity valuation-comparison target row must have "
+                        "a six-digit 代码"
+                    )
+                if listing is not None and code != listing.code:
+                    return (
+                        "market-activity valuation-comparison target row entity "
+                        f"{code!r} does not match requested listing "
+                        f"{listing.canonical_id!r}"
+                    )
+                if _market_activity_valuation_comparison_rank(
+                    row["排名"], target=True
+                ) is None:
+                    return (
+                        "market-activity valuation-comparison target row field "
+                        "'排名' must be a positive rank/total string"
+                    )
+                seen_codes.add(code)
+            else:
+                if code not in expected_summary:
+                    return (
+                        "market-activity valuation-comparison industry-summary "
+                        f"row {index} must have 代码 '行业平均' or '行业中值'"
+                    )
+                if row["简称"] != code:
+                    return (
+                        "market-activity valuation-comparison industry-summary "
+                        f"row {index} must repeat its 代码 in 简称"
+                    )
+                if row["排名"] != "nan":
+                    return (
+                        "market-activity valuation-comparison industry-summary "
+                        f"row {index} field '排名' must be 'nan'"
+                    )
+        else:
+            if not isinstance(code, str) or re.fullmatch(r"\d{6}", code) is None:
+                return (
+                    "market-activity valuation-comparison peer row "
+                    f"{index} must have a six-digit 代码"
+                )
+            if code in seen_codes:
+                return (
+                    "market-activity valuation-comparison response has duplicate "
+                    f"peer 代码 {code!r}"
+                )
+            seen_codes.add(code)
+
+    summary_codes = {rows[1]["代码"], rows[2]["代码"]}
+    if summary_codes != {"行业平均", "行业中值"}:
+        return (
+            "market-activity valuation-comparison response must contain exactly "
+            "one 行业平均 and one 行业中值 row"
+        )
+
+    previous_peer_rank: float | None = None
+    for index, row in enumerate(rows[3:], start=3):
+        peer_rank = _market_activity_valuation_comparison_rank(
+            row["排名"], target=False
+        )
+        if peer_rank is None:
+            return (
+                "market-activity valuation-comparison peer row "
+                f"{index} field '排名' must be a positive numeric string"
+            )
+        if previous_peer_rank is not None and peer_rank <= previous_peer_rank:
+            return (
+                "market-activity valuation-comparison peer rank values must be "
+                "strictly ascending"
+            )
+        previous_peer_rank = peer_rank
+    return None
+
+
+def _validate_market_activity_valuation_comparison_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    listing: _ListingRef,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> None:
+    """Validate the complete listing-scoped Eastmoney comparison response."""
+
+    message = _market_activity_valuation_comparison_validation_message(rows, listing)
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message}",
+            provider=provider,
+            request=request,
+        )
+
+
+def _market_activity_valuation_comparison_row_roles(
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> list[str]:
+    """Describe the wrapper's target, summary and ranked-peer row ordering."""
+
+    roles = ["target"]
+    for row in rows[1:3]:
+        roles.append(
+            "industry_average"
+            if row["代码"] == "行业平均"
+            else "industry_median"
+        )
+    for row in rows[3:]:
+        rank = _market_activity_valuation_comparison_rank(
+            row["排名"], target=False
+        )
+        roles.append(f"peer_rank_{int(rank)}")
+    return roles
+
+
+def _market_activity_valuation_comparison_response_metadata(
+    *,
+    listing_code: str,
+    symbol: str,
+    rows: Sequence[Mapping[str, JSONValue]],
+    row_count: int,
+) -> dict[str, JSONValue]:
+    """Build the replay contract for one Eastmoney comparison snapshot."""
+
+    if not rows:
+        raise ValueError("valuation-comparison response must contain rows")
+    upstream_filter = _market_activity_valuation_comparison_filter(symbol)
+    peer_ranks = [
+        int(
+            _market_activity_valuation_comparison_rank(
+                row["排名"], target=False
+            )
+        )
+        for row in rows[3:]
+    ]
+    return {
+        "endpoint": "stock_zh_valuation_comparison_em",
+        "market": ListingMarket.A.value,
+        "listing_code": listing_code,
+        "market_activity_view": _MARKET_ACTIVITY_VALUATION_COMPARISON_VIEW,
+        "upstream_symbol": symbol,
+        "market_scope": "requested_a_share_listing_industry_comparison",
+        "listing_scoped_request": True,
+        "row_filtering": "upstream",
+        "snapshot_scope": "requested_a_share_valuation_comparison_snapshot",
+        "date_binding": "retrieval_only",
+        "rank_field": "排名",
+        "rank_ordering": "target_then_industry_summary_then_ascending_peers",
+        "target_code_field": "代码",
+        "target_row_position": 0,
+        "target_row_count": 1,
+        "industry_summary_code_field": "代码",
+        "industry_summary_labels": [row["代码"] for row in rows[1:3]],
+        "industry_summary_row_count": 2,
+        "peer_rank_field": "排名",
+        "peer_rank_ordering": "strictly_ascending_numeric_strings",
+        "peer_rank_order": peer_ranks,
+        "peer_row_count": len(rows) - 3,
+        "comparison_row_roles": _market_activity_valuation_comparison_row_roles(rows),
+        "value_fields": list(_MARKET_ACTIVITY_VALUATION_COMPARISON_NUMERIC_FIELDS),
+        "non_negative_fields": list(
+            _MARKET_ACTIVITY_VALUATION_COMPARISON_NON_NEGATIVE_FIELDS
+        ),
+        "integer_fields": list(_MARKET_ACTIVITY_VALUATION_COMPARISON_INTEGER_FIELDS),
+        "text_fields": list(_MARKET_ACTIVITY_VALUATION_COMPARISON_TEXT_FIELDS),
+        "required_text_fields": list(
+            _MARKET_ACTIVITY_VALUATION_COMPARISON_REQUIRED_TEXT_FIELDS
+        ),
+        "required_numeric_fields": list(
+            _MARKET_ACTIVITY_VALUATION_COMPARISON_REQUIRED_NUMERIC_FIELDS
+        ),
+        "field_types": dict(_MARKET_ACTIVITY_VALUATION_COMPARISON_FIELD_TYPES),
+        "nullable_fields": [
+            field
+            for field in _MARKET_ACTIVITY_VALUATION_COMPARISON_FIELDS
+            if field in _MARKET_ACTIVITY_VALUATION_COMPARISON_NULLABLE_FIELDS
+        ],
+        "field_count": len(_MARKET_ACTIVITY_VALUATION_COMPARISON_FIELDS),
+        "source_field_order": list(_MARKET_ACTIVITY_VALUATION_COMPARISON_FIELDS),
+        "documented_units": dict(
+            _MARKET_ACTIVITY_VALUATION_COMPARISON_DOCUMENTED_UNITS
+        ),
+        "undocumented_numeric_units": dict(
+            _MARKET_ACTIVITY_VALUATION_COMPARISON_UNDOCUMENTED_NUMERIC_UNITS
+        ),
+        "upstream_url": _MARKET_ACTIVITY_VALUATION_COMPARISON_UPSTREAM_URL,
+        "upstream_protocol": "JSON",
+        "upstream_report_name": (
+            _MARKET_ACTIVITY_VALUATION_COMPARISON_UPSTREAM_FIXED_PARAMETERS[
+                "reportName"
+            ]
+        ),
+        "upstream_columns_selector": "ALL",
+        "upstream_columns": list(
+            _MARKET_ACTIVITY_VALUATION_COMPARISON_UPSTREAM_COLUMNS
+        ),
+        "upstream_parameters": list(
+            _MARKET_ACTIVITY_VALUATION_COMPARISON_UPSTREAM_PARAMETERS
+        ),
+        "upstream_fixed_parameters": dict(
+            _MARKET_ACTIVITY_VALUATION_COMPARISON_UPSTREAM_FIXED_PARAMETERS
+        ),
+        "upstream_dynamic_parameters": {
+            "symbol": symbol,
+            "filter": upstream_filter,
+        },
+        "upstream_authentication": "none",
+        "wrapper_dropped_fields": list(
+            _MARKET_ACTIVITY_VALUATION_COMPARISON_WRAPPER_DROPPED_FIELDS
+        ),
+        "upstream_page_size": None,
+        "pagination": "single_snapshot",
+        "upstream_sort_column": "PAIMING",
+        "upstream_sort_direction": "ascending",
+        "upstream_filter": upstream_filter,
+        "wrapper_source_page_uri": _MARKET_ACTIVITY_VALUATION_COMPARISON_SOURCE_URI,
+        "wrapper_output_ordering": (
+            "target_then_two_industry_summary_rows_then_ascending_peer_rank"
+        ),
+        "entity_rows_selected": True,
+        "upstream_row_count": row_count,
+        "entity_row_count": row_count,
+    }
+
+
 def _market_activity_sse_deal_daily_validation_message(
     rows: Sequence[Mapping[str, JSONValue]],
 ) -> str | None:
@@ -24872,6 +25404,80 @@ def _validate_market_activity_hk_baidu_valuation_normalizer_scope(
         if not matches:
             raise ProviderNormalizationError(
                 f"AKShare H-share Baidu valuation response metadata {name!r} "
+                "does not match the requested replay scope"
+            )
+
+
+def _validate_market_activity_valuation_comparison_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> None:
+    """Validate replay scope and metadata for the valuation comparison."""
+
+    if listing.market is not ListingMarket.A:
+        raise ProviderNormalizationError(
+            "AKShare valuation-comparison raw slice supports A-share listings only"
+        )
+    endpoint_name = "stock_zh_valuation_comparison_em"
+    if record.response_metadata.get("endpoint") != endpoint_name:
+        raise ProviderNormalizationError(
+            "AKShare valuation-comparison record must come from "
+            "stock_zh_valuation_comparison_em"
+        )
+    if record.source_uri != _SOURCE_URIS[endpoint_name]:
+        raise ProviderNormalizationError(
+            "AKShare valuation-comparison source URI does not match the documented "
+            "endpoint"
+        )
+    try:
+        upstream_kwargs = _market_activity_valuation_comparison_kwargs(
+            endpoint_name,
+            listing,
+            record.request,
+        )
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+    symbol = upstream_kwargs["symbol"]
+    if not isinstance(symbol, str):
+        raise ProviderNormalizationError(
+            "AKShare valuation-comparison upstream symbol must be text"
+        )
+
+    message = _market_activity_valuation_comparison_validation_message(rows, listing)
+    if message is not None:
+        raise ProviderNormalizationError(message)
+    expected_metadata = _market_activity_valuation_comparison_response_metadata(
+        listing_code=listing.code,
+        symbol=symbol,
+        rows=rows,
+        row_count=len(rows),
+    )
+    boolean_fields = {"listing_scoped_request", "entity_rows_selected"}
+    count_fields = {
+        "field_count",
+        "upstream_row_count",
+        "entity_row_count",
+        "target_row_position",
+        "target_row_count",
+        "industry_summary_row_count",
+        "peer_row_count",
+    }
+    for name, expected in expected_metadata.items():
+        actual = record.response_metadata.get(name)
+        if name in boolean_fields:
+            matches = isinstance(actual, bool) and actual is expected
+        elif name in count_fields:
+            matches = (
+                isinstance(actual, int)
+                and not isinstance(actual, bool)
+                and actual == expected
+            )
+        else:
+            matches = actual == expected
+        if not matches:
+            raise ProviderNormalizationError(
+                f"AKShare valuation-comparison response metadata {name!r} "
                 "does not match the requested replay scope"
             )
 
@@ -31579,6 +32185,12 @@ def _market_activity_kwargs(
             listing,
             request,
         )
+    if endpoint_name == "stock_zh_valuation_comparison_em":
+        return _market_activity_valuation_comparison_kwargs(
+            endpoint_name,
+            listing,
+            request,
+        )
     if endpoint_name == "stock_market_pb_lg":
         return _market_activity_market_pb_kwargs(endpoint_name, listing, request)
     if endpoint_name == "stock_a_all_pb":
@@ -31938,6 +32550,46 @@ def _market_activity_hk_baidu_valuation_kwargs(
         "indicator": indicator,
         "period": period,
     }
+
+
+def _market_activity_valuation_comparison_kwargs(
+    endpoint_name: str,
+    listing: _ListingRef,
+    request: ProviderRequest,
+) -> dict[str, object]:
+    """Build the A-share listing-scoped Eastmoney comparison request."""
+
+    if endpoint_name != "stock_zh_valuation_comparison_em":
+        raise ProviderRequestError(
+            f"unsupported AKShare valuation-comparison endpoint {endpoint_name!r}",
+            request=request,
+            retryable=False,
+        )
+    if listing.market is not ListingMarket.A:
+        raise ProviderRequestError(
+            "the AKShare valuation-comparison endpoint supports A-share listings only",
+            request=request,
+            retryable=False,
+        )
+    unknown = sorted(
+        set(request.parameters)
+        - _MARKET_ACTIVITY_VALUATION_COMPARISON_PARAMETER_NAMES
+    )
+    if unknown:
+        raise ProviderRequestError(
+            "unsupported AKShare valuation-comparison parameter(s): "
+            + ", ".join(unknown),
+            request=request,
+            retryable=False,
+        )
+    if request.parameters.get("view") != _MARKET_ACTIVITY_VALUATION_COMPARISON_VIEW:
+        raise ProviderRequestError(
+            "AKShare valuation-comparison endpoint requires "
+            f"view={_MARKET_ACTIVITY_VALUATION_COMPARISON_VIEW!r}",
+            request=request,
+            retryable=False,
+        )
+    return {"symbol": listing.canonical_id}
 
 
 def _market_activity_market_pb_kwargs(
