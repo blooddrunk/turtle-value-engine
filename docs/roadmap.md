@@ -3264,6 +3264,28 @@ schema/value/date boundaries, raw-only normalization, replay metadata
 tampering and offline cache replay. No calculation, gate, pipeline, CLI or
 input-loader contract changes.
 
+### Phase 3.28 — H-share famous-stock quote raw acquisition contract (COMPLETE)
+
+The mapping review now covers the documented H-share Eastmoney
+`stock_hk_famous_spot_em` famous-stock quote endpoint under `MARKET_QUOTE` with
+explicit `view=hk_famous`. The
+[AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hk_famous.py)
+define the exact 12-field `序号`/`代码`/`名称`/delayed-quote/volume-turnover
+output and the no-argument `b:DLMK0106` Eastmoney JSON request. The provider
+freezes the fixed upstream parameters and source page, validates every row in
+the full five-digit H-share universe before filtering to the requested listing,
+and preserves documented HKD/share, percent, shares and HKD units plus
+full/selected row counts in replay metadata.
+
+The normalizer emits `AKSHARE_HK_FAMOUS_QUOTE_RAW_ONLY` and creates no
+canonical current-price, return, valuation or accounting fact because the
+official quote is a 15-minute-delayed current-day snapshot without a stable
+observation timestamp. Tests cover the exact wrapper schema, full-universe
+validation and filtering, explicit H-share routing, fixed upstream query
+metadata, raw-only normalization, replay metadata tampering and offline cache
+replay. No calculation, gate, pipeline, CLI or input-loader contract changes.
+
 ### Future structured-provider deliverables
 
 ```text
@@ -3273,7 +3295,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–3.27 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–3.28 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```

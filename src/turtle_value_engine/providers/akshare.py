@@ -43,8 +43,8 @@ Xueqiu individual-spot quote and Dragon-Tiger market-activity
 detail/statistics/institution-statistics/institutional-research/block-trade-detail
 raw slices are also
 available. A-share and H-share market-quote snapshots, including the H-share
-main-board quote raw slice, are retained with their upstream scope and source
-metadata.
+main-board and famous-stock quote raw slices, are retained with their upstream
+scope and source metadata.
 A-share Xueqiu, CNINFO and Tonghuashun company-profile raw slices are also
 available. The A-share dividend-distribution detail and
 new-stock-board raw slices are also available. The A-share CNINFO IPO-summary,
@@ -110,9 +110,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "129"
+AKSHARE_ADAPTER_VERSION = "130"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "130"
+AKSHARE_MAPPING_VERSION = "131"
 
 
 class ListingMarket(StrEnum):
@@ -167,6 +167,7 @@ _SOURCE_URIS = {
     "stock_zh_a_spot": "https://finance.sina.com.cn/realstock/company/",
     "stock_hk_spot_em": "http://quote.eastmoney.com/center/gridlist.html#hk_stocks",
     "stock_hk_main_board_spot_em": "https://quote.eastmoney.com/center/gridlist.html#hk_mainboard",
+    "stock_hk_famous_spot_em": "https://quote.eastmoney.com/center/gridlist.html#hk_wellknown",
     "stock_hk_spot": "http://stock.finance.sina.com.cn/hkstock/",
     "stock_zh_ah_spot_em": "https://quote.eastmoney.com/center/gridlist.html#ah_comparison",
     "stock_individual_spot_xq": "https://xueqiu.com/S/SH513520",
@@ -347,6 +348,7 @@ _NO_ARGUMENT_ENDPOINTS = frozenset(
         "stock_zh_a_spot",
         "stock_hk_spot_em",
         "stock_hk_main_board_spot_em",
+        "stock_hk_famous_spot_em",
         "stock_hk_spot",
         "stock_zh_ah_spot_em",
         "stock_zh_a_st_em",
@@ -498,6 +500,73 @@ _MARKET_QUOTE_HK_MAIN_BOARD_NUMERIC_FIELDS = (
     "成交量",
     "成交额",
 )
+
+_MARKET_QUOTE_HK_FAMOUS_ENDPOINT = "stock_hk_famous_spot_em"
+_MARKET_QUOTE_HK_FAMOUS_PARAMETER_NAMES = frozenset({"view"})
+_MARKET_QUOTE_HK_FAMOUS_VIEW = "hk_famous"
+_MARKET_QUOTE_HK_FAMOUS_FIELDS = (
+    "序号",
+    "代码",
+    "名称",
+    "最新价",
+    "涨跌额",
+    "涨跌幅",
+    "今开",
+    "最高",
+    "最低",
+    "昨收",
+    "成交量",
+    "成交额",
+)
+_MARKET_QUOTE_HK_FAMOUS_FIELD_SET = frozenset(_MARKET_QUOTE_HK_FAMOUS_FIELDS)
+_MARKET_QUOTE_HK_FAMOUS_NUMERIC_FIELDS = (
+    "最新价",
+    "涨跌额",
+    "涨跌幅",
+    "今开",
+    "最高",
+    "最低",
+    "昨收",
+    "成交量",
+    "成交额",
+)
+_MARKET_QUOTE_HK_FAMOUS_SOURCE_URI = (
+    "https://quote.eastmoney.com/center/gridlist.html#hk_wellknown"
+)
+_MARKET_QUOTE_HK_FAMOUS_UPSTREAM_URL = (
+    "https://69.push2.eastmoney.com/api/qt/clist/get"
+)
+_MARKET_QUOTE_HK_FAMOUS_UPSTREAM_PARAMETERS = (
+    "pn",
+    "pz",
+    "po",
+    "np",
+    "ut",
+    "fltt",
+    "invt",
+    "dect",
+    "wbp2u",
+    "fid",
+    "fs",
+    "fields",
+)
+_MARKET_QUOTE_HK_FAMOUS_UPSTREAM_FIXED_PARAMETERS = {
+    "pn": "1",
+    "pz": "50000",
+    "po": "1",
+    "np": "2",
+    "ut": "bd1d9ddb04089700cf9c27f6f7426281",
+    "fltt": "2",
+    "invt": "2",
+    "dect": "1",
+    "wbp2u": "|0|0|web",
+    "fid": "f3",
+    "fs": "b:DLMK0106",
+    "fields": (
+        "f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f12,f13,f14,f15,f16,f17,f18,"
+        "f20,f21,f23,f24,f25,f26,f22,f33,f11,f62,f128,f136,f115,f152"
+    ),
+}
 
 _MARKET_QUOTE_XQ_PARAMETER_NAMES = frozenset({"view"})
 _MARKET_QUOTE_XQ_VIEW = "xueqiu_spot"
@@ -4104,6 +4173,18 @@ class AKShareProvider(StructuredDataProvider):
                 retryable=False,
             )
         if (
+            request.category is DataCategory.MARKET_QUOTE
+            and request.parameters.get("view") == _MARKET_QUOTE_HK_FAMOUS_VIEW
+            and listing.market is not ListingMarket.H
+        ):
+            raise ProviderRequestError(
+                "the AKShare H-share famous-stock quote endpoint supports H-share "
+                "listings only",
+                provider=self.identity,
+                request=request,
+                retryable=False,
+            )
+        if (
             request.category is DataCategory.COMPANY_METADATA
             and request.parameters.get("view") == _COMPANY_METADATA_XQ_VIEW
             and listing.market is not ListingMarket.A
@@ -4737,6 +4818,25 @@ class AKShareProvider(StructuredDataProvider):
             response_metadata["change_percent_unit"] = "percent"
             response_metadata["volume_unit"] = "shares"
             response_metadata["turnover_unit"] = "HKD"
+        elif (
+            request.category is DataCategory.MARKET_QUOTE
+            and endpoint.name == _MARKET_QUOTE_HK_FAMOUS_ENDPOINT
+        ):
+            rows = _table_rows(payload, provider=self.identity, request=request)
+            _validate_market_quote_hk_famous_provider_rows(
+                rows,
+                provider=self.identity,
+                request=request,
+            )
+            selected = _select_market_quote_hk_famous_rows(rows, listing)
+            payload = selected
+            response_metadata.update(
+                _market_quote_hk_famous_response_metadata(
+                    listing_code=listing.code,
+                    upstream_row_count=len(rows),
+                    entity_row_count=len(selected),
+                )
+            )
         elif request.category in _ROW_SELECT_CATEGORIES:
             rows = _table_rows(payload, provider=self.identity, request=request)
             selected = _select_listing_row(
@@ -8281,6 +8381,9 @@ class AKShareProvider(StructuredDataProvider):
             market_quote_hk_main_board_requested=(
                 request.parameters.get("view") == _MARKET_QUOTE_HK_MAIN_BOARD_VIEW
             ),
+            market_quote_hk_famous_requested=(
+                request.parameters.get("view") == _MARKET_QUOTE_HK_FAMOUS_VIEW
+            ),
             market_quote_ah_comparison_requested=(
                 request.parameters.get("view") == _MARKET_QUOTE_AH_COMPARISON_VIEW
             ),
@@ -9330,6 +9433,17 @@ class AKShareNormalizer:
                 normalizer_flags.add("AKSHARE_HK_MAIN_BOARD_QUOTE_RAW_ONLY")
             elif (
                 record.request.category is DataCategory.MARKET_QUOTE
+                and record.response_metadata.get("endpoint")
+                == _MARKET_QUOTE_HK_FAMOUS_ENDPOINT
+            ):
+                _validate_market_quote_hk_famous_normalizer_scope(
+                    record,
+                    listing,
+                    rows,
+                )
+                normalizer_flags.add("AKSHARE_HK_FAMOUS_QUOTE_RAW_ONLY")
+            elif (
+                record.request.category is DataCategory.MARKET_QUOTE
                 and record.response_metadata.get("endpoint") == "stock_bid_ask_em"
             ):
                 if listing.market is not ListingMarket.A or listing.canonical_id[:2] not in {
@@ -10305,6 +10419,7 @@ class AKShareNormalizer:
                 "AKSHARE_AB_COMPARISON_RAW_ONLY",
                 "AKSHARE_AH_COMPARISON_RAW_ONLY",
                 "AKSHARE_HK_MAIN_BOARD_QUOTE_RAW_ONLY",
+                "AKSHARE_HK_FAMOUS_QUOTE_RAW_ONLY",
             }
             & normalizer_flags
             and not any(
@@ -11177,6 +11292,13 @@ class AKShareNormalizer:
                 "prices, changes, volume and turnover have no stable observation "
                 "timestamp and do not establish the canonical current-price input."
             )
+        if "AKSHARE_HK_FAMOUS_QUOTE_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented H-share Eastmoney famous-stock quote response is "
+                "retained as raw evidence only: its 15-minute-delayed current-day "
+                "prices, changes, volume and turnover have no stable observation "
+                "timestamp and do not establish the canonical current-price input."
+            )
         if "AKSHARE_AB_COMPARISON_RAW_ONLY" in normalizer_flags:
             notes += (
                 " The documented A+B comparison response is retained as raw evidence "
@@ -11466,6 +11588,7 @@ def _endpoint_candidates(
     market_activity_hot_rank_requested: bool = False,
     market_activity_new_stock_requested: bool = False,
     market_quote_hk_main_board_requested: bool = False,
+    market_quote_hk_famous_requested: bool = False,
     market_quote_ah_comparison_requested: bool = False,
     market_quote_ab_comparison_requested: bool = False,
     market_quote_xq_requested: bool = False,
@@ -11533,6 +11656,10 @@ def _endpoint_candidates(
             return ("stock_sy_jz_em",)
         return ()
     if category is DataCategory.MARKET_QUOTE:
+        if market_quote_hk_famous_requested:
+            if market is ListingMarket.H:
+                return (_MARKET_QUOTE_HK_FAMOUS_ENDPOINT,)
+            return ()
         if market_quote_hk_main_board_requested:
             if market is ListingMarket.H:
                 return ("stock_hk_main_board_spot_em",)
@@ -12002,6 +12129,32 @@ def _market_quote_kwargs(
             raise ProviderRequestError(
                 "the AKShare H-share main-board quote endpoint requires "
                 f"view={_MARKET_QUOTE_HK_MAIN_BOARD_VIEW!r}",
+                request=request,
+                retryable=False,
+            )
+        return {}
+    if endpoint_name == _MARKET_QUOTE_HK_FAMOUS_ENDPOINT:
+        if listing.market is not ListingMarket.H:
+            raise ProviderRequestError(
+                "the AKShare H-share famous-stock quote endpoint supports H-share "
+                "listings only",
+                request=request,
+                retryable=False,
+            )
+        unknown = sorted(
+            set(request.parameters) - _MARKET_QUOTE_HK_FAMOUS_PARAMETER_NAMES
+        )
+        if unknown:
+            raise ProviderRequestError(
+                "unsupported AKShare H-share famous-stock quote parameter(s): "
+                + ", ".join(unknown),
+                request=request,
+                retryable=False,
+            )
+        if request.parameters.get("view") != _MARKET_QUOTE_HK_FAMOUS_VIEW:
+            raise ProviderRequestError(
+                "the AKShare H-share famous-stock quote endpoint requires "
+                f"view={_MARKET_QUOTE_HK_FAMOUS_VIEW!r}",
                 request=request,
                 retryable=False,
             )
@@ -15604,6 +15757,179 @@ def _select_market_quote_hk_main_board_rows(
     """Filter the full H-share main-board universe by the requested code."""
 
     return [dict(row) for row in rows if row["代码"] == listing.code]
+
+
+def _market_quote_hk_famous_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef | None = None,
+) -> str | None:
+    """Return a strict-schema error for an H-share famous-stock snapshot."""
+
+    seen_codes: set[str] = set()
+    previous_rank: int | None = None
+    for index, row in enumerate(rows):
+        missing = sorted(_MARKET_QUOTE_HK_FAMOUS_FIELD_SET - set(row))
+        unexpected = sorted(set(row) - _MARKET_QUOTE_HK_FAMOUS_FIELD_SET)
+        if missing:
+            return (
+                f"H-share famous-stock quote row {index} is missing field(s): "
+                + ", ".join(missing)
+            )
+        if unexpected:
+            return (
+                f"H-share famous-stock quote row {index} contains unsupported field(s): "
+                + ", ".join(unexpected)
+            )
+        if tuple(row) != _MARKET_QUOTE_HK_FAMOUS_FIELDS:
+            return (
+                f"H-share famous-stock quote row {index} must preserve the official "
+                "field order"
+            )
+
+        rank = row["序号"]
+        if isinstance(rank, bool) or not isinstance(rank, Real):
+            return (
+                f"H-share famous-stock quote row {index} field '序号' must be a "
+                "positive integer"
+            )
+        try:
+            numeric_rank = float(rank)
+        except (OverflowError, TypeError, ValueError):
+            return (
+                f"H-share famous-stock quote row {index} field '序号' must be a "
+                "positive integer"
+            )
+        if (
+            not math.isfinite(numeric_rank)
+            or not numeric_rank.is_integer()
+            or numeric_rank < 1
+        ):
+            return (
+                f"H-share famous-stock quote row {index} field '序号' must be a "
+                "positive integer"
+            )
+        normalized_rank = int(numeric_rank)
+        if previous_rank is not None and normalized_rank <= previous_rank:
+            return "H-share famous-stock quote 序号 values must be strictly ascending"
+        previous_rank = normalized_rank
+
+        code = row["代码"]
+        if not isinstance(code, str) or re.fullmatch(r"\d{5}", code) is None:
+            return f"H-share famous-stock quote row {index} has an invalid 代码"
+        if code in seen_codes:
+            return f"H-share famous-stock quote response has duplicate 代码 {code!r}"
+        seen_codes.add(code)
+
+        name = row["名称"]
+        if not isinstance(name, str) or not name.strip():
+            return (
+                f"H-share famous-stock quote row {index} field '名称' must be a "
+                "non-empty string"
+            )
+
+        if listing is not None and code != listing.code:
+            return (
+                f"H-share famous-stock quote row {index} entity {code!r} does not "
+                f"match requested listing {listing.canonical_id!r}"
+            )
+
+        for field in _MARKET_QUOTE_HK_FAMOUS_NUMERIC_FIELDS:
+            value = row[field]
+            if value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, Real):
+                return (
+                    f"H-share famous-stock quote row {index} field {field!r} must be "
+                    "numeric or null"
+                )
+            try:
+                numeric = float(value)
+            except (OverflowError, TypeError, ValueError):
+                return (
+                    f"H-share famous-stock quote row {index} field {field!r} must be "
+                    "numeric or null"
+                )
+            if not math.isfinite(numeric):
+                return (
+                    f"H-share famous-stock quote row {index} field {field!r} must be "
+                    "finite or null"
+                )
+    return None
+
+
+def _validate_market_quote_hk_famous_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> None:
+    """Validate the full H-share famous-stock universe before filtering."""
+
+    message = _market_quote_hk_famous_validation_message(rows)
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message}",
+            provider=provider,
+            request=request,
+        )
+
+
+def _select_market_quote_hk_famous_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+) -> list[dict[str, JSONValue]]:
+    """Filter the full H-share famous-stock universe by the requested code."""
+
+    return [dict(row) for row in rows if row["代码"] == listing.code]
+
+
+def _market_quote_hk_famous_response_metadata(
+    *,
+    listing_code: str,
+    upstream_row_count: int,
+    entity_row_count: int,
+) -> dict[str, JSONValue]:
+    """Build the replay contract for a filtered famous-stock snapshot."""
+
+    return {
+        "endpoint": _MARKET_QUOTE_HK_FAMOUS_ENDPOINT,
+        "market": ListingMarket.H.value,
+        "listing_code": listing_code,
+        "market_quote_view": _MARKET_QUOTE_HK_FAMOUS_VIEW,
+        "market_scope": "hong_kong_famous_stocks",
+        "listing_scoped_request": False,
+        "row_filtering": "provider",
+        "snapshot_scope": "current_trading_day_delayed_15m",
+        "rank_field": "序号",
+        "rank_ordering": "strictly_ascending",
+        "date_binding": "retrieval_only",
+        "listing_code_field": "代码",
+        "field_count": len(_MARKET_QUOTE_HK_FAMOUS_FIELDS),
+        "source_field_order": list(_MARKET_QUOTE_HK_FAMOUS_FIELDS),
+        "price_unit": "HKD_per_share",
+        "change_amount_unit": "HKD_per_share",
+        "change_percent_unit": "percent",
+        "volume_unit": "shares",
+        "turnover_unit": "HKD",
+        "upstream_url": _MARKET_QUOTE_HK_FAMOUS_UPSTREAM_URL,
+        "upstream_protocol": "JSON",
+        "upstream_parameters": list(_MARKET_QUOTE_HK_FAMOUS_UPSTREAM_PARAMETERS),
+        "upstream_fixed_parameters": dict(
+            _MARKET_QUOTE_HK_FAMOUS_UPSTREAM_FIXED_PARAMETERS
+        ),
+        "upstream_dynamic_parameters": {},
+        "upstream_authentication": "none",
+        "upstream_page_size": 50000,
+        "pagination": "single_page",
+        "upstream_sort_column": "f3",
+        "upstream_sort_direction": "descending",
+        "upstream_filter": "b:DLMK0106",
+        "wrapper_source_page_uri": _MARKET_QUOTE_HK_FAMOUS_SOURCE_URI,
+        "wrapper_output_ordering": "source_response_order_with_wrapper_sequence",
+        "entity_rows_selected": True,
+        "upstream_row_count": upstream_row_count,
+        "entity_row_count": entity_row_count,
+    }
 
 
 def _market_quote_ah_comparison_validation_message(
@@ -30121,6 +30447,89 @@ def _validate_market_quote_hk_main_board_normalizer_scope(
         )
 
     message = _market_quote_hk_main_board_validation_message(rows, listing)
+    if message is not None:
+        raise ProviderNormalizationError(message)
+
+
+def _validate_market_quote_hk_famous_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> None:
+    """Validate the replay scope of a filtered H-share famous-stock snapshot."""
+
+    if listing.market is not ListingMarket.H:
+        raise ProviderNormalizationError(
+            "H-share famous-stock quote raw slice supports H-share listings only"
+        )
+    if record.response_metadata.get("endpoint") != _MARKET_QUOTE_HK_FAMOUS_ENDPOINT:
+        raise ProviderNormalizationError(
+            "H-share famous-stock quote record must come from "
+            f"{_MARKET_QUOTE_HK_FAMOUS_ENDPOINT}"
+        )
+    if record.source_uri != _SOURCE_URIS[_MARKET_QUOTE_HK_FAMOUS_ENDPOINT]:
+        raise ProviderNormalizationError(
+            "H-share famous-stock quote source URI does not match the documented "
+            "endpoint"
+        )
+    if record.response_metadata.get("market") != listing.market.value:
+        raise ProviderNormalizationError(
+            "H-share famous-stock quote response market does not match requested "
+            "listing"
+        )
+    if record.response_metadata.get("listing_code") != listing.code:
+        raise ProviderNormalizationError(
+            "H-share famous-stock quote response listing code does not match "
+            "requested listing"
+        )
+    try:
+        _market_quote_kwargs(
+            _MARKET_QUOTE_HK_FAMOUS_ENDPOINT,
+            listing,
+            record.request,
+        )
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+
+    expected_metadata = _market_quote_hk_famous_response_metadata(
+        listing_code=listing.code,
+        upstream_row_count=len(rows),
+        entity_row_count=len(rows),
+    )
+    boolean_fields = {"listing_scoped_request", "entity_rows_selected"}
+    count_fields = {"field_count", "entity_row_count"}
+    for name, expected in expected_metadata.items():
+        if name == "upstream_row_count":
+            continue
+        actual = record.response_metadata.get(name)
+        if name in boolean_fields:
+            matches = isinstance(actual, bool) and actual is expected
+        elif name in count_fields:
+            matches = (
+                isinstance(actual, int)
+                and not isinstance(actual, bool)
+                and actual == expected
+            )
+        else:
+            matches = actual == expected
+        if not matches:
+            raise ProviderNormalizationError(
+                f"H-share famous-stock quote response metadata {name!r} does not "
+                "match the requested replay scope"
+            )
+
+    upstream_row_count = record.response_metadata.get("upstream_row_count")
+    if (
+        isinstance(upstream_row_count, bool)
+        or not isinstance(upstream_row_count, int)
+        or upstream_row_count < len(rows)
+    ):
+        raise ProviderNormalizationError(
+            "H-share famous-stock quote response upstream row count does not "
+            "match the requested replay scope"
+        )
+
+    message = _market_quote_hk_famous_validation_message(rows, listing)
     if message is not None:
         raise ProviderNormalizationError(message)
 

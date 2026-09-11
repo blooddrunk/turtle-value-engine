@@ -1467,6 +1467,24 @@ The normalizer emits `AKSHARE_CDR_DAILY_HISTORY_RAW_ONLY`; this CDR-specific
 series does not become a canonical daily market-history fact. No calculation,
 gate, pipeline, CLI or input-loader contract changes.
 
+Phase 3.28 adds the documented H-share Eastmoney famous-stock quote endpoint
+[`stock_hk_famous_spot_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
+under `MARKET_QUOTE` with explicit `view=hk_famous`. The [official
+implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hk_famous.py)
+issues a no-argument request for the `b:DLMK0106` famous-stock universe through
+Eastmoney's JSON quote API and returns the exact 12 fields `序号`, `代码`, `名称`,
+`最新价`, `涨跌额`, `涨跌幅`, `今开`, `最高`, `最低`, `昨收`, `成交量` and `成交额`.
+The provider freezes the official query parameters and source page, validates
+the complete five-digit H-share universe, then filters to the requested
+listing while retaining HKD/share, percent, share-count and HKD-turnover units
+and full/selected row counts in replay metadata.
+
+Because the official quote is a 15-minute-delayed current-day snapshot without
+a stable observation timestamp, the normalizer emits
+`AKSHARE_HK_FAMOUS_QUOTE_RAW_ONLY`, marks `current_price` critically missing and
+creates no canonical quote fact. No calculation, gate, pipeline, CLI or
+input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

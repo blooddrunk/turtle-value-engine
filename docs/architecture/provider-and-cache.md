@@ -771,7 +771,7 @@ The cache performs no network retries. The normalizer performs no provider
 retries. The deterministic pipeline performs no provider retries and should
 not be rerun as a substitute for resolving missing facts.
 
-## 12. Phase 2.2–3.27 AKShare adapter
+## 12. Phase 2.2–3.28 AKShare adapter
 
 The first concrete adapter is intentionally limited to read-only metadata,
 market observations, three documented financial-statement slices, raw-only
@@ -802,7 +802,7 @@ SSE/SZSE/BSE insider-share-change, A-share Eastmoney management-holding,
 management-person and executive/shareholder-change,
 A-share Eastmoney intraday-trade/chip-distribution, Tencent daily-history and latest-trading-day tick, Sina minute-history,
 A-share/H-share intraday-history, pre-market-history and five-level bid-ask raw
-slices, and the H-share Eastmoney main-board quote raw slice. It
+slices, and the H-share Eastmoney main-board and famous-stock quote raw slices. It
 advertises exactly these capabilities:
 
 | Category | A-share endpoint | H-share endpoint | Normalized output |
@@ -811,7 +811,7 @@ advertises exactly these capabilities:
 | `LISTING_METADATA` | `stock_info_a_code_name` | `stock_hk_security_profile_em` (with conservative listing-list fallbacks) | listing code/name/date/exchange and other explicit metadata facts |
 | `RISK_WARNING_STATUS` | `stock_zh_a_st_em` (no parameters) | — | current A-share risk-warning-board membership as raw structured evidence only; no canonical `special_treatment` fact |
 | `TRADING_SUSPENSIONS` | `stock_tfp_em` (exact `date`) | — | requested-date A-share suspension/resumption rows as raw structured evidence only; no canonical status or governance fact |
-| `MARKET_QUOTE` | `stock_zh_a_spot_em`; `stock_bid_ask_em` (`view=bid_ask`, Shanghai/Shenzhen A-share only); `stock_individual_spot_xq` (`view=xueqiu_spot`, symbol-scoped A-share quote); `stock_zh_ah_spot_em` (`view=ah_comparison`, full A+H universe filtered by requested A/H side); `stock_zh_ab_comparison_em` (`view=ab_comparison`, full A+B universe filtered by requested A-share side) | `stock_hk_spot_em`; `stock_hk_main_board_spot_em` (`view=hk_main_board`, full H-share main-board universe filtered by requested H-share); `stock_zh_ah_spot_em` (`view=ah_comparison`, full A+H universe filtered by requested H-share side) | selected-listing `current_price` plus quote timestamp; Xueqiu current price/timestamp use the existing quote contract while other Xueqiu fields, bid/ask, H-share main-board, A+B and A+H comparison views remain raw-only |
+| `MARKET_QUOTE` | `stock_zh_a_spot_em`; `stock_bid_ask_em` (`view=bid_ask`, Shanghai/Shenzhen A-share only); `stock_individual_spot_xq` (`view=xueqiu_spot`, symbol-scoped A-share quote); `stock_zh_ah_spot_em` (`view=ah_comparison`, full A+H universe filtered by requested A/H side); `stock_zh_ab_comparison_em` (`view=ab_comparison`, full A+B universe filtered by requested A-share side) | `stock_hk_spot_em`; `stock_hk_main_board_spot_em` (`view=hk_main_board`, full H-share main-board universe filtered by requested H-share); `stock_hk_famous_spot_em` (`view=hk_famous`, full H-share famous-stock universe filtered by requested H-share); `stock_zh_ah_spot_em` (`view=ah_comparison`, full A+H universe filtered by requested H-share side) | selected-listing `current_price` plus quote timestamp; Xueqiu current price/timestamp use the existing quote contract while other Xueqiu fields, bid/ask, H-share main-board, H-share famous-stock, A+B and A+H comparison views remain raw-only |
 | `MARKET_HISTORY` | `stock_zh_a_hist` (daily history); `stock_intraday_em` (`view=intraday_trades`, latest-trading-day time-only trades; A-share only); `stock_intraday_sina` (`view=intraday_sina`, requested-date time-only large-order rows; A-share only); `stock_cyq_em` (`view=chip_distribution`, latest 90 trading days and adjustment; A-share only); `stock_zh_a_hist_tx` (`view=tencent_daily`, explicit date range/adjustment; A-share only); `stock_zh_a_tick_tx_js` (`view=tencent_tick`, latest-trading-day time-only ticks; A-share only); `stock_zh_a_minute` (`view=sina_minute`, explicit interval/adjustment; A-share only); `stock_zh_a_hist_min_em` (`view=intraday`, explicit datetime range/interval/adjustment; A-share only); `stock_zh_a_hist_pre_min_em` (`view=pre_market`, explicit time-of-day range; A-share only) | `stock_hk_daily`; `stock_hk_hist_min_em` (`view=hk_intraday`, explicit datetime range/interval/adjustment; H-share only) | dated daily OHLCV/turnover extension facts from standard and Tencent daily history; Eastmoney/Sina intraday-trade, chip-distribution, Tencent tick, Sina minute, A-share/H-share intraday and latest-day pre-market rows as raw structured evidence only |
 | `MARKET_ACTIVITY` | `stock_zh_a_new_em` (`view=new_stock`, current-trading-day new-stock universe; A-share only); `stock_comment_detail_scrd_desire_em` (`view=participation_desire`, latest 30 trading days; A-share only); `stock_comment_detail_scrd_focus_em` (`view=focus`, latest 30 trading days; A-share only); `stock_comment_detail_zlkp_jgcyd_em` (`view=institution_participation`, symbol-scoped historical series; A-share only); `stock_hot_rank_em` (`view=hot_rank`, current-trading-day top 100; A-share only); `stock_hot_rank_latest_em` (`view=hot_rank_latest`, symbol-scoped latest rank; A-share only); `stock_hot_rank_detail_em` (`view=hot_rank_detail`, symbol-scoped recent historical dates; A-share only); `stock_zt_pool_em` (`view=limit_up_pool`, requested `date` limit-up pool; A-share only); `stock_zt_pool_dtgc_em` (`view=limit_down_pool`, requested `date` limit-down pool; A-share only); `stock_lhb_detail_em` (inclusive `start_date`/`end_date`; A-share only); `stock_lhb_stock_statistic_em` (`view=stock_statistic`, explicit `period`; A-share only); `stock_lhb_jgstatistic_em` (`view=institution_statistic`, explicit `period`; A-share only); `stock_dzjy_mrmx` (`view=block_trade_detail`, A-share `symbol="A股"` and inclusive date range; full universe filtered to requested listing); `stock_lhb_jgmmtj_em` (`view=institution_daily`, inclusive date range; full universe filtered to requested listing); `stock_jgdy_tj_em` (`view=institution_research`, strict `公告日期` after requested `date`; full universe filtered to requested listing); `stock_jgdy_detail_em` (`view=institution_research_detail`, strict `调研日期` after requested `date`; full universe filtered to requested listing); `stock_board_industry_name_em` (`view=industry_board`, current industry-board snapshot; A-share only); `stock_szse_sector_summary` (`view=szse_sector_summary`, requested `symbol=当月` or `当年` and `date=YYYYMM` industry summary; A-share only); `stock_szse_area_summary` (`view=szse_area_summary`, requested `date=YYYYMM` region-ranked market summary; A-share only); `stock_szse_summary` (`view=szse_summary`, requested `date=YYYYMMDD` security-category market summary; A-share only); `stock_sse_summary` (`view=sse_summary`, latest market summary; A-share only); `stock_sse_deal_daily` (`view=sse_deal_daily`, requested `date=YYYYMMDD` overview; A-share only); `stock_account_statistics_em` (`view=account_statistics`, no upstream arguments, market-wide monthly history; A-share only); `stock_market_activity_legu` (`view=market_activity_legu`, no upstream arguments, current snapshot; A-share only); `stock_a_congestion_lg` (`view=congestion`, no upstream arguments, latest-four-year market history; A-share only); `stock_ebs_lg` (`view=equity_bond_spread`, no upstream arguments, all historical market context; A-share only); `stock_buffett_index_lg` (`view=buffett_index`, no upstream arguments, all historical market-capitalization/GDP context; A-share only); `stock_a_ttm_lyr` (`view=ttm_lyr`, no upstream arguments, all historical A-share TTM/LYR PE context; A-share only); `stock_a_all_pb` (`view=all_pb`, no upstream arguments, all historical A-share PB context; A-share only); `stock_index_pe_lg` (`view=index_pe`, required `symbol` in the 12 documented index choices, all historical index-level PE context; A-share only); `stock_index_pb_lg` (`view=index_pb`, required `symbol` in the 12 documented index choices, all historical index-level PB context; A-share only); `stock_market_pe_lg` (`view=market_pe`, required `symbol` in `上证`/`深证`/`创业板`/`科创版`, all historical board/index PE context; A-share only); `stock_market_pb_lg` (`view=market_pb`, required `symbol` in `上证`/`深证`/`创业板`/`科创版`, all historical board/index PB context; A-share only); `stock_zh_valuation_baidu` (`view=valuation_baidu`, listing-scoped indicator/period history; A-share only) | `stock_hk_hot_rank_latest_em` (`view=hot_rank_latest`, symbol-scoped latest rank; H-share only); `stock_hk_hot_rank_detail_em` (`view=hk_hot_rank_detail`, symbol-scoped historical dates; H-share only); `stock_hk_valuation_baidu` (`view=valuation_baidu_hk`, listing-scoped indicator/period history; H-share only) | A-share/H-share latest stock-popularity rank, A-share/H-share historical stock-popularity rank and the existing A-share new-stock-board, market-participation-desire, market-focus, institution-participation, limit-up-pool, limit-down-pool, Dragon-Tiger detail, per-listing statistics, institution-seat statistics, institution-daily, institutional-research, institutional-research-detail or block-trade detail rows plus Eastmoney industry-board, SSE/SZSE market-summary, SZSE area-summary/sector-summary, market-wide stock-account-statistics, Legu market-activity, congestion, equity-bond-spread, Buffett-index, TTM/LYR PE, PB, index-PE, index-PB, market-PE, market-PB and A/H Baidu valuation-history aggregates retained as raw structured evidence only; no issuer cash-flow, shareholder-return, governance, market or valuation fact |
 | `MARKET_ACTIVITY` (valuation comparison) | `stock_zh_valuation_comparison_em` (`view=valuation_comparison`, A-share listing-scoped peer table) | — | target, industry-summary and ranked-peer valuation-comparison rows retained as raw structured evidence only; no canonical valuation or accounting fact |
@@ -2440,6 +2440,25 @@ daily market-history, return, valuation or accounting fact. H-share requests
 and any calculation, gate, pipeline, CLI or input-loader use remain outside
 this slice.
 
+The H-share Eastmoney famous-stock quote slice is also acquisition-only. The
+current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hk_famous.py)
+document `stock_hk_famous_spot_em` as a no-argument famous-stock universe
+request. The adapter exposes it under `MARKET_QUOTE` with explicit
+`view=hk_famous`, freezes the `b:DLMK0106` Eastmoney JSON query and source page,
+validates the complete five-digit H-share response, and filters the requested
+listing only after validating every upstream row. The wrapper returns exactly
+12 fields: `序号`, `代码`, `名称`, `最新价`, `涨跌额`, `涨跌幅`, `今开`, `最高`, `最低`,
+`昨收`, `成交量` and `成交额`; HKD/share, percent, share-count and HKD-turnover
+units, the fixed upstream parameters and full/selected row counts remain in
+the replay metadata.
+
+The normalizer emits `AKSHARE_HK_FAMOUS_QUOTE_RAW_ONLY`; the documented
+15-minute-delayed current-day snapshot has no stable observation timestamp, so
+the selected quote remains raw evidence and creates no canonical current-price,
+return, valuation or accounting fact. A-share requests and any calculation,
+gate, pipeline, CLI or input-loader use remain outside this slice.
+
 The H-share Baidu valuation-history slice is also acquisition-only. The current
 [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
 and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hk_valuation_baidu.py)
@@ -2486,7 +2505,7 @@ outside this slice.
 
 ## 13. Deliberate non-goals
 
-This foundation plus the Phase 2.2–3.27 structured slices does not include:
+This foundation plus the Phase 2.2–3.28 structured slices does not include:
 
 - Tushare, BaoStock or any other additional provider;
 - automatic network scheduling, credentials or retry orchestration outside an adapter;

@@ -1924,6 +1924,33 @@ evidence until its CDR-specific adjustment, calendar and economic scope are
 reconciled. The response remains outside the calculation, gate, pipeline, CLI
 and input-loader contracts.
 
+## Phase 3.28 H-share famous-stock quote raw snapshot
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hk_famous.py)
+document `stock_hk_famous_spot_em` as a no-argument Eastmoney famous-stock
+universe quote. The adapter exposes it under `MARKET_QUOTE` with explicit
+`view=hk_famous`, validates the complete upstream universe before filtering by
+the requested five-digit H-share code, and retains the official fixed query
+metadata.
+
+| Raw upstream item | Phase 3.28 treatment |
+| --- | --- |
+| `序号` | Required positive integer assigned by the wrapper; values must be strictly ascending in the returned universe. |
+| `代码`, `名称` | Required five-digit H-share code and non-empty name; every upstream row is validated before provider-side selection. |
+| `最新价`, `涨跌额`, `今开`, `最高`, `最低`, `昨收` | Nullable finite numeric quote fields retained in HKD per share; no canonical current-price fact is inferred. |
+| `涨跌幅` | Nullable finite numeric change percentage retained in percent units. |
+| `成交量`, `成交额` | Nullable finite numeric volume and turnover retained in shares and HKD, respectively. |
+| request `view=hk_famous` | Explicit H-share-only no-argument routing. The provider freezes `https://69.push2.eastmoney.com/api/qt/clist/get`, `b:DLMK0106`, the documented field selector, page size `50000`, ordering parameters, full/selected row counts and the `hk_wellknown` source page in replay metadata. |
+
+The provider rejects unsupported views/parameters, non-H listings,
+missing/unexpected/reordered fields, invalid codes, duplicate or non-ascending
+sequence numbers, empty names and non-finite/non-numeric values. The normalizer
+emits `AKSHARE_HK_FAMOUS_QUOTE_RAW_ONLY` and creates no canonical current-price,
+return, valuation or accounting fact: the official 15-minute-delayed current-day
+snapshot has no stable observation timestamp. The response remains outside the
+calculation, gate, pipeline, CLI and input-loader contracts.
+
 ## Phase 2.92 SSE daily-deal overview raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
