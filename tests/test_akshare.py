@@ -713,6 +713,20 @@ class FakeAKShare:
             _fixture("a_management_holdings.json"),
         )
 
+    def stock_hold_management_person_em(self, *, symbol: str, name: str):
+        rows = _fixture("a_management_person.json")
+        rows = [
+            row
+            for row in rows
+            if row["代码"] == symbol and row["变动人"] == name
+        ]
+        return self._return(
+            "stock_hold_management_person_em",
+            rows,
+            symbol=symbol,
+            name=name,
+        )
+
     def stock_ggcg_em(self, *, symbol: str):
         rows = _fixture("a_executive_share_changes.json")
         if symbol != "全部":
@@ -877,8 +891,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "98"
-    assert AKSHARE_MAPPING_VERSION == "99"
+    assert provider.identity.provider_version == "99"
+    assert AKSHARE_MAPPING_VERSION == "100"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -8262,6 +8276,336 @@ def test_management_holdings_cache_replay_does_not_call_upstream(tmp_path: Path)
     assert replay.mode is RetrievalMode.CACHE_REPLAY
     assert replay.record == live.record
     assert fake.calls == [("stock_hold_management_detail_em", {})]
+
+
+def _management_person_request(
+    entity_id: str = "SH600000",
+    name: str = "甲高管",
+    parameters: dict | None = None,
+):
+    return _request(
+        DataCategory.INSIDER_SHARE_CHANGES,
+        entity_id,
+        {
+            "view": "management_person",
+            "name": name,
+            **({} if parameters is None else parameters),
+        },
+    )
+
+
+def test_management_person_fetch_uses_symbol_and_name_scoped_endpoint():
+    fake = FakeAKShare()
+    record = _provider(fake).fetch(_management_person_request())
+
+    fixture = _fixture("a_management_person.json")
+    assert record.raw_payload == [
+        row
+        for row in fixture
+        if row["代码"] == "600000" and row["变动人"] == "甲高管"
+    ]
+    assert fake.calls == [
+        (
+            "stock_hold_management_person_em",
+            {"symbol": "600000", "name": "甲高管"},
+        )
+    ]
+    assert record.response_metadata["endpoint"] == (
+        "stock_hold_management_person_em"
+    )
+    assert record.response_metadata["upstream_row_count"] == 2
+    assert record.response_metadata["entity_row_count"] == 2
+    assert record.response_metadata["entity_rows_selected"] is True
+    assert record.response_metadata["listing_scoped_request"] is True
+    assert record.response_metadata["row_filtering"] == "upstream"
+    assert record.response_metadata["management_person_view"] == "management_person"
+    assert record.response_metadata["upstream_symbol"] == "600000"
+    assert record.response_metadata["upstream_name"] == "甲高管"
+    assert record.response_metadata["market_scope"] == "requested_a_share_listing"
+    assert record.response_metadata["snapshot_scope"] == (
+        "historical_published_person_dataset"
+    )
+    assert record.response_metadata["date_binding"] == "row_change_dates"
+    assert record.response_metadata["observation_date_field"] == "日期"
+    assert record.response_metadata["observation_date_fields"] == ["日期"]
+    assert record.response_metadata["observation_start_date"] == "2026-07-18"
+    assert record.response_metadata["observation_end_date"] == "2026-08-08"
+    assert record.response_metadata["field_count"] == 16
+    assert record.response_metadata["source_field_order"] == list(record.raw_payload[0])
+    assert record.response_metadata["text_fields"] == [
+        "代码",
+        "名称",
+        "变动人",
+        "变动原因",
+        "持股种类",
+        "董监高人员姓名",
+        "职务",
+        "变动人与董监高的关系",
+    ]
+    assert record.response_metadata["date_fields"] == ["日期"]
+    assert record.response_metadata["value_fields"] == [
+        "变动股数",
+        "成交均价",
+        "变动金额",
+        "变动比例",
+        "变动后持股数",
+        "开始时持有",
+        "结束后持有",
+    ]
+    assert record.response_metadata["non_negative_fields"] == [
+        "变动后持股数",
+        "开始时持有",
+        "成交均价",
+        "结束后持有",
+    ]
+    assert record.response_metadata["undocumented_numeric_units"] == {
+        "变动股数": "not_documented",
+        "成交均价": "not_documented",
+        "变动金额": "not_documented",
+        "变动比例": "not_documented",
+        "变动后持股数": "not_documented",
+        "开始时持有": "not_documented",
+        "结束后持有": "not_documented",
+    }
+    assert record.response_metadata["upstream_page_size"] == 5000
+    assert record.source_uri == (
+        "https://data.eastmoney.com/executive/personinfo.html"
+    )
+
+
+def test_management_person_empty_result_preserves_symbol_and_name_scope():
+    record = _provider().fetch(
+        _management_person_request(name="不存在的高管")
+    )
+
+    assert record.raw_payload == []
+    assert record.response_metadata["upstream_row_count"] == 0
+    assert record.response_metadata["entity_row_count"] == 0
+    assert record.response_metadata["observation_start_date"] is None
+    assert record.response_metadata["observation_end_date"] is None
+
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="management-person-empty",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    assert normalized.facts == []
+    assert normalized.flags == ["AKSHARE_MANAGEMENT_PERSON_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == [
+        "governance_risk_level",
+    ]
+
+
+def test_management_person_request_validates_view_name_parameters_and_market():
+    fake = FakeAKShare()
+    provider = _provider(fake)
+
+    with pytest.raises(ProviderRequestError, match="unsupported AKShare management-person"):
+        provider.fetch(
+            _management_person_request(parameters={"date": "20260101"})
+        )
+    with pytest.raises(
+        ProviderRequestError,
+        match=r"unsupported AKShare insider-share-change parameter\(s\): name",
+    ):
+        provider.fetch(
+            _request(
+                DataCategory.INSIDER_SHARE_CHANGES,
+                "SH600000",
+                {"name": "甲高管"},
+            )
+        )
+    with pytest.raises(
+        ProviderRequestError,
+        match="requires a non-empty string name parameter",
+    ):
+        provider.fetch(
+            _request(
+                DataCategory.INSIDER_SHARE_CHANGES,
+                "SH600000",
+                {"view": "management_person"},
+            )
+        )
+    with pytest.raises(
+        ProviderRequestError,
+        match="requires a non-empty string name parameter",
+    ):
+        provider.fetch(
+            _management_person_request(parameters={"name": 1})
+        )
+    with pytest.raises(
+        ProviderRequestError,
+        match="Shanghai, Shenzhen and Beijing A-share listings only",
+    ):
+        provider.fetch(_management_person_request(entity_id="HK00700"))
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("missing_field", "unexpected field schema"),
+        ("extra_field", "unexpected field schema"),
+        ("reordered_fields", "unexpected field schema"),
+        ("wrong_listing", "management-person row entity"),
+        ("wrong_person", "management-person row .*requested name"),
+        ("numeric_type", "must be numeric or null"),
+        ("invalid_date", "invalid 日期"),
+        ("negative_range", "must be non-negative or null"),
+    ],
+)
+def test_management_person_response_rejects_schema_identity_date_and_range_failures(
+    mutation: str,
+    match: str,
+):
+    class InvalidRows(FakeAKShare):
+        def stock_hold_management_person_em(self, *, symbol: str, name: str):
+            rows = [
+                row
+                for row in _fixture("a_management_person.json")
+                if row["代码"] == symbol and row["变动人"] == name
+            ]
+            if mutation == "missing_field":
+                rows[0].pop("变动金额")
+            elif mutation == "extra_field":
+                rows[0]["未记录字段"] = "unexpected"
+            elif mutation == "reordered_fields":
+                rows[0] = dict(reversed(list(rows[0].items())))
+            elif mutation == "wrong_listing":
+                rows[0]["代码"] = "000001"
+            elif mutation == "wrong_person":
+                rows[0]["变动人"] = "乙高管"
+            elif mutation == "numeric_type":
+                rows[0]["变动股数"] = "10000"
+            elif mutation == "invalid_date":
+                rows[0]["日期"] = "not-a-date"
+            else:
+                rows[0]["结束后持有"] = -1
+            return self._return(
+                "stock_hold_management_person_em",
+                rows,
+                symbol=symbol,
+                name=name,
+            )
+
+    with pytest.raises(ProviderResponseError, match=match):
+        _provider(InvalidRows()).fetch(_management_person_request())
+
+
+def test_management_person_raw_record_is_not_promoted_to_share_or_governance_facts():
+    record = _provider().fetch(_management_person_request())
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="management-person-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_MANAGEMENT_PERSON_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == [
+        "governance_risk_level",
+    ]
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "management-person response" in normalized.data_quality.notes
+    assert "diluted-share series" in normalized.data_quality.notes
+    assert "governance-risk judgment" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    errors = list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    )
+    assert errors == []
+
+
+@pytest.mark.parametrize("scope_mutation", ["view", "name", "source_uri", "scope", "count", "date"])
+def test_management_person_normalizer_rejects_replayed_scope_mismatches(
+    scope_mutation: str,
+):
+    record = _provider().fetch(_management_person_request())
+    metadata = dict(record.response_metadata)
+    source_uri = record.source_uri
+    if scope_mutation == "view":
+        metadata["management_person_view"] = "management_detail"
+    elif scope_mutation == "name":
+        metadata["upstream_name"] = "乙高管"
+    elif scope_mutation == "source_uri":
+        source_uri = "https://example.invalid/management-person"
+    elif scope_mutation == "scope":
+        metadata["listing_scoped_request"] = False
+    elif scope_mutation == "count":
+        metadata["upstream_row_count"] = 3
+    else:
+        metadata["observation_start_date"] = "2026-01-01"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=record.raw_payload,
+        source_uri=source_uri,
+        response_metadata=metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match="management-person"):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-management-person",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_management_person_normalizer_rejects_replayed_cross_listing_or_person_rows():
+    record = _provider().fetch(_management_person_request())
+
+    for field, value in (("代码", "000001"), ("变动人", "乙高管")):
+        payload = [dict(row) for row in record.raw_payload]
+        payload[0][field] = value
+        replayed = record.__class__(
+            provider=record.provider,
+            request=record.request,
+            retrieved_at=record.retrieved_at,
+            raw_payload=payload,
+            source_uri=record.source_uri,
+            response_metadata=record.response_metadata,
+        )
+
+        with pytest.raises(ProviderNormalizationError, match="management-person"):
+            normalize_akshare_records(
+                [replayed],
+                analysis_id=f"mismatched-management-person-{field}",
+                as_of=date(2026, 9, 9),
+                profile_id="strict-v1",
+                company=_company(),
+            )
+
+
+def test_management_person_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _management_person_request()
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [
+        (
+            "stock_hold_management_person_em",
+            {"symbol": "600000", "name": "甲高管"},
+        )
+    ]
 
 
 def _executive_share_changes_request(

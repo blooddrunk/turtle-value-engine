@@ -2476,6 +2476,32 @@ view/direction/A-share validation, exact response fields/order/types,
 direction-filtering, raw-only normalization, replay-scope rejection and cache
 replay. No calculation, gate, pipeline, CLI or input-loader contract changes.
 
+### Phase 2.99 — A-share Eastmoney management-person raw acquisition contract (COMPLETE)
+
+The mapping review now covers the distinct documented AKShare Eastmoney
+`stock_hold_management_person_em` endpoint under the existing
+`INSIDER_SHARE_CHANGES` category with explicit `view=management_person` and a
+non-empty executive `name`. The [AKShare stock-data
+documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and
+[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hold_control_em.py)
+define a symbol-and-person-scoped A-share response with the exact 16
+source-shaped fields for change date, security/person identity, transaction
+quantity/price/amount/reason/ratio, holding type, role/relationship and
+beginning/ending holdings.
+
+The provider passes the six-digit A-share `symbol` and requested `name`,
+validates the exact source field order, listing/person identity, ISO change
+dates, finite numeric/null values and non-negative price/holding fields, then
+retains the upstream symbol-and-person scope and observed date bounds for
+replay. Numeric units remain explicitly `not_documented` because the official
+contract does not settle them. The checked-in fixture freezes four
+source-shaped rows across two listings and two people. The normalizer emits
+`AKSHARE_MANAGEMENT_PERSON_RAW_ONLY` and creates no canonical share, dilution,
+transaction-cash, governance or shareholder-return fact. Tests cover explicit
+view/name/A-share validation, exact response fields/order/types, identity and
+range failures, raw-only normalization, replay-scope rejection and cache
+replay. No calculation, gate, pipeline, CLI or input-loader contract changes.
+
 ### Future Phase 2 deliverables
 
 ```text
@@ -2485,7 +2511,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–2.98 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–2.99 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -2723,6 +2749,14 @@ and `全部`/`股东增持`/`股东减持` direction selector are validated agai
 units, the undocumented latest-price unit, event-date bounds and replay row
 counts remain explicit metadata, and no listing-level share, dilution, cash,
 governance or shareholder-return fact is inferred.
+Phase 2.99 adds the documented A-share Eastmoney
+`stock_hold_management_person_em` management-person view under
+`INSIDER_SHARE_CHANGES`. Its explicit `management_person` view passes the
+six-digit symbol and executive name to the symbol/person-scoped endpoint and
+validates the exact 16-field response, identity, dates, numeric ranges and
+replay scope. Numeric units remain `not_documented`, and the raw-only
+normalizer flag creates no listing-level share, dilution, cash, governance or
+shareholder-return fact.
 Phase 2.75 completes the next documented structured-data boundary by adding
 the A-share `stock_gpzy_profile_em` market-wide historical ownership-pledge
 view. Its no-argument eight-field response is validated as an ascending raw

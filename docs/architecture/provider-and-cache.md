@@ -755,7 +755,7 @@ The cache performs no network retries. The normalizer performs no provider
 retries. The deterministic pipeline performs no provider retries and should
 not be rerun as a substitute for resolving missing facts.
 
-## 12. Phase 2.2–2.98 AKShare adapter
+## 12. Phase 2.2–2.99 AKShare adapter
 
 The first concrete adapter is intentionally limited to read-only metadata,
 market observations, three documented financial-statement slices, raw-only
@@ -782,8 +782,8 @@ limit-up-pool/limit-down-pool/new-stock-board market-activity, SSE/SZSE
 market-summary, SZSE area-summary/sector-summary and Eastmoney industry-board raw slices, the A+H quote-comparison and
 Xueqiu individual-spot quote,
 A-share Xueqiu, CNINFO and Tonghuashun company-profile,
-SSE/SZSE/BSE insider-share-change, A-share Eastmoney management-holding and
-executive/shareholder-change,
+SSE/SZSE/BSE insider-share-change, A-share Eastmoney management-holding,
+management-person and executive/shareholder-change,
 A-share Eastmoney intraday-trade/chip-distribution, Tencent daily-history and latest-trading-day tick, Sina minute-history,
 A-share/H-share intraday-history, pre-market-history and five-level bid-ask raw
 slices, and the H-share Eastmoney main-board quote raw slice. It
@@ -819,7 +819,7 @@ advertises exactly these capabilities:
 | `CORPORATE_ACTIONS` | `stock_repurchase_em` (no parameters); `stock_allotment_cninfo` (date-range request); `stock_ipo_summary_cninfo` (`view=ipo_summary`, symbol-scoped); `stock_dxsyl_em` (`view=ipo_yield`, no upstream arguments, full universe filtered to requested A-share) | — | A-share repurchase, rights-issue, IPO-summary or IPO-yield rows; raw structured evidence only; no canonical buyback, issuance, dilution, price, return or listing-date fact |
 | `SHARE_CAPITAL` | `stock_zh_a_gbjg_em` (no parameters); `stock_share_change_cninfo` (explicit date range); `stock_restricted_release_queue_em` (`view=restricted_release_queue`); `stock_individual_info_em` (`view=individual_info`) | — | raw historical response or current item/value snapshot and provenance only; no canonical share/dilution fact |
 | `OWNERSHIP_PLEDGE` | `stock_gpzy_profile_em` (`view=market_profile`, market-wide historical A-share profile, no upstream arguments); `stock_gpzy_pledge_ratio_em` (exact `date`); `stock_gpzy_individual_pledge_ratio_detail_em` (`view=individual_pledge_detail`); `stock_cg_equity_mortgage_cninfo` (`view=equity_mortgage`, `date`) | — | market-wide historical profile, date-bound snapshot, symbol-scoped detail or CNINFO pledge-event rows as raw structured evidence only; no canonical governance, share, cash or debt-equivalent fact |
-| `INSIDER_SHARE_CHANGES` | `stock_share_hold_change_sse` (Shanghai); `stock_share_hold_change_szse` (Shenzhen); `stock_share_hold_change_bse` (Beijing); `stock_hold_management_detail_em` (`view=management_detail`, no upstream arguments, full universe filtered to requested A-share); `stock_ggcg_em` (`view=executive_share_changes`, explicit direction, full universe filtered to requested A-share) | — | listing-scoped exchange rows or management/executive/shareholder holding-change rows as raw structured evidence only; no canonical share, dilution, governance, buyback or issuance fact |
+| `INSIDER_SHARE_CHANGES` | `stock_share_hold_change_sse` (Shanghai); `stock_share_hold_change_szse` (Shenzhen); `stock_share_hold_change_bse` (Beijing); `stock_hold_management_detail_em` (`view=management_detail`, no upstream arguments, full universe filtered to requested A-share); `stock_hold_management_person_em` (`view=management_person`, symbol-and-person scoped); `stock_ggcg_em` (`view=executive_share_changes`, explicit direction, full universe filtered to requested A-share) | — | listing-scoped exchange rows or management/management-person/executive/shareholder holding-change rows as raw structured evidence only; no canonical share, dilution, governance, buyback or issuance fact |
 | `SHAREHOLDER_HOLDINGS` | `stock_main_stock_holder` (`stock`); `stock_hold_num_cninfo` (exact quarter-end `date`); `stock_zh_a_gdhs_detail_em` (`view=holder_count_detail`); `stock_hold_control_cninfo` (`view=control_changes`, optional `control_type`); `stock_gdfx_top_10_em` (`view=top_10`, exact quarter-end `date`); `stock_gdfx_free_top_10_em` (`view=free_top_10`, exact quarter-end `date`); `stock_gdfx_free_holding_detail_em` (`view=free_holding_detail`, exact quarter-end `date`); `stock_hsgt_individual_em` (`view=hsgt_individual`) | `stock_hsgt_individual_em` (`view=hsgt_individual`) | A-share main-shareholder/shareholder-count/shareholder-count-detail/actual-controller/top-ten/top-ten-tradable/top-ten-tradable-detail holding-change or A/H HSGT investor-holding rows as raw structured evidence only; no canonical ownership, concentration, share, dilution or governance fact |
 
 The adapter accepts common stable A/H identifiers such as `SH600000`,
@@ -1626,6 +1626,23 @@ The normalizer emits `AKSHARE_EXECUTIVE_SHARE_CHANGES_RAW_ONLY`, leaves
 `governance_risk_level` critically missing and creates no canonical share,
 dilution, settled-cash, return, valuation or governance fact.
 
+For the distinct A-share Eastmoney management-person slice, the current
+[AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hold_control_em.py)
+define `stock_hold_management_person_em(symbol, name)` as a symbol-and-person
+scoped response with the exact 16 fields `日期`, `代码`, `名称`, `变动人`,
+`变动股数`, `成交均价`, `变动金额`, `变动原因`, `变动比例`, `变动后持股数`,
+`持股种类`, `董监高人员姓名`, `职务`, `变动人与董监高的关系`, `开始时持有`
+and `结束后持有`. The provider selects it only with the explicit
+`view=management_person` request, passes the six-digit listing code and
+non-empty executive name, validates listing/person identity, field order,
+ISO change dates, finite numeric/null values and non-negative price/holding
+fields, and records the scope, source order, page size, date bounds and
+`not_documented` numeric units for replay. The normalizer emits
+`AKSHARE_MANAGEMENT_PERSON_RAW_ONLY`, leaves `governance_risk_level` critically
+missing and creates no canonical share, dilution, transaction-cash, governance
+or shareholder-return fact.
+
 For the A-share individual-info slice, the current [AKShare stock-data
 documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and [official
 implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_info_em.py)
@@ -1853,7 +1870,7 @@ facts.
 
 ## 13. Deliberate non-goals
 
-This foundation plus the Phase 2.2–2.98 slices does not include:
+This foundation plus the Phase 2.2–2.99 slices does not include:
 
 - Tushare, BaoStock or any other additional provider;
 - automatic network scheduling, credentials or retry orchestration outside an adapter;

@@ -1017,6 +1017,18 @@ normalizer emits `AKSHARE_EXECUTIVE_SHARE_CHANGES_RAW_ONLY` without creating a
 canonical share, dilution, cash, governance or shareholder-return fact. No
 calculation, gate, pipeline, CLI or input-loader contract changes.
 
+Phase 2.99 adds the distinct official A-share Eastmoney
+`stock_hold_management_person_em` endpoint under `INSIDER_SHARE_CHANGES` with
+explicit `view=management_person`, a six-digit listing `symbol` and executive
+`name`. The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hold_control_em.py)
+define the symbol/person-scoped 16-field change response. The provider
+validates field order, listing/person identity, dates, numeric ranges and
+replay scope while leaving all numeric units `not_documented`; the normalizer
+emits `AKSHARE_MANAGEMENT_PERSON_RAW_ONLY` without creating canonical share,
+dilution, cash, governance or shareholder-return facts. No calculation, gate,
+pipeline, CLI or input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

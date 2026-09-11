@@ -14,7 +14,7 @@ slices, including the restricted-share-release view, the A-share
 risk-warning-status, trading-suspension, main-shareholder, shareholder-count,
 shareholder-count-detail and actual-controller holding-change raw slices, the
 A-share Eastmoney
-management-holding raw slice, the A/H HSGT
+management-holding and management-person raw slices, the A/H HSGT
 individual-holdings raw slice, the H-share
 financial-indicator raw slice, the H-share
 latest-indicator raw slice, the A-share goodwill-impairment detail and
@@ -97,9 +97,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "98"
+AKSHARE_ADAPTER_VERSION = "99"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "99"
+AKSHARE_MAPPING_VERSION = "100"
 
 
 class ListingMarket(StrEnum):
@@ -254,6 +254,7 @@ _SOURCE_URIS = {
     "stock_share_hold_change_szse": "http://www.szse.cn/disclosure/supervision/change/index.html",
     "stock_share_hold_change_bse": "https://www.bse.cn/disclosure/djg_sharehold_change.html",
     "stock_hold_management_detail_em": "https://data.eastmoney.com/executive/list.html",
+    "stock_hold_management_person_em": "https://data.eastmoney.com/executive/personinfo.html",
     "stock_ggcg_em": "https://data.eastmoney.com/executive/gdzjc.html",
     "stock_hold_management_detail_cninfo": "https://webapi.cninfo.com.cn/#/thematicStatistics",
     "stock_main_stock_holder": "https://vip.stock.finance.sina.com.cn/corp/go.php/vCI_StockHolder/stockid/600004.phtml",
@@ -1724,6 +1725,52 @@ _INSIDER_SHARE_CHANGE_PARAMETER_NAMES = frozenset()
 _INSIDER_MANAGEMENT_DETAIL_PARAMETER_NAMES = frozenset({"view"})
 _INSIDER_MANAGEMENT_DETAIL_VIEW = "management_detail"
 _INSIDER_MANAGEMENT_DETAIL_DATE_FIELDS = ("日期",)
+_INSIDER_MANAGEMENT_PERSON_PARAMETER_NAMES = frozenset({"view", "name"})
+_INSIDER_MANAGEMENT_PERSON_VIEW = "management_person"
+_INSIDER_MANAGEMENT_PERSON_FIELDS = (
+    "日期",
+    "代码",
+    "名称",
+    "变动人",
+    "变动股数",
+    "成交均价",
+    "变动金额",
+    "变动原因",
+    "变动比例",
+    "变动后持股数",
+    "持股种类",
+    "董监高人员姓名",
+    "职务",
+    "变动人与董监高的关系",
+    "开始时持有",
+    "结束后持有",
+)
+_INSIDER_MANAGEMENT_PERSON_TEXT_FIELDS = (
+    "代码",
+    "名称",
+    "变动人",
+    "变动原因",
+    "持股种类",
+    "董监高人员姓名",
+    "职务",
+    "变动人与董监高的关系",
+)
+_INSIDER_MANAGEMENT_PERSON_DATE_FIELDS = ("日期",)
+_INSIDER_MANAGEMENT_PERSON_NUMERIC_FIELDS = (
+    "变动股数",
+    "成交均价",
+    "变动金额",
+    "变动比例",
+    "变动后持股数",
+    "开始时持有",
+    "结束后持有",
+)
+_INSIDER_MANAGEMENT_PERSON_NON_NEGATIVE_FIELDS = frozenset(
+    {"成交均价", "变动后持股数", "开始时持有", "结束后持有"}
+)
+_INSIDER_MANAGEMENT_PERSON_UNDOCUMENTED_NUMERIC_UNITS = {
+    field: "not_documented" for field in _INSIDER_MANAGEMENT_PERSON_NUMERIC_FIELDS
+}
 _EXECUTIVE_SHARE_CHANGES_PARAMETER_NAMES = frozenset({"view", "direction"})
 _EXECUTIVE_SHARE_CHANGES_VIEW = "executive_share_changes"
 _EXECUTIVE_SHARE_CHANGES_DIRECTION_CHOICES = ("全部", "股东增持", "股东减持")
@@ -4280,7 +4327,64 @@ class AKShareProvider(StructuredDataProvider):
                 response_metadata["observation_date"] = requested_date.isoformat()
         elif request.category is DataCategory.INSIDER_SHARE_CHANGES:
             rows = _table_rows(payload, provider=self.identity, request=request)
-            if endpoint.name == "stock_ggcg_em":
+            if endpoint.name == "stock_hold_management_person_em":
+                observation_start, observation_end = (
+                    _validate_insider_management_person_provider_rows(
+                        rows,
+                        listing,
+                        name=kwargs["name"],
+                        provider=self.identity,
+                        request=request,
+                    )
+                )
+                response_metadata["upstream_row_count"] = len(rows)
+                response_metadata["entity_row_count"] = len(rows)
+                response_metadata["entity_rows_selected"] = True
+                response_metadata["listing_scoped_request"] = True
+                response_metadata["row_filtering"] = "upstream"
+                response_metadata["management_person_view"] = (
+                    _INSIDER_MANAGEMENT_PERSON_VIEW
+                )
+                response_metadata["upstream_symbol"] = kwargs["symbol"]
+                response_metadata["upstream_name"] = kwargs["name"]
+                response_metadata["market_scope"] = "requested_a_share_listing"
+                response_metadata["snapshot_scope"] = (
+                    "historical_published_person_dataset"
+                )
+                response_metadata["date_binding"] = "row_change_dates"
+                response_metadata["observation_date_field"] = "日期"
+                response_metadata["observation_date_fields"] = list(
+                    _INSIDER_MANAGEMENT_PERSON_DATE_FIELDS
+                )
+                response_metadata["observation_start_date"] = (
+                    observation_start.isoformat() if observation_start else None
+                )
+                response_metadata["observation_end_date"] = (
+                    observation_end.isoformat() if observation_end else None
+                )
+                response_metadata["field_count"] = len(
+                    _INSIDER_MANAGEMENT_PERSON_FIELDS
+                )
+                response_metadata["source_field_order"] = list(
+                    _INSIDER_MANAGEMENT_PERSON_FIELDS
+                )
+                response_metadata["text_fields"] = list(
+                    _INSIDER_MANAGEMENT_PERSON_TEXT_FIELDS
+                )
+                response_metadata["date_fields"] = list(
+                    _INSIDER_MANAGEMENT_PERSON_DATE_FIELDS
+                )
+                response_metadata["value_fields"] = list(
+                    _INSIDER_MANAGEMENT_PERSON_NUMERIC_FIELDS
+                )
+                response_metadata["non_negative_fields"] = sorted(
+                    _INSIDER_MANAGEMENT_PERSON_NON_NEGATIVE_FIELDS
+                )
+                response_metadata["undocumented_numeric_units"] = dict(
+                    _INSIDER_MANAGEMENT_PERSON_UNDOCUMENTED_NUMERIC_UNITS
+                )
+                response_metadata["upstream_page_size"] = 5000
+            elif endpoint.name == "stock_ggcg_em":
                 observation_start, observation_end = (
                     _validate_executive_share_changes_provider_rows(
                         rows,
@@ -5010,6 +5114,10 @@ class AKShareProvider(StructuredDataProvider):
                 request.parameters.get("view")
                 == _INSIDER_CNINFO_MANAGEMENT_DETAIL_VIEW
                 or "direction" in request.parameters
+            ),
+            insider_management_person_requested=(
+                request.parameters.get("view")
+                == _INSIDER_MANAGEMENT_PERSON_VIEW
             ),
             insider_executive_share_changes_requested=(
                 request.parameters.get("view") == _EXECUTIVE_SHARE_CHANGES_VIEW
@@ -6582,7 +6690,22 @@ class AKShareNormalizer:
                         "Shanghai, Shenzhen and Beijing A-share listings only"
                     )
                 endpoint_name = record.response_metadata.get("endpoint")
-                if endpoint_name == "stock_ggcg_em":
+                if endpoint_name == "stock_hold_management_person_em":
+                    try:
+                        _insider_share_change_kwargs(
+                            "stock_hold_management_person_em",
+                            listing,
+                            record.request,
+                        )
+                    except ProviderRequestError as exc:
+                        raise ProviderNormalizationError(str(exc)) from exc
+                    _validate_insider_management_person_normalizer_scope(
+                        record,
+                        listing,
+                        rows,
+                    )
+                    normalizer_flags.add("AKSHARE_MANAGEMENT_PERSON_RAW_ONLY")
+                elif endpoint_name == "stock_ggcg_em":
                     try:
                         _insider_share_change_kwargs(
                             "stock_ggcg_em",
@@ -6634,8 +6757,9 @@ class AKShareNormalizer:
                     raise ProviderNormalizationError(
                         "AKShare insider-share-change record must come from "
                         "stock_share_hold_change_sse, stock_share_hold_change_szse, "
-                        "stock_share_hold_change_bse, stock_hold_management_detail_em or "
-                        "stock_hold_management_detail_cninfo or stock_ggcg_em"
+                        "stock_share_hold_change_bse, stock_hold_management_detail_em, "
+                        "stock_hold_management_person_em, stock_hold_management_detail_cninfo "
+                        "or stock_ggcg_em"
                     )
                 # Insider transactions are event evidence, not a settled
                 # company share-count series or a governance verdict.
@@ -7006,6 +7130,13 @@ class AKShareNormalizer:
                 "raw evidence only: management/related-person transaction quantities, "
                 "prices, holdings and dates do not establish a company-level "
                 "diluted-share series or governance-risk judgment."
+            )
+        if "AKSHARE_MANAGEMENT_PERSON_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented Eastmoney management-person response is retained as "
+                "raw evidence only: requested-person transaction quantities, prices, "
+                "holdings and change dates do not establish a company-level diluted-share "
+                "series, settled transaction cash or governance-risk judgment."
             )
         if "AKSHARE_CNINFO_MANAGEMENT_HOLDINGS_RAW_ONLY" in normalizer_flags:
             notes += (
@@ -7678,6 +7809,7 @@ def _endpoint_candidates(
     shareholder_top10_requested: bool = False,
     shareholder_hsgt_individual_requested: bool = False,
     insider_cninfo_management_detail_requested: bool = False,
+    insider_management_person_requested: bool = False,
     insider_executive_share_changes_requested: bool = False,
     insider_management_detail_requested: bool = False,
     market_activity_statistic_requested: bool = False,
@@ -7987,6 +8119,10 @@ def _endpoint_candidates(
             return ("stock_gpzy_pledge_ratio_em",)
         return ()
     if category is DataCategory.INSIDER_SHARE_CHANGES:
+        if insider_management_person_requested:
+            if market is ListingMarket.A:
+                return ("stock_hold_management_person_em",)
+            return ()
         if insider_executive_share_changes_requested:
             if market is ListingMarket.A:
                 return ("stock_ggcg_em",)
@@ -9220,6 +9356,40 @@ def _insider_share_change_kwargs(
     listing: _ListingRef,
     request: ProviderRequest,
 ) -> dict[str, object]:
+    if endpoint_name == "stock_hold_management_person_em":
+        if listing.market is not ListingMarket.A:
+            raise ProviderRequestError(
+                "the AKShare management-person endpoint supports A-share listings only",
+                request=request,
+                retryable=False,
+            )
+        unknown = sorted(
+            set(request.parameters) - _INSIDER_MANAGEMENT_PERSON_PARAMETER_NAMES
+        )
+        if unknown:
+            raise ProviderRequestError(
+                "unsupported AKShare management-person parameter(s): "
+                + ", ".join(unknown),
+                request=request,
+                retryable=False,
+            )
+        if request.parameters.get("view") != _INSIDER_MANAGEMENT_PERSON_VIEW:
+            raise ProviderRequestError(
+                "the AKShare management-person endpoint requires "
+                f"view={_INSIDER_MANAGEMENT_PERSON_VIEW!r}",
+                request=request,
+                retryable=False,
+            )
+        name = request.parameters.get("name")
+        if not isinstance(name, str) or not name.strip():
+            raise ProviderRequestError(
+                "the AKShare management-person endpoint requires a non-empty string "
+                "name parameter",
+                request=request,
+                retryable=False,
+            )
+        return {"symbol": listing.code, "name": name}
+
     if endpoint_name == "stock_ggcg_em":
         if listing.market is not ListingMarket.A:
             raise ProviderRequestError(
@@ -20735,6 +20905,282 @@ def _validate_insider_share_change_normalizer_rows(
                 raise ProviderNormalizationError(
                     f"insider-share-change row has an invalid {field}"
                 )
+
+
+def _management_person_row_validation_error(
+    row: Mapping[str, JSONValue],
+    index: int,
+    *,
+    listing: _ListingRef,
+    name: str,
+) -> tuple[str | None, date | None]:
+    """Return a strict-schema error and the row's change date."""
+
+    if tuple(row) != _INSIDER_MANAGEMENT_PERSON_FIELDS:
+        return (
+            f"management-person row {index} has an unexpected field schema or order",
+            None,
+        )
+
+    code = row["代码"]
+    if not isinstance(code, str) or re.fullmatch(r"\d{6}", code) is None:
+        return (
+            f"management-person row {index} has an invalid 代码",
+            None,
+        )
+    if code != listing.code:
+        return (
+            f"management-person row entity {code!r} does not match requested "
+            f"listing {listing.canonical_id!r}",
+            None,
+        )
+
+    for field in _INSIDER_MANAGEMENT_PERSON_TEXT_FIELDS:
+        value = row[field]
+        if value is None:
+            if field in {"代码", "变动人"}:
+                return (
+                    f"management-person row {index} field {field!r} "
+                    "must be non-empty text",
+                    None,
+                )
+            continue
+        if not isinstance(value, str):
+            return (
+                f"management-person row {index} field {field!r} "
+                "must be text or null",
+                None,
+            )
+        if not value.strip():
+            return (
+                f"management-person row {index} field {field!r} "
+                "must be non-empty text or null",
+                None,
+            )
+
+    if row["变动人"] != name:
+        return (
+            f"management-person row {index} person {row['变动人']!r} does not match "
+            f"requested name {name!r}",
+            None,
+        )
+
+    raw_date = row["日期"]
+    if not isinstance(raw_date, str):
+        return (
+            f"management-person row {index} field '日期' must be an ISO date string",
+            None,
+        )
+    observation_date = _parse_date_value(raw_date)
+    if observation_date is None:
+        return (
+            f"management-person row {index} has an invalid 日期",
+            None,
+        )
+
+    for field in _INSIDER_MANAGEMENT_PERSON_NUMERIC_FIELDS:
+        value = row[field]
+        if value is None:
+            continue
+        if isinstance(value, bool) or not isinstance(value, Real):
+            return (
+                f"management-person row {index} field {field!r} "
+                "must be numeric or null",
+                None,
+            )
+        try:
+            numeric = float(value)
+        except (OverflowError, TypeError, ValueError):
+            return (
+                f"management-person row {index} field {field!r} "
+                "must be numeric or null",
+                None,
+            )
+        if not math.isfinite(numeric):
+            return (
+                f"management-person row {index} field {field!r} "
+                "must be finite or null",
+                None,
+            )
+        if field in _INSIDER_MANAGEMENT_PERSON_NON_NEGATIVE_FIELDS and numeric < 0:
+            return (
+                f"management-person row {index} field {field!r} "
+                "must be non-negative or null",
+                None,
+            )
+
+    return None, observation_date
+
+
+def _management_person_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    listing: _ListingRef,
+    name: str,
+) -> tuple[str | None, list[date]]:
+    """Validate the source-shaped management-person response."""
+
+    observation_dates: list[date] = []
+    for index, row in enumerate(rows):
+        message, observation_date = _management_person_row_validation_error(
+            row,
+            index,
+            listing=listing,
+            name=name,
+        )
+        if message is not None:
+            return message, []
+        assert observation_date is not None
+        observation_dates.append(observation_date)
+    return None, observation_dates
+
+
+def _validate_insider_management_person_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+    *,
+    name: object,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> tuple[date | None, date | None]:
+    """Validate the symbol/person-scoped management history before storage."""
+
+    if not isinstance(name, str) or not name.strip():
+        raise ProviderResponseError(
+            f"AKShare management-person name is not a non-empty string for "
+            f"{request.entity_id!r}",
+            provider=provider,
+            request=request,
+        )
+    message, observation_dates = _management_person_validation_message(
+        rows,
+        listing=listing,
+        name=name,
+    )
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message} for {request.entity_id!r}",
+            provider=provider,
+            request=request,
+        )
+    return (
+        min(observation_dates) if observation_dates else None,
+        max(observation_dates) if observation_dates else None,
+    )
+
+
+def _validate_insider_management_person_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> None:
+    """Validate management-person endpoint, identity and replay metadata."""
+
+    if listing.market is not ListingMarket.A:
+        raise ProviderNormalizationError(
+            "AKShare management-person raw slice supports A-share listings only"
+        )
+    if record.response_metadata.get("endpoint") != "stock_hold_management_person_em":
+        raise ProviderNormalizationError(
+            "AKShare management-person record must come from "
+            "stock_hold_management_person_em"
+        )
+    if record.source_uri != _SOURCE_URIS["stock_hold_management_person_em"]:
+        raise ProviderNormalizationError(
+            "AKShare management-person source URI does not match the documented endpoint"
+        )
+    try:
+        upstream_kwargs = _insider_share_change_kwargs(
+            "stock_hold_management_person_em",
+            listing,
+            record.request,
+        )
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+
+    name = upstream_kwargs["name"]
+    if not isinstance(name, str):
+        raise ProviderNormalizationError(
+            "AKShare management-person upstream name is not text"
+        )
+    message, observation_dates = _management_person_validation_message(
+        rows,
+        listing=listing,
+        name=name,
+    )
+    if message is not None:
+        raise ProviderNormalizationError(message)
+
+    expected_metadata: dict[str, JSONValue] = {
+        "endpoint": "stock_hold_management_person_em",
+        "market": ListingMarket.A.value,
+        "listing_code": listing.code,
+        "management_person_view": _INSIDER_MANAGEMENT_PERSON_VIEW,
+        "upstream_symbol": listing.code,
+        "upstream_name": name,
+        "market_scope": "requested_a_share_listing",
+        "listing_scoped_request": True,
+        "row_filtering": "upstream",
+        "snapshot_scope": "historical_published_person_dataset",
+        "date_binding": "row_change_dates",
+        "observation_date_field": "日期",
+        "observation_date_fields": list(_INSIDER_MANAGEMENT_PERSON_DATE_FIELDS),
+        "field_count": len(_INSIDER_MANAGEMENT_PERSON_FIELDS),
+        "source_field_order": list(_INSIDER_MANAGEMENT_PERSON_FIELDS),
+        "text_fields": list(_INSIDER_MANAGEMENT_PERSON_TEXT_FIELDS),
+        "date_fields": list(_INSIDER_MANAGEMENT_PERSON_DATE_FIELDS),
+        "value_fields": list(_INSIDER_MANAGEMENT_PERSON_NUMERIC_FIELDS),
+        "non_negative_fields": sorted(_INSIDER_MANAGEMENT_PERSON_NON_NEGATIVE_FIELDS),
+        "undocumented_numeric_units": dict(
+            _INSIDER_MANAGEMENT_PERSON_UNDOCUMENTED_NUMERIC_UNITS
+        ),
+        "upstream_page_size": 5000,
+        "entity_rows_selected": True,
+        "entity_row_count": len(rows),
+    }
+    for name_key, expected in expected_metadata.items():
+        if name_key not in record.response_metadata:
+            matches = False
+        elif name_key in {"listing_scoped_request", "entity_rows_selected"}:
+            actual = record.response_metadata[name_key]
+            matches = isinstance(actual, bool) and actual is expected
+        elif name_key in {"field_count", "entity_row_count", "upstream_page_size"}:
+            actual = record.response_metadata[name_key]
+            matches = (
+                isinstance(actual, int)
+                and not isinstance(actual, bool)
+                and actual == expected
+            )
+        else:
+            matches = record.response_metadata[name_key] == expected
+        if not matches:
+            raise ProviderNormalizationError(
+                "AKShare management-person response metadata "
+                f"{name_key!r} does not match the requested replay scope"
+            )
+
+    upstream_count = record.response_metadata.get("upstream_row_count")
+    if (
+        not isinstance(upstream_count, int)
+        or isinstance(upstream_count, bool)
+        or upstream_count != len(rows)
+    ):
+        raise ProviderNormalizationError(
+            "AKShare management-person response metadata "
+            "'upstream_row_count' does not match the requested replay scope"
+        )
+
+    expected_start = min(observation_dates).isoformat() if observation_dates else None
+    expected_end = max(observation_dates).isoformat() if observation_dates else None
+    for name_key, expected in (
+        ("observation_start_date", expected_start),
+        ("observation_end_date", expected_end),
+    ):
+        if record.response_metadata.get(name_key) != expected:
+            raise ProviderNormalizationError(
+                "AKShare management-person response metadata "
+                f"{name_key!r} does not match the requested replay scope"
+            )
 
 
 def _executive_share_changes_row_validation_error(

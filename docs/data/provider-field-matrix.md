@@ -1092,6 +1092,40 @@ from holder-change evidence.
 The provider-specific response remains outside the calculation, gate, pipeline,
 CLI and input-loader contracts.
 
+## Phase 2.99 A-share Eastmoney management-person raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hold_control_em.py)
+document `stock_hold_management_person_em` as a symbol-and-person-scoped
+Eastmoney response. Its `symbol` is a six-digit A-share code and its `name` is
+the requested executive name. The source returns the exact 16 fields
+`日期`, `代码`, `名称`, `变动人`, `变动股数`, `成交均价`, `变动金额`,
+`变动原因`, `变动比例`, `变动后持股数`, `持股种类`, `董监高人员姓名`,
+`职务`, `变动人与董监高的关系`, `开始时持有` and `结束后持有`, in that
+order.
+
+The provider exposes this endpoint under `INSIDER_SHARE_CHANGES` only with
+explicit `view=management_person`, passes `symbol` and `name` upstream and
+retains the already listing/person-scoped response. It validates exact field
+order, listing/person identity, ISO change dates, finite numeric/null values
+and non-negative price/holding fields. Numeric units are recorded as
+`not_documented`; no conversion or economic interpretation is applied.
+
+| Raw upstream item | Phase 2.99 treatment |
+| --- | --- |
+| `日期` | Required ISO change/event date retained as row evidence and used only for observed replay bounds; it is not a report period. |
+| `代码`, `名称` | Required listing identity and source security name; the code must match the requested six-digit A-share listing, but no security-master fact is inferred. |
+| `变动人`, `董监高人员姓名`, `职务`, `变动人与董监高的关系` | Requested person, management identity, role and relationship text retained as raw evidence; person identity is validated against the upstream `name` scope. |
+| `变动股数`, `成交均价`, `变动金额`, `变动比例`, `变动后持股数`, `开始时持有`, `结束后持有` | Finite numeric/null transaction, price, ratio and holding values retained without a documented unit, dilution treatment or settled-cash interpretation. |
+| `变动原因`, `持股种类` | Source reason and holding-type labels retained as raw context; no governance or ownership conclusion is inferred. |
+| request `view=management_person`, `symbol`, `name` | Explicit symbol/person scope, upstream page size and source field order are retained in request/response metadata for cache replay; no local universe filtering occurs. |
+
+The normalizer emits `AKSHARE_MANAGEMENT_PERSON_RAW_ONLY`, leaves
+`governance_risk_level` critically missing and creates no canonical share,
+dilution, transaction-cash or shareholder-return fact. The provider-specific
+response remains outside the calculation, gate, pipeline, CLI and input-loader
+contracts.
+
 ## Phase 2.92 SSE daily-deal overview raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
