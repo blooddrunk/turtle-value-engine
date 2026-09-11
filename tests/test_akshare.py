@@ -233,6 +233,12 @@ class FakeAKShare:
             _fixture("a_congestion.json"),
         )
 
+    def stock_ebs_lg(self):
+        return self._return(
+            "stock_ebs_lg",
+            _fixture("a_equity_bond_spread.json"),
+        )
+
     def stock_sse_deal_daily(self, *, date: str):
         return self._return(
             "stock_sse_deal_daily",
@@ -962,8 +968,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "111"
-    assert AKSHARE_MAPPING_VERSION == "112"
+    assert provider.identity.provider_version == "112"
+    assert AKSHARE_MAPPING_VERSION == "113"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -22071,6 +22077,398 @@ def test_market_activity_congestion_cache_replay_does_not_call_upstream(tmp_path
     assert replay.mode is RetrievalMode.CACHE_REPLAY
     assert replay.record == live.record
     assert fake.calls == [("stock_a_congestion_lg", {})]
+
+
+def test_market_activity_ebs_fetch_preserves_equity_bond_spread_history():
+    fake = FakeAKShare()
+    request = _request(
+        DataCategory.MARKET_ACTIVITY,
+        "SH600000",
+        {"view": "equity_bond_spread"},
+    )
+
+    record = _provider(fake).fetch(request)
+    fixture = _fixture("a_equity_bond_spread.json")
+
+    assert record.raw_payload == fixture
+    assert fake.calls == [("stock_ebs_lg", {})]
+    assert record.response_metadata["endpoint"] == "stock_ebs_lg"
+    assert record.response_metadata["market"] == "A"
+    assert record.response_metadata["listing_code"] == "600000"
+    assert record.response_metadata["market_activity_view"] == (
+        "equity_bond_spread"
+    )
+    assert record.response_metadata["market_scope"] == (
+        "CSI 300 index and market-wide equity-bond-spread context"
+    )
+    assert record.response_metadata["listing_scoped_request"] is False
+    assert record.response_metadata["row_filtering"] == "none"
+    assert record.response_metadata["snapshot_scope"] == (
+        "all_historical_equity_bond_spread_history"
+    )
+    assert record.response_metadata["date_binding"] == "row_dates"
+    assert record.response_metadata["observation_date_field"] == "日期"
+    assert record.response_metadata["observation_date_format"] == "YYYY-MM-DD"
+    assert record.response_metadata["observation_date_ordering"] == (
+        "strictly_ascending"
+    )
+    assert record.response_metadata["observation_start_date"] == "2005-04-08"
+    assert record.response_metadata["observation_end_date"] == "2024-04-24"
+    assert record.response_metadata["observation_count_contract"] == (
+        "non_empty_all_historical_history"
+    )
+    assert record.response_metadata["value_fields"] == [
+        "沪深300指数",
+        "股债利差",
+        "股债利差均线",
+    ]
+    assert record.response_metadata["non_negative_fields"] == ["沪深300指数"]
+    assert record.response_metadata["integer_fields"] == []
+    assert record.response_metadata["text_fields"] == []
+    assert record.response_metadata["date_fields"] == ["日期"]
+    assert record.response_metadata["required_date_fields"] == ["日期"]
+    assert record.response_metadata["required_numeric_fields"] == [
+        "沪深300指数",
+        "股债利差",
+        "股债利差均线",
+    ]
+    assert record.response_metadata["field_types"] == {
+        "日期": "date",
+        "沪深300指数": "number",
+        "股债利差": "number",
+        "股债利差均线": "number",
+    }
+    assert record.response_metadata["nullable_fields"] == []
+    assert record.response_metadata["field_count"] == 4
+    assert record.response_metadata["source_field_order"] == list(fixture[0])
+    assert record.response_metadata["documented_units"] == {}
+    assert record.response_metadata["undocumented_numeric_units"] == {
+        "沪深300指数": "not_documented",
+        "股债利差": "not_documented",
+        "股债利差均线": "not_documented",
+    }
+    assert record.response_metadata["upstream_url"] == (
+        "https://legulegu.com/api/stockdata/equity-bond-spread"
+    )
+    assert record.response_metadata["upstream_protocol"] == "JSON"
+    assert record.response_metadata["upstream_report_name"] is None
+    assert record.response_metadata["upstream_parameters"] == ["token", "code"]
+    assert record.response_metadata["upstream_fixed_parameters"] == {
+        "code": "000300.SH"
+    }
+    assert record.response_metadata["upstream_authentication"] == (
+        "token_and_cookie_csrf"
+    )
+    assert record.response_metadata["wrapper_dropped_fields"] == []
+    assert record.response_metadata["upstream_page_size"] is None
+    assert record.response_metadata["pagination"] == "single_snapshot"
+    assert record.response_metadata["upstream_sort_column"] is None
+    assert record.response_metadata["upstream_sort_direction"] is None
+    assert record.response_metadata["upstream_filter"] is None
+    assert record.response_metadata["wrapper_output_ordering"] == (
+        "ascending_by_date"
+    )
+    assert record.response_metadata["upstream_row_count"] == len(fixture)
+    assert record.response_metadata["entity_row_count"] == 0
+    assert record.response_metadata["entity_rows_selected"] is False
+    assert record.source_uri == "https://legulegu.com/stockdata/equity-bond-spread"
+
+
+@pytest.mark.parametrize(
+    ("parameters", "entity_id", "match"),
+    [
+        (
+            {"view": "equity_bond_spread", "date": "20240424"},
+            "SH600000",
+            "unsupported AKShare equity-bond-spread parameter",
+        ),
+        (
+            {"view": "equity_bond_spread"},
+            "HK00700",
+            "A-share listings only",
+        ),
+    ],
+)
+def test_market_activity_ebs_request_validates_explicit_scope_before_upstream_call(
+    parameters: dict,
+    entity_id: str,
+    match: str,
+):
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError, match=match):
+        _provider(fake).fetch(
+            _request(DataCategory.MARKET_ACTIVITY, entity_id, parameters)
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("empty", "must not be empty"),
+        ("missing_field", "row 0 is missing field.*沪深300指数"),
+        ("extra_field", "row 0 contains unsupported field"),
+        ("reordered_fields", "official field order"),
+        ("invalid_date", "row 0 has an invalid 日期"),
+        ("duplicate_date", "duplicate 日期"),
+        ("descending_dates", "strictly ascending"),
+        ("invalid_numeric", "field '股债利差'.*numeric"),
+        ("boolean_numeric", "field '股债利差'.*numeric"),
+        ("negative_index", "field '沪深300指数'.*non-negative"),
+        ("null_numeric", "field '股债利差均线'.*numeric"),
+    ],
+)
+def test_market_activity_ebs_response_validates_schema_boundaries(
+    mutation: str,
+    match: str,
+):
+    payload = [dict(row) for row in _fixture("a_equity_bond_spread.json")]
+    if mutation == "empty":
+        payload = []
+    elif mutation == "missing_field":
+        payload[0].pop("沪深300指数")
+    elif mutation == "extra_field":
+        payload[0]["unexpected"] = "not documented"
+    elif mutation == "reordered_fields":
+        payload[0] = dict(reversed(list(payload[0].items())))
+    elif mutation == "invalid_date":
+        payload[0]["日期"] = "2005-4-8"
+    elif mutation == "duplicate_date":
+        payload[1]["日期"] = payload[0]["日期"]
+    elif mutation == "descending_dates":
+        payload.reverse()
+    elif mutation == "invalid_numeric":
+        payload[0]["股债利差"] = "0.022656"
+    elif mutation == "boolean_numeric":
+        payload[0]["股债利差"] = True
+    elif mutation == "negative_index":
+        payload[0]["沪深300指数"] = -1
+    else:
+        payload[0]["股债利差均线"] = None
+
+    class InvalidEbs(FakeAKShare):
+        def stock_ebs_lg(self):
+            return self._return("stock_ebs_lg", payload)
+
+    with pytest.raises(ProviderResponseError, match=match):
+        _provider(InvalidEbs()).fetch(
+            _request(
+                DataCategory.MARKET_ACTIVITY,
+                "SH600000",
+                {"view": "equity_bond_spread"},
+            )
+        )
+
+
+def test_market_activity_ebs_accepts_signed_spread_values():
+    payload = [dict(row) for row in _fixture("a_equity_bond_spread.json")]
+    payload[0]["股债利差"] = -0.01
+    payload[0]["股债利差均线"] = -0.02
+
+    class SignedEbs(FakeAKShare):
+        def stock_ebs_lg(self):
+            return self._return("stock_ebs_lg", payload)
+
+    record = _provider(SignedEbs()).fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SH600000",
+            {"view": "equity_bond_spread"},
+        )
+    )
+
+    assert record.raw_payload[0]["股债利差"] == -0.01
+    assert record.raw_payload[0]["股债利差均线"] == -0.02
+
+
+def test_market_activity_ebs_is_retained_as_raw_evidence_without_facts():
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SH600000",
+            {"view": "equity_bond_spread"},
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="equity-bond-spread-raw-only",
+        as_of=date(2026, 9, 11),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_EQUITY_BOND_SPREAD_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == []
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "equity-bond-spread" in normalized.data_quality.notes
+    assert "provider-defined spread" in normalized.data_quality.notes
+    assert "canonical" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "endpoint",
+        "source_uri",
+        "market",
+        "listing_code",
+        "view",
+        "market_scope",
+        "listing_scope",
+        "filtering",
+        "snapshot",
+        "date_binding",
+        "observation_date_field",
+        "observation_start_date",
+        "value_fields",
+        "non_negative_fields",
+        "date_fields",
+        "required_date_fields",
+        "field_types",
+        "nullable_fields",
+        "field_count",
+        "source_field_order",
+        "undocumented_units",
+        "upstream_url",
+        "upstream_protocol",
+        "upstream_parameters",
+        "upstream_fixed_parameters",
+        "upstream_authentication",
+        "pagination",
+        "upstream_count",
+        "entity_count",
+        "selected",
+        "payload",
+    ],
+)
+def test_market_activity_ebs_normalizer_rejects_replayed_scope_mismatches(
+    mutation: str,
+):
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SH600000",
+            {"view": "equity_bond_spread"},
+        )
+    )
+    payload = [dict(row) for row in record.raw_payload]
+    response_metadata = dict(record.response_metadata)
+    source_uri = record.source_uri
+    if mutation == "endpoint":
+        response_metadata["endpoint"] = "stock_sse_summary"
+    elif mutation == "source_uri":
+        source_uri = "https://example.invalid/equity-bond-spread"
+    elif mutation == "market":
+        response_metadata["market"] = "H"
+    elif mutation == "listing_code":
+        response_metadata["listing_code"] = "000001"
+    elif mutation == "view":
+        response_metadata["market_activity_view"] = "sse_summary"
+    elif mutation == "market_scope":
+        response_metadata["market_scope"] = "all_a_share_listings"
+    elif mutation == "listing_scope":
+        response_metadata["listing_scoped_request"] = True
+    elif mutation == "filtering":
+        response_metadata["row_filtering"] = "provider"
+    elif mutation == "snapshot":
+        response_metadata["snapshot_scope"] = "current_trading_day"
+    elif mutation == "date_binding":
+        response_metadata["date_binding"] = "request_only"
+    elif mutation == "observation_date_field":
+        response_metadata["observation_date_field"] = "交易日"
+    elif mutation == "observation_start_date":
+        response_metadata["observation_start_date"] = "2005-04-09"
+    elif mutation == "value_fields":
+        response_metadata["value_fields"] = ["沪深300指数"]
+    elif mutation == "non_negative_fields":
+        response_metadata["non_negative_fields"] = ["股债利差"]
+    elif mutation == "date_fields":
+        response_metadata["date_fields"] = []
+    elif mutation == "required_date_fields":
+        response_metadata["required_date_fields"] = []
+    elif mutation == "field_types":
+        response_metadata["field_types"] = {"日期": "string"}
+    elif mutation == "nullable_fields":
+        response_metadata["nullable_fields"] = ["股债利差"]
+    elif mutation == "field_count":
+        response_metadata["field_count"] = 3
+    elif mutation == "source_field_order":
+        response_metadata["source_field_order"] = [
+            "沪深300指数",
+            "日期",
+            "股债利差",
+            "股债利差均线",
+        ]
+    elif mutation == "undocumented_units":
+        response_metadata["undocumented_numeric_units"] = {
+            "沪深300指数": "index_points"
+        }
+    elif mutation == "upstream_url":
+        response_metadata["upstream_url"] = "https://example.invalid/api"
+    elif mutation == "upstream_protocol":
+        response_metadata["upstream_protocol"] = "HTML"
+    elif mutation == "upstream_parameters":
+        response_metadata["upstream_parameters"] = []
+    elif mutation == "upstream_fixed_parameters":
+        response_metadata["upstream_fixed_parameters"] = {"code": "000001.SZ"}
+    elif mutation == "upstream_authentication":
+        response_metadata["upstream_authentication"] = "none"
+    elif mutation == "pagination":
+        response_metadata["pagination"] = "paged"
+    elif mutation == "upstream_count":
+        response_metadata["upstream_row_count"] = len(payload) - 1
+    elif mutation == "entity_count":
+        response_metadata["entity_row_count"] = 1
+    elif mutation == "selected":
+        response_metadata["entity_rows_selected"] = True
+    else:
+        payload[0]["股债利差"] = "not-a-number"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=source_uri,
+        response_metadata=response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-equity-bond-spread",
+            as_of=date(2026, 9, 11),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_market_activity_ebs_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.MARKET_ACTIVITY,
+        "SH600000",
+        {"view": "equity_bond_spread"},
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [("stock_ebs_lg", {})]
 
 
 def test_market_activity_szse_summary_fetch_uses_documented_date_and_preserves_market_snapshot():

@@ -1205,6 +1205,20 @@ congestion and index-close history does not become a canonical market, return,
 governance, valuation or accounting fact. No calculation, gate, pipeline, CLI
 or input-loader contract changes.
 
+Phase 3.11 adds the documented A-share Legu
+`stock_ebs_lg` endpoint under `MARKET_ACTIVITY` with explicit
+`view=equity_bond_spread` and no user-supplied arguments. The [AKShare stock-data
+documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and [official
+implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_ebs_lg.py)
+define a token-backed JSON history with exact `日期`, `沪深300指数`, `股债利差`
+and `股债利差均线` fields in ascending date order. The provider validates the
+non-empty complete history, strict ISO dates, finite numeric values and the
+non-negative index series while preserving signed spread values and
+undocumented units. The normalizer emits
+`AKSHARE_EQUITY_BOND_SPREAD_RAW_ONLY`; this market-wide provider context does
+not become a canonical market, return, valuation, governance or accounting
+fact. No calculation, gate, pipeline, CLI or input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

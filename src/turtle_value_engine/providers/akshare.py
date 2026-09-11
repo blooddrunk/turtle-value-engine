@@ -54,7 +54,8 @@ The SSE and SZSE market-summary raw slices are also available.
 The SSE daily-deal overview raw slice is also available. The SZSE area-summary
 and sector-summary raw slices are also available. The Eastmoney industry-board
 snapshot, Dragon-Tiger institution-daily raw slice, stock-account-statistics
-history and Legu market-activity/congestion snapshots are also available.
+history and Legu market-activity/congestion/equity-bond-spread snapshots are
+also available.
 The A-share Eastmoney top-ten, top-ten-tradable-shareholder and
 top-ten-tradable-shareholder-detail raw slices are also available.
 The A-share Eastmoney institutional-research statistics and detail raw slices
@@ -105,9 +106,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "111"
+AKSHARE_ADAPTER_VERSION = "112"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "112"
+AKSHARE_MAPPING_VERSION = "113"
 
 
 class ListingMarket(StrEnum):
@@ -217,6 +218,7 @@ _SOURCE_URIS = {
     "stock_account_statistics_em": "https://data.eastmoney.com/cjsj/gpkhsj.html",
     "stock_market_activity_legu": "https://legulegu.com/stockdata/market-activity",
     "stock_a_congestion_lg": "https://legulegu.com/stockdata/ashares-congestion",
+    "stock_ebs_lg": "https://legulegu.com/stockdata/equity-bond-spread",
     "stock_zt_pool_em": "https://quote.eastmoney.com/ztb/detail#type=ztgc",
     "stock_zt_pool_dtgc_em": "https://quote.eastmoney.com/ztb/detail#type=dtgc",
     "stock_intraday_em": "https://quote.eastmoney.com/f1.html?newcode=0.000001",
@@ -321,6 +323,7 @@ _NO_ARGUMENT_ENDPOINTS = frozenset(
         "stock_account_statistics_em",
         "stock_market_activity_legu",
         "stock_a_congestion_lg",
+        "stock_ebs_lg",
     }
 )
 
@@ -1205,6 +1208,35 @@ _MARKET_ACTIVITY_CONGESTION_DOCUMENTED_UNITS: dict[str, str] = {}
 _MARKET_ACTIVITY_CONGESTION_UNDOCUMENTED_NUMERIC_UNITS = {
     field: "not_documented"
     for field in _MARKET_ACTIVITY_CONGESTION_NUMERIC_FIELDS
+}
+_MARKET_ACTIVITY_EBS_PARAMETER_NAMES = frozenset({"view"})
+_MARKET_ACTIVITY_EBS_VIEW = "equity_bond_spread"
+_MARKET_ACTIVITY_EBS_FIELDS = (
+    "日期",
+    "沪深300指数",
+    "股债利差",
+    "股债利差均线",
+)
+_MARKET_ACTIVITY_EBS_FIELD_SET = frozenset(_MARKET_ACTIVITY_EBS_FIELDS)
+_MARKET_ACTIVITY_EBS_DATE_FIELDS = ("日期",)
+_MARKET_ACTIVITY_EBS_NUMERIC_FIELDS = (
+    "沪深300指数",
+    "股债利差",
+    "股债利差均线",
+)
+_MARKET_ACTIVITY_EBS_NON_NEGATIVE_FIELDS = frozenset({"沪深300指数"})
+_MARKET_ACTIVITY_EBS_TEXT_FIELDS: tuple[str, ...] = ()
+_MARKET_ACTIVITY_EBS_REQUIRED_DATE_FIELDS = ("日期",)
+_MARKET_ACTIVITY_EBS_REQUIRED_NUMERIC_FIELDS = _MARKET_ACTIVITY_EBS_NUMERIC_FIELDS
+_MARKET_ACTIVITY_EBS_FIELD_TYPES = {
+    "日期": "date",
+    "沪深300指数": "number",
+    "股债利差": "number",
+    "股债利差均线": "number",
+}
+_MARKET_ACTIVITY_EBS_DOCUMENTED_UNITS: dict[str, str] = {}
+_MARKET_ACTIVITY_EBS_UNDOCUMENTED_NUMERIC_UNITS = {
+    field: "not_documented" for field in _MARKET_ACTIVITY_EBS_NUMERIC_FIELDS
 }
 _MARKET_ACTIVITY_SZSE_SUMMARY_PARAMETER_NAMES = frozenset({"view", "date"})
 _MARKET_ACTIVITY_SZSE_SUMMARY_VIEW = "szse_summary"
@@ -3533,6 +3565,19 @@ class AKShareProvider(StructuredDataProvider):
                 )
                 response_metadata["undocumented_numeric_units"] = dict(
                     _MARKET_ACTIVITY_SZSE_SUMMARY_UNDOCUMENTED_UNITS
+                )
+            elif endpoint.name == "stock_ebs_lg":
+                observation_dates = _validate_market_activity_ebs_provider_rows(
+                    rows,
+                    provider=self.identity,
+                    request=request,
+                )
+                response_metadata.update(
+                    _market_activity_ebs_response_metadata(
+                        listing_code=listing.code,
+                        observation_dates=observation_dates,
+                        row_count=len(rows),
+                    )
                 )
             elif endpoint.name == "stock_a_congestion_lg":
                 observation_dates = _validate_market_activity_congestion_provider_rows(
@@ -6348,6 +6393,9 @@ class AKShareProvider(StructuredDataProvider):
             market_activity_congestion_requested=(
                 request.parameters.get("view") == _MARKET_ACTIVITY_CONGESTION_VIEW
             ),
+            market_activity_ebs_requested=(
+                request.parameters.get("view") == _MARKET_ACTIVITY_EBS_VIEW
+            ),
             market_activity_account_statistics_requested=(
                 request.parameters.get("view")
                 == _MARKET_ACTIVITY_ACCOUNT_STATISTICS_VIEW
@@ -6820,6 +6868,13 @@ class AKShareNormalizer:
                         rows,
                     )
                     normalizer_flags.add("AKSHARE_SSE_SUMMARY_RAW_ONLY")
+                elif endpoint_name == "stock_ebs_lg":
+                    _validate_market_activity_ebs_normalizer_scope(
+                        record,
+                        listing,
+                        rows,
+                    )
+                    normalizer_flags.add("AKSHARE_EQUITY_BOND_SPREAD_RAW_ONLY")
                 elif endpoint_name == "stock_a_congestion_lg":
                     _validate_market_activity_congestion_normalizer_scope(
                         record,
@@ -7044,7 +7099,7 @@ class AKShareNormalizer:
                         "stock_szse_sector_summary, stock_szse_area_summary, "
                         "stock_szse_summary, "
                         "stock_sse_summary, stock_sse_deal_daily, "
-                        "stock_a_congestion_lg, stock_market_activity_legu, "
+                        "stock_ebs_lg, stock_a_congestion_lg, stock_market_activity_legu, "
                         "stock_account_statistics_em, "
                         "stock_zh_a_new_em, stock_comment_detail_scrd_desire_em, "
                         "stock_comment_detail_scrd_focus_em, "
@@ -8721,6 +8776,13 @@ class AKShareNormalizer:
                 "context lack listing/entity accounting scope and do not establish a "
                 "canonical market, return, governance, valuation or accounting fact."
             )
+        if "AKSHARE_EQUITY_BOND_SPREAD_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented Legu equity-bond-spread response is retained as raw "
+                "evidence only: its provider-defined spread history and CSI 300 index "
+                "context lack listing/entity accounting scope and do not establish a "
+                "canonical market, return, governance, valuation or accounting fact."
+            )
         if "AKSHARE_SZSE_SUMMARY_RAW_ONLY" in normalizer_flags:
             notes += (
                 " The documented SZSE market-summary response is retained as raw evidence "
@@ -9227,6 +9289,7 @@ def _endpoint_candidates(
     market_activity_institution_statistic_requested: bool = False,
     market_activity_legu_requested: bool = False,
     market_activity_congestion_requested: bool = False,
+    market_activity_ebs_requested: bool = False,
     market_activity_account_statistics_requested: bool = False,
     market_activity_block_trade_requested: bool = False,
     market_activity_institution_daily_requested: bool = False,
@@ -9364,6 +9427,10 @@ def _endpoint_candidates(
         if market_activity_congestion_requested:
             if market is ListingMarket.A:
                 return ("stock_a_congestion_lg",)
+            return ()
+        if market_activity_ebs_requested:
+            if market is ListingMarket.A:
+                return ("stock_ebs_lg",)
             return ()
         if market_activity_account_statistics_requested:
             if market is ListingMarket.A:
@@ -17211,6 +17278,123 @@ def _validate_market_activity_congestion_provider_rows(
     return observation_dates
 
 
+def _market_activity_ebs_date(value: object) -> date | None:
+    """Parse the equity-bond-spread wrapper's strict ISO date field."""
+
+    if not isinstance(value, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _market_activity_ebs_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> tuple[str | None, list[date]]:
+    """Return strict-schema errors and dates for the full spread history."""
+
+    if not rows:
+        return "market-activity equity-bond-spread response must not be empty", []
+
+    observation_dates: list[date] = []
+    previous_date: date | None = None
+    for index, row in enumerate(rows):
+        missing = [field for field in _MARKET_ACTIVITY_EBS_FIELDS if field not in row]
+        unexpected = [
+            field for field in row if field not in _MARKET_ACTIVITY_EBS_FIELD_SET
+        ]
+        if missing:
+            return (
+                f"market-activity equity-bond-spread row {index} is missing field(s): "
+                + ", ".join(missing),
+                [],
+            )
+        if unexpected:
+            return (
+                "market-activity equity-bond-spread row "
+                f"{index} contains unsupported field(s): "
+                + ", ".join(unexpected),
+                [],
+            )
+        if tuple(row) != _MARKET_ACTIVITY_EBS_FIELDS:
+            return (
+                "market-activity equity-bond-spread rows must preserve the official "
+                "field order",
+                [],
+            )
+
+        observation_date = _market_activity_ebs_date(row["日期"])
+        if observation_date is None:
+            return (
+                f"market-activity equity-bond-spread row {index} has an invalid 日期",
+                [],
+            )
+        if previous_date is not None and observation_date <= previous_date:
+            if observation_date == previous_date:
+                return (
+                    "market-activity equity-bond-spread response has duplicate 日期 "
+                    f"{row['日期']!r}",
+                    [],
+                )
+            return (
+                "market-activity equity-bond-spread response 日期 values must be "
+                "strictly ascending",
+                [],
+            )
+        previous_date = observation_date
+        observation_dates.append(observation_date)
+
+        for field in _MARKET_ACTIVITY_EBS_NUMERIC_FIELDS:
+            value = row[field]
+            if isinstance(value, bool) or not isinstance(value, Real):
+                return (
+                    f"market-activity equity-bond-spread row {index} field {field!r} "
+                    "must be numeric",
+                    [],
+                )
+            try:
+                numeric = float(value)
+            except (OverflowError, TypeError, ValueError):
+                return (
+                    f"market-activity equity-bond-spread row {index} field {field!r} "
+                    "must be numeric",
+                    [],
+                )
+            if not math.isfinite(numeric):
+                return (
+                    f"market-activity equity-bond-spread row {index} field {field!r} "
+                    "must be finite",
+                    [],
+                )
+            if field in _MARKET_ACTIVITY_EBS_NON_NEGATIVE_FIELDS and numeric < 0:
+                return (
+                    f"market-activity equity-bond-spread row {index} field {field!r} "
+                    "must be non-negative",
+                    [],
+                )
+
+    return None, observation_dates
+
+
+def _validate_market_activity_ebs_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> list[date]:
+    """Validate the complete Legu equity-bond-spread history."""
+
+    message, observation_dates = _market_activity_ebs_validation_message(rows)
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message}",
+            provider=provider,
+            request=request,
+        )
+    return observation_dates
+
+
 def _market_activity_sse_deal_daily_validation_message(
     rows: Sequence[Mapping[str, JSONValue]],
 ) -> str | None:
@@ -21754,6 +21938,133 @@ def _validate_market_activity_congestion_normalizer_scope(
             raise ProviderNormalizationError(
                 f"AKShare congestion response metadata {name!r} does not match "
                 "the requested replay scope"
+            )
+
+
+def _market_activity_ebs_response_metadata(
+    *,
+    listing_code: str,
+    observation_dates: Sequence[date],
+    row_count: int,
+) -> dict[str, JSONValue]:
+    """Build the replay contract for the full equity-bond-spread history."""
+
+    if not observation_dates:
+        raise ValueError("equity-bond-spread response must contain observation dates")
+    return {
+        "endpoint": "stock_ebs_lg",
+        "market": ListingMarket.A.value,
+        "listing_code": listing_code,
+        "market_activity_view": _MARKET_ACTIVITY_EBS_VIEW,
+        "market_scope": "CSI 300 index and market-wide equity-bond-spread context",
+        "listing_scoped_request": False,
+        "row_filtering": "none",
+        "snapshot_scope": "all_historical_equity_bond_spread_history",
+        "date_binding": "row_dates",
+        "observation_date_field": "日期",
+        "observation_date_format": "YYYY-MM-DD",
+        "observation_date_ordering": "strictly_ascending",
+        "observation_start_date": min(observation_dates).isoformat(),
+        "observation_end_date": max(observation_dates).isoformat(),
+        "observation_count_contract": "non_empty_all_historical_history",
+        "value_fields": list(_MARKET_ACTIVITY_EBS_NUMERIC_FIELDS),
+        "non_negative_fields": [
+            field
+            for field in _MARKET_ACTIVITY_EBS_FIELDS
+            if field in _MARKET_ACTIVITY_EBS_NON_NEGATIVE_FIELDS
+        ],
+        "integer_fields": [],
+        "text_fields": list(_MARKET_ACTIVITY_EBS_TEXT_FIELDS),
+        "date_fields": list(_MARKET_ACTIVITY_EBS_DATE_FIELDS),
+        "required_date_fields": list(_MARKET_ACTIVITY_EBS_REQUIRED_DATE_FIELDS),
+        "required_numeric_fields": list(_MARKET_ACTIVITY_EBS_REQUIRED_NUMERIC_FIELDS),
+        "field_types": dict(_MARKET_ACTIVITY_EBS_FIELD_TYPES),
+        "nullable_fields": [],
+        "field_count": len(_MARKET_ACTIVITY_EBS_FIELDS),
+        "source_field_order": list(_MARKET_ACTIVITY_EBS_FIELDS),
+        "documented_units": dict(_MARKET_ACTIVITY_EBS_DOCUMENTED_UNITS),
+        "undocumented_numeric_units": dict(
+            _MARKET_ACTIVITY_EBS_UNDOCUMENTED_NUMERIC_UNITS
+        ),
+        "upstream_url": "https://legulegu.com/api/stockdata/equity-bond-spread",
+        "upstream_protocol": "JSON",
+        "upstream_report_name": None,
+        "upstream_parameters": ["token", "code"],
+        "upstream_fixed_parameters": {"code": "000300.SH"},
+        "upstream_authentication": "token_and_cookie_csrf",
+        "wrapper_dropped_fields": [],
+        "upstream_page_size": None,
+        "pagination": "single_snapshot",
+        "upstream_sort_column": None,
+        "upstream_sort_direction": None,
+        "upstream_filter": None,
+        "wrapper_output_ordering": "ascending_by_date",
+        "entity_rows_selected": False,
+        "upstream_row_count": row_count,
+        "entity_row_count": 0,
+    }
+
+
+def _validate_market_activity_ebs_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> None:
+    """Validate replay scope and metadata for the equity-bond-spread history."""
+
+    if listing.market is not ListingMarket.A:
+        raise ProviderNormalizationError(
+            "AKShare equity-bond-spread raw slice supports A-share listings only"
+        )
+    endpoint_name = "stock_ebs_lg"
+    if record.response_metadata.get("endpoint") != endpoint_name:
+        raise ProviderNormalizationError(
+            "AKShare equity-bond-spread record must come from stock_ebs_lg"
+        )
+    if record.source_uri != _SOURCE_URIS[endpoint_name]:
+        raise ProviderNormalizationError(
+            "AKShare equity-bond-spread source URI does not match the documented "
+            "endpoint"
+        )
+    try:
+        upstream_kwargs = _market_activity_ebs_kwargs(
+            endpoint_name,
+            listing,
+            record.request,
+        )
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+    if upstream_kwargs:
+        raise ProviderNormalizationError(
+            "AKShare equity-bond-spread endpoint must receive no user arguments"
+        )
+
+    message, observation_dates = _market_activity_ebs_validation_message(rows)
+    if message is not None:
+        raise ProviderNormalizationError(message)
+    expected_metadata = _market_activity_ebs_response_metadata(
+        listing_code=listing.code,
+        observation_dates=observation_dates,
+        row_count=len(rows),
+    )
+    boolean_fields = {"listing_scoped_request", "entity_rows_selected"}
+    count_fields = {"field_count", "upstream_row_count", "entity_row_count"}
+    for name, expected in expected_metadata.items():
+        actual = record.response_metadata.get(name)
+        if name in boolean_fields:
+            matches = isinstance(actual, bool) and actual is expected
+        elif name in count_fields:
+            matches = (
+                isinstance(actual, int)
+                and not isinstance(actual, bool)
+                and actual == expected
+            )
+        else:
+            matches = actual == expected
+        if not matches:
+            raise ProviderNormalizationError(
+                f"AKShare equity-bond-spread response metadata {name!r} does "
+                "not match the requested replay scope"
             )
 
 
@@ -27897,6 +28208,8 @@ def _market_activity_kwargs(
 ) -> dict[str, object]:
     """Build one documented market-activity request."""
 
+    if endpoint_name == "stock_ebs_lg":
+        return _market_activity_ebs_kwargs(endpoint_name, listing, request)
     if endpoint_name == "stock_a_congestion_lg":
         return _market_activity_congestion_kwargs(endpoint_name, listing, request)
     if endpoint_name == "stock_market_activity_legu":
@@ -27988,6 +28301,43 @@ def _market_activity_kwargs(
         "start_date": request.parameters["start_date"],
         "end_date": request.parameters["end_date"],
     }
+
+
+def _market_activity_ebs_kwargs(
+    endpoint_name: str,
+    listing: _ListingRef,
+    request: ProviderRequest,
+) -> dict[str, object]:
+    """Build the documented no-argument A-share equity-bond-spread request."""
+
+    if endpoint_name != "stock_ebs_lg":
+        raise ProviderRequestError(
+            f"unsupported AKShare equity-bond-spread endpoint {endpoint_name!r}",
+            request=request,
+            retryable=False,
+        )
+    if listing.market is not ListingMarket.A:
+        raise ProviderRequestError(
+            "the AKShare equity-bond-spread endpoint supports A-share listings only",
+            request=request,
+            retryable=False,
+        )
+    unknown = sorted(set(request.parameters) - _MARKET_ACTIVITY_EBS_PARAMETER_NAMES)
+    if unknown:
+        raise ProviderRequestError(
+            "unsupported AKShare equity-bond-spread parameter(s): "
+            + ", ".join(unknown),
+            request=request,
+            retryable=False,
+        )
+    if request.parameters.get("view") != _MARKET_ACTIVITY_EBS_VIEW:
+        raise ProviderRequestError(
+            "AKShare equity-bond-spread endpoint requires "
+            f"view={_MARKET_ACTIVITY_EBS_VIEW!r}",
+            request=request,
+            retryable=False,
+        )
+    return {}
 
 
 def _market_activity_congestion_kwargs(

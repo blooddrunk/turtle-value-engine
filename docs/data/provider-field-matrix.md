@@ -1487,6 +1487,29 @@ negative numeric values. The normalizer emits
 governance, valuation or accounting fact. The response remains outside the
 calculation, gate, pipeline, CLI and input-loader contracts.
 
+## Phase 3.11 A-share Legu equity-bond-spread raw history
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_ebs_lg.py)
+document `stock_ebs_lg()` as a no-argument token-backed JSON history with all
+available observations. The adapter exposes it only under `MARKET_ACTIVITY`
+with explicit `view=equity_bond_spread` and an A-share provenance listing. The
+wrapper returns four exact fields in ascending date order.
+
+| Raw upstream item | Phase 3.11 treatment |
+| --- | --- |
+| `日期` | Required strict `YYYY-MM-DD` observation date in the provider's all-history response; it is not an accounting, filing or listing period. |
+| `沪深300指数` | Required finite non-negative CSI 300 index-close context; no unit is documented and it is not promoted to a listing quote, return or valuation input. |
+| `股债利差`, `股债利差均线` | Required finite signed provider-defined spread and moving-average values; no unit or canonical equity/bond interpretation is inferred. |
+| request `view=equity_bond_spread` | Explicit A-share-only, no-user-parameter routing with fixed upstream `code=000300.SH`; token/cookie-CSRF transport, source/API URIs, exact field order, no filtering and complete market-wide row counts remain part of cache replay. |
+
+The provider rejects empty responses, missing/unexpected/reordered fields,
+invalid or non-ascending dates, null/non-numeric/boolean/non-finite values and
+negative CSI 300 index values. The normalizer emits
+`AKSHARE_EQUITY_BOND_SPREAD_RAW_ONLY` and creates no canonical market, return,
+valuation, governance or accounting fact. The response remains outside the
+calculation, gate, pipeline, CLI and input-loader contracts.
+
 ## Phase 2.92 SSE daily-deal overview raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
