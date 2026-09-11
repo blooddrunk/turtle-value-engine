@@ -1,6 +1,6 @@
 # Provider and Cache Architecture
 
-> Status: Phase 2 foundation and Phase 3.03 structured acquisition, read-only AKShare statement slices, earnings forecasts/quick reports/performance reports/business composition/financial abstract/financial indicators, H-share latest indicators, A-share disclosure-notice metadata including the Eastmoney individual-notice, market-wide notice and shareholder-meeting views, risk-warning status, trading-suspension, restricted-share-release, goodwill-impairment detail/goodwill-detail/impairment-forecast/market-profile, ESG-rating, SSE/SZSE/BSE margin-detail, share-capital, individual-info snapshot, corporate-action including IPO-summary and Eastmoney IPO-yield, external-guarantee, company-litigation, ownership-pledge snapshot/detail/market-profile/important-shareholder-detail, main-shareholder, shareholder-count/shareholder-count-detail, A-share actual-controller holding-change, A/H HSGT individual-holdings, SSE/SZSE/BSE insider-share-change, A-share Eastmoney/CNINFO management-holding and executive/shareholder-change, A-share top-ten/top-ten-tradable-shareholder/top-ten-tradable-shareholder-detail, Dragon-Tiger market-activity detail/statistics/institution-statistics/institution-daily/institutional-research/institutional-research-detail/market-participation-desire/market-focus/institution-participation/block-trade-detail/hot-rank/latest-hot-rank/A-share historical-hot-rank/limit-up-pool/limit-down-pool/H-share latest-hot-rank/H-share historical-hot-rank/new-stock-board, A+B/A+H quote-comparison, A-share Eastmoney/Sina intraday-trade, Tencent daily-history/latest-trading-day tick, Sina minute-history, A-share/H-share intraday-history, pre-market-history and five-level bid-ask raw slices, SSE/SZSE market-summary, SZSE area-summary/sector-summary and Eastmoney industry-board raw slices
+> Status: Phase 2 foundation and Phase 3.04 structured acquisition, read-only AKShare statement slices, earnings forecasts/quick reports/performance reports/business composition/financial abstract/financial indicators, H-share latest indicators, A-share disclosure-notice metadata including the Eastmoney individual-notice, market-wide notice and shareholder-meeting views, risk-warning status, trading-suspension, restricted-share-release, goodwill-impairment detail/goodwill-detail/impairment-forecast/market-profile, ESG-rating, SSE/SZSE/BSE margin-detail, share-capital, individual-info snapshot, corporate-action including IPO-summary and Eastmoney IPO-yield, external-guarantee, company-litigation, ownership-pledge snapshot/detail/company-distribution/market-profile/important-shareholder-detail, main-shareholder, shareholder-count/shareholder-count-detail, A-share actual-controller holding-change, A/H HSGT individual-holdings, SSE/SZSE/BSE insider-share-change, A-share Eastmoney/CNINFO management-holding and executive/shareholder-change, A-share top-ten/top-ten-tradable-shareholder/top-ten-tradable-shareholder-detail, Dragon-Tiger market-activity detail/statistics/institution-statistics/institution-daily/institutional-research/institutional-research-detail/market-participation-desire/market-focus/institution-participation/block-trade-detail/hot-rank/latest-hot-rank/A-share historical-hot-rank/limit-up-pool/limit-down-pool/H-share latest-hot-rank/H-share historical-hot-rank/new-stock-board, A+B/A+H quote-comparison, A-share Eastmoney/Sina intraday-trade, Tencent daily-history/latest-trading-day tick, Sina minute-history, A-share/H-share intraday-history, pre-market-history and five-level bid-ask raw slices, SSE/SZSE market-summary, SZSE area-summary/sector-summary and Eastmoney industry-board raw slices
 
 This document freezes the boundary between structured-data acquisition and the
 deterministic Turtle Value Engine. It does not authorize a live provider or
@@ -23,7 +23,7 @@ There is one analysis model: `NormalizedCompanyInput` on the input side and
 the existing `CompanyAnalysis` on the output side. A provider must not create
 a parallel analysis object, calculate an investment metric, or decide a gate.
 
-Phase 2 and the numbered Phase 3.03 increment add structured acquisition and
+Phase 2 and the numbered Phase 3.04 increment add structured acquisition and
 replay infrastructure only. The top-level Phase 3 filing/evidence work remains
 the boundary for official filing retrieval and filing-derived evidence.
 
@@ -756,7 +756,7 @@ The cache performs no network retries. The normalizer performs no provider
 retries. The deterministic pipeline performs no provider retries and should
 not be rerun as a substitute for resolving missing facts.
 
-## 12. Phase 2.2–3.03 AKShare adapter
+## 12. Phase 2.2–3.04 AKShare adapter
 
 The first concrete adapter is intentionally limited to read-only metadata,
 market observations, three documented financial-statement slices, raw-only
@@ -766,7 +766,7 @@ raw slices, raw-only dividend event/snapshot/detail including the A-share
 Eastmoney distribution-detail view, corporate-action including the A-share
 CNINFO IPO-summary and Eastmoney IPO-yield views,
 external-guarantee and company-litigation categories,
-four A-share share-capital raw slices, five A-share ownership-pledge raw views,
+four A-share share-capital raw slices, six A-share ownership-pledge raw views,
 an H-share latest-indicator raw slice, an A-share disclosure-notice raw slice
 including the Eastmoney individual-notice, market-wide notice and
 shareholder-meeting views,
@@ -819,7 +819,7 @@ advertises exactly these capabilities:
 | `DISCLOSURE_NOTICES` | `stock_zh_a_disclosure_report_cninfo` (`market=沪深京`, optional filters/date range); `stock_individual_notice_report` (`view=individual_notice`, optional category/date range); `stock_notice_report` (`view=market_notice`, category/date-bound A-share universe); `stock_gddh_em` (`view=shareholder_meeting`, no upstream arguments, full universe filtered to requested A-share) | — | listing-bound CNINFO/Eastmoney announcement metadata or shareholder-meeting rows as raw structured evidence only; no filing-content, accounting, governance or corporate-action fact |
 | `CORPORATE_ACTIONS` | `stock_repurchase_em` (no parameters); `stock_allotment_cninfo` (date-range request); `stock_ipo_summary_cninfo` (`view=ipo_summary`, symbol-scoped); `stock_dxsyl_em` (`view=ipo_yield`, no upstream arguments, full universe filtered to requested A-share) | — | A-share repurchase, rights-issue, IPO-summary or IPO-yield rows; raw structured evidence only; no canonical buyback, issuance, dilution, price, return or listing-date fact |
 | `SHARE_CAPITAL` | `stock_zh_a_gbjg_em` (no parameters); `stock_share_change_cninfo` (explicit date range); `stock_restricted_release_queue_em` (`view=restricted_release_queue`); `stock_individual_info_em` (`view=individual_info`) | — | raw historical response or current item/value snapshot and provenance only; no canonical share/dilution fact |
-| `OWNERSHIP_PLEDGE` | `stock_gpzy_profile_em` (`view=market_profile`, market-wide historical A-share profile, no upstream arguments); `stock_gpzy_pledge_ratio_detail_em` (`view=market_pledge_detail`, market-wide important-shareholder detail, no upstream arguments); `stock_gpzy_pledge_ratio_em` (exact `date`); `stock_gpzy_individual_pledge_ratio_detail_em` (`view=individual_pledge_detail`); `stock_cg_equity_mortgage_cninfo` (`view=equity_mortgage`, `date`) | — | market-wide historical profile, market-wide important-shareholder detail, date-bound snapshot, symbol-scoped detail or CNINFO pledge-event rows as raw structured evidence only; no canonical governance, share, cash or debt-equivalent fact |
+| `OWNERSHIP_PLEDGE` | `stock_gpzy_distribute_statistics_company_em` (`view=company_distribution`, market-wide pledge-institution distribution, no upstream arguments); `stock_gpzy_profile_em` (`view=market_profile`, market-wide historical A-share profile, no upstream arguments); `stock_gpzy_pledge_ratio_detail_em` (`view=market_pledge_detail`, market-wide important-shareholder detail, no upstream arguments); `stock_gpzy_pledge_ratio_em` (exact `date`); `stock_gpzy_individual_pledge_ratio_detail_em` (`view=individual_pledge_detail`); `stock_cg_equity_mortgage_cninfo` (`view=equity_mortgage`, `date`) | — | market-wide pledge-institution distribution, historical profile, important-shareholder detail, date-bound snapshot, symbol-scoped detail or CNINFO pledge-event rows as raw structured evidence only; no canonical governance, share, cash or debt-equivalent fact |
 | `INSIDER_SHARE_CHANGES` | `stock_share_hold_change_sse` (Shanghai); `stock_share_hold_change_szse` (Shenzhen); `stock_share_hold_change_bse` (Beijing); `stock_hold_management_detail_em` (`view=management_detail`, no upstream arguments, full universe filtered to requested A-share); `stock_hold_management_person_em` (`view=management_person`, symbol-and-person scoped); `stock_ggcg_em` (`view=executive_share_changes`, explicit direction, full universe filtered to requested A-share) | — | listing-scoped exchange rows or management/management-person/executive/shareholder holding-change rows as raw structured evidence only; no canonical share, dilution, governance, buyback or issuance fact |
 | `SHAREHOLDER_HOLDINGS` | `stock_main_stock_holder` (`stock`); `stock_hold_num_cninfo` (exact quarter-end `date`); `stock_zh_a_gdhs_detail_em` (`view=holder_count_detail`); `stock_hold_control_cninfo` (`view=control_changes`, optional `control_type`); `stock_gdfx_top_10_em` (`view=top_10`, exact quarter-end `date`); `stock_gdfx_free_top_10_em` (`view=free_top_10`, exact quarter-end `date`); `stock_gdfx_free_holding_detail_em` (`view=free_holding_detail`, exact quarter-end `date`); `stock_hsgt_individual_em` (`view=hsgt_individual`) | `stock_hsgt_individual_em` (`view=hsgt_individual`) | A-share main-shareholder/shareholder-count/shareholder-count-detail/actual-controller/top-ten/top-ten-tradable/top-ten-tradable-detail holding-change or A/H HSGT investor-holding rows as raw structured evidence only; no canonical ownership, concentration, share, dilution or governance fact |
 
@@ -1820,6 +1820,36 @@ cash, debt-equivalent or governance fact. Holder, counterparty, quantity,
 ratio, price, status and event-date context remain raw evidence pending the
 filing/evidence workflow.
 
+For the A-share Eastmoney pledge-institution company-distribution slice, the
+current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_gpzy_em.py)
+define `stock_gpzy_distribute_statistics_company_em` as a no-argument,
+market-wide response backed by `RPT_GDZY_ZYJG_SUM`. The implementation filters
+the report to securities with `(PFORG_TYPE="证券")`, requests one 500-row page
+ordered by descending `ORG_NUM`, generates one-based `序号` values and returns
+the exact eight-field source order `序号`, `质押机构`, `质押公司数量`, `质押笔数`,
+`质押数量`, `未达预警线比例`, `达到预警线未达平仓线比例`, `达到平仓线比例`.
+
+The provider exposes this endpoint only with `OWNERSHIP_PLEDGE` plus explicit
+`view=company_distribution`. It validates the complete response before
+retention: source field order and types, non-nullability, one-based sequence,
+unique non-empty institution identity, non-increasing company-count order,
+finite non-negative numeric values and documented 0–100 percentage bounds. The
+documented `质押数量` unit is shares and the three risk-state values are
+percent; the official implementation does not rescale those values, so the
+adapter preserves their returned numeric scale and records that choice. This
+endpoint has no date parameter or row date, so `date_binding=retrieval_only`
+and `date_boundary=not_applicable` are explicit replay metadata. The requested
+listing code remains provenance only: the full institution response is kept,
+with no listing filtering and zero selected entity rows.
+
+The normalizer emits
+`AKSHARE_OWNERSHIP_PLEDGE_COMPANY_DISTRIBUTION_RAW_ONLY`, leaves
+`governance_risk_level` critically missing and creates no canonical share,
+cash, debt-equivalent or governance fact. Institution ranking, pledge counts,
+shares, risk-state percentages and report context remain raw evidence pending
+the filing/evidence workflow.
+
 For the A-share top-ten-shareholder slice, the current [AKShare stock-data
 documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and [official
 implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_gdfx_em.py)
@@ -1959,7 +1989,7 @@ calculations.
 
 ## 13. Deliberate non-goals
 
-This foundation plus the Phase 2.2–3.03 structured slices does not include:
+This foundation plus the Phase 2.2–3.04 structured slices does not include:
 
 - Tushare, BaoStock or any other additional provider;
 - automatic network scheduling, credentials or retry orchestration outside an adapter;

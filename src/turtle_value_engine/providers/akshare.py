@@ -22,7 +22,8 @@ goodwill-detail,
 impairment-forecast and market-profile raw slices,
 the SSE/SZSE/BSE margin-detail raw slices, the A-share individual ownership-pledge
 detail view, the A-share CNINFO equity-mortgage view, the A-share Eastmoney
-ownership-pledge market-profile and important-shareholder pledge-detail views,
+ownership-pledge company-distribution, market-profile and important-shareholder
+pledge-detail views,
 A-share company-litigation raw slice and A-share Eastmoney individual-info raw
 slice.
 The A-share Eastmoney and CNINFO management-holding raw slices and the
@@ -101,9 +102,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "104"
+AKSHARE_ADAPTER_VERSION = "105"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "105"
+AKSHARE_MAPPING_VERSION = "106"
 
 
 class ListingMarket(StrEnum):
@@ -254,6 +255,7 @@ _SOURCE_URIS = {
     "stock_gpzy_individual_pledge_ratio_detail_em": "https://data.eastmoney.com/gpzy/detail/{symbol}.html",
     "stock_gpzy_profile_em": "https://data.eastmoney.com/gpzy/marketProfile.aspx",
     "stock_gpzy_pledge_ratio_detail_em": "https://data.eastmoney.com/gpzy/pledgeDetail.aspx",
+    "stock_gpzy_distribute_statistics_company_em": "https://data.eastmoney.com/gpzy/distributeStatistics.aspx",
     "stock_cg_equity_mortgage_cninfo": "https://webapi.cninfo.com.cn/#/thematicStatistics",
     "stock_cg_guarantee_cninfo": "https://webapi.cninfo.com.cn/#/thematicStatistics",
     "stock_cg_lawsuit_cninfo": "https://webapi.cninfo.com.cn/#/thematicStatistics",
@@ -299,6 +301,7 @@ _NO_ARGUMENT_ENDPOINTS = frozenset(
         "stock_zh_a_st_em",
         "stock_repurchase_em",
         "stock_dxsyl_em",
+        "stock_gpzy_distribute_statistics_company_em",
         "stock_esg_rate_sina",
         "stock_hold_management_detail_em",
         "stock_gddh_em",
@@ -1833,6 +1836,8 @@ _LITIGATION_PARAMETER_NAMES = frozenset({"start_date", "end_date"})
 _LITIGATION_DEFAULT_START_DATE = "20180630"
 _LITIGATION_DEFAULT_END_DATE = "20210927"
 _OWNERSHIP_PLEDGE_PARAMETER_NAMES = frozenset({"date"})
+_OWNERSHIP_PLEDGE_COMPANY_DISTRIBUTION_PARAMETER_NAMES = frozenset({"view"})
+_OWNERSHIP_PLEDGE_COMPANY_DISTRIBUTION_VIEW = "company_distribution"
 _OWNERSHIP_PLEDGE_MARKET_PROFILE_PARAMETER_NAMES = frozenset({"view"})
 _OWNERSHIP_PLEDGE_MARKET_PROFILE_VIEW = "market_profile"
 _OWNERSHIP_PLEDGE_MARKET_DETAIL_PARAMETER_NAMES = frozenset({"view"})
@@ -1903,6 +1908,64 @@ _OWNERSHIP_PLEDGE_MARKET_PROFILE_NONNEGATIVE_FIELDS = frozenset(
         "沪深300指数",
     }
 )
+_OWNERSHIP_PLEDGE_COMPANY_DISTRIBUTION_FIELDS = (
+    "序号",
+    "质押机构",
+    "质押公司数量",
+    "质押笔数",
+    "质押数量",
+    "未达预警线比例",
+    "达到预警线未达平仓线比例",
+    "达到平仓线比例",
+)
+_OWNERSHIP_PLEDGE_COMPANY_DISTRIBUTION_FIELD_SET = frozenset(
+    _OWNERSHIP_PLEDGE_COMPANY_DISTRIBUTION_FIELDS
+)
+_OWNERSHIP_PLEDGE_COMPANY_DISTRIBUTION_IDENTITY_FIELDS = ("质押机构",)
+_OWNERSHIP_PLEDGE_COMPANY_DISTRIBUTION_NULLABLE_IDENTITY_FIELDS: tuple[str, ...] = ()
+_OWNERSHIP_PLEDGE_COMPANY_DISTRIBUTION_TEXT_FIELDS = ("质押机构",)
+_OWNERSHIP_PLEDGE_COMPANY_DISTRIBUTION_REQUIRED_TEXT_FIELDS = ("质押机构",)
+_OWNERSHIP_PLEDGE_COMPANY_DISTRIBUTION_NUMERIC_FIELDS = (
+    "质押公司数量",
+    "质押笔数",
+    "质押数量",
+    "未达预警线比例",
+    "达到预警线未达平仓线比例",
+    "达到平仓线比例",
+)
+_OWNERSHIP_PLEDGE_COMPANY_DISTRIBUTION_INTEGER_FIELDS = frozenset(
+    {"序号", "质押公司数量", "质押笔数"}
+)
+_OWNERSHIP_PLEDGE_COMPANY_DISTRIBUTION_NONNEGATIVE_FIELDS = frozenset(
+    {"序号", *_OWNERSHIP_PLEDGE_COMPANY_DISTRIBUTION_NUMERIC_FIELDS}
+)
+_OWNERSHIP_PLEDGE_COMPANY_DISTRIBUTION_PERCENT_FIELDS = frozenset(
+    {
+        "未达预警线比例",
+        "达到预警线未达平仓线比例",
+        "达到平仓线比例",
+    }
+)
+_OWNERSHIP_PLEDGE_COMPANY_DISTRIBUTION_FIELD_TYPES = {
+    "序号": "integer",
+    "质押机构": "string",
+    "质押公司数量": "integer",
+    "质押笔数": "integer",
+    "质押数量": "number",
+    "未达预警线比例": "number",
+    "达到预警线未达平仓线比例": "number",
+    "达到平仓线比例": "number",
+}
+_OWNERSHIP_PLEDGE_COMPANY_DISTRIBUTION_DOCUMENTED_UNITS = {
+    "质押数量": "shares",
+    "未达预警线比例": "percent",
+    "达到预警线未达平仓线比例": "percent",
+    "达到平仓线比例": "percent",
+}
+_OWNERSHIP_PLEDGE_COMPANY_DISTRIBUTION_UNDOCUMENTED_NUMERIC_UNITS = {
+    "质押公司数量": "not_documented",
+    "质押笔数": "not_documented",
+}
 _OWNERSHIP_PLEDGE_MARKET_DETAIL_FIELDS = (
     "序号",
     "股票代码",
@@ -4732,7 +4795,92 @@ class AKShareProvider(StructuredDataProvider):
             response_metadata["end_date"] = kwargs["end_date"]
         elif request.category is DataCategory.OWNERSHIP_PLEDGE:
             rows = _table_rows(payload, provider=self.identity, request=request)
-            if endpoint.name == "stock_gpzy_profile_em":
+            if endpoint.name == "stock_gpzy_distribute_statistics_company_em":
+                institution_order = (
+                    _validate_ownership_pledge_company_distribution_provider_rows(
+                        rows,
+                        provider=self.identity,
+                        request=request,
+                    )
+                )
+                response_metadata["upstream_row_count"] = len(rows)
+                response_metadata["entity_row_count"] = 0
+                response_metadata["entity_rows_selected"] = False
+                response_metadata["listing_scoped_request"] = False
+                response_metadata["row_filtering"] = "none"
+                response_metadata["ownership_pledge_view"] = (
+                    _OWNERSHIP_PLEDGE_COMPANY_DISTRIBUTION_VIEW
+                )
+                response_metadata["market_scope"] = "all_a_share_listings"
+                response_metadata["snapshot_scope"] = (
+                    "current_published_pledge_company_distribution"
+                )
+                response_metadata["date_binding"] = "retrieval_only"
+                response_metadata["date_fields"] = []
+                response_metadata["date_boundary"] = "not_applicable"
+                response_metadata["sequence_field"] = "序号"
+                response_metadata["sequence_ordering"] = "strictly_ascending"
+                response_metadata["company_count_field"] = "质押公司数量"
+                response_metadata["company_count_ordering"] = "non_increasing"
+                response_metadata["institution_field"] = "质押机构"
+                response_metadata["institution_ordering"] = (
+                    "source_order_sorted_by_company_count"
+                )
+                response_metadata["institution_order"] = institution_order
+                response_metadata["identity_fields"] = ["质押机构"]
+                response_metadata["nullable_identity_fields"] = []
+                response_metadata["value_fields"] = list(
+                    _OWNERSHIP_PLEDGE_COMPANY_DISTRIBUTION_NUMERIC_FIELDS
+                )
+                response_metadata["non_negative_fields"] = sorted(
+                    _OWNERSHIP_PLEDGE_COMPANY_DISTRIBUTION_NONNEGATIVE_FIELDS
+                    - {"序号"}
+                )
+                response_metadata["percent_fields"] = sorted(
+                    _OWNERSHIP_PLEDGE_COMPANY_DISTRIBUTION_PERCENT_FIELDS
+                )
+                response_metadata["percent_bounds"] = [0, 100]
+                response_metadata["percent_semantics"] = (
+                    "provider_reported_percent_value"
+                )
+                response_metadata["percent_source_scale"] = "unchanged"
+                response_metadata["integer_fields"] = [
+                    field
+                    for field in _OWNERSHIP_PLEDGE_COMPANY_DISTRIBUTION_FIELDS
+                    if field in _OWNERSHIP_PLEDGE_COMPANY_DISTRIBUTION_INTEGER_FIELDS
+                ]
+                response_metadata["text_fields"] = list(
+                    _OWNERSHIP_PLEDGE_COMPANY_DISTRIBUTION_TEXT_FIELDS
+                )
+                response_metadata["required_text_fields"] = list(
+                    _OWNERSHIP_PLEDGE_COMPANY_DISTRIBUTION_REQUIRED_TEXT_FIELDS
+                )
+                response_metadata["required_numeric_fields"] = list(
+                    _OWNERSHIP_PLEDGE_COMPANY_DISTRIBUTION_NUMERIC_FIELDS
+                )
+                response_metadata["field_types"] = dict(
+                    _OWNERSHIP_PLEDGE_COMPANY_DISTRIBUTION_FIELD_TYPES
+                )
+                response_metadata["nullable_fields"] = []
+                response_metadata["field_count"] = len(
+                    _OWNERSHIP_PLEDGE_COMPANY_DISTRIBUTION_FIELDS
+                )
+                response_metadata["source_field_order"] = list(
+                    _OWNERSHIP_PLEDGE_COMPANY_DISTRIBUTION_FIELDS
+                )
+                response_metadata["documented_units"] = dict(
+                    _OWNERSHIP_PLEDGE_COMPANY_DISTRIBUTION_DOCUMENTED_UNITS
+                )
+                response_metadata["undocumented_numeric_units"] = dict(
+                    _OWNERSHIP_PLEDGE_COMPANY_DISTRIBUTION_UNDOCUMENTED_NUMERIC_UNITS
+                )
+                response_metadata["upstream_report_name"] = "RPT_GDZY_ZYJG_SUM"
+                response_metadata["upstream_page_size"] = 500
+                response_metadata["pagination"] = "single_page"
+                response_metadata["upstream_sort_column"] = "ORG_NUM"
+                response_metadata["upstream_sort_direction"] = "descending"
+                response_metadata["upstream_filter"] = '(PFORG_TYPE="证券")'
+            elif endpoint.name == "stock_gpzy_profile_em":
                 observation_dates = _validate_ownership_pledge_market_profile_provider_rows(
                     rows,
                     provider=self.identity,
@@ -5679,6 +5827,10 @@ class AKShareProvider(StructuredDataProvider):
             ),
             goodwill_impairment_detail_requested=(
                 request.parameters.get("view") == _GOODWILL_IMPAIRMENT_DETAIL_VIEW
+            ),
+            ownership_pledge_company_distribution_requested=(
+                request.parameters.get("view")
+                == _OWNERSHIP_PLEDGE_COMPANY_DISTRIBUTION_VIEW
             ),
             ownership_pledge_market_profile_requested=(
                 request.parameters.get("view")
@@ -7288,7 +7440,25 @@ class AKShareNormalizer:
                         "AKShare ownership-pledge market-detail record must come "
                         "from stock_gpzy_pledge_ratio_detail_em"
                     )
-                if endpoint_name == "stock_gpzy_profile_em":
+                if (
+                    record.request.parameters.get("view")
+                    == _OWNERSHIP_PLEDGE_COMPANY_DISTRIBUTION_VIEW
+                    and endpoint_name != "stock_gpzy_distribute_statistics_company_em"
+                ):
+                    raise ProviderNormalizationError(
+                        "AKShare ownership-pledge company-distribution record must "
+                        "come from stock_gpzy_distribute_statistics_company_em"
+                    )
+                if endpoint_name == "stock_gpzy_distribute_statistics_company_em":
+                    _validate_ownership_pledge_company_distribution_normalizer_scope(
+                        record,
+                        listing,
+                        rows,
+                    )
+                    normalizer_flags.add(
+                        "AKSHARE_OWNERSHIP_PLEDGE_COMPANY_DISTRIBUTION_RAW_ONLY"
+                    )
+                elif endpoint_name == "stock_gpzy_profile_em":
                     _validate_ownership_pledge_market_profile_normalizer_scope(
                         record,
                         listing,
@@ -7348,6 +7518,7 @@ class AKShareNormalizer:
                 else:
                     raise ProviderNormalizationError(
                         "AKShare ownership-pledge record must come from "
+                        "stock_gpzy_distribute_statistics_company_em, "
                         "stock_gpzy_profile_em, "
                         "stock_gpzy_pledge_ratio_detail_em, "
                         "stock_gpzy_pledge_ratio_em or "
@@ -7776,6 +7947,15 @@ class AKShareNormalizer:
                 "identity, and its ratio scaling, aggregate counts and index context "
                 "do not establish a listing-level governance, cash, debt-equivalent "
                 "or share fact."
+            )
+        if "AKSHARE_OWNERSHIP_PLEDGE_COMPANY_DISTRIBUTION_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented A-share Eastmoney ownership-pledge company-"
+                "distribution snapshot is retained as raw evidence only: its "
+                "market-wide institution rows have no issuer identity, and its "
+                "pledged-share counts and provider-reported percentages do not "
+                "establish a canonical listing-level governance, share, cash or "
+                "debt-equivalent fact."
             )
         if "AKSHARE_OWNERSHIP_PLEDGE_MARKET_DETAIL_RAW_ONLY" in normalizer_flags:
             notes += (
@@ -8501,6 +8681,7 @@ def _endpoint_candidates(
     goodwill_impairment_forecast_requested: bool = False,
     goodwill_impairment_market_profile_requested: bool = False,
     goodwill_impairment_detail_requested: bool = False,
+    ownership_pledge_company_distribution_requested: bool = False,
     ownership_pledge_market_profile_requested: bool = False,
     ownership_pledge_market_detail_requested: bool = False,
     ownership_pledge_detail_requested: bool = False,
@@ -8834,6 +9015,8 @@ def _endpoint_candidates(
         return ("stock_zh_a_gbjg_em",)
     if category is DataCategory.OWNERSHIP_PLEDGE:
         if market is ListingMarket.A:
+            if ownership_pledge_company_distribution_requested:
+                return ("stock_gpzy_distribute_statistics_company_em",)
             if ownership_pledge_market_profile_requested:
                 return ("stock_gpzy_profile_em",)
             if ownership_pledge_market_detail_requested:
@@ -9966,6 +10149,33 @@ def _ownership_pledge_kwargs(
     listing: _ListingRef,
     request: ProviderRequest,
 ) -> dict[str, object]:
+    if endpoint_name == "stock_gpzy_distribute_statistics_company_em":
+        if listing.market is not ListingMarket.A:
+            raise ProviderRequestError(
+                "the AKShare ownership-pledge company-distribution endpoint "
+                "supports A-share listings only",
+                request=request,
+                retryable=False,
+            )
+        unknown = sorted(
+            set(request.parameters)
+            - _OWNERSHIP_PLEDGE_COMPANY_DISTRIBUTION_PARAMETER_NAMES
+        )
+        if unknown:
+            raise ProviderRequestError(
+                "unsupported AKShare ownership-pledge company-distribution "
+                "parameter(s): " + ", ".join(unknown),
+                request=request,
+                retryable=False,
+            )
+        if request.parameters.get("view") != _OWNERSHIP_PLEDGE_COMPANY_DISTRIBUTION_VIEW:
+            raise ProviderRequestError(
+                "ownership-pledge company-distribution view must be "
+                f"{_OWNERSHIP_PLEDGE_COMPANY_DISTRIBUTION_VIEW!r}",
+                request=request,
+                retryable=False,
+            )
+        return {}
     if endpoint_name == "stock_gpzy_pledge_ratio_detail_em":
         if listing.market is not ListingMarket.A:
             raise ProviderRequestError(
@@ -22605,6 +22815,145 @@ def _ownership_pledge_market_profile_validation_message(
     return None, observation_dates
 
 
+def _ownership_pledge_company_distribution_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> tuple[str | None, list[str]]:
+    """Return strict-schema errors for the full pledge-institution snapshot."""
+
+    if not rows:
+        return "ownership-pledge company-distribution response must not be empty", []
+
+    institutions: list[str] = []
+    seen_institutions: set[str] = set()
+    previous_sequence: int | None = None
+    previous_company_count: int | None = None
+
+    def failure(message: str) -> tuple[str, list[str]]:
+        return message, []
+
+    for index, row in enumerate(rows):
+        missing = [
+            field
+            for field in _OWNERSHIP_PLEDGE_COMPANY_DISTRIBUTION_FIELDS
+            if field not in row
+        ]
+        unexpected = [
+            field
+            for field in row
+            if field not in _OWNERSHIP_PLEDGE_COMPANY_DISTRIBUTION_FIELD_SET
+        ]
+        if missing:
+            return failure(
+                "ownership-pledge company-distribution row "
+                f"{index} is missing field(s): {', '.join(missing)}"
+            )
+        if unexpected:
+            return failure(
+                "ownership-pledge company-distribution row "
+                f"{index} contains unsupported field(s): {', '.join(unexpected)}"
+            )
+        if tuple(row) != _OWNERSHIP_PLEDGE_COMPANY_DISTRIBUTION_FIELDS:
+            return failure(
+                "ownership-pledge company-distribution row "
+                f"{index} field order must match the documented source order"
+            )
+
+        sequence = row["序号"]
+        if isinstance(sequence, bool) or not isinstance(sequence, int):
+            return failure(
+                f"ownership-pledge company-distribution row {index} field '序号' "
+                "must be an integer"
+            )
+        if sequence <= 0:
+            return failure(
+                f"ownership-pledge company-distribution row {index} field '序号' "
+                "must be positive"
+            )
+        if sequence != index + 1:
+            return failure(
+                "ownership-pledge company-distribution response 序号 values must be "
+                "generated as one-based row positions"
+            )
+        if previous_sequence is not None and sequence <= previous_sequence:
+            return failure(
+                "ownership-pledge company-distribution response 序号 values must be "
+                "strictly ascending"
+            )
+        previous_sequence = sequence
+
+        institution = row["质押机构"]
+        if not isinstance(institution, str) or not institution.strip():
+            return failure(
+                f"ownership-pledge company-distribution row {index} field '质押机构' "
+                "must be a non-empty string"
+            )
+        if institution in seen_institutions:
+            return failure(
+                "ownership-pledge company-distribution response has a duplicate "
+                "质押机构 identity"
+            )
+        seen_institutions.add(institution)
+        institutions.append(institution)
+
+        for field in _OWNERSHIP_PLEDGE_COMPANY_DISTRIBUTION_NUMERIC_FIELDS:
+            value = row[field]
+            if value is None:
+                return failure(
+                    f"ownership-pledge company-distribution row {index} field {field!r} "
+                    "must not be null"
+                )
+            if isinstance(value, bool) or not isinstance(value, Real):
+                return failure(
+                    f"ownership-pledge company-distribution row {index} field {field!r} "
+                    "must be numeric"
+                )
+            try:
+                numeric = float(value)
+            except (OverflowError, TypeError, ValueError):
+                return failure(
+                    f"ownership-pledge company-distribution row {index} field {field!r} "
+                    "must be numeric"
+                )
+            if not math.isfinite(numeric):
+                return failure(
+                    f"ownership-pledge company-distribution row {index} field {field!r} "
+                    "must be finite"
+                )
+            if field in _OWNERSHIP_PLEDGE_COMPANY_DISTRIBUTION_INTEGER_FIELDS and (
+                not isinstance(value, int) or isinstance(value, bool)
+            ):
+                return failure(
+                    f"ownership-pledge company-distribution row {index} field {field!r} "
+                    "must be an integer"
+                )
+            if field in _OWNERSHIP_PLEDGE_COMPANY_DISTRIBUTION_NONNEGATIVE_FIELDS:
+                if numeric < 0:
+                    return failure(
+                        f"ownership-pledge company-distribution row {index} field {field!r} "
+                        "must be non-negative"
+                    )
+            if field in _OWNERSHIP_PLEDGE_COMPANY_DISTRIBUTION_PERCENT_FIELDS:
+                if numeric > 100:
+                    return failure(
+                        f"ownership-pledge company-distribution row {index} field {field!r} "
+                        "must be between 0 and 100 percent"
+                    )
+
+        company_count = row["质押公司数量"]
+        if (
+            previous_company_count is not None
+            and isinstance(company_count, int)
+            and company_count > previous_company_count
+        ):
+            return failure(
+                "ownership-pledge company-distribution 质押公司数量 values must be "
+                "non-increasing in source order"
+            )
+        previous_company_count = company_count
+
+    return None, institutions
+
+
 def _ownership_pledge_market_detail_validation_message(
     rows: Sequence[Mapping[str, JSONValue]],
     *,
@@ -23068,6 +23417,148 @@ def _validate_ownership_pledge_market_detail_normalizer_scope(
             raise ProviderNormalizationError(
                 f"ownership-pledge market-detail row entity {row['股票代码']!r} "
                 f"does not match requested listing {listing.canonical_id!r}"
+            )
+
+
+def _validate_ownership_pledge_company_distribution_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> None:
+    """Validate replayed scope and rows for the market-wide institution snapshot."""
+
+    if listing.market is not ListingMarket.A:
+        raise ProviderNormalizationError(
+            "AKShare ownership-pledge company-distribution raw slice supports "
+            "A-share listings only"
+        )
+    if record.response_metadata.get("endpoint") != (
+        "stock_gpzy_distribute_statistics_company_em"
+    ):
+        raise ProviderNormalizationError(
+            "AKShare ownership-pledge company-distribution record must come from "
+            "stock_gpzy_distribute_statistics_company_em"
+        )
+    if record.source_uri != _SOURCE_URIS["stock_gpzy_distribute_statistics_company_em"]:
+        raise ProviderNormalizationError(
+            "AKShare ownership-pledge company-distribution source URI does not "
+            "match the documented endpoint"
+        )
+    try:
+        upstream_kwargs = _ownership_pledge_kwargs(
+            "stock_gpzy_distribute_statistics_company_em",
+            listing,
+            record.request,
+        )
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+    if upstream_kwargs:
+        raise ProviderNormalizationError(
+            "AKShare ownership-pledge company-distribution endpoint must receive "
+            "no upstream arguments"
+        )
+
+    message, institutions = _ownership_pledge_company_distribution_validation_message(
+        rows
+    )
+    if message is not None:
+        raise ProviderNormalizationError(message)
+
+    expected_metadata = {
+        "endpoint": "stock_gpzy_distribute_statistics_company_em",
+        "market": ListingMarket.A.value,
+        "listing_code": listing.code,
+        "ownership_pledge_view": _OWNERSHIP_PLEDGE_COMPANY_DISTRIBUTION_VIEW,
+        "market_scope": "all_a_share_listings",
+        "listing_scoped_request": False,
+        "row_filtering": "none",
+        "snapshot_scope": "current_published_pledge_company_distribution",
+        "date_binding": "retrieval_only",
+        "date_fields": [],
+        "date_boundary": "not_applicable",
+        "sequence_field": "序号",
+        "sequence_ordering": "strictly_ascending",
+        "company_count_field": "质押公司数量",
+        "company_count_ordering": "non_increasing",
+        "institution_field": "质押机构",
+        "institution_ordering": "source_order_sorted_by_company_count",
+        "institution_order": institutions,
+        "identity_fields": list(
+            _OWNERSHIP_PLEDGE_COMPANY_DISTRIBUTION_IDENTITY_FIELDS
+        ),
+        "nullable_identity_fields": list(
+            _OWNERSHIP_PLEDGE_COMPANY_DISTRIBUTION_NULLABLE_IDENTITY_FIELDS
+        ),
+        "value_fields": list(
+            _OWNERSHIP_PLEDGE_COMPANY_DISTRIBUTION_NUMERIC_FIELDS
+        ),
+        "non_negative_fields": sorted(
+            _OWNERSHIP_PLEDGE_COMPANY_DISTRIBUTION_NONNEGATIVE_FIELDS - {"序号"}
+        ),
+        "percent_fields": sorted(
+            _OWNERSHIP_PLEDGE_COMPANY_DISTRIBUTION_PERCENT_FIELDS
+        ),
+        "percent_bounds": [0, 100],
+        "percent_semantics": "provider_reported_percent_value",
+        "percent_source_scale": "unchanged",
+        "integer_fields": [
+            field
+            for field in _OWNERSHIP_PLEDGE_COMPANY_DISTRIBUTION_FIELDS
+            if field in _OWNERSHIP_PLEDGE_COMPANY_DISTRIBUTION_INTEGER_FIELDS
+        ],
+        "text_fields": list(_OWNERSHIP_PLEDGE_COMPANY_DISTRIBUTION_TEXT_FIELDS),
+        "required_text_fields": list(
+            _OWNERSHIP_PLEDGE_COMPANY_DISTRIBUTION_REQUIRED_TEXT_FIELDS
+        ),
+        "required_numeric_fields": list(
+            _OWNERSHIP_PLEDGE_COMPANY_DISTRIBUTION_NUMERIC_FIELDS
+        ),
+        "field_types": dict(_OWNERSHIP_PLEDGE_COMPANY_DISTRIBUTION_FIELD_TYPES),
+        "nullable_fields": [],
+        "field_count": len(_OWNERSHIP_PLEDGE_COMPANY_DISTRIBUTION_FIELDS),
+        "source_field_order": list(_OWNERSHIP_PLEDGE_COMPANY_DISTRIBUTION_FIELDS),
+        "documented_units": dict(
+            _OWNERSHIP_PLEDGE_COMPANY_DISTRIBUTION_DOCUMENTED_UNITS
+        ),
+        "undocumented_numeric_units": dict(
+            _OWNERSHIP_PLEDGE_COMPANY_DISTRIBUTION_UNDOCUMENTED_NUMERIC_UNITS
+        ),
+        "upstream_report_name": "RPT_GDZY_ZYJG_SUM",
+        "upstream_page_size": 500,
+        "pagination": "single_page",
+        "upstream_sort_column": "ORG_NUM",
+        "upstream_sort_direction": "descending",
+        "upstream_filter": '(PFORG_TYPE="证券")',
+        "entity_rows_selected": False,
+        "upstream_row_count": len(rows),
+        "entity_row_count": 0,
+    }
+    boolean_fields = {"listing_scoped_request", "entity_rows_selected"}
+    count_fields = {
+        "field_count",
+        "upstream_page_size",
+        "upstream_row_count",
+        "entity_row_count",
+    }
+    for name, expected in expected_metadata.items():
+        if name not in record.response_metadata:
+            matches = False
+        elif name in boolean_fields:
+            actual = record.response_metadata[name]
+            matches = isinstance(actual, bool) and actual is expected
+        elif name in count_fields:
+            actual = record.response_metadata[name]
+            matches = (
+                isinstance(actual, int)
+                and not isinstance(actual, bool)
+                and actual == expected
+            )
+        else:
+            matches = record.response_metadata[name] == expected
+        if not matches:
+            raise ProviderNormalizationError(
+                "AKShare ownership-pledge company-distribution response metadata "
+                f"{name!r} does not match the requested replay scope"
             )
 
 
@@ -24116,6 +24607,26 @@ def _validate_ownership_pledge_market_profile_provider_rows(
             request=request,
         )
     return observation_dates
+
+
+def _validate_ownership_pledge_company_distribution_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> list[str]:
+    """Validate the full pledge-institution distribution before storage."""
+
+    message, institutions = _ownership_pledge_company_distribution_validation_message(
+        rows
+    )
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message}",
+            provider=provider,
+            request=request,
+        )
+    return institutions
 
 
 def _validate_ownership_pledge_market_detail_provider_rows(

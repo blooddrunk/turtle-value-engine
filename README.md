@@ -1090,6 +1090,21 @@ quantity, ratio, price, status and event-date context remain raw evidence and
 do not become canonical share, cash, debt-equivalent or governance facts. No
 calculation, gate, pipeline, CLI or input-loader contract changes.
 
+Phase 3.04 adds the next distinct official A-share Eastmoney pledge endpoint,
+`stock_gpzy_distribute_statistics_company_em`, under `OWNERSHIP_PLEDGE` with
+explicit `view=company_distribution` and no upstream arguments. The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_gpzy_em.py)
+define the current securities-only `RPT_GDZY_ZYJG_SUM` institution-distribution
+snapshot with eight source-shaped fields, a 500-row page, descending
+`ORG_NUM` ordering and documented shares/percent units. The provider validates
+the full response before retention, preserves source-returned numeric scale,
+and records exact field order/types/nullability, institution identity/order,
+sort/filter/pagination and non-listing replay scope. The normalizer emits
+`AKSHARE_OWNERSHIP_PLEDGE_COMPANY_DISTRIBUTION_RAW_ONLY`; institution rows and
+provider percentages remain raw evidence and do not become canonical share,
+cash, debt-equivalent or governance facts. No calculation, gate, pipeline, CLI
+or input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

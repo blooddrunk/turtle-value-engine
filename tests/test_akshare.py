@@ -700,6 +700,12 @@ class FakeAKShare:
             _fixture("a_ownership_pledge_market_detail.json"),
         )
 
+    def stock_gpzy_distribute_statistics_company_em(self):
+        return self._return(
+            "stock_gpzy_distribute_statistics_company_em",
+            _fixture("a_ownership_pledge_company_distribution.json"),
+        )
+
     def stock_gpzy_individual_pledge_ratio_detail_em(self, *, symbol: str):
         return self._return(
             "stock_gpzy_individual_pledge_ratio_detail_em",
@@ -919,8 +925,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "104"
-    assert AKSHARE_MAPPING_VERSION == "105"
+    assert provider.identity.provider_version == "105"
+    assert AKSHARE_MAPPING_VERSION == "106"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -8071,6 +8077,499 @@ def test_ownership_pledge_market_profile_cache_replay_does_not_call_upstream(
     assert replay.mode is RetrievalMode.CACHE_REPLAY
     assert replay.record == live.record
     assert fake.calls == [("stock_gpzy_profile_em", {})]
+
+
+def test_a_ownership_pledge_company_distribution_fetch_keeps_full_market_rows():
+    fake = FakeAKShare()
+    record = _provider(fake).fetch(
+        _request(
+            DataCategory.OWNERSHIP_PLEDGE,
+            "SH600000",
+            {"view": "company_distribution"},
+        )
+    )
+    fixture = _fixture("a_ownership_pledge_company_distribution.json")
+
+    assert record.raw_payload == fixture
+    assert fake.calls == [
+        ("stock_gpzy_distribute_statistics_company_em", {})
+    ]
+    assert record.response_metadata["endpoint"] == (
+        "stock_gpzy_distribute_statistics_company_em"
+    )
+    assert record.response_metadata["market"] == "A"
+    assert record.response_metadata["listing_code"] == "600000"
+    assert record.response_metadata["ownership_pledge_view"] == "company_distribution"
+    assert record.response_metadata["market_scope"] == "all_a_share_listings"
+    assert record.response_metadata["listing_scoped_request"] is False
+    assert record.response_metadata["row_filtering"] == "none"
+    assert record.response_metadata["snapshot_scope"] == (
+        "current_published_pledge_company_distribution"
+    )
+    assert record.response_metadata["date_binding"] == "retrieval_only"
+    assert record.response_metadata["date_fields"] == []
+    assert record.response_metadata["date_boundary"] == "not_applicable"
+    assert record.response_metadata["sequence_field"] == "序号"
+    assert record.response_metadata["sequence_ordering"] == "strictly_ascending"
+    assert record.response_metadata["company_count_field"] == "质押公司数量"
+    assert record.response_metadata["company_count_ordering"] == "non_increasing"
+    assert record.response_metadata["institution_field"] == "质押机构"
+    assert record.response_metadata["institution_ordering"] == (
+        "source_order_sorted_by_company_count"
+    )
+    assert record.response_metadata["institution_order"] == [
+        row["质押机构"] for row in fixture
+    ]
+    assert record.response_metadata["identity_fields"] == ["质押机构"]
+    assert record.response_metadata["nullable_identity_fields"] == []
+    assert record.response_metadata["value_fields"] == [
+        "质押公司数量",
+        "质押笔数",
+        "质押数量",
+        "未达预警线比例",
+        "达到预警线未达平仓线比例",
+        "达到平仓线比例",
+    ]
+    assert record.response_metadata["non_negative_fields"] == sorted(
+        [
+            "质押公司数量",
+            "质押笔数",
+            "质押数量",
+            "未达预警线比例",
+            "达到预警线未达平仓线比例",
+            "达到平仓线比例",
+        ]
+    )
+    assert record.response_metadata["percent_fields"] == sorted(
+        [
+            "未达预警线比例",
+            "达到预警线未达平仓线比例",
+            "达到平仓线比例",
+        ]
+    )
+    assert record.response_metadata["percent_bounds"] == [0, 100]
+    assert record.response_metadata["percent_semantics"] == (
+        "provider_reported_percent_value"
+    )
+    assert record.response_metadata["percent_source_scale"] == "unchanged"
+    assert record.response_metadata["integer_fields"] == [
+        "序号",
+        "质押公司数量",
+        "质押笔数",
+    ]
+    assert record.response_metadata["text_fields"] == ["质押机构"]
+    assert record.response_metadata["required_text_fields"] == ["质押机构"]
+    assert record.response_metadata["required_numeric_fields"] == [
+        "质押公司数量",
+        "质押笔数",
+        "质押数量",
+        "未达预警线比例",
+        "达到预警线未达平仓线比例",
+        "达到平仓线比例",
+    ]
+    assert record.response_metadata["field_types"] == {
+        "序号": "integer",
+        "质押机构": "string",
+        "质押公司数量": "integer",
+        "质押笔数": "integer",
+        "质押数量": "number",
+        "未达预警线比例": "number",
+        "达到预警线未达平仓线比例": "number",
+        "达到平仓线比例": "number",
+    }
+    assert record.response_metadata["nullable_fields"] == []
+    assert record.response_metadata["field_count"] == 8
+    assert record.response_metadata["source_field_order"] == list(fixture[0])
+    assert record.response_metadata["documented_units"] == {
+        "质押数量": "shares",
+        "未达预警线比例": "percent",
+        "达到预警线未达平仓线比例": "percent",
+        "达到平仓线比例": "percent",
+    }
+    assert record.response_metadata["undocumented_numeric_units"] == {
+        "质押公司数量": "not_documented",
+        "质押笔数": "not_documented",
+    }
+    assert record.response_metadata["upstream_report_name"] == "RPT_GDZY_ZYJG_SUM"
+    assert record.response_metadata["upstream_page_size"] == 500
+    assert record.response_metadata["pagination"] == "single_page"
+    assert record.response_metadata["upstream_sort_column"] == "ORG_NUM"
+    assert record.response_metadata["upstream_sort_direction"] == "descending"
+    assert record.response_metadata["upstream_filter"] == '(PFORG_TYPE="证券")'
+    assert record.response_metadata["upstream_row_count"] == len(fixture)
+    assert record.response_metadata["entity_row_count"] == 0
+    assert record.response_metadata["entity_rows_selected"] is False
+    assert record.source_uri == (
+        "https://data.eastmoney.com/gpzy/distributeStatistics.aspx"
+    )
+
+
+def test_ownership_pledge_company_distribution_request_requires_explicit_view_and_a_share():
+    fake = FakeAKShare()
+    provider = _provider(fake)
+
+    with pytest.raises(ProviderRequestError, match="unsupported AKShare ownership-pledge"):
+        provider.fetch(
+            _request(
+                DataCategory.OWNERSHIP_PLEDGE,
+                "SH600000",
+                {"view": "company_distribution", "date": "20241220"},
+            )
+        )
+    with pytest.raises(ProviderRequestError, match="unsupported AKShare ownership-pledge"):
+        provider.fetch(
+            _request(
+                DataCategory.OWNERSHIP_PLEDGE,
+                "SH600000",
+                {"view": "other"},
+            )
+        )
+    with pytest.raises(ProviderRequestError, match="requires date"):
+        provider.fetch(_request(DataCategory.OWNERSHIP_PLEDGE, "SH600000"))
+    with pytest.raises(ProviderRequestError, match="A-share listings only"):
+        provider.fetch(
+            _request(
+                DataCategory.OWNERSHIP_PLEDGE,
+                "HK00700",
+                {"view": "company_distribution"},
+            )
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("empty", "must not be empty"),
+        ("missing_field", "missing field.*达到平仓线比例"),
+        ("extra_field", "contains unsupported field"),
+        ("reordered_fields", "field order"),
+        ("invalid_sequence", "序号.*positive"),
+        ("fractional_sequence", "序号.*integer"),
+        ("invalid_institution", "质押机构.*non-empty"),
+        ("duplicate_identity", "duplicate.*identity"),
+        ("invalid_numeric", "质押数量.*numeric"),
+        ("null_numeric", "质押数量.*must not be null"),
+        ("fractional_count", "质押笔数.*integer"),
+        ("negative_value", "质押数量.*non-negative"),
+        ("invalid_percent", "达到平仓线比例.*between 0 and 100"),
+        ("company_count_order", "质押公司数量.*non-increasing"),
+    ],
+)
+def test_ownership_pledge_company_distribution_response_validates_schema_boundaries_and_identity(
+    mutation: str,
+    match: str,
+):
+    payload = [dict(row) for row in _fixture("a_ownership_pledge_company_distribution.json")]
+    if mutation == "empty":
+        payload = []
+    elif mutation == "missing_field":
+        payload[0].pop("达到平仓线比例")
+    elif mutation == "extra_field":
+        payload[0]["未记录字段"] = "not documented"
+    elif mutation == "reordered_fields":
+        payload[0] = {key: payload[0][key] for key in reversed(payload[0])}
+    elif mutation == "invalid_sequence":
+        payload[0]["序号"] = 0
+    elif mutation == "fractional_sequence":
+        payload[0]["序号"] = 1.5
+    elif mutation == "invalid_institution":
+        payload[0]["质押机构"] = None
+    elif mutation == "duplicate_identity":
+        payload[1] = dict(payload[0])
+        payload[1]["序号"] = 2
+    elif mutation == "invalid_numeric":
+        payload[0]["质押数量"] = "not-a-number"
+    elif mutation == "null_numeric":
+        payload[0]["质押数量"] = None
+    elif mutation == "fractional_count":
+        payload[0]["质押笔数"] = 1.5
+    elif mutation == "negative_value":
+        payload[0]["质押数量"] = -1.0
+    elif mutation == "invalid_percent":
+        payload[0]["达到平仓线比例"] = 100.1
+    else:
+        payload[1]["质押公司数量"] = payload[0]["质押公司数量"] + 1
+
+    class InvalidCompanyDistribution(FakeAKShare):
+        def stock_gpzy_distribute_statistics_company_em(self):
+            return self._return(
+                "stock_gpzy_distribute_statistics_company_em",
+                payload,
+            )
+
+    with pytest.raises(ProviderResponseError, match=match):
+        _provider(InvalidCompanyDistribution()).fetch(
+            _request(
+                DataCategory.OWNERSHIP_PLEDGE,
+                "SH600000",
+                {"view": "company_distribution"},
+            )
+        )
+
+
+def test_ownership_pledge_company_distribution_accepts_zero_and_percent_boundaries():
+    payload = [dict(row) for row in _fixture("a_ownership_pledge_company_distribution.json")]
+    payload[0]["质押数量"] = 0.0
+    payload[0]["未达预警线比例"] = 0.0
+    payload[0]["达到预警线未达平仓线比例"] = 0.0
+    payload[0]["达到平仓线比例"] = 100.0
+
+    class BoundaryCompanyDistribution(FakeAKShare):
+        def stock_gpzy_distribute_statistics_company_em(self):
+            return self._return(
+                "stock_gpzy_distribute_statistics_company_em",
+                payload,
+            )
+
+    record = _provider(BoundaryCompanyDistribution()).fetch(
+        _request(
+            DataCategory.OWNERSHIP_PLEDGE,
+            "SH600000",
+            {"view": "company_distribution"},
+        )
+    )
+
+    assert record.raw_payload[0]["质押数量"] == 0.0
+    assert record.raw_payload[0]["达到平仓线比例"] == 100.0
+
+
+def test_ownership_pledge_company_distribution_is_retained_as_raw_evidence_without_facts():
+    record = _provider().fetch(
+        _request(
+            DataCategory.OWNERSHIP_PLEDGE,
+            "SH600000",
+            {"view": "company_distribution"},
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="ownership-pledge-company-distribution-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == [
+        "AKSHARE_OWNERSHIP_PLEDGE_COMPANY_DISTRIBUTION_RAW_ONLY"
+    ]
+    assert normalized.data_quality.critical_missing_fields == [
+        "governance_risk_level",
+    ]
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "company-distribution snapshot" in normalized.data_quality.notes
+    assert "market-wide institution rows have no issuer identity" in normalized.data_quality.notes
+    assert "canonical listing-level" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "endpoint",
+        "source_uri",
+        "market",
+        "listing_code",
+        "view",
+        "market_scope",
+        "listing_scope",
+        "row_filtering",
+        "snapshot",
+        "date_binding",
+        "date_fields",
+        "date_boundary",
+        "sequence_field",
+        "sequence_ordering",
+        "company_count_field",
+        "company_count_ordering",
+        "institution_field",
+        "institution_ordering",
+        "institution_order",
+        "identity_fields",
+        "nullable_identity_fields",
+        "value_fields",
+        "non_negative_fields",
+        "percent_fields",
+        "percent_bounds",
+        "percent_semantics",
+        "percent_source_scale",
+        "integer_fields",
+        "text_fields",
+        "required_text_fields",
+        "required_numeric_fields",
+        "field_types",
+        "nullable_fields",
+        "field_count",
+        "source_order",
+        "units",
+        "undocumented_units",
+        "report_name",
+        "page_size",
+        "pagination",
+        "sort_column",
+        "sort_direction",
+        "filter",
+        "selected",
+        "upstream_count",
+        "entity_count",
+        "payload",
+    ],
+)
+def test_ownership_pledge_company_distribution_normalizer_rejects_replayed_scope_mismatches(
+    mutation: str,
+):
+    record = _provider().fetch(
+        _request(
+            DataCategory.OWNERSHIP_PLEDGE,
+            "SH600000",
+            {"view": "company_distribution"},
+        )
+    )
+    payload = [dict(row) for row in record.raw_payload]
+    response_metadata = dict(record.response_metadata)
+    source_uri = record.source_uri
+    if mutation == "endpoint":
+        response_metadata["endpoint"] = "stock_gpzy_profile_em"
+    elif mutation == "source_uri":
+        source_uri = "https://example.invalid/company-distribution"
+    elif mutation == "market":
+        response_metadata["market"] = "H"
+    elif mutation == "listing_code":
+        response_metadata["listing_code"] = "000001"
+    elif mutation == "view":
+        response_metadata["ownership_pledge_view"] = "market_profile"
+    elif mutation == "market_scope":
+        response_metadata["market_scope"] = "requested_listing"
+    elif mutation == "listing_scope":
+        response_metadata["listing_scoped_request"] = True
+    elif mutation == "row_filtering":
+        response_metadata["row_filtering"] = "provider"
+    elif mutation == "snapshot":
+        response_metadata["snapshot_scope"] = "current_market_profile"
+    elif mutation == "date_binding":
+        response_metadata["date_binding"] = "row_dates"
+    elif mutation == "date_fields":
+        response_metadata["date_fields"] = ["公告日期"]
+    elif mutation == "date_boundary":
+        response_metadata["date_boundary"] = "inclusive"
+    elif mutation == "sequence_field":
+        response_metadata["sequence_field"] = "排名"
+    elif mutation == "sequence_ordering":
+        response_metadata["sequence_ordering"] = "provider_order"
+    elif mutation == "company_count_field":
+        response_metadata["company_count_field"] = "质押笔数"
+    elif mutation == "company_count_ordering":
+        response_metadata["company_count_ordering"] = "ascending"
+    elif mutation == "institution_field":
+        response_metadata["institution_field"] = "机构"
+    elif mutation == "institution_ordering":
+        response_metadata["institution_ordering"] = "provider_order"
+    elif mutation == "institution_order":
+        response_metadata["institution_order"] = ["wrong"]
+    elif mutation == "identity_fields":
+        response_metadata["identity_fields"] = ["序号"]
+    elif mutation == "nullable_identity_fields":
+        response_metadata["nullable_identity_fields"] = ["质押机构"]
+    elif mutation == "value_fields":
+        response_metadata["value_fields"] = ["质押数量"]
+    elif mutation == "non_negative_fields":
+        response_metadata["non_negative_fields"] = []
+    elif mutation == "percent_fields":
+        response_metadata["percent_fields"] = ["质押数量"]
+    elif mutation == "percent_bounds":
+        response_metadata["percent_bounds"] = [0, 1]
+    elif mutation == "percent_semantics":
+        response_metadata["percent_semantics"] = "fraction"
+    elif mutation == "percent_source_scale":
+        response_metadata["percent_source_scale"] = "divided_by_100"
+    elif mutation == "integer_fields":
+        response_metadata["integer_fields"] = ["序号"]
+    elif mutation == "text_fields":
+        response_metadata["text_fields"] = ["序号"]
+    elif mutation == "required_text_fields":
+        response_metadata["required_text_fields"] = []
+    elif mutation == "required_numeric_fields":
+        response_metadata["required_numeric_fields"] = ["质押数量"]
+    elif mutation == "field_types":
+        response_metadata["field_types"] = {"序号": "number"}
+    elif mutation == "nullable_fields":
+        response_metadata["nullable_fields"] = ["质押数量"]
+    elif mutation == "field_count":
+        response_metadata["field_count"] = 7
+    elif mutation == "source_order":
+        response_metadata["source_field_order"] = list(reversed(payload[0]))
+    elif mutation == "units":
+        response_metadata["documented_units"] = {"质押数量": "percent"}
+    elif mutation == "undocumented_units":
+        response_metadata["undocumented_numeric_units"] = {"质押数量": "unknown"}
+    elif mutation == "report_name":
+        response_metadata["upstream_report_name"] = "OTHER_REPORT"
+    elif mutation == "page_size":
+        response_metadata["upstream_page_size"] = 100
+    elif mutation == "pagination":
+        response_metadata["pagination"] = "all_pages"
+    elif mutation == "sort_column":
+        response_metadata["upstream_sort_column"] = "NOTICE_DATE"
+    elif mutation == "sort_direction":
+        response_metadata["upstream_sort_direction"] = "ascending"
+    elif mutation == "filter":
+        response_metadata["upstream_filter"] = '(PFORG_TYPE="银行")'
+    elif mutation == "selected":
+        response_metadata["entity_rows_selected"] = True
+    elif mutation == "upstream_count":
+        response_metadata["upstream_row_count"] = 2
+    elif mutation == "entity_count":
+        response_metadata["entity_row_count"] = 1
+    else:
+        payload[0]["质押数量"] = {"not": "numeric"}
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=source_uri,
+        response_metadata=response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match="company-distribution"):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-ownership-pledge-company-distribution",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_ownership_pledge_company_distribution_cache_replay_does_not_call_upstream(
+    tmp_path: Path,
+):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.OWNERSHIP_PLEDGE,
+        "SH600000",
+        {"view": "company_distribution"},
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [
+        ("stock_gpzy_distribute_statistics_company_em", {})
+    ]
 
 
 def test_a_ownership_pledge_market_detail_fetch_filters_after_full_response_validation():

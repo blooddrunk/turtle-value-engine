@@ -1273,6 +1273,38 @@ ratio, price, status and event-date context remain structured evidence pending
 the official filing/evidence workflow. The response remains outside the
 calculation, gate, pipeline, CLI and input-loader contracts.
 
+## Phase 3.04 A-share Eastmoney pledge-institution company-distribution raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_gpzy_distribute_statistics_company_em` as the current
+pledge-institution distribution endpoint. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_gpzy_em.py)
+uses the no-argument Eastmoney `RPT_GDZY_ZYJG_SUM` report with
+`filter=(PFORG_TYPE="证券")`, `pageSize=500`, `pageNumber=1`, and descending
+`ORG_NUM` order. It generates one-based `序号` values and returns the exact
+source order `序号`, `质押机构`, `质押公司数量`, `质押笔数`, `质押数量`,
+`未达预警线比例`, `达到预警线未达平仓线比例`, `达到平仓线比例`. The adapter
+exposes it only under `OWNERSHIP_PLEDGE` with explicit
+`view=company_distribution`, validates the complete institution response
+before retention, and keeps the requested listing code as provenance rather
+than filtering the market-wide rows.
+
+| Raw upstream item | Phase 3.04 treatment |
+| --- | --- |
+| `序号` | Required positive integer generated as the one-based source row position and validated as strictly ascending; it is rank/order context, not a listing metric. |
+| `质押机构` | Required non-empty text identity; duplicate institutions are rejected in the full response, and institution order is preserved as source order. It does not establish a lender, beneficial owner or governance conclusion. |
+| `质押公司数量` | Required integer, finite and non-negative; source order must be non-increasing because the official request sorts by `ORG_NUM`. Its count unit is not separately documented. |
+| `质押笔数` | Required integer, finite and non-negative; its count unit is not separately documented and it does not become a canonical pledge-event count. |
+| `质押数量` | Required finite non-negative numeric value in shares (`股`); source values remain raw and do not become a canonical diluted-share, pledged-cash or debt-equivalent fact. |
+| `未达预警线比例`, `达到预警线未达平仓线比例`, `达到平仓线比例` | Required finite numeric values in the documented percent unit, bounded to 0–100. The upstream implementation returns them without an additional scale conversion, so the adapter preserves the provider-returned numeric values unchanged. They do not become canonical governance or liquidation metrics. |
+| row identity and ordering | Duplicate `质押机构` identities are rejected; exact field order, field types, non-nullability, one-based sequence, institution order, company-count ordering and full row count are retained for replay. |
+| request `view=company_distribution` | No upstream arguments beyond the implementation's fixed report/filter/page/sort request; current market-wide securities-only snapshot, `listing_scoped_request=false`, `row_filtering=none`, `date_binding=retrieval_only` and `date_boundary=not_applicable` remain explicit metadata. |
+
+The normalizer emits
+`AKSHARE_OWNERSHIP_PLEDGE_COMPANY_DISTRIBUTION_RAW_ONLY`, leaves
+`governance_risk_level` critically missing and creates no canonical share,
+cash, debt-equivalent or governance fact. The response remains outside the
+calculation, gate, pipeline, CLI and input-loader contracts.
+
 ## Phase 2.92 SSE daily-deal overview raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
