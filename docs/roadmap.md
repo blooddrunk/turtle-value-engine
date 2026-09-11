@@ -3286,6 +3286,30 @@ validation and filtering, explicit H-share routing, fixed upstream query
 metadata, raw-only normalization, replay metadata tampering and offline cache
 replay. No calculation, gate, pipeline, CLI or input-loader contract changes.
 
+### Phase 3.29 — H-share Stock Connect constituent quote raw acquisition contract (COMPLETE)
+
+The mapping review now covers the documented H-share Eastmoney
+`stock_hk_ggt_components_em` Stock Connect constituent quote endpoint under
+`MARKET_QUOTE` with explicit `view=hk_ggt_components`. The
+[AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hsgt_em.py)
+define a no-argument paginated request for the `b:DLMK0146,b:DLMK0144` H-share
+universe through `https://33.push2.eastmoney.com/api/qt/clist/get`, with
+`pz=100`, `fid=f12` and the exact 12-field wrapper order `序号`, `代码`, `名称`,
+`最新价`, `涨跌额`, `涨跌幅`, `今开`, `最高`, `最低`, `昨收`, `成交量` and `成交额`.
+The provider freezes the official query, source page and pagination metadata,
+validates the complete five-digit H-share universe before filtering to the
+requested listing, and records HKD/share, percent, shares and HKD-turnover
+units plus full/selected row counts for cache replay.
+
+The normalizer emits `AKSHARE_HK_GGT_COMPONENTS_QUOTE_RAW_ONLY` and creates no
+canonical current-price, return, valuation or accounting fact because the
+documented quote is a 15-minute-delayed current-day snapshot without a stable
+observation timestamp. Tests cover exact fields and values, full-universe
+validation before filtering, H-share routing and parameter rejection,
+raw-only normalization, replay metadata tampering and offline cache replay. No
+calculation, gate, pipeline, CLI or input-loader contract changes.
+
 ### Future structured-provider deliverables
 
 ```text
@@ -3295,7 +3319,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–3.28 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–3.29 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```

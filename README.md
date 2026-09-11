@@ -1485,6 +1485,25 @@ a stable observation timestamp, the normalizer emits
 creates no canonical quote fact. No calculation, gate, pipeline, CLI or
 input-loader contract changes.
 
+Phase 3.29 adds the documented H-share Stock Connect constituent quote endpoint
+[`stock_hk_ggt_components_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
+under `MARKET_QUOTE` with explicit `view=hk_ggt_components`. The [official
+implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hsgt_em.py)
+issues a no-argument paginated request for the `b:DLMK0146,b:DLMK0144` universe
+through `https://33.push2.eastmoney.com/api/qt/clist/get` and returns the exact
+12 fields `序号`, `代码`, `名称`, `最新价`, `涨跌额`, `涨跌幅`, `今开`, `最高`, `最低`,
+`昨收`, `成交量` and `成交额`. The provider freezes the official `pz=100`
+pagination and query parameters, validates the complete five-digit H-share
+universe, then filters to the requested listing while retaining HKD/share,
+percent, share-count and HKD-turnover units and full/selected row counts in
+replay metadata.
+
+The official quote is a 15-minute-delayed current-day snapshot without a stable
+observation timestamp, so the normalizer emits
+`AKSHARE_HK_GGT_COMPONENTS_QUOTE_RAW_ONLY`, marks `current_price` critically
+missing and creates no canonical quote fact. No calculation, gate, pipeline,
+CLI or input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.
