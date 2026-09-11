@@ -46,7 +46,8 @@ Xueqiu individual-spot quote and Dragon-Tiger market-activity
 detail/statistics/institution-statistics/institutional-research/block-trade-detail
 raw slices are also
 available. A-share and H-share market-quote snapshots, including the Shanghai,
-Shenzhen and Beijing A-share, H-share main-board, famous-stock, Hong Kong Stock Connect constituent
+Shenzhen, Beijing and new-stock A-share, H-share main-board, famous-stock,
+Hong Kong Stock Connect constituent
 and Shanghai Stock Connect quote raw slices, are retained with their upstream
 scope and source metadata. A/H HSGT minute-fund-flow, historical-flow and fund-flow-summary
 raw slices are also retained with their market-wide direction and upstream
@@ -116,9 +117,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "143"
+AKSHARE_ADAPTER_VERSION = "144"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "144"
+AKSHARE_MAPPING_VERSION = "145"
 
 
 class ListingMarket(StrEnum):
@@ -173,6 +174,7 @@ _SOURCE_URIS = {
     "stock_sh_a_spot_em": "https://quote.eastmoney.com/center/gridlist.html#hs_a_board",
     "stock_sz_a_spot_em": "https://quote.eastmoney.com/center/gridlist.html#hs_a_board",
     "stock_bj_a_spot_em": "https://quote.eastmoney.com/center/gridlist.html#bj_a_board",
+    "stock_new_a_spot_em": "https://quote.eastmoney.com/center/gridlist.html#newshares",
     "stock_zh_a_spot": "https://finance.sina.com.cn/realstock/company/",
     "stock_hk_spot_em": "http://quote.eastmoney.com/center/gridlist.html#hk_stocks",
     "stock_hk_main_board_spot_em": "https://quote.eastmoney.com/center/gridlist.html#hk_mainboard",
@@ -710,6 +712,151 @@ _MARKET_QUOTE_BJ_A_SPOT_WRAPPER_COLUMN_MAPPING = (
 _MARKET_QUOTE_BJ_A_SPOT_UPSTREAM_TRANSFORMATIONS = (
     _MARKET_QUOTE_SH_A_SPOT_UPSTREAM_TRANSFORMATIONS
 )
+
+_MARKET_QUOTE_NEW_A_SPOT_ENDPOINT = "stock_new_a_spot_em"
+_MARKET_QUOTE_NEW_A_SPOT_PARAMETER_NAMES = frozenset({"view"})
+_MARKET_QUOTE_NEW_A_SPOT_VIEW = "new_a_spot"
+_MARKET_QUOTE_NEW_A_SPOT_FIELDS = (
+    "序号",
+    "代码",
+    "名称",
+    "最新价",
+    "涨跌幅",
+    "涨跌额",
+    "成交量",
+    "成交额",
+    "振幅",
+    "最高",
+    "最低",
+    "今开",
+    "昨收",
+    "量比",
+    "换手率",
+    "市盈率-动态",
+    "市净率",
+    "上市日期",
+    "总市值",
+    "流通市值",
+    "涨速",
+    "5分钟涨跌",
+    "60日涨跌幅",
+    "年初至今涨跌幅",
+)
+_MARKET_QUOTE_NEW_A_SPOT_FIELD_SET = frozenset(_MARKET_QUOTE_NEW_A_SPOT_FIELDS)
+_MARKET_QUOTE_NEW_A_SPOT_TEXT_FIELDS = ("代码", "名称")
+_MARKET_QUOTE_NEW_A_SPOT_REQUIRED_TEXT_FIELDS = _MARKET_QUOTE_NEW_A_SPOT_TEXT_FIELDS
+_MARKET_QUOTE_NEW_A_SPOT_DATE_FIELDS = ("上市日期",)
+_MARKET_QUOTE_NEW_A_SPOT_REQUIRED_DATE_FIELDS = _MARKET_QUOTE_NEW_A_SPOT_DATE_FIELDS
+_MARKET_QUOTE_NEW_A_SPOT_NUMERIC_FIELDS = tuple(
+    field
+    for field in _MARKET_QUOTE_NEW_A_SPOT_FIELDS
+    if field
+    not in {
+        "序号",
+        *_MARKET_QUOTE_NEW_A_SPOT_TEXT_FIELDS,
+        *_MARKET_QUOTE_NEW_A_SPOT_DATE_FIELDS,
+    }
+)
+_MARKET_QUOTE_NEW_A_SPOT_INTEGER_FIELDS = ("序号",)
+_MARKET_QUOTE_NEW_A_SPOT_NULLABLE_FIELDS = _MARKET_QUOTE_NEW_A_SPOT_NUMERIC_FIELDS
+_MARKET_QUOTE_NEW_A_SPOT_FIELD_TYPES = {
+    "序号": "integer",
+    **{field: "string" for field in _MARKET_QUOTE_NEW_A_SPOT_TEXT_FIELDS},
+    **{field: "date" for field in _MARKET_QUOTE_NEW_A_SPOT_DATE_FIELDS},
+    **{field: "number" for field in _MARKET_QUOTE_NEW_A_SPOT_NUMERIC_FIELDS},
+}
+_MARKET_QUOTE_NEW_A_SPOT_DOCUMENTED_UNITS = {
+    "最新价": "CNY_per_share",
+    "涨跌幅": "percent",
+    "涨跌额": "CNY_per_share",
+    "成交量": "lots",
+    "成交额": "CNY",
+    "振幅": "percent",
+    "最高": "CNY_per_share",
+    "最低": "CNY_per_share",
+    "今开": "CNY_per_share",
+    "昨收": "CNY_per_share",
+    "量比": "ratio",
+    "换手率": "percent",
+    "总市值": "CNY",
+    "流通市值": "CNY",
+    "涨速": "percent",
+    "5分钟涨跌": "percent",
+    "60日涨跌幅": "percent",
+    "年初至今涨跌幅": "percent",
+}
+_MARKET_QUOTE_NEW_A_SPOT_UNDOCUMENTED_NUMERIC_UNITS = {
+    "市盈率-动态": "provider_reported_ratio",
+    "市净率": "provider_reported_ratio",
+}
+_MARKET_QUOTE_NEW_A_SPOT_SOURCE_URI = (
+    "https://quote.eastmoney.com/center/gridlist.html#newshares"
+)
+_MARKET_QUOTE_NEW_A_SPOT_UPSTREAM_URL = _MARKET_QUOTE_SH_A_SPOT_UPSTREAM_URL
+_MARKET_QUOTE_NEW_A_SPOT_UPSTREAM_PARAMETERS = (
+    "pn",
+    "pz",
+    "po",
+    "np",
+    "ut",
+    "fltt",
+    "invt",
+    "wbp2u",
+    "fid",
+    "fs",
+    "fields",
+)
+_MARKET_QUOTE_NEW_A_SPOT_UPSTREAM_FIXED_PARAMETERS = {
+    "pn": "1",
+    "pz": "100",
+    "po": "1",
+    "np": "1",
+    "ut": "bd1d9ddb04089700cf9c27f6f7426281",
+    "fltt": "2",
+    "invt": "2",
+    "wbp2u": "|0|0|0|web",
+    "fid": "f26",
+    "fs": "m:0 f:8,m:1 f:8",
+    "fields": (
+        "f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f12,f13,f14,f15,f16,f17,f18,f20,f21,f23,"
+        "f24,f25,f26,f22,f11,f62,f128,f136,f115,f152"
+    ),
+}
+_MARKET_QUOTE_NEW_A_SPOT_WRAPPER_SOURCE_COLUMN_COUNT = 33
+_MARKET_QUOTE_NEW_A_SPOT_WRAPPER_COLUMN_MAPPING = {
+    "序号": 0,
+    "代码": 12,
+    "名称": 14,
+    "最新价": 2,
+    "涨跌幅": 3,
+    "涨跌额": 4,
+    "成交量": 5,
+    "成交额": 6,
+    "振幅": 7,
+    "最高": 15,
+    "最低": 16,
+    "今开": 17,
+    "昨收": 18,
+    "量比": 10,
+    "换手率": 8,
+    "市盈率-动态": 9,
+    "市净率": 22,
+    "上市日期": 26,
+    "总市值": 19,
+    "流通市值": 20,
+    "涨速": 21,
+    "5分钟涨跌": 11,
+    "60日涨跌幅": 23,
+    "年初至今涨跌幅": 24,
+}
+_MARKET_QUOTE_NEW_A_SPOT_UPSTREAM_TRANSFORMATIONS = {
+    "序号": "sort_by_f3_descending_then_reset_index",
+    "上市日期": "to_date_yyyymmdd",
+    **{
+        field: "to_numeric_errors_coerce"
+        for field in _MARKET_QUOTE_NEW_A_SPOT_NUMERIC_FIELDS
+    },
+}
 
 _MARKET_QUOTE_HK_MAIN_BOARD_PARAMETER_NAMES = frozenset({"view"})
 _MARKET_QUOTE_HK_MAIN_BOARD_VIEW = "hk_main_board"
@@ -5502,6 +5649,18 @@ class AKShareProvider(StructuredDataProvider):
             )
         if (
             request.category is DataCategory.MARKET_QUOTE
+            and request.parameters.get("view") == _MARKET_QUOTE_NEW_A_SPOT_VIEW
+            and listing.market is not ListingMarket.A
+        ):
+            raise ProviderRequestError(
+                "the AKShare new A-share quote endpoint supports A-share listings "
+                "only",
+                provider=self.identity,
+                request=request,
+                retryable=False,
+            )
+        if (
+            request.category is DataCategory.MARKET_QUOTE
             and request.parameters.get("view") == _MARKET_QUOTE_XQ_VIEW
             and listing.market is not ListingMarket.A
         ):
@@ -6305,6 +6464,33 @@ class AKShareProvider(StructuredDataProvider):
                     selected_row_identity_order=[row["代码"] for row in selected],
                     upstream_row_count=len(rows),
                     entity_row_count=len(selected),
+                )
+            )
+        elif (
+            request.category is DataCategory.MARKET_QUOTE
+            and endpoint.name == _MARKET_QUOTE_NEW_A_SPOT_ENDPOINT
+        ):
+            rows = _table_rows(payload, provider=self.identity, request=request)
+            listed_dates = _validate_market_quote_new_a_spot_provider_rows(
+                rows,
+                provider=self.identity,
+                request=request,
+            )
+            selected = _select_market_quote_new_a_spot_rows(rows, listing)
+            payload = selected
+            response_metadata.update(
+                _market_quote_new_a_spot_response_metadata(
+                    listing_code=listing.code,
+                    row_identity_order=[row["代码"] for row in rows],
+                    selected_row_identity_order=[row["代码"] for row in selected],
+                    upstream_row_count=len(rows),
+                    entity_row_count=len(selected),
+                    listed_date_start=(
+                        min(listed_dates).isoformat() if listed_dates else None
+                    ),
+                    listed_date_end=(
+                        max(listed_dates).isoformat() if listed_dates else None
+                    ),
                 )
             )
         elif (
@@ -10164,6 +10350,9 @@ class AKShareProvider(StructuredDataProvider):
             market_quote_bj_a_spot_requested=(
                 request.parameters.get("view") == _MARKET_QUOTE_BJ_A_SPOT_VIEW
             ),
+            market_quote_new_a_spot_requested=(
+                request.parameters.get("view") == _MARKET_QUOTE_NEW_A_SPOT_VIEW
+            ),
             market_quote_hk_main_board_requested=(
                 request.parameters.get("view") == _MARKET_QUOTE_HK_MAIN_BOARD_VIEW
             ),
@@ -11356,6 +11545,28 @@ class AKShareNormalizer:
                 normalizer_flags.add("AKSHARE_BJ_A_SPOT_QUOTE_RAW_ONLY")
             elif (
                 record.request.category is DataCategory.MARKET_QUOTE
+                and record.request.parameters.get("view")
+                == _MARKET_QUOTE_NEW_A_SPOT_VIEW
+                and record.response_metadata.get("endpoint")
+                != _MARKET_QUOTE_NEW_A_SPOT_ENDPOINT
+            ):
+                raise ProviderNormalizationError(
+                    "A-share new-stock quote record must come from "
+                    f"{_MARKET_QUOTE_NEW_A_SPOT_ENDPOINT}"
+                )
+            elif (
+                record.request.category is DataCategory.MARKET_QUOTE
+                and record.response_metadata.get("endpoint")
+                == _MARKET_QUOTE_NEW_A_SPOT_ENDPOINT
+            ):
+                _validate_market_quote_new_a_spot_normalizer_scope(
+                    record,
+                    listing,
+                    rows,
+                )
+                normalizer_flags.add("AKSHARE_NEW_A_SPOT_QUOTE_RAW_ONLY")
+            elif (
+                record.request.category is DataCategory.MARKET_QUOTE
                 and record.response_metadata.get("endpoint")
                 == "stock_hk_main_board_spot_em"
             ):
@@ -12457,6 +12668,7 @@ class AKShareNormalizer:
                 "AKSHARE_SH_A_SPOT_QUOTE_RAW_ONLY",
                 "AKSHARE_SZ_A_SPOT_QUOTE_RAW_ONLY",
                 "AKSHARE_BJ_A_SPOT_QUOTE_RAW_ONLY",
+                "AKSHARE_NEW_A_SPOT_QUOTE_RAW_ONLY",
                 "AKSHARE_HK_MAIN_BOARD_QUOTE_RAW_ONLY",
                 "AKSHARE_HK_FAMOUS_QUOTE_RAW_ONLY",
                 "AKSHARE_HK_GGT_COMPONENTS_QUOTE_RAW_ONLY",
@@ -13419,6 +13631,13 @@ class AKShareNormalizer:
                 "turnover and valuation ratios have no stable observation timestamp and "
                 "do not establish the canonical current-price input."
             )
+        if "AKSHARE_NEW_A_SPOT_QUOTE_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented A-share new-stock Eastmoney quote response is retained "
+                "as raw evidence only: its current-trading-day prices, changes, volume, "
+                "turnover and valuation ratios have no stable observation timestamp and "
+                "do not establish the canonical current-price input."
+            )
         if "AKSHARE_HK_MAIN_BOARD_QUOTE_RAW_ONLY" in normalizer_flags:
             notes += (
                 " The documented H-share Eastmoney main-board quote response is "
@@ -13745,6 +13964,7 @@ def _endpoint_candidates(
     market_quote_sh_a_spot_requested: bool = False,
     market_quote_sz_a_spot_requested: bool = False,
     market_quote_bj_a_spot_requested: bool = False,
+    market_quote_new_a_spot_requested: bool = False,
     market_quote_hk_main_board_requested: bool = False,
     market_quote_hk_famous_requested: bool = False,
     market_quote_hk_ggt_components_requested: bool = False,
@@ -13830,6 +14050,10 @@ def _endpoint_candidates(
         if market_quote_bj_a_spot_requested:
             if market is ListingMarket.A and listing.canonical_id.startswith("BJ"):
                 return (_MARKET_QUOTE_BJ_A_SPOT_ENDPOINT,)
+            return ()
+        if market_quote_new_a_spot_requested:
+            if market is ListingMarket.A:
+                return (_MARKET_QUOTE_NEW_A_SPOT_ENDPOINT,)
             return ()
         if market_quote_hk_sh_spot_requested:
             if market is ListingMarket.H:
@@ -14402,6 +14626,32 @@ def _market_quote_kwargs(
             raise ProviderRequestError(
                 "the AKShare Beijing A-share quote endpoint requires "
                 f"view={_MARKET_QUOTE_BJ_A_SPOT_VIEW!r}",
+                request=request,
+                retryable=False,
+            )
+        return {}
+    if endpoint_name == _MARKET_QUOTE_NEW_A_SPOT_ENDPOINT:
+        if listing.market is not ListingMarket.A:
+            raise ProviderRequestError(
+                "the AKShare new A-share quote endpoint supports A-share listings "
+                "only",
+                request=request,
+                retryable=False,
+            )
+        unknown = sorted(
+            set(request.parameters) - _MARKET_QUOTE_NEW_A_SPOT_PARAMETER_NAMES
+        )
+        if unknown:
+            raise ProviderRequestError(
+                "unsupported AKShare new A-share quote parameter(s): "
+                + ", ".join(unknown),
+                request=request,
+                retryable=False,
+            )
+        if request.parameters.get("view") != _MARKET_QUOTE_NEW_A_SPOT_VIEW:
+            raise ProviderRequestError(
+                "the AKShare new A-share quote endpoint requires "
+                f"view={_MARKET_QUOTE_NEW_A_SPOT_VIEW!r}",
                 request=request,
                 retryable=False,
             )
@@ -18899,6 +19149,245 @@ def _market_quote_bj_a_spot_response_metadata(
         "entity_rows_selected": True,
         "upstream_row_count": upstream_row_count,
         "entity_row_count": entity_row_count,
+    }
+
+
+def _market_quote_new_a_spot_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef | None = None,
+) -> tuple[str | None, list[date]]:
+    """Return a strict-schema error and listing dates for the new-stock snapshot."""
+
+    seen_codes: set[str] = set()
+    previous_rank: int | None = None
+    listed_dates: list[date] = []
+    for index, row in enumerate(rows):
+        missing = sorted(_MARKET_QUOTE_NEW_A_SPOT_FIELD_SET - set(row))
+        unexpected = sorted(set(row) - _MARKET_QUOTE_NEW_A_SPOT_FIELD_SET)
+        if missing:
+            return (
+                f"A-share new-stock quote row {index} is missing field(s): "
+                + ", ".join(missing),
+                [],
+            )
+        if unexpected:
+            return (
+                f"A-share new-stock quote row {index} contains unsupported field(s): "
+                + ", ".join(unexpected),
+                [],
+            )
+        if tuple(row) != _MARKET_QUOTE_NEW_A_SPOT_FIELDS:
+            return (
+                f"A-share new-stock quote row {index} must preserve the official "
+                "field order",
+                [],
+            )
+
+        rank = row["序号"]
+        if isinstance(rank, bool) or not isinstance(rank, Real):
+            return (
+                f"A-share new-stock quote row {index} field '序号' must be a "
+                "positive integer",
+                [],
+            )
+        try:
+            numeric_rank = float(rank)
+        except (OverflowError, TypeError, ValueError):
+            return (
+                f"A-share new-stock quote row {index} field '序号' must be a "
+                "positive integer",
+                [],
+            )
+        if (
+            not math.isfinite(numeric_rank)
+            or not numeric_rank.is_integer()
+            or numeric_rank < 1
+        ):
+            return (
+                f"A-share new-stock quote row {index} field '序号' must be a "
+                "positive integer",
+                [],
+            )
+        normalized_rank = int(numeric_rank)
+        if previous_rank is not None and normalized_rank <= previous_rank:
+            return (
+                "A-share new-stock quote 序号 values must be strictly ascending",
+                [],
+            )
+        if listing is None and normalized_rank != index + 1:
+            return (
+                "A-share new-stock quote 序号 values must reset from one in source "
+                "row order",
+                [],
+            )
+        previous_rank = normalized_rank
+
+        code = row["代码"]
+        if not isinstance(code, str) or re.fullmatch(r"\d{6}", code) is None:
+            return (
+                f"A-share new-stock quote row {index} has an invalid 代码",
+                [],
+            )
+        if code in seen_codes:
+            return (
+                f"A-share new-stock quote response has duplicate 代码 {code!r}",
+                [],
+            )
+        seen_codes.add(code)
+
+        name = row["名称"]
+        if not isinstance(name, str) or not name.strip():
+            return (
+                f"A-share new-stock quote row {index} field '名称' must be a "
+                "non-empty string",
+                [],
+            )
+
+        listed_date = row["上市日期"]
+        if not isinstance(listed_date, str):
+            return (
+                f"A-share new-stock quote row {index} field '上市日期' must be "
+                "a valid date",
+                [],
+            )
+        parsed_date = _parse_date_value(listed_date)
+        if parsed_date is None:
+            return (
+                f"A-share new-stock quote row {index} field '上市日期' must be "
+                "a valid date",
+                [],
+            )
+        listed_dates.append(parsed_date)
+
+        if listing is not None and code != listing.code:
+            return (
+                f"A-share new-stock quote row {index} entity {code!r} does not "
+                f"match requested listing {listing.canonical_id!r}",
+                [],
+            )
+
+        for field in _MARKET_QUOTE_NEW_A_SPOT_NUMERIC_FIELDS:
+            value = row[field]
+            if value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, Real):
+                return (
+                    f"A-share new-stock quote row {index} field {field!r} must be "
+                    "numeric or null",
+                    [],
+                )
+            try:
+                numeric = float(value)
+            except (OverflowError, TypeError, ValueError):
+                return (
+                    f"A-share new-stock quote row {index} field {field!r} must be "
+                    "numeric or null",
+                    [],
+                )
+            if not math.isfinite(numeric):
+                return (
+                    f"A-share new-stock quote row {index} field {field!r} must be "
+                    "finite or null",
+                    [],
+                )
+    return None, listed_dates
+
+
+def _validate_market_quote_new_a_spot_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> list[date]:
+    """Validate the complete new-stock universe before filtering."""
+
+    message, listed_dates = _market_quote_new_a_spot_validation_message(rows)
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message}",
+            provider=provider,
+            request=request,
+        )
+    return listed_dates
+
+
+def _select_market_quote_new_a_spot_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+) -> list[dict[str, JSONValue]]:
+    """Filter the full new-stock universe by the requested A-share code."""
+
+    return [dict(row) for row in rows if row["代码"] == listing.code]
+
+
+def _market_quote_new_a_spot_response_metadata(
+    *,
+    listing_code: str,
+    row_identity_order: Sequence[JSONValue],
+    selected_row_identity_order: Sequence[JSONValue],
+    upstream_row_count: int,
+    entity_row_count: int,
+    listed_date_start: str | None,
+    listed_date_end: str | None,
+) -> dict[str, JSONValue]:
+    """Build replay metadata for a filtered new-stock snapshot."""
+
+    fixed_parameters = _MARKET_QUOTE_NEW_A_SPOT_UPSTREAM_FIXED_PARAMETERS
+    return {
+        "endpoint": _MARKET_QUOTE_NEW_A_SPOT_ENDPOINT,
+        "market": ListingMarket.A.value,
+        "listing_code": listing_code,
+        "market_quote_view": _MARKET_QUOTE_NEW_A_SPOT_VIEW,
+        "market_scope": "new_a_share_stocks",
+        "listing_scoped_request": False,
+        "row_filtering": "provider",
+        "snapshot_scope": "current_trading_day_new_stock_universe",
+        "rank_field": "序号",
+        "rank_ordering": "strictly_ascending_with_wrapper_sequence",
+        "date_binding": "row_listing_dates",
+        "listing_date_field": "上市日期",
+        "date_fields": list(_MARKET_QUOTE_NEW_A_SPOT_DATE_FIELDS),
+        "required_date_fields": list(_MARKET_QUOTE_NEW_A_SPOT_REQUIRED_DATE_FIELDS),
+        "listing_code_field": "代码",
+        "identity_fields": ["代码"],
+        "identity_ordering": "source_response_order",
+        "row_identity_order": list(row_identity_order),
+        "selected_row_identity_order": list(selected_row_identity_order),
+        "value_fields": list(_MARKET_QUOTE_NEW_A_SPOT_NUMERIC_FIELDS),
+        "integer_fields": list(_MARKET_QUOTE_NEW_A_SPOT_INTEGER_FIELDS),
+        "text_fields": list(_MARKET_QUOTE_NEW_A_SPOT_TEXT_FIELDS),
+        "required_text_fields": list(_MARKET_QUOTE_NEW_A_SPOT_REQUIRED_TEXT_FIELDS),
+        "nullable_fields": list(_MARKET_QUOTE_NEW_A_SPOT_NULLABLE_FIELDS),
+        "field_types": dict(_MARKET_QUOTE_NEW_A_SPOT_FIELD_TYPES),
+        "field_count": len(_MARKET_QUOTE_NEW_A_SPOT_FIELDS),
+        "source_field_order": list(_MARKET_QUOTE_NEW_A_SPOT_FIELDS),
+        "documented_units": dict(_MARKET_QUOTE_NEW_A_SPOT_DOCUMENTED_UNITS),
+        "undocumented_numeric_units": dict(
+            _MARKET_QUOTE_NEW_A_SPOT_UNDOCUMENTED_NUMERIC_UNITS
+        ),
+        "upstream_url": _MARKET_QUOTE_NEW_A_SPOT_UPSTREAM_URL,
+        "upstream_protocol": "JSON",
+        "upstream_parameters": list(_MARKET_QUOTE_NEW_A_SPOT_UPSTREAM_PARAMETERS),
+        "upstream_fixed_parameters": dict(fixed_parameters),
+        "upstream_dynamic_parameters": {},
+        "upstream_authentication": "none",
+        "upstream_page_size": 100,
+        "pagination": "provider_driven_all_pages",
+        "upstream_sort_column": "f3",
+        "upstream_sort_direction": "descending",
+        "upstream_filter": fixed_parameters["fs"],
+        "wrapper_source_page_uri": _MARKET_QUOTE_NEW_A_SPOT_SOURCE_URI,
+        "wrapper_output_ordering": "source_response_order_with_wrapper_sequence",
+        "wrapper_source_column_count": (
+            _MARKET_QUOTE_NEW_A_SPOT_WRAPPER_SOURCE_COLUMN_COUNT
+        ),
+        "wrapper_column_mapping": dict(_MARKET_QUOTE_NEW_A_SPOT_WRAPPER_COLUMN_MAPPING),
+        "full_universe_response": True,
+        "entity_rows_selected": True,
+        "upstream_row_count": upstream_row_count,
+        "entity_row_count": entity_row_count,
+        "listed_date_start": listed_date_start,
+        "listed_date_end": listed_date_end,
     }
 
 
@@ -35619,6 +36108,178 @@ def _validate_market_quote_bj_a_spot_normalizer_scope(
         if not matches:
             raise ProviderNormalizationError(
                 "Beijing A-share quote response metadata "
+                f"{name!r} does not match the requested replay scope"
+            )
+
+
+def _validate_market_quote_new_a_spot_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> None:
+    """Validate the replay scope of a filtered A-share new-stock snapshot."""
+
+    if listing.market is not ListingMarket.A:
+        raise ProviderNormalizationError(
+            "A-share new-stock quote raw slice supports A-share new-stock listings only"
+        )
+    if record.response_metadata.get("endpoint") != _MARKET_QUOTE_NEW_A_SPOT_ENDPOINT:
+        raise ProviderNormalizationError(
+            "A-share new-stock quote record must come from "
+            f"{_MARKET_QUOTE_NEW_A_SPOT_ENDPOINT}"
+        )
+    if record.source_uri != _SOURCE_URIS[_MARKET_QUOTE_NEW_A_SPOT_ENDPOINT]:
+        raise ProviderNormalizationError(
+            "A-share new-stock quote source URI does not match the documented endpoint"
+        )
+    if record.response_metadata.get("market") != listing.market.value:
+        raise ProviderNormalizationError(
+            "A-share new-stock quote response market does not match requested listing"
+        )
+    if record.response_metadata.get("listing_code") != listing.code:
+        raise ProviderNormalizationError(
+            "A-share new-stock quote response listing code does not match requested "
+            "listing"
+        )
+    try:
+        _market_quote_kwargs(
+            _MARKET_QUOTE_NEW_A_SPOT_ENDPOINT,
+            listing,
+            record.request,
+        )
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+
+    upstream_row_count = record.response_metadata.get("upstream_row_count")
+    if (
+        isinstance(upstream_row_count, bool)
+        or not isinstance(upstream_row_count, int)
+        or upstream_row_count < len(rows)
+    ):
+        raise ProviderNormalizationError(
+            "A-share new-stock quote response upstream row count does not match "
+            "the requested replay scope"
+        )
+
+    message, listed_dates = _market_quote_new_a_spot_validation_message(rows, listing)
+    if message is not None:
+        raise ProviderNormalizationError(message)
+
+    row_identity_order = record.response_metadata.get("row_identity_order")
+    if not isinstance(row_identity_order, list):
+        raise ProviderNormalizationError(
+            "A-share new-stock quote response metadata 'row_identity_order' does "
+            "not match the requested replay scope"
+        )
+    seen_codes: set[str] = set()
+    for code in row_identity_order:
+        if (
+            not isinstance(code, str)
+            or re.fullmatch(r"\d{6}", code) is None
+            or code in seen_codes
+        ):
+            raise ProviderNormalizationError(
+                "A-share new-stock quote response metadata 'row_identity_order' "
+                "does not match the requested replay scope"
+            )
+        seen_codes.add(code)
+    if len(row_identity_order) != upstream_row_count:
+        raise ProviderNormalizationError(
+            "A-share new-stock quote response metadata 'row_identity_order' does "
+            "not match the requested replay scope"
+        )
+
+    selected_row_identity_order = record.response_metadata.get(
+        "selected_row_identity_order"
+    )
+    selected_codes = [row["代码"] for row in rows]
+    if selected_row_identity_order != selected_codes or any(
+        code not in row_identity_order for code in selected_codes
+    ):
+        raise ProviderNormalizationError(
+            "A-share new-stock quote response metadata 'selected_row_identity_order' "
+            "does not match the requested replay scope"
+        )
+
+    listed_date_start = record.response_metadata.get("listed_date_start")
+    listed_date_end = record.response_metadata.get("listed_date_end")
+    for name, value in (
+        ("listed_date_start", listed_date_start),
+        ("listed_date_end", listed_date_end),
+    ):
+        if value is not None and (
+            not isinstance(value, str) or _parse_date_value(value) is None
+        ):
+            raise ProviderNormalizationError(
+                f"A-share new-stock quote response metadata {name!r} is not "
+                "a valid date"
+            )
+    parsed_start_date = (
+        _parse_date_value(listed_date_start)
+        if isinstance(listed_date_start, str)
+        else None
+    )
+    parsed_end_date = (
+        _parse_date_value(listed_date_end)
+        if isinstance(listed_date_end, str)
+        else None
+    )
+    if upstream_row_count > 0 and (
+        parsed_start_date is None
+        or parsed_end_date is None
+        or parsed_start_date > parsed_end_date
+    ):
+        raise ProviderNormalizationError(
+            "A-share new-stock quote response metadata date bounds do not "
+            "match the complete upstream response boundary"
+        )
+    if listed_dates and (
+        parsed_start_date is None
+        or parsed_end_date is None
+        or min(listed_dates) < parsed_start_date
+        or max(listed_dates) > parsed_end_date
+    ):
+        raise ProviderNormalizationError(
+            "A-share new-stock quote response metadata date bounds do not "
+            "contain the selected rows"
+        )
+
+    expected_metadata = _market_quote_new_a_spot_response_metadata(
+        listing_code=listing.code,
+        row_identity_order=row_identity_order,
+        selected_row_identity_order=selected_row_identity_order,
+        upstream_row_count=upstream_row_count,
+        entity_row_count=len(rows),
+        listed_date_start=listed_date_start,
+        listed_date_end=listed_date_end,
+    )
+    boolean_fields = {
+        "listing_scoped_request",
+        "full_universe_response",
+        "entity_rows_selected",
+    }
+    count_fields = {
+        "field_count",
+        "upstream_page_size",
+        "upstream_row_count",
+        "entity_row_count",
+        "wrapper_source_column_count",
+    }
+    for name, expected in expected_metadata.items():
+        actual = record.response_metadata.get(name)
+        if name in boolean_fields:
+            matches = isinstance(actual, bool) and actual is expected
+        elif name in count_fields:
+            matches = (
+                isinstance(actual, int)
+                and not isinstance(actual, bool)
+                and actual == expected
+            )
+        else:
+            matches = actual == expected
+        if not matches:
+            raise ProviderNormalizationError(
+                "A-share new-stock quote response metadata "
                 f"{name!r} does not match the requested replay scope"
             )
 

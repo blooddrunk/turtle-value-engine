@@ -1697,6 +1697,20 @@ snapshot has no stable observation timestamp and therefore creates no canonical
 current-price fact. No calculation, gate, pipeline, CLI or input-loader contract
 changes.
 
+Phase 3.42 adds the documented Eastmoney A-share new-stock real-time quote
+endpoint [`stock_new_a_spot_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
+under `MARKET_QUOTE` with explicit `view=new_a_spot` and an A-share listing
+context. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hist_em.py)
+calls the `push2.eastmoney.com/api/qt/clist/get` JSON endpoint with the fixed
+`m:0 f:8,m:1 f:8` filter, `fid=f26`, provider-driven pagination, `f3` descending
+sort and the exact 24-field wrapper output including `上市日期`. The provider
+preserves the official field order, 33-column wrapper mapping, listing-date
+bounds, documented price/volume/turnover/percentage units and complete-universe
+response metadata before selecting the requested code. The normalizer emits
+`AKSHARE_NEW_A_SPOT_QUOTE_RAW_ONLY`: the current-day new-stock snapshot has no
+stable observation timestamp and therefore creates no canonical current-price
+fact. No calculation, gate, pipeline, CLI or input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.
