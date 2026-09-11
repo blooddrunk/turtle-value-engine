@@ -3792,6 +3792,28 @@ validation, empty output, raw-only normalization, replay metadata tampering
 and offline cache replay. No calculation, gate, pipeline, CLI or input-loader
 contract changes.
 
+### Phase 3.49 — Sina next-new-stock raw acquisition contract (COMPLETE)
+
+The mapping review now covers the documented Sina
+[`stock_zh_a_new`](https://akshare.akfamily.xyz/data/stock/stock.html)
+next-new-stock endpoint under `MARKET_ACTIVITY` with explicit
+`view=sina_new_stock` and Shanghai or Shenzhen A-share listing context. The
+[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_zh_a_special.py)
+uses `Market_Center.getHQNodeStockCount` with `node=new_stock`, then paginates
+`Market_Center.getHQNodeData` in ascending `symbol` order with page size 80.
+The provider preserves the exact ten-field `symbol`, `code`, `name`, price,
+volume, amount, market-cap and turnover-ratio output and filters the complete
+validated universe by the requested listing.
+
+The Sina next-new-stock response remains raw evidence only because it is a
+latest-trading-day quote universe without a stable observation date or a
+filing-backed valuation/unit basis. The normalizer emits
+`AKSHARE_SINA_NEW_STOCK_RAW_ONLY` and creates no canonical fact. Tests cover
+exact routing, pagination metadata, full-universe field/order/identity/type
+validation, invalid unrequested rows, empty selection, raw-only normalization,
+replay metadata tampering and offline cache replay. No calculation, gate,
+pipeline, CLI or input-loader contract changes.
+
 ### Future structured-provider deliverables
 
 ```text
@@ -3801,7 +3823,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–3.48 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–3.49 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```

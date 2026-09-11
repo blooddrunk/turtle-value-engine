@@ -1820,6 +1820,26 @@ both mainland exchanges, defaults, parameter and row validation, empty output,
 raw-only normalization, replay metadata tampering and offline cache replay.
 No calculation, gate, pipeline, CLI or input-loader contract changes.
 
+Phase 3.49 adds the documented Sina next-new-stock endpoint
+[`stock_zh_a_new`](https://akshare.akfamily.xyz/data/stock/stock.html) under
+`MARKET_ACTIVITY` with explicit `view=sina_new_stock` and Shanghai or Shenzhen
+A-share listing context. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_zh_a_special.py)
+uses `Market_Center.getHQNodeStockCount` with `node=new_stock`, then paginates
+`Market_Center.getHQNodeData` in ascending `symbol` order with page size 80.
+The adapter preserves the exact ten-field `symbol`, `code`, `name`, price,
+volume, amount, market-cap and turnover-ratio output, the lower-prefixed source
+identity, source-selected field order and complete-universe metadata before
+selecting the requested listing.
+
+The Sina next-new-stock response is retained as raw evidence only: it is a
+latest-trading-day quote universe without a stable observation date or
+filing-backed valuation/unit basis. The normalizer emits
+`AKSHARE_SINA_NEW_STOCK_RAW_ONLY` and creates no canonical fact. Tests cover
+exact request routing, pagination metadata, complete-universe field/order,
+identity/type validation, invalid unrequested rows, empty selection, raw-only
+normalization, replay metadata tampering and offline cache replay. No
+calculation, gate, pipeline, CLI or input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

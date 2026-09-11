@@ -57,7 +57,8 @@ raw slices are also retained with their market-wide direction and upstream
 pagination metadata.
 A-share Xueqiu, CNINFO and Tonghuashun company-profile raw slices are also
 available. The A-share dividend-distribution detail and
-new-stock-board raw slices are also available. The A-share CNINFO IPO-summary,
+new-stock-board and Sina next-new-stock raw slices are also available. The
+A-share CNINFO IPO-summary,
 Eastmoney IPO-yield,
 Eastmoney individual-notice, Eastmoney market-wide notice and Eastmoney
 shareholder-meeting raw slices are also available.
@@ -120,9 +121,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "152"
+AKSHARE_ADAPTER_VERSION = "154"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "153"
+AKSHARE_MAPPING_VERSION = "155"
 
 
 class ListingMarket(StrEnum):
@@ -322,6 +323,7 @@ _SOURCE_URIS = {
     "stock_ipo_summary_cninfo": "https://webapi.cninfo.com.cn/#/company",
     "stock_dxsyl_em": "https://data.eastmoney.com/xg/xg/dxsyl.html",
     "stock_zh_a_new_em": "https://quote.eastmoney.com/center/gridlist.html#newshares",
+    "stock_zh_a_new": "http://vip.stock.finance.sina.com.cn/mkt/#new_stock",
     "stock_hk_dividend_payout_em": "https://emweb.securities.eastmoney.com/PC_HKF10/pages/home/index.html",
     "stock_hk_fhpx_detail_ths": "https://stockpage.10jqka.com.cn/HK0700/bonus/",
     "stock_hsgt_individual_em": "https://data.eastmoney.com/hsgt/StockHdDetail/002008.html",
@@ -4420,6 +4422,87 @@ _MARKET_ACTIVITY_NEW_STOCK_NUMERIC_FIELDS = (
     "市盈率-动态",
     "市净率",
 )
+_MARKET_ACTIVITY_SINA_NEW_STOCK_ENDPOINT = "stock_zh_a_new"
+_MARKET_ACTIVITY_SINA_NEW_STOCK_PARAMETER_NAMES = frozenset({"view"})
+_MARKET_ACTIVITY_SINA_NEW_STOCK_VIEW = "sina_new_stock"
+_MARKET_ACTIVITY_SINA_NEW_STOCK_FIELDS = (
+    "symbol",
+    "code",
+    "name",
+    "open",
+    "high",
+    "low",
+    "volume",
+    "amount",
+    "mktcap",
+    "turnoverratio",
+)
+_MARKET_ACTIVITY_SINA_NEW_STOCK_FIELD_SET = frozenset(
+    _MARKET_ACTIVITY_SINA_NEW_STOCK_FIELDS
+)
+_MARKET_ACTIVITY_SINA_NEW_STOCK_TEXT_FIELDS = ("symbol", "code", "name")
+_MARKET_ACTIVITY_SINA_NEW_STOCK_NUMERIC_FIELDS = (
+    "open",
+    "high",
+    "low",
+    "volume",
+    "amount",
+    "mktcap",
+    "turnoverratio",
+)
+_MARKET_ACTIVITY_SINA_NEW_STOCK_INTEGER_FIELDS = ("volume", "amount")
+_MARKET_ACTIVITY_SINA_NEW_STOCK_NULLABLE_FIELDS = (
+    *_MARKET_ACTIVITY_SINA_NEW_STOCK_NUMERIC_FIELDS,
+)
+_MARKET_ACTIVITY_SINA_NEW_STOCK_FIELD_TYPES = {
+    **{field: "string" for field in _MARKET_ACTIVITY_SINA_NEW_STOCK_TEXT_FIELDS},
+    **{
+        field: "integer"
+        if field in _MARKET_ACTIVITY_SINA_NEW_STOCK_INTEGER_FIELDS
+        else "number"
+        for field in _MARKET_ACTIVITY_SINA_NEW_STOCK_NUMERIC_FIELDS
+    },
+}
+_MARKET_ACTIVITY_SINA_NEW_STOCK_UNDOCUMENTED_NUMERIC_UNITS = {
+    field: "not_documented"
+    for field in _MARKET_ACTIVITY_SINA_NEW_STOCK_NUMERIC_FIELDS
+}
+_MARKET_ACTIVITY_SINA_NEW_STOCK_SOURCE_URI = (
+    "http://vip.stock.finance.sina.com.cn/mkt/#new_stock"
+)
+_MARKET_ACTIVITY_SINA_NEW_STOCK_COUNT_URL = (
+    "https://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/"
+    "Market_Center.getHQNodeStockCount"
+)
+_MARKET_ACTIVITY_SINA_NEW_STOCK_UPSTREAM_URL = (
+    "https://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/"
+    "Market_Center.getHQNodeData"
+)
+_MARKET_ACTIVITY_SINA_NEW_STOCK_COUNT_PARAMETERS = {"node": "new_stock"}
+_MARKET_ACTIVITY_SINA_NEW_STOCK_UPSTREAM_PARAMETERS = (
+    "page",
+    "num",
+    "sort",
+    "asc",
+    "node",
+    "symbol",
+    "_s_r_a",
+)
+_MARKET_ACTIVITY_SINA_NEW_STOCK_UPSTREAM_FIXED_PARAMETERS = {
+    "num": "80",
+    "sort": "symbol",
+    "asc": "1",
+    "node": "new_stock",
+    "symbol": "",
+    "_s_r_a": "page",
+}
+_MARKET_ACTIVITY_SINA_NEW_STOCK_UPSTREAM_DYNAMIC_PARAMETERS = {
+    "page": "1..provider_reported_page_count",
+}
+_MARKET_ACTIVITY_SINA_NEW_STOCK_UPSTREAM_TRANSFORMATIONS = {
+    field: "pd.to_numeric"
+    for field in ("open", "high", "low")
+}
 
 _FINANCIAL_STATEMENT_PARAMETER_NAMES = frozenset({"indicator", "statement_date"})
 _EARNINGS_FORECAST_PARAMETER_NAMES = frozenset({"date"})
@@ -6297,6 +6380,21 @@ class AKShareProvider(StructuredDataProvider):
             raise ProviderRequestError(
                 "the AKShare B-share daily-history endpoint supports Shanghai "
                 "900xxx or Shenzhen 200xxx B-share listings only",
+                provider=self.identity,
+                request=request,
+                retryable=False,
+            )
+        if (
+            request.category is DataCategory.MARKET_ACTIVITY
+            and request.parameters.get("view") == _MARKET_ACTIVITY_SINA_NEW_STOCK_VIEW
+            and (
+                listing.market is not ListingMarket.A
+                or listing.canonical_id[:2] not in {"SH", "SZ"}
+            )
+        ):
+            raise ProviderRequestError(
+                "the Sina new-stock endpoint supports Shanghai and Shenzhen "
+                "A-share listings only",
                 provider=self.identity,
                 request=request,
                 retryable=False,
@@ -8243,6 +8341,31 @@ class AKShareProvider(StructuredDataProvider):
                 response_metadata["rank_ordering"] = "unique_positive"
                 response_metadata["code_field"] = "代码"
                 response_metadata["date_binding"] = "retrieval_only"
+            elif endpoint.name == _MARKET_ACTIVITY_SINA_NEW_STOCK_ENDPOINT:
+                _validate_market_activity_sina_new_stock_provider_rows(
+                    rows,
+                    provider=self.identity,
+                    request=request,
+                )
+                selected = _select_listing_rows(
+                    rows,
+                    listing,
+                    provider=self.identity,
+                    request=request,
+                    row_label="market-activity-sina-new-stock",
+                )
+                response_metadata.update(
+                    _market_activity_sina_new_stock_response_metadata(
+                        listing_code=listing.code,
+                        row_identity_order=[row["symbol"] for row in rows],
+                        selected_row_identity_order=[
+                            row["symbol"] for row in selected
+                        ],
+                        upstream_row_count=len(rows),
+                        entity_row_count=len(selected),
+                    )
+                )
+                payload = selected
             elif endpoint.name == "stock_comment_detail_scrd_desire_em":
                 observation_dates = _validate_market_activity_participation_desire_provider_rows(
                     rows,
@@ -10922,6 +11045,10 @@ class AKShareProvider(StructuredDataProvider):
             market_activity_new_stock_requested=(
                 request.parameters.get("view") == _MARKET_ACTIVITY_NEW_STOCK_VIEW
             ),
+            market_activity_sina_new_stock_requested=(
+                request.parameters.get("view")
+                == _MARKET_ACTIVITY_SINA_NEW_STOCK_VIEW
+            ),
             market_activity_institution_statistic_requested=(
                 request.parameters.get("view")
                 == _MARKET_ACTIVITY_INSTITUTION_STATISTIC_VIEW
@@ -11804,6 +11931,16 @@ class AKShareNormalizer:
                         rows,
                     )
                     normalizer_flags.add("AKSHARE_NEW_STOCKS_RAW_ONLY")
+                elif (
+                    record.request.parameters.get("view")
+                    == _MARKET_ACTIVITY_SINA_NEW_STOCK_VIEW
+                ):
+                    _validate_market_activity_sina_new_stock_normalizer_scope(
+                        record,
+                        listing,
+                        rows,
+                    )
+                    normalizer_flags.add("AKSHARE_SINA_NEW_STOCK_RAW_ONLY")
                 elif record.request.parameters.get("view") == _MARKET_ACTIVITY_HOT_RANK_VIEW:
                     _validate_market_activity_hot_rank_normalizer_scope(
                         record,
@@ -11959,7 +12096,8 @@ class AKShareNormalizer:
                         "stock_a_congestion_lg, "
                         "stock_market_activity_legu, "
                         "stock_account_statistics_em, "
-                        "stock_zh_a_new_em, stock_comment_detail_scrd_desire_em, "
+                        "stock_zh_a_new_em, stock_zh_a_new, "
+                        "stock_comment_detail_scrd_desire_em, "
                         "stock_comment_detail_scrd_focus_em, "
                         "stock_comment_detail_zlkp_jgcyd_em, "
                         "stock_dzjy_mrmx, "
@@ -14203,6 +14341,12 @@ class AKShareNormalizer:
                 "evidence only: its current-trading-day quote universe does not establish "
                 "a dated listing, return, valuation, governance or canonical market fact."
             )
+        if "AKSHARE_SINA_NEW_STOCK_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented Sina A-share next-new-stock response is retained as raw "
+                "evidence only: its latest-trading-day quote universe does not establish "
+                "a dated listing, return, valuation, governance or canonical market fact."
+            )
         if "AKSHARE_MARKET_PARTICIPATION_DESIRE_RAW_ONLY" in normalizer_flags:
             notes += (
                 " The documented A-share market-participation response is retained as "
@@ -14798,6 +14942,7 @@ def _endpoint_candidates(
     market_activity_limit_down_pool_requested: bool = False,
     market_activity_hot_rank_requested: bool = False,
     market_activity_new_stock_requested: bool = False,
+    market_activity_sina_new_stock_requested: bool = False,
     market_quote_sh_a_spot_requested: bool = False,
     market_quote_sz_a_spot_requested: bool = False,
     market_quote_bj_a_spot_requested: bool = False,
@@ -15151,6 +15296,8 @@ def _endpoint_candidates(
         if market is ListingMarket.A:
             if market_activity_new_stock_requested:
                 return ("stock_zh_a_new_em",)
+            if market_activity_sina_new_stock_requested:
+                return (_MARKET_ACTIVITY_SINA_NEW_STOCK_ENDPOINT,)
             if market_activity_participation_desire_requested:
                 return ("stock_comment_detail_scrd_desire_em",)
             if market_activity_focus_requested:
@@ -31252,6 +31399,199 @@ def _validate_market_activity_new_stock_provider_rows(
         )
 
 
+def _market_activity_sina_new_stock_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef | None = None,
+) -> str | None:
+    """Return a strict-schema error for the Sina next-new-stock universe."""
+
+    seen_symbols: set[str] = set()
+    seen_codes: set[str] = set()
+    for index, row in enumerate(rows):
+        missing = sorted(_MARKET_ACTIVITY_SINA_NEW_STOCK_FIELD_SET - set(row))
+        unexpected = sorted(set(row) - _MARKET_ACTIVITY_SINA_NEW_STOCK_FIELD_SET)
+        if missing:
+            return (
+                f"market-activity Sina new-stock row {index} is missing field(s): "
+                + ", ".join(missing)
+            )
+        if unexpected:
+            return (
+                f"market-activity Sina new-stock row {index} contains unsupported "
+                "field(s): "
+                + ", ".join(unexpected)
+            )
+        if tuple(row) != _MARKET_ACTIVITY_SINA_NEW_STOCK_FIELDS:
+            return (
+                f"market-activity Sina new-stock row {index} must preserve the "
+                "official field order"
+            )
+
+        raw_symbol = row["symbol"]
+        if not isinstance(raw_symbol, str) or re.fullmatch(
+            r"(?:sh|sz)\d{6}", raw_symbol
+        ) is None:
+            return (
+                f"market-activity Sina new-stock row {index} has an invalid "
+                "symbol"
+            )
+        raw_code = row["code"]
+        if not isinstance(raw_code, str) or re.fullmatch(r"\d{6}", raw_code) is None:
+            return (
+                f"market-activity Sina new-stock row {index} has an invalid code"
+            )
+        if raw_symbol[2:] != raw_code:
+            return (
+                f"market-activity Sina new-stock row {index} symbol and code do not "
+                "identify the same listing"
+            )
+        if listing is not None and (
+            raw_code != listing.code
+            or raw_symbol != listing.canonical_id.lower()
+        ):
+            return (
+                f"market-activity Sina new-stock row {index} entity {raw_symbol!r} "
+                f"does not match requested listing {listing.canonical_id!r}"
+            )
+        if raw_symbol in seen_symbols:
+            return (
+                "market-activity Sina new-stock response has duplicate symbol "
+                f"{raw_symbol!r}"
+            )
+        if raw_code in seen_codes:
+            return (
+                "market-activity Sina new-stock response has duplicate listing "
+                f"code {raw_code!r}"
+            )
+        seen_symbols.add(raw_symbol)
+        seen_codes.add(raw_code)
+
+        if not isinstance(row["name"], str) or _text_value(row["name"]) is None:
+            return (
+                f"market-activity Sina new-stock row {index} field 'name' must be "
+                "a non-empty string"
+            )
+        for field in _MARKET_ACTIVITY_SINA_NEW_STOCK_NUMERIC_FIELDS:
+            value = row[field]
+            if value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, Real):
+                return (
+                    f"market-activity Sina new-stock row {index} field {field!r} "
+                    "must be numeric or null"
+                )
+            try:
+                numeric = float(value)
+            except (OverflowError, TypeError, ValueError):
+                return (
+                    f"market-activity Sina new-stock row {index} field {field!r} "
+                    "must be numeric or null"
+                )
+            if not math.isfinite(numeric):
+                return (
+                    f"market-activity Sina new-stock row {index} field {field!r} "
+                    "must be finite or null"
+                )
+            if (
+                field in _MARKET_ACTIVITY_SINA_NEW_STOCK_INTEGER_FIELDS
+                and not numeric.is_integer()
+            ):
+                return (
+                    f"market-activity Sina new-stock row {index} field {field!r} "
+                    "must be an integer or null"
+                )
+    return None
+
+
+def _validate_market_activity_sina_new_stock_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> None:
+    """Validate the full Sina next-new-stock universe before filtering."""
+
+    message = _market_activity_sina_new_stock_validation_message(rows)
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message}",
+            provider=provider,
+            request=request,
+        )
+
+
+def _market_activity_sina_new_stock_response_metadata(
+    *,
+    listing_code: str,
+    row_identity_order: Sequence[JSONValue],
+    selected_row_identity_order: Sequence[JSONValue],
+    upstream_row_count: int,
+    entity_row_count: int,
+) -> dict[str, JSONValue]:
+    """Build replay metadata for a filtered Sina next-new-stock snapshot."""
+
+    return {
+        "endpoint": _MARKET_ACTIVITY_SINA_NEW_STOCK_ENDPOINT,
+        "market": ListingMarket.A.value,
+        "listing_code": listing_code,
+        "market_activity_view": _MARKET_ACTIVITY_SINA_NEW_STOCK_VIEW,
+        "market_scope": "sina_shenzhen_shanghai_next_new_stocks",
+        "listing_scoped_request": False,
+        "row_filtering": "provider",
+        "snapshot_scope": "latest_trading_day_next_new_stock_universe",
+        "date_binding": "retrieval_only",
+        "listing_code_field": "code",
+        "listing_symbol_field": "symbol",
+        "identity_fields": ["symbol", "code"],
+        "identity_ordering": "source_response_order",
+        "row_identity_order": list(row_identity_order),
+        "selected_row_identity_order": list(selected_row_identity_order),
+        "value_fields": list(_MARKET_ACTIVITY_SINA_NEW_STOCK_NUMERIC_FIELDS),
+        "integer_fields": list(_MARKET_ACTIVITY_SINA_NEW_STOCK_INTEGER_FIELDS),
+        "text_fields": list(_MARKET_ACTIVITY_SINA_NEW_STOCK_TEXT_FIELDS),
+        "required_text_fields": list(_MARKET_ACTIVITY_SINA_NEW_STOCK_TEXT_FIELDS),
+        "nullable_fields": list(_MARKET_ACTIVITY_SINA_NEW_STOCK_NULLABLE_FIELDS),
+        "field_types": dict(_MARKET_ACTIVITY_SINA_NEW_STOCK_FIELD_TYPES),
+        "field_count": len(_MARKET_ACTIVITY_SINA_NEW_STOCK_FIELDS),
+        "source_field_order": list(_MARKET_ACTIVITY_SINA_NEW_STOCK_FIELDS),
+        "documented_units": {},
+        "undocumented_numeric_units": dict(
+            _MARKET_ACTIVITY_SINA_NEW_STOCK_UNDOCUMENTED_NUMERIC_UNITS
+        ),
+        "upstream_count_url": _MARKET_ACTIVITY_SINA_NEW_STOCK_COUNT_URL,
+        "upstream_count_parameters": dict(
+            _MARKET_ACTIVITY_SINA_NEW_STOCK_COUNT_PARAMETERS
+        ),
+        "upstream_url": _MARKET_ACTIVITY_SINA_NEW_STOCK_UPSTREAM_URL,
+        "upstream_protocol": "JSON",
+        "upstream_parameters": list(
+            _MARKET_ACTIVITY_SINA_NEW_STOCK_UPSTREAM_PARAMETERS
+        ),
+        "upstream_fixed_parameters": dict(
+            _MARKET_ACTIVITY_SINA_NEW_STOCK_UPSTREAM_FIXED_PARAMETERS
+        ),
+        "upstream_dynamic_parameters": dict(
+            _MARKET_ACTIVITY_SINA_NEW_STOCK_UPSTREAM_DYNAMIC_PARAMETERS
+        ),
+        "upstream_authentication": "none",
+        "upstream_page_size": 80,
+        "pagination": "provider_driven_page_count",
+        "upstream_sort_column": "symbol",
+        "upstream_sort_direction": "ascending",
+        "upstream_filter": "node=new_stock",
+        "wrapper_source_page_uri": _MARKET_ACTIVITY_SINA_NEW_STOCK_SOURCE_URI,
+        "wrapper_output_ordering": "source_selected_field_order",
+        "wrapper_selected_fields": list(_MARKET_ACTIVITY_SINA_NEW_STOCK_FIELDS),
+        "upstream_transformations": dict(
+            _MARKET_ACTIVITY_SINA_NEW_STOCK_UPSTREAM_TRANSFORMATIONS
+        ),
+        "full_universe_response": True,
+        "entity_rows_selected": True,
+        "upstream_row_count": upstream_row_count,
+        "entity_row_count": entity_row_count,
+    }
+
+
 def _market_activity_hot_rank_row_listing(value: object) -> _ListingRef | None:
     """Parse the market-prefixed listing code published by the hot-rank endpoint."""
 
@@ -38008,6 +38348,144 @@ def _validate_market_activity_new_stock_normalizer_scope(
     message = _market_activity_new_stock_validation_message(rows, listing)
     if message is not None:
         raise ProviderNormalizationError(message)
+
+
+def _validate_market_activity_sina_new_stock_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> None:
+    """Validate the replay scope of a filtered Sina next-new-stock snapshot."""
+
+    if (
+        listing.market is not ListingMarket.A
+        or listing.canonical_id[:2] not in {"SH", "SZ"}
+    ):
+        raise ProviderNormalizationError(
+            "AKShare Sina new-stock raw slice supports Shanghai and Shenzhen "
+            "A-share listings only"
+        )
+    if record.response_metadata.get("endpoint") != _MARKET_ACTIVITY_SINA_NEW_STOCK_ENDPOINT:
+        raise ProviderNormalizationError(
+            "AKShare Sina new-stock record must come from "
+            f"{_MARKET_ACTIVITY_SINA_NEW_STOCK_ENDPOINT}"
+        )
+    if record.source_uri != _SOURCE_URIS[_MARKET_ACTIVITY_SINA_NEW_STOCK_ENDPOINT]:
+        raise ProviderNormalizationError(
+            "AKShare Sina new-stock source URI does not match the documented endpoint"
+        )
+    try:
+        _market_activity_sina_new_stock_kwargs(
+            _MARKET_ACTIVITY_SINA_NEW_STOCK_ENDPOINT,
+            listing,
+            record.request,
+        )
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+
+    expected_metadata = {
+        "market": ListingMarket.A.value,
+        "listing_code": listing.code,
+        "market_activity_view": _MARKET_ACTIVITY_SINA_NEW_STOCK_VIEW,
+        "market_scope": "sina_shenzhen_shanghai_next_new_stocks",
+        "listing_scoped_request": False,
+        "row_filtering": "provider",
+        "snapshot_scope": "latest_trading_day_next_new_stock_universe",
+        "date_binding": "retrieval_only",
+        "listing_code_field": "code",
+        "listing_symbol_field": "symbol",
+        "identity_fields": ["symbol", "code"],
+        "identity_ordering": "source_response_order",
+        "value_fields": list(_MARKET_ACTIVITY_SINA_NEW_STOCK_NUMERIC_FIELDS),
+        "integer_fields": list(_MARKET_ACTIVITY_SINA_NEW_STOCK_INTEGER_FIELDS),
+        "text_fields": list(_MARKET_ACTIVITY_SINA_NEW_STOCK_TEXT_FIELDS),
+        "required_text_fields": list(_MARKET_ACTIVITY_SINA_NEW_STOCK_TEXT_FIELDS),
+        "nullable_fields": list(_MARKET_ACTIVITY_SINA_NEW_STOCK_NULLABLE_FIELDS),
+        "field_types": dict(_MARKET_ACTIVITY_SINA_NEW_STOCK_FIELD_TYPES),
+        "field_count": len(_MARKET_ACTIVITY_SINA_NEW_STOCK_FIELDS),
+        "source_field_order": list(_MARKET_ACTIVITY_SINA_NEW_STOCK_FIELDS),
+        "documented_units": {},
+        "undocumented_numeric_units": dict(
+            _MARKET_ACTIVITY_SINA_NEW_STOCK_UNDOCUMENTED_NUMERIC_UNITS
+        ),
+        "upstream_count_url": _MARKET_ACTIVITY_SINA_NEW_STOCK_COUNT_URL,
+        "upstream_count_parameters": dict(
+            _MARKET_ACTIVITY_SINA_NEW_STOCK_COUNT_PARAMETERS
+        ),
+        "upstream_url": _MARKET_ACTIVITY_SINA_NEW_STOCK_UPSTREAM_URL,
+        "upstream_protocol": "JSON",
+        "upstream_parameters": list(
+            _MARKET_ACTIVITY_SINA_NEW_STOCK_UPSTREAM_PARAMETERS
+        ),
+        "upstream_fixed_parameters": dict(
+            _MARKET_ACTIVITY_SINA_NEW_STOCK_UPSTREAM_FIXED_PARAMETERS
+        ),
+        "upstream_dynamic_parameters": dict(
+            _MARKET_ACTIVITY_SINA_NEW_STOCK_UPSTREAM_DYNAMIC_PARAMETERS
+        ),
+        "upstream_authentication": "none",
+        "upstream_page_size": 80,
+        "pagination": "provider_driven_page_count",
+        "upstream_sort_column": "symbol",
+        "upstream_sort_direction": "ascending",
+        "upstream_filter": "node=new_stock",
+        "wrapper_source_page_uri": _MARKET_ACTIVITY_SINA_NEW_STOCK_SOURCE_URI,
+        "wrapper_output_ordering": "source_selected_field_order",
+        "wrapper_selected_fields": list(_MARKET_ACTIVITY_SINA_NEW_STOCK_FIELDS),
+        "upstream_transformations": dict(
+            _MARKET_ACTIVITY_SINA_NEW_STOCK_UPSTREAM_TRANSFORMATIONS
+        ),
+        "full_universe_response": True,
+        "entity_rows_selected": True,
+        "entity_row_count": len(rows),
+    }
+    for name, expected in expected_metadata.items():
+        if record.response_metadata.get(name) != expected:
+            raise ProviderNormalizationError(
+                f"market-activity Sina new-stock response metadata {name!r} does "
+                "not match the requested replay scope"
+            )
+
+    message = _market_activity_sina_new_stock_validation_message(rows, listing)
+    if message is not None:
+        raise ProviderNormalizationError(message)
+
+    upstream_row_count = record.response_metadata.get("upstream_row_count")
+    row_identity_order = record.response_metadata.get("row_identity_order")
+    selected_row_identity_order = record.response_metadata.get(
+        "selected_row_identity_order"
+    )
+    if (
+        isinstance(upstream_row_count, bool)
+        or not isinstance(upstream_row_count, int)
+        or not isinstance(row_identity_order, list)
+        or not isinstance(selected_row_identity_order, list)
+        or not all(isinstance(identity, str) for identity in row_identity_order)
+        or not all(
+            isinstance(identity, str) for identity in selected_row_identity_order
+        )
+        or upstream_row_count != len(row_identity_order)
+        or upstream_row_count < len(rows)
+    ):
+        raise ProviderNormalizationError(
+            "market-activity Sina new-stock response universe metadata does not "
+            "match the requested replay scope"
+        )
+    if len(set(row_identity_order)) != len(row_identity_order):
+        raise ProviderNormalizationError(
+            "market-activity Sina new-stock response identity order is not unique"
+        )
+    expected_selected = [row["symbol"] for row in rows]
+    if selected_row_identity_order != expected_selected:
+        raise ProviderNormalizationError(
+            "market-activity Sina new-stock response selected identity order does "
+            "not match replayed rows"
+        )
+    if any(identity not in row_identity_order for identity in expected_selected):
+        raise ProviderNormalizationError(
+            "market-activity Sina new-stock response selected identity is absent "
+            "from the upstream universe"
+        )
 
 
 def _validate_market_quote_ab_comparison_normalizer_scope(
@@ -46584,6 +47062,8 @@ def _market_activity_kwargs(
         return _market_activity_limit_down_pool_kwargs(endpoint_name, listing, request)
     if endpoint_name == "stock_zh_a_new_em":
         return _market_activity_new_stock_kwargs(endpoint_name, listing, request)
+    if endpoint_name == _MARKET_ACTIVITY_SINA_NEW_STOCK_ENDPOINT:
+        return _market_activity_sina_new_stock_kwargs(endpoint_name, listing, request)
     if endpoint_name == "stock_comment_detail_scrd_desire_em":
         return _market_activity_participation_desire_kwargs(endpoint_name, listing, request)
     if endpoint_name == "stock_comment_detail_scrd_focus_em":
@@ -48277,6 +48757,48 @@ def _market_activity_new_stock_kwargs(
         raise ProviderRequestError(
             "the AKShare new-stock endpoint requires "
             f"view={_MARKET_ACTIVITY_NEW_STOCK_VIEW!r}",
+            request=request,
+            retryable=False,
+        )
+    return {}
+
+
+def _market_activity_sina_new_stock_kwargs(
+    endpoint_name: str,
+    listing: _ListingRef,
+    request: ProviderRequest,
+) -> dict[str, object]:
+    """Build the documented no-argument Sina next-new-stock request."""
+
+    if endpoint_name != _MARKET_ACTIVITY_SINA_NEW_STOCK_ENDPOINT:
+        raise ProviderRequestError(
+            f"unsupported AKShare Sina new-stock endpoint {endpoint_name!r}",
+            request=request,
+            retryable=False,
+        )
+    if (
+        listing.market is not ListingMarket.A
+        or listing.canonical_id[:2] not in {"SH", "SZ"}
+    ):
+        raise ProviderRequestError(
+            "the Sina new-stock endpoint supports Shanghai and Shenzhen "
+            "A-share listings only",
+            request=request,
+            retryable=False,
+        )
+    unknown = sorted(
+        set(request.parameters) - _MARKET_ACTIVITY_SINA_NEW_STOCK_PARAMETER_NAMES
+    )
+    if unknown:
+        raise ProviderRequestError(
+            "unsupported AKShare Sina new-stock parameter(s): " + ", ".join(unknown),
+            request=request,
+            retryable=False,
+        )
+    if request.parameters.get("view") != _MARKET_ACTIVITY_SINA_NEW_STOCK_VIEW:
+        raise ProviderRequestError(
+            "the AKShare Sina new-stock endpoint requires "
+            f"view={_MARKET_ACTIVITY_SINA_NEW_STOCK_VIEW!r}",
             request=request,
             retryable=False,
         )

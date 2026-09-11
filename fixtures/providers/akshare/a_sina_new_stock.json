@@ -1,0 +1,38 @@
+[
+  {
+    "symbol": "sh601728",
+    "code": "601728",
+    "name": "中国电信",
+    "open": 6.8,
+    "high": 6.95,
+    "low": 6.72,
+    "volume": 123456789,
+    "amount": 856789012,
+    "mktcap": 41463140.0,
+    "turnoverratio": 7.91425
+  },
+  {
+    "symbol": "sh601825",
+    "code": "601825",
+    "name": "沪农商行",
+    "open": 7.15,
+    "high": 7.28,
+    "low": 7.02,
+    "volume": 45678901,
+    "amount": 325678901,
+    "mktcap": 7657689.0,
+    "turnoverratio": 6.6739
+  },
+  {
+    "symbol": "sz301052",
+    "code": "301052",
+    "name": "果麦文化",
+    "open": 25.1,
+    "high": 25.8,
+    "low": 24.6,
+    "volume": 3456789,
+    "amount": 231553223,
+    "mktcap": 254156.9,
+    "turnoverratio": 38.94978
+  }
+]

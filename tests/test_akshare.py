@@ -788,6 +788,9 @@ class FakeAKShare:
     def stock_zh_a_new_em(self):
         return self._return("stock_zh_a_new_em", _fixture("a_new_stock_snapshot.json"))
 
+    def stock_zh_a_new(self):
+        return self._return("stock_zh_a_new", _fixture("a_sina_new_stock.json"))
+
     def stock_cash_flow_sheet_by_report_em(self, **kwargs):
         return self._return(
             "stock_cash_flow_sheet_by_report_em",
@@ -1326,8 +1329,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "152"
-    assert AKSHARE_MAPPING_VERSION == "153"
+    assert provider.identity.provider_version == "154"
+    assert AKSHARE_MAPPING_VERSION == "155"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -44416,6 +44419,315 @@ def test_new_stock_cache_replay_does_not_call_upstream(tmp_path: Path):
     assert replay.mode is RetrievalMode.CACHE_REPLAY
     assert replay.record == live.record
     assert fake.calls == [("stock_zh_a_new_em", {})]
+
+
+def test_sina_new_stock_fetch_uses_documented_pagination_and_filters_universe():
+    fake = FakeAKShare()
+    request = _request(
+        DataCategory.MARKET_ACTIVITY,
+        "SH601728",
+        {"view": "sina_new_stock"},
+    )
+    record = _provider(fake).fetch(request)
+
+    fixture = _fixture("a_sina_new_stock.json")
+    assert record.raw_payload == [fixture[0]]
+    assert fake.calls == [("stock_zh_a_new", {})]
+    assert record.response_metadata["endpoint"] == "stock_zh_a_new"
+    assert record.response_metadata["market_activity_view"] == "sina_new_stock"
+    assert (
+        record.response_metadata["snapshot_scope"]
+        == "latest_trading_day_next_new_stock_universe"
+    )
+    assert record.response_metadata["market_scope"] == (
+        "sina_shenzhen_shanghai_next_new_stocks"
+    )
+    assert record.response_metadata["source_field_order"] == [
+        "symbol",
+        "code",
+        "name",
+        "open",
+        "high",
+        "low",
+        "volume",
+        "amount",
+        "mktcap",
+        "turnoverratio",
+    ]
+    assert record.response_metadata["identity_fields"] == ["symbol", "code"]
+    assert record.response_metadata["row_identity_order"] == [
+        "sh601728",
+        "sh601825",
+        "sz301052",
+    ]
+    assert record.response_metadata["selected_row_identity_order"] == ["sh601728"]
+    assert record.response_metadata["upstream_count_parameters"] == {
+        "node": "new_stock"
+    }
+    assert record.response_metadata["upstream_fixed_parameters"] == {
+        "num": "80",
+        "sort": "symbol",
+        "asc": "1",
+        "node": "new_stock",
+        "symbol": "",
+        "_s_r_a": "page",
+    }
+    assert record.response_metadata["upstream_dynamic_parameters"] == {
+        "page": "1..provider_reported_page_count"
+    }
+    assert record.response_metadata["upstream_page_size"] == 80
+    assert record.response_metadata["pagination"] == "provider_driven_page_count"
+    assert record.response_metadata["upstream_sort_column"] == "symbol"
+    assert record.response_metadata["upstream_sort_direction"] == "ascending"
+    assert record.response_metadata["full_universe_response"] is True
+    assert record.response_metadata["upstream_row_count"] == 3
+    assert record.response_metadata["entity_row_count"] == 1
+    assert record.response_metadata["entity_rows_selected"] is True
+    assert record.response_metadata["listing_scoped_request"] is False
+    assert record.response_metadata["row_filtering"] == "provider"
+    assert record.source_uri == "http://vip.stock.finance.sina.com.cn/mkt/#new_stock"
+
+
+@pytest.mark.parametrize(
+    ("parameters", "entity_id", "match"),
+    [
+        (
+            {"view": "sina_new_stock", "date": "20260909"},
+            "SH601728",
+            "unsupported AKShare Sina new-stock parameter",
+        ),
+        (
+            {"view": "sina_new_stock"},
+            "BJ430001",
+            "Shanghai and Shenzhen A-share listings only",
+        ),
+        (
+            {"view": "sina_new_stock"},
+            "HK00700",
+            "Shanghai and Shenzhen A-share listings only",
+        ),
+    ],
+)
+def test_sina_new_stock_request_requires_exact_view_and_supported_market(
+    parameters: dict,
+    entity_id: str,
+    match: str,
+):
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError, match=match):
+        _provider(fake).fetch(
+            _request(DataCategory.MARKET_ACTIVITY, entity_id, parameters)
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("missing_symbol", "Sina new-stock row 0 is missing field.*symbol"),
+        ("invalid_symbol", "Sina new-stock row 0 has an invalid symbol"),
+        (
+            "mismatched_code",
+            "symbol and code do not identify the same listing",
+        ),
+        ("missing_name", "Sina new-stock row 0 is missing field.*name"),
+        ("invalid_name", "field 'name'.*non-empty string"),
+        ("invalid_numeric", "field 'open'.*numeric or null"),
+        ("invalid_integer", "field 'volume'.*integer or null"),
+        ("duplicate_code", "duplicate symbol"),
+        ("unexpected", "Sina new-stock row 0 contains unsupported field"),
+        ("wrong_order", "must preserve the official field order"),
+    ],
+)
+def test_sina_new_stock_response_validates_full_universe(
+    mutation: str,
+    match: str,
+):
+    payload = [dict(row) for row in _fixture("a_sina_new_stock.json")]
+    if mutation == "missing_symbol":
+        payload[0].pop("symbol")
+    elif mutation == "invalid_symbol":
+        payload[0]["symbol"] = "SH601728"
+    elif mutation == "mismatched_code":
+        payload[0]["code"] = "601825"
+    elif mutation == "missing_name":
+        payload[0].pop("name")
+    elif mutation == "invalid_name":
+        payload[0]["name"] = 601728
+    elif mutation == "invalid_numeric":
+        payload[0]["open"] = "6.8"
+    elif mutation == "invalid_integer":
+        payload[0]["volume"] = 1.5
+    elif mutation == "duplicate_code":
+        payload[1]["symbol"] = payload[0]["symbol"]
+        payload[1]["code"] = payload[0]["code"]
+    elif mutation == "unexpected":
+        payload[0]["extra"] = 1
+    else:
+        payload[0] = {key: payload[0][key] for key in reversed(payload[0])}
+
+    class InvalidSinaNewStock(FakeAKShare):
+        def stock_zh_a_new(self):
+            return self._return("stock_zh_a_new", payload)
+
+    with pytest.raises(ProviderResponseError, match=match):
+        _provider(InvalidSinaNewStock()).fetch(
+            _request(
+                DataCategory.MARKET_ACTIVITY,
+                "SH601728",
+                {"view": "sina_new_stock"},
+            )
+        )
+
+
+def test_sina_new_stock_with_no_matching_listing_is_an_empty_raw_snapshot():
+    class NoMatchingSinaNewStock(FakeAKShare):
+        def stock_zh_a_new(self):
+            return self._return(
+                "stock_zh_a_new",
+                [
+                    row
+                    for row in _fixture("a_sina_new_stock.json")
+                    if row["code"] != "601728"
+                ],
+            )
+
+    record = _provider(NoMatchingSinaNewStock()).fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SH601728",
+            {"view": "sina_new_stock"},
+        )
+    )
+
+    assert record.raw_payload == []
+    assert record.response_metadata["upstream_row_count"] == 2
+    assert record.response_metadata["entity_row_count"] == 0
+    assert record.response_metadata["selected_row_identity_order"] == []
+
+
+def test_sina_new_stock_is_retained_as_raw_evidence_without_canonical_facts():
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SH601728",
+            {"view": "sina_new_stock"},
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="sina-new-stock-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company("SH601728"),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_SINA_NEW_STOCK_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == []
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "Sina A-share next-new-stock" in normalized.data_quality.notes
+    assert "latest-trading-day quote universe" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "endpoint",
+        "source",
+        "view",
+        "scope",
+        "row_filtering",
+        "snapshot",
+        "count",
+        "upstream_count",
+        "identity_order",
+        "selected_identity_order",
+        "payload",
+    ],
+)
+def test_sina_new_stock_normalizer_rejects_replayed_scope_mismatches(mutation: str):
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SH601728",
+            {"view": "sina_new_stock"},
+        )
+    )
+    payload = [dict(row) for row in record.raw_payload]
+    response_metadata = dict(record.response_metadata)
+    if mutation == "endpoint":
+        response_metadata["endpoint"] = "stock_zh_a_new_em"
+    elif mutation == "source":
+        source_uri = "https://akshare.akfamily.xyz/data/stock/stock.html"
+    elif mutation == "view":
+        response_metadata["market_activity_view"] = "new_stock"
+    elif mutation == "scope":
+        response_metadata["market_scope"] = "sina_next_new_stocks"
+    elif mutation == "row_filtering":
+        response_metadata["row_filtering"] = "normalizer"
+    elif mutation == "snapshot":
+        response_metadata["snapshot_scope"] = "current_snapshot"
+    elif mutation == "count":
+        response_metadata["entity_row_count"] = 99
+    elif mutation == "upstream_count":
+        response_metadata["upstream_row_count"] = 0
+    elif mutation == "identity_order":
+        response_metadata["row_identity_order"] = ["sh601728"]
+    elif mutation == "selected_identity_order":
+        response_metadata["selected_row_identity_order"] = ["sh601825"]
+    else:
+        payload[0]["open"] = "6.8"
+    if mutation != "source":
+        source_uri = record.source_uri
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=source_uri,
+        response_metadata=response_metadata,
+    )
+
+    with pytest.raises(
+        ProviderNormalizationError,
+        match="Sina new-stock",
+    ):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-sina-new-stock-scope",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company("SH601728"),
+        )
+
+
+def test_sina_new_stock_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.MARKET_ACTIVITY,
+        "SH601728",
+        {"view": "sina_new_stock"},
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [("stock_zh_a_new", {})]
 
 
 def test_tencent_tick_fetch_uses_explicit_view_and_listing_symbol():
