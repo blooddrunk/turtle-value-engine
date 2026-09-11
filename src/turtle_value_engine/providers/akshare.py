@@ -30,7 +30,8 @@ A-share company-litigation raw slice and A-share Eastmoney individual-info raw
 slice.
 The A-share Eastmoney and CNINFO management-holding raw slices and the
 Eastmoney executive/shareholder-change raw slice are also available. The A-share
-Eastmoney individual-fund-flow, market-participation-desire,
+Eastmoney individual-fund-flow and HSGT minute-fund-flow,
+market-participation-desire,
 market-focus, institution-participation, hot-rank, latest-hot-rank,
 historical-hot-rank, limit-up-pool, limit-down-pool, H-share latest-hot-rank and
 historical-hot-rank,
@@ -110,9 +111,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "131"
+AKSHARE_ADAPTER_VERSION = "132"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "132"
+AKSHARE_MAPPING_VERSION = "133"
 
 
 class ListingMarket(StrEnum):
@@ -197,6 +198,7 @@ _SOURCE_URIS = {
     "stock_hk_daily": "http://stock.finance.sina.com.cn/hkstock/",
     "stock_zh_ah_daily": "https://gu.qq.com/",
     "stock_individual_fund_flow": "https://data.eastmoney.com/zjlx/detail.html",
+    "stock_hsgt_fund_min_em": "https://data.eastmoney.com/hsgt/hsgtDetail/scgk.html",
     "stock_lhb_detail_em": "https://data.eastmoney.com/stock/tradedetail.html",
     "stock_lhb_stock_statistic_em": "https://data.eastmoney.com/stock/tradedetail.html",
     "stock_lhb_jgstatistic_em": "https://data.eastmoney.com/stock/jgstatistic.html",
@@ -1013,6 +1015,43 @@ _HISTORY_PARAMETER_NAMES = frozenset(
 )
 _CAPITAL_FLOW_PARAMETER_NAMES = frozenset()
 _CAPITAL_FLOW_DATE_FIELDS = ("日期", "date")
+_CAPITAL_FLOW_HSGT_FUND_MIN_ENDPOINT = "stock_hsgt_fund_min_em"
+_CAPITAL_FLOW_HSGT_FUND_MIN_PARAMETER_NAMES = frozenset({"view", "symbol"})
+_CAPITAL_FLOW_HSGT_FUND_MIN_VIEW = "hsgt_fund_min"
+_CAPITAL_FLOW_HSGT_FUND_MIN_SYMBOLS = ("北向资金", "南向资金")
+_CAPITAL_FLOW_HSGT_FUND_MIN_SYMBOL_SET = frozenset(
+    _CAPITAL_FLOW_HSGT_FUND_MIN_SYMBOLS
+)
+_CAPITAL_FLOW_HSGT_FUND_MIN_FIELDS = {
+    "北向资金": ("日期", "时间", "沪股通", "深股通", "北向资金"),
+    "南向资金": ("日期", "时间", "港股通(沪)", "港股通(深)", "南向资金"),
+}
+_CAPITAL_FLOW_HSGT_FUND_MIN_NUMERIC_FIELDS = {
+    symbol: fields[2:]
+    for symbol, fields in _CAPITAL_FLOW_HSGT_FUND_MIN_FIELDS.items()
+}
+_CAPITAL_FLOW_HSGT_FUND_MIN_SOURCE_URI = (
+    "https://data.eastmoney.com/hsgt/hsgtDetail/scgk.html"
+)
+_CAPITAL_FLOW_HSGT_FUND_MIN_UPSTREAM_URL = (
+    "https://push2.eastmoney.com/api/qt/kamtbs.rtmin/get"
+)
+_CAPITAL_FLOW_HSGT_FUND_MIN_UPSTREAM_PARAMETERS = (
+    "fields1",
+    "fields2",
+    "ut",
+    "_",
+)
+_CAPITAL_FLOW_HSGT_FUND_MIN_UPSTREAM_FIXED_PARAMETERS = {
+    "fields1": "f1,f2,f3,f4",
+    "fields2": "f51,f54,f52,f58,f53,f62,f56,f57,f60,f61",
+    "ut": "b2884a393a59ad64002292a3e90d46a5",
+    "_": "1707125786160",
+}
+_CAPITAL_FLOW_HSGT_FUND_MIN_DIRECTION_MARKETS = {
+    "北向资金": ListingMarket.A,
+    "南向资金": ListingMarket.H,
+}
 _MARKET_ACTIVITY_PARAMETER_NAMES = frozenset({"start_date", "end_date"})
 _MARKET_ACTIVITY_BLOCK_TRADE_PARAMETER_NAMES = frozenset(
     {"view", "start_date", "end_date"}
@@ -4337,10 +4376,24 @@ class AKShareProvider(StructuredDataProvider):
             )
         if (
             request.category is DataCategory.CAPITAL_FLOW
+            and request.parameters.get("view")
+            != _CAPITAL_FLOW_HSGT_FUND_MIN_VIEW
             and listing.market is not ListingMarket.A
         ):
             raise ProviderRequestError(
                 "the AKShare individual-fund-flow endpoint supports A-share listings only",
+                provider=self.identity,
+                request=request,
+                retryable=False,
+            )
+        if (
+            request.category is DataCategory.CAPITAL_FLOW
+            and request.parameters.get("view") == _CAPITAL_FLOW_HSGT_FUND_MIN_VIEW
+            and listing.market not in {ListingMarket.A, ListingMarket.H}
+        ):
+            raise ProviderRequestError(
+                "the AKShare HSGT minute-fund-flow endpoint supports A- and H-share "
+                "listing context only",
                 provider=self.identity,
                 request=request,
                 retryable=False,
@@ -4990,21 +5043,41 @@ class AKShareProvider(StructuredDataProvider):
             response_metadata["snapshot_scope"] = "current_published_dataset"
         elif request.category is DataCategory.CAPITAL_FLOW:
             rows = _table_rows(payload, provider=self.identity, request=request)
-            observation_dates = _validate_capital_flow_provider_rows(
-                rows,
-                listing,
-                provider=self.identity,
-                request=request,
-            )
-            response_metadata["upstream_row_count"] = len(rows)
-            response_metadata["entity_row_count"] = len(rows)
-            response_metadata["entity_rows_selected"] = True
-            response_metadata["listing_scoped_request"] = True
-            response_metadata["snapshot_scope"] = "recent_trading_days"
-            response_metadata["observation_date_field"] = "日期"
-            if observation_dates:
-                response_metadata["observation_start_date"] = min(observation_dates).isoformat()
-                response_metadata["observation_end_date"] = max(observation_dates).isoformat()
+            if endpoint.name == _CAPITAL_FLOW_HSGT_FUND_MIN_ENDPOINT:
+                flow_symbol = kwargs["symbol"]
+                observation_dates, observation_times = (
+                    _validate_capital_flow_hsgt_fund_min_provider_rows(
+                        rows,
+                        symbol=flow_symbol,
+                        provider=self.identity,
+                        request=request,
+                    )
+                )
+                response_metadata.update(
+                    _capital_flow_hsgt_fund_min_response_metadata(
+                        listing_code=listing.code,
+                        symbol=flow_symbol,
+                        observation_dates=observation_dates,
+                        observation_times=observation_times,
+                        row_count=len(rows),
+                    )
+                )
+            else:
+                observation_dates = _validate_capital_flow_provider_rows(
+                    rows,
+                    listing,
+                    provider=self.identity,
+                    request=request,
+                )
+                response_metadata["upstream_row_count"] = len(rows)
+                response_metadata["entity_row_count"] = len(rows)
+                response_metadata["entity_rows_selected"] = True
+                response_metadata["listing_scoped_request"] = True
+                response_metadata["snapshot_scope"] = "recent_trading_days"
+                response_metadata["observation_date_field"] = "日期"
+                if observation_dates:
+                    response_metadata["observation_start_date"] = min(observation_dates).isoformat()
+                    response_metadata["observation_end_date"] = max(observation_dates).isoformat()
         elif request.category is DataCategory.MARKET_ACTIVITY:
             rows = _table_rows(payload, provider=self.identity, request=request)
             if endpoint.name == "stock_board_industry_name_em":
@@ -8485,6 +8558,10 @@ class AKShareProvider(StructuredDataProvider):
                 request.parameters.get("view")
                 == _MARKET_QUOTE_HK_GGT_COMPONENTS_VIEW
             ),
+            capital_flow_hsgt_fund_min_requested=(
+                request.parameters.get("view")
+                == _CAPITAL_FLOW_HSGT_FUND_MIN_VIEW
+            ),
             market_quote_ah_comparison_requested=(
                 request.parameters.get("view") == _MARKET_QUOTE_AH_COMPARISON_VIEW
             ),
@@ -8866,25 +8943,46 @@ class AKShareNormalizer:
                 missing_fields.add("governance_risk_level")
                 normalizer_flags.add("AKSHARE_ESG_RATINGS_RAW_ONLY")
             elif record.request.category is DataCategory.CAPITAL_FLOW:
-                if listing.market is not ListingMarket.A:
-                    raise ProviderNormalizationError(
-                        "AKShare individual-fund-flow raw slice supports A-share listings only"
-                    )
-                if record.response_metadata.get("endpoint") != "stock_individual_fund_flow":
-                    raise ProviderNormalizationError(
-                        "AKShare capital-flow record must come from "
-                        "stock_individual_fund_flow"
-                    )
-                try:
-                    _capital_flow_kwargs(
-                        "stock_individual_fund_flow",
+                if (
+                    record.request.parameters.get("view")
+                    == _CAPITAL_FLOW_HSGT_FUND_MIN_VIEW
+                ):
+                    if (
+                        record.response_metadata.get("endpoint")
+                        != _CAPITAL_FLOW_HSGT_FUND_MIN_ENDPOINT
+                    ):
+                        raise ProviderNormalizationError(
+                            "AKShare HSGT minute-fund-flow record must come from "
+                            f"{_CAPITAL_FLOW_HSGT_FUND_MIN_ENDPOINT}"
+                        )
+                    _validate_capital_flow_hsgt_fund_min_normalizer_scope(
+                        record,
                         listing,
-                        record.request,
+                        rows,
                     )
-                except ProviderRequestError as exc:
-                    raise ProviderNormalizationError(str(exc)) from exc
-                _validate_capital_flow_normalizer_rows(rows, listing)
-                normalizer_flags.add("AKSHARE_INDIVIDUAL_FUND_FLOW_RAW_ONLY")
+                    normalizer_flags.add(
+                        "AKSHARE_HSGT_FUND_MIN_RAW_ONLY"
+                    )
+                else:
+                    if listing.market is not ListingMarket.A:
+                        raise ProviderNormalizationError(
+                            "AKShare individual-fund-flow raw slice supports A-share listings only"
+                        )
+                    if record.response_metadata.get("endpoint") != "stock_individual_fund_flow":
+                        raise ProviderNormalizationError(
+                            "AKShare capital-flow record must come from "
+                            "stock_individual_fund_flow"
+                        )
+                    try:
+                        _capital_flow_kwargs(
+                            "stock_individual_fund_flow",
+                            listing,
+                            record.request,
+                        )
+                    except ProviderRequestError as exc:
+                        raise ProviderNormalizationError(str(exc)) from exc
+                    _validate_capital_flow_normalizer_rows(rows, listing)
+                    normalizer_flags.add("AKSHARE_INDIVIDUAL_FUND_FLOW_RAW_ONLY")
             elif record.request.category is DataCategory.MARKET_ACTIVITY:
                 is_latest_hot_rank = (
                     record.request.parameters.get("view")
@@ -10950,6 +11048,15 @@ class AKShareNormalizer:
                 "even when paired with close-price context, do not establish issuer "
                 "cash flow, an accounting period, a liquidity metric or a valuation fact."
             )
+        if "AKSHARE_HSGT_FUND_MIN_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented HSGT minute-fund-flow response is retained as raw "
+                "evidence only: its market-wide north-/southbound intraday amounts "
+                "are not issuer cash flow, are not listing-specific and do not "
+                "establish a canonical liquidity, return or valuation fact. The "
+                "official documentation states that the source stopped providing "
+                "data from 2024-05-13."
+            )
         if "AKSHARE_MARKET_ACTIVITY_RAW_ONLY" in normalizer_flags:
             notes += (
                 " The documented A-share Dragon-Tiger-board detail response is retained as "
@@ -11713,6 +11820,7 @@ def _endpoint_candidates(
     market_quote_hk_main_board_requested: bool = False,
     market_quote_hk_famous_requested: bool = False,
     market_quote_hk_ggt_components_requested: bool = False,
+    capital_flow_hsgt_fund_min_requested: bool = False,
     market_quote_ah_comparison_requested: bool = False,
     market_quote_ab_comparison_requested: bool = False,
     market_quote_xq_requested: bool = False,
@@ -11984,6 +12092,10 @@ def _endpoint_candidates(
             return ("stock_lhb_detail_em",)
         return ()
     if category is DataCategory.CAPITAL_FLOW:
+        if capital_flow_hsgt_fund_min_requested:
+            if market in {ListingMarket.A, ListingMarket.H}:
+                return (_CAPITAL_FLOW_HSGT_FUND_MIN_ENDPOINT,)
+            return ()
         if market is ListingMarket.A:
             return ("stock_individual_fund_flow",)
         return ()
@@ -18427,6 +18539,218 @@ def _validate_capital_flow_provider_rows(
         seen_dates.add(row_date)
         dates.append(row_date)
     return dates
+
+
+def _capital_flow_hsgt_fund_min_time(value: object) -> time | None:
+    """Parse the HSGT wrapper's hour/minute time labels."""
+
+    if not isinstance(value, str) or re.fullmatch(r"\d{1,2}:\d{2}", value) is None:
+        return None
+    try:
+        return datetime.strptime(value, "%H:%M").time()
+    except ValueError:
+        return None
+
+
+def _capital_flow_hsgt_fund_min_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    symbol: str,
+) -> tuple[str | None, list[date], list[time]]:
+    """Return strict-schema errors and the ordered date/time observations."""
+
+    fields = _CAPITAL_FLOW_HSGT_FUND_MIN_FIELDS[symbol]
+    field_set = set(fields)
+    numeric_fields = _CAPITAL_FLOW_HSGT_FUND_MIN_NUMERIC_FIELDS[symbol]
+    dates: list[date] = []
+    times: list[time] = []
+    previous_key: tuple[date, time] | None = None
+    for index, row in enumerate(rows):
+        missing = sorted(field_set - set(row))
+        unexpected = sorted(set(row) - field_set)
+        if missing:
+            return (
+                f"HSGT minute-fund-flow row {index} is missing field(s): "
+                + ", ".join(missing),
+                [],
+                [],
+            )
+        if unexpected:
+            return (
+                f"HSGT minute-fund-flow row {index} contains unsupported field(s): "
+                + ", ".join(unexpected),
+                [],
+                [],
+            )
+        if tuple(row) != fields:
+            return (
+                f"HSGT minute-fund-flow row {index} must preserve the official field order",
+                [],
+                [],
+            )
+
+        raw_date = row["日期"]
+        observation_date = _parse_date_value(raw_date)
+        if observation_date is None:
+            return (
+                f"HSGT minute-fund-flow row {index} has an invalid 日期",
+                [],
+                [],
+            )
+        observation_time = _capital_flow_hsgt_fund_min_time(row["时间"])
+        if observation_time is None:
+            return (
+                f"HSGT minute-fund-flow row {index} has an invalid 时间",
+                [],
+                [],
+            )
+        if dates and observation_date != dates[0]:
+            return (
+                "HSGT minute-fund-flow response must contain one observation date",
+                [],
+                [],
+            )
+        observation_key = (observation_date, observation_time)
+        if previous_key is not None and observation_key <= previous_key:
+            return (
+                "HSGT minute-fund-flow response date/time values must be strictly "
+                "ascending",
+                [],
+                [],
+            )
+        previous_key = observation_key
+        dates.append(observation_date)
+        times.append(observation_time)
+
+        for field in numeric_fields:
+            value = row[field]
+            if value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, Real):
+                return (
+                    f"HSGT minute-fund-flow row {index} field {field!r} must be "
+                    "numeric or null",
+                    [],
+                    [],
+                )
+            try:
+                numeric = float(value)
+            except (OverflowError, TypeError, ValueError):
+                return (
+                    f"HSGT minute-fund-flow row {index} field {field!r} must be "
+                    "numeric or null",
+                    [],
+                    [],
+                )
+            if not math.isfinite(numeric):
+                return (
+                    f"HSGT minute-fund-flow row {index} field {field!r} must be "
+                    "finite or null",
+                    [],
+                    [],
+                )
+    return None, dates, times
+
+
+def _validate_capital_flow_hsgt_fund_min_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    symbol: str,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> tuple[list[date], list[time]]:
+    """Validate the complete market-wide HSGT minute response."""
+
+    message, dates, times = _capital_flow_hsgt_fund_min_validation_message(
+        rows,
+        symbol=symbol,
+    )
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message}",
+            provider=provider,
+            request=request,
+        )
+    return dates, times
+
+
+def _capital_flow_hsgt_fund_min_response_metadata(
+    *,
+    listing_code: str,
+    symbol: str,
+    observation_dates: Sequence[date],
+    observation_times: Sequence[time],
+    row_count: int,
+) -> dict[str, JSONValue]:
+    """Build the replay contract for one market-wide HSGT direction."""
+
+    fields = _CAPITAL_FLOW_HSGT_FUND_MIN_FIELDS[symbol]
+    numeric_fields = _CAPITAL_FLOW_HSGT_FUND_MIN_NUMERIC_FIELDS[symbol]
+    expected_market = _CAPITAL_FLOW_HSGT_FUND_MIN_DIRECTION_MARKETS[symbol]
+    return {
+        "endpoint": _CAPITAL_FLOW_HSGT_FUND_MIN_ENDPOINT,
+        "market": expected_market.value,
+        "listing_code": listing_code,
+        "capital_flow_view": _CAPITAL_FLOW_HSGT_FUND_MIN_VIEW,
+        "market_scope": (
+            "Eastmoney northbound market fund flow"
+            if symbol == "北向资金"
+            else "Eastmoney southbound market fund flow"
+        ),
+        "flow_symbol": symbol,
+        "flow_direction": "northbound" if symbol == "北向资金" else "southbound",
+        "listing_scoped_request": False,
+        "row_filtering": "none",
+        "snapshot_scope": "one_market_day_intraday_fund_flow",
+        "date_binding": "row_dates",
+        "observation_date_field": "日期",
+        "observation_time_field": "时间",
+        "observation_date_ordering": "constant",
+        "observation_time_ordering": "strictly_ascending",
+        "observation_start_date": (
+            min(observation_dates).isoformat() if observation_dates else None
+        ),
+        "observation_end_date": (
+            max(observation_dates).isoformat() if observation_dates else None
+        ),
+        "observation_time_start": (
+            observation_times[0].isoformat() if observation_times else None
+        ),
+        "observation_time_end": (
+            observation_times[-1].isoformat() if observation_times else None
+        ),
+        "documented_data_availability": (
+            "AKShare documentation states the data source stopped providing data "
+            "from 2024-05-13"
+        ),
+        "value_fields": list(numeric_fields),
+        "field_count": len(fields),
+        "source_field_order": list(fields),
+        "documented_units": {
+            field: "CNY_10_thousand" for field in numeric_fields
+        },
+        "upstream_url": _CAPITAL_FLOW_HSGT_FUND_MIN_UPSTREAM_URL,
+        "upstream_protocol": "JSON",
+        "upstream_parameters": list(
+            _CAPITAL_FLOW_HSGT_FUND_MIN_UPSTREAM_PARAMETERS
+        ),
+        "upstream_fixed_parameters": dict(
+            _CAPITAL_FLOW_HSGT_FUND_MIN_UPSTREAM_FIXED_PARAMETERS
+        ),
+        "upstream_dynamic_parameters": {},
+        "upstream_symbol": symbol,
+        "upstream_authentication": "none",
+        "upstream_page_size": None,
+        "pagination": "single_page",
+        "upstream_sort_column": None,
+        "upstream_sort_direction": None,
+        "upstream_filter": None,
+        "wrapper_source_page_uri": _CAPITAL_FLOW_HSGT_FUND_MIN_SOURCE_URI,
+        "wrapper_output_ordering": "source_response_order_by_time",
+        "entity_rows_selected": False,
+        "upstream_row_count": row_count,
+        "entity_row_count": 0,
+    }
 
 
 def _validate_market_activity_provider_rows(
@@ -26329,6 +26653,80 @@ def _validate_capital_flow_normalizer_rows(
                 f"capital-flow row has duplicate observation date {row_date.isoformat()!r}"
             )
         seen_dates.add(row_date)
+
+
+def _validate_capital_flow_hsgt_fund_min_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> None:
+    """Keep replayed market-wide HSGT flow rows in direction scope."""
+
+    if record.source_uri != _CAPITAL_FLOW_HSGT_FUND_MIN_SOURCE_URI:
+        raise ProviderNormalizationError(
+            "HSGT minute-fund-flow source URI does not match the documented endpoint"
+        )
+    if record.response_metadata.get("endpoint") != _CAPITAL_FLOW_HSGT_FUND_MIN_ENDPOINT:
+        raise ProviderNormalizationError(
+            "HSGT minute-fund-flow record must come from "
+            f"{_CAPITAL_FLOW_HSGT_FUND_MIN_ENDPOINT}"
+        )
+    symbol = record.request.parameters.get("symbol")
+    if (
+        not isinstance(symbol, str)
+        or symbol not in _CAPITAL_FLOW_HSGT_FUND_MIN_SYMBOL_SET
+    ):
+        raise ProviderNormalizationError(
+            "HSGT minute-fund-flow record has an unsupported flow symbol"
+        )
+    expected_market = _CAPITAL_FLOW_HSGT_FUND_MIN_DIRECTION_MARKETS[symbol]
+    if listing.market is not expected_market:
+        raise ProviderNormalizationError(
+            "HSGT minute-fund-flow flow direction does not match requested listing"
+        )
+    try:
+        _capital_flow_kwargs(
+            _CAPITAL_FLOW_HSGT_FUND_MIN_ENDPOINT,
+            listing,
+            record.request,
+        )
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+
+    message, observation_dates, observation_times = (
+        _capital_flow_hsgt_fund_min_validation_message(
+            rows,
+            symbol=symbol,
+        )
+    )
+    if message is not None:
+        raise ProviderNormalizationError(message)
+    expected_metadata = _capital_flow_hsgt_fund_min_response_metadata(
+        listing_code=listing.code,
+        symbol=symbol,
+        observation_dates=observation_dates,
+        observation_times=observation_times,
+        row_count=len(rows),
+    )
+    boolean_fields = {"listing_scoped_request", "entity_rows_selected"}
+    count_fields = {"field_count", "upstream_row_count", "entity_row_count"}
+    for name, expected in expected_metadata.items():
+        actual = record.response_metadata.get(name)
+        if name in boolean_fields:
+            matches = isinstance(actual, bool) and actual is expected
+        elif name in count_fields:
+            matches = (
+                isinstance(actual, int)
+                and not isinstance(actual, bool)
+                and actual == expected
+            )
+        else:
+            matches = actual == expected
+        if not matches:
+            raise ProviderNormalizationError(
+                "HSGT minute-fund-flow response metadata "
+                f"{name!r} does not match the requested replay scope"
+            )
 
 
 def _validate_market_activity_normalizer_rows(
@@ -38019,7 +38417,48 @@ def _capital_flow_kwargs(
     listing: _ListingRef,
     request: ProviderRequest,
 ) -> dict[str, object]:
-    """Build the documented A-share individual-fund-flow request."""
+    """Build the documented capital-flow request for each endpoint."""
+
+    if endpoint_name == _CAPITAL_FLOW_HSGT_FUND_MIN_ENDPOINT:
+        unknown = sorted(
+            set(request.parameters) - _CAPITAL_FLOW_HSGT_FUND_MIN_PARAMETER_NAMES
+        )
+        if unknown:
+            raise ProviderRequestError(
+                "unsupported AKShare HSGT minute-fund-flow parameter(s): "
+                + ", ".join(unknown),
+                request=request,
+                retryable=False,
+            )
+        if request.parameters.get("view") != _CAPITAL_FLOW_HSGT_FUND_MIN_VIEW:
+            raise ProviderRequestError(
+                "the AKShare HSGT minute-fund-flow endpoint requires "
+                f"view={_CAPITAL_FLOW_HSGT_FUND_MIN_VIEW!r}",
+                request=request,
+                retryable=False,
+            )
+        symbol = request.parameters.get("symbol")
+        if (
+            not isinstance(symbol, str)
+            or symbol not in _CAPITAL_FLOW_HSGT_FUND_MIN_SYMBOL_SET
+        ):
+            raise ProviderRequestError(
+                "HSGT minute-fund-flow symbol must be one of: "
+                + ", ".join(_CAPITAL_FLOW_HSGT_FUND_MIN_SYMBOLS),
+                request=request,
+                retryable=False,
+            )
+        expected_market = _CAPITAL_FLOW_HSGT_FUND_MIN_DIRECTION_MARKETS[symbol]
+        if listing.market is not expected_market:
+            direction = "northbound" if symbol == "北向资金" else "southbound"
+            market_label = "A-share" if expected_market is ListingMarket.A else "H-share"
+            raise ProviderRequestError(
+                f"the AKShare HSGT {direction} minute-fund-flow endpoint supports "
+                f"{market_label} listing context only",
+                request=request,
+                retryable=False,
+            )
+        return {"symbol": symbol}
 
     if endpoint_name != "stock_individual_fund_flow":
         raise ProviderRequestError(

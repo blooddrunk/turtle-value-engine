@@ -196,6 +196,18 @@ class FakeAKShare:
             _fixture("h_ggt_components_quote.json"),
         )
 
+    def stock_hsgt_fund_min_em(self, *, symbol: str):
+        fixture = (
+            "hsgt_fund_min_south.json"
+            if symbol == "南向资金"
+            else "hsgt_fund_min_north.json"
+        )
+        return self._return(
+            "stock_hsgt_fund_min_em",
+            _fixture(fixture),
+            symbol=symbol,
+        )
+
     def stock_szse_summary(self, *, date: str):
         return self._return(
             "stock_szse_summary",
@@ -1117,8 +1129,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "131"
-    assert AKSHARE_MAPPING_VERSION == "132"
+    assert provider.identity.provider_version == "132"
+    assert AKSHARE_MAPPING_VERSION == "133"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -20036,6 +20048,471 @@ def test_individual_fund_flow_cache_replay_does_not_call_upstream(tmp_path: Path
     assert fake.calls == [
         ("stock_individual_fund_flow", {"stock": "600000", "market": "sh"}),
     ]
+
+
+@pytest.mark.parametrize(
+    ("listing", "symbol", "fixture", "market", "direction", "start_time", "end_time"),
+    [
+        (
+            "SH600000",
+            "北向资金",
+            "hsgt_fund_min_north.json",
+            "A",
+            "northbound",
+            "09:30:00",
+            "09:33:00",
+        ),
+        (
+            "HK00700",
+            "南向资金",
+            "hsgt_fund_min_south.json",
+            "H",
+            "southbound",
+            "09:00:00",
+            "09:03:00",
+        ),
+    ],
+)
+def test_hsgt_minute_fund_flow_fetch_preserves_direction_and_market_scope(
+    listing: str,
+    symbol: str,
+    fixture: str,
+    market: str,
+    direction: str,
+    start_time: str,
+    end_time: str,
+):
+    fake = FakeAKShare()
+    record = _provider(fake).fetch(
+        _request(
+            DataCategory.CAPITAL_FLOW,
+            listing,
+            {"view": "hsgt_fund_min", "symbol": symbol},
+        )
+    )
+
+    expected = _fixture(fixture)
+    fields = list(expected[0])
+    assert record.raw_payload == expected
+    assert fake.calls == [("stock_hsgt_fund_min_em", {"symbol": symbol})]
+    assert record.response_metadata["endpoint"] == "stock_hsgt_fund_min_em"
+    assert record.response_metadata["market"] == market
+    assert record.response_metadata["listing_code"] == listing[2:]
+    assert record.response_metadata["capital_flow_view"] == "hsgt_fund_min"
+    assert record.response_metadata["market_scope"] == (
+        f"Eastmoney {direction} market fund flow"
+    )
+    assert record.response_metadata["flow_symbol"] == symbol
+    assert record.response_metadata["flow_direction"] == direction
+    assert record.response_metadata["listing_scoped_request"] is False
+    assert record.response_metadata["row_filtering"] == "none"
+    assert record.response_metadata["snapshot_scope"] == (
+        "one_market_day_intraday_fund_flow"
+    )
+    assert record.response_metadata["date_binding"] == "row_dates"
+    assert record.response_metadata["observation_date_field"] == "日期"
+    assert record.response_metadata["observation_time_field"] == "时间"
+    assert record.response_metadata["observation_date_ordering"] == "constant"
+    assert record.response_metadata["observation_time_ordering"] == (
+        "strictly_ascending"
+    )
+    assert record.response_metadata["observation_start_date"] == "2024-02-05"
+    assert record.response_metadata["observation_end_date"] == "2024-02-05"
+    assert record.response_metadata["observation_time_start"] == start_time
+    assert record.response_metadata["observation_time_end"] == end_time
+    assert "stopped providing data from 2024-05-13" in record.response_metadata[
+        "documented_data_availability"
+    ]
+    assert record.response_metadata["value_fields"] == fields[2:]
+    assert record.response_metadata["field_count"] == 5
+    assert record.response_metadata["source_field_order"] == fields
+    assert record.response_metadata["documented_units"] == {
+        field: "CNY_10_thousand" for field in fields[2:]
+    }
+    assert record.response_metadata["upstream_url"] == (
+        "https://push2.eastmoney.com/api/qt/kamtbs.rtmin/get"
+    )
+    assert record.response_metadata["upstream_protocol"] == "JSON"
+    assert record.response_metadata["upstream_parameters"] == [
+        "fields1",
+        "fields2",
+        "ut",
+        "_",
+    ]
+    assert record.response_metadata["upstream_fixed_parameters"] == {
+        "fields1": "f1,f2,f3,f4",
+        "fields2": "f51,f54,f52,f58,f53,f62,f56,f57,f60,f61",
+        "ut": "b2884a393a59ad64002292a3e90d46a5",
+        "_": "1707125786160",
+    }
+    assert record.response_metadata["upstream_dynamic_parameters"] == {}
+    assert record.response_metadata["upstream_symbol"] == symbol
+    assert record.response_metadata["upstream_authentication"] == "none"
+    assert record.response_metadata["upstream_page_size"] is None
+    assert record.response_metadata["pagination"] == "single_page"
+    assert record.response_metadata["upstream_sort_column"] is None
+    assert record.response_metadata["upstream_sort_direction"] is None
+    assert record.response_metadata["upstream_filter"] is None
+    assert record.response_metadata["wrapper_source_page_uri"] == (
+        "https://data.eastmoney.com/hsgt/hsgtDetail/scgk.html"
+    )
+    assert record.response_metadata["wrapper_output_ordering"] == (
+        "source_response_order_by_time"
+    )
+    assert record.response_metadata["upstream_row_count"] == len(expected)
+    assert record.response_metadata["entity_row_count"] == 0
+    assert record.response_metadata["entity_rows_selected"] is False
+    assert record.source_uri == (
+        "https://data.eastmoney.com/hsgt/hsgtDetail/scgk.html"
+    )
+
+
+@pytest.mark.parametrize(
+    ("listing", "parameters", "match"),
+    [
+        (
+            "SH600000",
+            {"view": "hsgt_fund_min", "symbol": "南向资金"},
+            "southbound minute-fund-flow endpoint supports H-share listing context only",
+        ),
+        (
+            "HK00700",
+            {"view": "hsgt_fund_min", "symbol": "北向资金"},
+            "northbound minute-fund-flow endpoint supports A-share listing context only",
+        ),
+        (
+            "SH600000",
+            {"view": "hsgt_fund_min", "symbol": "invalid"},
+            "symbol must be one of",
+        ),
+        (
+            "SH600000",
+            {"view": "hsgt_fund_min"},
+            "symbol must be one of",
+        ),
+        (
+            "SH600000",
+            {"view": "hsgt_fund_min", "symbol": "北向资金", "date": "20240205"},
+            "unsupported AKShare HSGT minute-fund-flow parameter",
+        ),
+    ],
+)
+def test_hsgt_minute_fund_flow_request_validates_direction_symbol_and_parameters(
+    listing: str,
+    parameters: dict,
+    match: str,
+):
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError, match=match):
+        _provider(fake).fetch(
+            _request(DataCategory.CAPITAL_FLOW, listing, parameters)
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("missing", "HSGT minute-fund-flow row 0 is missing field"),
+        ("unexpected", "HSGT minute-fund-flow row 0 contains unsupported field"),
+        ("field_order", "must preserve the official field order"),
+        ("invalid_date", "has an invalid 日期"),
+        ("invalid_time", "has an invalid 时间"),
+        ("duplicate_time", "date/time values must be strictly ascending"),
+        ("multiple_dates", "must contain one observation date"),
+        ("invalid_numeric", "field '北向资金' must be numeric or null"),
+    ],
+)
+def test_hsgt_minute_fund_flow_response_validates_exact_rows_and_values(
+    mutation: str,
+    match: str,
+):
+    class InvalidRows(FakeAKShare):
+        def stock_hsgt_fund_min_em(self, *, symbol: str):
+            rows = [dict(row) for row in _fixture("hsgt_fund_min_north.json")]
+            if mutation == "missing":
+                rows[0].pop("北向资金")
+            elif mutation == "unexpected":
+                rows[0]["unexpected"] = "not documented"
+            elif mutation == "field_order":
+                first = rows[0]
+                rows[0] = {
+                    "时间": first["时间"],
+                    **{key: value for key, value in first.items() if key != "时间"},
+                }
+            elif mutation == "invalid_date":
+                rows[0]["日期"] = "not-a-date"
+            elif mutation == "invalid_time":
+                rows[0]["时间"] = "9:99"
+            elif mutation == "duplicate_time":
+                rows[1]["时间"] = rows[0]["时间"]
+            elif mutation == "multiple_dates":
+                rows[1]["日期"] = "2024-02-06"
+                rows[1]["时间"] = "9:34"
+            else:
+                rows[0]["北向资金"] = "-8453.57"
+            return self._return("stock_hsgt_fund_min_em", rows, symbol=symbol)
+
+    with pytest.raises(ProviderResponseError, match=match):
+        _provider(InvalidRows()).fetch(
+            _request(
+                DataCategory.CAPITAL_FLOW,
+                "SH600000",
+                {"view": "hsgt_fund_min", "symbol": "北向资金"},
+            )
+        )
+
+
+def test_hsgt_minute_fund_flow_empty_response_is_retained_for_deprecated_source():
+    class EmptyRows(FakeAKShare):
+        def stock_hsgt_fund_min_em(self, *, symbol: str):
+            return self._return("stock_hsgt_fund_min_em", [], symbol=symbol)
+
+    record = _provider(EmptyRows()).fetch(
+        _request(
+            DataCategory.CAPITAL_FLOW,
+            "SH600000",
+            {"view": "hsgt_fund_min", "symbol": "北向资金"},
+        )
+    )
+
+    assert record.raw_payload == []
+    assert record.response_metadata["upstream_row_count"] == 0
+    assert record.response_metadata["observation_start_date"] is None
+    assert record.response_metadata["observation_time_end"] is None
+
+
+@pytest.mark.parametrize(
+    ("listing", "symbol", "analysis_id"),
+    [
+        ("SH600000", "北向资金", "hsgt-north-fund-min-raw-only"),
+        ("HK00700", "南向资金", "hsgt-south-fund-min-raw-only"),
+    ],
+)
+def test_hsgt_minute_fund_flow_is_raw_only_without_issuer_cash_flow_facts(
+    listing: str,
+    symbol: str,
+    analysis_id: str,
+):
+    record = _provider().fetch(
+        _request(
+            DataCategory.CAPITAL_FLOW,
+            listing,
+            {"view": "hsgt_fund_min", "symbol": symbol},
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id=analysis_id,
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company(listing),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_HSGT_FUND_MIN_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == []
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "market-wide north-/southbound intraday amounts" in normalized.data_quality.notes
+    assert "issuer cash flow" in normalized.data_quality.notes
+    assert "2024-05-13" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("source_uri", "source URI"),
+        ("endpoint", "record must come from"),
+        ("capital_flow_view", "metadata 'capital_flow_view'"),
+        ("market_scope", "metadata 'market_scope'"),
+        ("flow_symbol", "metadata 'flow_symbol'"),
+        ("flow_direction", "metadata 'flow_direction'"),
+        ("market", "metadata 'market'"),
+        ("listing_code", "metadata 'listing_code'"),
+        ("listing_scope", "metadata 'listing_scoped_request'"),
+        ("row_filtering", "metadata 'row_filtering'"),
+        ("snapshot_scope", "metadata 'snapshot_scope'"),
+        ("date_binding", "metadata 'date_binding'"),
+        ("date_field", "metadata 'observation_date_field'"),
+        ("time_field", "metadata 'observation_time_field'"),
+        ("date_ordering", "metadata 'observation_date_ordering'"),
+        ("time_ordering", "metadata 'observation_time_ordering'"),
+        ("start_date", "metadata 'observation_start_date'"),
+        ("end_date", "metadata 'observation_end_date'"),
+        ("time_start", "metadata 'observation_time_start'"),
+        ("time_end", "metadata 'observation_time_end'"),
+        ("availability", "metadata 'documented_data_availability'"),
+        ("value_fields", "metadata 'value_fields'"),
+        ("field_count", "metadata 'field_count'"),
+        ("field_order", "metadata 'source_field_order'"),
+        ("units", "metadata 'documented_units'"),
+        ("upstream_url", "metadata 'upstream_url'"),
+        ("protocol", "metadata 'upstream_protocol'"),
+        ("upstream_parameters", "metadata 'upstream_parameters'"),
+        ("upstream_fixed_parameters", "metadata 'upstream_fixed_parameters'"),
+        ("upstream_dynamic_parameters", "metadata 'upstream_dynamic_parameters'"),
+        ("upstream_symbol", "metadata 'upstream_symbol'"),
+        ("authentication", "metadata 'upstream_authentication'"),
+        ("page_size", "metadata 'upstream_page_size'"),
+        ("pagination", "metadata 'pagination'"),
+        ("sort_column", "metadata 'upstream_sort_column'"),
+        ("sort_direction", "metadata 'upstream_sort_direction'"),
+        ("filter", "metadata 'upstream_filter'"),
+        ("wrapper_source_page", "metadata 'wrapper_source_page_uri'"),
+        ("wrapper_ordering", "metadata 'wrapper_output_ordering'"),
+        ("entity_selected", "metadata 'entity_rows_selected'"),
+        ("upstream_count", "metadata 'upstream_row_count'"),
+        ("entity_count", "metadata 'entity_row_count'"),
+        ("payload_date", "invalid 日期"),
+    ],
+)
+def test_hsgt_minute_fund_flow_normalizer_rejects_replayed_scope_mismatches(
+    mutation: str,
+    match: str,
+):
+    record = _provider().fetch(
+        _request(
+            DataCategory.CAPITAL_FLOW,
+            "SH600000",
+            {"view": "hsgt_fund_min", "symbol": "北向资金"},
+        )
+    )
+    response_metadata = dict(record.response_metadata)
+    payload = [dict(row) for row in record.raw_payload]
+    source_uri = record.source_uri
+    if mutation == "source_uri":
+        source_uri = "https://example.test/not-the-documented-endpoint"
+    elif mutation == "endpoint":
+        response_metadata["endpoint"] = "stock_individual_fund_flow"
+    elif mutation == "capital_flow_view":
+        response_metadata["capital_flow_view"] = "capital_flow"
+    elif mutation == "market_scope":
+        response_metadata["market_scope"] = "all-market-flow"
+    elif mutation == "flow_symbol":
+        response_metadata["flow_symbol"] = "南向资金"
+    elif mutation == "flow_direction":
+        response_metadata["flow_direction"] = "southbound"
+    elif mutation == "market":
+        response_metadata["market"] = "H"
+    elif mutation == "listing_code":
+        response_metadata["listing_code"] = "000001"
+    elif mutation == "listing_scope":
+        response_metadata["listing_scoped_request"] = True
+    elif mutation == "row_filtering":
+        response_metadata["row_filtering"] = "provider"
+    elif mutation == "snapshot_scope":
+        response_metadata["snapshot_scope"] = "current_quote"
+    elif mutation == "date_binding":
+        response_metadata["date_binding"] = "request_only"
+    elif mutation == "date_field":
+        response_metadata["observation_date_field"] = "date"
+    elif mutation == "time_field":
+        response_metadata["observation_time_field"] = "time"
+    elif mutation == "date_ordering":
+        response_metadata["observation_date_ordering"] = "ascending"
+    elif mutation == "time_ordering":
+        response_metadata["observation_time_ordering"] = "non_decreasing"
+    elif mutation == "start_date":
+        response_metadata["observation_start_date"] = "2024-02-06"
+    elif mutation == "end_date":
+        response_metadata["observation_end_date"] = "2024-02-06"
+    elif mutation == "time_start":
+        response_metadata["observation_time_start"] = "09:31:00"
+    elif mutation == "time_end":
+        response_metadata["observation_time_end"] = "09:34:00"
+    elif mutation == "availability":
+        response_metadata["documented_data_availability"] = "currently available"
+    elif mutation == "value_fields":
+        response_metadata["value_fields"] = ["北向资金"]
+    elif mutation == "field_count":
+        response_metadata["field_count"] = 4
+    elif mutation == "field_order":
+        response_metadata["source_field_order"] = list(
+            reversed(response_metadata["source_field_order"])
+        )
+    elif mutation == "units":
+        response_metadata["documented_units"] = {}
+    elif mutation == "upstream_url":
+        response_metadata["upstream_url"] = "https://example.test/api"
+    elif mutation == "protocol":
+        response_metadata["upstream_protocol"] = "CSV"
+    elif mutation == "upstream_parameters":
+        response_metadata["upstream_parameters"] = ["symbol"]
+    elif mutation == "upstream_fixed_parameters":
+        response_metadata["upstream_fixed_parameters"] = {}
+    elif mutation == "upstream_dynamic_parameters":
+        response_metadata["upstream_dynamic_parameters"] = {"symbol": "北向资金"}
+    elif mutation == "upstream_symbol":
+        response_metadata["upstream_symbol"] = "南向资金"
+    elif mutation == "authentication":
+        response_metadata["upstream_authentication"] = "cookie"
+    elif mutation == "page_size":
+        response_metadata["upstream_page_size"] = 100
+    elif mutation == "pagination":
+        response_metadata["pagination"] = "paged"
+    elif mutation == "sort_column":
+        response_metadata["upstream_sort_column"] = "时间"
+    elif mutation == "sort_direction":
+        response_metadata["upstream_sort_direction"] = "ascending"
+    elif mutation == "filter":
+        response_metadata["upstream_filter"] = "northbound"
+    elif mutation == "wrapper_source_page":
+        response_metadata["wrapper_source_page_uri"] = "https://example.test/page"
+    elif mutation == "wrapper_ordering":
+        response_metadata["wrapper_output_ordering"] = "row_order"
+    elif mutation == "entity_selected":
+        response_metadata["entity_rows_selected"] = True
+    elif mutation == "upstream_count":
+        response_metadata["upstream_row_count"] = 0
+    elif mutation == "entity_count":
+        response_metadata["entity_row_count"] = 1
+    else:
+        payload[0]["日期"] = "not-a-date"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=source_uri,
+        response_metadata=response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match=match):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-hsgt-fund-min-scope",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company("SH600000"),
+        )
+
+
+def test_hsgt_minute_fund_flow_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.CAPITAL_FLOW,
+        "SH600000",
+        {"view": "hsgt_fund_min", "symbol": "北向资金"},
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [("stock_hsgt_fund_min_em", {"symbol": "北向资金"})]
 
 
 def test_top_10_shareholders_fetch_uses_explicit_view_and_report_date():

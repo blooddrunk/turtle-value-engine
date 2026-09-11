@@ -3310,6 +3310,30 @@ validation before filtering, H-share routing and parameter rejection,
 raw-only normalization, replay metadata tampering and offline cache replay. No
 calculation, gate, pipeline, CLI or input-loader contract changes.
 
+### Phase 3.30 — HSGT minute-fund-flow raw acquisition contract (COMPLETE)
+
+The mapping review now covers the documented Eastmoney
+`stock_hsgt_fund_min_em` HSGT minute-fund-flow endpoint under `CAPITAL_FLOW`
+with explicit `view=hsgt_fund_min` and required `symbol=北向资金` or
+`symbol=南向资金`. The
+[AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hsgt_min_em.py)
+define the exact five-field northbound or southbound minute-flow response and
+state that the source stopped providing data from 2024-05-13. The provider
+freezes the official `kamtbs.rtmin/get` JSON endpoint, fixed upstream
+parameters, direction-specific field order and documented `万元` units; it
+requires northbound/A-share or southbound/H-share request context, validates a
+single observation date with strict minute ordering and preserves the complete
+market-wide response as raw evidence without listing-row filtering.
+
+The normalizer emits `AKSHARE_HSGT_FUND_MIN_RAW_ONLY` and creates no canonical
+issuer cash-flow, listing-specific liquidity, return or valuation fact because
+the response is a deprecated market-wide intraday flow snapshot. Tests cover
+both directions, exact fields and values, parameter and context rejection,
+date/time/numeric boundaries, raw-only normalization, replay metadata tampering
+and offline cache replay. No calculation, gate, pipeline, CLI or input-loader
+contract changes.
+
 ### Future structured-provider deliverables
 
 ```text
@@ -3319,7 +3343,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–3.29 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–3.30 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```

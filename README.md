@@ -1504,6 +1504,20 @@ observation timestamp, so the normalizer emits
 missing and creates no canonical quote fact. No calculation, gate, pipeline,
 CLI or input-loader contract changes.
 
+Phase 3.30 adds the documented Eastmoney HSGT minute-fund-flow endpoint
+[`stock_hsgt_fund_min_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
+under `CAPITAL_FLOW` with explicit `view=hsgt_fund_min` and a required
+`symbol` of `北向资金` or `南向资金`. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hsgt_min_em.py)
+calls the `kamtbs.rtmin/get` JSON endpoint and returns the exact five-field
+northbound (`日期`, `时间`, `沪股通`, `深股通`, `北向资金`) or southbound
+(`日期`, `时间`, `港股通(沪)`, `港股通(深)`, `南向资金`) minute-flow shape.
+The provider preserves the documented `万元` units, direction, one-market-day
+row order and fixed upstream parameters. The official documentation states
+that the source stopped providing data from 2024-05-13; the normalizer therefore
+emits `AKSHARE_HSGT_FUND_MIN_RAW_ONLY` and creates no issuer cash-flow,
+liquidity, return or valuation fact. No calculation, gate, pipeline, CLI or
+input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.
