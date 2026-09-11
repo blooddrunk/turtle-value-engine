@@ -1057,6 +1057,21 @@ emits `AKSHARE_MARKET_ACTIVITY_INSTITUTION_RESEARCH_RAW_ONLY` without creating
 a canonical cash-flow, return, governance, valuation or market fact. No
 calculation, gate, pipeline, CLI or input-loader contract changes.
 
+Phase 3.02 adds the distinct official A-share Eastmoney
+`stock_jgdy_detail_em` institutional-research detail view under
+`MARKET_ACTIVITY` with explicit `view=institution_research_detail` and a
+`date=YYYYMMDD` research-date cutoff. The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_jgdy_em.py)
+define the exact 13-field full-universe response. The provider validates source
+order, six-digit listing identity, strict research-date boundary, finite
+numeric/null values and detail identity including institution/reception
+context before filtering to the requested listing; only the documented
+percentage unit is recorded and price units remain `not_documented`. The
+normalizer emits
+`AKSHARE_MARKET_ACTIVITY_INSTITUTION_RESEARCH_DETAIL_RAW_ONLY` without
+creating a canonical cash-flow, return, governance, valuation or market fact.
+No calculation, gate, pipeline, CLI or input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

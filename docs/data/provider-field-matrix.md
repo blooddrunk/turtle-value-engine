@@ -1198,6 +1198,42 @@ shareholder return, governance, valuation or market facts.
 The provider-specific response remains outside the calculation, gate, pipeline,
 CLI and input-loader contracts.
 
+## Phase 3.02 A-share Eastmoney institutional-research detail raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+documents `stock_jgdy_detail_em` as the Eastmoney institutional-research detail
+endpoint. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_jgdy_em.py)
+accepts `date=YYYYMMDD` as the start of the research-date query, applies a
+strict `调研日期 > date` filter and returns the exact 13 fields `序号`, `代码`,
+`名称`, `最新价`, `涨跌幅`, `调研机构`, `机构类型`, `调研人员`, `接待方式`,
+`接待人员`, `接待地点`, `调研日期` and `公告日期`, in that order.
+
+The provider exposes this endpoint under `MARKET_ACTIVITY` only with explicit
+`view=institution_research_detail`, validates the complete full-universe
+response before filtering it to the requested A-share listing, and preserves
+the requested cutoff, both date-field bounds, source sequence, exact field
+order and both row counts for cache replay. Because multiple institutions can
+share one listing, research date and announcement date, detail identity also
+includes the published institution, institution type, researchers and
+reception context. The official contract documents `%` for `涨跌幅`; price
+units remain `not_documented`. The normalizer emits
+`AKSHARE_MARKET_ACTIVITY_INSTITUTION_RESEARCH_DETAIL_RAW_ONLY`; research
+participants, visit dates and quote context do not become canonical issuer
+cash flow, shareholder return, governance, valuation or market facts.
+
+| Raw upstream item | Phase 3.02 treatment |
+| --- | --- |
+| `序号` | Required positive integer source ordering, validated as strictly ascending; it is not a report period or listing metric. |
+| `代码`, `名称` | Required six-digit listing identity and source security name; the provider validates every full-universe row and filters by code without inferring a security-master or issuer fact. |
+| `最新价` | Finite non-negative numeric-or-null quote context retained with a `not_documented` unit; no canonical dated quote or valuation input is inferred. |
+| `涨跌幅` | Finite numeric-or-null quote-change context retained in the documented percent unit; no canonical return is inferred. |
+| `调研机构`, `机构类型`, `调研人员`, `接待方式`, `接待人员`, `接待地点` | Published institution, participant and reception context retained as nullable raw text; it distinguishes detail identities but does not establish ownership, governance or issuer cash flow. |
+| `调研日期`, `公告日期` | Required ISO dates retained as research/announcement evidence; `调研日期` must be strictly after the requested cutoff, and neither date is treated as a filing or accounting period. |
+| request `view=institution_research_detail`, `date` | Explicit all-A-share research-date start-cutoff scope; `listing_scoped_request=false`, provider filtering, source order, both date bounds and upstream/selected row counts remain part of the replay contract. |
+
+The provider-specific response remains outside the calculation, gate, pipeline,
+CLI and input-loader contracts.
+
 ## Phase 2.92 SSE daily-deal overview raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)

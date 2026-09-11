@@ -2568,6 +2568,39 @@ pipeline, CLI or input-loader contract changes. This numbered 3.01 increment
 remains structured acquisition; the top-level Phase 3 filing/evidence
 deliverables below are still unimplemented.
 
+### Phase 3.02 — A-share Eastmoney institutional-research detail raw acquisition contract (COMPLETE)
+
+The mapping review now covers the distinct documented AKShare Eastmoney
+`stock_jgdy_detail_em` endpoint under the existing `MARKET_ACTIVITY` category
+with explicit `view=institution_research_detail` and a `date=YYYYMMDD` research-
+date start cutoff. The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_jgdy_em.py)
+define a full A-share response with the exact 13 source-shaped fields `序号`,
+`代码`, `名称`, `最新价`, `涨跌幅`, `调研机构`, `机构类型`, `调研人员`,
+`接待方式`, `接待人员`, `接待地点`, `调研日期` and `公告日期`.
+
+The provider validates the complete response before filtering it to the
+requested A-share listing. It enforces exact field order, six-digit code
+identity, valid ISO research/announcement dates, the official strict
+`调研日期 > date` boundary, strictly ascending source sequence, finite
+numeric/null values, non-negative price and detail identity including
+institution/reception context. It records the documented percentage unit,
+leaves price units `not_documented`, and preserves the requested cutoff, both
+date-field bounds, source order and full/selected row counts for replay. The
+checked-in fixture freezes three source-shaped rows across two listings,
+including two institutions sharing one listing/date/announcement identity.
+
+The normalizer emits
+`AKSHARE_MARKET_ACTIVITY_INSTITUTION_RESEARCH_DETAIL_RAW_ONLY` and creates no
+canonical cash-flow, shareholder-return, governance, valuation or market fact:
+research participants, visit dates and quote context remain provider evidence.
+Tests cover explicit view/date/A-share validation, exact response fields/order/
+types, multi-institution identity/date/numeric failures, provider filtering,
+nullable context, raw-only normalization, replay-scope rejection and cache
+replay. No calculation, gate, pipeline, CLI or input-loader contract changes.
+This numbered 3.02 increment remains structured acquisition; the top-level
+Phase 3 filing/evidence deliverables below are still unimplemented.
+
 ### Future structured-provider deliverables
 
 ```text
@@ -2577,7 +2610,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–3.01 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–3.02 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -2782,7 +2815,7 @@ This is the project's definition of safe “self-evolution.”
 # Current milestone
 
 Phase 2 remains active for structured-provider coverage. The numbered Phase
-3.01 increment is also acquisition-only; the top-level Phase 3 filing/evidence
+3.02 increment is also acquisition-only; the top-level Phase 3 filing/evidence
 layer remains unimplemented. Phase 1 remains frozen: changes to formulas,
 hard-gate semantics, schemas or `strict-v1` thresholds require a separately
 reviewed, versioned change.
@@ -2843,6 +2876,15 @@ unit, undocumented price/count units, exact row identity/sequence checks and
 replay scope remain explicit metadata. The raw-only normalizer flag creates no
 issuer cash-flow, shareholder-return, governance, valuation or canonical market
 fact.
+Phase 3.02 adds the documented A-share Eastmoney
+`stock_jgdy_detail_em` institutional-research detail view under
+`MARKET_ACTIVITY`. Its explicit `institution_research_detail` view and start
+`date=YYYYMMDD` cutoff are validated against the 13-field full-universe
+response before provider filtering; the official strict research-date
+boundary, two date fields, institution/reception identity context, documented
+percentage unit, undocumented price unit, exact sequence checks and replay
+scope remain explicit metadata. The raw-only normalizer flag creates no issuer
+cash-flow, shareholder-return, governance, valuation or canonical market fact.
 Phase 2.75 completes the next documented structured-data boundary by adding
 the A-share `stock_gpzy_profile_em` market-wide historical ownership-pledge
 view. Its no-argument eight-field response is validated as an ascending raw
