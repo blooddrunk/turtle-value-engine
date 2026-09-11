@@ -1105,6 +1105,28 @@ provider percentages remain raw evidence and do not become canonical share,
 cash, debt-equivalent or governance facts. No calculation, gate, pipeline, CLI
 or input-loader contract changes.
 
+Phase 3.05 adds the next distinct official A-share Eastmoney pledge endpoint,
+`stock_gpzy_distribute_statistics_bank_em`, under `OWNERSHIP_PLEDGE` with
+explicit `view=bank_distribution` and no upstream arguments. The [AKShare
+stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_gpzy_em.py)
+define the same eight source-shaped fields as the company-distribution view,
+backed by `RPT_GDZY_ZYJG_SUM`, one 500-row page, descending `ORG_NUM` order and
+the documented `(PFORG_TYPE="银行")` filter. The provider validates the full
+market-wide response before retention and records exact field order/types,
+nullability, institution identity/order, units, sort/filter/pagination and
+non-listing replay scope. The normalizer emits
+`AKSHARE_OWNERSHIP_PLEDGE_BANK_DISTRIBUTION_RAW_ONLY`; bank institution rows,
+pledged-share counts and provider percentages remain raw evidence and do not
+become canonical share, cash, debt-equivalent or governance facts.
+
+A live probe on 2026-09-11 observed current Eastmoney report labels
+`银行Ⅱ`/`证券Ⅱ`, while the documented `银行` filter used by the current
+AKShare wrapper returned no rows. The adapter records the official wrapper
+filter contract and does not silently reinterpret or merge the suffixed report
+labels; that upstream drift requires a separately reviewed adapter/upstream
+fix. No calculation, gate, pipeline, CLI or input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

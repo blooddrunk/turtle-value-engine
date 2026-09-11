@@ -1305,6 +1305,43 @@ The normalizer emits
 cash, debt-equivalent or governance fact. The response remains outside the
 calculation, gate, pipeline, CLI and input-loader contracts.
 
+## Phase 3.05 A-share Eastmoney pledge-institution bank-distribution raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_gpzy_em.py)
+document `stock_gpzy_distribute_statistics_bank_em` as the next distinct
+pledge-institution distribution endpoint. It is a no-argument, market-wide
+`RPT_GDZY_ZYJG_SUM` response filtered with `(PFORG_TYPE="银行")`, requested as
+one 500-row page ordered by descending `ORG_NUM`. The wrapper returns the same
+exact eight-field source order as the company view; the adapter exposes it
+only under `OWNERSHIP_PLEDGE` with explicit `view=bank_distribution`, validates
+the full response before retention and keeps the requested listing code as
+provenance rather than filtering the market-wide rows.
+
+| Raw upstream item | Phase 3.05 treatment |
+| --- | --- |
+| `序号` | Required positive integer generated as the one-based source row position and validated as strictly ascending; it is rank/order context, not a listing metric. |
+| `质押机构` | Required non-empty bank-institution identity; duplicate institutions are rejected in the full response and source order is preserved. It does not establish a lender, beneficial owner or governance conclusion. |
+| `质押公司数量` | Required integer, finite and non-negative; source order must be non-increasing because the official request sorts by `ORG_NUM`. Its count unit is not separately documented. |
+| `质押笔数` | Required integer, finite and non-negative; its count unit is not separately documented and it does not become a canonical pledge-event count. |
+| `质押数量` | Required finite non-negative numeric value in shares (`股`); it remains raw and does not become a canonical diluted-share, pledged-cash or debt-equivalent fact. |
+| `未达预警线比例`, `达到预警线未达平仓线比例`, `达到平仓线比例` | Required finite numeric values in the documented percent unit, bounded to 0–100. The upstream implementation returns them without an additional scale conversion, so the adapter preserves the provider-returned values unchanged. They do not become canonical governance or liquidation metrics. |
+| row identity and ordering | Duplicate `质押机构` identities are rejected; exact field order, field types, non-nullability, one-based sequence, institution order, company-count ordering and full row count are retained for replay. |
+| request `view=bank_distribution` | No upstream arguments beyond the implementation's fixed report/filter/page/sort request; current market-wide bank-only snapshot, `listing_scoped_request=false`, `row_filtering=none`, `date_binding=retrieval_only` and `date_boundary=not_applicable` remain explicit metadata. |
+
+A live probe on 2026-09-11 observed current Eastmoney report labels
+`银行Ⅱ`/`证券Ⅱ`, while the exact documented `银行` filter used by the current
+AKShare wrapper returned no rows. The adapter records the official wrapper
+filter contract and does not silently reinterpret or merge the suffixed report
+labels; the drift requires a separately reviewed upstream/adapter fix rather
+than a fixture-specific fallback.
+
+The normalizer emits
+`AKSHARE_OWNERSHIP_PLEDGE_BANK_DISTRIBUTION_RAW_ONLY`, leaves
+`governance_risk_level` critically missing and creates no canonical share,
+cash, debt-equivalent or governance fact. The response remains outside the
+calculation, gate, pipeline, CLI and input-loader contracts.
+
 ## Phase 2.92 SSE daily-deal overview raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)

@@ -2677,6 +2677,45 @@ calculation, gate, pipeline, CLI or input-loader contract changes. This
 numbered 3.04 increment remains structured acquisition; the top-level Phase 3
 filing/evidence deliverables below are still unimplemented.
 
+### Phase 3.05 — A-share Eastmoney pledge-institution bank-distribution raw acquisition contract (COMPLETE)
+
+The mapping review now covers the next distinct documented AKShare Eastmoney
+`stock_gpzy_distribute_statistics_bank_em` endpoint under the existing
+`OWNERSHIP_PLEDGE` category with explicit `view=bank_distribution` and no
+upstream arguments. The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_gpzy_em.py)
+define a current market-wide bank pledge-institution response backed by the
+`RPT_GDZY_ZYJG_SUM` report, filtered with `(PFORG_TYPE="银行")`, requested in
+one 500-row page ordered by descending `ORG_NUM`, and returned in the exact
+eight-field source order `序号`, `质押机构`, `质押公司数量`, `质押笔数`, `质押数量`,
+`未达预警线比例`, `达到预警线未达平仓线比例`, `达到平仓线比例`.
+
+The provider validates the complete response before storage. It enforces the
+one-based source sequence, unique non-empty institution identity,
+non-increasing company-count source ordering, finite non-negative numeric
+values, integer count types, 0–100 documented percentage bounds and
+non-nullability. It records shares/percent units, unchanged source numeric
+scale, exact field order/types, identity/order, the fixed report/filter/page/
+sort contract and non-listing row scope for replay. A live probe on
+2026-09-11 observed current Eastmoney report labels `银行Ⅱ`/`证券Ⅱ`, while the
+exact documented `银行` filter used by the current AKShare wrapper returned no
+rows. The adapter records the official wrapper filter contract and does not
+silently reinterpret or merge the suffixed labels; that upstream drift needs a
+separately reviewed upstream/adapter fix rather than a fixture-specific
+fallback.
+
+The normalizer emits
+`AKSHARE_OWNERSHIP_PLEDGE_BANK_DISTRIBUTION_RAW_ONLY`, leaves
+`governance_risk_level` critically missing and creates no canonical share,
+cash, debt-equivalent or governance fact: market-wide bank-institution rows,
+pledge counts, shares, provider percentages and report context remain raw
+evidence. Tests cover explicit view/A-share/no-argument routing, exact source
+order/types/nullability, sequence and numeric boundaries, institution
+identity/order, raw-only normalization, replay metadata tampering and offline
+cache replay. No calculation, gate, pipeline, CLI or input-loader contract
+changes. This numbered 3.05 increment remains structured acquisition; the
+top-level Phase 3 filing/evidence deliverables below are still unimplemented.
+
 ### Future structured-provider deliverables
 
 ```text
@@ -2686,7 +2725,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–3.04 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–3.05 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -2891,7 +2930,7 @@ This is the project's definition of safe “self-evolution.”
 # Current milestone
 
 Phase 2 remains active for structured-provider coverage. The numbered Phase
-3.04 increment is also acquisition-only; the top-level Phase 3 filing/evidence
+3.05 increment is also acquisition-only; the top-level Phase 3 filing/evidence
 layer remains unimplemented. Phase 1 remains frozen: changes to formulas,
 hard-gate semantics, schemas or `strict-v1` thresholds require a separately
 reviewed, versioned change.
@@ -2980,6 +3019,18 @@ company-count ordering, shares/percent units, unchanged source numeric scale,
 single-page report/filter/sort metadata and no listing filtering. The raw-only
 normalizer flag creates no canonical share, cash, debt-equivalent or governance
 fact and leaves `governance_risk_level` critically missing.
+Phase 3.05 adds the documented A-share Eastmoney
+`stock_gpzy_distribute_statistics_bank_em` pledge-institution bank-distribution
+view under `OWNERSHIP_PLEDGE`. Its explicit `bank_distribution` view and
+no-argument `RPT_GDZY_ZYJG_SUM` response are validated as a complete eight-field
+institution-ranked snapshot before retention, with one-based sequence, unique
+institution identity, non-increasing company-count ordering, shares/percent
+units, unchanged source numeric scale, single-page report/filter/sort metadata
+and no listing filtering. A live probe observed `银行Ⅱ`/`证券Ⅱ` report labels
+while the documented `银行` wrapper filter returned no rows; this contract is
+recorded without silently merging the suffixed labels. The raw-only normalizer
+flag creates no canonical share, cash, debt-equivalent or governance fact and
+leaves `governance_risk_level` critically missing.
 Phase 2.75 completes the next documented structured-data boundary by adding
 the A-share `stock_gpzy_profile_em` market-wide historical ownership-pledge
 view. Its no-argument eight-field response is validated as an ascending raw
