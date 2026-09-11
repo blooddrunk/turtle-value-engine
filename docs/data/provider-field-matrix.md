@@ -1824,6 +1824,31 @@ raw evidence only until its provider-defined periods, units and accounting
 scope are reconciled. The response remains outside the calculation, gate,
 pipeline, CLI and input-loader contracts.
 
+## Phase 3.24 H-share Eastmoney growth-comparison raw snapshot
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hk_comparison_em.py)
+document `stock_hk_growth_comparison_em` as a single-symbol industry growth
+row. The adapter exposes it only under `MARKET_ACTIVITY` with explicit
+`view=growth_comparison_hk`; an H-share listing is converted to the unprefixed
+five-digit upstream `symbol` expected by the wrapper.
+
+| Raw upstream item | Phase 3.24 treatment |
+| --- | --- |
+| `代码`, `简称` | Required wrapper text fields; `代码` must match the requested H-share listing and the wrapper returns exactly one row. |
+| Four growth-rate fields | Nullable finite numeric provider-defined growth values; signed values are preserved and no unit or universal non-negative domain is inferred. The mapped total-asset label is retained exactly as `基本每股收总资产同比增长率益同比增长率`. |
+| Four `*排名` fields | Required positive integer provider ranks; each rank is retained as raw comparison metadata and is not converted into a canonical score. |
+| request `view=growth_comparison_hk` | Explicit H-share-only listing-scoped routing. The Eastmoney JSON request freezes `RPT_PCF10_INDUSTRY_HKGROWTH`, the explicit current-wrapper column list, `pageNumber=1`, `source=F10`, `client=PC`, the current wrapper `v` parameter and the dual listing filter `(SECUCODE="<code>.HK")(CORRE_SECUCODE="<code>.HK")`. Exact field order, one-row scope, upstream fields, dropped fields and replay metadata remain part of the raw contract. |
+
+The provider rejects unsupported views/parameters, non-H listings,
+missing/unexpected/reordered fields, wrong listing identity, null/non-integer
+ranks and non-finite/non-numeric growth values. The normalizer emits
+`AKSHARE_HK_GROWTH_COMPARISON_RAW_ONLY` and creates no canonical growth,
+valuation, market, return, governance or accounting fact: the row is raw
+evidence only until its provider-defined periods, units and accounting scope
+are reconciled. The response remains outside the calculation, gate, pipeline,
+CLI and input-loader contracts.
+
 ## Phase 2.92 SSE daily-deal overview raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)

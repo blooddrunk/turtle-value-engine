@@ -3170,6 +3170,30 @@ signed values, rank boundaries, raw-only normalization, replay metadata
 tampering and offline cache replay. No calculation, gate, pipeline, CLI or
 input-loader contract changes.
 
+### Phase 3.24 — H-share Eastmoney growth-comparison raw acquisition contract (COMPLETE)
+
+The mapping review now covers the documented H-share Eastmoney
+`stock_hk_growth_comparison_em` endpoint under `MARKET_ACTIVITY` with explicit
+`view=growth_comparison_hk` and the unprefixed five-digit listing symbol
+expected by the wrapper. The [AKShare stock-data
+documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and [official
+implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hk_comparison_em.py)
+define the current 10-field single-listing output, including the source's
+mapped `基本每股收总资产同比增长率益同比增长率` label, four nullable/signed
+growth metrics and four positive integer ranks. The provider freezes the
+explicit Eastmoney report/columns, dual listing filter, page/client/version
+parameters and dropped fields, records the one-row scope and validates exact
+field order, identity, numeric boundaries and replay metadata.
+
+The normalizer emits `AKSHARE_HK_GROWTH_COMPARISON_RAW_ONLY` and creates no
+canonical growth, valuation, market, return, governance or accounting fact
+because the provider-defined comparison is not reconciled to filing-backed
+periods, units or accounting scope. Tests cover the official output schema,
+explicit view and H-share routing, derived upstream symbol/filter, nullable and
+signed growth metrics, positive rank boundaries, raw-only normalization, replay
+metadata tampering and offline cache replay. No calculation, gate, pipeline,
+CLI or input-loader contract changes.
+
 ### Future structured-provider deliverables
 
 ```text
@@ -3179,7 +3203,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–3.23 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–3.24 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -3654,6 +3678,15 @@ rank ordering and replay metadata are recorded; the normalizer emits
 `AKSHARE_GROWTH_COMPARISON_RAW_ONLY` and creates no canonical growth, valuation,
 market, return, governance or accounting fact, and no calculation, gate,
 pipeline, CLI or input-loader contract changes.
+Phase 3.24 adds the documented H-share Eastmoney
+`stock_hk_growth_comparison_em` growth-comparison endpoint under
+`MARKET_ACTIVITY` with explicit `view=growth_comparison_hk` and an unprefixed
+five-digit listing symbol. Its current 10-field single-listing output, explicit
+JSON report/columns/filter/page/client/version parameters, nullable/signed
+growth metrics, positive integer ranks and replay metadata are recorded; the
+normalizer emits `AKSHARE_HK_GROWTH_COMPARISON_RAW_ONLY` and creates no
+canonical growth, valuation, market, return, governance or accounting fact, and
+no calculation, gate, pipeline, CLI or input-loader contract changes.
 Phase 2.75 completes the next documented structured-data boundary by adding
 the A-share `stock_gpzy_profile_em` market-wide historical ownership-pledge
 view. Its no-argument eight-field response is validated as an ascending raw

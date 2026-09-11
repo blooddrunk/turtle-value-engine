@@ -1,6 +1,6 @@
 # Provider and Cache Architecture
 
-> Status: Phase 2 foundation and Phase 3.23 structured acquisition, read-only AKShare statement slices, earnings forecasts/quick reports/performance reports/business composition/financial abstract/financial indicators, H-share latest indicators, A-share disclosure-notice metadata including the Eastmoney individual-notice, market-wide notice and shareholder-meeting views, risk-warning status, trading-suspension, restricted-share-release, goodwill-impairment detail/goodwill-detail/impairment-forecast/market-profile/industry-data, ESG-rating, SSE/SZSE/BSE margin-detail, share-capital, individual-info snapshot, corporate-action including IPO-summary and Eastmoney IPO-yield, external-guarantee, company-litigation, ownership-pledge snapshot/detail/company-distribution/bank-distribution/industry-data/market-profile/important-shareholder-detail, main-shareholder, shareholder-count/shareholder-count-detail, A-share actual-controller holding-change, A/H HSGT individual-holdings, SSE/SZSE/BSE insider-share-change, A-share Eastmoney/CNINFO management-holding and executive/shareholder-change, A-share top-ten/top-ten-tradable-shareholder/top-ten-tradable-shareholder-detail, Dragon-Tiger market-activity detail/statistics/institution-statistics/institution-daily/institutional-research/institutional-research-detail/market-participation-desire/market-focus/institution-participation/block-trade-detail/hot-rank/latest-hot-rank/A-share historical-hot-rank/limit-up-pool/limit-down-pool/H-share latest-hot-rank/H-share historical-hot-rank/new-stock-board, A+B/A+H quote-comparison, A-share Eastmoney/Sina intraday-trade, Tencent daily-history/latest-trading-day tick, Sina minute-history, A-share/H-share intraday-history, pre-market-history and five-level bid-ask raw slices, SSE/SZSE market-summary, SZSE area-summary/sector-summary and Eastmoney industry-board, stock-account-statistics and Legu market-activity/congestion/equity-bond-spread/Buffett-index/A-share PE/PB-history, index-PE/index-PB, A-share growth-comparison, A/H Eastmoney valuation-comparison and A/H Baidu valuation-history raw slices
+> Status: Phase 2 foundation and Phase 3.24 structured acquisition, read-only AKShare statement slices, earnings forecasts/quick reports/performance reports/business composition/financial abstract/financial indicators, H-share latest indicators, A-share disclosure-notice metadata including the Eastmoney individual-notice, market-wide notice and shareholder-meeting views, risk-warning status, trading-suspension, restricted-share-release, goodwill-impairment detail/goodwill-detail/impairment-forecast/market-profile/industry-data, ESG-rating, SSE/SZSE/BSE margin-detail, share-capital, individual-info snapshot, corporate-action including IPO-summary and Eastmoney IPO-yield, external-guarantee, company-litigation, ownership-pledge snapshot/detail/company-distribution/bank-distribution/industry-data/market-profile/important-shareholder-detail, main-shareholder, shareholder-count/shareholder-count-detail, A-share actual-controller holding-change, A/H HSGT individual-holdings, SSE/SZSE/BSE insider-share-change, A-share Eastmoney/CNINFO management-holding and executive/shareholder-change, A-share top-ten/top-ten-tradable-shareholder/top-ten-tradable-shareholder-detail, Dragon-Tiger market-activity detail/statistics/institution-statistics/institution-daily/institutional-research/institutional-research-detail/market-participation-desire/market-focus/institution-participation/block-trade-detail/hot-rank/latest-hot-rank/A-share historical-hot-rank/limit-up-pool/limit-down-pool/H-share latest-hot-rank/H-share historical-hot-rank/new-stock-board, A+B/A+H quote-comparison, A-share Eastmoney/Sina intraday-trade, Tencent daily-history/latest-trading-day tick, Sina minute-history, A-share/H-share intraday-history, pre-market-history and five-level bid-ask raw slices, SSE/SZSE market-summary, SZSE area-summary/sector-summary and Eastmoney industry-board, stock-account-statistics and Legu market-activity/congestion/equity-bond-spread/Buffett-index/A-share PE/PB-history, index-PE/index-PB, A-share growth-comparison, A/H Eastmoney valuation-comparison, A/H Eastmoney growth-comparison and A/H Baidu valuation-history raw slices
 
 This document freezes the boundary between structured-data acquisition and the
 deterministic Turtle Value Engine. It does not authorize a live provider or
@@ -23,7 +23,7 @@ There is one analysis model: `NormalizedCompanyInput` on the input side and
 the existing `CompanyAnalysis` on the output side. A provider must not create
 a parallel analysis object, calculate an investment metric, or decide a gate.
 
-Phase 2 and the numbered Phase 3.23 increment add structured acquisition and
+Phase 2 and the numbered Phase 3.24 increment add structured acquisition and
 replay infrastructure only. The top-level Phase 3 filing/evidence work remains
 the boundary for official filing retrieval and filing-derived evidence.
 
@@ -771,7 +771,7 @@ The cache performs no network retries. The normalizer performs no provider
 retries. The deterministic pipeline performs no provider retries and should
 not be rerun as a substitute for resolving missing facts.
 
-## 12. Phase 2.2–3.23 AKShare adapter
+## 12. Phase 2.2–3.24 AKShare adapter
 
 The first concrete adapter is intentionally limited to read-only metadata,
 market observations, three documented financial-statement slices, raw-only
@@ -817,6 +817,7 @@ advertises exactly these capabilities:
 | `MARKET_ACTIVITY` (valuation comparison) | `stock_zh_valuation_comparison_em` (`view=valuation_comparison`, A-share listing-scoped peer table) | — | target, industry-summary and ranked-peer valuation-comparison rows retained as raw structured evidence only; no canonical valuation or accounting fact |
 | `MARKET_ACTIVITY` (valuation comparison) | — | `stock_hk_valuation_comparison_em` (`view=valuation_comparison_hk`, H-share listing-scoped single row) | H-share valuation-comparison row retained as raw structured evidence only; no canonical valuation or accounting fact |
 | `MARKET_ACTIVITY` (growth comparison) | `stock_zh_growth_comparison_em` (`view=growth_comparison`, A-share listing-scoped peer table) | — | industry-average/industry-median, ranked-peer and target growth-comparison rows retained as raw structured evidence only; no canonical growth or valuation fact |
+| `MARKET_ACTIVITY` (growth comparison) | — | `stock_hk_growth_comparison_em` (`view=growth_comparison_hk`, H-share listing-scoped single row) | H-share growth-comparison row retained as raw structured evidence only; no canonical growth or valuation fact |
 | `CAPITAL_FLOW` | `stock_individual_fund_flow` (A-share) | — | recent daily investor-flow rows as raw structured evidence only; no issuer cash-flow, liquidity or valuation fact |
 | `CASH_FLOW_STATEMENT` | `stock_cash_flow_sheet_by_report_em` (Sina fallback) | `stock_financial_hk_report_em` | explicit `reported_cfo` and `acquisition_cash` lines |
 | `INCOME_STATEMENT` | `stock_profit_sheet_by_report_em` (Sina fallback) | `stock_financial_hk_report_em` | explicit `parent_net_profit` and `consolidated_net_profit` lines |
@@ -2353,6 +2354,27 @@ growth, valuation, market, return, governance or accounting fact. H-share
 requests and any calculation, gate, pipeline, CLI or input-loader use remain
 outside this slice.
 
+The H-share Eastmoney growth-comparison slice is also acquisition-only. The
+current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hk_comparison_em.py)
+document `stock_hk_growth_comparison_em` as a single-symbol industry growth
+row. The adapter exposes it only under `MARKET_ACTIVITY` with explicit
+`view=growth_comparison_hk`; the requested H-share listing supplies the
+unprefixed five-digit upstream `symbol` and the dual
+`(SECUCODE="<code>.HK")(CORRE_SECUCODE="<code>.HK")` filter. The current
+wrapper emits exactly 10 fields, preserving the source typo
+`基本每股收总资产同比增长率益同比增长率`, four nullable/signed growth metrics
+and four positive integer rank fields. The provider freezes the explicit
+report/columns/page/client/version request, records the one-row listing scope,
+and validates exact field order, identity, numeric boundaries and replay
+metadata.
+
+The normalizer emits `AKSHARE_HK_GROWTH_COMPARISON_RAW_ONLY`; the provider-defined
+H-share growth rates and ranks remain raw evidence only and create no canonical
+growth, valuation, market, return, governance or accounting fact. A-share
+requests and any calculation, gate, pipeline, CLI or input-loader use remain
+outside this slice.
+
 The H-share Baidu valuation-history slice is also acquisition-only. The current
 [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
 and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hk_valuation_baidu.py)
@@ -2399,7 +2421,7 @@ outside this slice.
 
 ## 13. Deliberate non-goals
 
-This foundation plus the Phase 2.2–3.23 structured slices does not include:
+This foundation plus the Phase 2.2–3.24 structured slices does not include:
 
 - Tushare, BaoStock or any other additional provider;
 - automatic network scheduling, credentials or retry orchestration outside an adapter;

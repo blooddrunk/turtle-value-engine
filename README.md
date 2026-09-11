@@ -1406,6 +1406,22 @@ growth comparison remains raw evidence and does not become a canonical growth,
 valuation, market, return, governance or accounting fact. No calculation,
 gate, pipeline, CLI or input-loader contract changes.
 
+Phase 3.24 adds the documented H-share Eastmoney
+`stock_hk_growth_comparison_em` growth-comparison endpoint under
+`MARKET_ACTIVITY` with explicit `view=growth_comparison_hk` and a derived
+unprefixed five-digit H-share listing symbol. The [AKShare stock-data
+documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and [official
+implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hk_comparison_em.py)
+define the exact 10-field single-listing output, including the source's mapped
+`基本每股收总资产同比增长率益同比增长率` label. The provider freezes the
+explicit Eastmoney report/columns, dual listing filter, page/client/version
+parameters and dropped fields, accepts nullable/signed growth metrics and
+positive integer ranks, and validates the one-row listing identity. The
+normalizer emits `AKSHARE_HK_GROWTH_COMPARISON_RAW_ONLY`; this provider-defined
+comparison remains raw evidence and does not become a canonical growth,
+valuation, market, return, governance or accounting fact. No calculation,
+gate, pipeline, CLI or input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.
