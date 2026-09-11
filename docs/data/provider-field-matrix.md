@@ -1849,6 +1849,31 @@ evidence only until its provider-defined periods, units and accounting scope
 are reconciled. The response remains outside the calculation, gate, pipeline,
 CLI and input-loader contracts.
 
+## Phase 3.25 A-share Eastmoney DuPont-comparison raw snapshot
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_zh_comparison_em.py)
+document `stock_zh_dupont_comparison_em` as a full listing-scoped DuPont
+comparison table. The adapter exposes it only under `MARKET_ACTIVITY` with
+explicit `view=dupont_comparison`; an A-share listing is converted to the
+exchange-prefixed six-digit upstream `symbol` expected by the wrapper.
+
+| Raw upstream item | Phase 3.25 treatment |
+| --- | --- |
+| `代码`, `简称` | Required wrapper text fields. The first two rows are the current source order `行业中值` and `行业平均`; ranked rows use six-digit comparison codes and exactly one row must match the requested A-share listing. |
+| 16 DuPont metric fields | Nullable finite numeric provider-defined values covering `ROE`, `净利率`, `总资产周转率` and `权益乘数` for the documented three-year average and 22A/23A/24A labels. Values are preserved as signed where supplied; no unit or accounting-scope inference is made. |
+| `ROE-3年平均排名` | Nullable on the two industry summaries and a positive integer-valued provider rank on ranked comparison rows; it remains raw comparison metadata. |
+| request `view=dupont_comparison` | Explicit A-share-only listing-scoped routing. The Eastmoney JSON request freezes `RPT_PCF10_INDUSTRY_DBFX`, `columns=ALL`, `sortTypes=1`, `sortColumns=PAIMING`, `source=HSF10`, `client=PC`, the current wrapper `v` parameter and `filter=(SECUCODE="<code>.<exchange>")`. Exact field order, row roles, rank order, upstream fields, dropped fields and replay metadata remain part of the raw contract. |
+
+The provider rejects unsupported views/parameters, non-A listings,
+missing/unexpected/reordered fields, malformed summary/target/peer rows,
+duplicate or non-ascending ranks and non-finite/non-numeric values. The
+normalizer emits `AKSHARE_DUPONT_COMPARISON_RAW_ONLY` and creates no canonical
+profitability, growth, valuation, market, return, governance or accounting fact:
+the table is raw evidence only until its provider-defined periods, units and
+accounting scope are reconciled. The response remains outside the calculation,
+gate, pipeline, CLI and input-loader contracts.
+
 ## Phase 2.92 SSE daily-deal overview raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)

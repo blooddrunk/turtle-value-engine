@@ -23,7 +23,7 @@ There is one analysis model: `NormalizedCompanyInput` on the input side and
 the existing `CompanyAnalysis` on the output side. A provider must not create
 a parallel analysis object, calculate an investment metric, or decide a gate.
 
-Phase 2 and the numbered Phase 3.24 increment add structured acquisition and
+Phase 2 and the numbered Phase 3.25 increment add structured acquisition and
 replay infrastructure only. The top-level Phase 3 filing/evidence work remains
 the boundary for official filing retrieval and filing-derived evidence.
 
@@ -771,7 +771,7 @@ The cache performs no network retries. The normalizer performs no provider
 retries. The deterministic pipeline performs no provider retries and should
 not be rerun as a substitute for resolving missing facts.
 
-## 12. Phase 2.2–3.24 AKShare adapter
+## 12. Phase 2.2–3.25 AKShare adapter
 
 The first concrete adapter is intentionally limited to read-only metadata,
 market observations, three documented financial-statement slices, raw-only
@@ -818,6 +818,7 @@ advertises exactly these capabilities:
 | `MARKET_ACTIVITY` (valuation comparison) | — | `stock_hk_valuation_comparison_em` (`view=valuation_comparison_hk`, H-share listing-scoped single row) | H-share valuation-comparison row retained as raw structured evidence only; no canonical valuation or accounting fact |
 | `MARKET_ACTIVITY` (growth comparison) | `stock_zh_growth_comparison_em` (`view=growth_comparison`, A-share listing-scoped peer table) | — | industry-average/industry-median, ranked-peer and target growth-comparison rows retained as raw structured evidence only; no canonical growth or valuation fact |
 | `MARKET_ACTIVITY` (growth comparison) | — | `stock_hk_growth_comparison_em` (`view=growth_comparison_hk`, H-share listing-scoped single row) | H-share growth-comparison row retained as raw structured evidence only; no canonical growth or valuation fact |
+| `MARKET_ACTIVITY` (DuPont comparison) | `stock_zh_dupont_comparison_em` (`view=dupont_comparison`, A-share listing-scoped peer table) | — | industry-summary and ranked-comparison DuPont rows retained as raw structured evidence only; no canonical profitability or accounting fact |
 | `CAPITAL_FLOW` | `stock_individual_fund_flow` (A-share) | — | recent daily investor-flow rows as raw structured evidence only; no issuer cash-flow, liquidity or valuation fact |
 | `CASH_FLOW_STATEMENT` | `stock_cash_flow_sheet_by_report_em` (Sina fallback) | `stock_financial_hk_report_em` | explicit `reported_cfo` and `acquisition_cash` lines |
 | `INCOME_STATEMENT` | `stock_profit_sheet_by_report_em` (Sina fallback) | `stock_financial_hk_report_em` | explicit `parent_net_profit` and `consolidated_net_profit` lines |
@@ -2375,6 +2376,27 @@ growth, valuation, market, return, governance or accounting fact. A-share
 requests and any calculation, gate, pipeline, CLI or input-loader use remain
 outside this slice.
 
+The A-share Eastmoney DuPont-comparison slice is also acquisition-only. The
+current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_zh_comparison_em.py)
+document `stock_zh_dupont_comparison_em` as a full listing-scoped comparison
+table. The adapter exposes it only under `MARKET_ACTIVITY` with explicit
+`view=dupont_comparison`; the requested A-share listing supplies the
+exchange-prefixed six-digit upstream `symbol` and the wrapper-derived
+`(SECUCODE="<code>.<exchange>")` filter. The current wrapper emits exactly 19
+fields in its documented order: `代码`, `简称`, the four ROE fields, four
+net-margin fields, four total-asset-turnover fields, four equity-multiplier
+fields and `ROE-3年平均排名`. The provider preserves the current two summary
+rows (`行业中值`, `行业平均`) followed by ascending ranked comparison rows,
+including the requested target row, and freezes the `RPT_PCF10_INDUSTRY_DBFX`,
+`columns=ALL`, sort, page, source, client and version request metadata.
+
+The normalizer emits `AKSHARE_DUPONT_COMPARISON_RAW_ONLY`; the provider-defined
+ROE, margin, turnover, equity-multiplier and rank values remain raw evidence
+only and create no canonical profitability, growth, valuation, market, return,
+governance or accounting fact. H-share requests and any calculation, gate,
+pipeline, CLI or input-loader use remain outside this slice.
+
 The H-share Baidu valuation-history slice is also acquisition-only. The current
 [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
 and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hk_valuation_baidu.py)
@@ -2421,7 +2443,7 @@ outside this slice.
 
 ## 13. Deliberate non-goals
 
-This foundation plus the Phase 2.2–3.24 structured slices does not include:
+This foundation plus the Phase 2.2–3.25 structured slices does not include:
 
 - Tushare, BaoStock or any other additional provider;
 - automatic network scheduling, credentials or retry orchestration outside an adapter;

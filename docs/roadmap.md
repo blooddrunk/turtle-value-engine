@@ -3194,6 +3194,30 @@ signed growth metrics, positive rank boundaries, raw-only normalization, replay
 metadata tampering and offline cache replay. No calculation, gate, pipeline,
 CLI or input-loader contract changes.
 
+### Phase 3.25 — A-share Eastmoney DuPont-comparison raw acquisition contract (COMPLETE)
+
+The mapping review now covers the documented A-share Eastmoney
+`stock_zh_dupont_comparison_em` endpoint under `MARKET_ACTIVITY` with explicit
+`view=dupont_comparison` and the exchange-prefixed six-digit listing symbol
+expected by the wrapper. The [AKShare stock-data
+documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and [official
+implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_zh_comparison_em.py)
+define the current 19-field industry-summary/ranked-comparison output: two
+text identity fields, 16 nullable/signed DuPont metrics and a nullable positive
+integer `ROE-3年平均排名` field. The provider freezes the explicit Eastmoney
+report/columns/filter/sort/page/source/client/version parameters, records the
+current two-summary-row and ranked-comparison ordering, validates the requested
+target identity and preserves the exact wrapper schema for replay.
+
+The normalizer emits `AKSHARE_DUPONT_COMPARISON_RAW_ONLY` and creates no
+canonical profitability, growth, valuation, market, return, governance or
+accounting fact because the provider-defined comparison is not reconciled to
+filing-backed periods, units or accounting scope. Tests cover the official
+output schema, explicit view and A-share routing, derived upstream symbol/filter,
+nullable/signed metrics, positive rank boundaries, raw-only normalization,
+replay metadata tampering and offline cache replay. No calculation, gate,
+pipeline, CLI or input-loader contract changes.
+
 ### Future structured-provider deliverables
 
 ```text
@@ -3203,7 +3227,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–3.24 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–3.25 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -3687,6 +3711,16 @@ growth metrics, positive integer ranks and replay metadata are recorded; the
 normalizer emits `AKSHARE_HK_GROWTH_COMPARISON_RAW_ONLY` and creates no
 canonical growth, valuation, market, return, governance or accounting fact, and
 no calculation, gate, pipeline, CLI or input-loader contract changes.
+Phase 3.25 adds the documented A-share Eastmoney
+`stock_zh_dupont_comparison_em` DuPont-comparison endpoint under
+`MARKET_ACTIVITY` with explicit `view=dupont_comparison` and an
+exchange-prefixed six-digit listing symbol. Its current 19-field
+industry-summary/ranked-comparison output, explicit JSON report/columns/filter/
+sort/page/source/client/version parameters, nullable/signed DuPont metrics,
+positive integer rank handling and replay metadata are recorded; the normalizer
+emits `AKSHARE_DUPONT_COMPARISON_RAW_ONLY` and creates no canonical
+profitability, growth, valuation, market, return, governance or accounting fact,
+and no calculation, gate, pipeline, CLI or input-loader contract changes.
 Phase 2.75 completes the next documented structured-data boundary by adding
 the A-share `stock_gpzy_profile_em` market-wide historical ownership-pledge
 view. Its no-argument eight-field response is validated as an ascending raw

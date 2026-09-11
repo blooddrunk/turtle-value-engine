@@ -333,6 +333,13 @@ class FakeAKShare:
             symbol=symbol,
         )
 
+    def stock_zh_dupont_comparison_em(self, *, symbol: str):
+        return self._return(
+            "stock_zh_dupont_comparison_em",
+            _fixture("a_dupont_comparison.json"),
+            symbol=symbol,
+        )
+
     def stock_hk_valuation_comparison_em(self, *, symbol: str):
         return self._return(
             "stock_hk_valuation_comparison_em",
@@ -1076,8 +1083,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "126"
-    assert AKSHARE_MAPPING_VERSION == "127"
+    assert provider.identity.provider_version == "127"
+    assert AKSHARE_MAPPING_VERSION == "128"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -25184,6 +25191,551 @@ def test_market_activity_growth_comparison_cache_replay_does_not_call_upstream(
     assert replay.record == live.record
     assert fake.calls == [
         ("stock_zh_growth_comparison_em", {"symbol": "SZ000895"})
+    ]
+
+
+def test_market_activity_dupont_comparison_fetch_preserves_official_table():
+    fake = FakeAKShare()
+    request = _request(
+        DataCategory.MARKET_ACTIVITY,
+        "SZ000895",
+        {"view": "dupont_comparison"},
+    )
+
+    record = _provider(fake).fetch(request)
+    fixture = _fixture("a_dupont_comparison.json")
+    metadata = record.response_metadata
+    metric_fields = list(fixture[0])[2:-1]
+    rank_field = "ROE-3年平均排名"
+    upstream_columns = [
+        "SECUCODE",
+        "SECURITY_CODE",
+        "CORRE_SECUCODE",
+        "CORRE_SECURITY_CODE",
+        "CORRE_SECURITY_NAME",
+        "ROEPJ_L3",
+        "ROEPJ_L2",
+        "ROEPJ_L1",
+        "ROE_AVG",
+        "XSJLL_L3",
+        "XSJLL_L2",
+        "XSJLL_L1",
+        "XSJLL_AVG",
+        "TOAZZL_L3",
+        "TOAZZL_L2",
+        "TOAZZL_L1",
+        "TOAZZL_AVG",
+        "QYCS_L3",
+        "QYCS_L2",
+        "QYCS_L1",
+        "QYCS_AVG",
+        "PAIMING",
+        "REPORT_DATE",
+        "TOTAL_COUNT",
+    ]
+
+    assert record.raw_payload == fixture
+    assert fake.calls == [
+        ("stock_zh_dupont_comparison_em", {"symbol": "SZ000895"})
+    ]
+    assert metadata["endpoint"] == "stock_zh_dupont_comparison_em"
+    assert metadata["market"] == "A"
+    assert metadata["listing_code"] == "000895"
+    assert metadata["market_activity_view"] == "dupont_comparison"
+    assert metadata["upstream_symbol"] == "SZ000895"
+    assert metadata["market_scope"] == (
+        "requested_a_share_listing_industry_dupont_comparison"
+    )
+    assert metadata["listing_scoped_request"] is True
+    assert metadata["row_filtering"] == "upstream"
+    assert metadata["snapshot_scope"] == (
+        "requested_a_share_dupont_comparison_snapshot"
+    )
+    assert metadata["date_binding"] == "retrieval_only"
+    assert metadata["rank_field"] == rank_field
+    assert metadata["rank_constraint"] == (
+        "positive_integer_for_target_and_peers_null_for_summaries"
+    )
+    assert metadata["rank_ordering"] == (
+        "two_industry_summary_rows_then_ascending_ranked_comparison_rows"
+    )
+    assert metadata["target_code_field"] == "代码"
+    assert metadata["target_row_position"] == 2
+    assert metadata["target_row_count"] == 1
+    assert metadata["target_rank"] == 1
+    assert metadata["target_rank_field"] == rank_field
+    assert metadata["industry_summary_code_field"] == "代码"
+    assert metadata["industry_summary_labels"] == ["行业中值", "行业平均"]
+    assert metadata["industry_summary_row_count"] == 2
+    assert metadata["peer_rank_field"] == rank_field
+    assert metadata["peer_rank_ordering"] == (
+        "strictly_ascending_positive_integer_numbers"
+    )
+    assert metadata["peer_rank_order"] == [2, 3, 4, 5, 6]
+    assert metadata["peer_row_count"] == 5
+    assert metadata["comparison_row_roles"] == [
+        "industry_median",
+        "industry_average",
+        "target",
+        "peer_rank_2",
+        "peer_rank_3",
+        "peer_rank_4",
+        "peer_rank_5",
+        "peer_rank_6",
+    ]
+    assert metadata["value_fields"] == metric_fields
+    assert metadata["rank_fields"] == [rank_field]
+    assert metadata["signed_fields"] == metric_fields
+    assert metadata["non_negative_fields"] == []
+    assert metadata["integer_fields"] == [rank_field]
+    assert metadata["text_fields"] == ["代码", "简称"]
+    assert metadata["required_text_fields"] == ["代码", "简称"]
+    assert metadata["required_numeric_fields"] == []
+    assert metadata["field_types"] == {
+        "代码": "string",
+        "简称": "string",
+        **{field: "number" for field in metric_fields},
+        rank_field: "integer",
+    }
+    assert metadata["nullable_fields"] == [*metric_fields, rank_field]
+    assert metadata["field_count"] == 19
+    assert metadata["source_field_order"] == list(fixture[0])
+    assert metadata["documented_units"] == {}
+    assert metadata["undocumented_numeric_units"] == {
+        field: "not_documented" for field in [*metric_fields, rank_field]
+    }
+    assert metadata["upstream_url"] == (
+        "https://datacenter.eastmoney.com/securities/api/data/v1/get"
+    )
+    assert metadata["upstream_protocol"] == "JSON"
+    assert metadata["upstream_report_name"] == "RPT_PCF10_INDUSTRY_DBFX"
+    assert metadata["upstream_columns_selector"] == "ALL"
+    assert metadata["upstream_columns"] == upstream_columns
+    assert metadata["upstream_parameters"] == [
+        "reportName",
+        "columns",
+        "quoteColumns",
+        "filter",
+        "pageNumber",
+        "pageSize",
+        "sortTypes",
+        "sortColumns",
+        "source",
+        "client",
+        "v",
+    ]
+    assert metadata["upstream_fixed_parameters"] == {
+        "reportName": "RPT_PCF10_INDUSTRY_DBFX",
+        "columns": "ALL",
+        "quoteColumns": "",
+        "pageNumber": "",
+        "pageSize": "",
+        "sortTypes": "1",
+        "sortColumns": "PAIMING",
+        "source": "HSF10",
+        "client": "PC",
+        "v": "05086361194054821",
+    }
+    assert metadata["upstream_dynamic_parameters"] == {
+        "symbol": "SZ000895",
+        "filter": '(SECUCODE="000895.SZ")',
+    }
+    assert metadata["upstream_authentication"] == "none"
+    assert metadata["wrapper_dropped_fields"] == [
+        "SECUCODE",
+        "SECURITY_CODE",
+        "CORRE_SECUCODE",
+        "REPORT_DATE",
+        "TOTAL_COUNT",
+    ]
+    assert metadata["upstream_page_size"] is None
+    assert metadata["pagination"] == "single_snapshot"
+    assert metadata["upstream_sort_column"] == "PAIMING"
+    assert metadata["upstream_sort_direction"] == "ascending"
+    assert metadata["upstream_filter"] == '(SECUCODE="000895.SZ")'
+    assert metadata["wrapper_source_page_uri"] == (
+        "https://emweb.securities.eastmoney.com/pc_hsf10/pages/"
+        "index.html?type=web&code=000895&color=b#/thbj/dbfxbj"
+    )
+    assert metadata["wrapper_output_ordering"] == (
+        "two_industry_summary_rows_then_ascending_ranked_comparison_rows"
+    )
+    assert metadata["entity_rows_selected"] is True
+    assert metadata["upstream_row_count"] == 8
+    assert metadata["entity_row_count"] == 8
+    assert record.source_uri == metadata["wrapper_source_page_uri"]
+
+
+def test_market_activity_dupont_comparison_derives_exchange_prefixed_symbol():
+    fake = FakeAKShare()
+
+    _provider(fake).fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "000895.SZ",
+            {"view": "dupont_comparison"},
+        )
+    )
+
+    assert fake.calls == [
+        ("stock_zh_dupont_comparison_em", {"symbol": "SZ000895"})
+    ]
+
+
+@pytest.mark.parametrize(
+    ("parameters", "entity_id"),
+    [
+        ({}, "SZ000895"),
+        ({"view": "wrong_view"}, "SZ000895"),
+        ({"view": "dupont_comparison", "symbol": "SZ000895"}, "SZ000895"),
+        ({"view": "dupont_comparison"}, "HK00700"),
+    ],
+)
+def test_market_activity_dupont_comparison_validates_scope_before_call(
+    parameters: dict,
+    entity_id: str,
+):
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError):
+        _provider(fake).fetch(
+            _request(DataCategory.MARKET_ACTIVITY, entity_id, parameters)
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "empty",
+        "short",
+        "missing_field",
+        "extra_field",
+        "reordered_fields",
+        "summary_order",
+        "summary_rank",
+        "invalid_code",
+        "duplicate_code",
+        "missing_rank",
+        "fractional_rank",
+        "boolean_rank",
+        "zero_rank",
+        "descending_rank",
+        "missing_target",
+        "invalid_metric",
+        "boolean_metric",
+    ],
+)
+def test_market_activity_dupont_comparison_response_validates_schema_boundaries(
+    mutation: str,
+):
+    payload = [dict(row) for row in _fixture("a_dupont_comparison.json")]
+    rank_field = "ROE-3年平均排名"
+    metric_field = "ROE-3年平均"
+    if mutation == "empty":
+        payload = []
+    elif mutation == "short":
+        payload = payload[:2]
+    elif mutation == "missing_field":
+        payload[0].pop(metric_field)
+    elif mutation == "extra_field":
+        payload[0]["unexpected"] = "not documented"
+    elif mutation == "reordered_fields":
+        payload[0] = dict(reversed(list(payload[0].items())))
+    elif mutation == "summary_order":
+        payload[0], payload[1] = payload[1], payload[0]
+    elif mutation == "summary_rank":
+        payload[0][rank_field] = 1
+    elif mutation == "invalid_code":
+        payload[3]["代码"] = "ABC"
+    elif mutation == "duplicate_code":
+        payload[3]["代码"] = payload[2]["代码"]
+    elif mutation == "missing_rank":
+        payload[3][rank_field] = None
+    elif mutation == "fractional_rank":
+        payload[3][rank_field] = 1.5
+    elif mutation == "boolean_rank":
+        payload[3][rank_field] = False
+    elif mutation == "zero_rank":
+        payload[3][rank_field] = 0
+    elif mutation == "descending_rank":
+        payload[3][rank_field] = 1
+    elif mutation == "missing_target":
+        payload[2]["代码"] = "000001"
+    elif mutation == "invalid_metric":
+        payload[0][metric_field] = "not-a-number"
+    else:
+        payload[0][metric_field] = True
+
+    class InvalidDupontComparison(FakeAKShare):
+        def stock_zh_dupont_comparison_em(self, *, symbol: str):
+            return self._return(
+                "stock_zh_dupont_comparison_em",
+                payload,
+                symbol=symbol,
+            )
+
+    with pytest.raises(ProviderResponseError):
+        _provider(InvalidDupontComparison()).fetch(
+            _request(
+                DataCategory.MARKET_ACTIVITY,
+                "SZ000895",
+                {"view": "dupont_comparison"},
+            )
+        )
+
+
+def test_market_activity_dupont_comparison_allows_nullable_signed_values():
+    payload = [dict(row) for row in _fixture("a_dupont_comparison.json")]
+    payload[2]["ROE-24A"] = None
+    payload[2]["净利率-24A"] = -321.5
+
+    class NullableSignedDupontComparison(FakeAKShare):
+        def stock_zh_dupont_comparison_em(self, *, symbol: str):
+            return self._return(
+                "stock_zh_dupont_comparison_em",
+                payload,
+                symbol=symbol,
+            )
+
+    record = _provider(NullableSignedDupontComparison()).fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SZ000895",
+            {"view": "dupont_comparison"},
+        )
+    )
+
+    assert record.raw_payload[2]["ROE-24A"] is None
+    assert record.raw_payload[2]["净利率-24A"] == -321.5
+    assert record.response_metadata["nullable_fields"] == [
+        *record.response_metadata["value_fields"],
+        "ROE-3年平均排名",
+    ]
+    assert record.response_metadata["signed_fields"] == record.response_metadata[
+        "value_fields"
+    ]
+
+
+def test_market_activity_dupont_comparison_is_raw_only_without_facts():
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SZ000895",
+            {"view": "dupont_comparison"},
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="dupont-comparison-raw-only",
+        as_of=date(2026, 9, 11),
+        profile_id="strict-v1",
+        company=_company("SZ000895"),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_DUPONT_COMPARISON_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == []
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "DuPont" in normalized.data_quality.notes
+    assert "Eastmoney" in normalized.data_quality.notes
+    assert "canonical profitability" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "endpoint",
+        "source_uri",
+        "market",
+        "listing_code",
+        "market_activity_view",
+        "upstream_symbol",
+        "market_scope",
+        "listing_scoped_request",
+        "row_filtering",
+        "snapshot_scope",
+        "date_binding",
+        "rank_field",
+        "rank_constraint",
+        "rank_ordering",
+        "target_code_field",
+        "target_row_position",
+        "target_row_count",
+        "target_rank",
+        "target_rank_field",
+        "industry_summary_code_field",
+        "industry_summary_labels",
+        "industry_summary_row_count",
+        "peer_rank_field",
+        "peer_rank_ordering",
+        "peer_rank_order",
+        "peer_row_count",
+        "comparison_row_roles",
+        "value_fields",
+        "rank_fields",
+        "signed_fields",
+        "non_negative_fields",
+        "integer_fields",
+        "text_fields",
+        "required_text_fields",
+        "required_numeric_fields",
+        "field_types",
+        "nullable_fields",
+        "field_count",
+        "source_field_order",
+        "documented_units",
+        "undocumented_numeric_units",
+        "upstream_url",
+        "upstream_protocol",
+        "upstream_report_name",
+        "upstream_columns_selector",
+        "upstream_columns",
+        "upstream_parameters",
+        "upstream_fixed_parameters",
+        "upstream_dynamic_parameters",
+        "upstream_authentication",
+        "wrapper_dropped_fields",
+        "pagination",
+        "upstream_sort_column",
+        "upstream_sort_direction",
+        "upstream_filter",
+        "wrapper_source_page_uri",
+        "wrapper_output_ordering",
+        "entity_rows_selected",
+        "upstream_row_count",
+        "entity_row_count",
+        "payload",
+    ],
+)
+def test_market_activity_dupont_comparison_normalizer_rejects_replayed_tampering(
+    mutation: str,
+):
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SZ000895",
+            {"view": "dupont_comparison"},
+        )
+    )
+    payload = [dict(row) for row in record.raw_payload]
+    response_metadata = dict(record.response_metadata)
+    source_uri = record.source_uri
+    wrong_values = {
+        "endpoint": "stock_sse_summary",
+        "market": "H",
+        "listing_code": "000001",
+        "market_activity_view": "growth_comparison",
+        "upstream_symbol": "SH600000",
+        "market_scope": "all_a_share_listings",
+        "listing_scoped_request": False,
+        "row_filtering": "none",
+        "snapshot_scope": "current_trading_day",
+        "date_binding": "row_dates",
+        "rank_field": "排名",
+        "rank_constraint": "none",
+        "rank_ordering": "source_order",
+        "target_code_field": "证券代码",
+        "target_row_position": 0,
+        "target_row_count": 0,
+        "target_rank": 2,
+        "target_rank_field": "排名",
+        "industry_summary_code_field": "证券代码",
+        "industry_summary_labels": ["行业平均"],
+        "industry_summary_row_count": 0,
+        "peer_rank_field": "排名",
+        "peer_rank_ordering": "source_order",
+        "peer_rank_order": [],
+        "peer_row_count": 0,
+        "comparison_row_roles": [],
+        "value_fields": [],
+        "rank_fields": [],
+        "signed_fields": [],
+        "non_negative_fields": ["ROE-3年平均"],
+        "integer_fields": [],
+        "text_fields": ["代码"],
+        "required_text_fields": ["代码"],
+        "required_numeric_fields": ["ROE-3年平均"],
+        "field_types": {"代码": "string"},
+        "nullable_fields": [],
+        "field_count": 0,
+        "source_field_order": ["代码"],
+        "documented_units": {"ROE-3年平均": "percent"},
+        "undocumented_numeric_units": {},
+        "upstream_url": "https://example.invalid/dupont",
+        "upstream_protocol": "CSV",
+        "upstream_report_name": "WRONG",
+        "upstream_columns_selector": "explicit",
+        "upstream_columns": ["SECUCODE"],
+        "upstream_parameters": ["symbol"],
+        "upstream_fixed_parameters": {"client": "mobile"},
+        "upstream_dynamic_parameters": {"symbol": "SH600000"},
+        "upstream_authentication": "token",
+        "wrapper_dropped_fields": [],
+        "pagination": "paged",
+        "upstream_sort_column": "wrong",
+        "upstream_sort_direction": "descending",
+        "upstream_filter": None,
+        "wrapper_source_page_uri": "https://example.invalid/dupont-source",
+        "wrapper_output_ordering": "source_order",
+        "entity_rows_selected": False,
+        "upstream_row_count": 0,
+        "entity_row_count": 0,
+    }
+    if mutation == "source_uri":
+        source_uri = "https://example.invalid/dupont-record-source"
+    elif mutation == "payload":
+        payload[2]["代码"] = "000001"
+    else:
+        response_metadata[mutation] = wrong_values[mutation]
+
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=source_uri,
+        response_metadata=response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-dupont-comparison",
+            as_of=date(2026, 9, 11),
+            profile_id="strict-v1",
+            company=_company("SZ000895"),
+        )
+
+
+def test_market_activity_dupont_comparison_cache_replay_does_not_call_upstream(
+    tmp_path: Path,
+):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.MARKET_ACTIVITY,
+        "SZ000895",
+        {"view": "dupont_comparison"},
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [
+        ("stock_zh_dupont_comparison_em", {"symbol": "SZ000895"})
     ]
 
 

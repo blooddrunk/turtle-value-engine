@@ -108,9 +108,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "126"
+AKSHARE_ADAPTER_VERSION = "127"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "127"
+AKSHARE_MAPPING_VERSION = "128"
 
 
 class ListingMarket(StrEnum):
@@ -237,6 +237,10 @@ _SOURCE_URIS = {
     "stock_zh_growth_comparison_em": (
         "https://emweb.securities.eastmoney.com/pc_hsf10/pages/"
         "index.html?type=web&code=000895&color=b#/thbj/czxbj"
+    ),
+    "stock_zh_dupont_comparison_em": (
+        "https://emweb.securities.eastmoney.com/pc_hsf10/pages/"
+        "index.html?type=web&code=000895&color=b#/thbj/dbfxbj"
     ),
     "stock_hk_growth_comparison_em": (
         "https://emweb.securities.eastmoney.com/PC_HKF10/pages/"
@@ -1870,6 +1874,140 @@ _MARKET_ACTIVITY_GROWTH_COMPARISON_DOCUMENTED_UNITS: dict[str, str] = {}
 _MARKET_ACTIVITY_GROWTH_COMPARISON_UNDOCUMENTED_NUMERIC_UNITS = {
     field: "not_documented"
     for field in _MARKET_ACTIVITY_GROWTH_COMPARISON_NUMERIC_FIELDS
+}
+_MARKET_ACTIVITY_DUPONT_COMPARISON_ENDPOINT = (
+    "stock_zh_dupont_comparison_em"
+)
+_MARKET_ACTIVITY_DUPONT_COMPARISON_PARAMETER_NAMES = frozenset({"view"})
+_MARKET_ACTIVITY_DUPONT_COMPARISON_VIEW = "dupont_comparison"
+_MARKET_ACTIVITY_DUPONT_COMPARISON_FIELDS = (
+    "代码",
+    "简称",
+    "ROE-3年平均",
+    "ROE-22A",
+    "ROE-23A",
+    "ROE-24A",
+    "净利率-3年平均",
+    "净利率-22A",
+    "净利率-23A",
+    "净利率-24A",
+    "总资产周转率-3年平均",
+    "总资产周转率-22A",
+    "总资产周转率-23A",
+    "总资产周转率-24A",
+    "权益乘数-3年平均",
+    "权益乘数-22A",
+    "权益乘数-23A",
+    "权益乘数-24A",
+    "ROE-3年平均排名",
+)
+_MARKET_ACTIVITY_DUPONT_COMPARISON_FIELD_SET = frozenset(
+    _MARKET_ACTIVITY_DUPONT_COMPARISON_FIELDS
+)
+_MARKET_ACTIVITY_DUPONT_COMPARISON_TEXT_FIELDS = ("代码", "简称")
+_MARKET_ACTIVITY_DUPONT_COMPARISON_METRIC_FIELDS = (
+    *_MARKET_ACTIVITY_DUPONT_COMPARISON_FIELDS[2:-1],
+)
+_MARKET_ACTIVITY_DUPONT_COMPARISON_RANK_FIELD = (
+    "ROE-3年平均排名"
+)
+_MARKET_ACTIVITY_DUPONT_COMPARISON_NUMERIC_FIELDS = (
+    *_MARKET_ACTIVITY_DUPONT_COMPARISON_METRIC_FIELDS,
+    _MARKET_ACTIVITY_DUPONT_COMPARISON_RANK_FIELD,
+)
+_MARKET_ACTIVITY_DUPONT_COMPARISON_NULLABLE_FIELDS = frozenset(
+    _MARKET_ACTIVITY_DUPONT_COMPARISON_NUMERIC_FIELDS
+)
+_MARKET_ACTIVITY_DUPONT_COMPARISON_REQUIRED_TEXT_FIELDS = (
+    *_MARKET_ACTIVITY_DUPONT_COMPARISON_TEXT_FIELDS,
+)
+_MARKET_ACTIVITY_DUPONT_COMPARISON_REQUIRED_NUMERIC_FIELDS: tuple[str, ...] = ()
+_MARKET_ACTIVITY_DUPONT_COMPARISON_NON_NEGATIVE_FIELDS: frozenset[str] = (
+    frozenset()
+)
+_MARKET_ACTIVITY_DUPONT_COMPARISON_INTEGER_FIELDS = (
+    _MARKET_ACTIVITY_DUPONT_COMPARISON_RANK_FIELD,
+)
+_MARKET_ACTIVITY_DUPONT_COMPARISON_FIELD_TYPES = {
+    **{
+        field: "string"
+        for field in _MARKET_ACTIVITY_DUPONT_COMPARISON_TEXT_FIELDS
+    },
+    **{
+        field: "number"
+        for field in _MARKET_ACTIVITY_DUPONT_COMPARISON_METRIC_FIELDS
+    },
+    _MARKET_ACTIVITY_DUPONT_COMPARISON_RANK_FIELD: "integer",
+}
+_MARKET_ACTIVITY_DUPONT_COMPARISON_SOURCE_URI = (
+    "https://emweb.securities.eastmoney.com/pc_hsf10/pages/"
+    "index.html?type=web&code=000895&color=b#/thbj/dbfxbj"
+)
+_MARKET_ACTIVITY_DUPONT_COMPARISON_UPSTREAM_URL = (
+    "https://datacenter.eastmoney.com/securities/api/data/v1/get"
+)
+_MARKET_ACTIVITY_DUPONT_COMPARISON_UPSTREAM_PARAMETERS = (
+    "reportName",
+    "columns",
+    "quoteColumns",
+    "filter",
+    "pageNumber",
+    "pageSize",
+    "sortTypes",
+    "sortColumns",
+    "source",
+    "client",
+    "v",
+)
+_MARKET_ACTIVITY_DUPONT_COMPARISON_UPSTREAM_FIXED_PARAMETERS = {
+    "reportName": "RPT_PCF10_INDUSTRY_DBFX",
+    "columns": "ALL",
+    "quoteColumns": "",
+    "pageNumber": "",
+    "pageSize": "",
+    "sortTypes": "1",
+    "sortColumns": "PAIMING",
+    "source": "HSF10",
+    "client": "PC",
+    "v": "05086361194054821",
+}
+_MARKET_ACTIVITY_DUPONT_COMPARISON_UPSTREAM_COLUMNS = (
+    "SECUCODE",
+    "SECURITY_CODE",
+    "CORRE_SECUCODE",
+    "CORRE_SECURITY_CODE",
+    "CORRE_SECURITY_NAME",
+    "ROEPJ_L3",
+    "ROEPJ_L2",
+    "ROEPJ_L1",
+    "ROE_AVG",
+    "XSJLL_L3",
+    "XSJLL_L2",
+    "XSJLL_L1",
+    "XSJLL_AVG",
+    "TOAZZL_L3",
+    "TOAZZL_L2",
+    "TOAZZL_L1",
+    "TOAZZL_AVG",
+    "QYCS_L3",
+    "QYCS_L2",
+    "QYCS_L1",
+    "QYCS_AVG",
+    "PAIMING",
+    "REPORT_DATE",
+    "TOTAL_COUNT",
+)
+_MARKET_ACTIVITY_DUPONT_COMPARISON_WRAPPER_DROPPED_FIELDS = (
+    "SECUCODE",
+    "SECURITY_CODE",
+    "CORRE_SECUCODE",
+    "REPORT_DATE",
+    "TOTAL_COUNT",
+)
+_MARKET_ACTIVITY_DUPONT_COMPARISON_DOCUMENTED_UNITS: dict[str, str] = {}
+_MARKET_ACTIVITY_DUPONT_COMPARISON_UNDOCUMENTED_NUMERIC_UNITS = {
+    field: "not_documented"
+    for field in _MARKET_ACTIVITY_DUPONT_COMPARISON_NUMERIC_FIELDS
 }
 _MARKET_ACTIVITY_HK_GROWTH_COMPARISON_ENDPOINT = (
     "stock_hk_growth_comparison_em"
@@ -3922,6 +4060,19 @@ class AKShareProvider(StructuredDataProvider):
         if (
             request.category is DataCategory.MARKET_ACTIVITY
             and request.parameters.get("view")
+            == _MARKET_ACTIVITY_DUPONT_COMPARISON_VIEW
+            and listing.market is not ListingMarket.A
+        ):
+            raise ProviderRequestError(
+                "the AKShare DuPont-comparison endpoint supports A-share listings "
+                "only",
+                provider=self.identity,
+                request=request,
+                retryable=False,
+            )
+        if (
+            request.category is DataCategory.MARKET_ACTIVITY
+            and request.parameters.get("view")
             == _MARKET_ACTIVITY_GROWTH_COMPARISON_VIEW
             and listing.market is not ListingMarket.A
         ):
@@ -4865,6 +5016,28 @@ class AKShareProvider(StructuredDataProvider):
                 )
                 response_metadata.update(
                     _market_activity_growth_comparison_response_metadata(
+                        listing_code=listing.code,
+                        symbol=symbol,
+                        rows=rows,
+                        row_count=len(rows),
+                    )
+                )
+            elif endpoint.name == _MARKET_ACTIVITY_DUPONT_COMPARISON_ENDPOINT:
+                symbol = kwargs["symbol"]
+                if not isinstance(symbol, str):
+                    raise ProviderResponseError(
+                        "AKShare DuPont-comparison upstream symbol must be text",
+                        provider=self.identity,
+                        request=request,
+                    )
+                _validate_market_activity_dupont_comparison_provider_rows(
+                    rows,
+                    listing=listing,
+                    provider=self.identity,
+                    request=request,
+                )
+                response_metadata.update(
+                    _market_activity_dupont_comparison_response_metadata(
                         listing_code=listing.code,
                         symbol=symbol,
                         rows=rows,
@@ -7829,6 +8002,10 @@ class AKShareProvider(StructuredDataProvider):
                 request.parameters.get("view")
                 == _MARKET_ACTIVITY_HK_GROWTH_COMPARISON_VIEW
             ),
+            market_activity_dupont_comparison_requested=(
+                request.parameters.get("view")
+                == _MARKET_ACTIVITY_DUPONT_COMPARISON_VIEW
+            ),
             market_activity_growth_comparison_requested=(
                 request.parameters.get("view")
                 == _MARKET_ACTIVITY_GROWTH_COMPARISON_VIEW
@@ -8389,6 +8566,15 @@ class AKShareNormalizer:
                     )
                     normalizer_flags.add(
                         "AKSHARE_GROWTH_COMPARISON_RAW_ONLY"
+                    )
+                elif endpoint_name == _MARKET_ACTIVITY_DUPONT_COMPARISON_ENDPOINT:
+                    _validate_market_activity_dupont_comparison_normalizer_scope(
+                        record,
+                        listing,
+                        rows,
+                    )
+                    normalizer_flags.add(
+                        "AKSHARE_DUPONT_COMPARISON_RAW_ONLY"
                     )
                 elif endpoint_name == _MARKET_ACTIVITY_HK_VALUATION_COMPARISON_ENDPOINT:
                     _validate_market_activity_hk_valuation_comparison_normalizer_scope(
@@ -10430,6 +10616,14 @@ class AKShareNormalizer:
                 "peer ranks are not reconciled to filing-backed periods, units or "
                 "a canonical growth or valuation contract."
             )
+        if "AKSHARE_DUPONT_COMPARISON_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented Eastmoney DuPont-comparison response is retained "
+                "as raw evidence only: its provider-defined ROE, margin, asset- "
+                "turnover, equity-multiplier and ranking values are not reconciled "
+                "to filing-backed periods, units or a canonical profitability "
+                "contract."
+            )
         if "AKSHARE_HK_VALUATION_COMPARISON_RAW_ONLY" in normalizer_flags:
             notes += (
                 " The documented H-share Eastmoney valuation-comparison response is "
@@ -10968,6 +11162,7 @@ def _endpoint_candidates(
     market_activity_hk_baidu_valuation_requested: bool = False,
     market_activity_hk_valuation_comparison_requested: bool = False,
     market_activity_hk_growth_comparison_requested: bool = False,
+    market_activity_dupont_comparison_requested: bool = False,
     market_activity_growth_comparison_requested: bool = False,
     market_activity_valuation_comparison_requested: bool = False,
     market_activity_market_pb_requested: bool = False,
@@ -11152,6 +11347,10 @@ def _endpoint_candidates(
         if market_activity_hk_growth_comparison_requested:
             if market is ListingMarket.H:
                 return (_MARKET_ACTIVITY_HK_GROWTH_COMPARISON_ENDPOINT,)
+            return ()
+        if market_activity_dupont_comparison_requested:
+            if market is ListingMarket.A:
+                return (_MARKET_ACTIVITY_DUPONT_COMPARISON_ENDPOINT,)
             return ()
         if market_activity_growth_comparison_requested:
             if market is ListingMarket.A:
@@ -20262,6 +20461,14 @@ def _market_activity_valuation_comparison_filter(symbol: str) -> str:
     return f'(SECUCODE="{symbol[2:]}.{symbol[:2]}")'
 
 
+def _market_activity_dupont_comparison_filter(symbol: str) -> str:
+    """Build the official Eastmoney filter from an AKShare A-share symbol."""
+
+    if re.fullmatch(r"(?:SH|SZ|BJ)\d{6}", symbol) is None:
+        raise ValueError(f"invalid A-share DuPont-comparison symbol {symbol!r}")
+    return f'(SECUCODE="{symbol[2:]}.{symbol[:2]}")'
+
+
 def _market_activity_hk_valuation_comparison_filter(symbol: str) -> str:
     """Build the official Eastmoney filter from an unprefixed H-share symbol."""
 
@@ -20917,6 +21124,311 @@ def _market_activity_growth_comparison_response_metadata(
         "wrapper_source_page_uri": _MARKET_ACTIVITY_GROWTH_COMPARISON_SOURCE_URI,
         "wrapper_output_ordering": (
             "two_industry_summary_rows_then_ascending_peer_rank_then_target"
+        ),
+        "entity_rows_selected": True,
+        "upstream_row_count": row_count,
+        "entity_row_count": row_count,
+    }
+
+
+def _market_activity_dupont_comparison_rank(value: object) -> float | None:
+    """Read the positive integer rank emitted by the DuPont wrapper."""
+
+    if isinstance(value, bool) or not isinstance(value, Real):
+        return None
+    rank = float(value)
+    if not math.isfinite(rank) or not rank.is_integer() or rank < 1:
+        return None
+    return rank
+
+
+def _market_activity_dupont_comparison_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef | None = None,
+) -> str | None:
+    """Return strict-schema errors for the official DuPont comparison table."""
+
+    if len(rows) < 3:
+        return (
+            "market-activity DuPont-comparison response must contain the two "
+            "industry-summary rows and at least one ranked comparison row"
+        )
+
+    for index, row in enumerate(rows):
+        missing = [
+            field
+            for field in _MARKET_ACTIVITY_DUPONT_COMPARISON_FIELDS
+            if field not in row
+        ]
+        unexpected = [
+            field
+            for field in row
+            if field not in _MARKET_ACTIVITY_DUPONT_COMPARISON_FIELD_SET
+        ]
+        if missing:
+            return (
+                "market-activity DuPont-comparison row "
+                f"{index} is missing field(s): "
+                + ", ".join(missing)
+            )
+        if unexpected:
+            return (
+                "market-activity DuPont-comparison row "
+                f"{index} contains unsupported field(s): "
+                + ", ".join(unexpected)
+            )
+        if tuple(row) != _MARKET_ACTIVITY_DUPONT_COMPARISON_FIELDS:
+            return (
+                "market-activity DuPont-comparison rows must preserve the "
+                "official field order"
+            )
+
+        for field in _MARKET_ACTIVITY_DUPONT_COMPARISON_TEXT_FIELDS:
+            value = row[field]
+            if not isinstance(value, str) or not value.strip():
+                return (
+                    "market-activity DuPont-comparison row "
+                    f"{index} field {field!r} must be a non-empty string"
+                )
+
+        for field in _MARKET_ACTIVITY_DUPONT_COMPARISON_NUMERIC_FIELDS:
+            value = row[field]
+            if value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, Real):
+                return (
+                    "market-activity DuPont-comparison row "
+                    f"{index} field {field!r} must be numeric or null"
+                )
+            try:
+                numeric = float(value)
+            except (OverflowError, TypeError, ValueError):
+                return (
+                    "market-activity DuPont-comparison row "
+                    f"{index} field {field!r} must be numeric or null"
+                )
+            if not math.isfinite(numeric):
+                return (
+                    "market-activity DuPont-comparison row "
+                    f"{index} field {field!r} must be finite or null"
+                )
+
+    summary_labels = ("行业中值", "行业平均")
+    for index, expected_label in enumerate(summary_labels):
+        row = rows[index]
+        if row["代码"] != expected_label or row["简称"] != expected_label:
+            return (
+                "market-activity DuPont-comparison row "
+                f"{index} must be the {expected_label} summary row"
+            )
+        if row[_MARKET_ACTIVITY_DUPONT_COMPARISON_RANK_FIELD] is not None:
+            return (
+                "market-activity DuPont-comparison industry-summary rows must "
+                "have a null rank"
+            )
+
+    target_positions: list[int] = []
+    comparison_codes: set[str] = set()
+    previous_rank: float | None = None
+    for index, row in enumerate(rows[2:], start=2):
+        code = row["代码"]
+        if not isinstance(code, str) or re.fullmatch(r"\d{6}", code) is None:
+            return (
+                "market-activity DuPont-comparison ranked row "
+                f"{index} must have a six-digit 代码"
+            )
+        if code in comparison_codes:
+            return (
+                "market-activity DuPont-comparison response has duplicate "
+                f"comparison 代码 {code!r}"
+            )
+        comparison_codes.add(code)
+        rank = _market_activity_dupont_comparison_rank(
+            row[_MARKET_ACTIVITY_DUPONT_COMPARISON_RANK_FIELD]
+        )
+        if rank is None:
+            return (
+                "market-activity DuPont-comparison ranked row "
+                f"{index} rank must be a positive integer"
+            )
+        if previous_rank is not None and rank <= previous_rank:
+            return (
+                "market-activity DuPont-comparison ranks must be strictly "
+                "ascending"
+            )
+        previous_rank = rank
+        if listing is not None and code == listing.code:
+            target_positions.append(index)
+
+    if listing is not None and len(target_positions) != 1:
+        return (
+            "market-activity DuPont-comparison response must contain exactly "
+            f"one requested target row; got {len(target_positions)}"
+        )
+    return None
+
+
+def _validate_market_activity_dupont_comparison_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    listing: _ListingRef,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> None:
+    """Validate one listing-scoped Eastmoney DuPont comparison response."""
+
+    message = _market_activity_dupont_comparison_validation_message(rows, listing)
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message}",
+            provider=provider,
+            request=request,
+        )
+
+
+def _market_activity_dupont_comparison_row_roles(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing_code: str,
+) -> list[str]:
+    """Describe summary, target and ranked-peer row ordering."""
+
+    roles = ["industry_median", "industry_average"]
+    for row in rows[2:]:
+        rank = _market_activity_dupont_comparison_rank(
+            row[_MARKET_ACTIVITY_DUPONT_COMPARISON_RANK_FIELD]
+        )
+        if row["代码"] == listing_code:
+            roles.append("target")
+        else:
+            roles.append(f"peer_rank_{int(rank)}")
+    return roles
+
+
+def _market_activity_dupont_comparison_response_metadata(
+    *,
+    listing_code: str,
+    symbol: str,
+    rows: Sequence[Mapping[str, JSONValue]],
+    row_count: int,
+) -> dict[str, JSONValue]:
+    """Build the replay contract for one DuPont comparison snapshot."""
+
+    if not rows:
+        raise ValueError("DuPont-comparison response must contain rows")
+    target_positions = [
+        index for index, row in enumerate(rows) if row["代码"] == listing_code
+    ]
+    if len(target_positions) != 1:
+        raise ValueError("DuPont-comparison response must contain one target row")
+    target_position = target_positions[0]
+    target_rank = _market_activity_dupont_comparison_rank(
+        rows[target_position][_MARKET_ACTIVITY_DUPONT_COMPARISON_RANK_FIELD]
+    )
+    if target_rank is None:
+        raise ValueError("DuPont-comparison target must have a positive rank")
+    peer_ranks = [
+        int(
+            _market_activity_dupont_comparison_rank(
+                row[_MARKET_ACTIVITY_DUPONT_COMPARISON_RANK_FIELD]
+            )
+        )
+        for row in rows[2:]
+        if row["代码"] != listing_code
+    ]
+    upstream_filter = _market_activity_dupont_comparison_filter(symbol)
+    return {
+        "endpoint": _MARKET_ACTIVITY_DUPONT_COMPARISON_ENDPOINT,
+        "market": ListingMarket.A.value,
+        "listing_code": listing_code,
+        "market_activity_view": _MARKET_ACTIVITY_DUPONT_COMPARISON_VIEW,
+        "upstream_symbol": symbol,
+        "market_scope": "requested_a_share_listing_industry_dupont_comparison",
+        "listing_scoped_request": True,
+        "row_filtering": "upstream",
+        "snapshot_scope": "requested_a_share_dupont_comparison_snapshot",
+        "date_binding": "retrieval_only",
+        "rank_field": _MARKET_ACTIVITY_DUPONT_COMPARISON_RANK_FIELD,
+        "rank_constraint": (
+            "positive_integer_for_target_and_peers_null_for_summaries"
+        ),
+        "rank_ordering": (
+            "two_industry_summary_rows_then_ascending_ranked_comparison_rows"
+        ),
+        "target_code_field": "代码",
+        "target_row_position": target_position,
+        "target_row_count": 1,
+        "target_rank": int(target_rank),
+        "target_rank_field": _MARKET_ACTIVITY_DUPONT_COMPARISON_RANK_FIELD,
+        "industry_summary_code_field": "代码",
+        "industry_summary_labels": [rows[0]["代码"], rows[1]["代码"]],
+        "industry_summary_row_count": 2,
+        "peer_rank_field": _MARKET_ACTIVITY_DUPONT_COMPARISON_RANK_FIELD,
+        "peer_rank_ordering": "strictly_ascending_positive_integer_numbers",
+        "peer_rank_order": peer_ranks,
+        "peer_row_count": len(rows) - 3,
+        "comparison_row_roles": _market_activity_dupont_comparison_row_roles(
+            rows,
+            listing_code,
+        ),
+        "value_fields": list(_MARKET_ACTIVITY_DUPONT_COMPARISON_METRIC_FIELDS),
+        "rank_fields": [_MARKET_ACTIVITY_DUPONT_COMPARISON_RANK_FIELD],
+        "signed_fields": list(_MARKET_ACTIVITY_DUPONT_COMPARISON_METRIC_FIELDS),
+        "non_negative_fields": list(
+            _MARKET_ACTIVITY_DUPONT_COMPARISON_NON_NEGATIVE_FIELDS
+        ),
+        "integer_fields": list(_MARKET_ACTIVITY_DUPONT_COMPARISON_INTEGER_FIELDS),
+        "text_fields": list(_MARKET_ACTIVITY_DUPONT_COMPARISON_TEXT_FIELDS),
+        "required_text_fields": list(
+            _MARKET_ACTIVITY_DUPONT_COMPARISON_REQUIRED_TEXT_FIELDS
+        ),
+        "required_numeric_fields": list(
+            _MARKET_ACTIVITY_DUPONT_COMPARISON_REQUIRED_NUMERIC_FIELDS
+        ),
+        "field_types": dict(_MARKET_ACTIVITY_DUPONT_COMPARISON_FIELD_TYPES),
+        "nullable_fields": [
+            field
+            for field in _MARKET_ACTIVITY_DUPONT_COMPARISON_FIELDS
+            if field in _MARKET_ACTIVITY_DUPONT_COMPARISON_NULLABLE_FIELDS
+        ],
+        "field_count": len(_MARKET_ACTIVITY_DUPONT_COMPARISON_FIELDS),
+        "source_field_order": list(_MARKET_ACTIVITY_DUPONT_COMPARISON_FIELDS),
+        "documented_units": dict(
+            _MARKET_ACTIVITY_DUPONT_COMPARISON_DOCUMENTED_UNITS
+        ),
+        "undocumented_numeric_units": dict(
+            _MARKET_ACTIVITY_DUPONT_COMPARISON_UNDOCUMENTED_NUMERIC_UNITS
+        ),
+        "upstream_url": _MARKET_ACTIVITY_DUPONT_COMPARISON_UPSTREAM_URL,
+        "upstream_protocol": "JSON",
+        "upstream_report_name": (
+            _MARKET_ACTIVITY_DUPONT_COMPARISON_UPSTREAM_FIXED_PARAMETERS[
+                "reportName"
+            ]
+        ),
+        "upstream_columns_selector": "ALL",
+        "upstream_columns": list(_MARKET_ACTIVITY_DUPONT_COMPARISON_UPSTREAM_COLUMNS),
+        "upstream_parameters": list(
+            _MARKET_ACTIVITY_DUPONT_COMPARISON_UPSTREAM_PARAMETERS
+        ),
+        "upstream_fixed_parameters": dict(
+            _MARKET_ACTIVITY_DUPONT_COMPARISON_UPSTREAM_FIXED_PARAMETERS
+        ),
+        "upstream_dynamic_parameters": {
+            "symbol": symbol,
+            "filter": upstream_filter,
+        },
+        "upstream_authentication": "none",
+        "wrapper_dropped_fields": list(
+            _MARKET_ACTIVITY_DUPONT_COMPARISON_WRAPPER_DROPPED_FIELDS
+        ),
+        "upstream_page_size": None,
+        "pagination": "single_snapshot",
+        "upstream_sort_column": "PAIMING",
+        "upstream_sort_direction": "ascending",
+        "upstream_filter": upstream_filter,
+        "wrapper_source_page_uri": _MARKET_ACTIVITY_DUPONT_COMPARISON_SOURCE_URI,
+        "wrapper_output_ordering": (
+            "two_industry_summary_rows_then_ascending_ranked_comparison_rows"
         ),
         "entity_rows_selected": True,
         "upstream_row_count": row_count,
@@ -26947,6 +27459,81 @@ def _validate_market_activity_growth_comparison_normalizer_scope(
         if not matches:
             raise ProviderNormalizationError(
                 f"AKShare growth-comparison response metadata {name!r} does not "
+                "match the requested replay scope"
+            )
+
+
+def _validate_market_activity_dupont_comparison_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> None:
+    """Validate replay scope and metadata for the DuPont comparison."""
+
+    if listing.market is not ListingMarket.A:
+        raise ProviderNormalizationError(
+            "AKShare DuPont-comparison raw slice supports A-share listings only"
+        )
+    endpoint_name = _MARKET_ACTIVITY_DUPONT_COMPARISON_ENDPOINT
+    if record.response_metadata.get("endpoint") != endpoint_name:
+        raise ProviderNormalizationError(
+            "AKShare DuPont-comparison record must come from "
+            f"{endpoint_name}"
+        )
+    if record.source_uri != _SOURCE_URIS[endpoint_name]:
+        raise ProviderNormalizationError(
+            "AKShare DuPont-comparison source URI does not match the documented "
+            "endpoint"
+        )
+    try:
+        upstream_kwargs = _market_activity_dupont_comparison_kwargs(
+            endpoint_name,
+            listing,
+            record.request,
+        )
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+    symbol = upstream_kwargs["symbol"]
+    if not isinstance(symbol, str):
+        raise ProviderNormalizationError(
+            "AKShare DuPont-comparison upstream symbol must be text"
+        )
+
+    message = _market_activity_dupont_comparison_validation_message(rows, listing)
+    if message is not None:
+        raise ProviderNormalizationError(message)
+    expected_metadata = _market_activity_dupont_comparison_response_metadata(
+        listing_code=listing.code,
+        symbol=symbol,
+        rows=rows,
+        row_count=len(rows),
+    )
+    boolean_fields = {"listing_scoped_request", "entity_rows_selected"}
+    count_fields = {
+        "field_count",
+        "target_row_position",
+        "target_row_count",
+        "target_rank",
+        "industry_summary_row_count",
+        "peer_row_count",
+        "upstream_row_count",
+        "entity_row_count",
+    }
+    for name, expected in expected_metadata.items():
+        actual = record.response_metadata.get(name)
+        if name in boolean_fields:
+            matches = isinstance(actual, bool) and actual is expected
+        elif name in count_fields:
+            matches = (
+                isinstance(actual, int)
+                and not isinstance(actual, bool)
+                and actual == expected
+            )
+        else:
+            matches = actual == expected
+        if not matches:
+            raise ProviderNormalizationError(
+                f"AKShare DuPont-comparison response metadata {name!r} does not "
                 "match the requested replay scope"
             )
 
@@ -33813,6 +34400,12 @@ def _market_activity_kwargs(
             listing,
             request,
         )
+    if endpoint_name == _MARKET_ACTIVITY_DUPONT_COMPARISON_ENDPOINT:
+        return _market_activity_dupont_comparison_kwargs(
+            endpoint_name,
+            listing,
+            request,
+        )
     if endpoint_name == "stock_zh_valuation_comparison_em":
         return _market_activity_valuation_comparison_kwargs(
             endpoint_name,
@@ -34226,6 +34819,46 @@ def _market_activity_growth_comparison_kwargs(
         raise ProviderRequestError(
             "AKShare growth-comparison endpoint requires "
             f"view={_MARKET_ACTIVITY_GROWTH_COMPARISON_VIEW!r}",
+            request=request,
+            retryable=False,
+        )
+    return {"symbol": listing.canonical_id}
+
+
+def _market_activity_dupont_comparison_kwargs(
+    endpoint_name: str,
+    listing: _ListingRef,
+    request: ProviderRequest,
+) -> dict[str, object]:
+    """Build the A-share listing-scoped Eastmoney DuPont request."""
+
+    if endpoint_name != _MARKET_ACTIVITY_DUPONT_COMPARISON_ENDPOINT:
+        raise ProviderRequestError(
+            f"unsupported AKShare DuPont-comparison endpoint {endpoint_name!r}",
+            request=request,
+            retryable=False,
+        )
+    if listing.market is not ListingMarket.A:
+        raise ProviderRequestError(
+            "the AKShare DuPont-comparison endpoint supports A-share listings "
+            "only",
+            request=request,
+            retryable=False,
+        )
+    unknown = sorted(
+        set(request.parameters) - _MARKET_ACTIVITY_DUPONT_COMPARISON_PARAMETER_NAMES
+    )
+    if unknown:
+        raise ProviderRequestError(
+            "unsupported AKShare DuPont-comparison parameter(s): "
+            + ", ".join(unknown),
+            request=request,
+            retryable=False,
+        )
+    if request.parameters.get("view") != _MARKET_ACTIVITY_DUPONT_COMPARISON_VIEW:
+        raise ProviderRequestError(
+            "AKShare DuPont-comparison endpoint requires "
+            f"view={_MARKET_ACTIVITY_DUPONT_COMPARISON_VIEW!r}",
             request=request,
             retryable=False,
         )

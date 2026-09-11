@@ -1422,6 +1422,22 @@ comparison remains raw evidence and does not become a canonical growth,
 valuation, market, return, governance or accounting fact. No calculation,
 gate, pipeline, CLI or input-loader contract changes.
 
+Phase 3.25 adds the documented A-share Eastmoney
+`stock_zh_dupont_comparison_em` DuPont-comparison endpoint under
+`MARKET_ACTIVITY` with explicit `view=dupont_comparison` and a derived
+exchange-prefixed six-digit listing symbol. The [AKShare stock-data
+documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and [official
+implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_zh_comparison_em.py)
+define the exact 19-field industry-summary/ranked-comparison output: two text
+identity fields, 16 nullable/signed DuPont metrics and a nullable positive
+integer `ROE-3年平均排名` field. The provider freezes the Eastmoney JSON report,
+filter, sort, client and version parameters, preserves the current wrapper row
+roles and validates the exact output schema. The normalizer emits
+`AKSHARE_DUPONT_COMPARISON_RAW_ONLY`; this provider-defined comparison remains
+raw evidence and does not become a canonical profitability, growth, valuation,
+market, return, governance or accounting fact. No calculation, gate, pipeline,
+CLI or input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.
