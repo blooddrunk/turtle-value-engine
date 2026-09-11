@@ -1292,6 +1292,22 @@ emits `AKSHARE_MARKET_PB_RAW_ONLY`; this market-wide context does not become a
 canonical market, return, valuation, governance or accounting fact. No
 calculation, gate, pipeline, CLI or input-loader contract changes.
 
+Phase 3.17 adds the documented A-share Legu `stock_index_pe_lg` endpoint under
+`MARKET_ACTIVITY` with explicit `view=index_pe` and a required `symbol` in the
+12 documented index choices (`上证50`, `沪深300`, `上证380`, `创业板50`,
+`中证500`, `上证180`, `深证红利`, `深证100`, `中证1000`, `上证红利`,
+`中证100`, `中证800`). The [AKShare stock-data
+documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and [official
+implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_a_pe_and_pb.py)
+define the exact eight-field date/index/static-PE/rolling-PE history. The
+provider preserves the fixed Legu `indexCode` mapping and source/API metadata,
+validates complete strictly ascending all-history rows, and retains signed PE
+values as raw context because the official contract documents no unit or PE
+domain. The normalizer emits `AKSHARE_INDEX_PE_RAW_ONLY`; this index-wide
+context does not become a canonical market, return, valuation, governance or
+accounting fact. No calculation, gate, pipeline, CLI or input-loader contract
+changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

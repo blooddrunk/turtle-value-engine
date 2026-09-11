@@ -3005,6 +3005,28 @@ boundary validation, raw-only normalization, replay metadata tampering and
 offline cache replay. No calculation, gate, pipeline, CLI or input-loader
 contract changes.
 
+### Phase 3.17 — A-share Legu index PE raw acquisition contract (COMPLETE)
+
+The mapping review now covers the documented A-share Legu `stock_index_pe_lg`
+endpoint under the existing `MARKET_ACTIVITY` category with explicit
+`view=index_pe` and a required symbol in the 12 documented index choices.
+The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_a_pe_and_pb.py)
+define the exact eight-field `日期`/`指数`/static-PE/rolling-PE output. All
+symbols use the Legu `index-basic-pe` API with the documented fixed index code.
+The provider records the fixed code and source/API metadata, validates the
+complete exact schema, strict ascending all-history dates, finite numerics and
+the non-negative index boundary, while retaining signed PE as raw context
+because no PE unit or universal domain is documented.
+
+The normalizer emits `AKSHARE_INDEX_PE_RAW_ONLY` and creates no canonical
+market, return, valuation, governance or accounting fact because the index
+history has no listing/entity accounting scope. Tests cover all 12 symbols,
+explicit view and A-share routing, exact schema and metadata, signed PE and
+boundary validation, raw-only normalization, replay metadata tampering and
+offline cache replay. No calculation, gate, pipeline, CLI or input-loader
+contract changes.
+
 ### Future structured-provider deliverables
 
 ```text
@@ -3014,7 +3036,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–3.16 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–3.17 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -3428,6 +3450,13 @@ board symbol. Its five-field schema, symbol-specific source pages and fixed
 boundary are recorded; no canonical market, return, valuation, governance or
 accounting fact is created and no calculation, gate, pipeline, CLI or
 input-loader contract changes.
+Phase 3.17 adds the documented A-share Legu `stock_index_pe_lg` index-PE
+history under `MARKET_ACTIVITY` with explicit `view=index_pe` and a required
+index symbol. Its eight-field schema, official fixed index-code mapping,
+strict all-history validation and signed-PE raw-only boundary are recorded;
+no canonical market, return, valuation, governance or accounting fact is
+created and no calculation, gate, pipeline, CLI or input-loader contract
+changes.
 Phase 2.75 completes the next documented structured-data boundary by adding
 the A-share `stock_gpzy_profile_em` market-wide historical ownership-pledge
 view. Its no-argument eight-field response is validated as an ascending raw

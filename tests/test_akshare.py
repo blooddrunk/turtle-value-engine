@@ -275,6 +275,13 @@ class FakeAKShare:
             symbol=symbol,
         )
 
+    def stock_index_pe_lg(self, *, symbol: str):
+        return self._return(
+            "stock_index_pe_lg",
+            _fixture("index_pe.json"),
+            symbol=symbol,
+        )
+
     def stock_sse_deal_daily(self, *, date: str):
         return self._return(
             "stock_sse_deal_daily",
@@ -1004,8 +1011,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "117"
-    assert AKSHARE_MAPPING_VERSION == "118"
+    assert provider.identity.provider_version == "118"
+    assert AKSHARE_MAPPING_VERSION == "119"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -22113,6 +22120,433 @@ def test_market_activity_congestion_cache_replay_does_not_call_upstream(tmp_path
     assert replay.mode is RetrievalMode.CACHE_REPLAY
     assert replay.record == live.record
     assert fake.calls == [("stock_a_congestion_lg", {})]
+
+
+@pytest.mark.parametrize(
+    ("symbol", "fixed_parameters"),
+    [
+        ("上证50", {"indexCode": "000016.SH"}),
+        ("沪深300", {"indexCode": "000300.SH"}),
+        ("上证380", {"indexCode": "000009.SH"}),
+        ("创业板50", {"indexCode": "399673.SZ"}),
+        ("中证500", {"indexCode": "000905.SH"}),
+        ("上证180", {"indexCode": "000010.SH"}),
+        ("深证红利", {"indexCode": "399324.SZ"}),
+        ("深证100", {"indexCode": "399330.SZ"}),
+        ("中证1000", {"indexCode": "000852.SH"}),
+        ("上证红利", {"indexCode": "000015.SH"}),
+        ("中证100", {"indexCode": "000903.SH"}),
+        ("中证800", {"indexCode": "000906.SH"}),
+    ],
+)
+def test_market_activity_index_pe_fetch_preserves_documented_index_history(
+    symbol: str,
+    fixed_parameters: dict[str, str],
+):
+    fake = FakeAKShare()
+    request = _request(
+        DataCategory.MARKET_ACTIVITY,
+        "SH600000",
+        {"view": "index_pe", "symbol": symbol},
+    )
+
+    record = _provider(fake).fetch(request)
+    fixture = _fixture("index_pe.json")
+    metadata = record.response_metadata
+    numeric_fields = [
+        "指数",
+        "等权静态市盈率",
+        "静态市盈率",
+        "静态市盈率中位数",
+        "等权滚动市盈率",
+        "滚动市盈率",
+        "滚动市盈率中位数",
+    ]
+    source_fields = ["日期", *numeric_fields]
+
+    assert record.raw_payload == fixture
+    assert fake.calls == [("stock_index_pe_lg", {"symbol": symbol})]
+    assert metadata["endpoint"] == "stock_index_pe_lg"
+    assert metadata["market"] == "A"
+    assert metadata["listing_code"] == "600000"
+    assert metadata["market_activity_view"] == "index_pe"
+    assert metadata["upstream_symbol"] == symbol
+    assert metadata["market_scope"] == f"Legu {symbol} index PE context"
+    assert metadata["listing_scoped_request"] is False
+    assert metadata["row_filtering"] == "none"
+    assert metadata["snapshot_scope"] == "all_historical_legu_index_pe_history"
+    assert metadata["date_binding"] == "row_dates"
+    assert metadata["observation_date_field"] == "日期"
+    assert metadata["observation_date_format"] == "YYYY-MM-DD"
+    assert metadata["observation_date_ordering"] == "strictly_ascending"
+    assert metadata["observation_start_date"] == fixture[0]["日期"]
+    assert metadata["observation_end_date"] == fixture[-1]["日期"]
+    assert metadata["observation_count_contract"] == (
+        "non_empty_all_historical_history"
+    )
+    assert metadata["value_fields"] == numeric_fields
+    assert metadata["non_negative_fields"] == ["指数"]
+    assert metadata["integer_fields"] == []
+    assert metadata["text_fields"] == []
+    assert metadata["date_fields"] == ["日期"]
+    assert metadata["required_date_fields"] == ["日期"]
+    assert metadata["required_numeric_fields"] == numeric_fields
+    assert metadata["field_types"] == {
+        "日期": "date",
+        **{field: "number" for field in numeric_fields},
+    }
+    assert metadata["nullable_fields"] == []
+    assert metadata["field_count"] == len(source_fields)
+    assert metadata["source_field_order"] == source_fields
+    assert metadata["documented_units"] == {}
+    assert metadata["undocumented_numeric_units"] == {
+        field: "not_documented" for field in numeric_fields
+    }
+    assert metadata["upstream_url"] == (
+        "https://legulegu.com/api/stockdata/index-basic-pe"
+    )
+    assert metadata["upstream_protocol"] == "JSON"
+    assert metadata["upstream_report_name"] is None
+    assert metadata["upstream_parameters"] == ["indexCode", "token"]
+    assert metadata["upstream_fixed_parameters"] == fixed_parameters
+    assert metadata["upstream_authentication"] == "token_and_cookie_csrf"
+    assert metadata["wrapper_dropped_fields"] == []
+    assert metadata["upstream_page_size"] is None
+    assert metadata["pagination"] == "single_snapshot"
+    assert metadata["upstream_sort_column"] is None
+    assert metadata["upstream_sort_direction"] is None
+    assert metadata["upstream_filter"] is None
+    assert metadata["wrapper_source_page_uri"] == (
+        "https://legulegu.com/stockdata/sz50-ttm-lyr"
+    )
+    assert metadata["wrapper_output_ordering"] == "ascending_by_date"
+    assert metadata["upstream_row_count"] == len(fixture)
+    assert metadata["entity_row_count"] == 0
+    assert metadata["entity_rows_selected"] is False
+    assert record.source_uri == "https://legulegu.com/stockdata/sz50-ttm-lyr"
+
+
+@pytest.mark.parametrize(
+    ("parameters", "entity_id", "match"),
+    [
+        (
+            {"view": "index_pe", "symbol": "上证50", "date": "20241018"},
+            "SH600000",
+            "unsupported AKShare index-PE parameter",
+        ),
+        (
+            {"view": "index_pe"},
+            "SH600000",
+            "requires symbol in",
+        ),
+        (
+            {"view": "index_pe", "symbol": "沪深"},
+            "SH600000",
+            "requires symbol in",
+        ),
+        (
+            {"view": "index_pe", "symbol": "上证50"},
+            "HK00700",
+            "A-share listings only",
+        ),
+    ],
+)
+def test_market_activity_index_pe_request_validates_explicit_scope_before_upstream_call(
+    parameters: dict,
+    entity_id: str,
+    match: str,
+):
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError, match=match):
+        _provider(fake).fetch(
+            _request(DataCategory.MARKET_ACTIVITY, entity_id, parameters)
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "empty",
+        "missing_field",
+        "extra_field",
+        "reordered_fields",
+        "invalid_date",
+        "duplicate_date",
+        "descending_dates",
+        "invalid_numeric",
+        "boolean_numeric",
+        "negative_index",
+        "null_numeric",
+    ],
+)
+def test_market_activity_index_pe_response_validates_schema_boundaries(
+    mutation: str,
+):
+    payload = [dict(row) for row in _fixture("index_pe.json")]
+    if mutation == "empty":
+        payload = []
+    elif mutation == "missing_field":
+        payload[0].pop("指数")
+    elif mutation == "extra_field":
+        payload[0]["unexpected"] = "not documented"
+    elif mutation == "reordered_fields":
+        payload[0] = dict(reversed(list(payload[0].items())))
+    elif mutation == "invalid_date":
+        payload[0]["日期"] = "2005-1-5"
+    elif mutation == "duplicate_date":
+        payload[1]["日期"] = payload[0]["日期"]
+    elif mutation == "descending_dates":
+        payload.reverse()
+    elif mutation == "invalid_numeric":
+        payload[0]["静态市盈率"] = "not-a-number"
+    elif mutation == "boolean_numeric":
+        payload[0]["静态市盈率"] = True
+    elif mutation == "negative_index":
+        payload[0]["指数"] = -1
+    else:
+        payload[0]["静态市盈率"] = None
+
+    class InvalidIndexPe(FakeAKShare):
+        def stock_index_pe_lg(self, *, symbol: str):
+            return self._return("stock_index_pe_lg", payload, symbol=symbol)
+
+    with pytest.raises(ProviderResponseError):
+        _provider(InvalidIndexPe()).fetch(
+            _request(
+                DataCategory.MARKET_ACTIVITY,
+                "SH600000",
+                {"view": "index_pe", "symbol": "上证50"},
+            )
+        )
+
+
+def test_market_activity_index_pe_allows_signed_pe_values_as_raw_context():
+    payload = [dict(row) for row in _fixture("index_pe.json")]
+    payload[0]["静态市盈率"] = -4.5
+
+    class SignedIndexPe(FakeAKShare):
+        def stock_index_pe_lg(self, *, symbol: str):
+            return self._return("stock_index_pe_lg", payload, symbol=symbol)
+
+    record = _provider(SignedIndexPe()).fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SH600000",
+            {"view": "index_pe", "symbol": "上证50"},
+        )
+    )
+
+    assert record.raw_payload[0]["静态市盈率"] == -4.5
+
+
+@pytest.mark.parametrize("symbol", ["上证50", "沪深300"])
+def test_market_activity_index_pe_is_retained_as_raw_evidence_without_facts(
+    symbol: str,
+):
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SH600000",
+            {"view": "index_pe", "symbol": symbol},
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="index-pe-raw-only",
+        as_of=date(2026, 9, 11),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_INDEX_PE_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == []
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "index-PE" in normalized.data_quality.notes
+    assert "index-level" in normalized.data_quality.notes
+    assert "canonical" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "endpoint",
+        "source_uri",
+        "market",
+        "listing_code",
+        "view",
+        "upstream_symbol",
+        "market_scope",
+        "listing_scope",
+        "filtering",
+        "snapshot",
+        "date_binding",
+        "observation_date_field",
+        "observation_start_date",
+        "value_fields",
+        "non_negative_fields",
+        "date_fields",
+        "required_date_fields",
+        "required_numeric_fields",
+        "field_types",
+        "nullable_fields",
+        "field_count",
+        "source_field_order",
+        "undocumented_units",
+        "upstream_url",
+        "upstream_protocol",
+        "upstream_parameters",
+        "upstream_fixed_parameters",
+        "upstream_authentication",
+        "wrapper_dropped_fields",
+        "pagination",
+        "wrapper_source_page_uri",
+        "upstream_count",
+        "entity_count",
+        "selected",
+        "payload",
+    ],
+)
+def test_market_activity_index_pe_normalizer_rejects_replayed_scope_mismatches(
+    mutation: str,
+):
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SH600000",
+            {"view": "index_pe", "symbol": "上证50"},
+        )
+    )
+    payload = [dict(row) for row in record.raw_payload]
+    response_metadata = dict(record.response_metadata)
+    source_uri = record.source_uri
+    if mutation == "endpoint":
+        response_metadata["endpoint"] = "stock_sse_summary"
+    elif mutation == "source_uri":
+        source_uri = "https://example.invalid/index-pe"
+    elif mutation == "market":
+        response_metadata["market"] = "H"
+    elif mutation == "listing_code":
+        response_metadata["listing_code"] = "000001"
+    elif mutation == "view":
+        response_metadata["market_activity_view"] = "market_pe"
+    elif mutation == "upstream_symbol":
+        response_metadata["upstream_symbol"] = "沪深300"
+    elif mutation == "market_scope":
+        response_metadata["market_scope"] = "all_a_share_listings"
+    elif mutation == "listing_scope":
+        response_metadata["listing_scoped_request"] = True
+    elif mutation == "filtering":
+        response_metadata["row_filtering"] = "provider"
+    elif mutation == "snapshot":
+        response_metadata["snapshot_scope"] = "current_trading_day"
+    elif mutation == "date_binding":
+        response_metadata["date_binding"] = "request_only"
+    elif mutation == "observation_date_field":
+        response_metadata["observation_date_field"] = "交易日"
+    elif mutation == "observation_start_date":
+        response_metadata["observation_start_date"] = "2005-01-06"
+    elif mutation == "value_fields":
+        response_metadata["value_fields"] = ["静态市盈率"]
+    elif mutation == "non_negative_fields":
+        response_metadata["non_negative_fields"] = ["静态市盈率"]
+    elif mutation == "date_fields":
+        response_metadata["date_fields"] = []
+    elif mutation == "required_date_fields":
+        response_metadata["required_date_fields"] = []
+    elif mutation == "required_numeric_fields":
+        response_metadata["required_numeric_fields"] = ["静态市盈率"]
+    elif mutation == "field_types":
+        response_metadata["field_types"] = {"日期": "string"}
+    elif mutation == "nullable_fields":
+        response_metadata["nullable_fields"] = ["静态市盈率"]
+    elif mutation == "field_count":
+        response_metadata["field_count"] = 7
+    elif mutation == "source_field_order":
+        response_metadata["source_field_order"] = [
+            "指数",
+            "等权静态市盈率",
+            "静态市盈率",
+            "静态市盈率中位数",
+            "等权滚动市盈率",
+            "滚动市盈率",
+            "滚动市盈率中位数",
+            "日期",
+        ]
+    elif mutation == "undocumented_units":
+        response_metadata["undocumented_numeric_units"] = {
+            "指数": "index_points"
+        }
+    elif mutation == "upstream_url":
+        response_metadata["upstream_url"] = "https://example.invalid/api"
+    elif mutation == "upstream_protocol":
+        response_metadata["upstream_protocol"] = "HTML"
+    elif mutation == "upstream_parameters":
+        response_metadata["upstream_parameters"] = ["token"]
+    elif mutation == "upstream_fixed_parameters":
+        response_metadata["upstream_fixed_parameters"] = {"indexCode": "wrong"}
+    elif mutation == "upstream_authentication":
+        response_metadata["upstream_authentication"] = "none"
+    elif mutation == "wrapper_dropped_fields":
+        response_metadata["wrapper_dropped_fields"] = ["pe"]
+    elif mutation == "pagination":
+        response_metadata["pagination"] = "paged"
+    elif mutation == "wrapper_source_page_uri":
+        response_metadata["wrapper_source_page_uri"] = "https://example.invalid/page"
+    elif mutation == "upstream_count":
+        response_metadata["upstream_row_count"] = len(payload) - 1
+    elif mutation == "entity_count":
+        response_metadata["entity_row_count"] = 1
+    elif mutation == "selected":
+        response_metadata["entity_rows_selected"] = True
+    else:
+        payload[0]["unexpected"] = "not documented"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=source_uri,
+        response_metadata=response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-index-pe",
+            as_of=date(2026, 9, 11),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_market_activity_index_pe_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.MARKET_ACTIVITY,
+        "SH600000",
+        {"view": "index_pe", "symbol": "上证50"},
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [("stock_index_pe_lg", {"symbol": "上证50"})]
 
 
 @pytest.mark.parametrize(

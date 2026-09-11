@@ -1645,6 +1645,31 @@ normalizer emits `AKSHARE_MARKET_PB_RAW_ONLY` and creates no canonical market,
 return, valuation, governance or accounting fact. The response remains outside
 the calculation, gate, pipeline, CLI and input-loader contracts.
 
+## Phase 3.17 A-share Legu index PE raw history
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_a_pe_and_pb.py)
+document `stock_index_pe_lg` as a symbol-selected Legu index history. The
+adapter exposes it only under `MARKET_ACTIVITY` with explicit `view=index_pe`,
+a required A-share provenance listing and one of the 12 documented index
+symbols. All variants use the `index-basic-pe` JSON API and return the exact
+eight fields below; no numeric unit or PE domain is documented, so none is
+inferred.
+
+| Raw upstream item | Phase 3.17 treatment |
+| --- | --- |
+| `日期` | Required strict `YYYY-MM-DD` observation date for the complete index history; it is not an accounting, filing or listing period. |
+| `指数` | Required finite non-negative index value; it is context for the selected index and is not promoted to a listing quote or return fact. |
+| `等权静态市盈率`, `静态市盈率`, `静态市盈率中位数`, `等权滚动市盈率`, `滚动市盈率`, `滚动市盈率中位数` | Required finite PE aggregates; signed values remain raw context because the upstream contract does not document a non-negative domain or unit. |
+| request `view=index_pe`, `symbol` | Explicit A-share-only routing. All 12 symbols use `https://legulegu.com/api/stockdata/index-basic-pe` with fixed `indexCode` values from the official mapping (`000016.SH`, `000300.SH`, `000009.SH`, `399673.SZ`, `000905.SH`, `000010.SH`, `399324.SZ`, `399330.SZ`, `000852.SH`, `000015.SH`, `000903.SH`, `000906.SH`). The source page, exact field order, token/cookie-CSRF transport, no filtering and complete row counts remain part of cache replay. |
+
+The provider rejects unsupported symbols, empty responses,
+missing/unexpected/reordered fields, invalid or non-ascending dates,
+null/non-numeric/boolean/non-finite values and negative index values. The
+normalizer emits `AKSHARE_INDEX_PE_RAW_ONLY` and creates no canonical market,
+return, valuation, governance or accounting fact. The response remains outside
+the calculation, gate, pipeline, CLI and input-loader contracts.
+
 ## Phase 2.92 SSE daily-deal overview raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
