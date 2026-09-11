@@ -1324,6 +1324,24 @@ emits `AKSHARE_INDEX_PB_RAW_ONLY`; this index-wide context does not become a
 canonical market, return, valuation, governance or accounting fact. No
 calculation, gate, pipeline, CLI or input-loader contract changes.
 
+Phase 3.19 adds the documented A-share Baidu `stock_zh_valuation_baidu`
+valuation-history endpoint under `MARKET_ACTIVITY` with explicit
+`view=valuation_baidu`, a derived six-digit listing code, one of the five
+documented indicators (`总市值`, `市盈率(TTM)`, `市盈率(静)`, `市净率`,
+`市现率`) and one of the five documented periods (`近一年`, `近三年`, `近五年`,
+`近十年`, `全部`). The [AKShare stock-data
+documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and [official
+implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_zh_valuation_baidu.py)
+define the exact `date`/`value` history and the Baidu JSON request parameters.
+The provider freezes the documented fixed parameters, preserves the selected
+indicator/period and listing-scoped row counts, validates non-empty strictly
+ascending dates and finite numeric values, and allows signed valuation values
+because the upstream contract documents no unit or universal domain. The
+normalizer emits `AKSHARE_BAIDU_VALUATION_RAW_ONLY`; this provider-defined
+series is retained as raw evidence and does not become a canonical valuation,
+market, return, governance or accounting fact. No calculation, gate, pipeline,
+CLI or input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

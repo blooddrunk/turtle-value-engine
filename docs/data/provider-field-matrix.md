@@ -1695,6 +1695,32 @@ normalizer emits `AKSHARE_INDEX_PB_RAW_ONLY` and creates no canonical market,
 return, valuation, governance or accounting fact. The response remains outside
 the calculation, gate, pipeline, CLI and input-loader contracts.
 
+## Phase 3.19 A-share Baidu valuation raw history
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_zh_valuation_baidu.py)
+document `stock_zh_valuation_baidu` as a listing-scoped historical valuation
+series. The adapter exposes it only under `MARKET_ACTIVITY` with explicit
+`view=valuation_baidu`; the requested A-share listing supplies the six-digit
+upstream `symbol`, while `indicator` and `period` must use the documented
+choices. The wrapper returns exactly `date` and `value`; the upstream contract
+does not document a numeric unit or a universal non-negative domain.
+
+| Raw upstream item | Phase 3.19 treatment |
+| --- | --- |
+| `date` | Required strict `YYYY-MM-DD` observation date for the requested indicator/period history; it is not treated as a filing or accounting period. |
+| `value` | Required finite numeric value retained as provider-defined valuation context; signed values are accepted because no universal domain is documented and no unit is inferred. |
+| request `view=valuation_baidu`, `indicator`, `period` | Explicit A-share-only listing-scoped routing. `indicator` is one of `总市值`, `市盈率(TTM)`, `市盈率(静)`, `市净率` or `市现率`; `period` is one of `近一年`, `近三年`, `近五年`, `近十年` or `全部`. The Baidu `https://gushitong.baidu.com/opendata` JSON request freezes the official fixed parameters and derives `query`, `code`, `tag` and `chart_select` from the request. Exact field order, upstream row counts, selected indicator/period and observed date bounds remain part of cache replay. |
+
+The provider rejects unsupported choices, empty responses,
+missing/unexpected/reordered fields, invalid or non-ascending dates and
+null/non-numeric/boolean/non-finite values. The normalizer emits
+`AKSHARE_BAIDU_VALUATION_RAW_ONLY` and creates no canonical valuation, market,
+return, governance or accounting fact: the provider-defined series is raw
+evidence only until its period, units and accounting scope are reconciled.
+The response remains outside the calculation, gate, pipeline, CLI and
+input-loader contracts.
+
 ## Phase 2.92 SSE daily-deal overview raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
