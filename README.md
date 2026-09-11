@@ -1683,6 +1683,20 @@ snapshot has no stable observation timestamp and therefore creates no canonical
 current-price fact. No calculation, gate, pipeline, CLI or input-loader contract
 changes.
 
+Phase 3.41 adds the documented Eastmoney Beijing A-share real-time quote
+endpoint [`stock_bj_a_spot_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
+under `MARKET_QUOTE` with explicit `view=bj_a_spot` and a Beijing A-share
+listing context. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hist_em.py)
+calls the `push2.eastmoney.com/api/qt/clist/get` JSON endpoint with the fixed
+Beijing filter `m:0 t:81 s:2048`, provider-driven pagination, `f3` descending
+sort and the exact 23-field wrapper output. The provider preserves the official
+field order, wrapper source mapping, documented price/volume/turnover/percentage
+units and complete-universe response metadata before selecting the requested
+code. The normalizer emits `AKSHARE_BJ_A_SPOT_QUOTE_RAW_ONLY`: the current-day
+snapshot has no stable observation timestamp and therefore creates no canonical
+current-price fact. No calculation, gate, pipeline, CLI or input-loader contract
+changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.
