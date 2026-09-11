@@ -1641,6 +1641,20 @@ holdings do not establish beneficial control, governance severity or a
 company-level diluted-share series. No calculation, gate, pipeline, CLI or
 input-loader contract changes.
 
+Phase 3.38 adds the documented Eastmoney HSGT market-wide fund-flow-summary
+endpoint
+[`stock_hsgt_fund_flow_summary_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
+under `CAPITAL_FLOW` with explicit `view=hsgt_fund_flow_summary` and A/H
+listing context. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hsgt_em.py)
+calls the `RPT_MUTUAL_QUOTA` JSON report with fixed 2000-row single-page
+parameters, sorts by `MUTUAL_TYPE`, and returns the exact 13-field trading-day,
+direction, status, amount, count and index-context summary. The provider
+preserves the official 17-column wrapper mapping, documented 亿元/percent/count
+units and complete market-wide response metadata; no listing filtering is
+performed. The normalizer emits `AKSHARE_HSGT_FUND_FLOW_SUMMARY_RAW_ONLY` and
+creates no issuer cash-flow, listing-specific liquidity, return or valuation
+fact. No calculation, gate, pipeline, CLI or input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

@@ -1,6 +1,6 @@
 # Provider and Cache Architecture
 
-> Status: Phase 2 foundation and Phase 3.37 structured acquisition, read-only AKShare statement slices, earnings forecasts/quick reports/performance reports/business composition/financial abstract/financial indicators, H-share latest indicators, A-share disclosure-notice metadata including the Eastmoney individual-notice, market-wide notice and shareholder-meeting views, risk-warning status, trading-suspension, restricted-share-release, goodwill-impairment detail/goodwill-detail/impairment-forecast/market-profile/industry-data, ESG-rating, SSE/SZSE/BSE margin-detail, share-capital, individual-info snapshot, corporate-action including IPO-summary and Eastmoney IPO-yield, external-guarantee, company-litigation, ownership-pledge snapshot/detail/company-distribution/bank-distribution/industry-data/market-profile/important-shareholder-detail, main-shareholder, shareholder-count/shareholder-count-detail, A-share actual-controller holding-change, A/H HSGT individual-holdings/A-share individual-detail/individual-ranking/daily-stock-statistics/institution-statistics, SSE/SZSE/BSE insider-share-change, A-share Eastmoney/CNINFO management-holding and executive/shareholder-change, A-share top-ten/top-ten-tradable-shareholder/top-ten-tradable-shareholder-detail, Dragon-Tiger market-activity detail/statistics/institution-statistics/institution-daily/institutional-research/institutional-research-detail/market-participation-desire/market-focus/institution-participation/block-trade-detail/hot-rank/latest-hot-rank/A-share historical-hot-rank/limit-up-pool/limit-down-pool/H-share latest-hot-rank/H-share historical-hot-rank/new-stock-board, A+B/A+H quote-comparison, A-share Eastmoney/Sina intraday-trade, Tencent daily-history/latest-trading-day tick, Sina minute-history, A-share/H-share intraday-history, pre-market-history and five-level bid-ask raw slices, H-share main-board/famous-stock/Stock Connect constituent/Shanghai Stock Connect quotes, SSE/SZSE market-summary, SZSE area-summary/sector-summary and Eastmoney industry-board, HSGT board-rank, stock-account-statistics and Legu market-activity/congestion/equity-bond-spread/Buffett-index/A-share PE/PB-history, index-PE/index-PB, A-share growth-comparison, A/H Eastmoney valuation-comparison, A/H Eastmoney growth-comparison and A/H Baidu valuation-history raw slices, the deprecated HSGT minute-fund-flow raw slice and HSGT historical-flow raw slice
+> Status: Phase 2 foundation and Phase 3.38 structured acquisition, read-only AKShare statement slices, earnings forecasts/quick reports/performance reports/business composition/financial abstract/financial indicators, H-share latest indicators, A-share disclosure-notice metadata including the Eastmoney individual-notice, market-wide notice and shareholder-meeting views, risk-warning status, trading-suspension, restricted-share-release, goodwill-impairment detail/goodwill-detail/impairment-forecast/market-profile/industry-data, ESG-rating, SSE/SZSE/BSE margin-detail, share-capital, individual-info snapshot, corporate-action including IPO-summary and Eastmoney IPO-yield, external-guarantee, company-litigation, ownership-pledge snapshot/detail/company-distribution/bank-distribution/industry-data/market-profile/important-shareholder-detail, main-shareholder, shareholder-count/shareholder-count-detail, A-share actual-controller holding-change, A/H HSGT individual-holdings/A-share individual-detail/individual-ranking/daily-stock-statistics/institution-statistics, SSE/SZSE/BSE insider-share-change, A-share Eastmoney/CNINFO management-holding and executive/shareholder-change, A-share top-ten/top-ten-tradable-shareholder/top-ten-tradable-shareholder-detail, Dragon-Tiger market-activity detail/statistics/institution-statistics/institution-daily/institutional-research/institutional-research-detail/market-participation-desire/market-focus/institution-participation/block-trade-detail/hot-rank/latest-hot-rank/A-share historical-hot-rank/limit-up-pool/limit-down-pool/H-share latest-hot-rank/H-share historical-hot-rank/new-stock-board, A+B/A+H quote-comparison, A-share Eastmoney/Sina intraday-trade, Tencent daily-history/latest-trading-day tick, Sina minute-history, A-share/H-share intraday-history, pre-market-history and five-level bid-ask raw slices, H-share main-board/famous-stock/Stock Connect constituent/Shanghai Stock Connect quotes, SSE/SZSE market-summary, SZSE area-summary/sector-summary and Eastmoney industry-board, HSGT board-rank, stock-account-statistics and Legu market-activity/congestion/equity-bond-spread/Buffett-index/A-share PE/PB-history, index-PE/index-PB, A-share growth-comparison, A/H Eastmoney valuation-comparison, A/H Eastmoney growth-comparison and A/H Baidu valuation-history raw slices, the deprecated HSGT minute-fund-flow raw slice, HSGT historical-flow raw slice and HSGT fund-flow-summary raw slice
 
 This document freezes the boundary between structured-data acquisition and the
 deterministic Turtle Value Engine. It does not authorize a live provider or
@@ -771,7 +771,7 @@ The cache performs no network retries. The normalizer performs no provider
 retries. The deterministic pipeline performs no provider retries and should
 not be rerun as a substitute for resolving missing facts.
 
-## 12. Phase 2.2–3.37 AKShare adapter
+## 12. Phase 2.2–3.38 AKShare adapter
 
 The first concrete adapter is intentionally limited to read-only metadata,
 market observations, three documented financial-statement slices, raw-only
@@ -804,7 +804,7 @@ A-share Eastmoney intraday-trade/chip-distribution, Tencent daily-history and la
 A-share/H-share intraday-history, pre-market-history and five-level bid-ask raw
 slices, the H-share Eastmoney main-board, famous-stock, Stock Connect
 constituent and Shanghai Stock Connect quote raw slices, the deprecated HSGT minute-fund-flow
-raw slice and HSGT historical-flow raw slice, HSGT board-rank, individual-ranking, daily-stock-statistics and
+raw slice, HSGT historical-flow raw slice and HSGT fund-flow-summary raw slice, HSGT board-rank, individual-ranking, daily-stock-statistics and
 institution-statistics raw slices. It
 advertises exactly these capabilities:
 
@@ -824,7 +824,7 @@ advertises exactly these capabilities:
 | `MARKET_ACTIVITY` (DuPont comparison) | `stock_zh_dupont_comparison_em` (`view=dupont_comparison`, A-share listing-scoped peer table) | — | industry-summary and ranked-comparison DuPont rows retained as raw structured evidence only; no canonical profitability or accounting fact |
 | `MARKET_ACTIVITY` (scale comparison) | `stock_zh_scale_comparison_em` (`view=scale_comparison`, A-share listing-scoped single row) | — | A-share company-scale row retained as raw structured evidence only; no canonical market, valuation or accounting fact |
 | `MARKET_HISTORY` (CDR daily history) | `stock_zh_a_cdr_daily` (`view=cdr_daily`, A-share CDR listing-scoped date range) | — | CDR daily OHLC and lot-volume rows retained as raw structured evidence only; no canonical daily market-history fact |
-| `CAPITAL_FLOW` | `stock_individual_fund_flow` (A-share); `stock_hsgt_fund_min_em` (`view=hsgt_fund_min`, `symbol=北向资金`, market-wide northbound context); `stock_hsgt_hist_em` (`view=hsgt_hist`, `symbol=北向资金`/`沪股通`/`深股通`, market-wide northbound history) | `stock_hsgt_fund_min_em` (`view=hsgt_fund_min`, `symbol=南向资金`, market-wide southbound context); `stock_hsgt_hist_em` (`view=hsgt_hist`, `symbol=南向资金`/`港股通沪`/`港股通深`, market-wide southbound history) | recent daily investor-flow rows and HSGT minute/historical flow rows as raw structured evidence only; no issuer cash-flow, liquidity, return or valuation fact |
+| `CAPITAL_FLOW` | `stock_individual_fund_flow` (A-share); `stock_hsgt_fund_min_em` (`view=hsgt_fund_min`, `symbol=北向资金`, market-wide northbound context); `stock_hsgt_hist_em` (`view=hsgt_hist`, `symbol=北向资金`/`沪股通`/`深股通`, market-wide northbound history); `stock_hsgt_fund_flow_summary_em` (`view=hsgt_fund_flow_summary`, market-wide HSGT summary context) | `stock_hsgt_fund_min_em` (`view=hsgt_fund_min`, `symbol=南向资金`, market-wide southbound context); `stock_hsgt_hist_em` (`view=hsgt_hist`, `symbol=南向资金`/`港股通沪`/`港股通深`, market-wide southbound history); `stock_hsgt_fund_flow_summary_em` (`view=hsgt_fund_flow_summary`, market-wide HSGT summary context) | recent daily investor-flow rows and HSGT minute/historical/fund-flow-summary rows as raw structured evidence only; no issuer cash-flow, liquidity, return or valuation fact |
 | `CASH_FLOW_STATEMENT` | `stock_cash_flow_sheet_by_report_em` (Sina fallback) | `stock_financial_hk_report_em` | explicit `reported_cfo` and `acquisition_cash` lines |
 | `INCOME_STATEMENT` | `stock_profit_sheet_by_report_em` (Sina fallback) | `stock_financial_hk_report_em` | explicit `parent_net_profit` and `consolidated_net_profit` lines |
 | `EARNINGS_FORECAST` | `stock_yjyg_em` | — | A-share quarterly forecast rows as raw structured evidence only; no reported-profit fact |
@@ -2674,6 +2674,29 @@ empty listing selections, raw-only normalization, replay metadata tampering
 and offline cache replay. No calculation, gate, pipeline, CLI or input-loader
 contract changes.
 
+The HSGT fund-flow-summary slice is also acquisition-only. The current
+[AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hsgt_em.py)
+document `stock_hsgt_fund_flow_summary_em` as a no-argument, market-wide
+trading-day summary. The adapter exposes it under `CAPITAL_FLOW` with explicit
+`view=hsgt_fund_flow_summary` and A/H listing context, and freezes the
+`RPT_MUTUAL_QUOTA` JSON request with its `quoteColumns`, fixed 2000-row page,
+`MUTUAL_TYPE` ascending sort, single-page behavior and 17-column wrapper
+mapping. It preserves the exact 13-field output for trading date, type, board,
+direction, status, net-buy/inflow/balance amounts, rise/flat/fall counts and
+index change, with documented 亿元, count, status-code and percent metadata.
+
+The response has no requested-listing identity and is never filtered to a
+company; A/H listing context remains metadata only with
+`listing_context_only=true`, `row_filtering=none` and
+`entity_rows_selected=false`. The normalizer emits
+`AKSHARE_HSGT_FUND_FLOW_SUMMARY_RAW_ONLY` and creates no canonical issuer
+cash-flow, listing-specific liquidity, return or valuation fact. Tests cover
+both listing contexts, exact parameters and wrapper mapping, complete-response
+schema/date/numeric/integer/text boundaries, empty responses, raw-only
+normalization, replay metadata tampering and offline cache replay. No
+calculation, gate, pipeline, CLI or input-loader contract changes.
+
 The H-share Baidu valuation-history slice is also acquisition-only. The current
 [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
 and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hk_valuation_baidu.py)
@@ -2720,7 +2743,7 @@ outside this slice.
 
 ## 13. Deliberate non-goals
 
-This foundation plus the Phase 2.2–3.37 structured slices does not include:
+This foundation plus the Phase 2.2–3.38 structured slices does not include:
 
 - Tushare, BaoStock or any other additional provider;
 - automatic network scheduling, credentials or retry orchestration outside an adapter;
