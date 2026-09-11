@@ -1625,6 +1625,22 @@ listing-scoped issuer data, the normalizer emits
 or valuation fact. No calculation, gate, pipeline, CLI or input-loader contract
 changes.
 
+Phase 3.37 adds the documented A-share Eastmoney HSGT individual-detail
+endpoint
+[`stock_hsgt_individual_detail_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
+under `SHAREHOLDER_HOLDINGS` with explicit `view=hsgt_individual_detail` and
+inclusive `start_date`/`end_date` bounds. The
+[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hsgt_em.py)
+uses the requested six-digit symbol, tries `MARKET_CODE=003` and falls back to
+`MARKET_CODE=001`, then returns exact institution-level holding-detail fields.
+The provider validates the descending date-grouped response, preserves the
+upstream filters, 17-column source mapping and CNY/share, CNY, shares and
+percentage units, and records the requested listing/date scope for replay.
+The normalizer emits `AKSHARE_HSGT_INDIVIDUAL_DETAIL_RAW_ONLY`; institution
+holdings do not establish beneficial control, governance severity or a
+company-level diluted-share series. No calculation, gate, pipeline, CLI or
+input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

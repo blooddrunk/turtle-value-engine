@@ -1096,6 +1096,21 @@ class FakeAKShare:
             symbol=symbol,
         )
 
+    def stock_hsgt_individual_detail_em(
+        self,
+        *,
+        symbol: str,
+        start_date: str,
+        end_date: str,
+    ):
+        return self._return(
+            "stock_hsgt_individual_detail_em",
+            _fixture("a_hsgt_individual_detail.json"),
+            symbol=symbol,
+            start_date=start_date,
+            end_date=end_date,
+        )
+
     def stock_hsgt_hold_stock_em(self, *, market: str, indicator: str):
         return self._return(
             "stock_hsgt_hold_stock_em",
@@ -1224,8 +1239,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "138"
-    assert AKSHARE_MAPPING_VERSION == "139"
+    assert provider.identity.provider_version == "139"
+    assert AKSHARE_MAPPING_VERSION == "140"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -1759,6 +1774,485 @@ def test_hsgt_individual_holdings_cache_replay_does_not_call_upstream(tmp_path: 
     assert replay.record == live.record
     assert fake.calls == [
         ("stock_hsgt_individual_em", {"symbol": "00700"}),
+    ]
+
+
+def test_hsgt_individual_detail_fetch_preserves_listing_date_scope_and_contract():
+    fake = FakeAKShare()
+    record = _provider(fake).fetch(
+        _request(
+            DataCategory.SHAREHOLDER_HOLDINGS,
+            "SH600000",
+            {
+                "view": "hsgt_individual_detail",
+                "start_date": "20240109",
+                "end_date": "20240110",
+            },
+        )
+    )
+
+    fixture = _fixture("a_hsgt_individual_detail.json")
+    metadata = record.response_metadata
+    expected_fields = list(fixture[0])
+    expected_filter_003 = (
+        '(SECURITY_CODE="600000")(MARKET_CODE="003")'
+        "(HOLD_DATE>='2024-01-09')(HOLD_DATE<='2024-01-10')"
+    )
+    expected_filter_001 = expected_filter_003.replace(
+        'MARKET_CODE="003"', 'MARKET_CODE="001"'
+    )
+    expected_fixed = {
+        "sortColumns": "HOLD_DATE",
+        "sortTypes": "-1",
+        "pageSize": "500",
+        "pageNumber": "1",
+        "reportName": "RPT_MUTUAL_HOLD_DET",
+        "columns": "ALL",
+        "source": "WEB",
+        "client": "WEB",
+    }
+
+    assert record.raw_payload == fixture
+    assert fake.calls == [
+        (
+            "stock_hsgt_individual_detail_em",
+            {
+                "symbol": "600000",
+                "start_date": "20240109",
+                "end_date": "20240110",
+            },
+        )
+    ]
+    assert metadata["endpoint"] == "stock_hsgt_individual_detail_em"
+    assert metadata["market"] == "A"
+    assert metadata["listing_code"] == "600000"
+    assert metadata["shareholder_holdings_view"] == "hsgt_individual_detail"
+    assert metadata["market_scope"] == "Eastmoney A-share HSGT individual detail"
+    assert metadata["upstream_symbol"] == "600000"
+    assert metadata["listing_scoped_request"] is True
+    assert metadata["row_filtering"] == "upstream"
+    assert metadata["entity_row_selection"] == "upstream_listing_and_date_range"
+    assert metadata["snapshot_scope"] == (
+        "requested_hsgt_individual_detail_date_range"
+    )
+    assert metadata["date_binding"] == "row_and_request"
+    assert metadata["observation_date_field"] == "持股日期"
+    assert metadata["observation_date_ordering"] == "non_increasing"
+    assert metadata["observation_dates"] == ["2024-01-10", "2024-01-09"]
+    assert metadata["requested_start_date"] == "20240109"
+    assert metadata["requested_end_date"] == "20240110"
+    assert metadata["observed_start_date"] == "2024-01-09"
+    assert metadata["observed_end_date"] == "2024-01-10"
+    assert metadata["identity_fields"] == ["持股日期", "机构名称"]
+    assert metadata["identity_ordering"] == "source_row_order"
+    assert metadata["row_identity_order"] == [
+        {"date": "2024-01-10", "institution": "香港中央结算有限公司"},
+        {"date": "2024-01-10", "institution": "南方基金管理股份有限公司"},
+        {"date": "2024-01-09", "institution": "香港中央结算有限公司"},
+        {"date": "2024-01-09", "institution": "南方基金管理股份有限公司"},
+    ]
+    assert metadata["value_fields"] == expected_fields[1:3] + expected_fields[4:]
+    assert metadata["integer_fields"] == []
+    assert metadata["text_fields"] == ["机构名称"]
+    assert metadata["required_text_fields"] == ["机构名称"]
+    assert metadata["nullable_fields"] == expected_fields[1:3] + expected_fields[4:]
+    assert metadata["field_count"] == 10
+    assert metadata["source_field_order"] == expected_fields
+    assert metadata["field_types"] == {
+        "持股日期": "date",
+        "机构名称": "string",
+        "当日收盘价": "number",
+        "当日涨跌幅": "number",
+        "持股数量": "number",
+        "持股市值": "number",
+        "持股数量占A股百分比": "number",
+        "持股市值变化-1日": "number",
+        "持股市值变化-5日": "number",
+        "持股市值变化-10日": "number",
+    }
+    assert metadata["documented_units"] == {
+        "当日收盘价": "CNY_per_share",
+        "当日涨跌幅": "percent",
+        "持股数量": "shares",
+        "持股市值": "CNY",
+        "持股数量占A股百分比": "percent",
+        "持股市值变化-1日": "CNY",
+        "持股市值变化-5日": "CNY",
+        "持股市值变化-10日": "CNY",
+    }
+    assert metadata["undocumented_numeric_units"] == {}
+    assert metadata["upstream_url"] == (
+        "https://datacenter-web.eastmoney.com/api/data/v1/get"
+    )
+    assert metadata["upstream_protocol"] == "JSON"
+    assert metadata["upstream_report_name"] == "RPT_MUTUAL_HOLD_DET"
+    assert metadata["upstream_parameters"] == [
+        "sortColumns",
+        "sortTypes",
+        "pageSize",
+        "pageNumber",
+        "reportName",
+        "columns",
+        "source",
+        "client",
+        "filter",
+    ]
+    assert metadata["upstream_fixed_parameters"] == expected_fixed
+    assert metadata["upstream_dynamic_parameters"] == {
+        "symbol": "600000",
+        "start_date": "2024-01-09",
+        "end_date": "2024-01-10",
+        "market_code_attempts": ["003", "001"],
+        "filter": expected_filter_003,
+        "fallback_filter": expected_filter_001,
+    }
+    assert metadata["upstream_authentication"] == "none"
+    assert metadata["upstream_page_size"] == 500
+    assert metadata["pagination"] == "provider_driven_all_pages"
+    assert metadata["upstream_sort_column"] == "HOLD_DATE"
+    assert metadata["upstream_sort_direction"] == "descending"
+    assert metadata["upstream_filter"] == expected_filter_003
+    assert metadata["upstream_fallback_filter"] == expected_filter_001
+    assert metadata["wrapper_source_page_uri"] == (
+        "http://data.eastmoney.com/hsgtcg/StockHdStatistics/002008.html"
+    )
+    assert metadata["wrapper_output_ordering"] == "source_row_order"
+    assert metadata["wrapper_source_column_count"] == 17
+    assert metadata["wrapper_column_mapping"] == {
+        "持股日期": 4,
+        "当日收盘价": 11,
+        "当日涨跌幅": 12,
+        "机构名称": 6,
+        "持股数量": 7,
+        "持股市值": 10,
+        "持股数量占A股百分比": 9,
+        "持股市值变化-1日": 13,
+        "持股市值变化-5日": 14,
+        "持股市值变化-10日": 15,
+    }
+    assert metadata["full_universe_response"] is False
+    assert metadata["entity_rows_selected"] is True
+    assert metadata["upstream_row_count"] == 4
+    assert metadata["entity_row_count"] == 4
+    assert record.source_uri == (
+        "http://data.eastmoney.com/hsgtcg/StockHdStatistics/002008.html"
+    )
+
+
+@pytest.mark.parametrize(
+    ("entity_id", "parameters", "match"),
+    [
+        (
+            "HK00700",
+            {
+                "view": "hsgt_individual_detail",
+                "start_date": "20240109",
+                "end_date": "20240110",
+            },
+            "A-share listings only",
+        ),
+        (
+            "SH600000",
+            {"view": "hsgt_individual_detail", "end_date": "20240110"},
+            "requires start_date",
+        ),
+        (
+            "SH600000",
+            {"view": "hsgt_individual_detail", "start_date": "20240109"},
+            "requires end_date",
+        ),
+        (
+            "SH600000",
+            {
+                "view": "hsgt_individual_detail",
+                "start_date": "20240230",
+                "end_date": "20240301",
+            },
+            "start_date must be a valid YYYYMMDD date",
+        ),
+        (
+            "SH600000",
+            {
+                "view": "hsgt_individual_detail",
+                "start_date": "20240110",
+                "end_date": "20240109",
+            },
+            "start_date must not be after end_date",
+        ),
+        (
+            "SH600000",
+            {
+                "view": "hsgt_individual_detail",
+                "start_date": "20240109",
+                "end_date": "20240110",
+                "unexpected": True,
+            },
+            "unsupported AKShare HSGT individual-detail parameter",
+        ),
+    ],
+)
+def test_hsgt_individual_detail_request_validates_a_share_date_scope(
+    entity_id: str,
+    parameters: dict,
+    match: str,
+):
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError, match=match):
+        _provider(fake).fetch(
+            _request(DataCategory.SHAREHOLDER_HOLDINGS, entity_id, parameters)
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "missing_field",
+        "extra_field",
+        "reordered_fields",
+        "invalid_date",
+        "out_of_range",
+        "ascending_dates",
+        "invalid_institution",
+        "invalid_numeric",
+        "duplicate_identity",
+    ],
+)
+def test_hsgt_individual_detail_response_validates_full_schema_before_storage(
+    mutation: str,
+):
+    class InvalidRows(FakeAKShare):
+        def stock_hsgt_individual_detail_em(
+            self,
+            *,
+            symbol: str,
+            start_date: str,
+            end_date: str,
+        ):
+            rows = [dict(row) for row in _fixture("a_hsgt_individual_detail.json")]
+            if mutation == "missing_field":
+                rows[0].pop("持股市值")
+            elif mutation == "extra_field":
+                rows[0]["unexpected"] = "not documented"
+            elif mutation == "reordered_fields":
+                rows[0] = dict(reversed(list(rows[0].items())))
+            elif mutation == "invalid_date":
+                rows[0]["持股日期"] = "not-a-date"
+            elif mutation == "out_of_range":
+                rows[0]["持股日期"] = "2024-01-11"
+            elif mutation == "ascending_dates":
+                rows[0]["持股日期"] = "2024-01-09"
+                rows[1]["持股日期"] = "2024-01-10"
+            elif mutation == "invalid_institution":
+                rows[0]["机构名称"] = ""
+            elif mutation == "invalid_numeric":
+                rows[0]["当日收盘价"] = "10.2"
+            else:
+                rows[1]["机构名称"] = rows[0]["机构名称"]
+            return self._return(
+                "stock_hsgt_individual_detail_em",
+                rows,
+                symbol=symbol,
+                start_date=start_date,
+                end_date=end_date,
+            )
+
+    with pytest.raises(ProviderResponseError):
+        _provider(InvalidRows()).fetch(
+            _request(
+                DataCategory.SHAREHOLDER_HOLDINGS,
+                "SH600000",
+                {
+                    "view": "hsgt_individual_detail",
+                    "start_date": "20240109",
+                    "end_date": "20240110",
+                },
+            )
+        )
+
+
+def test_hsgt_individual_detail_accepts_empty_listing_date_selection():
+    class EmptyRows(FakeAKShare):
+        def stock_hsgt_individual_detail_em(
+            self,
+            *,
+            symbol: str,
+            start_date: str,
+            end_date: str,
+        ):
+            return self._return(
+                "stock_hsgt_individual_detail_em",
+                [],
+                symbol=symbol,
+                start_date=start_date,
+                end_date=end_date,
+            )
+
+    record = _provider(EmptyRows()).fetch(
+        _request(
+            DataCategory.SHAREHOLDER_HOLDINGS,
+            "SH688981",
+            {
+                "view": "hsgt_individual_detail",
+                "start_date": "20240109",
+                "end_date": "20240110",
+            },
+        )
+    )
+
+    assert record.raw_payload == []
+    assert record.response_metadata["observation_dates"] == []
+    assert record.response_metadata["observed_start_date"] is None
+    assert record.response_metadata["observed_end_date"] is None
+    assert record.response_metadata["upstream_row_count"] == 0
+    assert record.response_metadata["entity_row_count"] == 0
+
+
+def test_hsgt_individual_detail_is_raw_only_without_canonical_facts():
+    record = _provider().fetch(
+        _request(
+            DataCategory.SHAREHOLDER_HOLDINGS,
+            "SH600000",
+            {
+                "view": "hsgt_individual_detail",
+                "start_date": "20240109",
+                "end_date": "20240110",
+            },
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="hsgt-individual-detail-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company("SH600000"),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_HSGT_INDIVIDUAL_DETAIL_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == [
+        "governance_risk_level",
+    ]
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "institution-level" in normalized.data_quality.notes
+    assert "diluted-share series" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "endpoint",
+        "source_uri",
+        "view",
+        "upstream_symbol",
+        "requested_start_date",
+        "upstream_filter",
+        "fallback_filter",
+        "row_identity_order",
+        "documented_units",
+        "full_universe_response",
+        "entity_row_count",
+        "payload",
+    ],
+)
+def test_hsgt_individual_detail_normalizer_rejects_replayed_scope_mismatches(
+    mutation: str,
+):
+    record = _provider().fetch(
+        _request(
+            DataCategory.SHAREHOLDER_HOLDINGS,
+            "SH600000",
+            {
+                "view": "hsgt_individual_detail",
+                "start_date": "20240109",
+                "end_date": "20240110",
+            },
+        )
+    )
+    payload = [dict(row) for row in record.raw_payload]
+    metadata = json.loads(json.dumps(record.response_metadata))
+    source_uri = record.source_uri
+    if mutation == "endpoint":
+        metadata["endpoint"] = "stock_hsgt_individual_em"
+    elif mutation == "source_uri":
+        source_uri = "https://example.invalid/hsgt"
+    elif mutation == "view":
+        metadata["shareholder_holdings_view"] = "hsgt_individual"
+    elif mutation == "upstream_symbol":
+        metadata["upstream_symbol"] = "000001"
+    elif mutation == "requested_start_date":
+        metadata["requested_start_date"] = "20240108"
+    elif mutation == "upstream_filter":
+        metadata["upstream_filter"] = "tampered"
+    elif mutation == "fallback_filter":
+        metadata["upstream_fallback_filter"] = "tampered"
+    elif mutation == "row_identity_order":
+        metadata["row_identity_order"] = metadata["row_identity_order"][:-1]
+    elif mutation == "documented_units":
+        metadata["documented_units"] = {"持股市值": "HKD"}
+    elif mutation == "full_universe_response":
+        metadata["full_universe_response"] = True
+    elif mutation == "entity_row_count":
+        metadata["entity_row_count"] = 3
+    else:
+        payload[0]["机构名称"] = "篡改后的机构"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=source_uri,
+        response_metadata=metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="invalid-hsgt-individual-detail-replay",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company("SH600000"),
+        )
+
+
+def test_hsgt_individual_detail_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.SHAREHOLDER_HOLDINGS,
+        "SH600000",
+        {
+            "view": "hsgt_individual_detail",
+            "start_date": "20240109",
+            "end_date": "20240110",
+        },
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [
+        (
+            "stock_hsgt_individual_detail_em",
+            {
+                "symbol": "600000",
+                "start_date": "20240109",
+                "end_date": "20240110",
+            },
+        )
     ]
 
 
