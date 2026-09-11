@@ -114,6 +114,13 @@ class FakeAKShare:
             _fixture("a_goodwill_profile.json"),
         )
 
+    def stock_sy_hy_em(self, *, date: str):
+        return self._return(
+            "stock_sy_hy_em",
+            _fixture("a_goodwill_industry_data.json"),
+            date=date,
+        )
+
     def stock_sy_em(self, *, date: str):
         return self._return(
             "stock_sy_em",
@@ -937,8 +944,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "107"
-    assert AKSHARE_MAPPING_VERSION == "108"
+    assert provider.identity.provider_version == "108"
+    assert AKSHARE_MAPPING_VERSION == "109"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -16556,6 +16563,476 @@ def test_goodwill_market_profile_cache_replay_does_not_call_upstream(tmp_path: P
     assert replay.mode is RetrievalMode.CACHE_REPLAY
     assert replay.record == live.record
     assert fake.calls == [("stock_sy_profile_em", {})]
+
+
+def test_a_goodwill_industry_data_fetch_keeps_full_dated_market_rows():
+    fake = FakeAKShare()
+    request = _request(
+        DataCategory.GOODWILL_IMPAIRMENT,
+        "SH600000",
+        {"view": "industry_data", "date": "20260630"},
+    )
+
+    record = _provider(fake).fetch(request)
+    fixture = _fixture("a_goodwill_industry_data.json")
+
+    assert record.raw_payload == fixture
+    assert fake.calls == [("stock_sy_hy_em", {"date": "20260630"})]
+    assert record.response_metadata["endpoint"] == "stock_sy_hy_em"
+    assert record.response_metadata["market"] == "A"
+    assert record.response_metadata["listing_code"] == "600000"
+    assert record.response_metadata["goodwill_impairment_view"] == "industry_data"
+    assert record.response_metadata["market_scope"] == "all_a_share_listings"
+    assert record.response_metadata["industry_scope"] == "all_a_share_industries"
+    assert record.response_metadata["listing_scoped_request"] is False
+    assert record.response_metadata["row_filtering"] == "none"
+    assert record.response_metadata["snapshot_scope"] == "requested_report_date"
+    assert record.response_metadata["requested_date"] == "20260630"
+    assert record.response_metadata["report_period"] == "2026-06-30"
+    assert record.response_metadata["date_binding"] == "request_period"
+    assert record.response_metadata["industry_field"] == "行业名称"
+    assert record.response_metadata["industry_ordering"] == (
+        "source_order_sorted_by_equity_ratio"
+    )
+    assert record.response_metadata["industry_order"] == [
+        row["行业名称"] for row in fixture
+    ]
+    assert record.response_metadata["equity_ratio_field"] == (
+        "商誉规模占净资产规模比例"
+    )
+    assert record.response_metadata["equity_ratio_ordering"] == "non_increasing"
+    assert record.response_metadata["identity_fields"] == ["行业名称"]
+    assert record.response_metadata["nullable_identity_fields"] == []
+    assert record.response_metadata["value_fields"] == [
+        "公司家数",
+        "商誉规模",
+        "净资产",
+        "商誉规模占净资产规模比例",
+        "净利润规模",
+    ]
+    assert record.response_metadata["non_negative_fields"] == ["公司家数"]
+    assert record.response_metadata["amount_fields"] == [
+        "净利润规模",
+        "净资产",
+        "商誉规模",
+    ]
+    assert record.response_metadata["amount_unit"] == "CNY"
+    assert record.response_metadata["amount_field_count"] == 3
+    assert record.response_metadata["ratio_fields"] == ["商誉规模占净资产规模比例"]
+    assert record.response_metadata["ratio_unit"] == "not_documented"
+    assert record.response_metadata["ratio_semantics"] == "provider_reported_ratio"
+    assert record.response_metadata["ratio_source_scale"] == "unchanged"
+    assert record.response_metadata["ratio_field_count"] == 1
+    assert record.response_metadata["integer_fields"] == ["公司家数"]
+    assert record.response_metadata["text_fields"] == ["行业名称"]
+    assert record.response_metadata["required_text_fields"] == ["行业名称"]
+    assert record.response_metadata["required_numeric_fields"] == [
+        "公司家数",
+        "商誉规模",
+        "净资产",
+        "商誉规模占净资产规模比例",
+        "净利润规模",
+    ]
+    assert record.response_metadata["field_types"] == {
+        "行业名称": "string",
+        "公司家数": "integer",
+        "商誉规模": "number",
+        "净资产": "number",
+        "商誉规模占净资产规模比例": "number",
+        "净利润规模": "number",
+    }
+    assert record.response_metadata["nullable_fields"] == []
+    assert record.response_metadata["field_count"] == 6
+    assert record.response_metadata["source_field_order"] == list(fixture[0])
+    assert record.response_metadata["documented_units"] == {
+        "商誉规模": "CNY",
+        "净资产": "CNY",
+        "净利润规模": "CNY",
+    }
+    assert record.response_metadata["undocumented_numeric_units"] == {
+        "公司家数": "not_documented",
+        "商誉规模占净资产规模比例": "not_documented",
+    }
+    assert record.response_metadata["upstream_report_name"] == (
+        "RPT_GOODWILL_INDUSTATISTICS"
+    )
+    assert record.response_metadata["upstream_columns_selector"] == "ALL"
+    assert record.response_metadata["upstream_columns"] == [
+        "REPORT_DATE",
+        "INDUSTRY_NAME",
+        "INDUSTRY_CODE",
+        "ORG_NUM",
+        "GOODWILL",
+        "GOODWILL_CHANGE",
+        "SUMSHEQUITY",
+        "SUMSHEQUITY_RATIO",
+        "SE_CHANGE_RATIO",
+        "PARENTNETPROFIT",
+        "PNP_CHANGE_RATIO",
+    ]
+    assert record.response_metadata["wrapper_dropped_fields"] == [
+        "REPORT_DATE",
+        "INDUSTRY_CODE",
+        "GOODWILL_CHANGE",
+        "SE_CHANGE_RATIO",
+        "PNP_CHANGE_RATIO",
+    ]
+    assert record.response_metadata["upstream_page_size"] == 5000
+    assert record.response_metadata["pagination"] == "all_pages"
+    assert record.response_metadata["upstream_sort_column"] == "SUMSHEQUITY_RATIO"
+    assert record.response_metadata["upstream_sort_direction"] == "descending"
+    assert record.response_metadata["upstream_filter"] == (
+        "(REPORT_DATE='2026-06-30')"
+    )
+    assert record.response_metadata["industry_label_policy"] == (
+        "preserve_provider_text"
+    )
+    assert record.response_metadata["upstream_row_count"] == len(fixture)
+    assert record.response_metadata["entity_row_count"] == 0
+    assert record.response_metadata["entity_rows_selected"] is False
+    assert record.source_uri == "https://data.eastmoney.com/sy/hylist.html"
+
+
+def test_goodwill_industry_data_request_requires_explicit_view_date_and_a_share():
+    fake = FakeAKShare()
+    provider = _provider(fake)
+
+    with pytest.raises(ProviderRequestError, match="requires date"):
+        provider.fetch(
+            _request(
+                DataCategory.GOODWILL_IMPAIRMENT,
+                "SH600000",
+                {"view": "industry_data"},
+            )
+        )
+    with pytest.raises(ProviderRequestError, match="date must be YYYYMMDD"):
+        provider.fetch(
+            _request(
+                DataCategory.GOODWILL_IMPAIRMENT,
+                "SH600000",
+                {"view": "industry_data", "date": "2026-06-30"},
+            )
+        )
+    with pytest.raises(ProviderRequestError, match="date must be a valid YYYYMMDD"):
+        provider.fetch(
+            _request(
+                DataCategory.GOODWILL_IMPAIRMENT,
+                "SH600000",
+                {"view": "industry_data", "date": "20261330"},
+            )
+        )
+    with pytest.raises(ProviderRequestError, match="unsupported AKShare goodwill-impairment"):
+        provider.fetch(
+            _request(
+                DataCategory.GOODWILL_IMPAIRMENT,
+                "SH600000",
+                {
+                    "view": "industry_data",
+                    "date": "20260630",
+                    "unexpected": True,
+                },
+            )
+        )
+    with pytest.raises(ProviderRequestError, match="A-share listings only"):
+        provider.fetch(
+            _request(
+                DataCategory.GOODWILL_IMPAIRMENT,
+                "HK00700",
+                {"view": "industry_data", "date": "20260630"},
+            )
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("empty", "must not be empty"),
+        ("missing_field", "missing field.*净利润规模"),
+        ("extra_field", "contains unsupported field"),
+        ("reordered_fields", "field order"),
+        ("invalid_industry", "行业名称.*non-empty"),
+        ("duplicate_identity", "duplicate.*identity"),
+        ("invalid_numeric", "商誉规模.*numeric"),
+        ("boolean_numeric", "商誉规模.*numeric"),
+        ("null_numeric", "商誉规模.*must not be null"),
+        ("fractional_count", "公司家数.*integer"),
+        ("negative_count", "公司家数.*non-negative"),
+        ("ratio_order", "商誉规模占净资产规模比例.*non-increasing"),
+    ],
+)
+def test_goodwill_industry_data_response_validates_schema_boundaries_and_identity(
+    mutation: str,
+    match: str,
+):
+    payload = [dict(row) for row in _fixture("a_goodwill_industry_data.json")]
+    if mutation == "empty":
+        payload = []
+    elif mutation == "missing_field":
+        payload[0].pop("净利润规模")
+    elif mutation == "extra_field":
+        payload[0]["未记录字段"] = "not documented"
+    elif mutation == "reordered_fields":
+        payload[0] = {key: payload[0][key] for key in reversed(payload[0])}
+    elif mutation == "invalid_industry":
+        payload[0]["行业名称"] = " "
+    elif mutation == "duplicate_identity":
+        payload[1]["行业名称"] = payload[0]["行业名称"]
+    elif mutation == "invalid_numeric":
+        payload[0]["商誉规模"] = "not-a-number"
+    elif mutation == "boolean_numeric":
+        payload[0]["商誉规模"] = True
+    elif mutation == "null_numeric":
+        payload[0]["商誉规模"] = None
+    elif mutation == "fractional_count":
+        payload[0]["公司家数"] = 1.5
+    elif mutation == "negative_count":
+        payload[0]["公司家数"] = -1
+    else:
+        payload[1]["商誉规模占净资产规模比例"] = 0.6
+
+    class InvalidIndustryData(FakeAKShare):
+        def stock_sy_hy_em(self, *, date: str):
+            return self._return("stock_sy_hy_em", payload, date=date)
+
+    with pytest.raises(ProviderResponseError, match=match):
+        _provider(InvalidIndustryData()).fetch(
+            _request(
+                DataCategory.GOODWILL_IMPAIRMENT,
+                "SH600000",
+                {"view": "industry_data", "date": "20260630"},
+            )
+        )
+
+
+def test_goodwill_industry_data_accepts_signed_profit_and_zero_boundaries():
+    payload = [
+        dict(row) for row in _fixture("a_goodwill_industry_data.json")
+    ]
+    for row in payload:
+        row["公司家数"] = 0
+        row["商誉规模"] = 0.0
+        row["净资产"] = 0.0
+        row["商誉规模占净资产规模比例"] = 0.0
+        row["净利润规模"] = -1.0
+
+    class BoundaryIndustryData(FakeAKShare):
+        def stock_sy_hy_em(self, *, date: str):
+            return self._return("stock_sy_hy_em", payload, date=date)
+
+    record = _provider(BoundaryIndustryData()).fetch(
+        _request(
+            DataCategory.GOODWILL_IMPAIRMENT,
+            "SH600000",
+            {"view": "industry_data", "date": "20260630"},
+        )
+    )
+
+    assert record.raw_payload[0]["公司家数"] == 0
+    assert record.raw_payload[0]["净利润规模"] == -1.0
+
+
+def test_goodwill_industry_data_is_retained_as_raw_evidence_without_facts():
+    record = _provider().fetch(
+        _request(
+            DataCategory.GOODWILL_IMPAIRMENT,
+            "SH600000",
+            {"view": "industry_data", "date": "20260630"},
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="goodwill-industry-data-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_GOODWILL_INDUSTRY_DATA_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == [
+        "goodwill",
+        "impairment",
+    ]
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "industry-data response" in normalized.data_quality.notes
+    assert "market-wide industry rows" in normalized.data_quality.notes
+    assert "canonical listing-level" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "endpoint",
+        "source_uri",
+        "market",
+        "listing_code",
+        "view",
+        "industry_scope",
+        "listing_scope",
+        "row_filtering",
+        "snapshot",
+        "requested_date",
+        "report_period",
+        "date_binding",
+        "industry_ordering",
+        "ratio_ordering",
+        "ratio_unit",
+        "amount_unit",
+        "amount_count",
+        "ratio_count",
+        "field_count",
+        "source_field_order",
+        "documented_units",
+        "undocumented_units",
+        "report",
+        "columns_selector",
+        "columns",
+        "dropped_fields",
+        "page_size",
+        "pagination",
+        "sort",
+        "filter",
+        "industry_order",
+        "upstream_count",
+        "entity_count",
+        "selected",
+        "payload",
+    ],
+)
+def test_goodwill_industry_data_normalizer_rejects_replayed_scope_mismatches(
+    mutation: str,
+):
+    record = _provider().fetch(
+        _request(
+            DataCategory.GOODWILL_IMPAIRMENT,
+            "SH600000",
+            {"view": "industry_data", "date": "20260630"},
+        )
+    )
+    payload = [dict(row) for row in record.raw_payload]
+    response_metadata = dict(record.response_metadata)
+    source_uri = record.source_uri
+    if mutation == "endpoint":
+        response_metadata["endpoint"] = "stock_sy_jz_em"
+    elif mutation == "source_uri":
+        source_uri = "https://example.invalid/goodwill-industry"
+    elif mutation == "market":
+        response_metadata["market"] = "H"
+    elif mutation == "listing_code":
+        response_metadata["listing_code"] = "000001"
+    elif mutation == "view":
+        response_metadata["goodwill_impairment_view"] = "market_profile"
+    elif mutation == "industry_scope":
+        response_metadata["industry_scope"] = "requested_industry"
+    elif mutation == "listing_scope":
+        response_metadata["listing_scoped_request"] = True
+    elif mutation == "row_filtering":
+        response_metadata["row_filtering"] = "provider"
+    elif mutation == "snapshot":
+        response_metadata["snapshot_scope"] = "current_industry_data"
+    elif mutation == "requested_date":
+        response_metadata["requested_date"] = "20250630"
+    elif mutation == "report_period":
+        response_metadata["report_period"] = "2025-06-30"
+    elif mutation == "date_binding":
+        response_metadata["date_binding"] = "retrieval_only"
+    elif mutation == "industry_ordering":
+        response_metadata["industry_ordering"] = "provider_order"
+    elif mutation == "ratio_ordering":
+        response_metadata["equity_ratio_ordering"] = "provider_order"
+    elif mutation == "ratio_unit":
+        response_metadata["ratio_unit"] = "fraction"
+    elif mutation == "amount_unit":
+        response_metadata["amount_unit"] = "yuan"
+    elif mutation == "amount_count":
+        response_metadata["amount_field_count"] = 2
+    elif mutation == "ratio_count":
+        response_metadata["ratio_field_count"] = 2
+    elif mutation == "field_count":
+        response_metadata["field_count"] = 5
+    elif mutation == "source_field_order":
+        response_metadata["source_field_order"] = list(
+            reversed(response_metadata["source_field_order"])
+        )
+    elif mutation == "documented_units":
+        response_metadata["documented_units"] = {"商誉规模": "yuan"}
+    elif mutation == "undocumented_units":
+        response_metadata["undocumented_numeric_units"] = {
+            "商誉规模占净资产规模比例": "fraction"
+        }
+    elif mutation == "report":
+        response_metadata["upstream_report_name"] = "OTHER_REPORT"
+    elif mutation == "columns_selector":
+        response_metadata["upstream_columns_selector"] = "REPORT_DATE"
+    elif mutation == "columns":
+        response_metadata["upstream_columns"] = ["INDUSTRY_NAME"]
+    elif mutation == "dropped_fields":
+        response_metadata["wrapper_dropped_fields"] = []
+    elif mutation == "page_size":
+        response_metadata["upstream_page_size"] = 500
+    elif mutation == "pagination":
+        response_metadata["pagination"] = "single_page"
+    elif mutation == "sort":
+        response_metadata["upstream_sort_direction"] = "ascending"
+    elif mutation == "filter":
+        response_metadata["upstream_filter"] = "(REPORT_DATE='2025-06-30')"
+    elif mutation == "industry_order":
+        response_metadata["industry_order"] = list(
+            reversed(response_metadata["industry_order"])
+        )
+    elif mutation == "upstream_count":
+        response_metadata["upstream_row_count"] = len(payload) - 1
+    elif mutation == "entity_count":
+        response_metadata["entity_row_count"] = 1
+    elif mutation == "selected":
+        response_metadata["entity_rows_selected"] = True
+    else:
+        payload[0]["商誉规模"] = {"not": "numeric"}
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=source_uri,
+        response_metadata=response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match="industry-data"):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-goodwill-industry-data",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_goodwill_industry_data_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.GOODWILL_IMPAIRMENT,
+        "SH600000",
+        {"view": "industry_data", "date": "20260630"},
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [("stock_sy_hy_em", {"date": "20260630"})]
 
 
 def test_a_goodwill_detail_fetch_filters_the_documented_report_date_universe():

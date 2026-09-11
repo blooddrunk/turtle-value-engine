@@ -2756,6 +2756,40 @@ contract changes. This numbered 3.06 increment remains structured acquisition;
 the top-level Phase 3 filing/evidence deliverables below are still
 unimplemented.
 
+### Phase 3.07 — A-share Eastmoney goodwill-industry raw acquisition contract (COMPLETE)
+
+The mapping review now covers the next distinct documented AKShare Eastmoney
+`stock_sy_hy_em` endpoint under the existing `GOODWILL_IMPAIRMENT` category
+with explicit `view=industry_data` and a required `date=YYYYMMDD`. The
+[AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_sy_em.py)
+define the market-wide `RPT_GOODWILL_INDUSTATISTICS` response, filtered by
+`REPORT_DATE`, paginated at 5000 rows and ordered by descending
+`SUMSHEQUITY_RATIO`. The wrapper returns the exact six fields `行业名称`,
+`公司家数`, `商誉规模`, `净资产`, `商誉规模占净资产规模比例` and
+`净利润规模`; the adapter records the upstream columns and the five source
+fields dropped by the wrapper.
+
+The provider validates the complete response before retention. It enforces
+unique non-empty industry identity, non-increasing goodwill-to-net-assets ratio
+ordering, finite numeric values, an integer non-negative company count and
+non-null required values, while preserving signed net-profit aggregates and
+the provider's ratio scale. It records request-period binding, exact field
+order/types, documented CNY amounts, undocumented count/ratio units, fixed
+report/page/sort/filter/pagination metadata and market-wide row counts for
+replay.
+
+The normalizer emits
+`AKSHARE_GOODWILL_INDUSTRY_DATA_RAW_ONLY`, leaves `goodwill` and `impairment`
+critically missing and creates no canonical accounting, profit, ratio or
+Business Quality fact: market-wide industry aggregates require issuer-level
+primary-filing scope and reconciliation. Tests cover explicit view/date/A-share
+routing, exact schema/order/types, identity and ordering boundaries, signed
+profit values, raw-only normalization, replay metadata tampering and offline
+cache replay. No calculation, gate, pipeline, CLI or input-loader contract
+changes. This numbered 3.07 increment remains structured acquisition; the
+top-level Phase 3 filing/evidence deliverables below are still unimplemented.
+
 ### Future structured-provider deliverables
 
 ```text
@@ -2765,7 +2799,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–3.06 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–3.07 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -2970,7 +3004,7 @@ This is the project's definition of safe “self-evolution.”
 # Current milestone
 
 Phase 2 remains active for structured-provider coverage. The numbered Phase
-3.06 increment is also acquisition-only; the top-level Phase 3 filing/evidence
+3.07 increment is also acquisition-only; the top-level Phase 3 filing/evidence
 layer remains unimplemented. Phase 1 remains frozen: changes to formulas,
 hard-gate semantics, schemas or `strict-v1` thresholds require a separately
 reviewed, versioned change.
@@ -3082,6 +3116,20 @@ listing filtering. A live probe observed industry labels with the `Ⅱ` suffix;
 the adapter preserves provider text. The raw-only normalizer flag creates no
 canonical share, cash, debt-equivalent or governance fact and leaves
 `governance_risk_level` critically missing.
+Phase 3.07 adds the documented A-share Eastmoney
+`stock_sy_hy_em` goodwill-industry view under `GOODWILL_IMPAIRMENT` with
+explicit `view=industry_data` and required `date=YYYYMMDD`. Its
+`RPT_GOODWILL_INDUSTATISTICS` response is a market-wide, date-filtered,
+5000-row-paged snapshot ordered by descending `SUMSHEQUITY_RATIO` and
+returning six exact industry aggregate fields. The adapter validates unique
+industry identity, ratio ordering, finite values, integer/non-negative company
+counts and the request-period binding, while preserving signed net-profit
+aggregates, exact source order, CNY amount context and undocumented
+count/ratio units. The normalizer emits
+`AKSHARE_GOODWILL_INDUSTRY_DATA_RAW_ONLY`, leaves `goodwill` and `impairment`
+critically missing and creates no canonical accounting, profit, ratio or
+Business Quality fact; primary-filing issuer scope and reconciliation remain
+unresolved.
 Phase 2.75 completes the next documented structured-data boundary by adding
 the A-share `stock_gpzy_profile_em` market-wide historical ownership-pledge
 view. Its no-argument eight-field response is validated as an ascending raw

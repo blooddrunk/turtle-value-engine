@@ -1144,6 +1144,21 @@ remain raw evidence and do not become canonical share, cash, debt-equivalent
 or governance facts. No calculation, gate, pipeline, CLI or input-loader
 contract changes.
 
+Phase 3.07 adds the next distinct official A-share Eastmoney goodwill endpoint,
+`stock_sy_hy_em`, under `GOODWILL_IMPAIRMENT` with explicit
+`view=industry_data` and a required `date=YYYYMMDD`. The [AKShare stock-data
+documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and [official
+implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_sy_em.py)
+define the `RPT_GOODWILL_INDUSTATISTICS` market-wide industry response with
+the six fields `行业名称`, `公司家数`, `商誉规模`, `净资产`,
+`商誉规模占净资产规模比例` and `净利润规模`. The provider validates the
+complete all-page response, preserves the provider ratio scale, binds the
+request date to the report filter and records source columns, dropped fields,
+ordering and units for replay. The normalizer emits
+`AKSHARE_GOODWILL_INDUSTRY_DATA_RAW_ONLY`; industry aggregates remain raw
+evidence and do not become canonical goodwill or impairment facts. No
+calculation, gate, pipeline, CLI or input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

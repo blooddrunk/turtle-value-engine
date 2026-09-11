@@ -1379,6 +1379,35 @@ shares, market values and row dates remain structured evidence pending the
 filing/evidence workflow. The response remains outside the calculation, gate,
 pipeline, CLI and input-loader contracts.
 
+## Phase 3.07 A-share Eastmoney goodwill-industry raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_sy_em.py)
+document `stock_sy_hy_em` as a date-filtered, market-wide A-share goodwill
+industry response. The explicit adapter request is
+`GOODWILL_IMPAIRMENT` plus `view=industry_data` and a required `date=YYYYMMDD`;
+the upstream wrapper binds that date to `REPORT_DATE`, requests all columns,
+retrieves every 5000-row page and sorts by descending `SUMSHEQUITY_RATIO`. The
+wrapper returns six fields and does not expose the report date as a row field,
+so the request-period binding remains response metadata.
+
+| Raw upstream item | Phase 3.07 treatment |
+| --- | --- |
+| `行业名称` | Required non-empty industry identity; duplicate identities are rejected and provider text is preserved in source order. |
+| `公司家数` | Required finite non-negative integer company count; its unit is not documented and it does not become a listing count in the canonical model. |
+| `商誉规模`, `净资产`, `净利润规模` | Required finite numeric aggregate amounts recorded with `CNY` context; `净利润规模` may be signed, and none becomes a listing-level accounting or profit fact. |
+| `商誉规模占净资产规模比例` | Required finite provider ratio with undocumented unit and unchanged source scale; source order must be non-increasing by this ratio, without inferring a canonical denominator or percentage conversion. |
+| request `view=industry_data`, `date=YYYYMMDD` | Explicit A-share routing and request-period scope; the complete market-wide response is retained with `listing_scoped_request=false`, `row_filtering=none`, `entity_rows_selected=false` and `date_binding=request_period`. |
+| upstream mapping | `RPT_GOODWILL_INDUSTATISTICS`, `REPORT_DATE`, `INDUSTRY_NAME`, `INDUSTRY_CODE`, `ORG_NUM`, `GOODWILL`, `GOODWILL_CHANGE`, `SUMSHEQUITY`, `SUMSHEQUITY_RATIO`, `SE_CHANGE_RATIO`, `PARENTNETPROFIT` and `PNP_CHANGE_RATIO` remain explicit replay metadata; the wrapper drops `REPORT_DATE`, `INDUSTRY_CODE`, `GOODWILL_CHANGE`, `SE_CHANGE_RATIO` and `PNP_CHANGE_RATIO`. |
+
+The provider rejects empty responses, missing/unexpected/reordered fields,
+duplicate or blank industry identities, null/non-finite/non-numeric values,
+fractional or negative company counts and increasing source ratio order. The
+normalizer emits `AKSHARE_GOODWILL_INDUSTRY_DATA_RAW_ONLY`, marks `goodwill`
+and `impairment` as critically missing and creates no canonical accounting,
+profit, ratio or Business Quality fact. The response remains outside the
+calculation, gate, pipeline, CLI and input-loader contracts.
+
 ## Phase 2.92 SSE daily-deal overview raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)

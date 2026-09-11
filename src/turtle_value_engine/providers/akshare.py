@@ -20,6 +20,7 @@ financial-indicator raw slice, the H-share
 latest-indicator raw slice, the A-share goodwill-impairment detail and
 goodwill-detail,
 impairment-forecast and market-profile raw slices,
+goodwill-industry raw slice,
 the SSE/SZSE/BSE margin-detail raw slices, the A-share individual ownership-pledge
 detail view, the A-share CNINFO equity-mortgage view, the A-share Eastmoney
 ownership-pledge company-distribution, bank-distribution, industry-data,
@@ -103,9 +104,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "107"
+AKSHARE_ADAPTER_VERSION = "108"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "108"
+AKSHARE_MAPPING_VERSION = "109"
 
 
 class ListingMarket(StrEnum):
@@ -231,6 +232,7 @@ _SOURCE_URIS = {
     "stock_sy_profile_em": "https://data.eastmoney.com/sy/scgk.html",
     "stock_sy_jz_em": "https://data.eastmoney.com/sy/jzlist.html",
     "stock_sy_em": "https://data.eastmoney.com/sy/list.html",
+    "stock_sy_hy_em": "https://data.eastmoney.com/sy/hylist.html",
     "stock_balance_sheet_by_report_em": "https://emweb.securities.eastmoney.com/PC_HSF10/NewFinanceAnalysis/Index",
     "stock_zcfz_em": "https://data.eastmoney.com/bbsj/202003/zcfz.html",
     "stock_zcfz_bj_em": "https://data.eastmoney.com/bbsj/202003/zcfz.html",
@@ -1543,6 +1545,69 @@ _GOODWILL_IMPAIRMENT_DETAIL_RATIO_FIELDS = frozenset(
 )
 _GOODWILL_IMPAIRMENT_DETAIL_DATE_FIELDS = ("公告日期",)
 _GOODWILL_IMPAIRMENT_DETAIL_TEXT_FIELDS = ("股票简称", "交易市场")
+_GOODWILL_IMPAIRMENT_INDUSTRY_DATA_PARAMETER_NAMES = frozenset({"date", "view"})
+_GOODWILL_IMPAIRMENT_INDUSTRY_DATA_VIEW = "industry_data"
+_GOODWILL_IMPAIRMENT_INDUSTRY_DATA_FIELDS = (
+    "行业名称",
+    "公司家数",
+    "商誉规模",
+    "净资产",
+    "商誉规模占净资产规模比例",
+    "净利润规模",
+)
+_GOODWILL_IMPAIRMENT_INDUSTRY_DATA_UPSTREAM_COLUMNS = (
+    "REPORT_DATE",
+    "INDUSTRY_NAME",
+    "INDUSTRY_CODE",
+    "ORG_NUM",
+    "GOODWILL",
+    "GOODWILL_CHANGE",
+    "SUMSHEQUITY",
+    "SUMSHEQUITY_RATIO",
+    "SE_CHANGE_RATIO",
+    "PARENTNETPROFIT",
+    "PNP_CHANGE_RATIO",
+)
+_GOODWILL_IMPAIRMENT_INDUSTRY_DATA_FIELD_SET = frozenset(
+    _GOODWILL_IMPAIRMENT_INDUSTRY_DATA_FIELDS
+)
+_GOODWILL_IMPAIRMENT_INDUSTRY_DATA_IDENTITY_FIELDS = ("行业名称",)
+_GOODWILL_IMPAIRMENT_INDUSTRY_DATA_NULLABLE_IDENTITY_FIELDS: tuple[str, ...] = ()
+_GOODWILL_IMPAIRMENT_INDUSTRY_DATA_TEXT_FIELDS = ("行业名称",)
+_GOODWILL_IMPAIRMENT_INDUSTRY_DATA_REQUIRED_TEXT_FIELDS = ("行业名称",)
+_GOODWILL_IMPAIRMENT_INDUSTRY_DATA_NUMERIC_FIELDS = (
+    "公司家数",
+    "商誉规模",
+    "净资产",
+    "商誉规模占净资产规模比例",
+    "净利润规模",
+)
+_GOODWILL_IMPAIRMENT_INDUSTRY_DATA_INTEGER_FIELDS = frozenset({"公司家数"})
+_GOODWILL_IMPAIRMENT_INDUSTRY_DATA_NONNEGATIVE_FIELDS = frozenset({"公司家数"})
+_GOODWILL_IMPAIRMENT_INDUSTRY_DATA_RATIO_FIELDS = frozenset(
+    {"商誉规模占净资产规模比例"}
+)
+_GOODWILL_IMPAIRMENT_INDUSTRY_DATA_AMOUNT_FIELDS = frozenset(
+    {"商誉规模", "净资产", "净利润规模"}
+)
+_GOODWILL_IMPAIRMENT_INDUSTRY_DATA_NULLABLE_FIELDS: tuple[str, ...] = ()
+_GOODWILL_IMPAIRMENT_INDUSTRY_DATA_FIELD_TYPES = {
+    "行业名称": "string",
+    "公司家数": "integer",
+    "商誉规模": "number",
+    "净资产": "number",
+    "商誉规模占净资产规模比例": "number",
+    "净利润规模": "number",
+}
+_GOODWILL_IMPAIRMENT_INDUSTRY_DATA_DOCUMENTED_UNITS = {
+    "商誉规模": "CNY",
+    "净资产": "CNY",
+    "净利润规模": "CNY",
+}
+_GOODWILL_IMPAIRMENT_INDUSTRY_DATA_UNDOCUMENTED_NUMERIC_UNITS = {
+    "公司家数": "not_documented",
+    "商誉规模占净资产规模比例": "not_documented",
+}
 _LATEST_INDICATORS_PARAMETER_NAMES = frozenset()
 _MARGIN_TRADING_PARAMETER_NAMES = frozenset({"date"})
 _SHAREHOLDER_COUNT_PARAMETER_NAMES = frozenset({"date"})
@@ -4289,6 +4354,25 @@ class AKShareProvider(StructuredDataProvider):
                 response_metadata["observation_end_date"] = (
                     max(report_periods).isoformat() if report_periods else None
                 )
+            elif endpoint.name == "stock_sy_hy_em":
+                requested_date = _parse_goodwill_impairment_date_parameter(
+                    kwargs["date"],
+                    request=request,
+                )
+                industry_order = _validate_goodwill_impairment_industry_data_provider_rows(
+                    rows,
+                    provider=self.identity,
+                    request=request,
+                )
+                response_metadata.update(
+                    _goodwill_impairment_industry_data_response_metadata(
+                        listing_code=listing.code,
+                        requested_date=kwargs["date"],
+                        report_period=requested_date,
+                        industry_order=industry_order,
+                        row_count=len(rows),
+                    )
+                )
             elif endpoint.name == "stock_sy_jz_em":
                 requested_date = _parse_goodwill_impairment_date_parameter(
                     kwargs["date"],
@@ -5928,6 +6012,10 @@ class AKShareProvider(StructuredDataProvider):
             goodwill_impairment_detail_requested=(
                 request.parameters.get("view") == _GOODWILL_IMPAIRMENT_DETAIL_VIEW
             ),
+            goodwill_impairment_industry_data_requested=(
+                request.parameters.get("view")
+                == _GOODWILL_IMPAIRMENT_INDUSTRY_DATA_VIEW
+            ),
             ownership_pledge_company_distribution_requested=(
                 request.parameters.get("view")
                 == _OWNERSHIP_PLEDGE_COMPANY_DISTRIBUTION_VIEW
@@ -6846,6 +6934,15 @@ class AKShareNormalizer:
                         "AKShare goodwill-impairment market-profile record must come from "
                         "stock_sy_profile_em"
                     )
+                if (
+                    record.request.parameters.get("view")
+                    == _GOODWILL_IMPAIRMENT_INDUSTRY_DATA_VIEW
+                    and endpoint_name != "stock_sy_hy_em"
+                ):
+                    raise ProviderNormalizationError(
+                        "AKShare goodwill-impairment industry-data record must come "
+                        "from stock_sy_hy_em"
+                    )
                 if endpoint_name == "stock_sy_em":
                     _validate_goodwill_impairment_detail_normalizer_scope(
                         record,
@@ -6877,6 +6974,16 @@ class AKShareNormalizer:
                     # listing-level accounting fact.
                     missing_fields.update({"goodwill", "impairment"})
                     normalizer_flags.add("AKSHARE_GOODWILL_PROFILE_RAW_ONLY")
+                elif endpoint_name == "stock_sy_hy_em":
+                    _validate_goodwill_impairment_industry_data_normalizer_scope(
+                        record,
+                        listing,
+                        rows,
+                    )
+                    # Industry aggregates are not issuer-level accounting facts,
+                    # even when their requested report date is explicit.
+                    missing_fields.update({"goodwill", "impairment"})
+                    normalizer_flags.add("AKSHARE_GOODWILL_INDUSTRY_DATA_RAW_ONLY")
                 elif endpoint_name == "stock_sy_jz_em":
                     try:
                         _goodwill_impairment_kwargs(
@@ -6895,8 +7002,8 @@ class AKShareNormalizer:
                 else:
                     raise ProviderNormalizationError(
                         "AKShare goodwill-impairment record must come from "
-                        "stock_sy_em, stock_sy_yq_em, stock_sy_profile_em or "
-                        "stock_sy_jz_em"
+                        "stock_sy_em, stock_sy_yq_em, stock_sy_profile_em, "
+                        "stock_sy_hy_em or stock_sy_jz_em"
                     )
             elif (
                 record.request.category is DataCategory.MARKET_QUOTE
@@ -8600,6 +8707,14 @@ class AKShareNormalizer:
                 "ratios and mixed annual/interim report periods do not establish a "
                 "listing-level accounting scope or a primary-filing reconciliation."
             )
+        if "AKSHARE_GOODWILL_INDUSTRY_DATA_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented A-share goodwill industry-data response is retained "
+                "as raw evidence only: its market-wide industry rows, goodwill, "
+                "net-asset, ratio and profit aggregates do not establish a "
+                "canonical listing-level accounting scope or a primary-filing "
+                "reconciliation."
+            )
         if "AKSHARE_BID_ASK_RAW_ONLY" in normalizer_flags:
             notes += (
                 " The documented A-share bid-ask response is retained as raw evidence "
@@ -8844,6 +8959,7 @@ def _endpoint_candidates(
     goodwill_impairment_forecast_requested: bool = False,
     goodwill_impairment_market_profile_requested: bool = False,
     goodwill_impairment_detail_requested: bool = False,
+    goodwill_impairment_industry_data_requested: bool = False,
     ownership_pledge_company_distribution_requested: bool = False,
     ownership_pledge_bank_distribution_requested: bool = False,
     ownership_pledge_industry_data_requested: bool = False,
@@ -8951,6 +9067,8 @@ def _endpoint_candidates(
                 return ("stock_sy_yq_em",)
             if goodwill_impairment_market_profile_requested:
                 return ("stock_sy_profile_em",)
+            if goodwill_impairment_industry_data_requested:
+                return ("stock_sy_hy_em",)
             return ("stock_sy_jz_em",)
         return ()
     if category is DataCategory.MARKET_QUOTE:
@@ -11041,6 +11159,42 @@ def _goodwill_impairment_kwargs(
                 retryable=False,
             )
         return {}
+    if endpoint_name == "stock_sy_hy_em":
+        if listing.market is not ListingMarket.A:
+            raise ProviderRequestError(
+                "the AKShare goodwill-impairment industry-data endpoint supports "
+                "A-share listings only",
+                request=request,
+                retryable=False,
+            )
+        unknown = sorted(
+            set(request.parameters)
+            - _GOODWILL_IMPAIRMENT_INDUSTRY_DATA_PARAMETER_NAMES
+        )
+        if unknown:
+            raise ProviderRequestError(
+                "unsupported AKShare goodwill-impairment industry-data parameter(s): "
+                + ", ".join(unknown),
+                request=request,
+                retryable=False,
+            )
+        if request.parameters.get("view") != _GOODWILL_IMPAIRMENT_INDUSTRY_DATA_VIEW:
+            raise ProviderRequestError(
+                "goodwill-impairment industry-data view must be "
+                f"{_GOODWILL_IMPAIRMENT_INDUSTRY_DATA_VIEW!r}",
+                request=request,
+                retryable=False,
+            )
+        if "date" not in request.parameters:
+            raise ProviderRequestError(
+                "the AKShare goodwill-impairment industry-data endpoint requires "
+                "date (YYYYMMDD)",
+                request=request,
+                retryable=False,
+            )
+        raw_date = request.parameters["date"]
+        _parse_goodwill_impairment_date_parameter(raw_date, request=request)
+        return {"date": raw_date}
     if endpoint_name != "stock_sy_jz_em":
         raise ProviderRequestError(
             f"unsupported AKShare goodwill-impairment endpoint {endpoint_name!r}",
@@ -18266,6 +18420,134 @@ def _validate_goodwill_impairment_market_profile_provider_rows(
     return report_periods
 
 
+def _goodwill_impairment_industry_data_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> tuple[str | None, list[str]]:
+    """Return strict-schema errors for the dated goodwill-industry snapshot."""
+
+    if not rows:
+        return "goodwill-impairment industry-data response must not be empty", []
+
+    industries: list[str] = []
+    seen_industries: set[str] = set()
+    previous_ratio: float | None = None
+
+    def failure(message: str) -> tuple[str, list[str]]:
+        return message, []
+
+    for index, row in enumerate(rows):
+        missing = [
+            field
+            for field in _GOODWILL_IMPAIRMENT_INDUSTRY_DATA_FIELDS
+            if field not in row
+        ]
+        unexpected = [
+            field
+            for field in row
+            if field not in _GOODWILL_IMPAIRMENT_INDUSTRY_DATA_FIELD_SET
+        ]
+        if missing:
+            return failure(
+                "goodwill-impairment industry-data row "
+                f"{index} is missing field(s): {', '.join(missing)}"
+            )
+        if unexpected:
+            return failure(
+                "goodwill-impairment industry-data row "
+                f"{index} contains unsupported field(s): {', '.join(unexpected)}"
+            )
+        if tuple(row) != _GOODWILL_IMPAIRMENT_INDUSTRY_DATA_FIELDS:
+            return failure(
+                "goodwill-impairment industry-data row "
+                f"{index} field order must match the documented source order"
+            )
+
+        industry = row["行业名称"]
+        if not isinstance(industry, str) or not industry.strip():
+            return failure(
+                f"goodwill-impairment industry-data row {index} field '行业名称' "
+                "must be a non-empty string"
+            )
+        if industry in seen_industries:
+            return failure(
+                "goodwill-impairment industry-data response has a duplicate "
+                "行业名称 identity"
+            )
+        seen_industries.add(industry)
+        industries.append(industry)
+
+        numeric_values: dict[str, float] = {}
+        for field in _GOODWILL_IMPAIRMENT_INDUSTRY_DATA_NUMERIC_FIELDS:
+            value = row[field]
+            if value is None:
+                return failure(
+                    f"goodwill-impairment industry-data row {index} field {field!r} "
+                    "must not be null"
+                )
+            if isinstance(value, bool) or not isinstance(value, Real):
+                return failure(
+                    f"goodwill-impairment industry-data row {index} field {field!r} "
+                    "must be numeric"
+                )
+            try:
+                numeric = float(value)
+            except (OverflowError, TypeError, ValueError):
+                return failure(
+                    f"goodwill-impairment industry-data row {index} field {field!r} "
+                    "must be numeric"
+                )
+            if not math.isfinite(numeric):
+                return failure(
+                    f"goodwill-impairment industry-data row {index} field {field!r} "
+                    "must be finite"
+                )
+            if (
+                field in _GOODWILL_IMPAIRMENT_INDUSTRY_DATA_INTEGER_FIELDS
+                and not numeric.is_integer()
+            ):
+                return failure(
+                    f"goodwill-impairment industry-data row {index} field {field!r} "
+                    "must be an integer"
+                )
+            if (
+                field in _GOODWILL_IMPAIRMENT_INDUSTRY_DATA_NONNEGATIVE_FIELDS
+                and numeric < 0
+            ):
+                return failure(
+                    f"goodwill-impairment industry-data row {index} field {field!r} "
+                    "must be non-negative"
+                )
+            numeric_values[field] = numeric
+
+        ratio = numeric_values["商誉规模占净资产规模比例"]
+        if previous_ratio is not None and ratio > previous_ratio:
+            return failure(
+                "goodwill-impairment industry-data "
+                "商誉规模占净资产规模比例 values must be non-increasing in source order"
+            )
+        previous_ratio = ratio
+
+    return None, industries
+
+
+def _validate_goodwill_impairment_industry_data_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> list[str]:
+    """Validate the dated market-wide goodwill-industry snapshot before storage."""
+
+    message, industries = _goodwill_impairment_industry_data_validation_message(rows)
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message}",
+            provider=provider,
+            request=request,
+        )
+    return industries
+
+
 def _validate_goodwill_impairment_forecast_provider_rows(
     rows: Sequence[Mapping[str, JSONValue]],
     *,
@@ -22083,6 +22365,96 @@ def _validate_goodwill_impairment_detail_normalizer_rows(
             )
 
 
+def _goodwill_impairment_industry_data_response_metadata(
+    *,
+    listing_code: str,
+    requested_date: str,
+    report_period: date,
+    industry_order: list[str],
+    row_count: int,
+) -> dict[str, JSONValue]:
+    """Build the replay contract for the market-wide goodwill-industry slice."""
+
+    return {
+        "endpoint": "stock_sy_hy_em",
+        "market": ListingMarket.A.value,
+        "listing_code": listing_code,
+        "goodwill_impairment_view": _GOODWILL_IMPAIRMENT_INDUSTRY_DATA_VIEW,
+        "market_scope": "all_a_share_listings",
+        "industry_scope": "all_a_share_industries",
+        "listing_scoped_request": False,
+        "row_filtering": "none",
+        "snapshot_scope": "requested_report_date",
+        "requested_date": requested_date,
+        "report_period": report_period.isoformat(),
+        "date_binding": "request_period",
+        "industry_field": "行业名称",
+        "industry_ordering": "source_order_sorted_by_equity_ratio",
+        "industry_order": industry_order,
+        "equity_ratio_field": "商誉规模占净资产规模比例",
+        "equity_ratio_ordering": "non_increasing",
+        "identity_fields": list(_GOODWILL_IMPAIRMENT_INDUSTRY_DATA_IDENTITY_FIELDS),
+        "nullable_identity_fields": list(
+            _GOODWILL_IMPAIRMENT_INDUSTRY_DATA_NULLABLE_IDENTITY_FIELDS
+        ),
+        "value_fields": list(_GOODWILL_IMPAIRMENT_INDUSTRY_DATA_NUMERIC_FIELDS),
+        "non_negative_fields": sorted(
+            _GOODWILL_IMPAIRMENT_INDUSTRY_DATA_NONNEGATIVE_FIELDS
+        ),
+        "amount_fields": sorted(_GOODWILL_IMPAIRMENT_INDUSTRY_DATA_AMOUNT_FIELDS),
+        "amount_unit": "CNY",
+        "amount_field_count": len(_GOODWILL_IMPAIRMENT_INDUSTRY_DATA_AMOUNT_FIELDS),
+        "ratio_fields": sorted(_GOODWILL_IMPAIRMENT_INDUSTRY_DATA_RATIO_FIELDS),
+        "ratio_unit": "not_documented",
+        "ratio_semantics": "provider_reported_ratio",
+        "ratio_source_scale": "unchanged",
+        "ratio_field_count": len(_GOODWILL_IMPAIRMENT_INDUSTRY_DATA_RATIO_FIELDS),
+        "integer_fields": [
+            field
+            for field in _GOODWILL_IMPAIRMENT_INDUSTRY_DATA_FIELDS
+            if field in _GOODWILL_IMPAIRMENT_INDUSTRY_DATA_INTEGER_FIELDS
+        ],
+        "text_fields": list(_GOODWILL_IMPAIRMENT_INDUSTRY_DATA_TEXT_FIELDS),
+        "required_text_fields": list(
+            _GOODWILL_IMPAIRMENT_INDUSTRY_DATA_REQUIRED_TEXT_FIELDS
+        ),
+        "required_numeric_fields": list(
+            _GOODWILL_IMPAIRMENT_INDUSTRY_DATA_NUMERIC_FIELDS
+        ),
+        "field_types": dict(_GOODWILL_IMPAIRMENT_INDUSTRY_DATA_FIELD_TYPES),
+        "nullable_fields": list(_GOODWILL_IMPAIRMENT_INDUSTRY_DATA_NULLABLE_FIELDS),
+        "field_count": len(_GOODWILL_IMPAIRMENT_INDUSTRY_DATA_FIELDS),
+        "source_field_order": list(_GOODWILL_IMPAIRMENT_INDUSTRY_DATA_FIELDS),
+        "documented_units": dict(
+            _GOODWILL_IMPAIRMENT_INDUSTRY_DATA_DOCUMENTED_UNITS
+        ),
+        "undocumented_numeric_units": dict(
+            _GOODWILL_IMPAIRMENT_INDUSTRY_DATA_UNDOCUMENTED_NUMERIC_UNITS
+        ),
+        "upstream_report_name": "RPT_GOODWILL_INDUSTATISTICS",
+        "upstream_columns_selector": "ALL",
+        "upstream_columns": list(
+            _GOODWILL_IMPAIRMENT_INDUSTRY_DATA_UPSTREAM_COLUMNS
+        ),
+        "wrapper_dropped_fields": [
+            "REPORT_DATE",
+            "INDUSTRY_CODE",
+            "GOODWILL_CHANGE",
+            "SE_CHANGE_RATIO",
+            "PNP_CHANGE_RATIO",
+        ],
+        "upstream_page_size": 5000,
+        "pagination": "all_pages",
+        "upstream_sort_column": "SUMSHEQUITY_RATIO",
+        "upstream_sort_direction": "descending",
+        "upstream_filter": f"(REPORT_DATE='{report_period.isoformat()}')",
+        "industry_label_policy": "preserve_provider_text",
+        "entity_rows_selected": False,
+        "upstream_row_count": row_count,
+        "entity_row_count": 0,
+    }
+
+
 def _validate_goodwill_impairment_detail_normalizer_scope(
     record: RawProviderRecord,
     listing: _ListingRef,
@@ -22396,6 +22768,90 @@ def _validate_goodwill_impairment_market_profile_normalizer_scope(
         if not matches:
             raise ProviderNormalizationError(
                 "AKShare goodwill-impairment market-profile response metadata "
+                f"{name!r} does not match the requested replay scope"
+            )
+
+
+def _validate_goodwill_impairment_industry_data_normalizer_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> list[str]:
+    """Validate replayed market-wide goodwill-industry rows."""
+
+    message, industries = _goodwill_impairment_industry_data_validation_message(rows)
+    if message is not None:
+        raise ProviderNormalizationError(message)
+    return industries
+
+
+def _validate_goodwill_impairment_industry_data_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> None:
+    """Validate replayed scope and metadata for the dated industry snapshot."""
+
+    endpoint_name = "stock_sy_hy_em"
+    if listing.market is not ListingMarket.A:
+        raise ProviderNormalizationError(
+            "AKShare goodwill-impairment industry-data raw slice supports A-share "
+            "listings only"
+        )
+    if record.response_metadata.get("endpoint") != endpoint_name:
+        raise ProviderNormalizationError(
+            "AKShare goodwill-impairment industry-data record must come from "
+            f"{endpoint_name}"
+        )
+    if record.source_uri != _SOURCE_URIS[endpoint_name]:
+        raise ProviderNormalizationError(
+            "AKShare goodwill-impairment industry-data source URI does not match "
+            "the documented endpoint"
+        )
+    try:
+        upstream_kwargs = _goodwill_impairment_kwargs(
+            endpoint_name,
+            listing,
+            record.request,
+        )
+        requested_date = _parse_goodwill_impairment_date_parameter(
+            upstream_kwargs["date"],
+            request=record.request,
+        )
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+
+    industries = _validate_goodwill_impairment_industry_data_normalizer_rows(rows)
+    expected_metadata = _goodwill_impairment_industry_data_response_metadata(
+        listing_code=listing.code,
+        requested_date=record.request.parameters["date"],
+        report_period=requested_date,
+        industry_order=industries,
+        row_count=len(rows),
+    )
+    boolean_fields = {"listing_scoped_request", "entity_rows_selected"}
+    count_fields = {
+        "field_count",
+        "upstream_page_size",
+        "upstream_row_count",
+        "entity_row_count",
+    }
+    for name, expected in expected_metadata.items():
+        if name not in record.response_metadata:
+            matches = False
+        elif name in boolean_fields:
+            actual = record.response_metadata[name]
+            matches = isinstance(actual, bool) and actual is expected
+        elif name in count_fields:
+            actual = record.response_metadata[name]
+            matches = (
+                isinstance(actual, int)
+                and not isinstance(actual, bool)
+                and actual == expected
+            )
+        else:
+            matches = record.response_metadata[name] == expected
+        if not matches:
+            raise ProviderNormalizationError(
+                "AKShare goodwill-impairment industry-data response metadata "
                 f"{name!r} does not match the requested replay scope"
             )
 
