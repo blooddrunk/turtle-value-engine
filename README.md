@@ -1655,6 +1655,20 @@ performed. The normalizer emits `AKSHARE_HSGT_FUND_FLOW_SUMMARY_RAW_ONLY` and
 creates no issuer cash-flow, listing-specific liquidity, return or valuation
 fact. No calculation, gate, pipeline, CLI or input-loader contract changes.
 
+Phase 3.39 adds the documented Eastmoney Shanghai A-share real-time quote
+endpoint [`stock_sh_a_spot_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
+under `MARKET_QUOTE` with explicit `view=sh_a_spot` and a Shanghai A-share
+listing context. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hist_em.py)
+calls the `push2.eastmoney.com/api/qt/clist/get` JSON endpoint with the fixed
+Shanghai filters `m:1 t:2,m:1 t:23`, provider-driven pagination, `f3` descending
+sort and the exact 23-field wrapper output. The provider preserves the official
+field order, wrapper source mapping, documented price/volume/turnover/percentage
+units and complete-universe response metadata before selecting the requested
+code. The normalizer emits `AKSHARE_SH_A_SPOT_QUOTE_RAW_ONLY`: the current-day
+snapshot has no stable observation timestamp and therefore creates no canonical
+current-price fact. No calculation, gate, pipeline, CLI or input-loader contract
+changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.
