@@ -1778,6 +1778,29 @@ upstream parameters, complete-universe validation, invalid unrequested rows,
 empty selection, raw-only normalization and offline cache replay. No
 calculation, gate, pipeline, CLI or input-loader contract changes.
 
+Phase 3.47 adds the documented Sina B-share daily-history endpoint
+[`stock_zh_b_daily`](https://akshare.akfamily.xyz/data/stock/stock.html) under
+`MARKET_HISTORY` with explicit `view=b_daily`, Shanghai 900xxx or Shenzhen
+200xxx listing context, inclusive `start_date`/`end_date` and the documented
+`adjust` choices `''`, `qfq`, `hfq`, `qfq-factor` and `hfq-factor`. The [official
+implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_zh_b_sina.py)
+fetches Sina's encrypted-JavaScript full history, an auxiliary outstanding-
+share history and, when requested, qfq/hfq factors; the adapter preserves the
+exact regular fields `date`, `open`, `high`, `low`, `close`, `volume`,
+`outstanding_share` and `turnover`, or the exact two-field factor response.
+The requested range, lower-prefixed exchange symbol, adjustment mode, source
+URLs, decoder/transform steps and factor-history full-snapshot scope are all
+replay metadata.
+
+The B-share daily-history response remains raw evidence only: the documented
+response does not establish the Shanghai/Shenzhen B-share price currency or a
+canonical adjustment/trading-calendar basis. The normalizer emits
+`AKSHARE_B_DAILY_HISTORY_RAW_ONLY` and creates no canonical daily-history,
+return, valuation or accounting fact. Tests cover routing, defaults, date and
+factor schemas, invalid rows, raw-only normalization, replay metadata
+tampering, out-of-range replay and offline cache replay. No calculation, gate,
+pipeline, CLI or input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

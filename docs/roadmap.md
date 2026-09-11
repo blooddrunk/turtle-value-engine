@@ -3743,6 +3743,31 @@ complete-response field/order/code/type boundaries, invalid unrequested rows,
 empty selection, raw-only normalization and offline cache replay. No
 calculation, gate, pipeline, CLI or input-loader contract changes.
 
+### Phase 3.47 — Sina B-share daily-history raw acquisition contract (COMPLETE)
+
+The mapping review now covers the documented Sina
+[`stock_zh_b_daily`](https://akshare.akfamily.xyz/data/stock/stock.html)
+B-share daily-history endpoint under `MARKET_HISTORY` with explicit
+`view=b_daily`, Shanghai 900xxx or Shenzhen 200xxx listing context, inclusive
+`start_date`/`end_date` and `adjust` values `''`, `qfq`, `hfq`, `qfq-factor` or
+`hfq-factor`. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_zh_b_sina.py)
+fetches Sina's encrypted-JavaScript full history, an outstanding-share
+auxiliary response and optional qfq/hfq factor history. The provider preserves
+the exact regular fields `date`, `open`, `high`, `low`, `close`, `volume`,
+`outstanding_share`, `turnover`, or the exact two-field factor response, along
+with the requested range, lower-prefixed symbol, adjustment mode, source URLs,
+decoder/transform steps and factor-series full-snapshot scope in replay
+metadata.
+
+The B-share daily-history response remains raw evidence only because the
+documented response does not establish the Shanghai/Shenzhen B-share price
+currency or a canonical adjustment/trading-calendar basis. The normalizer
+emits `AKSHARE_B_DAILY_HISTORY_RAW_ONLY` and creates no canonical daily-history,
+return, valuation or accounting fact. Tests cover routing, defaults, exact
+regular/factor schemas, invalid rows, raw-only normalization, replay metadata
+tampering, out-of-range replay and offline cache replay. No calculation, gate,
+pipeline, CLI or input-loader contract changes.
+
 ### Future structured-provider deliverables
 
 ```text
@@ -3752,7 +3777,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–3.44 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–3.47 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```

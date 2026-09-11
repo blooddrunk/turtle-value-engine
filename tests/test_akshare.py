@@ -511,6 +511,30 @@ class FakeAKShare:
             end_date=end_date,
         )
 
+    def stock_zh_b_daily(
+        self,
+        *,
+        symbol: str,
+        start_date: str,
+        end_date: str,
+        adjust: str,
+    ):
+        fixture_by_adjust = {
+            "": "b_daily_history.json",
+            "qfq": "b_daily_history.json",
+            "hfq": "b_daily_history.json",
+            "qfq-factor": "b_daily_qfq_factor.json",
+            "hfq-factor": "b_daily_hfq_factor.json",
+        }
+        return self._return(
+            "stock_zh_b_daily",
+            _fixture(fixture_by_adjust[adjust]),
+            symbol=symbol,
+            start_date=start_date,
+            end_date=end_date,
+            adjust=adjust,
+        )
+
     def stock_cyq_em(self, *, symbol: str, adjust: str):
         return self._return(
             "stock_cyq_em",
@@ -1293,8 +1317,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "148"
-    assert AKSHARE_MAPPING_VERSION == "149"
+    assert provider.identity.provider_version == "150"
+    assert AKSHARE_MAPPING_VERSION == "151"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -13959,6 +13983,621 @@ def test_a_cdr_daily_history_cache_replay_does_not_call_upstream(tmp_path: Path)
                 "symbol": "sh689009",
                 "start_date": "20201029",
                 "end_date": "20201103",
+            },
+        )
+    ]
+
+
+def test_b_daily_history_fetch_uses_documented_symbol_and_range():
+    fake = FakeAKShare()
+    record = _provider(fake).fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "SH900901",
+            {
+                "view": "b_daily",
+                "start_date": "2026-09-08",
+                "end_date": "20260909",
+            },
+        )
+    )
+
+    fields = [
+        "date",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume",
+        "outstanding_share",
+        "turnover",
+    ]
+    assert record.raw_payload == _fixture("b_daily_history.json")
+    assert fake.calls == [
+        (
+            "stock_zh_b_daily",
+            {
+                "symbol": "sh900901",
+                "start_date": "20260908",
+                "end_date": "20260909",
+                "adjust": "",
+            },
+        )
+    ]
+    assert record.source_uri == (
+        "https://finance.sina.com.cn/realstock/company/sh900901/nc.shtml"
+    )
+    assert record.response_metadata["endpoint"] == "stock_zh_b_daily"
+    assert record.response_metadata["market"] == "A"
+    assert record.response_metadata["listing_code"] == "900901"
+    assert record.response_metadata["market_history_view"] == "b_daily"
+    assert record.response_metadata["upstream_symbol"] == "sh900901"
+    assert record.response_metadata["market_scope"] == "requested_b_share_listing"
+    assert record.response_metadata["listing_scoped_request"] is True
+    assert record.response_metadata["row_filtering"] == "upstream"
+    assert record.response_metadata["snapshot_scope"] == (
+        "requested_b_share_daily_range"
+    )
+    assert record.response_metadata["date_binding"] == "row_and_request"
+    assert record.response_metadata["range_filtering"] == (
+        "wrapper_and_provider_validation"
+    )
+    assert record.response_metadata["b_daily_start_date"] == "20260908"
+    assert record.response_metadata["b_daily_end_date"] == "20260909"
+    assert record.response_metadata["b_daily_adjust"] == ""
+    assert record.response_metadata["adjustment_kind"] == "price_series"
+    assert record.response_metadata["observation_date_field"] == "date"
+    assert record.response_metadata["date_ordering"] == "strictly_ascending"
+    assert record.response_metadata["field_count"] == 8
+    assert record.response_metadata["source_field_order"] == fields
+    assert record.response_metadata["date_fields"] == ["date"]
+    assert record.response_metadata["value_fields"] == fields[1:]
+    assert record.response_metadata["required_numeric_fields"] == fields[1:]
+    assert record.response_metadata["documented_units"] == {
+        "volume": "shares",
+        "outstanding_share": "shares",
+        "turnover": "ratio",
+    }
+    assert record.response_metadata["undocumented_numeric_units"] == {
+        "open": "not_documented",
+        "high": "not_documented",
+        "low": "not_documented",
+        "close": "not_documented",
+    }
+    assert record.response_metadata["field_types"] == {
+        "date": "date",
+        "open": "number",
+        "high": "number",
+        "low": "number",
+        "close": "number",
+        "volume": "number",
+        "outstanding_share": "number",
+        "turnover": "number",
+    }
+    assert record.response_metadata["upstream_url"] == (
+        "https://finance.sina.com.cn/realstock/company/"
+        "sh900901/hisdata_klc2/klc_kl.js"
+    )
+    assert record.response_metadata["upstream_urls"] == [
+        record.response_metadata["upstream_url"],
+        (
+            "https://stock.finance.sina.com.cn/stock/api/jsonp.php/"
+            "var%20KKE_ShareAmount_sh900901=/StockService.getAmountBySymbol?"
+            "_=20&symbol=sh900901"
+        ),
+    ]
+    assert record.response_metadata["upstream_auxiliary_roles"] == [
+        "outstanding_share_history"
+    ]
+    assert record.response_metadata["upstream_protocol"] == "encrypted_javascript"
+    assert record.response_metadata["upstream_parameters"] == ["symbol"]
+    assert record.response_metadata["upstream_dynamic_parameters"] == {
+        "symbol": "sh900901"
+    }
+    assert record.response_metadata["upstream_fixed_parameters"] == {}
+    assert record.response_metadata["upstream_authentication"] == "none"
+    assert record.response_metadata["wrapper_source_page_uri"] == record.source_uri
+    assert record.response_metadata["wrapper_date_filtering"] == (
+        "inclusive_slice_after_full_history_fetch"
+    )
+    assert record.response_metadata["wrapper_decoders"] == ["hk_js_decode", "demjson"]
+    assert record.response_metadata["wrapper_transformations"] == [
+        "hk_js_decode",
+        "amount_times_10000",
+        "turnover_volume_divided_by_outstanding_share",
+        "price_round_2",
+    ]
+    assert record.response_metadata["upstream_page_size"] is None
+    assert record.response_metadata["pagination"] == "single_full_history_response"
+    assert record.response_metadata["upstream_row_count"] == 2
+    assert record.response_metadata["entity_row_count"] == 2
+    assert record.response_metadata["entity_rows_selected"] is True
+    assert record.response_metadata["observation_start_date"] == "2026-09-08"
+    assert record.response_metadata["observation_end_date"] == "2026-09-09"
+
+
+def test_b_daily_history_fetch_accepts_shenzhen_b_share_listing():
+    fake = FakeAKShare()
+    record = _provider(fake).fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "SZ200625",
+            {"view": "b_daily", "start_date": "20260908", "end_date": "20260909"},
+        )
+    )
+
+    assert fake.calls == [
+        (
+            "stock_zh_b_daily",
+            {
+                "symbol": "sz200625",
+                "start_date": "20260908",
+                "end_date": "20260909",
+                "adjust": "",
+            },
+        )
+    ]
+    assert record.response_metadata["upstream_symbol"] == "sz200625"
+
+
+def test_b_daily_history_request_applies_documented_defaults():
+    fake = FakeAKShare()
+    record = _provider(fake).fetch(
+        _request(DataCategory.MARKET_HISTORY, "SH900901", {"view": "b_daily"})
+    )
+
+    assert fake.calls == [
+        (
+            "stock_zh_b_daily",
+            {
+                "symbol": "sh900901",
+                "start_date": "19900101",
+                "end_date": "21000118",
+                "adjust": "",
+            },
+        )
+    ]
+    assert record.response_metadata["b_daily_start_date"] == "19900101"
+    assert record.response_metadata["b_daily_end_date"] == "21000118"
+    assert record.response_metadata["b_daily_adjust"] == ""
+
+
+@pytest.mark.parametrize(
+    ("entity_id", "parameters", "match"),
+    [
+        (
+            "SH600000",
+            {"view": "b_daily"},
+            "supports Shanghai 900xxx",
+        ),
+        (
+            "HK00700",
+            {"view": "b_daily"},
+            "supports Shanghai 900xxx",
+        ),
+        (
+            "SH900901",
+            {"view": "b_daily", "start_date": "2026/09/08"},
+            "start_date must be YYYYMMDD or YYYY-MM-DD",
+        ),
+        (
+            "SH900901",
+            {"view": "b_daily", "start_date": "20260931"},
+            "start_date must be a valid date",
+        ),
+        (
+            "SH900901",
+            {
+                "view": "b_daily",
+                "start_date": "20260909",
+                "end_date": "20260908",
+            },
+            "start_date must not be after end_date",
+        ),
+        (
+            "SH900901",
+            {"view": "b_daily", "adjust": "split"},
+            "adjust must be one of",
+        ),
+        (
+            "SH900901",
+            {"view": "b_daily", "unexpected": True},
+            "unsupported AKShare B-share daily-history parameter",
+        ),
+    ],
+)
+def test_b_daily_history_request_validates_parameters_and_market(
+    entity_id: str,
+    parameters: dict,
+    match: str,
+):
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError, match=match):
+        _provider(fake).fetch(
+            _request(DataCategory.MARKET_HISTORY, entity_id, parameters)
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("missing_field", "missing field"),
+        ("extra_field", "unsupported field"),
+        ("reordered_fields", "documented field order"),
+        ("invalid_date", "invalid date"),
+        ("outside_range", "outside requested range"),
+        ("descending", "strictly ascending"),
+        ("duplicate_date", "duplicate date"),
+        ("invalid_numeric", "must be numeric or null"),
+        ("bool_numeric", "must be numeric or null"),
+        ("infinite_numeric", "contains infinity"),
+    ],
+)
+def test_b_daily_history_response_validates_documented_rows(
+    mutation: str,
+    match: str,
+):
+    class InvalidRows(FakeAKShare):
+        def stock_zh_b_daily(
+            self,
+            *,
+            symbol: str,
+            start_date: str,
+            end_date: str,
+            adjust: str,
+        ):
+            rows = [dict(row) for row in _fixture("b_daily_history.json")]
+            if mutation == "missing_field":
+                rows[0].pop("turnover")
+            elif mutation == "extra_field":
+                rows[0]["unexpected"] = "not documented"
+            elif mutation == "reordered_fields":
+                first = rows[0]
+                rows[0] = {
+                    "open": first["open"],
+                    **{key: value for key, value in first.items() if key != "open"},
+                }
+            elif mutation == "invalid_date":
+                rows[0]["date"] = "not-a-date"
+            elif mutation == "outside_range":
+                rows[0]["date"] = "2026-09-07"
+            elif mutation == "descending":
+                rows.reverse()
+            elif mutation == "duplicate_date":
+                rows[1]["date"] = rows[0]["date"]
+            elif mutation == "invalid_numeric":
+                rows[0]["close"] = "0.44"
+            elif mutation == "bool_numeric":
+                rows[0]["volume"] = True
+            else:
+                rows[0]["high"] = float("inf")
+            return self._return(
+                "stock_zh_b_daily",
+                rows,
+                symbol=symbol,
+                start_date=start_date,
+                end_date=end_date,
+                adjust=adjust,
+            )
+
+    with pytest.raises(ProviderResponseError, match=match):
+        _provider(InvalidRows()).fetch(
+            _request(
+                DataCategory.MARKET_HISTORY,
+                "SH900901",
+                {
+                    "view": "b_daily",
+                    "start_date": "20260908",
+                    "end_date": "20260909",
+                },
+            )
+        )
+
+
+def test_b_daily_history_factor_response_preserves_documented_factor_shape():
+    for adjust, field, fixture_name, expected_url in [
+        (
+            "qfq-factor",
+            "qfq_factor",
+            "b_daily_qfq_factor.json",
+            "https://finance.sina.com.cn/realstock/company/"
+            "sh900901/qfq.js",
+        ),
+        (
+            "hfq-factor",
+            "hfq_factor",
+            "b_daily_hfq_factor.json",
+            "https://finance.sina.com.cn/realstock/company/"
+            "sh900901/hfq.js",
+        ),
+    ]:
+        fake = FakeAKShare()
+        record = _provider(fake).fetch(
+            _request(
+                DataCategory.MARKET_HISTORY,
+                "SH900901",
+                {"view": "b_daily", "adjust": adjust},
+            )
+        )
+
+        assert record.raw_payload == _fixture(fixture_name)
+        assert fake.calls[-1] == (
+            "stock_zh_b_daily",
+            {
+                "symbol": "sh900901",
+                "start_date": "19900101",
+                "end_date": "21000118",
+                "adjust": adjust,
+            },
+        )
+        assert record.response_metadata["adjustment_kind"] == "factor_series"
+        assert record.response_metadata["date_ordering"] == "strictly_descending"
+        assert record.response_metadata["snapshot_scope"] == (
+            "full_b_share_adjustment_factor_history"
+        )
+        assert record.response_metadata["date_binding"] == "row_only"
+        assert record.response_metadata["range_filtering"] == (
+            "not_applied_for_factor_history"
+        )
+        assert record.response_metadata["field_count"] == 2
+        assert record.response_metadata["source_field_order"] == ["date", field]
+        assert record.response_metadata["value_fields"] == [field]
+        assert record.response_metadata["documented_units"] == {}
+        assert record.response_metadata["undocumented_numeric_units"] == {
+            field: "not_documented"
+        }
+        assert record.response_metadata["upstream_url"] == expected_url
+        assert record.response_metadata["upstream_auxiliary_urls"] == []
+        assert record.response_metadata["wrapper_decoders"] == ["python_eval"]
+        assert record.response_metadata["observation_start_date"] == "1900-01-01"
+        assert record.response_metadata["observation_end_date"] == "2026-09-09"
+
+
+def test_b_daily_history_empty_response_is_a_valid_raw_snapshot():
+    class EmptyResponse(FakeAKShare):
+        def stock_zh_b_daily(
+            self,
+            *,
+            symbol: str,
+            start_date: str,
+            end_date: str,
+            adjust: str,
+        ):
+            return self._return(
+                "stock_zh_b_daily",
+                [],
+                symbol=symbol,
+                start_date=start_date,
+                end_date=end_date,
+                adjust=adjust,
+            )
+
+    record = _provider(EmptyResponse()).fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "SH900901",
+            {
+                "view": "b_daily",
+                "start_date": "20260908",
+                "end_date": "20260909",
+            },
+        )
+    )
+
+    assert record.raw_payload == []
+    assert record.response_metadata["upstream_row_count"] == 0
+    assert record.response_metadata["entity_row_count"] == 0
+    assert record.response_metadata["observation_start_date"] is None
+    assert record.response_metadata["observation_end_date"] is None
+
+
+def test_b_daily_history_is_retained_as_raw_evidence_without_canonical_facts():
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "SH900901",
+            {
+                "view": "b_daily",
+                "start_date": "20260908",
+                "end_date": "20260909",
+            },
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="b-daily-history-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company("SH900901"),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_B_DAILY_HISTORY_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == ["market_history"]
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "Sina B-share daily-history" in normalized.data_quality.notes
+    assert "different market currencies" in normalized.data_quality.notes
+    assert "canonical daily-history contract" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "endpoint",
+        "source_uri",
+        "view",
+        "symbol",
+        "market_scope",
+        "listing_scope",
+        "snapshot",
+        "date_binding",
+        "range_filtering",
+        "start",
+        "end",
+        "adjust",
+        "adjustment_kind",
+        "date_ordering",
+        "field_count",
+        "source_order",
+        "upstream_url",
+        "wrapper_decoder",
+        "pagination",
+        "count",
+        "observation_start",
+        "payload",
+    ],
+)
+def test_b_daily_history_normalizer_rejects_replayed_scope_mismatches(mutation: str):
+    request = _request(
+        DataCategory.MARKET_HISTORY,
+        "SH900901",
+        {
+            "view": "b_daily",
+            "start_date": "20260908",
+            "end_date": "20260909",
+            "adjust": "qfq",
+        },
+    )
+    record = _provider().fetch(request)
+    response_metadata = dict(record.response_metadata)
+    payload = [dict(row) for row in record.raw_payload]
+    source_uri = record.source_uri
+    if mutation == "endpoint":
+        response_metadata["endpoint"] = "stock_zh_a_hist"
+    elif mutation == "source_uri":
+        source_uri = "https://example.invalid/b-daily"
+    elif mutation == "view":
+        response_metadata["market_history_view"] = "daily"
+    elif mutation == "symbol":
+        response_metadata["upstream_symbol"] = "sz200625"
+    elif mutation == "market_scope":
+        response_metadata["market_scope"] = "requested_a_share_listing"
+    elif mutation == "listing_scope":
+        response_metadata["listing_scoped_request"] = False
+    elif mutation == "snapshot":
+        response_metadata["snapshot_scope"] = "current_snapshot"
+    elif mutation == "date_binding":
+        response_metadata["date_binding"] = "row_only"
+    elif mutation == "range_filtering":
+        response_metadata["range_filtering"] = "normalizer"
+    elif mutation == "start":
+        response_metadata["b_daily_start_date"] = "20260907"
+    elif mutation == "end":
+        response_metadata["b_daily_end_date"] = "20260910"
+    elif mutation == "adjust":
+        response_metadata["b_daily_adjust"] = ""
+    elif mutation == "adjustment_kind":
+        response_metadata["adjustment_kind"] = "factor_series"
+    elif mutation == "date_ordering":
+        response_metadata["date_ordering"] = "strictly_descending"
+    elif mutation == "field_count":
+        response_metadata["field_count"] = 7
+    elif mutation == "source_order":
+        response_metadata["source_field_order"] = list(
+            reversed(response_metadata["source_field_order"])
+        )
+    elif mutation == "upstream_url":
+        response_metadata["upstream_url"] = "https://example.invalid/b-daily.js"
+    elif mutation == "wrapper_decoder":
+        response_metadata["wrapper_decoders"] = ["plain_json"]
+    elif mutation == "pagination":
+        response_metadata["pagination"] = "paged"
+    elif mutation == "count":
+        response_metadata["entity_row_count"] = 99
+    elif mutation == "observation_start":
+        response_metadata["observation_start_date"] = "2026-09-07"
+    else:
+        payload[0]["date"] = "2026-09-07"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=source_uri,
+        response_metadata=response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match="B-share daily-history"):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-b-daily-history-scope",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company("SH900901"),
+        )
+
+
+def test_b_daily_history_normalizer_rejects_replayed_rows_outside_request():
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "SH900901",
+            {
+                "view": "b_daily",
+                "start_date": "20260908",
+                "end_date": "20260909",
+            },
+        )
+    )
+    payload = [dict(row) for row in record.raw_payload]
+    payload[0]["date"] = "2026-09-07"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=record.source_uri,
+        response_metadata=record.response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match="outside requested range"):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="out-of-range-b-daily-history",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company("SH900901"),
+        )
+
+
+def test_b_daily_history_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.MARKET_HISTORY,
+        "SH900901",
+        {
+            "view": "b_daily",
+            "start_date": "20260908",
+            "end_date": "20260909",
+        },
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [
+        (
+            "stock_zh_b_daily",
+            {
+                "symbol": "sh900901",
+                "start_date": "20260908",
+                "end_date": "20260909",
+                "adjust": "",
             },
         )
     ]
