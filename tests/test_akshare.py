@@ -227,6 +227,12 @@ class FakeAKShare:
             _fixture("a_market_activity_legu.json"),
         )
 
+    def stock_a_congestion_lg(self):
+        return self._return(
+            "stock_a_congestion_lg",
+            _fixture("a_congestion.json"),
+        )
+
     def stock_sse_deal_daily(self, *, date: str):
         return self._return(
             "stock_sse_deal_daily",
@@ -956,8 +962,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "110"
-    assert AKSHARE_MAPPING_VERSION == "111"
+    assert provider.identity.provider_version == "111"
+    assert AKSHARE_MAPPING_VERSION == "112"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -21716,6 +21722,355 @@ def test_market_activity_legu_cache_replay_does_not_call_upstream(tmp_path: Path
     assert replay.mode is RetrievalMode.CACHE_REPLAY
     assert replay.record == live.record
     assert fake.calls == [("stock_market_activity_legu", {})]
+
+
+def test_market_activity_congestion_fetch_preserves_latest_history_contract():
+    fake = FakeAKShare()
+    request = _request(
+        DataCategory.MARKET_ACTIVITY,
+        "SH600000",
+        {"view": "congestion"},
+    )
+
+    record = _provider(fake).fetch(request)
+    fixture = _fixture("a_congestion.json")
+
+    assert record.raw_payload == fixture
+    assert fake.calls == [("stock_a_congestion_lg", {})]
+    assert record.response_metadata["endpoint"] == "stock_a_congestion_lg"
+    assert record.response_metadata["market"] == "A"
+    assert record.response_metadata["listing_code"] == "600000"
+    assert record.response_metadata["market_activity_view"] == "congestion"
+    assert record.response_metadata["market_scope"] == (
+        "Shanghai and Shenzhen A-share market"
+    )
+    assert record.response_metadata["listing_scoped_request"] is False
+    assert record.response_metadata["row_filtering"] == "none"
+    assert record.response_metadata["snapshot_scope"] == (
+        "latest_four_years_market_congestion_history"
+    )
+    assert record.response_metadata["history_window"] == "latest_four_years"
+    assert record.response_metadata["date_binding"] == "row_dates"
+    assert record.response_metadata["observation_date_field"] == "date"
+    assert record.response_metadata["observation_date_format"] == "YYYY-MM-DD"
+    assert record.response_metadata["observation_date_ordering"] == (
+        "strictly_ascending"
+    )
+    assert record.response_metadata["observation_start_date"] == "2020-04-27"
+    assert record.response_metadata["observation_end_date"] == "2024-04-24"
+    assert record.response_metadata["observation_count_contract"] == (
+        "non_empty_latest_four_year_history"
+    )
+    assert record.response_metadata["value_fields"] == ["close", "congestion"]
+    assert record.response_metadata["non_negative_fields"] == [
+        "close",
+        "congestion",
+    ]
+    assert record.response_metadata["integer_fields"] == []
+    assert record.response_metadata["text_fields"] == []
+    assert record.response_metadata["required_date_fields"] == ["date"]
+    assert record.response_metadata["required_numeric_fields"] == [
+        "close",
+        "congestion",
+    ]
+    assert record.response_metadata["field_types"] == {
+        "date": "date",
+        "close": "number",
+        "congestion": "number",
+    }
+    assert record.response_metadata["nullable_fields"] == []
+    assert record.response_metadata["field_count"] == 3
+    assert record.response_metadata["source_field_order"] == list(fixture[0])
+    assert record.response_metadata["documented_units"] == {}
+    assert record.response_metadata["undocumented_numeric_units"] == {
+        "close": "not_documented",
+        "congestion": "not_documented",
+    }
+    assert record.response_metadata["upstream_url"] == (
+        "https://legulegu.com/api/stockdata/ashares-congestion"
+    )
+    assert record.response_metadata["upstream_protocol"] == "JSON"
+    assert record.response_metadata["upstream_report_name"] is None
+    assert record.response_metadata["upstream_parameters"] == []
+    assert record.response_metadata["upstream_authentication"] == (
+        "token_and_cookie_csrf"
+    )
+    assert record.response_metadata["wrapper_dropped_fields"] == []
+    assert record.response_metadata["upstream_page_size"] is None
+    assert record.response_metadata["pagination"] == "single_snapshot"
+    assert record.response_metadata["upstream_sort_column"] is None
+    assert record.response_metadata["upstream_sort_direction"] is None
+    assert record.response_metadata["upstream_filter"] is None
+    assert record.response_metadata["wrapper_output_ordering"] == (
+        "ascending_by_date"
+    )
+    assert record.response_metadata["upstream_row_count"] == len(fixture)
+    assert record.response_metadata["entity_row_count"] == 0
+    assert record.response_metadata["entity_rows_selected"] is False
+    assert record.source_uri == "https://legulegu.com/stockdata/ashares-congestion"
+
+
+@pytest.mark.parametrize(
+    ("parameters", "entity_id", "match"),
+    [
+        (
+            {"view": "congestion", "date": "20240424"},
+            "SH600000",
+            "unsupported AKShare congestion parameter",
+        ),
+        (
+            {"view": "congestion"},
+            "HK00700",
+            "A-share listings only",
+        ),
+    ],
+)
+def test_market_activity_congestion_request_validates_explicit_scope_before_upstream_call(
+    parameters: dict,
+    entity_id: str,
+    match: str,
+):
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError, match=match):
+        _provider(fake).fetch(
+            _request(DataCategory.MARKET_ACTIVITY, entity_id, parameters)
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("empty", "must not be empty"),
+        ("missing_field", "row 0 is missing field.*close"),
+        ("extra_field", "row 0 contains unsupported field"),
+        ("reordered_fields", "official field order"),
+        ("invalid_date", "row 0 has an invalid date"),
+        ("duplicate_date", "duplicate date"),
+        ("descending_dates", "strictly ascending"),
+        ("invalid_numeric", "field 'close'.*numeric"),
+        ("boolean_numeric", "field 'close'.*numeric"),
+        ("negative_numeric", "field 'close'.*non-negative"),
+        ("null_numeric", "field 'congestion'.*numeric"),
+    ],
+)
+def test_market_activity_congestion_response_validates_schema_boundaries(
+    mutation: str,
+    match: str,
+):
+    payload = [dict(row) for row in _fixture("a_congestion.json")]
+    if mutation == "empty":
+        payload = []
+    elif mutation == "missing_field":
+        payload[0].pop("close")
+    elif mutation == "extra_field":
+        payload[0]["unexpected"] = "not documented"
+    elif mutation == "reordered_fields":
+        payload[0] = dict(reversed(list(payload[0].items())))
+    elif mutation == "invalid_date":
+        payload[0]["date"] = "2020-4-27"
+    elif mutation == "duplicate_date":
+        payload[1]["date"] = payload[0]["date"]
+    elif mutation == "descending_dates":
+        payload.reverse()
+    elif mutation == "invalid_numeric":
+        payload[0]["close"] = "2815.49"
+    elif mutation == "boolean_numeric":
+        payload[0]["close"] = True
+    elif mutation == "negative_numeric":
+        payload[0]["close"] = -1
+    else:
+        payload[0]["congestion"] = None
+
+    class InvalidCongestion(FakeAKShare):
+        def stock_a_congestion_lg(self):
+            return self._return("stock_a_congestion_lg", payload)
+
+    with pytest.raises(ProviderResponseError, match=match):
+        _provider(InvalidCongestion()).fetch(
+            _request(
+                DataCategory.MARKET_ACTIVITY,
+                "SH600000",
+                {"view": "congestion"},
+            )
+        )
+
+
+def test_market_activity_congestion_is_retained_as_raw_evidence_without_facts():
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SH600000",
+            {"view": "congestion"},
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="market-congestion-raw-only",
+        as_of=date(2026, 9, 11),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_MARKET_CONGESTION_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == []
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "Legu A-share congestion" in normalized.data_quality.notes
+    assert "provider-defined congestion" in normalized.data_quality.notes
+    assert "canonical" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "endpoint",
+        "source_uri",
+        "market",
+        "listing_code",
+        "view",
+        "market_scope",
+        "listing_scope",
+        "filtering",
+        "snapshot",
+        "history_window",
+        "date_binding",
+        "observation_date_field",
+        "observation_start_date",
+        "value_fields",
+        "non_negative_fields",
+        "required_date_fields",
+        "field_types",
+        "nullable_fields",
+        "field_count",
+        "source_field_order",
+        "undocumented_units",
+        "upstream_url",
+        "upstream_protocol",
+        "upstream_parameters",
+        "pagination",
+        "upstream_count",
+        "entity_count",
+        "selected",
+        "payload",
+    ],
+)
+def test_market_activity_congestion_normalizer_rejects_replayed_scope_mismatches(
+    mutation: str,
+):
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SH600000",
+            {"view": "congestion"},
+        )
+    )
+    payload = [dict(row) for row in record.raw_payload]
+    response_metadata = dict(record.response_metadata)
+    source_uri = record.source_uri
+    if mutation == "endpoint":
+        response_metadata["endpoint"] = "stock_sse_summary"
+    elif mutation == "source_uri":
+        source_uri = "https://example.invalid/congestion"
+    elif mutation == "market":
+        response_metadata["market"] = "H"
+    elif mutation == "listing_code":
+        response_metadata["listing_code"] = "000001"
+    elif mutation == "view":
+        response_metadata["market_activity_view"] = "sse_summary"
+    elif mutation == "market_scope":
+        response_metadata["market_scope"] = "all_a_share_listings"
+    elif mutation == "listing_scope":
+        response_metadata["listing_scoped_request"] = True
+    elif mutation == "filtering":
+        response_metadata["row_filtering"] = "provider"
+    elif mutation == "snapshot":
+        response_metadata["snapshot_scope"] = "current_trading_day"
+    elif mutation == "history_window":
+        response_metadata["history_window"] = "latest_30_days"
+    elif mutation == "date_binding":
+        response_metadata["date_binding"] = "request_only"
+    elif mutation == "observation_date_field":
+        response_metadata["observation_date_field"] = "交易日"
+    elif mutation == "observation_start_date":
+        response_metadata["observation_start_date"] = "2020-04-28"
+    elif mutation == "value_fields":
+        response_metadata["value_fields"] = ["close"]
+    elif mutation == "non_negative_fields":
+        response_metadata["non_negative_fields"] = ["close"]
+    elif mutation == "required_date_fields":
+        response_metadata["required_date_fields"] = []
+    elif mutation == "field_types":
+        response_metadata["field_types"] = {"date": "string"}
+    elif mutation == "nullable_fields":
+        response_metadata["nullable_fields"] = ["close"]
+    elif mutation == "field_count":
+        response_metadata["field_count"] = 2
+    elif mutation == "source_field_order":
+        response_metadata["source_field_order"] = ["close", "date", "congestion"]
+    elif mutation == "undocumented_units":
+        response_metadata["undocumented_numeric_units"] = {"close": "index_points"}
+    elif mutation == "upstream_url":
+        response_metadata["upstream_url"] = "https://example.invalid/api"
+    elif mutation == "upstream_protocol":
+        response_metadata["upstream_protocol"] = "HTML"
+    elif mutation == "upstream_parameters":
+        response_metadata["upstream_parameters"] = ["date"]
+    elif mutation == "pagination":
+        response_metadata["pagination"] = "paged"
+    elif mutation == "upstream_count":
+        response_metadata["upstream_row_count"] = len(payload) - 1
+    elif mutation == "entity_count":
+        response_metadata["entity_row_count"] = 1
+    elif mutation == "selected":
+        response_metadata["entity_rows_selected"] = True
+    else:
+        payload[0]["close"] = "not-a-number"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=source_uri,
+        response_metadata=response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-market-congestion",
+            as_of=date(2026, 9, 11),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_market_activity_congestion_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.MARKET_ACTIVITY,
+        "SH600000",
+        {"view": "congestion"},
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [("stock_a_congestion_lg", {})]
 
 
 def test_market_activity_szse_summary_fetch_uses_documented_date_and_preserves_market_snapshot():

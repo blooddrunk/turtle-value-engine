@@ -1191,6 +1191,20 @@ retaining the absence of documented units. The normalizer emits
 canonical market, return, governance, valuation or accounting fact. No
 calculation, gate, pipeline, CLI or input-loader contract changes.
 
+Phase 3.10 adds the documented A-share Legu
+`stock_a_congestion_lg` endpoint under `MARKET_ACTIVITY` with explicit
+`view=congestion` and no user-supplied upstream arguments. The [AKShare
+stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_congestion_lg.py)
+define a token-backed JSON history of the latest four years with exact
+`date`, `close` and `congestion` fields. The provider validates non-empty
+strictly ascending ISO dates, finite non-negative numeric values, source/API
+metadata and market-wide row counts while preserving undocumented units. The
+normalizer emits `AKSHARE_MARKET_CONGESTION_RAW_ONLY`; provider-defined
+congestion and index-close history does not become a canonical market, return,
+governance, valuation or accounting fact. No calculation, gate, pipeline, CLI
+or input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

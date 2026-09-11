@@ -1463,6 +1463,30 @@ emits `AKSHARE_MARKET_ACTIVITY_LEGU_RAW_ONLY` and creates no canonical market,
 return, governance, valuation or accounting fact. The response remains outside
 the calculation, gate, pipeline, CLI and input-loader contracts.
 
+## Phase 3.10 A-share Legu congestion raw history
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_congestion_lg.py)
+document `stock_a_congestion_lg()` as a no-argument token-backed JSON history
+covering the latest four years. The adapter exposes it only under
+`MARKET_ACTIVITY` with explicit `view=congestion` and an A-share provenance
+listing. The wrapper returns exact `date`, `close` and `congestion` fields in
+ascending date order.
+
+| Raw upstream item | Phase 3.10 treatment |
+| --- | --- |
+| `date` | Required strict `YYYY-MM-DD` observation date; dates must be strictly ascending and represent the provider's rolling latest-four-year history, not an accounting or filing period. |
+| `close` | Required finite non-negative index-close context; the endpoint does not document a canonical unit and the value is not promoted to a listing quote, return or valuation input. |
+| `congestion` | Required finite non-negative provider-defined congestion value; its unit and economic interpretation remain undocumented, and it is not promoted to a canonical market or return metric. |
+| request `view=congestion` | Explicit A-share-only, no-user-parameter routing; token/cookie-CSRF transport, source/API URIs, exact field order, no filtering and complete market-wide row counts remain part of cache replay. |
+
+The provider rejects empty responses, missing/unexpected/reordered fields,
+invalid or non-ascending dates, null/non-numeric/boolean/non-finite values and
+negative numeric values. The normalizer emits
+`AKSHARE_MARKET_CONGESTION_RAW_ONLY` and creates no canonical market, return,
+governance, valuation or accounting fact. The response remains outside the
+calculation, gate, pipeline, CLI and input-loader contracts.
+
 ## Phase 2.92 SSE daily-deal overview raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
