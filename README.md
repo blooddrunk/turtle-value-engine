@@ -1248,6 +1248,21 @@ units or PE semantics. The normalizer emits
 a canonical market, return, valuation, governance or accounting fact. No
 calculation, gate, pipeline, CLI or input-loader contract changes.
 
+Phase 3.14 adds the documented A-share Legu
+`stock_a_all_pb` endpoint under `MARKET_ACTIVITY` with explicit
+`view=all_pb` and no user-supplied arguments. The [AKShare stock-data
+documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and [official
+implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_all_pb.py)
+define a token-backed JSON history with the documented median and equal-weight
+average PB fields, percentile context and Shanghai index close. The wrapper
+drops the upstream `weightingAveragePB` field; the provider validates the
+remaining complete eight-field schema, strict ascending ISO dates, finite
+numeric values and a non-negative index-close field without inferring units or
+PB semantics. The normalizer emits `AKSHARE_A_ALL_PB_RAW_ONLY`; this
+market-wide valuation context does not become a canonical market, return,
+valuation, governance or accounting fact. No calculation, gate, pipeline, CLI
+or input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

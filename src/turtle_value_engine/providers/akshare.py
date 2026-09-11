@@ -55,7 +55,7 @@ The SSE daily-deal overview raw slice is also available. The SZSE area-summary
 and sector-summary raw slices are also available. The Eastmoney industry-board
 snapshot, Dragon-Tiger institution-daily raw slice, stock-account-statistics
 history and Legu market-activity/congestion/equity-bond-spread/Buffett-index/
-A-share PE-history snapshots are also available.
+A-share PE/PB-history snapshots are also available.
 The A-share Eastmoney top-ten, top-ten-tradable-shareholder and
 top-ten-tradable-shareholder-detail raw slices are also available.
 The A-share Eastmoney institutional-research statistics and detail raw slices
@@ -106,9 +106,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "114"
+AKSHARE_ADAPTER_VERSION = "115"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "115"
+AKSHARE_MAPPING_VERSION = "116"
 
 
 class ListingMarket(StrEnum):
@@ -221,6 +221,7 @@ _SOURCE_URIS = {
     "stock_ebs_lg": "https://legulegu.com/stockdata/equity-bond-spread",
     "stock_buffett_index_lg": "https://legulegu.com/stockdata/marketcap-gdp",
     "stock_a_ttm_lyr": "https://www.legulegu.com/stockdata/a-ttm-lyr",
+    "stock_a_all_pb": "https://www.legulegu.com/stockdata/all-pb",
     "stock_zt_pool_em": "https://quote.eastmoney.com/ztb/detail#type=ztgc",
     "stock_zt_pool_dtgc_em": "https://quote.eastmoney.com/ztb/detail#type=dtgc",
     "stock_intraday_em": "https://quote.eastmoney.com/f1.html?newcode=0.000001",
@@ -328,6 +329,7 @@ _NO_ARGUMENT_ENDPOINTS = frozenset(
         "stock_ebs_lg",
         "stock_buffett_index_lg",
         "stock_a_ttm_lyr",
+        "stock_a_all_pb",
     }
 )
 
@@ -1341,6 +1343,43 @@ _MARKET_ACTIVITY_TTM_LYR_FIELD_TYPES = {
 _MARKET_ACTIVITY_TTM_LYR_DOCUMENTED_UNITS: dict[str, str] = {}
 _MARKET_ACTIVITY_TTM_LYR_UNDOCUMENTED_NUMERIC_UNITS = {
     field: "not_documented" for field in _MARKET_ACTIVITY_TTM_LYR_NUMERIC_FIELDS
+}
+_MARKET_ACTIVITY_ALL_PB_PARAMETER_NAMES = frozenset({"view"})
+_MARKET_ACTIVITY_ALL_PB_VIEW = "all_pb"
+_MARKET_ACTIVITY_ALL_PB_FIELDS = (
+    "date",
+    "middlePB",
+    "equalWeightAveragePB",
+    "close",
+    "quantileInAllHistoryMiddlePB",
+    "quantileInRecent10YearsMiddlePB",
+    "quantileInAllHistoryEqualWeightAveragePB",
+    "quantileInRecent10YearsEqualWeightAveragePB",
+)
+_MARKET_ACTIVITY_ALL_PB_FIELD_SET = frozenset(_MARKET_ACTIVITY_ALL_PB_FIELDS)
+_MARKET_ACTIVITY_ALL_PB_DATE_FIELDS = ("date",)
+_MARKET_ACTIVITY_ALL_PB_NUMERIC_FIELDS = (
+    "middlePB",
+    "equalWeightAveragePB",
+    "close",
+    "quantileInAllHistoryMiddlePB",
+    "quantileInRecent10YearsMiddlePB",
+    "quantileInAllHistoryEqualWeightAveragePB",
+    "quantileInRecent10YearsEqualWeightAveragePB",
+)
+_MARKET_ACTIVITY_ALL_PB_NON_NEGATIVE_FIELDS = frozenset({"close"})
+_MARKET_ACTIVITY_ALL_PB_TEXT_FIELDS: tuple[str, ...] = ()
+_MARKET_ACTIVITY_ALL_PB_REQUIRED_DATE_FIELDS = ("date",)
+_MARKET_ACTIVITY_ALL_PB_REQUIRED_NUMERIC_FIELDS = (
+    *_MARKET_ACTIVITY_ALL_PB_NUMERIC_FIELDS,
+)
+_MARKET_ACTIVITY_ALL_PB_FIELD_TYPES = {
+    "date": "date",
+    **{field: "number" for field in _MARKET_ACTIVITY_ALL_PB_NUMERIC_FIELDS},
+}
+_MARKET_ACTIVITY_ALL_PB_DOCUMENTED_UNITS: dict[str, str] = {}
+_MARKET_ACTIVITY_ALL_PB_UNDOCUMENTED_NUMERIC_UNITS = {
+    field: "not_documented" for field in _MARKET_ACTIVITY_ALL_PB_NUMERIC_FIELDS
 }
 _MARKET_ACTIVITY_SZSE_SUMMARY_PARAMETER_NAMES = frozenset({"view", "date"})
 _MARKET_ACTIVITY_SZSE_SUMMARY_VIEW = "szse_summary"
@@ -3669,6 +3708,19 @@ class AKShareProvider(StructuredDataProvider):
                 )
                 response_metadata["undocumented_numeric_units"] = dict(
                     _MARKET_ACTIVITY_SZSE_SUMMARY_UNDOCUMENTED_UNITS
+                )
+            elif endpoint.name == "stock_a_all_pb":
+                observation_dates = _validate_market_activity_all_pb_provider_rows(
+                    rows,
+                    provider=self.identity,
+                    request=request,
+                )
+                response_metadata.update(
+                    _market_activity_all_pb_response_metadata(
+                        listing_code=listing.code,
+                        observation_dates=observation_dates,
+                        row_count=len(rows),
+                    )
                 )
             elif endpoint.name == "stock_a_ttm_lyr":
                 observation_dates = _validate_market_activity_ttm_lyr_provider_rows(
@@ -6535,6 +6587,9 @@ class AKShareProvider(StructuredDataProvider):
             market_activity_ttm_lyr_requested=(
                 request.parameters.get("view") == _MARKET_ACTIVITY_TTM_LYR_VIEW
             ),
+            market_activity_all_pb_requested=(
+                request.parameters.get("view") == _MARKET_ACTIVITY_ALL_PB_VIEW
+            ),
             market_activity_account_statistics_requested=(
                 request.parameters.get("view")
                 == _MARKET_ACTIVITY_ACCOUNT_STATISTICS_VIEW
@@ -7007,6 +7062,13 @@ class AKShareNormalizer:
                         rows,
                     )
                     normalizer_flags.add("AKSHARE_SSE_SUMMARY_RAW_ONLY")
+                elif endpoint_name == "stock_a_all_pb":
+                    _validate_market_activity_all_pb_normalizer_scope(
+                        record,
+                        listing,
+                        rows,
+                    )
+                    normalizer_flags.add("AKSHARE_A_ALL_PB_RAW_ONLY")
                 elif endpoint_name == "stock_a_ttm_lyr":
                     _validate_market_activity_ttm_lyr_normalizer_scope(
                         record,
@@ -7252,7 +7314,8 @@ class AKShareNormalizer:
                         "stock_szse_sector_summary, stock_szse_area_summary, "
                         "stock_szse_summary, "
                         "stock_sse_summary, stock_sse_deal_daily, "
-                        "stock_a_ttm_lyr, stock_buffett_index_lg, stock_ebs_lg, "
+                        "stock_a_all_pb, stock_a_ttm_lyr, stock_buffett_index_lg, "
+                        "stock_ebs_lg, "
                         "stock_a_congestion_lg, "
                         "stock_market_activity_legu, "
                         "stock_account_statistics_em, "
@@ -8953,6 +9016,14 @@ class AKShareNormalizer:
                 "establish a canonical market, return, governance, valuation or "
                 "accounting fact."
             )
+        if "AKSHARE_A_ALL_PB_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented Legu A-share all-PB response is retained as raw "
+                "evidence only: its market-wide PB series, percentile context and "
+                "index-close values lack listing/entity accounting scope and do not "
+                "establish a canonical market, return, governance, valuation or "
+                "accounting fact."
+            )
         if "AKSHARE_SZSE_SUMMARY_RAW_ONLY" in normalizer_flags:
             notes += (
                 " The documented SZSE market-summary response is retained as raw evidence "
@@ -9462,6 +9533,7 @@ def _endpoint_candidates(
     market_activity_ebs_requested: bool = False,
     market_activity_buffett_requested: bool = False,
     market_activity_ttm_lyr_requested: bool = False,
+    market_activity_all_pb_requested: bool = False,
     market_activity_account_statistics_requested: bool = False,
     market_activity_block_trade_requested: bool = False,
     market_activity_institution_daily_requested: bool = False,
@@ -9611,6 +9683,10 @@ def _endpoint_candidates(
         if market_activity_ttm_lyr_requested:
             if market is ListingMarket.A:
                 return ("stock_a_ttm_lyr",)
+            return ()
+        if market_activity_all_pb_requested:
+            if market is ListingMarket.A:
+                return ("stock_a_all_pb",)
             return ()
         if market_activity_account_statistics_requested:
             if market is ListingMarket.A:
@@ -17858,6 +17934,125 @@ def _validate_market_activity_ttm_lyr_provider_rows(
     return observation_dates
 
 
+def _market_activity_all_pb_date(value: object) -> date | None:
+    """Parse the A-share all-PB wrapper's strict ISO date field."""
+
+    if not isinstance(value, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _market_activity_all_pb_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> tuple[str | None, list[date]]:
+    """Return strict-schema errors and dates for the complete PB history."""
+
+    if not rows:
+        return "market-activity A-share all-PB response must not be empty", []
+
+    observation_dates: list[date] = []
+    previous_date: date | None = None
+    for index, row in enumerate(rows):
+        missing = [
+            field for field in _MARKET_ACTIVITY_ALL_PB_FIELDS if field not in row
+        ]
+        unexpected = [
+            field for field in row if field not in _MARKET_ACTIVITY_ALL_PB_FIELD_SET
+        ]
+        if missing:
+            return (
+                f"market-activity A-share all-PB row {index} is missing field(s): "
+                + ", ".join(missing),
+                [],
+            )
+        if unexpected:
+            return (
+                f"market-activity A-share all-PB row {index} contains unsupported "
+                "field(s): "
+                + ", ".join(unexpected),
+                [],
+            )
+        if tuple(row) != _MARKET_ACTIVITY_ALL_PB_FIELDS:
+            return (
+                "market-activity A-share all-PB rows must preserve the official "
+                "field order",
+                [],
+            )
+
+        observation_date = _market_activity_all_pb_date(row["date"])
+        if observation_date is None:
+            return (
+                f"market-activity A-share all-PB row {index} has an invalid date",
+                [],
+            )
+        if previous_date is not None and observation_date <= previous_date:
+            if observation_date == previous_date:
+                return (
+                    "market-activity A-share all-PB response has duplicate date "
+                    f"{row['date']!r}",
+                    [],
+                )
+            return (
+                "market-activity A-share all-PB response date values must be "
+                "strictly ascending",
+                [],
+            )
+        previous_date = observation_date
+        observation_dates.append(observation_date)
+
+        for field in _MARKET_ACTIVITY_ALL_PB_NUMERIC_FIELDS:
+            value = row[field]
+            if isinstance(value, bool) or not isinstance(value, Real):
+                return (
+                    f"market-activity A-share all-PB row {index} field {field!r} "
+                    "must be numeric",
+                    [],
+                )
+            try:
+                numeric = float(value)
+            except (OverflowError, TypeError, ValueError):
+                return (
+                    f"market-activity A-share all-PB row {index} field {field!r} "
+                    "must be numeric",
+                    [],
+                )
+            if not math.isfinite(numeric):
+                return (
+                    f"market-activity A-share all-PB row {index} field {field!r} "
+                    "must be finite",
+                    [],
+                )
+            if field in _MARKET_ACTIVITY_ALL_PB_NON_NEGATIVE_FIELDS and numeric < 0:
+                return (
+                    f"market-activity A-share all-PB row {index} field {field!r} "
+                    "must be non-negative",
+                    [],
+                )
+
+    return None, observation_dates
+
+
+def _validate_market_activity_all_pb_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> list[date]:
+    """Validate the complete Legu A-share all-PB history."""
+
+    message, observation_dates = _market_activity_all_pb_validation_message(rows)
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message}",
+            provider=provider,
+            request=request,
+        )
+    return observation_dates
+
+
 def _market_activity_sse_deal_daily_validation_message(
     rows: Sequence[Mapping[str, JSONValue]],
 ) -> str | None:
@@ -22401,6 +22596,134 @@ def _validate_market_activity_congestion_normalizer_scope(
             raise ProviderNormalizationError(
                 f"AKShare congestion response metadata {name!r} does not match "
                 "the requested replay scope"
+            )
+
+
+def _market_activity_all_pb_response_metadata(
+    *,
+    listing_code: str,
+    observation_dates: Sequence[date],
+    row_count: int,
+) -> dict[str, JSONValue]:
+    """Build the replay contract for the A-share all-PB history."""
+
+    if not observation_dates:
+        raise ValueError("A-share all-PB response must contain observation dates")
+    return {
+        "endpoint": "stock_a_all_pb",
+        "market": ListingMarket.A.value,
+        "listing_code": listing_code,
+        "market_activity_view": _MARKET_ACTIVITY_ALL_PB_VIEW,
+        "market_scope": "all A-share PB and Shanghai index context",
+        "listing_scoped_request": False,
+        "row_filtering": "none",
+        "snapshot_scope": "all_historical_a_share_all_pb_history",
+        "date_binding": "row_dates",
+        "observation_date_field": "date",
+        "observation_date_format": "YYYY-MM-DD",
+        "observation_date_ordering": "strictly_ascending",
+        "observation_start_date": min(observation_dates).isoformat(),
+        "observation_end_date": max(observation_dates).isoformat(),
+        "observation_count_contract": "non_empty_all_historical_history",
+        "value_fields": list(_MARKET_ACTIVITY_ALL_PB_NUMERIC_FIELDS),
+        "non_negative_fields": [
+            field
+            for field in _MARKET_ACTIVITY_ALL_PB_FIELDS
+            if field in _MARKET_ACTIVITY_ALL_PB_NON_NEGATIVE_FIELDS
+        ],
+        "integer_fields": [],
+        "text_fields": list(_MARKET_ACTIVITY_ALL_PB_TEXT_FIELDS),
+        "date_fields": list(_MARKET_ACTIVITY_ALL_PB_DATE_FIELDS),
+        "required_date_fields": list(_MARKET_ACTIVITY_ALL_PB_REQUIRED_DATE_FIELDS),
+        "required_numeric_fields": list(
+            _MARKET_ACTIVITY_ALL_PB_REQUIRED_NUMERIC_FIELDS
+        ),
+        "field_types": dict(_MARKET_ACTIVITY_ALL_PB_FIELD_TYPES),
+        "nullable_fields": [],
+        "field_count": len(_MARKET_ACTIVITY_ALL_PB_FIELDS),
+        "source_field_order": list(_MARKET_ACTIVITY_ALL_PB_FIELDS),
+        "documented_units": dict(_MARKET_ACTIVITY_ALL_PB_DOCUMENTED_UNITS),
+        "undocumented_numeric_units": dict(
+            _MARKET_ACTIVITY_ALL_PB_UNDOCUMENTED_NUMERIC_UNITS
+        ),
+        "upstream_url": "https://legulegu.com/api/stock-data/market-index-pb",
+        "upstream_protocol": "JSON",
+        "upstream_report_name": None,
+        "upstream_parameters": ["marketId", "token"],
+        "upstream_fixed_parameters": {"marketId": "ALL"},
+        "upstream_authentication": "token_and_cookie_csrf",
+        "wrapper_dropped_fields": ["weightingAveragePB"],
+        "upstream_page_size": None,
+        "pagination": "single_snapshot",
+        "upstream_sort_column": None,
+        "upstream_sort_direction": None,
+        "upstream_filter": None,
+        "wrapper_output_ordering": "ascending_by_date",
+        "entity_rows_selected": False,
+        "upstream_row_count": row_count,
+        "entity_row_count": 0,
+    }
+
+
+def _validate_market_activity_all_pb_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> None:
+    """Validate replay scope and metadata for the A-share PB history."""
+
+    if listing.market is not ListingMarket.A:
+        raise ProviderNormalizationError(
+            "AKShare A-share all-PB raw slice supports A-share listings only"
+        )
+    endpoint_name = "stock_a_all_pb"
+    if record.response_metadata.get("endpoint") != endpoint_name:
+        raise ProviderNormalizationError(
+            "AKShare A-share all-PB record must come from stock_a_all_pb"
+        )
+    if record.source_uri != _SOURCE_URIS[endpoint_name]:
+        raise ProviderNormalizationError(
+            "AKShare A-share all-PB source URI does not match the documented endpoint"
+        )
+    try:
+        upstream_kwargs = _market_activity_all_pb_kwargs(
+            endpoint_name,
+            listing,
+            record.request,
+        )
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+    if upstream_kwargs:
+        raise ProviderNormalizationError(
+            "AKShare A-share all-PB endpoint must receive no user arguments"
+        )
+
+    message, observation_dates = _market_activity_all_pb_validation_message(rows)
+    if message is not None:
+        raise ProviderNormalizationError(message)
+    expected_metadata = _market_activity_all_pb_response_metadata(
+        listing_code=listing.code,
+        observation_dates=observation_dates,
+        row_count=len(rows),
+    )
+    boolean_fields = {"listing_scoped_request", "entity_rows_selected"}
+    count_fields = {"field_count", "upstream_row_count", "entity_row_count"}
+    for name, expected in expected_metadata.items():
+        actual = record.response_metadata.get(name)
+        if name in boolean_fields:
+            matches = isinstance(actual, bool) and actual is expected
+        elif name in count_fields:
+            matches = (
+                isinstance(actual, int)
+                and not isinstance(actual, bool)
+                and actual == expected
+            )
+        else:
+            matches = actual == expected
+        if not matches:
+            raise ProviderNormalizationError(
+                f"AKShare A-share all-PB response metadata {name!r} does not "
+                "match the requested replay scope"
             )
 
 
@@ -28951,6 +29274,8 @@ def _market_activity_kwargs(
 ) -> dict[str, object]:
     """Build one documented market-activity request."""
 
+    if endpoint_name == "stock_a_all_pb":
+        return _market_activity_all_pb_kwargs(endpoint_name, listing, request)
     if endpoint_name == "stock_a_ttm_lyr":
         return _market_activity_ttm_lyr_kwargs(endpoint_name, listing, request)
     if endpoint_name == "stock_buffett_index_lg":
@@ -29048,6 +29373,43 @@ def _market_activity_kwargs(
         "start_date": request.parameters["start_date"],
         "end_date": request.parameters["end_date"],
     }
+
+
+def _market_activity_all_pb_kwargs(
+    endpoint_name: str,
+    listing: _ListingRef,
+    request: ProviderRequest,
+) -> dict[str, object]:
+    """Build the documented no-argument A-share all-PB request."""
+
+    if endpoint_name != "stock_a_all_pb":
+        raise ProviderRequestError(
+            f"unsupported AKShare A-share all-PB endpoint {endpoint_name!r}",
+            request=request,
+            retryable=False,
+        )
+    if listing.market is not ListingMarket.A:
+        raise ProviderRequestError(
+            "the AKShare A-share all-PB endpoint supports A-share listings only",
+            request=request,
+            retryable=False,
+        )
+    unknown = sorted(set(request.parameters) - _MARKET_ACTIVITY_ALL_PB_PARAMETER_NAMES)
+    if unknown:
+        raise ProviderRequestError(
+            "unsupported AKShare A-share all-PB parameter(s): "
+            + ", ".join(unknown),
+            request=request,
+            retryable=False,
+        )
+    if request.parameters.get("view") != _MARKET_ACTIVITY_ALL_PB_VIEW:
+        raise ProviderRequestError(
+            "AKShare A-share all-PB endpoint requires "
+            f"view={_MARKET_ACTIVITY_ALL_PB_VIEW!r}",
+            request=request,
+            retryable=False,
+        )
+    return {}
 
 
 def _market_activity_ttm_lyr_kwargs(

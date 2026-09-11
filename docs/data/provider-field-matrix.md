@@ -1565,6 +1565,35 @@ non-negative domain for them. The normalizer emits
 valuation, governance or accounting fact. The response remains outside the
 calculation, gate, pipeline, CLI and input-loader contracts.
 
+## Phase 3.14 A-share Legu all-PB raw history
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_all_pb.py)
+document `stock_a_all_pb()` as a no-argument token-backed JSON history for the
+all-A-share median and equal-weight-average price-to-book context. The adapter
+exposes it only under `MARKET_ACTIVITY` with explicit `view=all_pb` and an
+A-share provenance listing. The wrapper drops the upstream
+`weightingAveragePB` field and returns the exact eight fields below in this
+order; no numeric units or percentile scale are documented, so none is
+inferred.
+
+| Raw upstream item | Phase 3.14 treatment |
+| --- | --- |
+| `date` | Required strict `YYYY-MM-DD` observation date for the market-wide history; it is not an accounting, filing or listing period. |
+| `middlePB`, `equalWeightAveragePB` | Required finite signed PB aggregates; signed values are retained as raw evidence and are not promoted to a listing valuation fact. |
+| `close` | Required finite non-negative Shanghai-index close context; the endpoint does not document a canonical unit and it is not promoted to a listing quote, return or valuation input. |
+| `quantileInAllHistoryMiddlePB`, `quantileInRecent10YearsMiddlePB`, `quantileInAllHistoryEqualWeightAveragePB`, `quantileInRecent10YearsEqualWeightAveragePB` | Required finite percentile-context values; the endpoint does not document a numeric unit or scale, and no percentile interpretation is inferred. |
+| request `view=all_pb` | Explicit A-share-only, no-user-parameter routing; token/cookie-CSRF transport, fixed upstream `marketId=ALL`, wrapper-dropped `weightingAveragePB`, source/API URIs, exact output field order, no filtering and complete row counts remain part of cache replay. |
+
+The provider rejects empty responses, missing/unexpected/reordered fields,
+invalid or non-ascending dates, null required values, non-numeric/boolean/
+non-finite values and negative `close` values. Signed PB and percentile fields
+are deliberately accepted because the upstream contract does not establish a
+non-negative domain for them. The normalizer emits
+`AKSHARE_A_ALL_PB_RAW_ONLY` and creates no canonical market, return, valuation,
+governance or accounting fact. The response remains outside the calculation,
+gate, pipeline, CLI and input-loader contracts.
+
 ## Phase 2.92 SSE daily-deal overview raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
