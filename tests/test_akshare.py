@@ -1083,6 +1083,26 @@ class FakeAKShare:
             indicator=indicator,
         )
 
+    def stock_hsgt_stock_statistics_em(
+        self,
+        *,
+        symbol: str,
+        start_date: str,
+        end_date: str,
+    ):
+        fixture = (
+            "h_hsgt_stock_statistics.json"
+            if symbol == "南向持股"
+            else "a_hsgt_stock_statistics.json"
+        )
+        return self._return(
+            "stock_hsgt_stock_statistics_em",
+            _fixture(fixture),
+            symbol=symbol,
+            start_date=start_date,
+            end_date=end_date,
+        )
+
 
 class OfficialBalanceAKShare:
     __version__ = "fixture-akshare-official-balance"
@@ -1163,8 +1183,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "134"
-    assert AKSHARE_MAPPING_VERSION == "135"
+    assert provider.identity.provider_version == "135"
+    assert AKSHARE_MAPPING_VERSION == "136"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -2168,6 +2188,590 @@ def test_hsgt_hold_stock_cache_replay_does_not_call_upstream(tmp_path: Path):
         (
             "stock_hsgt_hold_stock_em",
             {"market": "沪股通", "indicator": "5日排行"},
+        )
+    ]
+
+
+@pytest.mark.parametrize(
+    ("entity_id", "symbol", "direction", "expected_url", "expected_filter"),
+    [
+        (
+            "SH600000",
+            "北向持股",
+            "northbound",
+            "http://datacenter-web.eastmoney.com/api/data/v1/get",
+            '(INTERVAL_TYPE="1")(MUTUAL_TYPE in ("001","003"))'
+            "(TRADE_DATE>='2024-01-09')(TRADE_DATE<='2024-01-10')",
+        ),
+        (
+            "SH600000",
+            "沪股通持股",
+            "northbound",
+            "https://datacenter-web.eastmoney.com/api/data/v1/get",
+            '(INTERVAL_TYPE="1")(MUTUAL_TYPE="001")'
+            "(TRADE_DATE>='2024-01-09')(TRADE_DATE<='2024-01-10')",
+        ),
+        (
+            "SZ000001",
+            "深股通持股",
+            "northbound",
+            "https://datacenter-web.eastmoney.com/api/data/v1/get",
+            '(INTERVAL_TYPE="1")(MUTUAL_TYPE="003")'
+            "(TRADE_DATE>='2024-01-09')(TRADE_DATE<='2024-01-10')",
+        ),
+        (
+            "HK00700",
+            "南向持股",
+            "southbound",
+            "https://datacenter-web.eastmoney.com/api/data/v1/get",
+            '(INTERVAL_TYPE="1")(RN=1)'
+            "(TRADE_DATE>='2024-01-09')(TRADE_DATE<='2024-01-10')",
+        ),
+    ],
+)
+def test_hsgt_stock_statistics_fetch_preserves_documented_scope_and_contract(
+    entity_id: str,
+    symbol: str,
+    direction: str,
+    expected_url: str,
+    expected_filter: str,
+):
+    fake = FakeAKShare()
+    record = _provider(fake).fetch(
+        _request(
+            DataCategory.SHAREHOLDER_HOLDINGS,
+            entity_id,
+            {
+                "view": "hsgt_stock_statistics",
+                "symbol": symbol,
+                "start_date": "20240109",
+                "end_date": "20240110",
+            },
+        )
+    )
+
+    fixture_name = (
+        "h_hsgt_stock_statistics.json"
+        if entity_id.startswith("HK")
+        else "a_hsgt_stock_statistics.json"
+    )
+    fixture = _fixture(fixture_name)
+    code = "00700" if entity_id.startswith("HK") else entity_id[2:]
+    expected = [row for row in fixture if row["股票代码"] == code]
+    metadata = record.response_metadata
+    expected_fields = list(fixture[0])
+    expected_numeric_fields = expected_fields[3:]
+    expected_identities = [
+        {"date": row["持股日期"], "code": row["股票代码"]} for row in fixture
+    ]
+    expected_selected_identities = [
+        {"date": row["持股日期"], "code": row["股票代码"]} for row in expected
+    ]
+    expected_fixed = {
+        "sortColumns": "TRADE_DATE",
+        "sortTypes": "-1",
+        "pageSize": "1000",
+        "pageNumber": "1",
+        "columns": "ALL",
+        "source": "WEB",
+        "client": "WEB",
+        "reportName": (
+            "RPT_MUTUAL_STOCK_HOLDRANKS"
+            if symbol == "南向持股"
+            else "RPT_MUTUAL_STOCK_NORTHSTA"
+        ),
+    }
+    if symbol in {"北向持股", "南向持股"}:
+        expected_fixed["rt"] = "53160469"
+    expected_parameters = [
+        "sortColumns",
+        "sortTypes",
+        "pageSize",
+        "pageNumber",
+        "columns",
+        "source",
+        "client",
+        "filter",
+        "rt",
+        "reportName",
+    ]
+    if symbol in {"沪股通持股", "深股通持股"}:
+        expected_parameters.remove("rt")
+    currency = "HKD" if entity_id.startswith("HK") else "CNY"
+
+    assert record.raw_payload == expected
+    assert fake.calls == [
+        (
+            "stock_hsgt_stock_statistics_em",
+            {
+                "symbol": symbol,
+                "start_date": "20240109",
+                "end_date": "20240110",
+            },
+        )
+    ]
+    assert metadata["endpoint"] == "stock_hsgt_stock_statistics_em"
+    assert metadata["market"] == ("H" if entity_id.startswith("HK") else "A")
+    assert metadata["listing_code"] == code
+    assert metadata["shareholder_holdings_view"] == "hsgt_stock_statistics"
+    assert metadata["market_scope"] == (
+        f"Eastmoney {direction} HSGT stock-statistics universe"
+    )
+    assert metadata["upstream_symbol"] == symbol
+    assert metadata["upstream_direction"] == direction
+    assert metadata["listing_scoped_request"] is False
+    assert metadata["row_filtering"] == "provider"
+    assert metadata["snapshot_scope"] == (
+        "requested_hsgt_stock_statistics_date_range"
+    )
+    assert metadata["date_binding"] == "row_and_request"
+    assert metadata["observation_date_field"] == "持股日期"
+    assert metadata["observation_date_ordering"] == "non_increasing"
+    assert metadata["observation_dates"] == ["2024-01-10", "2024-01-09"]
+    assert metadata["requested_start_date"] == "20240109"
+    assert metadata["requested_end_date"] == "20240110"
+    assert metadata["observed_start_date"] == "2024-01-09"
+    assert metadata["observed_end_date"] == "2024-01-10"
+    assert metadata["row_identity_order"] == expected_identities
+    assert metadata["selected_row_identity_order"] == expected_selected_identities
+    assert metadata["value_fields"] == expected_numeric_fields
+    assert metadata["integer_fields"] == []
+    assert metadata["text_fields"] == ["股票代码", "股票简称"]
+    assert metadata["required_text_fields"] == ["股票代码", "股票简称"]
+    assert metadata["field_count"] == 11
+    assert metadata["source_field_order"] == expected_fields
+    assert metadata["field_types"]["持股日期"] == "date"
+    assert metadata["field_types"]["股票代码"] == "string"
+    assert metadata["field_types"]["股票简称"] == "string"
+    assert all(
+        metadata["field_types"][field] == "number"
+        for field in expected_numeric_fields
+    )
+    assert metadata["documented_units"] == {
+        "当日收盘价": f"{currency}_per_share",
+        "当日涨跌幅": "percent",
+        "持股数量": "shares_10_thousand",
+        "持股市值": f"{currency}_10_thousand",
+        "持股数量占发行股百分比": "percent",
+        "持股市值变化-1日": currency,
+        "持股市值变化-5日": currency,
+        "持股市值变化-10日": currency,
+    }
+    assert metadata["undocumented_numeric_units"] == {}
+    assert metadata["upstream_url"] == expected_url
+    assert metadata["upstream_protocol"] == "JSON"
+    assert metadata["upstream_report_name"] == expected_fixed["reportName"]
+    assert metadata["upstream_parameters"] == expected_parameters
+    assert metadata["upstream_fixed_parameters"] == expected_fixed
+    assert metadata["upstream_dynamic_parameters"] == {
+        "symbol": symbol,
+        "direction": direction,
+        "start_date": "2024-01-09",
+        "end_date": "2024-01-10",
+        "filter": expected_filter,
+    }
+    assert metadata["upstream_authentication"] == "none"
+    assert metadata["upstream_page_size"] == 1000
+    assert metadata["pagination"] == "provider_driven_all_pages"
+    assert metadata["upstream_sort_column"] == "TRADE_DATE"
+    assert metadata["upstream_sort_direction"] == "descending"
+    assert metadata["upstream_filter"] == expected_filter
+    assert metadata["wrapper_source_page_uri"] == (
+        "https://data.eastmoney.com/hsgtcg/StockStatistics.aspx"
+    )
+    assert metadata["wrapper_output_ordering"] == "source_row_order"
+    assert metadata["wrapper_source_column_count"] == (
+        30 if direction == "southbound" else 45
+    )
+    assert metadata["entity_rows_selected"] is True
+    assert metadata["upstream_row_count"] == 4
+    assert metadata["entity_row_count"] == 2
+    assert record.source_uri == (
+        "https://data.eastmoney.com/hsgtcg/StockStatistics.aspx"
+    )
+
+
+@pytest.mark.parametrize(
+    ("entity_id", "parameters", "match"),
+    [
+        (
+            "SH600000",
+            {
+                "view": "hsgt_stock_statistics",
+                "symbol": "南向持股",
+                "start_date": "20240109",
+                "end_date": "20240110",
+            },
+            "H-share listing context",
+        ),
+        (
+            "HK00700",
+            {
+                "view": "hsgt_stock_statistics",
+                "symbol": "北向持股",
+                "start_date": "20240109",
+                "end_date": "20240110",
+            },
+            "A-share listing context",
+        ),
+        (
+            "SH600000",
+            {
+                "view": "hsgt_stock_statistics",
+                "symbol": "not-documented",
+                "start_date": "20240109",
+                "end_date": "20240110",
+            },
+            "symbol must be one of",
+        ),
+        (
+            "SH600000",
+            {
+                "view": "hsgt_stock_statistics",
+                "symbol": "北向持股",
+                "end_date": "20240110",
+            },
+            "requires start_date",
+        ),
+        (
+            "SH600000",
+            {
+                "view": "hsgt_stock_statistics",
+                "symbol": "北向持股",
+                "start_date": "20240109",
+            },
+            "requires end_date",
+        ),
+        (
+            "SH600000",
+            {
+                "view": "hsgt_stock_statistics",
+                "symbol": "北向持股",
+                "start_date": "20240230",
+                "end_date": "20240301",
+            },
+            "start_date must be a valid YYYYMMDD date",
+        ),
+        (
+            "SH600000",
+            {
+                "view": "hsgt_stock_statistics",
+                "symbol": "北向持股",
+                "start_date": "20240110",
+                "end_date": "20240109",
+            },
+            "start_date must not be after end_date",
+        ),
+        (
+            "SH600000",
+            {
+                "view": "hsgt_stock_statistics",
+                "symbol": "北向持股",
+                "start_date": "20240109",
+                "end_date": "20240110",
+                "unexpected": True,
+            },
+            "unsupported AKShare HSGT stock-statistics parameter",
+        ),
+    ],
+)
+def test_hsgt_stock_statistics_request_validates_scope_and_parameters(
+    entity_id: str,
+    parameters: dict,
+    match: str,
+):
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError, match=match):
+        _provider(fake).fetch(
+            _request(DataCategory.SHAREHOLDER_HOLDINGS, entity_id, parameters)
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "missing_field",
+        "extra_field",
+        "reordered_fields",
+        "invalid_date",
+        "out_of_range",
+        "ascending_dates",
+        "invalid_code",
+        "invalid_name",
+        "invalid_numeric",
+        "duplicate_identity",
+        "empty_response",
+    ],
+)
+def test_hsgt_stock_statistics_response_validates_full_schema_before_filtering(
+    mutation: str,
+):
+    class InvalidRows(FakeAKShare):
+        def stock_hsgt_stock_statistics_em(
+            self,
+            *,
+            symbol: str,
+            start_date: str,
+            end_date: str,
+        ):
+            rows = [
+                dict(row)
+                for row in _fixture(
+                    "a_hsgt_stock_statistics.json"
+                    if symbol != "南向持股"
+                    else "h_hsgt_stock_statistics.json"
+                )
+            ]
+            if mutation == "missing_field":
+                rows[0].pop("持股市值")
+            elif mutation == "extra_field":
+                rows[0]["unexpected"] = "not documented"
+            elif mutation == "reordered_fields":
+                rows[0] = dict(reversed(list(rows[0].items())))
+            elif mutation == "invalid_date":
+                rows[0]["持股日期"] = "not-a-date"
+            elif mutation == "out_of_range":
+                rows[0]["持股日期"] = "2024-01-11"
+            elif mutation == "ascending_dates":
+                rows[0]["持股日期"] = "2024-01-09"
+                rows[1]["持股日期"] = "2024-01-10"
+            elif mutation == "invalid_code":
+                rows[0]["股票代码"] = "60000" if symbol != "南向持股" else "700"
+            elif mutation == "invalid_name":
+                rows[0]["股票简称"] = ""
+            elif mutation == "invalid_numeric":
+                rows[0]["当日收盘价"] = "7.21"
+            elif mutation == "duplicate_identity":
+                rows[1]["股票代码"] = rows[0]["股票代码"]
+            else:
+                rows.clear()
+            return self._return(
+                "stock_hsgt_stock_statistics_em",
+                rows,
+                symbol=symbol,
+                start_date=start_date,
+                end_date=end_date,
+            )
+
+    with pytest.raises(ProviderResponseError):
+        _provider(InvalidRows()).fetch(
+            _request(
+                DataCategory.SHAREHOLDER_HOLDINGS,
+                "SH600000",
+                {
+                    "view": "hsgt_stock_statistics",
+                    "symbol": "北向持股",
+                    "start_date": "20240109",
+                    "end_date": "20240110",
+                },
+            )
+        )
+
+
+@pytest.mark.parametrize(
+    ("entity_id", "symbol", "expected_code"),
+    [
+        ("SH600000", "北向持股", "600000"),
+        ("HK00700", "南向持股", "00700"),
+    ],
+)
+def test_hsgt_stock_statistics_is_raw_only_and_accepts_empty_selection(
+    entity_id: str,
+    symbol: str,
+    expected_code: str,
+):
+    record = _provider().fetch(
+        _request(
+            DataCategory.SHAREHOLDER_HOLDINGS,
+            entity_id,
+            {
+                "view": "hsgt_stock_statistics",
+                "symbol": symbol,
+                "start_date": "20240109",
+                "end_date": "20240110",
+            },
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="hsgt-stock-statistics-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company(entity_id),
+    )
+
+    assert record.raw_payload
+    assert all(row["股票代码"] == expected_code for row in record.raw_payload)
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_HSGT_STOCK_STATISTICS_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == [
+        "governance_risk_level",
+    ]
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "daily stock-statistics" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+def test_hsgt_stock_statistics_normalizer_accepts_empty_selected_listing():
+    record = _provider().fetch(
+        _request(
+            DataCategory.SHAREHOLDER_HOLDINGS,
+            "SH688981",
+            {
+                "view": "hsgt_stock_statistics",
+                "symbol": "北向持股",
+                "start_date": "20240109",
+                "end_date": "20240110",
+            },
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="hsgt-stock-statistics-empty-selection",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company("SH688981"),
+    )
+
+    assert record.raw_payload == []
+    assert record.response_metadata["upstream_row_count"] == 4
+    assert record.response_metadata["entity_row_count"] == 0
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_HSGT_STOCK_STATISTICS_RAW_ONLY"]
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "endpoint",
+        "source_uri",
+        "market",
+        "listing_code",
+        "view",
+        "symbol",
+        "direction",
+        "requested_start_date",
+        "requested_end_date",
+        "upstream_filter",
+        "observation_dates",
+        "row_identity_order",
+        "selected_row_identity_order",
+        "upstream_row_count",
+        "entity_row_count",
+        "documented_units",
+        "wrong_entity",
+    ],
+)
+def test_hsgt_stock_statistics_normalizer_rejects_replayed_scope_mismatches(
+    mutation: str,
+):
+    record = _provider().fetch(
+        _request(
+            DataCategory.SHAREHOLDER_HOLDINGS,
+            "SH600000",
+            {
+                "view": "hsgt_stock_statistics",
+                "symbol": "北向持股",
+                "start_date": "20240109",
+                "end_date": "20240110",
+            },
+        )
+    )
+    payload = [dict(row) for row in record.raw_payload]
+    metadata = json.loads(json.dumps(record.response_metadata))
+    source_uri = record.source_uri
+    if mutation == "endpoint":
+        metadata["endpoint"] = "stock_hsgt_individual_em"
+    elif mutation == "source_uri":
+        source_uri = "https://example.invalid/hsgt"
+    elif mutation == "market":
+        metadata["market"] = "H"
+    elif mutation == "listing_code":
+        metadata["listing_code"] = "000001"
+    elif mutation == "view":
+        metadata["shareholder_holdings_view"] = "hsgt_individual"
+    elif mutation == "symbol":
+        metadata["upstream_symbol"] = "沪股通持股"
+    elif mutation == "direction":
+        metadata["upstream_direction"] = "southbound"
+    elif mutation == "requested_start_date":
+        metadata["requested_start_date"] = "20240108"
+    elif mutation == "requested_end_date":
+        metadata["requested_end_date"] = "20240111"
+    elif mutation == "upstream_filter":
+        metadata["upstream_filter"] = "tampered"
+    elif mutation == "observation_dates":
+        metadata["observation_dates"] = ["2024-01-10"]
+    elif mutation == "row_identity_order":
+        metadata["row_identity_order"] = metadata["row_identity_order"][:-1]
+    elif mutation == "selected_row_identity_order":
+        metadata["selected_row_identity_order"] = []
+    elif mutation == "upstream_row_count":
+        metadata["upstream_row_count"] = 3
+    elif mutation == "entity_row_count":
+        metadata["entity_row_count"] = 1
+    elif mutation == "documented_units":
+        metadata["documented_units"] = {"当日收盘价": "CNY"}
+    else:
+        payload[0]["股票代码"] = "000001"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=source_uri,
+        response_metadata=metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="invalid-hsgt-stock-statistics-replay",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company("SH600000"),
+        )
+
+
+def test_hsgt_stock_statistics_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.SHAREHOLDER_HOLDINGS,
+        "SH600000",
+        {
+            "view": "hsgt_stock_statistics",
+            "symbol": "北向持股",
+            "start_date": "20240109",
+            "end_date": "20240110",
+        },
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [
+        (
+            "stock_hsgt_stock_statistics_em",
+            {
+                "symbol": "北向持股",
+                "start_date": "20240109",
+                "end_date": "20240110",
+            },
         )
     ]
 

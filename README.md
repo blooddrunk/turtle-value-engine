@@ -1553,6 +1553,28 @@ rankings and provider-estimated changes do not establish beneficial control,
 issuer cash flow or a canonical diluted-share series. No calculation, gate,
 pipeline, CLI or input-loader contract changes.
 
+Phase 3.33 adds the documented Eastmoney HSGT daily stock-statistics endpoint
+[`stock_hsgt_stock_statistics_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
+under `SHAREHOLDER_HOLDINGS` with explicit `view=hsgt_stock_statistics`, a
+required `symbol` of `北向持股`, `沪股通持股`, `深股通持股` or `南向持股`, and
+inclusive `start_date`/`end_date` values in `YYYYMMDD` form. The [official
+implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hsgt_em.py)
+uses the `RPT_MUTUAL_STOCK_NORTHSTA` report for northbound symbols and
+`RPT_MUTUAL_STOCK_HOLDRANKS` for southbound holdings, with
+`INTERVAL_TYPE=1`, the documented mutual-type or `RN=1` scope, descending
+`TRADE_DATE` order, page size `1000` and all-page pagination. The provider
+validates the exact 11-field date/code/name/price/holding-value/change schema,
+fixed-width A/H codes, date range, source order and finite numeric/null values
+before filtering the full universe to the requested listing. CNY/share and
+HKD/share prices, ten-thousand-share quantities, ten-thousand-currency market
+values, percentages and currency-denominated market-value changes remain
+explicitly scoped in replay metadata.
+
+The normalizer emits `AKSHARE_HSGT_STOCK_STATISTICS_RAW_ONLY`; investor
+holding quantities, market values, ratios and changes do not establish
+beneficial control, issuer cash flow or a canonical diluted-share series. No
+calculation, gate, pipeline, CLI or input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.
