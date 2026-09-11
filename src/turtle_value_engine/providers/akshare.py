@@ -74,7 +74,7 @@ also available.
 The A-share Eastmoney top-ten, top-ten-tradable-shareholder and
 top-ten-tradable-shareholder-detail raw slices are also available.
 The A-share Eastmoney institutional-research statistics and detail raw slices
-are also available.
+and company-dynamics calendar raw slice are also available.
 Upstream column names are handled in this module and are never passed to the
 deterministic calculation or gate code.
 """
@@ -121,9 +121,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "154"
+AKSHARE_ADAPTER_VERSION = "156"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "155"
+AKSHARE_MAPPING_VERSION = "157"
 
 
 class ListingMarket(StrEnum):
@@ -324,6 +324,7 @@ _SOURCE_URIS = {
     "stock_dxsyl_em": "https://data.eastmoney.com/xg/xg/dxsyl.html",
     "stock_zh_a_new_em": "https://quote.eastmoney.com/center/gridlist.html#newshares",
     "stock_zh_a_new": "http://vip.stock.finance.sina.com.cn/mkt/#new_stock",
+    "stock_gsrl_gsdt_em": "https://data.eastmoney.com/gsrl/gsdt.html",
     "stock_hk_dividend_payout_em": "https://emweb.securities.eastmoney.com/PC_HKF10/pages/home/index.html",
     "stock_hk_fhpx_detail_ths": "https://stockpage.10jqka.com.cn/HK0700/bonus/",
     "stock_hsgt_individual_em": "https://data.eastmoney.com/hsgt/StockHdDetail/002008.html",
@@ -4503,6 +4504,73 @@ _MARKET_ACTIVITY_SINA_NEW_STOCK_UPSTREAM_TRANSFORMATIONS = {
     field: "pd.to_numeric"
     for field in ("open", "high", "low")
 }
+_MARKET_ACTIVITY_COMPANY_DYNAMICS_ENDPOINT = "stock_gsrl_gsdt_em"
+_MARKET_ACTIVITY_COMPANY_DYNAMICS_PARAMETER_NAMES = frozenset({"view", "date"})
+_MARKET_ACTIVITY_COMPANY_DYNAMICS_VIEW = "company_dynamics"
+_MARKET_ACTIVITY_COMPANY_DYNAMICS_FIELDS = (
+    "序号",
+    "代码",
+    "简称",
+    "事件类型",
+    "具体事项",
+    "交易日",
+)
+_MARKET_ACTIVITY_COMPANY_DYNAMICS_FIELD_SET = frozenset(
+    _MARKET_ACTIVITY_COMPANY_DYNAMICS_FIELDS
+)
+_MARKET_ACTIVITY_COMPANY_DYNAMICS_DATE_FIELDS = ("交易日",)
+_MARKET_ACTIVITY_COMPANY_DYNAMICS_INTEGER_FIELDS = frozenset({"序号"})
+_MARKET_ACTIVITY_COMPANY_DYNAMICS_TEXT_FIELDS = (
+    "代码",
+    "简称",
+    "事件类型",
+    "具体事项",
+)
+_MARKET_ACTIVITY_COMPANY_DYNAMICS_REQUIRED_TEXT_FIELDS = (
+    *_MARKET_ACTIVITY_COMPANY_DYNAMICS_TEXT_FIELDS,
+)
+_MARKET_ACTIVITY_COMPANY_DYNAMICS_FIELD_TYPES = {
+    "序号": "integer",
+    "代码": "string",
+    "简称": "string",
+    "事件类型": "string",
+    "具体事项": "string",
+    "交易日": "date",
+}
+_MARKET_ACTIVITY_COMPANY_DYNAMICS_SOURCE_URI = (
+    "https://data.eastmoney.com/gsrl/gsdt.html"
+)
+_MARKET_ACTIVITY_COMPANY_DYNAMICS_UPSTREAM_URL = (
+    "https://datacenter-web.eastmoney.com/api/data/v1/get"
+)
+_MARKET_ACTIVITY_COMPANY_DYNAMICS_UPSTREAM_PARAMETERS = (
+    "sortColumns",
+    "sortTypes",
+    "pageSize",
+    "pageNumber",
+    "columns",
+    "source",
+    "client",
+    "reportName",
+    "filter",
+)
+_MARKET_ACTIVITY_COMPANY_DYNAMICS_UPSTREAM_FIXED_PARAMETERS = {
+    "sortColumns": "SECURITY_CODE",
+    "sortTypes": "1",
+    "pageSize": "5000",
+    "pageNumber": "1",
+    "columns": (
+        "SECURITY_CODE,SECUCODE,SECURITY_NAME_ABBR,EVENT_TYPE,"
+        "EVENT_CONTENT,TRADE_DATE"
+    ),
+    "source": "WEB",
+    "client": "WEB",
+    "reportName": "RPT_ORGOP_ALL",
+}
+_MARKET_ACTIVITY_COMPANY_DYNAMICS_UPSTREAM_DYNAMIC_PARAMETERS = {
+    "filter": "(TRADE_DATE='requested_date_iso')",
+}
+_MARKET_ACTIVITY_COMPANY_DYNAMICS_UPSTREAM_DROPPED_FIELDS = ("SECUCODE",)
 
 _FINANCIAL_STATEMENT_PARAMETER_NAMES = frozenset({"indicator", "statement_date"})
 _EARNINGS_FORECAST_PARAMETER_NAMES = frozenset({"date"})
@@ -8366,6 +8434,34 @@ class AKShareProvider(StructuredDataProvider):
                     )
                 )
                 payload = selected
+            elif endpoint.name == _MARKET_ACTIVITY_COMPANY_DYNAMICS_ENDPOINT:
+                requested_date = _market_activity_date_parameter(
+                    kwargs["date"],
+                    name="date",
+                    request=request,
+                )
+                _validate_market_activity_company_dynamics_provider_rows(
+                    rows,
+                    requested_date=requested_date,
+                    provider=self.identity,
+                    request=request,
+                )
+                selected = _select_listing_rows(
+                    rows,
+                    listing,
+                    provider=self.identity,
+                    request=request,
+                    row_label="market-activity-company-dynamics",
+                )
+                response_metadata.update(
+                    _market_activity_company_dynamics_response_metadata(
+                        listing_code=listing.code,
+                        requested_date=requested_date,
+                        upstream_row_count=len(rows),
+                        entity_row_count=len(selected),
+                    )
+                )
+                payload = selected
             elif endpoint.name == "stock_comment_detail_scrd_desire_em":
                 observation_dates = _validate_market_activity_participation_desire_provider_rows(
                     rows,
@@ -11049,6 +11145,10 @@ class AKShareProvider(StructuredDataProvider):
                 request.parameters.get("view")
                 == _MARKET_ACTIVITY_SINA_NEW_STOCK_VIEW
             ),
+            market_activity_company_dynamics_requested=(
+                request.parameters.get("view")
+                == _MARKET_ACTIVITY_COMPANY_DYNAMICS_VIEW
+            ),
             market_activity_institution_statistic_requested=(
                 request.parameters.get("view")
                 == _MARKET_ACTIVITY_INSTITUTION_STATISTIC_VIEW
@@ -11924,6 +12024,13 @@ class AKShareNormalizer:
                         rows,
                     )
                     normalizer_flags.add("AKSHARE_LIMIT_DOWN_POOL_RAW_ONLY")
+                elif endpoint_name == _MARKET_ACTIVITY_COMPANY_DYNAMICS_ENDPOINT:
+                    _validate_market_activity_company_dynamics_normalizer_scope(
+                        record,
+                        listing,
+                        rows,
+                    )
+                    normalizer_flags.add("AKSHARE_COMPANY_DYNAMICS_RAW_ONLY")
                 elif record.request.parameters.get("view") == _MARKET_ACTIVITY_NEW_STOCK_VIEW:
                     _validate_market_activity_new_stock_normalizer_scope(
                         record,
@@ -12096,7 +12203,7 @@ class AKShareNormalizer:
                         "stock_a_congestion_lg, "
                         "stock_market_activity_legu, "
                         "stock_account_statistics_em, "
-                        "stock_zh_a_new_em, stock_zh_a_new, "
+                        "stock_zh_a_new_em, stock_zh_a_new, stock_gsrl_gsdt_em, "
                         "stock_comment_detail_scrd_desire_em, "
                         "stock_comment_detail_scrd_focus_em, "
                         "stock_comment_detail_zlkp_jgcyd_em, "
@@ -14347,6 +14454,13 @@ class AKShareNormalizer:
                 "evidence only: its latest-trading-day quote universe does not establish "
                 "a dated listing, return, valuation, governance or canonical market fact."
             )
+        if "AKSHARE_COMPANY_DYNAMICS_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented A-share Eastmoney company-dynamics response is retained "
+                "as raw evidence only: its requested-trading-day event labels and event "
+                "descriptions do not establish filing contents, accounting periods, "
+                "governance conclusions or a canonical market fact."
+            )
         if "AKSHARE_MARKET_PARTICIPATION_DESIRE_RAW_ONLY" in normalizer_flags:
             notes += (
                 " The documented A-share market-participation response is retained as "
@@ -14943,6 +15057,7 @@ def _endpoint_candidates(
     market_activity_hot_rank_requested: bool = False,
     market_activity_new_stock_requested: bool = False,
     market_activity_sina_new_stock_requested: bool = False,
+    market_activity_company_dynamics_requested: bool = False,
     market_quote_sh_a_spot_requested: bool = False,
     market_quote_sz_a_spot_requested: bool = False,
     market_quote_bj_a_spot_requested: bool = False,
@@ -15294,6 +15409,8 @@ def _endpoint_candidates(
                 return ("stock_jgdy_tj_em",)
             return ()
         if market is ListingMarket.A:
+            if market_activity_company_dynamics_requested:
+                return (_MARKET_ACTIVITY_COMPANY_DYNAMICS_ENDPOINT,)
             if market_activity_new_stock_requested:
                 return ("stock_zh_a_new_em",)
             if market_activity_sina_new_stock_requested:
@@ -31592,6 +31709,207 @@ def _market_activity_sina_new_stock_response_metadata(
     }
 
 
+def _market_activity_company_dynamics_date(value: object) -> date | None:
+    if not isinstance(value, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _market_activity_company_dynamics_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    requested_date: date,
+    listing: _ListingRef | None = None,
+) -> str | None:
+    """Return a strict-schema error for company-dynamics rows."""
+
+    previous_sequence: int | None = None
+    for index, row in enumerate(rows):
+        missing = [
+            field
+            for field in _MARKET_ACTIVITY_COMPANY_DYNAMICS_FIELDS
+            if field not in row
+        ]
+        if missing:
+            return (
+                f"A-share company-dynamics row {index} is missing field(s): "
+                + ", ".join(missing)
+            )
+        unexpected = [
+            field
+            for field in row
+            if field not in _MARKET_ACTIVITY_COMPANY_DYNAMICS_FIELD_SET
+        ]
+        if unexpected:
+            return (
+                f"A-share company-dynamics row {index} contains unsupported "
+                "field(s): "
+                + ", ".join(unexpected)
+            )
+        if tuple(row) != _MARKET_ACTIVITY_COMPANY_DYNAMICS_FIELDS:
+            return (
+                f"A-share company-dynamics row {index} must preserve official "
+                "field order"
+            )
+
+        raw_code = row["代码"]
+        if not isinstance(raw_code, str) or re.fullmatch(r"\d{6}", raw_code) is None:
+            return (
+                f"A-share company-dynamics row {index} 代码 must be a six-digit "
+                "string"
+            )
+        row_code = _row_code(row, ListingMarket.A)
+        if row_code is None:
+            return f"A-share company-dynamics row {index} has no listing code"
+        if listing is not None and row_code != listing.code:
+            return (
+                f"A-share company-dynamics row entity {row_code!r} does not match "
+                f"requested listing {listing.canonical_id!r}"
+            )
+
+        for field in _MARKET_ACTIVITY_COMPANY_DYNAMICS_REQUIRED_TEXT_FIELDS:
+            value = row[field]
+            if not isinstance(value, str) or not value.strip():
+                return (
+                    f"A-share company-dynamics field {field!r} in row {index} "
+                    "must be a non-empty string"
+                )
+
+        sequence_value = row["序号"]
+        if isinstance(sequence_value, bool) or not isinstance(sequence_value, Real):
+            return (
+                f"A-share company-dynamics field '序号' in row {index} must be a "
+                "positive integer"
+            )
+        try:
+            sequence_numeric = float(sequence_value)
+        except (OverflowError, TypeError, ValueError):
+            return (
+                f"A-share company-dynamics field '序号' in row {index} must be a "
+                "positive integer"
+            )
+        if (
+            not math.isfinite(sequence_numeric)
+            or not sequence_numeric.is_integer()
+            or sequence_numeric < 1
+        ):
+            return (
+                f"A-share company-dynamics field '序号' in row {index} must be a "
+                "positive integer"
+            )
+        sequence = int(sequence_numeric)
+        if previous_sequence is not None and sequence <= previous_sequence:
+            return (
+                "A-share company-dynamics response 序号 values must be strictly "
+                "ascending"
+            )
+        previous_sequence = sequence
+
+        observation_date = _market_activity_company_dynamics_date(row["交易日"])
+        if observation_date is None:
+            return (
+                "A-share company-dynamics field '交易日' must be a valid "
+                "YYYY-MM-DD date"
+            )
+        if observation_date != requested_date:
+            return (
+                "A-share company-dynamics row 交易日 must equal requested date "
+                f"{requested_date.isoformat()!r}"
+            )
+    return None
+
+
+def _validate_market_activity_company_dynamics_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    requested_date: date,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> None:
+    """Validate the complete company-dynamics universe before filtering."""
+
+    message = _market_activity_company_dynamics_validation_message(
+        rows,
+        requested_date=requested_date,
+    )
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message}",
+            provider=provider,
+            request=request,
+        )
+
+
+def _market_activity_company_dynamics_response_metadata(
+    *,
+    listing_code: str,
+    requested_date: date,
+    upstream_row_count: int,
+    entity_row_count: int,
+) -> dict[str, JSONValue]:
+    """Build replay metadata for a filtered company-dynamics snapshot."""
+
+    upstream_filter = f"(TRADE_DATE='{requested_date.isoformat()}')"
+    return {
+        "endpoint": _MARKET_ACTIVITY_COMPANY_DYNAMICS_ENDPOINT,
+        "market": ListingMarket.A.value,
+        "listing_code": listing_code,
+        "market_activity_view": _MARKET_ACTIVITY_COMPANY_DYNAMICS_VIEW,
+        "market_scope": "all_a_share_listings",
+        "requested_date": requested_date.strftime("%Y%m%d"),
+        "listing_scoped_request": False,
+        "row_filtering": "provider",
+        "snapshot_scope": "requested_trading_date_company_dynamics",
+        "observation_date": requested_date.isoformat(),
+        "observation_date_field": "交易日",
+        "date_binding": "row_and_request",
+        "date_filter_operator": "equals",
+        "code_field": "代码",
+        "sequence_field": "序号",
+        "sequence_ordering": "strictly_ascending",
+        "date_fields": list(_MARKET_ACTIVITY_COMPANY_DYNAMICS_DATE_FIELDS),
+        "value_fields": [],
+        "integer_fields": list(_MARKET_ACTIVITY_COMPANY_DYNAMICS_INTEGER_FIELDS),
+        "text_fields": list(_MARKET_ACTIVITY_COMPANY_DYNAMICS_TEXT_FIELDS),
+        "required_text_fields": list(
+            _MARKET_ACTIVITY_COMPANY_DYNAMICS_REQUIRED_TEXT_FIELDS
+        ),
+        "field_types": dict(_MARKET_ACTIVITY_COMPANY_DYNAMICS_FIELD_TYPES),
+        "field_count": len(_MARKET_ACTIVITY_COMPANY_DYNAMICS_FIELDS),
+        "source_field_order": list(_MARKET_ACTIVITY_COMPANY_DYNAMICS_FIELDS),
+        "documented_units": {},
+        "undocumented_numeric_units": {},
+        "upstream_url": _MARKET_ACTIVITY_COMPANY_DYNAMICS_UPSTREAM_URL,
+        "upstream_protocol": "JSON",
+        "upstream_parameters": list(
+            _MARKET_ACTIVITY_COMPANY_DYNAMICS_UPSTREAM_PARAMETERS
+        ),
+        "upstream_fixed_parameters": dict(
+            _MARKET_ACTIVITY_COMPANY_DYNAMICS_UPSTREAM_FIXED_PARAMETERS
+        ),
+        "upstream_dynamic_parameters": {"filter": upstream_filter},
+        "upstream_authentication": "none",
+        "upstream_page_size": 5000,
+        "pagination": "single_page",
+        "upstream_sort_column": "SECURITY_CODE",
+        "upstream_sort_direction": "ascending",
+        "upstream_filter": upstream_filter,
+        "wrapper_source_page_uri": _MARKET_ACTIVITY_COMPANY_DYNAMICS_SOURCE_URI,
+        "wrapper_output_ordering": "source_selected_field_order",
+        "wrapper_selected_fields": list(_MARKET_ACTIVITY_COMPANY_DYNAMICS_FIELDS),
+        "wrapper_dropped_fields": list(
+            _MARKET_ACTIVITY_COMPANY_DYNAMICS_UPSTREAM_DROPPED_FIELDS
+        ),
+        "full_universe_response": True,
+        "entity_rows_selected": True,
+        "upstream_row_count": upstream_row_count,
+        "entity_row_count": entity_row_count,
+    }
+
+
 def _market_activity_hot_rank_row_listing(value: object) -> _ListingRef | None:
     """Parse the market-prefixed listing code published by the hot-rank endpoint."""
 
@@ -38289,6 +38607,72 @@ def _validate_market_activity_hot_rank_latest_normalizer_scope(
             "market-activity latest-hot-rank response observation datetime does not "
             "match replayed rows"
         )
+
+
+def _validate_market_activity_company_dynamics_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> None:
+    """Validate replay scope for filtered company-dynamics rows."""
+
+    if listing.market is not ListingMarket.A:
+        raise ProviderNormalizationError(
+            "AKShare company-dynamics raw slice supports A-share listings only"
+        )
+    if record.source_uri != _MARKET_ACTIVITY_COMPANY_DYNAMICS_SOURCE_URI:
+        raise ProviderNormalizationError(
+            "AKShare company-dynamics source URI does not match the documented endpoint"
+        )
+    if record.response_metadata.get("endpoint") != _MARKET_ACTIVITY_COMPANY_DYNAMICS_ENDPOINT:
+        raise ProviderNormalizationError(
+            "AKShare company-dynamics record must come from "
+            f"{_MARKET_ACTIVITY_COMPANY_DYNAMICS_ENDPOINT}"
+        )
+    try:
+        _market_activity_company_dynamics_kwargs(
+            _MARKET_ACTIVITY_COMPANY_DYNAMICS_ENDPOINT,
+            listing,
+            record.request,
+        )
+        requested_date = _market_activity_date_parameter(
+            record.request.parameters["date"],
+            name="date",
+            request=record.request,
+        )
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+
+    upstream_row_count = record.response_metadata.get("upstream_row_count")
+    if (
+        isinstance(upstream_row_count, bool)
+        or not isinstance(upstream_row_count, int)
+        or upstream_row_count < len(rows)
+    ):
+        raise ProviderNormalizationError(
+            "AKShare company-dynamics response upstream row count does not match "
+            "the requested replay scope"
+        )
+    expected_metadata = _market_activity_company_dynamics_response_metadata(
+        listing_code=listing.code,
+        requested_date=requested_date,
+        upstream_row_count=upstream_row_count,
+        entity_row_count=len(rows),
+    )
+    for name, expected in expected_metadata.items():
+        if record.response_metadata.get(name) != expected:
+            raise ProviderNormalizationError(
+                "AKShare company-dynamics response metadata "
+                f"{name!r} does not match the requested replay scope"
+            )
+
+    message = _market_activity_company_dynamics_validation_message(
+        rows,
+        requested_date=requested_date,
+        listing=listing,
+    )
+    if message is not None:
+        raise ProviderNormalizationError(message)
 
 
 def _validate_market_activity_new_stock_normalizer_scope(
@@ -47062,6 +47446,12 @@ def _market_activity_kwargs(
         return _market_activity_limit_down_pool_kwargs(endpoint_name, listing, request)
     if endpoint_name == "stock_zh_a_new_em":
         return _market_activity_new_stock_kwargs(endpoint_name, listing, request)
+    if endpoint_name == _MARKET_ACTIVITY_COMPANY_DYNAMICS_ENDPOINT:
+        return _market_activity_company_dynamics_kwargs(
+            endpoint_name,
+            listing,
+            request,
+        )
     if endpoint_name == _MARKET_ACTIVITY_SINA_NEW_STOCK_ENDPOINT:
         return _market_activity_sina_new_stock_kwargs(endpoint_name, listing, request)
     if endpoint_name == "stock_comment_detail_scrd_desire_em":
@@ -48725,6 +49115,56 @@ def _market_activity_hot_rank_latest_kwargs(
             else listing.code
         )
     }
+
+
+def _market_activity_company_dynamics_kwargs(
+    endpoint_name: str,
+    listing: _ListingRef,
+    request: ProviderRequest,
+) -> dict[str, object]:
+    """Build the documented date-scoped company-dynamics request."""
+
+    if endpoint_name != _MARKET_ACTIVITY_COMPANY_DYNAMICS_ENDPOINT:
+        raise ProviderRequestError(
+            f"unsupported AKShare company-dynamics endpoint {endpoint_name!r}",
+            request=request,
+            retryable=False,
+        )
+    if listing.market is not ListingMarket.A:
+        raise ProviderRequestError(
+            "the AKShare company-dynamics endpoint supports A-share listings only",
+            request=request,
+            retryable=False,
+        )
+    unknown = sorted(
+        set(request.parameters) - _MARKET_ACTIVITY_COMPANY_DYNAMICS_PARAMETER_NAMES
+    )
+    if unknown:
+        raise ProviderRequestError(
+            "unsupported AKShare company-dynamics parameter(s): "
+            + ", ".join(unknown),
+            request=request,
+            retryable=False,
+        )
+    if request.parameters.get("view") != _MARKET_ACTIVITY_COMPANY_DYNAMICS_VIEW:
+        raise ProviderRequestError(
+            "the AKShare company-dynamics endpoint requires "
+            f"view={_MARKET_ACTIVITY_COMPANY_DYNAMICS_VIEW!r}",
+            request=request,
+            retryable=False,
+        )
+    if "date" not in request.parameters:
+        raise ProviderRequestError(
+            "AKShare company-dynamics endpoint requires date (YYYYMMDD)",
+            request=request,
+            retryable=False,
+        )
+    _market_activity_date_parameter(
+        request.parameters["date"],
+        name="date",
+        request=request,
+    )
+    return {"date": request.parameters["date"]}
 
 
 def _market_activity_new_stock_kwargs(

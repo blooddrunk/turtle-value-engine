@@ -710,6 +710,13 @@ class FakeAKShare:
             date=date,
         )
 
+    def stock_gsrl_gsdt_em(self, *, date: str):
+        return self._return(
+            "stock_gsrl_gsdt_em",
+            _fixture("a_company_dynamics.json"),
+            date=date,
+        )
+
     def stock_dzjy_mrmx(self, *, symbol: str, start_date: str, end_date: str):
         return self._return(
             "stock_dzjy_mrmx",
@@ -1329,8 +1336,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "154"
-    assert AKSHARE_MAPPING_VERSION == "155"
+    assert provider.identity.provider_version == "156"
+    assert AKSHARE_MAPPING_VERSION == "157"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -44728,6 +44735,332 @@ def test_sina_new_stock_cache_replay_does_not_call_upstream(tmp_path: Path):
     assert replay.mode is RetrievalMode.CACHE_REPLAY
     assert replay.record == live.record
     assert fake.calls == [("stock_zh_a_new", {})]
+
+
+def test_company_dynamics_fetch_uses_documented_date_universe_and_filters_listing():
+    fake = FakeAKShare()
+    request = _request(
+        DataCategory.MARKET_ACTIVITY,
+        "SH600000",
+        {"view": "company_dynamics", "date": "20240927"},
+    )
+    record = _provider(fake).fetch(request)
+
+    fixture = _fixture("a_company_dynamics.json")
+    assert record.raw_payload == [row for row in fixture if row["代码"] == "600000"]
+    assert fake.calls == [("stock_gsrl_gsdt_em", {"date": "20240927"})]
+    assert record.response_metadata["endpoint"] == "stock_gsrl_gsdt_em"
+    assert record.response_metadata["market"] == "A"
+    assert record.response_metadata["listing_code"] == "600000"
+    assert record.response_metadata["market_activity_view"] == "company_dynamics"
+    assert record.response_metadata["market_scope"] == "all_a_share_listings"
+    assert record.response_metadata["requested_date"] == "20240927"
+    assert record.response_metadata["observation_date"] == "2024-09-27"
+    assert record.response_metadata["listing_scoped_request"] is False
+    assert record.response_metadata["row_filtering"] == "provider"
+    assert (
+        record.response_metadata["snapshot_scope"]
+        == "requested_trading_date_company_dynamics"
+    )
+    assert record.response_metadata["observation_date_field"] == "交易日"
+    assert record.response_metadata["date_binding"] == "row_and_request"
+    assert record.response_metadata["date_filter_operator"] == "equals"
+    assert record.response_metadata["code_field"] == "代码"
+    assert record.response_metadata["sequence_field"] == "序号"
+    assert record.response_metadata["sequence_ordering"] == "strictly_ascending"
+    assert record.response_metadata["date_fields"] == ["交易日"]
+    assert record.response_metadata["value_fields"] == []
+    assert record.response_metadata["integer_fields"] == ["序号"]
+    assert record.response_metadata["text_fields"] == [
+        "代码",
+        "简称",
+        "事件类型",
+        "具体事项",
+    ]
+    assert record.response_metadata["required_text_fields"] == [
+        "代码",
+        "简称",
+        "事件类型",
+        "具体事项",
+    ]
+    assert record.response_metadata["field_types"] == {
+        "序号": "integer",
+        "代码": "string",
+        "简称": "string",
+        "事件类型": "string",
+        "具体事项": "string",
+        "交易日": "date",
+    }
+    assert record.response_metadata["field_count"] == 6
+    assert record.response_metadata["source_field_order"] == list(fixture[0])
+    assert record.response_metadata["wrapper_selected_fields"] == list(fixture[0])
+    assert record.response_metadata["wrapper_dropped_fields"] == ["SECUCODE"]
+    assert record.response_metadata["upstream_url"] == (
+        "https://datacenter-web.eastmoney.com/api/data/v1/get"
+    )
+    assert record.response_metadata["upstream_protocol"] == "JSON"
+    assert record.response_metadata["upstream_parameters"] == [
+        "sortColumns",
+        "sortTypes",
+        "pageSize",
+        "pageNumber",
+        "columns",
+        "source",
+        "client",
+        "reportName",
+        "filter",
+    ]
+    assert record.response_metadata["upstream_fixed_parameters"] == {
+        "sortColumns": "SECURITY_CODE",
+        "sortTypes": "1",
+        "pageSize": "5000",
+        "pageNumber": "1",
+        "columns": (
+            "SECURITY_CODE,SECUCODE,SECURITY_NAME_ABBR,EVENT_TYPE,"
+            "EVENT_CONTENT,TRADE_DATE"
+        ),
+        "source": "WEB",
+        "client": "WEB",
+        "reportName": "RPT_ORGOP_ALL",
+    }
+    assert record.response_metadata["upstream_dynamic_parameters"] == {
+        "filter": "(TRADE_DATE='2024-09-27')"
+    }
+    assert record.response_metadata["upstream_page_size"] == 5000
+    assert record.response_metadata["pagination"] == "single_page"
+    assert record.response_metadata["upstream_sort_column"] == "SECURITY_CODE"
+    assert record.response_metadata["upstream_sort_direction"] == "ascending"
+    assert record.response_metadata["upstream_filter"] == "(TRADE_DATE='2024-09-27')"
+    assert record.response_metadata["full_universe_response"] is True
+    assert record.response_metadata["upstream_row_count"] == 3
+    assert record.response_metadata["entity_row_count"] == 2
+    assert record.response_metadata["entity_rows_selected"] is True
+    assert record.source_uri == "https://data.eastmoney.com/gsrl/gsdt.html"
+
+
+@pytest.mark.parametrize(
+    ("parameters", "entity_id", "match"),
+    [
+        (
+            {"view": "company_dynamics"},
+            "SH600000",
+            "requires date",
+        ),
+        (
+            {"view": "company_dynamics", "date": "2024-09-27"},
+            "SH600000",
+            "date must be YYYYMMDD",
+        ),
+        (
+            {"view": "company_dynamics", "date": "20240931"},
+            "SH600000",
+            "date must be a valid YYYYMMDD date",
+        ),
+        (
+            {"view": "company_dynamics", "date": "20240927", "period": "近三月"},
+            "SH600000",
+            "unsupported AKShare company-dynamics parameter",
+        ),
+        (
+            {"date": "20240927"},
+            "SH600000",
+            "unsupported AKShare market-activity parameter",
+        ),
+        (
+            {"view": "company_dynamics", "date": "20240927"},
+            "HK00700",
+            "A-share listings only",
+        ),
+    ],
+)
+def test_company_dynamics_request_validates_explicit_scope_before_upstream_call(
+    parameters: dict,
+    entity_id: str,
+    match: str,
+):
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError, match=match):
+        _provider(fake).fetch(
+            _request(DataCategory.MARKET_ACTIVITY, entity_id, parameters)
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("missing_field", "missing field"),
+        ("extra_field", "unsupported field"),
+        ("reordered_fields", "official field order"),
+        ("invalid_code", "代码 must be a six-digit string"),
+        ("invalid_date", "valid YYYY-MM-DD date"),
+        ("wrong_date", "must equal requested date"),
+        ("invalid_sequence", "positive integer"),
+        ("descending_sequence", "strictly ascending"),
+        ("invalid_text", "non-empty string"),
+    ],
+)
+def test_company_dynamics_response_validates_shape_identity_date_and_sequence(
+    mutation: str,
+    match: str,
+):
+    payload = [dict(row) for row in _fixture("a_company_dynamics.json")]
+    if mutation == "missing_field":
+        payload[0].pop("具体事项")
+    elif mutation == "extra_field":
+        payload[0]["unexpected"] = "not documented"
+    elif mutation == "reordered_fields":
+        payload[0] = dict(reversed(list(payload[0].items())))
+    elif mutation == "invalid_code":
+        payload[0]["代码"] = "SH000001"
+    elif mutation == "invalid_date":
+        payload[0]["交易日"] = "not-a-date"
+    elif mutation == "wrong_date":
+        payload[0]["交易日"] = "2024-09-26"
+    elif mutation == "invalid_sequence":
+        payload[0]["序号"] = 1.5
+    elif mutation == "descending_sequence":
+        payload[1]["序号"] = 1
+    else:
+        payload[0]["具体事项"] = ""
+
+    class InvalidCompanyDynamics(FakeAKShare):
+        def stock_gsrl_gsdt_em(self, *, date: str):
+            return self._return("stock_gsrl_gsdt_em", payload, date=date)
+
+    with pytest.raises(ProviderResponseError, match=match):
+        _provider(InvalidCompanyDynamics()).fetch(
+            _request(
+                DataCategory.MARKET_ACTIVITY,
+                "SH600000",
+                {"view": "company_dynamics", "date": "20240927"},
+            )
+        )
+
+
+def test_company_dynamics_with_no_matching_listing_is_empty():
+    class NoMatchingCompanyDynamics(FakeAKShare):
+        def stock_gsrl_gsdt_em(self, *, date: str):
+            return self._return(
+                "stock_gsrl_gsdt_em",
+                [
+                    row
+                    for row in _fixture("a_company_dynamics.json")
+                    if row["代码"] == "000001"
+                ],
+                date=date,
+            )
+
+    record = _provider(NoMatchingCompanyDynamics()).fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SH600000",
+            {"view": "company_dynamics", "date": "20240927"},
+        )
+    )
+
+    assert record.raw_payload == []
+    assert record.response_metadata["upstream_row_count"] == 1
+    assert record.response_metadata["entity_row_count"] == 0
+    assert record.response_metadata["observation_date"] == "2024-09-27"
+
+
+def test_company_dynamics_is_raw_only_without_canonical_facts():
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SH600000",
+            {"view": "company_dynamics", "date": "20240927"},
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="company-dynamics-raw-only",
+        as_of=date(2026, 9, 11),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_COMPANY_DYNAMICS_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == []
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "company-dynamics" in normalized.data_quality.notes
+    assert "event descriptions" in normalized.data_quality.notes
+    assert "filing contents" in normalized.data_quality.notes
+    assert "canonical market fact" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+@pytest.mark.parametrize("mutation", ["endpoint", "source_uri", "date", "field_count", "payload"])
+def test_company_dynamics_normalizer_rejects_replayed_scope_mismatches(mutation: str):
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SH600000",
+            {"view": "company_dynamics", "date": "20240927"},
+        )
+    )
+    payload = [dict(row) for row in record.raw_payload]
+    response_metadata = dict(record.response_metadata)
+    source_uri = record.source_uri
+    if mutation == "endpoint":
+        response_metadata["endpoint"] = "stock_lhb_detail_em"
+    elif mutation == "source_uri":
+        source_uri = "https://example.invalid/company-dynamics"
+    elif mutation == "date":
+        response_metadata["requested_date"] = "20240928"
+    elif mutation == "field_count":
+        response_metadata["field_count"] = 5
+    else:
+        payload[0]["交易日"] = "2024-09-26"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=source_uri,
+        response_metadata=response_metadata,
+    )
+
+    with pytest.raises(
+        ProviderNormalizationError,
+        match="market-activity|company-dynamics",
+    ):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-company-dynamics-scope",
+            as_of=date(2026, 9, 11),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_company_dynamics_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.MARKET_ACTIVITY,
+        "SH600000",
+        {"view": "company_dynamics", "date": "20240927"},
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [("stock_gsrl_gsdt_em", {"date": "20240927"})]
 
 
 def test_tencent_tick_fetch_uses_explicit_view_and_listing_symbol():

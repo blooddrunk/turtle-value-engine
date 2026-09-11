@@ -3814,6 +3814,29 @@ validation, invalid unrequested rows, empty selection, raw-only normalization,
 replay metadata tampering and offline cache replay. No calculation, gate,
 pipeline, CLI or input-loader contract changes.
 
+### Phase 3.50 — Eastmoney company-dynamics raw acquisition contract (COMPLETE)
+
+The mapping review now covers the documented Eastmoney
+[`stock_gsrl_gsdt_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
+company-dynamics endpoint under `MARKET_ACTIVITY` with explicit
+`view=company_dynamics` and a required `date=YYYYMMDD`. The [official
+implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_gsrl_em.py)
+queries the `RPT_ORGOP_ALL` report with a date filter, ascending security-code
+sort and a 5000-row page, then returns the exact six fields `序号`, `代码`, `简称`,
+`事件类型`, `具体事项` and `交易日` after dropping the internal `SECUCODE`
+column. The provider validates the complete requested-date universe before
+filtering it to the requested A-share listing and records the exact upstream
+filter, wrapper field order and replay scope.
+
+The company-dynamics response remains raw evidence only because event labels and
+descriptions do not establish filing contents, accounting periods, governance
+conclusions or a canonical market fact. The normalizer emits
+`AKSHARE_COMPANY_DYNAMICS_RAW_ONLY` and creates no canonical fact. Tests cover
+date/view routing, exact schema and field order, full-universe validation,
+duplicate listing events, empty selection, raw-only normalization, replay
+metadata tampering and offline cache replay. No calculation, gate, pipeline,
+CLI or input-loader contract changes.
+
 ### Future structured-provider deliverables
 
 ```text
@@ -3823,7 +3846,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–3.49 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–3.50 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```

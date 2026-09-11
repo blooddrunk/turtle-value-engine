@@ -1840,6 +1840,26 @@ identity/type validation, invalid unrequested rows, empty selection, raw-only
 normalization, replay metadata tampering and offline cache replay. No
 calculation, gate, pipeline, CLI or input-loader contract changes.
 
+Phase 3.50 adds the documented Eastmoney company-dynamics endpoint
+[`stock_gsrl_gsdt_em`](https://akshare.akfamily.xyz/data/stock/stock.html) under
+`MARKET_ACTIVITY` with explicit `view=company_dynamics` and a required
+`date=YYYYMMDD`. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_gsrl_em.py)
+queries the `RPT_ORGOP_ALL` report for the requested trading date, sorts by
+security code and preserves the exact six-field `序号`, `代码`, `简称`, `事件类型`,
+`具体事项` and `交易日` wrapper response after dropping the internal `SECUCODE`
+column. The provider validates the complete date-bound universe before filtering
+it to the requested A-share listing and records the upstream filter, source
+field order and row-selection scope in replay metadata.
+
+The company-dynamics response is retained as raw evidence only: event labels and
+descriptions do not establish filing contents, accounting periods, governance
+conclusions or a canonical market fact. The normalizer emits
+`AKSHARE_COMPANY_DYNAMICS_RAW_ONLY` and creates no canonical fact. Tests cover
+date/view routing, exact schema and field order, complete-universe validation,
+duplicate listing events, empty selection, raw-only normalization, replay
+metadata tampering and offline cache replay. No calculation, gate, pipeline, CLI
+or input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.
