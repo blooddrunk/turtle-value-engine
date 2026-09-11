@@ -2790,6 +2790,36 @@ cache replay. No calculation, gate, pipeline, CLI or input-loader contract
 changes. This numbered 3.07 increment remains structured acquisition; the
 top-level Phase 3 filing/evidence deliverables below are still unimplemented.
 
+### Phase 3.08 — A-share Eastmoney stock-account-statistics raw acquisition contract (COMPLETE)
+
+The mapping review now covers the documented A-share Eastmoney
+`stock_account_statistics_em` endpoint under the existing `MARKET_ACTIVITY`
+category with explicit `view=account_statistics` and no upstream arguments.
+The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_account_em.py)
+define the complete 101-row monthly history beginning at `2015-04` and
+document the published `2023-08` endpoint range. The wrapper returns the exact 11 fields
+`数据日期`, investor-account counts and changes, `沪深总市值`, `沪深户均市值`,
+`上证指数-收盘` and `上证指数-涨跌幅`; the upstream report is
+`RPT_STOCK_OPEN_DATA` with 500-row single-page retrieval and descending
+`STATISTICS_DATE` ordering before wrapper output is sorted ascending by
+`数据日期`.
+
+The provider validates the non-empty complete response, exact field order,
+strict contiguous 101-month `YYYY-MM` ordering, nullable
+month-over-month/year-over-year changes, finite numeric values and non-negative
+account, market-cap and index close fields. It records the wrapper-dropped `STATISTICS_DATE_NY` field,
+documented `万户`/`万` units, undocumented numeric units, source columns and
+full market-wide row counts for deterministic cache replay.
+
+The normalizer emits `AKSHARE_ACCOUNT_STATISTICS_RAW_ONLY` and creates no
+canonical accounting, shareholder-return, governance, market or valuation
+fact: the market-wide investor-account, market-cap and index history has no
+listing/entity accounting scope. Tests cover explicit view/A-share/no-argument
+routing, exact schema/order/types, date and numeric boundaries, nullable
+changes, raw-only normalization, replay metadata tampering and offline cache
+replay. No calculation, gate, pipeline, CLI or input-loader contract changes.
+
 ### Future structured-provider deliverables
 
 ```text
@@ -2799,7 +2829,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–3.07 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–3.08 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -3130,6 +3160,16 @@ count/ratio units. The normalizer emits
 critically missing and creates no canonical accounting, profit, ratio or
 Business Quality fact; primary-filing issuer scope and reconciliation remain
 unresolved.
+Phase 3.08 adds the documented A-share Eastmoney
+`stock_account_statistics_em` stock-account-statistics view under
+`MARKET_ACTIVITY`. Its explicit `account_statistics` view and no-argument
+`RPT_STOCK_OPEN_DATA` response are validated as a complete monthly history
+with 11 exact fields, strict ascending `YYYY-MM` dates, nullable change
+fields, non-negative account/market-cap/index-close aggregates and explicit
+source/drop/sort/unit metadata. The raw-only normalizer flag creates no
+canonical accounting, shareholder-return, governance, market or valuation
+fact because the history is market-wide and has no listing/entity accounting
+scope.
 Phase 2.75 completes the next documented structured-data boundary by adding
 the A-share `stock_gpzy_profile_em` market-wide historical ownership-pledge
 view. Its no-argument eight-field response is validated as an ascending raw

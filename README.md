@@ -1159,6 +1159,23 @@ ordering and units for replay. The normalizer emits
 evidence and do not become canonical goodwill or impairment facts. No
 calculation, gate, pipeline, CLI or input-loader contract changes.
 
+Phase 3.08 adds the documented A-share Eastmoney
+`stock_account_statistics_em` endpoint under `MARKET_ACTIVITY` with explicit
+`view=account_statistics` and no upstream arguments. The [AKShare stock-data
+documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and [official
+implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_account_em.py)
+define the complete 101-row monthly history from `2015-04` through the
+documented `2023-08` endpoint range, returning 11 fields for data date, investor-account
+counts, market-cap aggregates and Shanghai Composite context. The provider
+validates exact field order, the contiguous 101-month `YYYY-MM` date range,
+finite numeric values, nullable change fields, non-negative stock/account aggregates and
+records the upstream report, columns, sort and wrapper-drop contract for
+replay. The normalizer emits
+`AKSHARE_ACCOUNT_STATISTICS_RAW_ONLY`; market-wide account, market-cap and
+index history remains raw evidence and does not become canonical accounting,
+shareholder-return, governance or valuation facts. No calculation, gate,
+pipeline, CLI or input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

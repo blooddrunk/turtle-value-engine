@@ -215,6 +215,12 @@ class FakeAKShare:
     def stock_sse_summary(self):
         return self._return("stock_sse_summary", _fixture("a_sse_summary.json"))
 
+    def stock_account_statistics_em(self):
+        return self._return(
+            "stock_account_statistics_em",
+            _fixture("a_account_statistics.json"),
+        )
+
     def stock_sse_deal_daily(self, *, date: str):
         return self._return(
             "stock_sse_deal_daily",
@@ -944,8 +950,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "108"
-    assert AKSHARE_MAPPING_VERSION == "109"
+    assert provider.identity.provider_version == "109"
+    assert AKSHARE_MAPPING_VERSION == "110"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -20921,6 +20927,423 @@ def test_market_activity_sse_summary_cache_replay_does_not_call_upstream(tmp_pat
     assert replay.mode is RetrievalMode.CACHE_REPLAY
     assert replay.record == live.record
     assert fake.calls == [("stock_sse_summary", {})]
+
+
+def test_market_activity_account_statistics_fetch_keeps_full_monthly_history():
+    fake = FakeAKShare()
+    request = _request(
+        DataCategory.MARKET_ACTIVITY,
+        "SH600000",
+        {"view": "account_statistics"},
+    )
+
+    record = _provider(fake).fetch(request)
+    fixture = _fixture("a_account_statistics.json")
+
+    assert record.raw_payload == fixture
+    assert fake.calls == [("stock_account_statistics_em", {})]
+    assert record.response_metadata["endpoint"] == "stock_account_statistics_em"
+    assert record.response_metadata["market"] == "A"
+    assert record.response_metadata["listing_code"] == "600000"
+    assert record.response_metadata["market_activity_view"] == "account_statistics"
+    assert record.response_metadata["market_scope"] == (
+        "Shanghai and Shenzhen A-share market"
+    )
+    assert record.response_metadata["listing_scoped_request"] is False
+    assert record.response_metadata["row_filtering"] == "none"
+    assert record.response_metadata["snapshot_scope"] == (
+        "historical_monthly_investor_account_statistics"
+    )
+    assert record.response_metadata["date_binding"] == "row_dates"
+    assert record.response_metadata["observation_date_field"] == "数据日期"
+    assert record.response_metadata["observation_date_format"] == "YYYY-MM"
+    assert record.response_metadata["observation_date_ordering"] == (
+        "strictly_ascending"
+    )
+    assert record.response_metadata["observation_count_contract"] == (
+        "exactly_101_contiguous_months"
+    )
+    assert record.response_metadata["observation_start_date"] == "2015-04"
+    assert record.response_metadata["observation_end_date"] == "2023-08"
+    assert record.response_metadata["documented_observation_start_date"] == "2015-04"
+    assert record.response_metadata["documented_observation_end_date"] == "2023-08"
+    assert record.response_metadata["expected_row_count"] == 101
+    assert record.response_metadata["value_fields"] == [
+        "新增投资者-数量",
+        "新增投资者-环比",
+        "新增投资者-同比",
+        "期末投资者-总量",
+        "期末投资者-A股账户",
+        "期末投资者-B股账户",
+        "沪深总市值",
+        "沪深户均市值",
+        "上证指数-收盘",
+        "上证指数-涨跌幅",
+    ]
+    assert record.response_metadata["non_negative_fields"] == [
+        "新增投资者-数量",
+        "期末投资者-总量",
+        "期末投资者-A股账户",
+        "期末投资者-B股账户",
+        "沪深总市值",
+        "沪深户均市值",
+        "上证指数-收盘",
+    ]
+    assert record.response_metadata["integer_fields"] == []
+    assert record.response_metadata["text_fields"] == ["数据日期"]
+    assert record.response_metadata["required_text_fields"] == ["数据日期"]
+    assert record.response_metadata["date_fields"] == ["数据日期"]
+    assert record.response_metadata["required_date_fields"] == ["数据日期"]
+    assert record.response_metadata["required_numeric_fields"] == [
+        "新增投资者-数量",
+        "期末投资者-总量",
+        "期末投资者-A股账户",
+        "期末投资者-B股账户",
+        "沪深总市值",
+        "沪深户均市值",
+        "上证指数-收盘",
+        "上证指数-涨跌幅",
+    ]
+    assert record.response_metadata["field_types"] == {
+        "数据日期": "month",
+        "新增投资者-数量": "number",
+        "新增投资者-环比": "number",
+        "新增投资者-同比": "number",
+        "期末投资者-总量": "number",
+        "期末投资者-A股账户": "number",
+        "期末投资者-B股账户": "number",
+        "沪深总市值": "number",
+        "沪深户均市值": "number",
+        "上证指数-收盘": "number",
+        "上证指数-涨跌幅": "number",
+    }
+    assert record.response_metadata["nullable_fields"] == [
+        "新增投资者-环比",
+        "新增投资者-同比",
+    ]
+    assert record.response_metadata["field_count"] == 11
+    assert record.response_metadata["source_field_order"] == list(fixture[0])
+    assert record.response_metadata["documented_units"] == {
+        "新增投资者-数量": "10k_households",
+        "期末投资者-总量": "10k_households",
+        "期末投资者-A股账户": "10k_households",
+        "期末投资者-B股账户": "10k_households",
+        "沪深户均市值": "CNY_10k",
+    }
+    assert record.response_metadata["undocumented_numeric_units"] == {
+        "新增投资者-环比": "not_documented",
+        "新增投资者-同比": "not_documented",
+        "沪深总市值": "not_documented",
+        "上证指数-收盘": "not_documented",
+        "上证指数-涨跌幅": "not_documented",
+    }
+    assert record.response_metadata["upstream_report_name"] == "RPT_STOCK_OPEN_DATA"
+    assert record.response_metadata["upstream_columns_selector"] == "ALL"
+    assert record.response_metadata["upstream_columns"] == [
+        "STATISTICS_DATE",
+        "ADD_INVESTOR",
+        "ADD_INVESTOR_QOQ",
+        "ADD_INVESTOR_YOY",
+        "END_INVESTOR",
+        "END_INVESTOR_A",
+        "END_INVESTOR_B",
+        "CLOSE_PRICE",
+        "CHANGE_RATE",
+        "TOTAL_MARKET_CAP",
+        "AVERAGE_MARKET_CAP",
+        "STATISTICS_DATE_NY",
+    ]
+    assert record.response_metadata["wrapper_dropped_fields"] == [
+        "STATISTICS_DATE_NY"
+    ]
+    assert record.response_metadata["upstream_page_size"] == 500
+    assert record.response_metadata["pagination"] == "single_page"
+    assert record.response_metadata["upstream_sort_column"] == "STATISTICS_DATE"
+    assert record.response_metadata["upstream_sort_direction"] == "descending"
+    assert record.response_metadata["upstream_filter"] is None
+    assert record.response_metadata["wrapper_output_ordering"] == (
+        "ascending_by_data_date"
+    )
+    assert record.response_metadata["upstream_row_count"] == len(fixture)
+    assert record.response_metadata["entity_row_count"] == 0
+    assert record.response_metadata["entity_rows_selected"] is False
+    assert record.source_uri == "https://data.eastmoney.com/cjsj/gpkhsj.html"
+
+
+@pytest.mark.parametrize(
+    ("parameters", "entity_id", "match"),
+    [
+        (
+            {"view": "account_statistics", "date": "202308"},
+            "SH600000",
+            "unsupported AKShare account-statistics parameter",
+        ),
+        (
+            {"view": "account_statistics"},
+            "HK00700",
+            "A-share listings only",
+        ),
+    ],
+)
+def test_market_activity_account_statistics_request_validates_explicit_scope_before_upstream_call(
+    parameters: dict,
+    entity_id: str,
+    match: str,
+):
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError, match=match):
+        _provider(fake).fetch(
+            _request(DataCategory.MARKET_ACTIVITY, entity_id, parameters)
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("empty", "must not be empty"),
+        ("missing_field", "missing field.*沪深总市值"),
+        ("extra_field", "contains unsupported field"),
+        ("reordered_fields", "official field order"),
+        ("invalid_date", "invalid 数据日期"),
+        ("duplicate_date", "duplicate 数据日期"),
+        ("descending_dates", "strictly ascending"),
+        ("short_response", "exactly 101 rows"),
+        ("missing_month", "contiguous monthly"),
+        ("invalid_numeric", "新增投资者-数量.*numeric"),
+        ("boolean_numeric", "新增投资者-数量.*numeric"),
+        ("null_required", "沪深总市值.*must not be null"),
+        ("negative_non_negative", "沪深总市值.*non-negative"),
+    ],
+)
+def test_market_activity_account_statistics_response_validates_schema_boundaries(
+    mutation: str,
+    match: str,
+):
+    payload = [dict(row) for row in _fixture("a_account_statistics.json")]
+    if mutation == "empty":
+        payload = []
+    elif mutation == "missing_field":
+        payload[0].pop("沪深总市值")
+    elif mutation == "extra_field":
+        payload[0]["unexpected"] = "not documented"
+    elif mutation == "reordered_fields":
+        payload[0] = dict(reversed(list(payload[0].items())))
+    elif mutation == "invalid_date":
+        payload[0]["数据日期"] = "2015-4"
+    elif mutation == "duplicate_date":
+        payload[1]["数据日期"] = payload[0]["数据日期"]
+    elif mutation == "descending_dates":
+        payload.reverse()
+    elif mutation == "short_response":
+        payload.pop()
+    elif mutation == "missing_month":
+        payload[2]["数据日期"] = "2015-07"
+    elif mutation == "invalid_numeric":
+        payload[0]["新增投资者-数量"] = "497.53"
+    elif mutation == "boolean_numeric":
+        payload[0]["新增投资者-数量"] = True
+    elif mutation == "null_required":
+        payload[0]["沪深总市值"] = None
+    else:
+        payload[0]["沪深总市值"] = -1
+
+    class InvalidAccountStatistics(FakeAKShare):
+        def stock_account_statistics_em(self):
+            return self._return("stock_account_statistics_em", payload)
+
+    with pytest.raises(ProviderResponseError, match=match):
+        _provider(InvalidAccountStatistics()).fetch(
+            _request(
+                DataCategory.MARKET_ACTIVITY,
+                "SH600000",
+                {"view": "account_statistics"},
+            )
+        )
+
+
+def test_market_activity_account_statistics_accepts_nullable_and_signed_boundaries():
+    payload = [dict(row) for row in _fixture("a_account_statistics.json")]
+    for row in payload:
+        row["新增投资者-数量"] = 0
+        row["新增投资者-环比"] = None
+        row["新增投资者-同比"] = None
+        row["期末投资者-总量"] = 0
+        row["期末投资者-A股账户"] = 0
+        row["期末投资者-B股账户"] = 0
+        row["沪深总市值"] = 0
+        row["沪深户均市值"] = 0
+        row["上证指数-收盘"] = 0
+        row["上证指数-涨跌幅"] = -1
+
+    class BoundaryAccountStatistics(FakeAKShare):
+        def stock_account_statistics_em(self):
+            return self._return("stock_account_statistics_em", payload)
+
+    record = _provider(BoundaryAccountStatistics()).fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SH600000",
+            {"view": "account_statistics"},
+        )
+    )
+
+    assert record.raw_payload[0]["新增投资者-环比"] is None
+    assert record.raw_payload[0]["上证指数-涨跌幅"] == -1
+
+
+def test_market_activity_account_statistics_is_retained_as_raw_evidence_without_listing_facts():
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SH600000",
+            {"view": "account_statistics"},
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="account-statistics-raw-only",
+        as_of=date(2026, 9, 11),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_ACCOUNT_STATISTICS_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == []
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "stock-account-statistics" in normalized.data_quality.notes
+    assert "market-wide investor-account" in normalized.data_quality.notes
+    assert "canonical" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "endpoint",
+        "source_uri",
+        "market",
+        "listing_code",
+        "view",
+        "market_scope",
+        "listing_scope",
+        "filtering",
+        "snapshot",
+        "date_binding",
+        "observation_start_date",
+        "value_fields",
+        "nullable_fields",
+        "field_count",
+        "source_field_order",
+        "documented_units",
+        "upstream_columns",
+        "upstream_count",
+        "selected",
+        "payload",
+    ],
+)
+def test_market_activity_account_statistics_normalizer_rejects_replayed_scope_mismatches(
+    mutation: str,
+):
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SH600000",
+            {"view": "account_statistics"},
+        )
+    )
+    payload = [dict(row) for row in record.raw_payload]
+    response_metadata = dict(record.response_metadata)
+    source_uri = record.source_uri
+    if mutation == "endpoint":
+        response_metadata["endpoint"] = "stock_sse_summary"
+    elif mutation == "source_uri":
+        source_uri = "https://example.invalid/account-statistics"
+    elif mutation == "market":
+        response_metadata["market"] = "H"
+    elif mutation == "listing_code":
+        response_metadata["listing_code"] = "000001"
+    elif mutation == "view":
+        response_metadata["market_activity_view"] = "sse_summary"
+    elif mutation == "market_scope":
+        response_metadata["market_scope"] = "all_a_share_listings"
+    elif mutation == "listing_scope":
+        response_metadata["listing_scoped_request"] = True
+    elif mutation == "filtering":
+        response_metadata["row_filtering"] = "provider"
+    elif mutation == "snapshot":
+        response_metadata["snapshot_scope"] = "current_trading_day"
+    elif mutation == "date_binding":
+        response_metadata["date_binding"] = "request_only"
+    elif mutation == "observation_start_date":
+        response_metadata["observation_start_date"] = "2015-05"
+    elif mutation == "value_fields":
+        response_metadata["value_fields"] = ["新增投资者-数量"]
+    elif mutation == "nullable_fields":
+        response_metadata["nullable_fields"] = []
+    elif mutation == "field_count":
+        response_metadata["field_count"] = 10
+    elif mutation == "source_field_order":
+        response_metadata["source_field_order"] = list(
+            reversed(response_metadata["source_field_order"])
+        )
+    elif mutation == "documented_units":
+        response_metadata["documented_units"] = {"新增投资者-数量": "households"}
+    elif mutation == "upstream_columns":
+        response_metadata["upstream_columns"] = ["STATISTICS_DATE"]
+    elif mutation == "upstream_count":
+        response_metadata["upstream_row_count"] = 2
+    elif mutation == "selected":
+        response_metadata["entity_rows_selected"] = True
+    else:
+        payload[0]["沪深总市值"] = "not-a-number"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=source_uri,
+        response_metadata=response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-account-statistics",
+            as_of=date(2026, 9, 11),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_market_activity_account_statistics_cache_replay_does_not_call_upstream(
+    tmp_path: Path,
+):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.MARKET_ACTIVITY,
+        "SH600000",
+        {"view": "account_statistics"},
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [("stock_account_statistics_em", {})]
 
 
 def test_market_activity_szse_summary_fetch_uses_documented_date_and_preserves_market_snapshot():

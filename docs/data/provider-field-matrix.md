@@ -1408,6 +1408,37 @@ and `impairment` as critically missing and creates no canonical accounting,
 profit, ratio or Business Quality fact. The response remains outside the
 calculation, gate, pipeline, CLI and input-loader contracts.
 
+## Phase 3.08 A-share Eastmoney stock-account-statistics raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_account_em.py)
+document `stock_account_statistics_em()` as a no-argument A-share market
+history backed by `RPT_STOCK_OPEN_DATA`. The documented response covers the
+complete 101-row monthly range from `2015-04` through `2023-08`, and the
+wrapper returns the exact 11 fields below in ascending `数据日期` order. The adapter exposes it
+only with `MARKET_ACTIVITY` plus explicit `view=account_statistics`; the
+requested listing is provenance context, not a row filter.
+
+| Raw upstream item | Phase 3.08 treatment |
+| --- | --- |
+| `数据日期` | Required strict contiguous `YYYY-MM` monthly observation date; the documented 101-row `2015-04`–`2023-08` range is enforced, and duplicate, descending or invalid dates are rejected. |
+| `新增投资者-数量`, `期末投资者-总量`, `期末投资者-A股账户`, `期末投资者-B股账户` | Required finite non-negative investor-account counts; the documented unit is `万户`, and the market-wide counts do not become listing-level shareholders or canonical accounting facts. |
+| `新增投资者-环比`, `新增投资者-同比` | Finite numeric-or-null change fields; the documentation does not establish a canonical ratio unit or period interpretation. |
+| `沪深总市值` | Required finite non-negative market-wide aggregate; its numeric unit is not documented and it does not become a canonical valuation or cash fact. |
+| `沪深户均市值` | Required finite non-negative average market value; the documented unit is `万`, retained as `CNY_10k` context without promoting it to a listing valuation input. |
+| `上证指数-收盘`, `上证指数-涨跌幅` | Required finite non-negative index close and finite signed change; numeric units are not documented and neither becomes a listing quote or return fact. |
+| upstream mapping | `RPT_STOCK_OPEN_DATA` requests `ALL`, page size 500, descending `STATISTICS_DATE` and no filter; the wrapper source columns are recorded and `STATISTICS_DATE_NY` is the only dropped display field. |
+| request `view=account_statistics` | A-share-only market-wide monthly scope with no upstream arguments, `listing_scoped_request=false`, `row_filtering=none`, `entity_rows_selected=false`, exact source order/types/nullability and full row counts for cache replay. |
+
+The provider rejects empty responses, missing/unexpected/reordered fields,
+invalid or non-ascending months, non-numeric/boolean/non-finite values, null
+required values and negative account/market-cap/index-close aggregates. The
+normalizer emits `AKSHARE_ACCOUNT_STATISTICS_RAW_ONLY` and creates no
+canonical accounting, shareholder-return, governance, market or valuation
+fact: the market-wide history has no listing/entity accounting scope. The
+response remains outside the calculation, gate, pipeline, CLI and input-loader
+contracts.
+
 ## Phase 2.92 SSE daily-deal overview raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)

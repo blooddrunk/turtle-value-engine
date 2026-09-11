@@ -53,7 +53,8 @@ shareholder-meeting raw slices are also available.
 The SSE and SZSE market-summary raw slices are also available.
 The SSE daily-deal overview raw slice is also available. The SZSE area-summary
 and sector-summary raw slices are also available. The Eastmoney industry-board
-snapshot and Dragon-Tiger institution-daily raw slices are also available.
+snapshot, Dragon-Tiger institution-daily raw slice and stock-account-statistics
+history are also available.
 The A-share Eastmoney top-ten, top-ten-tradable-shareholder and
 top-ten-tradable-shareholder-detail raw slices are also available.
 The A-share Eastmoney institutional-research statistics and detail raw slices
@@ -104,9 +105,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "108"
+AKSHARE_ADAPTER_VERSION = "109"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "109"
+AKSHARE_MAPPING_VERSION = "110"
 
 
 class ListingMarket(StrEnum):
@@ -213,6 +214,7 @@ _SOURCE_URIS = {
     ),
     "stock_sse_summary": "https://www.sse.com.cn/market/stockdata/statistic/",
     "stock_sse_deal_daily": "https://www.sse.com.cn/market/stockdata/overview/day/",
+    "stock_account_statistics_em": "https://data.eastmoney.com/cjsj/gpkhsj.html",
     "stock_zt_pool_em": "https://quote.eastmoney.com/ztb/detail#type=ztgc",
     "stock_zt_pool_dtgc_em": "https://quote.eastmoney.com/ztb/detail#type=dtgc",
     "stock_intraday_em": "https://quote.eastmoney.com/f1.html?newcode=0.000001",
@@ -314,6 +316,7 @@ _NO_ARGUMENT_ENDPOINTS = frozenset(
         "stock_gddh_em",
         "stock_zh_ab_comparison_em",
         "stock_board_industry_name_em",
+        "stock_account_statistics_em",
     }
 )
 
@@ -1061,6 +1064,91 @@ _MARKET_ACTIVITY_SSE_SUMMARY_VALUE_FIELDS = (
 _MARKET_ACTIVITY_SSE_SUMMARY_UNDOCUMENTED_UNITS = {
     field: "not_documented"
     for field in _MARKET_ACTIVITY_SSE_SUMMARY_VALUE_FIELDS
+}
+_MARKET_ACTIVITY_ACCOUNT_STATISTICS_PARAMETER_NAMES = frozenset({"view"})
+_MARKET_ACTIVITY_ACCOUNT_STATISTICS_VIEW = "account_statistics"
+_MARKET_ACTIVITY_ACCOUNT_STATISTICS_FIELDS = (
+    "数据日期",
+    "新增投资者-数量",
+    "新增投资者-环比",
+    "新增投资者-同比",
+    "期末投资者-总量",
+    "期末投资者-A股账户",
+    "期末投资者-B股账户",
+    "沪深总市值",
+    "沪深户均市值",
+    "上证指数-收盘",
+    "上证指数-涨跌幅",
+)
+_MARKET_ACTIVITY_ACCOUNT_STATISTICS_UPSTREAM_COLUMNS = (
+    "STATISTICS_DATE",
+    "ADD_INVESTOR",
+    "ADD_INVESTOR_QOQ",
+    "ADD_INVESTOR_YOY",
+    "END_INVESTOR",
+    "END_INVESTOR_A",
+    "END_INVESTOR_B",
+    "CLOSE_PRICE",
+    "CHANGE_RATE",
+    "TOTAL_MARKET_CAP",
+    "AVERAGE_MARKET_CAP",
+    "STATISTICS_DATE_NY",
+)
+_MARKET_ACTIVITY_ACCOUNT_STATISTICS_FIELD_SET = frozenset(
+    _MARKET_ACTIVITY_ACCOUNT_STATISTICS_FIELDS
+)
+_MARKET_ACTIVITY_ACCOUNT_STATISTICS_EXPECTED_ROW_COUNT = 101
+_MARKET_ACTIVITY_ACCOUNT_STATISTICS_START_MONTH = date(2015, 4, 1)
+_MARKET_ACTIVITY_ACCOUNT_STATISTICS_END_MONTH = date(2023, 8, 1)
+_MARKET_ACTIVITY_ACCOUNT_STATISTICS_DATE_FIELDS = ("数据日期",)
+_MARKET_ACTIVITY_ACCOUNT_STATISTICS_NUMERIC_FIELDS = (
+    "新增投资者-数量",
+    "新增投资者-环比",
+    "新增投资者-同比",
+    "期末投资者-总量",
+    "期末投资者-A股账户",
+    "期末投资者-B股账户",
+    "沪深总市值",
+    "沪深户均市值",
+    "上证指数-收盘",
+    "上证指数-涨跌幅",
+)
+_MARKET_ACTIVITY_ACCOUNT_STATISTICS_NULLABLE_FIELDS = (
+    "新增投资者-环比",
+    "新增投资者-同比",
+)
+_MARKET_ACTIVITY_ACCOUNT_STATISTICS_NON_NEGATIVE_FIELDS = frozenset(
+    {
+        "新增投资者-数量",
+        "期末投资者-总量",
+        "期末投资者-A股账户",
+        "期末投资者-B股账户",
+        "沪深总市值",
+        "沪深户均市值",
+        "上证指数-收盘",
+    }
+)
+_MARKET_ACTIVITY_ACCOUNT_STATISTICS_TEXT_FIELDS = ("数据日期",)
+_MARKET_ACTIVITY_ACCOUNT_STATISTICS_REQUIRED_TEXT_FIELDS = ("数据日期",)
+_MARKET_ACTIVITY_ACCOUNT_STATISTICS_REQUIRED_DATE_FIELDS = ("数据日期",)
+_MARKET_ACTIVITY_ACCOUNT_STATISTICS_FIELD_TYPES = {
+    "数据日期": "month",
+    **{
+        field: "number"
+        for field in _MARKET_ACTIVITY_ACCOUNT_STATISTICS_NUMERIC_FIELDS
+    },
+}
+_MARKET_ACTIVITY_ACCOUNT_STATISTICS_DOCUMENTED_UNITS = {
+    "新增投资者-数量": "10k_households",
+    "期末投资者-总量": "10k_households",
+    "期末投资者-A股账户": "10k_households",
+    "期末投资者-B股账户": "10k_households",
+    "沪深户均市值": "CNY_10k",
+}
+_MARKET_ACTIVITY_ACCOUNT_STATISTICS_UNDOCUMENTED_NUMERIC_UNITS = {
+    field: "not_documented"
+    for field in _MARKET_ACTIVITY_ACCOUNT_STATISTICS_NUMERIC_FIELDS
+    if field not in _MARKET_ACTIVITY_ACCOUNT_STATISTICS_DOCUMENTED_UNITS
 }
 _MARKET_ACTIVITY_SZSE_SUMMARY_PARAMETER_NAMES = frozenset({"view", "date"})
 _MARKET_ACTIVITY_SZSE_SUMMARY_VIEW = "szse_summary"
@@ -3389,6 +3477,21 @@ class AKShareProvider(StructuredDataProvider):
                 )
                 response_metadata["undocumented_numeric_units"] = dict(
                     _MARKET_ACTIVITY_SZSE_SUMMARY_UNDOCUMENTED_UNITS
+                )
+            elif endpoint.name == "stock_account_statistics_em":
+                observation_dates = (
+                    _validate_market_activity_account_statistics_provider_rows(
+                        rows,
+                        provider=self.identity,
+                        request=request,
+                    )
+                )
+                response_metadata.update(
+                    _market_activity_account_statistics_response_metadata(
+                        listing_code=listing.code,
+                        observation_dates=observation_dates,
+                        row_count=len(rows),
+                    )
                 )
             elif endpoint.name == "stock_sse_summary":
                 report_date = _validate_market_activity_sse_summary_provider_rows(
@@ -6157,6 +6260,10 @@ class AKShareProvider(StructuredDataProvider):
                 request.parameters.get("view")
                 == _MARKET_ACTIVITY_INSTITUTION_STATISTIC_VIEW
             ),
+            market_activity_account_statistics_requested=(
+                request.parameters.get("view")
+                == _MARKET_ACTIVITY_ACCOUNT_STATISTICS_VIEW
+            ),
             market_activity_hot_rank_latest_requested=(
                 request.parameters.get("view")
                 == _MARKET_ACTIVITY_HOT_RANK_LATEST_VIEW
@@ -6625,6 +6732,13 @@ class AKShareNormalizer:
                         rows,
                     )
                     normalizer_flags.add("AKSHARE_SSE_SUMMARY_RAW_ONLY")
+                elif endpoint_name == "stock_account_statistics_em":
+                    _validate_market_activity_account_statistics_normalizer_scope(
+                        record,
+                        listing,
+                        rows,
+                    )
+                    normalizer_flags.add("AKSHARE_ACCOUNT_STATISTICS_RAW_ONLY")
                 elif endpoint_name == "stock_sse_deal_daily":
                     _validate_market_activity_sse_deal_daily_normalizer_scope(
                         record,
@@ -6828,6 +6942,7 @@ class AKShareNormalizer:
                         "stock_szse_sector_summary, stock_szse_area_summary, "
                         "stock_szse_summary, "
                         "stock_sse_summary, stock_sse_deal_daily, "
+                        "stock_account_statistics_em, "
                         "stock_zh_a_new_em, stock_comment_detail_scrd_desire_em, "
                         "stock_comment_detail_scrd_focus_em, "
                         "stock_comment_detail_zlkp_jgcyd_em, "
@@ -8481,6 +8596,14 @@ class AKShareNormalizer:
                 "valuation or canonical market metric; the endpoint does not document "
                 "numeric units for these output values."
             )
+        if "AKSHARE_ACCOUNT_STATISTICS_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented A-share Eastmoney stock-account-statistics response is "
+                "retained as raw evidence only: its market-wide investor-account, market- "
+                "capital and index history lacks listing/entity accounting scope and does "
+                "not establish canonical accounting, shareholder-return, governance or "
+                "valuation facts."
+            )
         if "AKSHARE_SZSE_SUMMARY_RAW_ONLY" in normalizer_flags:
             notes += (
                 " The documented SZSE market-summary response is retained as raw evidence "
@@ -8985,6 +9108,7 @@ def _endpoint_candidates(
     insider_management_detail_requested: bool = False,
     market_activity_statistic_requested: bool = False,
     market_activity_institution_statistic_requested: bool = False,
+    market_activity_account_statistics_requested: bool = False,
     market_activity_block_trade_requested: bool = False,
     market_activity_institution_daily_requested: bool = False,
     market_activity_institution_research_requested: bool = False,
@@ -9114,6 +9238,10 @@ def _endpoint_candidates(
             return ("stock_hk_hist_min_em",)
         return ("stock_hk_daily", "stock_zh_ah_daily")
     if category is DataCategory.MARKET_ACTIVITY:
+        if market_activity_account_statistics_requested:
+            if market is ListingMarket.A:
+                return ("stock_account_statistics_em",)
+            return ()
         if market_activity_industry_board_requested:
             if market is ListingMarket.A:
                 return ("stock_board_industry_name_em",)
@@ -16560,6 +16688,168 @@ def _validate_market_activity_sse_summary_provider_rows(
     return report_date
 
 
+def _market_activity_account_statistics_month(value: object) -> date | None:
+    """Parse the account-statistics wrapper's strict YYYY-MM date field."""
+
+    if not isinstance(value, str) or not re.fullmatch(r"\d{4}-\d{2}", value):
+        return None
+    try:
+        return datetime.strptime(value, "%Y-%m").date()
+    except ValueError:
+        return None
+
+
+def _next_market_activity_account_statistics_month(value: date) -> date:
+    if value.month == 12:
+        return date(value.year + 1, 1, 1)
+    return date(value.year, value.month + 1, 1)
+
+
+def _market_activity_account_statistics_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> tuple[str | None, list[date]]:
+    """Return strict-schema errors for the complete monthly history."""
+
+    if not rows:
+        return "account-statistics response must not be empty", []
+    if len(rows) != _MARKET_ACTIVITY_ACCOUNT_STATISTICS_EXPECTED_ROW_COUNT:
+        return (
+            "account-statistics response must contain exactly "
+            f"{_MARKET_ACTIVITY_ACCOUNT_STATISTICS_EXPECTED_ROW_COUNT} rows",
+            [],
+        )
+
+    observation_dates: list[date] = []
+    previous_date: date | None = None
+    nullable_fields = set(_MARKET_ACTIVITY_ACCOUNT_STATISTICS_NULLABLE_FIELDS)
+    for index, row in enumerate(rows):
+        missing = [
+            field
+            for field in _MARKET_ACTIVITY_ACCOUNT_STATISTICS_FIELDS
+            if field not in row
+        ]
+        unexpected = [
+            field
+            for field in row
+            if field not in _MARKET_ACTIVITY_ACCOUNT_STATISTICS_FIELD_SET
+        ]
+        if missing:
+            return (
+                f"account-statistics row {index} is missing field(s): "
+                + ", ".join(missing),
+                [],
+            )
+        if unexpected:
+            return (
+                f"account-statistics row {index} contains unsupported field(s): "
+                + ", ".join(unexpected),
+                [],
+            )
+        if tuple(row) != _MARKET_ACTIVITY_ACCOUNT_STATISTICS_FIELDS:
+            return "account-statistics rows must preserve the official field order", []
+
+        observation_date = _market_activity_account_statistics_month(row["数据日期"])
+        if observation_date is None:
+            return f"account-statistics row {index} has an invalid 数据日期", []
+        if previous_date is not None and observation_date <= previous_date:
+            if observation_date == previous_date:
+                return (
+                    "account-statistics response has duplicate 数据日期 "
+                    f"{row['数据日期']!r}",
+                    [],
+                )
+            return "account-statistics response 数据日期 values must be strictly ascending", []
+        if (
+            previous_date is not None
+            and observation_date
+            != _next_market_activity_account_statistics_month(previous_date)
+        ):
+            return (
+                "account-statistics response 数据日期 values must be "
+                "contiguous monthly observations",
+                [],
+            )
+        previous_date = observation_date
+        observation_dates.append(observation_date)
+
+        for field in _MARKET_ACTIVITY_ACCOUNT_STATISTICS_NUMERIC_FIELDS:
+            value = row[field]
+            if value is None:
+                if field in nullable_fields:
+                    continue
+                return (
+                    f"account-statistics row {index} field {field!r} must not be null",
+                    [],
+                )
+            if isinstance(value, bool) or not isinstance(value, Real):
+                return (
+                    f"account-statistics row {index} field {field!r} must be numeric",
+                    [],
+                )
+            try:
+                numeric = float(value)
+            except (OverflowError, TypeError, ValueError):
+                return (
+                    f"account-statistics row {index} field {field!r} must be numeric",
+                    [],
+                )
+            if not math.isfinite(numeric):
+                return (
+                    f"account-statistics row {index} field {field!r} must be finite",
+                    [],
+                )
+            if (
+                field in _MARKET_ACTIVITY_ACCOUNT_STATISTICS_NON_NEGATIVE_FIELDS
+                and numeric < 0
+            ):
+                return (
+                    f"account-statistics row {index} field {field!r} must be non-negative",
+                    [],
+                )
+
+    if observation_dates[0] != _MARKET_ACTIVITY_ACCOUNT_STATISTICS_START_MONTH:
+        return (
+            "account-statistics response must start at "
+            f"{_MARKET_ACTIVITY_ACCOUNT_STATISTICS_START_MONTH.strftime('%Y-%m')}",
+            [],
+        )
+    if observation_dates[-1] != _MARKET_ACTIVITY_ACCOUNT_STATISTICS_END_MONTH:
+        return (
+            "account-statistics response must end at "
+            f"{_MARKET_ACTIVITY_ACCOUNT_STATISTICS_END_MONTH.strftime('%Y-%m')}",
+            [],
+        )
+    for previous, current in zip(observation_dates, observation_dates[1:]):
+        if current != _next_market_activity_account_statistics_month(previous):
+            return (
+                "account-statistics response 数据日期 values must be "
+                "contiguous monthly observations",
+                [],
+            )
+
+    return None, observation_dates
+
+
+def _validate_market_activity_account_statistics_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> list[date]:
+    """Validate the complete Eastmoney stock-account history before storage."""
+
+    message, observation_dates = _market_activity_account_statistics_validation_message(
+        rows
+    )
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message}",
+            provider=provider,
+            request=request,
+        )
+    return observation_dates
+
+
 def _market_activity_sse_deal_daily_validation_message(
     rows: Sequence[Mapping[str, JSONValue]],
 ) -> str | None:
@@ -20838,6 +21128,153 @@ def _validate_market_activity_sse_summary_normalizer_scope(
             raise ProviderNormalizationError(
                 f"AKShare SSE market-summary response metadata {name!r} does not "
                 "match the requested replay scope"
+            )
+
+
+def _market_activity_account_statistics_response_metadata(
+    *,
+    listing_code: str,
+    observation_dates: Sequence[date],
+    row_count: int,
+) -> dict[str, JSONValue]:
+    """Build the replay contract for the monthly market-wide history."""
+
+    if not observation_dates:
+        raise ValueError("account-statistics response must contain observation dates")
+    numeric_fields = list(_MARKET_ACTIVITY_ACCOUNT_STATISTICS_NUMERIC_FIELDS)
+    return {
+        "endpoint": "stock_account_statistics_em",
+        "market": ListingMarket.A.value,
+        "listing_code": listing_code,
+        "market_activity_view": _MARKET_ACTIVITY_ACCOUNT_STATISTICS_VIEW,
+        "market_scope": "Shanghai and Shenzhen A-share market",
+        "listing_scoped_request": False,
+        "row_filtering": "none",
+        "snapshot_scope": "historical_monthly_investor_account_statistics",
+        "date_binding": "row_dates",
+        "observation_date_field": "数据日期",
+        "observation_date_format": "YYYY-MM",
+        "observation_date_ordering": "strictly_ascending",
+        "observation_count_contract": "exactly_101_contiguous_months",
+        "observation_start_date": min(observation_dates).strftime("%Y-%m"),
+        "observation_end_date": max(observation_dates).strftime("%Y-%m"),
+        "documented_observation_start_date": (
+            _MARKET_ACTIVITY_ACCOUNT_STATISTICS_START_MONTH.strftime("%Y-%m")
+        ),
+        "documented_observation_end_date": (
+            _MARKET_ACTIVITY_ACCOUNT_STATISTICS_END_MONTH.strftime("%Y-%m")
+        ),
+        "expected_row_count": _MARKET_ACTIVITY_ACCOUNT_STATISTICS_EXPECTED_ROW_COUNT,
+        "value_fields": numeric_fields,
+        "non_negative_fields": [
+            field
+            for field in _MARKET_ACTIVITY_ACCOUNT_STATISTICS_FIELDS
+            if field in _MARKET_ACTIVITY_ACCOUNT_STATISTICS_NON_NEGATIVE_FIELDS
+        ],
+        "integer_fields": [],
+        "text_fields": list(_MARKET_ACTIVITY_ACCOUNT_STATISTICS_TEXT_FIELDS),
+        "required_text_fields": list(
+            _MARKET_ACTIVITY_ACCOUNT_STATISTICS_REQUIRED_TEXT_FIELDS
+        ),
+        "date_fields": list(_MARKET_ACTIVITY_ACCOUNT_STATISTICS_DATE_FIELDS),
+        "required_date_fields": list(
+            _MARKET_ACTIVITY_ACCOUNT_STATISTICS_REQUIRED_DATE_FIELDS
+        ),
+        "required_numeric_fields": [
+            field
+            for field in numeric_fields
+            if field not in _MARKET_ACTIVITY_ACCOUNT_STATISTICS_NULLABLE_FIELDS
+        ],
+        "field_types": dict(_MARKET_ACTIVITY_ACCOUNT_STATISTICS_FIELD_TYPES),
+        "nullable_fields": list(_MARKET_ACTIVITY_ACCOUNT_STATISTICS_NULLABLE_FIELDS),
+        "field_count": len(_MARKET_ACTIVITY_ACCOUNT_STATISTICS_FIELDS),
+        "source_field_order": list(_MARKET_ACTIVITY_ACCOUNT_STATISTICS_FIELDS),
+        "documented_units": dict(
+            _MARKET_ACTIVITY_ACCOUNT_STATISTICS_DOCUMENTED_UNITS
+        ),
+        "undocumented_numeric_units": dict(
+            _MARKET_ACTIVITY_ACCOUNT_STATISTICS_UNDOCUMENTED_NUMERIC_UNITS
+        ),
+        "upstream_report_name": "RPT_STOCK_OPEN_DATA",
+        "upstream_columns_selector": "ALL",
+        "upstream_columns": list(
+            _MARKET_ACTIVITY_ACCOUNT_STATISTICS_UPSTREAM_COLUMNS
+        ),
+        "wrapper_dropped_fields": ["STATISTICS_DATE_NY"],
+        "upstream_page_size": 500,
+        "pagination": "single_page",
+        "upstream_sort_column": "STATISTICS_DATE",
+        "upstream_sort_direction": "descending",
+        "upstream_filter": None,
+        "wrapper_output_ordering": "ascending_by_data_date",
+        "entity_rows_selected": False,
+        "upstream_row_count": row_count,
+        "entity_row_count": 0,
+    }
+
+
+def _validate_market_activity_account_statistics_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> None:
+    """Validate replay scope and metadata for the monthly market history."""
+
+    if listing.market is not ListingMarket.A:
+        raise ProviderNormalizationError(
+            "AKShare account-statistics raw slice supports A-share listings only"
+        )
+    endpoint_name = "stock_account_statistics_em"
+    if record.response_metadata.get("endpoint") != endpoint_name:
+        raise ProviderNormalizationError(
+            "AKShare account-statistics record must come from "
+            "stock_account_statistics_em"
+        )
+    if record.source_uri != _SOURCE_URIS[endpoint_name]:
+        raise ProviderNormalizationError(
+            "AKShare account-statistics source URI does not match the documented endpoint"
+        )
+    try:
+        upstream_kwargs = _market_activity_account_statistics_kwargs(
+            endpoint_name,
+            listing,
+            record.request,
+        )
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+    if upstream_kwargs:
+        raise ProviderNormalizationError(
+            "AKShare account-statistics endpoint must receive no upstream arguments"
+        )
+
+    message, observation_dates = (
+        _market_activity_account_statistics_validation_message(rows)
+    )
+    if message is not None:
+        raise ProviderNormalizationError(message)
+    expected_metadata = _market_activity_account_statistics_response_metadata(
+        listing_code=listing.code,
+        observation_dates=observation_dates,
+        row_count=len(rows),
+    )
+    boolean_fields = {"listing_scoped_request", "entity_rows_selected"}
+    count_fields = {"field_count", "upstream_row_count", "entity_row_count"}
+    for name, expected in expected_metadata.items():
+        actual = record.response_metadata.get(name)
+        if name in boolean_fields:
+            matches = isinstance(actual, bool) and actual is expected
+        elif name in count_fields:
+            matches = (
+                isinstance(actual, int)
+                and not isinstance(actual, bool)
+                and actual == expected
+            )
+        else:
+            matches = actual == expected
+        if not matches:
+            raise ProviderNormalizationError(
+                "AKShare account-statistics response metadata "
+                f"{name!r} does not match the requested replay scope"
             )
 
 
@@ -26851,6 +27288,12 @@ def _market_activity_kwargs(
 ) -> dict[str, object]:
     """Build one documented market-activity request."""
 
+    if endpoint_name == "stock_account_statistics_em":
+        return _market_activity_account_statistics_kwargs(
+            endpoint_name,
+            listing,
+            request,
+        )
     if endpoint_name == "stock_zt_pool_em":
         return _market_activity_limit_up_pool_kwargs(endpoint_name, listing, request)
     if endpoint_name == "stock_zt_pool_dtgc_em":
@@ -26932,6 +27375,45 @@ def _market_activity_kwargs(
         "start_date": request.parameters["start_date"],
         "end_date": request.parameters["end_date"],
     }
+
+
+def _market_activity_account_statistics_kwargs(
+    endpoint_name: str,
+    listing: _ListingRef,
+    request: ProviderRequest,
+) -> dict[str, object]:
+    """Build the documented no-argument A-share account-statistics request."""
+
+    if endpoint_name != "stock_account_statistics_em":
+        raise ProviderRequestError(
+            f"unsupported AKShare account-statistics endpoint {endpoint_name!r}",
+            request=request,
+            retryable=False,
+        )
+    if listing.market is not ListingMarket.A:
+        raise ProviderRequestError(
+            "the AKShare account-statistics endpoint supports A-share listings only",
+            request=request,
+            retryable=False,
+        )
+    unknown = sorted(
+        set(request.parameters) - _MARKET_ACTIVITY_ACCOUNT_STATISTICS_PARAMETER_NAMES
+    )
+    if unknown:
+        raise ProviderRequestError(
+            "unsupported AKShare account-statistics parameter(s): "
+            + ", ".join(unknown),
+            request=request,
+            retryable=False,
+        )
+    if request.parameters.get("view") != _MARKET_ACTIVITY_ACCOUNT_STATISTICS_VIEW:
+        raise ProviderRequestError(
+            "AKShare account-statistics endpoint requires "
+            f"view={_MARKET_ACTIVITY_ACCOUNT_STATISTICS_VIEW!r}",
+            request=request,
+            retryable=False,
+        )
+    return {}
 
 
 def _market_activity_block_trade_kwargs(
