@@ -24851,6 +24851,26 @@ def test_market_activity_institution_research_with_no_matching_listing_is_empty(
     assert record.response_metadata["event_end_date"] == "2024-10-02"
 
 
+def test_market_activity_institution_research_accepts_nullable_visit_context():
+    class NullableInstitutionResearch(FakeAKShare):
+        def stock_jgdy_tj_em(self, *, date: str):
+            rows = _fixture("a_institution_research.json")
+            rows[0]["接待人员"] = None
+            rows[0]["接待地点"] = None
+            return self._return("stock_jgdy_tj_em", rows, date=date)
+
+    record = _provider(NullableInstitutionResearch()).fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SH600000",
+            {"view": "institution_research", "date": "20240927"},
+        )
+    )
+
+    assert record.raw_payload[0]["接待人员"] is None
+    assert record.raw_payload[0]["接待地点"] is None
+
+
 def test_market_activity_institution_research_is_raw_only_without_canonical_facts():
     record = _provider().fetch(
         _request(

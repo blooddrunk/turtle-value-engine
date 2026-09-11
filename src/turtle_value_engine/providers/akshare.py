@@ -916,6 +916,9 @@ _MARKET_ACTIVITY_INSTITUTION_RESEARCH_INTEGER_FIELDS = frozenset(
 _MARKET_ACTIVITY_INSTITUTION_RESEARCH_TEXT_FIELDS = frozenset(
     {"代码", "名称", "接待方式", "接待人员", "接待地点"}
 )
+_MARKET_ACTIVITY_INSTITUTION_RESEARCH_REQUIRED_TEXT_FIELDS = frozenset(
+    {"代码", "名称"}
+)
 _MARKET_ACTIVITY_INSTITUTION_RESEARCH_NON_NEGATIVE_FIELDS = frozenset(
     {"最新价", "接待机构数量"}
 )
@@ -14458,6 +14461,15 @@ def _market_activity_institution_research_validation_message(
 
         for field in _MARKET_ACTIVITY_INSTITUTION_RESEARCH_TEXT_FIELDS:
             value = row[field]
+            if value is None:
+                if field in _MARKET_ACTIVITY_INSTITUTION_RESEARCH_REQUIRED_TEXT_FIELDS:
+                    return (
+                        f"A-share institutional-research field {field!r} in row {index} "
+                        "must be a non-empty string",
+                        [],
+                        [],
+                    )
+                continue
             if not isinstance(value, str) or not value.strip():
                 return (
                     f"A-share institutional-research field {field!r} in row {index} "

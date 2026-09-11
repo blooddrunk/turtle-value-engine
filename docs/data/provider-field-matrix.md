@@ -1191,7 +1191,7 @@ shareholder return, governance, valuation or market facts.
 | `最新价` | Finite non-negative numeric-or-null quote context retained with a `not_documented` unit; no canonical dated quote or valuation input is inferred. |
 | `涨跌幅` | Finite numeric-or-null quote-change context retained in the documented percent unit; no canonical return is inferred. |
 | `接待机构数量` | Finite non-negative integer institution-count context retained with a `not_documented` unit; it does not establish ownership, governance or issuer cash flow. |
-| `接待方式`, `接待人员`, `接待地点` | Required non-empty research-visit context retained as raw text; no qualitative governance judgment is inferred. |
+| `接待方式`, `接待人员`, `接待地点` | Research-visit context retained as non-empty raw text when published, with documented nullable values preserved; no qualitative governance judgment is inferred. |
 | `接待日期`, `公告日期` | Required ISO dates retained as event/announcement evidence; `公告日期` must be strictly after the requested cutoff, and neither date is treated as a filing or accounting period. |
 | request `view=institution_research`, `date` | Explicit all-A-share start-cutoff scope; `listing_scoped_request=false`, provider filtering, source order, both date bounds and upstream/selected row counts remain part of the replay contract. |
 
