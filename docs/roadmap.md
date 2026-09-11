@@ -3648,6 +3648,30 @@ rows, empty selections, raw-only normalization, replay metadata tampering and
 offline cache replay. No calculation, gate, pipeline, CLI or input-loader
 contract changes.
 
+### Phase 3.43 — Growth Enterprise Market quote raw acquisition contract (COMPLETE)
+
+The mapping review now covers the documented Eastmoney
+`stock_cy_a_spot_em` Shenzhen Growth Enterprise Market real-time quote endpoint
+under `MARKET_QUOTE` with explicit `view=cy_a_spot` and a Shenzhen Growth
+Enterprise Market listing context. The [AKShare stock-data
+documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and
+[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hist_em.py)
+define the no-argument `7.push2.eastmoney.com/api/qt/clist/get` JSON universe,
+fixed `m:0 t:80` filter, `fid=f12`, `f3` descending sort, page size `100` and
+provider-driven all-page pagination. The provider preserves the exact
+23-field wrapper order, 33-column source mapping, documented
+price/volume/turnover/percentage units and complete-universe code order before
+selecting the requested listing.
+
+The current-day quote has no stable observation timestamp and is retained as
+raw evidence only. The normalizer emits
+`AKSHARE_CY_A_SPOT_QUOTE_RAW_ONLY` and creates no canonical current-price or
+other market fact. Tests cover Growth Enterprise Market-only routing, exact
+upstream parameters, complete-response schema/rank/code/type boundaries,
+invalid unrequested rows, empty selections, raw-only normalization, replay
+metadata tampering and offline cache replay. No calculation, gate, pipeline,
+CLI or input-loader contract changes.
+
 ### Future structured-provider deliverables
 
 ```text
@@ -3657,7 +3681,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–3.42 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–3.43 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
