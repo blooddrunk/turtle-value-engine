@@ -1594,6 +1594,33 @@ non-negative domain for them. The normalizer emits
 governance or accounting fact. The response remains outside the calculation,
 gate, pipeline, CLI and input-loader contracts.
 
+## Phase 3.15 A-share Legu market PE raw history
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_a_pe_and_pb.py)
+document `stock_market_pe_lg` as a symbol-selected Legu market history. The
+adapter exposes it only under `MARKET_ACTIVITY` with explicit
+`view=market_pe`, a required A-share provenance listing and one of the four
+documented symbols. The three standard-board symbols share the
+`market-pe` JSON API and return `日期`, `指数`, `平均市盈率`; `科创版` uses
+the dedicated `get-ke-chuang-ban-pe` JSON API and returns `日期`, `总市值`,
+`市盈率`. No numeric unit or PE domain is documented, so none is inferred.
+
+| Raw upstream item | Phase 3.15 treatment |
+| --- | --- |
+| `日期` | Required strict `YYYY-MM-DD` observation date for the complete market history; it is not an accounting, filing or listing period. |
+| `指数`, `平均市盈率` | Required finite numeric values for `上证`, `深证` and `创业板`; the index value must be non-negative, while signed PE values remain raw context. |
+| `总市值`, `市盈率` | Required finite numeric values for `科创版`; market capitalization must be non-negative, while signed PE values remain raw context. |
+| request `view=market_pe`, `symbol` | Explicit A-share-only routing. `上证`/`深证`/`创业板` use `https://legulegu.com/api/stock-data/market-pe` with fixed `marketId=1`/`2`/`4`; `科创版` uses `https://legulegu.com/api/stockdata/get-ke-chuang-ban-pe` without a fixed market ID. Symbol-specific source pages, exact variant field order, token/cookie-CSRF transport, no filtering and complete row counts remain part of cache replay. |
+
+The provider rejects unsupported symbols, empty responses,
+missing/unexpected/reordered fields, invalid or non-ascending dates,
+null/non-numeric/boolean/non-finite values and negative index or market-capitalization
+values. The normalizer emits `AKSHARE_MARKET_PE_RAW_ONLY` and creates no
+canonical market, return, valuation, governance or accounting fact. The
+response remains outside the calculation, gate, pipeline, CLI and input-loader
+contracts.
+
 ## Phase 2.92 SSE daily-deal overview raw slice
 
 The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)

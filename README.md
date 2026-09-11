@@ -1263,6 +1263,21 @@ market-wide valuation context does not become a canonical market, return,
 valuation, governance or accounting fact. No calculation, gate, pipeline, CLI
 or input-loader contract changes.
 
+Phase 3.15 adds the documented A-share Legu `stock_market_pe_lg` endpoint under
+`MARKET_ACTIVITY` with explicit `view=market_pe` and a required `symbol` in
+`{"上证", "深证", "创业板", "科创版"}`. The [AKShare stock-data
+documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and [official
+implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_a_pe_and_pb.py)
+define standard-board output as `日期`, `指数`, `平均市盈率`, and the 科创版
+variant as `日期`, `总市值`, `市盈率`. The provider preserves the
+symbol-specific source page/API, fixed `marketId` for 上证/深证/创业板, exact
+variant schema and strict all-history ordering; index/market-capitalization
+values must be non-negative while PE values remain signed raw context because
+the official contract documents no unit or PE domain. The normalizer emits
+`AKSHARE_MARKET_PE_RAW_ONLY`; this market-wide context does not become a
+canonical market, return, valuation, governance or accounting fact. No
+calculation, gate, pipeline, CLI or input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

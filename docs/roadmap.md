@@ -2959,6 +2959,29 @@ routing, exact schema/order/types, signed PB and date/numeric boundaries,
 raw-only normalization, replay metadata tampering and offline cache replay. No
 calculation, gate, pipeline, CLI or input-loader contract changes.
 
+### Phase 3.15 — A-share Legu market PE raw acquisition contract (COMPLETE)
+
+The mapping review now covers the documented A-share Legu `stock_market_pe_lg`
+endpoint under the existing `MARKET_ACTIVITY` category with explicit
+`view=market_pe` and a required symbol in `上证`, `深证`, `创业板` or `科创版`.
+The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_a_pe_and_pb.py)
+define the standard-board `日期`/`指数`/`平均市盈率` variant and the 科创版
+`日期`/`总市值`/`市盈率` variant. Standard boards use the shared Legu API with
+fixed `marketId` 1, 2 or 4; 科创版 uses its dedicated API without a market ID.
+The provider records symbol-specific source/API metadata, validates the exact
+variant schema, strict ascending all-history dates, finite numerics and
+non-negative index/market-capitalization values, while retaining signed PE as
+raw context because no PE unit or domain is documented.
+
+The normalizer emits `AKSHARE_MARKET_PE_RAW_ONLY` and creates no canonical
+market, return, valuation, governance or accounting fact because the board/index
+history has no listing/entity accounting scope. Tests cover all four symbols,
+explicit view and A-share routing, variant schemas and metadata, signed PE and
+boundary validation, raw-only normalization, replay metadata tampering and
+offline cache replay. No calculation, gate, pipeline, CLI or input-loader
+contract changes.
+
 ### Future structured-provider deliverables
 
 ```text
@@ -2968,7 +2991,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–3.14 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–3.15 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
@@ -3368,6 +3391,13 @@ boundary are recorded explicitly. The raw-only normalizer flag creates no
 canonical market, return, valuation, governance or accounting fact because the
 market-wide PB context has no listing/entity accounting scope. No calculation,
 gate, pipeline, CLI or input-loader contract changes.
+Phase 3.15 adds the documented A-share Legu `stock_market_pe_lg` market-PE
+history under `MARKET_ACTIVITY` with explicit `view=market_pe` and a required
+board symbol. The standard-board and 科创版 field variants, symbol-specific
+APIs/fixed IDs, strict all-history schema and signed-PE raw-only boundary are
+recorded; no canonical market, return, valuation, governance or accounting
+fact is created and no calculation, gate, pipeline, CLI or input-loader
+contract changes.
 Phase 2.75 completes the next documented structured-data boundary by adding
 the A-share `stock_gpzy_profile_em` market-wide historical ownership-pledge
 view. Its no-argument eight-field response is validated as an ascending raw
