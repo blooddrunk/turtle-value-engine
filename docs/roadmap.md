@@ -3361,6 +3361,35 @@ boundaries, raw-only normalization, replay metadata tampering and offline
 cache replay. No calculation, gate, pipeline, CLI or input-loader contract
 changes.
 
+### Phase 3.32 — HSGT individual-ranking raw acquisition contract (COMPLETE)
+
+The mapping review now covers the documented Eastmoney
+`stock_hsgt_hold_stock_em` HSGT individual-ranking endpoint under
+`SHAREHOLDER_HOLDINGS` with explicit `view=hsgt_hold_stock`. The
+[AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hsgt_em.py)
+define the A-share market choices `北向`, `沪股通` and `深股通`, plus the
+period choices `今日排行`, `3日排行`, `5日排行`, `10日排行`, `月排行`, `季排行`
+and `年排行`. The provider maps the two directional markets to
+`MUTUAL_TYPE=001`/`003`, maps periods to `INTERVAL_TYPE=1`/`3`/`5`/`10`/`M`/`Q`/`Y`,
+derives the report date from `div.title span`, and freezes the exact
+`RPT_MUTUAL_STOCK_NORTHSTA` JSON report, date/market/interval filter,
+descending `ADD_MARKET_CAP` sort, `50000` page size and all-page pagination.
+It validates and retains the complete dynamic 16-field source order, where
+the five `增持估计` fields use the selected period prefix, and preserves
+provider numeric/null behavior and documented unit metadata.
+
+The full A-share ranked universe is validated before filtering to the
+requested listing; cache metadata binds full and selected rank/code order,
+the report date, source filter, field typing and source provenance. The
+normalizer emits `AKSHARE_HSGT_HOLD_STOCK_RAW_ONLY` and creates no canonical
+ownership, concentration, share, dilution, governance, issuer cash-flow,
+return or valuation fact. Tests cover all 21 market/period combinations,
+request/context rejection, full-universe schema/rank/date/type boundaries,
+empty selected listings, raw-only normalization, replay metadata tampering and
+offline cache replay. No calculation, gate, pipeline, CLI or input-loader
+contract changes.
+
 ### Future structured-provider deliverables
 
 ```text
@@ -3370,7 +3399,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–3.31 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–3.32 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```

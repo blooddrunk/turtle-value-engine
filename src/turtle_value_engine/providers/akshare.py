@@ -111,9 +111,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "133"
+AKSHARE_ADAPTER_VERSION = "134"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "134"
+AKSHARE_MAPPING_VERSION = "135"
 
 
 class ListingMarket(StrEnum):
@@ -200,6 +200,7 @@ _SOURCE_URIS = {
     "stock_individual_fund_flow": "https://data.eastmoney.com/zjlx/detail.html",
     "stock_hsgt_fund_min_em": "https://data.eastmoney.com/hsgt/hsgtDetail/scgk.html",
     "stock_hsgt_board_rank_em": "https://data.eastmoney.com/hsgtcg/bk.html",
+    "stock_hsgt_hold_stock_em": "https://data.eastmoney.com/hsgtcg/list.html",
     "stock_lhb_detail_em": "https://data.eastmoney.com/stock/tradedetail.html",
     "stock_lhb_stock_statistic_em": "https://data.eastmoney.com/stock/tradedetail.html",
     "stock_lhb_jgstatistic_em": "https://data.eastmoney.com/stock/jgstatistic.html",
@@ -3831,6 +3832,102 @@ _OWNERSHIP_PLEDGE_EQUITY_MORTGAGE_VIEW = "equity_mortgage"
 _OWNERSHIP_PLEDGE_EQUITY_MORTGAGE_DEFAULT_DATE = "20210930"
 _HSGT_INDIVIDUAL_PARAMETER_NAMES = frozenset({"view"})
 _HSGT_INDIVIDUAL_VIEW = "hsgt_individual"
+_HSGT_HOLD_STOCK_ENDPOINT = "stock_hsgt_hold_stock_em"
+_HSGT_HOLD_STOCK_PARAMETER_NAMES = frozenset({"view", "market", "indicator"})
+_HSGT_HOLD_STOCK_VIEW = "hsgt_hold_stock"
+_HSGT_HOLD_STOCK_MARKETS = ("北向", "沪股通", "深股通")
+_HSGT_HOLD_STOCK_MARKET_SET = frozenset(_HSGT_HOLD_STOCK_MARKETS)
+_HSGT_HOLD_STOCK_MARKET_CODES = {
+    "北向": None,
+    "沪股通": "001",
+    "深股通": "003",
+}
+_HSGT_HOLD_STOCK_INDICATORS = (
+    "今日排行",
+    "3日排行",
+    "5日排行",
+    "10日排行",
+    "月排行",
+    "季排行",
+    "年排行",
+)
+_HSGT_HOLD_STOCK_INDICATOR_SET = frozenset(_HSGT_HOLD_STOCK_INDICATORS)
+_HSGT_HOLD_STOCK_INDICATOR_CODES = {
+    "今日排行": "1",
+    "3日排行": "3",
+    "5日排行": "5",
+    "10日排行": "10",
+    "月排行": "M",
+    "季排行": "Q",
+    "年排行": "Y",
+}
+_HSGT_HOLD_STOCK_BASE_FIELDS = (
+    "序号",
+    "代码",
+    "名称",
+    "今日收盘价",
+    "今日涨跌幅",
+    "今日持股-股数",
+    "今日持股-市值",
+    "今日持股-占流通股比",
+    "今日持股-占总股本比",
+)
+_HSGT_HOLD_STOCK_ESTIMATE_SUFFIXES = (
+    "增持估计-股数",
+    "增持估计-市值",
+    "增持估计-市值增幅",
+    "增持估计-占流通股比",
+    "增持估计-占总股本比",
+)
+_HSGT_HOLD_STOCK_TAIL_FIELDS = ("所属板块", "日期")
+_HSGT_HOLD_STOCK_NUMERIC_BASE_FIELDS = (
+    "今日收盘价",
+    "今日涨跌幅",
+    "今日持股-股数",
+    "今日持股-市值",
+    "今日持股-占流通股比",
+    "今日持股-占总股本比",
+)
+_HSGT_HOLD_STOCK_TEXT_FIELDS = ("代码", "名称", "所属板块")
+_HSGT_HOLD_STOCK_REQUIRED_TEXT_FIELDS = ("代码", "名称")
+_HSGT_HOLD_STOCK_INTEGER_FIELDS = frozenset({"序号"})
+_HSGT_HOLD_STOCK_SOURCE_URI = "https://data.eastmoney.com/hsgtcg/list.html"
+_HSGT_HOLD_STOCK_UPSTREAM_DATE_SOURCE_FIELD = "div.title span"
+_HSGT_HOLD_STOCK_UPSTREAM_URL = (
+    "https://datacenter-web.eastmoney.com/api/data/v1/get"
+)
+_HSGT_HOLD_STOCK_UPSTREAM_PARAMETERS = (
+    "sortColumns",
+    "sortTypes",
+    "pageSize",
+    "pageNumber",
+    "reportName",
+    "columns",
+    "source",
+    "client",
+    "filter",
+)
+_HSGT_HOLD_STOCK_UPSTREAM_FIXED_PARAMETERS = {
+    "sortColumns": "ADD_MARKET_CAP",
+    "sortTypes": "-1",
+    "pageSize": "50000",
+    "reportName": "RPT_MUTUAL_STOCK_NORTHSTA",
+    "columns": "ALL",
+    "source": "WEB",
+    "client": "WEB",
+}
+_HSGT_HOLD_STOCK_DOCUMENTED_UNITS = {
+    "今日涨跌幅": "percent",
+    "今日持股-股数": "shares_10_thousand",
+    "今日持股-市值": "CNY_10_thousand",
+    "今日持股-占流通股比": "percent",
+    "今日持股-占总股本比": "percent",
+}
+_HSGT_HOLD_STOCK_UNDOCUMENTED_NUMERIC_UNITS = {
+    field: "not_documented"
+    for field in _HSGT_HOLD_STOCK_NUMERIC_BASE_FIELDS
+    if field not in _HSGT_HOLD_STOCK_DOCUMENTED_UNITS
+}
 _SHAREHOLDER_TOP10_PARAMETER_NAMES = frozenset({"date", "view"})
 _SHAREHOLDER_TOP10_VIEW = "top_10"
 _SHAREHOLDER_QUARTER_ENDS = frozenset({(3, 31), (6, 30), (9, 30), (12, 31)})
@@ -4752,6 +4849,17 @@ class AKShareProvider(StructuredDataProvider):
             raise ProviderRequestError(
                 "the AKShare insider-share-change endpoints support Shanghai, Shenzhen and "
                 "Beijing A-share listings only",
+                provider=self.identity,
+                request=request,
+                retryable=False,
+            )
+        if (
+            request.category is DataCategory.SHAREHOLDER_HOLDINGS
+            and request.parameters.get("view") == _HSGT_HOLD_STOCK_VIEW
+            and listing.market is not ListingMarket.A
+        ):
+            raise ProviderRequestError(
+                "the AKShare HSGT hold-stock endpoint supports A-share listings only",
                 provider=self.identity,
                 request=request,
                 retryable=False,
@@ -8081,6 +8189,38 @@ class AKShareProvider(StructuredDataProvider):
                 response_metadata["control_view"] = _SHAREHOLDER_CONTROL_VIEW
                 response_metadata["snapshot_scope"] = "historical_published_dataset"
                 response_metadata["observation_date_field"] = "变动日期"
+            elif endpoint.name == _HSGT_HOLD_STOCK_ENDPOINT:
+                market = kwargs["market"]
+                indicator = kwargs["indicator"]
+                report_date, rank_order, code_order = (
+                    _validate_hsgt_hold_stock_provider_rows(
+                        rows,
+                        market=market,
+                        indicator=indicator,
+                        provider=self.identity,
+                        request=request,
+                    )
+                )
+                selected = _select_listing_rows(
+                    rows,
+                    listing,
+                    provider=self.identity,
+                    request=request,
+                    row_label="HSGT hold-stock",
+                )
+                payload = selected
+                response_metadata.update(
+                    _hsgt_hold_stock_response_metadata(
+                        listing_code=listing.code,
+                        market=market,
+                        indicator=indicator,
+                        report_date=report_date,
+                        rank_order=rank_order,
+                        code_order=code_order,
+                        selected_rows=selected,
+                        row_count=len(rows),
+                    )
+                )
             elif endpoint.name == "stock_hsgt_individual_em":
                 _validate_hsgt_individual_provider_rows(
                     rows,
@@ -8545,6 +8685,9 @@ class AKShareProvider(StructuredDataProvider):
             ),
             shareholder_hsgt_individual_requested=(
                 "view" in request.parameters
+            ),
+            shareholder_hsgt_hold_stock_requested=(
+                request.parameters.get("view") == _HSGT_HOLD_STOCK_VIEW
             ),
             insider_cninfo_management_detail_requested=(
                 request.parameters.get("view")
@@ -10754,6 +10897,25 @@ class AKShareNormalizer:
                         raise ProviderNormalizationError(str(exc)) from exc
                     _validate_shareholder_control_normalizer_rows(rows, listing)
                     normalizer_flags.add("AKSHARE_CONTROL_HOLDINGS_RAW_ONLY")
+                elif endpoint_name == _HSGT_HOLD_STOCK_ENDPOINT:
+                    if listing.market is not ListingMarket.A:
+                        raise ProviderNormalizationError(
+                            "AKShare HSGT hold-stock raw slice supports A-share listings only"
+                        )
+                    try:
+                        _shareholder_holdings_kwargs(
+                            endpoint_name,
+                            listing,
+                            record.request,
+                        )
+                    except ProviderRequestError as exc:
+                        raise ProviderNormalizationError(str(exc)) from exc
+                    _validate_hsgt_hold_stock_normalizer_scope(
+                        record,
+                        listing,
+                        rows,
+                    )
+                    normalizer_flags.add("AKSHARE_HSGT_HOLD_STOCK_RAW_ONLY")
                 elif endpoint_name == "stock_hsgt_individual_em":
                     try:
                         _shareholder_holdings_kwargs(
@@ -10893,6 +11055,10 @@ class AKShareNormalizer:
             "HSGT individual-holdings records remain raw structured evidence because "
             "their investor holding snapshots do not establish beneficial control, "
             "governance severity or a company-level diluted-share series. "
+            "HSGT hold-stock ranking records remain raw structured evidence because "
+            "their investor-position ranking and provider-estimated changes do not "
+            "establish beneficial control, issuer cash flow or a canonical share "
+            "count. "
             "ESG-rating records remain raw structured evidence because agencies, "
             "rating scales and provider quarters do not establish a canonical "
             "governance-risk judgment or Business Quality assessment. "
@@ -11625,6 +11791,13 @@ class AKShareNormalizer:
                 "ratios and dates do not establish beneficial control, governance "
                 "severity or a company-level diluted-share series."
             )
+        if "AKSHARE_HSGT_HOLD_STOCK_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented A-share HSGT hold-stock ranking response is retained "
+                "as raw evidence only: its investor-position ranks, holdings, ratios "
+                "and provider-estimated changes do not establish beneficial control, "
+                "issuer cash flow or a company-level diluted-share series."
+            )
         if "AKSHARE_SHAREHOLDER_COUNTS_RAW_ONLY" in normalizer_flags:
             notes += (
                 " The documented A-share shareholder-count response is retained as "
@@ -11963,6 +12136,7 @@ def _endpoint_candidates(
     shareholder_free_holding_detail_requested: bool = False,
     shareholder_top10_requested: bool = False,
     shareholder_hsgt_individual_requested: bool = False,
+    shareholder_hsgt_hold_stock_requested: bool = False,
     insider_cninfo_management_detail_requested: bool = False,
     insider_management_person_requested: bool = False,
     insider_executive_share_changes_requested: bool = False,
@@ -12447,6 +12621,10 @@ def _endpoint_candidates(
             return ()
         if market is ListingMarket.H:
             return ("stock_hsgt_individual_em",)
+        if shareholder_hsgt_hold_stock_requested:
+            if market is ListingMarket.A:
+                return (_HSGT_HOLD_STOCK_ENDPOINT,)
+            return ()
         if shareholder_control_requested:
             return ("stock_hold_control_cninfo",)
         if shareholder_free_holding_detail_requested:
@@ -14139,6 +14317,50 @@ def _shareholder_holdings_kwargs(
                 retryable=False,
             )
         return {"symbol": listing.code}
+    if endpoint_name == _HSGT_HOLD_STOCK_ENDPOINT:
+        if listing.market is not ListingMarket.A:
+            raise ProviderRequestError(
+                "the AKShare HSGT hold-stock endpoint supports A-share listings only",
+                request=request,
+                retryable=False,
+            )
+        unknown = sorted(
+            set(request.parameters) - _HSGT_HOLD_STOCK_PARAMETER_NAMES
+        )
+        if unknown:
+            raise ProviderRequestError(
+                "unsupported AKShare HSGT hold-stock parameter(s): "
+                + ", ".join(unknown),
+                request=request,
+                retryable=False,
+            )
+        if request.parameters.get("view") != _HSGT_HOLD_STOCK_VIEW:
+            raise ProviderRequestError(
+                "the AKShare HSGT hold-stock endpoint requires "
+                f"view={_HSGT_HOLD_STOCK_VIEW!r}",
+                request=request,
+                retryable=False,
+            )
+        market = request.parameters.get("market")
+        if not isinstance(market, str) or market not in _HSGT_HOLD_STOCK_MARKET_SET:
+            choices = ", ".join(_HSGT_HOLD_STOCK_MARKETS)
+            raise ProviderRequestError(
+                "the AKShare HSGT hold-stock market must be one of: " + choices,
+                request=request,
+                retryable=False,
+            )
+        indicator = request.parameters.get("indicator")
+        if (
+            not isinstance(indicator, str)
+            or indicator not in _HSGT_HOLD_STOCK_INDICATOR_SET
+        ):
+            choices = ", ".join(_HSGT_HOLD_STOCK_INDICATORS)
+            raise ProviderRequestError(
+                "the AKShare HSGT hold-stock indicator must be one of: " + choices,
+                request=request,
+                retryable=False,
+            )
+        return {"market": market, "indicator": indicator}
     if endpoint_name == "stock_hold_num_cninfo":
         if listing.market is not ListingMarket.A:
             raise ProviderRequestError(
@@ -36453,6 +36675,522 @@ def _validate_shareholder_control_provider_rows(
                 f"for {request.entity_id!r}",
                 provider=provider,
                 request=request,
+            )
+
+
+def _hsgt_hold_stock_fields(indicator: str) -> tuple[str, ...]:
+    """Return the current official field order for one HSGT rank period."""
+
+    prefix = indicator.split("排", 1)[0]
+    estimate_fields = tuple(
+        f"{prefix}{suffix}" for suffix in _HSGT_HOLD_STOCK_ESTIMATE_SUFFIXES
+    )
+    return (
+        *_HSGT_HOLD_STOCK_BASE_FIELDS,
+        *estimate_fields,
+        *_HSGT_HOLD_STOCK_TAIL_FIELDS,
+    )
+
+
+def _hsgt_hold_stock_numeric_fields(indicator: str) -> tuple[str, ...]:
+    """Return the numeric fields after applying the official period prefix."""
+
+    prefix = indicator.split("排", 1)[0]
+    estimate_fields = tuple(
+        f"{prefix}{suffix}" for suffix in _HSGT_HOLD_STOCK_ESTIMATE_SUFFIXES
+    )
+    return (*_HSGT_HOLD_STOCK_NUMERIC_BASE_FIELDS, *estimate_fields)
+
+
+def _hsgt_hold_stock_documented_units(indicator: str) -> dict[str, str]:
+    """Return documented units for one dynamic HSGT rank response."""
+
+    prefix = indicator.split("排", 1)[0]
+    return {
+        "今日涨跌幅": "percent",
+        "今日持股-股数": "shares_10_thousand",
+        "今日持股-市值": "CNY_10_thousand",
+        "今日持股-占流通股比": "percent",
+        "今日持股-占总股本比": "percent",
+        f"{prefix}增持估计-股数": "shares_10_thousand",
+        f"{prefix}增持估计-市值": "CNY_10_thousand",
+        f"{prefix}增持估计-市值增幅": "percent",
+        f"{prefix}增持估计-占流通股比": "per_mille",
+        f"{prefix}增持估计-占总股本比": "per_mille",
+    }
+
+
+def _hsgt_hold_stock_filter(
+    *,
+    market: str,
+    indicator: str,
+    report_date: date,
+) -> str:
+    """Build the exact Eastmoney filter emitted by the official wrapper."""
+
+    filter_value = (
+        f"(TRADE_DATE='{report_date.isoformat()}')"
+        f'(INTERVAL_TYPE="{_HSGT_HOLD_STOCK_INDICATOR_CODES[indicator]}")'
+    )
+    market_code = _HSGT_HOLD_STOCK_MARKET_CODES[market]
+    if market_code is not None:
+        filter_value += f'(MUTUAL_TYPE="{market_code}")'
+    return filter_value
+
+
+def _hsgt_hold_stock_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    indicator: str,
+    require_full_rank_order: bool,
+) -> tuple[str | None, date | None, list[int], list[str]]:
+    """Return a strict-schema error and ranked identity for HSGT stock rows."""
+
+    fields = _hsgt_hold_stock_fields(indicator)
+    numeric_fields = _hsgt_hold_stock_numeric_fields(indicator)
+    report_date: date | None = None
+    rank_order: list[int] = []
+    code_order: list[str] = []
+    seen_codes: set[str] = set()
+    previous_rank: int | None = None
+
+    if not rows:
+        return (
+            "HSGT hold-stock response must contain at least one row",
+            None,
+            [],
+            [],
+        )
+
+    for index, row in enumerate(rows):
+        missing = sorted(set(fields) - set(row))
+        if missing:
+            return (
+                f"HSGT hold-stock row {index} is missing field(s): "
+                + ", ".join(missing),
+                None,
+                [],
+                [],
+            )
+        unexpected = sorted(set(row) - set(fields))
+        if unexpected:
+            return (
+                f"HSGT hold-stock row {index} contains unsupported field(s): "
+                + ", ".join(unexpected),
+                None,
+                [],
+                [],
+            )
+        if tuple(row) != fields:
+            return (
+                f"HSGT hold-stock row {index} must preserve official field order",
+                None,
+                [],
+                [],
+            )
+
+        raw_rank = row["序号"]
+        if isinstance(raw_rank, bool) or not isinstance(raw_rank, Real):
+            return (
+                f"HSGT hold-stock row {index} field '序号' must be a positive integer",
+                None,
+                [],
+                [],
+            )
+        try:
+            rank_numeric = float(raw_rank)
+        except (OverflowError, TypeError, ValueError):
+            return (
+                f"HSGT hold-stock row {index} field '序号' must be a positive integer",
+                None,
+                [],
+                [],
+            )
+        if (
+            not math.isfinite(rank_numeric)
+            or not rank_numeric.is_integer()
+            or rank_numeric < 1
+        ):
+            return (
+                f"HSGT hold-stock row {index} field '序号' must be a positive integer",
+                None,
+                [],
+                [],
+            )
+        rank = int(rank_numeric)
+        if require_full_rank_order and rank != index + 1:
+            return (
+                "HSGT hold-stock response 序号 values must be strictly ascending "
+                "from 1",
+                None,
+                [],
+                [],
+            )
+        if previous_rank is not None and rank <= previous_rank:
+            return (
+                "HSGT hold-stock response 序号 values must be strictly ascending",
+                None,
+                [],
+                [],
+            )
+        previous_rank = rank
+        rank_order.append(rank)
+
+        raw_code = row["代码"]
+        if not isinstance(raw_code, str) or re.fullmatch(r"\d{6}", raw_code) is None:
+            return (
+                f"HSGT hold-stock row {index} field '代码' must be a six-digit string",
+                None,
+                [],
+                [],
+            )
+        if raw_code in seen_codes:
+            return (
+                f"HSGT hold-stock response contains duplicate 代码 {raw_code!r}",
+                None,
+                [],
+                [],
+            )
+        seen_codes.add(raw_code)
+        code_order.append(raw_code)
+
+        name = row["名称"]
+        if not isinstance(name, str) or not name.strip():
+            return (
+                f"HSGT hold-stock row {index} field '名称' must be a non-empty string",
+                None,
+                [],
+                [],
+            )
+
+        board = row["所属板块"]
+        if board is not None and not isinstance(board, str):
+            return (
+                f"HSGT hold-stock row {index} field '所属板块' must be a string or null",
+                None,
+                [],
+                [],
+            )
+
+        parsed_date = _parse_date_value(row["日期"])
+        if parsed_date is None:
+            return (
+                f"HSGT hold-stock row {index} has an invalid 日期",
+                None,
+                [],
+                [],
+            )
+        if report_date is not None and parsed_date != report_date:
+            return (
+                "HSGT hold-stock response must contain one observation date",
+                None,
+                [],
+                [],
+            )
+        report_date = parsed_date
+
+        for field in numeric_fields:
+            value = row[field]
+            if value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, Real):
+                return (
+                    f"HSGT hold-stock row {index} field {field!r} must be numeric or null",
+                    None,
+                    [],
+                    [],
+                )
+            try:
+                numeric = float(value)
+            except (OverflowError, TypeError, ValueError):
+                return (
+                    f"HSGT hold-stock row {index} field {field!r} must be numeric or null",
+                    None,
+                    [],
+                    [],
+                )
+            if not math.isfinite(numeric):
+                return (
+                    f"HSGT hold-stock row {index} field {field!r} must be finite or null",
+                    None,
+                    [],
+                    [],
+                )
+
+    return None, report_date, rank_order, code_order
+
+
+def _validate_hsgt_hold_stock_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    market: str,
+    indicator: str,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> tuple[date, list[int], list[str]]:
+    """Validate the complete A-share HSGT hold-stock universe before filtering."""
+
+    if not isinstance(market, str) or market not in _HSGT_HOLD_STOCK_MARKET_SET:
+        raise ProviderResponseError(
+            f"AKShare HSGT hold-stock market {market!r} is not documented",
+            provider=provider,
+            request=request,
+        )
+    if (
+        not isinstance(indicator, str)
+        or indicator not in _HSGT_HOLD_STOCK_INDICATOR_SET
+    ):
+        raise ProviderResponseError(
+            f"AKShare HSGT hold-stock indicator {indicator!r} is not documented",
+            provider=provider,
+            request=request,
+        )
+    message, report_date, rank_order, code_order = (
+        _hsgt_hold_stock_validation_message(
+            rows,
+            indicator=indicator,
+            require_full_rank_order=True,
+        )
+    )
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message}",
+            provider=provider,
+            request=request,
+        )
+    if report_date is None:
+        raise ProviderResponseError(
+            "AKShare HSGT hold-stock response has no observation date",
+            provider=provider,
+            request=request,
+        )
+    return report_date, rank_order, code_order
+
+
+def _hsgt_hold_stock_response_metadata(
+    *,
+    listing_code: str,
+    market: str,
+    indicator: str,
+    report_date: date,
+    rank_order: Sequence[int],
+    code_order: Sequence[str],
+    selected_rows: Sequence[Mapping[str, JSONValue]],
+    row_count: int,
+) -> dict[str, JSONValue]:
+    """Build the replay contract for one HSGT individual-rank snapshot."""
+
+    fields = _hsgt_hold_stock_fields(indicator)
+    numeric_fields = _hsgt_hold_stock_numeric_fields(indicator)
+    upstream_filter = _hsgt_hold_stock_filter(
+        market=market,
+        indicator=indicator,
+        report_date=report_date,
+    )
+    selected_rank_order = [int(row["序号"]) for row in selected_rows]
+    selected_code_order = [str(row["代码"]) for row in selected_rows]
+    market_code = _HSGT_HOLD_STOCK_MARKET_CODES[market]
+    return {
+        "endpoint": _HSGT_HOLD_STOCK_ENDPOINT,
+        "market": ListingMarket.A.value,
+        "listing_code": listing_code,
+        "shareholder_holdings_view": _HSGT_HOLD_STOCK_VIEW,
+        "market_scope": "Eastmoney A-share HSGT hold-stock ranking universe",
+        "upstream_market": market,
+        "upstream_market_type": market_code,
+        "indicator": indicator,
+        "upstream_indicator": indicator,
+        "indicator_type": _HSGT_HOLD_STOCK_INDICATOR_CODES[indicator],
+        "listing_scoped_request": False,
+        "row_filtering": "provider",
+        "snapshot_scope": "current_hsgt_hold_stock_ranking",
+        "date_binding": "report_date_and_upstream_filter",
+        "observation_date_field": "日期",
+        "observation_date_ordering": "constant",
+        "observation_date": report_date.isoformat(),
+        "rank_field": "序号",
+        "rank_ordering": "strictly_ascending_from_one",
+        "rank_order": list(rank_order),
+        "code_field": "代码",
+        "code_ordering": "source_ranked",
+        "code_order": list(code_order),
+        "selected_rank_order": selected_rank_order,
+        "selected_code_order": selected_code_order,
+        "value_fields": list(numeric_fields),
+        "integer_fields": list(_HSGT_HOLD_STOCK_INTEGER_FIELDS),
+        "text_fields": list(_HSGT_HOLD_STOCK_TEXT_FIELDS),
+        "required_text_fields": list(_HSGT_HOLD_STOCK_REQUIRED_TEXT_FIELDS),
+        "field_count": len(fields),
+        "source_field_order": list(fields),
+        "documented_units": _hsgt_hold_stock_documented_units(indicator),
+        "undocumented_numeric_units": dict(
+            _HSGT_HOLD_STOCK_UNDOCUMENTED_NUMERIC_UNITS
+        ),
+        "upstream_url": _HSGT_HOLD_STOCK_UPSTREAM_URL,
+        "upstream_protocol": "JSON",
+        "upstream_report_name": _HSGT_HOLD_STOCK_UPSTREAM_FIXED_PARAMETERS[
+            "reportName"
+        ],
+        "upstream_parameters": list(_HSGT_HOLD_STOCK_UPSTREAM_PARAMETERS),
+        "upstream_fixed_parameters": dict(
+            _HSGT_HOLD_STOCK_UPSTREAM_FIXED_PARAMETERS
+        ),
+        "upstream_dynamic_parameters": {
+            "market": market,
+            "indicator": indicator,
+            "market_type": market_code,
+            "interval_type": _HSGT_HOLD_STOCK_INDICATOR_CODES[indicator],
+            "trade_date": report_date.isoformat(),
+            "filter": upstream_filter,
+        },
+        "upstream_date_source_page_uri": _HSGT_HOLD_STOCK_SOURCE_URI,
+        "upstream_date_source_field": _HSGT_HOLD_STOCK_UPSTREAM_DATE_SOURCE_FIELD,
+        "upstream_authentication": "none",
+        "upstream_page_size": 50000,
+        "pagination": "provider_driven_all_pages",
+        "upstream_sort_column": "ADD_MARKET_CAP",
+        "upstream_sort_direction": "descending",
+        "upstream_filter": upstream_filter,
+        "wrapper_source_page_uri": _HSGT_HOLD_STOCK_SOURCE_URI,
+        "wrapper_output_ordering": "source_ranked",
+        "entity_rows_selected": True,
+        "upstream_row_count": row_count,
+        "entity_row_count": len(selected_rows),
+    }
+
+
+def _validate_hsgt_hold_stock_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> None:
+    """Validate a replayed HSGT rank slice's full-universe metadata and selection."""
+
+    if listing.market is not ListingMarket.A:
+        raise ProviderNormalizationError(
+            "AKShare HSGT hold-stock raw slice supports A-share listings only"
+        )
+    metadata = record.response_metadata
+    if metadata.get("endpoint") != _HSGT_HOLD_STOCK_ENDPOINT:
+        raise ProviderNormalizationError(
+            "AKShare HSGT hold-stock record must come from "
+            f"{_HSGT_HOLD_STOCK_ENDPOINT}"
+        )
+    if record.source_uri != _HSGT_HOLD_STOCK_SOURCE_URI:
+        raise ProviderNormalizationError(
+            "AKShare HSGT hold-stock source URI does not match the documented endpoint"
+        )
+
+    market = record.request.parameters.get("market")
+    indicator = record.request.parameters.get("indicator")
+    if (
+        not isinstance(market, str)
+        or market not in _HSGT_HOLD_STOCK_MARKET_SET
+        or not isinstance(indicator, str)
+        or indicator not in _HSGT_HOLD_STOCK_INDICATOR_SET
+    ):
+        raise ProviderNormalizationError(
+            "AKShare HSGT hold-stock request contains an undocumented market or indicator"
+        )
+
+    message, selected_date, selected_rank_order, selected_code_order = (
+        _hsgt_hold_stock_validation_message(
+            rows,
+            indicator=indicator,
+            require_full_rank_order=False,
+        )
+        if rows
+        else (None, None, [], [])
+    )
+    if message is not None:
+        raise ProviderNormalizationError(message)
+    for row in rows:
+        code = row["代码"]
+        if code != listing.code:
+            raise ProviderNormalizationError(
+                f"HSGT hold-stock row entity {code!r} does not match "
+                f"requested listing {listing.canonical_id!r}"
+            )
+
+    raw_observation_date = metadata.get("observation_date")
+    observation_date = _parse_date_value(raw_observation_date)
+    if observation_date is None:
+        raise ProviderNormalizationError(
+            "HSGT hold-stock response metadata has no valid observation date"
+        )
+    if selected_date is not None and selected_date != observation_date:
+        raise ProviderNormalizationError(
+            "HSGT hold-stock selected rows do not match metadata observation date"
+        )
+
+    upstream_row_count = metadata.get("upstream_row_count")
+    if (
+        isinstance(upstream_row_count, bool)
+        or not isinstance(upstream_row_count, int)
+        or upstream_row_count < len(rows)
+        or upstream_row_count < 1
+    ):
+        raise ProviderNormalizationError(
+            "HSGT hold-stock response metadata has an invalid upstream row count"
+        )
+    rank_order = metadata.get("rank_order")
+    code_order = metadata.get("code_order")
+    if not isinstance(rank_order, list) or rank_order != list(
+        range(1, upstream_row_count + 1)
+    ):
+        raise ProviderNormalizationError(
+            "HSGT hold-stock response metadata rank order is not a complete sequence"
+        )
+    if not isinstance(code_order, list) or len(code_order) != upstream_row_count:
+        raise ProviderNormalizationError(
+            "HSGT hold-stock response metadata code order does not match row count"
+        )
+    if any(
+        not isinstance(code, str) or re.fullmatch(r"\d{6}", code) is None
+        for code in code_order
+    ) or len(set(code_order)) != len(code_order):
+        raise ProviderNormalizationError(
+            "HSGT hold-stock response metadata code order is not a unique A-share sequence"
+        )
+    for rank, code in zip(selected_rank_order, selected_code_order, strict=True):
+        if code_order[rank - 1] != code:
+            raise ProviderNormalizationError(
+                "HSGT hold-stock response metadata does not bind selected rows to rank order"
+            )
+
+    expected_metadata = _hsgt_hold_stock_response_metadata(
+        listing_code=listing.code,
+        market=market,
+        indicator=indicator,
+        report_date=observation_date,
+        rank_order=rank_order,
+        code_order=code_order,
+        selected_rows=rows,
+        row_count=upstream_row_count,
+    )
+    boolean_fields = {"listing_scoped_request", "entity_rows_selected"}
+    integer_fields = {
+        "field_count",
+        "upstream_page_size",
+        "upstream_row_count",
+        "entity_row_count",
+    }
+    for name, expected in expected_metadata.items():
+        actual = metadata.get(name)
+        if name in boolean_fields:
+            matches = isinstance(actual, bool) and actual is expected
+        elif name in integer_fields:
+            matches = (
+                isinstance(actual, int)
+                and not isinstance(actual, bool)
+                and actual == expected
+            )
+        else:
+            matches = actual == expected
+        if not matches:
+            raise ProviderNormalizationError(
+                "HSGT hold-stock response metadata "
+                f"{name!r} does not match the requested replay scope"
             )
 
 

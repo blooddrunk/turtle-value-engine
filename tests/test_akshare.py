@@ -30,6 +30,24 @@ def _fixture(name: str):
     return json.loads((FIXTURE_DIR / name).read_text(encoding="utf-8"))
 
 
+def _hsgt_hold_stock_fixture(indicator: str):
+    rows = _fixture("a_hsgt_hold_stock.json")
+    prefix = indicator.split("排", 1)[0]
+    if prefix == "今日":
+        return rows
+    return [
+        {
+            (
+                f"{prefix}{key.removeprefix('今日')}"
+                if key.startswith("今日增持估计")
+                else key
+            ): value
+            for key, value in row.items()
+        }
+        for row in rows
+    ]
+
+
 class FakeAKShare:
     __version__ = "fixture-akshare"
 
@@ -1057,6 +1075,14 @@ class FakeAKShare:
             symbol=symbol,
         )
 
+    def stock_hsgt_hold_stock_em(self, *, market: str, indicator: str):
+        return self._return(
+            "stock_hsgt_hold_stock_em",
+            _hsgt_hold_stock_fixture(indicator),
+            market=market,
+            indicator=indicator,
+        )
+
 
 class OfficialBalanceAKShare:
     __version__ = "fixture-akshare-official-balance"
@@ -1137,8 +1163,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "133"
-    assert AKSHARE_MAPPING_VERSION == "134"
+    assert provider.identity.provider_version == "134"
+    assert AKSHARE_MAPPING_VERSION == "135"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -1672,6 +1698,477 @@ def test_hsgt_individual_holdings_cache_replay_does_not_call_upstream(tmp_path: 
     assert replay.record == live.record
     assert fake.calls == [
         ("stock_hsgt_individual_em", {"symbol": "00700"}),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("market", "indicator", "market_code", "indicator_code"),
+    [
+        ("北向", "今日排行", None, "1"),
+        ("北向", "3日排行", None, "3"),
+        ("北向", "5日排行", None, "5"),
+        ("北向", "10日排行", None, "10"),
+        ("北向", "月排行", None, "M"),
+        ("北向", "季排行", None, "Q"),
+        ("北向", "年排行", None, "Y"),
+        ("沪股通", "今日排行", "001", "1"),
+        ("沪股通", "3日排行", "001", "3"),
+        ("沪股通", "5日排行", "001", "5"),
+        ("沪股通", "10日排行", "001", "10"),
+        ("沪股通", "月排行", "001", "M"),
+        ("沪股通", "季排行", "001", "Q"),
+        ("沪股通", "年排行", "001", "Y"),
+        ("深股通", "今日排行", "003", "1"),
+        ("深股通", "3日排行", "003", "3"),
+        ("深股通", "5日排行", "003", "5"),
+        ("深股通", "10日排行", "003", "10"),
+        ("深股通", "月排行", "003", "M"),
+        ("深股通", "季排行", "003", "Q"),
+        ("深股通", "年排行", "003", "Y"),
+    ],
+)
+def test_hsgt_hold_stock_fetch_filters_full_universe_and_preserves_dynamic_contract(
+    market: str,
+    indicator: str,
+    market_code: str | None,
+    indicator_code: str,
+):
+    fake = FakeAKShare()
+    record = _provider(fake).fetch(
+        _request(
+            DataCategory.SHAREHOLDER_HOLDINGS,
+            "SH600000",
+            {
+                "view": "hsgt_hold_stock",
+                "market": market,
+                "indicator": indicator,
+            },
+        )
+    )
+
+    expected = [
+        row
+        for row in _hsgt_hold_stock_fixture(indicator)
+        if row["代码"] == "600000"
+    ]
+    prefix = indicator.split("排", 1)[0]
+    estimate_fields = [
+        f"{prefix}增持估计-{suffix}"
+        for suffix in (
+            "股数",
+            "市值",
+            "市值增幅",
+            "占流通股比",
+            "占总股本比",
+        )
+    ]
+    numeric_fields = [
+        "今日收盘价",
+        "今日涨跌幅",
+        "今日持股-股数",
+        "今日持股-市值",
+        "今日持股-占流通股比",
+        "今日持股-占总股本比",
+        *estimate_fields,
+    ]
+    upstream_filter = (
+        f"(TRADE_DATE='2024-01-10')(INTERVAL_TYPE=\"{indicator_code}\")"
+    )
+    if market_code is not None:
+        upstream_filter += f"(MUTUAL_TYPE=\"{market_code}\")"
+    metadata = record.response_metadata
+
+    assert record.raw_payload == expected
+    assert fake.calls == [
+        (
+            "stock_hsgt_hold_stock_em",
+            {"market": market, "indicator": indicator},
+        )
+    ]
+    assert metadata["endpoint"] == "stock_hsgt_hold_stock_em"
+    assert metadata["market"] == "A"
+    assert metadata["listing_code"] == "600000"
+    assert metadata["shareholder_holdings_view"] == "hsgt_hold_stock"
+    assert metadata["market_scope"] == (
+        "Eastmoney A-share HSGT hold-stock ranking universe"
+    )
+    assert metadata["upstream_market"] == market
+    assert metadata["upstream_market_type"] == market_code
+    assert metadata["indicator"] == indicator
+    assert metadata["upstream_indicator"] == indicator
+    assert metadata["indicator_type"] == indicator_code
+    assert metadata["listing_scoped_request"] is False
+    assert metadata["row_filtering"] == "provider"
+    assert metadata["snapshot_scope"] == "current_hsgt_hold_stock_ranking"
+    assert metadata["date_binding"] == "report_date_and_upstream_filter"
+    assert metadata["observation_date_field"] == "日期"
+    assert metadata["observation_date_ordering"] == "constant"
+    assert metadata["observation_date"] == "2024-01-10"
+    assert metadata["rank_field"] == "序号"
+    assert metadata["rank_ordering"] == "strictly_ascending_from_one"
+    assert metadata["rank_order"] == [1, 2, 3, 4]
+    assert metadata["code_field"] == "代码"
+    assert metadata["code_ordering"] == "source_ranked"
+    assert metadata["code_order"] == ["600000", "000001", "300750", "688981"]
+    assert metadata["selected_rank_order"] == [1]
+    assert metadata["selected_code_order"] == ["600000"]
+    assert metadata["value_fields"] == numeric_fields
+    assert metadata["integer_fields"] == ["序号"]
+    assert metadata["text_fields"] == ["代码", "名称", "所属板块"]
+    assert metadata["required_text_fields"] == ["代码", "名称"]
+    assert metadata["field_count"] == 16
+    assert metadata["source_field_order"] == list(expected[0])
+    assert metadata["documented_units"] == {
+        "今日涨跌幅": "percent",
+        "今日持股-股数": "shares_10_thousand",
+        "今日持股-市值": "CNY_10_thousand",
+        "今日持股-占流通股比": "percent",
+        "今日持股-占总股本比": "percent",
+        f"{prefix}增持估计-股数": "shares_10_thousand",
+        f"{prefix}增持估计-市值": "CNY_10_thousand",
+        f"{prefix}增持估计-市值增幅": "percent",
+        f"{prefix}增持估计-占流通股比": "per_mille",
+        f"{prefix}增持估计-占总股本比": "per_mille",
+    }
+    assert metadata["undocumented_numeric_units"] == {
+        "今日收盘价": "not_documented",
+    }
+    assert metadata["upstream_url"] == (
+        "https://datacenter-web.eastmoney.com/api/data/v1/get"
+    )
+    assert metadata["upstream_protocol"] == "JSON"
+    assert metadata["upstream_report_name"] == "RPT_MUTUAL_STOCK_NORTHSTA"
+    assert metadata["upstream_parameters"] == [
+        "sortColumns",
+        "sortTypes",
+        "pageSize",
+        "pageNumber",
+        "reportName",
+        "columns",
+        "source",
+        "client",
+        "filter",
+    ]
+    assert metadata["upstream_fixed_parameters"] == {
+        "sortColumns": "ADD_MARKET_CAP",
+        "sortTypes": "-1",
+        "pageSize": "50000",
+        "reportName": "RPT_MUTUAL_STOCK_NORTHSTA",
+        "columns": "ALL",
+        "source": "WEB",
+        "client": "WEB",
+    }
+    assert metadata["upstream_dynamic_parameters"] == {
+        "market": market,
+        "indicator": indicator,
+        "market_type": market_code,
+        "interval_type": indicator_code,
+        "trade_date": "2024-01-10",
+        "filter": upstream_filter,
+    }
+    assert metadata["upstream_date_source_page_uri"] == (
+        "https://data.eastmoney.com/hsgtcg/list.html"
+    )
+    assert metadata["upstream_date_source_field"] == "div.title span"
+    assert metadata["upstream_authentication"] == "none"
+    assert metadata["upstream_page_size"] == 50000
+    assert metadata["pagination"] == "provider_driven_all_pages"
+    assert metadata["upstream_sort_column"] == "ADD_MARKET_CAP"
+    assert metadata["upstream_sort_direction"] == "descending"
+    assert metadata["upstream_filter"] == upstream_filter
+    assert metadata["wrapper_source_page_uri"] == (
+        "https://data.eastmoney.com/hsgtcg/list.html"
+    )
+    assert metadata["wrapper_output_ordering"] == "source_ranked"
+    assert metadata["entity_rows_selected"] is True
+    assert metadata["upstream_row_count"] == 4
+    assert metadata["entity_row_count"] == 1
+    assert record.source_uri == "https://data.eastmoney.com/hsgtcg/list.html"
+
+
+@pytest.mark.parametrize(
+    ("entity_id", "parameters", "match"),
+    [
+        (
+            "HK00700",
+            {
+                "view": "hsgt_hold_stock",
+                "market": "北向",
+                "indicator": "今日排行",
+            },
+            "A-share listings only",
+        ),
+        (
+            "SH600000",
+            {
+                "view": "hsgt_hold_stock",
+                "market": "not-documented",
+                "indicator": "今日排行",
+            },
+            "market must be one of",
+        ),
+        (
+            "SH600000",
+            {
+                "view": "hsgt_hold_stock",
+                "market": "北向",
+            },
+            "indicator must be one of",
+        ),
+        (
+            "SH600000",
+            {
+                "view": "hsgt_hold_stock",
+                "market": "北向",
+                "indicator": "not-documented",
+            },
+            "indicator must be one of",
+        ),
+        (
+            "SH600000",
+            {
+                "view": "hsgt_hold_stock",
+                "market": "北向",
+                "indicator": "今日排行",
+                "date": "20240110",
+            },
+            "unsupported AKShare HSGT hold-stock parameter",
+        ),
+    ],
+)
+def test_hsgt_hold_stock_request_validates_market_and_parameters(
+    entity_id: str,
+    parameters: dict,
+    match: str,
+):
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError, match=match):
+        _provider(fake).fetch(
+            _request(DataCategory.SHAREHOLDER_HOLDINGS, entity_id, parameters)
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "missing_field",
+        "extra_field",
+        "reordered_fields",
+        "invalid_rank",
+        "non_ascending_rank",
+        "duplicate_code",
+        "invalid_code",
+        "invalid_name",
+        "invalid_board",
+        "invalid_numeric",
+        "invalid_date",
+        "multiple_dates",
+        "empty_response",
+    ],
+)
+def test_hsgt_hold_stock_response_validates_full_schema_before_filtering(
+    mutation: str,
+):
+    class InvalidRows(FakeAKShare):
+        def stock_hsgt_hold_stock_em(self, *, market: str, indicator: str):
+            rows = [dict(row) for row in _hsgt_hold_stock_fixture(indicator)]
+            if mutation == "missing_field":
+                rows[0].pop("今日持股-市值")
+            elif mutation == "extra_field":
+                rows[0]["unexpected"] = "not documented"
+            elif mutation == "reordered_fields":
+                rows[0] = dict(reversed(list(rows[0].items())))
+            elif mutation == "invalid_rank":
+                rows[0]["序号"] = 1.5
+            elif mutation == "non_ascending_rank":
+                rows[1]["序号"] = 4
+            elif mutation == "duplicate_code":
+                rows[1]["代码"] = rows[0]["代码"]
+            elif mutation == "invalid_code":
+                rows[0]["代码"] = "60000"
+            elif mutation == "invalid_name":
+                rows[0]["名称"] = ""
+            elif mutation == "invalid_board":
+                rows[0]["所属板块"] = 123
+            elif mutation == "invalid_numeric":
+                rows[0]["今日收盘价"] = "7.21"
+            elif mutation == "invalid_date":
+                rows[0]["日期"] = "not-a-date"
+            elif mutation == "multiple_dates":
+                rows[1]["日期"] = "2024-01-11"
+            else:
+                rows.clear()
+            return self._return(
+                "stock_hsgt_hold_stock_em",
+                rows,
+                market=market,
+                indicator=indicator,
+            )
+
+    with pytest.raises(ProviderResponseError):
+        _provider(InvalidRows()).fetch(
+            _request(
+                DataCategory.SHAREHOLDER_HOLDINGS,
+                "SH600000",
+                {
+                    "view": "hsgt_hold_stock",
+                    "market": "北向",
+                    "indicator": "今日排行",
+                },
+            )
+        )
+
+
+def test_hsgt_hold_stock_is_raw_only_and_accepts_an_empty_selected_listing():
+    record = _provider().fetch(
+        _request(
+            DataCategory.SHAREHOLDER_HOLDINGS,
+            "SH000002",
+            {
+                "view": "hsgt_hold_stock",
+                "market": "北向",
+                "indicator": "今日排行",
+            },
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="hsgt-hold-stock-empty-selection",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company("SH000002"),
+    )
+
+    assert record.raw_payload == []
+    assert record.response_metadata["upstream_row_count"] == 4
+    assert record.response_metadata["entity_row_count"] == 0
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_HSGT_HOLD_STOCK_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == [
+        "governance_risk_level",
+    ]
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "hold-stock ranking" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "endpoint",
+        "source_uri",
+        "market",
+        "upstream_market",
+        "indicator",
+        "observation_date",
+        "upstream_filter",
+        "rank_order",
+        "code_order",
+        "selected_rank_order",
+        "upstream_row_count",
+        "entity_row_count",
+        "documented_units",
+        "wrong_entity",
+    ],
+)
+def test_hsgt_hold_stock_normalizer_rejects_replayed_scope_mismatches(
+    mutation: str,
+):
+    record = _provider().fetch(
+        _request(
+            DataCategory.SHAREHOLDER_HOLDINGS,
+            "SH600000",
+            {
+                "view": "hsgt_hold_stock",
+                "market": "北向",
+                "indicator": "今日排行",
+            },
+        )
+    )
+    payload = [dict(row) for row in record.raw_payload]
+    metadata = json.loads(json.dumps(record.response_metadata))
+    source_uri = record.source_uri
+    if mutation == "endpoint":
+        metadata["endpoint"] = "stock_hsgt_individual_em"
+    elif mutation == "source_uri":
+        source_uri = "https://example.invalid/hsgt"
+    elif mutation == "market":
+        metadata["market"] = "H"
+    elif mutation == "upstream_market":
+        metadata["upstream_market"] = "沪股通"
+    elif mutation == "indicator":
+        metadata["indicator"] = "年排行"
+    elif mutation == "observation_date":
+        metadata["observation_date"] = "2024-01-11"
+    elif mutation == "upstream_filter":
+        metadata["upstream_filter"] = "tampered"
+    elif mutation == "rank_order":
+        metadata["rank_order"] = [1, 2, 4, 3]
+    elif mutation == "code_order":
+        metadata["code_order"] = ["000001", "600000", "300750", "688981"]
+    elif mutation == "selected_rank_order":
+        metadata["selected_rank_order"] = [2]
+    elif mutation == "upstream_row_count":
+        metadata["upstream_row_count"] = 3
+    elif mutation == "entity_row_count":
+        metadata["entity_row_count"] = 2
+    elif mutation == "documented_units":
+        metadata["documented_units"] = {"今日收盘价": "CNY"}
+    else:
+        payload[0]["代码"] = "000001"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=source_uri,
+        response_metadata=metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="invalid-hsgt-hold-stock-replay",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company("SH600000"),
+        )
+
+
+def test_hsgt_hold_stock_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.SHAREHOLDER_HOLDINGS,
+        "SH600000",
+        {
+            "view": "hsgt_hold_stock",
+            "market": "沪股通",
+            "indicator": "5日排行",
+        },
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [
+        (
+            "stock_hsgt_hold_stock_em",
+            {"market": "沪股通", "indicator": "5日排行"},
+        )
     ]
 
 

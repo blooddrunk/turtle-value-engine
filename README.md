@@ -1536,6 +1536,23 @@ not establish issuer cash flow, shareholder return, governance, valuation or a
 canonical market fact. No calculation, gate, pipeline, CLI or input-loader
 contract changes.
 
+Phase 3.32 adds the documented Eastmoney HSGT individual-ranking endpoint
+[`stock_hsgt_hold_stock_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
+under `SHAREHOLDER_HOLDINGS` with explicit `view=hsgt_hold_stock`, a required
+`market` of `北向`, `沪股通` or `深股通`, and a required `indicator` of `今日排行`,
+`3日排行`, `5日排行`, `10日排行`, `月排行`, `季排行` or `年排行`. The [official
+implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hsgt_em.py)
+derives the report date from the list page and calls the Eastmoney JSON report
+`RPT_MUTUAL_STOCK_NORTHSTA`, using `MUTUAL_TYPE=001`/`003` for the two
+directional markets and indicator codes `1`/`3`/`5`/`10`/`M`/`Q`/`Y`. The
+provider validates the complete 16-field dynamic source order, six-digit code,
+rank sequence, unique listing identity, constant date and finite numeric/null
+values before filtering the full A-share universe to the requested listing.
+The normalizer emits `AKSHARE_HSGT_HOLD_STOCK_RAW_ONLY`; investor-position
+rankings and provider-estimated changes do not establish beneficial control,
+issuer cash flow or a canonical diluted-share series. No calculation, gate,
+pipeline, CLI or input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.
