@@ -1940,6 +1940,28 @@ complete-universe validation, invalid unrequested rows, empty selection,
 raw-only normalization, replay metadata tampering and offline cache replay. No
 calculation, gate, pipeline, CLI or input-loader contract changes.
 
+Phase 3.55 adds the documented Sina STAR Market daily-history endpoint
+[`stock_zh_kcb_daily`](https://akshare.akfamily.xyz/data/stock/stock.html) under
+`MARKET_HISTORY` with explicit `view=kcb_daily`, Shanghai 688xxx or 689xxx
+listing context and the documented adjustment choices `''`, `qfq`, `hfq`,
+`qfq-factor` and `hfq-factor`. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_zh_kcb_sina.py)
+requests a full symbol history from Sina's JSONP K-line endpoint, merges the
+auxiliary outstanding-share history, and optionally applies the qfq/hfq factor
+series. The adapter preserves the exact ten-field regular response
+`date`, `open`, `high`, `low`, `close`, `volume`, `after_volume`,
+`after_amount`, `outstanding_share` and `turnover`, or the exact two-field
+factor response, while recording the full-history scope, adjustment mode,
+source URLs, decoder/transform steps and field units in replay metadata.
+
+The Sina STAR Market daily-history response is retained as raw evidence only:
+provider-derived outstanding-share, after-hours, turnover and adjustment values
+are not reconciled to the canonical daily-history contract or filing-backed
+market facts. The normalizer emits
+`AKSHARE_KCB_DAILY_HISTORY_RAW_ONLY` and creates no canonical fact. Tests cover
+STAR routing, defaults, adjustment/factor schemas, invalid rows, raw-only
+normalization, replay metadata tampering and offline cache replay. No
+calculation, gate, pipeline, CLI or input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

@@ -3927,6 +3927,29 @@ complete-universe validation, invalid unrequested rows, empty selection,
 raw-only normalization, replay metadata tampering and offline cache replay. No
 calculation, gate, pipeline, CLI or input-loader contract changes.
 
+### Phase 3.55 — Sina STAR Market daily-history raw acquisition contract (COMPLETE)
+
+The mapping review now covers the documented Sina
+[`stock_zh_kcb_daily`](https://akshare.akfamily.xyz/data/stock/stock.html)
+daily-history endpoint under `MARKET_HISTORY` with explicit
+`view=kcb_daily`. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_zh_kcb_sina.py)
+requests one Shanghai 688xxx/689xxx STAR Market symbol, returns a full
+history from Sina's JSONP K-line service, merges the outstanding-share history
+and optionally applies qfq/hfq factors. The adapter preserves the exact ten
+regular fields `date`, `open`, `high`, `low`, `close`, `volume`, `after_volume`,
+`after_amount`, `outstanding_share` and `turnover`, or the exact two-field
+factor response for `qfq-factor` and `hfq-factor`. It records the full-history
+scope, five documented adjustment modes, source URLs, wrapper decoders,
+provider transformations and conservative units in replay metadata.
+
+The response remains raw evidence only: provider-derived outstanding-share,
+after-hours, turnover and adjusted-price values are not reconciled to the
+canonical daily-history contract or filing-backed market facts. The normalizer
+emits `AKSHARE_KCB_DAILY_HISTORY_RAW_ONLY` and creates no canonical fact.
+Tests cover routing, defaults, adjustment/factor schemas, invalid rows,
+raw-only normalization, replay metadata tampering and offline cache replay. No
+calculation, gate, pipeline, CLI or input-loader contract changes.
+
 ### Future structured-provider deliverables
 
 ```text
@@ -3936,7 +3959,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–3.54 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–3.55 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```

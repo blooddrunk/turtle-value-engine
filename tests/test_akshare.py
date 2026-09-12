@@ -535,6 +535,21 @@ class FakeAKShare:
             adjust=adjust,
         )
 
+    def stock_zh_kcb_daily(self, *, symbol: str, adjust: str):
+        fixture_by_adjust = {
+            "": "kcb_daily_history.json",
+            "qfq": "kcb_daily_history.json",
+            "hfq": "kcb_daily_history.json",
+            "qfq-factor": "kcb_daily_qfq_factor.json",
+            "hfq-factor": "kcb_daily_hfq_factor.json",
+        }
+        return self._return(
+            "stock_zh_kcb_daily",
+            _fixture(fixture_by_adjust[adjust]),
+            symbol=symbol,
+            adjust=adjust,
+        )
+
     def stock_zh_b_minute(self, *, symbol: str, period: str, adjust: str):
         return self._return(
             "stock_zh_b_minute",
@@ -1360,8 +1375,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "160"
-    assert AKSHARE_MAPPING_VERSION == "161"
+    assert provider.identity.provider_version == "161"
+    assert AKSHARE_MAPPING_VERSION == "162"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -15011,6 +15026,400 @@ def test_b_daily_history_cache_replay_does_not_call_upstream(tmp_path: Path):
                 "end_date": "20260909",
                 "adjust": "",
             },
+        )
+    ]
+
+
+def test_kcb_daily_history_fetch_uses_documented_symbol_and_full_history_contract():
+    fake = FakeAKShare()
+    record = _provider(fake).fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "SH688001",
+            {"view": "kcb_daily"},
+        )
+    )
+
+    fields = [
+        "date",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume",
+        "after_volume",
+        "after_amount",
+        "outstanding_share",
+        "turnover",
+    ]
+    assert record.raw_payload == _fixture("kcb_daily_history.json")
+    assert fake.calls == [
+        (
+            "stock_zh_kcb_daily",
+            {"symbol": "sh688001", "adjust": ""},
+        )
+    ]
+    assert record.source_uri == (
+        "https://finance.sina.com.cn/realstock/company/sh688001/nc.shtml"
+    )
+    assert record.response_metadata["endpoint"] == "stock_zh_kcb_daily"
+    assert record.response_metadata["market_history_view"] == "kcb_daily"
+    assert record.response_metadata["listing_code"] == "688001"
+    assert record.response_metadata["upstream_symbol"] == "sh688001"
+    assert record.response_metadata["market_scope"] == "requested_kcb_listing"
+    assert record.response_metadata["listing_scoped_request"] is True
+    assert record.response_metadata["row_filtering"] == "upstream"
+    assert record.response_metadata["snapshot_scope"] == "full_kcb_daily_history"
+    assert record.response_metadata["date_binding"] == "row_only"
+    assert record.response_metadata["range_filtering"] == (
+        "not_applicable_full_history"
+    )
+    assert record.response_metadata["kcb_daily_adjust"] == ""
+    assert record.response_metadata["adjustment_kind"] == "price_series"
+    assert record.response_metadata["date_ordering"] == "strictly_ascending"
+    assert record.response_metadata["field_count"] == 10
+    assert record.response_metadata["source_field_order"] == fields
+    assert record.response_metadata["date_fields"] == ["date"]
+    assert record.response_metadata["value_fields"] == fields[1:]
+    assert record.response_metadata["required_numeric_fields"] == fields[1:]
+    assert record.response_metadata["documented_units"] == {
+        "volume": "shares",
+        "outstanding_share": "shares",
+        "turnover": "ratio",
+    }
+    assert record.response_metadata["undocumented_numeric_units"] == {
+        "open": "not_documented",
+        "high": "not_documented",
+        "low": "not_documented",
+        "close": "not_documented",
+        "after_volume": "not_documented",
+        "after_amount": "not_documented",
+    }
+    assert record.response_metadata["field_types"] == {
+        "date": "date",
+        "open": "number",
+        "high": "number",
+        "low": "number",
+        "close": "number",
+        "volume": "number",
+        "after_volume": "number",
+        "after_amount": "number",
+        "outstanding_share": "number",
+        "turnover": "number",
+    }
+    assert record.response_metadata["upstream_url"] == (
+        "https://quotes.sina.cn/cn/api/jsonp.php/var%20_"
+        "sh688001current_system_date_YYYY_MM_DD=/"
+        "KC_MarketDataService.getKLineData?symbol=sh688001"
+    )
+    assert record.response_metadata["upstream_urls"] == [
+        record.response_metadata["upstream_url"],
+        (
+            "https://stock.finance.sina.com.cn/stock/api/jsonp.php/"
+            "var%20KKE_ShareAmount_sh688001=/StockService.getAmountBySymbol?"
+            "_=20&symbol=sh688001"
+        ),
+    ]
+    assert record.response_metadata["upstream_auxiliary_roles"] == [
+        "outstanding_share_history"
+    ]
+    assert record.response_metadata["upstream_protocol"] == "https_jsonp"
+    assert record.response_metadata["upstream_parameters"] == ["symbol", "date_token"]
+    assert record.response_metadata["upstream_dynamic_parameters"] == {
+        "symbol": "sh688001",
+        "date_token": "current_system_date_YYYY_MM_DD",
+    }
+    assert record.response_metadata["upstream_fixed_parameters"] == {}
+    assert record.response_metadata["wrapper_source_page_uri"] == record.source_uri
+    assert record.response_metadata["wrapper_date_filtering"] == "none"
+    assert record.response_metadata["wrapper_decoders"] == ["demjson", "demjson"]
+    assert record.response_metadata["wrapper_transformations"] == [
+        "amount_times_10000",
+        "turnover_volume_divided_by_outstanding_share",
+    ]
+    assert record.response_metadata["pagination"] == "single_full_history_response"
+    assert record.response_metadata["upstream_page_size"] is None
+    assert record.response_metadata["upstream_row_count"] == 2
+    assert record.response_metadata["entity_row_count"] == 2
+    assert record.response_metadata["entity_rows_selected"] is True
+    assert record.response_metadata["observation_start_date"] == "2026-09-08"
+    assert record.response_metadata["observation_end_date"] == "2026-09-09"
+
+
+def test_kcb_daily_history_accepts_the_689xxx_star_listing():
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "SH689009",
+            {"view": "kcb_daily", "adjust": "hfq"},
+        )
+    )
+
+    assert record.raw_payload == _fixture("kcb_daily_history.json")
+    assert record.response_metadata["listing_code"] == "689009"
+    assert record.response_metadata["upstream_symbol"] == "sh689009"
+    assert record.response_metadata["kcb_daily_adjust"] == "hfq"
+    assert record.response_metadata["upstream_auxiliary_roles"] == [
+        "outstanding_share_history",
+        "adjustment_factor_history",
+    ]
+    assert record.response_metadata["wrapper_decoders"] == [
+        "demjson",
+        "demjson",
+        "python_eval",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("entity_id", "parameters", "match"),
+    [
+        ("SZ688001", {"view": "kcb_daily"}, "supports Shanghai 688xxx"),
+        ("HK00700", {"view": "kcb_daily"}, "supports Shanghai 688xxx"),
+        ("SH600000", {"view": "kcb_daily"}, "supports Shanghai 688xxx"),
+        (
+            "SH688001",
+            {"view": "kcb_daily", "start_date": "20260908"},
+            "unsupported AKShare Sina KCB daily-history parameter",
+        ),
+        (
+            "SH688001",
+            {"view": "kcb_daily", "adjust": "split"},
+            "adjust must be one of",
+        ),
+    ],
+)
+def test_kcb_daily_history_request_requires_star_listing_and_documented_parameters(
+    entity_id: str,
+    parameters: dict,
+    match: str,
+):
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError, match=match):
+        _provider(fake).fetch(
+            _request(DataCategory.MARKET_HISTORY, entity_id, parameters)
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("missing_field", "missing field"),
+        ("extra_field", "unsupported field"),
+        ("reordered_fields", "documented field order"),
+        ("invalid_date", "invalid date"),
+        ("descending", "strictly ascending"),
+        ("duplicate_date", "duplicate date"),
+        ("invalid_numeric", "must be numeric or null"),
+        ("bool_numeric", "must be numeric or null"),
+        ("infinite_numeric", "contains infinity"),
+    ],
+)
+def test_kcb_daily_history_response_validates_documented_rows(
+    mutation: str,
+    match: str,
+):
+    class InvalidRows(FakeAKShare):
+        def stock_zh_kcb_daily(self, *, symbol: str, adjust: str):
+            rows = [dict(row) for row in _fixture("kcb_daily_history.json")]
+            if mutation == "missing_field":
+                rows[0].pop("turnover")
+            elif mutation == "extra_field":
+                rows[0]["unexpected"] = "not documented"
+            elif mutation == "reordered_fields":
+                first = rows[0]
+                rows[0] = {
+                    "open": first["open"],
+                    **{key: value for key, value in first.items() if key != "open"},
+                }
+            elif mutation == "invalid_date":
+                rows[0]["date"] = "not-a-date"
+            elif mutation == "descending":
+                rows.reverse()
+            elif mutation == "duplicate_date":
+                rows[1]["date"] = rows[0]["date"]
+            elif mutation == "invalid_numeric":
+                rows[0]["close"] = "42.9"
+            elif mutation == "bool_numeric":
+                rows[0]["volume"] = True
+            else:
+                rows[0]["high"] = float("inf")
+            return self._return(
+                "stock_zh_kcb_daily",
+                rows,
+                symbol=symbol,
+                adjust=adjust,
+            )
+
+    with pytest.raises(ProviderResponseError, match=match):
+        _provider(InvalidRows()).fetch(
+            _request(
+                DataCategory.MARKET_HISTORY,
+                "SH688001",
+                {"view": "kcb_daily"},
+            )
+        )
+
+
+@pytest.mark.parametrize(
+    ("adjust", "field", "fixture_name"),
+    [
+        ("qfq-factor", "qfq_factor", "kcb_daily_qfq_factor.json"),
+        ("hfq-factor", "hfq_factor", "kcb_daily_hfq_factor.json"),
+    ],
+)
+def test_kcb_daily_history_factor_response_preserves_documented_shape(
+    adjust: str,
+    field: str,
+    fixture_name: str,
+):
+    fake = FakeAKShare()
+    record = _provider(fake).fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "SH688001",
+            {"view": "kcb_daily", "adjust": adjust},
+        )
+    )
+
+    assert record.raw_payload == _fixture(fixture_name)
+    assert fake.calls[-1] == (
+        "stock_zh_kcb_daily",
+        {"symbol": "sh688001", "adjust": adjust},
+    )
+    assert record.response_metadata["adjustment_kind"] == "factor_series"
+    assert record.response_metadata["date_ordering"] == "strictly_descending"
+    assert record.response_metadata["snapshot_scope"] == (
+        "full_kcb_adjustment_factor_history"
+    )
+    assert record.response_metadata["date_binding"] == "row_only"
+    assert record.response_metadata["range_filtering"] == (
+        "not_applied_for_factor_history"
+    )
+    assert record.response_metadata["field_count"] == 2
+    assert record.response_metadata["source_field_order"] == ["date", field]
+    assert record.response_metadata["value_fields"] == [field]
+    assert record.response_metadata["documented_units"] == {}
+    assert record.response_metadata["undocumented_numeric_units"] == {
+        field: "not_documented"
+    }
+    assert record.response_metadata["upstream_url"] == (
+        "https://finance.sina.com.cn/realstock/company/"
+        f"sh688001/{'qfq' if adjust == 'qfq-factor' else 'hfq'}.js"
+    )
+    assert record.response_metadata["upstream_auxiliary_urls"] == []
+    assert record.response_metadata["wrapper_decoders"] == ["python_eval"]
+    assert record.response_metadata["wrapper_transformations"] == ["factor_data_eval"]
+    assert record.response_metadata["observation_start_date"] == "1900-01-01"
+    assert record.response_metadata["observation_end_date"] == "2026-09-09"
+
+
+def test_kcb_daily_history_empty_response_is_a_valid_raw_snapshot():
+    class EmptyResponse(FakeAKShare):
+        def stock_zh_kcb_daily(self, *, symbol: str, adjust: str):
+            return self._return(
+                "stock_zh_kcb_daily",
+                [],
+                symbol=symbol,
+                adjust=adjust,
+            )
+
+    record = _provider(EmptyResponse()).fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "SH688001",
+            {"view": "kcb_daily"},
+        )
+    )
+
+    assert record.raw_payload == []
+    assert record.response_metadata["upstream_row_count"] == 0
+    assert record.response_metadata["entity_row_count"] == 0
+    assert record.response_metadata["observation_start_date"] is None
+    assert record.response_metadata["observation_end_date"] is None
+
+
+def test_kcb_daily_history_is_retained_as_raw_evidence_without_canonical_facts():
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "SH688001",
+            {"view": "kcb_daily"},
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="kcb-daily-history-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company("SH688001"),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_KCB_DAILY_HISTORY_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == ["market_history"]
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "Sina STAR Market daily-history" in normalized.data_quality.notes
+    assert "canonical daily-history contract" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+def test_kcb_daily_history_normalizer_rejects_replayed_scope_mismatches():
+    request = _request(
+        DataCategory.MARKET_HISTORY,
+        "SH688001",
+        {"view": "kcb_daily", "adjust": "qfq"},
+    )
+    record = _provider().fetch(request)
+    response_metadata = dict(record.response_metadata)
+    response_metadata["kcb_daily_adjust"] = ""
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=record.raw_payload,
+        source_uri=record.source_uri,
+        response_metadata=response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match="Sina KCB daily-history"):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-kcb-daily-history-scope",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company("SH688001"),
+        )
+
+
+def test_kcb_daily_history_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.MARKET_HISTORY,
+        "SH688001",
+        {"view": "kcb_daily"},
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [
+        (
+            "stock_zh_kcb_daily",
+            {"symbol": "sh688001", "adjust": ""},
         )
     ]
 
