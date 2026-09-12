@@ -1962,6 +1962,26 @@ STAR routing, defaults, adjustment/factor schemas, invalid rows, raw-only
 normalization, replay metadata tampering and offline cache replay. No
 calculation, gate, pipeline, CLI or input-loader contract changes.
 
+Phase 3.56 adds the documented Sina
+[`stock_zh_index_daily`](https://akshare.akfamily.xyz/data/index/index.html)
+index daily-history endpoint under `MARKET_HISTORY` with explicit
+`view=index_daily`. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/index/index_stock_zh.py)
+fetches one Shanghai 000xxx or Shenzhen 399xxx index symbol from Sina's
+encrypted JavaScript history endpoint with the fixed `d=2020_2_4` parameter and
+returns the exact six fields `date`, `open`, `high`, `low`, `close` and `volume`.
+The adapter preserves the full-history scope, lower-prefixed symbol, source
+URL, fixed/dynamic parameters, decoder steps, field order and conservative unit
+metadata in replay metadata.
+
+The Sina index daily-history response is retained as raw evidence only: an
+index-level OHLCV series has no listing/entity accounting scope and does not
+establish the canonical daily-history, return, valuation or accounting inputs.
+The normalizer emits `AKSHARE_INDEX_DAILY_HISTORY_RAW_ONLY` and creates no
+canonical fact. Tests cover Shanghai and Shenzhen index routing, exact schema
+and row validation, unsupported listing/parameter boundaries, empty output,
+raw-only normalization, replay metadata tampering and offline cache replay.
+No calculation, gate, pipeline, CLI or input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

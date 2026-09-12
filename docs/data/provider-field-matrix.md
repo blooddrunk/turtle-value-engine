@@ -3862,6 +3862,32 @@ the existing deterministic scorer. Until the filing/evidence layer exists,
 these judgments stay `UNAVAILABLE` to automatic Phase 2 normalization and the
 existing gate remains `NOT_EVALUATED` when no assessment is supplied.
 
+## Phase 3.56 Sina index daily-history raw slice
+
+The current [AKShare index-data documentation](https://akshare.akfamily.xyz/data/index/index.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/index/index_stock_zh.py)
+document `stock_zh_index_daily` as a Sina index-level full-history endpoint.
+The adapter selects it only under `MARKET_HISTORY` with explicit
+`view=index_daily`, accepts Shanghai 000xxx or Shenzhen 399xxx index-shaped
+IDs, and preserves the exact six-field response before returning the raw
+record. The official wrapper fetches Sina's encrypted JavaScript K-line result
+with `d=2020_2_4` and decodes it with `hk_js_decode` and `py_mini_racer`.
+
+| Raw upstream item | Phase 3.56 treatment |
+| --- | --- |
+| `date` | Required parseable observation date; rows must be strictly ascending and are retained as row-level history metadata. |
+| `open`, `high`, `low`, `close`, `volume` | Required finite numeric or null fields; the documentation does not declare a canonical unit for these values, so they remain raw evidence only. |
+| request `view=index_daily` and listing-shaped index ID | Explicit Shanghai 000xxx/Shenzhen 399xxx index routing; `index_scoped_request=true`, `listing_scoped_request=false`, `date_binding=row_only` and full-history replay scope are recorded. |
+| upstream `symbol` and fixed `d=2020_2_4` | Lower-prefixed dynamic symbol, fixed parameter, source URL, decoder steps, field order and row counts remain replay metadata. |
+
+The provider rejects stock-listing, B-share, H-share, Beijing, missing or
+unexpected-parameter requests, missing/unexpected/reordered fields, invalid or
+non-ascending dates and non-finite/non-numeric values. The normalizer emits
+`AKSHARE_INDEX_DAILY_HISTORY_RAW_ONLY` and creates no canonical daily-history,
+return, valuation or accounting fact: an index-level series has no
+listing/entity accounting scope. The response remains outside the calculation,
+gate, pipeline, CLI and input-loader contracts.
+
 ## Phase 2 enforcement rule
 
 For every field not marked `STRUCTURED_AUTO` or `DERIVED_DETERMINISTIC`, a

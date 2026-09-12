@@ -3950,6 +3950,29 @@ Tests cover routing, defaults, adjustment/factor schemas, invalid rows,
 raw-only normalization, replay metadata tampering and offline cache replay. No
 calculation, gate, pipeline, CLI or input-loader contract changes.
 
+### Phase 3.56 — Sina index daily-history raw acquisition contract (COMPLETE)
+
+The mapping review now covers the documented Sina
+[`stock_zh_index_daily`](https://akshare.akfamily.xyz/data/index/index.html)
+index daily-history endpoint under `MARKET_HISTORY` with explicit
+`view=index_daily`. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/index/index_stock_zh.py)
+requests one Shanghai 000xxx or Shenzhen 399xxx index symbol from Sina's
+encrypted JavaScript K-line history endpoint with fixed `d=2020_2_4`, then
+decodes the response with `hk_js_decode` and `py_mini_racer`. The adapter
+preserves the exact six fields `date`, `open`, `high`, `low`, `close`, `volume`,
+full-history scope, lower-prefixed symbol, source URL, fixed/dynamic parameters,
+decoder steps, strict date order and conservative unit metadata in replay
+metadata.
+
+The Sina index daily-history response remains raw evidence only: index-level
+OHLCV has no listing/entity accounting scope and does not establish the
+canonical daily-history, return, valuation or accounting inputs. The normalizer
+emits `AKSHARE_INDEX_DAILY_HISTORY_RAW_ONLY` and creates no canonical fact.
+Tests cover Shanghai and Shenzhen routing, exact schema/order and numeric/date
+boundaries, unsupported listing/parameter requests, empty output, raw-only
+normalization, replay metadata tampering and offline cache replay. No
+calculation, gate, pipeline, CLI or input-loader contract changes.
+
 ### Future structured-provider deliverables
 
 ```text
@@ -3959,7 +3982,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–3.55 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–3.56 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
