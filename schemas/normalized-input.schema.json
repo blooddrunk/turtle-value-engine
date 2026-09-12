@@ -767,6 +767,98 @@
             "string",
             "null"
           ]
+        },
+        "provenance": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/evidenceProvenance"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "evidenceProvenance": {
+      "type": "object",
+      "required": [
+        "filing_id",
+        "filing_source",
+        "source_document_id",
+        "report_period",
+        "content_sha256",
+        "content_size",
+        "media_type",
+        "extraction_contract",
+        "parser_id",
+        "parser_version",
+        "block_sequence",
+        "block_sha256"
+      ],
+      "properties": {
+        "filing_id": {
+          "type": "string",
+          "pattern": "^filing-[0-9a-f]{24}$"
+        },
+        "filing_source": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[A-Z][A-Z0-9_]*$"
+        },
+        "source_document_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "report_period": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "content_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "content_size": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "media_type": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "extraction_contract": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "parser_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "parser_version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "block_sequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "block_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
         }
       },
       "additionalProperties": false

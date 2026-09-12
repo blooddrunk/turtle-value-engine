@@ -4805,6 +4805,28 @@ location order and bound violations fail closed. Synthetic parser-neutral
 fixtures and adversarial tests cover A/H report provenance, page/section
 locations, ordering, block/text hashes, unsupported media and cache replay.
 
+### Phase 3.87 — Deterministic filing evidence store (COMPLETE)
+
+The evidence-store deliverable consumes a validated
+`FilingExtractionResult` (or its serialized equivalent) and a caller-supplied
+`Evidence` statement. `FilingEvidenceStore` binds the item to one exact
+extracted block, preserves the complete filing identity, official source,
+source-document ID, report period, document and block hashes, parser and
+extraction identity, and stable page/section plus `block:<sequence>` locator.
+The additive `EvidenceProvenance` contract keeps those fields explicit while
+remaining compatible with existing structured evidence.
+
+Records are deterministic JSON envelopes under a local filesystem root.
+Writes are append-only and idempotent for identical content; conflicting
+reuse of a deterministic evidence ID is rejected. Reads, lookup and explicit
+replay are offline-only and verify the envelope hash, evidence provenance and
+the requested extraction. An optional exact `FilingDocument` allows the store
+to recompute the document digest at the boundary. No numeric Fact extraction,
+accounting interpretation, adjustment proposal, LLM call or CLI wiring is
+included. The contract is defined by
+`schemas/filing-evidence.schema.json`; focused fixtures and adversarial tests
+cover A/H provenance, bad references, tampered hashes, conflicts and replay.
+
 ### Future structured-provider deliverables
 
 ```text
@@ -4818,6 +4840,7 @@ src/turtle_value_engine/providers/
   filings.py       # Phase 3.84 metadata-only official filing discovery
   filing_documents.py  # Phase 3.85 byte retrieval and content cache
   filing_extraction.py  # Phase 3.86 bounded annual/interim report text blocks
+  evidence_store.py   # Phase 3.87 deterministic filing evidence store
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```

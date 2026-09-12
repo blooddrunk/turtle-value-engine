@@ -74,3 +74,27 @@ class FilingExtractionRequestError(FilingExtractionError):
 
 class FilingExtractionResponseError(FilingExtractionError):
     """Raised when an injected parser returns malformed or mismatched text."""
+
+
+class EvidenceStoreError(CacheError):
+    """Base error for deterministic local filing-evidence storage."""
+
+
+class EvidenceStoreMissError(EvidenceStoreError):
+    """Raised when an explicitly requested evidence replay is unavailable."""
+
+
+class EvidenceStoreCorruptionError(EvidenceStoreError):
+    """Raised when a persisted evidence record fails integrity validation."""
+
+
+class EvidenceStoreConflictError(EvidenceStoreError):
+    """Raised when an evidence ID already represents different content."""
+
+
+class EvidenceStoreRequestError(EvidenceStoreError):
+    """Raised when an evidence request is outside the store contract."""
+
+
+class EvidenceStoreWriteError(EvidenceStoreError):
+    """Raised when an evidence record cannot be atomically persisted."""

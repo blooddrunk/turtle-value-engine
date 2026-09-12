@@ -2608,7 +2608,16 @@ parser dependency. The schema is defined by
 `schemas/filing-extraction.schema.json`. It does not infer report/accounting
 classifications or create Source/Evidence/Fact objects.
 
-Evidence storage, adjustment proposals and LLM-assisted evidence analysis
+Phase 3.87 adds a deterministic, append-only `FilingEvidenceStore` for
+caller-supplied Evidence statements. It binds each item to an exact extracted
+filing block, preserves A/H filing identity, source-document and report-period
+metadata, document and block hashes, parser/extraction provenance and stable
+page/section/block locators, and supports idempotent writes plus integrity-
+checked offline replay. `EvidenceProvenance` is an additive extension to the
+existing evidence contract; no numeric Fact extraction, adjustment proposal,
+LLM analysis or CLI wiring is included.
+
+Adjustment proposals and LLM-assisted evidence analysis
 remain unimplemented. The deterministic
 `tve analyze` command is still offline-only and does not call a provider or an
 LLM.

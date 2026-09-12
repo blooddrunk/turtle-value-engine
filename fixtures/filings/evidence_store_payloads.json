@@ -1,0 +1,31 @@
+{
+  "a_annual_support": {
+    "extraction_fixture": "a_annual_pdf",
+    "block_sequence": 1,
+    "evidence": {
+      "direction": "SUPPORT",
+      "strength": "E3",
+      "statement": "The annual report contains a primary filing disclosure.",
+      "source": {
+        "type": "ANNUAL_REPORT",
+        "title": "2024年年度报告"
+      },
+      "confidence": 0.95
+    }
+  },
+  "h_interim_counter": {
+    "extraction_fixture": "h_interim_html",
+    "block_sequence": 2,
+    "evidence": {
+      "direction": "COUNTER",
+      "strength": "E2",
+      "statement": "The interim report provides a contrary operating disclosure.",
+      "source": {
+        "type": "INTERIM_REPORT",
+        "title": "2025 Interim Results Announcement"
+      },
+      "confidence": 0.8,
+      "notes": "Caller-supplied interpretation remains separate from extraction."
+    }
+  }
+}

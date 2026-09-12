@@ -227,6 +227,32 @@ class MetricContext(BaseModel):
     currency: str | None = Field(default=None, min_length=3, max_length=3)
 
 
+class EvidenceProvenance(BaseModel):
+    """Exact filing-extraction identity behind one evidence item.
+
+    The provider layer uses this additive metadata to bind an evidence item
+    to one immutable document snapshot and one extracted text block.  It is
+    deliberately separate from ``Source`` so existing structured-data
+    evidence keeps its original shape while filing evidence can carry the
+    stronger byte- and parser-level provenance required for replay.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    filing_id: str = Field(min_length=1, pattern=r"^filing-[0-9a-f]{24}$")
+    filing_source: str = Field(min_length=1, max_length=64, pattern=r"^[A-Z][A-Z0-9_]*$")
+    source_document_id: str | None = Field(default=None, min_length=1, max_length=256)
+    report_period: str | None = Field(default=None, min_length=1, max_length=64)
+    content_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    content_size: StrictInt = Field(ge=1)
+    media_type: str = Field(min_length=1, max_length=256)
+    extraction_contract: str = Field(min_length=1, max_length=128)
+    parser_id: str = Field(min_length=1, max_length=128)
+    parser_version: str = Field(min_length=1, max_length=128)
+    block_sequence: StrictInt = Field(ge=1)
+    block_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
 class Evidence(BaseModel):
     """Auditable evidence item used by facts, adjustments and judgments."""
 
@@ -240,6 +266,7 @@ class Evidence(BaseModel):
     source: Source
     confidence: StrictFloat = Field(ge=0, le=1)
     notes: str | None = None
+    provenance: EvidenceProvenance | None = None
 
 
 class Fact(BaseModel):

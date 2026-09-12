@@ -1,6 +1,6 @@
 # Structured Provider Field Matrix
 
-> Status: Phase 3.86 bounded filing text extraction plus Phase 3.85 filing download/cache guardrail and Phase 2 normalization guardrail
+> Status: Phase 3.87 filing evidence store plus Phase 3.86 bounded filing text extraction, Phase 3.85 filing download/cache guardrail and Phase 2 normalization guardrail
 
 This matrix classifies normalized fields used by the current strict-v1 input
 and gate pipeline. It is an allowlist for what a structured-data adapter may
@@ -4574,7 +4574,8 @@ metadata after cache replay. The shared filesystem cache is keyed by provider,
 version, category, listing and query parameters; offline mode never invokes an
 injected source client. Document retrieval is the separate Phase 3.85 byte
 contract below, and bounded text extraction is the separate Phase 3.86
-contract. Evidence storage and adjustment proposals remain later deliverables.
+contract; deterministic evidence storage is the separate Phase 3.87 contract
+below. Adjustment proposals remain a later deliverable.
 
 ## Phase 3.85 official filing document download/cache
 
@@ -4626,6 +4627,28 @@ The boundary preserves source text only. It creates no normalized fact,
 adjustment, invoke an LLM or wire the CLI. Unsupported media, missing parser
 support, empty/malformed parser output and cache/replay provenance changes
 fail closed.
+
+## Phase 3.87 deterministic filing evidence store
+
+This slice consumes a validated `FilingExtractionResult` and a caller-supplied
+`Evidence` statement, then binds the item to one exact extracted block. The
+additive `EvidenceProvenance` field preserves filing identity, official source,
+source-document ID, report period, document and block hashes, extraction
+contract, parser identity and the stable block locator without changing the
+shape of legacy structured evidence.
+
+| Evidence-store field | Treatment and replay invariant |
+| --- | --- |
+| `evidence.id` | Deterministic `filing-evidence-<24 hex>` identity from the filing/extraction identity, block identity and caller-supplied semantic claim; missing IDs are generated and conflicting reuse is rejected. |
+| `evidence.source` | Canonical annual/interim-report source populated from the FilingRecord and selected block; title, issuer, date, fiscal period, URL, document ID and page/section reference cannot be overridden by the caller. |
+| `evidence.provenance` | Exact filing/document/parser/block provenance, including `content_sha256`, `content_size`, `block_sequence` and `block_sha256`; a supplied provenance object must match byte-for-byte. |
+| store record | JSON envelope under `<root>/evidence/<evidence-id>.json` with a canonical record SHA-256; writes are append-only/idempotent and atomic, while conflicting IDs, malformed JSON, hash changes and non-regular entries fail closed. |
+| lookup/replay | Offline-only lookup by extraction, filing ID, document hash or block; optional `FilingDocument` revalidation recomputes the raw document hash and binds the extraction to the exact bytes. |
+
+The store creates no numeric `Fact`, accounting interpretation, adjustment
+proposal, LLM call or CLI behavior. Its machine-readable envelope contract is
+`schemas/filing-evidence.schema.json`; legacy evidence without filing
+provenance remains valid under `schemas/evidence.schema.json`.
 
 ## Phase 2 enforcement rule
 
