@@ -4496,6 +4496,34 @@ canonical market, return, valuation, governance or accounting fact. The
 provider-defined related-stock relationship and percent change remain raw
 structured evidence only.
 
+## Phase 3.82 H-share Eastmoney market-wide hot-rank raw slice
+
+`stock_hk_hot_rank_em` is selected only with `MARKET_ACTIVITY` and explicit
+`view=hk_hot_rank` for an H-share listing. The official two-step wrapper first
+POSTs `appId`, `globalId`, `marketType=000003`, `pageNo=1` and `pageSize=100` to
+`getAllCurrHkUsList`, then GETs the fixed quote query at
+`https://push2.eastmoney.com/api/qt/ulist.np/get` with `secids` derived as
+`116.<code>`. The adapter returns the exact five-field order below and validates
+the complete market-wide response before filtering to the requested listing.
+
+| Raw provider field | Phase 3.82 treatment |
+| --- | --- |
+| `当前排名` | Required positive integer from 1 through 100; the full response must be strictly ascending and duplicate-free, retained as provider popularity context only. |
+| `代码` | Required unique five-digit H-share code; full-universe order is retained, and provider-side filtering selects the requested code. |
+| `股票名称` | Required non-empty provider name; it remains raw identity context and is not used as issuer metadata. |
+| `最新价` | Finite numeric-or-null quote value with documented unit `HKD_per_share`; it does not become the canonical current price. |
+| `涨跌幅` | Finite numeric-or-null value with documented unit `percent`; it remains provider-defined quote context and is not a canonical return. |
+| request `view` | Only `view=hk_hot_rank` is accepted; no listing/date parameter is passed to `stock_hk_hot_rank_em`. |
+| ranking POST | Replay metadata records the exact URL, JSON parameter order, fixed credentials/market/page values, response code/rank order and the no-authentication boundary. |
+| quote GET | Replay metadata records the exact URL, fixed `ut`/`fltt`/`invt`/`fields` query, derived `116.<code>` secids, positional quote mapping and the two-step wrapper transformations. |
+
+The response is raw-only and the normalizer emits
+`AKSHARE_HK_HOT_RANK_RAW_ONLY`; it creates no canonical market, return,
+valuation, governance or accounting fact. Focused tests cover H-share-only
+routing, exact schema/order, full-universe validation including invalid
+unrequested rows, rank/code/numeric boundaries, empty selection, raw-only
+normalization, replay metadata/payload tampering and offline cache replay.
+
 ## Phase 2 enforcement rule
 
 For every field not marked `STRUCTURED_AUTO` or `DERIVED_DETERMINISTIC`, a

@@ -2531,6 +2531,26 @@ scope/parameters, exact-schema adversarial responses, empty snapshots,
 raw-only normalization, replay metadata/payload tampering and offline cache
 replay. No calculation, gate, pipeline, CLI or input-loader contract changes.
 
+Phase 3.82 adds the documented H-share market-wide popularity endpoint
+[`stock_hk_hot_rank_em`](https://akshare.akfamily.xyz/data/stock/stock.html) using
+explicit `view=hk_hot_rank`. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hk_hot_rank_em.py)
+first posts `appId`, `globalId`, `marketType=000003`, `pageNo=1` and
+`pageSize=100` to `getAllCurrHkUsList`, then requests
+`push2.eastmoney.com/api/qt/ulist.np/get` with fixed quote parameters and
+`116.<code>` secids derived from the ranking response. The adapter preserves
+the exact five-field `当前排名`, `代码`, `股票名称`, `最新价`, `涨跌幅` output,
+validates the complete H-share top-100 response before filtering to the requested
+five-digit code, and records both upstream calls, wrapper mappings, secids and
+row orders as replay metadata.
+
+The response is raw-only and emits `AKSHARE_HK_HOT_RANK_RAW_ONLY`: provider-
+defined popularity ordering and quote context do not establish canonical
+market, return, valuation, governance or accounting facts. Focused tests cover
+H-share-only routing, exact field order, full-universe validation including
+unrequested rows, rank/code/numeric adversarial cases, empty selection,
+raw-only normalization, replay metadata/payload tampering and offline cache
+replay. No calculation, gate, pipeline, CLI or input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

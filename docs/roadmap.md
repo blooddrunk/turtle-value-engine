@@ -4650,6 +4650,41 @@ parameters, adversarial provider rows, empty responses, raw-only normalization,
 replay metadata/payload tampering and offline cache replay. No calculation,
 gate, pipeline, CLI or input-loader contract changes.
 
+### Phase 3.82 — H-share Eastmoney market-wide hot-rank acquisition contract (COMPLETE)
+
+The next documented-but-unimplemented AKShare inventory item after Phase 3.81
+is `stock_hk_hot_rank_em`, the market-wide H-share popularity ranking endpoint.
+The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hk_hot_rank_em.py)
+document it under `MARKET_ACTIVITY` with explicit `view=hk_hot_rank`. The
+adapter routes only H-share listings, calls the official no-argument wrapper and
+filters the full response to the requested five-digit H-share code after
+validation.
+
+The wrapper contract is frozen as a JSON POST to
+`https://emappdata.eastmoney.com/stockrank/getAllCurrHkUsList` with fixed
+`appId=appId01`, `globalId=786e4c21-70dc-435a-93bb-38`, `marketType=000003`,
+`pageNo=1` and `pageSize=100`. It then performs a JSON GET to
+`https://push2.eastmoney.com/api/qt/ulist.np/get` with fixed
+`ut=f057cbcbce2a86e2866ab8877db1d059`, `fltt=2`, `invt=2` and
+`fields=f14,f3,f12,f2`, plus `secids` derived as `116.<code>` from the first
+response. The adapter preserves exactly `当前排名`, `代码`, `股票名称`, `最新价`,
+`涨跌幅` in that order, validates the complete top-100 universe, unique
+five-digit codes, strictly ascending ranks, non-empty names and finite
+numeric-or-null quote values, and accepts an empty selected result when the
+requested code is absent.
+
+Provenance/replay metadata records both upstream calls and their fixed/dynamic
+parameters, derived secids, source field order, wrapper mappings and
+transformations, full-universe and selected identity/rank order, documented
+units and row counts. Normalization is explicitly raw-only with
+`AKSHARE_HK_HOT_RANK_RAW_ONLY`; provider-defined popularity and quote context do
+not become canonical market, return, valuation, governance or accounting facts.
+Focused tests cover routing, unsupported parameters, exact schema/order,
+full-universe adversarial validation including unrequested rows, raw-only
+normalization, replay metadata/payload tampering and offline cache replay. No
+calculation, gate, pipeline, CLI or input-loader contract changes.
+
 ### Future structured-provider deliverables
 
 ```text
@@ -4659,7 +4694,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–3.80 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–3.82 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```

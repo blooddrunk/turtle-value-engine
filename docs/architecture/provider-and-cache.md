@@ -2756,6 +2756,36 @@ unsupported parameters, exact-schema adversarial responses, empty snapshots,
 raw-only normalization, replay metadata/payload tampering and offline cache
 replay. No calculation, gate, pipeline, CLI or input-loader contract changes.
 
+## Phase 3.82 H-share Eastmoney market-wide hot-rank raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hk_hot_rank_em.py)
+document `stock_hk_hot_rank_em` as the market-wide H-share popularity ranking
+endpoint. The adapter exposes it under `MARKET_ACTIVITY` only with explicit
+`view=hk_hot_rank`; it accepts H-share listing context, calls the official
+no-argument wrapper and filters the returned full universe to the requested
+five-digit code only after validating every row.
+
+The official wrapper first POSTs JSON to
+`getAllCurrHkUsList` with fixed `appId=appId01`, the documented `globalId`,
+`marketType=000003`, `pageNo=1` and `pageSize=100`. It then GETs
+`https://push2.eastmoney.com/api/qt/ulist.np/get` with fixed `ut`, `fltt=2`,
+`invt=2`, `fields=f14,f3,f12,f2` and dynamically derived `secids` in the form
+`116.<code>`. The adapter preserves the exact five-field output order
+`当前排名`, `代码`, `股票名称`, `最新价`, `涨跌幅`, validates five-digit H-share
+codes, unique strictly ascending ranks, non-empty names and finite numeric or
+null quote values, and records both request steps, field mappings, derivation,
+source row order, selected row order and row counts for replay.
+
+The response is raw-only and the normalizer emits
+`AKSHARE_HK_HOT_RANK_RAW_ONLY`; popularity ordering and quote context do not
+become canonical market, return, valuation, governance or accounting facts.
+Focused tests cover H-share-only routing, exact output order, invalid full-
+universe rows including unrequested rows, rank/code/numeric boundaries, empty
+selection, raw-only normalization, replay metadata/payload tampering and
+offline cache replay. No calculation, gate, pipeline, CLI or input-loader
+contract changes.
+
 The A-share Sina STAR Market daily-history slice is also acquisition-only. The
 current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
 and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_zh_kcb_sina.py)
