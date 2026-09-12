@@ -4588,6 +4588,37 @@ invalid ranks, raw-only normalization, replay metadata/payload tampering and
 offline cache replay. No calculation, gate, pipeline, CLI or input-loader
 contract changes.
 
+### Phase 3.80 — A-share Eastmoney hot-keyword acquisition contract (COMPLETE)
+
+The next documented-but-unimplemented AKShare inventory item after Phase 3.79
+is the A-share `stock_hot_keyword_em` endpoint. The
+[AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hot_rank_em.py)
+document it under `MARKET_ACTIVITY` with explicit `view=hot_keyword`. The
+adapter routes only A-share listings and passes the market-prefixed symbol
+(`SZ000665` in the documented example) to the wrapper's Eastmoney JSON POST.
+
+The wrapper contract is frozen as fixed `appId=appId01` and
+`globalId=786e4c21-70dc-435a-93bb-38`, dynamic `srcSecurityCode`, and the
+`getHotStockRankList` URL. It extracts `data`, drops the upstream `flag`
+column and preserves the exact output order `时间`, `股票代码`, `概念名称`,
+`概念代码`, `热度`. Strict provider validation requires exact fields/order,
+valid timestamps shared by all rows, market-prefixed identity matching the
+request, non-empty concept labels/codes, unique concept codes and
+non-negative integer heat values. Empty symbol-scoped snapshots are retained
+as valid empty raw responses.
+
+Provenance metadata records the source URI, listing/view scope, upstream
+request contract, wrapper source order/drop/rename mapping, conservative
+numeric-unit treatment (`热度` is undocumented), concept-code order,
+observation timestamp and row counts. Normalization is explicitly raw-only
+with `AKSHARE_HOT_KEYWORD_RAW_ONLY`; provider-defined concept labels, codes and
+heat do not become canonical market, return, valuation, governance or
+accounting facts. Focused tests cover routing, unsupported parameters,
+adversarial provider rows, empty responses, raw-only normalization, replay
+metadata/payload tampering and offline cache replay. No calculation, gate,
+pipeline, CLI or input-loader contract changes.
+
 ### Future structured-provider deliverables
 
 ```text
@@ -4597,7 +4628,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–3.79 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–3.80 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```

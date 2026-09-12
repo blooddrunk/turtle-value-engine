@@ -4450,6 +4450,29 @@ The normalizer emits
 market, return, valuation, governance or accounting fact. The intraday
 provider popularity rank remains raw evidence only.
 
+## Phase 3.80 A-share Eastmoney hot-keyword raw slice
+
+The next documented A-share market-activity endpoint is
+`stock_hot_keyword_em`, selected only with explicit `view=hot_keyword` and an
+A-share listing. The official wrapper posts fixed `appId`/`globalId` values
+plus the market-prefixed `srcSecurityCode` to Eastmoney's
+`getHotStockRankList`, extracts `data`, drops `flag` and renames the remaining
+columns positionally.
+
+| Raw provider field | Phase 3.80 treatment |
+| --- | --- |
+| `时间` | Required `YYYY-MM-DD HH:MM:SS` timestamp; every returned concept row must share one observation time, retained as raw row identity. |
+| `股票代码` | Required market-prefixed `SH`/`SZ`/`BJ` plus six digits; every row must match the requested A-share listing. |
+| `概念名称` | Required non-empty text label; retained as provider-defined raw evidence. |
+| `概念代码` | Required non-empty text code; codes must be unique in source response order and remain raw evidence. |
+| `热度` | Required non-negative integer (`int64` in documented output); no unit is documented, so metadata records `not_documented` and no canonical metric is inferred. |
+| request `view` | Only `view=hot_keyword` is accepted; the A-share listing supplies the market-prefixed upstream symbol. |
+| Eastmoney JSON response | Replay metadata records the fixed/dynamic POST parameters, six-column upstream wrapper order, dropped `flag`, positional output mapping, concept-code order, observation time and row counts. |
+
+The normalizer emits `AKSHARE_HOT_KEYWORD_RAW_ONLY` and creates no canonical
+market, return, valuation, governance or accounting fact. Provider-defined
+concept labels, codes and heat values remain raw structured evidence only.
+
 ## Phase 2 enforcement rule
 
 For every field not marked `STRUCTURED_AUTO` or `DERIVED_DETERMINISTIC`, a

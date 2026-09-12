@@ -1004,6 +1004,13 @@ class FakeAKShare:
             symbol=symbol,
         )
 
+    def stock_hot_keyword_em(self, *, symbol: str):
+        return self._return(
+            "stock_hot_keyword_em",
+            _fixture("a_hot_keyword.json"),
+            symbol=symbol,
+        )
+
     def stock_zt_pool_em(self, *, date: str):
         return self._return(
             "stock_zt_pool_em",
@@ -51357,6 +51364,459 @@ def test_hk_hot_rank_detail_realtime_cache_replay_does_not_call_upstream(
     assert replay.record == live.record
     assert fake.calls == [
         ("stock_hk_hot_rank_detail_realtime_em", {"symbol": "00700"}),
+    ]
+
+
+def test_hot_keyword_fetch_uses_documented_symbol_scoped_endpoint():
+    fake = FakeAKShare()
+    record = _provider(fake).fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SZ000665",
+            {"view": "hot_keyword"},
+        )
+    )
+
+    assert record.raw_payload == _fixture("a_hot_keyword.json")
+    assert fake.calls == [("stock_hot_keyword_em", {"symbol": "SZ000665"})]
+    assert record.response_metadata["endpoint"] == "stock_hot_keyword_em"
+    assert record.response_metadata["market"] == "A"
+    assert record.response_metadata["listing_code"] == "000665"
+    assert record.response_metadata["market_activity_view"] == "hot_keyword"
+    assert record.response_metadata["upstream_symbol"] == "SZ000665"
+    assert record.response_metadata["upstream_src_security_code"] == "SZ000665"
+    assert record.response_metadata["upstream_symbol_format"] == "market_prefixed"
+    assert record.response_metadata["listing_scoped_request"] is True
+    assert record.response_metadata["row_filtering"] == "upstream"
+    assert (
+        record.response_metadata["snapshot_scope"]
+        == "latest_trading_day_point_in_time"
+    )
+    assert record.response_metadata["observation_time_field"] == "时间"
+    assert record.response_metadata["time_ordering"] == "single_snapshot"
+    assert record.response_metadata["date_binding"] == "row_only"
+    assert record.response_metadata["observation_datetime"] == "2026-09-12 19:00:00"
+    assert record.response_metadata["listing_code_field"] == "股票代码"
+    assert record.response_metadata["concept_name_field"] == "概念名称"
+    assert record.response_metadata["concept_code_field"] == "概念代码"
+    assert (
+        record.response_metadata["concept_code_ordering"]
+        == "source_response_order_unique"
+    )
+    assert record.response_metadata["concept_code_order"] == [
+        "BK1134",
+        "BK1009",
+        "BK0628",
+        "BK0714",
+    ]
+    assert record.response_metadata["heat_field"] == "热度"
+    assert record.response_metadata["heat_ordering"] == "source_response_order"
+    assert record.response_metadata["field_count"] == 5
+    assert record.response_metadata["source_field_order"] == [
+        "时间",
+        "股票代码",
+        "概念名称",
+        "概念代码",
+        "热度",
+    ]
+    assert record.response_metadata["text_fields"] == [
+        "时间",
+        "股票代码",
+        "概念名称",
+        "概念代码",
+    ]
+    assert record.response_metadata["integer_fields"] == ["热度"]
+    assert record.response_metadata["documented_units"] == {}
+    assert record.response_metadata["undocumented_numeric_units"] == {
+        "热度": "not_documented"
+    }
+    assert (
+        record.response_metadata["upstream_url"]
+        == "https://emappdata.eastmoney.com/stockrank/getHotStockRankList"
+    )
+    assert record.response_metadata["upstream_protocol"] == "JSON_POST"
+    assert record.response_metadata["upstream_parameters"] == [
+        "appId",
+        "globalId",
+        "srcSecurityCode",
+    ]
+    assert record.response_metadata["upstream_fixed_parameters"] == {
+        "appId": "appId01",
+        "globalId": "786e4c21-70dc-435a-93bb-38",
+    }
+    assert record.response_metadata["upstream_dynamic_parameters"] == {
+        "srcSecurityCode": "SZ000665"
+    }
+    assert record.response_metadata["upstream_authentication"] == "none"
+    assert record.response_metadata["wrapper_source_column_count"] == 6
+    assert record.response_metadata["wrapper_source_field_order"] == [
+        "calcTime",
+        "srcSecurityCode",
+        "conceptName",
+        "conceptId",
+        "hitCount",
+        "flag",
+    ]
+    assert record.response_metadata["wrapper_column_mapping"] == {
+        "时间": 0,
+        "股票代码": 1,
+        "概念名称": 2,
+        "概念代码": 3,
+        "热度": 4,
+    }
+    assert record.response_metadata["wrapper_dropped_fields"] == ["flag"]
+    assert record.response_metadata["wrapper_decoders"] == ["response.json"]
+    assert record.response_metadata["wrapper_transformations"] == [
+        "extract_data",
+        "drop_column:flag",
+        "rename_columns",
+    ]
+    assert record.response_metadata["upstream_row_count"] == 4
+    assert record.response_metadata["entity_row_count"] == 4
+    assert record.response_metadata["entity_rows_selected"] is True
+    assert record.source_uri == "https://guba.eastmoney.com/rank/stock?code=000665"
+
+
+@pytest.mark.parametrize(
+    ("parameters", "entity_id", "match"),
+    [
+        (
+            {"view": "hot_keyword", "date": "20260912"},
+            "SZ000665",
+            "unsupported AKShare hot-keyword parameter",
+        ),
+        (
+            {"view": "hot_keyword"},
+            "HK00700",
+            "hot-keyword endpoint supports A-share listings only",
+        ),
+    ],
+)
+def test_hot_keyword_request_requires_explicit_view_and_supported_scope(
+    parameters: dict,
+    entity_id: str,
+    match: str,
+):
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError, match=match):
+        _provider(fake).fetch(
+            _request(DataCategory.MARKET_ACTIVITY, entity_id, parameters)
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("missing_field", "row 0 is missing field.*概念代码"),
+        ("unexpected", "row 0 contains unsupported field"),
+        ("reordered", "must preserve the official field order"),
+        ("invalid_time", "row 0 has an invalid 时间"),
+        ("mixed_time", "must share one observation time"),
+        ("invalid_stock_code", "row 0 has an invalid 股票代码"),
+        ("wrong_stock_code", "does not match requested listing"),
+        ("empty_concept_name", "概念名称.*non-empty string"),
+        ("empty_concept_code", "概念代码.*non-empty string"),
+        ("duplicate_concept_code", "duplicate 概念代码"),
+        ("invalid_heat", "热度.*non-negative integer"),
+        ("float_heat", "热度.*non-negative integer"),
+        ("negative_heat", "热度.*non-negative integer"),
+    ],
+)
+def test_hot_keyword_response_validates_exact_rows(mutation: str, match: str):
+    payload = [dict(row) for row in _fixture("a_hot_keyword.json")]
+    if mutation == "missing_field":
+        payload[0].pop("概念代码")
+    elif mutation == "unexpected":
+        payload[0]["extra"] = 1
+    elif mutation == "reordered":
+        payload[0] = {
+            "股票代码": payload[0]["股票代码"],
+            "时间": payload[0]["时间"],
+            "概念名称": payload[0]["概念名称"],
+            "概念代码": payload[0]["概念代码"],
+            "热度": payload[0]["热度"],
+        }
+    elif mutation == "invalid_time":
+        payload[0]["时间"] = "2026-09-12"
+    elif mutation == "mixed_time":
+        payload[1]["时间"] = "2026-09-12 19:01:00"
+    elif mutation == "invalid_stock_code":
+        payload[0]["股票代码"] = "000665"
+    elif mutation == "wrong_stock_code":
+        payload[0]["股票代码"] = "SH000665"
+    elif mutation == "empty_concept_name":
+        payload[0]["概念名称"] = ""
+    elif mutation == "empty_concept_code":
+        payload[0]["概念代码"] = " "
+    elif mutation == "duplicate_concept_code":
+        payload[1]["概念代码"] = payload[0]["概念代码"]
+    elif mutation == "invalid_heat":
+        payload[0]["热度"] = "65"
+    elif mutation == "float_heat":
+        payload[0]["热度"] = 65.0
+    else:
+        payload[0]["热度"] = -1
+
+    class InvalidHotKeyword(FakeAKShare):
+        def stock_hot_keyword_em(self, *, symbol: str):
+            return self._return("stock_hot_keyword_em", payload, symbol=symbol)
+
+    with pytest.raises(ProviderResponseError, match=match):
+        _provider(InvalidHotKeyword()).fetch(
+            _request(
+                DataCategory.MARKET_ACTIVITY,
+                "SZ000665",
+                {"view": "hot_keyword"},
+            )
+        )
+
+
+def test_hot_keyword_empty_response_is_a_valid_raw_snapshot():
+    class EmptyHotKeyword(FakeAKShare):
+        def stock_hot_keyword_em(self, *, symbol: str):
+            return self._return("stock_hot_keyword_em", [], symbol=symbol)
+
+    record = _provider(EmptyHotKeyword()).fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SZ000665",
+            {"view": "hot_keyword"},
+        )
+    )
+
+    assert record.raw_payload == []
+    assert record.response_metadata["observation_datetime"] is None
+    assert record.response_metadata["concept_code_order"] == []
+    assert record.response_metadata["upstream_row_count"] == 0
+    assert record.response_metadata["entity_row_count"] == 0
+    assert record.response_metadata["entity_rows_selected"] is True
+
+
+def test_hot_keyword_is_retained_as_raw_evidence_without_canonical_facts():
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SZ000665",
+            {"view": "hot_keyword"},
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="hot-keyword-raw-only",
+        as_of=date(2026, 9, 12),
+        profile_id="strict-v1",
+        company=_company(primary_listing="SZ000665"),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_HOT_KEYWORD_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == []
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "hot-keyword" in normalized.data_quality.notes
+    assert "provider-defined concept" in normalized.data_quality.notes
+    assert "canonical market metric" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "endpoint",
+        "source_uri",
+        "market",
+        "listing_code",
+        "view",
+        "upstream_symbol",
+        "upstream_src_security_code",
+        "upstream_symbol_format",
+        "listing_scope",
+        "row_filtering",
+        "snapshot",
+        "observation_time_field",
+        "time_ordering",
+        "date_binding",
+        "observation_datetime",
+        "listing_code_field",
+        "concept_name_field",
+        "concept_code_field",
+        "concept_code_ordering",
+        "concept_code_order",
+        "heat_field",
+        "heat_ordering",
+        "field_count",
+        "source_field_order",
+        "text_fields",
+        "integer_fields",
+        "documented_units",
+        "undocumented_numeric_units",
+        "upstream_url",
+        "upstream_protocol",
+        "upstream_parameters",
+        "upstream_fixed_parameters",
+        "upstream_dynamic_parameters",
+        "upstream_authentication",
+        "wrapper_source_column_count",
+        "wrapper_source_field_order",
+        "wrapper_column_mapping",
+        "wrapper_dropped_fields",
+        "wrapper_decoders",
+        "wrapper_transformations",
+        "upstream_count",
+        "entity_count",
+        "selected",
+        "payload",
+    ],
+)
+def test_hot_keyword_normalizer_rejects_replayed_scope_mismatches(mutation: str):
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SZ000665",
+            {"view": "hot_keyword"},
+        )
+    )
+    payload = [dict(row) for row in record.raw_payload]
+    response_metadata = dict(record.response_metadata)
+    source_uri = record.source_uri
+    if mutation == "endpoint":
+        response_metadata["endpoint"] = "stock_hot_rank_detail_em"
+    elif mutation == "source_uri":
+        source_uri = "https://example.invalid/hot-keyword"
+    elif mutation == "market":
+        response_metadata["market"] = "H"
+    elif mutation == "listing_code":
+        response_metadata["listing_code"] = "000666"
+    elif mutation == "view":
+        response_metadata["market_activity_view"] = "hot_rank"
+    elif mutation == "upstream_symbol":
+        response_metadata["upstream_symbol"] = "SH000665"
+    elif mutation == "upstream_src_security_code":
+        response_metadata["upstream_src_security_code"] = "SH000665"
+    elif mutation == "upstream_symbol_format":
+        response_metadata["upstream_symbol_format"] = "unprefixed"
+    elif mutation == "listing_scope":
+        response_metadata["listing_scoped_request"] = False
+    elif mutation == "row_filtering":
+        response_metadata["row_filtering"] = "provider"
+    elif mutation == "snapshot":
+        response_metadata["snapshot_scope"] = "recent_historical_dates"
+    elif mutation == "observation_time_field":
+        response_metadata["observation_time_field"] = "calcTime"
+    elif mutation == "time_ordering":
+        response_metadata["time_ordering"] = "provider_reported"
+    elif mutation == "date_binding":
+        response_metadata["date_binding"] = "retrieval_only"
+    elif mutation == "observation_datetime":
+        response_metadata["observation_datetime"] = "2026-09-12 19:01:00"
+    elif mutation == "listing_code_field":
+        response_metadata["listing_code_field"] = "代码"
+    elif mutation == "concept_name_field":
+        response_metadata["concept_name_field"] = "概念"
+    elif mutation == "concept_code_field":
+        response_metadata["concept_code_field"] = "板块代码"
+    elif mutation == "concept_code_ordering":
+        response_metadata["concept_code_ordering"] = "provider_reported"
+    elif mutation == "concept_code_order":
+        response_metadata["concept_code_order"] = ["BK1009", "BK1134", "BK0628", "BK0714"]
+    elif mutation == "heat_field":
+        response_metadata["heat_field"] = "热度值"
+    elif mutation == "heat_ordering":
+        response_metadata["heat_ordering"] = "descending"
+    elif mutation == "field_count":
+        response_metadata["field_count"] = 4
+    elif mutation == "source_field_order":
+        response_metadata["source_field_order"] = ["股票代码", "时间"]
+    elif mutation == "text_fields":
+        response_metadata["text_fields"] = ["时间", "股票代码"]
+    elif mutation == "integer_fields":
+        response_metadata["integer_fields"] = []
+    elif mutation == "documented_units":
+        response_metadata["documented_units"] = {"热度": "count"}
+    elif mutation == "undocumented_numeric_units":
+        response_metadata["undocumented_numeric_units"] = {}
+    elif mutation == "upstream_url":
+        response_metadata["upstream_url"] = "https://example.invalid/upstream"
+    elif mutation == "upstream_protocol":
+        response_metadata["upstream_protocol"] = "JSON_GET"
+    elif mutation == "upstream_parameters":
+        response_metadata["upstream_parameters"] = ["srcSecurityCode"]
+    elif mutation == "upstream_fixed_parameters":
+        response_metadata["upstream_fixed_parameters"] = {}
+    elif mutation == "upstream_dynamic_parameters":
+        response_metadata["upstream_dynamic_parameters"] = {
+            "srcSecurityCode": "SH000665"
+        }
+    elif mutation == "upstream_authentication":
+        response_metadata["upstream_authentication"] = "cookie"
+    elif mutation == "wrapper_source_column_count":
+        response_metadata["wrapper_source_column_count"] = 5
+    elif mutation == "wrapper_source_field_order":
+        response_metadata["wrapper_source_field_order"] = ["calcTime"]
+    elif mutation == "wrapper_column_mapping":
+        response_metadata["wrapper_column_mapping"] = {"热度": 0}
+    elif mutation == "wrapper_dropped_fields":
+        response_metadata["wrapper_dropped_fields"] = []
+    elif mutation == "wrapper_decoders":
+        response_metadata["wrapper_decoders"] = ["response.text"]
+    elif mutation == "wrapper_transformations":
+        response_metadata["wrapper_transformations"] = ["extract_data"]
+    elif mutation == "upstream_count":
+        response_metadata["upstream_row_count"] = 3
+    elif mutation == "entity_count":
+        response_metadata["entity_row_count"] = 3
+    elif mutation == "selected":
+        response_metadata["entity_rows_selected"] = False
+    else:
+        payload[0]["热度"] = "65"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=source_uri,
+        response_metadata=response_metadata,
+    )
+
+    with pytest.raises(
+        ProviderNormalizationError,
+        match="market-activity hot-keyword",
+    ):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-hot-keyword-scope",
+            as_of=date(2026, 9, 12),
+            profile_id="strict-v1",
+            company=_company(primary_listing="SZ000665"),
+        )
+
+
+def test_hot_keyword_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.MARKET_ACTIVITY,
+        "SZ000665",
+        {"view": "hot_keyword"},
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [
+        ("stock_hot_keyword_em", {"symbol": "SZ000665"}),
     ]
 
 

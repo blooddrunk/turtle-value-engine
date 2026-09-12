@@ -2490,6 +2490,25 @@ strict adversarial response validation, raw-only normalization, replay
 metadata/payload tampering and offline cache replay. No calculation, gate,
 pipeline, CLI or input-loader contract changes.
 
+Phase 3.80 adds the next documented A-share market-activity endpoint
+[`stock_hot_keyword_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
+using explicit `view=hot_keyword`. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hot_rank_em.py)
+posts fixed `appId`/`globalId` values plus the market-prefixed symbol to
+Eastmoney's `getHotStockRankList` JSON endpoint, drops the wrapper's `flag`
+field and exposes the exact five-field `时间`, `股票代码`, `概念名称`,
+`概念代码`, `热度` order. The adapter is A-share-only, validates exact
+schema/order, one observation timestamp, market-prefixed identity, unique
+concept codes, non-empty labels and non-negative integer heat values, and
+records the complete wrapper/upstream provenance contract.
+
+The response is raw-only and emits `AKSHARE_HOT_KEYWORD_RAW_ONLY`: provider-
+defined concept labels, codes and heat values do not establish canonical
+market, return, valuation, governance or accounting facts. Focused tests cover
+unsupported scope/parameters, exact-schema adversarial responses, empty
+snapshots, raw-only normalization, replay metadata/payload tampering and
+offline cache replay. No calculation, gate, pipeline, CLI or input-loader
+contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.
