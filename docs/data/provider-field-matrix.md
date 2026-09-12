@@ -4430,6 +4430,26 @@ current-day snapshot has no stable observation timestamp; its provider-owned
 quote values remain raw evidence only. The existing no-view H-share quote
 compatibility fallback is unchanged.
 
+## Phase 3.79 Eastmoney H-share realtime hot-rank-detail raw slice
+
+The next documented H-share market-activity inventory item is
+`stock_hk_hot_rank_detail_realtime_em`, selected with explicit
+`view=hk_hot_rank_detail_realtime`. The wrapper calls Eastmoney's
+`getCurrentHkUsList` JSON POST for the requested five-digit symbol and returns
+the exact two-field realtime series:
+
+| Raw provider field | Phase 3.79 treatment |
+| --- | --- |
+| `时间` | Required `YYYY-MM-DD HH:MM:SS`/documented timestamp string; retained as row observation-time identity and required to be strictly ascending. |
+| `排名` | Required positive integer provider rank; retained as raw provider evidence with no canonical market-metric interpretation. |
+| request `view` | Only `view=hk_hot_rank_detail_realtime` is accepted; the H-share listing supplies the five-digit upstream symbol. |
+| Eastmoney JSON response | Replay metadata records the `HK|<code>` security identity, fixed `appId`/`globalId`/`marketType=000003`, POST parameter order, `response.json`/`data` extraction and column rename mapping, row counts and observation-time bounds. |
+
+The normalizer emits
+`AKSHARE_HK_HOT_RANK_DETAIL_REALTIME_RAW_ONLY` and creates no canonical
+market, return, valuation, governance or accounting fact. The intraday
+provider popularity rank remains raw evidence only.
+
 ## Phase 2 enforcement rule
 
 For every field not marked `STRUCTURED_AUTO` or `DERIVED_DETERMINISTIC`, a

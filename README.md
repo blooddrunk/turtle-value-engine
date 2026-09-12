@@ -2472,6 +2472,24 @@ metadata/payload tampering and offline cache replay. The existing no-view
 H-share quote compatibility fallback remains unchanged. No calculation, gate,
 pipeline, CLI or input-loader contract changes.
 
+Phase 3.79 adds the next documented H-share market-activity endpoint
+[`stock_hk_hot_rank_detail_realtime_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
+using explicit `view=hk_hot_rank_detail_realtime`. The [official
+implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hk_hot_rank_em.py)
+passes the five-digit symbol to Eastmoney's `getCurrentHkUsList` JSON POST and
+returns the exact `时间`/`排名` realtime series. The adapter strictly validates
+field order, timestamps and positive ranks, and records the fixed
+`marketType=000003`, `HK|` security identity, upstream request contract,
+wrapper mapping and observation-time bounds.
+
+The response is raw-only and emits
+`AKSHARE_HK_HOT_RANK_DETAIL_REALTIME_RAW_ONLY`: intraday popularity rank does
+not establish canonical market, return, valuation, governance or accounting
+facts. Focused tests cover H-share-only routing, unsupported parameters,
+strict adversarial response validation, raw-only normalization, replay
+metadata/payload tampering and offline cache replay. No calculation, gate,
+pipeline, CLI or input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

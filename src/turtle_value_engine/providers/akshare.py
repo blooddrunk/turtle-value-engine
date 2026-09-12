@@ -276,6 +276,9 @@ _SOURCE_URIS = {
     "stock_hot_rank_latest_em": "https://guba.eastmoney.com/rank/stock?code=000665",
     "stock_hot_rank_detail_em": "https://guba.eastmoney.com/rank/stock?code=000665",
     "stock_hk_hot_rank_detail_em": "https://guba.eastmoney.com/rank/stock?code=HK_00700",
+    "stock_hk_hot_rank_detail_realtime_em": (
+        "https://guba.eastmoney.com/rank/stock?code=HK_00700"
+    ),
     "stock_hk_hot_rank_latest_em": "https://guba.eastmoney.com/rank/stock?code=HK_00700",
     "stock_zh_ab_comparison_em": "https://quote.eastmoney.com/center/gridlist.html#ab_comparison",
     "stock_szse_summary": "https://www.szse.cn/market/overview/index.html",
@@ -6536,6 +6539,31 @@ _MARKET_ACTIVITY_HK_HOT_RANK_DETAIL_VIEW = "hk_hot_rank_detail"
 _MARKET_ACTIVITY_HK_HOT_RANK_DETAIL_ENDPOINT = "stock_hk_hot_rank_detail_em"
 _MARKET_ACTIVITY_HK_HOT_RANK_DETAIL_MARKET_TYPE = "000003"
 _MARKET_ACTIVITY_HK_HOT_RANK_DETAIL_FIELDS = ("时间", "排名", "证券代码")
+_MARKET_ACTIVITY_HK_HOT_RANK_DETAIL_REALTIME_PARAMETER_NAMES = frozenset({"view"})
+_MARKET_ACTIVITY_HK_HOT_RANK_DETAIL_REALTIME_VIEW = "hk_hot_rank_detail_realtime"
+_MARKET_ACTIVITY_HK_HOT_RANK_DETAIL_REALTIME_ENDPOINT = (
+    "stock_hk_hot_rank_detail_realtime_em"
+)
+_MARKET_ACTIVITY_HK_HOT_RANK_DETAIL_REALTIME_MARKET_TYPE = "000003"
+_MARKET_ACTIVITY_HK_HOT_RANK_DETAIL_REALTIME_FIELDS = ("时间", "排名")
+_MARKET_ACTIVITY_HK_HOT_RANK_DETAIL_REALTIME_UPSTREAM_URL = (
+    "https://emappdata.eastmoney.com/stockrank/getCurrentHkUsList"
+)
+_MARKET_ACTIVITY_HK_HOT_RANK_DETAIL_REALTIME_UPSTREAM_PARAMETERS = (
+    "appId",
+    "globalId",
+    "marketType",
+    "srcSecurityCode",
+)
+_MARKET_ACTIVITY_HK_HOT_RANK_DETAIL_REALTIME_UPSTREAM_FIXED_PARAMETERS = {
+    "appId": "appId01",
+    "globalId": "786e4c21-70dc-435a-93bb-38",
+    "marketType": "000003",
+}
+_MARKET_ACTIVITY_HK_HOT_RANK_DETAIL_REALTIME_WRAPPER_COLUMN_MAPPING = {
+    "时间": 0,
+    "排名": 1,
+}
 _MARKET_ACTIVITY_LIMIT_UP_POOL_PARAMETER_NAMES = frozenset({"view", "date"})
 _MARKET_ACTIVITY_LIMIT_UP_POOL_VIEW = "limit_up_pool"
 _MARKET_ACTIVITY_LIMIT_UP_POOL_FIELDS = frozenset(
@@ -9396,6 +9424,19 @@ class AKShareProvider(StructuredDataProvider):
         if (
             request.category is DataCategory.MARKET_ACTIVITY
             and request.parameters.get("view")
+            == _MARKET_ACTIVITY_HK_HOT_RANK_DETAIL_REALTIME_VIEW
+            and listing.market is not ListingMarket.H
+        ):
+            raise ProviderRequestError(
+                "the AKShare H-share realtime hot-rank-detail endpoint supports "
+                "H-share listings only",
+                provider=self.identity,
+                request=request,
+                retryable=False,
+            )
+        if (
+            request.category is DataCategory.MARKET_ACTIVITY
+            and request.parameters.get("view")
             == _MARKET_ACTIVITY_HK_BAIDU_VALUATION_VIEW
             and listing.market is not ListingMarket.H
         ):
@@ -9492,6 +9533,7 @@ class AKShareProvider(StructuredDataProvider):
                 in {
                     _MARKET_ACTIVITY_HOT_RANK_LATEST_VIEW,
                     _MARKET_ACTIVITY_HK_HOT_RANK_DETAIL_VIEW,
+                    _MARKET_ACTIVITY_HK_HOT_RANK_DETAIL_REALTIME_VIEW,
                     _MARKET_ACTIVITY_HK_BAIDU_VALUATION_VIEW,
                     _MARKET_ACTIVITY_HK_VALUATION_COMPARISON_VIEW,
                     _MARKET_ACTIVITY_HK_GROWTH_COMPARISON_VIEW,
@@ -11262,6 +11304,26 @@ class AKShareProvider(StructuredDataProvider):
                 )
                 response_metadata["observation_end_date"] = (
                     max(observation_dates).isoformat() if observation_dates else None
+                )
+            elif (
+                endpoint.name
+                == _MARKET_ACTIVITY_HK_HOT_RANK_DETAIL_REALTIME_ENDPOINT
+            ):
+                observation_times = (
+                    _validate_market_activity_hk_hot_rank_detail_realtime_provider_rows(
+                        rows,
+                        listing,
+                        provider=self.identity,
+                        request=request,
+                    )
+                )
+                response_metadata.update(
+                    _market_activity_hk_hot_rank_detail_realtime_response_metadata(
+                        listing_code=listing.code,
+                        upstream_symbol=kwargs["symbol"],
+                        observation_times=observation_times,
+                        row_count=len(rows),
+                    )
                 )
             elif endpoint.name in _MARKET_ACTIVITY_HOT_RANK_LATEST_ENDPOINTS:
                 observation_time = _validate_market_activity_hot_rank_latest_provider_rows(
@@ -14682,6 +14744,10 @@ class AKShareProvider(StructuredDataProvider):
                 request.parameters.get("view")
                 == _MARKET_ACTIVITY_HK_HOT_RANK_DETAIL_VIEW
             ),
+            market_activity_hk_hot_rank_detail_realtime_requested=(
+                request.parameters.get("view")
+                == _MARKET_ACTIVITY_HK_HOT_RANK_DETAIL_REALTIME_VIEW
+            ),
             market_activity_hot_rank_detail_requested=(
                 request.parameters.get("view")
                 == _MARKET_ACTIVITY_HOT_RANK_DETAIL_VIEW
@@ -15310,6 +15376,10 @@ class AKShareNormalizer:
                     record.request.parameters.get("view")
                     == _MARKET_ACTIVITY_HK_HOT_RANK_DETAIL_VIEW
                 )
+                is_hk_hot_rank_detail_realtime = (
+                    record.request.parameters.get("view")
+                    == _MARKET_ACTIVITY_HK_HOT_RANK_DETAIL_REALTIME_VIEW
+                )
                 is_hk_baidu_valuation = (
                     record.request.parameters.get("view")
                     == _MARKET_ACTIVITY_HK_BAIDU_VALUATION_VIEW
@@ -15335,6 +15405,7 @@ class AKShareNormalizer:
                     and (
                         is_latest_hot_rank
                         or is_hk_hot_rank_detail
+                        or is_hk_hot_rank_detail_realtime
                         or is_hk_baidu_valuation
                         or is_hk_valuation_comparison
                         or is_hk_growth_comparison
@@ -15585,6 +15656,15 @@ class AKShareNormalizer:
                     )
                     normalizer_flags.add(
                         "AKSHARE_HK_HOT_RANK_DETAIL_RAW_ONLY"
+                    )
+                elif is_hk_hot_rank_detail_realtime:
+                    _validate_market_activity_hk_hot_rank_detail_realtime_normalizer_scope(
+                        record,
+                        listing,
+                        rows,
+                    )
+                    normalizer_flags.add(
+                        "AKSHARE_HK_HOT_RANK_DETAIL_REALTIME_RAW_ONLY"
                     )
                 elif is_latest_hot_rank:
                     _validate_market_activity_hot_rank_latest_normalizer_scope(
@@ -18626,6 +18706,13 @@ class AKShareNormalizer:
                 "security identity do not establish issuer cash flow, shareholder "
                 "return, governance, valuation or a canonical market metric."
             )
+        if "AKSHARE_HK_HOT_RANK_DETAIL_REALTIME_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented H-share stock realtime-hot-rank-detail response is "
+                "retained as raw evidence only: its intraday popularity rank series "
+                "does not establish issuer cash flow, shareholder return, governance, "
+                "valuation or a canonical market metric."
+            )
         if "AKSHARE_HOT_RANK_DETAIL_RAW_ONLY" in normalizer_flags:
             notes += (
                 " The documented A-share stock historical-hot-rank response is retained "
@@ -19302,6 +19389,7 @@ def _endpoint_candidates(
     market_activity_sse_summary_requested: bool = False,
     market_activity_hot_rank_latest_requested: bool = False,
     market_activity_hk_hot_rank_detail_requested: bool = False,
+    market_activity_hk_hot_rank_detail_realtime_requested: bool = False,
     market_activity_hot_rank_detail_requested: bool = False,
     market_activity_participation_desire_requested: bool = False,
     market_activity_focus_requested: bool = False,
@@ -19774,6 +19862,10 @@ def _endpoint_candidates(
         if market_activity_hk_hot_rank_detail_requested:
             if market is ListingMarket.H:
                 return (_MARKET_ACTIVITY_HK_HOT_RANK_DETAIL_ENDPOINT,)
+            return ()
+        if market_activity_hk_hot_rank_detail_realtime_requested:
+            if market is ListingMarket.H:
+                return (_MARKET_ACTIVITY_HK_HOT_RANK_DETAIL_REALTIME_ENDPOINT,)
             return ()
         if market_activity_hot_rank_latest_requested:
             if market is ListingMarket.A:
@@ -44251,6 +44343,106 @@ def _validate_market_activity_hk_hot_rank_detail_provider_rows(
     return observation_dates
 
 
+def _market_activity_hk_hot_rank_detail_realtime_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef | None = None,
+) -> tuple[str | None, list[datetime]]:
+    """Return strict-schema errors for one H-share realtime rank response."""
+
+    if listing is not None and listing.market is not ListingMarket.H:
+        return (
+            "market-activity H-share realtime hot-rank-detail endpoint supports "
+            "H-share listings only",
+            [],
+        )
+
+    observation_times: list[datetime] = []
+    previous_time: datetime | None = None
+    for index, row in enumerate(rows):
+        missing = sorted(
+            set(_MARKET_ACTIVITY_HK_HOT_RANK_DETAIL_REALTIME_FIELDS) - set(row)
+        )
+        unexpected = sorted(
+            set(row) - set(_MARKET_ACTIVITY_HK_HOT_RANK_DETAIL_REALTIME_FIELDS)
+        )
+        if missing:
+            return (
+                "market-activity H-share realtime hot-rank-detail row "
+                f"{index} is missing field(s): "
+                + ", ".join(missing),
+                [],
+            )
+        if unexpected:
+            return (
+                "market-activity H-share realtime hot-rank-detail row "
+                f"{index} contains unsupported field(s): "
+                + ", ".join(unexpected),
+                [],
+            )
+        if tuple(row) != _MARKET_ACTIVITY_HK_HOT_RANK_DETAIL_REALTIME_FIELDS:
+            return (
+                "market-activity H-share realtime hot-rank-detail row "
+                f"{index} must preserve the official field order",
+                [],
+            )
+
+        observation_time = _intraday_history_timestamp(row["时间"])
+        if observation_time is None:
+            return (
+                "market-activity H-share realtime hot-rank-detail row "
+                f"{index} has an invalid 时间",
+                [],
+            )
+        if previous_time is not None and observation_time <= previous_time:
+            if observation_time == previous_time:
+                return (
+                    "market-activity H-share realtime hot-rank-detail response "
+                    f"has duplicate 时间 {observation_time.isoformat()!r}",
+                    [],
+                )
+            return (
+                "market-activity H-share realtime hot-rank-detail response 时间 "
+                "values must be strictly ascending",
+                [],
+            )
+        previous_time = observation_time
+        observation_times.append(observation_time)
+
+        rank = row["排名"]
+        if isinstance(rank, bool) or not isinstance(rank, Integral) or rank <= 0:
+            return (
+                "market-activity H-share realtime hot-rank-detail row "
+                f"{index} field '排名' must be a positive integer",
+                [],
+            )
+
+    return None, observation_times
+
+
+def _validate_market_activity_hk_hot_rank_detail_realtime_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> list[datetime]:
+    """Validate the full symbol-scoped H-share realtime rank response."""
+
+    message, observation_times = (
+        _market_activity_hk_hot_rank_detail_realtime_validation_message(
+            rows,
+            listing,
+        )
+    )
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message}",
+            provider=provider,
+            request=request,
+        )
+    return observation_times
+
+
 def _market_activity_hot_rank_latest_validation_message(
     rows: Sequence[Mapping[str, JSONValue]],
     listing: _ListingRef | None = None,
@@ -50448,6 +50640,147 @@ def _validate_market_activity_hk_hot_rank_detail_normalizer_scope(
         if not matches:
             raise ProviderNormalizationError(
                 "market-activity H-share hot-rank-detail response metadata "
+                f"{name!r} does not match the requested replay scope"
+            )
+
+
+def _market_activity_hk_hot_rank_detail_realtime_response_metadata(
+    *,
+    listing_code: str,
+    upstream_symbol: str,
+    observation_times: Sequence[datetime],
+    row_count: int,
+) -> dict[str, JSONValue]:
+    """Build the replay contract for one H-share realtime rank response."""
+
+    src_security_code = f"HK|{upstream_symbol}"
+    return {
+        "endpoint": _MARKET_ACTIVITY_HK_HOT_RANK_DETAIL_REALTIME_ENDPOINT,
+        "market": ListingMarket.H.value,
+        "listing_code": listing_code,
+        "market_activity_view": _MARKET_ACTIVITY_HK_HOT_RANK_DETAIL_REALTIME_VIEW,
+        "upstream_symbol": upstream_symbol,
+        "upstream_src_security_code": src_security_code,
+        "upstream_market_type": (
+            _MARKET_ACTIVITY_HK_HOT_RANK_DETAIL_REALTIME_MARKET_TYPE
+        ),
+        "upstream_symbol_format": "hk_pipe_five_digit",
+        "listing_scoped_request": True,
+        "row_filtering": "upstream",
+        "snapshot_scope": "recent_intraday_rank_history",
+        "observation_time_field": "时间",
+        "time_ordering": "strictly_ascending",
+        "date_binding": "row_only",
+        "rank_field": "排名",
+        "rank_ordering": "provider_reported",
+        "field_count": len(_MARKET_ACTIVITY_HK_HOT_RANK_DETAIL_REALTIME_FIELDS),
+        "source_field_order": list(
+            _MARKET_ACTIVITY_HK_HOT_RANK_DETAIL_REALTIME_FIELDS
+        ),
+        "observation_start_datetime": (
+            observation_times[0].isoformat(sep=" ") if observation_times else None
+        ),
+        "observation_end_datetime": (
+            observation_times[-1].isoformat(sep=" ") if observation_times else None
+        ),
+        "upstream_url": _MARKET_ACTIVITY_HK_HOT_RANK_DETAIL_REALTIME_UPSTREAM_URL,
+        "upstream_protocol": "JSON_POST",
+        "upstream_parameters": list(
+            _MARKET_ACTIVITY_HK_HOT_RANK_DETAIL_REALTIME_UPSTREAM_PARAMETERS
+        ),
+        "upstream_fixed_parameters": dict(
+            _MARKET_ACTIVITY_HK_HOT_RANK_DETAIL_REALTIME_UPSTREAM_FIXED_PARAMETERS
+        ),
+        "upstream_dynamic_parameters": {"srcSecurityCode": src_security_code},
+        "upstream_authentication": "none",
+        "wrapper_source_column_count": len(
+            _MARKET_ACTIVITY_HK_HOT_RANK_DETAIL_REALTIME_FIELDS
+        ),
+        "wrapper_column_mapping": dict(
+            _MARKET_ACTIVITY_HK_HOT_RANK_DETAIL_REALTIME_WRAPPER_COLUMN_MAPPING
+        ),
+        "wrapper_dropped_fields": [],
+        "wrapper_decoders": ["response.json"],
+        "wrapper_transformations": ["extract_data", "rename_columns"],
+        "upstream_row_count": row_count,
+        "entity_row_count": row_count,
+        "entity_rows_selected": True,
+    }
+
+
+def _validate_market_activity_hk_hot_rank_detail_realtime_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> None:
+    """Validate replay scope for the H-share realtime hot-rank slice."""
+
+    if listing.market is not ListingMarket.H:
+        raise ProviderNormalizationError(
+            "AKShare market-activity H-share realtime hot-rank-detail raw slice "
+            "supports H-share listings only"
+        )
+    endpoint_name = _MARKET_ACTIVITY_HK_HOT_RANK_DETAIL_REALTIME_ENDPOINT
+    if record.response_metadata.get("endpoint") != endpoint_name:
+        raise ProviderNormalizationError(
+            "AKShare market-activity H-share realtime hot-rank-detail record must "
+            f"come from {endpoint_name}"
+        )
+    if record.source_uri != _SOURCE_URIS[endpoint_name]:
+        raise ProviderNormalizationError(
+            "market-activity H-share realtime hot-rank-detail source URI does not "
+            "match the documented endpoint"
+        )
+    try:
+        upstream_kwargs = _market_activity_hk_hot_rank_detail_realtime_kwargs(
+            endpoint_name,
+            listing,
+            record.request,
+        )
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+    upstream_symbol = upstream_kwargs["symbol"]
+    if not isinstance(upstream_symbol, str):
+        raise ProviderNormalizationError(
+            "AKShare H-share realtime hot-rank-detail symbol must be text"
+        )
+
+    message, observation_times = (
+        _market_activity_hk_hot_rank_detail_realtime_validation_message(
+            rows,
+            listing,
+        )
+    )
+    if message is not None:
+        raise ProviderNormalizationError(message)
+    expected_metadata = _market_activity_hk_hot_rank_detail_realtime_response_metadata(
+        listing_code=listing.code,
+        upstream_symbol=upstream_symbol,
+        observation_times=observation_times,
+        row_count=len(rows),
+    )
+    boolean_fields = {"listing_scoped_request", "entity_rows_selected"}
+    count_fields = {
+        "field_count",
+        "wrapper_source_column_count",
+        "upstream_row_count",
+        "entity_row_count",
+    }
+    for name, expected in expected_metadata.items():
+        actual = record.response_metadata.get(name)
+        if name in boolean_fields:
+            matches = isinstance(actual, bool) and actual is expected
+        elif name in count_fields:
+            matches = (
+                isinstance(actual, int)
+                and not isinstance(actual, bool)
+                and actual == expected
+            )
+        else:
+            matches = actual == expected
+        if not matches:
+            raise ProviderNormalizationError(
+                "market-activity H-share realtime hot-rank-detail response metadata "
                 f"{name!r} does not match the requested replay scope"
             )
 
@@ -60892,6 +61225,12 @@ def _market_activity_kwargs(
         return _market_activity_hot_rank_detail_kwargs(endpoint_name, listing, request)
     if endpoint_name == _MARKET_ACTIVITY_HK_HOT_RANK_DETAIL_ENDPOINT:
         return _market_activity_hk_hot_rank_detail_kwargs(endpoint_name, listing, request)
+    if endpoint_name == _MARKET_ACTIVITY_HK_HOT_RANK_DETAIL_REALTIME_ENDPOINT:
+        return _market_activity_hk_hot_rank_detail_realtime_kwargs(
+            endpoint_name,
+            listing,
+            request,
+        )
     if endpoint_name in _MARKET_ACTIVITY_HOT_RANK_LATEST_ENDPOINTS:
         return _market_activity_hot_rank_latest_kwargs(endpoint_name, listing, request)
     if endpoint_name == "stock_lhb_stock_statistic_em":
@@ -62479,6 +62818,48 @@ def _market_activity_hk_hot_rank_detail_kwargs(
         raise ProviderRequestError(
             "the AKShare H-share hot-rank-detail endpoint requires "
             f"view={_MARKET_ACTIVITY_HK_HOT_RANK_DETAIL_VIEW!r}",
+            request=request,
+            retryable=False,
+        )
+    return {"symbol": listing.code}
+
+
+def _market_activity_hk_hot_rank_detail_realtime_kwargs(
+    endpoint_name: str,
+    listing: _ListingRef,
+    request: ProviderRequest,
+) -> dict[str, object]:
+    """Build the documented H-share realtime hot-rank request."""
+
+    if endpoint_name != _MARKET_ACTIVITY_HK_HOT_RANK_DETAIL_REALTIME_ENDPOINT:
+        raise ProviderRequestError(
+            "unsupported AKShare market-activity H-share realtime hot-rank-detail "
+            f"endpoint {endpoint_name!r}",
+            request=request,
+            retryable=False,
+        )
+    if listing.market is not ListingMarket.H:
+        raise ProviderRequestError(
+            "the AKShare H-share realtime hot-rank-detail endpoint supports "
+            "H-share listings only",
+            request=request,
+            retryable=False,
+        )
+    unknown = sorted(
+        set(request.parameters)
+        - _MARKET_ACTIVITY_HK_HOT_RANK_DETAIL_REALTIME_PARAMETER_NAMES
+    )
+    if unknown:
+        raise ProviderRequestError(
+            "unsupported AKShare H-share realtime hot-rank-detail parameter(s): "
+            + ", ".join(unknown),
+            request=request,
+            retryable=False,
+        )
+    if request.parameters.get("view") != _MARKET_ACTIVITY_HK_HOT_RANK_DETAIL_REALTIME_VIEW:
+        raise ProviderRequestError(
+            "the AKShare H-share realtime hot-rank-detail endpoint requires "
+            f"view={_MARKET_ACTIVITY_HK_HOT_RANK_DETAIL_REALTIME_VIEW!r}",
             request=request,
             retryable=False,
         )
