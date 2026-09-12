@@ -1860,6 +1860,26 @@ duplicate listing events, empty selection, raw-only normalization, replay
 metadata tampering and offline cache replay. No calculation, gate, pipeline, CLI
 or input-loader contract changes.
 
+Phase 3.51 adds the documented Tonghuashun new-stock-first-day endpoint
+[`stock_xgsr_ths`](https://akshare.akfamily.xyz/data/stock/stock.html) under
+`MARKET_ACTIVITY` with explicit `view=new_stock_first_day`. The [official
+implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_board_industry_ths.py)
+discovers the HTML page count, refreshes the `ths.js` `v`/`hexin-v` headers for
+each page and parses the complete historical response with `pandas.read_html`.
+The adapter preserves the exact twelve-field `序号`, `股票代码`, `股票简称`,
+`上市日期`, issue/current price, first-day OHLC/return and `是否破发` output,
+including the issue-price rename and percentage-to-ratio transform, before
+filtering to the requested A-share listing.
+
+The new-stock-first-day response is retained as raw evidence only: provider-
+transformed historical prices, returns and issue-status labels do not establish
+a canonical listing, return, valuation or accounting fact. The normalizer emits
+`AKSHARE_NEW_STOCK_FIRST_DAY_RAW_ONLY` and creates no canonical fact. Tests cover
+explicit routing, exact field/order and source metadata, complete-universe
+validation, empty selection, raw-only normalization, replay metadata tampering
+and offline cache replay. No calculation, gate, pipeline, CLI or input-loader
+contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

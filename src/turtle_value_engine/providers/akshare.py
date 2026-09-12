@@ -57,7 +57,7 @@ raw slices are also retained with their market-wide direction and upstream
 pagination metadata.
 A-share Xueqiu, CNINFO and Tonghuashun company-profile raw slices are also
 available. The A-share dividend-distribution detail and
-new-stock-board and Sina next-new-stock raw slices are also available. The
+new-stock-board, Sina next-new-stock and new-stock first-day raw slices are also available. The
 A-share CNINFO IPO-summary,
 Eastmoney IPO-yield,
 Eastmoney individual-notice, Eastmoney market-wide notice and Eastmoney
@@ -121,9 +121,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "156"
+AKSHARE_ADAPTER_VERSION = "157"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "157"
+AKSHARE_MAPPING_VERSION = "158"
 
 
 class ListingMarket(StrEnum):
@@ -325,6 +325,7 @@ _SOURCE_URIS = {
     "stock_zh_a_new_em": "https://quote.eastmoney.com/center/gridlist.html#newshares",
     "stock_zh_a_new": "http://vip.stock.finance.sina.com.cn/mkt/#new_stock",
     "stock_gsrl_gsdt_em": "https://data.eastmoney.com/gsrl/gsdt.html",
+    "stock_xgsr_ths": "https://data.10jqka.com.cn/ipo/xgsr/",
     "stock_hk_dividend_payout_em": "https://emweb.securities.eastmoney.com/PC_HKF10/pages/home/index.html",
     "stock_hk_fhpx_detail_ths": "https://stockpage.10jqka.com.cn/HK0700/bonus/",
     "stock_hsgt_individual_em": "https://data.eastmoney.com/hsgt/StockHdDetail/002008.html",
@@ -4571,6 +4572,98 @@ _MARKET_ACTIVITY_COMPANY_DYNAMICS_UPSTREAM_DYNAMIC_PARAMETERS = {
     "filter": "(TRADE_DATE='requested_date_iso')",
 }
 _MARKET_ACTIVITY_COMPANY_DYNAMICS_UPSTREAM_DROPPED_FIELDS = ("SECUCODE",)
+_MARKET_ACTIVITY_NEW_STOCK_FIRST_DAY_ENDPOINT = "stock_xgsr_ths"
+_MARKET_ACTIVITY_NEW_STOCK_FIRST_DAY_PARAMETER_NAMES = frozenset({"view"})
+_MARKET_ACTIVITY_NEW_STOCK_FIRST_DAY_VIEW = "new_stock_first_day"
+_MARKET_ACTIVITY_NEW_STOCK_FIRST_DAY_FIELDS = (
+    "序号",
+    "股票代码",
+    "股票简称",
+    "上市日期",
+    "发行价",
+    "最新价",
+    "首日开盘价",
+    "首日收盘价",
+    "首日最高价",
+    "首日最低价",
+    "首日涨跌幅",
+    "是否破发",
+)
+_MARKET_ACTIVITY_NEW_STOCK_FIRST_DAY_FIELD_SET = frozenset(
+    _MARKET_ACTIVITY_NEW_STOCK_FIRST_DAY_FIELDS
+)
+_MARKET_ACTIVITY_NEW_STOCK_FIRST_DAY_DATE_FIELDS = ("上市日期",)
+_MARKET_ACTIVITY_NEW_STOCK_FIRST_DAY_INTEGER_FIELDS = frozenset({"序号"})
+_MARKET_ACTIVITY_NEW_STOCK_FIRST_DAY_TEXT_FIELDS = (
+    "股票代码",
+    "股票简称",
+    "是否破发",
+)
+_MARKET_ACTIVITY_NEW_STOCK_FIRST_DAY_REQUIRED_TEXT_FIELDS = (
+    *_MARKET_ACTIVITY_NEW_STOCK_FIRST_DAY_TEXT_FIELDS,
+)
+_MARKET_ACTIVITY_NEW_STOCK_FIRST_DAY_NUMERIC_FIELDS = (
+    "发行价",
+    "最新价",
+    "首日开盘价",
+    "首日收盘价",
+    "首日最高价",
+    "首日最低价",
+    "首日涨跌幅",
+)
+_MARKET_ACTIVITY_NEW_STOCK_FIRST_DAY_NULLABLE_FIELDS = (
+    *_MARKET_ACTIVITY_NEW_STOCK_FIRST_DAY_NUMERIC_FIELDS,
+)
+_MARKET_ACTIVITY_NEW_STOCK_FIRST_DAY_FIELD_TYPES = {
+    "序号": "integer",
+    **{
+        field: "string"
+        for field in _MARKET_ACTIVITY_NEW_STOCK_FIRST_DAY_TEXT_FIELDS
+    },
+    "上市日期": "date",
+    **{
+        field: "number"
+        for field in _MARKET_ACTIVITY_NEW_STOCK_FIRST_DAY_NUMERIC_FIELDS
+    },
+}
+_MARKET_ACTIVITY_NEW_STOCK_FIRST_DAY_UNDOCUMENTED_NUMERIC_UNITS = {
+    field: "not_documented"
+    for field in _MARKET_ACTIVITY_NEW_STOCK_FIRST_DAY_NUMERIC_FIELDS
+}
+_MARKET_ACTIVITY_NEW_STOCK_FIRST_DAY_SOURCE_URI = (
+    "https://data.10jqka.com.cn/ipo/xgsr/"
+)
+_MARKET_ACTIVITY_NEW_STOCK_FIRST_DAY_UPSTREAM_URL = (
+    "https://data.10jqka.com.cn/ipo/xgsr/field/SSRQ/order/desc/"
+    "page/{page}/ajax/1/free/1/"
+)
+_MARKET_ACTIVITY_NEW_STOCK_FIRST_DAY_UPSTREAM_PARAMETERS = (
+    "field",
+    "order",
+    "page",
+    "ajax",
+    "free",
+)
+_MARKET_ACTIVITY_NEW_STOCK_FIRST_DAY_UPSTREAM_FIXED_PARAMETERS = {
+    "field": "SSRQ",
+    "order": "desc",
+    "ajax": "1",
+    "free": "1",
+}
+_MARKET_ACTIVITY_NEW_STOCK_FIRST_DAY_UPSTREAM_DYNAMIC_PARAMETERS = {
+    "page": "1..provider_reported_page_count",
+}
+_MARKET_ACTIVITY_NEW_STOCK_FIRST_DAY_UPSTREAM_TRANSFORMATIONS = {
+    "股票代码": "astype(str).str.zfill(6)",
+    "上市日期": "pd.to_datetime(errors='coerce').dt.date",
+    **{
+        field: "pd.to_numeric(errors='coerce')"
+        for field in _MARKET_ACTIVITY_NEW_STOCK_FIRST_DAY_NUMERIC_FIELDS
+        if field not in {"发行价", "首日涨跌幅"}
+    },
+    "发行价": "rename from 发行价(元); pd.to_numeric(errors='coerce')",
+    "首日涨跌幅": "pd.to_numeric(str.strip('%'), errors='coerce') / 100",
+}
 
 _FINANCIAL_STATEMENT_PARAMETER_NAMES = frozenset({"indicator", "statement_date"})
 _EARNINGS_FORECAST_PARAMETER_NAMES = frozenset({"date"})
@@ -8462,6 +8555,40 @@ class AKShareProvider(StructuredDataProvider):
                     )
                 )
                 payload = selected
+            elif endpoint.name == _MARKET_ACTIVITY_NEW_STOCK_FIRST_DAY_ENDPOINT:
+                _validate_market_activity_new_stock_first_day_provider_rows(
+                    rows,
+                    provider=self.identity,
+                    request=request,
+                )
+                selected = _select_listing_rows(
+                    rows,
+                    listing,
+                    provider=self.identity,
+                    request=request,
+                    row_label="market-activity-new-stock-first-day",
+                )
+                response_metadata.update(
+                    _market_activity_new_stock_first_day_response_metadata(
+                        listing_code=listing.code,
+                        row_identity_order=[row["股票代码"] for row in rows],
+                        selected_row_identity_order=[
+                            row["股票代码"] for row in selected
+                        ],
+                        selected_row_positions=[
+                            index
+                            for index, row in enumerate(rows)
+                            if row["股票代码"] == listing.code
+                        ],
+                        row_date_order=[row["上市日期"] for row in rows],
+                        selected_row_date_order=[
+                            row["上市日期"] for row in selected
+                        ],
+                        upstream_row_count=len(rows),
+                        entity_row_count=len(selected),
+                    )
+                )
+                payload = selected
             elif endpoint.name == "stock_comment_detail_scrd_desire_em":
                 observation_dates = _validate_market_activity_participation_desire_provider_rows(
                     rows,
@@ -11149,6 +11276,10 @@ class AKShareProvider(StructuredDataProvider):
                 request.parameters.get("view")
                 == _MARKET_ACTIVITY_COMPANY_DYNAMICS_VIEW
             ),
+            market_activity_new_stock_first_day_requested=(
+                request.parameters.get("view")
+                == _MARKET_ACTIVITY_NEW_STOCK_FIRST_DAY_VIEW
+            ),
             market_activity_institution_statistic_requested=(
                 request.parameters.get("view")
                 == _MARKET_ACTIVITY_INSTITUTION_STATISTIC_VIEW
@@ -12031,6 +12162,15 @@ class AKShareNormalizer:
                         rows,
                     )
                     normalizer_flags.add("AKSHARE_COMPANY_DYNAMICS_RAW_ONLY")
+                elif (
+                    endpoint_name == _MARKET_ACTIVITY_NEW_STOCK_FIRST_DAY_ENDPOINT
+                ):
+                    _validate_market_activity_new_stock_first_day_normalizer_scope(
+                        record,
+                        listing,
+                        rows,
+                    )
+                    normalizer_flags.add("AKSHARE_NEW_STOCK_FIRST_DAY_RAW_ONLY")
                 elif record.request.parameters.get("view") == _MARKET_ACTIVITY_NEW_STOCK_VIEW:
                     _validate_market_activity_new_stock_normalizer_scope(
                         record,
@@ -14461,6 +14601,13 @@ class AKShareNormalizer:
                 "descriptions do not establish filing contents, accounting periods, "
                 "governance conclusions or a canonical market fact."
             )
+        if "AKSHARE_NEW_STOCK_FIRST_DAY_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented A-share Tonghuashun new-stock first-day response is "
+                "retained as raw evidence only: its historical listing prices, return "
+                "and issue-status labels do not establish a canonical listing, return, "
+                "valuation or accounting fact."
+            )
         if "AKSHARE_MARKET_PARTICIPATION_DESIRE_RAW_ONLY" in normalizer_flags:
             notes += (
                 " The documented A-share market-participation response is retained as "
@@ -15058,6 +15205,7 @@ def _endpoint_candidates(
     market_activity_new_stock_requested: bool = False,
     market_activity_sina_new_stock_requested: bool = False,
     market_activity_company_dynamics_requested: bool = False,
+    market_activity_new_stock_first_day_requested: bool = False,
     market_quote_sh_a_spot_requested: bool = False,
     market_quote_sz_a_spot_requested: bool = False,
     market_quote_bj_a_spot_requested: bool = False,
@@ -15411,6 +15559,8 @@ def _endpoint_candidates(
         if market is ListingMarket.A:
             if market_activity_company_dynamics_requested:
                 return (_MARKET_ACTIVITY_COMPANY_DYNAMICS_ENDPOINT,)
+            if market_activity_new_stock_first_day_requested:
+                return (_MARKET_ACTIVITY_NEW_STOCK_FIRST_DAY_ENDPOINT,)
             if market_activity_new_stock_requested:
                 return ("stock_zh_a_new_em",)
             if market_activity_sina_new_stock_requested:
@@ -31910,6 +32060,252 @@ def _market_activity_company_dynamics_response_metadata(
     }
 
 
+def _market_activity_new_stock_first_day_date(value: object) -> date | None:
+    if not isinstance(value, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _market_activity_new_stock_first_day_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef | None = None,
+) -> str | None:
+    """Return a strict-schema error for new-stock first-day rows."""
+
+    seen_codes: set[str] = set()
+    previous_sequence: int | None = None
+    previous_listed_date: date | None = None
+    for index, row in enumerate(rows):
+        missing = [
+            field
+            for field in _MARKET_ACTIVITY_NEW_STOCK_FIRST_DAY_FIELDS
+            if field not in row
+        ]
+        if missing:
+            return (
+                f"market-activity new-stock first-day row {index} is missing "
+                "field(s): "
+                + ", ".join(missing)
+            )
+        unexpected = [
+            field
+            for field in row
+            if field not in _MARKET_ACTIVITY_NEW_STOCK_FIRST_DAY_FIELD_SET
+        ]
+        if unexpected:
+            return (
+                f"market-activity new-stock first-day row {index} contains "
+                "unsupported field(s): "
+                + ", ".join(unexpected)
+            )
+        if tuple(row) != _MARKET_ACTIVITY_NEW_STOCK_FIRST_DAY_FIELDS:
+            return (
+                f"market-activity new-stock first-day row {index} must preserve "
+                "the official field order"
+            )
+
+        raw_code = row["股票代码"]
+        if not isinstance(raw_code, str) or re.fullmatch(r"\d{6}", raw_code) is None:
+            return (
+                f"market-activity new-stock first-day row {index} 股票代码 must "
+                "be a six-digit string"
+            )
+        if raw_code in seen_codes:
+            return (
+                "market-activity new-stock first-day response has duplicate "
+                f"listing code {raw_code!r}"
+            )
+        seen_codes.add(raw_code)
+        if listing is not None and raw_code != listing.code:
+            return (
+                f"market-activity new-stock first-day row entity {raw_code!r} "
+                f"does not match requested listing {listing.canonical_id!r}"
+            )
+
+        for field in _MARKET_ACTIVITY_NEW_STOCK_FIRST_DAY_REQUIRED_TEXT_FIELDS:
+            value = row[field]
+            if not isinstance(value, str) or not value.strip():
+                return (
+                    f"market-activity new-stock first-day row {index} field "
+                    f"{field!r} must be a non-empty string"
+                )
+
+        sequence_value = row["序号"]
+        if isinstance(sequence_value, bool) or not isinstance(sequence_value, Real):
+            return (
+                f"market-activity new-stock first-day row {index} field '序号' "
+                "must be a positive integer"
+            )
+        try:
+            sequence_numeric = float(sequence_value)
+        except (OverflowError, TypeError, ValueError):
+            return (
+                f"market-activity new-stock first-day row {index} field '序号' "
+                "must be a positive integer"
+            )
+        if (
+            not math.isfinite(sequence_numeric)
+            or not sequence_numeric.is_integer()
+            or sequence_numeric < 1
+        ):
+            return (
+                f"market-activity new-stock first-day row {index} field '序号' "
+                "must be a positive integer"
+            )
+        sequence = int(sequence_numeric)
+        if previous_sequence is not None and sequence <= previous_sequence:
+            return (
+                "market-activity new-stock first-day response 序号 values must "
+                "be strictly ascending"
+            )
+        previous_sequence = sequence
+
+        listed_date = _market_activity_new_stock_first_day_date(row["上市日期"])
+        if listed_date is None:
+            return (
+                f"market-activity new-stock first-day row {index} field '上市日期' "
+                "must be a valid YYYY-MM-DD date"
+            )
+        if previous_listed_date is not None and listed_date > previous_listed_date:
+            return (
+                "market-activity new-stock first-day response 上市日期 values "
+                "must be ordered descending"
+            )
+        previous_listed_date = listed_date
+
+        for field in _MARKET_ACTIVITY_NEW_STOCK_FIRST_DAY_NUMERIC_FIELDS:
+            value = row[field]
+            if value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, Real):
+                return (
+                    f"market-activity new-stock first-day row {index} field "
+                    f"{field!r} must be numeric or null"
+                )
+            try:
+                numeric = float(value)
+            except (OverflowError, TypeError, ValueError):
+                return (
+                    f"market-activity new-stock first-day row {index} field "
+                    f"{field!r} must be numeric or null"
+                )
+            if not math.isfinite(numeric):
+                return (
+                    f"market-activity new-stock first-day row {index} field "
+                    f"{field!r} must be finite or null"
+                )
+    return None
+
+
+def _validate_market_activity_new_stock_first_day_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> None:
+    """Validate the complete new-stock first-day universe before filtering."""
+
+    message = _market_activity_new_stock_first_day_validation_message(rows)
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message}",
+            provider=provider,
+            request=request,
+        )
+
+
+def _market_activity_new_stock_first_day_response_metadata(
+    *,
+    listing_code: str,
+    row_identity_order: Sequence[JSONValue],
+    selected_row_identity_order: Sequence[JSONValue],
+    selected_row_positions: Sequence[JSONValue],
+    row_date_order: Sequence[JSONValue],
+    selected_row_date_order: Sequence[JSONValue],
+    upstream_row_count: int,
+    entity_row_count: int,
+) -> dict[str, JSONValue]:
+    """Build replay metadata for a filtered new-stock first-day snapshot."""
+
+    parsed_dates = [
+        parsed
+        for value in row_date_order
+        if (parsed := _market_activity_new_stock_first_day_date(value)) is not None
+    ]
+    return {
+        "endpoint": _MARKET_ACTIVITY_NEW_STOCK_FIRST_DAY_ENDPOINT,
+        "market": ListingMarket.A.value,
+        "listing_code": listing_code,
+        "market_activity_view": _MARKET_ACTIVITY_NEW_STOCK_FIRST_DAY_VIEW,
+        "market_scope": "all_a_share_listings",
+        "listing_scoped_request": False,
+        "row_filtering": "provider",
+        "snapshot_scope": "historical_new_stock_first_day_dataset",
+        "observation_date_field": "上市日期",
+        "date_binding": "row_only",
+        "listing_code_field": "股票代码",
+        "sequence_field": "序号",
+        "sequence_ordering": "strictly_ascending",
+        "listing_date_ordering": "descending",
+        "identity_fields": ["股票代码"],
+        "identity_ordering": "source_response_order",
+        "row_identity_order": list(row_identity_order),
+        "selected_row_identity_order": list(selected_row_identity_order),
+        "selected_row_positions": list(selected_row_positions),
+        "row_date_order": list(row_date_order),
+        "selected_row_date_order": list(selected_row_date_order),
+        "listing_date_start": min(parsed_dates).isoformat() if parsed_dates else None,
+        "listing_date_end": max(parsed_dates).isoformat() if parsed_dates else None,
+        "date_fields": list(_MARKET_ACTIVITY_NEW_STOCK_FIRST_DAY_DATE_FIELDS),
+        "value_fields": list(_MARKET_ACTIVITY_NEW_STOCK_FIRST_DAY_NUMERIC_FIELDS),
+        "integer_fields": list(_MARKET_ACTIVITY_NEW_STOCK_FIRST_DAY_INTEGER_FIELDS),
+        "text_fields": list(_MARKET_ACTIVITY_NEW_STOCK_FIRST_DAY_TEXT_FIELDS),
+        "required_text_fields": list(
+            _MARKET_ACTIVITY_NEW_STOCK_FIRST_DAY_REQUIRED_TEXT_FIELDS
+        ),
+        "nullable_fields": list(_MARKET_ACTIVITY_NEW_STOCK_FIRST_DAY_NULLABLE_FIELDS),
+        "field_types": dict(_MARKET_ACTIVITY_NEW_STOCK_FIRST_DAY_FIELD_TYPES),
+        "field_count": len(_MARKET_ACTIVITY_NEW_STOCK_FIRST_DAY_FIELDS),
+        "source_field_order": list(_MARKET_ACTIVITY_NEW_STOCK_FIRST_DAY_FIELDS),
+        "documented_units": {},
+        "undocumented_numeric_units": dict(
+            _MARKET_ACTIVITY_NEW_STOCK_FIRST_DAY_UNDOCUMENTED_NUMERIC_UNITS
+        ),
+        "upstream_url": _MARKET_ACTIVITY_NEW_STOCK_FIRST_DAY_UPSTREAM_URL,
+        "upstream_protocol": "HTML",
+        "upstream_parameters": list(
+            _MARKET_ACTIVITY_NEW_STOCK_FIRST_DAY_UPSTREAM_PARAMETERS
+        ),
+        "upstream_fixed_parameters": dict(
+            _MARKET_ACTIVITY_NEW_STOCK_FIRST_DAY_UPSTREAM_FIXED_PARAMETERS
+        ),
+        "upstream_dynamic_parameters": dict(
+            _MARKET_ACTIVITY_NEW_STOCK_FIRST_DAY_UPSTREAM_DYNAMIC_PARAMETERS
+        ),
+        "upstream_authentication": "ths.js_v_cookie_and_hexin_v",
+        "upstream_decoder": "ths.js:v",
+        "upstream_page_size": "provider_defined",
+        "pagination": "provider_reported_page_count",
+        "upstream_sort_column": "SSRQ",
+        "upstream_sort_direction": "descending",
+        "upstream_filter": "field=SSRQ",
+        "wrapper_source_page_uri": _MARKET_ACTIVITY_NEW_STOCK_FIRST_DAY_SOURCE_URI,
+        "wrapper_output_ordering": "source_selected_field_order",
+        "wrapper_selected_fields": list(_MARKET_ACTIVITY_NEW_STOCK_FIRST_DAY_FIELDS),
+        "wrapper_column_mapping": {"发行价(元)": "发行价"},
+        "upstream_transformations": dict(
+            _MARKET_ACTIVITY_NEW_STOCK_FIRST_DAY_UPSTREAM_TRANSFORMATIONS
+        ),
+        "full_universe_response": True,
+        "entity_rows_selected": True,
+        "upstream_row_count": upstream_row_count,
+        "entity_row_count": entity_row_count,
+    }
+
+
 def _market_activity_hot_rank_row_listing(value: object) -> _ListingRef | None:
     """Parse the market-prefixed listing code published by the hot-rank endpoint."""
 
@@ -38673,6 +39069,165 @@ def _validate_market_activity_company_dynamics_normalizer_scope(
     )
     if message is not None:
         raise ProviderNormalizationError(message)
+
+
+def _validate_market_activity_new_stock_first_day_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> None:
+    """Validate replay scope for filtered new-stock first-day rows."""
+
+    if listing.market is not ListingMarket.A:
+        raise ProviderNormalizationError(
+            "AKShare new-stock first-day raw slice supports A-share listings only"
+        )
+    if record.response_metadata.get("endpoint") != (
+        _MARKET_ACTIVITY_NEW_STOCK_FIRST_DAY_ENDPOINT
+    ):
+        raise ProviderNormalizationError(
+            "AKShare new-stock first-day record must come from "
+            f"{_MARKET_ACTIVITY_NEW_STOCK_FIRST_DAY_ENDPOINT}"
+        )
+    if record.source_uri != _MARKET_ACTIVITY_NEW_STOCK_FIRST_DAY_SOURCE_URI:
+        raise ProviderNormalizationError(
+            "AKShare new-stock first-day source URI does not match the documented "
+            "endpoint"
+        )
+    try:
+        _market_activity_new_stock_first_day_kwargs(
+            _MARKET_ACTIVITY_NEW_STOCK_FIRST_DAY_ENDPOINT,
+            listing,
+            record.request,
+        )
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+
+    message = _market_activity_new_stock_first_day_validation_message(rows, listing)
+    if message is not None:
+        raise ProviderNormalizationError(message)
+
+    metadata = record.response_metadata
+    upstream_row_count = metadata.get("upstream_row_count")
+    row_identity_order = metadata.get("row_identity_order")
+    selected_row_identity_order = metadata.get("selected_row_identity_order")
+    selected_row_positions = metadata.get("selected_row_positions")
+    row_date_order = metadata.get("row_date_order")
+    selected_row_date_order = metadata.get("selected_row_date_order")
+    if (
+        isinstance(upstream_row_count, bool)
+        or not isinstance(upstream_row_count, int)
+        or upstream_row_count < len(rows)
+        or not isinstance(row_identity_order, list)
+        or not isinstance(selected_row_identity_order, list)
+        or not isinstance(selected_row_positions, list)
+        or not isinstance(row_date_order, list)
+        or not isinstance(selected_row_date_order, list)
+        or not all(
+            isinstance(identity, str)
+            and re.fullmatch(r"\d{6}", identity) is not None
+            for identity in row_identity_order
+        )
+        or not all(
+            isinstance(identity, str)
+            and re.fullmatch(r"\d{6}", identity) is not None
+            for identity in selected_row_identity_order
+        )
+        or not all(
+            isinstance(position, int) and not isinstance(position, bool)
+            for position in selected_row_positions
+        )
+        or not all(
+            _market_activity_new_stock_first_day_date(value) is not None
+            for value in row_date_order
+        )
+        or not all(
+            _market_activity_new_stock_first_day_date(value) is not None
+            for value in selected_row_date_order
+        )
+        or upstream_row_count != len(row_identity_order)
+        or len(row_date_order) != upstream_row_count
+        or len(selected_row_positions) != len(rows)
+        or any(
+            position < 0 or position >= upstream_row_count
+            for position in selected_row_positions
+        )
+    ):
+        raise ProviderNormalizationError(
+            "AKShare new-stock first-day response universe metadata does not "
+            "match the requested replay scope"
+        )
+    if len(set(row_identity_order)) != len(row_identity_order):
+        raise ProviderNormalizationError(
+            "AKShare new-stock first-day response identity order is not unique"
+        )
+    if selected_row_positions != sorted(set(selected_row_positions)):
+        raise ProviderNormalizationError(
+            "AKShare new-stock first-day response selected positions are not in "
+            "source order"
+        )
+    parsed_row_dates = [
+        _market_activity_new_stock_first_day_date(value)
+        for value in row_date_order
+    ]
+    if any(
+        previous is not None
+        and current is not None
+        and current > previous
+        for previous, current in zip(parsed_row_dates, parsed_row_dates[1:])
+    ):
+        raise ProviderNormalizationError(
+            "AKShare new-stock first-day response listing dates are not ordered "
+            "descending"
+        )
+    expected_selected = [row["股票代码"] for row in rows]
+    expected_selected_dates = [row["上市日期"] for row in rows]
+    if selected_row_identity_order != expected_selected:
+        raise ProviderNormalizationError(
+            "AKShare new-stock first-day response selected identity order does not "
+            "match replayed rows"
+        )
+    if selected_row_date_order != expected_selected_dates:
+        raise ProviderNormalizationError(
+            "AKShare new-stock first-day response selected date order does not "
+            "match replayed rows"
+        )
+    if [row_identity_order[position] for position in selected_row_positions] != (
+        expected_selected
+    ):
+        raise ProviderNormalizationError(
+            "AKShare new-stock first-day response selected positions do not match "
+            "replayed rows"
+        )
+    if [row_date_order[position] for position in selected_row_positions] != (
+        expected_selected_dates
+    ):
+        raise ProviderNormalizationError(
+            "AKShare new-stock first-day response selected date positions do not "
+            "match replayed rows"
+        )
+    if any(identity not in row_identity_order for identity in expected_selected):
+        raise ProviderNormalizationError(
+            "AKShare new-stock first-day response selected identity is absent "
+            "from the upstream universe"
+        )
+
+    expected_metadata = _market_activity_new_stock_first_day_response_metadata(
+        listing_code=listing.code,
+        row_identity_order=row_identity_order,
+        selected_row_identity_order=selected_row_identity_order,
+        selected_row_positions=selected_row_positions,
+        row_date_order=row_date_order,
+        selected_row_date_order=selected_row_date_order,
+        upstream_row_count=upstream_row_count,
+        entity_row_count=len(rows),
+    )
+    for name, expected in expected_metadata.items():
+        if metadata.get(name) != expected:
+            raise ProviderNormalizationError(
+                "AKShare new-stock first-day response metadata "
+                f"{name!r} does not match the requested replay scope"
+            )
 
 
 def _validate_market_activity_new_stock_normalizer_scope(
@@ -47452,6 +48007,12 @@ def _market_activity_kwargs(
             listing,
             request,
         )
+    if endpoint_name == _MARKET_ACTIVITY_NEW_STOCK_FIRST_DAY_ENDPOINT:
+        return _market_activity_new_stock_first_day_kwargs(
+            endpoint_name,
+            listing,
+            request,
+        )
     if endpoint_name == _MARKET_ACTIVITY_SINA_NEW_STOCK_ENDPOINT:
         return _market_activity_sina_new_stock_kwargs(endpoint_name, listing, request)
     if endpoint_name == "stock_comment_detail_scrd_desire_em":
@@ -49165,6 +49726,47 @@ def _market_activity_company_dynamics_kwargs(
         request=request,
     )
     return {"date": request.parameters["date"]}
+
+
+def _market_activity_new_stock_first_day_kwargs(
+    endpoint_name: str,
+    listing: _ListingRef,
+    request: ProviderRequest,
+) -> dict[str, object]:
+    """Build the documented no-argument new-stock first-day request."""
+
+    if endpoint_name != _MARKET_ACTIVITY_NEW_STOCK_FIRST_DAY_ENDPOINT:
+        raise ProviderRequestError(
+            "unsupported AKShare new-stock first-day endpoint "
+            f"{endpoint_name!r}",
+            request=request,
+            retryable=False,
+        )
+    if listing.market is not ListingMarket.A:
+        raise ProviderRequestError(
+            "the AKShare new-stock first-day endpoint supports A-share listings "
+            "only",
+            request=request,
+            retryable=False,
+        )
+    unknown = sorted(
+        set(request.parameters) - _MARKET_ACTIVITY_NEW_STOCK_FIRST_DAY_PARAMETER_NAMES
+    )
+    if unknown:
+        raise ProviderRequestError(
+            "unsupported AKShare new-stock first-day parameter(s): "
+            + ", ".join(unknown),
+            request=request,
+            retryable=False,
+        )
+    if request.parameters.get("view") != _MARKET_ACTIVITY_NEW_STOCK_FIRST_DAY_VIEW:
+        raise ProviderRequestError(
+            "the AKShare new-stock first-day endpoint requires "
+            f"view={_MARKET_ACTIVITY_NEW_STOCK_FIRST_DAY_VIEW!r}",
+            request=request,
+            retryable=False,
+        )
+    return {}
 
 
 def _market_activity_new_stock_kwargs(

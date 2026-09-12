@@ -3837,6 +3837,28 @@ duplicate listing events, empty selection, raw-only normalization, replay
 metadata tampering and offline cache replay. No calculation, gate, pipeline,
 CLI or input-loader contract changes.
 
+### Phase 3.51 — Tonghuashun new-stock-first-day raw acquisition contract (COMPLETE)
+
+The mapping review now covers the documented Tonghuashun
+[`stock_xgsr_ths`](https://akshare.akfamily.xyz/data/stock/stock.html)
+new-stock-first-day endpoint under `MARKET_ACTIVITY` with explicit
+`view=new_stock_first_day`. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_board_industry_ths.py)
+discovers the page count from the HTML response, refreshes the `ths.js` `v` and
+`hexin-v` headers for each page, parses each table with `pandas.read_html` and
+returns the exact twelve-field response `序号`, `股票代码`, `股票简称`, `上市日期`,
+`发行价`, `最新价`, first-day OHLC/return and `是否破发`. The adapter records
+the HTML pagination/authentication contract, output transformations, full
+source order, code/date order and provider-side selection scope.
+
+The response remains raw evidence only because provider-transformed historical
+prices, returns and issue-status labels do not establish a canonical listing,
+return, valuation or accounting fact. The normalizer emits
+`AKSHARE_NEW_STOCK_FIRST_DAY_RAW_ONLY` and creates no canonical fact. Tests cover
+explicit routing, exact field/order and source metadata, complete-universe
+validation, empty selection, raw-only normalization, replay metadata tampering
+and offline cache replay. No calculation, gate, pipeline, CLI or input-loader
+contract changes.
+
 ### Future structured-provider deliverables
 
 ```text
@@ -3846,7 +3868,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–3.50 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–3.51 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```

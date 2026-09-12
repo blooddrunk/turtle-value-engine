@@ -717,6 +717,12 @@ class FakeAKShare:
             date=date,
         )
 
+    def stock_xgsr_ths(self):
+        return self._return(
+            "stock_xgsr_ths",
+            _fixture("a_new_stock_first_day.json"),
+        )
+
     def stock_dzjy_mrmx(self, *, symbol: str, start_date: str, end_date: str):
         return self._return(
             "stock_dzjy_mrmx",
@@ -1336,8 +1342,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "156"
-    assert AKSHARE_MAPPING_VERSION == "157"
+    assert provider.identity.provider_version == "157"
+    assert AKSHARE_MAPPING_VERSION == "158"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -45061,6 +45067,369 @@ def test_company_dynamics_cache_replay_does_not_call_upstream(tmp_path: Path):
     assert replay.mode is RetrievalMode.CACHE_REPLAY
     assert replay.record == live.record
     assert fake.calls == [("stock_gsrl_gsdt_em", {"date": "20240927"})]
+
+
+def test_new_stock_first_day_fetch_uses_documented_history_and_filters_listing():
+    fake = FakeAKShare()
+    request = _request(
+        DataCategory.MARKET_ACTIVITY,
+        "SH688583",
+        {"view": "new_stock_first_day"},
+    )
+    record = _provider(fake).fetch(request)
+
+    fixture = _fixture("a_new_stock_first_day.json")
+    assert record.raw_payload == [fixture[0]]
+    assert fake.calls == [("stock_xgsr_ths", {})]
+    assert record.source_uri == "https://data.10jqka.com.cn/ipo/xgsr/"
+    assert record.response_metadata["endpoint"] == "stock_xgsr_ths"
+    assert record.response_metadata["market"] == "A"
+    assert record.response_metadata["listing_code"] == "688583"
+    assert record.response_metadata["market_activity_view"] == "new_stock_first_day"
+    assert record.response_metadata["market_scope"] == "all_a_share_listings"
+    assert record.response_metadata["listing_scoped_request"] is False
+    assert record.response_metadata["row_filtering"] == "provider"
+    assert (
+        record.response_metadata["snapshot_scope"]
+        == "historical_new_stock_first_day_dataset"
+    )
+    assert record.response_metadata["observation_date_field"] == "上市日期"
+    assert record.response_metadata["date_binding"] == "row_only"
+    assert record.response_metadata["listing_code_field"] == "股票代码"
+    assert record.response_metadata["sequence_field"] == "序号"
+    assert record.response_metadata["sequence_ordering"] == "strictly_ascending"
+    assert record.response_metadata["listing_date_ordering"] == "descending"
+    assert record.response_metadata["identity_fields"] == ["股票代码"]
+    assert record.response_metadata["identity_ordering"] == "source_response_order"
+    assert record.response_metadata["row_identity_order"] == [
+        "688583",
+        "920019",
+        "000001",
+    ]
+    assert record.response_metadata["selected_row_identity_order"] == ["688583"]
+    assert record.response_metadata["selected_row_positions"] == [0]
+    assert record.response_metadata["row_date_order"] == [
+        "2025-01-10",
+        "2024-10-11",
+        "1991-04-03",
+    ]
+    assert record.response_metadata["selected_row_date_order"] == ["2025-01-10"]
+    assert record.response_metadata["listing_date_start"] == "1991-04-03"
+    assert record.response_metadata["listing_date_end"] == "2025-01-10"
+    assert record.response_metadata["date_fields"] == ["上市日期"]
+    assert record.response_metadata["value_fields"] == [
+        "发行价",
+        "最新价",
+        "首日开盘价",
+        "首日收盘价",
+        "首日最高价",
+        "首日最低价",
+        "首日涨跌幅",
+    ]
+    assert record.response_metadata["integer_fields"] == ["序号"]
+    assert record.response_metadata["text_fields"] == ["股票代码", "股票简称", "是否破发"]
+    assert record.response_metadata["required_text_fields"] == [
+        "股票代码",
+        "股票简称",
+        "是否破发",
+    ]
+    assert record.response_metadata["nullable_fields"] == record.response_metadata[
+        "value_fields"
+    ]
+    assert record.response_metadata["field_types"] == {
+        "序号": "integer",
+        "股票代码": "string",
+        "股票简称": "string",
+        "上市日期": "date",
+        "发行价": "number",
+        "最新价": "number",
+        "首日开盘价": "number",
+        "首日收盘价": "number",
+        "首日最高价": "number",
+        "首日最低价": "number",
+        "首日涨跌幅": "number",
+        "是否破发": "string",
+    }
+    assert record.response_metadata["field_count"] == 12
+    assert record.response_metadata["source_field_order"] == list(fixture[0])
+    assert record.response_metadata["wrapper_selected_fields"] == list(fixture[0])
+    assert record.response_metadata["wrapper_column_mapping"] == {"发行价(元)": "发行价"}
+    assert record.response_metadata["upstream_url"] == (
+        "https://data.10jqka.com.cn/ipo/xgsr/field/SSRQ/order/desc/"
+        "page/{page}/ajax/1/free/1/"
+    )
+    assert record.response_metadata["upstream_protocol"] == "HTML"
+    assert record.response_metadata["upstream_parameters"] == [
+        "field",
+        "order",
+        "page",
+        "ajax",
+        "free",
+    ]
+    assert record.response_metadata["upstream_fixed_parameters"] == {
+        "field": "SSRQ",
+        "order": "desc",
+        "ajax": "1",
+        "free": "1",
+    }
+    assert record.response_metadata["upstream_dynamic_parameters"] == {
+        "page": "1..provider_reported_page_count"
+    }
+    assert record.response_metadata["upstream_authentication"] == (
+        "ths.js_v_cookie_and_hexin_v"
+    )
+    assert record.response_metadata["upstream_decoder"] == "ths.js:v"
+    assert record.response_metadata["upstream_page_size"] == "provider_defined"
+    assert record.response_metadata["pagination"] == "provider_reported_page_count"
+    assert record.response_metadata["upstream_sort_column"] == "SSRQ"
+    assert record.response_metadata["upstream_sort_direction"] == "descending"
+    assert record.response_metadata["upstream_filter"] == "field=SSRQ"
+    assert record.response_metadata["full_universe_response"] is True
+    assert record.response_metadata["upstream_row_count"] == 3
+    assert record.response_metadata["entity_row_count"] == 1
+    assert record.response_metadata["entity_rows_selected"] is True
+
+
+@pytest.mark.parametrize(
+    ("parameters", "entity_id", "match"),
+    [
+        (
+            {"view": "new_stock_first_day", "date": "20240927"},
+            "SH688583",
+            "unsupported AKShare new-stock first-day parameter",
+        ),
+        (
+            {"view": "new_stock_first_day", "page": 1},
+            "SH688583",
+            "unsupported AKShare new-stock first-day parameter",
+        ),
+        (
+            {"view": "new_stock_first_day"},
+            "HK00700",
+            "A-share listings only",
+        ),
+    ],
+)
+def test_new_stock_first_day_request_validates_explicit_scope_before_upstream_call(
+    parameters: dict,
+    entity_id: str,
+    match: str,
+):
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError, match=match):
+        _provider(fake).fetch(
+            _request(DataCategory.MARKET_ACTIVITY, entity_id, parameters)
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("missing_field", "missing field"),
+        ("extra_field", "unsupported field"),
+        ("reordered_fields", "official field order"),
+        ("invalid_code", "股票代码 must be a six-digit string"),
+        ("duplicate_code", "duplicate listing code"),
+        ("invalid_date", "valid YYYY-MM-DD date"),
+        ("ascending_dates", "上市日期 values must be ordered descending"),
+        ("invalid_sequence", "positive integer"),
+        ("descending_sequence", "序号 values must be strictly ascending"),
+        ("invalid_numeric", "must be numeric or null"),
+        ("invalid_text", "non-empty string"),
+    ],
+)
+def test_new_stock_first_day_response_validates_shape_identity_dates_and_values(
+    mutation: str,
+    match: str,
+):
+    payload = [dict(row) for row in _fixture("a_new_stock_first_day.json")]
+    if mutation == "missing_field":
+        payload[0].pop("首日最高价")
+    elif mutation == "extra_field":
+        payload[0]["unexpected"] = "not documented"
+    elif mutation == "reordered_fields":
+        payload[0] = dict(reversed(list(payload[0].items())))
+    elif mutation == "invalid_code":
+        payload[0]["股票代码"] = "SH688583"
+    elif mutation == "duplicate_code":
+        payload[1]["股票代码"] = payload[0]["股票代码"]
+    elif mutation == "invalid_date":
+        payload[0]["上市日期"] = "not-a-date"
+    elif mutation == "ascending_dates":
+        payload[1]["上市日期"] = "2025-02-10"
+    elif mutation == "invalid_sequence":
+        payload[0]["序号"] = 1.5
+    elif mutation == "descending_sequence":
+        payload[1]["序号"] = 1
+    elif mutation == "invalid_numeric":
+        payload[0]["首日收盘价"] = "not-a-number"
+    else:
+        payload[0]["是否破发"] = ""
+
+    class InvalidNewStockFirstDay(FakeAKShare):
+        def stock_xgsr_ths(self):
+            return self._return("stock_xgsr_ths", payload)
+
+    with pytest.raises(ProviderResponseError, match=match):
+        _provider(InvalidNewStockFirstDay()).fetch(
+            _request(
+                DataCategory.MARKET_ACTIVITY,
+                "SH688583",
+                {"view": "new_stock_first_day"},
+            )
+        )
+
+
+def test_new_stock_first_day_with_no_matching_listing_is_empty():
+    class NoMatchingNewStockFirstDay(FakeAKShare):
+        def stock_xgsr_ths(self):
+            return self._return(
+                "stock_xgsr_ths",
+                [
+                    row
+                    for row in _fixture("a_new_stock_first_day.json")
+                    if row["股票代码"] == "000001"
+                ],
+            )
+
+    record = _provider(NoMatchingNewStockFirstDay()).fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SH688583",
+            {"view": "new_stock_first_day"},
+        )
+    )
+
+    assert record.raw_payload == []
+    assert record.response_metadata["upstream_row_count"] == 1
+    assert record.response_metadata["entity_row_count"] == 0
+    assert record.response_metadata["row_identity_order"] == ["000001"]
+    assert record.response_metadata["selected_row_identity_order"] == []
+
+
+def test_new_stock_first_day_is_raw_only_without_canonical_facts():
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SH688583",
+            {"view": "new_stock_first_day"},
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="new-stock-first-day-raw-only",
+        as_of=date(2026, 9, 11),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_NEW_STOCK_FIRST_DAY_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == []
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "new-stock first-day" in normalized.data_quality.notes
+    assert "historical listing prices" in normalized.data_quality.notes
+    assert "canonical listing" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "endpoint",
+        "source_uri",
+        "field_count",
+        "identity_order",
+        "selected_identity_order",
+        "date_order",
+        "selected_date_order",
+        "listing_date_start",
+        "payload",
+    ],
+)
+def test_new_stock_first_day_normalizer_rejects_replayed_scope_mismatches(
+    mutation: str,
+):
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SH688583",
+            {"view": "new_stock_first_day"},
+        )
+    )
+    payload = [dict(row) for row in record.raw_payload]
+    response_metadata = dict(record.response_metadata)
+    source_uri = record.source_uri
+    if mutation == "endpoint":
+        response_metadata["endpoint"] = "stock_lhb_detail_em"
+    elif mutation == "source_uri":
+        source_uri = "https://example.invalid/new-stock-first-day"
+    elif mutation == "field_count":
+        response_metadata["field_count"] = 11
+    elif mutation == "identity_order":
+        response_metadata["row_identity_order"] = ["920019", "688583", "000001"]
+    elif mutation == "selected_identity_order":
+        response_metadata["selected_row_identity_order"] = ["920019"]
+    elif mutation == "date_order":
+        response_metadata["row_date_order"] = [
+            "2024-10-11",
+            "2025-01-10",
+            "1991-04-03",
+        ]
+    elif mutation == "selected_date_order":
+        response_metadata["selected_row_date_order"] = ["2024-10-11"]
+    elif mutation == "listing_date_start":
+        response_metadata["listing_date_start"] = "2024-10-11"
+    else:
+        payload[0]["上市日期"] = "2024-10-11"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=source_uri,
+        response_metadata=response_metadata,
+    )
+
+    with pytest.raises(
+        ProviderNormalizationError,
+        match="market-activity|new-stock first-day",
+    ):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-new-stock-first-day-scope",
+            as_of=date(2026, 9, 11),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_new_stock_first_day_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.MARKET_ACTIVITY,
+        "SH688583",
+        {"view": "new_stock_first_day"},
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [("stock_xgsr_ths", {})]
 
 
 def test_tencent_tick_fetch_uses_explicit_view_and_listing_symbol():
