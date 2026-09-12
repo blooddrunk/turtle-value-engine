@@ -604,6 +604,28 @@ class FakeAKShare:
             end_date=end_date,
         )
 
+    def index_zh_a_hist_min_em(
+        self,
+        *,
+        symbol: str,
+        period: str,
+        start_date: str,
+        end_date: str,
+    ):
+        fixture_name = (
+            "index_zh_a_hist_min_em_1m.json"
+            if period == "1"
+            else "index_zh_a_hist_min_em.json"
+        )
+        return self._return(
+            "index_zh_a_hist_min_em",
+            _fixture(fixture_name),
+            symbol=symbol,
+            period=period,
+            start_date=start_date,
+            end_date=end_date,
+        )
+
     def stock_zh_b_minute(self, *, symbol: str, period: str, adjust: str):
         return self._return(
             "stock_zh_b_minute",
@@ -1429,8 +1451,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "166"
-    assert AKSHARE_MAPPING_VERSION == "167"
+    assert provider.identity.provider_version == "168"
+    assert AKSHARE_MAPPING_VERSION == "169"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -17163,6 +17185,652 @@ def test_index_zh_a_hist_cache_replay_does_not_call_upstream(tmp_path: Path):
                 "period": "weekly",
                 "start_date": "20260908",
                 "end_date": "20260909",
+            },
+        )
+    ]
+
+
+def test_index_zh_a_hist_min_em_one_minute_fetch_preserves_intraday_contract():
+    fake = FakeAKShare()
+    record = _provider(fake).fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "SH000001",
+            {
+                "view": "index_zh_a_hist_min_em",
+                "period": "1",
+                "start_date": "2026-09-09 09:30:00",
+                "end_date": "2026-09-09 09:32:00",
+            },
+        )
+    )
+
+    fields = ["时间", "开盘", "收盘", "最高", "最低", "成交量", "成交额", "均价"]
+    assert record.raw_payload == _fixture("index_zh_a_hist_min_em_1m.json")
+    assert fake.calls == [
+        (
+            "index_zh_a_hist_min_em",
+            {
+                "symbol": "000001",
+                "period": "1",
+                "start_date": "2026-09-09 09:30:00",
+                "end_date": "2026-09-09 09:32:00",
+            },
+        )
+    ]
+    assert record.source_uri == "https://quote.eastmoney.com/center/hszs.html"
+    assert record.response_metadata["endpoint"] == "index_zh_a_hist_min_em"
+    assert record.response_metadata["market"] == "A"
+    assert record.response_metadata["listing_code"] == "000001"
+    assert record.response_metadata["market_history_view"] == (
+        "index_zh_a_hist_min_em"
+    )
+    assert record.response_metadata["upstream_symbol"] == "000001"
+    assert record.response_metadata["upstream_period"] == "1"
+    assert record.response_metadata["market_scope"] == "requested_a_share_index"
+    assert record.response_metadata["index_scoped_request"] is True
+    assert record.response_metadata["listing_scoped_request"] is False
+    assert record.response_metadata["row_filtering"] == "upstream_and_wrapper"
+    assert record.response_metadata["snapshot_scope"] == (
+        "requested_index_intraday_range"
+    )
+    assert record.response_metadata["date_binding"] == "row_and_request"
+    assert record.response_metadata["range_filtering"] == (
+        "wrapper_and_provider_validation"
+    )
+    assert record.response_metadata["index_zh_a_hist_min_em_start_date"] == (
+        "2026-09-09 09:30:00"
+    )
+    assert record.response_metadata["index_zh_a_hist_min_em_end_date"] == (
+        "2026-09-09 09:32:00"
+    )
+    assert record.response_metadata["adjustment_kind"] == "unadjusted"
+    assert record.response_metadata["observation_time_field"] == "时间"
+    assert record.response_metadata["time_ordering"] == "strictly_ascending"
+    assert record.response_metadata["field_count"] == 8
+    assert record.response_metadata["source_field_order"] == fields
+    assert record.response_metadata["date_fields"] == ["时间"]
+    assert record.response_metadata["value_fields"] == fields[1:]
+    assert record.response_metadata["required_numeric_fields"] == fields[1:]
+    assert record.response_metadata["documented_units"] == {
+        "成交量": "lots",
+        "成交额": "CNY",
+    }
+    assert record.response_metadata["undocumented_numeric_units"] == {
+        field: "not_documented" for field in ("开盘", "收盘", "最高", "最低", "均价")
+    }
+    assert record.response_metadata["field_types"] == {
+        "时间": "datetime",
+        **{field: "number" for field in fields[1:]},
+    }
+    assert record.response_metadata["upstream_url"] == (
+        "https://push2his.eastmoney.com/api/qt/stock/trends2/get"
+    )
+    assert record.response_metadata["upstream_urls"] == [
+        record.response_metadata["upstream_url"],
+        "https://80.push2.eastmoney.com/api/qt/clist/get",
+    ]
+    assert record.response_metadata["upstream_auxiliary_urls"] == [
+        "https://80.push2.eastmoney.com/api/qt/clist/get"
+    ]
+    assert record.response_metadata["upstream_auxiliary_roles"] == [
+        "index_code_id_map"
+    ]
+    assert record.response_metadata["upstream_protocol"] == "JSON"
+    assert record.response_metadata["upstream_parameters"] == [
+        "secid",
+        "fields1",
+        "fields2",
+        "iscr",
+        "ndays",
+    ]
+    assert record.response_metadata["upstream_dynamic_parameters"] == {
+        "symbol": "000001",
+        "period": "1",
+    }
+    assert record.response_metadata["upstream_fixed_parameters"] == {
+        "fields1": "f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11,f12,f13",
+        "fields2": "f51,f52,f53,f54,f55,f56,f57,f58",
+        "iscr": "0",
+        "ndays": "5",
+    }
+    assert record.response_metadata["upstream_auxiliary_parameters"] == [
+        "pn",
+        "pz",
+        "po",
+        "np",
+        "ut",
+        "fltt",
+        "invt",
+        "fid",
+        "fs",
+        "fields",
+    ]
+    assert record.response_metadata["upstream_market_code_resolution"] == (
+        "index_code_id_map_em_then_market_fallback_1_0_47"
+    )
+    assert record.response_metadata["upstream_authentication"] == "none"
+    assert record.response_metadata["wrapper_source_page_uri"] == record.source_uri
+    assert record.response_metadata["wrapper_date_filtering"] == (
+        "inclusive_datetime_slice_after_recent_response"
+    )
+    assert record.response_metadata["wrapper_decoders"] == ["response.json"]
+    assert record.response_metadata["wrapper_transformations"] == [
+        "index_code_id_map",
+        "market_code_fallback",
+        "split_trend_rows",
+        "inclusive_datetime_filter",
+        "numeric_conversion",
+        "stringify_time",
+    ]
+    assert record.response_metadata["wrapper_source_column_count"] == 8
+    assert record.response_metadata["wrapper_dropped_fields"] == []
+    assert record.response_metadata["upstream_page_size"] == 100
+    assert record.response_metadata["pagination"] == (
+        "paginated_index_code_map_then_single_recent_intraday_response"
+    )
+    assert record.response_metadata["upstream_row_count"] == 3
+    assert record.response_metadata["entity_row_count"] == 3
+    assert record.response_metadata["entity_rows_selected"] is True
+    assert record.response_metadata["observation_start_datetime"] == (
+        "2026-09-09T09:30:00"
+    )
+    assert record.response_metadata["observation_end_datetime"] == (
+        "2026-09-09T09:32:00"
+    )
+
+
+def test_index_zh_a_hist_min_em_five_minute_fetch_preserves_adjusted_contract():
+    fake = FakeAKShare()
+    record = _provider(fake).fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "SZ399552",
+            {
+                "view": "index_zh_a_hist_min_em",
+                "period": "5",
+                "start_date": "2026-09-09 09:35:00",
+                "end_date": "2026-09-09 09:45:00",
+            },
+        )
+    )
+
+    fields = [
+        "时间",
+        "开盘",
+        "收盘",
+        "最高",
+        "最低",
+        "涨跌幅",
+        "涨跌额",
+        "成交量",
+        "成交额",
+        "振幅",
+        "换手率",
+    ]
+    assert record.raw_payload == _fixture("index_zh_a_hist_min_em.json")
+    assert fake.calls == [
+        (
+            "index_zh_a_hist_min_em",
+            {
+                "symbol": "399552",
+                "period": "5",
+                "start_date": "2026-09-09 09:35:00",
+                "end_date": "2026-09-09 09:45:00",
+            },
+        )
+    ]
+    assert record.response_metadata["upstream_symbol"] == "399552"
+    assert record.response_metadata["upstream_period"] == "5"
+    assert record.response_metadata["adjustment_kind"] == "front_adjusted"
+    assert record.response_metadata["field_count"] == 11
+    assert record.response_metadata["source_field_order"] == fields
+    assert record.response_metadata["value_fields"] == fields[1:]
+    assert record.response_metadata["documented_units"] == {
+        "成交量": "lots",
+        "成交额": "CNY",
+    }
+    assert record.response_metadata["undocumented_numeric_units"] == {
+        field: "not_documented"
+        for field in ("开盘", "收盘", "最高", "最低", "涨跌幅", "涨跌额", "振幅", "换手率")
+    }
+    assert record.response_metadata["upstream_url"] == (
+        "https://push2his.eastmoney.com/api/qt/stock/kline/get"
+    )
+    assert record.response_metadata["upstream_parameters"] == [
+        "secid",
+        "ut",
+        "fields1",
+        "fields2",
+        "klt",
+        "fqt",
+        "beg",
+        "end",
+    ]
+    assert record.response_metadata["upstream_dynamic_parameters"] == {
+        "symbol": "399552",
+        "period": "5",
+        "klt": "5",
+    }
+    assert record.response_metadata["upstream_fixed_parameters"] == {
+        "ut": "7eea3edcaed734bea9cbfc24409ed989",
+        "fields1": "f1,f2,f3,f4,f5,f6",
+        "fields2": "f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61",
+        "fqt": "1",
+        "beg": "0",
+        "end": "20500000",
+    }
+    assert record.response_metadata["wrapper_transformations"] == [
+        "index_code_id_map",
+        "market_code_fallback",
+        "split_kline_rows",
+        "inclusive_datetime_filter",
+        "numeric_conversion",
+        "stringify_time",
+        "provider_field_reorder",
+    ]
+    assert record.response_metadata["observation_start_datetime"] == (
+        "2026-09-09T09:35:00"
+    )
+    assert record.response_metadata["observation_end_datetime"] == (
+        "2026-09-09T09:45:00"
+    )
+
+
+def test_index_zh_a_hist_min_em_defaults_use_documented_period_and_datetime_bounds():
+    fake = FakeAKShare()
+    record = _provider(fake).fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "SH000001",
+            {"view": "index_zh_a_hist_min_em"},
+        )
+    )
+
+    assert record.raw_payload == _fixture("index_zh_a_hist_min_em_1m.json")
+    assert fake.calls == [
+        (
+            "index_zh_a_hist_min_em",
+            {
+                "symbol": "000001",
+                "period": "1",
+                "start_date": "1979-09-01 09:32:00",
+                "end_date": "2222-01-01 09:32:00",
+            },
+        )
+    ]
+    assert record.response_metadata["index_zh_a_hist_min_em_start_date"] == (
+        "1979-09-01 09:32:00"
+    )
+    assert record.response_metadata["index_zh_a_hist_min_em_end_date"] == (
+        "2222-01-01 09:32:00"
+    )
+
+
+@pytest.mark.parametrize(
+    ("entity_id", "expected_symbol"),
+    [("SZ399552", "399552"), ("BJ899050", "899050")],
+)
+def test_index_zh_a_hist_min_em_accepts_shenzhen_and_beijing_indices(
+    entity_id: str,
+    expected_symbol: str,
+):
+    fake = FakeAKShare()
+    record = _provider(fake).fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            entity_id,
+            {
+                "view": "index_zh_a_hist_min_em",
+                "period": "15",
+                "start_date": "2026-09-09 09:35:00",
+                "end_date": "2026-09-09 09:45:00",
+            },
+        )
+    )
+
+    assert record.raw_payload == _fixture("index_zh_a_hist_min_em.json")
+    assert fake.calls == [
+        (
+            "index_zh_a_hist_min_em",
+            {
+                "symbol": expected_symbol,
+                "period": "15",
+                "start_date": "2026-09-09 09:35:00",
+                "end_date": "2026-09-09 09:45:00",
+            },
+        )
+    ]
+
+
+@pytest.mark.parametrize(
+    ("entity_id", "parameters", "match"),
+    [
+        (
+            "SH600000",
+            {"view": "index_zh_a_hist_min_em"},
+            "supports Shanghai 000xxx",
+        ),
+        (
+            "SZ000001",
+            {"view": "index_zh_a_hist_min_em"},
+            "supports Shanghai 000xxx",
+        ),
+        (
+            "HK00700",
+            {"view": "index_zh_a_hist_min_em"},
+            "supports Shanghai 000xxx",
+        ),
+        (
+            "BJ830001",
+            {"view": "index_zh_a_hist_min_em"},
+            "supports Shanghai 000xxx",
+        ),
+        (
+            "SH000001",
+            {"view": "index_zh_a_hist_min_em", "adjust": "qfq"},
+            "unsupported AKShare index minute-history parameter",
+        ),
+        (
+            "SH000001",
+            {"view": "index_zh_a_hist_min_em", "period": "120"},
+            "period must be one of",
+        ),
+        (
+            "SH000001",
+            {
+                "view": "index_zh_a_hist_min_em",
+                "start_date": "2026/09/09 09:30:00",
+            },
+            "must be YYYY-MM-DD HH:MM:SS",
+        ),
+        (
+            "SH000001",
+            {
+                "view": "index_zh_a_hist_min_em",
+                "start_date": "2026-09-09 09:35:00",
+                "end_date": "2026-09-09 09:30:00",
+            },
+            "start_date must not be after end_date",
+        ),
+    ],
+)
+def test_index_zh_a_hist_min_em_request_boundaries(
+    entity_id: str,
+    parameters: dict,
+    match: str,
+):
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError, match=match):
+        _provider(fake).fetch(
+            _request(DataCategory.MARKET_HISTORY, entity_id, parameters)
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("period", "mutation", "match"),
+    [
+        ("1", "missing_field", "missing field"),
+        ("1", "extra_field", "unsupported field"),
+        ("1", "reordered_fields", "documented field order"),
+        ("1", "invalid_time", "invalid 时间"),
+        ("1", "outside_range", "outside requested range"),
+        ("1", "descending", "strictly ascending"),
+        ("1", "duplicate_time", "duplicate 时间"),
+        ("1", "invalid_numeric", "must be numeric or null"),
+        ("1", "bool_numeric", "must be numeric or null"),
+        ("1", "infinite_numeric", "contains infinity"),
+        ("5", "missing_field", "missing field"),
+        ("5", "extra_field", "unsupported field"),
+        ("5", "reordered_fields", "documented field order"),
+        ("5", "invalid_time", "invalid 时间"),
+        ("5", "outside_range", "outside requested range"),
+        ("5", "descending", "strictly ascending"),
+        ("5", "duplicate_time", "duplicate 时间"),
+        ("5", "invalid_numeric", "must be numeric or null"),
+        ("5", "bool_numeric", "must be numeric or null"),
+        ("5", "infinite_numeric", "contains infinity"),
+    ],
+)
+def test_index_zh_a_hist_min_em_response_validates_period_specific_rows(
+    period: str,
+    mutation: str,
+    match: str,
+):
+    class InvalidRows(FakeAKShare):
+        def index_zh_a_hist_min_em(
+            self,
+            *,
+            symbol: str,
+            period: str,
+            start_date: str,
+            end_date: str,
+        ):
+            fixture_name = (
+                "index_zh_a_hist_min_em_1m.json"
+                if period == "1"
+                else "index_zh_a_hist_min_em.json"
+            )
+            rows = [dict(row) for row in _fixture(fixture_name)]
+            fields = (
+                ["时间", "开盘", "收盘", "最高", "最低", "成交量", "成交额", "均价"]
+                if period == "1"
+                else [
+                    "时间",
+                    "开盘",
+                    "收盘",
+                    "最高",
+                    "最低",
+                    "涨跌幅",
+                    "涨跌额",
+                    "成交量",
+                    "成交额",
+                    "振幅",
+                    "换手率",
+                ]
+            )
+            if mutation == "missing_field":
+                rows[0].pop(fields[-1])
+            elif mutation == "extra_field":
+                rows[0]["unexpected"] = "not documented"
+            elif mutation == "reordered_fields":
+                first = rows[0]
+                rows[0] = {
+                    fields[1]: first[fields[1]],
+                    **{key: value for key, value in first.items() if key != fields[1]},
+                }
+            elif mutation == "invalid_time":
+                rows[0]["时间"] = "not-a-datetime"
+            elif mutation == "outside_range":
+                rows[1]["时间"] = (
+                    "2026-09-09 09:33:00"
+                    if period == "1"
+                    else "2026-09-09 09:50:00"
+                )
+            elif mutation == "descending":
+                rows.reverse()
+            elif mutation == "duplicate_time":
+                rows[1]["时间"] = rows[0]["时间"]
+            elif mutation == "invalid_numeric":
+                rows[0][fields[1]] = "42.9"
+            elif mutation == "bool_numeric":
+                rows[0][fields[1]] = True
+            else:
+                rows[0][fields[1]] = float("inf")
+            return self._return(
+                "index_zh_a_hist_min_em",
+                rows,
+                symbol=symbol,
+                period=period,
+                start_date=start_date,
+                end_date=end_date,
+            )
+
+    if period == "1":
+        start_date = "2026-09-09 09:30:00"
+        end_date = "2026-09-09 09:32:00"
+    else:
+        start_date = "2026-09-09 09:35:00"
+        end_date = "2026-09-09 09:45:00"
+    with pytest.raises(ProviderResponseError, match=match):
+        _provider(InvalidRows()).fetch(
+            _request(
+                DataCategory.MARKET_HISTORY,
+                "SH000001",
+                {
+                    "view": "index_zh_a_hist_min_em",
+                    "period": period,
+                    "start_date": start_date,
+                    "end_date": end_date,
+                },
+            )
+        )
+
+
+@pytest.mark.parametrize("period", ["1", "5"])
+def test_index_zh_a_hist_min_em_empty_response_is_valid_raw_snapshot(period: str):
+    class EmptyResponse(FakeAKShare):
+        def index_zh_a_hist_min_em(
+            self,
+            *,
+            symbol: str,
+            period: str,
+            start_date: str,
+            end_date: str,
+        ):
+            return self._return(
+                "index_zh_a_hist_min_em",
+                [],
+                symbol=symbol,
+                period=period,
+                start_date=start_date,
+                end_date=end_date,
+            )
+
+    record = _provider(EmptyResponse()).fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "SH000001",
+            {
+                "view": "index_zh_a_hist_min_em",
+                "period": period,
+                "start_date": "2026-09-09 09:30:00",
+                "end_date": "2026-09-09 09:45:00",
+            },
+        )
+    )
+
+    assert record.raw_payload == []
+    assert record.response_metadata["upstream_row_count"] == 0
+    assert record.response_metadata["entity_row_count"] == 0
+    assert record.response_metadata["observation_start_datetime"] is None
+    assert record.response_metadata["observation_end_datetime"] is None
+
+
+def test_index_zh_a_hist_min_em_is_raw_evidence_without_canonical_facts():
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "SH000001",
+            {
+                "view": "index_zh_a_hist_min_em",
+                "period": "1",
+                "start_date": "2026-09-09 09:30:00",
+                "end_date": "2026-09-09 09:32:00",
+            },
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="index-zh-a-hist-min-em-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company("SH000001"),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_INDEX_ZH_A_HIST_MIN_EM_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == ["market_history"]
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "Eastmoney index minute-history" in normalized.data_quality.notes
+    assert "recent index intraday bars" in normalized.data_quality.notes
+    assert "canonical listing/entity daily-history" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+def test_index_zh_a_hist_min_em_normalizer_rejects_replayed_scope_mismatches():
+    request = _request(
+        DataCategory.MARKET_HISTORY,
+        "SH000001",
+        {
+            "view": "index_zh_a_hist_min_em",
+            "period": "5",
+            "start_date": "2026-09-09 09:35:00",
+            "end_date": "2026-09-09 09:45:00",
+        },
+    )
+    record = _provider().fetch(request)
+    response_metadata = dict(record.response_metadata)
+    response_metadata["index_zh_a_hist_min_em_start_date"] = (
+        "2026-09-09 09:30:00"
+    )
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=record.raw_payload,
+        source_uri=record.source_uri,
+        response_metadata=response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match="Index minute-history"):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-index-zh-a-hist-min-em-scope",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company("SH000001"),
+        )
+
+
+def test_index_zh_a_hist_min_em_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.MARKET_HISTORY,
+        "SH000001",
+        {
+            "view": "index_zh_a_hist_min_em",
+            "period": "5",
+            "start_date": "2026-09-09 09:35:00",
+            "end_date": "2026-09-09 09:45:00",
+        },
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [
+        (
+            "index_zh_a_hist_min_em",
+            {
+                "symbol": "000001",
+                "period": "5",
+                "start_date": "2026-09-09 09:35:00",
+                "end_date": "2026-09-09 09:45:00",
             },
         )
     ]

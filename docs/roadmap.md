@@ -4048,6 +4048,34 @@ requests, empty output, raw-only normalization, replay metadata tampering and
 offline cache replay. No calculation, gate, pipeline, CLI or input-loader
 contract changes.
 
+### Phase 3.60 — Eastmoney index minute-history raw acquisition contract (COMPLETE)
+
+The mapping review now covers the documented Eastmoney index minute-history
+[`index_zh_a_hist_min_em`](https://akshare.akfamily.xyz/data/index/index.html)
+endpoint under `MARKET_HISTORY` with explicit
+`view=index_zh_a_hist_min_em`, periods `1`, `5`, `15`, `30` and `60`, and
+default datetimes `1979-09-01 09:32:00` through `2222-01-01 09:32:00`. The
+[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/index/index_zh_em.py)
+uses the trends endpoint for one-minute rows and the K-line endpoint for other
+periods, resolves the raw index code through the Eastmoney index-code map with
+market fallbacks, uses no adjustment for one-minute data and front adjustment
+for other periods, applies the inclusive datetime filter and returns the
+period-specific eight- or eleven-field output order. The adapter preserves the
+range, adjustment mode, map/endpoint URLs, fixed/dynamic parameters, wrapper
+filtering and transformation steps, strict timestamp order and replay row
+counts in metadata.
+
+The index minute-history response remains raw evidence only: its recent
+intraday bars, provider adjustment mode and limited history window have no
+listing/entity accounting scope and do not establish the canonical
+daily-history, return, valuation or accounting inputs. The normalizer emits
+`AKSHARE_INDEX_ZH_A_HIST_MIN_EM_RAW_ONLY` and creates no canonical fact. Tests
+cover one-minute and multi-period schemas, default/explicit datetime ranges,
+Shanghai/Shenzhen/Beijing routing, exact schema/order and numeric/timestamp
+boundaries, unsupported listing/parameter requests, empty output, raw-only
+normalization, replay metadata tampering and offline cache replay. No
+calculation, gate, pipeline, CLI or input-loader contract changes.
+
 ### Future structured-provider deliverables
 
 ```text
@@ -4057,7 +4085,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–3.59 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–3.60 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```

@@ -3974,6 +3974,36 @@ return, valuation or accounting fact: the multi-period index series has no
 listing/entity accounting scope. The response remains outside the calculation,
 gate, pipeline, CLI and input-loader contracts.
 
+## Phase 3.60 Eastmoney index minute-history raw slice
+
+The current [AKShare index-data documentation](https://akshare.akfamily.xyz/data/index/index.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/index/index_zh_em.py)
+document `index_zh_a_hist_min_em` as an Eastmoney index intraday-history
+endpoint with periods `1`, `5`, `15`, `30` and `60`, default datetimes
+`1979-09-01 09:32:00` through `2222-01-01 09:32:00`, and a raw index-code
+`symbol` without a market prefix. The adapter selects it only under
+`MARKET_HISTORY` with explicit `view=index_zh_a_hist_min_em`, derives the code
+from supported Shanghai 000xxx, Shenzhen 399xxx or Beijing 899xxx
+index-shaped IDs, and preserves the index-code-map and market-fallback
+resolution.
+
+| Raw upstream item | Phase 3.60 treatment |
+| --- | --- |
+| one-minute `时间`, `开盘`, `收盘`, `最高`, `最低`, `成交量`, `成交额`, `均价` | Required exact eight-field order; `时间` must be a parseable in-range timestamp and numeric fields finite or null. |
+| multi-period `时间`, `开盘`, `收盘`, `最高`, `最低`, `涨跌幅`, `涨跌额`, `成交量`, `成交额`, `振幅`, `换手率` | Required exact eleven-field output order after the official wrapper's field reorder; `时间` must be a parseable in-range timestamp and numeric fields finite or null. |
+| `成交量`, `成交额` | Documented as lots and CNY respectively; no canonical fact mapping is admitted. |
+| request `view=index_zh_a_hist_min_em`, `period`, raw code and datetime bounds | Explicit period/range validation and Shanghai 000xxx/Shenzhen 399xxx/Beijing 899xxx routing; `index_scoped_request=true`, `listing_scoped_request=false`, `date_binding=row_and_request` and requested-range replay scope are recorded. |
+| trends/K-line and index-code-map requests | One-minute trends or other-period K-line endpoint, `fqt=1` for non-one-minute data, map/fallback resolution, inclusive datetime filtering, source URLs, fixed/dynamic parameters and transformations remain replay metadata. |
+
+The provider rejects stock-listing, H-share, unsupported index-shaped IDs,
+missing or unexpected-parameter requests, unsupported periods, malformed or
+reversed datetime ranges, missing/unexpected/reordered fields, invalid or
+out-of-range timestamps and non-finite/non-numeric values. The normalizer emits
+`AKSHARE_INDEX_ZH_A_HIST_MIN_EM_RAW_ONLY` and creates no canonical daily-history,
+return, valuation or accounting fact: recent index intraday bars have no
+listing/entity accounting scope. The response remains outside the calculation,
+gate, pipeline, CLI and input-loader contracts.
+
 ## Phase 2 enforcement rule
 
 For every field not marked `STRUCTURED_AUTO` or `DERIVED_DETERMINISTIC`, a

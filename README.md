@@ -2055,6 +2055,31 @@ requests, empty output, raw-only normalization, replay metadata tampering and
 offline cache replay. No calculation, gate, pipeline, CLI or input-loader
 contract changes.
 
+Phase 3.60 adds the documented Eastmoney index minute-history
+[`index_zh_a_hist_min_em`](https://akshare.akfamily.xyz/data/index/index.html)
+endpoint under `MARKET_HISTORY` with explicit
+`view=index_zh_a_hist_min_em`, periods `1`, `5`, `15`, `30` or `60`, Shanghai
+000xxx, Shenzhen 399xxx or Beijing 899xxx index-shaped listing context and
+inclusive datetime bounds. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/index/index_zh_em.py)
+uses the trends endpoint for one-minute data and the K-line endpoint for other
+periods, resolves the raw code through Eastmoney's index-code map with market
+fallbacks, applies no adjustment for one-minute data and front adjustment for
+other periods, and preserves the period-specific eight- or eleven-field output
+order. The adapter records the range, adjustment mode, map/endpoint URLs,
+fixed/dynamic parameters, wrapper filtering and transformation steps, strict
+timestamp order and replay row counts in metadata.
+
+The index minute-history response is retained as raw evidence only: its recent
+intraday bars, provider adjustment mode and limited history window have no
+listing/entity accounting scope and do not establish the canonical
+daily-history, return, valuation or accounting inputs. The normalizer emits
+`AKSHARE_INDEX_ZH_A_HIST_MIN_EM_RAW_ONLY` and creates no canonical fact. Tests
+cover one-minute and multi-period schemas, default/explicit datetime ranges,
+Shanghai/Shenzhen/Beijing routing, exact schema/order and numeric/timestamp
+boundaries, unsupported listing/parameter requests, empty output, raw-only
+normalization, replay metadata tampering and offline cache replay. No
+calculation, gate, pipeline, CLI or input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

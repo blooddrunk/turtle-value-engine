@@ -44,7 +44,7 @@ Tencent latest-trading-day tick, Sina minute-history, CDR daily-history,
 B-share daily-history, Sina STAR Market daily-history and Sina index daily-history,
 B-share minute-history,
 intraday-history, H-share
-intraday-history, pre-market-history, five-level bid-ask
+intraday-history, index minute-history, pre-market-history, five-level bid-ask
 Xueqiu individual-spot quote, B-share and Dragon-Tiger market-activity
 detail/statistics/institution-statistics/institutional-research/block-trade-detail
 raw slices are also
@@ -125,9 +125,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "166"
+AKSHARE_ADAPTER_VERSION = "168"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "167"
+AKSHARE_MAPPING_VERSION = "169"
 
 
 class ListingMarket(StrEnum):
@@ -222,6 +222,7 @@ _SOURCE_URIS = {
     "stock_zh_index_daily_tx": "https://gu.qq.com/sh000919/zs",
     "stock_zh_index_daily_em": "https://quote.eastmoney.com/center/hszs.html",
     "index_zh_a_hist": "https://quote.eastmoney.com/center/hszs.html",
+    "index_zh_a_hist_min_em": "https://quote.eastmoney.com/center/hszs.html",
     "stock_zh_b_minute": "https://finance.sina.com.cn/realstock/company/sh900901/nc.shtml",
     "stock_zh_a_cdr_daily": (
         "https://finance.sina.com.cn/realstock/company/sh689009/nc.shtml"
@@ -2255,6 +2256,100 @@ _MARKET_HISTORY_INDEX_ZH_A_HIST_CODE_MAP_FIXED_PARAMETERS = {
     "fs": "b:MK0010,m:1+t:1,m:0 t:5,m:1+s:3,m:0+t:5,m:2",
     "fields": "f3,f12,f13",
 }
+
+_MARKET_HISTORY_INDEX_ZH_A_HIST_MIN_EM_ENDPOINT = "index_zh_a_hist_min_em"
+_MARKET_HISTORY_INDEX_ZH_A_HIST_MIN_EM_PARAMETER_NAMES = frozenset(
+    {"view", "period", "start_date", "end_date"}
+)
+_MARKET_HISTORY_INDEX_ZH_A_HIST_MIN_EM_VIEW = "index_zh_a_hist_min_em"
+_MARKET_HISTORY_INDEX_ZH_A_HIST_MIN_EM_PERIODS = frozenset(
+    {"1", "5", "15", "30", "60"}
+)
+_MARKET_HISTORY_INDEX_ZH_A_HIST_MIN_EM_DEFAULT_PERIOD = "1"
+_MARKET_HISTORY_INDEX_ZH_A_HIST_MIN_EM_DEFAULT_START = "1979-09-01 09:32:00"
+_MARKET_HISTORY_INDEX_ZH_A_HIST_MIN_EM_DEFAULT_END = "2222-01-01 09:32:00"
+_MARKET_HISTORY_INDEX_ZH_A_HIST_MIN_EM_FIELDS = {
+    "1": (
+        "时间",
+        "开盘",
+        "收盘",
+        "最高",
+        "最低",
+        "成交量",
+        "成交额",
+        "均价",
+    ),
+    "other": (
+        "时间",
+        "开盘",
+        "收盘",
+        "最高",
+        "最低",
+        "涨跌幅",
+        "涨跌额",
+        "成交量",
+        "成交额",
+        "振幅",
+        "换手率",
+    ),
+}
+_MARKET_HISTORY_INDEX_ZH_A_HIST_MIN_EM_FIELD_SET = {
+    period: frozenset(fields)
+    for period, fields in _MARKET_HISTORY_INDEX_ZH_A_HIST_MIN_EM_FIELDS.items()
+}
+_MARKET_HISTORY_INDEX_ZH_A_HIST_MIN_EM_DATE_FIELDS = ("时间",)
+_MARKET_HISTORY_INDEX_ZH_A_HIST_MIN_EM_NUMERIC_FIELDS = {
+    period: fields[1:]
+    for period, fields in _MARKET_HISTORY_INDEX_ZH_A_HIST_MIN_EM_FIELDS.items()
+}
+_MARKET_HISTORY_INDEX_ZH_A_HIST_MIN_EM_DOCUMENTED_UNITS = {
+    "成交量": "lots",
+    "成交额": "CNY",
+}
+_MARKET_HISTORY_INDEX_ZH_A_HIST_MIN_EM_UNDOCUMENTED_NUMERIC_UNITS = {
+    period: {
+        field: "not_documented"
+        for field in fields[1:]
+        if field not in _MARKET_HISTORY_INDEX_ZH_A_HIST_MIN_EM_DOCUMENTED_UNITS
+    }
+    for period, fields in _MARKET_HISTORY_INDEX_ZH_A_HIST_MIN_EM_FIELDS.items()
+}
+_MARKET_HISTORY_INDEX_ZH_A_HIST_MIN_EM_FIELD_TYPES = {
+    period: {
+        "时间": "datetime",
+        **{field: "number" for field in fields[1:]},
+    }
+    for period, fields in _MARKET_HISTORY_INDEX_ZH_A_HIST_MIN_EM_FIELDS.items()
+}
+_MARKET_HISTORY_INDEX_ZH_A_HIST_MIN_EM_SOURCE_URI = (
+    "https://quote.eastmoney.com/center/hszs.html"
+)
+_MARKET_HISTORY_INDEX_ZH_A_HIST_MIN_EM_TRENDS_URL = (
+    "https://push2his.eastmoney.com/api/qt/stock/trends2/get"
+)
+_MARKET_HISTORY_INDEX_ZH_A_HIST_MIN_EM_KLINE_URL = (
+    "https://push2his.eastmoney.com/api/qt/stock/kline/get"
+)
+_MARKET_HISTORY_INDEX_ZH_A_HIST_MIN_EM_CODE_MAP_URL = (
+    "https://80.push2.eastmoney.com/api/qt/clist/get"
+)
+_MARKET_HISTORY_INDEX_ZH_A_HIST_MIN_EM_TRENDS_FIXED_PARAMETERS = {
+    "fields1": "f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11,f12,f13",
+    "fields2": "f51,f52,f53,f54,f55,f56,f57,f58",
+    "iscr": "0",
+    "ndays": "5",
+}
+_MARKET_HISTORY_INDEX_ZH_A_HIST_MIN_EM_KLINE_FIXED_PARAMETERS = {
+    "ut": "7eea3edcaed734bea9cbfc24409ed989",
+    "fields1": "f1,f2,f3,f4,f5,f6",
+    "fields2": "f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61",
+    "fqt": "1",
+    "beg": "0",
+    "end": "20500000",
+}
+_MARKET_HISTORY_INDEX_ZH_A_HIST_MIN_EM_MARKET_CODE_RESOLUTION = (
+    "index_code_id_map_em_then_market_fallback_1_0_47"
+)
 
 _MARKET_HISTORY_CDR_DAILY_PARAMETER_NAMES = frozenset(
     {"view", "start_date", "end_date"}
@@ -7296,6 +7391,19 @@ class AKShareProvider(StructuredDataProvider):
                 retryable=False,
             )
         if (
+            request.category is DataCategory.MARKET_HISTORY
+            and request.parameters.get("view")
+            == _MARKET_HISTORY_INDEX_ZH_A_HIST_MIN_EM_VIEW
+            and not _is_eastmoney_index_daily_listing(listing)
+        ):
+            raise ProviderRequestError(
+                "the AKShare index minute-history endpoint supports Shanghai "
+                "000xxx, Shenzhen 399xxx or Beijing 899xxx index symbols only",
+                provider=self.identity,
+                request=request,
+                retryable=False,
+            )
+        if (
             request.category is DataCategory.MARKET_ACTIVITY
             and request.parameters.get("view") == _MARKET_ACTIVITY_SINA_NEW_STOCK_VIEW
             and (
@@ -10383,6 +10491,37 @@ class AKShareProvider(StructuredDataProvider):
                         observation_dates=observation_dates,
                     )
                 )
+            elif endpoint.name == _MARKET_HISTORY_INDEX_ZH_A_HIST_MIN_EM_ENDPOINT:
+                start_datetime = _parse_intraday_history_datetime_parameter(
+                    kwargs["start_date"],
+                    name="start_date",
+                    request=request,
+                    label="index minute-history",
+                )
+                end_datetime = _parse_intraday_history_datetime_parameter(
+                    kwargs["end_date"],
+                    name="end_date",
+                    request=request,
+                    label="index minute-history",
+                )
+                observation_times = _validate_index_zh_a_hist_min_em_provider_rows(
+                    rows,
+                    period=kwargs["period"],
+                    start_datetime=start_datetime,
+                    end_datetime=end_datetime,
+                    provider=self.identity,
+                    request=request,
+                )
+                response_metadata.update(
+                    _index_zh_a_hist_min_em_response_metadata(
+                        listing_code=listing.code,
+                        symbol=str(kwargs["symbol"]),
+                        period=str(kwargs["period"]),
+                        start_date=str(kwargs["start_date"]),
+                        end_date=str(kwargs["end_date"]),
+                        observation_times=observation_times,
+                    )
+                )
             elif endpoint.name == "stock_zh_a_cdr_daily":
                 start_date = _parse_cdr_daily_history_date_parameter(
                     kwargs["start_date"],
@@ -12403,6 +12542,10 @@ class AKShareProvider(StructuredDataProvider):
                 request.parameters.get("view")
                 == _MARKET_HISTORY_INDEX_ZH_A_HIST_VIEW
             ),
+            market_history_index_zh_a_hist_min_em_requested=(
+                request.parameters.get("view")
+                == _MARKET_HISTORY_INDEX_ZH_A_HIST_MIN_EM_VIEW
+            ),
             market_history_cdr_daily_requested=(
                 request.parameters.get("view") == _MARKET_HISTORY_CDR_DAILY_VIEW
             ),
@@ -13942,6 +14085,19 @@ class AKShareNormalizer:
                         rows,
                     )
                     normalizer_flags.add("AKSHARE_INDEX_ZH_A_HIST_RAW_ONLY")
+                elif (
+                    endpoint == _MARKET_HISTORY_INDEX_ZH_A_HIST_MIN_EM_ENDPOINT
+                    or record.request.parameters.get("view")
+                    == _MARKET_HISTORY_INDEX_ZH_A_HIST_MIN_EM_VIEW
+                ):
+                    _validate_index_zh_a_hist_min_em_normalizer_scope(
+                        record,
+                        listing,
+                        rows,
+                    )
+                    normalizer_flags.add(
+                        "AKSHARE_INDEX_ZH_A_HIST_MIN_EM_RAW_ONLY"
+                    )
                 elif endpoint == "stock_zh_a_hist_tx":
                     _validate_tencent_daily_history_normalizer_scope(record, listing, rows)
                 elif endpoint == "stock_zh_a_cdr_daily":
@@ -14014,6 +14170,7 @@ class AKShareNormalizer:
                     "stock_zh_index_daily_tx",
                     "stock_zh_index_daily_em",
                     _MARKET_HISTORY_INDEX_ZH_A_HIST_ENDPOINT,
+                    _MARKET_HISTORY_INDEX_ZH_A_HIST_MIN_EM_ENDPOINT,
                     "stock_cyq_em",
                     "stock_intraday_em",
                     "stock_intraday_sina",
@@ -14930,6 +15087,7 @@ class AKShareNormalizer:
                 "AKSHARE_TENCENT_INDEX_DAILY_HISTORY_RAW_ONLY",
                 "AKSHARE_INDEX_DAILY_EM_RAW_ONLY",
                 "AKSHARE_INDEX_ZH_A_HIST_RAW_ONLY",
+                "AKSHARE_INDEX_ZH_A_HIST_MIN_EM_RAW_ONLY",
                 "AKSHARE_INTRADAY_TRADES_RAW_ONLY",
                 "AKSHARE_SINA_INTRADAY_RAW_ONLY",
                 "AKSHARE_INTRADAY_HISTORY_RAW_ONLY",
@@ -16056,6 +16214,14 @@ class AKShareNormalizer:
                 "listing/entity daily-history, return, valuation or accounting "
                 "contract."
             )
+        if "AKSHARE_INDEX_ZH_A_HIST_MIN_EM_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented Eastmoney index minute-history response is retained "
+                "as raw evidence only: its recent index intraday bars, provider "
+                "adjustment mode and limited history window are not reconciled to a "
+                "canonical listing/entity daily-history, return, valuation or "
+                "accounting contract."
+            )
         if "AKSHARE_INTRADAY_TRADES_RAW_ONLY" in normalizer_flags:
             notes += (
                 " The documented A-share Eastmoney intraday-trade response is retained "
@@ -16402,6 +16568,7 @@ def _endpoint_candidates(
     market_history_tencent_index_daily_requested: bool = False,
     market_history_index_daily_em_requested: bool = False,
     market_history_index_zh_a_hist_requested: bool = False,
+    market_history_index_zh_a_hist_min_em_requested: bool = False,
     market_history_cdr_daily_requested: bool = False,
     market_history_b_daily_requested: bool = False,
     market_history_kcb_daily_requested: bool = False,
@@ -16578,6 +16745,10 @@ def _endpoint_candidates(
         if market_history_index_zh_a_hist_requested:
             if _is_eastmoney_index_daily_listing(listing):
                 return (_MARKET_HISTORY_INDEX_ZH_A_HIST_ENDPOINT,)
+            return ()
+        if market_history_index_zh_a_hist_min_em_requested:
+            if _is_eastmoney_index_daily_listing(listing):
+                return (_MARKET_HISTORY_INDEX_ZH_A_HIST_MIN_EM_ENDPOINT,)
             return ()
         if market_history_b_daily_requested:
             if market is ListingMarket.A and (
@@ -25772,6 +25943,257 @@ def _index_zh_a_hist_response_metadata(
     }
 
 
+def _index_zh_a_hist_min_em_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    period: object,
+    start_datetime: datetime,
+    end_datetime: datetime,
+) -> tuple[str | None, list[datetime]]:
+    """Return strict-schema errors for Eastmoney index minute-history rows."""
+
+    if (
+        not isinstance(period, str)
+        or period not in _MARKET_HISTORY_INDEX_ZH_A_HIST_MIN_EM_PERIODS
+    ):
+        return "index minute-history period is not supported", []
+    field_group = "1" if period == "1" else "other"
+    expected_fields = _MARKET_HISTORY_INDEX_ZH_A_HIST_MIN_EM_FIELDS[field_group]
+    expected_field_set = _MARKET_HISTORY_INDEX_ZH_A_HIST_MIN_EM_FIELD_SET[field_group]
+    numeric_fields = _MARKET_HISTORY_INDEX_ZH_A_HIST_MIN_EM_NUMERIC_FIELDS[field_group]
+    observation_times: list[datetime] = []
+    previous_time: datetime | None = None
+    for index, row in enumerate(rows):
+        missing = [field for field in expected_fields if field not in row]
+        unexpected = [field for field in row if field not in expected_field_set]
+        if missing:
+            return (
+                f"index minute-history row {index} is missing field(s): "
+                + ", ".join(missing),
+                [],
+            )
+        if unexpected:
+            return (
+                f"index minute-history row {index} contains unsupported field(s): "
+                + ", ".join(unexpected),
+                [],
+            )
+        if tuple(row) != expected_fields:
+            return (
+                "index minute-history rows must preserve the documented field order",
+                [],
+            )
+
+        observation_time = _intraday_history_timestamp(row["时间"])
+        if observation_time is None:
+            return f"index minute-history row {index} has an invalid 时间", []
+        if not start_datetime <= observation_time <= end_datetime:
+            return (
+                f"index minute-history row {index} 时间 "
+                f"{observation_time.isoformat(sep=' ')!r} is outside requested range "
+                f"{start_datetime.isoformat(sep=' ')!r}.."
+                f"{end_datetime.isoformat(sep=' ')!r}",
+                [],
+            )
+        if previous_time is not None and observation_time <= previous_time:
+            if observation_time == previous_time:
+                return (
+                    "index minute-history response has duplicate 时间 "
+                    f"{observation_time.isoformat(sep=' ')!r}",
+                    [],
+                )
+            return (
+                "index minute-history response 时间 values must be strictly ascending",
+                [],
+            )
+        previous_time = observation_time
+        observation_times.append(observation_time)
+
+        for field in numeric_fields:
+            value = row[field]
+            if value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, Real):
+                return (
+                    f"index minute-history row {index} field {field!r} must be "
+                    "numeric or null",
+                    [],
+                )
+            try:
+                numeric = float(value)
+            except (OverflowError, TypeError, ValueError):
+                return (
+                    f"index minute-history row {index} field {field!r} must be "
+                    "numeric or null",
+                    [],
+                )
+            if not math.isfinite(numeric):
+                return (
+                    f"index minute-history row {index} field {field!r} must be "
+                    "finite or null",
+                    [],
+                )
+    return None, observation_times
+
+
+def _validate_index_zh_a_hist_min_em_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    period: object,
+    start_datetime: datetime,
+    end_datetime: datetime,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> list[datetime]:
+    message, observation_times = _index_zh_a_hist_min_em_validation_message(
+        rows,
+        period=period,
+        start_datetime=start_datetime,
+        end_datetime=end_datetime,
+    )
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message}",
+            provider=provider,
+            request=request,
+        )
+    return observation_times
+
+
+def _index_zh_a_hist_min_em_response_metadata(
+    *,
+    listing_code: str,
+    symbol: str,
+    period: str,
+    start_date: str,
+    end_date: str,
+    observation_times: Sequence[datetime],
+) -> dict[str, JSONValue]:
+    """Build the replay contract for one Eastmoney index intraday snapshot."""
+
+    field_group = "1" if period == "1" else "other"
+    fields = _MARKET_HISTORY_INDEX_ZH_A_HIST_MIN_EM_FIELDS[field_group]
+    numeric_fields = _MARKET_HISTORY_INDEX_ZH_A_HIST_MIN_EM_NUMERIC_FIELDS[field_group]
+    upstream_url = (
+        _MARKET_HISTORY_INDEX_ZH_A_HIST_MIN_EM_TRENDS_URL
+        if period == "1"
+        else _MARKET_HISTORY_INDEX_ZH_A_HIST_MIN_EM_KLINE_URL
+    )
+    upstream_fixed_parameters = (
+        _MARKET_HISTORY_INDEX_ZH_A_HIST_MIN_EM_TRENDS_FIXED_PARAMETERS
+        if period == "1"
+        else _MARKET_HISTORY_INDEX_ZH_A_HIST_MIN_EM_KLINE_FIXED_PARAMETERS
+    )
+    upstream_parameters = (
+        ["secid", "fields1", "fields2", "iscr", "ndays"]
+        if period == "1"
+        else ["secid", "ut", "fields1", "fields2", "klt", "fqt", "beg", "end"]
+    )
+    upstream_dynamic_parameters: dict[str, JSONValue] = {
+        "symbol": symbol,
+        "period": period,
+    }
+    if period != "1":
+        upstream_dynamic_parameters["klt"] = period
+    transformations = [
+        "index_code_id_map",
+        "market_code_fallback",
+        "split_trend_rows" if period == "1" else "split_kline_rows",
+        "inclusive_datetime_filter",
+        "numeric_conversion",
+        "stringify_time",
+    ]
+    if period != "1":
+        transformations.append("provider_field_reorder")
+    return {
+        "endpoint": _MARKET_HISTORY_INDEX_ZH_A_HIST_MIN_EM_ENDPOINT,
+        "market": ListingMarket.A.value,
+        "listing_code": listing_code,
+        "market_history_view": _MARKET_HISTORY_INDEX_ZH_A_HIST_MIN_EM_VIEW,
+        "upstream_symbol": symbol,
+        "upstream_period": period,
+        "market_scope": "requested_a_share_index",
+        "index_scoped_request": True,
+        "listing_scoped_request": False,
+        "row_filtering": "upstream_and_wrapper",
+        "snapshot_scope": "requested_index_intraday_range",
+        "date_binding": "row_and_request",
+        "range_filtering": "wrapper_and_provider_validation",
+        "index_zh_a_hist_min_em_start_date": start_date,
+        "index_zh_a_hist_min_em_end_date": end_date,
+        "adjustment_kind": "unadjusted" if period == "1" else "front_adjusted",
+        "observation_time_field": "时间",
+        "time_ordering": "strictly_ascending",
+        "field_count": len(fields),
+        "source_field_order": list(fields),
+        "date_fields": list(_MARKET_HISTORY_INDEX_ZH_A_HIST_MIN_EM_DATE_FIELDS),
+        "value_fields": list(numeric_fields),
+        "required_numeric_fields": list(numeric_fields),
+        "documented_units": {
+            field: unit
+            for field, unit in _MARKET_HISTORY_INDEX_ZH_A_HIST_MIN_EM_DOCUMENTED_UNITS.items()
+            if field in numeric_fields
+        },
+        "undocumented_numeric_units": dict(
+            _MARKET_HISTORY_INDEX_ZH_A_HIST_MIN_EM_UNDOCUMENTED_NUMERIC_UNITS[
+                field_group
+            ]
+        ),
+        "field_types": dict(
+            _MARKET_HISTORY_INDEX_ZH_A_HIST_MIN_EM_FIELD_TYPES[field_group]
+        ),
+        "upstream_url": upstream_url,
+        "upstream_urls": [
+            upstream_url,
+            _MARKET_HISTORY_INDEX_ZH_A_HIST_MIN_EM_CODE_MAP_URL,
+        ],
+        "upstream_auxiliary_urls": [
+            _MARKET_HISTORY_INDEX_ZH_A_HIST_MIN_EM_CODE_MAP_URL,
+        ],
+        "upstream_auxiliary_roles": ["index_code_id_map"],
+        "upstream_protocol": "JSON",
+        "upstream_parameters": upstream_parameters,
+        "upstream_dynamic_parameters": upstream_dynamic_parameters,
+        "upstream_fixed_parameters": dict(upstream_fixed_parameters),
+        "upstream_auxiliary_parameters": [
+            "pn",
+            "pz",
+            "po",
+            "np",
+            "ut",
+            "fltt",
+            "invt",
+            "fid",
+            "fs",
+            "fields",
+        ],
+        "upstream_auxiliary_fixed_parameters": dict(
+            _MARKET_HISTORY_INDEX_ZH_A_HIST_CODE_MAP_FIXED_PARAMETERS
+        ),
+        "upstream_market_code_resolution": (
+            _MARKET_HISTORY_INDEX_ZH_A_HIST_MIN_EM_MARKET_CODE_RESOLUTION
+        ),
+        "upstream_authentication": "none",
+        "wrapper_source_page_uri": _MARKET_HISTORY_INDEX_ZH_A_HIST_MIN_EM_SOURCE_URI,
+        "wrapper_date_filtering": "inclusive_datetime_slice_after_recent_response",
+        "wrapper_decoders": ["response.json"],
+        "wrapper_transformations": transformations,
+        "wrapper_source_column_count": len(fields),
+        "wrapper_dropped_fields": [],
+        "upstream_page_size": 100,
+        "pagination": "paginated_index_code_map_then_single_recent_intraday_response",
+        "upstream_row_count": len(observation_times),
+        "entity_row_count": len(observation_times),
+        "entity_rows_selected": True,
+        "observation_start_datetime": (
+            min(observation_times).isoformat() if observation_times else None
+        ),
+        "observation_end_datetime": (
+            max(observation_times).isoformat() if observation_times else None
+        ),
+    }
+
+
 def _tencent_tick_time(value: object) -> time | None:
     if not isinstance(value, str) or not re.fullmatch(r"\d{2}:\d{2}:\d{2}", value):
         return None
@@ -26486,6 +26908,71 @@ def _validate_index_zh_a_hist_normalizer_scope(
         if record.response_metadata.get(name) != expected:
             raise ProviderNormalizationError(
                 f"Generic index-history response metadata {name!r} does not "
+                "match the requested replay scope"
+            )
+
+
+def _validate_index_zh_a_hist_min_em_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> None:
+    """Validate an Eastmoney index intraday-history replay scope."""
+
+    if not _is_eastmoney_index_daily_listing(listing):
+        raise ProviderNormalizationError(
+            "AKShare index minute-history raw slice supports Shanghai 000xxx, "
+            "Shenzhen 399xxx or Beijing 899xxx index symbols only"
+        )
+    if record.source_uri != _MARKET_HISTORY_INDEX_ZH_A_HIST_MIN_EM_SOURCE_URI:
+        raise ProviderNormalizationError(
+            "AKShare index minute-history record has an unexpected source URI"
+        )
+    if record.response_metadata.get("endpoint") != (
+        _MARKET_HISTORY_INDEX_ZH_A_HIST_MIN_EM_ENDPOINT
+    ):
+        raise ProviderNormalizationError(
+            "AKShare index minute-history record must come from "
+            f"{_MARKET_HISTORY_INDEX_ZH_A_HIST_MIN_EM_ENDPOINT}"
+        )
+    try:
+        upstream_kwargs = _index_zh_a_hist_min_em_kwargs(listing, record.request)
+        start_datetime = _parse_intraday_history_datetime_parameter(
+            upstream_kwargs["start_date"],
+            name="start_date",
+            request=record.request,
+            label="index minute-history",
+        )
+        end_datetime = _parse_intraday_history_datetime_parameter(
+            upstream_kwargs["end_date"],
+            name="end_date",
+            request=record.request,
+            label="index minute-history",
+        )
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+
+    message, observation_times = _index_zh_a_hist_min_em_validation_message(
+        rows,
+        period=upstream_kwargs["period"],
+        start_datetime=start_datetime,
+        end_datetime=end_datetime,
+    )
+    if message is not None:
+        raise ProviderNormalizationError(message)
+
+    expected_metadata = _index_zh_a_hist_min_em_response_metadata(
+        listing_code=listing.code,
+        symbol=str(upstream_kwargs["symbol"]),
+        period=str(upstream_kwargs["period"]),
+        start_date=str(upstream_kwargs["start_date"]),
+        end_date=str(upstream_kwargs["end_date"]),
+        observation_times=observation_times,
+    )
+    for name, expected in expected_metadata.items():
+        if record.response_metadata.get(name) != expected:
+            raise ProviderNormalizationError(
+                f"Index minute-history response metadata {name!r} does not "
                 "match the requested replay scope"
             )
 
@@ -53924,6 +54411,8 @@ def _history_kwargs(
         return _index_daily_em_history_kwargs(listing, request)
     if endpoint_name == _MARKET_HISTORY_INDEX_ZH_A_HIST_ENDPOINT:
         return _index_zh_a_hist_kwargs(listing, request)
+    if endpoint_name == _MARKET_HISTORY_INDEX_ZH_A_HIST_MIN_EM_ENDPOINT:
+        return _index_zh_a_hist_min_em_kwargs(listing, request)
     if endpoint_name == "stock_zh_a_cdr_daily":
         return _cdr_daily_history_kwargs(listing, request)
     if endpoint_name == "stock_zh_a_minute":
@@ -54405,6 +54894,87 @@ def _index_zh_a_hist_kwargs(
         "period": period,
         "start_date": start_date.strftime("%Y%m%d"),
         "end_date": end_date.strftime("%Y%m%d"),
+    }
+
+
+def _index_zh_a_hist_min_em_kwargs(
+    listing: _ListingRef,
+    request: ProviderRequest,
+) -> dict[str, object]:
+    """Build the documented Eastmoney index intraday-history request."""
+
+    if not _is_eastmoney_index_daily_listing(listing):
+        raise ProviderRequestError(
+            "the AKShare index minute-history endpoint supports Shanghai 000xxx, "
+            "Shenzhen 399xxx or Beijing 899xxx index symbols only",
+            request=request,
+            retryable=False,
+        )
+    parameters = dict(request.parameters)
+    unknown = sorted(
+        set(parameters) - _MARKET_HISTORY_INDEX_ZH_A_HIST_MIN_EM_PARAMETER_NAMES
+    )
+    if unknown:
+        raise ProviderRequestError(
+            "unsupported AKShare index minute-history parameter(s): "
+            + ", ".join(unknown),
+            request=request,
+            retryable=False,
+        )
+    if parameters.get("view") != _MARKET_HISTORY_INDEX_ZH_A_HIST_MIN_EM_VIEW:
+        raise ProviderRequestError(
+            "the AKShare index minute-history endpoint requires "
+            f"view={_MARKET_HISTORY_INDEX_ZH_A_HIST_MIN_EM_VIEW!r}",
+            request=request,
+            retryable=False,
+        )
+
+    period = parameters.get(
+        "period",
+        _MARKET_HISTORY_INDEX_ZH_A_HIST_MIN_EM_DEFAULT_PERIOD,
+    )
+    if (
+        not isinstance(period, str)
+        or period not in _MARKET_HISTORY_INDEX_ZH_A_HIST_MIN_EM_PERIODS
+    ):
+        choices = ", ".join(
+            sorted(_MARKET_HISTORY_INDEX_ZH_A_HIST_MIN_EM_PERIODS, key=int)
+        )
+        raise ProviderRequestError(
+            "AKShare index minute-history period must be one of: " + choices,
+            request=request,
+            retryable=False,
+        )
+
+    start_datetime = _parse_intraday_history_datetime_parameter(
+        parameters.get(
+            "start_date",
+            _MARKET_HISTORY_INDEX_ZH_A_HIST_MIN_EM_DEFAULT_START,
+        ),
+        name="start_date",
+        request=request,
+        label="index minute-history",
+    )
+    end_datetime = _parse_intraday_history_datetime_parameter(
+        parameters.get(
+            "end_date",
+            _MARKET_HISTORY_INDEX_ZH_A_HIST_MIN_EM_DEFAULT_END,
+        ),
+        name="end_date",
+        request=request,
+        label="index minute-history",
+    )
+    if start_datetime > end_datetime:
+        raise ProviderRequestError(
+            "AKShare index minute-history start_date must not be after end_date",
+            request=request,
+            retryable=False,
+        )
+    return {
+        "symbol": listing.code,
+        "period": period,
+        "start_date": start_datetime.strftime("%Y-%m-%d %H:%M:%S"),
+        "end_date": end_datetime.strftime("%Y-%m-%d %H:%M:%S"),
     }
 
 
