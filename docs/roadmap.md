@@ -4331,6 +4331,36 @@ row limit, empty output, raw-only normalization, replay metadata/payload
 tampering and offline cache replay. No calculation, gate, pipeline, CLI or
 input-loader contract changes.
 
+### Phase 3.71 — Sina index latest-constituent raw acquisition contract (COMPLETE)
+
+The mapping review now covers the next documented Sina index endpoint
+[`index_stock_cons`](https://akshare.akfamily.xyz/data/index/index.html) under
+`MARKET_ACTIVITY`. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/index/index_cons.py)
+selects the requested index code, decodes GB2312 HTML, parses the provider's
+page count and requests each component page. The adapter exposes explicit
+`view=index_stock_cons`, accepts only Shanghai `000xxx` or Shenzhen `399xxx`
+index-shaped A-share listing context, derives `symbol` from the listing code
+and preserves the exact three-field output order: `品种代码`, `品种名称`,
+`纳入日期`.
+
+Provider validation is strict: constituent codes must be six-digit strings,
+names must be non-empty strings, and inclusion dates must be valid dates or
+null. The AKShare documentation warns that source rows may be duplicated or
+missing, so duplicate rows are preserved, missing membership rows are not
+imputed, and positional row identity is recorded in replay metadata. The
+metadata also records the two HTML page URL forms, `page`/`indexid` parameters,
+GB2312/BeautifulSoup/read-html decoding, first-three-column selection,
+zero-filling/date conversion and provider-reported page-count pagination.
+
+The normalizer emits `AKSHARE_INDEX_STOCK_CONS_RAW_ONLY`, retains the response
+as evidence and creates no canonical quote, return, governance, valuation or
+accounting fact because index membership has no listing/entity accounting
+scope. Focused tests cover index routing, strict parameter rejection, exact
+schema/order/type validation, nullable dates, documented duplicate
+preservation, empty output, raw-only normalization, replay metadata/payload
+tampering and offline cache replay. No calculation, gate, pipeline, CLI or
+input-loader contract changes.
+
 ### Future structured-provider deliverables
 
 ```text
@@ -4340,7 +4370,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–3.69 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–3.71 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```

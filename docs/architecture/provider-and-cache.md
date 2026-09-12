@@ -3341,6 +3341,35 @@ documented row limit, empty output, raw-only normalization, replay
 metadata/payload tampering and offline cache replay. No calculation, gate,
 pipeline, CLI or input-loader contract changes.
 
+The Sina latest-index-constituent slice is also acquisition-only. The current
+[AKShare index-data documentation](https://akshare.akfamily.xyz/data/index/index.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/index/index_cons.py)
+document `index_stock_cons` as a code-selected latest constituent endpoint. The
+adapter exposes it under `MARKET_ACTIVITY` with explicit
+`view=index_stock_cons`, accepts only Shanghai `000xxx` or Shenzhen `399xxx`
+index-shaped A-share listing context, derives the upstream `symbol` from the
+listing code and retains the complete response without constituent filtering.
+
+The wrapper decodes GB2312 HTML, parses the provider-reported page count and
+returns the exact three fields `品种代码`, `品种名称` and `纳入日期` in source
+order. Constituent codes must be six-digit strings, names must be non-empty
+strings and inclusion dates must be valid dates or null. Because the upstream
+documentation warns that rows may be duplicated or missing, the adapter
+preserves duplicate rows and does not impute missing membership data; it
+records positional row identity rather than deduplicating or filling rows.
+Replay metadata records both HTML
+page URL forms, `page`/`indexid` parameters, GB2312/BeautifulSoup/read-html
+decoders, positional mapping, date/code transformations and provider page-count
+pagination.
+
+The latest constituent response has no listing/entity accounting scope. The
+normalizer emits `AKSHARE_INDEX_STOCK_CONS_RAW_ONLY` and creates no canonical
+quote, return, governance, valuation or accounting fact. Tests cover strict
+index routing, exact response schema/order/type boundaries, nullable dates,
+documented duplicate preservation, empty output, raw-only normalization,
+replay metadata/payload tampering and offline cache replay. No calculation,
+gate, pipeline, CLI or input-loader contract changes.
+
 The B-share quote slice is also acquisition-only. The current [AKShare
 stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
 and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hist_em.py)

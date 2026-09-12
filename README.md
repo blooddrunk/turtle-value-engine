@@ -2294,6 +2294,25 @@ empty output, raw-only normalization, replay metadata/payload tampering and
 offline cache replay. No calculation, gate, pipeline, CLI or input-loader
 contract changes.
 
+Phase 3.71 adds the next documented Sina index endpoint
+[`index_stock_cons`](https://akshare.akfamily.xyz/data/index/index.html) under
+`MARKET_ACTIVITY`. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/index/index_cons.py)
+resolves the requested Shanghai `000xxx` or Shenzhen `399xxx` index listing
+code, decodes GB2312 HTML, follows the provider-reported page count and
+preserves the exact three-field `品种代码`, `品种名称`, `纳入日期` order. The
+adapter derives the upstream `symbol` from the listing-shaped entity ID,
+preserves provider-reported duplicate rows and does not impute missing
+membership rows; inclusion dates may be valid dates or null.
+
+The latest-index constituent response is retained as raw evidence only: index
+membership does not establish a listing-level quote, issuer cash flow,
+shareholder return, governance, valuation or canonical market metric. The
+normalizer emits `AKSHARE_INDEX_STOCK_CONS_RAW_ONLY` and creates no canonical
+fact. Tests cover index routing, strict parameters and exact schema/order/type
+boundaries, nullable dates, duplicate preservation, empty output, raw-only
+normalization, replay metadata/payload tampering and offline cache replay. No
+calculation, gate, pipeline, CLI or input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

@@ -77,8 +77,8 @@ history and Legu market-activity/congestion/equity-bond-spread/Buffett-index/
 A-share PE/PB-history, index-PE/index-PB, market-PE/market-PB, A-share Eastmoney
 growth-comparison, DuPont-comparison and company-scale comparison, A/H
 Eastmoney valuation-comparison and A/H Baidu valuation-history snapshots are
-also available. The Eastmoney generic index-history raw slice is also
-available.
+also available. The Eastmoney generic index-history and Sina index-constituent
+raw slices are also available.
 The A-share Eastmoney top-ten, top-ten-tradable-shareholder and
 top-ten-tradable-shareholder-detail raw slices are also available.
 The A-share Eastmoney institutional-research statistics and detail raw slices
@@ -129,9 +129,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "187"
+AKSHARE_ADAPTER_VERSION = "188"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "188"
+AKSHARE_MAPPING_VERSION = "189"
 
 
 class ListingMarket(StrEnum):
@@ -232,6 +232,10 @@ _SOURCE_URIS = {
     "stock_zh_index_daily_em": "https://quote.eastmoney.com/center/hszs.html",
     "index_global_hist_em": "https://quote.eastmoney.com/gb/zsUDI.html",
     "index_global_hist_sina": "https://finance.sina.com.cn/stock/globalindex/quotes/UKX",
+    "index_stock_cons": (
+        "http://vip.stock.finance.sina.com.cn/corp/view/"
+        "vII_NewestComponent.php?page=1&indexid=399639"
+    ),
     "stock_hk_index_daily_sina": "https://stock.finance.sina.com.cn/hkstock/quotes/CES100.html",
     "stock_hk_index_daily_em": "https://quote.eastmoney.com/gb/zsHSTECF2L.html",
     "index_us_stock_sina": "https://stock.finance.sina.com.cn/usstock/quotes/.IXIC.html",
@@ -3757,6 +3761,65 @@ _CAPITAL_FLOW_HSGT_SUMMARY_IDENTITY_FIELDS = (
     "资金方向",
 )
 _MARKET_ACTIVITY_PARAMETER_NAMES = frozenset({"start_date", "end_date"})
+_MARKET_ACTIVITY_INDEX_STOCK_CONS_ENDPOINT = "index_stock_cons"
+_MARKET_ACTIVITY_INDEX_STOCK_CONS_PARAMETER_NAMES = frozenset({"view"})
+_MARKET_ACTIVITY_INDEX_STOCK_CONS_VIEW = "index_stock_cons"
+_MARKET_ACTIVITY_INDEX_STOCK_CONS_FIELDS = (
+    "品种代码",
+    "品种名称",
+    "纳入日期",
+)
+_MARKET_ACTIVITY_INDEX_STOCK_CONS_FIELD_SET = frozenset(
+    _MARKET_ACTIVITY_INDEX_STOCK_CONS_FIELDS
+)
+_MARKET_ACTIVITY_INDEX_STOCK_CONS_DATE_FIELDS = ("纳入日期",)
+_MARKET_ACTIVITY_INDEX_STOCK_CONS_TEXT_FIELDS = ("品种代码", "品种名称")
+_MARKET_ACTIVITY_INDEX_STOCK_CONS_REQUIRED_TEXT_FIELDS = (
+    *_MARKET_ACTIVITY_INDEX_STOCK_CONS_TEXT_FIELDS,
+)
+_MARKET_ACTIVITY_INDEX_STOCK_CONS_NULLABLE_FIELDS = ("纳入日期",)
+_MARKET_ACTIVITY_INDEX_STOCK_CONS_FIELD_TYPES = {
+    "品种代码": "string",
+    "品种名称": "string",
+    "纳入日期": "date",
+}
+_MARKET_ACTIVITY_INDEX_STOCK_CONS_DOCUMENTED_UNITS: dict[str, str] = {}
+_MARKET_ACTIVITY_INDEX_STOCK_CONS_UNDOCUMENTED_NUMERIC_UNITS: dict[str, str] = {}
+_MARKET_ACTIVITY_INDEX_STOCK_CONS_SOURCE_URI = (
+    "http://vip.stock.finance.sina.com.cn/corp/view/"
+    "vII_NewestComponent.php?page=1&indexid=399639"
+)
+_MARKET_ACTIVITY_INDEX_STOCK_CONS_UPSTREAM_URL = (
+    "https://vip.stock.finance.sina.com.cn/corp/go.php/"
+    "vII_NewestComponent/indexid/{symbol}.phtml"
+)
+_MARKET_ACTIVITY_INDEX_STOCK_CONS_UPSTREAM_PAGE_URL = (
+    "https://vip.stock.finance.sina.com.cn/corp/view/vII_NewestComponent.php"
+)
+_MARKET_ACTIVITY_INDEX_STOCK_CONS_UPSTREAM_PARAMETERS = ("page", "indexid")
+_MARKET_ACTIVITY_INDEX_STOCK_CONS_UPSTREAM_FIXED_PARAMETERS: dict[str, str] = {}
+_MARKET_ACTIVITY_INDEX_STOCK_CONS_UPSTREAM_DYNAMIC_PARAMETERS = {
+    "indexid": "listing_code",
+    "page": "1..provider_reported_page_count",
+}
+_MARKET_ACTIVITY_INDEX_STOCK_CONS_WRAPPER_DECODERS = (
+    "response.content.decode('gb2312')",
+    "BeautifulSoup",
+    "pandas.read_html",
+)
+_MARKET_ACTIVITY_INDEX_STOCK_CONS_WRAPPER_TRANSFORMATIONS = {
+    "pagination": "parse_html_page_count_and_request_each_page",
+    "品种代码": "astype(str).str.zfill(6)",
+    "纳入日期": "pd.to_datetime(errors='coerce').dt.date",
+    "wrapper_columns": "select_first_three_columns_and_assign_documented_order",
+}
+_MARKET_ACTIVITY_INDEX_STOCK_CONS_WRAPPER_SOURCE_COLUMN_COUNT = 3
+_MARKET_ACTIVITY_INDEX_STOCK_CONS_WRAPPER_COLUMN_MAPPING = {
+    "品种代码": 0,
+    "品种名称": 1,
+    "纳入日期": 2,
+}
+_MARKET_ACTIVITY_INDEX_STOCK_CONS_WRAPPER_DROPPED_FIELDS: tuple[str, ...] = ()
 _MARKET_ACTIVITY_HSGT_BOARD_RANK_ENDPOINT = "stock_hsgt_board_rank_em"
 _MARKET_ACTIVITY_HSGT_BOARD_RANK_PARAMETER_NAMES = frozenset(
     {"view", "symbol", "indicator"}
@@ -8513,6 +8576,19 @@ class AKShareProvider(StructuredDataProvider):
                 retryable=False,
             )
         if (
+            request.category is DataCategory.MARKET_ACTIVITY
+            and request.parameters.get("view")
+            == _MARKET_ACTIVITY_INDEX_STOCK_CONS_VIEW
+            and not _is_sina_index_constituent_listing(listing)
+        ):
+            raise ProviderRequestError(
+                "the AKShare Sina index-constituent endpoint supports Shanghai "
+                "000xxx or Shenzhen 399xxx index listings only",
+                provider=self.identity,
+                request=request,
+                retryable=False,
+            )
+        if (
             request.category is DataCategory.MARKET_HISTORY
             and request.parameters.get("view")
             in (
@@ -9653,7 +9729,22 @@ class AKShareProvider(StructuredDataProvider):
                     response_metadata["observation_end_date"] = max(observation_dates).isoformat()
         elif request.category is DataCategory.MARKET_ACTIVITY:
             rows = _table_rows(payload, provider=self.identity, request=request)
-            if endpoint.name == _MARKET_ACTIVITY_HSGT_BOARD_RANK_ENDPOINT:
+            if endpoint.name == _MARKET_ACTIVITY_INDEX_STOCK_CONS_ENDPOINT:
+                inclusion_dates = _validate_market_activity_index_stock_cons_provider_rows(
+                    rows,
+                    symbol=str(kwargs["symbol"]),
+                    provider=self.identity,
+                    request=request,
+                )
+                response_metadata.update(
+                    _market_activity_index_stock_cons_response_metadata(
+                        listing_code=listing.code,
+                        symbol=str(kwargs["symbol"]),
+                        rows=rows,
+                        inclusion_dates=inclusion_dates,
+                    )
+                )
+            elif endpoint.name == _MARKET_ACTIVITY_HSGT_BOARD_RANK_ENDPOINT:
                 symbol = kwargs["symbol"]
                 indicator = kwargs["indicator"]
                 report_dates, rank_order, board_order = (
@@ -13541,6 +13632,10 @@ class AKShareProvider(StructuredDataProvider):
                 request.parameters.get("view")
                 == _MARKET_ACTIVITY_HSGT_BOARD_RANK_VIEW
             ),
+            market_activity_index_stock_cons_requested=(
+                request.parameters.get("view")
+                == _MARKET_ACTIVITY_INDEX_STOCK_CONS_VIEW
+            ),
             market_activity_participation_desire_requested=(
                 request.parameters.get("view")
                 == _MARKET_ACTIVITY_PARTICIPATION_DESIRE_VIEW
@@ -14299,6 +14394,10 @@ class AKShareNormalizer:
                     record.request.parameters.get("view")
                     == _MARKET_ACTIVITY_HSGT_BOARD_RANK_VIEW
                 )
+                is_index_stock_cons = (
+                    record.request.parameters.get("view")
+                    == _MARKET_ACTIVITY_INDEX_STOCK_CONS_VIEW
+                )
                 if listing.market is not ListingMarket.A and not (
                     listing.market is ListingMarket.H
                     and (
@@ -14317,7 +14416,26 @@ class AKShareNormalizer:
                     == _MARKET_ACTIVITY_HOT_RANK_DETAIL_VIEW
                 )
                 endpoint_name = record.response_metadata.get("endpoint")
-                if is_hsgt_board_rank:
+                if is_index_stock_cons or (
+                    endpoint_name == _MARKET_ACTIVITY_INDEX_STOCK_CONS_ENDPOINT
+                ):
+                    if (
+                        not is_index_stock_cons
+                        or endpoint_name != _MARKET_ACTIVITY_INDEX_STOCK_CONS_ENDPOINT
+                    ):
+                        raise ProviderNormalizationError(
+                            "AKShare Sina index-constituent record has an inconsistent "
+                            "request view or endpoint"
+                        )
+                    _validate_market_activity_index_stock_cons_normalizer_scope(
+                        record,
+                        listing,
+                        rows,
+                    )
+                    normalizer_flags.add(
+                        "AKSHARE_INDEX_STOCK_CONS_RAW_ONLY"
+                    )
+                elif is_hsgt_board_rank:
                     if endpoint_name != _MARKET_ACTIVITY_HSGT_BOARD_RANK_ENDPOINT:
                         raise ProviderNormalizationError(
                             "AKShare HSGT board-rank record must come from "
@@ -17294,6 +17412,13 @@ class AKShareNormalizer:
                 "leader context do not establish a listing-level quote, issuer cash flow, "
                 "shareholder return, governance, valuation or a canonical market metric."
             )
+        if "AKSHARE_INDEX_STOCK_CONS_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented Sina index-constituent response is retained as raw "
+                "evidence only: its latest constituent membership and inclusion dates "
+                "do not establish a listing-level quote, issuer cash flow, shareholder "
+                "return, governance, valuation or a canonical market metric."
+            )
         if "AKSHARE_SZSE_SECTOR_SUMMARY_RAW_ONLY" in normalizer_flags:
             notes += (
                 " The documented SZSE sector-summary response is retained as raw evidence "
@@ -17978,6 +18103,12 @@ def _is_sina_index_daily_listing(listing: _ListingRef) -> bool:
     )
 
 
+def _is_sina_index_constituent_listing(listing: _ListingRef) -> bool:
+    """Return whether a listing-shaped ID names a Sina component index."""
+
+    return _is_sina_index_daily_listing(listing)
+
+
 def _is_eastmoney_index_daily_listing(listing: _ListingRef) -> bool:
     """Return whether a listing-shaped ID names a supported Eastmoney index."""
 
@@ -18044,6 +18175,7 @@ def _endpoint_candidates(
     insider_management_detail_requested: bool = False,
     market_activity_statistic_requested: bool = False,
     market_activity_hsgt_board_rank_requested: bool = False,
+    market_activity_index_stock_cons_requested: bool = False,
     market_activity_institution_statistic_requested: bool = False,
     market_activity_legu_requested: bool = False,
     market_activity_congestion_requested: bool = False,
@@ -18398,6 +18530,10 @@ def _endpoint_candidates(
             return ("stock_hk_hist_min_em",)
         return ("stock_hk_daily", "stock_zh_ah_daily")
     if category is DataCategory.MARKET_ACTIVITY:
+        if market_activity_index_stock_cons_requested:
+            if _is_sina_index_constituent_listing(listing):
+                return (_MARKET_ACTIVITY_INDEX_STOCK_CONS_ENDPOINT,)
+            return ()
         if market_activity_hsgt_board_rank_requested:
             if market is ListingMarket.A:
                 return (_MARKET_ACTIVITY_HSGT_BOARD_RANK_ENDPOINT,)
@@ -33288,6 +33424,232 @@ def _validate_market_activity_provider_rows(
     return dates
 
 
+def _market_activity_index_stock_cons_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    symbol: str,
+) -> tuple[str | None, list[date | None]]:
+    """Return strict-schema errors and inclusion dates for index constituents."""
+
+    if not isinstance(symbol, str) or re.fullmatch(r"\d{6}", symbol) is None:
+        return "Sina index-constituent symbol must be a six-digit string", []
+
+    inclusion_dates: list[date | None] = []
+    for index, row in enumerate(rows):
+        missing = [
+            field
+            for field in _MARKET_ACTIVITY_INDEX_STOCK_CONS_FIELDS
+            if field not in row
+        ]
+        unexpected = [
+            field
+            for field in row
+            if field not in _MARKET_ACTIVITY_INDEX_STOCK_CONS_FIELD_SET
+        ]
+        if missing:
+            return (
+                f"Sina index-constituent row {index} is missing field(s): "
+                + ", ".join(missing),
+                [],
+            )
+        if unexpected:
+            return (
+                f"Sina index-constituent row {index} contains unsupported field(s): "
+                + ", ".join(unexpected),
+                [],
+            )
+        if tuple(row) != _MARKET_ACTIVITY_INDEX_STOCK_CONS_FIELDS:
+            return (
+                "Sina index-constituent rows must preserve the documented field order",
+                [],
+            )
+
+        code = row["品种代码"]
+        if not isinstance(code, str) or re.fullmatch(r"\d{6}", code) is None:
+            return (
+                f"Sina index-constituent row {index} field '品种代码' must be a "
+                "six-digit string",
+                [],
+            )
+        name = row["品种名称"]
+        if not isinstance(name, str) or not name.strip():
+            return (
+                f"Sina index-constituent row {index} field '品种名称' must be a "
+                "non-empty string",
+                [],
+            )
+
+        raw_inclusion_date = row["纳入日期"]
+        if raw_inclusion_date is None:
+            inclusion_date = None
+        else:
+            inclusion_date = _parse_date_value(raw_inclusion_date)
+            if inclusion_date is None:
+                return (
+                    f"Sina index-constituent row {index} field '纳入日期' must be "
+                    "a valid date or null",
+                    [],
+                )
+        inclusion_dates.append(inclusion_date)
+
+    return None, inclusion_dates
+
+
+def _validate_market_activity_index_stock_cons_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    symbol: str,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> list[date | None]:
+    """Validate the requested Sina index constituent response before retention."""
+
+    message, inclusion_dates = _market_activity_index_stock_cons_validation_message(
+        rows,
+        symbol=symbol,
+    )
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message}",
+            provider=provider,
+            request=request,
+        )
+    return inclusion_dates
+
+
+def _market_activity_index_stock_cons_row_identity_order(
+    rows: Sequence[Mapping[str, JSONValue]],
+    inclusion_dates: Sequence[date | None],
+) -> list[dict[str, JSONValue]]:
+    """Preserve exact source-row identity, including documented duplicates."""
+
+    return [
+        {
+            "position": index,
+            "品种代码": row["品种代码"],
+            "品种名称": row["品种名称"],
+            "纳入日期": (
+                inclusion_dates[index].isoformat()
+                if inclusion_dates[index] is not None
+                else None
+            ),
+        }
+        for index, row in enumerate(rows)
+    ]
+
+
+def _market_activity_index_stock_cons_response_metadata(
+    *,
+    listing_code: str,
+    symbol: str,
+    rows: Sequence[Mapping[str, JSONValue]],
+    inclusion_dates: Sequence[date | None],
+) -> dict[str, JSONValue]:
+    """Build replay metadata for one Sina latest-constituent snapshot."""
+
+    row_identity_order = _market_activity_index_stock_cons_row_identity_order(
+        rows,
+        inclusion_dates,
+    )
+    observed_dates = [value for value in inclusion_dates if value is not None]
+    return {
+        "endpoint": _MARKET_ACTIVITY_INDEX_STOCK_CONS_ENDPOINT,
+        "market": ListingMarket.A.value,
+        "listing_code": listing_code,
+        "market_activity_view": _MARKET_ACTIVITY_INDEX_STOCK_CONS_VIEW,
+        "requested_index_symbol": symbol,
+        "upstream_symbol": symbol,
+        "upstream_symbol_code_resolution": "listing_code_direct",
+        "market_scope": "requested_sina_mainland_index",
+        "index_scoped_request": True,
+        "listing_scoped_request": False,
+        "row_filtering": "upstream",
+        "snapshot_scope": "latest_index_constituents",
+        "date_binding": "row_only",
+        "inclusion_date_field": "纳入日期",
+        "inclusion_date_ordering": "provider_reported",
+        "constituent_code_field": "品种代码",
+        "constituent_name_field": "品种名称",
+        "identity_fields": ["品种代码", "品种名称", "纳入日期"],
+        "identity_ordering": "source_response_order",
+        "row_identity_order": row_identity_order,
+        "selected_row_identity_order": row_identity_order,
+        "date_fields": list(_MARKET_ACTIVITY_INDEX_STOCK_CONS_DATE_FIELDS),
+        "value_fields": [],
+        "integer_fields": [],
+        "text_fields": list(_MARKET_ACTIVITY_INDEX_STOCK_CONS_TEXT_FIELDS),
+        "required_text_fields": list(
+            _MARKET_ACTIVITY_INDEX_STOCK_CONS_REQUIRED_TEXT_FIELDS
+        ),
+        "nullable_fields": list(_MARKET_ACTIVITY_INDEX_STOCK_CONS_NULLABLE_FIELDS),
+        "field_types": dict(_MARKET_ACTIVITY_INDEX_STOCK_CONS_FIELD_TYPES),
+        "field_count": len(_MARKET_ACTIVITY_INDEX_STOCK_CONS_FIELDS),
+        "source_field_order": list(_MARKET_ACTIVITY_INDEX_STOCK_CONS_FIELDS),
+        "documented_units": dict(_MARKET_ACTIVITY_INDEX_STOCK_CONS_DOCUMENTED_UNITS),
+        "undocumented_numeric_units": dict(
+            _MARKET_ACTIVITY_INDEX_STOCK_CONS_UNDOCUMENTED_NUMERIC_UNITS
+        ),
+        "upstream_url": _MARKET_ACTIVITY_INDEX_STOCK_CONS_UPSTREAM_URL,
+        "upstream_urls": [
+            _MARKET_ACTIVITY_INDEX_STOCK_CONS_UPSTREAM_URL,
+            _MARKET_ACTIVITY_INDEX_STOCK_CONS_UPSTREAM_PAGE_URL,
+        ],
+        "upstream_auxiliary_urls": [],
+        "upstream_auxiliary_roles": [],
+        "upstream_protocol": "HTML",
+        "upstream_parameters": list(
+            _MARKET_ACTIVITY_INDEX_STOCK_CONS_UPSTREAM_PARAMETERS
+        ),
+        "upstream_fixed_parameters": dict(
+            _MARKET_ACTIVITY_INDEX_STOCK_CONS_UPSTREAM_FIXED_PARAMETERS
+        ),
+        "upstream_dynamic_parameters": {
+            "indexid": symbol,
+            "page": "1..provider_reported_page_count",
+        },
+        "upstream_authentication": "none",
+        "wrapper_source_page_uri": _MARKET_ACTIVITY_INDEX_STOCK_CONS_SOURCE_URI,
+        "wrapper_output_ordering": "source_response_order",
+        "wrapper_selected_fields": list(_MARKET_ACTIVITY_INDEX_STOCK_CONS_FIELDS),
+        "wrapper_date_filtering": "none",
+        "wrapper_decoders": list(_MARKET_ACTIVITY_INDEX_STOCK_CONS_WRAPPER_DECODERS),
+        "wrapper_transformations": [
+            "decode_gb2312_html",
+            "parse_html_page_count",
+            "provider_pagination",
+            "read_html_tables",
+            "select_first_three_columns",
+            "zero_fill_constituent_codes",
+            "date_conversion",
+            "provider_field_selection",
+        ],
+        "wrapper_source_column_count": (
+            _MARKET_ACTIVITY_INDEX_STOCK_CONS_WRAPPER_SOURCE_COLUMN_COUNT
+        ),
+        "wrapper_column_mapping": dict(
+            _MARKET_ACTIVITY_INDEX_STOCK_CONS_WRAPPER_COLUMN_MAPPING
+        ),
+        "wrapper_dropped_fields": list(
+            _MARKET_ACTIVITY_INDEX_STOCK_CONS_WRAPPER_DROPPED_FIELDS
+        ),
+        "upstream_transformations": dict(
+            _MARKET_ACTIVITY_INDEX_STOCK_CONS_UPSTREAM_DYNAMIC_PARAMETERS
+        ),
+        "pagination": "provider_reported_page_count",
+        "upstream_page_size": "provider_defined",
+        "full_universe_response": True,
+        "entity_rows_selected": True,
+        "upstream_row_count": len(rows),
+        "entity_row_count": len(rows),
+        "observation_start_date": (
+            min(observed_dates).isoformat() if observed_dates else None
+        ),
+        "observation_end_date": (
+            max(observed_dates).isoformat() if observed_dates else None
+        ),
+    }
+
+
 def _market_activity_hsgt_board_rank_validation_message(
     rows: Sequence[Mapping[str, JSONValue]],
 ) -> tuple[str | None, list[date], list[int], list[str]]:
@@ -43462,6 +43824,86 @@ def _validate_market_activity_hsgt_board_rank_normalizer_scope(
         if not matches:
             raise ProviderNormalizationError(
                 "HSGT board-rank response metadata "
+                f"{name!r} does not match the requested replay scope"
+            )
+
+
+def _validate_market_activity_index_stock_cons_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> None:
+    """Validate replay scope for the requested Sina index constituents."""
+
+    if not _is_sina_index_constituent_listing(listing):
+        raise ProviderNormalizationError(
+            "AKShare Sina index-constituent raw slice supports Shanghai 000xxx "
+            "or Shenzhen 399xxx index listings only"
+        )
+    endpoint_name = _MARKET_ACTIVITY_INDEX_STOCK_CONS_ENDPOINT
+    if record.response_metadata.get("endpoint") != endpoint_name:
+        raise ProviderNormalizationError(
+            "AKShare Sina index-constituent record must come from "
+            f"{endpoint_name}"
+        )
+    if record.source_uri != _MARKET_ACTIVITY_INDEX_STOCK_CONS_SOURCE_URI:
+        raise ProviderNormalizationError(
+            "AKShare Sina index-constituent source URI does not match the "
+            "documented endpoint"
+        )
+    try:
+        upstream_kwargs = _market_activity_index_stock_cons_kwargs(
+            endpoint_name,
+            listing,
+            record.request,
+        )
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+    if upstream_kwargs != {"symbol": listing.code}:
+        raise ProviderNormalizationError(
+            "AKShare Sina index-constituent endpoint must receive the requested "
+            "index listing code"
+        )
+
+    message, inclusion_dates = _market_activity_index_stock_cons_validation_message(
+        rows,
+        symbol=listing.code,
+    )
+    if message is not None:
+        raise ProviderNormalizationError(message)
+    expected_metadata = _market_activity_index_stock_cons_response_metadata(
+        listing_code=listing.code,
+        symbol=listing.code,
+        rows=rows,
+        inclusion_dates=inclusion_dates,
+    )
+    boolean_fields = {
+        "index_scoped_request",
+        "listing_scoped_request",
+        "full_universe_response",
+        "entity_rows_selected",
+    }
+    count_fields = {
+        "field_count",
+        "wrapper_source_column_count",
+        "upstream_row_count",
+        "entity_row_count",
+    }
+    for name, expected in expected_metadata.items():
+        actual = record.response_metadata.get(name)
+        if name in boolean_fields:
+            matches = isinstance(actual, bool) and actual is expected
+        elif name in count_fields:
+            matches = (
+                isinstance(actual, int)
+                and not isinstance(actual, bool)
+                and actual == expected
+            )
+        else:
+            matches = actual == expected
+        if not matches:
+            raise ProviderNormalizationError(
+                "Sina index-constituent response metadata "
                 f"{name!r} does not match the requested replay scope"
             )
 
@@ -56812,6 +57254,47 @@ def _market_activity_hsgt_board_rank_kwargs(
     return {"symbol": symbol, "indicator": indicator}
 
 
+def _market_activity_index_stock_cons_kwargs(
+    endpoint_name: str,
+    listing: _ListingRef,
+    request: ProviderRequest,
+) -> dict[str, object]:
+    """Build the documented Sina latest-index-constituent request."""
+
+    if endpoint_name != _MARKET_ACTIVITY_INDEX_STOCK_CONS_ENDPOINT:
+        raise ProviderRequestError(
+            "unsupported AKShare Sina index-constituent endpoint "
+            f"{endpoint_name!r}",
+            request=request,
+            retryable=False,
+        )
+    if not _is_sina_index_constituent_listing(listing):
+        raise ProviderRequestError(
+            "the AKShare Sina index-constituent endpoint supports Shanghai "
+            "000xxx or Shenzhen 399xxx index listings only",
+            request=request,
+            retryable=False,
+        )
+    unknown = sorted(
+        set(request.parameters) - _MARKET_ACTIVITY_INDEX_STOCK_CONS_PARAMETER_NAMES
+    )
+    if unknown:
+        raise ProviderRequestError(
+            "unsupported AKShare Sina index-constituent parameter(s): "
+            + ", ".join(unknown),
+            request=request,
+            retryable=False,
+        )
+    if request.parameters.get("view") != _MARKET_ACTIVITY_INDEX_STOCK_CONS_VIEW:
+        raise ProviderRequestError(
+            "the AKShare Sina index-constituent endpoint requires "
+            f"view={_MARKET_ACTIVITY_INDEX_STOCK_CONS_VIEW!r}",
+            request=request,
+            retryable=False,
+        )
+    return {"symbol": listing.code}
+
+
 def _market_activity_kwargs(
     endpoint_name: str,
     listing: _ListingRef,
@@ -56819,6 +57302,12 @@ def _market_activity_kwargs(
 ) -> dict[str, object]:
     """Build one documented market-activity request."""
 
+    if endpoint_name == _MARKET_ACTIVITY_INDEX_STOCK_CONS_ENDPOINT:
+        return _market_activity_index_stock_cons_kwargs(
+            endpoint_name,
+            listing,
+            request,
+        )
     if endpoint_name == _MARKET_ACTIVITY_HSGT_BOARD_RANK_ENDPOINT:
         return _market_activity_hsgt_board_rank_kwargs(
             endpoint_name,

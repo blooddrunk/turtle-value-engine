@@ -4234,6 +4234,29 @@ canonical daily-history, return, valuation or accounting fact: the recent
 global-index series has no listing/entity accounting scope. The slice remains
 outside the calculation, gate, pipeline, CLI and input-loader contracts.
 
+## Phase 3.71 Sina index latest-constituent raw slice
+
+The current [AKShare index-data documentation](https://akshare.akfamily.xyz/data/index/index.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/index/index_cons.py)
+document `index_stock_cons` as a latest-constituent endpoint selected by an
+index code. The adapter exposes it under `MARKET_ACTIVITY` with explicit
+`view=index_stock_cons`, accepts only Shanghai `000xxx` or Shenzhen `399xxx`
+index-shaped A-share listing context and derives the upstream `symbol` from
+that listing code. The requested index response is retained without
+constituent filtering.
+
+| Raw upstream item | Phase 3.71 treatment |
+| --- | --- |
+| `品种代码`, `品种名称`, `纳入日期` | Required exact three-field order. `品种代码` must be a six-digit string; `品种名称` must be a non-empty string; `纳入日期` must be a valid date or null. |
+| duplicate or missing provider rows | Duplicate rows are preserved because the AKShare documentation warns that the source may contain duplicates; missing membership rows are not imputed. Positional row identity is retained in replay metadata. |
+| request `view=index_stock_cons` | Exact Sina endpoint routing for Shanghai `000xxx` or Shenzhen `399xxx` index listings, `index_scoped_request=true`, `listing_scoped_request=false`, latest-constituent scope, upstream `symbol=listing.code`, and no date or constituent filtering. |
+| Sina `vII_NewestComponent` HTML response | GB2312 decoding, BeautifulSoup page-count parsing, provider-reported pagination, `read_html` table extraction, first-three-column selection, six-digit code zero-filling and date conversion remain explicit replay metadata. The page-size limit is provider-defined. |
+
+The normalizer emits `AKSHARE_INDEX_STOCK_CONS_RAW_ONLY` and creates no
+canonical quote, return, governance, valuation or accounting fact: index
+membership has no listing/entity accounting scope. The slice remains outside
+the calculation, gate, pipeline, CLI and input-loader contracts.
+
 ## Phase 2 enforcement rule
 
 For every field not marked `STRUCTURED_AUTO` or `DERIVED_DETERMINISTIC`, a
