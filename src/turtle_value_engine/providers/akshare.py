@@ -78,7 +78,7 @@ A-share PE/PB-history, index-PE/index-PB, market-PE/market-PB, A-share Eastmoney
 growth-comparison, DuPont-comparison and company-scale comparison, A/H
 Eastmoney valuation-comparison and A/H Baidu valuation-history snapshots are
 also available. The Eastmoney generic index-history, Sina index-constituent and
-Sina H-share daily-history raw slices are also available.
+Sina H-share daily-history and Tencent A+H daily-history raw slices are also available.
 The A-share Eastmoney top-ten, top-ten-tradable-shareholder and
 top-ten-tradable-shareholder-detail raw slices are also available.
 The A-share Eastmoney institutional-research statistics and detail raw slices
@@ -129,9 +129,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "189"
+AKSHARE_ADAPTER_VERSION = "190"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "190"
+AKSHARE_MAPPING_VERSION = "191"
 
 
 class ListingMarket(StrEnum):
@@ -2541,6 +2541,56 @@ _MARKET_HISTORY_HK_DAILY_HFQ_URL_TEMPLATE = (
 _MARKET_HISTORY_HK_DAILY_QFQ_URL_TEMPLATE = (
     "https://finance.sina.com.cn/stock/hkstock/{symbol}/qfq.js"
 )
+
+_MARKET_HISTORY_AH_DAILY_ENDPOINT = "stock_zh_ah_daily"
+_MARKET_HISTORY_AH_DAILY_PARAMETER_NAMES = frozenset(
+    {"view", "start_year", "end_year", "adjust"}
+)
+_MARKET_HISTORY_AH_DAILY_VIEW = "ah_daily"
+_MARKET_HISTORY_AH_DAILY_DEFAULT_START_YEAR = "2000"
+_MARKET_HISTORY_AH_DAILY_DEFAULT_END_YEAR = "2019"
+_MARKET_HISTORY_AH_DAILY_DEFAULT_ADJUST = ""
+_MARKET_HISTORY_AH_DAILY_ADJUSTMENTS = frozenset({"", "qfq", "hfq"})
+_MARKET_HISTORY_AH_DAILY_FIELDS = (
+    "日期",
+    "开盘",
+    "收盘",
+    "最高",
+    "最低",
+    "成交量",
+)
+_MARKET_HISTORY_AH_DAILY_FIELD_SET = frozenset(_MARKET_HISTORY_AH_DAILY_FIELDS)
+_MARKET_HISTORY_AH_DAILY_DATE_FIELDS = ("日期",)
+_MARKET_HISTORY_AH_DAILY_NUMERIC_FIELDS = _MARKET_HISTORY_AH_DAILY_FIELDS[1:]
+_MARKET_HISTORY_AH_DAILY_DOCUMENTED_UNITS: dict[str, JSONValue] = {}
+_MARKET_HISTORY_AH_DAILY_UNDOCUMENTED_NUMERIC_UNITS = {
+    field: "not_documented" for field in _MARKET_HISTORY_AH_DAILY_NUMERIC_FIELDS
+}
+_MARKET_HISTORY_AH_DAILY_FIELD_TYPES = {
+    "日期": "date",
+    **{field: "number" for field in _MARKET_HISTORY_AH_DAILY_NUMERIC_FIELDS},
+}
+_MARKET_HISTORY_AH_DAILY_SOURCE_URI = "https://gu.qq.com/hk01033/gp"
+_MARKET_HISTORY_AH_DAILY_UNADJUSTED_UPSTREAM_URL = (
+    "http://web.ifzq.gtimg.cn/appstock/app/kline/kline"
+)
+_MARKET_HISTORY_AH_DAILY_ADJUSTED_UPSTREAM_URL = (
+    "https://web.ifzq.gtimg.cn/appstock/app/hkfqkline/get"
+)
+_MARKET_HISTORY_AH_DAILY_UPSTREAM_PARAMETERS = ("_var", "param", "r")
+_MARKET_HISTORY_AH_DAILY_UPSTREAM_FIXED_PARAMETERS = {
+    "period": "day",
+    "count": 640,
+    "date_window": "each requested year through following year-12-31",
+}
+_MARKET_HISTORY_AH_DAILY_WRAPPER_COLUMN_MAPPING = {
+    "日期": 0,
+    "开盘": 1,
+    "收盘": 2,
+    "最高": 3,
+    "最低": 4,
+    "成交量": 5,
+}
 
 _MARKET_HISTORY_KCB_DAILY_PARAMETER_NAMES = frozenset({"view", "adjust"})
 _MARKET_HISTORY_KCB_DAILY_VIEW = "kcb_daily"
@@ -8506,6 +8556,18 @@ class AKShareProvider(StructuredDataProvider):
             )
         if (
             request.category is DataCategory.MARKET_HISTORY
+            and request.parameters.get("view") == _MARKET_HISTORY_AH_DAILY_VIEW
+            and listing.market is not ListingMarket.H
+        ):
+            raise ProviderRequestError(
+                "the AKShare Tencent A+H daily-history endpoint supports H-share "
+                "listings only",
+                provider=self.identity,
+                request=request,
+                retryable=False,
+            )
+        if (
+            request.category is DataCategory.MARKET_HISTORY
             and request.parameters.get("view") == _MARKET_HISTORY_KCB_DAILY_VIEW
             and (
                 listing.market is not ListingMarket.A
@@ -11892,6 +11954,34 @@ class AKShareProvider(StructuredDataProvider):
                         observation_dates=observation_dates,
                     )
                 )
+            elif endpoint.name == _MARKET_HISTORY_AH_DAILY_ENDPOINT:
+                start_year = _parse_ah_daily_history_year_parameter(
+                    kwargs["start_year"],
+                    name="start_year",
+                    request=request,
+                )
+                end_year = _parse_ah_daily_history_year_parameter(
+                    kwargs["end_year"],
+                    name="end_year",
+                    request=request,
+                )
+                observation_dates = _validate_ah_daily_history_provider_rows(
+                    rows,
+                    start_year=start_year,
+                    end_year=end_year,
+                    provider=self.identity,
+                    request=request,
+                )
+                response_metadata.update(
+                    _ah_daily_history_response_metadata(
+                        listing_code=listing.code,
+                        symbol=str(kwargs["symbol"]),
+                        start_year=str(kwargs["start_year"]),
+                        end_year=str(kwargs["end_year"]),
+                        adjust=str(kwargs["adjust"]),
+                        observation_dates=observation_dates,
+                    )
+                )
             elif endpoint.name == "stock_zh_b_daily":
                 start_date = _parse_b_daily_history_date_parameter(
                     kwargs["start_date"],
@@ -14032,6 +14122,9 @@ class AKShareProvider(StructuredDataProvider):
             market_history_hk_daily_requested=(
                 request.parameters.get("view") == _MARKET_HISTORY_HK_DAILY_VIEW
             ),
+            market_history_ah_daily_requested=(
+                request.parameters.get("view") == _MARKET_HISTORY_AH_DAILY_VIEW
+            ),
             market_history_us_index_sina_requested=(
                 request.parameters.get("view")
                 == _MARKET_HISTORY_US_INDEX_SINA_VIEW
@@ -14043,10 +14136,20 @@ class AKShareProvider(StructuredDataProvider):
         for name in candidates:
             function = getattr(client, name, None)
             if callable(function):
+                source_uri = _SOURCE_URIS.get(
+                    name,
+                    "https://akshare.akfamily.xyz/data/stock/stock.html",
+                )
+                if (
+                    name == _MARKET_HISTORY_AH_DAILY_ENDPOINT
+                    and request.parameters.get("view")
+                    == _MARKET_HISTORY_AH_DAILY_VIEW
+                ):
+                    source_uri = _MARKET_HISTORY_AH_DAILY_SOURCE_URI
                 return _Endpoint(
                     name=name,
                     function=function,
-                    source_uri=_SOURCE_URIS.get(name, "https://akshare.akfamily.xyz/data/stock/stock.html"),
+                    source_uri=source_uri,
                 )
         names = ", ".join(candidates)
         raise ProviderRequestError(
@@ -15698,6 +15801,12 @@ class AKShareNormalizer:
                     _validate_hk_daily_history_normalizer_scope(record, listing, rows)
                     normalizer_flags.add("AKSHARE_HK_DAILY_HISTORY_RAW_ONLY")
                 elif (
+                    record.request.parameters.get("view")
+                    == _MARKET_HISTORY_AH_DAILY_VIEW
+                ):
+                    _validate_ah_daily_history_normalizer_scope(record, listing, rows)
+                    normalizer_flags.add("AKSHARE_AH_DAILY_HISTORY_RAW_ONLY")
+                elif (
                     endpoint == "stock_zh_b_daily"
                     or record.request.parameters.get("view")
                     == _MARKET_HISTORY_B_DAILY_VIEW
@@ -15825,6 +15934,11 @@ class AKShareNormalizer:
                         endpoint != "stock_hk_daily"
                         or record.request.parameters.get("view")
                         != _MARKET_HISTORY_HK_DAILY_VIEW
+                    )
+                    and not (
+                        endpoint == _MARKET_HISTORY_AH_DAILY_ENDPOINT
+                        and record.request.parameters.get("view")
+                        == _MARKET_HISTORY_AH_DAILY_VIEW
                     )
                     and endpoint not in {
                     "stock_zh_a_tick_tx_js",
@@ -16776,6 +16890,7 @@ class AKShareNormalizer:
                 "AKSHARE_GLOBAL_INDEX_SINA_RAW_ONLY",
                 "AKSHARE_US_INDEX_SINA_RAW_ONLY",
                 "AKSHARE_B_MINUTE_HISTORY_RAW_ONLY",
+                "AKSHARE_AH_DAILY_HISTORY_RAW_ONLY",
             }
             & normalizer_flags
             and not any(
@@ -17409,6 +17524,13 @@ class AKShareNormalizer:
                 "raw evidence only: its provider-owned price series, adjustment and "
                 "factor behavior, trading-calendar semantics and numeric units are "
                 "not reconciled to the canonical daily-history contract."
+            )
+        if "AKSHARE_AH_DAILY_HISTORY_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented Tencent A+H daily-history response is retained as "
+                "raw evidence only: its year-partitioned price series, adjustment, "
+                "trading-calendar semantics and numeric units are not reconciled to "
+                "the canonical daily-history contract."
             )
         if "AKSHARE_KCB_DAILY_HISTORY_RAW_ONLY" in normalizer_flags:
             notes += (
@@ -18357,6 +18479,7 @@ def _endpoint_candidates(
     market_history_global_index_em_requested: bool = False,
     market_history_global_index_sina_requested: bool = False,
     market_history_hk_daily_requested: bool = False,
+    market_history_ah_daily_requested: bool = False,
     market_history_us_index_sina_requested: bool = False,
     market_history_b_minute_requested: bool = False,
     market_history_tencent_tick_requested: bool = False,
@@ -18549,6 +18672,10 @@ def _endpoint_candidates(
         if market_history_hk_daily_requested:
             if market is ListingMarket.H:
                 return ("stock_hk_daily",)
+            return ()
+        if market_history_ah_daily_requested:
+            if market is ListingMarket.H:
+                return (_MARKET_HISTORY_AH_DAILY_ENDPOINT,)
             return ()
         if market_history_b_minute_requested:
             if market is ListingMarket.A and (
@@ -28104,6 +28231,219 @@ def _hk_daily_history_response_metadata(
     }
 
 
+def _ah_daily_history_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    start_year: int,
+    end_year: int,
+) -> tuple[str | None, list[date]]:
+    """Return strict-schema errors for Tencent A+H daily-history rows."""
+
+    start_date = date(start_year, 1, 1)
+    end_date = date(end_year, 1, 1)
+    expected_fields = _MARKET_HISTORY_AH_DAILY_FIELDS
+    expected_field_set = _MARKET_HISTORY_AH_DAILY_FIELD_SET
+    observation_dates: list[date] = []
+    previous_date: date | None = None
+    for index, row in enumerate(rows):
+        missing = [field for field in expected_fields if field not in row]
+        unexpected = [field for field in row if field not in expected_field_set]
+        if missing:
+            return (
+                f"Tencent A+H daily-history row {index} is missing field(s): "
+                + ", ".join(missing),
+                [],
+            )
+        if unexpected:
+            return (
+                f"Tencent A+H daily-history row {index} contains unsupported "
+                "field(s): "
+                + ", ".join(unexpected),
+                [],
+            )
+        if tuple(row) != expected_fields:
+            return (
+                "Tencent A+H daily-history rows must preserve the documented "
+                "field order",
+                [],
+            )
+
+        observation_date = _parse_date_value(row["日期"])
+        if observation_date is None:
+            return f"Tencent A+H daily-history row {index} has an invalid date", []
+        if not start_date <= observation_date < end_date:
+            return (
+                f"Tencent A+H daily-history row {index} date "
+                f"{observation_date.isoformat()!r} is outside requested range "
+                f"{start_year!r}..{end_year!r}",
+                [],
+            )
+        if previous_date is not None and observation_date <= previous_date:
+            if observation_date == previous_date:
+                return (
+                    "Tencent A+H daily-history response has duplicate date "
+                    f"{observation_date.isoformat()!r}",
+                    [],
+                )
+            return (
+                "Tencent A+H daily-history response date values must be strictly "
+                "ascending",
+                [],
+            )
+        previous_date = observation_date
+        observation_dates.append(observation_date)
+
+        for field in _MARKET_HISTORY_AH_DAILY_NUMERIC_FIELDS:
+            value = row[field]
+            if value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, Real):
+                return (
+                    f"Tencent A+H daily-history row {index} field {field!r} "
+                    "must be numeric or null",
+                    [],
+                )
+            try:
+                numeric = float(value)
+            except (OverflowError, TypeError, ValueError):
+                return (
+                    f"Tencent A+H daily-history row {index} field {field!r} "
+                    "must be numeric or null",
+                    [],
+                )
+            if not math.isfinite(numeric):
+                return (
+                    f"Tencent A+H daily-history row {index} field {field!r} "
+                    "must be finite or null",
+                    [],
+                )
+    return None, observation_dates
+
+
+def _validate_ah_daily_history_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    start_year: int,
+    end_year: int,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> list[date]:
+    message, observation_dates = _ah_daily_history_validation_message(
+        rows,
+        start_year=start_year,
+        end_year=end_year,
+    )
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message}",
+            provider=provider,
+            request=request,
+        )
+    return observation_dates
+
+
+def _ah_daily_history_response_metadata(
+    *,
+    listing_code: str,
+    symbol: str,
+    start_year: str,
+    end_year: str,
+    adjust: str,
+    observation_dates: Sequence[date],
+) -> dict[str, JSONValue]:
+    """Build replay metadata for one Tencent A+H daily-history snapshot."""
+
+    adjusted = adjust != ""
+    upstream_url = (
+        _MARKET_HISTORY_AH_DAILY_ADJUSTED_UPSTREAM_URL
+        if adjusted
+        else _MARKET_HISTORY_AH_DAILY_UNADJUSTED_UPSTREAM_URL
+    )
+    row_identity_order = [observation.isoformat() for observation in observation_dates]
+    return {
+        "endpoint": _MARKET_HISTORY_AH_DAILY_ENDPOINT,
+        "market": ListingMarket.H.value,
+        "listing_code": listing_code,
+        "market_history_view": _MARKET_HISTORY_AH_DAILY_VIEW,
+        "upstream_symbol": symbol,
+        "upstream_symbol_format": "hk_prefixed_payload_key",
+        "market_scope": "requested_h_share_listing",
+        "listing_scoped_request": True,
+        "row_filtering": "upstream",
+        "snapshot_scope": "requested_a_plus_h_daily_year_range",
+        "date_binding": "row_and_year_range",
+        "range_filtering": "upstream_year_partitions_and_provider_validation",
+        "ah_daily_start_year": start_year,
+        "ah_daily_end_year": end_year,
+        "ah_daily_adjust": adjust,
+        "adjustment_kind": "unadjusted" if not adjusted else "price_series",
+        "year_partition_count": int(end_year) - int(start_year),
+        "observation_date_field": "日期",
+        "date_ordering": "strictly_ascending",
+        "identity_fields": ["日期"],
+        "identity_ordering": "strictly_ascending",
+        "row_identity_order": row_identity_order,
+        "selected_row_identity_order": row_identity_order,
+        "field_count": len(_MARKET_HISTORY_AH_DAILY_FIELDS),
+        "source_field_order": list(_MARKET_HISTORY_AH_DAILY_FIELDS),
+        "date_fields": list(_MARKET_HISTORY_AH_DAILY_DATE_FIELDS),
+        "value_fields": list(_MARKET_HISTORY_AH_DAILY_NUMERIC_FIELDS),
+        "required_numeric_fields": list(_MARKET_HISTORY_AH_DAILY_NUMERIC_FIELDS),
+        "documented_units": dict(_MARKET_HISTORY_AH_DAILY_DOCUMENTED_UNITS),
+        "undocumented_numeric_units": dict(
+            _MARKET_HISTORY_AH_DAILY_UNDOCUMENTED_NUMERIC_UNITS
+        ),
+        "field_types": dict(_MARKET_HISTORY_AH_DAILY_FIELD_TYPES),
+        "price_unit": "not_documented",
+        "volume_unit": "not_documented",
+        "upstream_url": upstream_url,
+        "upstream_urls": [upstream_url],
+        "upstream_auxiliary_urls": [],
+        "upstream_auxiliary_roles": [],
+        "upstream_protocol": "JSON",
+        "upstream_parameters": list(_MARKET_HISTORY_AH_DAILY_UPSTREAM_PARAMETERS),
+        "upstream_dynamic_parameters": {
+            "symbol": symbol,
+            "payload_symbol": f"hk{symbol}",
+            "start_year": start_year,
+            "end_year": end_year,
+            "adjust": adjust,
+            "random_parameter": "random_per_year",
+        },
+        "upstream_fixed_parameters": dict(
+            _MARKET_HISTORY_AH_DAILY_UPSTREAM_FIXED_PARAMETERS
+        ),
+        "upstream_authentication": "none",
+        "wrapper_source_page_uri": _MARKET_HISTORY_AH_DAILY_SOURCE_URI,
+        "wrapper_date_filtering": "none",
+        "wrapper_decoders": ["demjson"],
+        "wrapper_transformations": [
+            "payload_key_extract",
+            "row_projection",
+            "date_conversion",
+            "numeric_conversion",
+        ],
+        "wrapper_source_column_count": 9 if adjusted else [6, 7],
+        "wrapper_column_mapping": dict(_MARKET_HISTORY_AH_DAILY_WRAPPER_COLUMN_MAPPING),
+        "wrapper_dropped_fields": (
+            ["source_column_6", "source_column_7", "source_column_8"]
+            if adjusted
+            else ["optional_source_column_6"]
+        ),
+        "upstream_page_size": 640,
+        "pagination": "year_partitions",
+        "upstream_row_count": len(observation_dates),
+        "entity_row_count": len(observation_dates),
+        "entity_rows_selected": True,
+        "observation_start_date": (
+            min(observation_dates).isoformat() if observation_dates else None
+        ),
+        "observation_end_date": (
+            max(observation_dates).isoformat() if observation_dates else None
+        ),
+    }
+
+
 def _kcb_daily_history_validation_message(
     rows: Sequence[Mapping[str, JSONValue]],
     *,
@@ -31437,6 +31777,71 @@ def _validate_hk_daily_history_normalizer_scope(
         if record.response_metadata.get(name) != expected:
             raise ProviderNormalizationError(
                 f"Sina H-share daily-history response metadata {name!r} does not "
+                "match the requested replay scope"
+            )
+
+
+def _validate_ah_daily_history_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> None:
+    """Validate the replay scope for a raw Tencent A+H daily-history record."""
+
+    if listing.market is not ListingMarket.H:
+        raise ProviderNormalizationError(
+            "AKShare Tencent A+H daily-history raw slice supports H-share "
+            "listings only"
+        )
+    if record.source_uri != _MARKET_HISTORY_AH_DAILY_SOURCE_URI:
+        raise ProviderNormalizationError(
+            "AKShare Tencent A+H daily-history record has an unexpected source URI"
+        )
+    if record.response_metadata.get("endpoint") != _MARKET_HISTORY_AH_DAILY_ENDPOINT:
+        raise ProviderNormalizationError(
+            "AKShare Tencent A+H daily-history record must come from "
+            f"{_MARKET_HISTORY_AH_DAILY_ENDPOINT}"
+        )
+    if record.request.parameters.get("view") != _MARKET_HISTORY_AH_DAILY_VIEW:
+        raise ProviderNormalizationError(
+            "AKShare Tencent A+H daily-history record requires the explicit "
+            f"view={_MARKET_HISTORY_AH_DAILY_VIEW!r} boundary"
+        )
+    try:
+        upstream_kwargs = _ah_daily_history_kwargs(listing, record.request)
+        start_year = _parse_ah_daily_history_year_parameter(
+            upstream_kwargs["start_year"],
+            name="start_year",
+            request=record.request,
+        )
+        end_year = _parse_ah_daily_history_year_parameter(
+            upstream_kwargs["end_year"],
+            name="end_year",
+            request=record.request,
+        )
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+
+    message, observation_dates = _ah_daily_history_validation_message(
+        rows,
+        start_year=start_year,
+        end_year=end_year,
+    )
+    if message is not None:
+        raise ProviderNormalizationError(message)
+
+    expected_metadata = _ah_daily_history_response_metadata(
+        listing_code=listing.code,
+        symbol=str(upstream_kwargs["symbol"]),
+        start_year=str(upstream_kwargs["start_year"]),
+        end_year=str(upstream_kwargs["end_year"]),
+        adjust=str(upstream_kwargs["adjust"]),
+        observation_dates=observation_dates,
+    )
+    for name, expected in expected_metadata.items():
+        if record.response_metadata.get(name) != expected:
+            raise ProviderNormalizationError(
+                f"Tencent A+H daily-history response metadata {name!r} does not "
                 "match the requested replay scope"
             )
 
@@ -60127,6 +60532,8 @@ def _history_kwargs(
         and request.parameters.get("view") == _MARKET_HISTORY_HK_DAILY_VIEW
     ):
         return _hk_daily_history_kwargs(listing, request)
+    if endpoint_name == _MARKET_HISTORY_AH_DAILY_ENDPOINT:
+        return _ah_daily_history_kwargs(listing, request)
     if endpoint_name == "stock_zh_b_daily":
         return _b_daily_history_kwargs(listing, request)
     if endpoint_name == "stock_zh_kcb_daily":
@@ -60835,6 +61242,81 @@ def _hk_daily_history_kwargs(
     return {"symbol": listing.code, "adjust": adjust}
 
 
+def _ah_daily_history_kwargs(
+    listing: _ListingRef,
+    request: ProviderRequest,
+) -> dict[str, object]:
+    """Build the documented Tencent A+H daily-history request."""
+
+    if listing.market is not ListingMarket.H:
+        raise ProviderRequestError(
+            "the AKShare Tencent A+H daily-history endpoint supports H-share "
+            "listings only",
+            request=request,
+            retryable=False,
+        )
+
+    parameters = dict(request.parameters)
+    unknown = sorted(set(parameters) - _MARKET_HISTORY_AH_DAILY_PARAMETER_NAMES)
+    if unknown:
+        raise ProviderRequestError(
+            "unsupported AKShare Tencent A+H daily-history parameter(s): "
+            + ", ".join(unknown),
+            request=request,
+            retryable=False,
+        )
+    if parameters.get("view") != _MARKET_HISTORY_AH_DAILY_VIEW:
+        raise ProviderRequestError(
+            "the AKShare Tencent A+H daily-history endpoint requires "
+            f"view={_MARKET_HISTORY_AH_DAILY_VIEW!r}",
+            request=request,
+            retryable=False,
+        )
+
+    start_year = parameters.get(
+        "start_year",
+        _MARKET_HISTORY_AH_DAILY_DEFAULT_START_YEAR,
+    )
+    end_year = parameters.get(
+        "end_year",
+        _MARKET_HISTORY_AH_DAILY_DEFAULT_END_YEAR,
+    )
+    start_value = _parse_ah_daily_history_year_parameter(
+        start_year,
+        name="start_year",
+        request=request,
+    )
+    end_value = _parse_ah_daily_history_year_parameter(
+        end_year,
+        name="end_year",
+        request=request,
+    )
+    if start_value > end_value:
+        raise ProviderRequestError(
+            "AKShare Tencent A+H daily-history start_year must not be after "
+            "end_year",
+            request=request,
+            retryable=False,
+        )
+
+    adjust = parameters.get(
+        "adjust",
+        _MARKET_HISTORY_AH_DAILY_DEFAULT_ADJUST,
+    )
+    if not isinstance(adjust, str) or adjust not in _MARKET_HISTORY_AH_DAILY_ADJUSTMENTS:
+        raise ProviderRequestError(
+            "AKShare Tencent A+H daily-history adjust must be '', 'qfq' or 'hfq'",
+            request=request,
+            retryable=False,
+        )
+    return {
+        "symbol": listing.code,
+        "start_year": str(start_year),
+        "end_year": str(end_year),
+        "adjust": adjust,
+    }
+
+
 def _kcb_daily_history_kwargs(
     listing: _ListingRef,
     request: ProviderRequest,
@@ -61358,6 +61840,28 @@ def _parse_tencent_daily_history_date_parameter(
         request=request,
         retryable=False,
     )
+
+
+def _parse_ah_daily_history_year_parameter(
+    value: object,
+    *,
+    name: str,
+    request: ProviderRequest,
+) -> int:
+    if not isinstance(value, str) or re.fullmatch(r"\d{4}", value) is None:
+        raise ProviderRequestError(
+            f"AKShare Tencent A+H daily-history {name} must be a four-digit year",
+            request=request,
+            retryable=False,
+        )
+    year = int(value)
+    if not 1 <= year <= 9999:
+        raise ProviderRequestError(
+            f"AKShare Tencent A+H daily-history {name} must be between 0001 and 9999",
+            request=request,
+            retryable=False,
+        )
+    return year
 
 
 def _parse_tencent_index_daily_history_date_parameter(

@@ -4279,6 +4279,27 @@ H-share prices, adjustment/factor behavior, trading-calendar semantics and
 numeric units are not reconciled to the canonical contract. The slice remains
 outside the calculation, gate, pipeline, CLI and input-loader contracts.
 
+## Phase 3.73 Tencent A+H daily-history raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_zh_ah_tx.py)
+document `stock_zh_ah_daily` as a Tencent H-code daily-history endpoint with
+`start_year`, `end_year` and `adjust` values `''`, `qfq` and `hfq`. The adapter
+selects it only under `MARKET_HISTORY` with explicit `view=ah_daily`, accepts
+H-share listing context only and retains the complete provider response.
+
+| Raw upstream item | Phase 3.73 treatment |
+| --- | --- |
+| `日期`, `开盘`, `收盘`, `最高`, `最低`, `成交量` | Required exact six-field order. `日期` must be valid, unique, strictly ascending and within the requested half-open year range; numeric fields must be finite numbers or null. |
+| request `view=ah_daily`, `start_year`, `end_year`, `adjust` | Only the documented four parameters are accepted. Years are four-digit strings; `start_year` must not exceed `end_year`; `adjust` is limited to `''`, `qfq` and `hfq`. |
+| Tencent `kline/kline` or `hkfqkline/get` response | Year-partitioned URL, `hk{symbol}` payload-key binding, `day`/`640` request construction, JSON decoder, six-column projection, date/numeric conversions and row identity order remain explicit replay metadata. Numeric units are not documented. |
+
+The normalizer emits `AKSHARE_AH_DAILY_HISTORY_RAW_ONLY` and creates no
+canonical daily-history, return, valuation or accounting fact: provider-owned
+A+H prices, adjustment behavior, trading-calendar semantics and numeric units
+are not reconciled to the canonical contract. The slice remains outside the
+calculation, gate, pipeline, CLI and input-loader contracts.
+
 ## Phase 2 enforcement rule
 
 For every field not marked `STRUCTURED_AUTO` or `DERIVED_DETERMINISTIC`, a

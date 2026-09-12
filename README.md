@@ -2334,6 +2334,24 @@ offline cache replay. The existing no-view H-share history compatibility route
 is unchanged. No calculation, gate, pipeline, CLI or input-loader contract
 changes.
 
+Phase 3.73 adds the next documented Tencent A+H daily-history endpoint
+[`stock_zh_ah_daily`](https://akshare.akfamily.xyz/data/stock/stock.html) under
+`MARKET_HISTORY`. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_zh_ah_tx.py)
+requests an H-share code through year-partitioned Tencent K-line calls with
+`start_year`, `end_year` and `adjust` values `''`, `qfq` or `hfq`. The adapter
+exposes explicit `view=ah_daily`, validates the half-open year range and exact
+six-field `日期`, `开盘`, `收盘`, `最高`, `最低`, `成交量` response, and records
+the source URL, adjustment, wrapper projection and undocumented numeric units.
+
+The Tencent A+H daily-history response is retained as raw evidence only: its
+provider-owned prices, adjustment behavior, trading-calendar semantics and
+numeric units do not establish the canonical daily-history contract. The
+normalizer emits `AKSHARE_AH_DAILY_HISTORY_RAW_ONLY` and creates no canonical
+fact. Tests cover documented defaults/adjustments, strict routing and
+parameters, malformed rows, nullable values, empty output, raw-only
+normalization, replay metadata/payload tampering and offline cache replay. No
+calculation, gate, pipeline, CLI or input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

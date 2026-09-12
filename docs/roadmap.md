@@ -4392,6 +4392,34 @@ shapes, strict request and response validation, empty output, raw-only
 normalization, replay metadata/payload tampering and offline cache replay. No
 calculation, gate, pipeline, CLI or input-loader contract changes.
 
+### Phase 3.73 — Tencent A+H daily-history raw acquisition contract (COMPLETE)
+
+The mapping review now covers the next documented AKShare stock endpoint
+[`stock_zh_ah_daily`](https://akshare.akfamily.xyz/data/stock/stock.html) under
+`MARKET_HISTORY`. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_zh_ah_tx.py)
+requests an H-share code from Tencent's year-partitioned K-line endpoints and
+supports `start_year`, `end_year` and `adjust` values `''`, `qfq` and `hfq`.
+The adapter exposes an explicit `view=ah_daily`, accepts H-share listings only,
+passes the documented `symbol`/year/adjustment arguments and preserves the exact
+six-field `日期`, `开盘`, `收盘`, `最高`, `最低`, `成交量` order.
+
+Provider validation is strict: year parameters are four-digit strings with a
+non-inverted range; regular dates must be valid, unique, strictly ascending and
+within the requested half-open year range; and numeric values must be finite
+numbers or null. Replay metadata records the Tencent K-line URL, year-partition
+scope, adjustment mode, payload-key mapping, decoder/projection steps and
+undocumented numeric units. The existing no-view `stock_zh_ah_daily`
+compatibility fallback remains unchanged.
+
+The normalizer emits `AKSHARE_AH_DAILY_HISTORY_RAW_ONLY`, retains the response
+as evidence and creates no canonical daily-history, return, valuation or
+accounting fact because provider-owned A+H prices, adjustment behavior,
+trading-calendar semantics and numeric units are not reconciled to the canonical
+contract. Focused tests cover H-share routing, documented defaults and
+adjustments, strict request/response validation, nullable values, empty output,
+raw-only normalization, replay metadata/payload tampering and offline cache
+replay. No calculation, gate, pipeline, CLI or input-loader contract changes.
+
 ### Future structured-provider deliverables
 
 ```text
@@ -4401,7 +4429,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–3.72 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–3.73 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```

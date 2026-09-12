@@ -802,6 +802,23 @@ class FakeAKShare:
     def stock_hk_daily(self, **kwargs):
         return self._return("stock_hk_daily", _fixture("h_history.json"), **kwargs)
 
+    def stock_zh_ah_daily(
+        self,
+        *,
+        symbol: str,
+        start_year: str,
+        end_year: str,
+        adjust: str,
+    ):
+        return self._return(
+            "stock_zh_ah_daily",
+            _fixture("ah_daily_history.json"),
+            symbol=symbol,
+            start_year=start_year,
+            end_year=end_year,
+            adjust=adjust,
+        )
+
     def stock_hk_hist_min_em(
         self,
         *,
@@ -1524,8 +1541,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "189"
-    assert AKSHARE_MAPPING_VERSION == "190"
+    assert provider.identity.provider_version == "190"
+    assert AKSHARE_MAPPING_VERSION == "191"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -16040,6 +16057,490 @@ def test_hk_daily_history_cache_replay_does_not_call_upstream(tmp_path: Path):
         (
             "stock_hk_daily",
             {"symbol": "00700", "adjust": "hfq"},
+        )
+    ]
+
+
+@pytest.mark.parametrize("adjust", ["", "qfq", "hfq"])
+def test_ah_daily_history_fetch_uses_documented_year_contract(adjust: str):
+    fake = FakeAKShare()
+    record = _provider(fake).fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "HK00700",
+            {
+                "view": "ah_daily",
+                "start_year": "2022",
+                "end_year": "2024",
+                "adjust": adjust,
+            },
+        )
+    )
+
+    fields = ["日期", "开盘", "收盘", "最高", "最低", "成交量"]
+    assert record.raw_payload == _fixture("ah_daily_history.json")
+    assert fake.calls == [
+        (
+            "stock_zh_ah_daily",
+            {
+                "symbol": "00700",
+                "start_year": "2022",
+                "end_year": "2024",
+                "adjust": adjust,
+            },
+        )
+    ]
+    assert record.source_uri == "https://gu.qq.com/hk01033/gp"
+    assert record.response_metadata["endpoint"] == "stock_zh_ah_daily"
+    assert record.response_metadata["market"] == "H"
+    assert record.response_metadata["listing_code"] == "00700"
+    assert record.response_metadata["market_history_view"] == "ah_daily"
+    assert record.response_metadata["upstream_symbol"] == "00700"
+    assert record.response_metadata["upstream_symbol_format"] == (
+        "hk_prefixed_payload_key"
+    )
+    assert record.response_metadata["market_scope"] == "requested_h_share_listing"
+    assert record.response_metadata["listing_scoped_request"] is True
+    assert record.response_metadata["snapshot_scope"] == (
+        "requested_a_plus_h_daily_year_range"
+    )
+    assert record.response_metadata["date_binding"] == "row_and_year_range"
+    assert record.response_metadata["range_filtering"] == (
+        "upstream_year_partitions_and_provider_validation"
+    )
+    assert record.response_metadata["ah_daily_start_year"] == "2022"
+    assert record.response_metadata["ah_daily_end_year"] == "2024"
+    assert record.response_metadata["ah_daily_adjust"] == adjust
+    assert record.response_metadata["adjustment_kind"] == (
+        "unadjusted" if not adjust else "price_series"
+    )
+    assert record.response_metadata["year_partition_count"] == 2
+    assert record.response_metadata["observation_date_field"] == "日期"
+    assert record.response_metadata["date_ordering"] == "strictly_ascending"
+    assert record.response_metadata["identity_fields"] == ["日期"]
+    assert record.response_metadata["row_identity_order"] == [
+        "2022-01-03",
+        "2022-01-04",
+        "2023-01-03",
+    ]
+    assert record.response_metadata["field_count"] == 6
+    assert record.response_metadata["source_field_order"] == fields
+    assert record.response_metadata["date_fields"] == ["日期"]
+    assert record.response_metadata["value_fields"] == fields[1:]
+    assert record.response_metadata["required_numeric_fields"] == fields[1:]
+    assert record.response_metadata["documented_units"] == {}
+    assert record.response_metadata["undocumented_numeric_units"] == {
+        field: "not_documented" for field in fields[1:]
+    }
+    assert record.response_metadata["field_types"] == {
+        "日期": "date",
+        **{field: "number" for field in fields[1:]},
+    }
+    assert record.response_metadata["price_unit"] == "not_documented"
+    assert record.response_metadata["volume_unit"] == "not_documented"
+    expected_url = (
+        "https://web.ifzq.gtimg.cn/appstock/app/hkfqkline/get"
+        if adjust
+        else "http://web.ifzq.gtimg.cn/appstock/app/kline/kline"
+    )
+    assert record.response_metadata["upstream_url"] == expected_url
+    assert record.response_metadata["upstream_urls"] == [expected_url]
+    assert record.response_metadata["upstream_auxiliary_urls"] == []
+    assert record.response_metadata["upstream_auxiliary_roles"] == []
+    assert record.response_metadata["upstream_protocol"] == "JSON"
+    assert record.response_metadata["upstream_parameters"] == ["_var", "param", "r"]
+    assert record.response_metadata["upstream_dynamic_parameters"] == {
+        "symbol": "00700",
+        "payload_symbol": "hk00700",
+        "start_year": "2022",
+        "end_year": "2024",
+        "adjust": adjust,
+        "random_parameter": "random_per_year",
+    }
+    assert record.response_metadata["upstream_fixed_parameters"] == {
+        "period": "day",
+        "count": 640,
+        "date_window": "each requested year through following year-12-31",
+    }
+    assert record.response_metadata["wrapper_source_page_uri"] == record.source_uri
+    assert record.response_metadata["wrapper_date_filtering"] == "none"
+    assert record.response_metadata["wrapper_decoders"] == ["demjson"]
+    assert record.response_metadata["wrapper_transformations"] == [
+        "payload_key_extract",
+        "row_projection",
+        "date_conversion",
+        "numeric_conversion",
+    ]
+    assert record.response_metadata["wrapper_source_column_count"] == (
+        9 if adjust else [6, 7]
+    )
+    assert record.response_metadata["wrapper_column_mapping"] == {
+        "日期": 0,
+        "开盘": 1,
+        "收盘": 2,
+        "最高": 3,
+        "最低": 4,
+        "成交量": 5,
+    }
+    assert record.response_metadata["wrapper_dropped_fields"] == (
+        ["source_column_6", "source_column_7", "source_column_8"]
+        if adjust
+        else ["optional_source_column_6"]
+    )
+    assert record.response_metadata["upstream_page_size"] == 640
+    assert record.response_metadata["pagination"] == "year_partitions"
+    assert record.response_metadata["upstream_row_count"] == 3
+    assert record.response_metadata["entity_row_count"] == 3
+    assert record.response_metadata["observation_start_date"] == "2022-01-03"
+    assert record.response_metadata["observation_end_date"] == "2023-01-03"
+
+
+def test_ah_daily_history_fetch_applies_documented_defaults():
+    class EmptyResponse(FakeAKShare):
+        def stock_zh_ah_daily(self, **kwargs):
+            return self._return("stock_zh_ah_daily", [], **kwargs)
+
+    fake = EmptyResponse()
+    record = _provider(fake).fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "HK00700",
+            {"view": "ah_daily"},
+        )
+    )
+
+    assert fake.calls == [
+        (
+            "stock_zh_ah_daily",
+            {
+                "symbol": "00700",
+                "start_year": "2000",
+                "end_year": "2019",
+                "adjust": "",
+            },
+        )
+    ]
+    assert record.response_metadata["ah_daily_start_year"] == "2000"
+    assert record.response_metadata["ah_daily_end_year"] == "2019"
+    assert record.response_metadata["year_partition_count"] == 19
+    assert record.response_metadata["row_identity_order"] == []
+    assert record.response_metadata["observation_start_date"] is None
+    assert record.response_metadata["observation_end_date"] is None
+
+
+@pytest.mark.parametrize(
+    ("entity_id", "parameters", "match"),
+    [
+        ("SH600000", {"view": "ah_daily"}, "H-share listings only"),
+        (
+            "HK00700",
+            {"view": "ah_daily", "start_date": "20220901"},
+            "unsupported AKShare Tencent A\\+H daily-history parameter",
+        ),
+        (
+            "HK00700",
+            {"view": "ah_daily", "start_year": "2022-01-01"},
+            "start_year must be a four-digit year",
+        ),
+        (
+            "HK00700",
+            {"view": "ah_daily", "start_year": 2022},
+            "start_year must be a four-digit year",
+        ),
+        (
+            "HK00700",
+            {"view": "ah_daily", "start_year": "2024", "end_year": "2022"},
+            "start_year must not be after end_year",
+        ),
+        (
+            "HK00700",
+            {"view": "ah_daily", "adjust": "split"},
+            "adjust must be '', 'qfq' or 'hfq'",
+        ),
+        (
+            "HK00700",
+            {"view": "ah_daily", "adjust": True},
+            "adjust must be '', 'qfq' or 'hfq'",
+        ),
+    ],
+)
+def test_ah_daily_history_request_rejects_non_documented_scope(
+    entity_id: str,
+    parameters: dict,
+    match: str,
+):
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError, match=match):
+        _provider(fake).fetch(
+            _request(DataCategory.MARKET_HISTORY, entity_id, parameters)
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("missing_field", "missing field"),
+        ("extra_field", "unsupported field"),
+        ("reordered_fields", "documented field order"),
+        ("invalid_date", "invalid date"),
+        ("outside_range", "outside requested range"),
+        ("descending", "strictly ascending"),
+        ("duplicate_date", "duplicate date"),
+        ("invalid_numeric", "must be numeric or null"),
+        ("bool_numeric", "must be numeric or null"),
+        ("infinite_numeric", "contains infinity"),
+    ],
+)
+def test_ah_daily_history_response_validates_exact_rows(
+    mutation: str,
+    match: str,
+):
+    class InvalidRows(FakeAKShare):
+        def stock_zh_ah_daily(self, **kwargs):
+            rows = [dict(row) for row in _fixture("ah_daily_history.json")]
+            if mutation == "missing_field":
+                rows[0].pop("成交量")
+            elif mutation == "extra_field":
+                rows[0]["unexpected"] = "not documented"
+            elif mutation == "reordered_fields":
+                first = rows[0]
+                rows[0] = {
+                    "开盘": first["开盘"],
+                    **{key: value for key, value in first.items() if key != "开盘"},
+                }
+            elif mutation == "invalid_date":
+                rows[0]["日期"] = "not-a-date"
+            elif mutation == "outside_range":
+                rows[0]["日期"] = "2024-01-02"
+            elif mutation == "descending":
+                rows.reverse()
+            elif mutation == "duplicate_date":
+                rows[1]["日期"] = rows[0]["日期"]
+            elif mutation == "invalid_numeric":
+                rows[0]["收盘"] = "376.0"
+            elif mutation == "bool_numeric":
+                rows[0]["成交量"] = True
+            else:
+                rows[0]["最高"] = float("inf")
+            return self._return("stock_zh_ah_daily", rows, **kwargs)
+
+    with pytest.raises(ProviderResponseError, match=match):
+        _provider(InvalidRows()).fetch(
+            _request(
+                DataCategory.MARKET_HISTORY,
+                "HK00700",
+                {
+                    "view": "ah_daily",
+                    "start_year": "2022",
+                    "end_year": "2024",
+                },
+            )
+        )
+
+
+def test_ah_daily_history_allows_nullable_numeric_values():
+    class NullableRows(FakeAKShare):
+        def stock_zh_ah_daily(self, **kwargs):
+            rows = [dict(row) for row in _fixture("ah_daily_history.json")]
+            rows[1]["成交量"] = None
+            return self._return("stock_zh_ah_daily", rows, **kwargs)
+
+    record = _provider(NullableRows()).fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "HK00700",
+            {"view": "ah_daily", "start_year": "2022", "end_year": "2024"},
+        )
+    )
+
+    assert record.raw_payload[1]["成交量"] is None
+
+
+def test_ah_daily_history_empty_response_is_a_valid_raw_snapshot():
+    class EmptyResponse(FakeAKShare):
+        def stock_zh_ah_daily(self, **kwargs):
+            return self._return("stock_zh_ah_daily", [], **kwargs)
+
+    record = _provider(EmptyResponse()).fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "HK00700",
+            {"view": "ah_daily", "start_year": "2022", "end_year": "2024"},
+        )
+    )
+
+    assert record.raw_payload == []
+    assert record.response_metadata["upstream_row_count"] == 0
+    assert record.response_metadata["entity_row_count"] == 0
+    assert record.response_metadata["row_identity_order"] == []
+    assert record.response_metadata["observation_start_date"] is None
+    assert record.response_metadata["observation_end_date"] is None
+
+
+def test_ah_daily_history_is_retained_as_raw_evidence_without_canonical_facts():
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "HK00700",
+            {"view": "ah_daily", "start_year": "2022", "end_year": "2024"},
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="ah-daily-history-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company("HK00700"),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_AH_DAILY_HISTORY_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == ["market_history"]
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "Tencent A+H daily-history" in normalized.data_quality.notes
+    assert "canonical daily-history contract" in normalized.data_quality.notes
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "endpoint",
+        "source_uri",
+        "view",
+        "symbol",
+        "market_scope",
+        "listing_scope",
+        "snapshot",
+        "date_binding",
+        "range_filtering",
+        "start_year",
+        "end_year",
+        "adjust",
+        "date_ordering",
+        "field_count",
+        "source_order",
+        "upstream_url",
+        "upstream_parameters",
+        "wrapper_mapping",
+        "pagination",
+        "count",
+        "observation_start",
+        "payload",
+    ],
+)
+def test_ah_daily_history_normalizer_rejects_replayed_scope_mismatches(
+    mutation: str,
+):
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "HK00700",
+            {
+                "view": "ah_daily",
+                "start_year": "2022",
+                "end_year": "2024",
+                "adjust": "qfq",
+            },
+        )
+    )
+    response_metadata = dict(record.response_metadata)
+    payload = [dict(row) for row in record.raw_payload]
+    source_uri = record.source_uri
+    if mutation == "endpoint":
+        response_metadata["endpoint"] = "stock_hk_daily"
+    elif mutation == "source_uri":
+        source_uri = "https://example.invalid/ah-daily"
+    elif mutation == "view":
+        response_metadata["market_history_view"] = "daily"
+    elif mutation == "symbol":
+        response_metadata["upstream_symbol"] = "00701"
+    elif mutation == "market_scope":
+        response_metadata["market_scope"] = "all_h_share_listings"
+    elif mutation == "listing_scope":
+        response_metadata["listing_scoped_request"] = False
+    elif mutation == "snapshot":
+        response_metadata["snapshot_scope"] = "current_snapshot"
+    elif mutation == "date_binding":
+        response_metadata["date_binding"] = "row_only"
+    elif mutation == "range_filtering":
+        response_metadata["range_filtering"] = "normalizer"
+    elif mutation == "start_year":
+        response_metadata["ah_daily_start_year"] = "2021"
+    elif mutation == "end_year":
+        response_metadata["ah_daily_end_year"] = "2025"
+    elif mutation == "adjust":
+        response_metadata["ah_daily_adjust"] = ""
+    elif mutation == "date_ordering":
+        response_metadata["date_ordering"] = "strictly_descending"
+    elif mutation == "field_count":
+        response_metadata["field_count"] = 5
+    elif mutation == "source_order":
+        response_metadata["source_field_order"] = list(
+            reversed(response_metadata["source_field_order"])
+        )
+    elif mutation == "upstream_url":
+        response_metadata["upstream_url"] = "https://example.invalid/ah-daily"
+    elif mutation == "upstream_parameters":
+        response_metadata["upstream_parameters"] = []
+    elif mutation == "wrapper_mapping":
+        response_metadata["wrapper_column_mapping"] = {}
+    elif mutation == "pagination":
+        response_metadata["pagination"] = "single_page"
+    elif mutation == "count":
+        response_metadata["entity_row_count"] = 99
+    elif mutation == "observation_start":
+        response_metadata["observation_start_date"] = "2022-01-02"
+    else:
+        payload[0]["日期"] = "2022-01-02"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=source_uri,
+        response_metadata=response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-ah-daily-history-scope",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company("HK00700"),
+        )
+
+
+def test_ah_daily_history_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.MARKET_HISTORY,
+        "HK00700",
+        {"view": "ah_daily", "start_year": "2022", "end_year": "2024"},
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [
+        (
+            "stock_zh_ah_daily",
+            {
+                "symbol": "00700",
+                "start_year": "2022",
+                "end_year": "2024",
+                "adjust": "",
+            },
         )
     ]
 
