@@ -1,6 +1,6 @@
 # Structured Provider Field Matrix
 
-> Status: Phase 3.87 filing evidence store plus Phase 3.86 bounded filing text extraction, Phase 3.85 filing download/cache guardrail and Phase 2 normalization guardrail
+> Status: Phase 3.88 adjustment proposal workflow plus Phase 3.87 filing evidence store, Phase 3.86 bounded filing text extraction, Phase 3.85 filing download/cache guardrail and Phase 2 normalization guardrail
 
 This matrix classifies normalized fields used by the current strict-v1 input
 and gate pipeline. It is an allowlist for what a structured-data adapter may
@@ -4649,6 +4649,25 @@ The store creates no numeric `Fact`, accounting interpretation, adjustment
 proposal, LLM call or CLI behavior. Its machine-readable envelope contract is
 `schemas/filing-evidence.schema.json`; legacy evidence without filing
 provenance remains valid under `schemas/evidence.schema.json`.
+
+## Phase 3.88 deterministic adjustment proposal workflow
+
+The adjustment workflow reuses the existing `Adjustment` model and accepts
+only explicit caller-supplied proposals. It resolves every evidence reference
+before persistence and binds the proposal to the resolved evidence digest (and,
+when available, the filing-evidence store record digest).
+
+| Workflow field | Treatment and replay invariant |
+| --- | --- |
+| `adjustment` | Existing target field, adjustment type, input/proposed values, reason, proposer and confidence are preserved; only `PROPOSED` records can be created and no value is applied automatically. |
+| `source_evidence_ids` | Must be non-empty, unique and resolvable through normalized input, an explicit evidence index or the Phase 3.87 store; unknown or conflicting IDs fail closed. |
+| `evidence_bindings` | Deterministic evidence SHA-256 bindings, plus an optional filing-store record SHA-256, are retained in the envelope and checked on replay. |
+| `transition_history` | Starts with `PROPOSE`; only explicit `HUMAN`/`RULE_ENGINE` `ACCEPT` or `REJECT` terminal transitions are permitted. An accepted Adjustment must carry the matching approver; an LLM can propose but cannot approve. |
+| workflow envelope | `adjustment-proposal-<24 hex>` identity, optional normalized-input scope and canonical record SHA-256 are persisted atomically under `<root>/adjustments/`; append/upsert is idempotent and conflicting reuse is rejected. |
+
+The machine-readable contract is `schemas/adjustment-workflow.schema.json`.
+Replay and lookup are offline-only; they do not mutate normalized input, apply
+an adjustment, infer accounting treatment, invoke an LLM or wire the CLI.
 
 ## Phase 2 enforcement rule
 

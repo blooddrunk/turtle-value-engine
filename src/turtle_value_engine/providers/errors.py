@@ -98,3 +98,31 @@ class EvidenceStoreRequestError(EvidenceStoreError):
 
 class EvidenceStoreWriteError(EvidenceStoreError):
     """Raised when an evidence record cannot be atomically persisted."""
+
+
+class AdjustmentWorkflowError(CacheError):
+    """Base error for deterministic local adjustment proposal workflows."""
+
+
+class AdjustmentWorkflowMissError(AdjustmentWorkflowError):
+    """Raised when an explicitly requested adjustment replay is unavailable."""
+
+
+class AdjustmentWorkflowCorruptionError(AdjustmentWorkflowError):
+    """Raised when a persisted adjustment workflow record fails integrity checks."""
+
+
+class AdjustmentWorkflowConflictError(AdjustmentWorkflowError):
+    """Raised when an adjustment ID already represents different immutable content."""
+
+
+class AdjustmentWorkflowRequestError(AdjustmentWorkflowError):
+    """Raised when an adjustment proposal or evidence binding is invalid."""
+
+
+class AdjustmentWorkflowTransitionError(AdjustmentWorkflowError):
+    """Raised when an adjustment lifecycle transition is not permitted."""
+
+
+class AdjustmentWorkflowWriteError(AdjustmentWorkflowError):
+    """Raised when an adjustment workflow record cannot be atomically persisted."""

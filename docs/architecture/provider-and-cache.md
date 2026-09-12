@@ -1,12 +1,12 @@
 # Provider and Cache Architecture
 
-> Endpoint-loop status: Phase 3.87 deterministic filing evidence store
-> acquisition is
+> Endpoint-loop status: Phase 3.88 deterministic adjustment proposal workflow
+> is
 > implemented below.
 
-> Status: Phase 3.85 official filing document download/cache plus Phase 3.84 filing discovery, structured acquisition, read-only AKShare statement slices, earnings forecasts/quick reports/performance reports/business composition/financial abstract/financial indicators, H-share latest indicators, A-share disclosure-notice metadata including the Eastmoney individual-notice, market-wide notice and shareholder-meeting views, risk-warning status, trading-suspension, restricted-share-release, goodwill-impairment detail/goodwill-detail/impairment-forecast/market-profile/industry-data, ESG-rating, SSE/SZSE/BSE margin-detail, share-capital, individual-info snapshot, corporate-action including IPO-summary and Eastmoney IPO-yield, external-guarantee, company-litigation, ownership-pledge snapshot/detail/company-distribution/bank-distribution/industry-data/market-profile/important-shareholder-detail, main-shareholder, shareholder-count/shareholder-count-detail, A-share actual-controller holding-change, A/H HSGT individual-holdings/A-share individual-detail/individual-ranking/daily-stock-statistics/institution-statistics, SSE/SZSE/BSE insider-share-change, A-share Eastmoney/CNINFO management-holding and executive/shareholder-change, A-share top-ten/top-ten-tradable-shareholder/top-ten-tradable-shareholder-detail, Dragon-Tiger market-activity detail/statistics/institution-statistics/institution-daily/institutional-research/institutional-research-detail/market-participation-desire/market-focus/institution-participation/block-trade-detail/hot-rank/latest-hot-rank/A-share historical-hot-rank/A-share realtime-hot-rank-detail/hot-keyword/related-stock-hot-rank/limit-up-pool/limit-down-pool/H-share latest-hot-rank/H-share historical-hot-rank/H-share realtime-hot-rank-detail/new-stock-board, A+B/A+H quote-comparison, Shanghai, Shenzhen, Beijing, Growth Enterprise Market, STAR Market, Sina STAR Market, B-share, Sina B-share, Sina mainland-index spot, Sina Hong Kong-index spot, Eastmoney mainland-index spot, Eastmoney global-index spot, Eastmoney Hong Kong-index spot, B-share daily-history, Eastmoney A-share daily-history, Sina H-share daily-history, Sina A-share daily-history, Sina STAR Market daily-history, Sina index daily-history, Sina Hong Kong-index daily-history, Eastmoney Hong Kong-index daily-history, Eastmoney global-index daily-history, Sina global-index daily-history, Sina US-index daily-history, Tencent index daily-history, Eastmoney index daily-history, generic Eastmoney index-history, index minute-history, B-share minute-history and new-stock A-share, Sina next-new-stock, company-dynamics, new-stock-first-day, IPO-benefit and two-net/delisted-stock, H-share main-board/famous-stock/Stock Connect constituent/Shanghai Stock Connect quotes, A-share Eastmoney/Sina intraday-trade, Tencent daily-history/latest-trading-day tick, A-share/H-share intraday-history, pre-market-history and five-level bid-ask raw slices, SSE/SZSE market-summary, SZSE area-summary/sector-summary and Eastmoney industry-board, HSGT board-rank, stock-account-statistics and Legu market-activity/congestion/equity-bond-spread/Buffett-index/A-share PE/PB-history, index-PE/index-PB, A-share growth-comparison, A/H Eastmoney valuation-comparison, A/H Eastmoney growth-comparison and A/H Baidu valuation-history raw slices, the deprecated HSGT minute-fund-flow raw slice, HSGT historical-flow raw slice and HSGT fund-flow-summary raw slice
+> Status: Phase 3.88 adjustment proposal workflow plus Phase 3.87 filing evidence store, Phase 3.86 bounded extraction, Phase 3.85 filing document download/cache, Phase 3.84 filing discovery, structured acquisition, read-only AKShare statement slices, earnings forecasts/quick reports/performance reports/business composition/financial abstract/financial indicators, H-share latest indicators, A-share disclosure-notice metadata including the Eastmoney individual-notice, market-wide notice and shareholder-meeting views, risk-warning status, trading-suspension, restricted-share-release, goodwill-impairment detail/goodwill-detail/impairment-forecast/market-profile/industry-data, ESG-rating, SSE/SZSE/BSE margin-detail, share-capital, individual-info snapshot, corporate-action including IPO-summary and Eastmoney IPO-yield, external-guarantee, company-litigation, ownership-pledge snapshot/detail/company-distribution/bank-distribution/industry-data/market-profile/important-shareholder-detail, main-shareholder, shareholder-count/shareholder-count-detail, A-share actual-controller holding-change, A/H HSGT individual-holdings/A-share individual-detail/individual-ranking/daily-stock-statistics/institution-statistics, SSE/SZSE/BSE insider-share-change, A-share Eastmoney/CNINFO management-holding and executive/shareholder-change, A-share top-ten/top-ten-tradable-shareholder/top-ten-tradable-shareholder-detail, Dragon-Tiger market-activity detail/statistics/institution-statistics/institution-daily/institutional-research/institutional-research-detail/market-participation-desire/market-focus/institution-participation/block-trade-detail/hot-rank/latest-hot-rank/A-share historical-hot-rank/A-share realtime-hot-rank-detail/hot-keyword/related-stock-hot-rank/limit-up-pool/limit-down-pool/H-share latest-hot-rank/H-share historical-hot-rank/H-share realtime-hot-rank-detail/new-stock-board, A+B/A+H quote-comparison, Shanghai, Shenzhen, Beijing, Growth Enterprise Market, STAR Market, Sina STAR Market, B-share, Sina B-share, Sina mainland-index spot, Sina Hong Kong-index spot, Eastmoney mainland-index spot, Eastmoney global-index spot, Eastmoney Hong Kong-index spot, B-share daily-history, Eastmoney A-share daily-history, Sina H-share daily-history, Sina A-share daily-history, Sina STAR Market daily-history, Sina index daily-history, Sina Hong Kong-index daily-history, Eastmoney Hong Kong-index daily-history, Eastmoney global-index daily-history, Sina global-index daily-history, Sina US-index daily-history, Tencent index daily-history, Eastmoney index daily-history, generic Eastmoney index-history, index minute-history, B-share minute-history and new-stock A-share, Sina next-new-stock, company-dynamics, new-stock-first-day, IPO-benefit and two-net/delisted-stock, H-share main-board/famous-stock/Stock Connect constituent/Shanghai Stock Connect quotes, A-share Eastmoney/Sina intraday-trade, Tencent daily-history/latest-trading-day tick, A-share/H-share intraday-history, pre-market-history and five-level bid-ask raw slices, SSE/SZSE market-summary, SZSE area-summary/sector-summary and Eastmoney industry-board, HSGT board-rank, stock-account-statistics and Legu market-activity/congestion/equity-bond-spread/Buffett-index/A-share PE/PB-history, index-PE/index-PB, A-share growth-comparison, A/H Eastmoney valuation-comparison, A/H Eastmoney growth-comparison and A/H Baidu valuation-history raw slices, the deprecated HSGT minute-fund-flow raw slice, HSGT historical-flow raw slice and HSGT fund-flow-summary raw slice
 
-> Current endpoint-loop milestone: Phase 3.87 deterministic filing evidence store
+> Current endpoint-loop milestone: Phase 3.88 deterministic adjustment proposal workflow
 > is implemented below; the detailed cumulative status line above
 > remains a catalog of the previously completed slices.
 
@@ -35,9 +35,10 @@ Phase 2 and the numbered Phase 3 structured increments add structured
 acquisition and replay infrastructure only. Phase 3.84 adds the bounded
 official filing-discovery metadata boundary, Phase 3.85 adds verified document
 bytes and content-addressed replay, Phase 3.86 adds parser-injected text
-blocks, and Phase 3.87 adds an append-only evidence store bound to exact
-extracted blocks. Accounting interpretation, numeric Fact extraction and
-adjustment proposals remain later top-level Phase 3 work.
+blocks, Phase 3.87 adds an append-only evidence store bound to exact extracted
+blocks, and Phase 3.88 adds an offline adjustment proposal workflow. Accounting
+interpretation, numeric Fact extraction, LLM analysis and CLI wiring remain
+outside this layer.
 
 ## 2. Responsibilities and boundaries
 
@@ -3844,8 +3845,8 @@ before a replayed result can be consumed.
 
 This slice does not create `Source`/`Evidence` items or normalized `Fact`
 records. Document download/cache is Phase 3.85 and bounded text extraction is
-Phase 3.86; evidence storage, adjustment proposals, LLM analysis and CLI
-wiring remain later Phase 3/4 work. Focused
+Phase 3.86; evidence storage is Phase 3.87 and adjustment proposals are Phase
+3.88, while LLM analysis and CLI wiring remain later Phase 3/4 work. Focused
 tests cover all A/H source boundaries, URL and date/limit adversarial cases,
 deterministic IDs, tampered replay metadata/payloads, JSON Schema validation
 and offline cache replay.
@@ -3878,11 +3879,34 @@ interim classification from a title, interpret accounting values, create
 the CLI. Missing parsers, unsupported media and malformed parser output fail
 closed.
 
+## Phase 3.87 Deterministic filing evidence store
+
+`FilingEvidenceStore` consumes a validated extraction and a caller-supplied
+`Evidence` statement, binding it to one exact page/section block. It preserves
+the complete filing identity, source-document ID, report period, document and
+block hashes, parser/extraction provenance and a stable `block:<sequence>`
+locator in additive `EvidenceProvenance` metadata. Filesystem writes are
+atomic, append-only and idempotent; replay and lookup verify the envelope hash
+and, when supplied, the exact source document. It creates no `Fact`, does not
+interpret accounting text and never uses the network.
+
+## Phase 3.88 Deterministic adjustment proposal workflow
+
+`AdjustmentProposalWorkflow` reuses the existing `Adjustment` model. It accepts
+only explicit `PROPOSED` values/reasons/types, resolves every evidence ID and
+stores evidence digests plus optional filing-store record digests in an
+integrity-checked JSON envelope. Deterministic append/upsert and offline
+replay/lookup are supported; the only terminal transitions are
+`PROPOSED -> ACCEPTED` and `PROPOSED -> REJECTED`. Acceptance requires a
+matching explicit `HUMAN` or `RULE_ENGINE` approver. No transition mutates
+normalized facts or applies a proposed value; no LLM or network behavior is
+added.
+
 ## 13. Deliberate non-goals
 
 This foundation plus the Phase 2.2–3.83 structured slices, Phase 3.84 filing
-discovery, Phase 3.85 document cache and Phase 3.86 text extraction does not
-include:
+discovery, Phase 3.85 document cache, Phase 3.86 text extraction, Phase 3.87
+evidence store and Phase 3.88 adjustment workflow does not include:
 
 - Tushare, BaoStock or any other additional provider;
 - automatic network scheduling, credentials or retry orchestration outside an adapter;

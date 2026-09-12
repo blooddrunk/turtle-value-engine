@@ -1,0 +1,230 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/blooddrunk/turtle-value-engine/schemas/adjustment-workflow.schema.json",
+  "title": "Turtle Value Engine Adjustment Proposal Workflow Record",
+  "description": "Integrity-checked offline envelope for one existing Adjustment proposal and its explicit lifecycle history.",
+  "type": "object",
+  "required": [
+    "cache_format_version",
+    "contract",
+    "adjustment",
+    "evidence_bindings",
+    "transition_history",
+    "record_sha256"
+  ],
+  "properties": {
+    "cache_format_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "contract": {
+      "type": "string",
+      "const": "adjustment_workflow_v1"
+    },
+    "adjustment": {
+      "$ref": "#/$defs/adjustment"
+    },
+    "evidence_bindings": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/evidenceBinding"
+      }
+    },
+    "scope": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/scope"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "transition_history": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/transition"
+      }
+    },
+    "record_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "adjustment": {
+      "type": "object",
+      "required": [
+        "id",
+        "target_field",
+        "adjustment_type",
+        "status",
+        "reason",
+        "source_evidence_ids",
+        "proposed_by"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^adjustment-proposal-[0-9a-f]{24}$"
+        },
+        "target_field": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "adjustment_type": {
+          "type": "string",
+          "enum": [
+            "RECLASSIFY",
+            "EXCLUDE",
+            "INCLUDE",
+            "HAIRCUT",
+            "OWNERSHIP_ADJUST",
+            "UPSTREAMABILITY_ADJUST",
+            "NORMALIZE",
+            "OTHER"
+          ]
+        },
+        "input_value": {
+          "type": ["number", "null"]
+        },
+        "proposed_adjusted_value": {
+          "type": ["number", "null"]
+        },
+        "status": {
+          "type": "string",
+          "enum": ["PROPOSED", "ACCEPTED", "REJECTED"]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_evidence_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "proposed_by": {
+          "type": "string",
+          "enum": ["RULE_ENGINE", "LLM", "HUMAN"]
+        },
+        "approved_by": {
+          "type": ["string", "null"],
+          "enum": ["RULE_ENGINE", "HUMAN", null]
+        },
+        "confidence": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "maximum": 1
+        }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "ACCEPTED"
+              }
+            },
+            "required": ["status"]
+          },
+          "then": {
+            "required": ["approved_by"],
+            "properties": {
+              "approved_by": {
+                "enum": ["RULE_ENGINE", "HUMAN"]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "enum": ["PROPOSED", "REJECTED"]
+              }
+            },
+            "required": ["status"]
+          },
+          "then": {
+            "properties": {
+              "approved_by": {
+                "enum": [null]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "evidenceBinding": {
+      "type": "object",
+      "required": ["evidence_id", "evidence_sha256"],
+      "properties": {
+        "evidence_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "evidence_store_record_sha256": {
+          "type": ["string", "null"],
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "scope": {
+      "type": "object",
+      "required": ["analysis_id", "as_of", "profile_id", "primary_listing"],
+      "properties": {
+        "analysis_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "as_of": {
+          "type": "string",
+          "format": "date"
+        },
+        "profile_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "primary_listing": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "transition": {
+      "type": "object",
+      "required": ["action", "status", "actor"],
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": ["PROPOSE", "ACCEPT", "REJECT"]
+        },
+        "status": {
+          "type": "string",
+          "enum": ["PROPOSED", "ACCEPTED", "REJECTED"]
+        },
+        "actor": {
+          "type": "string",
+          "enum": ["RULE_ENGINE", "LLM", "HUMAN"]
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

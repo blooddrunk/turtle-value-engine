@@ -4827,22 +4827,47 @@ included. The contract is defined by
 `schemas/filing-evidence.schema.json`; focused fixtures and adversarial tests
 cover A/H provenance, bad references, tampered hashes, conflicts and replay.
 
+### Phase 3.88 — Deterministic adjustment proposal workflow (COMPLETE)
+
+The adjustment workflow reuses the existing `Adjustment` contract and accepts
+only explicit caller-supplied `PROPOSED` values, reasons, types and target
+fields. Before a proposal is persisted, every `source_evidence_ids` reference
+must resolve through a normalized input, explicit evidence index or the local
+Phase 3.87 filing-evidence store; duplicate, missing or conflicting evidence
+records are rejected. A deterministic
+`adjustment-proposal-<24 hex>` ID binds the immutable proposal payload and
+optional normalized-input scope to the evidence references.
+
+`AdjustmentProposalWorkflow` persists an integrity-checked JSON envelope with
+evidence digests, optional filing-store record digests and transition history.
+Writes are atomic and idempotent; replay and lookup are offline-only and
+verify the envelope hash and provenance. The only terminal transitions are
+`PROPOSED -> ACCEPTED` or `PROPOSED -> REJECTED`. Acceptance requires an
+explicit `HUMAN` or `RULE_ENGINE` approver; `LLM` may be recorded as a proposer
+but cannot approve. No transition mutates normalized facts, applies a proposed
+value, infers accounting treatment, calls an LLM or wires the CLI. The contract
+is `schemas/adjustment-workflow.schema.json`; adversarial fixtures/tests cover
+evidence reference failures, A/H filing evidence, lifecycle actors, conflicts,
+scope, tampering and replay.
+
 ### Future structured-provider deliverables
 
 ```text
-src/turtle_value_engine/providers/
-  base.py
-  models.py
-  errors.py
-  cache.py
-  normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–3.83 structured slices
-  filings.py       # Phase 3.84 metadata-only official filing discovery
-  filing_documents.py  # Phase 3.85 byte retrieval and content cache
-  filing_extraction.py  # Phase 3.86 bounded annual/interim report text blocks
-  evidence_store.py   # Phase 3.87 deterministic filing evidence store
-  tushare.py       # future optional adapter
-  baostock.py      # future optional adapter
+src/turtle_value_engine/
+  adjustments.py       # Phase 3.88 deterministic adjustment proposals
+  providers/
+    base.py
+    models.py
+    errors.py
+    cache.py
+    normalization.py
+    akshare.py          # Phase 2.2 market + Phase 2.3–3.83 structured slices
+    filings.py          # Phase 3.84 metadata-only official filing discovery
+    filing_documents.py # Phase 3.85 byte retrieval and content cache
+    filing_extraction.py # Phase 3.86 bounded annual/interim report text blocks
+    evidence_store.py   # Phase 3.87 deterministic filing evidence store
+    tushare.py          # future optional adapter
+    baostock.py         # future optional adapter
 ```
 
 Provider output must map into normalized `Fact` records through the frozen

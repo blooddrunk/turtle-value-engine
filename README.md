@@ -2617,8 +2617,15 @@ checked offline replay. `EvidenceProvenance` is an additive extension to the
 existing evidence contract; no numeric Fact extraction, adjustment proposal,
 LLM analysis or CLI wiring is included.
 
-Adjustment proposals and LLM-assisted evidence analysis
-remain unimplemented. The deterministic
+Phase 3.88 adds a deterministic `AdjustmentProposalWorkflow`: it creates
+caller-supplied `PROPOSED` adjustments only after resolving every referenced
+Evidence ID, stores immutable proposal/evidence bindings with a record hash,
+and permits only explicit `HUMAN` or `RULE_ENGINE` transitions to
+`ACCEPTED`/`REJECTED`. It is filesystem-backed, offline-only and idempotent;
+accepted proposals retain an approver and no transition mutates engine facts
+or applies a proposed value. The contract is defined by
+`schemas/adjustment-workflow.schema.json`. LLM-assisted evidence analysis
+remains unimplemented. The deterministic
 `tve analyze` command is still offline-only and does not call a provider or an
 LLM.
 

@@ -247,8 +247,12 @@ replayed offline without parsing the report. Phase 3.86 adds a bounded
 parser-injected text-block extraction boundary for cached PDF/HTML bytes.
 Phase 3.87 adds a deterministic local evidence store that binds caller-
 supplied Evidence statements to exact page/section blocks and preserves
-filing, document-hash and parser provenance. It still performs no hidden
-network access and does not interpret extracted text as a financial fact.
+filing, document-hash and parser provenance. Phase 3.88 adds the offline
+`AdjustmentProposalWorkflow`, which persists caller-supplied proposals only
+after resolving their evidence IDs and permits explicit human/rule-engine
+approval or rejection without mutating engine facts. Both boundaries perform
+no hidden network access and do not interpret extracted text as a financial
+fact.
 
 ### v0.4 resilient multi-source mode
 

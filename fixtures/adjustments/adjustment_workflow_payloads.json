@@ -1,0 +1,62 @@
+{
+  "a_annual_proposal": {
+    "evidence": {
+      "id": "ev-a-annual-restricted-cash",
+      "direction": "SUPPORT",
+      "strength": "E3",
+      "statement": "The annual filing discloses cash subject to a proposed review.",
+      "source": {
+        "type": "ANNUAL_REPORT",
+        "title": "Synthetic A-share annual report",
+        "issuer": "Synthetic A issuer",
+        "published_date": "2025-03-31",
+        "fiscal_period": "FY2024",
+        "url": "https://static.cninfo.com.cn/example-a.pdf",
+        "document_id": "cninfo-a-2024-annual",
+        "page": 42,
+        "locator": "page:42"
+      },
+      "confidence": 0.9
+    },
+    "proposal": {
+      "target_field": "restricted_cash",
+      "adjustment_type": "HAIRCUT",
+      "input_value": 100.0,
+      "proposed_adjusted_value": 50.0,
+      "status": "PROPOSED",
+      "reason": "Caller-supplied filing review requires explicit approval before any haircut is considered.",
+      "source_evidence_ids": ["ev-a-annual-restricted-cash"],
+      "proposed_by": "HUMAN",
+      "confidence": 0.8
+    }
+  },
+  "h_interim_proposal": {
+    "evidence": {
+      "id": "ev-h-interim-upstreamability",
+      "direction": "COUNTER",
+      "strength": "E2",
+      "statement": "The interim filing leaves upstreamability unresolved.",
+      "source": {
+        "type": "INTERIM_REPORT",
+        "title": "Synthetic H-share interim report",
+        "issuer": "Synthetic H issuer",
+        "published_date": "2025-08-13",
+        "fiscal_period": "H1FY2025",
+        "url": "https://www1.hkexnews.hk/example-h.html",
+        "document_id": "hkex-h-2025-interim",
+        "section": "/html/body/section[2]",
+        "locator": "section:/html/body/section[2]"
+      },
+      "confidence": 0.85
+    },
+    "proposal": {
+      "target_field": "cash_upstreamability_verified",
+      "adjustment_type": "UPSTREAMABILITY_ADJUST",
+      "status": "PROPOSED",
+      "reason": "Caller-supplied interim evidence requires review; no boolean fact is changed automatically.",
+      "source_evidence_ids": ["ev-h-interim-upstreamability"],
+      "proposed_by": "HUMAN",
+      "confidence": 0.75
+    }
+  }
+}
