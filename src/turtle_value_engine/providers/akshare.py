@@ -43,8 +43,8 @@ Tencent index daily-history, Eastmoney index daily-history and
 Tencent latest-trading-day tick, Sina minute-history, CDR daily-history,
 B-share daily-history, Sina STAR Market daily-history, Sina index daily-history,
 Sina mainland-index spot, Sina Hong Kong-index spot, Eastmoney global-index
-spot, Sina Hong Kong-index daily-history, Eastmoney Hong Kong-index spot and
-Eastmoney Hong Kong-index daily-history,
+spot, Eastmoney global-index daily-history, Sina Hong Kong-index daily-history,
+Eastmoney Hong Kong-index spot and Eastmoney Hong Kong-index daily-history,
 B-share minute-history,
 intraday-history, H-share
 intraday-history, index minute-history, pre-market-history, five-level bid-ask
@@ -128,9 +128,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "184"
+AKSHARE_ADAPTER_VERSION = "186"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "185"
+AKSHARE_MAPPING_VERSION = "187"
 
 
 class ListingMarket(StrEnum):
@@ -229,6 +229,7 @@ _SOURCE_URIS = {
     "stock_zh_index_daily": "https://finance.sina.com.cn/realstock/company/sz399552/nc.shtml",
     "stock_zh_index_daily_tx": "https://gu.qq.com/sh000919/zs",
     "stock_zh_index_daily_em": "https://quote.eastmoney.com/center/hszs.html",
+    "index_global_hist_em": "https://quote.eastmoney.com/gb/zsUDI.html",
     "stock_hk_index_daily_sina": "https://stock.finance.sina.com.cn/hkstock/quotes/CES100.html",
     "stock_hk_index_daily_em": "https://quote.eastmoney.com/gb/zsHSTECF2L.html",
     "index_us_stock_sina": "https://stock.finance.sina.com.cn/usstock/quotes/.IXIC.html",
@@ -2721,6 +2722,164 @@ _MARKET_HISTORY_HK_INDEX_DAILY_EM_WRAPPER_COLUMN_MAPPING = {
 _MARKET_HISTORY_HK_INDEX_DAILY_EM_WRAPPER_DROPPED_FIELDS = tuple(
     "-" for _ in range(9)
 )
+
+_MARKET_HISTORY_GLOBAL_INDEX_EM_ENDPOINT = "index_global_hist_em"
+_MARKET_HISTORY_GLOBAL_INDEX_EM_PARAMETER_NAMES = frozenset(
+    {"view", "index_symbol"}
+)
+_MARKET_HISTORY_GLOBAL_INDEX_EM_VIEW = "global_index_hist"
+_MARKET_HISTORY_GLOBAL_INDEX_EM_SYMBOL_MAP = {
+    "波罗的海BDI指数": {"code": "BDI", "market": "100"},
+    "葡萄牙PSI20": {"code": "PSI20", "market": "100"},
+    "菲律宾马尼拉": {"code": "PSI", "market": "100"},
+    "泰国SET": {"code": "SET", "market": "100"},
+    "俄罗斯RTS": {"code": "RTS", "market": "100"},
+    "巴基斯坦卡拉奇": {"code": "KSE100", "market": "100"},
+    "越南胡志明": {"code": "VNINDEX", "market": "100"},
+    "红筹指数": {"code": "HSCCI", "market": "124"},
+    "印尼雅加达综合": {"code": "JKSE", "market": "100"},
+    "希腊雅典ASE": {"code": "ASE", "market": "100"},
+    "墨西哥BOLSA": {"code": "MXX", "market": "100"},
+    "挪威OSEBX": {"code": "OSEBX", "market": "100"},
+    "巴西BOVESPA": {"code": "BVSP", "market": "100"},
+    "波兰WIG": {"code": "WIG", "market": "100"},
+    "印度孟买SENSEX": {"code": "SENSEX", "market": "100"},
+    "布拉格指数": {"code": "PX", "market": "100"},
+    "荷兰AEX": {"code": "AEX", "market": "100"},
+    "冰岛ICEX": {"code": "ICEXI", "market": "100"},
+    "斯里兰卡科伦坡": {"code": "CSEALL", "market": "100"},
+    "富时新加坡海峡时报": {"code": "STI", "market": "100"},
+    "富时意大利MIB": {"code": "MIB", "market": "100"},
+    "路透CRB商品指数": {"code": "CRB", "market": "100"},
+    "比利时BFX": {"code": "BFX", "market": "100"},
+    "富时AIM全股": {"code": "AXX", "market": "100"},
+    "新西兰50": {"code": "NZ50", "market": "100"},
+    "上证指数": {"code": "000001", "market": "1"},
+    "国企指数": {"code": "HSCEI", "market": "100"},
+    "沪深300": {"code": "000300", "market": "1"},
+    "英国富时100": {"code": "FTSE", "market": "100"},
+    "中小100": {"code": "399005", "market": "0"},
+    "瑞士SMI": {"code": "SSMI", "market": "100"},
+    "西班牙IBEX35": {"code": "IBEX", "market": "100"},
+    "瑞典OMXSPI": {"code": "OMXSPI", "market": "100"},
+    "爱尔兰综合": {"code": "ISEQ", "market": "100"},
+    "韩国KOSPI": {"code": "KS11", "market": "100"},
+    "深证成指": {"code": "399001", "market": "0"},
+    "韩国KOSPI200": {"code": "KOSPI200", "market": "100"},
+    "芬兰赫尔辛基": {"code": "HEX", "market": "100"},
+    "恒生指数": {"code": "HSI", "market": "100"},
+    "欧洲斯托克50": {"code": "SX5E", "market": "100"},
+    "美元指数": {"code": "UDI", "market": "100"},
+    "法国CAC40": {"code": "FCHI", "market": "100"},
+    "台湾加权": {"code": "TWII", "market": "100"},
+    "英国富时250": {"code": "MCX", "market": "100"},
+    "富时马来西亚KLCI": {"code": "KLSE", "market": "100"},
+    "OMX哥本哈根20": {"code": "OMXC20", "market": "100"},
+    "道琼斯": {"code": "DJIA", "market": "100"},
+    "奥地利ATX": {"code": "ATX", "market": "100"},
+    "加拿大S&P/TSX": {"code": "TSX", "market": "100"},
+    "德国DAX30": {"code": "GDAXI", "market": "100"},
+    "创业板指": {"code": "399006", "market": "0"},
+    "澳大利亚普通股": {"code": "AORD", "market": "100"},
+    "标普500": {"code": "SPX", "market": "100"},
+    "澳大利亚标普200": {"code": "AS51", "market": "100"},
+    "日经225": {"code": "N225", "market": "100"},
+    "纳斯达克": {"code": "NDX", "market": "100"},
+}
+_MARKET_HISTORY_GLOBAL_INDEX_EM_SYMBOLS = tuple(
+    _MARKET_HISTORY_GLOBAL_INDEX_EM_SYMBOL_MAP
+)
+_MARKET_HISTORY_GLOBAL_INDEX_EM_SYMBOL_SET = frozenset(
+    _MARKET_HISTORY_GLOBAL_INDEX_EM_SYMBOLS
+)
+_MARKET_HISTORY_GLOBAL_INDEX_EM_FIELDS = (
+    "日期",
+    "代码",
+    "名称",
+    "今开",
+    "最新价",
+    "最高",
+    "最低",
+    "振幅",
+)
+_MARKET_HISTORY_GLOBAL_INDEX_EM_FIELD_SET = frozenset(
+    _MARKET_HISTORY_GLOBAL_INDEX_EM_FIELDS
+)
+_MARKET_HISTORY_GLOBAL_INDEX_EM_DATE_FIELDS = ("日期",)
+_MARKET_HISTORY_GLOBAL_INDEX_EM_NUMERIC_FIELDS = (
+    "今开",
+    "最新价",
+    "最高",
+    "最低",
+    "振幅",
+)
+_MARKET_HISTORY_GLOBAL_INDEX_EM_TEXT_FIELDS = ("代码", "名称")
+_MARKET_HISTORY_GLOBAL_INDEX_EM_DOCUMENTED_UNITS = {"振幅": "percent"}
+_MARKET_HISTORY_GLOBAL_INDEX_EM_UNDOCUMENTED_NUMERIC_UNITS = {
+    field: "not_documented"
+    for field in _MARKET_HISTORY_GLOBAL_INDEX_EM_NUMERIC_FIELDS
+    if field not in _MARKET_HISTORY_GLOBAL_INDEX_EM_DOCUMENTED_UNITS
+}
+_MARKET_HISTORY_GLOBAL_INDEX_EM_FIELD_TYPES = {
+    "日期": "date",
+    **{field: "string" for field in _MARKET_HISTORY_GLOBAL_INDEX_EM_TEXT_FIELDS},
+    **{
+        field: "number"
+        for field in _MARKET_HISTORY_GLOBAL_INDEX_EM_NUMERIC_FIELDS
+    },
+}
+_MARKET_HISTORY_GLOBAL_INDEX_EM_SOURCE_URI = (
+    "https://quote.eastmoney.com/gb/zsUDI.html"
+)
+_MARKET_HISTORY_GLOBAL_INDEX_EM_UPSTREAM_URL = (
+    "https://push2his.eastmoney.com/api/qt/stock/kline/get"
+)
+_MARKET_HISTORY_GLOBAL_INDEX_EM_UPSTREAM_PARAMETERS = (
+    "secid",
+    "klt",
+    "fqt",
+    "lmt",
+    "end",
+    "iscca",
+    "fields1",
+    "fields2",
+    "ut",
+    "forcect",
+)
+_MARKET_HISTORY_GLOBAL_INDEX_EM_UPSTREAM_FIXED_PARAMETERS = {
+    "klt": "101",
+    "fqt": "1",
+    "lmt": "50000",
+    "end": "20500000",
+    "iscca": "1",
+    "fields1": "f1,f2,f3,f4,f5,f6,f7,f8",
+    "fields2": "f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61,f62,f63,f64",
+    "ut": "f057cbcbce2a86e2866ab8877db1d059",
+    "forcect": "1",
+}
+_MARKET_HISTORY_GLOBAL_INDEX_EM_WRAPPER_SOURCE_COLUMN_COUNT = 16
+_MARKET_HISTORY_GLOBAL_INDEX_EM_WRAPPER_COLUMN_MAPPING = {
+    "日期": 0,
+    "今开": 1,
+    "最新价": 2,
+    "最高": 3,
+    "最低": 4,
+    "振幅": 7,
+    "代码": 14,
+    "名称": 15,
+}
+_MARKET_HISTORY_GLOBAL_INDEX_EM_WRAPPER_DROPPED_FIELDS = tuple(
+    "-" for _ in range(8)
+)
+_MARKET_HISTORY_GLOBAL_INDEX_EM_UPSTREAM_TRANSFORMATIONS = {
+    "日期": "date_conversion",
+    "代码": "index_global_symbol_map",
+    "名称": "index_global_symbol_map",
+    **{
+        field: "numeric_conversion"
+        for field in _MARKET_HISTORY_GLOBAL_INDEX_EM_NUMERIC_FIELDS
+    },
+}
 
 _MARKET_HISTORY_US_INDEX_SINA_ENDPOINT = "index_us_stock_sina"
 _MARKET_HISTORY_US_INDEX_SINA_PARAMETER_NAMES = frozenset(
@@ -11567,6 +11726,21 @@ class AKShareProvider(StructuredDataProvider):
                         observation_dates=observation_dates,
                     )
                 )
+            elif endpoint.name == _MARKET_HISTORY_GLOBAL_INDEX_EM_ENDPOINT:
+                observation_dates = _validate_global_index_em_history_provider_rows(
+                    rows,
+                    symbol=str(kwargs["symbol"]),
+                    provider=self.identity,
+                    request=request,
+                )
+                response_metadata.update(
+                    _global_index_em_history_response_metadata(
+                        market=listing.market,
+                        listing_code=listing.code,
+                        symbol=str(kwargs["symbol"]),
+                        observation_dates=observation_dates,
+                    )
+                )
             elif endpoint.name == _MARKET_HISTORY_US_INDEX_SINA_ENDPOINT:
                 observation_dates = _validate_us_index_sina_history_provider_rows(
                     rows,
@@ -13579,6 +13753,10 @@ class AKShareProvider(StructuredDataProvider):
                 request.parameters.get("view")
                 == _MARKET_HISTORY_HK_INDEX_DAILY_EM_VIEW
             ),
+            market_history_global_index_em_requested=(
+                request.parameters.get("view")
+                == _MARKET_HISTORY_GLOBAL_INDEX_EM_VIEW
+            ),
             market_history_us_index_sina_requested=(
                 request.parameters.get("view")
                 == _MARKET_HISTORY_US_INDEX_SINA_VIEW
@@ -15269,6 +15447,19 @@ class AKShareNormalizer:
                     )
                     normalizer_flags.add("AKSHARE_HK_INDEX_DAILY_EM_RAW_ONLY")
                 elif (
+                    endpoint == _MARKET_HISTORY_GLOBAL_INDEX_EM_ENDPOINT
+                    or record.request.parameters.get("view")
+                    == _MARKET_HISTORY_GLOBAL_INDEX_EM_VIEW
+                ):
+                    _validate_global_index_em_history_normalizer_scope(
+                        record,
+                        listing,
+                        rows,
+                    )
+                    normalizer_flags.add(
+                        "AKSHARE_GLOBAL_INDEX_HISTORY_RAW_ONLY"
+                    )
+                elif (
                     endpoint == _MARKET_HISTORY_US_INDEX_SINA_ENDPOINT
                     or record.request.parameters.get("view")
                     == _MARKET_HISTORY_US_INDEX_SINA_VIEW
@@ -15331,6 +15522,7 @@ class AKShareNormalizer:
                     "stock_zh_index_daily",
                     _MARKET_HISTORY_HK_INDEX_DAILY_SINA_ENDPOINT,
                     _MARKET_HISTORY_HK_INDEX_DAILY_EM_ENDPOINT,
+                    _MARKET_HISTORY_GLOBAL_INDEX_EM_ENDPOINT,
                     _MARKET_HISTORY_US_INDEX_SINA_ENDPOINT,
                     "stock_zh_b_minute",
                 }:
@@ -16254,6 +16446,7 @@ class AKShareNormalizer:
                 "AKSHARE_INDEX_DAILY_HISTORY_RAW_ONLY",
                 "AKSHARE_HK_INDEX_DAILY_SINA_RAW_ONLY",
                 "AKSHARE_HK_INDEX_DAILY_EM_RAW_ONLY",
+                "AKSHARE_GLOBAL_INDEX_HISTORY_RAW_ONLY",
                 "AKSHARE_US_INDEX_SINA_RAW_ONLY",
                 "AKSHARE_B_MINUTE_HISTORY_RAW_ONLY",
             }
@@ -16911,6 +17104,14 @@ class AKShareNormalizer:
                 "symbol, fqt adjustment parameter and index OHLC series are not "
                 "reconciled to the canonical daily-history contract for an H-share "
                 "listing, return, valuation or accounting inputs."
+            )
+        if "AKSHARE_GLOBAL_INDEX_HISTORY_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented Eastmoney global-index daily-history response is "
+                "retained as raw evidence only: its mapped global-index symbol and "
+                "index OHLC/amplitude series have no listing/entity accounting scope "
+                "and are not reconciled to the canonical daily-history, return, "
+                "valuation or accounting inputs."
             )
         if "AKSHARE_US_INDEX_SINA_RAW_ONLY" in normalizer_flags:
             notes += (
@@ -17798,6 +17999,7 @@ def _endpoint_candidates(
     market_history_index_daily_requested: bool = False,
     market_history_hk_index_daily_sina_requested: bool = False,
     market_history_hk_index_daily_em_requested: bool = False,
+    market_history_global_index_em_requested: bool = False,
     market_history_us_index_sina_requested: bool = False,
     market_history_b_minute_requested: bool = False,
     market_history_tencent_tick_requested: bool = False,
@@ -17967,6 +18169,10 @@ def _endpoint_candidates(
             return ("stock_zh_a_spot_em", "stock_zh_a_spot")
         return ("stock_hk_spot_em", "stock_hk_spot")
     if category is DataCategory.MARKET_HISTORY:
+        if market_history_global_index_em_requested:
+            if market in {ListingMarket.A, ListingMarket.H}:
+                return (_MARKET_HISTORY_GLOBAL_INDEX_EM_ENDPOINT,)
+            return ()
         if market_history_us_index_sina_requested:
             if market in {ListingMarket.A, ListingMarket.H}:
                 return (_MARKET_HISTORY_US_INDEX_SINA_ENDPOINT,)
@@ -28102,6 +28308,253 @@ def _hk_index_daily_em_history_response_metadata(
     }
 
 
+def _global_index_em_history_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    symbol: str,
+) -> tuple[str | None, list[date]]:
+    """Return strict-schema errors for Eastmoney global-index daily rows."""
+
+    symbol_entry = _MARKET_HISTORY_GLOBAL_INDEX_EM_SYMBOL_MAP.get(symbol)
+    if symbol_entry is None:
+        return "Eastmoney global-index daily-history symbol is not documented", []
+    expected_code = symbol_entry["code"]
+    observation_dates: list[date] = []
+    previous_date: date | None = None
+    expected_name: str | None = None
+    for index, row in enumerate(rows):
+        missing = [
+            field
+            for field in _MARKET_HISTORY_GLOBAL_INDEX_EM_FIELDS
+            if field not in row
+        ]
+        unexpected = [
+            field
+            for field in row
+            if field not in _MARKET_HISTORY_GLOBAL_INDEX_EM_FIELD_SET
+        ]
+        if missing:
+            return (
+                "Eastmoney global-index daily-history row "
+                f"{index} is missing field(s): "
+                + ", ".join(missing),
+                [],
+            )
+        if unexpected:
+            return (
+                "Eastmoney global-index daily-history row "
+                f"{index} contains unsupported field(s): "
+                + ", ".join(unexpected),
+                [],
+            )
+        if tuple(row) != _MARKET_HISTORY_GLOBAL_INDEX_EM_FIELDS:
+            return (
+                "Eastmoney global-index daily-history rows must preserve the "
+                "documented field order",
+                [],
+            )
+
+        observation_date = _parse_date_value(row["日期"])
+        if observation_date is None:
+            return (
+                f"Eastmoney global-index daily-history row {index} has an invalid 日期",
+                [],
+            )
+        if previous_date is not None:
+            if observation_date == previous_date:
+                return (
+                    "Eastmoney global-index daily-history response has duplicate "
+                    f"日期 {observation_date.isoformat()!r}",
+                    [],
+                )
+            if observation_date < previous_date:
+                return (
+                    "Eastmoney global-index daily-history response 日期 values "
+                    "must be strictly ascending",
+                    [],
+                )
+        previous_date = observation_date
+        observation_dates.append(observation_date)
+
+        code = row["代码"]
+        if not isinstance(code, str) or not code.strip():
+            return (
+                f"Eastmoney global-index daily-history row {index} field '代码' "
+                "must be a non-empty string",
+                [],
+            )
+        if code != expected_code:
+            return (
+                f"Eastmoney global-index daily-history row {index} field '代码' "
+                f"must match requested index symbol {symbol!r}",
+                [],
+            )
+        name = row["名称"]
+        if not isinstance(name, str) or not name.strip():
+            return (
+                f"Eastmoney global-index daily-history row {index} field '名称' "
+                "must be a non-empty string",
+                [],
+            )
+        if expected_name is None:
+            expected_name = name
+        elif name != expected_name:
+            return (
+                "Eastmoney global-index daily-history response 名称 values must "
+                "remain stable",
+                [],
+            )
+
+        for field in _MARKET_HISTORY_GLOBAL_INDEX_EM_NUMERIC_FIELDS:
+            value = row[field]
+            if value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, Real):
+                return (
+                    f"Eastmoney global-index daily-history row {index} field "
+                    f"{field!r} must be numeric or null",
+                    [],
+                )
+            try:
+                numeric = float(value)
+            except (OverflowError, TypeError, ValueError):
+                return (
+                    f"Eastmoney global-index daily-history row {index} field "
+                    f"{field!r} must be numeric or null",
+                    [],
+                )
+            if not math.isfinite(numeric):
+                return (
+                    f"Eastmoney global-index daily-history row {index} field "
+                    f"{field!r} must be finite or null",
+                    [],
+                )
+    return None, observation_dates
+
+
+def _validate_global_index_em_history_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    symbol: str,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> list[date]:
+    message, observation_dates = _global_index_em_history_validation_message(
+        rows,
+        symbol=symbol,
+    )
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message}",
+            provider=provider,
+            request=request,
+        )
+    return observation_dates
+
+
+def _global_index_em_history_response_metadata(
+    *,
+    market: ListingMarket,
+    listing_code: str,
+    symbol: str,
+    observation_dates: Sequence[date],
+) -> dict[str, JSONValue]:
+    """Build the replay contract for one Eastmoney global-index history."""
+
+    symbol_entry = _MARKET_HISTORY_GLOBAL_INDEX_EM_SYMBOL_MAP[symbol]
+    secid = f"{symbol_entry['market']}.{symbol_entry['code']}"
+    row_identity_order = [observation.isoformat() for observation in observation_dates]
+    fixed_parameters = _MARKET_HISTORY_GLOBAL_INDEX_EM_UPSTREAM_FIXED_PARAMETERS
+    return {
+        "endpoint": _MARKET_HISTORY_GLOBAL_INDEX_EM_ENDPOINT,
+        "market": market.value,
+        "listing_code": listing_code,
+        "market_history_view": _MARKET_HISTORY_GLOBAL_INDEX_EM_VIEW,
+        "upstream_symbol": symbol,
+        "upstream_secid": secid,
+        "upstream_index_code": symbol_entry["code"],
+        "upstream_market_code": symbol_entry["market"],
+        "market_scope": "requested_global_index",
+        "index_scoped_request": True,
+        "listing_scoped_request": False,
+        "row_filtering": "upstream",
+        "snapshot_scope": "full_global_index_daily_history",
+        "date_binding": "row_only",
+        "range_filtering": "not_applicable_full_history",
+        "adjustment_kind": "unadjusted",
+        "observation_date_field": "日期",
+        "date_ordering": "strictly_ascending",
+        "identity_fields": ["日期"],
+        "identity_ordering": "strictly_ascending",
+        "row_identity_order": row_identity_order,
+        "selected_row_identity_order": row_identity_order,
+        "field_count": len(_MARKET_HISTORY_GLOBAL_INDEX_EM_FIELDS),
+        "source_field_order": list(_MARKET_HISTORY_GLOBAL_INDEX_EM_FIELDS),
+        "date_fields": list(_MARKET_HISTORY_GLOBAL_INDEX_EM_DATE_FIELDS),
+        "value_fields": list(_MARKET_HISTORY_GLOBAL_INDEX_EM_NUMERIC_FIELDS),
+        "text_fields": list(_MARKET_HISTORY_GLOBAL_INDEX_EM_TEXT_FIELDS),
+        "required_text_fields": list(_MARKET_HISTORY_GLOBAL_INDEX_EM_TEXT_FIELDS),
+        "required_numeric_fields": list(
+            _MARKET_HISTORY_GLOBAL_INDEX_EM_NUMERIC_FIELDS
+        ),
+        "documented_units": dict(_MARKET_HISTORY_GLOBAL_INDEX_EM_DOCUMENTED_UNITS),
+        "undocumented_numeric_units": dict(
+            _MARKET_HISTORY_GLOBAL_INDEX_EM_UNDOCUMENTED_NUMERIC_UNITS
+        ),
+        "field_types": dict(_MARKET_HISTORY_GLOBAL_INDEX_EM_FIELD_TYPES),
+        "upstream_url": _MARKET_HISTORY_GLOBAL_INDEX_EM_UPSTREAM_URL,
+        "upstream_urls": [_MARKET_HISTORY_GLOBAL_INDEX_EM_UPSTREAM_URL],
+        "upstream_auxiliary_urls": [],
+        "upstream_auxiliary_roles": [],
+        "upstream_protocol": "JSON",
+        "upstream_parameters": list(
+            _MARKET_HISTORY_GLOBAL_INDEX_EM_UPSTREAM_PARAMETERS
+        ),
+        "upstream_dynamic_parameters": {
+            "symbol": symbol,
+            "secid": secid,
+        },
+        "upstream_fixed_parameters": dict(fixed_parameters),
+        "upstream_market_code_resolution": "local_index_global_em_symbol_map",
+        "upstream_authentication": "none",
+        "wrapper_source_page_uri": _MARKET_HISTORY_GLOBAL_INDEX_EM_SOURCE_URI,
+        "wrapper_date_filtering": "none",
+        "wrapper_decoders": ["response.json"],
+        "wrapper_transformations": [
+            "index_global_em_symbol_map",
+            "split_kline_rows",
+            "append_symbol_columns",
+            "drop_unused_kline_fields",
+            "date_conversion",
+            "numeric_conversion",
+            "provider_field_selection",
+        ],
+        "wrapper_source_column_count": (
+            _MARKET_HISTORY_GLOBAL_INDEX_EM_WRAPPER_SOURCE_COLUMN_COUNT
+        ),
+        "wrapper_column_mapping": dict(
+            _MARKET_HISTORY_GLOBAL_INDEX_EM_WRAPPER_COLUMN_MAPPING
+        ),
+        "wrapper_dropped_fields": list(
+            _MARKET_HISTORY_GLOBAL_INDEX_EM_WRAPPER_DROPPED_FIELDS
+        ),
+        "upstream_transformations": dict(
+            _MARKET_HISTORY_GLOBAL_INDEX_EM_UPSTREAM_TRANSFORMATIONS
+        ),
+        "upstream_page_size": 50000,
+        "pagination": "single_full_history_response",
+        "upstream_row_count": len(observation_dates),
+        "entity_row_count": len(observation_dates),
+        "entity_rows_selected": True,
+        "observation_start_date": (
+            min(observation_dates).isoformat() if observation_dates else None
+        ),
+        "observation_end_date": (
+            max(observation_dates).isoformat() if observation_dates else None
+        ),
+    }
+
+
 def _us_index_sina_history_validation_message(
     rows: Sequence[Mapping[str, JSONValue]],
 ) -> tuple[str | None, list[date]]:
@@ -30390,6 +30843,111 @@ def _validate_hk_index_daily_em_history_normalizer_scope(
         if not matches:
             raise ProviderNormalizationError(
                 "Eastmoney Hong Kong-index daily-history response metadata "
+                f"{name!r} does not match the requested replay scope"
+            )
+
+
+def _validate_global_index_em_history_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> None:
+    """Validate a raw Eastmoney global-index daily-history replay scope."""
+
+    if listing.market not in {ListingMarket.A, ListingMarket.H}:
+        raise ProviderNormalizationError(
+            "Eastmoney global-index daily-history raw slice supports A- and "
+            "H-share listing contexts only"
+        )
+    if (
+        record.response_metadata.get("endpoint")
+        != _MARKET_HISTORY_GLOBAL_INDEX_EM_ENDPOINT
+    ):
+        raise ProviderNormalizationError(
+            "Eastmoney global-index daily-history record must come from "
+            f"{_MARKET_HISTORY_GLOBAL_INDEX_EM_ENDPOINT}"
+        )
+    if record.source_uri != _MARKET_HISTORY_GLOBAL_INDEX_EM_SOURCE_URI:
+        raise ProviderNormalizationError(
+            "Eastmoney global-index daily-history record has an unexpected "
+            "source URI"
+        )
+    if record.response_metadata.get("market") != listing.market.value:
+        raise ProviderNormalizationError(
+            "Eastmoney global-index daily-history response market does not match "
+            "requested listing"
+        )
+    if record.response_metadata.get("listing_code") != listing.code:
+        raise ProviderNormalizationError(
+            "Eastmoney global-index daily-history response listing code does not "
+            "match requested listing"
+        )
+    try:
+        upstream_kwargs = _global_index_em_history_kwargs(listing, record.request)
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+
+    symbol = str(upstream_kwargs["symbol"])
+    message, observation_dates = _global_index_em_history_validation_message(
+        rows,
+        symbol=symbol,
+    )
+    if message is not None:
+        raise ProviderNormalizationError(message)
+
+    expected_row_identity_order = [
+        observation.isoformat() for observation in observation_dates
+    ]
+    upstream_row_count = record.response_metadata.get("upstream_row_count")
+    row_identity_order = record.response_metadata.get("row_identity_order")
+    selected_row_identity_order = record.response_metadata.get(
+        "selected_row_identity_order"
+    )
+    if (
+        isinstance(upstream_row_count, bool)
+        or not isinstance(upstream_row_count, int)
+        or upstream_row_count != len(rows)
+        or row_identity_order != expected_row_identity_order
+        or selected_row_identity_order != expected_row_identity_order
+    ):
+        raise ProviderNormalizationError(
+            "Eastmoney global-index daily-history response identity metadata "
+            "does not match replayed rows"
+        )
+
+    expected_metadata = _global_index_em_history_response_metadata(
+        market=listing.market,
+        listing_code=listing.code,
+        symbol=symbol,
+        observation_dates=observation_dates,
+    )
+    boolean_fields = {
+        "index_scoped_request",
+        "listing_scoped_request",
+        "entity_rows_selected",
+    }
+    count_fields = {
+        "field_count",
+        "wrapper_source_column_count",
+        "upstream_page_size",
+        "upstream_row_count",
+        "entity_row_count",
+    }
+    for name, expected in expected_metadata.items():
+        actual = record.response_metadata.get(name)
+        if name in boolean_fields:
+            matches = isinstance(actual, bool) and actual is expected
+        elif name in count_fields:
+            matches = (
+                isinstance(actual, int)
+                and not isinstance(actual, bool)
+                and actual == expected
+            )
+        else:
+            matches = actual == expected
+        if not matches:
+            raise ProviderNormalizationError(
+                "Eastmoney global-index daily-history response metadata "
                 f"{name!r} does not match the requested replay scope"
             )
 
@@ -58210,6 +58768,8 @@ def _history_kwargs(
     listing: _ListingRef,
     request: ProviderRequest,
 ) -> dict[str, object]:
+    if endpoint_name == _MARKET_HISTORY_GLOBAL_INDEX_EM_ENDPOINT:
+        return _global_index_em_history_kwargs(listing, request)
     if endpoint_name == _MARKET_HISTORY_HK_INDEX_DAILY_EM_ENDPOINT:
         return _hk_index_daily_em_history_kwargs(listing, request)
     if endpoint_name == _MARKET_HISTORY_HK_INDEX_DAILY_SINA_ENDPOINT:
@@ -59105,6 +59665,53 @@ def _us_index_sina_history_kwargs(
         raise ProviderRequestError(
             "AKShare Sina US-index daily-history index_symbol must be one of: "
             + choices,
+            request=request,
+            retryable=False,
+        )
+    return {"symbol": raw_symbol}
+
+
+def _global_index_em_history_kwargs(
+    listing: _ListingRef,
+    request: ProviderRequest,
+) -> dict[str, object]:
+    """Build the explicit Eastmoney global-index history request."""
+
+    if listing.market not in {ListingMarket.A, ListingMarket.H}:
+        raise ProviderRequestError(
+            "the AKShare Eastmoney global-index daily-history endpoint supports "
+            "A- and H-share listing contexts only",
+            request=request,
+            retryable=False,
+        )
+
+    parameters = dict(request.parameters)
+    unknown = sorted(
+        set(parameters) - _MARKET_HISTORY_GLOBAL_INDEX_EM_PARAMETER_NAMES
+    )
+    if unknown:
+        raise ProviderRequestError(
+            "unsupported AKShare Eastmoney global-index daily-history "
+            "parameter(s): " + ", ".join(unknown),
+            request=request,
+            retryable=False,
+        )
+    if parameters.get("view") != _MARKET_HISTORY_GLOBAL_INDEX_EM_VIEW:
+        raise ProviderRequestError(
+            "the AKShare Eastmoney global-index daily-history endpoint requires "
+            f"view={_MARKET_HISTORY_GLOBAL_INDEX_EM_VIEW!r}",
+            request=request,
+            retryable=False,
+        )
+    raw_symbol = parameters.get("index_symbol")
+    if (
+        not isinstance(raw_symbol, str)
+        or raw_symbol.strip() != raw_symbol
+        or raw_symbol not in _MARKET_HISTORY_GLOBAL_INDEX_EM_SYMBOL_SET
+    ):
+        raise ProviderRequestError(
+            "AKShare Eastmoney global-index daily-history index_symbol must be "
+            "one of the documented global-index names",
             request=request,
             retryable=False,
         )

@@ -2249,6 +2249,30 @@ rank, identity, timestamp, finite/null-value and empty-response boundaries,
 raw-only normalization, replay metadata/payload tampering and offline cache
 replay. No calculation, gate, pipeline, CLI or input-loader contract changes.
 
+Phase 3.69 adds the next documented Eastmoney global-index history endpoint
+[`index_global_hist_em`](https://akshare.akfamily.xyz/data/index/index.html)
+under `MARKET_HISTORY`. The
+[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/index/index_global_em.py)
+resolves the documented global-index name through its local symbol map and
+requests the complete history from Eastmoney's JSON `stock/kline/get` endpoint
+with `secid`, daily `klt=101`, `fqt=1`, `lmt=50000`, `end=20500000`, `iscca=1`,
+source field selectors, `ut` and `forcect`, with no date-range filtering. The
+adapter exposes explicit `view=global_index_hist` plus `index_symbol`, accepts
+A- or H-share listing context only as provenance, and preserves the exact
+eight-field `日期`, `代码`, `名称`, `今开`, `最新价`, `最高`, `最低`, `振幅` order
+with strict date, identity, numeric/null and documented-symbol validation plus
+complete replay metadata.
+
+The Eastmoney global-index daily-history response is retained as raw evidence
+only: its mapped global-index OHLC/amplitude series has no listing/entity
+accounting scope and does not establish canonical daily-history, return,
+valuation or accounting facts. The normalizer emits
+`AKSHARE_GLOBAL_INDEX_HISTORY_RAW_ONLY` and creates no canonical fact. Tests
+cover A/H routing, strict parameters and exact schema/order, symbol/code/date
+identity, finite/null values, empty output, raw-only normalization, replay
+metadata/payload tampering and offline cache replay. No calculation, gate,
+pipeline, CLI or input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

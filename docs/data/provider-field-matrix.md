@@ -4190,6 +4190,28 @@ market-wide global-index snapshot has no listing/entity accounting scope even
 though it carries provider observation times. The slice remains outside the
 calculation, gate, pipeline, CLI and input-loader contracts.
 
+## Phase 3.69 Eastmoney global-index daily-history raw slice
+
+The current [AKShare index-data documentation](https://akshare.akfamily.xyz/data/index/index.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/index/index_global_em.py)
+document `index_global_hist_em` as a symbol-selected full-history endpoint. The
+adapter selects it only under `MARKET_HISTORY` with explicit
+`view=global_index_hist` and `index_symbol`, accepts A- or H-share listing
+context only as provenance, and retains the complete response without listing
+filtering.
+
+| Raw upstream item | Phase 3.69 treatment |
+| --- | --- |
+| `日期`, `代码`, `名称`, `今开`, `最新价`, `最高`, `最低`, `振幅` | Required exact eight-field order. `日期` must parse as a date and be strictly ascending without duplicates; `代码` must match the local documented symbol map; `名称` must be a non-empty stable string; numeric values must be finite numbers or null. |
+| `振幅` | Documented as a percentage and recorded as `percent`; `今开`, `最新价`, `最高` and `最低` remain `not_documented` rather than receiving invented units or scaling. |
+| request `view=global_index_hist`, `index_symbol` | Exact A/H listing-context routing, exact selector among the documented global-index names, no listing/date filtering, full-history scope, index-scoped replay metadata and row identity by `日期`. |
+| Eastmoney JSON `stock/kline/get` response | Dynamic `secid` is resolved by the local `index_global_em_symbol_map`; fixed `klt=101`, `fqt=1`, `lmt=50000`, `end=20500000`, `iscca=1`, field selectors, `ut` and `forcect`, plus the sixteen-column source mapping, eight dropped placeholders, date/numeric conversion and no auxiliary lookup remain explicit metadata. |
+
+The normalizer emits `AKSHARE_GLOBAL_INDEX_HISTORY_RAW_ONLY` and creates no
+canonical daily-history, return, valuation or accounting fact: the global
+index series has no listing/entity accounting scope. The slice remains outside
+the calculation, gate, pipeline, CLI and input-loader contracts.
+
 ## Phase 2 enforcement rule
 
 For every field not marked `STRUCTURED_AUTO` or `DERIVED_DETERMINISTIC`, a

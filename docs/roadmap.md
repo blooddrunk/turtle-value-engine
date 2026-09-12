@@ -4269,6 +4269,38 @@ rank/code/timestamp/numeric boundaries, nulls, empty output, raw-only
 normalization, replay metadata/payload tampering and offline cache replay. No
 calculation, gate, pipeline, CLI or input-loader contract changes.
 
+### Phase 3.69 — Eastmoney global-index daily-history raw acquisition contract (COMPLETE)
+
+The mapping review now covers the next documented Eastmoney
+[`index_global_hist_em`](https://akshare.akfamily.xyz/data/index/index.html)
+global-index historical endpoint under `MARKET_HISTORY`. The
+[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/index/index_global_em.py)
+accepts a documented global-index name, resolves its code and market through the
+local `index_global_em_symbol_map`, and requests the complete daily history from
+Eastmoney's JSON `stock/kline/get` endpoint with dynamic `secid` plus fixed
+`klt=101`, `fqt=1`, `lmt=50000`, `end=20500000`, `iscca=1`, field selectors,
+`ut` and `forcect` parameters. The adapter exposes explicit
+`view=global_index_hist` and `index_symbol`, accepts A- or H-share listing
+context only as provenance, and preserves the exact eight-field output order:
+`日期`, `代码`, `名称`, `今开`, `最新价`, `最高`, `最低`, `振幅`.
+
+Provider validation is strict: the selector must be one of the documented
+global-index names; dates must be valid, strictly ascending and unique; codes
+must match the resolved symbol; names must be stable non-empty strings; and
+numeric values must be finite numbers or null. Replay metadata records the
+upstream URL, dynamic/fixed parameters, local symbol-map resolution, sixteen
+source columns, positional mapping, eight dropped placeholders, date/numeric
+conversions, full-history/no-date-filtering scope and row identity order. The
+normalizer emits `AKSHARE_GLOBAL_INDEX_HISTORY_RAW_ONLY`, retains the response
+as evidence and creates no canonical daily-history, return, valuation or
+accounting fact because a global-index series has no listing/entity accounting
+scope.
+
+Focused tests cover A/H routing, strict parameter rejection, exact schema/order,
+symbol/code/date identity, finite/null values, empty output, raw-only
+normalization, replay metadata/payload tampering and offline cache replay. No
+calculation, gate, pipeline, CLI or input-loader contract changes.
+
 ### Future structured-provider deliverables
 
 ```text
@@ -4278,7 +4310,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–3.68 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–3.69 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
