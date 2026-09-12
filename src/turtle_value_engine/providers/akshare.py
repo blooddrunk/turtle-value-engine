@@ -39,7 +39,7 @@ historical-hot-rank, limit-up-pool, limit-down-pool, H-share latest-hot-rank and
 historical-hot-rank,
 A+H and A+B comparison,
 intraday-trade, Sina intraday-trade, chip-distribution, Tencent daily-history,
-Tencent index daily-history and
+Tencent index daily-history, Eastmoney index daily-history and
 Tencent latest-trading-day tick, Sina minute-history, CDR daily-history,
 B-share daily-history, Sina STAR Market daily-history and Sina index daily-history,
 B-share minute-history,
@@ -124,9 +124,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "163"
+AKSHARE_ADAPTER_VERSION = "164"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "164"
+AKSHARE_MAPPING_VERSION = "165"
 
 
 class ListingMarket(StrEnum):
@@ -219,6 +219,7 @@ _SOURCE_URIS = {
     "stock_zh_kcb_daily": "https://finance.sina.com.cn/realstock/company/sh688001/nc.shtml",
     "stock_zh_index_daily": "https://finance.sina.com.cn/realstock/company/sz399552/nc.shtml",
     "stock_zh_index_daily_tx": "https://gu.qq.com/sh000919/zs",
+    "stock_zh_index_daily_em": "https://quote.eastmoney.com/center/hszs.html",
     "stock_zh_b_minute": "https://finance.sina.com.cn/realstock/company/sh900901/nc.shtml",
     "stock_zh_a_cdr_daily": (
         "https://finance.sina.com.cn/realstock/company/sh689009/nc.shtml"
@@ -2099,6 +2100,63 @@ _MARKET_HISTORY_TENCENT_INDEX_DAILY_START_YEAR_FIXED_PARAMETERS = {
     "type": "qfq",
     "_var": "trend_qfq",
     "r": "0.3506048543943414",
+}
+
+_MARKET_HISTORY_INDEX_DAILY_EM_PARAMETER_NAMES = frozenset(
+    {"view", "start_date", "end_date"}
+)
+_MARKET_HISTORY_INDEX_DAILY_EM_VIEW = "index_daily_em"
+_MARKET_HISTORY_INDEX_DAILY_EM_DEFAULT_START = "19900101"
+_MARKET_HISTORY_INDEX_DAILY_EM_DEFAULT_END = "20500101"
+_MARKET_HISTORY_INDEX_DAILY_EM_FIELDS = (
+    "date",
+    "open",
+    "close",
+    "high",
+    "low",
+    "volume",
+    "amount",
+)
+_MARKET_HISTORY_INDEX_DAILY_EM_FIELD_SET = frozenset(
+    _MARKET_HISTORY_INDEX_DAILY_EM_FIELDS
+)
+_MARKET_HISTORY_INDEX_DAILY_EM_DATE_FIELDS = ("date",)
+_MARKET_HISTORY_INDEX_DAILY_EM_NUMERIC_FIELDS = (
+    "open",
+    "close",
+    "high",
+    "low",
+    "volume",
+    "amount",
+)
+_MARKET_HISTORY_INDEX_DAILY_EM_DOCUMENTED_UNITS: dict[str, str] = {}
+_MARKET_HISTORY_INDEX_DAILY_EM_UNDOCUMENTED_NUMERIC_UNITS = {
+    field: "not_documented"
+    for field in _MARKET_HISTORY_INDEX_DAILY_EM_NUMERIC_FIELDS
+}
+_MARKET_HISTORY_INDEX_DAILY_EM_FIELD_TYPES = {
+    "date": "date",
+    **{
+        field: "number"
+        for field in _MARKET_HISTORY_INDEX_DAILY_EM_NUMERIC_FIELDS
+    },
+}
+_MARKET_HISTORY_INDEX_DAILY_EM_SOURCE_URI = (
+    "https://quote.eastmoney.com/center/hszs.html"
+)
+_MARKET_HISTORY_INDEX_DAILY_EM_MARKET_MAP = {
+    "SH": "1",
+    "SZ": "0",
+    "BJ": "0",
+}
+_MARKET_HISTORY_INDEX_DAILY_EM_UPSTREAM_URL = (
+    "https://push2his.eastmoney.com/api/qt/stock/kline/get"
+)
+_MARKET_HISTORY_INDEX_DAILY_EM_UPSTREAM_FIXED_PARAMETERS = {
+    "fields1": "f1,f2,f3,f4,f5",
+    "fields2": "f51,f52,f53,f54,f55,f56,f57,f58",
+    "klt": "101",
+    "fqt": "0",
 }
 
 _MARKET_HISTORY_CDR_DAILY_PARAMETER_NAMES = frozenset(
@@ -7114,6 +7172,20 @@ class AKShareProvider(StructuredDataProvider):
                 retryable=False,
             )
         if (
+            request.category is DataCategory.MARKET_HISTORY
+            and request.parameters.get("view")
+            == _MARKET_HISTORY_INDEX_DAILY_EM_VIEW
+            and not _is_eastmoney_index_daily_listing(listing)
+        ):
+            raise ProviderRequestError(
+                "the AKShare Eastmoney index daily-history endpoint supports "
+                "Shanghai 000xxx, Shenzhen 399xxx or Beijing 899xxx index "
+                "symbols only",
+                provider=self.identity,
+                request=request,
+                retryable=False,
+            )
+        if (
             request.category is DataCategory.MARKET_ACTIVITY
             and request.parameters.get("view") == _MARKET_ACTIVITY_SINA_NEW_STOCK_VIEW
             and (
@@ -10145,6 +10217,33 @@ class AKShareProvider(StructuredDataProvider):
                         observation_dates=observation_dates,
                     )
                 )
+            elif endpoint.name == "stock_zh_index_daily_em":
+                start_date = _parse_index_daily_em_history_date_parameter(
+                    kwargs["start_date"],
+                    name="start_date",
+                    request=request,
+                )
+                end_date = _parse_index_daily_em_history_date_parameter(
+                    kwargs["end_date"],
+                    name="end_date",
+                    request=request,
+                )
+                observation_dates = _validate_index_daily_em_history_provider_rows(
+                    rows,
+                    start_date=start_date,
+                    end_date=end_date,
+                    provider=self.identity,
+                    request=request,
+                )
+                response_metadata.update(
+                    _index_daily_em_history_response_metadata(
+                        listing_code=listing.code,
+                        symbol=str(kwargs["symbol"]),
+                        start_date=str(kwargs["start_date"]),
+                        end_date=str(kwargs["end_date"]),
+                        observation_dates=observation_dates,
+                    )
+                )
             elif endpoint.name == "stock_zh_a_cdr_daily":
                 start_date = _parse_cdr_daily_history_date_parameter(
                     kwargs["start_date"],
@@ -12157,6 +12256,10 @@ class AKShareProvider(StructuredDataProvider):
                 request.parameters.get("view")
                 == _MARKET_HISTORY_TENCENT_INDEX_DAILY_VIEW
             ),
+            market_history_index_daily_em_requested=(
+                request.parameters.get("view")
+                == _MARKET_HISTORY_INDEX_DAILY_EM_VIEW
+            ),
             market_history_cdr_daily_requested=(
                 request.parameters.get("view") == _MARKET_HISTORY_CDR_DAILY_VIEW
             ),
@@ -13674,6 +13777,17 @@ class AKShareNormalizer:
                     normalizer_flags.add(
                         "AKSHARE_TENCENT_INDEX_DAILY_HISTORY_RAW_ONLY"
                     )
+                elif (
+                    endpoint == "stock_zh_index_daily_em"
+                    or record.request.parameters.get("view")
+                    == _MARKET_HISTORY_INDEX_DAILY_EM_VIEW
+                ):
+                    _validate_index_daily_em_history_normalizer_scope(
+                        record,
+                        listing,
+                        rows,
+                    )
+                    normalizer_flags.add("AKSHARE_INDEX_DAILY_EM_RAW_ONLY")
                 elif endpoint == "stock_zh_a_hist_tx":
                     _validate_tencent_daily_history_normalizer_scope(record, listing, rows)
                 elif endpoint == "stock_zh_a_cdr_daily":
@@ -13744,6 +13858,7 @@ class AKShareNormalizer:
                 if endpoint not in {
                     "stock_zh_a_tick_tx_js",
                     "stock_zh_index_daily_tx",
+                    "stock_zh_index_daily_em",
                     "stock_cyq_em",
                     "stock_intraday_em",
                     "stock_intraday_sina",
@@ -14658,6 +14773,7 @@ class AKShareNormalizer:
             {
                 "AKSHARE_TENCENT_TICK_RAW_ONLY",
                 "AKSHARE_TENCENT_INDEX_DAILY_HISTORY_RAW_ONLY",
+                "AKSHARE_INDEX_DAILY_EM_RAW_ONLY",
                 "AKSHARE_INTRADAY_TRADES_RAW_ONLY",
                 "AKSHARE_SINA_INTRADAY_RAW_ONLY",
                 "AKSHARE_INTRADAY_HISTORY_RAW_ONLY",
@@ -15769,6 +15885,13 @@ class AKShareNormalizer:
                 "amount series are not reconciled to a canonical listing/entity "
                 "daily-history, return, valuation or accounting contract."
             )
+        if "AKSHARE_INDEX_DAILY_EM_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented Eastmoney index daily-history response is retained "
+                "as raw evidence only: its unadjusted index OHLCV/amount series are "
+                "not reconciled to a canonical listing/entity daily-history, return, "
+                "valuation or accounting contract."
+            )
         if "AKSHARE_INTRADAY_TRADES_RAW_ONLY" in normalizer_flags:
             notes += (
                 " The documented A-share Eastmoney intraday-trade response is retained "
@@ -15976,6 +16099,25 @@ def _is_sina_index_daily_listing(listing: _ListingRef) -> bool:
     )
 
 
+def _is_eastmoney_index_daily_listing(listing: _ListingRef) -> bool:
+    """Return whether a listing-shaped ID names a supported Eastmoney index."""
+
+    return listing.market is ListingMarket.A and (
+        (
+            listing.canonical_id.startswith("SH")
+            and listing.code.startswith("000")
+        )
+        or (
+            listing.canonical_id.startswith("SZ")
+            and listing.code.startswith("399")
+        )
+        or (
+            listing.canonical_id.startswith("BJ")
+            and listing.code.startswith("899")
+        )
+    )
+
+
 def _endpoint_candidates(
     listing: _ListingRef,
     category: DataCategory,
@@ -16094,6 +16236,7 @@ def _endpoint_candidates(
     market_history_sina_minute_requested: bool = False,
     market_history_tencent_daily_requested: bool = False,
     market_history_tencent_index_daily_requested: bool = False,
+    market_history_index_daily_em_requested: bool = False,
     market_history_cdr_daily_requested: bool = False,
     market_history_b_daily_requested: bool = False,
     market_history_kcb_daily_requested: bool = False,
@@ -16262,6 +16405,10 @@ def _endpoint_candidates(
         if market_history_tencent_index_daily_requested:
             if _is_sina_index_daily_listing(listing):
                 return ("stock_zh_index_daily_tx",)
+            return ()
+        if market_history_index_daily_em_requested:
+            if _is_eastmoney_index_daily_listing(listing):
+                return ("stock_zh_index_daily_em",)
             return ()
         if market_history_b_daily_requested:
             if market is ListingMarket.A and (
@@ -25011,6 +25158,216 @@ def _tencent_index_daily_history_response_metadata(
     }
 
 
+def _index_daily_em_history_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    start_date: date,
+    end_date: date,
+) -> tuple[str | None, list[date]]:
+    """Return strict-schema errors for Eastmoney index daily-history rows."""
+
+    observation_dates: list[date] = []
+    previous_date: date | None = None
+    for index, row in enumerate(rows):
+        missing = [
+            field
+            for field in _MARKET_HISTORY_INDEX_DAILY_EM_FIELDS
+            if field not in row
+        ]
+        unexpected = [
+            field
+            for field in row
+            if field not in _MARKET_HISTORY_INDEX_DAILY_EM_FIELD_SET
+        ]
+        if missing:
+            return (
+                f"Eastmoney index daily-history row {index} is missing field(s): "
+                + ", ".join(missing),
+                [],
+            )
+        if unexpected:
+            return (
+                f"Eastmoney index daily-history row {index} contains unsupported "
+                "field(s): "
+                + ", ".join(unexpected),
+                [],
+            )
+        if tuple(row) != _MARKET_HISTORY_INDEX_DAILY_EM_FIELDS:
+            return (
+                "Eastmoney index daily-history rows must preserve the documented "
+                "field order",
+                [],
+            )
+
+        observation_date = _parse_date_value(row["date"])
+        if observation_date is None:
+            return (
+                f"Eastmoney index daily-history row {index} has an invalid date",
+                [],
+            )
+        if not start_date <= observation_date <= end_date:
+            return (
+                f"Eastmoney index daily-history row {index} date "
+                f"{observation_date.isoformat()!r} is outside requested range "
+                f"{start_date.isoformat()!r}..{end_date.isoformat()!r}",
+                [],
+            )
+        if previous_date is not None and observation_date <= previous_date:
+            if observation_date == previous_date:
+                return (
+                    "Eastmoney index daily-history response has duplicate date "
+                    f"{observation_date.isoformat()!r}",
+                    [],
+                )
+            return (
+                "Eastmoney index daily-history response date values must be "
+                "strictly ascending",
+                [],
+            )
+        previous_date = observation_date
+        observation_dates.append(observation_date)
+
+        for field in _MARKET_HISTORY_INDEX_DAILY_EM_NUMERIC_FIELDS:
+            value = row[field]
+            if value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, Real):
+                return (
+                    f"Eastmoney index daily-history row {index} field {field!r} "
+                    "must be numeric or null",
+                    [],
+                )
+            try:
+                numeric = float(value)
+            except (OverflowError, TypeError, ValueError):
+                return (
+                    f"Eastmoney index daily-history row {index} field {field!r} "
+                    "must be numeric or null",
+                    [],
+                )
+            if not math.isfinite(numeric):
+                return (
+                    f"Eastmoney index daily-history row {index} field {field!r} "
+                    "must be finite or null",
+                    [],
+                )
+    return None, observation_dates
+
+
+def _validate_index_daily_em_history_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    start_date: date,
+    end_date: date,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> list[date]:
+    message, observation_dates = _index_daily_em_history_validation_message(
+        rows,
+        start_date=start_date,
+        end_date=end_date,
+    )
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message}",
+            provider=provider,
+            request=request,
+        )
+    return observation_dates
+
+
+def _index_daily_em_history_response_metadata(
+    *,
+    listing_code: str,
+    symbol: str,
+    start_date: str,
+    end_date: str,
+    observation_dates: Sequence[date],
+) -> dict[str, JSONValue]:
+    """Build the replay contract for one Eastmoney index history snapshot."""
+
+    market = symbol[:2].upper()
+    market_code = _MARKET_HISTORY_INDEX_DAILY_EM_MARKET_MAP[market]
+    secid = f"{market_code}.{symbol[2:]}"
+    return {
+        "endpoint": "stock_zh_index_daily_em",
+        "market": ListingMarket.A.value,
+        "listing_code": listing_code,
+        "market_history_view": _MARKET_HISTORY_INDEX_DAILY_EM_VIEW,
+        "upstream_symbol": symbol,
+        "market_scope": "requested_a_share_index",
+        "index_scoped_request": True,
+        "listing_scoped_request": False,
+        "row_filtering": "upstream",
+        "snapshot_scope": "requested_index_daily_range",
+        "date_binding": "row_and_request",
+        "range_filtering": "upstream_and_provider_validation",
+        "index_daily_em_start_date": start_date,
+        "index_daily_em_end_date": end_date,
+        "adjustment_kind": "unadjusted",
+        "observation_date_field": "date",
+        "date_ordering": "strictly_ascending",
+        "field_count": len(_MARKET_HISTORY_INDEX_DAILY_EM_FIELDS),
+        "source_field_order": list(_MARKET_HISTORY_INDEX_DAILY_EM_FIELDS),
+        "date_fields": list(_MARKET_HISTORY_INDEX_DAILY_EM_DATE_FIELDS),
+        "value_fields": list(_MARKET_HISTORY_INDEX_DAILY_EM_NUMERIC_FIELDS),
+        "required_numeric_fields": list(
+            _MARKET_HISTORY_INDEX_DAILY_EM_NUMERIC_FIELDS
+        ),
+        "documented_units": dict(_MARKET_HISTORY_INDEX_DAILY_EM_DOCUMENTED_UNITS),
+        "undocumented_numeric_units": dict(
+            _MARKET_HISTORY_INDEX_DAILY_EM_UNDOCUMENTED_NUMERIC_UNITS
+        ),
+        "field_types": dict(_MARKET_HISTORY_INDEX_DAILY_EM_FIELD_TYPES),
+        "upstream_url": _MARKET_HISTORY_INDEX_DAILY_EM_UPSTREAM_URL,
+        "upstream_urls": [_MARKET_HISTORY_INDEX_DAILY_EM_UPSTREAM_URL],
+        "upstream_auxiliary_urls": [],
+        "upstream_auxiliary_roles": [],
+        "upstream_protocol": "JSON",
+        "upstream_parameters": [
+            "secid",
+            "fields1",
+            "fields2",
+            "klt",
+            "fqt",
+            "beg",
+            "end",
+        ],
+        "upstream_dynamic_parameters": {
+            "symbol": symbol,
+            "secid": secid,
+            "beg": start_date,
+            "end": end_date,
+        },
+        "upstream_fixed_parameters": dict(
+            _MARKET_HISTORY_INDEX_DAILY_EM_UPSTREAM_FIXED_PARAMETERS
+        ),
+        "upstream_authentication": "none",
+        "wrapper_source_page_uri": _MARKET_HISTORY_INDEX_DAILY_EM_SOURCE_URI,
+        "wrapper_date_filtering": "none",
+        "wrapper_decoders": ["response.json"],
+        "wrapper_transformations": [
+            "market_code_to_secid",
+            "split_kline_rows",
+            "drop_internal_column",
+            "numeric_conversion",
+        ],
+        "wrapper_source_column_count": 8,
+        "wrapper_dropped_fields": ["_"],
+        "upstream_page_size": None,
+        "pagination": "single_full_history_response",
+        "upstream_row_count": len(observation_dates),
+        "entity_row_count": len(observation_dates),
+        "entity_rows_selected": True,
+        "observation_start_date": (
+            min(observation_dates).isoformat() if observation_dates else None
+        ),
+        "observation_end_date": (
+            max(observation_dates).isoformat() if observation_dates else None
+        ),
+    }
+
+
 def _tencent_tick_time(value: object) -> time | None:
     if not isinstance(value, str) or not re.fullmatch(r"\d{2}:\d{2}:\d{2}", value):
         return None
@@ -25604,6 +25961,65 @@ def _validate_tencent_index_daily_history_normalizer_scope(
             raise ProviderNormalizationError(
                 f"Tencent index daily-history response metadata {name!r} does not "
                 "match the requested replay scope"
+            )
+
+
+def _validate_index_daily_em_history_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> None:
+    """Validate an Eastmoney index daily-history replay scope."""
+
+    if not _is_eastmoney_index_daily_listing(listing):
+        raise ProviderNormalizationError(
+            "AKShare Eastmoney index daily-history raw slice supports Shanghai "
+            "000xxx, Shenzhen 399xxx or Beijing 899xxx index symbols only"
+        )
+    if record.source_uri != _MARKET_HISTORY_INDEX_DAILY_EM_SOURCE_URI:
+        raise ProviderNormalizationError(
+            "AKShare Eastmoney index daily-history record has an unexpected source URI"
+        )
+    if record.response_metadata.get("endpoint") != "stock_zh_index_daily_em":
+        raise ProviderNormalizationError(
+            "AKShare Eastmoney index daily-history record must come from "
+            "stock_zh_index_daily_em"
+        )
+    try:
+        upstream_kwargs = _index_daily_em_history_kwargs(listing, record.request)
+        start_date = _parse_index_daily_em_history_date_parameter(
+            upstream_kwargs["start_date"],
+            name="start_date",
+            request=record.request,
+        )
+        end_date = _parse_index_daily_em_history_date_parameter(
+            upstream_kwargs["end_date"],
+            name="end_date",
+            request=record.request,
+        )
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+
+    message, observation_dates = _index_daily_em_history_validation_message(
+        rows,
+        start_date=start_date,
+        end_date=end_date,
+    )
+    if message is not None:
+        raise ProviderNormalizationError(message)
+
+    expected_metadata = _index_daily_em_history_response_metadata(
+        listing_code=listing.code,
+        symbol=str(upstream_kwargs["symbol"]),
+        start_date=str(upstream_kwargs["start_date"]),
+        end_date=str(upstream_kwargs["end_date"]),
+        observation_dates=observation_dates,
+    )
+    for name, expected in expected_metadata.items():
+        if record.response_metadata.get(name) != expected:
+            raise ProviderNormalizationError(
+                f"Eastmoney index daily-history response metadata {name!r} does "
+                "not match the requested replay scope"
             )
 
 
@@ -53037,6 +53453,8 @@ def _history_kwargs(
         return _tencent_daily_history_kwargs(listing, request)
     if endpoint_name == "stock_zh_index_daily_tx":
         return _tencent_index_daily_history_kwargs(listing, request)
+    if endpoint_name == "stock_zh_index_daily_em":
+        return _index_daily_em_history_kwargs(listing, request)
     if endpoint_name == "stock_zh_a_cdr_daily":
         return _cdr_daily_history_kwargs(listing, request)
     if endpoint_name == "stock_zh_a_minute":
@@ -53383,6 +53801,68 @@ def _tencent_index_daily_history_kwargs(
         "symbol": listing.canonical_id[:2].lower() + listing.code,
         "start_date": start_date.strftime("%Y%m%d") if start_date else "",
         "end_date": end_date.strftime("%Y%m%d") if end_date else "",
+    }
+
+
+def _index_daily_em_history_kwargs(
+    listing: _ListingRef,
+    request: ProviderRequest,
+) -> dict[str, object]:
+    """Build the documented Eastmoney index daily-history request."""
+
+    if not _is_eastmoney_index_daily_listing(listing):
+        raise ProviderRequestError(
+            "the AKShare Eastmoney index daily-history endpoint supports Shanghai "
+            "000xxx, Shenzhen 399xxx or Beijing 899xxx index symbols only",
+            request=request,
+            retryable=False,
+        )
+    parameters = dict(request.parameters)
+    unknown = sorted(
+        set(parameters) - _MARKET_HISTORY_INDEX_DAILY_EM_PARAMETER_NAMES
+    )
+    if unknown:
+        raise ProviderRequestError(
+            "unsupported AKShare Eastmoney index daily-history parameter(s): "
+            + ", ".join(unknown),
+            request=request,
+            retryable=False,
+        )
+    if parameters.get("view") != _MARKET_HISTORY_INDEX_DAILY_EM_VIEW:
+        raise ProviderRequestError(
+            "the AKShare Eastmoney index daily-history endpoint requires "
+            f"view={_MARKET_HISTORY_INDEX_DAILY_EM_VIEW!r}",
+            request=request,
+            retryable=False,
+        )
+
+    start_date = _parse_index_daily_em_history_date_parameter(
+        parameters.get(
+            "start_date",
+            _MARKET_HISTORY_INDEX_DAILY_EM_DEFAULT_START,
+        ),
+        name="start_date",
+        request=request,
+    )
+    end_date = _parse_index_daily_em_history_date_parameter(
+        parameters.get(
+            "end_date",
+            _MARKET_HISTORY_INDEX_DAILY_EM_DEFAULT_END,
+        ),
+        name="end_date",
+        request=request,
+    )
+    if start_date > end_date:
+        raise ProviderRequestError(
+            "AKShare Eastmoney index daily-history start_date must not be after "
+            "end_date",
+            request=request,
+            retryable=False,
+        )
+    return {
+        "symbol": listing.canonical_id[:2].lower() + listing.code,
+        "start_date": start_date.strftime("%Y%m%d"),
+        "end_date": end_date.strftime("%Y%m%d"),
     }
 
 
@@ -53765,6 +54245,33 @@ def _parse_tencent_index_daily_history_date_parameter(
             continue
     raise ProviderRequestError(
         f"AKShare Tencent index daily-history {name} must be a valid date",
+        request=request,
+        retryable=False,
+    )
+
+
+def _parse_index_daily_em_history_date_parameter(
+    value: object,
+    *,
+    name: str,
+    request: ProviderRequest,
+) -> date:
+    if not isinstance(value, str) or not re.fullmatch(
+        r"(?:\d{8}|\d{4}-\d{2}-\d{2})", value
+    ):
+        raise ProviderRequestError(
+            f"AKShare Eastmoney index daily-history {name} must be "
+            "YYYYMMDD or YYYY-MM-DD",
+            request=request,
+            retryable=False,
+        )
+    for fmt in ("%Y%m%d", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(value, fmt).date()
+        except ValueError:
+            continue
+    raise ProviderRequestError(
+        f"AKShare Eastmoney index daily-history {name} must be a valid date",
         request=request,
         retryable=False,
     )

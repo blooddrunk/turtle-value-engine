@@ -3997,6 +3997,30 @@ listing/parameter requests, empty output, raw-only normalization, replay
 metadata tampering and offline cache replay. No calculation, gate, pipeline,
 CLI or input-loader contract changes.
 
+### Phase 3.58 — Eastmoney index daily-history raw acquisition contract (COMPLETE)
+
+The mapping review now covers the documented Eastmoney
+[`stock_zh_index_daily_em`](https://akshare.akfamily.xyz/data/index/index.html)
+index daily-history endpoint under `MARKET_HISTORY` with explicit
+`view=index_daily_em`. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/index/index_stock_zh.py)
+requests a Shanghai 000xxx, Shenzhen 399xxx or Beijing 899xxx index symbol,
+maps its market prefix to an Eastmoney `secid`, requests daily K-lines with
+`fqt=0`, drops the provider's internal eighth column and returns the exact
+seven fields `date`, `open`, `close`, `high`, `low`, `volume` and `amount`. The
+adapter preserves the inclusive range, unadjusted mode, source URL,
+fixed/dynamic parameters, wrapper column/drop steps, strict date order and
+replay row counts in metadata.
+
+The Eastmoney index daily-history response remains raw evidence only: its
+unadjusted index OHLCV/amount series have no listing/entity accounting scope
+and do not establish the canonical daily-history, return, valuation or
+accounting inputs. The normalizer emits `AKSHARE_INDEX_DAILY_EM_RAW_ONLY` and
+creates no canonical fact. Tests cover default/explicit ranges, Shanghai,
+Shenzhen and Beijing routing, secid mapping, exact schema/order and numeric/date
+boundaries, unsupported listing/parameter requests, empty output, raw-only
+normalization, replay metadata tampering and offline cache replay. No
+calculation, gate, pipeline, CLI or input-loader contract changes.
+
 ### Future structured-provider deliverables
 
 ```text
@@ -4006,7 +4030,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–3.57 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–3.58 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```

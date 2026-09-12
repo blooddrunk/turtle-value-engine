@@ -3917,6 +3917,34 @@ daily-history, return, valuation or accounting fact: the always-front-adjusted
 index series has no listing/entity accounting scope. The response remains
 outside the calculation, gate, pipeline, CLI and input-loader contracts.
 
+## Phase 3.58 Eastmoney index daily-history raw slice
+
+The current [AKShare index-data documentation](https://akshare.akfamily.xyz/data/index/index.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/index/index_stock_zh.py)
+document `stock_zh_index_daily_em` as an Eastmoney index-level daily-history
+endpoint with optional `start_date` and `end_date` bounds. The adapter selects
+it only under `MARKET_HISTORY` with explicit `view=index_daily_em`, accepts
+Shanghai 000xxx, Shenzhen 399xxx or Beijing 899xxx index-shaped IDs, maps
+market prefixes to Eastmoney `secid` values and preserves the exact seven-field
+response order. The official wrapper requests daily K-lines with `fqt=0`, drops
+the internal eighth column and converts the six numeric fields.
+
+| Raw upstream item | Phase 3.58 treatment |
+| --- | --- |
+| `date` | Required parseable observation date; rows must stay within the inclusive requested bounds and be strictly ascending. |
+| `open`, `close`, `high`, `low`, `volume`, `amount` | Required finite numeric or null fields; the documentation does not declare canonical units for these values, so they remain raw evidence only. |
+| request `view=index_daily_em` and index-shaped ID | Explicit Shanghai 000xxx/Shenzhen 399xxx/Beijing 899xxx routing; `index_scoped_request=true`, `listing_scoped_request=false`, `date_binding=row_and_request` and requested-range replay scope are recorded. |
+| Eastmoney `secid`, `fields1`, `fields2`, `klt`, `fqt`, `beg`, `end` | Market-code mapping, unadjusted `fqt=0`, dynamic range, source URL, fixed/dynamic parameters, response decoder, dropped internal field and wrapper transformations remain replay metadata. |
+
+The provider rejects stock-listing, H-share, unsupported index-shaped IDs,
+missing or unexpected-parameter requests, malformed or reversed ranges,
+missing/unexpected/reordered fields, invalid or out-of-range dates and
+non-finite/non-numeric values. The normalizer emits
+`AKSHARE_INDEX_DAILY_EM_RAW_ONLY` and creates no canonical daily-history,
+return, valuation or accounting fact: the index series has no listing/entity
+accounting scope. The response remains outside the calculation, gate, pipeline,
+CLI and input-loader contracts.
+
 ## Phase 2 enforcement rule
 
 For every field not marked `STRUCTURED_AUTO` or `DERIVED_DETERMINISTIC`, a

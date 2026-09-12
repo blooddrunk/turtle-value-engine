@@ -2006,6 +2006,29 @@ requests, empty output, raw-only normalization, replay metadata tampering and
 offline cache replay. No calculation, gate, pipeline, CLI or input-loader
 contract changes.
 
+Phase 3.58 adds the documented Eastmoney
+[`stock_zh_index_daily_em`](https://akshare.akfamily.xyz/data/index/index.html)
+index daily-history endpoint under `MARKET_HISTORY` with explicit
+`view=index_daily_em`, Shanghai 000xxx, Shenzhen 399xxx or Beijing 899xxx
+index-shaped listing context and optional inclusive `start_date`/`end_date`
+bounds. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/index/index_stock_zh.py)
+maps the market-prefixed symbol to an Eastmoney `secid`, requests daily K-lines
+with `fqt=0`, drops the provider's internal eighth column and returns the exact
+seven fields `date`, `open`, `close`, `high`, `low`, `volume` and `amount`. The
+adapter preserves the range, unadjusted mode, source URL, fixed/dynamic
+parameters, wrapper column/drop steps, strict date order and replay row counts
+in metadata.
+
+The Eastmoney index daily-history response is retained as raw evidence only:
+its unadjusted index OHLCV/amount series have no listing/entity accounting scope
+and do not establish the canonical daily-history, return, valuation or
+accounting inputs. The normalizer emits `AKSHARE_INDEX_DAILY_EM_RAW_ONLY` and
+creates no canonical fact. Tests cover default/explicit ranges, Shanghai,
+Shenzhen and Beijing routing, secid mapping, exact schema/order and numeric/date
+boundaries, unsupported listing/parameter requests, empty output, raw-only
+normalization, replay metadata tampering and offline cache replay. No
+calculation, gate, pipeline, CLI or input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.
