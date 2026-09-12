@@ -4361,6 +4361,37 @@ preservation, empty output, raw-only normalization, replay metadata/payload
 tampering and offline cache replay. No calculation, gate, pipeline, CLI or
 input-loader contract changes.
 
+### Phase 3.72 — Sina H-share daily-history raw acquisition contract (COMPLETE)
+
+The mapping review now covers the next documented AKShare stock endpoint
+[`stock_hk_daily`](https://akshare.akfamily.xyz/data/stock/stock.html) under
+`MARKET_HISTORY`. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hk_sina.py)
+requests a single H-share symbol from Sina's encrypted JavaScript K-line
+endpoint and supports `adjust` values `''`, `qfq`, `hfq`, `qfq-factor` and
+`hfq-factor`. The adapter exposes an explicit `view=hk_daily`, accepts only
+H-share listings, passes the six-digit `symbol` without adapter date
+arguments, and preserves the exact regular six-field `date`, `open`, `high`,
+`low`, `close`, `volume` order or the documented factor response order:
+`date`, `qfq_factor` or `date`, `hfq_factor`, `cash`.
+
+Provider validation is strict: request parameters are limited to `view` and
+`adjust`; regular dates must be valid, unique and strictly ascending; factor
+dates must be valid, unique and strictly descending; and numeric values must
+be finite numbers or null. Replay metadata records the K-line URL, optional
+qfq/hfq factor URL, listing symbol, adjustment mode, exact field order,
+row-identity order, decoder/transformation steps, full-history scope and
+undocumented numeric units. The existing no-view `stock_hk_daily` compatibility
+route is unchanged.
+
+The normalizer emits `AKSHARE_HK_DAILY_HISTORY_RAW_ONLY`, retains the response
+as evidence and creates no canonical daily-history, return, valuation or
+accounting fact because provider-owned H-share price/adjustment semantics,
+trading-calendar behavior and numeric units are not reconciled to the
+canonical contract. Focused tests cover H-share routing, adjustment/factor
+shapes, strict request and response validation, empty output, raw-only
+normalization, replay metadata/payload tampering and offline cache replay. No
+calculation, gate, pipeline, CLI or input-loader contract changes.
+
 ### Future structured-provider deliverables
 
 ```text
@@ -4370,7 +4401,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–3.71 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–3.72 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```

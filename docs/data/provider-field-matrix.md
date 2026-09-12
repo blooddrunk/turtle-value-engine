@@ -4257,6 +4257,28 @@ canonical quote, return, governance, valuation or accounting fact: index
 membership has no listing/entity accounting scope. The slice remains outside
 the calculation, gate, pipeline, CLI and input-loader contracts.
 
+## Phase 3.72 Sina H-share daily-history raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hk_sina.py)
+document `stock_hk_daily` as a symbol-scoped full-history endpoint. The adapter
+selects it only under `MARKET_HISTORY` with explicit `view=hk_daily`, accepts
+H-share listing context only, passes the six-digit listing symbol and retains
+the complete provider response without date filtering.
+
+| Raw upstream item | Phase 3.72 treatment |
+| --- | --- |
+| `date`, `open`, `high`, `low`, `close`, `volume` | Required exact regular six-field order. `date` must be valid, unique and strictly ascending; numeric values must be finite numbers or null. |
+| `date`, `qfq_factor` / `date`, `hfq_factor`, `cash` | Required exact factor-field order. Factor dates must be valid, unique and strictly descending; factor values must be finite numbers or null. |
+| request `view=hk_daily`, `adjust` | `adjust` is limited to `''`, `qfq`, `hfq`, `qfq-factor` and `hfq-factor`; no adapter date or range arguments are accepted. Regular qfq/hfq responses retain the corresponding factor URL as auxiliary provenance. |
+| Sina encrypted-JavaScript K-line/factor responses | K-line and factor URLs, symbol binding, decoder/transformation steps, full-history scope, exact field order, row identity order and undocumented numeric units remain explicit replay metadata. |
+
+The normalizer emits `AKSHARE_HK_DAILY_HISTORY_RAW_ONLY` and creates no
+canonical daily-history, return, valuation or accounting fact: provider-owned
+H-share prices, adjustment/factor behavior, trading-calendar semantics and
+numeric units are not reconciled to the canonical contract. The slice remains
+outside the calculation, gate, pipeline, CLI and input-loader contracts.
+
 ## Phase 2 enforcement rule
 
 For every field not marked `STRUCTURED_AUTO` or `DERIVED_DETERMINISTIC`, a

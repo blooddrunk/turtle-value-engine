@@ -77,8 +77,8 @@ history and Legu market-activity/congestion/equity-bond-spread/Buffett-index/
 A-share PE/PB-history, index-PE/index-PB, market-PE/market-PB, A-share Eastmoney
 growth-comparison, DuPont-comparison and company-scale comparison, A/H
 Eastmoney valuation-comparison and A/H Baidu valuation-history snapshots are
-also available. The Eastmoney generic index-history and Sina index-constituent
-raw slices are also available.
+also available. The Eastmoney generic index-history, Sina index-constituent and
+Sina H-share daily-history raw slices are also available.
 The A-share Eastmoney top-ten, top-ten-tradable-shareholder and
 top-ten-tradable-shareholder-detail raw slices are also available.
 The A-share Eastmoney institutional-research statistics and detail raw slices
@@ -129,9 +129,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "188"
+AKSHARE_ADAPTER_VERSION = "189"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "189"
+AKSHARE_MAPPING_VERSION = "190"
 
 
 class ListingMarket(StrEnum):
@@ -2501,6 +2501,45 @@ _MARKET_HISTORY_B_DAILY_HFQ_URL_TEMPLATE = (
 )
 _MARKET_HISTORY_B_DAILY_QFQ_URL_TEMPLATE = (
     "https://finance.sina.com.cn/realstock/company/{symbol}/qfq.js"
+)
+
+_MARKET_HISTORY_HK_DAILY_PARAMETER_NAMES = frozenset({"view", "adjust"})
+_MARKET_HISTORY_HK_DAILY_VIEW = "hk_daily"
+_MARKET_HISTORY_HK_DAILY_ADJUSTMENTS = frozenset(
+    {"", "qfq", "hfq", "qfq-factor", "hfq-factor"}
+)
+_MARKET_HISTORY_HK_DAILY_FIELDS = (
+    "date",
+    "open",
+    "high",
+    "low",
+    "close",
+    "volume",
+)
+_MARKET_HISTORY_HK_DAILY_FACTOR_FIELDS = {
+    "qfq-factor": ("date", "qfq_factor"),
+    "hfq-factor": ("date", "hfq_factor", "cash"),
+}
+_MARKET_HISTORY_HK_DAILY_FIELD_SET = frozenset(_MARKET_HISTORY_HK_DAILY_FIELDS)
+_MARKET_HISTORY_HK_DAILY_DATE_FIELDS = ("date",)
+_MARKET_HISTORY_HK_DAILY_NUMERIC_FIELDS = _MARKET_HISTORY_HK_DAILY_FIELDS[1:]
+_MARKET_HISTORY_HK_DAILY_DOCUMENTED_UNITS: dict[str, JSONValue] = {}
+_MARKET_HISTORY_HK_DAILY_UNDOCUMENTED_NUMERIC_UNITS = {
+    field: "not_documented" for field in _MARKET_HISTORY_HK_DAILY_NUMERIC_FIELDS
+}
+_MARKET_HISTORY_HK_DAILY_FIELD_TYPES = {
+    "date": "date",
+    **{field: "number" for field in _MARKET_HISTORY_HK_DAILY_NUMERIC_FIELDS},
+}
+_MARKET_HISTORY_HK_DAILY_SOURCE_URI = _SOURCE_URIS["stock_hk_daily"]
+_MARKET_HISTORY_HK_DAILY_HISTORY_URL_TEMPLATE = (
+    "https://finance.sina.com.cn/stock/hkstock/{symbol}/klc2_kl.js"
+)
+_MARKET_HISTORY_HK_DAILY_HFQ_URL_TEMPLATE = (
+    "https://finance.sina.com.cn/stock/hkstock/{symbol}/hfq.js"
+)
+_MARKET_HISTORY_HK_DAILY_QFQ_URL_TEMPLATE = (
+    "https://finance.sina.com.cn/stock/hkstock/{symbol}/qfq.js"
 )
 
 _MARKET_HISTORY_KCB_DAILY_PARAMETER_NAMES = frozenset({"view", "adjust"})
@@ -8455,6 +8494,18 @@ class AKShareProvider(StructuredDataProvider):
             )
         if (
             request.category is DataCategory.MARKET_HISTORY
+            and request.parameters.get("view") == _MARKET_HISTORY_HK_DAILY_VIEW
+            and listing.market is not ListingMarket.H
+        ):
+            raise ProviderRequestError(
+                "the AKShare Sina H-share daily-history endpoint supports H-share "
+                "listings only",
+                provider=self.identity,
+                request=request,
+                retryable=False,
+            )
+        if (
+            request.category is DataCategory.MARKET_HISTORY
             and request.parameters.get("view") == _MARKET_HISTORY_KCB_DAILY_VIEW
             and (
                 listing.market is not ListingMarket.A
@@ -11823,6 +11874,24 @@ class AKShareProvider(StructuredDataProvider):
                         observation_dates=observation_dates,
                     )
                 )
+            elif (
+                endpoint.name == "stock_hk_daily"
+                and request.parameters.get("view") == _MARKET_HISTORY_HK_DAILY_VIEW
+            ):
+                observation_dates = _validate_hk_daily_history_provider_rows(
+                    rows,
+                    adjust=str(kwargs["adjust"]),
+                    provider=self.identity,
+                    request=request,
+                )
+                response_metadata.update(
+                    _hk_daily_history_response_metadata(
+                        listing_code=listing.code,
+                        symbol=str(kwargs["symbol"]),
+                        adjust=str(kwargs["adjust"]),
+                        observation_dates=observation_dates,
+                    )
+                )
             elif endpoint.name == "stock_zh_b_daily":
                 start_date = _parse_b_daily_history_date_parameter(
                     kwargs["start_date"],
@@ -13960,6 +14029,9 @@ class AKShareProvider(StructuredDataProvider):
                 request.parameters.get("view")
                 == _MARKET_HISTORY_GLOBAL_INDEX_SINA_VIEW
             ),
+            market_history_hk_daily_requested=(
+                request.parameters.get("view") == _MARKET_HISTORY_HK_DAILY_VIEW
+            ),
             market_history_us_index_sina_requested=(
                 request.parameters.get("view")
                 == _MARKET_HISTORY_US_INDEX_SINA_VIEW
@@ -15620,6 +15692,12 @@ class AKShareNormalizer:
                     _validate_cdr_daily_history_normalizer_scope(record, listing, rows)
                     normalizer_flags.add("AKSHARE_CDR_DAILY_HISTORY_RAW_ONLY")
                 elif (
+                    record.request.parameters.get("view")
+                    == _MARKET_HISTORY_HK_DAILY_VIEW
+                ):
+                    _validate_hk_daily_history_normalizer_scope(record, listing, rows)
+                    normalizer_flags.add("AKSHARE_HK_DAILY_HISTORY_RAW_ONLY")
+                elif (
                     endpoint == "stock_zh_b_daily"
                     or record.request.parameters.get("view")
                     == _MARKET_HISTORY_B_DAILY_VIEW
@@ -15742,7 +15820,13 @@ class AKShareNormalizer:
                     # uses a time-of-day window. It is not a dated daily-history
                     # series and therefore stays raw-only.
                     normalizer_flags.add("AKSHARE_PRE_MARKET_HISTORY_RAW_ONLY")
-                if endpoint not in {
+                if (
+                    (
+                        endpoint != "stock_hk_daily"
+                        or record.request.parameters.get("view")
+                        != _MARKET_HISTORY_HK_DAILY_VIEW
+                    )
+                    and endpoint not in {
                     "stock_zh_a_tick_tx_js",
                     "stock_zh_index_daily_tx",
                     "stock_zh_index_daily_em",
@@ -15765,7 +15849,8 @@ class AKShareNormalizer:
                     _MARKET_HISTORY_GLOBAL_INDEX_SINA_ENDPOINT,
                     _MARKET_HISTORY_US_INDEX_SINA_ENDPOINT,
                     "stock_zh_b_minute",
-                }:
+                    }
+                ):
                     history_result = _map_history(
                         record,
                         evidence,
@@ -16682,6 +16767,7 @@ class AKShareNormalizer:
                 "AKSHARE_CHIP_DISTRIBUTION_RAW_ONLY",
                 "AKSHARE_CDR_DAILY_HISTORY_RAW_ONLY",
                 "AKSHARE_B_DAILY_HISTORY_RAW_ONLY",
+                "AKSHARE_HK_DAILY_HISTORY_RAW_ONLY",
                 "AKSHARE_KCB_DAILY_HISTORY_RAW_ONLY",
                 "AKSHARE_INDEX_DAILY_HISTORY_RAW_ONLY",
                 "AKSHARE_HK_INDEX_DAILY_SINA_RAW_ONLY",
@@ -17316,6 +17402,13 @@ class AKShareNormalizer:
                 "market currencies that are not documented in this response, and its "
                 "adjustment and trading-calendar semantics are not reconciled to the "
                 "canonical daily-history contract."
+            )
+        if "AKSHARE_HK_DAILY_HISTORY_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented Sina H-share daily-history response is retained as "
+                "raw evidence only: its provider-owned price series, adjustment and "
+                "factor behavior, trading-calendar semantics and numeric units are "
+                "not reconciled to the canonical daily-history contract."
             )
         if "AKSHARE_KCB_DAILY_HISTORY_RAW_ONLY" in normalizer_flags:
             notes += (
@@ -18263,6 +18356,7 @@ def _endpoint_candidates(
     market_history_hk_index_daily_em_requested: bool = False,
     market_history_global_index_em_requested: bool = False,
     market_history_global_index_sina_requested: bool = False,
+    market_history_hk_daily_requested: bool = False,
     market_history_us_index_sina_requested: bool = False,
     market_history_b_minute_requested: bool = False,
     market_history_tencent_tick_requested: bool = False,
@@ -18451,6 +18545,10 @@ def _endpoint_candidates(
         if market_history_hk_index_daily_sina_requested:
             if market is ListingMarket.H:
                 return (_MARKET_HISTORY_HK_INDEX_DAILY_SINA_ENDPOINT,)
+            return ()
+        if market_history_hk_daily_requested:
+            if market is ListingMarket.H:
+                return ("stock_hk_daily",)
             return ()
         if market_history_b_minute_requested:
             if market is ListingMarket.A and (
@@ -27763,6 +27861,249 @@ def _b_daily_history_response_metadata(
     }
 
 
+def _hk_daily_history_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    adjust: str,
+) -> tuple[str | None, list[date]]:
+    """Return strict-schema errors for Sina H-share daily-history rows."""
+
+    factor_fields = _MARKET_HISTORY_HK_DAILY_FACTOR_FIELDS.get(adjust)
+    expected_fields = (
+        factor_fields
+        if factor_fields is not None
+        else _MARKET_HISTORY_HK_DAILY_FIELDS
+    )
+    expected_field_set = frozenset(expected_fields)
+    numeric_fields = tuple(field for field in expected_fields if field != "date")
+    factor_response = factor_fields is not None
+    observation_dates: list[date] = []
+    previous_date: date | None = None
+    for index, row in enumerate(rows):
+        missing = [field for field in expected_fields if field not in row]
+        unexpected = [field for field in row if field not in expected_field_set]
+        if missing:
+            return (
+                f"Sina H-share daily-history row {index} is missing field(s): "
+                + ", ".join(missing),
+                [],
+            )
+        if unexpected:
+            return (
+                f"Sina H-share daily-history row {index} contains unsupported "
+                "field(s): "
+                + ", ".join(unexpected),
+                [],
+            )
+        if tuple(row) != expected_fields:
+            return (
+                "Sina H-share daily-history rows must preserve the documented "
+                "field order",
+                [],
+            )
+
+        observation_date = _parse_date_value(row["date"])
+        if observation_date is None:
+            return f"Sina H-share daily-history row {index} has an invalid date", []
+        if previous_date is not None:
+            if factor_response and observation_date >= previous_date:
+                if observation_date == previous_date:
+                    return (
+                        "Sina H-share daily-history factor response has duplicate "
+                        f"date {observation_date.isoformat()!r}",
+                        [],
+                    )
+                return (
+                    "Sina H-share daily-history factor response date values must be "
+                    "strictly descending",
+                    [],
+                )
+            if not factor_response and observation_date <= previous_date:
+                if observation_date == previous_date:
+                    return (
+                        "Sina H-share daily-history response has duplicate date "
+                        f"{observation_date.isoformat()!r}",
+                        [],
+                    )
+                return (
+                    "Sina H-share daily-history response date values must be "
+                    "strictly ascending",
+                    [],
+                )
+        previous_date = observation_date
+        observation_dates.append(observation_date)
+
+        for field in numeric_fields:
+            value = row[field]
+            if value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, Real):
+                return (
+                    f"Sina H-share daily-history row {index} field {field!r} "
+                    "must be numeric or null",
+                    [],
+                )
+            try:
+                numeric = float(value)
+            except (OverflowError, TypeError, ValueError):
+                return (
+                    f"Sina H-share daily-history row {index} field {field!r} "
+                    "must be numeric or null",
+                    [],
+                )
+            if not math.isfinite(numeric):
+                return (
+                    f"Sina H-share daily-history row {index} field {field!r} "
+                    "must be finite or null",
+                    [],
+                )
+    return None, observation_dates
+
+
+def _validate_hk_daily_history_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    adjust: str,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> list[date]:
+    message, observation_dates = _hk_daily_history_validation_message(
+        rows,
+        adjust=adjust,
+    )
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message}",
+            provider=provider,
+            request=request,
+        )
+    return observation_dates
+
+
+def _hk_daily_history_response_metadata(
+    *,
+    listing_code: str,
+    symbol: str,
+    adjust: str,
+    observation_dates: Sequence[date],
+) -> dict[str, JSONValue]:
+    """Build the replay contract for one Sina H-share daily-history snapshot."""
+
+    factor_fields = _MARKET_HISTORY_HK_DAILY_FACTOR_FIELDS.get(adjust)
+    factor_response = factor_fields is not None
+    fields = (
+        factor_fields
+        if factor_fields is not None
+        else _MARKET_HISTORY_HK_DAILY_FIELDS
+    )
+    numeric_fields = tuple(field for field in fields if field != "date")
+    row_identity_order = [observation.isoformat() for observation in observation_dates]
+    if factor_response:
+        upstream_url = (
+            _MARKET_HISTORY_HK_DAILY_HFQ_URL_TEMPLATE
+            if adjust == "hfq-factor"
+            else _MARKET_HISTORY_HK_DAILY_QFQ_URL_TEMPLATE
+        ).format(symbol=symbol)
+        auxiliary_urls: list[str] = []
+        auxiliary_roles: list[str] = []
+        wrapper_decoders = ["python_eval"]
+        wrapper_transformations = ["factor_data_eval"]
+        snapshot_scope = "full_h_share_adjustment_factor_history"
+        range_filtering = "not_applied_for_factor_history"
+        date_ordering = "strictly_descending"
+        upstream_protocol = "javascript"
+    else:
+        upstream_url = _MARKET_HISTORY_HK_DAILY_HISTORY_URL_TEMPLATE.format(
+            symbol=symbol
+        )
+        auxiliary_urls = []
+        auxiliary_roles = []
+        wrapper_decoders = ["hk_js_decode", "py_mini_racer"]
+        wrapper_transformations = [
+            "javascript_payload_extract",
+            "hk_js_decode",
+            "date_conversion",
+            "numeric_conversion",
+        ]
+        if adjust in {"qfq", "hfq"}:
+            factor_url = (
+                _MARKET_HISTORY_HK_DAILY_HFQ_URL_TEMPLATE
+                if adjust == "hfq"
+                else _MARKET_HISTORY_HK_DAILY_QFQ_URL_TEMPLATE
+            ).format(symbol=symbol)
+            auxiliary_urls.append(factor_url)
+            auxiliary_roles.append("adjustment_factor_history")
+            wrapper_transformations.append(
+                "hfq_multiply_factor"
+                if adjust == "hfq"
+                else "qfq_divide_factor"
+            )
+        snapshot_scope = "full_h_share_daily_history"
+        range_filtering = "not_applicable_full_history"
+        date_ordering = "strictly_ascending"
+        upstream_protocol = "encrypted_javascript"
+
+    upstream_urls = [upstream_url, *auxiliary_urls]
+    return {
+        "endpoint": "stock_hk_daily",
+        "market": ListingMarket.H.value,
+        "listing_code": listing_code,
+        "market_history_view": _MARKET_HISTORY_HK_DAILY_VIEW,
+        "upstream_symbol": symbol,
+        "market_scope": "requested_h_share_listing",
+        "listing_scoped_request": True,
+        "row_filtering": "upstream",
+        "snapshot_scope": snapshot_scope,
+        "date_binding": "row_only",
+        "range_filtering": range_filtering,
+        "hk_daily_adjust": adjust,
+        "adjustment_kind": "factor_series" if factor_response else "price_series",
+        "observation_date_field": "date",
+        "date_ordering": date_ordering,
+        "identity_fields": ["date"],
+        "identity_ordering": date_ordering,
+        "row_identity_order": row_identity_order,
+        "selected_row_identity_order": row_identity_order,
+        "field_count": len(fields),
+        "source_field_order": list(fields),
+        "date_fields": list(_MARKET_HISTORY_HK_DAILY_DATE_FIELDS),
+        "value_fields": list(numeric_fields),
+        "required_numeric_fields": list(numeric_fields),
+        "documented_units": dict(_MARKET_HISTORY_HK_DAILY_DOCUMENTED_UNITS),
+        "undocumented_numeric_units": {
+            field: "not_documented" for field in numeric_fields
+        },
+        "field_types": {
+            "date": "date",
+            **{field: "number" for field in numeric_fields},
+        },
+        "upstream_url": upstream_url,
+        "upstream_urls": upstream_urls,
+        "upstream_auxiliary_urls": auxiliary_urls,
+        "upstream_auxiliary_roles": auxiliary_roles,
+        "upstream_protocol": upstream_protocol,
+        "upstream_parameters": ["symbol"],
+        "upstream_dynamic_parameters": {"symbol": symbol},
+        "upstream_fixed_parameters": {},
+        "upstream_authentication": "none",
+        "wrapper_source_page_uri": _MARKET_HISTORY_HK_DAILY_SOURCE_URI,
+        "wrapper_date_filtering": "none",
+        "wrapper_decoders": wrapper_decoders,
+        "wrapper_transformations": wrapper_transformations,
+        "upstream_page_size": None,
+        "pagination": "single_full_history_response",
+        "upstream_row_count": len(observation_dates),
+        "entity_row_count": len(observation_dates),
+        "entity_rows_selected": True,
+        "observation_start_date": (
+            min(observation_dates).isoformat() if observation_dates else None
+        ),
+        "observation_end_date": (
+            max(observation_dates).isoformat() if observation_dates else None
+        ),
+    }
+
+
 def _kcb_daily_history_validation_message(
     rows: Sequence[Mapping[str, JSONValue]],
     *,
@@ -31045,6 +31386,57 @@ def _validate_b_daily_history_normalizer_scope(
         if record.response_metadata.get(name) != expected:
             raise ProviderNormalizationError(
                 f"B-share daily-history response metadata {name!r} does not "
+                "match the requested replay scope"
+            )
+
+
+def _validate_hk_daily_history_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> None:
+    """Validate the replay scope for a raw Sina H-share daily-history record."""
+
+    if listing.market is not ListingMarket.H:
+        raise ProviderNormalizationError(
+            "AKShare Sina H-share daily-history raw slice supports H-share "
+            "listings only"
+        )
+    if record.source_uri != _MARKET_HISTORY_HK_DAILY_SOURCE_URI:
+        raise ProviderNormalizationError(
+            "AKShare Sina H-share daily-history record has an unexpected source URI"
+        )
+    if record.response_metadata.get("endpoint") != "stock_hk_daily":
+        raise ProviderNormalizationError(
+            "AKShare Sina H-share daily-history record must come from stock_hk_daily"
+        )
+    if record.request.parameters.get("view") != _MARKET_HISTORY_HK_DAILY_VIEW:
+        raise ProviderNormalizationError(
+            "AKShare Sina H-share daily-history record requires the explicit "
+            f"view={_MARKET_HISTORY_HK_DAILY_VIEW!r} boundary"
+        )
+    try:
+        upstream_kwargs = _hk_daily_history_kwargs(listing, record.request)
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+
+    message, observation_dates = _hk_daily_history_validation_message(
+        rows,
+        adjust=str(upstream_kwargs["adjust"]),
+    )
+    if message is not None:
+        raise ProviderNormalizationError(message)
+
+    expected_metadata = _hk_daily_history_response_metadata(
+        listing_code=listing.code,
+        symbol=str(upstream_kwargs["symbol"]),
+        adjust=str(upstream_kwargs["adjust"]),
+        observation_dates=observation_dates,
+    )
+    for name, expected in expected_metadata.items():
+        if record.response_metadata.get(name) != expected:
+            raise ProviderNormalizationError(
+                f"Sina H-share daily-history response metadata {name!r} does not "
                 "match the requested replay scope"
             )
 
@@ -59730,6 +60122,11 @@ def _history_kwargs(
         return _us_index_sina_history_kwargs(listing, request)
     if endpoint_name == "stock_zh_b_minute":
         return _b_minute_history_kwargs(listing, request)
+    if (
+        endpoint_name == "stock_hk_daily"
+        and request.parameters.get("view") == _MARKET_HISTORY_HK_DAILY_VIEW
+    ):
+        return _hk_daily_history_kwargs(listing, request)
     if endpoint_name == "stock_zh_b_daily":
         return _b_daily_history_kwargs(listing, request)
     if endpoint_name == "stock_zh_kcb_daily":
@@ -60392,6 +60789,50 @@ def _b_daily_history_kwargs(
         "end_date": end_date.strftime("%Y%m%d"),
         "adjust": adjust,
     }
+
+
+def _hk_daily_history_kwargs(
+    listing: _ListingRef,
+    request: ProviderRequest,
+) -> dict[str, object]:
+    """Build the documented Sina H-share daily-history request."""
+
+    if listing.market is not ListingMarket.H:
+        raise ProviderRequestError(
+            "the AKShare Sina H-share daily-history endpoint supports H-share "
+            "listings only",
+            request=request,
+            retryable=False,
+        )
+
+    parameters = dict(request.parameters)
+    unknown = sorted(set(parameters) - _MARKET_HISTORY_HK_DAILY_PARAMETER_NAMES)
+    if unknown:
+        raise ProviderRequestError(
+            "unsupported AKShare Sina H-share daily-history parameter(s): "
+            + ", ".join(unknown),
+            request=request,
+            retryable=False,
+        )
+    if parameters.get("view") != _MARKET_HISTORY_HK_DAILY_VIEW:
+        raise ProviderRequestError(
+            "the AKShare Sina H-share daily-history endpoint requires "
+            f"view={_MARKET_HISTORY_HK_DAILY_VIEW!r}",
+            request=request,
+            retryable=False,
+        )
+    adjust = parameters.get("adjust", "")
+    if not isinstance(adjust, str) or adjust not in _MARKET_HISTORY_HK_DAILY_ADJUSTMENTS:
+        choices = ", ".join(
+            repr(value)
+            for value in ("", "qfq", "hfq", "qfq-factor", "hfq-factor")
+        )
+        raise ProviderRequestError(
+            "AKShare Sina H-share daily-history adjust must be one of: " + choices,
+            request=request,
+            retryable=False,
+        )
+    return {"symbol": listing.code, "adjust": adjust}
 
 
 def _kcb_daily_history_kwargs(

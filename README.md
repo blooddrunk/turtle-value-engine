@@ -2313,6 +2313,27 @@ boundaries, nullable dates, duplicate preservation, empty output, raw-only
 normalization, replay metadata/payload tampering and offline cache replay. No
 calculation, gate, pipeline, CLI or input-loader contract changes.
 
+Phase 3.72 adds the next documented Sina H-share daily-history endpoint
+[`stock_hk_daily`](https://akshare.akfamily.xyz/data/stock/stock.html) under
+`MARKET_HISTORY`. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hk_sina.py)
+requests a single H-share symbol from Sina's encrypted JavaScript K-line
+endpoint and supports `adjust` values `''`, `qfq`, `hfq`, `qfq-factor` and
+`hfq-factor`. The adapter exposes explicit `view=hk_daily`, accepts only
+H-share listings, passes the six-digit symbol without date arguments and
+preserves the exact regular six-field `date`, `open`, `high`, `low`, `close`,
+`volume` order or the documented qfq/hfq factor response order.
+
+The Sina H-share daily-history response is retained as raw evidence only:
+provider-owned prices, adjustment/factor behavior, trading-calendar semantics
+and numeric units are not reconciled to the canonical daily-history contract.
+The normalizer emits `AKSHARE_HK_DAILY_HISTORY_RAW_ONLY` and creates no
+canonical fact. Tests cover H-share routing, all documented adjustment/factor
+shapes, strict parameters and exact schema/order/date/numeric validation,
+empty output, raw-only normalization, replay metadata/payload tampering and
+offline cache replay. The existing no-view H-share history compatibility route
+is unchanged. No calculation, gate, pipeline, CLI or input-loader contract
+changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.
