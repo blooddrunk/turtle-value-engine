@@ -4685,6 +4685,34 @@ full-universe adversarial validation including unrequested rows, raw-only
 normalization, replay metadata/payload tampering and offline cache replay. No
 calculation, gate, pipeline, CLI or input-loader contract changes.
 
+### Phase 3.83 — A-share Eastmoney realtime hot-rank-detail acquisition contract (COMPLETE)
+
+The next documented-but-unimplemented AKShare inventory item after Phase 3.82
+is `stock_hot_rank_detail_realtime_em`, the symbol-scoped A-share realtime
+popularity-rank history endpoint. The [AKShare stock-data
+documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and
+[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hot_rank_em.py)
+document it under `MARKET_ACTIVITY` with explicit
+`view=hot_rank_detail_realtime`. The adapter routes only A-share listings and
+passes the market-prefixed code to the official wrapper.
+
+The wrapper contract is frozen as a JSON POST to
+`https://emappdata.eastmoney.com/stockrank/getCurrentList` with fixed
+`appId=appId01`, `globalId=786e4c21-70dc-435a-93bb-38`, empty `marketType` and
+dynamic `srcSecurityCode`. It preserves exactly `时间`, `排名`, validates the
+exact field order, timestamp syntax, strictly ascending timestamps and
+positive integer ranks, and accepts an empty symbol-scoped response.
+Provenance/replay metadata records the fixed/dynamic parameters, positional
+mapping, observation-time bounds and row counts.
+
+Normalization is explicitly raw-only with
+`AKSHARE_HOT_RANK_DETAIL_REALTIME_RAW_ONLY`; intraday popularity rank does not
+become a canonical market, return, valuation, governance or accounting fact.
+Focused tests cover routing, unsupported parameters, exact-schema adversarial
+responses, empty snapshots, raw-only normalization, replay metadata/payload
+tampering and offline cache replay. No calculation, gate, pipeline, CLI or
+input-loader contract changes.
+
 ### Future structured-provider deliverables
 
 ```text
@@ -4694,7 +4722,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–3.82 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–3.83 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```

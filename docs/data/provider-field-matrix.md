@@ -4524,6 +4524,28 @@ routing, exact schema/order, full-universe validation including invalid
 unrequested rows, rank/code/numeric boundaries, empty selection, raw-only
 normalization, replay metadata/payload tampering and offline cache replay.
 
+## Phase 3.83 A-share Eastmoney realtime hot-rank-detail raw slice
+
+`stock_hot_rank_detail_realtime_em` is selected only with `MARKET_ACTIVITY` and
+explicit `view=hot_rank_detail_realtime` for an A-share listing. The official
+wrapper posts fixed `appId`/`globalId` values, empty `marketType` and the
+market-prefixed `srcSecurityCode` to `getCurrentList`, returning the exact
+two-field order below.
+
+| Raw provider field | Phase 3.83 treatment |
+| --- | --- |
+| `时间` | Required `%Y-%m-%d %H:%M:%S` or equivalent ISO-T timestamp; rows must be strictly ascending with no duplicates, and the first/last values are retained as observation bounds. |
+| `排名` | Required positive integer rank; it remains provider-defined popularity context and is not a canonical market or return metric. |
+| request `view` | Only `view=hot_rank_detail_realtime` is accepted; the A-share listing supplies the market-prefixed upstream symbol and no date parameter is supported. |
+| Eastmoney JSON response | Replay metadata records the fixed/dynamic POST parameters, exact source order, positional output mapping, timestamp ordering, observation bounds, row count and the raw-only boundary. |
+
+The normalizer emits `AKSHARE_HOT_RANK_DETAIL_REALTIME_RAW_ONLY` and creates no
+canonical market, return, valuation, governance or accounting fact. Focused
+tests cover A-share-only routing, unsupported parameters, exact-schema
+adversarial responses including duplicate/descending timestamps and invalid
+ranks, empty snapshots, raw-only normalization, replay metadata/payload
+tampering and offline cache replay.
+
 ## Phase 2 enforcement rule
 
 For every field not marked `STRUCTURED_AUTO` or `DERIVED_DETERMINISTIC`, a

@@ -2551,6 +2551,26 @@ unrequested rows, rank/code/numeric adversarial cases, empty selection,
 raw-only normalization, replay metadata/payload tampering and offline cache
 replay. No calculation, gate, pipeline, CLI or input-loader contract changes.
 
+Phase 3.83 adds the documented A-share realtime popularity endpoint
+[`stock_hot_rank_detail_realtime_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
+using explicit `view=hot_rank_detail_realtime`. The [official
+implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hot_rank_em.py)
+posts fixed `appId`, `globalId` and empty `marketType` plus the dynamic
+market-prefixed `srcSecurityCode` to `getCurrentList`, returning the exact
+`时间`/`排名` recent-intraday series. The adapter accepts A-share listings
+only, validates the exact field order, timestamps in strict ascending order
+and positive integer ranks, and records the wrapper/upstream contract and
+observation-time bounds as replay metadata.
+
+The response is raw-only and emits
+`AKSHARE_HOT_RANK_DETAIL_REALTIME_RAW_ONLY`: intraday popularity rank does
+not establish canonical market, return, valuation, governance or accounting
+facts. Focused tests cover A-share-only routing, unsupported parameters,
+exact-schema adversarial responses including duplicate/descending timestamps
+and invalid ranks, empty snapshots, raw-only normalization, replay
+metadata/payload tampering and offline cache replay. No calculation, gate,
+pipeline, CLI or input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.
