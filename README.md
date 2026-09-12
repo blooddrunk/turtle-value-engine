@@ -2596,8 +2596,20 @@ mode never calls the downloader. The contract is defined by
 `schemas/filing-document.schema.json` and does not parse reports or create
 Source/Evidence/Fact objects.
 
-Report extraction, evidence storage, adjustment proposals and LLM-assisted
-evidence analysis remain unimplemented. The deterministic
+Phase 3.86 adds bounded annual/interim report text extraction through
+`FilingReportExtractor`. A caller injects a local parser for
+`application/pdf`, `text/html` or `application/xhtml+xml`; the parser returns
+ordered page/section text blocks, while the extractor enforces strict bounds,
+source-location order and per-block hashes. The result preserves the full
+`FilingRecord`, including `filing_id`, source and opaque `report_period`, plus
+the exact document `content_sha256`. It can consume an offline replay from the
+Phase 3.85 document cache, but never performs hidden network access or adds a
+parser dependency. The schema is defined by
+`schemas/filing-extraction.schema.json`. It does not infer report/accounting
+classifications or create Source/Evidence/Fact objects.
+
+Evidence storage, adjustment proposals and LLM-assisted evidence analysis
+remain unimplemented. The deterministic
 `tve analyze` command is still offline-only and does not call a provider or an
 LLM.
 

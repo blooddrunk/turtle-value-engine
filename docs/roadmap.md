@@ -4777,6 +4777,34 @@ failure fallback, schema validation and atomic replacement recovery. This
 slice does not parse documents, extract reports, create Source/Evidence/Fact
 objects, propose adjustments, add LLM behavior or wire a broad CLI.
 
+### Phase 3.86 — Bounded annual/interim report text extraction (COMPLETE)
+
+The extraction deliverable consumes one verified `FilingDocument` from Phase
+3.85 and emits only an ordered, immutable sequence of text blocks. Parser
+implementations are injected per media type, so the core package adds no PDF
+or HTML parser dependency and performs no network access. The supported media
+types are `application/pdf`, `text/html` and `application/xhtml+xml`; PDF
+parsers must return page-located blocks and HTML parsers must return
+section-located blocks. Every parser block supplies a contiguous sequence,
+location and non-empty text, and PDF page locations must be non-decreasing.
+
+The result is bounded at 2,048 blocks, 100,000 characters per block and
+5,000,000 total characters. It stores a SHA-256 for each text block and keeps
+the complete `FilingRecord` (including `filing_id`, source-document ID and the
+opaque source `report_period`) alongside the exact raw `content_sha256`, byte
+size, media type and parser version. The extractor never infers annual/interim
+classification from a title or text and never turns extracted text into a
+numeric value, `Source`/`Evidence`/`Fact`, adjustment, LLM input or CLI result.
+
+`schemas/filing-extraction.schema.json` defines the serialized result.
+`FilingReportExtractor.validate` revalidates serialized output against the
+same cached document and parser identity; an offline document replay therefore
+remains deterministic and does not call a downloader. Missing parser support,
+unsupported media, malformed parser output, hash/provenance mismatch, bad
+location order and bound violations fail closed. Synthetic parser-neutral
+fixtures and adversarial tests cover A/H report provenance, page/section
+locations, ordering, block/text hashes, unsupported media and cache replay.
+
 ### Future structured-provider deliverables
 
 ```text
@@ -4789,6 +4817,7 @@ src/turtle_value_engine/providers/
   akshare.py       # Phase 2.2 market + Phase 2.3–3.83 structured slices
   filings.py       # Phase 3.84 metadata-only official filing discovery
   filing_documents.py  # Phase 3.85 byte retrieval and content cache
+  filing_extraction.py  # Phase 3.86 bounded annual/interim report text blocks
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```

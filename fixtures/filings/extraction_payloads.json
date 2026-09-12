@@ -1,0 +1,44 @@
+{
+  "a_annual_pdf": {
+    "content_base64": "JVBERi0xLjQKc3ludGhldGljIGZpbGluZwolJUVPRgo=",
+    "media_type": "application/pdf",
+    "blocks": [
+      {
+        "sequence": 1,
+        "page": 1,
+        "section": null,
+        "text": "2024 annual report cover\nPage one text block."
+      },
+      {
+        "sequence": 2,
+        "page": 2,
+        "section": null,
+        "text": "Report contents\nPage two text block."
+      },
+      {
+        "sequence": 3,
+        "page": 2,
+        "section": null,
+        "text": "Notes heading\nSecond block on page two."
+      }
+    ]
+  },
+  "h_interim_html": {
+    "content_base64": "PGh0bWw+c3ludGhldGljIEhLIGZpbGluZzwvaHRtbD4K",
+    "media_type": "text/html; charset=utf-8",
+    "blocks": [
+      {
+        "sequence": 1,
+        "page": null,
+        "section": "/html/body/section[1]",
+        "text": "2025 interim report heading"
+      },
+      {
+        "sequence": 2,
+        "page": null,
+        "section": "/html/body/section[2]",
+        "text": "Interim report text block"
+      }
+    ]
+  }
+}

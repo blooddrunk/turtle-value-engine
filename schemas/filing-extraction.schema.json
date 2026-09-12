@@ -1,0 +1,185 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/blooddrunk/turtle-value-engine/schemas/filing-extraction.schema.json",
+  "title": "Turtle Value Engine Filing Report Extraction",
+  "description": "A bounded, parser-injected sequence of immutable text blocks bound to one verified official filing document.",
+  "type": "object",
+  "required": [
+    "contract",
+    "filing",
+    "content_sha256",
+    "content_size",
+    "media_type",
+    "parser_id",
+    "parser_version",
+    "blocks"
+  ],
+  "properties": {
+    "contract": {"const": "filing_report_extraction_v1"},
+    "filing": {"$ref": "#/$defs/filing"},
+    "content_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "content_size": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 52428800
+    },
+    "media_type": {
+      "type": "string",
+      "enum": ["application/pdf", "text/html", "application/xhtml+xml"]
+    },
+    "parser_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "parser_version": {"type": "string", "minLength": 1, "maxLength": 128},
+    "blocks": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 2048,
+      "items": {"$ref": "#/$defs/block"}
+    }
+  },
+  "$defs": {
+    "block": {
+      "type": "object",
+      "required": ["sequence", "text", "text_sha256"],
+      "properties": {
+        "sequence": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2048
+        },
+        "page": {"type": ["integer", "null"], "minimum": 1},
+        "section": {
+          "type": ["string", "null"],
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100000
+        },
+        "text_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "allOf": [
+        {
+          "oneOf": [
+            {
+              "required": ["page"],
+              "properties": {
+                "page": {"type": "integer", "minimum": 1},
+                "section": {"type": "null"}
+              }
+            },
+            {
+              "required": ["section"],
+              "properties": {
+                "page": {"type": "null"},
+                "section": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "additionalProperties": false
+    },
+    "filing": {
+      "type": "object",
+      "required": [
+        "filing_id",
+        "listing_id",
+        "market",
+        "source",
+        "title",
+        "document_type",
+        "published_date",
+        "url"
+      ],
+      "properties": {
+        "filing_id": {
+          "type": "string",
+          "pattern": "^filing-[0-9a-f]{24}$"
+        },
+        "listing_id": {
+          "type": "string",
+          "pattern": "^(?:(?:SH|SZ|BJ)[0-9]{6}|HK[0-9]{5})$"
+        },
+        "market": {"type": "string", "enum": ["A", "H"]},
+        "source": {
+          "type": "string",
+          "enum": [
+            "CNINFO",
+            "SSE",
+            "SZSE",
+            "BSE",
+            "A_COMPANY_ANNOUNCEMENT",
+            "HKEXNEWS",
+            "H_COMPANY_REPORT",
+            "H_COMPANY_ANNOUNCEMENT"
+          ]
+        },
+        "title": {"type": "string", "minLength": 1, "maxLength": 500},
+        "document_type": {"type": "string", "minLength": 1, "maxLength": 128},
+        "published_date": {"type": "string", "format": "date"},
+        "url": {"type": "string", "pattern": "^https?://", "format": "uri"},
+        "source_document_id": {
+          "type": ["string", "null"],
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "report_period": {
+          "type": ["string", "null"],
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "issuer_name": {
+          "type": ["string", "null"],
+          "minLength": 1,
+          "maxLength": 256
+        }
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"market": {"const": "A"}}},
+          "then": {
+            "properties": {
+              "source": {
+                "enum": [
+                  "CNINFO",
+                  "SSE",
+                  "SZSE",
+                  "BSE",
+                  "A_COMPANY_ANNOUNCEMENT"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {"properties": {"market": {"const": "H"}}},
+          "then": {
+            "properties": {
+              "source": {
+                "enum": [
+                  "HKEXNEWS",
+                  "H_COMPANY_REPORT",
+                  "H_COMPANY_ANNOUNCEMENT"
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

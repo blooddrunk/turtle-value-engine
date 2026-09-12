@@ -1,12 +1,12 @@
 # Provider and Cache Architecture
 
-> Endpoint-loop status: Phase 3.85 official filing document download/cache
+> Endpoint-loop status: Phase 3.86 bounded annual/interim report extraction
 > acquisition is
 > implemented below.
 
 > Status: Phase 3.85 official filing document download/cache plus Phase 3.84 filing discovery, structured acquisition, read-only AKShare statement slices, earnings forecasts/quick reports/performance reports/business composition/financial abstract/financial indicators, H-share latest indicators, A-share disclosure-notice metadata including the Eastmoney individual-notice, market-wide notice and shareholder-meeting views, risk-warning status, trading-suspension, restricted-share-release, goodwill-impairment detail/goodwill-detail/impairment-forecast/market-profile/industry-data, ESG-rating, SSE/SZSE/BSE margin-detail, share-capital, individual-info snapshot, corporate-action including IPO-summary and Eastmoney IPO-yield, external-guarantee, company-litigation, ownership-pledge snapshot/detail/company-distribution/bank-distribution/industry-data/market-profile/important-shareholder-detail, main-shareholder, shareholder-count/shareholder-count-detail, A-share actual-controller holding-change, A/H HSGT individual-holdings/A-share individual-detail/individual-ranking/daily-stock-statistics/institution-statistics, SSE/SZSE/BSE insider-share-change, A-share Eastmoney/CNINFO management-holding and executive/shareholder-change, A-share top-ten/top-ten-tradable-shareholder/top-ten-tradable-shareholder-detail, Dragon-Tiger market-activity detail/statistics/institution-statistics/institution-daily/institutional-research/institutional-research-detail/market-participation-desire/market-focus/institution-participation/block-trade-detail/hot-rank/latest-hot-rank/A-share historical-hot-rank/A-share realtime-hot-rank-detail/hot-keyword/related-stock-hot-rank/limit-up-pool/limit-down-pool/H-share latest-hot-rank/H-share historical-hot-rank/H-share realtime-hot-rank-detail/new-stock-board, A+B/A+H quote-comparison, Shanghai, Shenzhen, Beijing, Growth Enterprise Market, STAR Market, Sina STAR Market, B-share, Sina B-share, Sina mainland-index spot, Sina Hong Kong-index spot, Eastmoney mainland-index spot, Eastmoney global-index spot, Eastmoney Hong Kong-index spot, B-share daily-history, Eastmoney A-share daily-history, Sina H-share daily-history, Sina A-share daily-history, Sina STAR Market daily-history, Sina index daily-history, Sina Hong Kong-index daily-history, Eastmoney Hong Kong-index daily-history, Eastmoney global-index daily-history, Sina global-index daily-history, Sina US-index daily-history, Tencent index daily-history, Eastmoney index daily-history, generic Eastmoney index-history, index minute-history, B-share minute-history and new-stock A-share, Sina next-new-stock, company-dynamics, new-stock-first-day, IPO-benefit and two-net/delisted-stock, H-share main-board/famous-stock/Stock Connect constituent/Shanghai Stock Connect quotes, A-share Eastmoney/Sina intraday-trade, Tencent daily-history/latest-trading-day tick, A-share/H-share intraday-history, pre-market-history and five-level bid-ask raw slices, SSE/SZSE market-summary, SZSE area-summary/sector-summary and Eastmoney industry-board, HSGT board-rank, stock-account-statistics and Legu market-activity/congestion/equity-bond-spread/Buffett-index/A-share PE/PB-history, index-PE/index-PB, A-share growth-comparison, A/H Eastmoney valuation-comparison, A/H Eastmoney growth-comparison and A/H Baidu valuation-history raw slices, the deprecated HSGT minute-fund-flow raw slice, HSGT historical-flow raw slice and HSGT fund-flow-summary raw slice
 
-> Current endpoint-loop milestone: Phase 3.85 official filing document download/cache
+> Current endpoint-loop milestone: Phase 3.86 bounded annual/interim report extraction
 > is implemented below; the detailed cumulative status line above
 > remains a catalog of the previously completed slices.
 
@@ -33,8 +33,10 @@ a parallel analysis object, calculate an investment metric, or decide a gate.
 
 Phase 2 and the numbered Phase 3 structured increments add structured
 acquisition and replay infrastructure only. Phase 3.84 adds the bounded
-official filing-discovery metadata boundary; document retrieval, extraction
-and filing-derived evidence remain later top-level Phase 3 work.
+official filing-discovery metadata boundary, Phase 3.85 adds verified document
+bytes and content-addressed replay, and Phase 3.86 adds parser-injected text
+blocks. Filing-derived evidence, accounting interpretation and adjustment
+proposals remain later top-level Phase 3 work.
 
 ## 2. Responsibilities and boundaries
 
@@ -3840,20 +3842,50 @@ deterministic IDs, source URLs, request filters and exact provenance metadata
 before a replayed result can be consumed.
 
 This slice does not create `Source`/`Evidence` items or normalized `Fact`
-records. Document download/cache, extraction, evidence storage, adjustment
-proposals, LLM analysis and CLI wiring remain later Phase 3/4 work. Focused
+records. Document download/cache is Phase 3.85 and bounded text extraction is
+Phase 3.86; evidence storage, adjustment proposals, LLM analysis and CLI
+wiring remain later Phase 3/4 work. Focused
 tests cover all A/H source boundaries, URL and date/limit adversarial cases,
 deterministic IDs, tampered replay metadata/payloads, JSON Schema validation
 and offline cache replay.
 
+## Phase 3.86 Bounded annual/interim report text extraction
+
+The extraction boundary consumes a validated `FilingDocument` and returns a
+serialized `FilingExtractionResult` containing only an immutable ordered tuple
+of text blocks. A `FilingDocumentTextParser` is injected for each supported
+media type (`application/pdf`, `text/html` or `application/xhtml+xml`); the
+core package does not install or select a parser and does not perform network
+access. PDF parser output uses a positive, non-decreasing `page`; HTML parser
+output uses a non-empty `section`. Both require contiguous `sequence` values
+and non-empty text.
+
+The result retains the complete `FilingRecord`, including `filing_id`, source,
+source-document ID and the opaque source `report_period`, together with the
+exact document `content_sha256`, byte size, media type and parser ID/version.
+Each block carries a SHA-256 of its exact UTF-8 text. The default bounds are
+2,048 blocks, 100,000 characters per block and 5,000,000 characters total;
+excess output is rejected rather than truncated. `FilingReportExtractor.validate`
+rechecks these bounds, parser identity, location order, filing provenance and
+the document hash, so extraction from `fetch_filing_document_with_cache` in
+offline mode is deterministic and downloader-free.
+
+`schemas/filing-extraction.schema.json` is the machine-readable result
+contract. The boundary preserves source text only: it does not infer annual or
+interim classification from a title, interpret accounting values, create
+`Source`/`Evidence`/`Fact` records, propose adjustments, invoke an LLM or wire
+the CLI. Missing parsers, unsupported media and malformed parser output fail
+closed.
+
 ## 13. Deliberate non-goals
 
-This foundation plus the Phase 2.2–3.83 structured slices and Phase 3.84
-filing discovery does not include:
+This foundation plus the Phase 2.2–3.83 structured slices, Phase 3.84 filing
+discovery, Phase 3.85 document cache and Phase 3.86 text extraction does not
+include:
 
 - Tushare, BaoStock or any other additional provider;
 - automatic network scheduling, credentials or retry orchestration outside an adapter;
-- official filing retrieval or PDF parsing;
+- a built-in PDF/HTML parser or implicit network transport;
 - LLM evidence extraction or Business Quality scoring;
 - a normalized-data database, web service, scheduler or event monitor;
 - additional financial-statement categories beyond the documented slices or

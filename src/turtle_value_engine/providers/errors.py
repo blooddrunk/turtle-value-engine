@@ -62,3 +62,15 @@ class FilingDocumentRequestError(FilingDocumentError):
 
 class FilingDocumentResponseError(FilingDocumentError):
     """Raised when a document response violates the byte/provenance contract."""
+
+
+class FilingExtractionError(ProviderError):
+    """Base error for bounded official filing text extraction."""
+
+
+class FilingExtractionRequestError(FilingExtractionError):
+    """Raised when an extraction request or document is unsupported."""
+
+
+class FilingExtractionResponseError(FilingExtractionError):
+    """Raised when an injected parser returns malformed or mismatched text."""

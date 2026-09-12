@@ -243,8 +243,10 @@ limit and optional point-in-time cutoff. It creates deterministic filing IDs
 and replayable raw provenance but does not download or parse document bodies.
 The Phase 3.85 document boundary now permits an injected, source-scoped
 download into a content-hashed local cache: bytes and a JSON manifest can be
-replayed offline without parsing the report. Extraction and Evidence
-generation remain subsequent deliverables.
+replayed offline without parsing the report. Phase 3.86 adds a bounded
+parser-injected text-block extraction boundary for cached PDF/HTML bytes;
+Evidence generation remains subsequent. The core still performs no hidden
+network access and does not interpret extracted text as a financial fact.
 
 ### v0.4 resilient multi-source mode
 

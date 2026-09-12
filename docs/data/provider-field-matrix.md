@@ -1,6 +1,6 @@
 # Structured Provider Field Matrix
 
-> Status: Phase 3.85 filing download/cache guardrail plus Phase 2 normalization guardrail
+> Status: Phase 3.86 bounded filing text extraction plus Phase 3.85 filing download/cache guardrail and Phase 2 normalization guardrail
 
 This matrix classifies normalized fields used by the current strict-v1 input
 and gate pipeline. It is an allowlist for what a structured-data adapter may
@@ -4573,8 +4573,8 @@ revalidates the schema, source boundary, request scope, deterministic IDs and
 metadata after cache replay. The shared filesystem cache is keyed by provider,
 version, category, listing and query parameters; offline mode never invokes an
 injected source client. Document retrieval is the separate Phase 3.85 byte
-contract below; extraction, evidence storage and adjustment proposals remain
-later deliverables.
+contract below, and bounded text extraction is the separate Phase 3.86
+contract. Evidence storage and adjustment proposals remain later deliverables.
 
 ## Phase 3.85 official filing document download/cache
 
@@ -4599,8 +4599,33 @@ transport is hidden in the provider package and no report contents are parsed.
 The machine-readable manifest contract is
 `schemas/filing-document.schema.json`. The downloader/cache creates no
 `Source`, `Evidence` or normalized `Fact` and does not classify document type
-from bytes. Extraction, evidence storage, adjustment proposals, LLM analysis
-and CLI wiring remain outside this deliverable.
+from bytes. Bounded extraction is described below; evidence storage,
+adjustment proposals, LLM analysis and CLI wiring remain outside these
+deliverables.
+
+## Phase 3.86 bounded annual/interim report text extraction
+
+This slice consumes one verified `FilingDocument` from the Phase 3.85 cache and
+returns only parser-supplied text blocks. A caller injects a
+`FilingDocumentTextParser` for `application/pdf`, `text/html` or
+`application/xhtml+xml`; the core has no parser dependency or network
+transport. PDF blocks require a positive non-decreasing `page`, while HTML
+blocks require a non-empty `section`. Every block has a contiguous `sequence`,
+non-empty text and a deterministic SHA-256 of its exact UTF-8 text.
+
+| Extraction field | Treatment and replay invariant |
+| --- | --- |
+| `filing` | The complete `FilingRecord` is retained, including `filing_id`, listing, market, source, source-document ID, publication date, document type and opaque source `report_period`; no report classification is inferred from title or text. |
+| `content_sha256`, `content_size`, `media_type` | Exact raw document hash, byte size and canonical supported media type are copied from the verified document; validation rejects a mismatch. |
+| `parser_id`, `parser_version` | Explicit parser provenance from the injected local boundary; no default parser or hidden network implementation is selected. |
+| `blocks` | Immutable ordered page/section text blocks, bounded at 2,048 blocks, 100,000 characters per block and 5,000,000 characters total; output over a bound fails rather than truncates. |
+| serialized result | Validated by `schemas/filing-extraction.schema.json`; `FilingReportExtractor.validate` rechecks filing identity, raw hash/size/media type, parser identity, text hashes, location kind/order and bounds against the same cached document. |
+
+The boundary preserves source text only. It creates no normalized fact,
+`Source` or `Evidence`, does not interpret accounting values, propose an
+adjustment, invoke an LLM or wire the CLI. Unsupported media, missing parser
+support, empty/malformed parser output and cache/replay provenance changes
+fail closed.
 
 ## Phase 2 enforcement rule
 
