@@ -4376,6 +4376,32 @@ prices, adjustment/calendar semantics and HKD/share units are not reconciled
 to the canonical contract; the existing no-view H-share history fallback is
 unchanged.
 
+## Phase 3.77 Sina H-share realtime quote raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hk_sina.py)
+document `stock_hk_spot` as a no-argument, 15-minute-delayed full H-share
+realtime-quote universe. The adapter exposes it under `MARKET_QUOTE` with
+explicit `view=hk_spot_sina`, validates the complete response before filtering
+to the requested five-digit code, and retains the following exact wrapper
+fields in order:
+
+| Raw provider field | Phase 3.77 treatment |
+| --- | --- |
+| `日期时间` | Required string timestamp in `YYYY/MM/DD HH:MM:SS` form; retained as the row observation-time identity and replay metadata order. |
+| `代码` | Required unique five-digit string; source rows must be strictly ascending and the selected row must match the requested H-share code. |
+| `中文名称` | Required non-empty string. |
+| `英文名称`, `交易类型` | Nullable strings; empty strings remain provider values. |
+| `最新价`, `涨跌额`, `涨跌幅`, `昨收`, `今开`, `最高`, `最低`, `成交量`, `成交额`, `买一`, `卖一` | Finite numeric or null values after the wrapper's numeric conversion; all numeric units remain `not_documented`. |
+| request `view` | Only `view=hk_spot_sina` is accepted for this explicit route; no listing/date parameter is passed to `stock_hk_spot`. |
+| Sina JSON source | Replay metadata records `node=qbgg_hk`, page size 60, pages 1–99 until empty, source-column positions 0–26, dropped source indices, exact output order and provider-side row filtering. |
+
+The normalizer emits `AKSHARE_HK_SINA_SPOT_QUOTE_RAW_ONLY` and creates no
+canonical current-price, return, valuation or accounting fact. The delayed
+current-day quote, bid/ask context and undocumented numeric units remain raw
+evidence only; the existing no-view H-share quote compatibility fallback is
+unchanged.
+
 ## Phase 2 enforcement rule
 
 For every field not marked `STRUCTURED_AUTO` or `DERIVED_DETERMINISTIC`, a

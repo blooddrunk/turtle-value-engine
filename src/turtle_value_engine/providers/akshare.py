@@ -54,7 +54,7 @@ detail/statistics/institution-statistics/institutional-research/block-trade-deta
 raw slices are also
 available. A-share and H-share market-quote snapshots, including the Shanghai,
 Shenzhen, Beijing, Growth Enterprise Market, STAR Market, Sina STAR Market,
-B-share, Sina index, Eastmoney index and new-stock A-share,
+B-share, Sina index, Sina H-share, Eastmoney index and new-stock A-share,
 H-share main-board, famous-stock,
 Hong Kong Stock Connect constituent
 and Shanghai Stock Connect quote raw slices, are retained with their upstream
@@ -131,9 +131,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "193"
+AKSHARE_ADAPTER_VERSION = "194"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "194"
+AKSHARE_MAPPING_VERSION = "195"
 
 
 class ListingMarket(StrEnum):
@@ -1911,6 +1911,127 @@ _MARKET_QUOTE_B_SINA_SPOT_WRAPPER_COLUMN_MAPPING = {
 _MARKET_QUOTE_B_SINA_SPOT_UPSTREAM_TRANSFORMATIONS = {
     field: "to_numeric_errors_coerce"
     for field in _MARKET_QUOTE_B_SINA_SPOT_NUMERIC_FIELDS
+}
+
+_MARKET_QUOTE_HK_SINA_SPOT_ENDPOINT = "stock_hk_spot"
+_MARKET_QUOTE_HK_SINA_SPOT_PARAMETER_NAMES = frozenset({"view"})
+_MARKET_QUOTE_HK_SINA_SPOT_VIEW = "hk_spot_sina"
+_MARKET_QUOTE_HK_SINA_SPOT_FIELDS = (
+    "日期时间",
+    "代码",
+    "中文名称",
+    "英文名称",
+    "交易类型",
+    "最新价",
+    "涨跌额",
+    "涨跌幅",
+    "昨收",
+    "今开",
+    "最高",
+    "最低",
+    "成交量",
+    "成交额",
+    "买一",
+    "卖一",
+)
+_MARKET_QUOTE_HK_SINA_SPOT_FIELD_SET = frozenset(
+    _MARKET_QUOTE_HK_SINA_SPOT_FIELDS
+)
+_MARKET_QUOTE_HK_SINA_SPOT_TEXT_FIELDS = (
+    "日期时间",
+    "代码",
+    "中文名称",
+    "英文名称",
+    "交易类型",
+)
+_MARKET_QUOTE_HK_SINA_SPOT_REQUIRED_TEXT_FIELDS = (
+    "日期时间",
+    "代码",
+    "中文名称",
+)
+_MARKET_QUOTE_HK_SINA_SPOT_NUMERIC_FIELDS = tuple(
+    field
+    for field in _MARKET_QUOTE_HK_SINA_SPOT_FIELDS
+    if field not in _MARKET_QUOTE_HK_SINA_SPOT_TEXT_FIELDS
+)
+_MARKET_QUOTE_HK_SINA_SPOT_INTEGER_FIELDS: tuple[str, ...] = ()
+_MARKET_QUOTE_HK_SINA_SPOT_NULLABLE_FIELDS = (
+    "英文名称",
+    "交易类型",
+    *_MARKET_QUOTE_HK_SINA_SPOT_NUMERIC_FIELDS,
+)
+_MARKET_QUOTE_HK_SINA_SPOT_FIELD_TYPES = {
+    **{field: "string" for field in _MARKET_QUOTE_HK_SINA_SPOT_TEXT_FIELDS},
+    **{
+        field: "number"
+        for field in _MARKET_QUOTE_HK_SINA_SPOT_NUMERIC_FIELDS
+    },
+}
+_MARKET_QUOTE_HK_SINA_SPOT_DOCUMENTED_UNITS: dict[str, JSONValue] = {}
+_MARKET_QUOTE_HK_SINA_SPOT_UNDOCUMENTED_NUMERIC_UNITS = {
+    field: "not_documented"
+    for field in _MARKET_QUOTE_HK_SINA_SPOT_NUMERIC_FIELDS
+}
+_MARKET_QUOTE_HK_SINA_SPOT_SOURCE_URI = (
+    "https://vip.stock.finance.sina.com.cn/mkt/#qbgg_hk"
+)
+_MARKET_QUOTE_HK_SINA_SPOT_UPSTREAM_URL = (
+    "https://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/"
+    "Market_Center.getHKStockData"
+)
+_MARKET_QUOTE_HK_SINA_SPOT_UPSTREAM_PARAMETERS = (
+    "page",
+    "num",
+    "sort",
+    "asc",
+    "node",
+    "_s_r_a",
+)
+_MARKET_QUOTE_HK_SINA_SPOT_UPSTREAM_FIXED_PARAMETERS = {
+    "num": "60",
+    "sort": "symbol",
+    "asc": "1",
+    "node": "qbgg_hk",
+    "_s_r_a": "init",
+}
+_MARKET_QUOTE_HK_SINA_SPOT_UPSTREAM_DYNAMIC_PARAMETERS = {
+    "page": "1..99_until_empty",
+}
+_MARKET_QUOTE_HK_SINA_SPOT_WRAPPER_SOURCE_COLUMN_COUNT = 27
+_MARKET_QUOTE_HK_SINA_SPOT_WRAPPER_COLUMN_MAPPING = {
+    "日期时间": 12,
+    "代码": 0,
+    "中文名称": 1,
+    "英文名称": 2,
+    "交易类型": 3,
+    "最新价": 4,
+    "涨跌额": 22,
+    "涨跌幅": 23,
+    "昨收": 5,
+    "今开": 6,
+    "最高": 7,
+    "最低": 8,
+    "成交量": 9,
+    "成交额": 11,
+    "买一": 13,
+    "卖一": 14,
+}
+_MARKET_QUOTE_HK_SINA_SPOT_WRAPPER_DROPPED_SOURCE_INDICES = (
+    10,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    24,
+    25,
+    26,
+)
+_MARKET_QUOTE_HK_SINA_SPOT_UPSTREAM_TRANSFORMATIONS = {
+    field: "to_numeric_errors_coerce"
+    for field in _MARKET_QUOTE_HK_SINA_SPOT_NUMERIC_FIELDS
 }
 
 _MARKET_QUOTE_HK_MAIN_BOARD_PARAMETER_NAMES = frozenset({"view"})
@@ -8661,6 +8782,19 @@ class AKShareProvider(StructuredDataProvider):
             )
         if (
             request.category is DataCategory.MARKET_QUOTE
+            and request.parameters.get("view")
+            == _MARKET_QUOTE_HK_SINA_SPOT_VIEW
+            and listing.market is not ListingMarket.H
+        ):
+            raise ProviderRequestError(
+                "the AKShare Sina H-share quote endpoint supports H-share "
+                "listings only",
+                provider=self.identity,
+                request=request,
+                retryable=False,
+            )
+        if (
+            request.category is DataCategory.MARKET_QUOTE
             and request.parameters.get("view") == _MARKET_QUOTE_XQ_VIEW
             and listing.market is not ListingMarket.A
         ):
@@ -9932,6 +10066,29 @@ class AKShareProvider(StructuredDataProvider):
                         listing.canonical_id[:2].lower() + listing.code
                     ),
                     row_identity_order=[row["代码"] for row in rows],
+                    selected_row_identity_order=[row["代码"] for row in selected],
+                    upstream_row_count=len(rows),
+                    entity_row_count=len(selected),
+                )
+            )
+        elif (
+            request.category is DataCategory.MARKET_QUOTE
+            and endpoint.name == _MARKET_QUOTE_HK_SINA_SPOT_ENDPOINT
+            and request.parameters.get("view") == _MARKET_QUOTE_HK_SINA_SPOT_VIEW
+        ):
+            rows = _table_rows(payload, provider=self.identity, request=request)
+            _validate_market_quote_hk_sina_spot_provider_rows(
+                rows,
+                provider=self.identity,
+                request=request,
+            )
+            selected = _select_market_quote_hk_sina_spot_rows(rows, listing)
+            payload = selected
+            response_metadata.update(
+                _market_quote_hk_sina_spot_response_metadata(
+                    listing_code=listing.code,
+                    row_identity_order=[row["代码"] for row in rows],
+                    row_observation_time_order=[row["日期时间"] for row in rows],
                     selected_row_identity_order=[row["代码"] for row in selected],
                     upstream_row_count=len(rows),
                     entity_row_count=len(selected),
@@ -14422,6 +14579,9 @@ class AKShareProvider(StructuredDataProvider):
             market_quote_b_sina_spot_requested=(
                 request.parameters.get("view") == _MARKET_QUOTE_B_SINA_SPOT_VIEW
             ),
+            market_quote_hk_sina_spot_requested=(
+                request.parameters.get("view") == _MARKET_QUOTE_HK_SINA_SPOT_VIEW
+            ),
             market_quote_hk_main_board_requested=(
                 request.parameters.get("view") == _MARKET_QUOTE_HK_MAIN_BOARD_VIEW
             ),
@@ -14574,6 +14734,12 @@ class AKShareProvider(StructuredDataProvider):
                     == _MARKET_HISTORY_AH_DAILY_VIEW
                 ):
                     source_uri = _MARKET_HISTORY_AH_DAILY_SOURCE_URI
+                if (
+                    name == _MARKET_QUOTE_HK_SINA_SPOT_ENDPOINT
+                    and request.parameters.get("view")
+                    == _MARKET_QUOTE_HK_SINA_SPOT_VIEW
+                ):
+                    source_uri = _MARKET_QUOTE_HK_SINA_SPOT_SOURCE_URI
                 return _Endpoint(
                     name=name,
                     function=function,
@@ -15990,6 +16156,30 @@ class AKShareNormalizer:
                 normalizer_flags.add("AKSHARE_B_SINA_SPOT_QUOTE_RAW_ONLY")
             elif (
                 record.request.category is DataCategory.MARKET_QUOTE
+                and record.request.parameters.get("view")
+                == _MARKET_QUOTE_HK_SINA_SPOT_VIEW
+                and record.response_metadata.get("endpoint")
+                != _MARKET_QUOTE_HK_SINA_SPOT_ENDPOINT
+            ):
+                raise ProviderNormalizationError(
+                    "Sina H-share quote record must come from "
+                    f"{_MARKET_QUOTE_HK_SINA_SPOT_ENDPOINT}"
+                )
+            elif (
+                record.request.category is DataCategory.MARKET_QUOTE
+                and record.response_metadata.get("endpoint")
+                == _MARKET_QUOTE_HK_SINA_SPOT_ENDPOINT
+                and record.request.parameters.get("view")
+                == _MARKET_QUOTE_HK_SINA_SPOT_VIEW
+            ):
+                _validate_market_quote_hk_sina_spot_normalizer_scope(
+                    record,
+                    listing,
+                    rows,
+                )
+                normalizer_flags.add("AKSHARE_HK_SINA_SPOT_QUOTE_RAW_ONLY")
+            elif (
+                record.request.category is DataCategory.MARKET_QUOTE
                 and record.response_metadata.get("endpoint")
                 == "stock_hk_main_board_spot_em"
             ):
@@ -17324,6 +17514,7 @@ class AKShareNormalizer:
                 "AKSHARE_KCB_SINA_SPOT_QUOTE_RAW_ONLY",
                 "AKSHARE_B_SPOT_QUOTE_RAW_ONLY",
                 "AKSHARE_B_SINA_SPOT_QUOTE_RAW_ONLY",
+                "AKSHARE_HK_SINA_SPOT_QUOTE_RAW_ONLY",
                 "AKSHARE_HK_MAIN_BOARD_QUOTE_RAW_ONLY",
                 "AKSHARE_HK_FAMOUS_QUOTE_RAW_ONLY",
                 "AKSHARE_HK_GGT_COMPONENTS_QUOTE_RAW_ONLY",
@@ -18523,6 +18714,13 @@ class AKShareNormalizer:
                 "establish the canonical current-price input; repeated upstream "
                 "calls may be temporarily IP-blocked."
             )
+        if "AKSHARE_HK_SINA_SPOT_QUOTE_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented Sina H-share quote response is retained as raw "
+                "evidence only: its 15-minute-delayed current-day prices, changes, "
+                "volume, turnover and quote context do not establish the canonical "
+                "current-price input; numeric units are not documented."
+            )
         if "AKSHARE_HK_MAIN_BOARD_QUOTE_RAW_ONLY" in normalizer_flags:
             notes += (
                 " The documented H-share Eastmoney main-board quote response is "
@@ -18936,6 +19134,7 @@ def _endpoint_candidates(
     market_quote_kcb_sina_spot_requested: bool = False,
     market_quote_b_spot_requested: bool = False,
     market_quote_b_sina_spot_requested: bool = False,
+    market_quote_hk_sina_spot_requested: bool = False,
     market_quote_hk_main_board_requested: bool = False,
     market_quote_hk_famous_requested: bool = False,
     market_quote_hk_ggt_components_requested: bool = False,
@@ -19105,6 +19304,10 @@ def _endpoint_candidates(
                 )
             ):
                 return (_MARKET_QUOTE_B_SINA_SPOT_ENDPOINT,)
+            return ()
+        if market_quote_hk_sina_spot_requested:
+            if market is ListingMarket.H:
+                return (_MARKET_QUOTE_HK_SINA_SPOT_ENDPOINT,)
             return ()
         if market_quote_hk_sh_spot_requested:
             if market is ListingMarket.H:
@@ -20110,6 +20313,35 @@ def _market_quote_kwargs(
             raise ProviderRequestError(
                 "the AKShare Sina B-share quote endpoint requires "
                 f"view={_MARKET_QUOTE_B_SINA_SPOT_VIEW!r}",
+                request=request,
+                retryable=False,
+            )
+        return {}
+    if (
+        endpoint_name == _MARKET_QUOTE_HK_SINA_SPOT_ENDPOINT
+        and request.parameters.get("view") == _MARKET_QUOTE_HK_SINA_SPOT_VIEW
+    ):
+        if listing.market is not ListingMarket.H:
+            raise ProviderRequestError(
+                "the AKShare Sina H-share quote endpoint supports H-share "
+                "listings only",
+                request=request,
+                retryable=False,
+            )
+        unknown = sorted(
+            set(request.parameters) - _MARKET_QUOTE_HK_SINA_SPOT_PARAMETER_NAMES
+        )
+        if unknown:
+            raise ProviderRequestError(
+                "unsupported AKShare Sina H-share quote parameter(s): "
+                + ", ".join(unknown),
+                request=request,
+                retryable=False,
+            )
+        if request.parameters.get("view") != _MARKET_QUOTE_HK_SINA_SPOT_VIEW:
+            raise ProviderRequestError(
+                "the AKShare Sina H-share quote endpoint requires "
+                f"view={_MARKET_QUOTE_HK_SINA_SPOT_VIEW!r}",
                 request=request,
                 retryable=False,
             )
@@ -26205,6 +26437,251 @@ def _market_quote_b_sina_spot_response_metadata(
         ),
         "upstream_transformations": dict(
             _MARKET_QUOTE_B_SINA_SPOT_UPSTREAM_TRANSFORMATIONS
+        ),
+        "full_universe_response": True,
+        "entity_rows_selected": True,
+        "upstream_row_count": upstream_row_count,
+        "entity_row_count": entity_row_count,
+    }
+
+
+def _market_quote_hk_sina_spot_timestamp(value: object) -> datetime | None:
+    if not isinstance(value, str):
+        return None
+    for fmt in (
+        "%Y/%m/%d %H:%M:%S",
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%dT%H:%M:%S",
+    ):
+        try:
+            return datetime.strptime(value, fmt)
+        except ValueError:
+            continue
+    return None
+
+
+def _market_quote_hk_sina_spot_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef | None = None,
+) -> tuple[str | None, list[datetime]]:
+    """Return strict-schema errors and observation times for the Sina H snapshot."""
+
+    seen_codes: set[str] = set()
+    previous_code: str | None = None
+    observation_times: list[datetime] = []
+    for index, row in enumerate(rows):
+        missing = sorted(_MARKET_QUOTE_HK_SINA_SPOT_FIELD_SET - set(row))
+        unexpected = sorted(set(row) - _MARKET_QUOTE_HK_SINA_SPOT_FIELD_SET)
+        if missing:
+            return (
+                f"Sina H-share quote row {index} is missing field(s): "
+                + ", ".join(missing),
+                [],
+            )
+        if unexpected:
+            return (
+                f"Sina H-share quote row {index} contains unsupported field(s): "
+                + ", ".join(unexpected),
+                [],
+            )
+        if tuple(row) != _MARKET_QUOTE_HK_SINA_SPOT_FIELDS:
+            return (
+                f"Sina H-share quote row {index} must preserve the official "
+                "field order",
+                [],
+            )
+
+        observation_time = row["日期时间"]
+        parsed_observation_time = _market_quote_hk_sina_spot_timestamp(
+            observation_time
+        )
+        if parsed_observation_time is None:
+            return (
+                f"Sina H-share quote row {index} field '日期时间' must be a "
+                "valid YYYY/MM/DD HH:MM:SS timestamp",
+                [],
+            )
+        observation_times.append(parsed_observation_time)
+
+        code = row["代码"]
+        if not isinstance(code, str) or re.fullmatch(r"\d{5}", code) is None:
+            return f"Sina H-share quote row {index} has an invalid 代码", []
+        if code in seen_codes:
+            return f"Sina H-share quote response has duplicate 代码 {code!r}", []
+        if previous_code is not None and code <= previous_code:
+            return "Sina H-share quote 代码 values must be strictly ascending", []
+        seen_codes.add(code)
+        previous_code = code
+
+        for field in _MARKET_QUOTE_HK_SINA_SPOT_REQUIRED_TEXT_FIELDS:
+            value = row[field]
+            if field == "日期时间":
+                continue
+            if not isinstance(value, str) or not value.strip():
+                return (
+                    f"Sina H-share quote row {index} field {field!r} must be a "
+                    "non-empty string",
+                    [],
+                )
+        for field in _MARKET_QUOTE_HK_SINA_SPOT_TEXT_FIELDS:
+            value = row[field]
+            if value is not None and not isinstance(value, str):
+                return (
+                    f"Sina H-share quote row {index} field {field!r} must be a "
+                    "string or null",
+                    [],
+                )
+
+        if listing is not None and code != listing.code:
+            return (
+                f"Sina H-share quote row {index} entity {code!r} does not "
+                f"match requested listing {listing.canonical_id!r}",
+                [],
+            )
+
+        for field in _MARKET_QUOTE_HK_SINA_SPOT_NUMERIC_FIELDS:
+            value = row[field]
+            if value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, Real):
+                return (
+                    f"Sina H-share quote row {index} field {field!r} must be "
+                    "numeric or null",
+                    [],
+                )
+            try:
+                numeric = float(value)
+            except (OverflowError, TypeError, ValueError):
+                return (
+                    f"Sina H-share quote row {index} field {field!r} must be "
+                    "numeric or null",
+                    [],
+                )
+            if not math.isfinite(numeric):
+                return (
+                    f"Sina H-share quote row {index} field {field!r} must be "
+                    "finite or null",
+                    [],
+                )
+    return None, observation_times
+
+
+def _validate_market_quote_hk_sina_spot_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> None:
+    """Validate the complete Sina H-share universe before filtering."""
+
+    message, _ = _market_quote_hk_sina_spot_validation_message(rows)
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message}",
+            provider=provider,
+            request=request,
+        )
+
+
+def _select_market_quote_hk_sina_spot_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+) -> list[dict[str, JSONValue]]:
+    """Filter the full Sina H-share universe by the requested code."""
+
+    return [dict(row) for row in rows if row["代码"] == listing.code]
+
+
+def _market_quote_hk_sina_spot_response_metadata(
+    *,
+    listing_code: str,
+    row_identity_order: Sequence[JSONValue],
+    row_observation_time_order: Sequence[JSONValue],
+    selected_row_identity_order: Sequence[JSONValue],
+    upstream_row_count: int,
+    entity_row_count: int,
+) -> dict[str, JSONValue]:
+    """Build replay metadata for a filtered Sina H-share snapshot."""
+
+    observation_times = [
+        parsed
+        for value in row_observation_time_order
+        if (parsed := _market_quote_hk_sina_spot_timestamp(value)) is not None
+    ]
+    return {
+        "endpoint": _MARKET_QUOTE_HK_SINA_SPOT_ENDPOINT,
+        "market": ListingMarket.H.value,
+        "listing_code": listing_code,
+        "market_quote_view": _MARKET_QUOTE_HK_SINA_SPOT_VIEW,
+        "market_scope": "sina_hong_kong_stocks",
+        "listing_scoped_request": False,
+        "row_filtering": "provider",
+        "snapshot_scope": "current_trading_day_delayed_15m",
+        "date_binding": "row_observation_time",
+        "observation_time_field": "日期时间",
+        "observation_time_zone": "Asia/Shanghai",
+        "observation_time_ordering": "source_response_order",
+        "row_observation_time_order": list(row_observation_time_order),
+        "observation_time_start": (
+            min(observation_times).isoformat(sep=" ")
+            if observation_times
+            else None
+        ),
+        "observation_time_end": (
+            max(observation_times).isoformat(sep=" ")
+            if observation_times
+            else None
+        ),
+        "listing_code_field": "代码",
+        "identity_fields": ["代码"],
+        "identity_ordering": "source_response_order_code_ascending",
+        "row_identity_order": list(row_identity_order),
+        "selected_row_identity_order": list(selected_row_identity_order),
+        "value_fields": list(_MARKET_QUOTE_HK_SINA_SPOT_NUMERIC_FIELDS),
+        "integer_fields": list(_MARKET_QUOTE_HK_SINA_SPOT_INTEGER_FIELDS),
+        "text_fields": list(_MARKET_QUOTE_HK_SINA_SPOT_TEXT_FIELDS),
+        "required_text_fields": list(
+            _MARKET_QUOTE_HK_SINA_SPOT_REQUIRED_TEXT_FIELDS
+        ),
+        "nullable_fields": list(_MARKET_QUOTE_HK_SINA_SPOT_NULLABLE_FIELDS),
+        "field_types": dict(_MARKET_QUOTE_HK_SINA_SPOT_FIELD_TYPES),
+        "field_count": len(_MARKET_QUOTE_HK_SINA_SPOT_FIELDS),
+        "source_field_order": list(_MARKET_QUOTE_HK_SINA_SPOT_FIELDS),
+        "documented_units": dict(_MARKET_QUOTE_HK_SINA_SPOT_DOCUMENTED_UNITS),
+        "undocumented_numeric_units": dict(
+            _MARKET_QUOTE_HK_SINA_SPOT_UNDOCUMENTED_NUMERIC_UNITS
+        ),
+        "upstream_url": _MARKET_QUOTE_HK_SINA_SPOT_UPSTREAM_URL,
+        "upstream_protocol": "JSON",
+        "upstream_parameters": list(
+            _MARKET_QUOTE_HK_SINA_SPOT_UPSTREAM_PARAMETERS
+        ),
+        "upstream_fixed_parameters": dict(
+            _MARKET_QUOTE_HK_SINA_SPOT_UPSTREAM_FIXED_PARAMETERS
+        ),
+        "upstream_dynamic_parameters": dict(
+            _MARKET_QUOTE_HK_SINA_SPOT_UPSTREAM_DYNAMIC_PARAMETERS
+        ),
+        "upstream_authentication": "none",
+        "upstream_page_size": 60,
+        "pagination": "fixed_max_pages_until_empty",
+        "upstream_max_pages": 99,
+        "upstream_sort_column": "symbol",
+        "upstream_sort_direction": "ascending",
+        "upstream_filter": "node=qbgg_hk",
+        "wrapper_source_page_uri": _MARKET_QUOTE_HK_SINA_SPOT_SOURCE_URI,
+        "wrapper_output_ordering": "source_response_order",
+        "wrapper_source_column_count": (
+            _MARKET_QUOTE_HK_SINA_SPOT_WRAPPER_SOURCE_COLUMN_COUNT
+        ),
+        "wrapper_column_mapping": dict(
+            _MARKET_QUOTE_HK_SINA_SPOT_WRAPPER_COLUMN_MAPPING
+        ),
+        "wrapper_dropped_source_indices": list(
+            _MARKET_QUOTE_HK_SINA_SPOT_WRAPPER_DROPPED_SOURCE_INDICES
+        ),
+        "upstream_transformations": dict(
+            _MARKET_QUOTE_HK_SINA_SPOT_UPSTREAM_TRANSFORMATIONS
         ),
         "full_universe_response": True,
         "entity_rows_selected": True,
@@ -51647,6 +52124,162 @@ def _validate_market_quote_b_spot_normalizer_scope(
                 f"{name!r} does not match the requested replay scope"
             )
 
+
+
+def _validate_market_quote_hk_sina_spot_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> None:
+    """Validate the replay scope of a filtered Sina H-share snapshot."""
+
+    if listing.market is not ListingMarket.H:
+        raise ProviderNormalizationError(
+            "Sina H-share quote raw slice supports H-share listings only"
+        )
+    if record.response_metadata.get("endpoint") != _MARKET_QUOTE_HK_SINA_SPOT_ENDPOINT:
+        raise ProviderNormalizationError(
+            "Sina H-share quote record must come from "
+            f"{_MARKET_QUOTE_HK_SINA_SPOT_ENDPOINT}"
+        )
+    if record.source_uri != _MARKET_QUOTE_HK_SINA_SPOT_SOURCE_URI:
+        raise ProviderNormalizationError(
+            "Sina H-share quote source URI does not match the documented endpoint"
+        )
+    if record.response_metadata.get("market") != listing.market.value:
+        raise ProviderNormalizationError(
+            "Sina H-share quote response market does not match requested listing"
+        )
+    if record.response_metadata.get("listing_code") != listing.code:
+        raise ProviderNormalizationError(
+            "Sina H-share quote response listing code does not match requested "
+            "listing"
+        )
+    try:
+        _market_quote_kwargs(
+            _MARKET_QUOTE_HK_SINA_SPOT_ENDPOINT,
+            listing,
+            record.request,
+        )
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+
+    upstream_row_count = record.response_metadata.get("upstream_row_count")
+    if (
+        isinstance(upstream_row_count, bool)
+        or not isinstance(upstream_row_count, int)
+        or upstream_row_count < len(rows)
+    ):
+        raise ProviderNormalizationError(
+            "Sina H-share quote response upstream row count does not match "
+            "the requested replay scope"
+        )
+
+    message, _ = _market_quote_hk_sina_spot_validation_message(rows, listing)
+    if message is not None:
+        raise ProviderNormalizationError(message)
+
+    row_identity_order = record.response_metadata.get("row_identity_order")
+    if not isinstance(row_identity_order, list):
+        raise ProviderNormalizationError(
+            "Sina H-share quote response metadata 'row_identity_order' does "
+            "not match the requested replay scope"
+        )
+    seen_codes: set[str] = set()
+    previous_code: str | None = None
+    for code in row_identity_order:
+        if (
+            not isinstance(code, str)
+            or re.fullmatch(r"\d{5}", code) is None
+            or code in seen_codes
+            or (previous_code is not None and code <= previous_code)
+        ):
+            raise ProviderNormalizationError(
+                "Sina H-share quote response metadata 'row_identity_order' "
+                "does not match the requested replay scope"
+            )
+        seen_codes.add(code)
+        previous_code = code
+    if len(row_identity_order) != upstream_row_count:
+        raise ProviderNormalizationError(
+            "Sina H-share quote response metadata 'row_identity_order' does "
+            "not match the requested replay scope"
+        )
+
+    row_observation_time_order = record.response_metadata.get(
+        "row_observation_time_order"
+    )
+    if not isinstance(row_observation_time_order, list):
+        raise ProviderNormalizationError(
+            "Sina H-share quote response metadata 'row_observation_time_order' "
+            "does not match the requested replay scope"
+        )
+    if len(row_observation_time_order) != upstream_row_count or any(
+        _market_quote_hk_sina_spot_timestamp(value) is None
+        for value in row_observation_time_order
+    ):
+        raise ProviderNormalizationError(
+            "Sina H-share quote response metadata 'row_observation_time_order' "
+            "does not match the requested replay scope"
+        )
+
+    selected_row_identity_order = record.response_metadata.get(
+        "selected_row_identity_order"
+    )
+    selected_codes = [row["代码"] for row in rows]
+    if selected_row_identity_order != selected_codes or any(
+        code not in row_identity_order for code in selected_codes
+    ):
+        raise ProviderNormalizationError(
+            "Sina H-share quote response metadata 'selected_row_identity_order' "
+            "does not match the requested replay scope"
+        )
+
+    row_times_by_code = dict(zip(row_identity_order, row_observation_time_order))
+    if any(row["日期时间"] != row_times_by_code[row["代码"]] for row in rows):
+        raise ProviderNormalizationError(
+            "Sina H-share quote response row observation times do not match "
+            "the requested replay scope"
+        )
+
+    expected_metadata = _market_quote_hk_sina_spot_response_metadata(
+        listing_code=listing.code,
+        row_identity_order=row_identity_order,
+        row_observation_time_order=row_observation_time_order,
+        selected_row_identity_order=selected_row_identity_order,
+        upstream_row_count=upstream_row_count,
+        entity_row_count=len(rows),
+    )
+    boolean_fields = {
+        "listing_scoped_request",
+        "full_universe_response",
+        "entity_rows_selected",
+    }
+    count_fields = {
+        "field_count",
+        "upstream_page_size",
+        "upstream_max_pages",
+        "upstream_row_count",
+        "entity_row_count",
+        "wrapper_source_column_count",
+    }
+    for name, expected in expected_metadata.items():
+        actual = record.response_metadata.get(name)
+        if name in boolean_fields:
+            matches = isinstance(actual, bool) and actual is expected
+        elif name in count_fields:
+            matches = (
+                isinstance(actual, int)
+                and not isinstance(actual, bool)
+                and actual == expected
+            )
+        else:
+            matches = actual == expected
+        if not matches:
+            raise ProviderNormalizationError(
+                "Sina H-share quote response metadata "
+                f"{name!r} does not match the requested replay scope"
+            )
 
 
 def _validate_market_quote_b_sina_spot_normalizer_scope(

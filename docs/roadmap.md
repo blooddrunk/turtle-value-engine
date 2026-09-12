@@ -4514,6 +4514,29 @@ nullable/empty output, raw-only normalization, replay metadata/payload
 tampering and offline cache replay. No calculation, gate, pipeline, CLI or
 input-loader contract changes.
 
+### Phase 3.77 — Sina H-share realtime quote acquisition contract (COMPLETE)
+
+The mapping review now covers the next documented AKShare stock endpoint
+[`stock_hk_spot`](https://akshare.akfamily.xyz/data/stock/stock.html), based on
+the [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hk_sina.py),
+under `MARKET_QUOTE` with explicit `view=hk_spot_sina`. The endpoint has no
+user parameters, reports a 15-minute-delayed full H-share universe and
+returns the exact sixteen-field `日期时间`, `代码`, name/type, price/change,
+OHLC, volume/turnover and bid/ask order. The adapter filters only after
+strictly validating every five-digit code, timestamp, text field, numeric/null
+value and official field order.
+
+Replay metadata freezes the Sina JSON source, `node=qbgg_hk`, fixed page size
+60, pages 1–99 until empty, 27-column wrapper mapping/dropped positions,
+numeric transformations, row observation-time order and selected row order.
+Numeric units remain undocumented. The normalizer emits
+`AKSHARE_HK_SINA_SPOT_QUOTE_RAW_ONLY` and creates no canonical current-price,
+return, valuation or accounting fact; the existing no-view H-share quote
+compatibility fallback remains unchanged. Focused tests cover routing, strict
+adversarial response validation, empty selection, raw-only normalization,
+replay metadata/payload tampering and offline cache replay. No calculation,
+gate, pipeline, CLI or input-loader contract changes.
+
 ### Future structured-provider deliverables
 
 ```text
@@ -4523,7 +4546,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–3.75 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–3.77 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```

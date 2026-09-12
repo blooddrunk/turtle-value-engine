@@ -1,11 +1,11 @@
 # Provider and Cache Architecture
 
-> Endpoint-loop status: Phase 3.76 Eastmoney H-share historical acquisition is
+> Endpoint-loop status: Phase 3.77 Sina H-share realtime quote acquisition is
 > implemented below.
 
 > Status: Phase 2 foundation and Phase 3.75 structured acquisition, read-only AKShare statement slices, earnings forecasts/quick reports/performance reports/business composition/financial abstract/financial indicators, H-share latest indicators, A-share disclosure-notice metadata including the Eastmoney individual-notice, market-wide notice and shareholder-meeting views, risk-warning status, trading-suspension, restricted-share-release, goodwill-impairment detail/goodwill-detail/impairment-forecast/market-profile/industry-data, ESG-rating, SSE/SZSE/BSE margin-detail, share-capital, individual-info snapshot, corporate-action including IPO-summary and Eastmoney IPO-yield, external-guarantee, company-litigation, ownership-pledge snapshot/detail/company-distribution/bank-distribution/industry-data/market-profile/important-shareholder-detail, main-shareholder, shareholder-count/shareholder-count-detail, A-share actual-controller holding-change, A/H HSGT individual-holdings/A-share individual-detail/individual-ranking/daily-stock-statistics/institution-statistics, SSE/SZSE/BSE insider-share-change, A-share Eastmoney/CNINFO management-holding and executive/shareholder-change, A-share top-ten/top-ten-tradable-shareholder/top-ten-tradable-shareholder-detail, Dragon-Tiger market-activity detail/statistics/institution-statistics/institution-daily/institutional-research/institutional-research-detail/market-participation-desire/market-focus/institution-participation/block-trade-detail/hot-rank/latest-hot-rank/A-share historical-hot-rank/limit-up-pool/limit-down-pool/H-share latest-hot-rank/H-share historical-hot-rank/new-stock-board, A+B/A+H quote-comparison, Shanghai, Shenzhen, Beijing, Growth Enterprise Market, STAR Market, Sina STAR Market, B-share, Sina B-share, Sina mainland-index spot, Sina Hong Kong-index spot, Eastmoney mainland-index spot, Eastmoney global-index spot, Eastmoney Hong Kong-index spot, B-share daily-history, Eastmoney A-share daily-history, Sina H-share daily-history, Sina A-share daily-history, Sina STAR Market daily-history, Sina index daily-history, Sina Hong Kong-index daily-history, Eastmoney Hong Kong-index daily-history, Eastmoney global-index daily-history, Sina global-index daily-history, Sina US-index daily-history, Tencent index daily-history, Eastmoney index daily-history, generic Eastmoney index-history, index minute-history, B-share minute-history and new-stock A-share, Sina next-new-stock, company-dynamics, new-stock-first-day, IPO-benefit and two-net/delisted-stock, H-share main-board/famous-stock/Stock Connect constituent/Shanghai Stock Connect quotes, A-share Eastmoney/Sina intraday-trade, Tencent daily-history/latest-trading-day tick, Sina minute-history, A-share/H-share intraday-history, pre-market-history and five-level bid-ask raw slices, SSE/SZSE market-summary, SZSE area-summary/sector-summary and Eastmoney industry-board, HSGT board-rank, stock-account-statistics and Legu market-activity/congestion/equity-bond-spread/Buffett-index/A-share PE/PB-history, index-PE/index-PB, A-share growth-comparison, A/H Eastmoney valuation-comparison, A/H Eastmoney growth-comparison and A/H Baidu valuation-history raw slices, the deprecated HSGT minute-fund-flow raw slice, HSGT historical-flow raw slice and HSGT fund-flow-summary raw slice
 
-> Current endpoint-loop milestone: Phase 3.76 Eastmoney H-share historical
+> Current endpoint-loop milestone: Phase 3.77 Sina H-share realtime quote
 > acquisition is implemented below; the detailed cumulative status line above
 > remains a catalog of the previously completed slices.
 
@@ -778,7 +778,7 @@ The cache performs no network retries. The normalizer performs no provider
 retries. The deterministic pipeline performs no provider retries and should
 not be rerun as a substitute for resolving missing facts.
 
-## 12. Phase 2.2–3.76 AKShare adapter
+## 12. Phase 2.2–3.77 AKShare adapter
 
 The first concrete adapter is intentionally limited to read-only metadata,
 market observations, three documented financial-statement slices, raw-only
@@ -829,6 +829,7 @@ advertises exactly these capabilities:
 | `MARKET_QUOTE` (Sina KCB) | `stock_zh_kcb_spot` (`view=kcb_sina_spot`, current-trading-day full Sina STAR Market quote universe; Shanghai 688xxx/689xxx A-share only) | — | Sina STAR Market quote rows, including provider observation time and quote/valuation fields, retained as raw structured evidence only; no canonical current-price fact |
 | `MARKET_QUOTE` (Sina index spot) | `stock_zh_index_spot_sina` (`view=index_spot_sina`, current-trading-day full Sina mainland-index universe; A-share listing context only) | — | Sina index-universe quote rows retained as raw structured evidence only; no canonical current-price fact |
 | `MARKET_QUOTE` (Sina Hong Kong-index spot) | — | `stock_hk_index_spot_sina` (`view=hk_index_spot_sina`, current-trading-day full Sina Hong Kong-index universe; H-share listing context only) | Sina Hong Kong-index quote rows retained as raw structured evidence only; no canonical current-price fact |
+| `MARKET_QUOTE` (Sina H-share realtime) | — | `stock_hk_spot` (`view=hk_spot_sina`, current-trading-day 15-minute-delayed full Sina H-share universe filtered by requested H-share listing) | Sina H-share realtime quote rows, timestamps and bid/ask context retained as raw structured evidence only; no canonical current-price fact |
 | `MARKET_QUOTE` (Eastmoney global-index spot) | `index_global_spot_em` (`view=global_index_spot`, current global-index universe; A-share listing context only) | `index_global_spot_em` (`view=global_index_spot`, current global-index universe; H-share listing context only) | Eastmoney global-index quote rows retained as raw structured evidence only; no canonical current-price fact |
 | `MARKET_QUOTE` (Eastmoney Hong Kong-index spot) | — | `stock_hk_index_spot_em` (`view=hk_index_spot_em`, current-trading-day full Eastmoney Hong Kong-index universe; H-share listing context only) | Eastmoney Hong Kong-index quote rows retained as raw structured evidence only; no canonical current-price fact |
 | `MARKET_ACTIVITY` (valuation comparison) | `stock_zh_valuation_comparison_em` (`view=valuation_comparison`, A-share listing-scoped peer table) | — | target, industry-summary and ranked-peer valuation-comparison rows retained as raw structured evidence only; no canonical valuation or accounting fact |
@@ -2605,6 +2606,35 @@ prices, adjustment behavior, trading-calendar semantics and HKD/share units
 are not reconciled to the canonical contract. The existing no-view H-share
 history compatibility fallback and any calculation, gate, pipeline, CLI or
 input-loader use remain outside this slice.
+
+## Phase 3.77 Sina H-share realtime quote raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hk_sina.py)
+document `stock_hk_spot` as a no-argument, 15-minute-delayed full H-share
+realtime-quote universe. The adapter exposes this documented endpoint under
+`MARKET_QUOTE` with explicit `view=hk_spot_sina`, accepts only H-share listings,
+and validates the exact sixteen-field wrapper order: `日期时间`, `代码`,
+`中文名称`, `英文名称`, `交易类型`, `最新价`, `涨跌额`, `涨跌幅`, `昨收`, `今开`,
+`最高`, `最低`, `成交量`, `成交额`, `买一` and `卖一`. It validates every
+full-universe row before provider-side filtering to the requested five-digit
+code, including valid observation timestamps, ascending unique codes and
+finite numeric/null values.
+
+Replay metadata records the Sina source page, JSON endpoint, fixed page size
+60, pages 1–99 until an empty response, `node=qbgg_hk`, source-column mapping
+and dropped columns, numeric conversions, row observation-time order and the
+selected row order. Numeric units are not documented by the endpoint, so no
+unit is inferred. The existing no-view H-share quote compatibility fallback
+remains unchanged.
+
+The normalizer emits `AKSHARE_HK_SINA_SPOT_QUOTE_RAW_ONLY` and creates no
+canonical current-price, return, valuation or accounting fact: this delayed
+provider snapshot and its quote context are retained as raw evidence only.
+Focused tests cover H-share-only routing, exact schema/order, timestamp/text/
+numeric and unrequested-row validation, empty selection, raw-only
+normalization, replay metadata/payload tampering and offline cache replay. No
+calculation, gate, pipeline, CLI or input-loader contract changes.
 
 The A-share Sina STAR Market daily-history slice is also acquisition-only. The
 current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)

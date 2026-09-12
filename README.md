@@ -2431,6 +2431,26 @@ defaults, strict request/response validation, nullable and empty output,
 raw-only normalization, replay metadata/payload tampering and offline cache
 replay. No calculation, gate, pipeline, CLI or input-loader contract changes.
 
+Phase 3.77 adds the documented Sina H-share realtime quote endpoint
+[`stock_hk_spot`](https://akshare.akfamily.xyz/data/stock/stock.html) using
+explicit `view=hk_spot_sina`. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hk_sina.py)
+fetches the full five-digit H-share universe with no user parameters; the
+adapter freezes its 15-minute-delayed snapshot as the exact sixteen-field
+`日期时间`, `代码`, Chinese/English name, trade type, price/change, OHLC,
+volume/turnover and bid/ask wrapper order. It validates the full response,
+then filters the requested H-share code, retaining observation-time order and
+the JSON source/pagination contract (page size 60, pages 1–99 until empty).
+
+The response is raw-only and emits
+`AKSHARE_HK_SINA_SPOT_QUOTE_RAW_ONLY`: numeric units are not documented, and
+the delayed current-day quote does not establish the canonical current-price,
+return, valuation or accounting inputs. Focused tests cover H-share-only
+routing, exact schema/order, invalid timestamps/text/numbers and unrequested
+rows, empty selection, raw-only normalization, replay metadata/payload
+tampering and offline cache replay. The existing no-view H-share quote
+compatibility fallback remains unchanged. No calculation, gate, pipeline, CLI
+or input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.
