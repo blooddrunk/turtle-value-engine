@@ -564,6 +564,13 @@ class FakeAKShare:
             symbol=symbol,
         )
 
+    def stock_hk_index_daily_em(self, *, symbol: str):
+        return self._return(
+            "stock_hk_index_daily_em",
+            _fixture("hk_index_daily_em.json"),
+            symbol=symbol,
+        )
+
     def stock_zh_index_daily_tx(
         self,
         *,
@@ -1483,8 +1490,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "178"
-    assert AKSHARE_MAPPING_VERSION == "179"
+    assert provider.identity.provider_version == "180"
+    assert AKSHARE_MAPPING_VERSION == "181"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -53927,3 +53934,452 @@ def test_hk_index_daily_sina_cache_replay_does_not_call_upstream(tmp_path: Path)
     assert replay.mode is RetrievalMode.CACHE_REPLAY
     assert replay.record == live.record
     assert fake.calls == [("stock_hk_index_daily_sina", {"symbol": "CES100"})]
+
+
+def test_hk_index_daily_em_fetch_uses_explicit_symbol_and_full_history_contract():
+    fake = FakeAKShare()
+    record = _provider(fake).fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "HK00700",
+            {"view": "hk_index_daily_em", "index_symbol": "hstecf2l"},
+        )
+    )
+
+    metadata = record.response_metadata
+    assert record.raw_payload == _fixture("hk_index_daily_em.json")
+    assert fake.calls == [("stock_hk_index_daily_em", {"symbol": "HSTECF2L"})]
+    assert record.source_uri == "https://quote.eastmoney.com/gb/zsHSTECF2L.html"
+    assert metadata["endpoint"] == "stock_hk_index_daily_em"
+    assert metadata["market"] == "H"
+    assert metadata["listing_code"] == "00700"
+    assert metadata["market_history_view"] == "hk_index_daily_em"
+    assert metadata["upstream_symbol"] == "HSTECF2L"
+    assert metadata["market_scope"] == "requested_hong_kong_index"
+    assert metadata["index_scoped_request"] is True
+    assert metadata["listing_scoped_request"] is False
+    assert metadata["row_filtering"] == "upstream"
+    assert metadata["snapshot_scope"] == "full_hong_kong_index_daily_history"
+    assert metadata["adjustment_kind"] == "provider_reported_fqt_1"
+    assert metadata["source_field_order"] == [
+        "date",
+        "open",
+        "high",
+        "low",
+        "latest",
+    ]
+    assert metadata["documented_units"] == {}
+    assert metadata["undocumented_numeric_units"] == {
+        "open": "not_documented",
+        "high": "not_documented",
+        "low": "not_documented",
+        "latest": "not_documented",
+    }
+    assert metadata["field_types"] == {
+        "date": "date",
+        "open": "number",
+        "high": "number",
+        "low": "number",
+        "latest": "number",
+    }
+    assert metadata["upstream_url"] == (
+        "https://push2his.eastmoney.com/api/qt/stock/kline/get"
+    )
+    assert metadata["upstream_urls"] == [
+        "https://push2his.eastmoney.com/api/qt/stock/kline/get",
+        "https://15.push2.eastmoney.com/api/qt/clist/get",
+    ]
+    assert metadata["upstream_auxiliary_urls"] == [
+        "https://15.push2.eastmoney.com/api/qt/clist/get"
+    ]
+    assert metadata["upstream_auxiliary_roles"] == ["index_symbol_code_map"]
+    assert metadata["upstream_protocol"] == "JSON"
+    assert metadata["upstream_parameters"] == [
+        "secid",
+        "klt",
+        "fqt",
+        "lmt",
+        "end",
+        "iscca",
+        "fields1",
+        "fields2",
+        "ut",
+        "forcect",
+    ]
+    assert metadata["upstream_dynamic_parameters"] == {"symbol": "HSTECF2L"}
+    assert metadata["upstream_fixed_parameters"] == {
+        "klt": "101",
+        "fqt": "1",
+        "lmt": "10000",
+        "end": "20500000",
+        "iscca": "1",
+        "fields1": "f1,f2,f3,f4,f5,f6,f7,f8",
+        "fields2": "f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61,f62,f63,f64",
+        "ut": "f057cbcbce2a86e2866ab8877db1d059",
+        "forcect": "1",
+    }
+    assert metadata["upstream_auxiliary_parameters"] == [
+        "pn",
+        "pz",
+        "po",
+        "np",
+        "ut",
+        "fltt",
+        "invt",
+        "wbp2u",
+        "fid",
+        "fs",
+        "fields",
+    ]
+    assert metadata["upstream_auxiliary_fixed_parameters"]["fs"] == "m:124,m:125,m:305"
+    assert metadata["upstream_market_code_resolution"] == (
+        "stock_hk_index_spot_em_symbol_code_map_then_HSAHP_100"
+    )
+    assert metadata["wrapper_decoders"] == ["response.json"]
+    assert metadata["wrapper_transformations"] == [
+        "symbol_code_lookup",
+        "split_kline_rows",
+        "drop_unused_kline_fields",
+        "numeric_conversion",
+        "provider_field_selection",
+    ]
+    assert metadata["wrapper_source_column_count"] == 14
+    assert metadata["wrapper_column_mapping"] == {
+        "date": 0,
+        "open": 1,
+        "high": 3,
+        "low": 4,
+        "latest": 2,
+    }
+    assert metadata["wrapper_dropped_fields"] == ["-"] * 9
+    assert metadata["upstream_page_size"] == 10000
+    assert metadata["pagination"] == (
+        "paginated_symbol_code_map_then_single_full_history_response"
+    )
+    assert metadata["row_identity_order"] == [
+        "2024-04-08",
+        "2024-04-09",
+        "2024-04-10",
+    ]
+    assert metadata["selected_row_identity_order"] == metadata["row_identity_order"]
+    assert metadata["upstream_row_count"] == 3
+    assert metadata["entity_row_count"] == 3
+
+
+@pytest.mark.parametrize(
+    ("entity_id", "parameters", "match"),
+    [
+        (
+            "SH600000",
+            {"view": "hk_index_daily_em", "index_symbol": "HSTECF2L"},
+            "H-share listings only",
+        ),
+        ("HK00700", {"view": "hk_index_daily_em"}, "index_symbol"),
+        ("HK00700", {"view": "hk_index_daily_em", "index_symbol": ""}, "index_symbol"),
+        (
+            "HK00700",
+            {"view": "hk_index_daily_em", "index_symbol": "HST ECM"},
+            "index_symbol",
+        ),
+        ("HK00700", {"view": "hk_index_daily_em", "index_symbol": 100}, "index_symbol"),
+        (
+            "HK00700",
+            {
+                "view": "hk_index_daily_em",
+                "index_symbol": "HSTECF2L",
+                "period": "daily",
+            },
+            "unsupported AKShare Eastmoney Hong Kong-index daily-history parameter",
+        ),
+        ("HK00700", {"index_symbol": "HSTECF2L"}, "requires.*view"),
+        (
+            "HK00700",
+            {"view": "wrong_view", "index_symbol": "HSTECF2L"},
+            "requires.*view",
+        ),
+    ],
+)
+def test_hk_index_daily_em_request_requires_h_listing_and_strict_parameters(
+    entity_id: str,
+    parameters: dict,
+    match: str,
+):
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError, match=match):
+        _provider(fake).fetch(
+            _request(DataCategory.MARKET_HISTORY, entity_id, parameters)
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("missing", "missing field"),
+        ("unexpected", "unsupported field"),
+        ("field_order", "documented field order"),
+        ("invalid_date", "invalid date"),
+        ("descending", "strictly ascending"),
+        ("duplicate_date", "duplicate date"),
+        ("invalid_numeric", "must be numeric or null"),
+        ("bool_numeric", "must be numeric or null"),
+        ("infinite_numeric", "contains infinity"),
+    ],
+)
+def test_hk_index_daily_em_response_validates_exact_schema_order_and_values(
+    mutation: str,
+    match: str,
+):
+    class InvalidRows(FakeAKShare):
+        def stock_hk_index_daily_em(self, *, symbol: str):
+            rows = [dict(row) for row in _fixture("hk_index_daily_em.json")]
+            if mutation == "missing":
+                rows[0].pop("latest")
+            elif mutation == "unexpected":
+                rows[0]["unexpected"] = "not documented"
+            elif mutation == "field_order":
+                first = rows[0]
+                rows[0] = {
+                    "open": first["open"],
+                    **{key: value for key, value in first.items() if key != "open"},
+                }
+            elif mutation == "invalid_date":
+                rows[0]["date"] = "not-a-date"
+            elif mutation == "descending":
+                rows.reverse()
+            elif mutation == "duplicate_date":
+                rows[1]["date"] = rows[0]["date"]
+            elif mutation == "invalid_numeric":
+                rows[0]["high"] = "42.9"
+            elif mutation == "bool_numeric":
+                rows[0]["low"] = True
+            else:
+                rows[0]["latest"] = float("inf")
+            return self._return(
+                "stock_hk_index_daily_em",
+                rows,
+                symbol=symbol,
+            )
+
+    with pytest.raises(ProviderResponseError, match=match):
+        _provider(InvalidRows()).fetch(
+            _request(
+                DataCategory.MARKET_HISTORY,
+                "HK00700",
+                {"view": "hk_index_daily_em", "index_symbol": "HSTECF2L"},
+            )
+        )
+
+
+def test_hk_index_daily_em_accepts_null_numeric_values_and_empty_history():
+    class NullableRows(FakeAKShare):
+        def stock_hk_index_daily_em(self, *, symbol: str):
+            rows = [dict(row) for row in _fixture("hk_index_daily_em.json")]
+            rows[1]["latest"] = None
+            return self._return(
+                "stock_hk_index_daily_em",
+                rows,
+                symbol=symbol,
+            )
+
+    record = _provider(NullableRows()).fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "HK00700",
+            {"view": "hk_index_daily_em", "index_symbol": "HSTECF2L"},
+        )
+    )
+
+    assert record.raw_payload[1]["latest"] is None
+
+    class EmptyResponse(FakeAKShare):
+        def stock_hk_index_daily_em(self, *, symbol: str):
+            return self._return("stock_hk_index_daily_em", [], symbol=symbol)
+
+    empty = _provider(EmptyResponse()).fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "HK00700",
+            {"view": "hk_index_daily_em", "index_symbol": "HSTECF2L"},
+        )
+    )
+
+    assert empty.raw_payload == []
+    assert empty.response_metadata["row_identity_order"] == []
+    assert empty.response_metadata["upstream_row_count"] == 0
+    assert empty.response_metadata["entity_row_count"] == 0
+    assert empty.response_metadata["observation_start_date"] is None
+    assert empty.response_metadata["observation_end_date"] is None
+
+
+def test_hk_index_daily_em_is_raw_evidence_without_canonical_history_facts():
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "HK00700",
+            {"view": "hk_index_daily_em", "index_symbol": "HSTECF2L"},
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="hk-index-daily-em-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company("HK00700"),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_HK_INDEX_DAILY_EM_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == ["market_history"]
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "Eastmoney Hong Kong-index daily-history" in normalized.data_quality.notes
+    assert "canonical daily-history" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "source_uri",
+        "endpoint",
+        "view",
+        "market_scope",
+        "listing_scope",
+        "row_filtering",
+        "snapshot_scope",
+        "field_order",
+        "documented_units",
+        "upstream_url",
+        "upstream_urls",
+        "upstream_fixed_parameters",
+        "auxiliary_urls",
+        "auxiliary_roles",
+        "auxiliary_parameters",
+        "auxiliary_fixed_parameters",
+        "pagination",
+        "wrapper_mapping",
+        "wrapper_transformations",
+        "wrapper_dropped_fields",
+        "adjustment_kind",
+        "entity_selected",
+        "identity_order",
+        "selected_identity_order",
+        "upstream_count",
+        "entity_count",
+        "symbol",
+        "payload",
+    ],
+)
+def test_hk_index_daily_em_normalizer_rejects_replayed_scope_or_payload_tampering(
+    mutation: str,
+):
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "HK00700",
+            {"view": "hk_index_daily_em", "index_symbol": "HSTECF2L"},
+        )
+    )
+    payload = [dict(row) for row in record.raw_payload]
+    metadata = json.loads(json.dumps(record.response_metadata, ensure_ascii=False))
+    source_uri = record.source_uri
+    if mutation == "source_uri":
+        source_uri = "https://example.invalid/hk-index-daily-em"
+    elif mutation == "endpoint":
+        metadata["endpoint"] = "stock_hk_index_daily_sina"
+    elif mutation == "view":
+        metadata["market_history_view"] = "hk_index_daily_sina"
+    elif mutation == "market_scope":
+        metadata["market_scope"] = "requested_listing"
+    elif mutation == "listing_scope":
+        metadata["listing_scoped_request"] = True
+    elif mutation == "row_filtering":
+        metadata["row_filtering"] = "provider_and_listing"
+    elif mutation == "snapshot_scope":
+        metadata["snapshot_scope"] = "requested_daily_range"
+    elif mutation == "field_order":
+        metadata["source_field_order"] = list(reversed(metadata["source_field_order"]))
+    elif mutation == "documented_units":
+        metadata["documented_units"] = {"latest": "HKD_per_point"}
+    elif mutation == "upstream_url":
+        metadata["upstream_url"] = "https://example.invalid/hk-index"
+    elif mutation == "upstream_urls":
+        metadata["upstream_urls"] = ["https://example.invalid/hk-index"]
+    elif mutation == "upstream_fixed_parameters":
+        metadata["upstream_fixed_parameters"]["fqt"] = "tampered"
+    elif mutation == "auxiliary_urls":
+        metadata["upstream_auxiliary_urls"] = []
+    elif mutation == "auxiliary_roles":
+        metadata["upstream_auxiliary_roles"] = ["wrong_role"]
+    elif mutation == "auxiliary_parameters":
+        metadata["upstream_auxiliary_parameters"] = []
+    elif mutation == "auxiliary_fixed_parameters":
+        metadata["upstream_auxiliary_fixed_parameters"]["fs"] = "tampered"
+    elif mutation == "pagination":
+        metadata["pagination"] = "single_page"
+    elif mutation == "wrapper_mapping":
+        metadata["wrapper_column_mapping"] = {}
+    elif mutation == "wrapper_transformations":
+        metadata["wrapper_transformations"] = ["tampered"]
+    elif mutation == "wrapper_dropped_fields":
+        metadata["wrapper_dropped_fields"] = []
+    elif mutation == "adjustment_kind":
+        metadata["adjustment_kind"] = "unadjusted"
+    elif mutation == "entity_selected":
+        metadata["entity_rows_selected"] = False
+    elif mutation == "identity_order":
+        metadata["row_identity_order"] = metadata["row_identity_order"][:-1]
+    elif mutation == "selected_identity_order":
+        metadata["selected_row_identity_order"] = []
+    elif mutation == "upstream_count":
+        metadata["upstream_row_count"] = 2
+    elif mutation == "entity_count":
+        metadata["entity_row_count"] = 2
+    elif mutation == "symbol":
+        metadata["upstream_symbol"] = "HSI"
+    else:
+        payload[0]["latest"] = "tampered"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=source_uri,
+        response_metadata=metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-hk-index-daily-em-scope",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company("HK00700"),
+        )
+
+
+def test_hk_index_daily_em_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.MARKET_HISTORY,
+        "HK00700",
+        {"view": "hk_index_daily_em", "index_symbol": "HSTECF2L"},
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [("stock_hk_index_daily_em", {"symbol": "HSTECF2L"})]

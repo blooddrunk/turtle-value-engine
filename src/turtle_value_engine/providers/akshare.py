@@ -43,7 +43,8 @@ Tencent index daily-history, Eastmoney index daily-history and
 Tencent latest-trading-day tick, Sina minute-history, CDR daily-history,
 B-share daily-history, Sina STAR Market daily-history, Sina index daily-history,
 Sina mainland-index spot, Sina Hong Kong-index spot, Sina Hong Kong-index
-daily-history and Eastmoney Hong Kong-index spot,
+daily-history, Eastmoney Hong Kong-index spot and Eastmoney Hong Kong-index
+daily-history,
 B-share minute-history,
 intraday-history, H-share
 intraday-history, index minute-history, pre-market-history, five-level bid-ask
@@ -127,9 +128,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "178"
+AKSHARE_ADAPTER_VERSION = "180"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "179"
+AKSHARE_MAPPING_VERSION = "181"
 
 
 class ListingMarket(StrEnum):
@@ -228,6 +229,7 @@ _SOURCE_URIS = {
     "stock_zh_index_daily_tx": "https://gu.qq.com/sh000919/zs",
     "stock_zh_index_daily_em": "https://quote.eastmoney.com/center/hszs.html",
     "stock_hk_index_daily_sina": "https://stock.finance.sina.com.cn/hkstock/quotes/CES100.html",
+    "stock_hk_index_daily_em": "https://quote.eastmoney.com/gb/zsHSTECF2L.html",
     "index_zh_a_hist": "https://quote.eastmoney.com/center/hszs.html",
     "index_zh_a_hist_min_em": "https://quote.eastmoney.com/center/hszs.html",
     "stock_zh_b_minute": "https://finance.sina.com.cn/realstock/company/sh900901/nc.shtml",
@@ -2504,6 +2506,84 @@ _MARKET_HISTORY_HK_INDEX_DAILY_SINA_UPSTREAM_URL_TEMPLATE = (
 _MARKET_HISTORY_HK_INDEX_DAILY_SINA_UPSTREAM_FIXED_PARAMETERS = {
     "d": "2023_5_01"
 }
+
+_MARKET_HISTORY_HK_INDEX_DAILY_EM_ENDPOINT = "stock_hk_index_daily_em"
+_MARKET_HISTORY_HK_INDEX_DAILY_EM_PARAMETER_NAMES = frozenset(
+    {"view", "index_symbol"}
+)
+_MARKET_HISTORY_HK_INDEX_DAILY_EM_VIEW = "hk_index_daily_em"
+_MARKET_HISTORY_HK_INDEX_DAILY_EM_SYMBOL_PATTERN = re.compile(
+    r"[A-Z][A-Z0-9._-]{0,31}"
+)
+_MARKET_HISTORY_HK_INDEX_DAILY_EM_FIELDS = (
+    "date",
+    "open",
+    "high",
+    "low",
+    "latest",
+)
+_MARKET_HISTORY_HK_INDEX_DAILY_EM_FIELD_SET = frozenset(
+    _MARKET_HISTORY_HK_INDEX_DAILY_EM_FIELDS
+)
+_MARKET_HISTORY_HK_INDEX_DAILY_EM_DATE_FIELDS = ("date",)
+_MARKET_HISTORY_HK_INDEX_DAILY_EM_NUMERIC_FIELDS = (
+    "open",
+    "high",
+    "low",
+    "latest",
+)
+_MARKET_HISTORY_HK_INDEX_DAILY_EM_DOCUMENTED_UNITS: dict[str, str] = {}
+_MARKET_HISTORY_HK_INDEX_DAILY_EM_UNDOCUMENTED_NUMERIC_UNITS = {
+    field: "not_documented"
+    for field in _MARKET_HISTORY_HK_INDEX_DAILY_EM_NUMERIC_FIELDS
+}
+_MARKET_HISTORY_HK_INDEX_DAILY_EM_FIELD_TYPES = {
+    "date": "date",
+    **{
+        field: "number"
+        for field in _MARKET_HISTORY_HK_INDEX_DAILY_EM_NUMERIC_FIELDS
+    },
+}
+_MARKET_HISTORY_HK_INDEX_DAILY_EM_SOURCE_URI = (
+    "https://quote.eastmoney.com/gb/zsHSTECF2L.html"
+)
+_MARKET_HISTORY_HK_INDEX_DAILY_EM_UPSTREAM_URL = (
+    "https://push2his.eastmoney.com/api/qt/stock/kline/get"
+)
+_MARKET_HISTORY_HK_INDEX_DAILY_EM_UPSTREAM_FIXED_PARAMETERS = {
+    "klt": "101",
+    "fqt": "1",
+    "lmt": "10000",
+    "end": "20500000",
+    "iscca": "1",
+    "fields1": "f1,f2,f3,f4,f5,f6,f7,f8",
+    "fields2": "f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61,f62,f63,f64",
+    "ut": "f057cbcbce2a86e2866ab8877db1d059",
+    "forcect": "1",
+}
+_MARKET_HISTORY_HK_INDEX_DAILY_EM_UPSTREAM_PARAMETERS = (
+    "secid",
+    "klt",
+    "fqt",
+    "lmt",
+    "end",
+    "iscca",
+    "fields1",
+    "fields2",
+    "ut",
+    "forcect",
+)
+_MARKET_HISTORY_HK_INDEX_DAILY_EM_WRAPPER_SOURCE_COLUMN_COUNT = 14
+_MARKET_HISTORY_HK_INDEX_DAILY_EM_WRAPPER_COLUMN_MAPPING = {
+    "date": 0,
+    "open": 1,
+    "high": 3,
+    "low": 4,
+    "latest": 2,
+}
+_MARKET_HISTORY_HK_INDEX_DAILY_EM_WRAPPER_DROPPED_FIELDS = tuple(
+    "-" for _ in range(9)
+)
 
 _MARKET_HISTORY_B_MINUTE_PARAMETER_NAMES = frozenset({"view", "period", "adjust"})
 _MARKET_HISTORY_B_MINUTE_VIEW = "b_minute"
@@ -7969,6 +8049,19 @@ class AKShareProvider(StructuredDataProvider):
                 retryable=False,
             )
         if (
+            request.category is DataCategory.MARKET_HISTORY
+            and request.parameters.get("view")
+            == _MARKET_HISTORY_HK_INDEX_DAILY_EM_VIEW
+            and listing.market is not ListingMarket.H
+        ):
+            raise ProviderRequestError(
+                "the AKShare Eastmoney Hong Kong-index daily-history endpoint "
+                "supports H-share listings only",
+                provider=self.identity,
+                request=request,
+                retryable=False,
+            )
+        if (
             request.category is DataCategory.MARKET_ACTIVITY
             and request.parameters.get("view") == _MARKET_ACTIVITY_SINA_NEW_STOCK_VIEW
             and (
@@ -11252,6 +11345,19 @@ class AKShareProvider(StructuredDataProvider):
                         observation_dates=observation_dates,
                     )
                 )
+            elif endpoint.name == _MARKET_HISTORY_HK_INDEX_DAILY_EM_ENDPOINT:
+                observation_dates = _validate_hk_index_daily_em_history_provider_rows(
+                    rows,
+                    provider=self.identity,
+                    request=request,
+                )
+                response_metadata.update(
+                    _hk_index_daily_em_history_response_metadata(
+                        listing_code=listing.code,
+                        symbol=str(kwargs["symbol"]),
+                        observation_dates=observation_dates,
+                    )
+                )
             elif endpoint.name == "stock_zh_b_minute":
                 observation_times = _validate_b_minute_history_provider_rows(
                     rows,
@@ -13236,7 +13342,15 @@ class AKShareProvider(StructuredDataProvider):
             market_history_hk_index_daily_sina_requested=(
                 request.parameters.get("view")
                 == _MARKET_HISTORY_HK_INDEX_DAILY_SINA_VIEW
-                or "index_symbol" in request.parameters
+                or (
+                    "index_symbol" in request.parameters
+                    and request.parameters.get("view")
+                    != _MARKET_HISTORY_HK_INDEX_DAILY_EM_VIEW
+                )
+            ),
+            market_history_hk_index_daily_em_requested=(
+                request.parameters.get("view")
+                == _MARKET_HISTORY_HK_INDEX_DAILY_EM_VIEW
             ),
             market_history_b_minute_requested=(
                 request.parameters.get("view") == _MARKET_HISTORY_B_MINUTE_VIEW
@@ -14893,6 +15007,17 @@ class AKShareNormalizer:
                         "AKSHARE_HK_INDEX_DAILY_SINA_RAW_ONLY"
                     )
                 elif (
+                    endpoint == _MARKET_HISTORY_HK_INDEX_DAILY_EM_ENDPOINT
+                    or record.request.parameters.get("view")
+                    == _MARKET_HISTORY_HK_INDEX_DAILY_EM_VIEW
+                ):
+                    _validate_hk_index_daily_em_history_normalizer_scope(
+                        record,
+                        listing,
+                        rows,
+                    )
+                    normalizer_flags.add("AKSHARE_HK_INDEX_DAILY_EM_RAW_ONLY")
+                elif (
                     endpoint == "stock_zh_b_minute"
                     or record.request.parameters.get("view")
                     == _MARKET_HISTORY_B_MINUTE_VIEW
@@ -14943,6 +15068,7 @@ class AKShareNormalizer:
                     "stock_zh_kcb_daily",
                     "stock_zh_index_daily",
                     _MARKET_HISTORY_HK_INDEX_DAILY_SINA_ENDPOINT,
+                    _MARKET_HISTORY_HK_INDEX_DAILY_EM_ENDPOINT,
                     "stock_zh_b_minute",
                 }:
                     history_result = _map_history(
@@ -15863,6 +15989,7 @@ class AKShareNormalizer:
                 "AKSHARE_KCB_DAILY_HISTORY_RAW_ONLY",
                 "AKSHARE_INDEX_DAILY_HISTORY_RAW_ONLY",
                 "AKSHARE_HK_INDEX_DAILY_SINA_RAW_ONLY",
+                "AKSHARE_HK_INDEX_DAILY_EM_RAW_ONLY",
                 "AKSHARE_B_MINUTE_HISTORY_RAW_ONLY",
             }
             & normalizer_flags
@@ -16511,6 +16638,14 @@ class AKShareNormalizer:
                 "retained as raw evidence only: its index-level OHLCV series is not "
                 "an H-share listing history and does not establish the canonical "
                 "daily-history, return, valuation or accounting inputs."
+            )
+        if "AKSHARE_HK_INDEX_DAILY_EM_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented Eastmoney Hong Kong-index daily-history response "
+                "is retained as raw evidence only: its provider-resolved index "
+                "symbol, fqt adjustment parameter and index OHLC series are not "
+                "reconciled to the canonical daily-history contract for an H-share "
+                "listing, return, valuation or accounting inputs."
             )
         if "AKSHARE_B_MINUTE_HISTORY_RAW_ONLY" in normalizer_flags:
             notes += (
@@ -17381,6 +17516,7 @@ def _endpoint_candidates(
     market_history_kcb_daily_requested: bool = False,
     market_history_index_daily_requested: bool = False,
     market_history_hk_index_daily_sina_requested: bool = False,
+    market_history_hk_index_daily_em_requested: bool = False,
     market_history_b_minute_requested: bool = False,
     market_history_tencent_tick_requested: bool = False,
     market_history_chip_distribution_requested: bool = False,
@@ -17545,6 +17681,10 @@ def _endpoint_candidates(
             return ("stock_zh_a_spot_em", "stock_zh_a_spot")
         return ("stock_hk_spot_em", "stock_hk_spot")
     if category is DataCategory.MARKET_HISTORY:
+        if market_history_hk_index_daily_em_requested:
+            if market is ListingMarket.H:
+                return (_MARKET_HISTORY_HK_INDEX_DAILY_EM_ENDPOINT,)
+            return ()
         if market_history_hk_index_daily_sina_requested:
             if market is ListingMarket.H:
                 return (_MARKET_HISTORY_HK_INDEX_DAILY_SINA_ENDPOINT,)
@@ -27204,6 +27344,213 @@ def _hk_index_daily_sina_history_response_metadata(
     }
 
 
+def _hk_index_daily_em_history_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> tuple[str | None, list[date]]:
+    """Return strict-schema errors for Eastmoney Hong Kong-index daily rows."""
+
+    observation_dates: list[date] = []
+    previous_date: date | None = None
+    for index, row in enumerate(rows):
+        missing = [
+            field
+            for field in _MARKET_HISTORY_HK_INDEX_DAILY_EM_FIELDS
+            if field not in row
+        ]
+        unexpected = [
+            field
+            for field in row
+            if field not in _MARKET_HISTORY_HK_INDEX_DAILY_EM_FIELD_SET
+        ]
+        if missing:
+            return (
+                "Eastmoney Hong Kong-index daily-history row "
+                f"{index} is missing field(s): "
+                + ", ".join(missing),
+                [],
+            )
+        if unexpected:
+            return (
+                "Eastmoney Hong Kong-index daily-history row "
+                f"{index} contains unsupported field(s): "
+                + ", ".join(unexpected),
+                [],
+            )
+        if tuple(row) != _MARKET_HISTORY_HK_INDEX_DAILY_EM_FIELDS:
+            return (
+                "Eastmoney Hong Kong-index daily-history rows must preserve the "
+                "documented field order",
+                [],
+            )
+
+        observation_date = _parse_date_value(row["date"])
+        if observation_date is None:
+            return (
+                "Eastmoney Hong Kong-index daily-history row "
+                f"{index} has an invalid date",
+                [],
+            )
+        if previous_date is not None:
+            if observation_date == previous_date:
+                return (
+                    "Eastmoney Hong Kong-index daily-history response has duplicate "
+                    f"date {observation_date.isoformat()!r}",
+                    [],
+                )
+            if observation_date < previous_date:
+                return (
+                    "Eastmoney Hong Kong-index daily-history response date values "
+                    "must be strictly ascending",
+                    [],
+                )
+        previous_date = observation_date
+        observation_dates.append(observation_date)
+
+        for field in _MARKET_HISTORY_HK_INDEX_DAILY_EM_NUMERIC_FIELDS:
+            value = row[field]
+            if value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, Real):
+                return (
+                    f"Eastmoney Hong Kong-index daily-history row {index} field "
+                    f"{field!r} must be numeric or null",
+                    [],
+                )
+            try:
+                numeric = float(value)
+            except (OverflowError, TypeError, ValueError):
+                return (
+                    f"Eastmoney Hong Kong-index daily-history row {index} field "
+                    f"{field!r} must be numeric or null",
+                    [],
+                )
+            if not math.isfinite(numeric):
+                return (
+                    f"Eastmoney Hong Kong-index daily-history row {index} field "
+                    f"{field!r} must be finite or null",
+                    [],
+                )
+    return None, observation_dates
+
+
+def _validate_hk_index_daily_em_history_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> list[date]:
+    message, observation_dates = _hk_index_daily_em_history_validation_message(rows)
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message}",
+            provider=provider,
+            request=request,
+        )
+    return observation_dates
+
+
+def _hk_index_daily_em_history_response_metadata(
+    *,
+    listing_code: str,
+    symbol: str,
+    observation_dates: Sequence[date],
+) -> dict[str, JSONValue]:
+    """Build the replay contract for one Eastmoney Hong Kong-index history."""
+
+    row_identity_order = [observation.isoformat() for observation in observation_dates]
+    fixed_parameters = _MARKET_HISTORY_HK_INDEX_DAILY_EM_UPSTREAM_FIXED_PARAMETERS
+    auxiliary_fixed_parameters = _MARKET_QUOTE_HK_INDEX_SPOT_EM_UPSTREAM_FIXED_PARAMETERS
+    return {
+        "endpoint": _MARKET_HISTORY_HK_INDEX_DAILY_EM_ENDPOINT,
+        "market": ListingMarket.H.value,
+        "listing_code": listing_code,
+        "market_history_view": _MARKET_HISTORY_HK_INDEX_DAILY_EM_VIEW,
+        "upstream_symbol": symbol,
+        "market_scope": "requested_hong_kong_index",
+        "index_scoped_request": True,
+        "listing_scoped_request": False,
+        "row_filtering": "upstream",
+        "snapshot_scope": "full_hong_kong_index_daily_history",
+        "date_binding": "row_only",
+        "range_filtering": "not_applicable_full_history",
+        "adjustment_kind": "provider_reported_fqt_1",
+        "observation_date_field": "date",
+        "date_ordering": "strictly_ascending",
+        "identity_fields": ["date"],
+        "identity_ordering": "strictly_ascending",
+        "row_identity_order": row_identity_order,
+        "selected_row_identity_order": row_identity_order,
+        "field_count": len(_MARKET_HISTORY_HK_INDEX_DAILY_EM_FIELDS),
+        "source_field_order": list(_MARKET_HISTORY_HK_INDEX_DAILY_EM_FIELDS),
+        "date_fields": list(_MARKET_HISTORY_HK_INDEX_DAILY_EM_DATE_FIELDS),
+        "value_fields": list(_MARKET_HISTORY_HK_INDEX_DAILY_EM_NUMERIC_FIELDS),
+        "required_numeric_fields": list(
+            _MARKET_HISTORY_HK_INDEX_DAILY_EM_NUMERIC_FIELDS
+        ),
+        "documented_units": dict(
+            _MARKET_HISTORY_HK_INDEX_DAILY_EM_DOCUMENTED_UNITS
+        ),
+        "undocumented_numeric_units": dict(
+            _MARKET_HISTORY_HK_INDEX_DAILY_EM_UNDOCUMENTED_NUMERIC_UNITS
+        ),
+        "field_types": dict(_MARKET_HISTORY_HK_INDEX_DAILY_EM_FIELD_TYPES),
+        "upstream_url": _MARKET_HISTORY_HK_INDEX_DAILY_EM_UPSTREAM_URL,
+        "upstream_urls": [
+            _MARKET_HISTORY_HK_INDEX_DAILY_EM_UPSTREAM_URL,
+            _MARKET_QUOTE_HK_INDEX_SPOT_EM_UPSTREAM_URL,
+        ],
+        "upstream_auxiliary_urls": [_MARKET_QUOTE_HK_INDEX_SPOT_EM_UPSTREAM_URL],
+        "upstream_auxiliary_roles": ["index_symbol_code_map"],
+        "upstream_protocol": "JSON",
+        "upstream_parameters": list(
+            _MARKET_HISTORY_HK_INDEX_DAILY_EM_UPSTREAM_PARAMETERS
+        ),
+        "upstream_dynamic_parameters": {"symbol": symbol},
+        "upstream_fixed_parameters": dict(fixed_parameters),
+        "upstream_auxiliary_parameters": list(
+            _MARKET_QUOTE_HK_INDEX_SPOT_EM_UPSTREAM_PARAMETERS
+        ),
+        "upstream_auxiliary_dynamic_parameters": dict(
+            _MARKET_QUOTE_HK_INDEX_SPOT_EM_UPSTREAM_DYNAMIC_PARAMETERS
+        ),
+        "upstream_auxiliary_fixed_parameters": dict(auxiliary_fixed_parameters),
+        "upstream_market_code_resolution": (
+            "stock_hk_index_spot_em_symbol_code_map_then_HSAHP_100"
+        ),
+        "upstream_authentication": "none",
+        "wrapper_source_page_uri": _MARKET_HISTORY_HK_INDEX_DAILY_EM_SOURCE_URI,
+        "wrapper_date_filtering": "none",
+        "wrapper_decoders": ["response.json"],
+        "wrapper_transformations": [
+            "symbol_code_lookup",
+            "split_kline_rows",
+            "drop_unused_kline_fields",
+            "numeric_conversion",
+            "provider_field_selection",
+        ],
+        "wrapper_source_column_count": (
+            _MARKET_HISTORY_HK_INDEX_DAILY_EM_WRAPPER_SOURCE_COLUMN_COUNT
+        ),
+        "wrapper_column_mapping": dict(
+            _MARKET_HISTORY_HK_INDEX_DAILY_EM_WRAPPER_COLUMN_MAPPING
+        ),
+        "wrapper_dropped_fields": list(
+            _MARKET_HISTORY_HK_INDEX_DAILY_EM_WRAPPER_DROPPED_FIELDS
+        ),
+        "upstream_page_size": 10000,
+        "pagination": "paginated_symbol_code_map_then_single_full_history_response",
+        "upstream_row_count": len(observation_dates),
+        "entity_row_count": len(observation_dates),
+        "entity_rows_selected": True,
+        "observation_start_date": (
+            min(observation_dates).isoformat() if observation_dates else None
+        ),
+        "observation_end_date": (
+            max(observation_dates).isoformat() if observation_dates else None
+        ),
+    }
+
+
 def _tencent_index_daily_history_validation_message(
     rows: Sequence[Mapping[str, JSONValue]],
     *,
@@ -29206,6 +29553,105 @@ def _validate_hk_index_daily_sina_history_normalizer_scope(
         if not matches:
             raise ProviderNormalizationError(
                 "Sina Hong Kong-index daily-history response metadata "
+                f"{name!r} does not match the requested replay scope"
+            )
+
+
+def _validate_hk_index_daily_em_history_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> None:
+    """Validate a raw Eastmoney Hong Kong-index daily-history replay scope."""
+
+    if listing.market is not ListingMarket.H:
+        raise ProviderNormalizationError(
+            "Eastmoney Hong Kong-index daily-history raw slice supports H-share "
+            "listings only"
+        )
+    if (
+        record.response_metadata.get("endpoint")
+        != _MARKET_HISTORY_HK_INDEX_DAILY_EM_ENDPOINT
+    ):
+        raise ProviderNormalizationError(
+            "Eastmoney Hong Kong-index daily-history record must come from "
+            f"{_MARKET_HISTORY_HK_INDEX_DAILY_EM_ENDPOINT}"
+        )
+    if record.source_uri != _MARKET_HISTORY_HK_INDEX_DAILY_EM_SOURCE_URI:
+        raise ProviderNormalizationError(
+            "Eastmoney Hong Kong-index daily-history record has an unexpected "
+            "source URI"
+        )
+    if record.response_metadata.get("market") != listing.market.value:
+        raise ProviderNormalizationError(
+            "Eastmoney Hong Kong-index daily-history response market does not "
+            "match requested listing"
+        )
+    if record.response_metadata.get("listing_code") != listing.code:
+        raise ProviderNormalizationError(
+            "Eastmoney Hong Kong-index daily-history response listing code does "
+            "not match requested listing"
+        )
+    try:
+        upstream_kwargs = _hk_index_daily_em_history_kwargs(listing, record.request)
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+
+    message, observation_dates = _hk_index_daily_em_history_validation_message(rows)
+    if message is not None:
+        raise ProviderNormalizationError(message)
+
+    expected_row_identity_order = [
+        observation.isoformat() for observation in observation_dates
+    ]
+    upstream_row_count = record.response_metadata.get("upstream_row_count")
+    row_identity_order = record.response_metadata.get("row_identity_order")
+    selected_row_identity_order = record.response_metadata.get(
+        "selected_row_identity_order"
+    )
+    if (
+        isinstance(upstream_row_count, bool)
+        or not isinstance(upstream_row_count, int)
+        or upstream_row_count != len(rows)
+        or row_identity_order != expected_row_identity_order
+        or selected_row_identity_order != expected_row_identity_order
+    ):
+        raise ProviderNormalizationError(
+            "Eastmoney Hong Kong-index daily-history response identity metadata "
+            "does not match replayed rows"
+        )
+
+    expected_metadata = _hk_index_daily_em_history_response_metadata(
+        listing_code=listing.code,
+        symbol=str(upstream_kwargs["symbol"]),
+        observation_dates=observation_dates,
+    )
+    boolean_fields = {
+        "index_scoped_request",
+        "listing_scoped_request",
+        "entity_rows_selected",
+    }
+    count_fields = {
+        "field_count",
+        "wrapper_source_column_count",
+        "upstream_row_count",
+        "entity_row_count",
+    }
+    for name, expected in expected_metadata.items():
+        actual = record.response_metadata.get(name)
+        if name in boolean_fields:
+            matches = isinstance(actual, bool) and actual is expected
+        elif name in count_fields:
+            matches = (
+                isinstance(actual, int)
+                and not isinstance(actual, bool)
+                and actual == expected
+            )
+        else:
+            matches = actual == expected
+        if not matches:
+            raise ProviderNormalizationError(
+                "Eastmoney Hong Kong-index daily-history response metadata "
                 f"{name!r} does not match the requested replay scope"
             )
 
@@ -56813,6 +57259,8 @@ def _history_kwargs(
     listing: _ListingRef,
     request: ProviderRequest,
 ) -> dict[str, object]:
+    if endpoint_name == _MARKET_HISTORY_HK_INDEX_DAILY_EM_ENDPOINT:
+        return _hk_index_daily_em_history_kwargs(listing, request)
     if endpoint_name == _MARKET_HISTORY_HK_INDEX_DAILY_SINA_ENDPOINT:
         return _hk_index_daily_sina_history_kwargs(listing, request)
     if endpoint_name == "stock_zh_b_minute":
@@ -57559,6 +58007,57 @@ def _index_daily_history_kwargs(
             retryable=False,
         )
     return {"symbol": listing.canonical_id[:2].lower() + listing.code}
+
+
+def _hk_index_daily_em_history_kwargs(
+    listing: _ListingRef,
+    request: ProviderRequest,
+) -> dict[str, object]:
+    """Build the explicit Eastmoney Hong Kong-index daily-history request."""
+
+    if listing.market is not ListingMarket.H:
+        raise ProviderRequestError(
+            "the AKShare Eastmoney Hong Kong-index daily-history endpoint "
+            "supports H-share listings only",
+            request=request,
+            retryable=False,
+        )
+
+    parameters = dict(request.parameters)
+    unknown = sorted(
+        set(parameters) - _MARKET_HISTORY_HK_INDEX_DAILY_EM_PARAMETER_NAMES
+    )
+    if unknown:
+        raise ProviderRequestError(
+            "unsupported AKShare Eastmoney Hong Kong-index daily-history "
+            "parameter(s): " + ", ".join(unknown),
+            request=request,
+            retryable=False,
+        )
+    if parameters.get("view") != _MARKET_HISTORY_HK_INDEX_DAILY_EM_VIEW:
+        raise ProviderRequestError(
+            "the AKShare Eastmoney Hong Kong-index daily-history endpoint "
+            "requires "
+            f"view={_MARKET_HISTORY_HK_INDEX_DAILY_EM_VIEW!r}",
+            request=request,
+            retryable=False,
+        )
+    raw_symbol = parameters.get("index_symbol")
+    if (
+        not isinstance(raw_symbol, str)
+        or raw_symbol.strip() != raw_symbol
+        or _MARKET_HISTORY_HK_INDEX_DAILY_EM_SYMBOL_PATTERN.fullmatch(
+            raw_symbol.upper()
+        )
+        is None
+    ):
+        raise ProviderRequestError(
+            "AKShare Eastmoney Hong Kong-index daily-history requires "
+            "index_symbol matching [A-Z][A-Z0-9._-]{0,31}",
+            request=request,
+            retryable=False,
+        )
+    return {"symbol": raw_symbol.upper()}
 
 
 def _hk_index_daily_sina_history_kwargs(

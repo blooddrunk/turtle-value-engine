@@ -2186,6 +2186,29 @@ finite/null values, empty output, raw-only normalization, replay metadata and
 payload tampering, and offline cache replay. No calculation, gate, pipeline,
 CLI or input-loader contract changes.
 
+Phase 3.66 adds the next documented Eastmoney
+[`stock_hk_index_daily_em`](https://akshare.akfamily.xyz/data/index/index.html)
+Hong Kong-index daily-history endpoint under `MARKET_HISTORY`. The
+[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/index/index_stock_hk.py)
+uses the Eastmoney `push2his` JSON K-line endpoint, resolves the index market
+code through the Hong Kong-index spot universe with the documented `HSAHP`/`100`
+fallback, and requests the full history with fixed `klt=101`, `fqt=1`,
+`lmt=10000`, `end=20500000`, `iscca=1`, field selectors, `ut` and `forcect`
+parameters. The adapter exposes explicit `view=hk_index_daily_em` plus
+`index_symbol`, requires H-share listing context, and preserves the exact
+five-field `date`, `open`, `high`, `low`, `latest` output order with strict date
+and numeric validation and complete replay metadata.
+
+The Eastmoney Hong Kong-index daily-history response is retained as raw
+evidence only: its provider-resolved index OHLC series is not an H-share listing
+history and does not establish canonical daily-history, return, valuation or
+accounting facts. The normalizer emits
+`AKSHARE_HK_INDEX_DAILY_EM_RAW_ONLY` and creates no canonical fact. Tests cover
+explicit routing, strict parameters, malformed/reordered rows, finite/null
+values, empty output, raw-only normalization, replay metadata and payload
+tampering, and offline cache replay. No calculation, gate, pipeline, CLI or
+input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

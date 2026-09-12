@@ -4124,6 +4124,28 @@ canonical daily-history, return, valuation or accounting fact: the response is
 an index series, not an H-share listing observation. The slice remains outside
 calculation, gate, pipeline, CLI and input-loader contracts.
 
+## Phase 3.66 Eastmoney Hong Kong-index daily-history raw slice
+
+The current [AKShare index-data documentation](https://akshare.akfamily.xyz/data/index/index.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/index/index_stock_hk.py)
+document `stock_hk_index_daily_em` as a symbol-scoped historical Hong
+Kong-index endpoint, defaulting to `HSTECF2L`. The adapter selects it only under
+`MARKET_HISTORY` with explicit `view=hk_index_daily_em` and `index_symbol`,
+requires H-share listing context, normalizes the symbol to uppercase and
+retains the complete full-history response without listing filtering.
+
+| Raw upstream item | Phase 3.66 treatment |
+| --- | --- |
+| `date`, `open`, `high`, `low`, `latest` | Required exact five-field order. `date` must parse as a date and be strictly ascending without duplicates; numeric fields must be finite numbers or null. |
+| Numeric fields | AKShare documents the fields but does not establish units for this adapter contract; every numeric field retains `not_documented` units. The documented `fqt=1` request is recorded as `provider_reported_fqt_1` without inferring a canonical adjustment meaning. |
+| request `view=hk_index_daily_em`, `index_symbol` | Exact H-share listing-context routing, uppercase normalized index symbol matching `[A-Z][A-Z0-9._-]{0,31}`, no listing filtering, index-scoped full-history replay metadata and row identity by `date`. |
+| Eastmoney `push2his` JSON `stock/kline/get` request | Provider-resolved index market-code lookup via `stock_hk_index_spot_em` with `HSAHP`/`100` fallback, fixed `klt=101`, `fqt=1`, `lmt=10000`, `end=20500000`, `iscca=1`, field selectors, `ut` and `forcect`, plus wrapper mapping from the fourteen source columns and dropped placeholders remain explicit metadata. |
+
+The normalizer emits `AKSHARE_HK_INDEX_DAILY_EM_RAW_ONLY` and creates no
+canonical daily-history, return, valuation or accounting fact: the response is
+an index series, not an H-share listing observation. The slice remains outside
+calculation, gate, pipeline, CLI and input-loader contracts.
+
 ## Phase 2 enforcement rule
 
 For every field not marked `STRUCTURED_AUTO` or `DERIVED_DETERMINISTIC`, a

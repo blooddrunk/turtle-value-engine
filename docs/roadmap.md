@@ -4190,6 +4190,32 @@ output, raw-only normalization, replay metadata/payload tampering and offline
 cache replay. No calculation, gate, pipeline, CLI or input-loader contract
 changes.
 
+### Phase 3.66 — Eastmoney Hong Kong-index daily-history raw acquisition contract (COMPLETE)
+
+The mapping review now covers the next documented Eastmoney
+[`stock_hk_index_daily_em`](https://akshare.akfamily.xyz/data/index/index.html)
+Hong Kong-index history endpoint under `MARKET_HISTORY`. The
+[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/index/index_stock_hk.py)
+accepts an index symbol defaulting to `HSTECF2L`, resolves its Eastmoney market
+code through the Hong Kong-index spot universe with the `HSAHP`/`100` fallback,
+and requests the full `push2his` JSON K-line response with fixed `klt=101`,
+`fqt=1`, `lmt=10000`, `end=20500000`, `iscca=1`, field selectors, `ut` and
+`forcect` parameters. The adapter exposes explicit `view=hk_index_daily_em` and
+`index_symbol` parameters, requires H-share listing context, normalizes the
+symbol to uppercase and preserves the exact `date`, `open`, `high`, `low`,
+`latest` field order with strict dates, numeric/null values and replay identity
+metadata. The provider-reported `fqt=1` parameter remains metadata
+(`provider_reported_fqt_1`) rather than an inferred canonical adjustment.
+
+The Eastmoney Hong Kong-index daily-history response remains raw evidence only:
+its provider-resolved index OHLC series is not an H-share listing history and
+does not establish the canonical daily-history, return, valuation or accounting
+inputs. The normalizer emits `AKSHARE_HK_INDEX_DAILY_EM_RAW_ONLY` and creates no
+canonical fact. Focused tests cover routing, strict request and response
+validation, finite/null values, empty output, raw-only normalization, replay
+metadata/payload tampering and offline cache replay. No calculation, gate,
+pipeline, CLI or input-loader contract changes.
+
 ### Future structured-provider deliverables
 
 ```text
@@ -4199,7 +4225,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–3.65 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–3.66 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
