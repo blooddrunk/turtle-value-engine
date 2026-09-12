@@ -4080,6 +4080,28 @@ snapshot has no listing/entity accounting scope or stable observation timestamp.
 The response remains outside the calculation, gate, pipeline, CLI and
 input-loader contracts.
 
+## Phase 3.64 Eastmoney Hong Kong-index spot raw slice
+
+The current [AKShare index-data documentation](https://akshare.akfamily.xyz/data/index/index.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/index/index_stock_hk.py)
+document `stock_hk_index_spot_em` as a no-argument real-time Hong Kong-index
+universe. The provider selects it only under `MARKET_QUOTE` with explicit
+`view=hk_index_spot_em`, accepts H-share listing context and preserves the
+complete provider response without listing filtering.
+
+| Raw upstream item | Phase 3.64 treatment |
+| --- | --- |
+| `序号`, `内部编号`, `代码`, `名称`, `最新价`, `涨跌额`, `涨跌幅`, `今开`, `最高`, `最低`, `昨收`, `成交量`, `成交额` | Required exact thirteen-field order. `序号` and `内部编号` must be positive, strictly typed integers; codes must be uppercase alphanumeric strings with no duplicates; names must be non-empty strings; other numeric fields must be finite numbers or null. |
+| `涨跌幅`, `成交额` | Documented as percent and HKD respectively; other numeric fields remain `not_documented` rather than receiving invented units. |
+| request `view=hk_index_spot_em` | Exact H-share listing-context routing, no selector or listing filtering, `index_scoped_request=true`, `listing_scoped_request=false`, retrieval-only current-day snapshot scope and complete-universe replay metadata. |
+| Eastmoney `15.push2` JSON `clist/get` request | Fixed `m:124,m:125,m:305` filter, page size 100, `f3` descending ordering, provider pagination, wrapper mapping, numeric conversion and source URL remain replay metadata. |
+
+The normalizer emits `AKSHARE_HK_INDEX_SPOT_EM_RAW_ONLY` and creates no
+canonical current-price, liquidity, valuation or accounting fact. This
+market-wide snapshot has no listing/entity accounting scope or stable
+observation timestamp and remains outside the calculation, gate, pipeline,
+CLI and input-loader contracts.
+
 ## Phase 2 enforcement rule
 
 For every field not marked `STRUCTURED_AUTO` or `DERIVED_DETERMINISTIC`, a

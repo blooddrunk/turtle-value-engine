@@ -4145,6 +4145,28 @@ output, raw-only normalization, replay metadata/payload tampering and offline
 cache replay. No calculation, gate, pipeline, CLI or input-loader contract
 changes.
 
+### Phase 3.64 — Eastmoney Hong Kong-index spot raw acquisition contract (COMPLETE)
+
+The mapping review now covers the next documented Eastmoney
+[`stock_hk_index_spot_em`](https://akshare.akfamily.xyz/data/index/index.html)
+real-time Hong Kong-index universe under `MARKET_QUOTE` with explicit
+`view=hk_index_spot_em` and H-share listing context. The
+[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/index/index_stock_hk.py)
+uses the `15.push2` Eastmoney `clist/get` JSON endpoint with fixed
+`m:124,m:125,m:305` filters, `f3` descending ordering and provider-driven
+pages of 100 rows. The adapter preserves the exact thirteen documented output
+fields, internal market number, source/upstream URLs, fixed parameters,
+wrapper mapping, documented percentage/HKD units and replay row counts.
+
+The Eastmoney Hong Kong-index spot response remains raw evidence only: its
+current index prices, changes, volume and turnover are a market-wide snapshot
+without a stable listing-level observation timestamp or issuer accounting
+scope and do not establish the canonical current-price input. The normalizer
+emits `AKSHARE_HK_INDEX_SPOT_EM_RAW_ONLY` and creates no canonical fact. Tests
+cover H-share-only request validation, malformed rows, empty output, raw-only
+normalization, replay metadata/payload tampering and offline cache replay. No
+calculation, gate, pipeline, CLI or input-loader contract changes.
+
 ### Future structured-provider deliverables
 
 ```text

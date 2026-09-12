@@ -42,7 +42,8 @@ intraday-trade, Sina intraday-trade, chip-distribution, Tencent daily-history,
 Tencent index daily-history, Eastmoney index daily-history and
 Tencent latest-trading-day tick, Sina minute-history, CDR daily-history,
 B-share daily-history, Sina STAR Market daily-history, Sina index daily-history,
-Sina mainland-index spot and Sina Hong Kong-index spot,
+Sina mainland-index spot, Sina Hong Kong-index spot and Eastmoney
+Hong Kong-index spot,
 B-share minute-history,
 intraday-history, H-share
 intraday-history, index minute-history, pre-market-history, five-level bid-ask
@@ -126,9 +127,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "174"
+AKSHARE_ADAPTER_VERSION = "176"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "175"
+AKSHARE_MAPPING_VERSION = "177"
 
 
 class ListingMarket(StrEnum):
@@ -185,6 +186,7 @@ _SOURCE_URIS = {
     "stock_bj_a_spot_em": "https://quote.eastmoney.com/center/gridlist.html#bj_a_board",
     "stock_zh_index_spot_sina": "https://vip.stock.finance.sina.com.cn/mkt/#hs_s",
     "stock_hk_index_spot_sina": "https://vip.stock.finance.sina.com.cn/mkt/#zs_hk",
+    "stock_hk_index_spot_em": "https://quote.eastmoney.com/center/gridlist.html#hk_index",
     "stock_zh_index_spot_em": "https://quote.eastmoney.com/center/gridlist.html#index_sz",
     "stock_new_a_spot_em": "https://quote.eastmoney.com/center/gridlist.html#newshares",
     "stock_cy_a_spot_em": "https://quote.eastmoney.com/center/gridlist.html#gem_board",
@@ -405,6 +407,7 @@ _NO_ARGUMENT_ENDPOINTS = frozenset(
         "stock_zh_a_spot",
         "stock_zh_index_spot_sina",
         "stock_hk_index_spot_sina",
+        "stock_hk_index_spot_em",
         "stock_hk_spot_em",
         "stock_hk_main_board_spot_em",
         "stock_hk_famous_spot_em",
@@ -995,6 +998,120 @@ _MARKET_QUOTE_HK_INDEX_SINA_WRAPPER_DROPPED_FIELDS = tuple(
 _MARKET_QUOTE_HK_INDEX_SINA_UPSTREAM_TRANSFORMATIONS = {
     field: "to_numeric_errors_coerce"
     for field in _MARKET_QUOTE_HK_INDEX_SINA_NUMERIC_FIELDS
+}
+
+_MARKET_QUOTE_HK_INDEX_SPOT_EM_ENDPOINT = "stock_hk_index_spot_em"
+_MARKET_QUOTE_HK_INDEX_SPOT_EM_PARAMETER_NAMES = frozenset({"view"})
+_MARKET_QUOTE_HK_INDEX_SPOT_EM_VIEW = "hk_index_spot_em"
+_MARKET_QUOTE_HK_INDEX_SPOT_EM_FIELDS = (
+    "序号",
+    "内部编号",
+    "代码",
+    "名称",
+    "最新价",
+    "涨跌额",
+    "涨跌幅",
+    "今开",
+    "最高",
+    "最低",
+    "昨收",
+    "成交量",
+    "成交额",
+)
+_MARKET_QUOTE_HK_INDEX_SPOT_EM_FIELD_SET = frozenset(
+    _MARKET_QUOTE_HK_INDEX_SPOT_EM_FIELDS
+)
+_MARKET_QUOTE_HK_INDEX_SPOT_EM_TEXT_FIELDS = ("代码", "名称")
+_MARKET_QUOTE_HK_INDEX_SPOT_EM_REQUIRED_TEXT_FIELDS = (
+    _MARKET_QUOTE_HK_INDEX_SPOT_EM_TEXT_FIELDS
+)
+_MARKET_QUOTE_HK_INDEX_SPOT_EM_INTEGER_FIELDS = ("序号", "内部编号")
+_MARKET_QUOTE_HK_INDEX_SPOT_EM_NUMERIC_FIELDS = tuple(
+    field
+    for field in _MARKET_QUOTE_HK_INDEX_SPOT_EM_FIELDS
+    if field
+    not in {
+        *_MARKET_QUOTE_HK_INDEX_SPOT_EM_INTEGER_FIELDS,
+        *_MARKET_QUOTE_HK_INDEX_SPOT_EM_TEXT_FIELDS,
+    }
+)
+_MARKET_QUOTE_HK_INDEX_SPOT_EM_NULLABLE_FIELDS = (
+    _MARKET_QUOTE_HK_INDEX_SPOT_EM_NUMERIC_FIELDS
+)
+_MARKET_QUOTE_HK_INDEX_SPOT_EM_FIELD_TYPES = {
+    **{
+        field: "integer"
+        for field in _MARKET_QUOTE_HK_INDEX_SPOT_EM_INTEGER_FIELDS
+    },
+    **{
+        field: "string"
+        for field in _MARKET_QUOTE_HK_INDEX_SPOT_EM_TEXT_FIELDS
+    },
+    **{
+        field: "number"
+        for field in _MARKET_QUOTE_HK_INDEX_SPOT_EM_NUMERIC_FIELDS
+    },
+}
+_MARKET_QUOTE_HK_INDEX_SPOT_EM_DOCUMENTED_UNITS = {
+    "涨跌幅": "percent",
+    "成交额": "HKD",
+}
+_MARKET_QUOTE_HK_INDEX_SPOT_EM_UNDOCUMENTED_NUMERIC_UNITS = {
+    field: "not_documented"
+    for field in _MARKET_QUOTE_HK_INDEX_SPOT_EM_NUMERIC_FIELDS
+    if field not in _MARKET_QUOTE_HK_INDEX_SPOT_EM_DOCUMENTED_UNITS
+}
+_MARKET_QUOTE_HK_INDEX_SPOT_EM_SOURCE_URI = (
+    "https://quote.eastmoney.com/center/gridlist.html#hk_index"
+)
+_MARKET_QUOTE_HK_INDEX_SPOT_EM_UPSTREAM_URL = (
+    "https://15.push2.eastmoney.com/api/qt/clist/get"
+)
+_MARKET_QUOTE_HK_INDEX_SPOT_EM_UPSTREAM_PARAMETERS = (
+    "pn",
+    "pz",
+    "po",
+    "np",
+    "ut",
+    "fltt",
+    "invt",
+    "wbp2u",
+    "fid",
+    "fs",
+    "fields",
+)
+_MARKET_QUOTE_HK_INDEX_SPOT_EM_UPSTREAM_FIXED_PARAMETERS = {
+    "pn": "1",
+    "pz": "100",
+    "po": "1",
+    "np": "1",
+    "ut": "bd1d9ddb04089700cf9c27f6f7426281",
+    "fltt": "2",
+    "invt": "2",
+    "wbp2u": "|0|0|0|web",
+    "fid": "f3",
+    "fs": "m:124,m:125,m:305",
+    "fields": (
+        "f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f12,f13,f14,f15,f16,f17,f18,f20,f21,"
+        "f23,f24,f25,f26,f22,f33,f11,f62,f128,f136,f115,f152"
+    ),
+}
+_MARKET_QUOTE_HK_INDEX_SPOT_EM_UPSTREAM_DYNAMIC_PARAMETERS: dict[str, JSONValue] = {}
+_MARKET_QUOTE_HK_INDEX_SPOT_EM_WRAPPER_SOURCE_COLUMN_COUNT = 33
+_MARKET_QUOTE_HK_INDEX_SPOT_EM_WRAPPER_COLUMN_MAPPING = {
+    "序号": 0,
+    "内部编号": 13,
+    "代码": 12,
+    "名称": 14,
+    "最新价": 2,
+    "涨跌额": 4,
+    "涨跌幅": 3,
+    "今开": 17,
+    "最高": 15,
+    "最低": 16,
+    "昨收": 18,
+    "成交量": 5,
+    "成交额": 6,
 }
 
 _MARKET_QUOTE_SZ_A_SPOT_ENDPOINT = "stock_sz_a_spot_em"
@@ -7386,6 +7503,19 @@ class AKShareProvider(StructuredDataProvider):
             )
         if (
             request.category is DataCategory.MARKET_QUOTE
+            and request.parameters.get("view")
+            == _MARKET_QUOTE_HK_INDEX_SPOT_EM_VIEW
+            and listing.market is not ListingMarket.H
+        ):
+            raise ProviderRequestError(
+                "the AKShare Eastmoney Hong Kong-index spot endpoint supports "
+                "H-share listings only",
+                provider=self.identity,
+                request=request,
+                retryable=False,
+            )
+        if (
+            request.category is DataCategory.MARKET_QUOTE
             and request.parameters.get("view") == _MARKET_QUOTE_SH_A_SPOT_VIEW
             and (
                 listing.market is not ListingMarket.A
@@ -8491,6 +8621,23 @@ class AKShareProvider(StructuredDataProvider):
             )
             response_metadata.update(
                 _market_quote_hk_index_sina_response_metadata(
+                    listing_code=listing.code,
+                    row_identity_order=[row["代码"] for row in rows],
+                    upstream_row_count=len(rows),
+                )
+            )
+        elif (
+            request.category is DataCategory.MARKET_QUOTE
+            and endpoint.name == _MARKET_QUOTE_HK_INDEX_SPOT_EM_ENDPOINT
+        ):
+            rows = _table_rows(payload, provider=self.identity, request=request)
+            _validate_market_quote_hk_index_spot_em_provider_rows(
+                rows,
+                provider=self.identity,
+                request=request,
+            )
+            response_metadata.update(
+                _market_quote_hk_index_spot_em_response_metadata(
                     listing_code=listing.code,
                     row_identity_order=[row["代码"] for row in rows],
                     upstream_row_count=len(rows),
@@ -12888,6 +13035,10 @@ class AKShareProvider(StructuredDataProvider):
                 request.parameters.get("view")
                 == _MARKET_QUOTE_HK_INDEX_SINA_VIEW
             ),
+            market_quote_hk_index_spot_em_requested=(
+                request.parameters.get("view")
+                == _MARKET_QUOTE_HK_INDEX_SPOT_EM_VIEW
+            ),
             market_quote_sz_a_spot_requested=(
                 request.parameters.get("view") == _MARKET_QUOTE_SZ_A_SPOT_VIEW
             ),
@@ -14125,6 +14276,26 @@ class AKShareNormalizer:
                     rows,
                 )
                 normalizer_flags.add("AKSHARE_INDEX_SPOT_RAW_ONLY")
+                missing_fields.add("current_price")
+            elif (
+                record.request.category is DataCategory.MARKET_QUOTE
+                and record.request.parameters.get("view")
+                == _MARKET_QUOTE_HK_INDEX_SPOT_EM_VIEW
+            ):
+                if (
+                    record.response_metadata.get("endpoint")
+                    != _MARKET_QUOTE_HK_INDEX_SPOT_EM_ENDPOINT
+                ):
+                    raise ProviderNormalizationError(
+                        "Eastmoney Hong Kong-index spot record must come from "
+                        f"{_MARKET_QUOTE_HK_INDEX_SPOT_EM_ENDPOINT}"
+                    )
+                _validate_market_quote_hk_index_spot_em_normalizer_scope(
+                    record,
+                    listing,
+                    rows,
+                )
+                normalizer_flags.add("AKSHARE_HK_INDEX_SPOT_EM_RAW_ONLY")
                 missing_fields.add("current_price")
             elif (
                 record.request.category is DataCategory.MARKET_QUOTE
@@ -16603,6 +16774,14 @@ class AKShareNormalizer:
                 "observation timestamp and do not establish the canonical "
                 "current-price input."
             )
+        if "AKSHARE_HK_INDEX_SPOT_EM_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented Eastmoney Hong Kong-index real-time universe "
+                "response is retained as raw evidence only: its current index "
+                "prices, changes, volume and turnover are a market-wide snapshot "
+                "without a stable listing-level observation timestamp and do not "
+                "establish the canonical current-price input."
+            )
         if "AKSHARE_SH_A_SPOT_QUOTE_RAW_ONLY" in normalizer_flags:
             notes += (
                 " The documented Shanghai A-share Eastmoney quote response is retained "
@@ -17065,6 +17244,7 @@ def _endpoint_candidates(
     market_quote_index_spot_requested: bool = False,
     market_quote_index_sina_spot_requested: bool = False,
     market_quote_hk_index_sina_requested: bool = False,
+    market_quote_hk_index_spot_em_requested: bool = False,
     market_quote_sz_a_spot_requested: bool = False,
     market_quote_bj_a_spot_requested: bool = False,
     market_quote_new_a_spot_requested: bool = False,
@@ -17170,6 +17350,10 @@ def _endpoint_candidates(
         if market_quote_hk_index_sina_requested:
             if market is ListingMarket.H:
                 return (_MARKET_QUOTE_HK_INDEX_SINA_ENDPOINT,)
+            return ()
+        if market_quote_hk_index_spot_em_requested:
+            if market is ListingMarket.H:
+                return (_MARKET_QUOTE_HK_INDEX_SPOT_EM_ENDPOINT,)
             return ()
         if market_quote_sz_a_spot_requested:
             if market is ListingMarket.A and listing.canonical_id.startswith("SZ"):
@@ -17761,6 +17945,33 @@ def _market_quote_kwargs(
             raise ProviderRequestError(
                 "the AKShare Sina Hong Kong-index spot endpoint requires "
                 f"view={_MARKET_QUOTE_HK_INDEX_SINA_VIEW!r}",
+                request=request,
+                retryable=False,
+            )
+        return {}
+    if endpoint_name == _MARKET_QUOTE_HK_INDEX_SPOT_EM_ENDPOINT:
+        if listing.market is not ListingMarket.H:
+            raise ProviderRequestError(
+                "the AKShare Eastmoney Hong Kong-index spot endpoint supports "
+                "H-share listings only",
+                request=request,
+                retryable=False,
+            )
+        unknown = sorted(
+            set(request.parameters)
+            - _MARKET_QUOTE_HK_INDEX_SPOT_EM_PARAMETER_NAMES
+        )
+        if unknown:
+            raise ProviderRequestError(
+                "unsupported AKShare Eastmoney Hong Kong-index spot parameter(s): "
+                + ", ".join(unknown),
+                request=request,
+                retryable=False,
+            )
+        if request.parameters.get("view") != _MARKET_QUOTE_HK_INDEX_SPOT_EM_VIEW:
+            raise ProviderRequestError(
+                "the AKShare Eastmoney Hong Kong-index spot endpoint requires "
+                f"view={_MARKET_QUOTE_HK_INDEX_SPOT_EM_VIEW!r}",
                 request=request,
                 retryable=False,
             )
@@ -22806,6 +23017,215 @@ def _market_quote_hk_index_sina_response_metadata(
         "upstream_transformations": dict(
             _MARKET_QUOTE_HK_INDEX_SINA_UPSTREAM_TRANSFORMATIONS
         ),
+        "full_universe_response": True,
+        "entity_rows_selected": False,
+        "upstream_row_count": upstream_row_count,
+        "entity_row_count": 0,
+    }
+
+
+def _market_quote_hk_index_spot_em_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> str | None:
+    """Return strict-schema errors for the complete Eastmoney H-index universe."""
+
+    seen_codes: set[str] = set()
+    previous_rank: int | None = None
+    for index, row in enumerate(rows):
+        missing = [
+            field
+            for field in _MARKET_QUOTE_HK_INDEX_SPOT_EM_FIELDS
+            if field not in row
+        ]
+        unexpected = [
+            field
+            for field in row
+            if field not in _MARKET_QUOTE_HK_INDEX_SPOT_EM_FIELD_SET
+        ]
+        if missing:
+            return (
+                f"Eastmoney Hong Kong-index spot row {index} is missing field(s): "
+                + ", ".join(missing)
+            )
+        if unexpected:
+            return (
+                f"Eastmoney Hong Kong-index spot row {index} contains unsupported "
+                "field(s): "
+                + ", ".join(unexpected)
+            )
+        if tuple(row) != _MARKET_QUOTE_HK_INDEX_SPOT_EM_FIELDS:
+            return (
+                "Eastmoney Hong Kong-index spot rows must preserve the documented "
+                "field order"
+            )
+
+        for field in _MARKET_QUOTE_HK_INDEX_SPOT_EM_INTEGER_FIELDS:
+            value = row[field]
+            if isinstance(value, bool) or not isinstance(value, Real):
+                return (
+                    f"Eastmoney Hong Kong-index spot row {index} field {field!r} "
+                    "must be a positive integer"
+                )
+            try:
+                numeric = float(value)
+            except (OverflowError, TypeError, ValueError):
+                return (
+                    f"Eastmoney Hong Kong-index spot row {index} field {field!r} "
+                    "must be a positive integer"
+                )
+            if (
+                not math.isfinite(numeric)
+                or not numeric.is_integer()
+                or numeric < 1
+            ):
+                return (
+                    f"Eastmoney Hong Kong-index spot row {index} field {field!r} "
+                    "must be a positive integer"
+                )
+
+        normalized_rank = int(float(row["序号"]))
+        if previous_rank is not None and normalized_rank <= previous_rank:
+            return (
+                "Eastmoney Hong Kong-index spot 序号 values must be strictly "
+                "ascending"
+            )
+        previous_rank = normalized_rank
+
+        code = row["代码"]
+        if not isinstance(code, str) or re.fullmatch(r"[A-Z][A-Z0-9]+", code) is None:
+            return f"Eastmoney Hong Kong-index spot row {index} has an invalid 代码"
+        if code in seen_codes:
+            return (
+                "Eastmoney Hong Kong-index spot response has duplicate "
+                f"代码 {code!r}"
+            )
+        seen_codes.add(code)
+
+        name = row["名称"]
+        if not isinstance(name, str) or not name.strip():
+            return (
+                f"Eastmoney Hong Kong-index spot row {index} field '名称' must be "
+                "a non-empty string"
+            )
+
+        for field in _MARKET_QUOTE_HK_INDEX_SPOT_EM_NUMERIC_FIELDS:
+            value = row[field]
+            if value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, Real):
+                return (
+                    f"Eastmoney Hong Kong-index spot row {index} field {field!r} "
+                    "must be numeric or null"
+                )
+            try:
+                numeric = float(value)
+            except (OverflowError, TypeError, ValueError):
+                return (
+                    f"Eastmoney Hong Kong-index spot row {index} field {field!r} "
+                    "must be numeric or null"
+                )
+            if not math.isfinite(numeric):
+                return (
+                    f"Eastmoney Hong Kong-index spot row {index} field {field!r} "
+                    "must be finite or null"
+                )
+    return None
+
+
+def _validate_market_quote_hk_index_spot_em_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> None:
+    """Validate the complete Eastmoney H-index universe before retaining raw data."""
+
+    message = _market_quote_hk_index_spot_em_validation_message(rows)
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message}",
+            provider=provider,
+            request=request,
+        )
+
+
+def _market_quote_hk_index_spot_em_response_metadata(
+    *,
+    listing_code: str,
+    row_identity_order: Sequence[JSONValue],
+    upstream_row_count: int,
+) -> dict[str, JSONValue]:
+    """Build replay metadata for one full Eastmoney H-index spot universe."""
+
+    fixed_parameters = _MARKET_QUOTE_HK_INDEX_SPOT_EM_UPSTREAM_FIXED_PARAMETERS
+    return {
+        "endpoint": _MARKET_QUOTE_HK_INDEX_SPOT_EM_ENDPOINT,
+        "market": ListingMarket.H.value,
+        "listing_code": listing_code,
+        "market_quote_view": _MARKET_QUOTE_HK_INDEX_SPOT_EM_VIEW,
+        "market_scope": "eastmoney_hong_kong_index_universe",
+        "index_scoped_request": True,
+        "listing_scoped_request": False,
+        "row_filtering": "none",
+        "snapshot_scope": "current_hong_kong_index_universe_realtime",
+        "date_binding": "retrieval_only",
+        "listing_code_field": None,
+        "identity_fields": ["代码"],
+        "identity_ordering": "source_response_order",
+        "row_identity_order": list(row_identity_order),
+        "selected_row_identity_order": [],
+        "value_fields": list(_MARKET_QUOTE_HK_INDEX_SPOT_EM_NUMERIC_FIELDS),
+        "integer_fields": list(_MARKET_QUOTE_HK_INDEX_SPOT_EM_INTEGER_FIELDS),
+        "text_fields": list(_MARKET_QUOTE_HK_INDEX_SPOT_EM_TEXT_FIELDS),
+        "required_text_fields": list(
+            _MARKET_QUOTE_HK_INDEX_SPOT_EM_REQUIRED_TEXT_FIELDS
+        ),
+        "nullable_fields": list(_MARKET_QUOTE_HK_INDEX_SPOT_EM_NULLABLE_FIELDS),
+        "field_types": dict(_MARKET_QUOTE_HK_INDEX_SPOT_EM_FIELD_TYPES),
+        "field_count": len(_MARKET_QUOTE_HK_INDEX_SPOT_EM_FIELDS),
+        "source_field_order": list(_MARKET_QUOTE_HK_INDEX_SPOT_EM_FIELDS),
+        "documented_units": dict(
+            _MARKET_QUOTE_HK_INDEX_SPOT_EM_DOCUMENTED_UNITS
+        ),
+        "undocumented_numeric_units": dict(
+            _MARKET_QUOTE_HK_INDEX_SPOT_EM_UNDOCUMENTED_NUMERIC_UNITS
+        ),
+        "upstream_url": _MARKET_QUOTE_HK_INDEX_SPOT_EM_UPSTREAM_URL,
+        "upstream_urls": [_MARKET_QUOTE_HK_INDEX_SPOT_EM_UPSTREAM_URL],
+        "upstream_auxiliary_urls": [],
+        "upstream_auxiliary_roles": [],
+        "upstream_protocol": "JSON",
+        "upstream_parameters": list(
+            _MARKET_QUOTE_HK_INDEX_SPOT_EM_UPSTREAM_PARAMETERS
+        ),
+        "upstream_fixed_parameters": dict(fixed_parameters),
+        "upstream_dynamic_parameters": dict(
+            _MARKET_QUOTE_HK_INDEX_SPOT_EM_UPSTREAM_DYNAMIC_PARAMETERS
+        ),
+        "upstream_authentication": "none",
+        "upstream_page_size": 100,
+        "pagination": "provider_driven_all_pages",
+        "upstream_sort_column": "f3",
+        "upstream_sort_direction": "descending",
+        "upstream_filter": fixed_parameters["fs"],
+        "wrapper_source_page_uri": _MARKET_QUOTE_HK_INDEX_SPOT_EM_SOURCE_URI,
+        "wrapper_date_filtering": "none",
+        "wrapper_output_ordering": "source_response_order_with_wrapper_sequence",
+        "wrapper_decoders": ["response.json"],
+        "wrapper_transformations": [
+            "provider_pagination",
+            "sort_by_f3_descending",
+            "reset_index_to_positive_sequence",
+            "numeric_conversion",
+            "provider_field_selection",
+        ],
+        "wrapper_source_column_count": (
+            _MARKET_QUOTE_HK_INDEX_SPOT_EM_WRAPPER_SOURCE_COLUMN_COUNT
+        ),
+        "wrapper_column_mapping": dict(
+            _MARKET_QUOTE_HK_INDEX_SPOT_EM_WRAPPER_COLUMN_MAPPING
+        ),
+        "wrapper_dropped_fields": [],
         "full_universe_response": True,
         "entity_rows_selected": False,
         "upstream_row_count": upstream_row_count,
@@ -44741,6 +45161,111 @@ def _validate_market_quote_index_spot_normalizer_scope(
             raise ProviderNormalizationError(
                 f"Eastmoney index-spot response metadata {name!r} does not "
                 "match the requested replay scope"
+            )
+
+
+def _validate_market_quote_hk_index_spot_em_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> None:
+    """Validate a replayed full Eastmoney H-index spot universe."""
+
+    if listing.market is not ListingMarket.H:
+        raise ProviderNormalizationError(
+            "Eastmoney Hong Kong-index spot raw slice supports H-share listings "
+            "only"
+        )
+    if (
+        record.response_metadata.get("endpoint")
+        != _MARKET_QUOTE_HK_INDEX_SPOT_EM_ENDPOINT
+    ):
+        raise ProviderNormalizationError(
+            "Eastmoney Hong Kong-index spot record must come from "
+            f"{_MARKET_QUOTE_HK_INDEX_SPOT_EM_ENDPOINT}"
+        )
+    if record.source_uri != _MARKET_QUOTE_HK_INDEX_SPOT_EM_SOURCE_URI:
+        raise ProviderNormalizationError(
+            "Eastmoney Hong Kong-index spot source URI does not match the "
+            "documented endpoint"
+        )
+    if record.response_metadata.get("market") != listing.market.value:
+        raise ProviderNormalizationError(
+            "Eastmoney Hong Kong-index spot response market does not match "
+            "requested listing"
+        )
+    if record.response_metadata.get("listing_code") != listing.code:
+        raise ProviderNormalizationError(
+            "Eastmoney Hong Kong-index spot response listing code does not match "
+            "requested listing"
+        )
+    try:
+        _market_quote_kwargs(
+            _MARKET_QUOTE_HK_INDEX_SPOT_EM_ENDPOINT,
+            listing,
+            record.request,
+        )
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+
+    message = _market_quote_hk_index_spot_em_validation_message(rows)
+    if message is not None:
+        raise ProviderNormalizationError(message)
+
+    upstream_row_count = record.response_metadata.get("upstream_row_count")
+    row_identity_order = record.response_metadata.get("row_identity_order")
+    selected_row_identity_order = record.response_metadata.get(
+        "selected_row_identity_order"
+    )
+    expected_row_identity_order = [row["代码"] for row in rows]
+    if (
+        isinstance(upstream_row_count, bool)
+        or not isinstance(upstream_row_count, int)
+        or upstream_row_count != len(rows)
+        or not isinstance(row_identity_order, list)
+        or row_identity_order != expected_row_identity_order
+        or len(set(row_identity_order)) != len(row_identity_order)
+        or selected_row_identity_order != []
+    ):
+        raise ProviderNormalizationError(
+            "Eastmoney Hong Kong-index spot response universe identity metadata "
+            "does not match replayed rows"
+        )
+
+    expected_metadata = _market_quote_hk_index_spot_em_response_metadata(
+        listing_code=listing.code,
+        row_identity_order=row_identity_order,
+        upstream_row_count=upstream_row_count,
+    )
+    boolean_fields = {
+        "index_scoped_request",
+        "listing_scoped_request",
+        "full_universe_response",
+        "entity_rows_selected",
+    }
+    count_fields = {
+        "field_count",
+        "upstream_page_size",
+        "wrapper_source_column_count",
+        "upstream_row_count",
+        "entity_row_count",
+    }
+    for name, expected in expected_metadata.items():
+        actual = record.response_metadata.get(name)
+        if name in boolean_fields:
+            matches = isinstance(actual, bool) and actual is expected
+        elif name in count_fields:
+            matches = (
+                isinstance(actual, int)
+                and not isinstance(actual, bool)
+                and actual == expected
+            )
+        else:
+            matches = actual == expected
+        if not matches:
+            raise ProviderNormalizationError(
+                "Eastmoney Hong Kong-index spot response metadata "
+                f"{name!r} does not match the requested replay scope"
             )
 
 

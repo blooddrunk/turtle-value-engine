@@ -2144,6 +2144,27 @@ unrequested rows, empty output, raw-only normalization, replay metadata
 tampering and offline cache replay. No calculation, gate, pipeline, CLI or
 input-loader contract changes.
 
+Phase 3.64 adds the next documented Eastmoney
+[`stock_hk_index_spot_em`](https://akshare.akfamily.xyz/data/index/index.html)
+Hong Kong-index real-time universe under `MARKET_QUOTE` with explicit
+`view=hk_index_spot_em` and H-share listing context. The
+[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/index/index_stock_hk.py)
+uses the `15.push2` Eastmoney `clist/get` endpoint with fixed
+`m:124,m:125,m:305` filters, `f3` descending order and provider-driven pages of
+100 rows. The adapter preserves the exact thirteen-field wrapper order,
+internal market number, source/upstream parameters, field mappings, documented
+percentage/HKD units and complete-universe row identity metadata.
+
+The Eastmoney Hong Kong-index spot response is retained as raw evidence only:
+its current index prices, changes, volume and turnover are a market-wide
+snapshot without a stable listing-level observation timestamp or issuer
+accounting scope and do not establish the canonical current-price input. The
+normalizer emits `AKSHARE_HK_INDEX_SPOT_EM_RAW_ONLY` and creates no canonical
+fact. Tests cover H-share-only routing, exact schema/order and rank/code/type
+boundaries, empty output, raw-only normalization, replay metadata/payload
+tampering and offline cache replay. No calculation, gate, pipeline, CLI or
+input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.
