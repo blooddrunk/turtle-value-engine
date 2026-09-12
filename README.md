@@ -2123,6 +2123,27 @@ unsupported listing/parameter requests, empty output, raw-only normalization,
 replay metadata tampering and offline cache replay. No calculation, gate,
 pipeline, CLI or input-loader contract changes.
 
+Phase 3.63 adds the next documented Sina
+[`stock_hk_index_spot_sina`](https://akshare.akfamily.xyz/data/index/index.html)
+Hong Kong-index real-time universe under `MARKET_QUOTE` with explicit
+`view=hk_index_spot_sina` and H-share listing context. The
+[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/index/index_stock_hk.py)
+requests Sina's fixed `hq.sinajs.cn` symbol list in one quoted-text response,
+selects the exact nine-field wrapper order, converts the seven numeric values
+and retains the complete universe without listing filtering. The adapter
+preserves the source page, fixed `rn`/`list` parameters, positional mapping,
+dropped provider columns, documented percentage unit and replay row counts.
+
+The Sina Hong Kong-index spot response is retained as raw evidence only: its
+current index prices and changes are a market-wide snapshot without a stable
+listing-level observation timestamp or issuer accounting scope and do not
+establish the canonical current-price input. The normalizer emits
+`AKSHARE_HK_INDEX_SPOT_SINA_RAW_ONLY` and creates no canonical fact. Tests cover
+H-share-only routing, exact schema/order and code/type boundaries, invalid
+unrequested rows, empty output, raw-only normalization, replay metadata
+tampering and offline cache replay. No calculation, gate, pipeline, CLI or
+input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

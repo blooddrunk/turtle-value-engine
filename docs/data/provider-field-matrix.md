@@ -4054,6 +4054,32 @@ liquidity, valuation or accounting fact: the market-wide index snapshot has no
 listing/entity accounting scope or stable observation timestamp. The response
 remains outside the calculation, gate, pipeline, CLI and input-loader contracts.
 
+## Phase 3.63 Sina Hong Kong-index spot raw slice
+
+The current [AKShare index-data documentation](https://akshare.akfamily.xyz/data/index/index.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/index/index_stock_hk.py)
+document `stock_hk_index_spot_sina` as a no-argument real-time Hong Kong-index
+universe. The adapter selects it only under `MARKET_QUOTE` with explicit
+`view=hk_index_spot_sina`, accepts H-share listing context and preserves the
+fixed Sina `hq.sinajs.cn` symbol list and complete output without listing
+filtering.
+
+| Raw upstream item | Phase 3.63 treatment |
+| --- | --- |
+| `代码`, `名称`, `最新价`, `涨跌额`, `涨跌幅`, `昨收`, `今开`, `最高`, `最低` | Required exact nine-field order. Codes must be uppercase alphanumeric strings with no duplicates and non-decreasing source order; names must be non-empty strings; numeric fields must be finite numbers or null. |
+| `涨跌幅` | Documented as percent and recorded as `percent`; the remaining numeric fields retain `not_documented` units rather than inventing a currency or per-share scale. |
+| request `view=hk_index_spot_sina` | Exact H-share listing-context routing, no upstream selector or listing filtering, `index_scoped_request=true`, `listing_scoped_request=false`, retrieval-only current-day snapshot scope and complete-universe replay metadata. |
+| Sina quoted-text request | Fixed `rn=mtf2t` and 38-symbol `list`, one `hq.sinajs.cn` request, quoted-line parsing, positional wrapper mapping, ten dropped `_` columns, numeric conversion and source row identity order remain replay metadata. |
+
+The provider rejects A-share/unsupported listing contexts, missing or unexpected
+parameters, malformed or reordered rows, invalid or descending codes, duplicate
+codes and non-finite/non-numeric values. The normalizer emits
+`AKSHARE_HK_INDEX_SPOT_SINA_RAW_ONLY` and creates no canonical current-price,
+liquidity, valuation or accounting fact: the market-wide Hong Kong-index
+snapshot has no listing/entity accounting scope or stable observation timestamp.
+The response remains outside the calculation, gate, pipeline, CLI and
+input-loader contracts.
+
 ## Phase 2 enforcement rule
 
 For every field not marked `STRUCTURED_AUTO` or `DERIVED_DETERMINISTIC`, a
