@@ -1,0 +1,177 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/blooddrunk/turtle-value-engine/schemas/filing-discovery.schema.json",
+  "title": "Turtle Value Engine Filing Discovery",
+  "description": "Metadata-only discovery result for one official A-share or H-share filing source.",
+  "type": "object",
+  "required": ["listing_id", "market", "source", "source_uri", "filings"],
+  "properties": {
+    "listing_id": {
+      "type": "string",
+      "pattern": "^(?:(?:SH|SZ|BJ)[0-9]{6}|HK[0-9]{5})$"
+    },
+    "market": {
+      "type": "string",
+      "enum": ["A", "H"]
+    },
+    "source": {
+      "type": "string",
+      "enum": [
+        "CNINFO",
+        "SSE",
+        "SZSE",
+        "BSE",
+        "A_COMPANY_ANNOUNCEMENT",
+        "HKEXNEWS",
+        "H_COMPANY_REPORT",
+        "H_COMPANY_ANNOUNCEMENT"
+      ]
+    },
+    "source_uri": {
+      "type": "string",
+      "pattern": "^https?://",
+      "format": "uri"
+    },
+    "filings": {
+      "type": "array",
+      "maxItems": 100,
+      "items": {
+        "$ref": "#/$defs/filing"
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"market": {"const": "A"}}},
+      "then": {
+        "properties": {
+          "source": {
+            "enum": [
+              "CNINFO",
+              "SSE",
+              "SZSE",
+              "BSE",
+              "A_COMPANY_ANNOUNCEMENT"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {"properties": {"market": {"const": "H"}}},
+      "then": {
+        "properties": {
+          "source": {
+            "enum": ["HKEXNEWS", "H_COMPANY_REPORT", "H_COMPANY_ANNOUNCEMENT"]
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "filing": {
+      "type": "object",
+      "required": [
+        "filing_id",
+        "listing_id",
+        "market",
+        "source",
+        "title",
+        "document_type",
+        "published_date",
+        "url"
+      ],
+      "properties": {
+        "filing_id": {
+          "type": "string",
+          "pattern": "^filing-[0-9a-f]{24}$"
+        },
+        "listing_id": {
+          "type": "string",
+          "pattern": "^(?:(?:SH|SZ|BJ)[0-9]{6}|HK[0-9]{5})$"
+        },
+        "market": {
+          "type": "string",
+          "enum": ["A", "H"]
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "CNINFO",
+            "SSE",
+            "SZSE",
+            "BSE",
+            "A_COMPANY_ANNOUNCEMENT",
+            "HKEXNEWS",
+            "H_COMPANY_REPORT",
+            "H_COMPANY_ANNOUNCEMENT"
+          ]
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "document_type": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "published_date": {
+          "type": "string",
+          "format": "date"
+        },
+        "url": {
+          "type": "string",
+          "pattern": "^https?://",
+          "format": "uri"
+        },
+        "source_document_id": {
+          "type": ["string", "null"],
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "report_period": {
+          "type": ["string", "null"],
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "issuer_name": {
+          "type": ["string", "null"],
+          "minLength": 1,
+          "maxLength": 256
+        }
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"market": {"const": "A"}}},
+          "then": {
+            "properties": {
+              "source": {
+                "enum": [
+                  "CNINFO",
+                  "SSE",
+                  "SZSE",
+                  "BSE",
+                  "A_COMPANY_ANNOUNCEMENT"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {"properties": {"market": {"const": "H"}}},
+          "then": {
+            "properties": {
+              "source": {
+                "enum": ["HKEXNEWS", "H_COMPANY_REPORT", "H_COMPANY_ANNOUNCEMENT"]
+              }
+            }
+          }
+        }
+      ],
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

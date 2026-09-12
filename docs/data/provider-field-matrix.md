@@ -1,6 +1,6 @@
 # Structured Provider Field Matrix
 
-> Status: Phase 2 normalization guardrail
+> Status: Phase 3.84 filing-discovery metadata guardrail plus Phase 2 normalization guardrail
 
 This matrix classifies normalized fields used by the current strict-v1 input
 and gate pipeline. It is an allowlist for what a structured-data adapter may
@@ -4545,6 +4545,35 @@ tests cover A-share-only routing, unsupported parameters, exact-schema
 adversarial responses including duplicate/descending timestamps and invalid
 ranks, empty snapshots, raw-only normalization, replay metadata/payload
 tampering and offline cache replay.
+
+## Phase 3.84 official filing discovery metadata
+
+The first official filing/evidence slice is a discovery-only contract. It uses
+the provider-neutral `FILING_DISCOVERY` category and an injected source client;
+it does not download or parse a report and does not create normalized facts or
+`Evidence` objects. A query is bound to one canonical listing, one source,
+optional publication-date bounds, an optional source document-type label, a
+maximum of 100 rows and an optional `as_of` cutoff.
+
+| Discovery field | Treatment and boundary |
+| --- | --- |
+| `filing_id` | Deterministic `filing-<24 hex>` identity from market, listing, source and source document ID, falling back to canonical URL; retrieval time and row position never participate. |
+| `listing_id`, `market` | Canonical `SH`/`SZ`/`BJ` six-digit A-share or `HK` five-digit H-share scope; market is derived and cross-checked. |
+| `source` | A-share: `CNINFO`, matching `SSE`/`SZSE`/`BSE`, or `A_COMPANY_ANNOUNCEMENT`; H-share: `HKEXNEWS`, `H_COMPANY_REPORT` or `H_COMPANY_ANNOUNCEMENT`. Cross-market and wrong-exchange requests are rejected. |
+| `title`, `document_type` | Required source metadata; the adapter preserves labels and does not classify a report from its title. |
+| `published_date` | Required ISO publication date; it is checked against query bounds and `as_of`, but is not treated as an accounting period or filing content. |
+| `url` | Required HTTP(S) document locator. CNINFO/exchange/HKEXnews URLs must stay on the declared official host; company report/announcement URLs must use HTTPS. No URL is fetched. |
+| `source_document_id` | Optional upstream announcement/document identifier retained as provenance and preferred deterministic-ID input. |
+| `report_period`, `issuer_name` | Optional source labels retained verbatim after whitespace/control-character validation; neither is interpreted as an accounting fact or canonical company identity. |
+| `source_uri` and replay metadata | Collection URI, normalized query, result order/count, filing IDs and source-document IDs are persisted in `RawProviderRecord`; `download_performed=false` is an invariant. |
+
+Results are sorted by publication date descending and filing ID ascending, and
+duplicate IDs or document URLs are invalid. `parse_filing_discovery_record`
+revalidates the schema, source boundary, request scope, deterministic IDs and
+metadata after cache replay. The shared filesystem cache is keyed by provider,
+version, category, listing and query parameters; offline mode never invokes an
+injected source client. Download/cache, extraction, evidence storage and
+adjustment proposals remain later deliverables.
 
 ## Phase 2 enforcement rule
 

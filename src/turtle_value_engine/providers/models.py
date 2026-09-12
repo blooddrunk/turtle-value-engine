@@ -90,6 +90,7 @@ class DataCategory(StrEnum):
     CASH_FLOW_STATEMENT = "cash_flow_statement"
     DIVIDENDS = "dividends"
     DISCLOSURE_NOTICES = "disclosure_notices"
+    FILING_DISCOVERY = "filing_discovery"
     SHARE_CAPITAL = "share_capital"
     CORPORATE_ACTIONS = "corporate_actions"
     EXTERNAL_GUARANTEES = "external_guarantees"

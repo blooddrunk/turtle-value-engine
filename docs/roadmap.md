@@ -4713,6 +4713,41 @@ responses, empty snapshots, raw-only normalization, replay metadata/payload
 tampering and offline cache replay. No calculation, gate, pipeline, CLI or
 input-loader contract changes.
 
+### Phase 3.84 — Official A/H filing discovery metadata contract (COMPLETE)
+
+The first top-level Phase 3 filing/evidence deliverable is the smallest
+bounded filing-discovery contract. The new provider-neutral
+`FILING_DISCOVERY` category accepts one canonical A/H listing, one explicit
+source, optional publication-date bounds, an optional source document-type
+label, a maximum of 100 rows and an optional `as_of` cutoff. Source clients
+and the retrieval clock are injected; this keeps the contract deterministic
+and avoids hiding an unstable upstream transport inside the engine.
+
+The source matrix is explicit: A-share listings may use CNINFO, their matching
+SSE/SZSE/BSE exchange, or an issuer's HTTPS announcement source. H-share
+listings may use HKEXnews, an issuer's HTTPS report source or an issuer's HTTPS
+announcement source. Cross-market and wrong-exchange requests are rejected;
+official collection/document URLs must remain on the declared official host.
+The client returns metadata only (`title`, source document type, publication
+date, URL, optional source document ID, report-period label and issuer name).
+The provider does not download, parse or classify a document.
+
+`FilingRecord` assigns a deterministic `filing-<24 hex>` ID from market,
+listing, source and source document ID, falling back to canonical URL. Results
+are sorted by publication date descending and filing ID ascending; duplicate
+IDs/URLs, out-of-range rows, unhonored filters, malformed metadata and
+over-limit responses fail closed. The schema is
+`schemas/filing-discovery.schema.json`. The existing raw-record cache stores
+the canonical metadata payload plus source URI, query, IDs, ordering, counts
+and `download_performed=false`; offline replay never calls a source client and
+`parse_filing_discovery_record` revalidates payload/provenance integrity.
+
+Fixtures and adversarial tests cover every A/H source boundary, official URL
+constraints, date/limit/filter validation, deterministic IDs, JSON Schema,
+tampered replay metadata/payload and offline cache replay. No document
+download, extraction, evidence store, adjustment workflow, LLM or CLI change
+is included. The remaining Phase 3 filing deliverables stay explicitly open.
+
 ### Future structured-provider deliverables
 
 ```text
@@ -4723,6 +4758,7 @@ src/turtle_value_engine/providers/
   cache.py
   normalization.py
   akshare.py       # Phase 2.2 market + Phase 2.3–3.83 structured slices
+  filings.py       # Phase 3.84 metadata-only official filing discovery
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```

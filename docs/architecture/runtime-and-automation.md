@@ -230,14 +230,19 @@ Purpose: automated screening and price refresh.
 
 ### v0.3 filing verification
 
-Add official filing discovery/retrieval:
+The Phase 3.84 filing-discovery contract provides metadata-only discovery
+through injected official-source clients:
 
 ```text
-A shares -> CNINFO / exchange filings
-H shares -> HKEXnews
+A shares -> CNINFO / matching SSE/SZSE/BSE exchange / issuer announcements
+H shares -> HKEXnews / issuer reports and announcements
 ```
 
-Purpose: deep analysis and Evidence generation.
+The result is bounded by listing, source, publication-date filters, a result
+limit and optional point-in-time cutoff. It creates deterministic filing IDs
+and replayable raw provenance but does not download or parse document bodies.
+Document retrieval, extraction and Evidence generation remain subsequent
+deliverables.
 
 ### v0.4 resilient multi-source mode
 

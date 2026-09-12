@@ -1,0 +1,52 @@
+{
+  "a_cninfo": {
+    "listing_id": "SH600000",
+    "source": "CNINFO",
+    "source_uri": "https://www.cninfo.com.cn/new/fulltextSearch/full",
+    "filings": [
+      {
+        "title": "2024年年度报告",
+        "document_type": "ANNUAL_REPORT",
+        "published_date": "2025-04-30",
+        "url": "https://static.cninfo.com.cn/finalpage/2025-04-30/121000001.PDF",
+        "source_document_id": "cninfo-600000-2024-annual",
+        "report_period": "FY2024",
+        "issuer_name": "浦发银行股份有限公司"
+      },
+      {
+        "title": "2025年第一季度报告",
+        "document_type": "INTERIM_REPORT",
+        "published_date": "2025-04-29",
+        "url": "https://static.cninfo.com.cn/finalpage/2025-04-29/121000002.PDF",
+        "source_document_id": "cninfo-600000-2025-q1",
+        "report_period": "Q1FY2025",
+        "issuer_name": "浦发银行股份有限公司"
+      }
+    ]
+  },
+  "h_hkexnews": {
+    "listing_id": "HK00700",
+    "source": "HKEXNEWS",
+    "source_uri": "https://www1.hkexnews.hk/search/titlesearch.xhtml",
+    "filings": [
+      {
+        "title": "2024 Annual Report",
+        "document_type": "ANNUAL_REPORT",
+        "published_date": "2025-03-26",
+        "url": "https://www1.hkexnews.hk/listedco/listconews/sehk/2025/0326/2025032600123.pdf",
+        "source_document_id": "HKEX-2025032600123",
+        "report_period": "FY2024",
+        "issuer_name": "Tencent Holdings Limited"
+      },
+      {
+        "title": "2025 Interim Results Announcement",
+        "document_type": "INTERIM_REPORT",
+        "published_date": "2025-08-13",
+        "url": "https://www1.hkexnews.hk/listedco/listconews/sehk/2025/0813/2025081300456.pdf",
+        "source_document_id": "HKEX-2025081300456",
+        "report_period": "H1FY2025",
+        "issuer_name": "Tencent Holdings Limited"
+      }
+    ]
+  }
+}

@@ -2571,9 +2571,24 @@ and invalid ranks, empty snapshots, raw-only normalization, replay
 metadata/payload tampering and offline cache replay. No calculation, gate,
 pipeline, CLI or input-loader contract changes.
 
-Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
-deterministic `tve analyze` command is still offline-only and does not call a
-provider or an LLM.
+Phase 3.84 adds the first top-level filing/evidence deliverable: an injectable,
+metadata-only `OfficialFilingDiscoveryProvider` under the provider-neutral
+`FILING_DISCOVERY` category. Queries bind one A/H listing, one source, optional
+publication-date bounds, an optional source document-type label, a maximum of
+100 results and an optional `as_of` cutoff. A-share sources are CNINFO, the
+matching SSE/SZSE/BSE exchange or issuer HTTPS announcements; H-share sources
+are HKEXnews or issuer HTTPS reports/announcements. The provider validates
+official-host URL boundaries, creates deterministic `filing-<24 hex>` IDs,
+records source URI/query/IDs and the explicit no-download boundary, and sorts
+results deterministically. It uses the existing raw-record cache, and
+`parse_filing_discovery_record` revalidates replayed payloads and provenance.
+It does not fetch document bodies, parse reports, create Evidence/Fact objects,
+or infer report classifications.
+
+Document retrieval, report extraction, evidence storage, adjustment proposals
+and LLM-assisted evidence analysis remain unimplemented. The deterministic
+`tve analyze` command is still offline-only and does not call a provider or an
+LLM.
 
 Install the live-provider extra only when an explicitly network-enabled
 workflow is intended:
@@ -2595,7 +2610,9 @@ Implementation-oriented assets will later live under:
 - `src/` — calculation and orchestration code
 - `tests/` — formula, rule and regression tests
 
-The adapter entry points are under `src/turtle_value_engine/providers/akshare.py`.
+The structured adapter entry points are under
+`src/turtle_value_engine/providers/akshare.py` and the Phase 3 discovery
+boundary is under `src/turtle_value_engine/providers/filings.py`.
 Ordinary tests use injected clients and frozen JSON fixtures; live integration
 is opt-in with `TVE_RUN_AKSHARE_LIVE=1` and must not be used as a substitute
 for cached replay.

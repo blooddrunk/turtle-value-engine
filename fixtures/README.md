@@ -24,3 +24,8 @@ those scenarios.
 All monetary values use synthetic CNY millions unless a fact's `unit` says
 otherwise. Evidence sources use `OTHER` with stable local fixture locators;
 they are not network URLs or claims about real issuers.
+
+The metadata-only fixture at `filings/discovery_a_h.json` is separate from
+these normalized-input fixtures. It supplies deterministic CNINFO and HKEXnews
+source-client rows for the Phase 3.84 discovery tests, contains no document
+body and is not an evidence-store fixture.
