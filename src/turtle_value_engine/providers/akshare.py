@@ -42,9 +42,9 @@ intraday-trade, Sina intraday-trade, chip-distribution, Tencent daily-history,
 Tencent index daily-history, Eastmoney index daily-history and
 Tencent latest-trading-day tick, Sina minute-history, CDR daily-history,
 B-share daily-history, Sina STAR Market daily-history, Sina index daily-history,
-Sina mainland-index spot, Sina Hong Kong-index spot, Sina Hong Kong-index
-daily-history, Eastmoney Hong Kong-index spot and Eastmoney Hong Kong-index
-daily-history,
+Sina mainland-index spot, Sina Hong Kong-index spot, Eastmoney global-index
+spot, Sina Hong Kong-index daily-history, Eastmoney Hong Kong-index spot and
+Eastmoney Hong Kong-index daily-history,
 B-share minute-history,
 intraday-history, H-share
 intraday-history, index minute-history, pre-market-history, five-level bid-ask
@@ -128,9 +128,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "182"
+AKSHARE_ADAPTER_VERSION = "184"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "183"
+AKSHARE_MAPPING_VERSION = "185"
 
 
 class ListingMarket(StrEnum):
@@ -186,6 +186,7 @@ _SOURCE_URIS = {
     "stock_sz_a_spot_em": "https://quote.eastmoney.com/center/gridlist.html#hs_a_board",
     "stock_bj_a_spot_em": "https://quote.eastmoney.com/center/gridlist.html#bj_a_board",
     "stock_zh_index_spot_sina": "https://vip.stock.finance.sina.com.cn/mkt/#hs_s",
+    "index_global_spot_em": "https://quote.eastmoney.com/center/gridlist.html#global_qtzs",
     "stock_hk_index_spot_sina": "https://vip.stock.finance.sina.com.cn/mkt/#zs_hk",
     "stock_hk_index_spot_em": "https://quote.eastmoney.com/center/gridlist.html#hk_index",
     "stock_zh_index_spot_em": "https://quote.eastmoney.com/center/gridlist.html#index_sz",
@@ -410,6 +411,7 @@ _NO_ARGUMENT_ENDPOINTS = frozenset(
         "stock_zh_a_spot_em",
         "stock_zh_a_spot",
         "stock_zh_index_spot_sina",
+        "index_global_spot_em",
         "stock_hk_index_spot_sina",
         "stock_hk_index_spot_em",
         "stock_hk_spot_em",
@@ -811,6 +813,140 @@ _MARKET_QUOTE_INDEX_SPOT_WRAPPER_COLUMN_MAPPING = {
     "今开": 17,
     "昨收": 18,
     "量比": 10,
+}
+
+_MARKET_QUOTE_GLOBAL_INDEX_SPOT_ENDPOINT = "index_global_spot_em"
+_MARKET_QUOTE_GLOBAL_INDEX_SPOT_PARAMETER_NAMES = frozenset({"view"})
+_MARKET_QUOTE_GLOBAL_INDEX_SPOT_VIEW = "global_index_spot"
+_MARKET_QUOTE_GLOBAL_INDEX_SPOT_FIELDS = (
+    "序号",
+    "代码",
+    "名称",
+    "最新价",
+    "涨跌额",
+    "涨跌幅",
+    "开盘价",
+    "最高价",
+    "最低价",
+    "昨收价",
+    "振幅",
+    "最新行情时间",
+)
+_MARKET_QUOTE_GLOBAL_INDEX_SPOT_FIELD_SET = frozenset(
+    _MARKET_QUOTE_GLOBAL_INDEX_SPOT_FIELDS
+)
+_MARKET_QUOTE_GLOBAL_INDEX_SPOT_TEXT_FIELDS = (
+    "代码",
+    "名称",
+    "最新行情时间",
+)
+_MARKET_QUOTE_GLOBAL_INDEX_SPOT_REQUIRED_TEXT_FIELDS = ("代码", "名称")
+_MARKET_QUOTE_GLOBAL_INDEX_SPOT_INTEGER_FIELDS = ("序号",)
+_MARKET_QUOTE_GLOBAL_INDEX_SPOT_NUMERIC_FIELDS = tuple(
+    field
+    for field in _MARKET_QUOTE_GLOBAL_INDEX_SPOT_FIELDS
+    if field
+    not in {
+        *_MARKET_QUOTE_GLOBAL_INDEX_SPOT_INTEGER_FIELDS,
+        *_MARKET_QUOTE_GLOBAL_INDEX_SPOT_TEXT_FIELDS,
+    }
+)
+_MARKET_QUOTE_GLOBAL_INDEX_SPOT_NULLABLE_FIELDS = (
+    *_MARKET_QUOTE_GLOBAL_INDEX_SPOT_NUMERIC_FIELDS,
+    "最新行情时间",
+)
+_MARKET_QUOTE_GLOBAL_INDEX_SPOT_FIELD_TYPES = {
+    "序号": "integer",
+    "代码": "string",
+    "名称": "string",
+    **{
+        field: "number"
+        for field in _MARKET_QUOTE_GLOBAL_INDEX_SPOT_NUMERIC_FIELDS
+    },
+    "最新行情时间": "datetime",
+}
+_MARKET_QUOTE_GLOBAL_INDEX_SPOT_DOCUMENTED_UNITS = {
+    "涨跌幅": "percent",
+    "振幅": "percent",
+}
+_MARKET_QUOTE_GLOBAL_INDEX_SPOT_UNDOCUMENTED_NUMERIC_UNITS = {
+    field: "not_documented"
+    for field in _MARKET_QUOTE_GLOBAL_INDEX_SPOT_NUMERIC_FIELDS
+    if field not in _MARKET_QUOTE_GLOBAL_INDEX_SPOT_DOCUMENTED_UNITS
+}
+_MARKET_QUOTE_GLOBAL_INDEX_SPOT_SOURCE_URI = (
+    "https://quote.eastmoney.com/center/gridlist.html#global_qtzs"
+)
+_MARKET_QUOTE_GLOBAL_INDEX_SPOT_UPSTREAM_URL = (
+    "https://push2.eastmoney.com/api/qt/clist/get"
+)
+_MARKET_QUOTE_GLOBAL_INDEX_SPOT_UPSTREAM_PARAMETERS = (
+    "np",
+    "fltt",
+    "invt",
+    "fs",
+    "fields",
+    "fid",
+    "pn",
+    "pz",
+    "po",
+    "dect",
+    "wbp2u",
+)
+_MARKET_QUOTE_GLOBAL_INDEX_SPOT_UPSTREAM_FIXED_PARAMETERS = {
+    "np": "2",
+    "fltt": "1",
+    "invt": "2",
+    "fs": (
+        "i:1.000001,i:0.399001,i:0.399005,i:0.399006,i:1.000300,"
+        "i:100.HSI,i:100.HSCEI,i:124.HSCCI,i:100.TWII,i:100.N225,"
+        "i:100.KOSPI200,i:100.KS11,i:100.STI,i:100.SENSEX,i:100.KLSE,"
+        "i:100.SET,i:100.PSI,i:100.KSE100,i:100.VNINDEX,i:100.JKSE,"
+        "i:100.CSEALL,i:100.SX5E,i:100.FTSE,i:100.MCX,i:100.AXX,"
+        "i:100.FCHI,i:100.GDAXI,i:100.RTS,i:100.IBEX,i:100.PSI20,"
+        "i:100.OMXC20,i:100.BFX,i:100.AEX,i:100.WIG,i:100.OMXSPI,"
+        "i:100.SSMI,i:100.HEX,i:100.OSEBX,i:100.ATX,i:100.MIB,"
+        "i:100.ASE,i:100.ICEXI,i:100.PX,i:100.ISEQ,i:100.DJIA,"
+        "i:100.SPX,i:100.NDX,i:100.TSX,i:100.BVSP,i:100.MXX,"
+        "i:100.AS51,i:100.AORD,i:100.NZ50,i:100.UDI,i:100.BDI,i:100.CRB"
+    ),
+    "fields": "f12,f13,f14,f292,f1,f2,f4,f3,f152,f17,f18,f15,f16,f7,f124",
+    "fid": "f3",
+    "pn": "1",
+    "pz": "200",
+    "po": "1",
+    "dect": "1",
+    "wbp2u": "|0|0|0|web",
+}
+_MARKET_QUOTE_GLOBAL_INDEX_SPOT_UPSTREAM_DYNAMIC_PARAMETERS: dict[str, JSONValue] = {}
+_MARKET_QUOTE_GLOBAL_INDEX_SPOT_WRAPPER_SOURCE_COLUMN_COUNT = 15
+_MARKET_QUOTE_GLOBAL_INDEX_SPOT_WRAPPER_COLUMN_MAPPING = {
+    "序号": 0,
+    "代码": 12,
+    "名称": 14,
+    "最新价": 2,
+    "涨跌额": 4,
+    "涨跌幅": 3,
+    "开盘价": 17,
+    "最高价": 15,
+    "最低价": 16,
+    "昨收价": 18,
+    "振幅": 7,
+    "最新行情时间": 124,
+}
+_MARKET_QUOTE_GLOBAL_INDEX_SPOT_WRAPPER_DROPPED_FIELDS = (
+    "f13",
+    "f292",
+    "f1",
+    "f152",
+)
+_MARKET_QUOTE_GLOBAL_INDEX_SPOT_UPSTREAM_TRANSFORMATIONS = {
+    "序号": "reset_index_to_positive_sequence",
+    **{
+        field: "to_numeric_then_divide_by_100"
+        for field in _MARKET_QUOTE_GLOBAL_INDEX_SPOT_NUMERIC_FIELDS
+    },
+    "最新行情时间": "unix_seconds_to_asia_shanghai_datetime_string",
 }
 
 _MARKET_QUOTE_INDEX_SINA_SPOT_ENDPOINT = "stock_zh_index_spot_sina"
@@ -8802,6 +8938,27 @@ class AKShareProvider(StructuredDataProvider):
             )
         elif (
             request.category is DataCategory.MARKET_QUOTE
+            and endpoint.name == _MARKET_QUOTE_GLOBAL_INDEX_SPOT_ENDPOINT
+        ):
+            rows = _table_rows(payload, provider=self.identity, request=request)
+            _validate_market_quote_global_index_spot_provider_rows(
+                rows,
+                provider=self.identity,
+                request=request,
+            )
+            response_metadata.update(
+                _market_quote_global_index_spot_response_metadata(
+                    market=listing.market,
+                    listing_code=listing.code,
+                    row_identity_order=[row["代码"] for row in rows],
+                    row_observation_time_order=[
+                        row["最新行情时间"] for row in rows
+                    ],
+                    upstream_row_count=len(rows),
+                )
+            )
+        elif (
+            request.category is DataCategory.MARKET_QUOTE
             and endpoint.name == _MARKET_QUOTE_INDEX_SINA_SPOT_ENDPOINT
         ):
             rows = _table_rows(payload, provider=self.identity, request=request)
@@ -13275,6 +13432,10 @@ class AKShareProvider(StructuredDataProvider):
             market_quote_index_spot_requested=(
                 request.parameters.get("view") == _MARKET_QUOTE_INDEX_SPOT_VIEW
             ),
+            market_quote_global_index_spot_requested=(
+                request.parameters.get("view")
+                == _MARKET_QUOTE_GLOBAL_INDEX_SPOT_VIEW
+            ),
             market_quote_index_sina_spot_requested=(
                 request.parameters.get("view")
                 == _MARKET_QUOTE_INDEX_SINA_SPOT_VIEW
@@ -14541,6 +14702,26 @@ class AKShareNormalizer:
                     rows,
                 )
                 normalizer_flags.add("AKSHARE_INDEX_SPOT_RAW_ONLY")
+                missing_fields.add("current_price")
+            elif (
+                record.request.category is DataCategory.MARKET_QUOTE
+                and record.request.parameters.get("view")
+                == _MARKET_QUOTE_GLOBAL_INDEX_SPOT_VIEW
+            ):
+                if (
+                    record.response_metadata.get("endpoint")
+                    != _MARKET_QUOTE_GLOBAL_INDEX_SPOT_ENDPOINT
+                ):
+                    raise ProviderNormalizationError(
+                        "Eastmoney global-index spot record must come from "
+                        f"{_MARKET_QUOTE_GLOBAL_INDEX_SPOT_ENDPOINT}"
+                    )
+                _validate_market_quote_global_index_spot_normalizer_scope(
+                    record,
+                    listing,
+                    rows,
+                )
+                normalizer_flags.add("AKSHARE_GLOBAL_INDEX_SPOT_RAW_ONLY")
                 missing_fields.add("current_price")
             elif (
                 record.request.category is DataCategory.MARKET_QUOTE
@@ -16034,6 +16215,7 @@ class AKShareNormalizer:
                 "AKSHARE_SZ_A_SPOT_QUOTE_RAW_ONLY",
                 "AKSHARE_BJ_A_SPOT_QUOTE_RAW_ONLY",
                 "AKSHARE_INDEX_SPOT_RAW_ONLY",
+                "AKSHARE_GLOBAL_INDEX_SPOT_RAW_ONLY",
                 "AKSHARE_HK_INDEX_SPOT_SINA_RAW_ONLY",
                 "AKSHARE_NEW_A_SPOT_QUOTE_RAW_ONLY",
                 "AKSHARE_CY_A_SPOT_QUOTE_RAW_ONLY",
@@ -17086,6 +17268,14 @@ class AKShareNormalizer:
                 "observation timestamp and do not establish the canonical current-price "
                 "input."
             )
+        if "AKSHARE_GLOBAL_INDEX_SPOT_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented Eastmoney global-index real-time universe response is "
+                "retained as raw evidence only: its global index prices, changes, local "
+                "observation times and amplitude are a market-wide snapshot without "
+                "listing/entity accounting scope and do not establish the canonical "
+                "current-price input."
+            )
         if "AKSHARE_INDEX_SPOT_SINA_RAW_ONLY" in normalizer_flags:
             notes += (
                 " The documented Sina real-time index-universe response is retained "
@@ -17570,6 +17760,7 @@ def _endpoint_candidates(
     market_activity_stop_stock_requested: bool = False,
     market_quote_sh_a_spot_requested: bool = False,
     market_quote_index_spot_requested: bool = False,
+    market_quote_global_index_spot_requested: bool = False,
     market_quote_index_sina_spot_requested: bool = False,
     market_quote_hk_index_sina_requested: bool = False,
     market_quote_hk_index_spot_em_requested: bool = False,
@@ -17673,6 +17864,10 @@ def _endpoint_candidates(
         if market_quote_index_spot_requested:
             if market is ListingMarket.A:
                 return (_MARKET_QUOTE_INDEX_SPOT_ENDPOINT,)
+            return ()
+        if market_quote_global_index_spot_requested:
+            if market in {ListingMarket.A, ListingMarket.H}:
+                return (_MARKET_QUOTE_GLOBAL_INDEX_SPOT_ENDPOINT,)
             return ()
         if market_quote_index_sina_spot_requested:
             if market is ListingMarket.A:
@@ -18355,6 +18550,33 @@ def _market_quote_kwargs(
                 retryable=False,
             )
         return {"symbol": symbol}
+    if endpoint_name == _MARKET_QUOTE_GLOBAL_INDEX_SPOT_ENDPOINT:
+        if listing.market not in {ListingMarket.A, ListingMarket.H}:
+            raise ProviderRequestError(
+                "the AKShare Eastmoney global-index spot endpoint supports A- and "
+                "H-share listing contexts only",
+                request=request,
+                retryable=False,
+            )
+        unknown = sorted(
+            set(request.parameters)
+            - _MARKET_QUOTE_GLOBAL_INDEX_SPOT_PARAMETER_NAMES
+        )
+        if unknown:
+            raise ProviderRequestError(
+                "unsupported AKShare Eastmoney global-index spot parameter(s): "
+                + ", ".join(unknown),
+                request=request,
+                retryable=False,
+            )
+        if request.parameters.get("view") != _MARKET_QUOTE_GLOBAL_INDEX_SPOT_VIEW:
+            raise ProviderRequestError(
+                "the AKShare Eastmoney global-index spot endpoint requires "
+                f"view={_MARKET_QUOTE_GLOBAL_INDEX_SPOT_VIEW!r}",
+                request=request,
+                retryable=False,
+            )
+        return {}
     if endpoint_name == "stock_zh_ab_comparison_em":
         if listing.market is not ListingMarket.A:
             raise ProviderRequestError(
@@ -22987,6 +23209,240 @@ def _market_quote_index_spot_response_metadata(
         ),
         "wrapper_column_mapping": dict(_MARKET_QUOTE_INDEX_SPOT_WRAPPER_COLUMN_MAPPING),
         "wrapper_dropped_fields": [],
+        "full_universe_response": True,
+        "entity_rows_selected": False,
+        "upstream_row_count": upstream_row_count,
+        "entity_row_count": 0,
+    }
+
+
+def _market_quote_global_index_spot_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> str | None:
+    """Return strict-schema errors for the complete global-index universe."""
+
+    seen_codes: set[str] = set()
+    for index, row in enumerate(rows):
+        missing = [
+            field
+            for field in _MARKET_QUOTE_GLOBAL_INDEX_SPOT_FIELDS
+            if field not in row
+        ]
+        unexpected = [
+            field
+            for field in row
+            if field not in _MARKET_QUOTE_GLOBAL_INDEX_SPOT_FIELD_SET
+        ]
+        if missing:
+            return (
+                f"global index spot row {index} is missing field(s): "
+                + ", ".join(missing)
+            )
+        if unexpected:
+            return (
+                f"global index spot row {index} contains unsupported field(s): "
+                + ", ".join(unexpected)
+            )
+        if tuple(row) != _MARKET_QUOTE_GLOBAL_INDEX_SPOT_FIELDS:
+            return "global index spot rows must preserve the documented field order"
+
+        rank = row["序号"]
+        if isinstance(rank, bool) or not isinstance(rank, Real):
+            return (
+                f"global index spot row {index} field '序号' must be a "
+                "positive integer"
+            )
+        try:
+            numeric_rank = float(rank)
+        except (OverflowError, TypeError, ValueError):
+            return (
+                f"global index spot row {index} field '序号' must be a "
+                "positive integer"
+            )
+        if (
+            not math.isfinite(numeric_rank)
+            or not numeric_rank.is_integer()
+            or numeric_rank != index + 1
+        ):
+            return (
+                "global index spot 序号 values must reset from one in source "
+                "row order"
+            )
+
+        code = row["代码"]
+        if not isinstance(code, str) or not code.strip():
+            return (
+                f"global index spot row {index} field '代码' must be a "
+                "non-empty string"
+            )
+        if code in seen_codes:
+            return f"global index spot response has duplicate 代码 {code!r}"
+        seen_codes.add(code)
+
+        name = row["名称"]
+        if not isinstance(name, str) or not name.strip():
+            return (
+                f"global index spot row {index} field '名称' must be a "
+                "non-empty string"
+            )
+
+        observation_time = row["最新行情时间"]
+        if observation_time is not None:
+            if (
+                not isinstance(observation_time, str)
+                or _intraday_history_timestamp(observation_time) is None
+            ):
+                return (
+                    f"global index spot row {index} field '最新行情时间' must be "
+                    "a valid YYYY-MM-DD HH:MM:SS timestamp or null"
+                )
+
+        for field in _MARKET_QUOTE_GLOBAL_INDEX_SPOT_NUMERIC_FIELDS:
+            value = row[field]
+            if value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, Real):
+                return (
+                    f"global index spot row {index} field {field!r} must be "
+                    "numeric or null"
+                )
+            try:
+                numeric = float(value)
+            except (OverflowError, TypeError, ValueError):
+                return (
+                    f"global index spot row {index} field {field!r} must be "
+                    "numeric or null"
+                )
+            if not math.isfinite(numeric):
+                return (
+                    f"global index spot row {index} field {field!r} must be "
+                    "finite or null"
+                )
+    return None
+
+
+def _validate_market_quote_global_index_spot_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> None:
+    """Validate the complete global-index universe before raw retention."""
+
+    message = _market_quote_global_index_spot_validation_message(rows)
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message}",
+            provider=provider,
+            request=request,
+        )
+
+
+def _market_quote_global_index_spot_response_metadata(
+    *,
+    market: ListingMarket,
+    listing_code: str,
+    row_identity_order: Sequence[JSONValue],
+    row_observation_time_order: Sequence[JSONValue],
+    upstream_row_count: int,
+) -> dict[str, JSONValue]:
+    """Build replay metadata for one full Eastmoney global-index snapshot."""
+
+    observation_times = [
+        parsed
+        for value in row_observation_time_order
+        if (parsed := _intraday_history_timestamp(value)) is not None
+    ]
+    fixed_parameters = _MARKET_QUOTE_GLOBAL_INDEX_SPOT_UPSTREAM_FIXED_PARAMETERS
+    return {
+        "endpoint": _MARKET_QUOTE_GLOBAL_INDEX_SPOT_ENDPOINT,
+        "market": market.value,
+        "listing_code": listing_code,
+        "market_quote_view": _MARKET_QUOTE_GLOBAL_INDEX_SPOT_VIEW,
+        "market_scope": "eastmoney_global_index_universe",
+        "index_scoped_request": True,
+        "listing_scoped_request": False,
+        "row_filtering": "none",
+        "snapshot_scope": "current_global_index_realtime",
+        "date_binding": "row_observation_time",
+        "observation_time_field": "最新行情时间",
+        "observation_time_zone": "Asia/Shanghai",
+        "observation_time_ordering": "source_response_order",
+        "row_observation_time_order": list(row_observation_time_order),
+        "observation_time_start": (
+            min(observation_times).isoformat(sep=" ")
+            if observation_times
+            else None
+        ),
+        "observation_time_end": (
+            max(observation_times).isoformat(sep=" ")
+            if observation_times
+            else None
+        ),
+        "rank_field": "序号",
+        "rank_ordering": "strictly_ascending_wrapper_sequence",
+        "identity_fields": ["代码"],
+        "identity_ordering": "source_response_order",
+        "row_identity_order": list(row_identity_order),
+        "selected_row_identity_order": [],
+        "value_fields": list(_MARKET_QUOTE_GLOBAL_INDEX_SPOT_NUMERIC_FIELDS),
+        "integer_fields": list(_MARKET_QUOTE_GLOBAL_INDEX_SPOT_INTEGER_FIELDS),
+        "text_fields": list(_MARKET_QUOTE_GLOBAL_INDEX_SPOT_TEXT_FIELDS),
+        "required_text_fields": list(
+            _MARKET_QUOTE_GLOBAL_INDEX_SPOT_REQUIRED_TEXT_FIELDS
+        ),
+        "nullable_fields": list(_MARKET_QUOTE_GLOBAL_INDEX_SPOT_NULLABLE_FIELDS),
+        "field_types": dict(_MARKET_QUOTE_GLOBAL_INDEX_SPOT_FIELD_TYPES),
+        "field_count": len(_MARKET_QUOTE_GLOBAL_INDEX_SPOT_FIELDS),
+        "source_field_order": list(_MARKET_QUOTE_GLOBAL_INDEX_SPOT_FIELDS),
+        "documented_units": dict(
+            _MARKET_QUOTE_GLOBAL_INDEX_SPOT_DOCUMENTED_UNITS
+        ),
+        "undocumented_numeric_units": dict(
+            _MARKET_QUOTE_GLOBAL_INDEX_SPOT_UNDOCUMENTED_NUMERIC_UNITS
+        ),
+        "upstream_url": _MARKET_QUOTE_GLOBAL_INDEX_SPOT_UPSTREAM_URL,
+        "upstream_urls": [_MARKET_QUOTE_GLOBAL_INDEX_SPOT_UPSTREAM_URL],
+        "upstream_auxiliary_urls": [],
+        "upstream_auxiliary_roles": [],
+        "upstream_protocol": "JSON",
+        "upstream_parameters": list(
+            _MARKET_QUOTE_GLOBAL_INDEX_SPOT_UPSTREAM_PARAMETERS
+        ),
+        "upstream_fixed_parameters": dict(fixed_parameters),
+        "upstream_dynamic_parameters": dict(
+            _MARKET_QUOTE_GLOBAL_INDEX_SPOT_UPSTREAM_DYNAMIC_PARAMETERS
+        ),
+        "upstream_authentication": "none",
+        "upstream_page_size": 200,
+        "pagination": "single_page_response",
+        "upstream_sort_column": "f3",
+        "upstream_sort_direction": "provider_defined",
+        "upstream_filter": fixed_parameters["fs"],
+        "wrapper_source_page_uri": _MARKET_QUOTE_GLOBAL_INDEX_SPOT_SOURCE_URI,
+        "wrapper_date_filtering": "none",
+        "wrapper_output_ordering": "source_response_order_with_wrapper_sequence",
+        "wrapper_decoders": ["response.json"],
+        "wrapper_transformations": [
+            "transpose_provider_diff_mapping",
+            "reset_index_to_positive_sequence",
+            "unix_seconds_to_asia_shanghai_datetime_string",
+            "numeric_conversion",
+            "divide_numeric_values_by_100",
+            "provider_field_selection",
+        ],
+        "wrapper_source_column_count": (
+            _MARKET_QUOTE_GLOBAL_INDEX_SPOT_WRAPPER_SOURCE_COLUMN_COUNT
+        ),
+        "wrapper_column_mapping": dict(
+            _MARKET_QUOTE_GLOBAL_INDEX_SPOT_WRAPPER_COLUMN_MAPPING
+        ),
+        "wrapper_dropped_fields": list(
+            _MARKET_QUOTE_GLOBAL_INDEX_SPOT_WRAPPER_DROPPED_FIELDS
+        ),
+        "upstream_transformations": dict(
+            _MARKET_QUOTE_GLOBAL_INDEX_SPOT_UPSTREAM_TRANSFORMATIONS
+        ),
         "full_universe_response": True,
         "entity_rows_selected": False,
         "upstream_row_count": upstream_row_count,
@@ -46383,6 +46839,120 @@ def _validate_market_quote_index_spot_normalizer_scope(
             raise ProviderNormalizationError(
                 f"Eastmoney index-spot response metadata {name!r} does not "
                 "match the requested replay scope"
+            )
+
+
+def _validate_market_quote_global_index_spot_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> None:
+    """Validate a replayed full Eastmoney global-index snapshot."""
+
+    if listing.market not in {ListingMarket.A, ListingMarket.H}:
+        raise ProviderNormalizationError(
+            "Eastmoney global-index spot raw slice supports A- and H-share "
+            "listing contexts only"
+        )
+    if (
+        record.response_metadata.get("endpoint")
+        != _MARKET_QUOTE_GLOBAL_INDEX_SPOT_ENDPOINT
+    ):
+        raise ProviderNormalizationError(
+            "Eastmoney global-index spot record must come from "
+            f"{_MARKET_QUOTE_GLOBAL_INDEX_SPOT_ENDPOINT}"
+        )
+    if record.source_uri != _MARKET_QUOTE_GLOBAL_INDEX_SPOT_SOURCE_URI:
+        raise ProviderNormalizationError(
+            "Eastmoney global-index spot source URI does not match the "
+            "documented endpoint"
+        )
+    if record.response_metadata.get("market") != listing.market.value:
+        raise ProviderNormalizationError(
+            "Eastmoney global-index spot response market does not match "
+            "requested listing"
+        )
+    if record.response_metadata.get("listing_code") != listing.code:
+        raise ProviderNormalizationError(
+            "Eastmoney global-index spot response listing code does not match "
+            "requested listing"
+        )
+    try:
+        _market_quote_kwargs(
+            _MARKET_QUOTE_GLOBAL_INDEX_SPOT_ENDPOINT,
+            listing,
+            record.request,
+        )
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+
+    message = _market_quote_global_index_spot_validation_message(rows)
+    if message is not None:
+        raise ProviderNormalizationError(message)
+
+    upstream_row_count = record.response_metadata.get("upstream_row_count")
+    row_identity_order = record.response_metadata.get("row_identity_order")
+    selected_row_identity_order = record.response_metadata.get(
+        "selected_row_identity_order"
+    )
+    row_observation_time_order = record.response_metadata.get(
+        "row_observation_time_order"
+    )
+    expected_row_identity_order = [row["代码"] for row in rows]
+    expected_row_observation_time_order = [
+        row["最新行情时间"] for row in rows
+    ]
+    if (
+        isinstance(upstream_row_count, bool)
+        or not isinstance(upstream_row_count, int)
+        or upstream_row_count != len(rows)
+        or not isinstance(row_identity_order, list)
+        or row_identity_order != expected_row_identity_order
+        or len(set(row_identity_order)) != len(row_identity_order)
+        or selected_row_identity_order != []
+        or row_observation_time_order != expected_row_observation_time_order
+    ):
+        raise ProviderNormalizationError(
+            "Eastmoney global-index spot response universe identity/time "
+            "metadata does not match replayed rows"
+        )
+
+    expected_metadata = _market_quote_global_index_spot_response_metadata(
+        market=listing.market,
+        listing_code=listing.code,
+        row_identity_order=row_identity_order,
+        row_observation_time_order=row_observation_time_order,
+        upstream_row_count=upstream_row_count,
+    )
+    boolean_fields = {
+        "index_scoped_request",
+        "listing_scoped_request",
+        "full_universe_response",
+        "entity_rows_selected",
+    }
+    count_fields = {
+        "field_count",
+        "upstream_page_size",
+        "wrapper_source_column_count",
+        "upstream_row_count",
+        "entity_row_count",
+    }
+    for name, expected in expected_metadata.items():
+        actual = record.response_metadata.get(name)
+        if name in boolean_fields:
+            matches = isinstance(actual, bool) and actual is expected
+        elif name in count_fields:
+            matches = (
+                isinstance(actual, int)
+                and not isinstance(actual, bool)
+                and actual == expected
+            )
+        else:
+            matches = actual == expected
+        if not matches:
+            raise ProviderNormalizationError(
+                "Eastmoney global-index spot response metadata "
+                f"{name!r} does not match the requested replay scope"
             )
 
 

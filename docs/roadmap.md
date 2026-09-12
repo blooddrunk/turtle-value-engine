@@ -4239,6 +4239,36 @@ finite/null values, empty output, raw-only normalization, replay metadata/payloa
 tampering and offline cache replay. No calculation, gate, pipeline, CLI or
 input-loader contract changes.
 
+### Phase 3.68 — Eastmoney global-index spot raw acquisition contract (COMPLETE)
+
+The mapping review now covers the next documented Eastmoney
+[`index_global_spot_em`](https://akshare.akfamily.xyz/data/index/index.html)
+global-index real-time endpoint under `MARKET_QUOTE`. The
+[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/index/index_global_em.py)
+uses a no-argument request to Eastmoney's JSON `clist/get` endpoint with a
+fixed global-index filter, `f3` sort selector and 200-row page size. The adapter
+exposes explicit `view=global_index_spot`, accepts A- or H-share listing context
+only as provenance, and preserves the complete twelve-field output in the
+documented order: `序号`, `代码`, `名称`, `最新价`, `涨跌额`, `涨跌幅`, `开盘价`,
+`最高价`, `最低价`, `昨收价`, `振幅`, `最新行情时间`.
+
+Provider validation is strict: wrapper rank values must reset from one in
+source order; codes must be non-empty and unique; names must be non-empty;
+timestamps must be valid `YYYY-MM-DD HH:MM:SS` values or null; and every
+numeric field must be finite or null. Replay metadata records the exact
+upstream URL, fixed parameters/filter, no auxiliary lookup, JSON decoder,
+positional source mapping, dropped fields, numeric division-by-100 transform,
+Unix-seconds-to-Asia/Shanghai timestamp conversion, source row identity/time
+order and complete-universe/no-listing-filter scope. The normalizer emits
+`AKSHARE_GLOBAL_INDEX_SPOT_RAW_ONLY`, retains the response as evidence and
+creates no canonical current-price fact because a global index snapshot has no
+listing/entity accounting scope.
+
+Focused tests cover A/H routing, strict parameter rejection, exact schema/order,
+rank/code/timestamp/numeric boundaries, nulls, empty output, raw-only
+normalization, replay metadata/payload tampering and offline cache replay. No
+calculation, gate, pipeline, CLI or input-loader contract changes.
+
 ### Future structured-provider deliverables
 
 ```text
@@ -4248,7 +4278,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–3.67 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–3.68 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```

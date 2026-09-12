@@ -2229,6 +2229,26 @@ malformed/reordered rows, finite/null values, empty output, raw-only
 normalization, replay metadata and payload tampering, and offline cache replay.
 No calculation, gate, pipeline, CLI or input-loader contract changes.
 
+Phase 3.68 adds the next documented Eastmoney global-index real-time endpoint
+[`index_global_spot_em`](https://akshare.akfamily.xyz/data/index/index.html)
+under `MARKET_QUOTE`. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/index/index_global_em.py)
+requests the fixed global-index universe from Eastmoney's JSON `clist/get`
+endpoint and returns the exact twelve-field `序号`, `代码`, `名称`, `最新价`,
+`涨跌额`, `涨跌幅`, `开盘价`, `最高价`, `最低价`, `昨收价`, `振幅`,
+`最新行情时间` order. The adapter exposes explicit
+`view=global_index_spot`, accepts A- or H-share listing context only as
+provenance, and records the fixed upstream filter, field mapping, numeric
+scale conversion and Asia/Shanghai observation timestamps in replay metadata.
+
+The Eastmoney global-index real-time response is retained as raw evidence only:
+its market-wide index prices, changes, amplitude and local observation times do
+not establish listing/entity accounting scope or the canonical current-price
+input. The normalizer emits `AKSHARE_GLOBAL_INDEX_SPOT_RAW_ONLY` and creates no
+canonical fact. Tests cover A/H routing, strict parameters and exact schema,
+rank, identity, timestamp, finite/null-value and empty-response boundaries,
+raw-only normalization, replay metadata/payload tampering and offline cache
+replay. No calculation, gate, pipeline, CLI or input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

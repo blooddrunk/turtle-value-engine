@@ -4168,6 +4168,28 @@ daily-history, return, valuation or accounting fact: the response is a global
 index series, not an A/H listing observation. The slice remains outside
 calculation, gate, pipeline, CLI and input-loader contracts.
 
+## Phase 3.68 Eastmoney global-index spot raw slice
+
+The current [AKShare index-data documentation](https://akshare.akfamily.xyz/data/index/index.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/index/index_global_em.py)
+document `index_global_spot_em` as a no-argument real-time global-index
+universe. The adapter selects it under `MARKET_QUOTE` with explicit
+`view=global_index_spot`, accepts A- or H-share listing context only as
+provenance and retains the complete response without listing filtering.
+
+| Raw upstream item | Phase 3.68 treatment |
+| --- | --- |
+| `序号`, `代码`, `名称`, `最新价`, `涨跌额`, `涨跌幅`, `开盘价`, `最高价`, `最低价`, `昨收价`, `振幅`, `最新行情时间` | Required exact twelve-field order. `序号` must reset from one in source order; codes must be non-empty and unique; names must be non-empty; `最新行情时间` must be a valid `YYYY-MM-DD HH:MM:SS` timestamp or null; numeric fields must be finite numbers or null. |
+| `涨跌幅`, `振幅` | Documented as percentages and recorded as `percent`; all other numeric fields retain `not_documented` units rather than receiving invented scales. |
+| request `view=global_index_spot` | Exact no-argument endpoint routing for A/H listing contexts, no selector/date/listing filtering, `index_scoped_request=true`, `listing_scoped_request=false`, current global-index realtime snapshot scope and row-observation-time replay metadata. |
+| Eastmoney JSON `clist/get` request | Fixed global-universe `fs` filter, `f3` provider ordering, page size 200, source field selectors, positional wrapper mapping, dropped fields, numeric division by 100 and Unix-seconds-to-Asia/Shanghai timestamp conversion remain explicit replay metadata. |
+
+The normalizer emits `AKSHARE_GLOBAL_INDEX_SPOT_RAW_ONLY` and creates no
+canonical current-price, liquidity, valuation or accounting fact: the
+market-wide global-index snapshot has no listing/entity accounting scope even
+though it carries provider observation times. The slice remains outside the
+calculation, gate, pipeline, CLI and input-loader contracts.
+
 ## Phase 2 enforcement rule
 
 For every field not marked `STRUCTURED_AUTO` or `DERIVED_DETERMINISTIC`, a
