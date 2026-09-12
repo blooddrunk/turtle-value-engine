@@ -4350,6 +4350,32 @@ fields stay in the raw payload. The no-view `stock_zh_a_hist`/`stock_zh_a_daily`
 compatibility fallback is unchanged, and no calculation, gate, pipeline, CLI
 or input-loader contract changes.
 
+## Phase 3.76 Eastmoney H-share historical raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hist_em.py)
+document `stock_hk_hist` as an H-share historical endpoint. The adapter uses
+explicit `view=eastmoney_hk_hist`, accepts only H-share listings, sends the
+unprefixed five-digit symbol with Eastmoney `secid=116.<symbol>`, and preserves
+the exact eleven-field response order.
+
+| Raw upstream item | Phase 3.76 treatment |
+| --- | --- |
+| `日期` | Required exact first field; valid, unique and strictly ascending inside the inclusive requested date range. It is the raw observation identity only. |
+| `开盘`, `收盘`, `最高`, `最低` | Required finite numeric/null fields with documented unit `HKD_per_share`; retained in raw evidence and not mapped to canonical daily-history facts. |
+| `成交量` | Required finite numeric/null field with documented unit `shares`; retained in raw evidence only. |
+| `成交额` | Required finite numeric/null field with documented unit `HKD`; retained in raw evidence only. |
+| `振幅`, `涨跌幅`, `换手率` | Required finite numeric/null fields with documented unit `percent`; retained in raw evidence only. |
+| `涨跌额` | Required finite numeric/null field with documented unit `HKD_per_share`; retained in raw evidence only. |
+| request `view`, `period`, `start_date`, `end_date`, `adjust` | Only the explicit view, `daily`/`weekly`/`monthly`, `YYYYMMDD` or `YYYY-MM-DD` inclusive dates, and `''`/`qfq`/`hfq` adjustments are accepted. Defaults are `daily`, `19700101`, `22220101` and `''`. |
+| Eastmoney K-line JSON response | The wrapper fetches one full-history response with fixed `end=20500000`/`lmt=1000000`, then applies an inclusive date-index slice. Replay metadata records the fixed/dynamic parameters, period/adjustment codes, decoder, transformations, exact field order and units. |
+
+The normalizer emits `AKSHARE_EASTMONEY_HK_HIST_RAW_ONLY` and creates no
+canonical daily-history, return, valuation or accounting fact. Provider-owned
+prices, adjustment/calendar semantics and HKD/share units are not reconciled
+to the canonical contract; the existing no-view H-share history fallback is
+unchanged.
+
 ## Phase 2 enforcement rule
 
 For every field not marked `STRUCTURED_AUTO` or `DERIVED_DETERMINISTIC`, a

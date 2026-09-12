@@ -4483,6 +4483,37 @@ and response validation, nullable/empty output, canonical mapping, replay
 metadata/payload tampering and offline cache replay. No calculation, gate,
 pipeline, CLI or input-loader contract changes.
 
+### Phase 3.76 — Eastmoney H-share historical acquisition contract (COMPLETE)
+
+The mapping review now covers the next documented AKShare stock endpoint
+[`stock_hk_hist`](https://akshare.akfamily.xyz/data/stock/stock.html) under
+`MARKET_HISTORY`. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hist_em.py)
+requests an unprefixed five-digit H-share symbol from Eastmoney's K-line JSON
+endpoint and supports `period` values `daily`, `weekly` and `monthly`, inclusive
+`start_date`/`end_date` bounds, and `adjust` values `''`, `qfq` and `hfq`. The
+adapter adds explicit `view=eastmoney_hk_hist` routing, restricts it to H-share
+listings, sends `secid=116.<symbol>`, and preserves the exact eleven-field
+`日期`, OHLCV, amount, amplitude, change-percent, change-amount and turnover
+order.
+
+Provider validation is strict: request parameters are limited to the
+documented view, period, dates and adjustment; every response row must have
+the exact field set/order, a valid unique strictly ascending date within the
+inclusive range, and finite numeric values or null. Replay metadata records
+the full-history upstream response, fixed `end=20500000`/`lmt=1000000`, wrapper
+inclusive date slicing, dynamic period/adjustment/secid values, field types,
+documented HKD/share units and row identity order. The existing no-view
+H-share history compatibility fallback remains unchanged.
+
+The normalizer emits `AKSHARE_EASTMONEY_HK_HIST_RAW_ONLY` and creates no
+canonical daily-history, return, valuation or accounting fact because
+provider-owned prices, adjustment/trading-calendar semantics and HKD/share
+units are not reconciled to the canonical contract. Focused tests cover
+H-share routing, defaults, strict request and response validation,
+nullable/empty output, raw-only normalization, replay metadata/payload
+tampering and offline cache replay. No calculation, gate, pipeline, CLI or
+input-loader contract changes.
+
 ### Future structured-provider deliverables
 
 ```text

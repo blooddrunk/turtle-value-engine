@@ -2412,6 +2412,25 @@ response validation, nullable/empty output, canonical mapping, replay
 metadata/payload tampering and offline cache replay. No calculation, gate,
 pipeline, CLI or input-loader contract changes.
 
+Phase 3.76 adds the next documented Eastmoney H-share historical endpoint
+[`stock_hk_hist`](https://akshare.akfamily.xyz/data/stock/stock.html), based on
+the [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hist_em.py),
+under `MARKET_HISTORY` with explicit `view=eastmoney_hk_hist`. It passes an
+unprefixed five-digit H-share symbol, daily/weekly/monthly period, inclusive
+dates and `''`/`qfq`/`hfq` adjustment to Eastmoney `secid=116.<symbol>`, then
+preserves the exact eleven-field schema/order. The wrapper fetches full
+history and applies its inclusive date slice; metadata records this behavior,
+fixed `end=20500000`/`lmt=1000000`, fields, documented HKD/share units and
+transformations.
+
+The response is raw-only and emits
+`AKSHARE_EASTMONEY_HK_HIST_RAW_ONLY`; provider-owned prices, adjustment,
+trading-calendar semantics and HKD/share units are not reconciled to the
+canonical daily-history contract. Focused tests cover H-share routing,
+defaults, strict request/response validation, nullable and empty output,
+raw-only normalization, replay metadata/payload tampering and offline cache
+replay. No calculation, gate, pipeline, CLI or input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.
