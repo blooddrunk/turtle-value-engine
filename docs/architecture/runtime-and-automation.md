@@ -241,8 +241,10 @@ H shares -> HKEXnews / issuer reports and announcements
 The result is bounded by listing, source, publication-date filters, a result
 limit and optional point-in-time cutoff. It creates deterministic filing IDs
 and replayable raw provenance but does not download or parse document bodies.
-Document retrieval, extraction and Evidence generation remain subsequent
-deliverables.
+The Phase 3.85 document boundary now permits an injected, source-scoped
+download into a content-hashed local cache: bytes and a JSON manifest can be
+replayed offline without parsing the report. Extraction and Evidence
+generation remain subsequent deliverables.
 
 ### v0.4 resilient multi-source mode
 

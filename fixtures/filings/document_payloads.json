@@ -1,0 +1,18 @@
+{
+  "a_cninfo": {
+    "content_base64": "JVBERi0xLjQKc3ludGhldGljIGZpbGluZwolJUVPRgo=",
+    "media_type": "application/pdf",
+    "response_metadata": {
+      "http_status": 200,
+      "etag": "synthetic-a"
+    }
+  },
+  "h_hkexnews": {
+    "content_base64": "PGh0bWw+c3ludGhldGljIEhLIGZpbGluZzwvaHRtbD4K",
+    "media_type": "text/html; charset=utf-8",
+    "response_metadata": {
+      "http_status": 200,
+      "etag": "synthetic-h"
+    }
+  }
+}

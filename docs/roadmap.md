@@ -4748,6 +4748,35 @@ tampered replay metadata/payload and offline cache replay. No document
 download, extraction, evidence store, adjustment workflow, LLM or CLI change
 is included. The remaining Phase 3 filing deliverables stay explicitly open.
 
+### Phase 3.85 — Official filing document download and cache (COMPLETE)
+
+The document-byte deliverable consumes one validated `FilingRecord` from Phase
+3.84 and stops before parsing. `FilingDocumentDownloader` selects an injected
+`FilingDocumentSourceClient` by source, revalidates the A/H official URL
+boundary (including an optional redirect/final URL), enforces non-empty bytes
+and a 50 MiB limit, computes SHA-256 and byte size, and records media type,
+UTC retrieval time and transport metadata from an injected clock/client. The
+complete filing provenance, including `filing_id`, source-document ID and URL,
+remains attached to the returned `FilingDocument`.
+
+`FilesystemFilingDocumentCache` writes a JSON manifest and a separate
+content-addressed binary blob under a filing/source-scoped path. The manifest
+is defined by `schemas/filing-document.schema.json`; replay checks filing
+identity, source/final URL scope, media type, size, blob naming and the
+recomputed SHA-256. The blob is fsynced and atomically replaced before the
+manifest is atomically published, so a manifest replacement failure leaves a
+previous valid snapshot usable; no implicit cleanup deletes an orphaned new
+blob. `fetch_filing_document_with_cache` supports explicit offline replay and
+optional stale fallback with `LIVE`, `CACHE_REPLAY` and
+`STALE_CACHE_REPLAY` modes.
+
+Fixtures and focused adversarial tests cover A/H provenance, mutated official
+URLs, out-of-scope redirects, invalid media/empty/oversize responses, hash and
+size mismatch, manifest/blob corruption, offline replay, explicit provider
+failure fallback, schema validation and atomic replacement recovery. This
+slice does not parse documents, extract reports, create Source/Evidence/Fact
+objects, propose adjustments, add LLM behavior or wire a broad CLI.
+
 ### Future structured-provider deliverables
 
 ```text
@@ -4759,6 +4788,7 @@ src/turtle_value_engine/providers/
   normalization.py
   akshare.py       # Phase 2.2 market + Phase 2.3–3.83 structured slices
   filings.py       # Phase 3.84 metadata-only official filing discovery
+  filing_documents.py  # Phase 3.85 byte retrieval and content cache
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```

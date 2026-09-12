@@ -1,6 +1,6 @@
 # Structured Provider Field Matrix
 
-> Status: Phase 3.84 filing-discovery metadata guardrail plus Phase 2 normalization guardrail
+> Status: Phase 3.85 filing download/cache guardrail plus Phase 2 normalization guardrail
 
 This matrix classifies normalized fields used by the current strict-v1 input
 and gate pipeline. It is an allowlist for what a structured-data adapter may
@@ -4572,8 +4572,35 @@ duplicate IDs or document URLs are invalid. `parse_filing_discovery_record`
 revalidates the schema, source boundary, request scope, deterministic IDs and
 metadata after cache replay. The shared filesystem cache is keyed by provider,
 version, category, listing and query parameters; offline mode never invokes an
-injected source client. Download/cache, extraction, evidence storage and
-adjustment proposals remain later deliverables.
+injected source client. Document retrieval is the separate Phase 3.85 byte
+contract below; extraction, evidence storage and adjustment proposals remain
+later deliverables.
+
+## Phase 3.85 official filing document download/cache
+
+This slice consumes one `FilingRecord` from Phase 3.84 and intentionally stops
+at verified bytes. `FilingDocumentDownloader` selects an injected client by
+`FilingSource`, revalidates the A/H listing/source/URL scope, and rejects an
+out-of-scope final URL returned by a redirect-aware injector. No network
+transport is hidden in the provider package and no report contents are parsed.
+
+| Document boundary | Treatment and replay invariant |
+| --- | --- |
+| `filing` | The complete `FilingRecord` is copied into the document manifest. `filing_id`, listing, market, source, source-document ID, title, document type, publication date and URL remain bound together; a manifest for a different record is corruption. |
+| `content` | Non-empty opaque bytes only, bounded by 50 MiB. The cache stores them as a separate content-addressed `.bin` blob; no PDF, HTML or text parser is invoked. |
+| `content_sha256` | Lowercase SHA-256 of the exact stored bytes. Reads recompute and compare it; a mismatch is `CacheCorruptionError`. |
+| `content_size` | Exact byte length of `content`, bounded by the same maximum and checked before replay. |
+| `media_type` | Required normalized HTTP type/subtype such as `application/pdf`; parameters are not used as a parser hint. It is persisted in both the document and manifest. |
+| `final_url` | Defaults to the FilingRecord URL. If an injector reports a redirect target, it is canonicalized and must satisfy the same official-host or issuer-HTTPS boundary. |
+| `retrieved_at`, `retrieval_metadata` | UTC retrieval time comes from an injected clock. Fixed provenance/hash metadata is derived and transport response metadata is preserved as JSON under the retrieval boundary. |
+| manifest/blob paths | `<root>/filings/<market>/<source>/<filing-id>.json` references `<filing-id>.<sha256>.bin`; the manifest is published only after a fsynced atomic blob write and the previous manifest remains recoverable on replacement failure. |
+| cache replay | `fetch_filing_document_with_cache(..., offline=True)` never calls the downloader. Missing entries are explicit `CacheMissError`; malformed manifests, scope changes, missing blobs, size changes and hash changes are explicit `CacheCorruptionError`. |
+
+The machine-readable manifest contract is
+`schemas/filing-document.schema.json`. The downloader/cache creates no
+`Source`, `Evidence` or normalized `Fact` and does not classify document type
+from bytes. Extraction, evidence storage, adjustment proposals, LLM analysis
+and CLI wiring remain outside this deliverable.
 
 ## Phase 2 enforcement rule
 

@@ -2585,8 +2585,19 @@ results deterministically. It uses the existing raw-record cache, and
 It does not fetch document bodies, parse reports, create Evidence/Fact objects,
 or infer report classifications.
 
-Document retrieval, report extraction, evidence storage, adjustment proposals
-and LLM-assisted evidence analysis remain unimplemented. The deterministic
+Phase 3.85 adds the bounded document-byte handoff from discovery. An injected
+`FilingDocumentSourceClient` downloads one validated `FilingRecord` within its
+A/H official URL boundary, including any reported final URL, and returns
+opaque non-empty bytes with media type, SHA-256, size, UTC retrieval time and
+transport metadata. `FilesystemFilingDocumentCache` stores a JSON manifest and
+a separate content-addressed binary blob with fsynced atomic writes; replay
+revalidates filing provenance, URL scope, size and hash, and explicit offline
+mode never calls the downloader. The contract is defined by
+`schemas/filing-document.schema.json` and does not parse reports or create
+Source/Evidence/Fact objects.
+
+Report extraction, evidence storage, adjustment proposals and LLM-assisted
+evidence analysis remain unimplemented. The deterministic
 `tve analyze` command is still offline-only and does not call a provider or an
 LLM.
 

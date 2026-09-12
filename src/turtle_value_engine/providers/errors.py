@@ -50,3 +50,15 @@ class CacheCorruptionError(CacheError):
 
 class CacheWriteError(CacheError):
     """Raised when an atomic cache write cannot be committed."""
+
+
+class FilingDocumentError(ProviderError):
+    """Base error for an isolated official filing document retrieval."""
+
+
+class FilingDocumentRequestError(FilingDocumentError):
+    """Raised when a document request or injected transport fails."""
+
+
+class FilingDocumentResponseError(FilingDocumentError):
+    """Raised when a document response violates the byte/provenance contract."""

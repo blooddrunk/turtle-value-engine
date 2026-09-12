@@ -180,6 +180,16 @@ def _validate_document_url(source: FilingSource, value: AnyHttpUrl | str) -> str
     return canonical
 
 
+def validate_filing_document_url(source: FilingSource | str, value: AnyHttpUrl | str) -> str:
+    """Return a canonical document URL after applying the filing source boundary."""
+
+    try:
+        normalized_source = FilingSource(source)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"unsupported filing source: {source!r}") from exc
+    return _validate_document_url(normalized_source, value)
+
+
 def filing_id_for(
     *,
     listing_id: str,
@@ -737,4 +747,5 @@ __all__ = [
     "fetch_filing_discovery_with_cache",
     "filing_id_for",
     "parse_filing_discovery_record",
+    "validate_filing_document_url",
 ]
