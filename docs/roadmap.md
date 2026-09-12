@@ -4301,6 +4301,36 @@ symbol/code/date identity, finite/null values, empty output, raw-only
 normalization, replay metadata/payload tampering and offline cache replay. No
 calculation, gate, pipeline, CLI or input-loader contract changes.
 
+### Phase 3.70 — Sina global-index daily-history raw acquisition contract (COMPLETE)
+
+The mapping review now covers the next documented Sina
+[`index_global_hist_sina`](https://akshare.akfamily.xyz/data/index/index.html)
+global-index historical endpoint under `MARKET_HISTORY`. The
+[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/index/index_global_sina.py)
+maps one documented global-index name to its Sina code and requests the JSON
+`gi.finance.sina.com.cn/hq/daily` endpoint with `symbol` and fixed `num=10000`
+parameters. The adapter exposes explicit `view=global_index_hist_sina` and
+`index_symbol`, accepts A- or H-share listing context only as provenance, and
+preserves the exact six-field output order: `date`, `open`, `high`, `low`,
+`close`, `volume`.
+
+Provider validation is strict: the selector must be one of the documented
+Sina global-index names; dates must be valid, strictly ascending and unique;
+numeric values must be finite numbers or null; and responses over the
+documented recent 1000-row limit are rejected. Replay metadata records the
+upstream URL, wrapper symbol and mapped index code, fixed `num=10000`, source
+field rename from `d/o/h/l/c/v`, date/numeric conversions, recent-window
+boundary and row identity order. The normalizer emits
+`AKSHARE_GLOBAL_INDEX_SINA_RAW_ONLY`, retains the response as evidence and
+creates no canonical daily-history, return, valuation or accounting fact
+because a global-index series has no listing/entity accounting scope.
+
+Focused tests cover A/H routing, documented symbol mapping, strict request and
+response validation, exact schema/order, finite/null values, the documented
+row limit, empty output, raw-only normalization, replay metadata/payload
+tampering and offline cache replay. No calculation, gate, pipeline, CLI or
+input-loader contract changes.
+
 ### Future structured-provider deliverables
 
 ```text

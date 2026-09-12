@@ -628,6 +628,13 @@ class FakeAKShare:
             symbol=symbol,
         )
 
+    def index_global_hist_sina(self, *, symbol: str):
+        return self._return(
+            "index_global_hist_sina",
+            _fixture("global_index_hist_sina.json"),
+            symbol=symbol,
+        )
+
     def stock_zh_index_spot_sina(self):
         return self._return(
             "stock_zh_index_spot_sina",
@@ -1510,8 +1517,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "186"
-    assert AKSHARE_MAPPING_VERSION == "187"
+    assert provider.identity.provider_version == "187"
+    assert AKSHARE_MAPPING_VERSION == "188"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -55837,3 +55844,476 @@ def test_global_index_hist_cache_replay_does_not_call_upstream(tmp_path: Path):
     assert replay.mode is RetrievalMode.CACHE_REPLAY
     assert replay.record == live.record
     assert fake.calls == [("index_global_hist_em", {"symbol": "美元指数"})]
+
+
+@pytest.mark.parametrize(
+    ("entity_id", "market", "listing_code"),
+    [("SH600000", "A", "600000"), ("HK00700", "H", "00700")],
+)
+def test_global_index_hist_sina_fetch_preserves_recent_history_and_scope(
+    entity_id: str,
+    market: str,
+    listing_code: str,
+):
+    fake = FakeAKShare()
+    record = _provider(fake).fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            entity_id,
+            {
+                "view": "global_index_hist_sina",
+                "index_symbol": "瑞士股票指数",
+            },
+        )
+    )
+
+    metadata = record.response_metadata
+    assert record.raw_payload == _fixture("global_index_hist_sina.json")
+    assert fake.calls == [
+        ("index_global_hist_sina", {"symbol": "瑞士股票指数"})
+    ]
+    assert record.source_uri == (
+        "https://finance.sina.com.cn/stock/globalindex/quotes/UKX"
+    )
+    assert metadata["endpoint"] == "index_global_hist_sina"
+    assert metadata["market"] == market
+    assert metadata["listing_code"] == listing_code
+    assert metadata["market_history_view"] == "global_index_hist_sina"
+    assert metadata["requested_index_symbol"] == "瑞士股票指数"
+    assert metadata["upstream_symbol"] == "瑞士股票指数"
+    assert metadata["upstream_index_code"] == "SWI20"
+    assert metadata["upstream_symbol_code_resolution"] == (
+        "local_index_global_sina_symbol_map"
+    )
+    assert metadata["market_scope"] == "requested_global_index"
+    assert metadata["index_scoped_request"] is True
+    assert metadata["listing_scoped_request"] is False
+    assert metadata["row_filtering"] == "upstream"
+    assert metadata["snapshot_scope"] == (
+        "recent_1000_global_index_daily_history"
+    )
+    assert metadata["date_binding"] == "row_only"
+    assert metadata["range_filtering"] == "provider_recent_row_limit"
+    assert metadata["adjustment_kind"] == "unadjusted"
+    assert metadata["source_field_order"] == [
+        "date",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume",
+    ]
+    assert metadata["documented_units"] == {}
+    assert metadata["undocumented_numeric_units"] == {
+        "open": "not_documented",
+        "high": "not_documented",
+        "low": "not_documented",
+        "close": "not_documented",
+        "volume": "not_documented",
+    }
+    assert metadata["upstream_url"] == (
+        "https://gi.finance.sina.com.cn/hq/daily"
+    )
+    assert metadata["upstream_urls"] == [metadata["upstream_url"]]
+    assert metadata["upstream_auxiliary_urls"] == []
+    assert metadata["upstream_auxiliary_roles"] == []
+    assert metadata["upstream_protocol"] == "JSON"
+    assert metadata["upstream_parameters"] == ["symbol", "num"]
+    assert metadata["upstream_dynamic_parameters"] == {"symbol": "SWI20"}
+    assert metadata["upstream_fixed_parameters"] == {"num": "10000"}
+    assert metadata["upstream_authentication"] == "none"
+    assert metadata["wrapper_source_page_uri"] == record.source_uri
+    assert metadata["wrapper_date_filtering"] == "none"
+    assert metadata["wrapper_decoders"] == ["response.json"]
+    assert metadata["wrapper_transformations"] == [
+        "index_global_sina_symbol_map",
+        "response_result_data_extract",
+        "rename_source_fields",
+        "date_conversion",
+        "numeric_conversion",
+        "provider_field_selection",
+    ]
+    assert metadata["wrapper_source_column_count"] == 6
+    assert metadata["wrapper_column_mapping"] == {
+        "date": "d",
+        "open": "o",
+        "high": "h",
+        "low": "l",
+        "close": "c",
+        "volume": "v",
+    }
+    assert metadata["wrapper_dropped_fields"] == []
+    assert metadata["upstream_transformations"] == {
+        "symbol": "local_index_global_sina_symbol_map"
+    }
+    assert metadata["upstream_page_size"] == 10000
+    assert metadata["provider_row_limit"] == 1000
+    assert metadata["pagination"] == "single_recent_history_response"
+    assert metadata["row_identity_order"] == [
+        "2021-03-22",
+        "2021-03-23",
+        "2021-03-24",
+    ]
+    assert metadata["selected_row_identity_order"] == metadata[
+        "row_identity_order"
+    ]
+    assert metadata["upstream_row_count"] == 3
+    assert metadata["entity_row_count"] == 3
+    assert metadata["entity_rows_selected"] is True
+    assert metadata["observation_start_date"] == "2021-03-22"
+    assert metadata["observation_end_date"] == "2021-03-24"
+
+
+@pytest.mark.parametrize(
+    ("parameters", "match"),
+    [
+        (
+            {"view": "global_index_hist_sina"},
+            "index_symbol.*documented",
+        ),
+        (
+            {
+                "view": "global_index_hist_sina",
+                "index_symbol": "不存在",
+            },
+            "one of the documented",
+        ),
+        (
+            {
+                "view": "global_index_hist_sina",
+                "index_symbol": " 瑞士股票指数",
+            },
+            "one of the documented",
+        ),
+        (
+            {"view": "global_index_hist_sina", "index_symbol": 100},
+            "one of the documented",
+        ),
+        (
+            {
+                "view": "global_index_hist_sina",
+                "index_symbol": "瑞士股票指数",
+                "period": "daily",
+            },
+            "unsupported AKShare Sina global-index daily-history parameter",
+        ),
+        (
+            {"index_symbol": "瑞士股票指数"},
+            "requires.*view",
+        ),
+    ],
+)
+def test_global_index_hist_sina_request_rejects_ambiguous_inputs(
+    parameters: dict,
+    match: str,
+):
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError, match=match):
+        _provider(fake).fetch(
+            _request(DataCategory.MARKET_HISTORY, "HK00700", parameters)
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("missing", "missing field"),
+        ("unexpected", "unsupported field"),
+        ("field_order", "documented field order"),
+        ("invalid_date", "invalid date"),
+        ("descending", "strictly ascending"),
+        ("duplicate_date", "duplicate date"),
+        ("invalid_numeric", "must be numeric or null"),
+        ("bool_numeric", "must be numeric or null"),
+        ("infinite_numeric", "contains infinity"),
+        ("too_many", "1000-row limit"),
+    ],
+)
+def test_global_index_hist_sina_response_validates_exact_schema_and_limits(
+    mutation: str,
+    match: str,
+):
+    class InvalidRows(FakeAKShare):
+        def index_global_hist_sina(self, *, symbol: str):
+            rows = [dict(row) for row in _fixture("global_index_hist_sina.json")]
+            if mutation == "missing":
+                rows[0].pop("volume")
+            elif mutation == "unexpected":
+                rows[0]["unexpected"] = "not documented"
+            elif mutation == "field_order":
+                first = rows[0]
+                rows[0] = {
+                    "open": first["open"],
+                    **{key: value for key, value in first.items() if key != "open"},
+                }
+            elif mutation == "invalid_date":
+                rows[0]["date"] = "not-a-date"
+            elif mutation == "descending":
+                rows.reverse()
+            elif mutation == "duplicate_date":
+                rows[1]["date"] = rows[0]["date"]
+            elif mutation == "invalid_numeric":
+                rows[0]["close"] = "11048.58"
+            elif mutation == "bool_numeric":
+                rows[0]["high"] = True
+            elif mutation == "infinite_numeric":
+                rows[0]["volume"] = float("inf")
+            else:
+                rows.extend(dict(rows[-1]) for _ in range(998))
+            return self._return("index_global_hist_sina", rows, symbol=symbol)
+
+    with pytest.raises(ProviderResponseError, match=match):
+        _provider(InvalidRows()).fetch(
+            _request(
+                DataCategory.MARKET_HISTORY,
+                "SH600000",
+                {
+                    "view": "global_index_hist_sina",
+                    "index_symbol": "瑞士股票指数",
+                },
+            )
+        )
+
+
+def test_global_index_hist_sina_accepts_nullable_numeric_values_and_empty_history():
+    class NullableRows(FakeAKShare):
+        def index_global_hist_sina(self, *, symbol: str):
+            rows = [dict(row) for row in _fixture("global_index_hist_sina.json")]
+            rows[1]["volume"] = None
+            return self._return("index_global_hist_sina", rows, symbol=symbol)
+
+    record = _provider(NullableRows()).fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "HK00700",
+            {
+                "view": "global_index_hist_sina",
+                "index_symbol": "瑞士股票指数",
+            },
+        )
+    )
+    assert record.raw_payload[1]["volume"] is None
+
+    class EmptyResponse(FakeAKShare):
+        def index_global_hist_sina(self, *, symbol: str):
+            return self._return("index_global_hist_sina", [], symbol=symbol)
+
+    empty = _provider(EmptyResponse()).fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "SH600000",
+            {
+                "view": "global_index_hist_sina",
+                "index_symbol": "瑞士股票指数",
+            },
+        )
+    )
+    assert empty.raw_payload == []
+    assert empty.response_metadata["row_identity_order"] == []
+    assert empty.response_metadata["selected_row_identity_order"] == []
+    assert empty.response_metadata["upstream_row_count"] == 0
+    assert empty.response_metadata["entity_row_count"] == 0
+    assert empty.response_metadata["observation_start_date"] is None
+    assert empty.response_metadata["observation_end_date"] is None
+
+
+@pytest.mark.parametrize("entity_id", ["SH600000", "HK00700"])
+def test_global_index_hist_sina_is_raw_evidence_without_canonical_history_facts(
+    entity_id: str,
+):
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            entity_id,
+            {
+                "view": "global_index_hist_sina",
+                "index_symbol": "瑞士股票指数",
+            },
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="global-index-hist-sina-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company(entity_id),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_GLOBAL_INDEX_SINA_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == ["market_history"]
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "Sina global-index daily-history" in normalized.data_quality.notes
+    assert "canonical daily-history" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "source_uri",
+        "endpoint",
+        "market",
+        "listing_code",
+        "view",
+        "requested_symbol",
+        "index_code",
+        "symbol_resolution",
+        "market_scope",
+        "listing_scope",
+        "row_filtering",
+        "snapshot_scope",
+        "range_filtering",
+        "date_binding",
+        "row_identity",
+        "selected_identity",
+        "field_order",
+        "documented_units",
+        "upstream_url",
+        "upstream_parameters",
+        "upstream_dynamic_parameters",
+        "upstream_fixed_parameters",
+        "wrapper_mapping",
+        "wrapper_transformations",
+        "wrapper_dropped_fields",
+        "page_size",
+        "provider_row_limit",
+        "pagination",
+        "entity_selected",
+        "upstream_count",
+        "entity_count",
+        "payload",
+    ],
+)
+def test_global_index_hist_sina_normalizer_rejects_scope_or_payload_tampering(
+    mutation: str,
+):
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "SH600000",
+            {
+                "view": "global_index_hist_sina",
+                "index_symbol": "瑞士股票指数",
+            },
+        )
+    )
+    payload = [dict(row) for row in record.raw_payload]
+    metadata = json.loads(json.dumps(record.response_metadata, ensure_ascii=False))
+    source_uri = record.source_uri
+    if mutation == "source_uri":
+        source_uri = "https://example.invalid/global-index-history"
+    elif mutation == "endpoint":
+        metadata["endpoint"] = "index_us_stock_sina"
+    elif mutation == "market":
+        metadata["market"] = "H"
+    elif mutation == "listing_code":
+        metadata["listing_code"] = "00700"
+    elif mutation == "view":
+        metadata["market_history_view"] = "global_index_hist"
+    elif mutation == "requested_symbol":
+        metadata["requested_index_symbol"] = "日经225指数"
+    elif mutation == "index_code":
+        metadata["upstream_index_code"] = "NKY"
+    elif mutation == "symbol_resolution":
+        metadata["upstream_symbol_code_resolution"] = "tampered"
+    elif mutation == "market_scope":
+        metadata["market_scope"] = "requested_listing"
+    elif mutation == "listing_scope":
+        metadata["listing_scoped_request"] = True
+    elif mutation == "row_filtering":
+        metadata["row_filtering"] = "provider_and_listing"
+    elif mutation == "snapshot_scope":
+        metadata["snapshot_scope"] = "full_global_index_daily_history"
+    elif mutation == "range_filtering":
+        metadata["range_filtering"] = "requested_date_range"
+    elif mutation == "date_binding":
+        metadata["date_binding"] = "row_and_request"
+    elif mutation == "row_identity":
+        metadata["row_identity_order"] = metadata["row_identity_order"][:-1]
+    elif mutation == "selected_identity":
+        metadata["selected_row_identity_order"] = []
+    elif mutation == "field_order":
+        metadata["source_field_order"] = list(
+            reversed(metadata["source_field_order"])
+        )
+    elif mutation == "documented_units":
+        metadata["documented_units"] = {"close": "CNY"}
+    elif mutation == "upstream_url":
+        metadata["upstream_url"] = "https://example.invalid/global-index"
+    elif mutation == "upstream_parameters":
+        metadata["upstream_parameters"] = []
+    elif mutation == "upstream_dynamic_parameters":
+        metadata["upstream_dynamic_parameters"]["symbol"] = "UKX"
+    elif mutation == "upstream_fixed_parameters":
+        metadata["upstream_fixed_parameters"]["num"] = "1000"
+    elif mutation == "wrapper_mapping":
+        metadata["wrapper_column_mapping"] = {}
+    elif mutation == "wrapper_transformations":
+        metadata["wrapper_transformations"] = ["tampered"]
+    elif mutation == "wrapper_dropped_fields":
+        metadata["wrapper_dropped_fields"] = ["volume"]
+    elif mutation == "page_size":
+        metadata["upstream_page_size"] = 1000
+    elif mutation == "provider_row_limit":
+        metadata["provider_row_limit"] = 999
+    elif mutation == "pagination":
+        metadata["pagination"] = "paginated"
+    elif mutation == "entity_selected":
+        metadata["entity_rows_selected"] = False
+    elif mutation == "upstream_count":
+        metadata["upstream_row_count"] = 2
+    elif mutation == "entity_count":
+        metadata["entity_row_count"] = 2
+    else:
+        payload[0]["close"] = "tampered"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=source_uri,
+        response_metadata=metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-global-index-sina-history-scope",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company("SH600000"),
+        )
+
+
+def test_global_index_hist_sina_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.MARKET_HISTORY,
+        "HK00700",
+        {
+            "view": "global_index_hist_sina",
+            "index_symbol": "瑞士股票指数",
+        },
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [
+        ("index_global_hist_sina", {"symbol": "瑞士股票指数"})
+    ]

@@ -4212,6 +4212,28 @@ canonical daily-history, return, valuation or accounting fact: the global
 index series has no listing/entity accounting scope. The slice remains outside
 the calculation, gate, pipeline, CLI and input-loader contracts.
 
+## Phase 3.70 Sina global-index daily history raw slice
+
+The current [AKShare index-data documentation](https://akshare.akfamily.xyz/data/index/index.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/index/index_global_sina.py)
+document `index_global_hist_sina` as a name-selected recent global-index
+history endpoint. The adapter selects it only under `MARKET_HISTORY` with
+explicit `view=global_index_hist_sina` and `index_symbol`, accepts A- or H-share
+listing context only as provenance, and retains the complete response without
+listing filtering.
+
+| Raw upstream item | Phase 3.70 treatment |
+| --- | --- |
+| `date`, `open`, `high`, `low`, `close`, `volume` | Required exact six-field order. `date` must parse as a date and be strictly ascending without duplicates; numeric values must be finite numbers or null. |
+| documented global-index selector | `index_symbol` must exactly match one of the documented names in the local Sina symbol map; the mapped code is recorded separately from the wrapper argument. |
+| recent response size | The documented recent 1000-row limit is enforced; no adapter date-range or listing filtering is applied. |
+| Sina JSON `gi.finance.sina.com.cn/hq/daily` response | `symbol` is resolved through the local symbol map, `num=10000` remains an explicit fixed upstream parameter, and `d/o/h/l/c/v` are renamed to the six documented output fields with date/numeric conversion. |
+
+The normalizer emits `AKSHARE_GLOBAL_INDEX_SINA_RAW_ONLY` and creates no
+canonical daily-history, return, valuation or accounting fact: the recent
+global-index series has no listing/entity accounting scope. The slice remains
+outside the calculation, gate, pipeline, CLI and input-loader contracts.
+
 ## Phase 2 enforcement rule
 
 For every field not marked `STRUCTURED_AUTO` or `DERIVED_DETERMINISTIC`, a

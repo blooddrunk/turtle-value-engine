@@ -2273,6 +2273,27 @@ identity, finite/null values, empty output, raw-only normalization, replay
 metadata/payload tampering and offline cache replay. No calculation, gate,
 pipeline, CLI or input-loader contract changes.
 
+Phase 3.70 adds the next documented Sina global-index history endpoint
+[`index_global_hist_sina`](https://akshare.akfamily.xyz/data/index/index.html)
+under `MARKET_HISTORY`. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/index/index_global_sina.py)
+maps one of the documented global-index names to a Sina code and requests the
+JSON `gi.finance.sina.com.cn/hq/daily` response with `symbol` and `num=10000`.
+The adapter exposes explicit `view=global_index_hist_sina` plus
+`index_symbol`, accepts A- or H-share listing context only as provenance, and
+preserves the exact six-field `date`, `open`, `high`, `low`, `close`, `volume`
+order. Dates must be strictly ascending and unique; numeric values must be
+finite numbers or null; and the documented recent 1000-row limit is enforced.
+
+The Sina global-index daily-history response is retained as raw evidence only:
+its recent global-index OHLCV series has no listing/entity accounting scope and
+does not establish canonical daily-history, return, valuation or accounting
+facts. The normalizer emits `AKSHARE_GLOBAL_INDEX_SINA_RAW_ONLY` and creates no
+canonical fact. Tests cover A/H routing, documented symbol mapping, strict
+parameters and exact schema/order/row-limit boundaries, finite/null values,
+empty output, raw-only normalization, replay metadata/payload tampering and
+offline cache replay. No calculation, gate, pipeline, CLI or input-loader
+contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.
