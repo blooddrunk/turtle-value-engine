@@ -587,6 +587,13 @@ class FakeAKShare:
             end_date=end_date,
         )
 
+    def stock_zh_index_spot_em(self, *, symbol: str):
+        return self._return(
+            "stock_zh_index_spot_em",
+            _fixture("index_spot_em.json"),
+            symbol=symbol,
+        )
+
     def index_zh_a_hist(
         self,
         *,
@@ -1451,8 +1458,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "168"
-    assert AKSHARE_MAPPING_VERSION == "169"
+    assert provider.identity.provider_version == "170"
+    assert AKSHARE_MAPPING_VERSION == "171"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -51795,3 +51802,495 @@ def test_market_activity_institution_research_detail_cache_replay_does_not_call_
     assert replay.mode is RetrievalMode.CACHE_REPLAY
     assert replay.record == live.record
     assert fake.calls == [("stock_jgdy_detail_em", {"date": "20240927"})]
+
+
+@pytest.mark.parametrize(
+    "symbol",
+    [
+        "沪深重要指数",
+        "上证系列指数",
+        "深证系列指数",
+        "指数成份",
+        "中证系列指数",
+    ],
+)
+def test_index_spot_fetch_preserves_complete_universe_for_every_documented_selector(
+    symbol: str,
+):
+    fake = FakeAKShare()
+    record = _provider(fake).fetch(
+        _request(
+            DataCategory.MARKET_QUOTE,
+            "SH600000",
+            {"view": "index_spot", "symbol": symbol},
+        )
+    )
+
+    fields = [
+        "序号",
+        "代码",
+        "名称",
+        "最新价",
+        "涨跌幅",
+        "涨跌额",
+        "成交量",
+        "成交额",
+        "振幅",
+        "最高",
+        "最低",
+        "今开",
+        "昨收",
+        "量比",
+    ]
+    fixture = _fixture("index_spot_em.json")
+    assert record.raw_payload == fixture
+    assert fake.calls == [
+        ("stock_zh_index_spot_em", {"symbol": symbol}),
+    ]
+    metadata = record.response_metadata
+    assert record.source_uri == "https://quote.eastmoney.com/center/gridlist.html#index_sz"
+    assert metadata["endpoint"] == "stock_zh_index_spot_em"
+    assert metadata["market"] == "A"
+    assert metadata["listing_code"] == "600000"
+    assert metadata["market_quote_view"] == "index_spot"
+    assert metadata["selector"] == symbol
+    assert metadata["symbol"] == symbol
+    assert metadata["upstream_symbol"] == symbol
+    assert metadata["selector_field"] == "symbol"
+    assert metadata["selector_options"] == [
+        "沪深重要指数",
+        "上证系列指数",
+        "深证系列指数",
+        "指数成份",
+        "中证系列指数",
+    ]
+    assert metadata["market_scope"] == "eastmoney_index_universe"
+    assert metadata["index_scoped_request"] is True
+    assert metadata["listing_scoped_request"] is False
+    assert metadata["row_filtering"] == "none"
+    assert metadata["snapshot_scope"] == "current_index_universe_realtime"
+    assert metadata["date_binding"] == "retrieval_only"
+    assert metadata["rank_field"] == "序号"
+    assert metadata["rank_ordering"] == "strictly_ascending"
+    assert metadata["identity_fields"] == ["代码"]
+    assert metadata["row_identity_order"] == [
+        row["代码"] for row in fixture
+    ]
+    assert metadata["selected_row_identity_order"] == []
+    assert metadata["value_fields"] == fields[3:]
+    assert metadata["integer_fields"] == ["序号"]
+    assert metadata["text_fields"] == ["代码", "名称"]
+    assert metadata["required_text_fields"] == ["代码", "名称"]
+    assert metadata["nullable_fields"] == fields[3:]
+    assert metadata["field_types"] == {
+        "序号": "integer",
+        "代码": "string",
+        "名称": "string",
+        **{field: "number" for field in fields[3:]},
+    }
+    assert metadata["field_count"] == 14
+    assert metadata["source_field_order"] == fields
+    assert metadata["documented_units"] == {
+        "涨跌幅": "percent",
+        "振幅": "percent",
+    }
+    assert metadata["undocumented_numeric_units"] == {
+        field: "not_documented"
+        for field in fields[3:]
+        if field not in {"涨跌幅", "振幅"}
+    }
+    if symbol == "沪深重要指数":
+        assert metadata["upstream_url"] == (
+            "https://33.push2.eastmoney.com/api/qt/clist/get"
+        )
+        assert metadata["upstream_parameters"] == [
+            "pn",
+            "pz",
+            "po",
+            "np",
+            "ut",
+            "fltt",
+            "invt",
+            "dect",
+            "wbp2u",
+            "fid",
+            "fs",
+            "fields",
+        ]
+        assert metadata["upstream_fixed_parameters"] == {
+            "pn": "1",
+            "pz": "100",
+            "po": "1",
+            "np": "1",
+            "ut": "bd1d9ddb04089700cf9c27f6f7426281",
+            "fltt": "2",
+            "invt": "2",
+            "dect": "1",
+            "wbp2u": "|0|0|0|web",
+            "fid": "",
+            "fs": "b:MK0010",
+            "fields": (
+                "f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f12,f13,f14,f15,f16,f17,f18,f20,f21,"
+                "f23,f24,f25,f26,f22,f11,f62,f128,f136,f115,f152"
+            ),
+        }
+        assert metadata["pagination"] == "single_page_response"
+        assert metadata["upstream_sort_column"] is None
+        assert metadata["upstream_sort_direction"] is None
+        assert metadata["wrapper_transformations"] == [
+            "reset_index_to_positive_sequence",
+            "numeric_conversion",
+            "provider_field_selection",
+        ]
+    else:
+        assert metadata["upstream_url"] == (
+            "https://48.push2.eastmoney.com/api/qt/clist/get"
+        )
+        assert metadata["upstream_parameters"] == [
+            "pn",
+            "pz",
+            "po",
+            "np",
+            "ut",
+            "fltt",
+            "invt",
+            "wbp2u",
+            "fid",
+            "fs",
+            "fields",
+        ]
+        assert metadata["upstream_fixed_parameters"]["fs"] == {
+            "上证系列指数": "m:1+t:1",
+            "深证系列指数": "m:0 t:5",
+            "指数成份": "m:1+s:3,m:0+t:5",
+            "中证系列指数": "m:2",
+        }[symbol]
+        assert metadata["upstream_fixed_parameters"]["fields"] == (
+            "f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f12,f13,f14,f15,f16,f17,f18,f20,f21,"
+            "f23,f24,f25,f26,f22,f33,f11,f62,f128,f136,f115,f152"
+        )
+        assert metadata["pagination"] == "provider_driven_all_pages"
+        assert metadata["upstream_sort_column"] == "f3"
+        assert metadata["upstream_sort_direction"] == "descending"
+        assert metadata["wrapper_transformations"] == [
+            "provider_pagination",
+            "sort_by_f3_descending",
+            "reset_index_to_positive_sequence",
+            "numeric_conversion",
+            "provider_field_selection",
+        ]
+    assert metadata["upstream_urls"] == [metadata["upstream_url"]]
+    assert metadata["upstream_auxiliary_urls"] == []
+    assert metadata["upstream_auxiliary_roles"] == []
+    assert metadata["upstream_dynamic_parameters"] == {"symbol": symbol}
+    assert metadata["upstream_authentication"] == "none"
+    assert metadata["wrapper_source_page_uri"] == record.source_uri
+    assert metadata["wrapper_source_column_count"] == 33
+    assert metadata["wrapper_column_mapping"] == {
+        "序号": 0,
+        "代码": 12,
+        "名称": 14,
+        "最新价": 2,
+        "涨跌幅": 3,
+        "涨跌额": 4,
+        "成交量": 5,
+        "成交额": 6,
+        "振幅": 7,
+        "最高": 15,
+        "最低": 16,
+        "今开": 17,
+        "昨收": 18,
+        "量比": 10,
+    }
+    assert metadata["wrapper_dropped_fields"] == []
+    assert metadata["full_universe_response"] is True
+    assert metadata["entity_rows_selected"] is False
+    assert metadata["upstream_row_count"] == len(fixture)
+    assert metadata["entity_row_count"] == 0
+
+
+@pytest.mark.parametrize(
+    ("entity_id", "parameters", "match"),
+    [
+        (
+            "HK00700",
+            {"view": "index_spot", "symbol": "上证系列指数"},
+            "supports A-share listings only",
+        ),
+        (
+            "SH600000",
+            {"view": "index_spot", "symbol": "上证系列指数", "date": "20260909"},
+            "unsupported AKShare index-spot parameter",
+        ),
+        (
+            "SH600000",
+            {"view": "index_spot"},
+            "symbol must be one of",
+        ),
+        (
+            "SH600000",
+            {"view": "index_spot", "symbol": "沪深指数"},
+            "symbol must be one of",
+        ),
+    ],
+)
+def test_index_spot_request_requires_a_listing_documented_selector_and_no_extra_parameters(
+    entity_id: str,
+    parameters: dict,
+    match: str,
+):
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError, match=match):
+        _provider(fake).fetch(
+            _request(DataCategory.MARKET_QUOTE, entity_id, parameters)
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("missing", "missing field"),
+        ("unexpected", "unsupported field"),
+        ("field_order", "documented field order"),
+        ("nonpositive_rank", "positive integer"),
+        ("descending_rank", "strictly ascending"),
+        ("nonstring_code", "代码.*non-empty string"),
+        ("duplicate_code", "duplicate 代码"),
+        ("invalid_name", "名称.*non-empty string"),
+        ("invalid_numeric", "最新价.*numeric or null"),
+        ("bool_numeric", "成交量.*numeric or null"),
+        ("infinite_numeric", "contains infinity"),
+    ],
+)
+def test_index_spot_response_validates_exact_schema_sequence_identity_and_finite_values(
+    mutation: str,
+    match: str,
+):
+    class InvalidRows(FakeAKShare):
+        def stock_zh_index_spot_em(self, *, symbol: str):
+            rows = [dict(row) for row in _fixture("index_spot_em.json")]
+            if mutation == "missing":
+                rows[0].pop("成交额")
+            elif mutation == "unexpected":
+                rows[0]["unexpected"] = "not documented"
+            elif mutation == "field_order":
+                first = rows[0]
+                rows[0] = {
+                    "代码": first["代码"],
+                    **{key: value for key, value in first.items() if key != "代码"},
+                }
+            elif mutation == "nonpositive_rank":
+                rows[0]["序号"] = 0
+            elif mutation == "descending_rank":
+                rows.reverse()
+            elif mutation == "nonstring_code":
+                rows[0]["代码"] = 1
+            elif mutation == "duplicate_code":
+                rows[1]["代码"] = rows[0]["代码"]
+            elif mutation == "invalid_name":
+                rows[0]["名称"] = ""
+            elif mutation == "invalid_numeric":
+                rows[0]["最新价"] = "3243.12"
+            elif mutation == "bool_numeric":
+                rows[0]["成交量"] = True
+            else:
+                rows[0]["成交额"] = float("inf")
+            return self._return(
+                "stock_zh_index_spot_em",
+                rows,
+                symbol=symbol,
+            )
+
+    with pytest.raises(ProviderResponseError, match=match):
+        _provider(InvalidRows()).fetch(
+            _request(
+                DataCategory.MARKET_QUOTE,
+                "SH600000",
+                {"view": "index_spot", "symbol": "上证系列指数"},
+            )
+        )
+
+
+def test_index_spot_empty_response_is_a_valid_full_universe_snapshot():
+    class EmptyResponse(FakeAKShare):
+        def stock_zh_index_spot_em(self, *, symbol: str):
+            return self._return(
+                "stock_zh_index_spot_em",
+                [],
+                symbol=symbol,
+            )
+
+    record = _provider(EmptyResponse()).fetch(
+        _request(
+            DataCategory.MARKET_QUOTE,
+            "SH600000",
+            {"view": "index_spot", "symbol": "沪深重要指数"},
+        )
+    )
+
+    assert record.raw_payload == []
+    assert record.response_metadata["row_identity_order"] == []
+    assert record.response_metadata["upstream_row_count"] == 0
+    assert record.response_metadata["entity_row_count"] == 0
+    assert record.response_metadata["entity_rows_selected"] is False
+
+
+def test_index_spot_is_raw_evidence_without_canonical_price_facts():
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_QUOTE,
+            "SH600000",
+            {"view": "index_spot", "symbol": "上证系列指数"},
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="index-spot-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company("SH600000"),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_INDEX_SPOT_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == ["current_price"]
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "real-time index-universe" in normalized.data_quality.notes
+    assert "market-wide snapshot" in normalized.data_quality.notes
+    assert "canonical current-price input" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "source_uri",
+        "endpoint",
+        "view",
+        "selector",
+        "market_scope",
+        "listing_scope",
+        "row_filtering",
+        "snapshot_scope",
+        "rank_ordering",
+        "field_order",
+        "documented_units",
+        "upstream_url",
+        "upstream_dynamic_parameters",
+        "upstream_fixed_parameters",
+        "pagination",
+        "wrapper_mapping",
+        "full_universe",
+        "entity_selected",
+        "identity_order",
+        "upstream_count",
+        "entity_count",
+        "payload",
+    ],
+)
+def test_index_spot_normalizer_rejects_replayed_scope_or_payload_tampering(
+    mutation: str,
+):
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_QUOTE,
+            "SH600000",
+            {"view": "index_spot", "symbol": "上证系列指数"},
+        )
+    )
+    payload = [dict(row) for row in record.raw_payload]
+    metadata = json.loads(json.dumps(record.response_metadata, ensure_ascii=False))
+    source_uri = record.source_uri
+    if mutation == "source_uri":
+        source_uri = "https://example.invalid/index-spot"
+    elif mutation == "endpoint":
+        metadata["endpoint"] = "stock_zh_a_spot_em"
+    elif mutation == "view":
+        metadata["market_quote_view"] = "quote"
+    elif mutation == "selector":
+        metadata["selector"] = "深证系列指数"
+    elif mutation == "market_scope":
+        metadata["market_scope"] = "requested_listing"
+    elif mutation == "listing_scope":
+        metadata["listing_scoped_request"] = True
+    elif mutation == "row_filtering":
+        metadata["row_filtering"] = "provider"
+    elif mutation == "snapshot_scope":
+        metadata["snapshot_scope"] = "current_quote_snapshot"
+    elif mutation == "rank_ordering":
+        metadata["rank_ordering"] = "descending"
+    elif mutation == "field_order":
+        metadata["source_field_order"] = list(
+            reversed(metadata["source_field_order"])
+        )
+    elif mutation == "documented_units":
+        metadata["documented_units"] = {"最新价": "CNY"}
+    elif mutation == "upstream_url":
+        metadata["upstream_url"] = "https://example.invalid/clist"
+    elif mutation == "upstream_dynamic_parameters":
+        metadata["upstream_dynamic_parameters"] = {"symbol": "深证系列指数"}
+    elif mutation == "upstream_fixed_parameters":
+        metadata["upstream_fixed_parameters"]["fs"] = "tampered"
+    elif mutation == "pagination":
+        metadata["pagination"] = "single_page"
+    elif mutation == "wrapper_mapping":
+        metadata["wrapper_column_mapping"] = {}
+    elif mutation == "full_universe":
+        metadata["full_universe_response"] = False
+    elif mutation == "entity_selected":
+        metadata["entity_rows_selected"] = True
+    elif mutation == "identity_order":
+        metadata["row_identity_order"] = metadata["row_identity_order"][:-1]
+    elif mutation == "upstream_count":
+        metadata["upstream_row_count"] = 2
+    elif mutation == "entity_count":
+        metadata["entity_row_count"] = 3
+    else:
+        payload[0]["代码"] = "999999"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=source_uri,
+        response_metadata=metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-index-spot-scope",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company("SH600000"),
+        )
+
+
+def test_index_spot_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.MARKET_QUOTE,
+        "SH600000",
+        {"view": "index_spot", "symbol": "沪深重要指数"},
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [
+        ("stock_zh_index_spot_em", {"symbol": "沪深重要指数"}),
+    ]

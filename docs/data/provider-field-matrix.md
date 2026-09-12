@@ -4004,6 +4004,31 @@ return, valuation or accounting fact: recent index intraday bars have no
 listing/entity accounting scope. The response remains outside the calculation,
 gate, pipeline, CLI and input-loader contracts.
 
+## Phase 3.61 Eastmoney index spot raw slice
+
+The current [AKShare index-data documentation](https://akshare.akfamily.xyz/data/index/index.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/index/index_stock_zh.py)
+document `stock_zh_index_spot_em` as a real-time mainland-index universe with
+the selectors `沪深重要指数`, `上证系列指数`, `深证系列指数`, `指数成份` and
+`中证系列指数`. The adapter exposes it under `MARKET_QUOTE` with explicit
+`view=index_spot`, passes the required selector, and retains the complete
+provider universe rather than filtering rows to the listing context.
+
+| Raw upstream item | Phase 3.61 treatment |
+| --- | --- |
+| `序号`, `代码`, `名称`, `最新价`, `涨跌幅`, `涨跌额`, `成交量`, `成交额`, `振幅`, `最高`, `最低`, `今开`, `昨收`, `量比` | Required exact fourteen-field order. `序号` must be a positive, strictly ascending integer; `代码` and `名称` must be non-empty strings; numeric fields must be finite numbers or null. Duplicate index codes are rejected. |
+| `涨跌幅`, `振幅` | Documented as percentages and recorded as `percent`; the remaining numeric fields retain `not_documented` units rather than invented scales. |
+| request `view=index_spot`, `symbol` | Exact selector validation, A-share listing-context routing, no listing filtering, `index_scoped_request=true`, `listing_scoped_request=false`, retrieval-only current-day snapshot scope and selector replay metadata. |
+| Eastmoney `33.push2` / `48.push2` JSON `clist/get` requests | The important-index and general-index endpoint choice, category filter, page size 100, fixed/dynamic parameters, wrapper field mapping, pagination and source URLs remain replay metadata. |
+
+The provider rejects H-share/unsupported listing contexts, missing or unexpected
+parameters, unsupported selectors, malformed or reordered rows, invalid ranks,
+duplicate codes and non-finite/non-numeric values. The normalizer emits
+`AKSHARE_INDEX_SPOT_RAW_ONLY` and creates no canonical current-price,
+liquidity, valuation or accounting fact: the market-wide index snapshot has no
+listing/entity accounting scope or stable observation timestamp. The response
+remains outside the calculation, gate, pipeline, CLI and input-loader contracts.
+
 ## Phase 2 enforcement rule
 
 For every field not marked `STRUCTURED_AUTO` or `DERIVED_DETERMINISTIC`, a

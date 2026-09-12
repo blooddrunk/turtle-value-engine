@@ -4076,6 +4076,30 @@ boundaries, unsupported listing/parameter requests, empty output, raw-only
 normalization, replay metadata tampering and offline cache replay. No
 calculation, gate, pipeline, CLI or input-loader contract changes.
 
+### Phase 3.61 — Eastmoney index spot raw acquisition contract (COMPLETE)
+
+The mapping review now covers the documented Eastmoney
+[`stock_zh_index_spot_em`](https://akshare.akfamily.xyz/data/index/index.html)
+real-time index-universe endpoint under `MARKET_QUOTE` with explicit
+`view=index_spot` and the five documented `symbol` selectors: `沪深重要指数`,
+`上证系列指数`, `深证系列指数`, `指数成份` and `中证系列指数`. The
+[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/index/index_stock_zh.py)
+uses a special `33.push2` request for important indices and a `48.push2`
+request for the other categories, with category filters, page size 100 and
+the exact fourteen-field wrapper order. The adapter preserves the complete
+index universe, selector, source/upstream URLs, fixed/dynamic parameters,
+field mappings, documented percentage units and replay row counts.
+
+The index spot response remains raw evidence only: its current-day index
+prices, changes, volume and amount context have no stable listing
+observation timestamp or issuer accounting scope and do not establish the
+canonical current-price input. The normalizer emits
+`AKSHARE_INDEX_SPOT_QUOTE_RAW_ONLY` and creates no canonical fact. Tests cover
+all selectors, exact schema/order and numeric/rank boundaries, unsupported
+listing/parameter requests, empty output, raw-only normalization, replay
+metadata tampering and offline cache replay. No calculation, gate, pipeline,
+CLI or input-loader contract changes.
+
 ### Future structured-provider deliverables
 
 ```text
@@ -4085,7 +4109,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–3.60 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–3.61 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```

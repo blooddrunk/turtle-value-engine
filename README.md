@@ -2080,6 +2080,28 @@ boundaries, unsupported listing/parameter requests, empty output, raw-only
 normalization, replay metadata tampering and offline cache replay. No
 calculation, gate, pipeline, CLI or input-loader contract changes.
 
+Phase 3.61 adds the documented Eastmoney
+[`stock_zh_index_spot_em`](https://akshare.akfamily.xyz/data/index/index.html)
+real-time index-universe endpoint under `MARKET_QUOTE` with explicit
+`view=index_spot` and a required selector from `沪深重要指数`, `上证系列指数`,
+`深证系列指数`, `指数成份` or `中证系列指数`. The
+[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/index/index_stock_zh.py)
+uses the special important-index or general Eastmoney `clist/get` JSON endpoint,
+with the documented category filter and provider-driven page size of 100. The
+adapter preserves the complete universe, exact fourteen-field wrapper order,
+selector, source/upstream URLs, field mappings, documented percentage units,
+fixed/dynamic parameters and replay row counts.
+
+The index spot response is retained as raw evidence only: its current-day
+index prices, changes, volume and amount context have no stable listing
+observation timestamp or issuer accounting scope and do not establish the
+canonical current-price input. The normalizer emits
+`AKSHARE_INDEX_SPOT_RAW_ONLY` and creates no canonical fact. Tests cover
+all selectors, exact schema/order and numeric/rank boundaries, unsupported
+listing/parameter requests, empty output, raw-only normalization, replay
+metadata tampering and offline cache replay. No calculation, gate, pipeline,
+CLI or input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.
