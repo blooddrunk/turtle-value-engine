@@ -4537,6 +4537,32 @@ adversarial response validation, empty selection, raw-only normalization,
 replay metadata/payload tampering and offline cache replay. No calculation,
 gate, pipeline, CLI or input-loader contract changes.
 
+### Phase 3.78 — Eastmoney H-share realtime quote acquisition contract (COMPLETE)
+
+The mapping review now covers the documented Eastmoney H-share realtime quote
+endpoint [`stock_hk_spot_em`](https://akshare.akfamily.xyz/data/stock/stock.html),
+based on the [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hist_em.py),
+under `MARKET_QUOTE` with explicit `view=hk_spot_em`. The no-argument wrapper
+fetches a full five-digit H-share universe with a 15-minute delay and returns
+the exact twelve-field `序号`, `代码`, `名称`, latest/change, OHLC, volume and
+turnover order. The adapter strictly validates the full provider response,
+including wrapper sequence reset, unique five-digit codes, text and finite
+numeric/null values, before filtering the requested H-share listing.
+
+Replay metadata freezes the `72.push2.eastmoney.com` JSON URL, fixed Eastmoney
+query, provider-driven pagination by `pn` with page size 100, `f3` descending
+sort followed by wrapper sequence reset, source-column projection/dropped
+indices, numeric transformations, documented HKD/share, percent, shares and
+HKD units, and full/selected identity order. The normalizer emits
+`AKSHARE_HK_SPOT_EM_QUOTE_RAW_ONLY` and creates no canonical current-price,
+return, valuation or accounting fact because the delayed current-day snapshot
+has no stable observation timestamp. The existing no-view H-share quote
+compatibility fallback remains unchanged. Focused tests cover H-share-only
+routing, exact schema/order and adversarial response validation including
+invalid unrequested rows, empty selection, raw-only normalization, replay
+metadata/payload tampering and offline cache replay. No calculation, gate,
+pipeline, CLI or input-loader contract changes.
+
 ### Future structured-provider deliverables
 
 ```text
@@ -4546,7 +4572,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–3.77 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–3.78 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```

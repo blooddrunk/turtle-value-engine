@@ -2451,6 +2451,27 @@ tampering and offline cache replay. The existing no-view H-share quote
 compatibility fallback remains unchanged. No calculation, gate, pipeline, CLI
 or input-loader contract changes.
 
+Phase 3.78 adds the documented Eastmoney H-share realtime quote endpoint
+[`stock_hk_spot_em`](https://akshare.akfamily.xyz/data/stock/stock.html) using
+explicit `view=hk_spot_em`. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hist_em.py)
+fetches the full five-digit H-share universe with no user parameters; the
+adapter freezes its 15-minute-delayed exact twelve-field `序号`, `代码`, `名称`,
+price/change, OHLC, volume and turnover wrapper order, validates every row,
+and filters only after validation. Replay metadata records the `72.push2`
+JSON source, fixed Eastmoney query, provider pagination, `f3` descending
+wrapper sort/reset, column projection, documented HKD/share/percent/shares/HKD
+units and selected identity order.
+
+The response is raw-only and emits
+`AKSHARE_HK_SPOT_EM_QUOTE_RAW_ONLY`: the delayed current-day snapshot has no
+stable observation timestamp and does not establish canonical current-price,
+return, valuation or accounting inputs. Focused tests cover H-share-only
+routing, exact schema/order/rank/code/numeric validation including invalid
+unrequested rows, empty selection, raw-only normalization, replay
+metadata/payload tampering and offline cache replay. The existing no-view
+H-share quote compatibility fallback remains unchanged. No calculation, gate,
+pipeline, CLI or input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

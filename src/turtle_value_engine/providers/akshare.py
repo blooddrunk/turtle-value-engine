@@ -2034,6 +2034,126 @@ _MARKET_QUOTE_HK_SINA_SPOT_UPSTREAM_TRANSFORMATIONS = {
     for field in _MARKET_QUOTE_HK_SINA_SPOT_NUMERIC_FIELDS
 }
 
+_MARKET_QUOTE_HK_SPOT_EM_ENDPOINT = "stock_hk_spot_em"
+_MARKET_QUOTE_HK_SPOT_EM_PARAMETER_NAMES = frozenset({"view"})
+_MARKET_QUOTE_HK_SPOT_EM_VIEW = "hk_spot_em"
+_MARKET_QUOTE_HK_SPOT_EM_FIELDS = (
+    "序号",
+    "代码",
+    "名称",
+    "最新价",
+    "涨跌额",
+    "涨跌幅",
+    "今开",
+    "最高",
+    "最低",
+    "昨收",
+    "成交量",
+    "成交额",
+)
+_MARKET_QUOTE_HK_SPOT_EM_FIELD_SET = frozenset(_MARKET_QUOTE_HK_SPOT_EM_FIELDS)
+_MARKET_QUOTE_HK_SPOT_EM_TEXT_FIELDS = ("代码", "名称")
+_MARKET_QUOTE_HK_SPOT_EM_REQUIRED_TEXT_FIELDS = _MARKET_QUOTE_HK_SPOT_EM_TEXT_FIELDS
+_MARKET_QUOTE_HK_SPOT_EM_NUMERIC_FIELDS = tuple(
+    field
+    for field in _MARKET_QUOTE_HK_SPOT_EM_FIELDS
+    if field not in {"序号", *_MARKET_QUOTE_HK_SPOT_EM_TEXT_FIELDS}
+)
+_MARKET_QUOTE_HK_SPOT_EM_INTEGER_FIELDS = ("序号",)
+_MARKET_QUOTE_HK_SPOT_EM_NULLABLE_FIELDS = _MARKET_QUOTE_HK_SPOT_EM_NUMERIC_FIELDS
+_MARKET_QUOTE_HK_SPOT_EM_FIELD_TYPES = {
+    "序号": "integer",
+    **{field: "string" for field in _MARKET_QUOTE_HK_SPOT_EM_TEXT_FIELDS},
+    **{field: "number" for field in _MARKET_QUOTE_HK_SPOT_EM_NUMERIC_FIELDS},
+}
+_MARKET_QUOTE_HK_SPOT_EM_DOCUMENTED_UNITS = {
+    "最新价": "HKD_per_share",
+    "涨跌额": "HKD_per_share",
+    "涨跌幅": "percent",
+    "今开": "HKD_per_share",
+    "最高": "HKD_per_share",
+    "最低": "HKD_per_share",
+    "昨收": "HKD_per_share",
+    "成交量": "shares",
+    "成交额": "HKD",
+}
+_MARKET_QUOTE_HK_SPOT_EM_UNDOCUMENTED_NUMERIC_UNITS: dict[str, JSONValue] = {}
+_MARKET_QUOTE_HK_SPOT_EM_SOURCE_URI = _SOURCE_URIS[_MARKET_QUOTE_HK_SPOT_EM_ENDPOINT]
+_MARKET_QUOTE_HK_SPOT_EM_UPSTREAM_URL = (
+    "https://72.push2.eastmoney.com/api/qt/clist/get"
+)
+_MARKET_QUOTE_HK_SPOT_EM_UPSTREAM_PARAMETERS = (
+    "pn",
+    "pz",
+    "po",
+    "np",
+    "ut",
+    "fltt",
+    "invt",
+    "fid",
+    "fs",
+    "fields",
+)
+_MARKET_QUOTE_HK_SPOT_EM_UPSTREAM_FIXED_PARAMETERS = {
+    "pn": "1",
+    "pz": "100",
+    "po": "1",
+    "np": "1",
+    "ut": "bd1d9ddb04089700cf9c27f6f7426281",
+    "fltt": "2",
+    "invt": "2",
+    "fid": "f12",
+    "fs": "m:128 t:3,m:128 t:4,m:128 t:1,m:128 t:2",
+    "fields": (
+        "f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f12,f13,f14,f15,f16,f17,f18,f20,"
+        "f21,f23,f24,f25,f22,f11,f62,f128,f136,f115,f152"
+    ),
+}
+_MARKET_QUOTE_HK_SPOT_EM_WRAPPER_SOURCE_COLUMN_COUNT = 32
+_MARKET_QUOTE_HK_SPOT_EM_WRAPPER_COLUMN_MAPPING = {
+    "序号": 0,
+    "代码": 12,
+    "名称": 14,
+    "最新价": 2,
+    "涨跌额": 4,
+    "涨跌幅": 3,
+    "今开": 17,
+    "最高": 15,
+    "最低": 16,
+    "昨收": 18,
+    "成交量": 5,
+    "成交额": 6,
+}
+_MARKET_QUOTE_HK_SPOT_EM_WRAPPER_DROPPED_SOURCE_INDICES = (
+    1,
+    7,
+    8,
+    9,
+    10,
+    11,
+    13,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24,
+    25,
+    26,
+    27,
+    28,
+    29,
+    30,
+    31,
+)
+_MARKET_QUOTE_HK_SPOT_EM_UPSTREAM_TRANSFORMATIONS = {
+    "序号": "sort_by_f3_descending_then_reset_index",
+    **{
+        field: "to_numeric_errors_coerce"
+        for field in _MARKET_QUOTE_HK_SPOT_EM_NUMERIC_FIELDS
+    },
+}
+
 _MARKET_QUOTE_HK_MAIN_BOARD_PARAMETER_NAMES = frozenset({"view"})
 _MARKET_QUOTE_HK_MAIN_BOARD_VIEW = "hk_main_board"
 _MARKET_QUOTE_HK_MAIN_BOARD_FIELDS = (
@@ -8795,6 +8915,18 @@ class AKShareProvider(StructuredDataProvider):
             )
         if (
             request.category is DataCategory.MARKET_QUOTE
+            and request.parameters.get("view") == _MARKET_QUOTE_HK_SPOT_EM_VIEW
+            and listing.market is not ListingMarket.H
+        ):
+            raise ProviderRequestError(
+                "the AKShare Eastmoney H-share quote endpoint supports H-share "
+                "listings only",
+                provider=self.identity,
+                request=request,
+                retryable=False,
+            )
+        if (
+            request.category is DataCategory.MARKET_QUOTE
             and request.parameters.get("view") == _MARKET_QUOTE_XQ_VIEW
             and listing.market is not ListingMarket.A
         ):
@@ -10089,6 +10221,28 @@ class AKShareProvider(StructuredDataProvider):
                     listing_code=listing.code,
                     row_identity_order=[row["代码"] for row in rows],
                     row_observation_time_order=[row["日期时间"] for row in rows],
+                    selected_row_identity_order=[row["代码"] for row in selected],
+                    upstream_row_count=len(rows),
+                    entity_row_count=len(selected),
+                )
+            )
+        elif (
+            request.category is DataCategory.MARKET_QUOTE
+            and endpoint.name == _MARKET_QUOTE_HK_SPOT_EM_ENDPOINT
+            and request.parameters.get("view") == _MARKET_QUOTE_HK_SPOT_EM_VIEW
+        ):
+            rows = _table_rows(payload, provider=self.identity, request=request)
+            _validate_market_quote_hk_spot_em_provider_rows(
+                rows,
+                provider=self.identity,
+                request=request,
+            )
+            selected = _select_market_quote_hk_spot_em_rows(rows, listing)
+            payload = selected
+            response_metadata.update(
+                _market_quote_hk_spot_em_response_metadata(
+                    listing_code=listing.code,
+                    row_identity_order=[row["代码"] for row in rows],
                     selected_row_identity_order=[row["代码"] for row in selected],
                     upstream_row_count=len(rows),
                     entity_row_count=len(selected),
@@ -14582,6 +14736,9 @@ class AKShareProvider(StructuredDataProvider):
             market_quote_hk_sina_spot_requested=(
                 request.parameters.get("view") == _MARKET_QUOTE_HK_SINA_SPOT_VIEW
             ),
+            market_quote_hk_spot_em_requested=(
+                request.parameters.get("view") == _MARKET_QUOTE_HK_SPOT_EM_VIEW
+            ),
             market_quote_hk_main_board_requested=(
                 request.parameters.get("view") == _MARKET_QUOTE_HK_MAIN_BOARD_VIEW
             ),
@@ -14740,6 +14897,12 @@ class AKShareProvider(StructuredDataProvider):
                     == _MARKET_QUOTE_HK_SINA_SPOT_VIEW
                 ):
                     source_uri = _MARKET_QUOTE_HK_SINA_SPOT_SOURCE_URI
+                if (
+                    name == _MARKET_QUOTE_HK_SPOT_EM_ENDPOINT
+                    and request.parameters.get("view")
+                    == _MARKET_QUOTE_HK_SPOT_EM_VIEW
+                ):
+                    source_uri = _MARKET_QUOTE_HK_SPOT_EM_SOURCE_URI
                 return _Endpoint(
                     name=name,
                     function=function,
@@ -16157,6 +16320,30 @@ class AKShareNormalizer:
             elif (
                 record.request.category is DataCategory.MARKET_QUOTE
                 and record.request.parameters.get("view")
+                == _MARKET_QUOTE_HK_SPOT_EM_VIEW
+                and record.response_metadata.get("endpoint")
+                != _MARKET_QUOTE_HK_SPOT_EM_ENDPOINT
+            ):
+                raise ProviderNormalizationError(
+                    "Eastmoney H-share quote record must come from "
+                    f"{_MARKET_QUOTE_HK_SPOT_EM_ENDPOINT}"
+                )
+            elif (
+                record.request.category is DataCategory.MARKET_QUOTE
+                and record.response_metadata.get("endpoint")
+                == _MARKET_QUOTE_HK_SPOT_EM_ENDPOINT
+                and record.request.parameters.get("view")
+                == _MARKET_QUOTE_HK_SPOT_EM_VIEW
+            ):
+                _validate_market_quote_hk_spot_em_normalizer_scope(
+                    record,
+                    listing,
+                    rows,
+                )
+                normalizer_flags.add("AKSHARE_HK_SPOT_EM_QUOTE_RAW_ONLY")
+            elif (
+                record.request.category is DataCategory.MARKET_QUOTE
+                and record.request.parameters.get("view")
                 == _MARKET_QUOTE_HK_SINA_SPOT_VIEW
                 and record.response_metadata.get("endpoint")
                 != _MARKET_QUOTE_HK_SINA_SPOT_ENDPOINT
@@ -17515,6 +17702,7 @@ class AKShareNormalizer:
                 "AKSHARE_B_SPOT_QUOTE_RAW_ONLY",
                 "AKSHARE_B_SINA_SPOT_QUOTE_RAW_ONLY",
                 "AKSHARE_HK_SINA_SPOT_QUOTE_RAW_ONLY",
+                "AKSHARE_HK_SPOT_EM_QUOTE_RAW_ONLY",
                 "AKSHARE_HK_MAIN_BOARD_QUOTE_RAW_ONLY",
                 "AKSHARE_HK_FAMOUS_QUOTE_RAW_ONLY",
                 "AKSHARE_HK_GGT_COMPONENTS_QUOTE_RAW_ONLY",
@@ -18721,6 +18909,13 @@ class AKShareNormalizer:
                 "volume, turnover and quote context do not establish the canonical "
                 "current-price input; numeric units are not documented."
             )
+        if "AKSHARE_HK_SPOT_EM_QUOTE_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented Eastmoney H-share quote response is retained as "
+                "raw evidence only: its 15-minute-delayed current-day prices, "
+                "changes, volume and turnover have no stable observation timestamp "
+                "and do not establish the canonical current-price input."
+            )
         if "AKSHARE_HK_MAIN_BOARD_QUOTE_RAW_ONLY" in normalizer_flags:
             notes += (
                 " The documented H-share Eastmoney main-board quote response is "
@@ -19135,6 +19330,7 @@ def _endpoint_candidates(
     market_quote_b_spot_requested: bool = False,
     market_quote_b_sina_spot_requested: bool = False,
     market_quote_hk_sina_spot_requested: bool = False,
+    market_quote_hk_spot_em_requested: bool = False,
     market_quote_hk_main_board_requested: bool = False,
     market_quote_hk_famous_requested: bool = False,
     market_quote_hk_ggt_components_requested: bool = False,
@@ -19308,6 +19504,10 @@ def _endpoint_candidates(
         if market_quote_hk_sina_spot_requested:
             if market is ListingMarket.H:
                 return (_MARKET_QUOTE_HK_SINA_SPOT_ENDPOINT,)
+            return ()
+        if market_quote_hk_spot_em_requested:
+            if market is ListingMarket.H:
+                return (_MARKET_QUOTE_HK_SPOT_EM_ENDPOINT,)
             return ()
         if market_quote_hk_sh_spot_requested:
             if market is ListingMarket.H:
@@ -20342,6 +20542,35 @@ def _market_quote_kwargs(
             raise ProviderRequestError(
                 "the AKShare Sina H-share quote endpoint requires "
                 f"view={_MARKET_QUOTE_HK_SINA_SPOT_VIEW!r}",
+                request=request,
+                retryable=False,
+            )
+        return {}
+    if (
+        endpoint_name == _MARKET_QUOTE_HK_SPOT_EM_ENDPOINT
+        and request.parameters.get("view") == _MARKET_QUOTE_HK_SPOT_EM_VIEW
+    ):
+        if listing.market is not ListingMarket.H:
+            raise ProviderRequestError(
+                "the AKShare Eastmoney H-share quote endpoint supports H-share "
+                "listings only",
+                request=request,
+                retryable=False,
+            )
+        unknown = sorted(
+            set(request.parameters) - _MARKET_QUOTE_HK_SPOT_EM_PARAMETER_NAMES
+        )
+        if unknown:
+            raise ProviderRequestError(
+                "unsupported AKShare Eastmoney H-share quote parameter(s): "
+                + ", ".join(unknown),
+                request=request,
+                retryable=False,
+            )
+        if request.parameters.get("view") != _MARKET_QUOTE_HK_SPOT_EM_VIEW:
+            raise ProviderRequestError(
+                "the AKShare Eastmoney H-share quote endpoint requires "
+                f"view={_MARKET_QUOTE_HK_SPOT_EM_VIEW!r}",
                 request=request,
                 retryable=False,
             )
@@ -27311,6 +27540,212 @@ def _market_quote_new_a_spot_response_metadata(
         "entity_row_count": entity_row_count,
         "listed_date_start": listed_date_start,
         "listed_date_end": listed_date_end,
+    }
+
+
+def _market_quote_hk_spot_em_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef | None = None,
+) -> str | None:
+    """Return a strict-schema error for the general H-share snapshot."""
+
+    seen_codes: set[str] = set()
+    previous_rank: int | None = None
+    for index, row in enumerate(rows):
+        missing = sorted(_MARKET_QUOTE_HK_SPOT_EM_FIELD_SET - set(row))
+        unexpected = sorted(set(row) - _MARKET_QUOTE_HK_SPOT_EM_FIELD_SET)
+        if missing:
+            return (
+                f"Eastmoney H-share quote row {index} is missing field(s): "
+                + ", ".join(missing)
+            )
+        if unexpected:
+            return (
+                f"Eastmoney H-share quote row {index} contains unsupported field(s): "
+                + ", ".join(unexpected)
+            )
+        if tuple(row) != _MARKET_QUOTE_HK_SPOT_EM_FIELDS:
+            return (
+                f"Eastmoney H-share quote row {index} must preserve the official "
+                "field order"
+            )
+
+        rank = row["序号"]
+        if isinstance(rank, bool) or not isinstance(rank, Real):
+            return (
+                f"Eastmoney H-share quote row {index} field '序号' must be a "
+                "positive integer"
+            )
+        try:
+            numeric_rank = float(rank)
+        except (OverflowError, TypeError, ValueError):
+            return (
+                f"Eastmoney H-share quote row {index} field '序号' must be a "
+                "positive integer"
+            )
+        if (
+            not math.isfinite(numeric_rank)
+            or not numeric_rank.is_integer()
+            or numeric_rank < 1
+        ):
+            return (
+                f"Eastmoney H-share quote row {index} field '序号' must be a "
+                "positive integer"
+            )
+        normalized_rank = int(numeric_rank)
+        if previous_rank is not None and normalized_rank <= previous_rank:
+            return "Eastmoney H-share quote 序号 values must be strictly ascending"
+        if listing is None and normalized_rank != index + 1:
+            return (
+                "Eastmoney H-share quote 序号 values must reset from one in "
+                "source row order"
+            )
+        previous_rank = normalized_rank
+
+        code = row["代码"]
+        if not isinstance(code, str) or re.fullmatch(r"\d{5}", code) is None:
+            return f"Eastmoney H-share quote row {index} has an invalid 代码"
+        if code in seen_codes:
+            return f"Eastmoney H-share quote response has duplicate 代码 {code!r}"
+        seen_codes.add(code)
+
+        name = row["名称"]
+        if not isinstance(name, str) or not name.strip():
+            return (
+                f"Eastmoney H-share quote row {index} field '名称' must be a "
+                "non-empty string"
+            )
+
+        if listing is not None and code != listing.code:
+            return (
+                f"Eastmoney H-share quote row {index} entity {code!r} does not "
+                f"match requested listing {listing.canonical_id!r}"
+            )
+
+        for field in _MARKET_QUOTE_HK_SPOT_EM_NUMERIC_FIELDS:
+            value = row[field]
+            if value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, Real):
+                return (
+                    f"Eastmoney H-share quote row {index} field {field!r} must be "
+                    "numeric or null"
+                )
+            try:
+                numeric = float(value)
+            except (OverflowError, TypeError, ValueError):
+                return (
+                    f"Eastmoney H-share quote row {index} field {field!r} must be "
+                    "numeric or null"
+                )
+            if not math.isfinite(numeric):
+                return (
+                    f"Eastmoney H-share quote row {index} field {field!r} must be "
+                    "finite or null"
+                )
+    return None
+
+
+def _validate_market_quote_hk_spot_em_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> None:
+    """Validate the complete Eastmoney H-share universe before filtering."""
+
+    message = _market_quote_hk_spot_em_validation_message(rows)
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message}",
+            provider=provider,
+            request=request,
+        )
+
+
+def _select_market_quote_hk_spot_em_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+) -> list[dict[str, JSONValue]]:
+    """Filter the full Eastmoney H-share universe by the requested code."""
+
+    return [dict(row) for row in rows if row["代码"] == listing.code]
+
+
+def _market_quote_hk_spot_em_response_metadata(
+    *,
+    listing_code: str,
+    row_identity_order: Sequence[JSONValue],
+    selected_row_identity_order: Sequence[JSONValue],
+    upstream_row_count: int,
+    entity_row_count: int,
+) -> dict[str, JSONValue]:
+    """Build replay metadata for a filtered Eastmoney H-share snapshot."""
+
+    fixed_parameters = _MARKET_QUOTE_HK_SPOT_EM_UPSTREAM_FIXED_PARAMETERS
+    return {
+        "endpoint": _MARKET_QUOTE_HK_SPOT_EM_ENDPOINT,
+        "market": ListingMarket.H.value,
+        "listing_code": listing_code,
+        "market_quote_view": _MARKET_QUOTE_HK_SPOT_EM_VIEW,
+        "market_scope": "eastmoney_hong_kong_stocks",
+        "listing_scoped_request": False,
+        "row_filtering": "provider",
+        "snapshot_scope": "current_trading_day_delayed_15m",
+        "rank_field": "序号",
+        "rank_ordering": "strictly_ascending_with_wrapper_sequence",
+        "date_binding": "retrieval_only",
+        "listing_code_field": "代码",
+        "identity_fields": ["代码"],
+        "identity_ordering": "source_response_order",
+        "row_identity_order": list(row_identity_order),
+        "selected_row_identity_order": list(selected_row_identity_order),
+        "value_fields": list(_MARKET_QUOTE_HK_SPOT_EM_NUMERIC_FIELDS),
+        "integer_fields": list(_MARKET_QUOTE_HK_SPOT_EM_INTEGER_FIELDS),
+        "text_fields": list(_MARKET_QUOTE_HK_SPOT_EM_TEXT_FIELDS),
+        "required_text_fields": list(
+            _MARKET_QUOTE_HK_SPOT_EM_REQUIRED_TEXT_FIELDS
+        ),
+        "nullable_fields": list(_MARKET_QUOTE_HK_SPOT_EM_NULLABLE_FIELDS),
+        "field_types": dict(_MARKET_QUOTE_HK_SPOT_EM_FIELD_TYPES),
+        "field_count": len(_MARKET_QUOTE_HK_SPOT_EM_FIELDS),
+        "source_field_order": list(_MARKET_QUOTE_HK_SPOT_EM_FIELDS),
+        "documented_units": dict(_MARKET_QUOTE_HK_SPOT_EM_DOCUMENTED_UNITS),
+        "undocumented_numeric_units": dict(
+            _MARKET_QUOTE_HK_SPOT_EM_UNDOCUMENTED_NUMERIC_UNITS
+        ),
+        "upstream_url": _MARKET_QUOTE_HK_SPOT_EM_UPSTREAM_URL,
+        "upstream_protocol": "JSON",
+        "upstream_parameters": list(
+            _MARKET_QUOTE_HK_SPOT_EM_UPSTREAM_PARAMETERS
+        ),
+        "upstream_fixed_parameters": dict(fixed_parameters),
+        "upstream_dynamic_parameters": {},
+        "upstream_authentication": "none",
+        "upstream_page_size": 100,
+        "pagination": "provider_driven_all_pages",
+        "pagination_parameter": "pn",
+        "upstream_sort_column": "f3",
+        "upstream_sort_direction": "descending",
+        "upstream_filter": fixed_parameters["fs"],
+        "wrapper_source_page_uri": _MARKET_QUOTE_HK_SPOT_EM_SOURCE_URI,
+        "wrapper_output_ordering": "source_response_order_with_wrapper_sequence",
+        "wrapper_source_column_count": (
+            _MARKET_QUOTE_HK_SPOT_EM_WRAPPER_SOURCE_COLUMN_COUNT
+        ),
+        "wrapper_column_mapping": dict(
+            _MARKET_QUOTE_HK_SPOT_EM_WRAPPER_COLUMN_MAPPING
+        ),
+        "wrapper_dropped_source_indices": list(
+            _MARKET_QUOTE_HK_SPOT_EM_WRAPPER_DROPPED_SOURCE_INDICES
+        ),
+        "upstream_transformations": dict(
+            _MARKET_QUOTE_HK_SPOT_EM_UPSTREAM_TRANSFORMATIONS
+        ),
+        "full_universe_response": True,
+        "entity_rows_selected": True,
+        "upstream_row_count": upstream_row_count,
+        "entity_row_count": entity_row_count,
     }
 
 
@@ -52124,6 +52559,136 @@ def _validate_market_quote_b_spot_normalizer_scope(
                 f"{name!r} does not match the requested replay scope"
             )
 
+
+
+def _validate_market_quote_hk_spot_em_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> None:
+    """Validate the replay scope of a filtered Eastmoney H-share snapshot."""
+
+    if listing.market is not ListingMarket.H:
+        raise ProviderNormalizationError(
+            "Eastmoney H-share quote raw slice supports H-share listings only"
+        )
+    if record.response_metadata.get("endpoint") != _MARKET_QUOTE_HK_SPOT_EM_ENDPOINT:
+        raise ProviderNormalizationError(
+            "Eastmoney H-share quote record must come from "
+            f"{_MARKET_QUOTE_HK_SPOT_EM_ENDPOINT}"
+        )
+    if record.source_uri != _MARKET_QUOTE_HK_SPOT_EM_SOURCE_URI:
+        raise ProviderNormalizationError(
+            "Eastmoney H-share quote source URI does not match the documented "
+            "endpoint"
+        )
+    if record.response_metadata.get("market") != listing.market.value:
+        raise ProviderNormalizationError(
+            "Eastmoney H-share quote response market does not match requested "
+            "listing"
+        )
+    if record.response_metadata.get("listing_code") != listing.code:
+        raise ProviderNormalizationError(
+            "Eastmoney H-share quote response listing code does not match "
+            "requested listing"
+        )
+    try:
+        _market_quote_kwargs(
+            _MARKET_QUOTE_HK_SPOT_EM_ENDPOINT,
+            listing,
+            record.request,
+        )
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+
+    upstream_row_count = record.response_metadata.get("upstream_row_count")
+    if (
+        isinstance(upstream_row_count, bool)
+        or not isinstance(upstream_row_count, int)
+        or upstream_row_count < len(rows)
+    ):
+        raise ProviderNormalizationError(
+            "Eastmoney H-share quote response upstream row count does not match "
+            "the requested replay scope"
+        )
+
+    message = _market_quote_hk_spot_em_validation_message(rows, listing)
+    if message is not None:
+        raise ProviderNormalizationError(message)
+
+    row_identity_order = record.response_metadata.get("row_identity_order")
+    if not isinstance(row_identity_order, list):
+        raise ProviderNormalizationError(
+            "Eastmoney H-share quote response metadata 'row_identity_order' does "
+            "not match the requested replay scope"
+        )
+    seen_codes: set[str] = set()
+    for code in row_identity_order:
+        if (
+            not isinstance(code, str)
+            or re.fullmatch(r"\d{5}", code) is None
+            or code in seen_codes
+        ):
+            raise ProviderNormalizationError(
+                "Eastmoney H-share quote response metadata 'row_identity_order' "
+                "does not match the requested replay scope"
+            )
+        seen_codes.add(code)
+    if len(row_identity_order) != upstream_row_count:
+        raise ProviderNormalizationError(
+            "Eastmoney H-share quote response metadata 'row_identity_order' does "
+            "not match the requested replay scope"
+        )
+
+    selected_row_identity_order = record.response_metadata.get(
+        "selected_row_identity_order"
+    )
+    selected_codes = [row["代码"] for row in rows]
+    if selected_row_identity_order != selected_codes or any(
+        code not in row_identity_order for code in selected_codes
+    ):
+        raise ProviderNormalizationError(
+            "Eastmoney H-share quote response metadata "
+            "'selected_row_identity_order' does not match the requested replay "
+            "scope"
+        )
+
+    expected_metadata = _market_quote_hk_spot_em_response_metadata(
+        listing_code=listing.code,
+        row_identity_order=row_identity_order,
+        selected_row_identity_order=selected_row_identity_order,
+        upstream_row_count=upstream_row_count,
+        entity_row_count=len(rows),
+    )
+    boolean_fields = {
+        "listing_scoped_request",
+        "full_universe_response",
+        "entity_rows_selected",
+    }
+    count_fields = {
+        "field_count",
+        "upstream_page_size",
+        "upstream_row_count",
+        "entity_row_count",
+        "wrapper_source_column_count",
+    }
+    for name, expected in expected_metadata.items():
+        actual = record.response_metadata.get(name)
+        if name in boolean_fields:
+            matches = isinstance(actual, bool) and actual is expected
+        elif name in count_fields:
+            matches = (
+                isinstance(actual, int)
+                and not isinstance(actual, bool)
+                and actual == expected
+            )
+        else:
+            matches = actual == expected
+        if not matches:
+            raise ProviderNormalizationError(
+                "Eastmoney H-share quote response metadata "
+                f"{name!r} does not match the requested replay scope"
+            )
 
 
 def _validate_market_quote_hk_sina_spot_normalizer_scope(

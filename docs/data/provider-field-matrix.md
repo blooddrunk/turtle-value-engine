@@ -4402,6 +4402,34 @@ current-day quote, bid/ask context and undocumented numeric units remain raw
 evidence only; the existing no-view H-share quote compatibility fallback is
 unchanged.
 
+## Phase 3.78 Eastmoney H-share realtime quote raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hist_em.py)
+document `stock_hk_spot_em` as a no-argument, 15-minute-delayed full H-share
+realtime-quote universe. The adapter exposes it under `MARKET_QUOTE` with
+explicit `view=hk_spot_em`, validates the full response before filtering to the
+requested five-digit code, and retains the following exact wrapper fields in
+order:
+
+| Raw provider field | Phase 3.78 treatment |
+| --- | --- |
+| `序号` | Required positive integer; the complete response must be strictly ascending and reset from one after the wrapper's `f3`-descending sort. |
+| `代码` | Required unique five-digit string; the selected row must match the requested H-share code. |
+| `名称` | Required non-empty string. |
+| `最新价`, `涨跌额`, `今开`, `最高`, `最低`, `昨收` | Required finite numeric/null fields with documented unit `HKD_per_share`; retained in raw evidence only. |
+| `涨跌幅` | Required finite numeric/null field with documented unit `percent`; retained in raw evidence only. |
+| `成交量` | Required finite numeric/null field with documented unit `shares`; retained in raw evidence only. |
+| `成交额` | Required finite numeric/null field with documented unit `HKD`; retained in raw evidence only. |
+| request `view` | Only `view=hk_spot_em` is accepted for this explicit route; no listing/date parameter is passed to `stock_hk_spot_em`. |
+| Eastmoney JSON response | Replay metadata records the fixed `72.push2` query, provider pagination by `pn` with page size 100, `f3` descending sort/reset, source-column projection/dropped positions, exact output order and provider-side row filtering. |
+
+The normalizer emits `AKSHARE_HK_SPOT_EM_QUOTE_RAW_ONLY` and creates no
+canonical current-price, return, valuation or accounting fact. The delayed
+current-day snapshot has no stable observation timestamp; its provider-owned
+quote values remain raw evidence only. The existing no-view H-share quote
+compatibility fallback is unchanged.
+
 ## Phase 2 enforcement rule
 
 For every field not marked `STRUCTURED_AUTO` or `DERIVED_DETERMINISTIC`, a
