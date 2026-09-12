@@ -4102,6 +4102,28 @@ market-wide snapshot has no listing/entity accounting scope or stable
 observation timestamp and remains outside the calculation, gate, pipeline,
 CLI and input-loader contracts.
 
+## Phase 3.65 Sina Hong Kong-index daily-history raw slice
+
+The current [AKShare index-data documentation](https://akshare.akfamily.xyz/data/index/index.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/index/index_stock_hk.py)
+document `stock_hk_index_daily_sina` as a symbol-scoped historical Hong
+Kong-index endpoint, defaulting to `CES100`. The adapter selects it only under
+`MARKET_HISTORY` with explicit `view=hk_index_daily_sina` and `index_symbol`,
+accepts an H-share listing as context, and retains the complete full-history
+response without pretending that it is a listing history.
+
+| Raw upstream item | Phase 3.65 treatment |
+| --- | --- |
+| `date`, `open`, `close`, `high`, `low`, `volume` | Required exact six-field order. `date` must parse as a date and be strictly ascending without duplicates; numeric fields must be finite numbers or null. |
+| Numeric fields | AKShare documents the fields but does not establish units for this adapter contract; every numeric field retains `not_documented` units. |
+| request `view=hk_index_daily_sina`, `index_symbol` | Exact H-share listing-context routing, uppercase normalized index symbol matching `[A-Z][A-Z0-9._-]{0,31}`, no listing filtering, index-scoped full-history replay metadata and row identity by `date`. |
+| Sina `klc2_kl.js` request | Dynamic `symbol`, fixed `d=2023_5_01`, encrypted-JavaScript payload extraction, `hk_js_decode`/`py_mini_racer` decoding, date conversion and numeric conversion remain explicit metadata. |
+
+The normalizer emits `AKSHARE_HK_INDEX_DAILY_SINA_RAW_ONLY` and creates no
+canonical daily-history, return, valuation or accounting fact: the response is
+an index series, not an H-share listing observation. The slice remains outside
+calculation, gate, pipeline, CLI and input-loader contracts.
+
 ## Phase 2 enforcement rule
 
 For every field not marked `STRUCTURED_AUTO` or `DERIVED_DETERMINISTIC`, a

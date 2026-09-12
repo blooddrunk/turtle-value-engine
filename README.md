@@ -2165,6 +2165,27 @@ boundaries, empty output, raw-only normalization, replay metadata/payload
 tampering and offline cache replay. No calculation, gate, pipeline, CLI or
 input-loader contract changes.
 
+Phase 3.65 adds the next documented Sina
+[`stock_hk_index_daily_sina`](https://akshare.akfamily.xyz/data/index/index.html)
+Hong Kong-index daily-history endpoint under `MARKET_HISTORY`. The
+[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/index/index_stock_hk.py)
+accepts an index symbol defaulting to `CES100`, requests the encrypted
+`klc2_kl.js` response with fixed `d=2023_5_01`, and decodes it through
+`hk_js_decode` and `py_mini_racer`. The adapter exposes an explicit
+`view=hk_index_daily_sina` plus `index_symbol` request contract, accepts an
+H-share listing only as context, and preserves the exact six-field
+`date`, `open`, `close`, `high`, `low`, `volume` output order with strict date
+and numeric validation.
+
+The Sina Hong Kong-index daily-history response remains raw evidence only:
+index-level OHLCV is not a listing history and does not establish canonical
+daily-history, return, valuation or accounting facts. The normalizer emits
+`AKSHARE_HK_INDEX_DAILY_SINA_RAW_ONLY`; no canonical fact is created. Tests
+cover explicit routing, strict parameters, malformed/reordered rows,
+finite/null values, empty output, raw-only normalization, replay metadata and
+payload tampering, and offline cache replay. No calculation, gate, pipeline,
+CLI or input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

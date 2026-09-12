@@ -4167,6 +4167,29 @@ cover H-share-only request validation, malformed rows, empty output, raw-only
 normalization, replay metadata/payload tampering and offline cache replay. No
 calculation, gate, pipeline, CLI or input-loader contract changes.
 
+### Phase 3.65 — Sina Hong Kong-index daily-history raw acquisition contract (COMPLETE)
+
+The mapping review now covers the next documented Sina
+[`stock_hk_index_daily_sina`](https://akshare.akfamily.xyz/data/index/index.html)
+Hong Kong-index history endpoint under `MARKET_HISTORY`. The
+[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/index/index_stock_hk.py)
+accepts an index symbol defaulting to `CES100`, requests the encrypted
+`klc2_kl.js` payload with fixed `d=2023_5_01`, and decodes it with
+`hk_js_decode` and `py_mini_racer`. The adapter exposes explicit
+`view=hk_index_daily_sina` and `index_symbol` parameters, requires H-share
+listing context, normalizes the symbol to uppercase and preserves the exact
+`date`, `open`, `close`, `high`, `low`, `volume` field order with strict dates,
+numeric/null values and replay identity metadata.
+
+The Sina Hong Kong-index daily-history response remains raw evidence only:
+index-level OHLCV is not an H-share listing history and does not establish the
+canonical daily-history, return, valuation or accounting inputs. The normalizer
+emits `AKSHARE_HK_INDEX_DAILY_SINA_RAW_ONLY` and creates no canonical fact.
+Focused tests cover routing, strict request and response validation, empty
+output, raw-only normalization, replay metadata/payload tampering and offline
+cache replay. No calculation, gate, pipeline, CLI or input-loader contract
+changes.
+
 ### Future structured-provider deliverables
 
 ```text
@@ -4176,7 +4199,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–3.63 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–3.65 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
