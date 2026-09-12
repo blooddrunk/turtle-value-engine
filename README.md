@@ -2209,6 +2209,26 @@ values, empty output, raw-only normalization, replay metadata and payload
 tampering, and offline cache replay. No calculation, gate, pipeline, CLI or
 input-loader contract changes.
 
+Phase 3.67 adds the next documented Sina US-index history endpoint
+[`index_us_stock_sina`](https://akshare.akfamily.xyz/data/index/index.html) under
+`MARKET_HISTORY`. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/index/index_stock_us_sina.py)
+supports `.INX`, `.IXIC`, `.DJI` and `.NDX`, fetches encrypted-JavaScript
+`staticdata/us/{symbol}` payloads and decodes them with `zh_js_decode` and
+`py_mini_racer`. The adapter exposes explicit `view=us_index_sina` plus
+`index_symbol`, accepts either an A- or H-share listing as provenance context,
+and preserves the exact seven-field `date`, `open`, `high`, `low`, `close`,
+`volume`, `amount` order with strict date/numeric validation and complete replay
+metadata.
+
+The Sina US-index daily-history response is retained as raw evidence only: its
+global index OHLCV/amount series has no listing/entity accounting scope and does
+not establish canonical daily-history, return, valuation or accounting facts.
+The normalizer emits `AKSHARE_US_INDEX_SINA_RAW_ONLY` and creates no canonical
+fact. Tests cover explicit routing for both listing contexts, strict parameters,
+malformed/reordered rows, finite/null values, empty output, raw-only
+normalization, replay metadata and payload tampering, and offline cache replay.
+No calculation, gate, pipeline, CLI or input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

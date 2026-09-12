@@ -4146,6 +4146,28 @@ canonical daily-history, return, valuation or accounting fact: the response is
 an index series, not an H-share listing observation. The slice remains outside
 calculation, gate, pipeline, CLI and input-loader contracts.
 
+## Phase 3.67 Sina US-index daily-history raw slice
+
+The current [AKShare index-data documentation](https://akshare.akfamily.xyz/data/index/index.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/index/index_stock_us_sina.py)
+document `index_us_stock_sina` as a full-history US-index endpoint supporting
+`.INX`, `.IXIC`, `.DJI` and `.NDX`. The adapter selects it only under
+`MARKET_HISTORY` with explicit `view=us_index_sina` and `index_symbol`, accepts
+an A- or H-share listing only as provenance context, and retains the complete
+history without listing filtering.
+
+| Raw upstream item | Phase 3.67 treatment |
+| --- | --- |
+| `date`, `open`, `high`, `low`, `close`, `volume`, `amount` | Required exact seven-field order. `date` must parse as a date and be strictly ascending without duplicates; numeric fields must be finite numbers or null. |
+| Numeric fields | AKShare documents the fields but does not establish units for this adapter contract; every numeric field retains `not_documented` units. |
+| request `view=us_index_sina`, `index_symbol` | Exact A/H listing-context routing, exact symbol choice among `.INX`, `.IXIC`, `.DJI` and `.NDX`, no listing filtering, index-scoped full-history replay metadata and row identity by `date`. |
+| Sina `staticdata/us/{symbol}` response | Encrypted-JavaScript payload extraction, `zh_js_decode`/`py_mini_racer` decoding, date conversion and numeric conversion remain explicit metadata; no auxiliary lookup or date-range request is inferred. |
+
+The normalizer emits `AKSHARE_US_INDEX_SINA_RAW_ONLY` and creates no canonical
+daily-history, return, valuation or accounting fact: the response is a global
+index series, not an A/H listing observation. The slice remains outside
+calculation, gate, pipeline, CLI and input-loader contracts.
+
 ## Phase 2 enforcement rule
 
 For every field not marked `STRUCTURED_AUTO` or `DERIVED_DETERMINISTIC`, a

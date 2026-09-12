@@ -4216,6 +4216,29 @@ validation, finite/null values, empty output, raw-only normalization, replay
 metadata/payload tampering and offline cache replay. No calculation, gate,
 pipeline, CLI or input-loader contract changes.
 
+### Phase 3.67 — Sina US-index daily-history raw acquisition contract (COMPLETE)
+
+The mapping review now covers the next documented Sina
+[`index_us_stock_sina`](https://akshare.akfamily.xyz/data/index/index.html)
+US-index history endpoint under `MARKET_HISTORY`. The
+[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/index/index_stock_us_sina.py)
+supports `.INX`, `.IXIC`, `.DJI` and `.NDX`, requests the encrypted
+`staticdata/us/{symbol}` payload and decodes it with `zh_js_decode` and
+`py_mini_racer`. The adapter exposes explicit `view=us_index_sina` and
+`index_symbol` parameters, accepts A- or H-share listing context only for
+provenance, and preserves the exact `date`, `open`, `high`, `low`, `close`,
+`volume`, `amount` field order with strict dates, numeric/null values and replay
+identity metadata.
+
+The Sina US-index daily-history response remains raw evidence only: its global
+index OHLCV/amount series has no listing/entity accounting scope and does not
+establish the canonical daily-history, return, valuation or accounting inputs.
+The normalizer emits `AKSHARE_US_INDEX_SINA_RAW_ONLY` and creates no canonical
+fact. Focused tests cover A/H routing, strict request and response validation,
+finite/null values, empty output, raw-only normalization, replay metadata/payload
+tampering and offline cache replay. No calculation, gate, pipeline, CLI or
+input-loader contract changes.
+
 ### Future structured-provider deliverables
 
 ```text
@@ -4225,7 +4248,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–3.66 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–3.67 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```

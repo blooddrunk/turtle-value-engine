@@ -571,6 +571,13 @@ class FakeAKShare:
             symbol=symbol,
         )
 
+    def index_us_stock_sina(self, *, symbol: str):
+        return self._return(
+            "index_us_stock_sina",
+            _fixture("us_index_sina.json"),
+            symbol=symbol,
+        )
+
     def stock_zh_index_daily_tx(
         self,
         *,
@@ -1490,8 +1497,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "180"
-    assert AKSHARE_MAPPING_VERSION == "181"
+    assert provider.identity.provider_version == "182"
+    assert AKSHARE_MAPPING_VERSION == "183"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -54383,3 +54390,405 @@ def test_hk_index_daily_em_cache_replay_does_not_call_upstream(tmp_path: Path):
     assert replay.mode is RetrievalMode.CACHE_REPLAY
     assert replay.record == live.record
     assert fake.calls == [("stock_hk_index_daily_em", {"symbol": "HSTECF2L"})]
+
+
+@pytest.mark.parametrize(
+    ("entity_id", "index_symbol", "market"),
+    [("SH600000", ".INX", "A"), ("HK00700", ".IXIC", "H")],
+)
+def test_us_index_sina_fetch_uses_explicit_symbol_and_full_history_contract(
+    entity_id: str,
+    index_symbol: str,
+    market: str,
+):
+    fake = FakeAKShare()
+    record = _provider(fake).fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            entity_id,
+            {"view": "us_index_sina", "index_symbol": index_symbol},
+        )
+    )
+
+    metadata = record.response_metadata
+    assert record.raw_payload == _fixture("us_index_sina.json")
+    assert fake.calls == [("index_us_stock_sina", {"symbol": index_symbol})]
+    assert record.source_uri == (
+        "https://stock.finance.sina.com.cn/usstock/quotes/.IXIC.html"
+    )
+    assert metadata["endpoint"] == "index_us_stock_sina"
+    assert metadata["market"] == market
+    assert metadata["market_history_view"] == "us_index_sina"
+    assert metadata["upstream_symbol"] == index_symbol
+    assert metadata["market_scope"] == "requested_us_index"
+    assert metadata["index_scoped_request"] is True
+    assert metadata["listing_scoped_request"] is False
+    assert metadata["snapshot_scope"] == "full_us_index_history"
+    assert metadata["adjustment_kind"] == "unadjusted"
+    assert metadata["source_field_order"] == [
+        "date",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume",
+        "amount",
+    ]
+    assert metadata["documented_units"] == {}
+    assert metadata["undocumented_numeric_units"] == {
+        "open": "not_documented",
+        "high": "not_documented",
+        "low": "not_documented",
+        "close": "not_documented",
+        "volume": "not_documented",
+        "amount": "not_documented",
+    }
+    assert metadata["upstream_url"] == (
+        f"https://finance.sina.com.cn/staticdata/us/{index_symbol}"
+    )
+    assert metadata["upstream_parameters"] == ["symbol"]
+    assert metadata["upstream_dynamic_parameters"] == {"symbol": index_symbol}
+    assert metadata["upstream_fixed_parameters"] == {}
+    assert metadata["wrapper_decoders"] == ["zh_js_decode", "py_mini_racer"]
+    assert metadata["wrapper_transformations"] == [
+        "javascript_payload_extract",
+        "zh_js_decode",
+        "date_conversion",
+        "numeric_conversion",
+    ]
+    assert metadata["wrapper_source_column_count"] == 7
+    assert metadata["wrapper_column_mapping"] == {
+        "date": "date",
+        "open": "open",
+        "high": "high",
+        "low": "low",
+        "close": "close",
+        "volume": "volume",
+        "amount": "amount",
+    }
+    assert metadata["wrapper_dropped_fields"] == []
+    assert metadata["row_identity_order"] == [
+        "2024-04-08",
+        "2024-04-09",
+        "2024-04-10",
+    ]
+    assert metadata["selected_row_identity_order"] == metadata[
+        "row_identity_order"
+    ]
+    assert metadata["upstream_row_count"] == 3
+    assert metadata["entity_row_count"] == 3
+
+
+@pytest.mark.parametrize(
+    ("entity_id", "parameters", "match"),
+    [
+        ("SH600000", {"view": "us_index_sina"}, "index_symbol"),
+        (
+            "SH600000",
+            {"view": "us_index_sina", "index_symbol": ".inx"},
+            "one of",
+        ),
+        (
+            "SH600000",
+            {"view": "us_index_sina", "index_symbol": ".RUT"},
+            "one of",
+        ),
+        (
+            "SH600000",
+            {"view": "us_index_sina", "index_symbol": " .INX"},
+            "one of",
+        ),
+        (
+            "SH600000",
+            {"view": "us_index_sina", "index_symbol": 100},
+            "one of",
+        ),
+        (
+            "SH600000",
+            {
+                "view": "us_index_sina",
+                "index_symbol": ".INX",
+                "period": "daily",
+            },
+            "unsupported AKShare Sina US-index daily-history parameter",
+        ),
+        ("HK00700", {"index_symbol": ".INX"}, "requires.*view"),
+        (
+            "HK00700",
+            {"view": "wrong_view", "index_symbol": ".INX"},
+            "requires.*view",
+        ),
+    ],
+)
+def test_us_index_sina_request_accepts_a_h_context_but_rejects_ambiguous_inputs(
+    entity_id: str,
+    parameters: dict,
+    match: str,
+):
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError, match=match):
+        _provider(fake).fetch(
+            _request(DataCategory.MARKET_HISTORY, entity_id, parameters)
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("missing", "missing field"),
+        ("unexpected", "unsupported field"),
+        ("field_order", "documented field order"),
+        ("invalid_date", "invalid date"),
+        ("descending", "strictly ascending"),
+        ("duplicate_date", "duplicate date"),
+        ("invalid_numeric", "must be numeric or null"),
+        ("bool_numeric", "must be numeric or null"),
+        ("infinite_numeric", "contains infinity"),
+    ],
+)
+def test_us_index_sina_response_validates_exact_schema_order_and_values(
+    mutation: str,
+    match: str,
+):
+    class InvalidRows(FakeAKShare):
+        def index_us_stock_sina(self, *, symbol: str):
+            rows = [dict(row) for row in _fixture("us_index_sina.json")]
+            if mutation == "missing":
+                rows[0].pop("amount")
+            elif mutation == "unexpected":
+                rows[0]["unexpected"] = "not documented"
+            elif mutation == "field_order":
+                first = rows[0]
+                rows[0] = {
+                    "high": first["high"],
+                    **{key: value for key, value in first.items() if key != "high"},
+                }
+            elif mutation == "invalid_date":
+                rows[0]["date"] = "not-a-date"
+            elif mutation == "descending":
+                rows.reverse()
+            elif mutation == "duplicate_date":
+                rows[1]["date"] = rows[0]["date"]
+            elif mutation == "invalid_numeric":
+                rows[0]["close"] = "42.9"
+            elif mutation == "bool_numeric":
+                rows[0]["volume"] = True
+            else:
+                rows[0]["amount"] = float("inf")
+            return self._return("index_us_stock_sina", rows, symbol=symbol)
+
+    with pytest.raises(ProviderResponseError, match=match):
+        _provider(InvalidRows()).fetch(
+            _request(
+                DataCategory.MARKET_HISTORY,
+                "SH600000",
+                {"view": "us_index_sina", "index_symbol": ".INX"},
+            )
+        )
+
+
+def test_us_index_sina_accepts_null_numeric_values_and_empty_history():
+    class NullableRows(FakeAKShare):
+        def index_us_stock_sina(self, *, symbol: str):
+            rows = [dict(row) for row in _fixture("us_index_sina.json")]
+            rows[1]["amount"] = None
+            return self._return("index_us_stock_sina", rows, symbol=symbol)
+
+    record = _provider(NullableRows()).fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "SH600000",
+            {"view": "us_index_sina", "index_symbol": ".INX"},
+        )
+    )
+    assert record.raw_payload[1]["amount"] is None
+
+    class EmptyResponse(FakeAKShare):
+        def index_us_stock_sina(self, *, symbol: str):
+            return self._return("index_us_stock_sina", [], symbol=symbol)
+
+    empty = _provider(EmptyResponse()).fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "HK00700",
+            {"view": "us_index_sina", "index_symbol": ".IXIC"},
+        )
+    )
+
+    assert empty.raw_payload == []
+    assert empty.response_metadata["row_identity_order"] == []
+    assert empty.response_metadata["upstream_row_count"] == 0
+    assert empty.response_metadata["entity_row_count"] == 0
+    assert empty.response_metadata["observation_start_date"] is None
+    assert empty.response_metadata["observation_end_date"] is None
+
+
+@pytest.mark.parametrize("entity_id", ["SH600000", "HK00700"])
+def test_us_index_sina_is_raw_evidence_without_canonical_history_facts(
+    entity_id: str,
+):
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            entity_id,
+            {"view": "us_index_sina", "index_symbol": ".INX"},
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="us-index-sina-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company(entity_id),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_US_INDEX_SINA_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == ["market_history"]
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "Sina US-index daily-history" in normalized.data_quality.notes
+    assert "canonical daily-history" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "source_uri",
+        "endpoint",
+        "view",
+        "market_scope",
+        "listing_scope",
+        "row_filtering",
+        "snapshot_scope",
+        "field_order",
+        "documented_units",
+        "upstream_url",
+        "upstream_urls",
+        "upstream_parameters",
+        "upstream_fixed_parameters",
+        "pagination",
+        "wrapper_decoders",
+        "wrapper_mapping",
+        "wrapper_transformations",
+        "wrapper_dropped_fields",
+        "adjustment_kind",
+        "entity_selected",
+        "identity_order",
+        "selected_identity_order",
+        "upstream_count",
+        "entity_count",
+        "symbol",
+        "payload",
+    ],
+)
+def test_us_index_sina_normalizer_rejects_replayed_scope_or_payload_tampering(
+    mutation: str,
+):
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "SH600000",
+            {"view": "us_index_sina", "index_symbol": ".INX"},
+        )
+    )
+    payload = [dict(row) for row in record.raw_payload]
+    metadata = json.loads(json.dumps(record.response_metadata, ensure_ascii=False))
+    source_uri = record.source_uri
+    if mutation == "source_uri":
+        source_uri = "https://example.invalid/us-index-sina"
+    elif mutation == "endpoint":
+        metadata["endpoint"] = "stock_hk_index_daily_sina"
+    elif mutation == "view":
+        metadata["market_history_view"] = "wrong_view"
+    elif mutation == "market_scope":
+        metadata["market_scope"] = "requested_listing"
+    elif mutation == "listing_scope":
+        metadata["listing_scoped_request"] = True
+    elif mutation == "row_filtering":
+        metadata["row_filtering"] = "provider_and_listing"
+    elif mutation == "snapshot_scope":
+        metadata["snapshot_scope"] = "requested_daily_range"
+    elif mutation == "field_order":
+        metadata["source_field_order"] = list(reversed(metadata["source_field_order"]))
+    elif mutation == "documented_units":
+        metadata["documented_units"] = {"amount": "USD"}
+    elif mutation == "upstream_url":
+        metadata["upstream_url"] = "https://example.invalid/us-index"
+    elif mutation == "upstream_urls":
+        metadata["upstream_urls"] = ["https://example.invalid/us-index"]
+    elif mutation == "upstream_parameters":
+        metadata["upstream_parameters"] = []
+    elif mutation == "upstream_fixed_parameters":
+        metadata["upstream_fixed_parameters"]["d"] = "tampered"
+    elif mutation == "pagination":
+        metadata["pagination"] = "single_page"
+    elif mutation == "wrapper_decoders":
+        metadata["wrapper_decoders"] = ["tampered"]
+    elif mutation == "wrapper_mapping":
+        metadata["wrapper_column_mapping"] = {}
+    elif mutation == "wrapper_transformations":
+        metadata["wrapper_transformations"] = ["tampered"]
+    elif mutation == "wrapper_dropped_fields":
+        metadata["wrapper_dropped_fields"] = ["amount"]
+    elif mutation == "adjustment_kind":
+        metadata["adjustment_kind"] = "qfq"
+    elif mutation == "entity_selected":
+        metadata["entity_rows_selected"] = False
+    elif mutation == "identity_order":
+        metadata["row_identity_order"] = metadata["row_identity_order"][:-1]
+    elif mutation == "selected_identity_order":
+        metadata["selected_row_identity_order"] = []
+    elif mutation == "upstream_count":
+        metadata["upstream_row_count"] = 2
+    elif mutation == "entity_count":
+        metadata["entity_row_count"] = 2
+    elif mutation == "symbol":
+        metadata["upstream_symbol"] = ".DJI"
+    else:
+        payload[0]["close"] = "tampered"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=source_uri,
+        response_metadata=metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-us-index-sina-scope",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company("SH600000"),
+        )
+
+
+def test_us_index_sina_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.MARKET_HISTORY,
+        "SH600000",
+        {"view": "us_index_sina", "index_symbol": ".INX"},
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [("index_us_stock_sina", {"symbol": ".INX"})]
