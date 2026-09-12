@@ -1880,6 +1880,25 @@ validation, empty selection, raw-only normalization, replay metadata tampering
 and offline cache replay. No calculation, gate, pipeline, CLI or input-loader
 contract changes.
 
+Phase 3.52 adds the documented Tonghuashun IPO-benefit endpoint
+[`stock_ipo_benefit_ths`](https://akshare.akfamily.xyz/data/stock/stock.html)
+under `MARKET_ACTIVITY` with explicit `view=ipo_benefit`. The [official
+implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_board_industry_ths.py)
+discovers the HTML page count, refreshes the `ths.js` `v`/`hexin-v` headers for
+each page and parses the full table with `pandas.read_html`, then preserves the
+exact ten-field `序号`, `股票代码`, `股票简称`, `收盘价`, `涨跌幅`, `市值`, `参股家数`,
+`投资总额`, `投资占市值比` and `参股对象` response before filtering to the
+requested A-share listing.
+
+The IPO-benefit response is retained as raw evidence only: provider-defined
+investee counts, investment amounts and market-value ratios do not establish
+issuer revenue, cash flow, ownership, valuation or a canonical accounting fact.
+The normalizer emits `AKSHARE_IPO_BENEFIT_RAW_ONLY` and creates no canonical
+fact. Tests cover explicit routing, exact field/order and HTML-source metadata,
+complete-universe validation, empty selection, raw-only normalization, replay
+metadata tampering and offline cache replay. No calculation, gate, pipeline, CLI
+or input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

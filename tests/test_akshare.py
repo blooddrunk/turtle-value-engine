@@ -723,6 +723,12 @@ class FakeAKShare:
             _fixture("a_new_stock_first_day.json"),
         )
 
+    def stock_ipo_benefit_ths(self):
+        return self._return(
+            "stock_ipo_benefit_ths",
+            _fixture("a_ipo_benefit.json"),
+        )
+
     def stock_dzjy_mrmx(self, *, symbol: str, start_date: str, end_date: str):
         return self._return(
             "stock_dzjy_mrmx",
@@ -1342,8 +1348,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "157"
-    assert AKSHARE_MAPPING_VERSION == "158"
+    assert provider.identity.provider_version == "158"
+    assert AKSHARE_MAPPING_VERSION == "159"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -45430,6 +45436,357 @@ def test_new_stock_first_day_cache_replay_does_not_call_upstream(tmp_path: Path)
     assert replay.mode is RetrievalMode.CACHE_REPLAY
     assert replay.record == live.record
     assert fake.calls == [("stock_xgsr_ths", {})]
+
+
+def test_ipo_benefit_fetch_uses_documented_history_and_filters_listing():
+    fake = FakeAKShare()
+    request = _request(
+        DataCategory.MARKET_ACTIVITY,
+        "SH600000",
+        {"view": "ipo_benefit"},
+    )
+    record = _provider(fake).fetch(request)
+
+    fixture = _fixture("a_ipo_benefit.json")
+    assert record.raw_payload == [fixture[0]]
+    assert fake.calls == [("stock_ipo_benefit_ths", {})]
+    assert record.source_uri == "https://data.10jqka.com.cn/ipo/syg/"
+    assert record.response_metadata["endpoint"] == "stock_ipo_benefit_ths"
+    assert record.response_metadata["market"] == "A"
+    assert record.response_metadata["listing_code"] == "600000"
+    assert record.response_metadata["market_activity_view"] == "ipo_benefit"
+    assert record.response_metadata["market_scope"] == "all_a_share_listings"
+    assert record.response_metadata["listing_scoped_request"] is False
+    assert record.response_metadata["row_filtering"] == "provider"
+    assert (
+        record.response_metadata["snapshot_scope"]
+        == "latest_weekly_ipo_benefit_universe"
+    )
+    assert record.response_metadata["update_frequency"] == "weekly"
+    assert record.response_metadata["date_binding"] == "retrieval_only"
+    assert record.response_metadata["listing_code_field"] == "股票代码"
+    assert record.response_metadata["sequence_field"] == "序号"
+    assert record.response_metadata["sequence_ordering"] == "strictly_ascending"
+    assert record.response_metadata["identity_fields"] == ["股票代码"]
+    assert record.response_metadata["identity_ordering"] == "source_response_order"
+    assert record.response_metadata["row_identity_order"] == [
+        "600000",
+        "000001",
+        "430047",
+    ]
+    assert record.response_metadata["selected_row_identity_order"] == ["600000"]
+    assert record.response_metadata["selected_row_positions"] == [0]
+    assert record.response_metadata["value_fields"] == [
+        "收盘价",
+        "涨跌幅",
+        "参股家数",
+        "投资占市值比",
+    ]
+    assert record.response_metadata["integer_fields"] == ["序号", "参股家数"]
+    assert record.response_metadata["text_fields"] == [
+        "股票代码",
+        "股票简称",
+        "市值",
+        "投资总额",
+        "参股对象",
+    ]
+    assert record.response_metadata["required_text_fields"] == ["股票代码", "股票简称"]
+    assert record.response_metadata["nullable_fields"] == [
+        "收盘价",
+        "涨跌幅",
+        "参股家数",
+        "投资占市值比",
+        "市值",
+        "投资总额",
+        "参股对象",
+    ]
+    assert record.response_metadata["field_types"] == {
+        "序号": "integer",
+        "股票代码": "string",
+        "股票简称": "string",
+        "收盘价": "number",
+        "涨跌幅": "number",
+        "市值": "string",
+        "参股家数": "integer",
+        "投资总额": "string",
+        "投资占市值比": "number",
+        "参股对象": "string",
+    }
+    assert record.response_metadata["field_count"] == 10
+    assert record.response_metadata["source_field_order"] == list(fixture[0])
+    assert record.response_metadata["wrapper_selected_fields"] == list(fixture[0])
+    assert record.response_metadata["wrapper_column_mapping"] == {}
+    assert record.response_metadata["documented_units"] == {
+        "收盘价": "CNY_per_share",
+        "涨跌幅": "percent",
+        "市值": "CNY",
+        "投资总额": "CNY",
+        "投资占市值比": "percent",
+    }
+    assert record.response_metadata["undocumented_numeric_units"] == {
+        "参股家数": "count"
+    }
+    assert record.response_metadata["upstream_url"] == (
+        "https://data.10jqka.com.cn/ipo/syg/field/invest/order/desc/"
+        "page/{page}/ajax/1/free/1/"
+    )
+    assert record.response_metadata["upstream_protocol"] == "HTML"
+    assert record.response_metadata["upstream_parameters"] == [
+        "field",
+        "order",
+        "page",
+        "ajax",
+        "free",
+    ]
+    assert record.response_metadata["upstream_fixed_parameters"] == {
+        "field": "invest",
+        "order": "desc",
+        "ajax": "1",
+        "free": "1",
+    }
+    assert record.response_metadata["upstream_dynamic_parameters"] == {
+        "page": "1..provider_reported_page_count"
+    }
+    assert record.response_metadata["upstream_authentication"] == (
+        "ths.js_v_cookie_and_hexin_v"
+    )
+    assert record.response_metadata["upstream_decoder"] == "ths.js:v"
+    assert record.response_metadata["upstream_page_size"] == "provider_defined"
+    assert record.response_metadata["pagination"] == "provider_reported_page_count"
+    assert record.response_metadata["upstream_sort_column"] == "invest"
+    assert record.response_metadata["upstream_sort_direction"] == "descending"
+    assert record.response_metadata["upstream_filter"] == "field=invest"
+    assert record.response_metadata["full_universe_response"] is True
+    assert record.response_metadata["upstream_row_count"] == 3
+    assert record.response_metadata["entity_row_count"] == 1
+    assert record.response_metadata["entity_rows_selected"] is True
+
+
+@pytest.mark.parametrize(
+    ("parameters", "entity_id", "match"),
+    [
+        (
+            {"view": "ipo_benefit", "date": "20240927"},
+            "SH600000",
+            "unsupported AKShare IPO-benefit parameter",
+        ),
+        (
+            {"view": "ipo_benefit", "page": 1},
+            "SH600000",
+            "unsupported AKShare IPO-benefit parameter",
+        ),
+        (
+            {"view": "ipo_benefit"},
+            "HK00700",
+            "A-share listings only",
+        ),
+    ],
+)
+def test_ipo_benefit_request_validates_explicit_scope_before_upstream_call(
+    parameters: dict,
+    entity_id: str,
+    match: str,
+):
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError, match=match):
+        _provider(fake).fetch(
+            _request(DataCategory.MARKET_ACTIVITY, entity_id, parameters)
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("missing_field", "missing field"),
+        ("extra_field", "unsupported field"),
+        ("reordered_fields", "official field order"),
+        ("invalid_code", "股票代码 must be a six-digit string"),
+        ("duplicate_code", "duplicate listing code"),
+        ("invalid_sequence", "positive integer"),
+        ("descending_sequence", "序号 values must be strictly ascending"),
+        ("invalid_numeric", "must be numeric or null"),
+        ("invalid_integer", "must be an integer or null"),
+        ("invalid_text", "non-empty string or null"),
+    ],
+)
+def test_ipo_benefit_response_validates_shape_identity_sequence_and_values(
+    mutation: str,
+    match: str,
+):
+    payload = [dict(row) for row in _fixture("a_ipo_benefit.json")]
+    if mutation == "missing_field":
+        payload[0].pop("投资总额")
+    elif mutation == "extra_field":
+        payload[0]["unexpected"] = "not documented"
+    elif mutation == "reordered_fields":
+        payload[0] = dict(reversed(list(payload[0].items())))
+    elif mutation == "invalid_code":
+        payload[0]["股票代码"] = "SH600000"
+    elif mutation == "duplicate_code":
+        payload[1]["股票代码"] = payload[0]["股票代码"]
+    elif mutation == "invalid_sequence":
+        payload[0]["序号"] = 1.5
+    elif mutation == "descending_sequence":
+        payload[1]["序号"] = 1
+    elif mutation == "invalid_numeric":
+        payload[0]["收盘价"] = "not-a-number"
+    elif mutation == "invalid_integer":
+        payload[0]["参股家数"] = 1.5
+    else:
+        payload[0]["投资总额"] = ""
+
+    class InvalidIPOBenefit(FakeAKShare):
+        def stock_ipo_benefit_ths(self):
+            return self._return("stock_ipo_benefit_ths", payload)
+
+    with pytest.raises(ProviderResponseError, match=match):
+        _provider(InvalidIPOBenefit()).fetch(
+            _request(
+                DataCategory.MARKET_ACTIVITY,
+                "SH600000",
+                {"view": "ipo_benefit"},
+            )
+        )
+
+
+def test_ipo_benefit_with_no_matching_listing_is_empty():
+    class NoMatchingIPOBenefit(FakeAKShare):
+        def stock_ipo_benefit_ths(self):
+            return self._return(
+                "stock_ipo_benefit_ths",
+                [
+                    row
+                    for row in _fixture("a_ipo_benefit.json")
+                    if row["股票代码"] == "430047"
+                ],
+            )
+
+    record = _provider(NoMatchingIPOBenefit()).fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SH600000",
+            {"view": "ipo_benefit"},
+        )
+    )
+
+    assert record.raw_payload == []
+    assert record.response_metadata["upstream_row_count"] == 1
+    assert record.response_metadata["entity_row_count"] == 0
+    assert record.response_metadata["row_identity_order"] == ["430047"]
+    assert record.response_metadata["selected_row_identity_order"] == []
+
+
+def test_ipo_benefit_is_raw_only_without_canonical_facts():
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SH600000",
+            {"view": "ipo_benefit"},
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="ipo-benefit-raw-only",
+        as_of=date(2026, 9, 11),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_IPO_BENEFIT_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == []
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "IPO-benefit" in normalized.data_quality.notes
+    assert "investee counts" in normalized.data_quality.notes
+    assert "canonical accounting fact" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "endpoint",
+        "source_uri",
+        "field_count",
+        "identity_order",
+        "selected_identity_order",
+        "selected_positions",
+        "payload",
+    ],
+)
+def test_ipo_benefit_normalizer_rejects_replayed_scope_mismatches(mutation: str):
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_ACTIVITY,
+            "SH600000",
+            {"view": "ipo_benefit"},
+        )
+    )
+    payload = [dict(row) for row in record.raw_payload]
+    response_metadata = dict(record.response_metadata)
+    source_uri = record.source_uri
+    if mutation == "endpoint":
+        response_metadata["endpoint"] = "stock_lhb_detail_em"
+    elif mutation == "source_uri":
+        source_uri = "https://example.invalid/ipo-benefit"
+    elif mutation == "field_count":
+        response_metadata["field_count"] = 9
+    elif mutation == "identity_order":
+        response_metadata["row_identity_order"] = ["000001", "600000", "430047"]
+    elif mutation == "selected_identity_order":
+        response_metadata["selected_row_identity_order"] = ["000001"]
+    elif mutation == "selected_positions":
+        response_metadata["selected_row_positions"] = [1]
+    else:
+        payload[0]["股票代码"] = "000001"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=source_uri,
+        response_metadata=response_metadata,
+    )
+
+    with pytest.raises(
+        ProviderNormalizationError,
+        match="market-activity|IPO-benefit",
+    ):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-ipo-benefit-scope",
+            as_of=date(2026, 9, 11),
+            profile_id="strict-v1",
+            company=_company(),
+        )
+
+
+def test_ipo_benefit_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.MARKET_ACTIVITY,
+        "SH600000",
+        {"view": "ipo_benefit"},
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [("stock_ipo_benefit_ths", {})]
 
 
 def test_tencent_tick_fetch_uses_explicit_view_and_listing_symbol():

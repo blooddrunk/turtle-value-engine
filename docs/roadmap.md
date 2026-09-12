@@ -3859,6 +3859,28 @@ validation, empty selection, raw-only normalization, replay metadata tampering
 and offline cache replay. No calculation, gate, pipeline, CLI or input-loader
 contract changes.
 
+### Phase 3.52 — Tonghuashun IPO-benefit raw acquisition contract (COMPLETE)
+
+The mapping review now covers the documented Tonghuashun
+[`stock_ipo_benefit_ths`](https://akshare.akfamily.xyz/data/stock/stock.html)
+IPO-benefit endpoint under `MARKET_ACTIVITY` with explicit `view=ipo_benefit`.
+The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_board_industry_ths.py)
+discovers the HTML page count, refreshes the `ths.js` `v` and `hexin-v` headers
+for each page and parses the full table with `pandas.read_html`, then returns
+the exact ten fields `序号`, `股票代码`, `股票简称`, `收盘价`, `涨跌幅`, `市值`,
+`参股家数`, `投资总额`, `投资占市值比` and `参股对象`. The adapter records the
+weekly snapshot, HTML pagination/authentication contract, provider transforms,
+full source identity order and provider-side selection scope.
+
+The response remains raw evidence only because provider-defined investee counts,
+investment amounts and market-value ratios do not establish issuer revenue,
+cash flow, ownership, valuation or a canonical accounting fact. The normalizer
+emits `AKSHARE_IPO_BENEFIT_RAW_ONLY` and creates no canonical fact. Tests cover
+explicit routing, exact field/order and HTML-source metadata, complete-universe
+validation, empty selection, raw-only normalization, replay metadata tampering
+and offline cache replay. No calculation, gate, pipeline, CLI or input-loader
+contract changes.
+
 ### Future structured-provider deliverables
 
 ```text
@@ -3868,7 +3890,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–3.51 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–3.52 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```
