@@ -3888,6 +3888,35 @@ return, valuation or accounting fact: an index-level series has no
 listing/entity accounting scope. The response remains outside the calculation,
 gate, pipeline, CLI and input-loader contracts.
 
+## Phase 3.57 Tencent index daily-history raw slice
+
+The current [AKShare index-data documentation](https://akshare.akfamily.xyz/data/index/index.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/index/index_stock_zh.py)
+document `stock_zh_index_daily_tx` as a Tencent index-level daily-history
+endpoint with optional `start_date` and `end_date` bounds. The adapter selects
+it only under `MARKET_HISTORY` with explicit `view=tencent_index_daily`, accepts
+Shanghai 000xxx or Shenzhen 399xxx index-shaped IDs, and preserves the exact
+six-field response order before returning the raw record. The official wrapper
+fetches yearly qfq data, uses an earliest-date lookup when the start bound is
+empty, prefers the qfq series and filters the inclusive requested range.
+
+| Raw upstream item | Phase 3.57 treatment |
+| --- | --- |
+| `date` | Required parseable observation date; rows must stay within any explicit inclusive bounds and be strictly ascending. |
+| `open`, `close`, `high`, `low` | Required finite numeric or null front-adjusted index OHLC fields; the documentation does not declare a canonical unit, so they remain raw evidence only. |
+| `amount` | Required finite numeric or null amount field; the documentation declares the unit as `lots`, and it remains raw evidence only. |
+| request `view=tencent_index_daily` and listing-shaped index ID | Explicit Shanghai 000xxx/Shenzhen 399xxx index routing; `index_scoped_request=true`, `listing_scoped_request=false`, `date_binding=row_and_request` and requested-range replay scope are recorded. |
+| request `start_date`/`end_date` and Tencent qfq fetch | Empty defaults are preserved as empty provider arguments; normalized explicit dates, qfq adjustment, yearly partitioning, source/auxiliary URLs, fixed/dynamic parameters and wrapper transformations remain replay metadata. |
+
+The provider rejects stock-listing, B-share, H-share, Beijing, missing or
+unexpected-parameter requests, malformed or reversed date ranges,
+missing/unexpected/reordered fields, invalid or out-of-range dates and
+non-finite/non-numeric values. The normalizer emits
+`AKSHARE_TENCENT_INDEX_DAILY_HISTORY_RAW_ONLY` and creates no canonical
+daily-history, return, valuation or accounting fact: the always-front-adjusted
+index series has no listing/entity accounting scope. The response remains
+outside the calculation, gate, pipeline, CLI and input-loader contracts.
+
 ## Phase 2 enforcement rule
 
 For every field not marked `STRUCTURED_AUTO` or `DERIVED_DETERMINISTIC`, a

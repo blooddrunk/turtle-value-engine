@@ -1982,6 +1982,30 @@ and row validation, unsupported listing/parameter boundaries, empty output,
 raw-only normalization, replay metadata tampering and offline cache replay.
 No calculation, gate, pipeline, CLI or input-loader contract changes.
 
+Phase 3.57 adds the documented Tencent
+[`stock_zh_index_daily_tx`](https://akshare.akfamily.xyz/data/index/index.html)
+index daily-history endpoint under `MARKET_HISTORY` with explicit
+`view=tencent_index_daily`, Shanghai 000xxx or Shenzhen 399xxx index-shaped
+listing context and optional inclusive `start_date`/`end_date` bounds. The
+[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/index/index_stock_zh.py)
+fetches yearly Tencent qfq data from the `newfqkline/get` endpoint, uses an
+earliest-date lookup when the start bound is empty, prefers the qfq series and
+returns the exact six fields `date`, `open`, `close`, `high`, `low` and `amount`.
+The adapter preserves the request range, front-adjustment mode, lot amount unit,
+source/auxiliary URLs, fixed/dynamic parameters, decoder/transformation steps,
+strict date order and replay row counts in metadata.
+
+The Tencent index daily-history response is retained as raw evidence only: its
+always-front-adjusted index OHLC and lot amount series have no listing/entity
+accounting scope and do not establish the canonical daily-history, return,
+valuation or accounting inputs. The normalizer emits
+`AKSHARE_TENCENT_INDEX_DAILY_HISTORY_RAW_ONLY` and creates no canonical fact.
+Tests cover explicit/default ranges, Shanghai and Shenzhen index routing, exact
+schema/order and numeric/date boundaries, unsupported listing/parameter
+requests, empty output, raw-only normalization, replay metadata tampering and
+offline cache replay. No calculation, gate, pipeline, CLI or input-loader
+contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

@@ -3973,6 +3973,30 @@ boundaries, unsupported listing/parameter requests, empty output, raw-only
 normalization, replay metadata tampering and offline cache replay. No
 calculation, gate, pipeline, CLI or input-loader contract changes.
 
+### Phase 3.57 — Tencent index daily-history raw acquisition contract (COMPLETE)
+
+The mapping review now covers the documented Tencent
+[`stock_zh_index_daily_tx`](https://akshare.akfamily.xyz/data/index/index.html)
+index daily-history endpoint under `MARKET_HISTORY` with explicit
+`view=tencent_index_daily`. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/index/index_stock_zh.py)
+requests a Shanghai 000xxx or Shenzhen 399xxx index symbol with optional
+`start_date` and `end_date`, fetches Tencent's qfq series in year partitions,
+uses an earliest-date lookup for an empty start bound and returns the exact six
+fields `date`, `open`, `close`, `high`, `low` and `amount`. The adapter preserves
+the inclusive range, always-front-adjusted mode, documented lot amount unit,
+source/auxiliary URLs, fixed/dynamic parameters, decoder/transformation steps,
+strict date order and replay row counts in metadata.
+
+The Tencent index daily-history response remains raw evidence only: its index
+OHLC and lot amount series have no listing/entity accounting scope and do not
+establish the canonical daily-history, return, valuation or accounting inputs.
+The normalizer emits `AKSHARE_TENCENT_INDEX_DAILY_HISTORY_RAW_ONLY` and creates
+no canonical fact. Tests cover explicit/default ranges, Shanghai and Shenzhen
+index routing, exact schema/order and numeric/date boundaries, unsupported
+listing/parameter requests, empty output, raw-only normalization, replay
+metadata tampering and offline cache replay. No calculation, gate, pipeline,
+CLI or input-loader contract changes.
+
 ### Future structured-provider deliverables
 
 ```text
@@ -3982,7 +4006,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–3.56 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–3.57 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```

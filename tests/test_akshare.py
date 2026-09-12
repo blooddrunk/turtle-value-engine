@@ -557,6 +557,21 @@ class FakeAKShare:
             symbol=symbol,
         )
 
+    def stock_zh_index_daily_tx(
+        self,
+        *,
+        symbol: str,
+        start_date: str,
+        end_date: str,
+    ):
+        return self._return(
+            "stock_zh_index_daily_tx",
+            _fixture("index_daily_tx_history.json"),
+            symbol=symbol,
+            start_date=start_date,
+            end_date=end_date,
+        )
+
     def stock_zh_b_minute(self, *, symbol: str, period: str, adjust: str):
         return self._return(
             "stock_zh_b_minute",
@@ -1382,8 +1397,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "162"
-    assert AKSHARE_MAPPING_VERSION == "163"
+    assert provider.identity.provider_version == "163"
+    assert AKSHARE_MAPPING_VERSION == "164"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -15744,6 +15759,436 @@ def test_index_daily_history_cache_replay_does_not_call_upstream(tmp_path: Path)
         (
             "stock_zh_index_daily",
             {"symbol": "sh000001"},
+        )
+    ]
+
+
+def test_tencent_index_daily_history_fetch_preserves_range_and_qfq_contract():
+    fake = FakeAKShare()
+    record = _provider(fake).fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "SH000001",
+            {
+                "view": "tencent_index_daily",
+                "start_date": "2026-09-08",
+                "end_date": "20260909",
+            },
+        )
+    )
+
+    fields = ["date", "open", "close", "high", "low", "amount"]
+    assert record.raw_payload == _fixture("index_daily_tx_history.json")
+    assert fake.calls == [
+        (
+            "stock_zh_index_daily_tx",
+            {
+                "symbol": "sh000001",
+                "start_date": "20260908",
+                "end_date": "20260909",
+            },
+        )
+    ]
+    assert record.source_uri == "https://gu.qq.com/sh000919/zs"
+    assert record.response_metadata["endpoint"] == "stock_zh_index_daily_tx"
+    assert record.response_metadata["market"] == "A"
+    assert record.response_metadata["listing_code"] == "000001"
+    assert record.response_metadata["market_history_view"] == (
+        "tencent_index_daily"
+    )
+    assert record.response_metadata["upstream_symbol"] == "sh000001"
+    assert record.response_metadata["market_scope"] == "requested_a_share_index"
+    assert record.response_metadata["index_scoped_request"] is True
+    assert record.response_metadata["listing_scoped_request"] is False
+    assert record.response_metadata["row_filtering"] == "upstream_and_wrapper"
+    assert record.response_metadata["snapshot_scope"] == (
+        "requested_index_daily_range"
+    )
+    assert record.response_metadata["date_binding"] == "row_and_request"
+    assert record.response_metadata["range_filtering"] == (
+        "upstream_and_wrapper_and_provider_validation"
+    )
+    assert record.response_metadata["tencent_index_daily_start_date"] == "20260908"
+    assert record.response_metadata["tencent_index_daily_end_date"] == "20260909"
+    assert record.response_metadata["adjustment_kind"] == "qfq"
+    assert record.response_metadata["observation_date_field"] == "date"
+    assert record.response_metadata["date_ordering"] == "strictly_ascending"
+    assert record.response_metadata["field_count"] == 6
+    assert record.response_metadata["source_field_order"] == fields
+    assert record.response_metadata["date_fields"] == ["date"]
+    assert record.response_metadata["value_fields"] == fields[1:]
+    assert record.response_metadata["required_numeric_fields"] == fields[1:]
+    assert record.response_metadata["documented_units"] == {"amount": "lots"}
+    assert record.response_metadata["undocumented_numeric_units"] == {
+        field: "not_documented" for field in fields[1:-1]
+    }
+    assert record.response_metadata["field_types"] == {
+        "date": "date",
+        "open": "number",
+        "close": "number",
+        "high": "number",
+        "low": "number",
+        "amount": "number",
+    }
+    assert record.response_metadata["upstream_url"] == (
+        "https://proxy.finance.qq.com/ifzqgtimg/appstock/app/newfqkline/get"
+    )
+    assert record.response_metadata["upstream_urls"] == [
+        record.response_metadata["upstream_url"]
+    ]
+    assert record.response_metadata["upstream_auxiliary_urls"] == []
+    assert record.response_metadata["upstream_auxiliary_roles"] == []
+    assert record.response_metadata["upstream_protocol"] == "https_jsonp"
+    assert record.response_metadata["upstream_parameters"] == [
+        "symbol",
+        "start_date",
+        "end_date",
+    ]
+    assert record.response_metadata["upstream_dynamic_parameters"] == {
+        "symbol": "sh000001",
+        "start_date": "20260908",
+        "end_date": "20260909",
+    }
+    assert record.response_metadata["upstream_fixed_parameters"] == {
+        "_var": "kline_dayqfq",
+        "r": "0.8205512681390605",
+        "period": "day",
+        "limit": "640",
+        "adjust": "qfq",
+    }
+    assert record.response_metadata["upstream_authentication"] == "none"
+    assert record.response_metadata["wrapper_source_page_uri"] == record.source_uri
+    assert record.response_metadata["wrapper_date_filtering"] == (
+        "inclusive_slice_after_yearly_fetch"
+    )
+    assert record.response_metadata["wrapper_decoders"] == ["demjson"]
+    assert record.response_metadata["wrapper_transformations"] == [
+        "yearly_fetch",
+        "qfq_series_preference",
+        "drop_duplicates",
+        "inclusive_date_filter",
+        "front_adjusted",
+    ]
+    assert record.response_metadata["upstream_page_size"] == 640
+    assert record.response_metadata["pagination"] == "provider_year_partitioned"
+    assert record.response_metadata["upstream_row_count"] == 2
+    assert record.response_metadata["entity_row_count"] == 2
+    assert record.response_metadata["entity_rows_selected"] is True
+    assert record.response_metadata["observation_start_date"] == "2026-09-08"
+    assert record.response_metadata["observation_end_date"] == "2026-09-09"
+
+
+def test_tencent_index_daily_history_defaults_keep_empty_provider_range():
+    fake = FakeAKShare()
+    record = _provider(fake).fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "SH000001",
+            {"view": "tencent_index_daily"},
+        )
+    )
+
+    assert record.raw_payload == _fixture("index_daily_tx_history.json")
+    assert fake.calls == [
+        (
+            "stock_zh_index_daily_tx",
+            {"symbol": "sh000001", "start_date": "", "end_date": ""},
+        )
+    ]
+    assert record.response_metadata["tencent_index_daily_start_date"] == ""
+    assert record.response_metadata["tencent_index_daily_end_date"] == ""
+    assert record.response_metadata["upstream_auxiliary_urls"] == [
+        "https://web.ifzq.gtimg.cn/other/klineweb/klineWeb/weekTrends"
+    ]
+    assert record.response_metadata["upstream_auxiliary_roles"] == [
+        "earliest_date_lookup"
+    ]
+
+
+def test_tencent_index_daily_history_accepts_shenzhen_index_symbol():
+    fake = FakeAKShare()
+    record = _provider(fake).fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "SZ399552",
+            {"view": "tencent_index_daily", "start_date": "20260908"},
+        )
+    )
+
+    assert record.raw_payload == _fixture("index_daily_tx_history.json")
+    assert fake.calls == [
+        (
+            "stock_zh_index_daily_tx",
+            {"symbol": "sz399552", "start_date": "20260908", "end_date": ""},
+        )
+    ]
+    assert record.response_metadata["listing_code"] == "399552"
+    assert record.response_metadata["upstream_symbol"] == "sz399552"
+    assert record.response_metadata["tencent_index_daily_end_date"] == ""
+
+
+@pytest.mark.parametrize(
+    ("entity_id", "parameters", "match"),
+    [
+        (
+            "SH600000",
+            {"view": "tencent_index_daily"},
+            "supports Shanghai 000xxx",
+        ),
+        (
+            "SZ000001",
+            {"view": "tencent_index_daily"},
+            "supports Shanghai 000xxx",
+        ),
+        (
+            "HK00700",
+            {"view": "tencent_index_daily"},
+            "supports Shanghai 000xxx",
+        ),
+        (
+            "BJ899050",
+            {"view": "tencent_index_daily"},
+            "supports Shanghai 000xxx",
+        ),
+        (
+            "SH000001",
+            {"view": "tencent_index_daily", "adjust": "qfq"},
+            "unsupported AKShare Tencent index daily-history parameter",
+        ),
+        (
+            "SH000001",
+            {
+                "view": "tencent_index_daily",
+                "start_date": "2026/09/08",
+            },
+            "must be empty, YYYYMMDD or YYYY-MM-DD",
+        ),
+        (
+            "SH000001",
+            {
+                "view": "tencent_index_daily",
+                "start_date": "20260910",
+                "end_date": "20260909",
+            },
+            "start_date must not be after end_date",
+        ),
+    ],
+)
+def test_tencent_index_daily_history_request_boundaries(
+    entity_id: str,
+    parameters: dict,
+    match: str,
+):
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError, match=match):
+        _provider(fake).fetch(
+            _request(DataCategory.MARKET_HISTORY, entity_id, parameters)
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("missing_field", "missing field"),
+        ("extra_field", "unsupported field"),
+        ("reordered_fields", "documented field order"),
+        ("invalid_date", "invalid date"),
+        ("outside_range", "outside requested range"),
+        ("descending", "strictly ascending"),
+        ("duplicate_date", "duplicate date"),
+        ("invalid_numeric", "must be numeric or null"),
+        ("bool_numeric", "must be numeric or null"),
+        ("infinite_numeric", "contains infinity"),
+    ],
+)
+def test_tencent_index_daily_history_response_validates_documented_rows(
+    mutation: str,
+    match: str,
+):
+    class InvalidRows(FakeAKShare):
+        def stock_zh_index_daily_tx(
+            self,
+            *,
+            symbol: str,
+            start_date: str,
+            end_date: str,
+        ):
+            rows = [dict(row) for row in _fixture("index_daily_tx_history.json")]
+            if mutation == "missing_field":
+                rows[0].pop("amount")
+            elif mutation == "extra_field":
+                rows[0]["unexpected"] = "not documented"
+            elif mutation == "reordered_fields":
+                first = rows[0]
+                rows[0] = {
+                    "open": first["open"],
+                    **{key: value for key, value in first.items() if key != "open"},
+                }
+            elif mutation == "invalid_date":
+                rows[0]["date"] = "not-a-date"
+            elif mutation == "outside_range":
+                rows[1]["date"] = "2026-09-10"
+            elif mutation == "descending":
+                rows.reverse()
+            elif mutation == "duplicate_date":
+                rows[1]["date"] = rows[0]["date"]
+            elif mutation == "invalid_numeric":
+                rows[0]["close"] = "42.9"
+            elif mutation == "bool_numeric":
+                rows[0]["amount"] = True
+            else:
+                rows[0]["high"] = float("inf")
+            return self._return(
+                "stock_zh_index_daily_tx",
+                rows,
+                symbol=symbol,
+                start_date=start_date,
+                end_date=end_date,
+            )
+
+    with pytest.raises(ProviderResponseError, match=match):
+        _provider(InvalidRows()).fetch(
+            _request(
+                DataCategory.MARKET_HISTORY,
+                "SH000001",
+                {
+                    "view": "tencent_index_daily",
+                    "start_date": "20260908",
+                    "end_date": "20260909",
+                },
+            )
+        )
+
+
+def test_tencent_index_daily_history_empty_response_is_a_valid_raw_snapshot():
+    class EmptyResponse(FakeAKShare):
+        def stock_zh_index_daily_tx(
+            self,
+            *,
+            symbol: str,
+            start_date: str,
+            end_date: str,
+        ):
+            return self._return(
+                "stock_zh_index_daily_tx",
+                [],
+                symbol=symbol,
+                start_date=start_date,
+                end_date=end_date,
+            )
+
+    record = _provider(EmptyResponse()).fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "SH000001",
+            {
+                "view": "tencent_index_daily",
+                "start_date": "20260908",
+                "end_date": "20260909",
+            },
+        )
+    )
+
+    assert record.raw_payload == []
+    assert record.response_metadata["upstream_row_count"] == 0
+    assert record.response_metadata["entity_row_count"] == 0
+    assert record.response_metadata["observation_start_date"] is None
+    assert record.response_metadata["observation_end_date"] is None
+
+
+def test_tencent_index_daily_history_is_raw_evidence_without_canonical_facts():
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "SH000001",
+            {"view": "tencent_index_daily"},
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="tencent-index-daily-history-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company("SH000001"),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_TENCENT_INDEX_DAILY_HISTORY_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == ["market_history"]
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "Tencent index daily-history" in normalized.data_quality.notes
+    assert "always-front-adjusted" in normalized.data_quality.notes
+    assert "canonical listing/entity daily-history" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+def test_tencent_index_daily_history_normalizer_rejects_replayed_scope_mismatches():
+    request = _request(
+        DataCategory.MARKET_HISTORY,
+        "SH000001",
+        {"view": "tencent_index_daily", "start_date": "20260908"},
+    )
+    record = _provider().fetch(request)
+    response_metadata = dict(record.response_metadata)
+    response_metadata["tencent_index_daily_start_date"] = ""
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=record.raw_payload,
+        source_uri=record.source_uri,
+        response_metadata=response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match="Tencent index daily-history"):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-tencent-index-daily-history-scope",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company("SH000001"),
+        )
+
+
+def test_tencent_index_daily_history_cache_replay_does_not_call_upstream(
+    tmp_path: Path,
+):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.MARKET_HISTORY,
+        "SH000001",
+        {
+            "view": "tencent_index_daily",
+            "start_date": "20260908",
+            "end_date": "20260909",
+        },
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [
+        (
+            "stock_zh_index_daily_tx",
+            {
+                "symbol": "sh000001",
+                "start_date": "20260908",
+                "end_date": "20260909",
+            },
         )
     ]
 
