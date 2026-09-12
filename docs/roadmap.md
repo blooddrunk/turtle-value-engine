@@ -4021,6 +4021,33 @@ boundaries, unsupported listing/parameter requests, empty output, raw-only
 normalization, replay metadata tampering and offline cache replay. No
 calculation, gate, pipeline, CLI or input-loader contract changes.
 
+### Phase 3.59 — Generic Eastmoney index-history raw acquisition contract (COMPLETE)
+
+The mapping review now covers the documented generic Eastmoney
+[`index_zh_a_hist`](https://akshare.akfamily.xyz/data/index/index.html)
+index-history endpoint under `MARKET_HISTORY` with explicit
+`view=index_zh_a_hist`, `daily`/`weekly`/`monthly` periods and default bounds
+`19700101` through `22220101`. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/index/index_zh_em.py)
+resolves the raw index code through the Eastmoney index-code map with market
+fallbacks, requests unadjusted K-lines with period-specific `klt` values,
+fetches the full response, filters it by the requested range and returns the
+exact eleven fields `日期`, `开盘`, `收盘`, `最高`, `最低`, `成交量`, `成交额`,
+`振幅`, `涨跌幅`, `涨跌额` and `换手率`. The adapter preserves the period,
+range, map/fallback resolution, source/auxiliary URLs, fixed/dynamic
+parameters, wrapper filtering and transformation steps, strict date order and
+replay row counts in metadata.
+
+The generic index-history response remains raw evidence only: its unadjusted
+multi-period OHLCV, turnover and provider-derived change fields have no
+listing/entity accounting scope and do not establish the canonical
+daily-history, return, valuation or accounting inputs. The normalizer emits
+`AKSHARE_INDEX_ZH_A_HIST_RAW_ONLY` and creates no canonical fact. Tests cover
+default/explicit periods and ranges, Shanghai/Shenzhen/Beijing routing, exact
+schema/order and numeric/date boundaries, unsupported listing/parameter
+requests, empty output, raw-only normalization, replay metadata tampering and
+offline cache replay. No calculation, gate, pipeline, CLI or input-loader
+contract changes.
+
 ### Future structured-provider deliverables
 
 ```text
@@ -4030,7 +4057,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–3.58 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–3.59 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```

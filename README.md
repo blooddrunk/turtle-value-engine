@@ -2029,6 +2029,32 @@ boundaries, unsupported listing/parameter requests, empty output, raw-only
 normalization, replay metadata tampering and offline cache replay. No
 calculation, gate, pipeline, CLI or input-loader contract changes.
 
+Phase 3.59 adds the documented generic Eastmoney
+[`index_zh_a_hist`](https://akshare.akfamily.xyz/data/index/index.html)
+index-history endpoint under `MARKET_HISTORY` with explicit
+`view=index_zh_a_hist`, `daily`/`weekly`/`monthly` periods, Shanghai 000xxx,
+Shenzhen 399xxx or Beijing 899xxx index-shaped listing context and inclusive
+date bounds. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/index/index_zh_em.py)
+resolves the raw index code through Eastmoney's index-code map with documented
+market fallbacks, requests unadjusted K-lines with period-specific `klt` values,
+filters the full response by the requested range and returns the exact eleven
+fields `日期`, `开盘`, `收盘`, `最高`, `最低`, `成交量`, `成交额`, `振幅`,
+`涨跌幅`, `涨跌额` and `换手率`. The adapter preserves the period, range,
+market-code resolution, source/auxiliary URLs, fixed/dynamic parameters,
+wrapper filtering and transformation steps, strict date order and replay row
+counts in metadata.
+
+The generic index-history response is retained as raw evidence only: its
+unadjusted multi-period OHLCV, turnover and provider-derived change fields have
+no listing/entity accounting scope and do not establish the canonical
+daily-history, return, valuation or accounting inputs. The normalizer emits
+`AKSHARE_INDEX_ZH_A_HIST_RAW_ONLY` and creates no canonical fact. Tests cover
+default/explicit periods and ranges, Shanghai/Shenzhen/Beijing routing, exact
+schema/order and numeric/date boundaries, unsupported listing/parameter
+requests, empty output, raw-only normalization, replay metadata tampering and
+offline cache replay. No calculation, gate, pipeline, CLI or input-loader
+contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

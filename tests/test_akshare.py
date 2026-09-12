@@ -587,6 +587,23 @@ class FakeAKShare:
             end_date=end_date,
         )
 
+    def index_zh_a_hist(
+        self,
+        *,
+        symbol: str,
+        period: str,
+        start_date: str,
+        end_date: str,
+    ):
+        return self._return(
+            "index_zh_a_hist",
+            _fixture("index_zh_a_hist.json"),
+            symbol=symbol,
+            period=period,
+            start_date=start_date,
+            end_date=end_date,
+        )
+
     def stock_zh_b_minute(self, *, symbol: str, period: str, adjust: str):
         return self._return(
             "stock_zh_b_minute",
@@ -1412,8 +1429,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "164"
-    assert AKSHARE_MAPPING_VERSION == "165"
+    assert provider.identity.provider_version == "166"
+    assert AKSHARE_MAPPING_VERSION == "167"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -16644,6 +16661,506 @@ def test_index_daily_em_history_cache_replay_does_not_call_upstream(tmp_path: Pa
             "stock_zh_index_daily_em",
             {
                 "symbol": "sh000001",
+                "start_date": "20260908",
+                "end_date": "20260909",
+            },
+        )
+    ]
+
+
+def test_index_zh_a_hist_fetch_preserves_period_and_range_contract():
+    fake = FakeAKShare()
+    record = _provider(fake).fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "SH000001",
+            {
+                "view": "index_zh_a_hist",
+                "period": "weekly",
+                "start_date": "2026-09-08",
+                "end_date": "20260909",
+            },
+        )
+    )
+
+    fields = [
+        "日期",
+        "开盘",
+        "收盘",
+        "最高",
+        "最低",
+        "成交量",
+        "成交额",
+        "振幅",
+        "涨跌幅",
+        "涨跌额",
+        "换手率",
+    ]
+    assert record.raw_payload == _fixture("index_zh_a_hist.json")
+    assert fake.calls == [
+        (
+            "index_zh_a_hist",
+            {
+                "symbol": "000001",
+                "period": "weekly",
+                "start_date": "20260908",
+                "end_date": "20260909",
+            },
+        )
+    ]
+    assert record.source_uri == "https://quote.eastmoney.com/center/hszs.html"
+    assert record.response_metadata["endpoint"] == "index_zh_a_hist"
+    assert record.response_metadata["market"] == "A"
+    assert record.response_metadata["listing_code"] == "000001"
+    assert record.response_metadata["market_history_view"] == "index_zh_a_hist"
+    assert record.response_metadata["upstream_symbol"] == "000001"
+    assert record.response_metadata["upstream_period"] == "weekly"
+    assert record.response_metadata["market_scope"] == "requested_a_share_index"
+    assert record.response_metadata["index_scoped_request"] is True
+    assert record.response_metadata["listing_scoped_request"] is False
+    assert record.response_metadata["row_filtering"] == "upstream_and_wrapper"
+    assert record.response_metadata["snapshot_scope"] == (
+        "requested_index_history_range"
+    )
+    assert record.response_metadata["date_binding"] == "row_and_request"
+    assert record.response_metadata["range_filtering"] == (
+        "wrapper_and_provider_validation"
+    )
+    assert record.response_metadata["index_zh_a_hist_start_date"] == "20260908"
+    assert record.response_metadata["index_zh_a_hist_end_date"] == "20260909"
+    assert record.response_metadata["adjustment_kind"] == "unadjusted"
+    assert record.response_metadata["observation_date_field"] == "日期"
+    assert record.response_metadata["date_ordering"] == "strictly_ascending"
+    assert record.response_metadata["field_count"] == 11
+    assert record.response_metadata["source_field_order"] == fields
+    assert record.response_metadata["date_fields"] == ["日期"]
+    assert record.response_metadata["value_fields"] == fields[1:]
+    assert record.response_metadata["required_numeric_fields"] == fields[1:]
+    assert record.response_metadata["documented_units"] == {
+        "成交量": "lots",
+        "成交额": "CNY",
+        "振幅": "percent",
+        "涨跌幅": "percent",
+        "涨跌额": "CNY",
+        "换手率": "percent",
+    }
+    assert record.response_metadata["undocumented_numeric_units"] == {
+        field: "not_documented"
+        for field in ("开盘", "收盘", "最高", "最低")
+    }
+    assert record.response_metadata["field_types"] == {
+        "日期": "date",
+        **{field: "number" for field in fields[1:]},
+    }
+    assert record.response_metadata["upstream_url"] == (
+        "https://push2his.eastmoney.com/api/qt/stock/kline/get"
+    )
+    assert record.response_metadata["upstream_urls"] == [
+        record.response_metadata["upstream_url"],
+        "https://80.push2.eastmoney.com/api/qt/clist/get",
+    ]
+    assert record.response_metadata["upstream_auxiliary_urls"] == [
+        "https://80.push2.eastmoney.com/api/qt/clist/get"
+    ]
+    assert record.response_metadata["upstream_auxiliary_roles"] == [
+        "index_code_id_map"
+    ]
+    assert record.response_metadata["upstream_protocol"] == "JSON"
+    assert record.response_metadata["upstream_parameters"] == [
+        "secid",
+        "ut",
+        "fields1",
+        "fields2",
+        "klt",
+        "fqt",
+        "beg",
+        "end",
+    ]
+    assert record.response_metadata["upstream_dynamic_parameters"] == {
+        "symbol": "000001",
+        "period": "weekly",
+        "klt": "102",
+        "beg": "0",
+        "end": "20500000",
+    }
+    assert record.response_metadata["upstream_fixed_parameters"] == {
+        "ut": "7eea3edcaed734bea9cbfc24409ed989",
+        "fields1": "f1,f2,f3,f4,f5,f6",
+        "fields2": "f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61",
+        "fqt": "0",
+        "beg": "0",
+        "end": "20500000",
+    }
+    assert record.response_metadata["upstream_auxiliary_parameters"] == [
+        "pn",
+        "pz",
+        "po",
+        "np",
+        "ut",
+        "fltt",
+        "invt",
+        "fid",
+        "fs",
+        "fields",
+    ]
+    assert record.response_metadata["upstream_market_code_resolution"] == (
+        "index_code_id_map_em_then_market_fallback_1_0_2_47"
+    )
+    assert record.response_metadata["upstream_authentication"] == "none"
+    assert record.response_metadata["wrapper_source_page_uri"] == record.source_uri
+    assert record.response_metadata["wrapper_date_filtering"] == (
+        "inclusive_index_slice_after_full_history_fetch"
+    )
+    assert record.response_metadata["wrapper_decoders"] == ["response.json"]
+    assert record.response_metadata["wrapper_transformations"] == [
+        "index_code_id_map",
+        "market_code_fallback",
+        "split_kline_rows",
+        "inclusive_date_filter",
+        "numeric_conversion",
+    ]
+    assert record.response_metadata["wrapper_source_column_count"] == 11
+    assert record.response_metadata["wrapper_dropped_fields"] == []
+    assert record.response_metadata["upstream_page_size"] == 100
+    assert record.response_metadata["pagination"] == (
+        "paginated_index_code_map_then_single_full_history_response"
+    )
+    assert record.response_metadata["upstream_row_count"] == 2
+    assert record.response_metadata["entity_row_count"] == 2
+    assert record.response_metadata["entity_rows_selected"] is True
+    assert record.response_metadata["observation_start_date"] == "2026-09-08"
+    assert record.response_metadata["observation_end_date"] == "2026-09-09"
+
+
+def test_index_zh_a_hist_defaults_use_documented_period_and_date_bounds():
+    fake = FakeAKShare()
+    record = _provider(fake).fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "SH000001",
+            {"view": "index_zh_a_hist"},
+        )
+    )
+
+    assert record.raw_payload == _fixture("index_zh_a_hist.json")
+    assert fake.calls == [
+        (
+            "index_zh_a_hist",
+            {
+                "symbol": "000001",
+                "period": "daily",
+                "start_date": "19700101",
+                "end_date": "22220101",
+            },
+        )
+    ]
+    assert record.response_metadata["upstream_period"] == "daily"
+    assert record.response_metadata["index_zh_a_hist_start_date"] == "19700101"
+    assert record.response_metadata["index_zh_a_hist_end_date"] == "22220101"
+
+
+@pytest.mark.parametrize(
+    ("entity_id", "expected_symbol"),
+    [("SZ399552", "399552"), ("BJ899050", "899050")],
+)
+def test_index_zh_a_hist_accepts_shenzhen_and_beijing_indices(
+    entity_id: str,
+    expected_symbol: str,
+):
+    fake = FakeAKShare()
+    record = _provider(fake).fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            entity_id,
+            {
+                "view": "index_zh_a_hist",
+                "period": "monthly",
+                "start_date": "20260908",
+                "end_date": "20260909",
+            },
+        )
+    )
+
+    assert record.raw_payload == _fixture("index_zh_a_hist.json")
+    assert fake.calls == [
+        (
+            "index_zh_a_hist",
+            {
+                "symbol": expected_symbol,
+                "period": "monthly",
+                "start_date": "20260908",
+                "end_date": "20260909",
+            },
+        )
+    ]
+    assert record.response_metadata["upstream_dynamic_parameters"]["klt"] == "103"
+
+
+@pytest.mark.parametrize(
+    ("entity_id", "parameters", "match"),
+    [
+        (
+            "SH600000",
+            {"view": "index_zh_a_hist"},
+            "supports Shanghai 000xxx",
+        ),
+        (
+            "SZ000001",
+            {"view": "index_zh_a_hist"},
+            "supports Shanghai 000xxx",
+        ),
+        (
+            "HK00700",
+            {"view": "index_zh_a_hist"},
+            "supports Shanghai 000xxx",
+        ),
+        (
+            "BJ830001",
+            {"view": "index_zh_a_hist"},
+            "supports Shanghai 000xxx",
+        ),
+        (
+            "SH000001",
+            {"view": "index_zh_a_hist", "adjust": "qfq"},
+            "unsupported AKShare generic index-history parameter",
+        ),
+        (
+            "SH000001",
+            {"view": "index_zh_a_hist", "period": "yearly"},
+            "period must be one of",
+        ),
+        (
+            "SH000001",
+            {"view": "index_zh_a_hist", "start_date": "2026/09/08"},
+            "must be YYYYMMDD or YYYY-MM-DD",
+        ),
+        (
+            "SH000001",
+            {
+                "view": "index_zh_a_hist",
+                "start_date": "20260910",
+                "end_date": "20260909",
+            },
+            "start_date must not be after end_date",
+        ),
+    ],
+)
+def test_index_zh_a_hist_request_boundaries(
+    entity_id: str,
+    parameters: dict,
+    match: str,
+):
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError, match=match):
+        _provider(fake).fetch(
+            _request(DataCategory.MARKET_HISTORY, entity_id, parameters)
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("missing_field", "missing field"),
+        ("extra_field", "unsupported field"),
+        ("reordered_fields", "documented field order"),
+        ("invalid_date", "invalid date"),
+        ("outside_range", "outside requested range"),
+        ("descending", "strictly ascending"),
+        ("duplicate_date", "duplicate date"),
+        ("invalid_numeric", "must be numeric or null"),
+        ("bool_numeric", "must be numeric or null"),
+        ("infinite_numeric", "contains infinity"),
+    ],
+)
+def test_index_zh_a_hist_response_validates_documented_rows(
+    mutation: str,
+    match: str,
+):
+    class InvalidRows(FakeAKShare):
+        def index_zh_a_hist(
+            self,
+            *,
+            symbol: str,
+            period: str,
+            start_date: str,
+            end_date: str,
+        ):
+            rows = [dict(row) for row in _fixture("index_zh_a_hist.json")]
+            if mutation == "missing_field":
+                rows[0].pop("换手率")
+            elif mutation == "extra_field":
+                rows[0]["unexpected"] = "not documented"
+            elif mutation == "reordered_fields":
+                first = rows[0]
+                rows[0] = {
+                    "开盘": first["开盘"],
+                    **{key: value for key, value in first.items() if key != "开盘"},
+                }
+            elif mutation == "invalid_date":
+                rows[0]["日期"] = "not-a-date"
+            elif mutation == "outside_range":
+                rows[1]["日期"] = "2026-09-10"
+            elif mutation == "descending":
+                rows.reverse()
+            elif mutation == "duplicate_date":
+                rows[1]["日期"] = rows[0]["日期"]
+            elif mutation == "invalid_numeric":
+                rows[0]["收盘"] = "42.9"
+            elif mutation == "bool_numeric":
+                rows[0]["成交量"] = True
+            else:
+                rows[0]["最高"] = float("inf")
+            return self._return(
+                "index_zh_a_hist",
+                rows,
+                symbol=symbol,
+                period=period,
+                start_date=start_date,
+                end_date=end_date,
+            )
+
+    with pytest.raises(ProviderResponseError, match=match):
+        _provider(InvalidRows()).fetch(
+            _request(
+                DataCategory.MARKET_HISTORY,
+                "SH000001",
+                {
+                    "view": "index_zh_a_hist",
+                    "start_date": "20260908",
+                    "end_date": "20260909",
+                },
+            )
+        )
+
+
+def test_index_zh_a_hist_empty_response_is_a_valid_raw_snapshot():
+    class EmptyResponse(FakeAKShare):
+        def index_zh_a_hist(
+            self,
+            *,
+            symbol: str,
+            period: str,
+            start_date: str,
+            end_date: str,
+        ):
+            return self._return(
+                "index_zh_a_hist",
+                [],
+                symbol=symbol,
+                period=period,
+                start_date=start_date,
+                end_date=end_date,
+            )
+
+    record = _provider(EmptyResponse()).fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "SH000001",
+            {
+                "view": "index_zh_a_hist",
+                "start_date": "20260908",
+                "end_date": "20260909",
+            },
+        )
+    )
+
+    assert record.raw_payload == []
+    assert record.response_metadata["upstream_row_count"] == 0
+    assert record.response_metadata["entity_row_count"] == 0
+    assert record.response_metadata["observation_start_date"] is None
+    assert record.response_metadata["observation_end_date"] is None
+
+
+def test_index_zh_a_hist_is_raw_evidence_without_canonical_facts():
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "SH000001",
+            {"view": "index_zh_a_hist"},
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="index-zh-a-hist-raw-only",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company("SH000001"),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_INDEX_ZH_A_HIST_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == ["market_history"]
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "Eastmoney generic index-history" in normalized.data_quality.notes
+    assert "multi-period index" in normalized.data_quality.notes
+    assert "canonical listing/entity daily-history" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+def test_index_zh_a_hist_normalizer_rejects_replayed_scope_mismatches():
+    request = _request(
+        DataCategory.MARKET_HISTORY,
+        "SH000001",
+        {"view": "index_zh_a_hist", "period": "weekly"},
+    )
+    record = _provider().fetch(request)
+    response_metadata = dict(record.response_metadata)
+    response_metadata["index_zh_a_hist_start_date"] = "19900101"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=record.raw_payload,
+        source_uri=record.source_uri,
+        response_metadata=response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match="Generic index-history"):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-index-zh-a-hist-scope",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company("SH000001"),
+        )
+
+
+def test_index_zh_a_hist_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.MARKET_HISTORY,
+        "SH000001",
+        {
+            "view": "index_zh_a_hist",
+            "period": "weekly",
+            "start_date": "20260908",
+            "end_date": "20260909",
+        },
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [
+        (
+            "index_zh_a_hist",
+            {
+                "symbol": "000001",
+                "period": "weekly",
                 "start_date": "20260908",
                 "end_date": "20260909",
             },
