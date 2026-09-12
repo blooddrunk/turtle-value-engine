@@ -4473,6 +4473,29 @@ The normalizer emits `AKSHARE_HOT_KEYWORD_RAW_ONLY` and creates no canonical
 market, return, valuation, governance or accounting fact. Provider-defined
 concept labels, codes and heat values remain raw structured evidence only.
 
+## Phase 3.81 A-share Eastmoney related-stock hot-rank raw slice
+
+The documented `stock_hot_rank_relate_em` endpoint is selected only with
+`MARKET_ACTIVITY` and explicit `view=hot_rank_relate` for an A-share listing.
+The official wrapper posts fixed `appId`/`globalId` values and the
+market-prefixed `srcSecurityCode` to `getFollowStockRankList`, receives seven
+positional columns, drops positions 1, 3 and 6, strips `%` from the change
+column and returns the exact four-field order below.
+
+| Raw provider field | Phase 3.81 treatment |
+| --- | --- |
+| `时间` | Required `YYYY-MM-DD HH:MM:SS` observation timestamp; all related-stock rows must share one timestamp, retained as raw snapshot identity. |
+| `股票代码` | Required market-prefixed `SH`/`SZ`/`BJ` plus six digits; every row must match the requested A-share listing. |
+| `相关股票代码` | Required market-prefixed A-share identity; source response order is retained as related-code evidence only. |
+| `涨跌幅` | Required finite numeric-or-null percent value after the wrapper strips `%`; it remains provider-defined change context and is not a canonical return. |
+| request `view` | Only `view=hot_rank_relate` is accepted; the A-share listing supplies the market-prefixed upstream symbol. |
+| Eastmoney JSON response | Replay metadata records the fixed/dynamic POST parameters, seven-column wrapper order, dropped positions `[1, 3, 6]`, output mapping, numeric conversion, related-code order, observation time and row counts. |
+
+The normalizer emits `AKSHARE_HOT_RANK_RELATE_RAW_ONLY` and creates no
+canonical market, return, valuation, governance or accounting fact. The
+provider-defined related-stock relationship and percent change remain raw
+structured evidence only.
+
 ## Phase 2 enforcement rule
 
 For every field not marked `STRUCTURED_AUTO` or `DERIVED_DETERMINISTIC`, a

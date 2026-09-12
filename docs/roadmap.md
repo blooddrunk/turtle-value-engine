@@ -4619,6 +4619,37 @@ adversarial provider rows, empty responses, raw-only normalization, replay
 metadata/payload tampering and offline cache replay. No calculation, gate,
 pipeline, CLI or input-loader contract changes.
 
+### Phase 3.81 — A-share Eastmoney related-stock hot-rank acquisition contract (COMPLETE)
+
+The next documented-but-unimplemented AKShare inventory item after Phase 3.80
+is the A-share `stock_hot_rank_relate_em` endpoint. The
+[AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hot_rank_em.py)
+document it under `MARKET_ACTIVITY` with explicit `view=hot_rank_relate`. The
+adapter routes only A-share listings and passes the market-prefixed symbol to
+the wrapper's Eastmoney JSON POST.
+
+The wrapper contract is frozen as fixed `appId=appId01` and
+`globalId=786e4c21-70dc-435a-93bb-38`, dynamic `srcSecurityCode`, and the
+`getFollowStockRankList` URL. It receives seven positional columns, drops
+positions 1, 3 and 6, and preserves the exact output order `时间`, `股票代码`,
+`相关股票代码`, `涨跌幅`; the final field is stripped of `%` and converted to
+a numeric percent value. Strict provider validation requires exact fields/order,
+a valid shared timestamp, market-prefixed requested and related A-share
+identities, and finite numeric-or-null percentage changes. Empty symbol-scoped
+snapshots are retained as valid empty raw responses.
+
+Provenance metadata records the source URI, listing/view scope, upstream POST
+contract, seven-column wrapper order, positional output mapping and dropped
+positions, percentage conversion, related-code order, observation timestamp and
+row counts. Normalization is explicitly raw-only with
+`AKSHARE_HOT_RANK_RELATE_RAW_ONLY`; provider-defined related-stock links and
+percentage changes do not become canonical market, return, valuation,
+governance or accounting facts. Focused tests cover routing, unsupported
+parameters, adversarial provider rows, empty responses, raw-only normalization,
+replay metadata/payload tampering and offline cache replay. No calculation,
+gate, pipeline, CLI or input-loader contract changes.
+
 ### Future structured-provider deliverables
 
 ```text

@@ -2509,6 +2509,28 @@ snapshots, raw-only normalization, replay metadata/payload tampering and
 offline cache replay. No calculation, gate, pipeline, CLI or input-loader
 contract changes.
 
+Phase 3.81 adds the next documented A-share market-activity endpoint
+[`stock_hot_rank_relate_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
+using explicit `view=hot_rank_relate`. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hot_rank_em.py)
+posts fixed `appId`/`globalId` values plus the market-prefixed symbol to
+Eastmoney's `getFollowStockRankList` JSON endpoint. Its seven positional source
+columns are renamed and reduced to the exact four-field output order `时间`,
+`股票代码`, `相关股票代码`, `涨跌幅` after dropping positions 1, 3 and 6 and
+stripping `%` before numeric conversion. The adapter accepts A-share listings
+only, validates exact output order, a shared valid timestamp, market-prefixed
+requested and related A-share identities, and finite numeric-or-null percentage
+changes.
+
+The response is raw-only and emits
+`AKSHARE_HOT_RANK_RELATE_RAW_ONLY`: provider-defined related-stock links and
+percentage changes do not establish canonical market, return, valuation,
+governance or accounting facts. Replay metadata freezes the source URI,
+upstream POST contract, positional wrapper mapping/drop positions, observation
+time, related-code order and row counts. Focused tests cover unsupported
+scope/parameters, exact-schema adversarial responses, empty snapshots,
+raw-only normalization, replay metadata/payload tampering and offline cache
+replay. No calculation, gate, pipeline, CLI or input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.
