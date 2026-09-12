@@ -4029,6 +4029,31 @@ liquidity, valuation or accounting fact: the market-wide index snapshot has no
 listing/entity accounting scope or stable observation timestamp. The response
 remains outside the calculation, gate, pipeline, CLI and input-loader contracts.
 
+## Phase 3.62 Sina index spot raw slice
+
+The current [AKShare index-data documentation](https://akshare.akfamily.xyz/data/index/index.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/index/index_stock_zh.py)
+document `stock_zh_index_spot_sina` as a no-argument real-time mainland-index
+universe for the `hs_s` node. The adapter exposes it under `MARKET_QUOTE` with
+explicit `view=index_spot_sina`, discovers the provider-reported page count,
+requests 80-row pages sorted by `symbol` ascending, and retains the complete
+universe without listing filtering.
+
+| Raw upstream item | Phase 3.62 treatment |
+| --- | --- |
+| `代码`, `名称`, `最新价`, `涨跌额`, `涨跌幅`, `昨收`, `今开`, `最高`, `最低`, `成交量`, `成交额` | Required exact eleven-field order. Codes must be lowercase `sh`/`sz` plus six digits, non-decreasing and unique; names must be non-empty strings; numeric fields must be finite numbers or null. |
+| `涨跌幅`, `成交量`, `成交额` | Documented as percent, lots and CNY respectively; other numeric fields retain `not_documented` units and no canonical fact mapping. |
+| request `view=index_spot_sina` | Exact A-share listing-context routing, no upstream selector or listing filtering, `index_scoped_request=true`, `listing_scoped_request=false`, retrieval-only current-day snapshot scope and complete-universe replay metadata. |
+| Sina count/data requests | `Market_Center.getHQNodeStockCountSimple?node=hs_s`, 80-row `Market_Center.getHQNodeDataSimple` pagination, `node=hs_s`, `symbol` ascending sort, `demjson` decoding, comma removal, numeric conversion, positional field mapping and dropped provider fields remain replay metadata. |
+
+The provider rejects H-share/unsupported listing contexts, missing or unexpected
+parameters, malformed or reordered rows, invalid or descending codes, duplicate
+codes and non-finite/non-numeric values. The normalizer emits
+`AKSHARE_INDEX_SPOT_SINA_RAW_ONLY` and creates no canonical current-price,
+liquidity, valuation or accounting fact: the market-wide index snapshot has no
+listing/entity accounting scope or stable observation timestamp. The response
+remains outside the calculation, gate, pipeline, CLI and input-loader contracts.
+
 ## Phase 2 enforcement rule
 
 For every field not marked `STRUCTURED_AUTO` or `DERIVED_DETERMINISTIC`, a

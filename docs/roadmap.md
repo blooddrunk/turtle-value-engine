@@ -4100,6 +4100,28 @@ listing/parameter requests, empty output, raw-only normalization, replay
 metadata tampering and offline cache replay. No calculation, gate, pipeline,
 CLI or input-loader contract changes.
 
+### Phase 3.62 — Sina index spot raw acquisition contract (COMPLETE)
+
+The mapping review now covers the documented Sina
+[`stock_zh_index_spot_sina`](https://akshare.akfamily.xyz/data/index/index.html)
+real-time full index-universe endpoint under `MARKET_QUOTE` with explicit
+`view=index_spot_sina` and A-share listing context. The
+[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/index/index_stock_zh.py)
+requests the `hs_s` node, discovers the provider-reported page count, then
+fetches 80-row pages sorted by symbol. The adapter preserves the exact eleven
+documented output fields, documented percent/lots/CNY units, source and
+upstream URLs, fixed/dynamic parameters, wrapper field mapping and replay row
+counts.
+
+The Sina index spot response remains raw evidence only: its current index
+prices, changes, volume and turnover are a market-wide snapshot without a
+stable listing-level observation timestamp and do not establish the canonical
+current-price input. The normalizer emits
+`AKSHARE_INDEX_SPOT_SINA_RAW_ONLY` and creates no canonical fact. Tests cover
+fetch and metadata, request validation, malformed rows, empty output,
+raw-only normalization, replay metadata/payload tampering and offline cache
+replay. No calculation, gate, pipeline, CLI or input-loader contract changes.
+
 ### Future structured-provider deliverables
 
 ```text
@@ -4109,7 +4131,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–3.61 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–3.62 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```

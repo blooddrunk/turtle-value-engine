@@ -2102,6 +2102,27 @@ listing/parameter requests, empty output, raw-only normalization, replay
 metadata tampering and offline cache replay. No calculation, gate, pipeline,
 CLI or input-loader contract changes.
 
+Phase 3.62 adds the documented Sina
+[`stock_zh_index_spot_sina`](https://akshare.akfamily.xyz/data/index/index.html)
+real-time China-index universe under `MARKET_QUOTE` with explicit
+`view=index_spot_sina`. The
+[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/index/index_stock_zh.py)
+first discovers the `hs_s` universe page count, then requests 80-row pages
+from Sina's `Market_Center.getHQNodeDataSimple` endpoint sorted by `symbol` in
+ascending order. The adapter preserves the complete universe, exact eleven-
+field wrapper order, count/data URLs, fixed/dynamic parameters, positional
+field mapping, dropped provider fields, documented units and replay row counts.
+
+The Sina index spot response is retained as raw evidence only: its current
+index prices, changes, volume and amount context have no stable listing-level
+observation timestamp or issuer accounting scope and do not establish the
+canonical current-price input. The normalizer emits
+`AKSHARE_INDEX_SPOT_SINA_RAW_ONLY` and creates no canonical fact. Tests cover
+exact schema/order, code ordering and finite/null numeric boundaries,
+unsupported listing/parameter requests, empty output, raw-only normalization,
+replay metadata tampering and offline cache replay. No calculation, gate,
+pipeline, CLI or input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

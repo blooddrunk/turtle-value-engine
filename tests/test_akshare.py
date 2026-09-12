@@ -594,6 +594,12 @@ class FakeAKShare:
             symbol=symbol,
         )
 
+    def stock_zh_index_spot_sina(self):
+        return self._return(
+            "stock_zh_index_spot_sina",
+            _fixture("index_spot_sina.json"),
+        )
+
     def index_zh_a_hist(
         self,
         *,
@@ -1458,8 +1464,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "170"
-    assert AKSHARE_MAPPING_VERSION == "171"
+    assert provider.identity.provider_version == "172"
+    assert AKSHARE_MAPPING_VERSION == "173"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -52294,3 +52300,424 @@ def test_index_spot_cache_replay_does_not_call_upstream(tmp_path: Path):
     assert fake.calls == [
         ("stock_zh_index_spot_em", {"symbol": "沪深重要指数"}),
     ]
+
+
+def test_index_sina_spot_fetch_preserves_complete_universe_and_replay_scope():
+    fake = FakeAKShare()
+    record = _provider(fake).fetch(
+        _request(
+            DataCategory.MARKET_QUOTE,
+            "SH600000",
+            {"view": "index_spot_sina"},
+        )
+    )
+
+    fixture = _fixture("index_spot_sina.json")
+    fields = [
+        "代码",
+        "名称",
+        "最新价",
+        "涨跌额",
+        "涨跌幅",
+        "昨收",
+        "今开",
+        "最高",
+        "最低",
+        "成交量",
+        "成交额",
+    ]
+    numeric_fields = fields[2:]
+    assert record.raw_payload == fixture
+    assert fake.calls == [("stock_zh_index_spot_sina", {})]
+    assert record.source_uri == "https://vip.stock.finance.sina.com.cn/mkt/#hs_s"
+
+    metadata = record.response_metadata
+    assert metadata["endpoint"] == "stock_zh_index_spot_sina"
+    assert metadata["market"] == "A"
+    assert metadata["listing_code"] == "600000"
+    assert metadata["market_quote_view"] == "index_spot_sina"
+    assert metadata["market_scope"] == "sina_index_universe"
+    assert metadata["index_scoped_request"] is True
+    assert metadata["listing_scoped_request"] is False
+    assert metadata["row_filtering"] == "none"
+    assert metadata["snapshot_scope"] == "current_index_universe_realtime"
+    assert metadata["date_binding"] == "retrieval_only"
+    assert metadata["listing_code_field"] is None
+    assert metadata["identity_fields"] == ["代码"]
+    assert metadata["identity_ordering"] == "source_response_order"
+    assert metadata["row_identity_order"] == [row["代码"] for row in fixture]
+    assert metadata["selected_row_identity_order"] == []
+    assert metadata["value_fields"] == numeric_fields
+    assert metadata["integer_fields"] == []
+    assert metadata["text_fields"] == ["代码", "名称"]
+    assert metadata["required_text_fields"] == ["代码", "名称"]
+    assert metadata["nullable_fields"] == numeric_fields
+    assert metadata["field_types"] == {
+        "代码": "string",
+        "名称": "string",
+        **{field: "number" for field in numeric_fields},
+    }
+    assert metadata["field_count"] == 11
+    assert metadata["source_field_order"] == fields
+    assert metadata["documented_units"] == {
+        "涨跌幅": "percent",
+        "成交量": "lots",
+        "成交额": "CNY",
+    }
+    assert metadata["undocumented_numeric_units"] == {
+        field: "not_documented"
+        for field in numeric_fields
+        if field not in {"涨跌幅", "成交量", "成交额"}
+    }
+    assert metadata["upstream_count_url"] == (
+        "http://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/"
+        "Market_Center.getHQNodeStockCountSimple?node=hs_s"
+    )
+    assert metadata["upstream_count_parameters"] == {"node": "hs_s"}
+    assert metadata["upstream_url"] == (
+        "http://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/"
+        "Market_Center.getHQNodeDataSimple"
+    )
+    assert metadata["upstream_urls"] == [metadata["upstream_url"]]
+    assert metadata["upstream_auxiliary_urls"] == []
+    assert metadata["upstream_auxiliary_roles"] == []
+    assert metadata["upstream_parameters"] == [
+        "page",
+        "num",
+        "sort",
+        "asc",
+        "node",
+        "_s_r_a",
+    ]
+    assert metadata["upstream_fixed_parameters"] == {
+        "num": "80",
+        "sort": "symbol",
+        "asc": "1",
+        "node": "hs_s",
+        "_s_r_a": "page",
+    }
+    assert metadata["upstream_dynamic_parameters"] == {
+        "page": "1..provider_reported_page_count"
+    }
+    assert metadata["upstream_authentication"] == "none"
+    assert metadata["upstream_page_size"] == 80
+    assert metadata["pagination"] == "provider_driven_page_count"
+    assert metadata["upstream_sort_column"] == "symbol"
+    assert metadata["upstream_sort_direction"] == "ascending"
+    assert metadata["upstream_filter"] == "node=hs_s"
+    assert metadata["wrapper_source_page_uri"] == record.source_uri
+    assert metadata["wrapper_date_filtering"] == "none"
+    assert metadata["wrapper_output_ordering"] == "source_response_order"
+    assert metadata["wrapper_decoders"] == ["demjson.decode"]
+    assert metadata["wrapper_transformations"] == [
+        "provider_page_count",
+        "provider_pagination",
+        "remove_commas_from_cells",
+        "numeric_conversion",
+        "provider_field_selection",
+    ]
+    assert metadata["wrapper_source_column_count"] == 16
+    assert metadata["wrapper_column_mapping"] == {
+        "代码": 0,
+        "名称": 1,
+        "最新价": 2,
+        "涨跌额": 3,
+        "涨跌幅": 4,
+        "昨收": 7,
+        "今开": 8,
+        "最高": 9,
+        "最低": 10,
+        "成交量": 11,
+        "成交额": 12,
+    }
+    assert metadata["wrapper_dropped_fields"] == [
+        "买入",
+        "卖出",
+        "时点",
+        "市盈率",
+        "市净率",
+    ]
+    assert metadata["upstream_transformations"] == {
+        field: "to_numeric_errors_coerce" for field in numeric_fields
+    }
+    assert metadata["full_universe_response"] is True
+    assert metadata["entity_rows_selected"] is False
+    assert metadata["upstream_row_count"] == len(fixture)
+    assert metadata["entity_row_count"] == 0
+
+
+@pytest.mark.parametrize(
+    ("entity_id", "parameters", "match"),
+    [
+        (
+            "HK00700",
+            {"view": "index_spot_sina"},
+            "supports A-share listings only",
+        ),
+        (
+            "SH600000",
+            {"view": "index_spot_sina", "date": "20260909"},
+            "unsupported AKShare Sina index-spot parameter",
+        ),
+        (
+            "SH600000",
+            {"view": "index_spot_sina", "symbol": "hs_s"},
+            "unsupported AKShare Sina index-spot parameter",
+        ),
+    ],
+)
+def test_index_sina_spot_request_requires_a_listing_and_no_extra_parameters(
+    entity_id: str,
+    parameters: dict,
+    match: str,
+):
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError, match=match):
+        _provider(fake).fetch(
+            _request(DataCategory.MARKET_QUOTE, entity_id, parameters)
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("missing", "missing field"),
+        ("unexpected", "unsupported field"),
+        ("field_order", "documented field order"),
+        ("invalid_code", "invalid 代码"),
+        ("duplicate_code", "duplicate 代码"),
+        ("descending_code", "代码 values must be non-decreasing"),
+        ("invalid_name", "名称.*non-empty string"),
+        ("invalid_numeric", "最新价.*numeric or null"),
+        ("bool_numeric", "成交量.*numeric or null"),
+        ("infinite_numeric", "contains infinity"),
+    ],
+)
+def test_index_sina_spot_response_validates_exact_schema_identity_order_and_values(
+    mutation: str,
+    match: str,
+):
+    class InvalidRows(FakeAKShare):
+        def stock_zh_index_spot_sina(self):
+            rows = [dict(row) for row in _fixture("index_spot_sina.json")]
+            if mutation == "missing":
+                rows[0].pop("成交额")
+            elif mutation == "unexpected":
+                rows[0]["unexpected"] = "not documented"
+            elif mutation == "field_order":
+                first = rows[0]
+                rows[0] = {
+                    "名称": first["名称"],
+                    **{key: value for key, value in first.items() if key != "名称"},
+                }
+            elif mutation == "invalid_code":
+                rows[0]["代码"] = "SH000001"
+            elif mutation == "duplicate_code":
+                rows[1]["代码"] = rows[0]["代码"]
+            elif mutation == "descending_code":
+                rows.reverse()
+            elif mutation == "invalid_name":
+                rows[0]["名称"] = ""
+            elif mutation == "invalid_numeric":
+                rows[0]["最新价"] = "3234.883"
+            elif mutation == "bool_numeric":
+                rows[0]["成交量"] = True
+            else:
+                rows[0]["成交额"] = float("inf")
+            return self._return("stock_zh_index_spot_sina", rows)
+
+    with pytest.raises(ProviderResponseError, match=match):
+        _provider(InvalidRows()).fetch(
+            _request(
+                DataCategory.MARKET_QUOTE,
+                "SH600000",
+                {"view": "index_spot_sina"},
+            )
+        )
+
+
+def test_index_sina_spot_empty_response_is_a_valid_full_universe_snapshot():
+    class EmptyResponse(FakeAKShare):
+        def stock_zh_index_spot_sina(self):
+            return self._return("stock_zh_index_spot_sina", [])
+
+    record = _provider(EmptyResponse()).fetch(
+        _request(
+            DataCategory.MARKET_QUOTE,
+            "SH600000",
+            {"view": "index_spot_sina"},
+        )
+    )
+
+    assert record.raw_payload == []
+    assert record.response_metadata["row_identity_order"] == []
+    assert record.response_metadata["upstream_row_count"] == 0
+    assert record.response_metadata["entity_row_count"] == 0
+    assert record.response_metadata["entity_rows_selected"] is False
+
+
+def test_index_sina_spot_is_raw_evidence_without_canonical_price_facts():
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_QUOTE,
+            "SH600000",
+            {"view": "index_spot_sina"},
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="index-sina-spot-raw-only",
+        as_of=date(2026, 9, 12),
+        profile_id="strict-v1",
+        company=_company("SH600000"),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_INDEX_SPOT_SINA_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == ["current_price"]
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "Sina real-time index-universe" in normalized.data_quality.notes
+    assert "market-wide snapshot" in normalized.data_quality.notes
+    assert "canonical current-price input" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "source_uri",
+        "endpoint",
+        "view",
+        "market_scope",
+        "listing_scope",
+        "row_filtering",
+        "snapshot_scope",
+        "field_order",
+        "documented_units",
+        "count_url",
+        "count_parameters",
+        "upstream_url",
+        "upstream_dynamic_parameters",
+        "upstream_fixed_parameters",
+        "pagination",
+        "wrapper_mapping",
+        "wrapper_dropped_fields",
+        "upstream_transformations",
+        "full_universe",
+        "entity_selected",
+        "identity_order",
+        "upstream_count",
+        "entity_count",
+        "payload",
+    ],
+)
+def test_index_sina_spot_normalizer_rejects_replayed_scope_or_payload_tampering(
+    mutation: str,
+):
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_QUOTE,
+            "SH600000",
+            {"view": "index_spot_sina"},
+        )
+    )
+    payload = [dict(row) for row in record.raw_payload]
+    metadata = json.loads(json.dumps(record.response_metadata, ensure_ascii=False))
+    source_uri = record.source_uri
+    if mutation == "source_uri":
+        source_uri = "https://example.invalid/index-spot-sina"
+    elif mutation == "endpoint":
+        metadata["endpoint"] = "stock_zh_index_spot_em"
+    elif mutation == "view":
+        metadata["market_quote_view"] = "index_spot"
+    elif mutation == "market_scope":
+        metadata["market_scope"] = "requested_listing"
+    elif mutation == "listing_scope":
+        metadata["listing_scoped_request"] = True
+    elif mutation == "row_filtering":
+        metadata["row_filtering"] = "provider"
+    elif mutation == "snapshot_scope":
+        metadata["snapshot_scope"] = "current_quote_snapshot"
+    elif mutation == "field_order":
+        metadata["source_field_order"] = list(
+            reversed(metadata["source_field_order"])
+        )
+    elif mutation == "documented_units":
+        metadata["documented_units"] = {"最新价": "CNY"}
+    elif mutation == "count_url":
+        metadata["upstream_count_url"] = "https://example.invalid/count"
+    elif mutation == "count_parameters":
+        metadata["upstream_count_parameters"] = {"node": "tampered"}
+    elif mutation == "upstream_url":
+        metadata["upstream_url"] = "https://example.invalid/index"
+    elif mutation == "upstream_dynamic_parameters":
+        metadata["upstream_dynamic_parameters"] = {
+            "page": "1..tampered"
+        }
+    elif mutation == "upstream_fixed_parameters":
+        metadata["upstream_fixed_parameters"]["node"] = "tampered"
+    elif mutation == "pagination":
+        metadata["pagination"] = "single_page"
+    elif mutation == "wrapper_mapping":
+        metadata["wrapper_column_mapping"] = {}
+    elif mutation == "wrapper_dropped_fields":
+        metadata["wrapper_dropped_fields"] = []
+    elif mutation == "upstream_transformations":
+        metadata["upstream_transformations"]["最新价"] = "tampered"
+    elif mutation == "full_universe":
+        metadata["full_universe_response"] = False
+    elif mutation == "entity_selected":
+        metadata["entity_rows_selected"] = True
+    elif mutation == "identity_order":
+        metadata["row_identity_order"] = metadata["row_identity_order"][:-1]
+    elif mutation == "upstream_count":
+        metadata["upstream_row_count"] = 2
+    elif mutation == "entity_count":
+        metadata["entity_row_count"] = 3
+    else:
+        payload[0]["代码"] = "sh999999"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=source_uri,
+        response_metadata=metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-index-sina-spot-scope",
+            as_of=date(2026, 9, 12),
+            profile_id="strict-v1",
+            company=_company("SH600000"),
+        )
+
+
+def test_index_sina_spot_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.MARKET_QUOTE,
+        "SH600000",
+        {"view": "index_spot_sina"},
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [("stock_zh_index_spot_sina", {})]
