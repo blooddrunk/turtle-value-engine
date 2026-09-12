@@ -735,6 +735,12 @@ class FakeAKShare:
             _fixture("a_stop_stock.json"),
         )
 
+    def stock_zh_kcb_spot(self):
+        return self._return(
+            "stock_zh_kcb_spot",
+            _fixture("kc_sina_spot_quote.json"),
+        )
+
     def stock_dzjy_mrmx(self, *, symbol: str, start_date: str, end_date: str):
         return self._return(
             "stock_dzjy_mrmx",
@@ -1354,8 +1360,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "159"
-    assert AKSHARE_MAPPING_VERSION == "160"
+    assert provider.identity.provider_version == "160"
+    assert AKSHARE_MAPPING_VERSION == "161"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -8355,6 +8361,375 @@ def test_b_sina_spot_quote_cache_replay_does_not_call_upstream(tmp_path: Path):
     assert replay.mode is RetrievalMode.CACHE_REPLAY
     assert replay.record == live.record
     assert fake.calls == [("stock_zh_b_spot", {})]
+
+
+def test_kcb_sina_spot_quote_fetch_uses_documented_endpoint_and_filters_universe():
+    fake = FakeAKShare()
+    record = _provider(fake).fetch(
+        _request(
+            DataCategory.MARKET_QUOTE,
+            "SH688001",
+            {"view": "kcb_sina_spot"},
+        )
+    )
+
+    fixture = _fixture("kc_sina_spot_quote.json")
+    assert record.raw_payload == [fixture[0]]
+    assert fake.calls == [("stock_zh_kcb_spot", {})]
+    assert record.source_uri == "http://vip.stock.finance.sina.com.cn/mkt/#kcb"
+    assert record.response_metadata["endpoint"] == "stock_zh_kcb_spot"
+    assert record.response_metadata["market"] == "A"
+    assert record.response_metadata["listing_code"] == "688001"
+    assert record.response_metadata["market_quote_view"] == "kcb_sina_spot"
+    assert record.response_metadata["market_scope"] == "sina_star_market_stocks"
+    assert record.response_metadata["upstream_symbol"] == "sh688001"
+    assert record.response_metadata["snapshot_scope"] == (
+        "current_trading_day_realtime"
+    )
+    assert record.response_metadata["date_binding"] == "retrieval_only"
+    assert record.response_metadata["identity_ordering"] == "source_response_order"
+    assert record.response_metadata["row_identity_order"] == [
+        "sh688001",
+        "sh688002",
+        "sh689009",
+    ]
+    assert record.response_metadata["selected_row_identity_order"] == ["sh688001"]
+    assert record.response_metadata["field_count"] == 19
+    assert record.response_metadata["source_field_order"] == [
+        "代码",
+        "名称",
+        "最新价",
+        "涨跌额",
+        "涨跌幅",
+        "买入",
+        "卖出",
+        "昨收",
+        "今开",
+        "最高",
+        "最低",
+        "成交量",
+        "成交额",
+        "时点",
+        "市盈率",
+        "市净率",
+        "流通市值",
+        "总市值",
+        "换手率",
+    ]
+    assert record.response_metadata["text_fields"] == ["代码", "名称", "时点"]
+    assert record.response_metadata["required_text_fields"] == [
+        "代码",
+        "名称",
+        "时点",
+    ]
+    assert record.response_metadata["documented_units"] == {
+        "成交量": "shares",
+        "成交额": "CNY",
+    }
+    assert record.response_metadata["undocumented_numeric_units"]["最新价"] == (
+        "not_documented"
+    )
+    assert record.response_metadata["upstream_count_url"] == (
+        "http://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/"
+        "Market_Center.getHQNodeStockCount?node=kcb"
+    )
+    assert record.response_metadata["upstream_count_parameters"] == {"node": "kcb"}
+    assert record.response_metadata["upstream_url"] == (
+        "http://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/"
+        "Market_Center.getHQNodeData"
+    )
+    assert record.response_metadata["upstream_fixed_parameters"] == {
+        "num": "80",
+        "sort": "symbol",
+        "asc": "1",
+        "node": "kcb",
+        "symbol": "",
+        "_s_r_a": "page",
+    }
+    assert record.response_metadata["upstream_dynamic_parameters"] == {
+        "page": "1..provider_reported_page_count"
+    }
+    assert record.response_metadata["upstream_page_size"] == 80
+    assert record.response_metadata["pagination"] == "provider_driven_page_count"
+    assert record.response_metadata["upstream_sort_column"] == "symbol"
+    assert record.response_metadata["upstream_sort_direction"] == "ascending"
+    assert record.response_metadata["upstream_filter"] == "node=kcb"
+    assert record.response_metadata["wrapper_source_column_count"] == 20
+    assert record.response_metadata["wrapper_column_mapping"]["代码"] == 0
+    assert record.response_metadata["wrapper_column_mapping"]["时点"] == 14
+    assert record.response_metadata["wrapper_column_mapping"]["换手率"] == 19
+    assert record.response_metadata["upstream_transformations"]["最新价"] == (
+        "to_numeric_errors_coerce"
+    )
+    assert record.response_metadata["full_universe_response"] is True
+    assert record.response_metadata["entity_rows_selected"] is True
+    assert record.response_metadata["listing_scoped_request"] is False
+    assert record.response_metadata["row_filtering"] == "provider"
+    assert record.response_metadata["upstream_row_count"] == 3
+    assert record.response_metadata["entity_row_count"] == 1
+
+
+def test_kcb_sina_spot_quote_fetch_accepts_the_689xxx_star_listing():
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_QUOTE,
+            "SH689009",
+            {"view": "kcb_sina_spot"},
+        )
+    )
+
+    fixture = _fixture("kc_sina_spot_quote.json")
+    assert record.raw_payload == [fixture[2]]
+    assert record.response_metadata["listing_code"] == "689009"
+    assert record.response_metadata["upstream_symbol"] == "sh689009"
+    assert record.response_metadata["selected_row_identity_order"] == ["sh689009"]
+
+
+@pytest.mark.parametrize(
+    ("entity_id", "parameters", "match"),
+    [
+        (
+            "SZ688001",
+            {"view": "kcb_sina_spot"},
+            "supports STAR Market listings only",
+        ),
+        (
+            "HK00700",
+            {"view": "kcb_sina_spot"},
+            "supports STAR Market listings only",
+        ),
+        (
+            "SH600000",
+            {"view": "kcb_sina_spot"},
+            "supports STAR Market listings only",
+        ),
+        (
+            "SH688001",
+            {"view": "kcb_sina_spot", "date": "20260912"},
+            "unsupported AKShare Sina KCB quote parameter",
+        ),
+    ],
+)
+def test_kcb_sina_spot_quote_request_requires_star_listing_and_no_extra_parameters(
+    entity_id: str,
+    parameters: dict,
+    match: str,
+):
+    fake = FakeAKShare()
+
+    with pytest.raises(ProviderRequestError, match=match):
+        _provider(fake).fetch(
+            _request(DataCategory.MARKET_QUOTE, entity_id, parameters)
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("missing", "Sina KCB quote row 0 is missing field"),
+        ("unexpected", "Sina KCB quote row 0 contains unsupported field"),
+        ("field_order", "must preserve the official field order"),
+        ("invalid_code", "has an invalid 代码"),
+        ("duplicate_code", "duplicate 代码"),
+        ("descending_code", "代码 values must be non-decreasing"),
+        ("invalid_name", "field '名称' must be a non-empty string"),
+        ("invalid_time", "field '时点' must be a non-empty string"),
+        ("invalid_numeric", "field '最新价' must be numeric or null"),
+    ],
+)
+def test_kcb_sina_spot_quote_response_validates_exact_fields_identity_order_and_values(
+    mutation: str,
+    match: str,
+):
+    class InvalidRows(FakeAKShare):
+        def stock_zh_kcb_spot(self):
+            rows = [dict(row) for row in _fixture("kc_sina_spot_quote.json")]
+            if mutation == "missing":
+                rows[0].pop("成交额")
+            elif mutation == "unexpected":
+                rows[0]["unexpected"] = "not documented"
+            elif mutation == "field_order":
+                first = rows[0]
+                rows[0] = {
+                    "名称": first["名称"],
+                    **{key: value for key, value in first.items() if key != "名称"},
+                }
+            elif mutation == "invalid_code":
+                rows[0]["代码"] = "SH688001"
+            elif mutation == "duplicate_code":
+                rows[1]["代码"] = rows[0]["代码"]
+            elif mutation == "descending_code":
+                rows.reverse()
+            elif mutation == "invalid_name":
+                rows[0]["名称"] = ""
+            elif mutation == "invalid_time":
+                rows[0]["时点"] = ""
+            else:
+                rows[0]["最新价"] = "31.72"
+            return self._return("stock_zh_kcb_spot", rows)
+
+    with pytest.raises(ProviderResponseError, match=match):
+        _provider(InvalidRows()).fetch(
+            _request(
+                DataCategory.MARKET_QUOTE,
+                "SH688001",
+                {"view": "kcb_sina_spot"},
+            )
+        )
+
+
+def test_kcb_sina_spot_quote_provider_rejects_invalid_unrequested_rows_before_filtering():
+    class InvalidUnrequestedRows(FakeAKShare):
+        def stock_zh_kcb_spot(self):
+            rows = [dict(row) for row in _fixture("kc_sina_spot_quote.json")]
+            rows[1]["代码"] = "sh600000"
+            return self._return("stock_zh_kcb_spot", rows)
+
+    with pytest.raises(ProviderResponseError, match="invalid 代码"):
+        _provider(InvalidUnrequestedRows()).fetch(
+            _request(
+                DataCategory.MARKET_QUOTE,
+                "SH688001",
+                {"view": "kcb_sina_spot"},
+            )
+        )
+
+
+def test_kcb_sina_spot_quote_empty_selection_is_a_valid_filtered_snapshot():
+    class NoMatchingKCBListing(FakeAKShare):
+        def stock_zh_kcb_spot(self):
+            rows = [
+                dict(row)
+                for row in _fixture("kc_sina_spot_quote.json")
+                if row["代码"] != "sh688001"
+            ]
+            return self._return("stock_zh_kcb_spot", rows)
+
+    record = _provider(NoMatchingKCBListing()).fetch(
+        _request(
+            DataCategory.MARKET_QUOTE,
+            "SH688001",
+            {"view": "kcb_sina_spot"},
+        )
+    )
+
+    assert record.raw_payload == []
+    assert record.response_metadata["row_identity_order"] == [
+        "sh688002",
+        "sh689009",
+    ]
+    assert record.response_metadata["selected_row_identity_order"] == []
+    assert record.response_metadata["upstream_row_count"] == 2
+    assert record.response_metadata["entity_row_count"] == 0
+    assert record.response_metadata["entity_rows_selected"] is True
+
+
+def test_kcb_sina_spot_quote_record_is_raw_only_and_does_not_promote_snapshot_price():
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_QUOTE,
+            "SH688001",
+            {"view": "kcb_sina_spot"},
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="kcb-sina-spot-raw-only",
+        as_of=date(2026, 9, 12),
+        profile_id="strict-v1",
+        company=_company("SH688001"),
+    )
+
+    assert normalized.facts == []
+    assert normalized.evidence_index
+    assert normalized.flags == ["AKSHARE_KCB_SINA_SPOT_QUOTE_RAW_ONLY"]
+    assert normalized.data_quality.critical_missing_fields == ["current_price"]
+    assert normalized.data_quality.confidence.value == "LOW"
+    assert "Sina KCB quote" in normalized.data_quality.notes
+    assert "provider observation time" in normalized.data_quality.notes
+    assert "canonical current-price input" in normalized.data_quality.notes
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "endpoint",
+        "source_uri",
+        "field_count",
+        "identity_order",
+        "selected_identity_order",
+        "payload",
+    ],
+)
+def test_kcb_sina_spot_quote_normalizer_rejects_replayed_scope_mismatches(
+    mutation: str,
+):
+    record = _provider().fetch(
+        _request(
+            DataCategory.MARKET_QUOTE,
+            "SH688001",
+            {"view": "kcb_sina_spot"},
+        )
+    )
+    payload = [dict(row) for row in record.raw_payload]
+    response_metadata = dict(record.response_metadata)
+    source_uri = record.source_uri
+    if mutation == "endpoint":
+        response_metadata["endpoint"] = "stock_zh_b_spot"
+    elif mutation == "source_uri":
+        source_uri = "https://example.invalid/kcb-sina-spot"
+    elif mutation == "field_count":
+        response_metadata["field_count"] = 18
+    elif mutation == "identity_order":
+        response_metadata["row_identity_order"] = ["sh688002", "sh688001"]
+    elif mutation == "selected_identity_order":
+        response_metadata["selected_row_identity_order"] = ["sh688002"]
+    else:
+        payload[0]["代码"] = "sh688002"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=source_uri,
+        response_metadata=response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match="Sina KCB quote"):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-kcb-sina-spot-scope",
+            as_of=date(2026, 9, 12),
+            profile_id="strict-v1",
+            company=_company("SH688001"),
+        )
+
+
+def test_kcb_sina_spot_quote_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = FakeAKShare()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.MARKET_QUOTE,
+        "SH688001",
+        {"view": "kcb_sina_spot"},
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [("stock_zh_kcb_spot", {})]
 
 
 def test_bj_a_spot_quote_fetch_uses_documented_endpoint_and_filters_universe():

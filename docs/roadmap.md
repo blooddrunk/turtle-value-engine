@@ -3904,6 +3904,29 @@ validation, empty selection, raw-only normalization, replay metadata tampering
 and offline cache replay. No calculation, gate, pipeline, CLI or input-loader
 contract changes.
 
+### Phase 3.54 — Sina STAR Market quote raw acquisition contract (COMPLETE)
+
+The mapping review now covers the documented Sina
+[`stock_zh_kcb_spot`](https://akshare.akfamily.xyz/data/stock/stock.html)
+realtime quote endpoint under `MARKET_QUOTE` with explicit
+`view=kcb_sina_spot`. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_zh_kcb_sina.py)
+discovers the `node=kcb` universe size, paginates the JSON response in
+ascending `symbol` order with page size 80 and returns the exact nineteen
+fields `代码`, `名称`, quote/valuation values, `时点`, `流通市值`, `总市值` and
+`换手率` after dropping the internal second column. The adapter preserves the
+lower-prefixed Shanghai symbols, numeric conversion, provider observation time,
+wrapper mapping, full-universe order and provider-side selection scope in
+replay metadata before filtering to the requested 688xxx/689xxx listing.
+
+The response remains raw evidence only: realtime quote and valuation fields,
+even with the provider's observation-time string, do not establish the
+canonical current-price input. The normalizer emits
+`AKSHARE_KCB_SINA_SPOT_QUOTE_RAW_ONLY` and creates no canonical fact. Tests
+cover explicit routing, exact schema and field order, pagination metadata,
+complete-universe validation, invalid unrequested rows, empty selection,
+raw-only normalization, replay metadata tampering and offline cache replay. No
+calculation, gate, pipeline, CLI or input-loader contract changes.
+
 ### Future structured-provider deliverables
 
 ```text
@@ -3913,7 +3936,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–3.53 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–3.54 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```

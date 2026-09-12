@@ -48,7 +48,8 @@ Xueqiu individual-spot quote, B-share and Dragon-Tiger market-activity
 detail/statistics/institution-statistics/institutional-research/block-trade-detail
 raw slices are also
 available. A-share and H-share market-quote snapshots, including the Shanghai,
-Shenzhen, Beijing, Growth Enterprise Market, STAR Market, B-share and new-stock A-share,
+Shenzhen, Beijing, Growth Enterprise Market, STAR Market, Sina STAR Market,
+B-share and new-stock A-share,
 H-share main-board, famous-stock,
 Hong Kong Stock Connect constituent
 and Shanghai Stock Connect quote raw slices, are retained with their upstream
@@ -122,9 +123,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "159"
+AKSHARE_ADAPTER_VERSION = "160"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "160"
+AKSHARE_MAPPING_VERSION = "161"
 
 
 class ListingMarket(StrEnum):
@@ -184,6 +185,7 @@ _SOURCE_URIS = {
     "stock_kc_a_spot_em": "http://quote.eastmoney.com/center/gridlist.html#kcb_board",
     "stock_zh_b_spot_em": "http://quote.eastmoney.com/center/gridlist.html#hs_b_board",
     "stock_zh_b_spot": "http://vip.stock.finance.sina.com.cn/mkt/#hs_b",
+    "stock_zh_kcb_spot": "http://vip.stock.finance.sina.com.cn/mkt/#kcb",
     "stock_zh_a_spot": "https://finance.sina.com.cn/realstock/company/",
     "stock_hk_spot_em": "http://quote.eastmoney.com/center/gridlist.html#hk_stocks",
     "stock_hk_main_board_spot_em": "https://quote.eastmoney.com/center/gridlist.html#hk_mainboard",
@@ -398,6 +400,7 @@ _NO_ARGUMENT_ENDPOINTS = frozenset(
         "stock_zh_ah_spot_em",
         "stock_zh_a_st_em",
         "stock_zh_a_stop_em",
+        "stock_zh_kcb_spot",
         "stock_repurchase_em",
         "stock_dxsyl_em",
         "stock_gpzy_distribute_statistics_company_em",
@@ -998,6 +1001,124 @@ _MARKET_QUOTE_KC_A_SPOT_WRAPPER_COLUMN_MAPPING = (
 _MARKET_QUOTE_KC_A_SPOT_UPSTREAM_TRANSFORMATIONS = (
     _MARKET_QUOTE_SH_A_SPOT_UPSTREAM_TRANSFORMATIONS
 )
+
+_MARKET_QUOTE_KCB_SINA_SPOT_ENDPOINT = "stock_zh_kcb_spot"
+_MARKET_QUOTE_KCB_SINA_SPOT_PARAMETER_NAMES = frozenset({"view"})
+_MARKET_QUOTE_KCB_SINA_SPOT_VIEW = "kcb_sina_spot"
+_MARKET_QUOTE_KCB_SINA_SPOT_FIELDS = (
+    "代码",
+    "名称",
+    "最新价",
+    "涨跌额",
+    "涨跌幅",
+    "买入",
+    "卖出",
+    "昨收",
+    "今开",
+    "最高",
+    "最低",
+    "成交量",
+    "成交额",
+    "时点",
+    "市盈率",
+    "市净率",
+    "流通市值",
+    "总市值",
+    "换手率",
+)
+_MARKET_QUOTE_KCB_SINA_SPOT_FIELD_SET = frozenset(
+    _MARKET_QUOTE_KCB_SINA_SPOT_FIELDS
+)
+_MARKET_QUOTE_KCB_SINA_SPOT_TEXT_FIELDS = ("代码", "名称", "时点")
+_MARKET_QUOTE_KCB_SINA_SPOT_REQUIRED_TEXT_FIELDS = (
+    _MARKET_QUOTE_KCB_SINA_SPOT_TEXT_FIELDS
+)
+_MARKET_QUOTE_KCB_SINA_SPOT_NUMERIC_FIELDS = tuple(
+    field
+    for field in _MARKET_QUOTE_KCB_SINA_SPOT_FIELDS
+    if field not in _MARKET_QUOTE_KCB_SINA_SPOT_TEXT_FIELDS
+)
+_MARKET_QUOTE_KCB_SINA_SPOT_INTEGER_FIELDS: tuple[str, ...] = ()
+_MARKET_QUOTE_KCB_SINA_SPOT_NULLABLE_FIELDS = (
+    _MARKET_QUOTE_KCB_SINA_SPOT_NUMERIC_FIELDS
+)
+_MARKET_QUOTE_KCB_SINA_SPOT_FIELD_TYPES = {
+    **{
+        field: "string"
+        for field in _MARKET_QUOTE_KCB_SINA_SPOT_TEXT_FIELDS
+    },
+    **{
+        field: "number"
+        for field in _MARKET_QUOTE_KCB_SINA_SPOT_NUMERIC_FIELDS
+    },
+}
+_MARKET_QUOTE_KCB_SINA_SPOT_DOCUMENTED_UNITS = {
+    "成交量": "shares",
+    "成交额": "CNY",
+}
+_MARKET_QUOTE_KCB_SINA_SPOT_UNDOCUMENTED_NUMERIC_UNITS = {
+    field: "not_documented"
+    for field in _MARKET_QUOTE_KCB_SINA_SPOT_NUMERIC_FIELDS
+    if field not in _MARKET_QUOTE_KCB_SINA_SPOT_DOCUMENTED_UNITS
+}
+_MARKET_QUOTE_KCB_SINA_SPOT_SOURCE_URI = (
+    "http://vip.stock.finance.sina.com.cn/mkt/#kcb"
+)
+_MARKET_QUOTE_KCB_SINA_SPOT_COUNT_URL = (
+    "http://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/"
+    "Market_Center.getHQNodeStockCount?node=kcb"
+)
+_MARKET_QUOTE_KCB_SINA_SPOT_UPSTREAM_URL = (
+    "http://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/"
+    "Market_Center.getHQNodeData"
+)
+_MARKET_QUOTE_KCB_SINA_SPOT_COUNT_PARAMETERS = {"node": "kcb"}
+_MARKET_QUOTE_KCB_SINA_SPOT_UPSTREAM_PARAMETERS = (
+    "page",
+    "num",
+    "sort",
+    "asc",
+    "node",
+    "symbol",
+    "_s_r_a",
+)
+_MARKET_QUOTE_KCB_SINA_SPOT_UPSTREAM_FIXED_PARAMETERS = {
+    "num": "80",
+    "sort": "symbol",
+    "asc": "1",
+    "node": "kcb",
+    "symbol": "",
+    "_s_r_a": "page",
+}
+_MARKET_QUOTE_KCB_SINA_SPOT_UPSTREAM_DYNAMIC_PARAMETERS = {
+    "page": "1..provider_reported_page_count",
+}
+_MARKET_QUOTE_KCB_SINA_SPOT_WRAPPER_SOURCE_COLUMN_COUNT = 20
+_MARKET_QUOTE_KCB_SINA_SPOT_WRAPPER_COLUMN_MAPPING = {
+    "代码": 0,
+    "名称": 2,
+    "最新价": 3,
+    "涨跌额": 4,
+    "涨跌幅": 5,
+    "买入": 6,
+    "卖出": 7,
+    "昨收": 8,
+    "今开": 9,
+    "最高": 10,
+    "最低": 11,
+    "成交量": 12,
+    "成交额": 13,
+    "时点": 14,
+    "市盈率": 15,
+    "市净率": 16,
+    "流通市值": 17,
+    "总市值": 18,
+    "换手率": 19,
+}
+_MARKET_QUOTE_KCB_SINA_SPOT_UPSTREAM_TRANSFORMATIONS = {
+    field: "to_numeric_errors_coerce"
+    for field in _MARKET_QUOTE_KCB_SINA_SPOT_NUMERIC_FIELDS
+}
 
 _MARKET_QUOTE_B_SPOT_ENDPOINT = "stock_zh_b_spot_em"
 _MARKET_QUOTE_B_SPOT_PARAMETER_NAMES = frozenset({"view"})
@@ -6567,6 +6688,22 @@ class AKShareProvider(StructuredDataProvider):
             )
         if (
             request.category is DataCategory.MARKET_QUOTE
+            and request.parameters.get("view") == _MARKET_QUOTE_KCB_SINA_SPOT_VIEW
+            and (
+                listing.market is not ListingMarket.A
+                or not listing.canonical_id.startswith("SH")
+                or not listing.code.startswith(("688", "689"))
+            )
+        ):
+            raise ProviderRequestError(
+                "the AKShare Sina KCB quote endpoint supports STAR Market "
+                "listings only",
+                provider=self.identity,
+                request=request,
+                retryable=False,
+            )
+        if (
+            request.category is DataCategory.MARKET_QUOTE
             and request.parameters.get("view") == _MARKET_QUOTE_B_SPOT_VIEW
             and (
                 listing.market is not ListingMarket.A
@@ -7546,6 +7683,28 @@ class AKShareProvider(StructuredDataProvider):
             response_metadata.update(
                 _market_quote_kc_a_spot_response_metadata(
                     listing_code=listing.code,
+                    row_identity_order=[row["代码"] for row in rows],
+                    selected_row_identity_order=[row["代码"] for row in selected],
+                    upstream_row_count=len(rows),
+                    entity_row_count=len(selected),
+                )
+            )
+        elif (
+            request.category is DataCategory.MARKET_QUOTE
+            and endpoint.name == _MARKET_QUOTE_KCB_SINA_SPOT_ENDPOINT
+        ):
+            rows = _table_rows(payload, provider=self.identity, request=request)
+            _validate_market_quote_kcb_sina_spot_provider_rows(
+                rows,
+                provider=self.identity,
+                request=request,
+            )
+            selected = _select_market_quote_kcb_sina_spot_rows(rows, listing)
+            payload = selected
+            response_metadata.update(
+                _market_quote_kcb_sina_spot_response_metadata(
+                    listing_code=listing.code,
+                    upstream_symbol=listing.canonical_id.lower(),
                     row_identity_order=[row["代码"] for row in rows],
                     selected_row_identity_order=[row["代码"] for row in selected],
                     upstream_row_count=len(rows),
@@ -11673,6 +11832,10 @@ class AKShareProvider(StructuredDataProvider):
             market_quote_kc_a_spot_requested=(
                 request.parameters.get("view") == _MARKET_QUOTE_KC_A_SPOT_VIEW
             ),
+            market_quote_kcb_sina_spot_requested=(
+                request.parameters.get("view")
+                == _MARKET_QUOTE_KCB_SINA_SPOT_VIEW
+            ),
             market_quote_b_spot_requested=(
                 request.parameters.get("view") == _MARKET_QUOTE_B_SPOT_VIEW
             ),
@@ -12985,6 +13148,28 @@ class AKShareNormalizer:
             elif (
                 record.request.category is DataCategory.MARKET_QUOTE
                 and record.request.parameters.get("view")
+                == _MARKET_QUOTE_KCB_SINA_SPOT_VIEW
+                and record.response_metadata.get("endpoint")
+                != _MARKET_QUOTE_KCB_SINA_SPOT_ENDPOINT
+            ):
+                raise ProviderNormalizationError(
+                    "Sina KCB quote record must come from "
+                    f"{_MARKET_QUOTE_KCB_SINA_SPOT_ENDPOINT}"
+                )
+            elif (
+                record.request.category is DataCategory.MARKET_QUOTE
+                and record.response_metadata.get("endpoint")
+                == _MARKET_QUOTE_KCB_SINA_SPOT_ENDPOINT
+            ):
+                _validate_market_quote_kcb_sina_spot_normalizer_scope(
+                    record,
+                    listing,
+                    rows,
+                )
+                normalizer_flags.add("AKSHARE_KCB_SINA_SPOT_QUOTE_RAW_ONLY")
+            elif (
+                record.request.category is DataCategory.MARKET_QUOTE
+                and record.request.parameters.get("view")
                 == _MARKET_QUOTE_B_SPOT_VIEW
                 and record.response_metadata.get("endpoint")
                 != _MARKET_QUOTE_B_SPOT_ENDPOINT
@@ -14148,6 +14333,7 @@ class AKShareNormalizer:
                 "AKSHARE_NEW_A_SPOT_QUOTE_RAW_ONLY",
                 "AKSHARE_CY_A_SPOT_QUOTE_RAW_ONLY",
                 "AKSHARE_KC_A_SPOT_QUOTE_RAW_ONLY",
+                "AKSHARE_KCB_SINA_SPOT_QUOTE_RAW_ONLY",
                 "AKSHARE_B_SPOT_QUOTE_RAW_ONLY",
                 "AKSHARE_B_SINA_SPOT_QUOTE_RAW_ONLY",
                 "AKSHARE_HK_MAIN_BOARD_QUOTE_RAW_ONLY",
@@ -15185,6 +15371,13 @@ class AKShareNormalizer:
                 "volume, turnover and valuation ratios have no stable observation "
                 "timestamp and do not establish the canonical current-price input."
             )
+        if "AKSHARE_KCB_SINA_SPOT_QUOTE_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented Sina KCB quote response is retained as raw "
+                "evidence only: its current-trading-day prices, changes, volume, "
+                "turnover, valuation ratios and provider observation time do not "
+                "establish the canonical current-price input."
+            )
         if "AKSHARE_B_SPOT_QUOTE_RAW_ONLY" in normalizer_flags:
             notes += (
                 " The documented B-share Eastmoney quote response is retained as "
@@ -15535,6 +15728,7 @@ def _endpoint_candidates(
     market_quote_new_a_spot_requested: bool = False,
     market_quote_cy_a_spot_requested: bool = False,
     market_quote_kc_a_spot_requested: bool = False,
+    market_quote_kcb_sina_spot_requested: bool = False,
     market_quote_b_spot_requested: bool = False,
     market_quote_b_sina_spot_requested: bool = False,
     market_quote_hk_main_board_requested: bool = False,
@@ -15636,6 +15830,14 @@ def _endpoint_candidates(
         if market_quote_kc_a_spot_requested:
             if market is ListingMarket.A and listing.canonical_id.startswith("SH"):
                 return (_MARKET_QUOTE_KC_A_SPOT_ENDPOINT,)
+            return ()
+        if market_quote_kcb_sina_spot_requested:
+            if (
+                market is ListingMarket.A
+                and listing.canonical_id.startswith("SH")
+                and listing.code.startswith(("688", "689"))
+            ):
+                return (_MARKET_QUOTE_KCB_SINA_SPOT_ENDPOINT,)
             return ()
         if market_quote_b_spot_requested:
             if market is ListingMarket.A and (
@@ -16352,6 +16554,37 @@ def _market_quote_kwargs(
             raise ProviderRequestError(
                 "the AKShare STAR Market quote endpoint requires "
                 f"view={_MARKET_QUOTE_KC_A_SPOT_VIEW!r}",
+                request=request,
+                retryable=False,
+            )
+        return {}
+    if endpoint_name == _MARKET_QUOTE_KCB_SINA_SPOT_ENDPOINT:
+        if (
+            listing.market is not ListingMarket.A
+            or not listing.canonical_id.startswith("SH")
+            or not listing.code.startswith(("688", "689"))
+        ):
+            raise ProviderRequestError(
+                "the AKShare Sina KCB quote endpoint supports STAR Market "
+                "listings only",
+                request=request,
+                retryable=False,
+            )
+        unknown = sorted(
+            set(request.parameters)
+            - _MARKET_QUOTE_KCB_SINA_SPOT_PARAMETER_NAMES
+        )
+        if unknown:
+            raise ProviderRequestError(
+                "unsupported AKShare Sina KCB quote parameter(s): "
+                + ", ".join(unknown),
+                request=request,
+                retryable=False,
+            )
+        if request.parameters.get("view") != _MARKET_QUOTE_KCB_SINA_SPOT_VIEW:
+            raise ProviderRequestError(
+                "the AKShare Sina KCB quote endpoint requires "
+                f"view={_MARKET_QUOTE_KCB_SINA_SPOT_VIEW!r}",
                 request=request,
                 retryable=False,
             )
@@ -21498,6 +21731,193 @@ def _market_quote_b_sina_spot_response_metadata(
         ),
         "upstream_transformations": dict(
             _MARKET_QUOTE_B_SINA_SPOT_UPSTREAM_TRANSFORMATIONS
+        ),
+        "full_universe_response": True,
+        "entity_rows_selected": True,
+        "upstream_row_count": upstream_row_count,
+        "entity_row_count": entity_row_count,
+    }
+
+
+def _market_quote_kcb_sina_spot_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef | None = None,
+) -> str | None:
+    """Return a strict-schema error for the Sina STAR Market snapshot."""
+
+    seen_codes: set[str] = set()
+    previous_code: str | None = None
+    for index, row in enumerate(rows):
+        missing = sorted(_MARKET_QUOTE_KCB_SINA_SPOT_FIELD_SET - set(row))
+        unexpected = sorted(set(row) - _MARKET_QUOTE_KCB_SINA_SPOT_FIELD_SET)
+        if missing:
+            return (
+                f"Sina KCB quote row {index} is missing field(s): "
+                + ", ".join(missing)
+            )
+        if unexpected:
+            return (
+                f"Sina KCB quote row {index} contains unsupported field(s): "
+                + ", ".join(unexpected)
+            )
+        if tuple(row) != _MARKET_QUOTE_KCB_SINA_SPOT_FIELDS:
+            return (
+                f"Sina KCB quote row {index} must preserve the official "
+                "field order"
+            )
+
+        code = row["代码"]
+        if (
+            not isinstance(code, str)
+            or re.fullmatch(r"sh(?:688|689)\d{3}", code) is None
+        ):
+            return f"Sina KCB quote row {index} has an invalid 代码"
+        if code in seen_codes:
+            return f"Sina KCB quote response has duplicate 代码 {code!r}"
+        if previous_code is not None and code < previous_code:
+            return "Sina KCB quote 代码 values must be non-decreasing"
+        seen_codes.add(code)
+        previous_code = code
+
+        for field in _MARKET_QUOTE_KCB_SINA_SPOT_REQUIRED_TEXT_FIELDS:
+            value = row[field]
+            if not isinstance(value, str) or not value.strip():
+                return (
+                    f"Sina KCB quote row {index} field {field!r} must be a "
+                    "non-empty string"
+                )
+
+        if listing is not None:
+            expected_code = listing.canonical_id.lower()
+            if code != expected_code:
+                return (
+                    f"Sina KCB quote row {index} entity {code!r} does not "
+                    f"match requested listing {listing.canonical_id!r}"
+                )
+
+        for field in _MARKET_QUOTE_KCB_SINA_SPOT_NUMERIC_FIELDS:
+            value = row[field]
+            if value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, Real):
+                return (
+                    f"Sina KCB quote row {index} field {field!r} must be "
+                    "numeric or null"
+                )
+            try:
+                numeric = float(value)
+            except (OverflowError, TypeError, ValueError):
+                return (
+                    f"Sina KCB quote row {index} field {field!r} must be "
+                    "numeric or null"
+                )
+            if not math.isfinite(numeric):
+                return (
+                    f"Sina KCB quote row {index} field {field!r} must be "
+                    "finite or null"
+                )
+    return None
+
+
+def _validate_market_quote_kcb_sina_spot_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> None:
+    """Validate the complete Sina STAR Market universe before filtering."""
+
+    message = _market_quote_kcb_sina_spot_validation_message(rows)
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message}",
+            provider=provider,
+            request=request,
+        )
+
+
+def _select_market_quote_kcb_sina_spot_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef,
+) -> list[dict[str, JSONValue]]:
+    """Filter the full Sina STAR Market universe by the requested symbol."""
+
+    target_code = listing.canonical_id.lower()
+    return [dict(row) for row in rows if row["代码"] == target_code]
+
+
+def _market_quote_kcb_sina_spot_response_metadata(
+    *,
+    listing_code: str,
+    upstream_symbol: str,
+    row_identity_order: Sequence[JSONValue],
+    selected_row_identity_order: Sequence[JSONValue],
+    upstream_row_count: int,
+    entity_row_count: int,
+) -> dict[str, JSONValue]:
+    """Build replay metadata for a filtered Sina STAR Market snapshot."""
+
+    return {
+        "endpoint": _MARKET_QUOTE_KCB_SINA_SPOT_ENDPOINT,
+        "market": ListingMarket.A.value,
+        "listing_code": listing_code,
+        "market_quote_view": _MARKET_QUOTE_KCB_SINA_SPOT_VIEW,
+        "market_scope": "sina_star_market_stocks",
+        "listing_scoped_request": False,
+        "row_filtering": "provider",
+        "snapshot_scope": "current_trading_day_realtime",
+        "date_binding": "retrieval_only",
+        "listing_code_field": "代码",
+        "upstream_symbol": upstream_symbol,
+        "identity_fields": ["代码"],
+        "identity_ordering": "source_response_order",
+        "row_identity_order": list(row_identity_order),
+        "selected_row_identity_order": list(selected_row_identity_order),
+        "value_fields": list(_MARKET_QUOTE_KCB_SINA_SPOT_NUMERIC_FIELDS),
+        "integer_fields": list(_MARKET_QUOTE_KCB_SINA_SPOT_INTEGER_FIELDS),
+        "text_fields": list(_MARKET_QUOTE_KCB_SINA_SPOT_TEXT_FIELDS),
+        "required_text_fields": list(
+            _MARKET_QUOTE_KCB_SINA_SPOT_REQUIRED_TEXT_FIELDS
+        ),
+        "nullable_fields": list(_MARKET_QUOTE_KCB_SINA_SPOT_NULLABLE_FIELDS),
+        "field_types": dict(_MARKET_QUOTE_KCB_SINA_SPOT_FIELD_TYPES),
+        "field_count": len(_MARKET_QUOTE_KCB_SINA_SPOT_FIELDS),
+        "source_field_order": list(_MARKET_QUOTE_KCB_SINA_SPOT_FIELDS),
+        "documented_units": dict(_MARKET_QUOTE_KCB_SINA_SPOT_DOCUMENTED_UNITS),
+        "undocumented_numeric_units": dict(
+            _MARKET_QUOTE_KCB_SINA_SPOT_UNDOCUMENTED_NUMERIC_UNITS
+        ),
+        "upstream_count_url": _MARKET_QUOTE_KCB_SINA_SPOT_COUNT_URL,
+        "upstream_count_parameters": dict(
+            _MARKET_QUOTE_KCB_SINA_SPOT_COUNT_PARAMETERS
+        ),
+        "upstream_url": _MARKET_QUOTE_KCB_SINA_SPOT_UPSTREAM_URL,
+        "upstream_protocol": "JSON",
+        "upstream_parameters": list(
+            _MARKET_QUOTE_KCB_SINA_SPOT_UPSTREAM_PARAMETERS
+        ),
+        "upstream_fixed_parameters": dict(
+            _MARKET_QUOTE_KCB_SINA_SPOT_UPSTREAM_FIXED_PARAMETERS
+        ),
+        "upstream_dynamic_parameters": dict(
+            _MARKET_QUOTE_KCB_SINA_SPOT_UPSTREAM_DYNAMIC_PARAMETERS
+        ),
+        "upstream_authentication": "none",
+        "upstream_page_size": 80,
+        "pagination": "provider_driven_page_count",
+        "upstream_sort_column": "symbol",
+        "upstream_sort_direction": "ascending",
+        "upstream_filter": "node=kcb",
+        "wrapper_source_page_uri": _MARKET_QUOTE_KCB_SINA_SPOT_SOURCE_URI,
+        "wrapper_output_ordering": "source_response_order",
+        "wrapper_source_column_count": (
+            _MARKET_QUOTE_KCB_SINA_SPOT_WRAPPER_SOURCE_COLUMN_COUNT
+        ),
+        "wrapper_column_mapping": dict(
+            _MARKET_QUOTE_KCB_SINA_SPOT_WRAPPER_COLUMN_MAPPING
+        ),
+        "upstream_transformations": dict(
+            _MARKET_QUOTE_KCB_SINA_SPOT_UPSTREAM_TRANSFORMATIONS
         ),
         "full_universe_response": True,
         "entity_rows_selected": True,
@@ -41302,6 +41722,141 @@ def _validate_market_quote_b_sina_spot_normalizer_scope(
         if not matches:
             raise ProviderNormalizationError(
                 "Sina B-share quote response metadata "
+                f"{name!r} does not match the requested replay scope"
+            )
+
+
+def _validate_market_quote_kcb_sina_spot_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> None:
+    """Validate the replay scope of a filtered Sina STAR Market snapshot."""
+
+    if (
+        listing.market is not ListingMarket.A
+        or not listing.canonical_id.startswith("SH")
+        or not listing.code.startswith(("688", "689"))
+    ):
+        raise ProviderNormalizationError(
+            "Sina KCB quote raw slice supports STAR Market listings only"
+        )
+    if record.response_metadata.get("endpoint") != _MARKET_QUOTE_KCB_SINA_SPOT_ENDPOINT:
+        raise ProviderNormalizationError(
+            "Sina KCB quote record must come from "
+            f"{_MARKET_QUOTE_KCB_SINA_SPOT_ENDPOINT}"
+        )
+    if record.source_uri != _SOURCE_URIS[_MARKET_QUOTE_KCB_SINA_SPOT_ENDPOINT]:
+        raise ProviderNormalizationError(
+            "Sina KCB quote source URI does not match the documented endpoint"
+        )
+    if record.response_metadata.get("market") != listing.market.value:
+        raise ProviderNormalizationError(
+            "Sina KCB quote response market does not match requested listing"
+        )
+    if record.response_metadata.get("listing_code") != listing.code:
+        raise ProviderNormalizationError(
+            "Sina KCB quote response listing code does not match requested listing"
+        )
+    try:
+        _market_quote_kwargs(
+            _MARKET_QUOTE_KCB_SINA_SPOT_ENDPOINT,
+            listing,
+            record.request,
+        )
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+
+    upstream_row_count = record.response_metadata.get("upstream_row_count")
+    if (
+        isinstance(upstream_row_count, bool)
+        or not isinstance(upstream_row_count, int)
+        or upstream_row_count < len(rows)
+    ):
+        raise ProviderNormalizationError(
+            "Sina KCB quote response upstream row count does not match "
+            "the requested replay scope"
+        )
+
+    message = _market_quote_kcb_sina_spot_validation_message(rows, listing)
+    if message is not None:
+        raise ProviderNormalizationError(message)
+
+    row_identity_order = record.response_metadata.get("row_identity_order")
+    if not isinstance(row_identity_order, list):
+        raise ProviderNormalizationError(
+            "Sina KCB quote response metadata 'row_identity_order' does not "
+            "match the requested replay scope"
+        )
+    seen_codes: set[str] = set()
+    previous_code: str | None = None
+    for code in row_identity_order:
+        if (
+            not isinstance(code, str)
+            or re.fullmatch(r"sh(?:688|689)\d{3}", code) is None
+            or code in seen_codes
+            or (previous_code is not None and code < previous_code)
+        ):
+            raise ProviderNormalizationError(
+                "Sina KCB quote response metadata 'row_identity_order' does "
+                "not match the requested replay scope"
+            )
+        seen_codes.add(code)
+        previous_code = code
+    if len(row_identity_order) != upstream_row_count:
+        raise ProviderNormalizationError(
+            "Sina KCB quote response metadata 'row_identity_order' does "
+            "not match the requested replay scope"
+        )
+
+    selected_row_identity_order = record.response_metadata.get(
+        "selected_row_identity_order"
+    )
+    selected_codes = [row["代码"] for row in rows]
+    if selected_row_identity_order != selected_codes or any(
+        code not in row_identity_order for code in selected_codes
+    ):
+        raise ProviderNormalizationError(
+            "Sina KCB quote response metadata "
+            "'selected_row_identity_order' does not match the requested "
+            "replay scope"
+        )
+
+    expected_metadata = _market_quote_kcb_sina_spot_response_metadata(
+        listing_code=listing.code,
+        upstream_symbol=listing.canonical_id.lower(),
+        row_identity_order=row_identity_order,
+        selected_row_identity_order=selected_row_identity_order,
+        upstream_row_count=upstream_row_count,
+        entity_row_count=len(rows),
+    )
+    boolean_fields = {
+        "listing_scoped_request",
+        "full_universe_response",
+        "entity_rows_selected",
+    }
+    count_fields = {
+        "field_count",
+        "upstream_page_size",
+        "upstream_row_count",
+        "entity_row_count",
+        "wrapper_source_column_count",
+    }
+    for name, expected in expected_metadata.items():
+        actual = record.response_metadata.get(name)
+        if name in boolean_fields:
+            matches = isinstance(actual, bool) and actual is expected
+        elif name in count_fields:
+            matches = (
+                isinstance(actual, int)
+                and not isinstance(actual, bool)
+                and actual == expected
+            )
+        else:
+            matches = actual == expected
+        if not matches:
+            raise ProviderNormalizationError(
+                "Sina KCB quote response metadata "
                 f"{name!r} does not match the requested replay scope"
             )
 

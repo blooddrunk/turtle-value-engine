@@ -1919,6 +1919,27 @@ complete-universe validation, empty selection, raw-only normalization, replay
 metadata tampering and offline cache replay. No calculation, gate, pipeline, CLI
 or input-loader contract changes.
 
+Phase 3.54 adds the documented Sina
+[`stock_zh_kcb_spot`](https://akshare.akfamily.xyz/data/stock/stock.html)
+realtime quote endpoint under `MARKET_QUOTE` with explicit
+`view=kcb_sina_spot`. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_zh_kcb_sina.py)
+discovers the `node=kcb` universe size, paginates the JSON response in
+ascending `symbol` order with page size 80 and preserves the exact nineteen
+fields, including the provider's lower-prefixed Shanghai symbol and `时点`
+observation string, after dropping the internal second column. The adapter
+records the count/data URLs, fixed and dynamic parameters, numeric transforms,
+wrapper mapping, full-universe order and selected listing scope in replay
+metadata before filtering to the requested 688xxx/689xxx listing.
+
+The Sina STAR Market quote response is retained as raw evidence only: realtime
+quote and valuation fields, even with the provider observation-time string, do
+not establish the canonical current-price input. The normalizer emits
+`AKSHARE_KCB_SINA_SPOT_QUOTE_RAW_ONLY` and creates no canonical fact. Tests
+cover explicit routing, exact schema and field order, pagination metadata,
+complete-universe validation, invalid unrequested rows, empty selection,
+raw-only normalization, replay metadata tampering and offline cache replay. No
+calculation, gate, pipeline, CLI or input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.
