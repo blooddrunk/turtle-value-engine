@@ -3881,6 +3881,29 @@ validation, empty selection, raw-only normalization, replay metadata tampering
 and offline cache replay. No calculation, gate, pipeline, CLI or input-loader
 contract changes.
 
+### Phase 3.53 — Eastmoney two-net-and-delisted-stock raw acquisition contract (COMPLETE)
+
+The mapping review now covers the documented Eastmoney
+[`stock_zh_a_stop_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
+two-net-and-delisted-stock endpoint under `MARKET_ACTIVITY` with explicit
+`view=stop_stock`. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_zh_a_special.py)
+uses the `40.push2.eastmoney.com` JSON endpoint with `fs=m:0 s:3`, page size 100
+and `f3` descending sorting through `fetch_paginated_data`, then returns the
+exact seventeen fields `序号`, `代码`, `名称`, `最新价`, `涨跌幅`, `涨跌额`,
+`成交量`, `成交额`, `振幅`, `最高`, `最低`, `今开`, `昨收`, `量比`, `换手率`,
+`市盈率-动态` and `市净率`. The adapter records the fixed query, provider-driven
+pagination, 33-column wrapper mapping, numeric transformations, source identity
+order and provider-side selection scope.
+
+The response remains raw evidence only because current quote values and
+provider-defined two-net/delisted membership do not establish a dated listing,
+canonical price, valuation or accounting fact. The normalizer emits
+`AKSHARE_STOP_STOCK_RAW_ONLY` and creates no canonical fact. Tests cover explicit
+routing, exact field/order and JSON-source metadata, complete-universe
+validation, empty selection, raw-only normalization, replay metadata tampering
+and offline cache replay. No calculation, gate, pipeline, CLI or input-loader
+contract changes.
+
 ### Future structured-provider deliverables
 
 ```text
@@ -3890,7 +3913,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–3.52 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–3.53 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```

@@ -57,8 +57,8 @@ raw slices are also retained with their market-wide direction and upstream
 pagination metadata.
 A-share Xueqiu, CNINFO and Tonghuashun company-profile raw slices are also
 available. The A-share dividend-distribution detail and
-new-stock-board, Sina next-new-stock, new-stock first-day and IPO-beneficiary
-stock raw slices are also available. The
+new-stock-board, Sina next-new-stock, new-stock first-day, IPO-beneficiary and
+two-net/delisted-stock raw slices are also available. The
 A-share CNINFO IPO-summary,
 Eastmoney IPO-yield,
 Eastmoney individual-notice, Eastmoney market-wide notice and Eastmoney
@@ -122,9 +122,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "158"
+AKSHARE_ADAPTER_VERSION = "159"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "159"
+AKSHARE_MAPPING_VERSION = "160"
 
 
 class ListingMarket(StrEnum):
@@ -328,6 +328,7 @@ _SOURCE_URIS = {
     "stock_gsrl_gsdt_em": "https://data.eastmoney.com/gsrl/gsdt.html",
     "stock_xgsr_ths": "https://data.10jqka.com.cn/ipo/xgsr/",
     "stock_ipo_benefit_ths": "https://data.10jqka.com.cn/ipo/syg/",
+    "stock_zh_a_stop_em": "http://quote.eastmoney.com/center/gridlist.html#staq_net_board",
     "stock_hk_dividend_payout_em": "https://emweb.securities.eastmoney.com/PC_HKF10/pages/home/index.html",
     "stock_hk_fhpx_detail_ths": "https://stockpage.10jqka.com.cn/HK0700/bonus/",
     "stock_hsgt_individual_em": "https://data.eastmoney.com/hsgt/StockHdDetail/002008.html",
@@ -396,6 +397,7 @@ _NO_ARGUMENT_ENDPOINTS = frozenset(
         "stock_hk_spot",
         "stock_zh_ah_spot_em",
         "stock_zh_a_st_em",
+        "stock_zh_a_stop_em",
         "stock_repurchase_em",
         "stock_dxsyl_em",
         "stock_gpzy_distribute_statistics_company_em",
@@ -4760,6 +4762,135 @@ _MARKET_ACTIVITY_IPO_BENEFIT_UPSTREAM_TRANSFORMATIONS = {
     "投资占市值比": "pd.to_numeric(errors='coerce')",
     "wrapper_columns": "assign documented ten-field order",
 }
+_MARKET_ACTIVITY_STOP_STOCK_ENDPOINT = "stock_zh_a_stop_em"
+_MARKET_ACTIVITY_STOP_STOCK_PARAMETER_NAMES = frozenset({"view"})
+_MARKET_ACTIVITY_STOP_STOCK_VIEW = "stop_stock"
+_MARKET_ACTIVITY_STOP_STOCK_FIELDS = (
+    "序号",
+    "代码",
+    "名称",
+    "最新价",
+    "涨跌幅",
+    "涨跌额",
+    "成交量",
+    "成交额",
+    "振幅",
+    "最高",
+    "最低",
+    "今开",
+    "昨收",
+    "量比",
+    "换手率",
+    "市盈率-动态",
+    "市净率",
+)
+_MARKET_ACTIVITY_STOP_STOCK_FIELD_SET = frozenset(
+    _MARKET_ACTIVITY_STOP_STOCK_FIELDS
+)
+_MARKET_ACTIVITY_STOP_STOCK_INTEGER_FIELDS = ("序号",)
+_MARKET_ACTIVITY_STOP_STOCK_TEXT_FIELDS = ("代码", "名称")
+_MARKET_ACTIVITY_STOP_STOCK_REQUIRED_TEXT_FIELDS = (
+    *_MARKET_ACTIVITY_STOP_STOCK_TEXT_FIELDS,
+)
+_MARKET_ACTIVITY_STOP_STOCK_NUMERIC_FIELDS = tuple(
+    field
+    for field in _MARKET_ACTIVITY_STOP_STOCK_FIELDS
+    if field not in {"序号", *_MARKET_ACTIVITY_STOP_STOCK_TEXT_FIELDS}
+)
+_MARKET_ACTIVITY_STOP_STOCK_NULLABLE_FIELDS = (
+    *_MARKET_ACTIVITY_STOP_STOCK_NUMERIC_FIELDS,
+)
+_MARKET_ACTIVITY_STOP_STOCK_FIELD_TYPES = {
+    "序号": "integer",
+    **{
+        field: "string" for field in _MARKET_ACTIVITY_STOP_STOCK_TEXT_FIELDS
+    },
+    **{
+        field: "number" for field in _MARKET_ACTIVITY_STOP_STOCK_NUMERIC_FIELDS
+    },
+}
+_MARKET_ACTIVITY_STOP_STOCK_DOCUMENTED_UNITS = {
+    "涨跌幅": "percent",
+    "振幅": "percent",
+    "换手率": "percent",
+}
+_MARKET_ACTIVITY_STOP_STOCK_UNDOCUMENTED_NUMERIC_UNITS = {
+    field: "not_documented"
+    for field in _MARKET_ACTIVITY_STOP_STOCK_NUMERIC_FIELDS
+    if field not in _MARKET_ACTIVITY_STOP_STOCK_DOCUMENTED_UNITS
+}
+_MARKET_ACTIVITY_STOP_STOCK_SOURCE_URI = (
+    "http://quote.eastmoney.com/center/gridlist.html#staq_net_board"
+)
+_MARKET_ACTIVITY_STOP_STOCK_UPSTREAM_URL = (
+    "https://40.push2.eastmoney.com/api/qt/clist/get"
+)
+_MARKET_ACTIVITY_STOP_STOCK_UPSTREAM_PARAMETERS = (
+    "pn",
+    "pz",
+    "po",
+    "np",
+    "ut",
+    "fltt",
+    "invt",
+    "fid",
+    "fs",
+    "fields",
+)
+_MARKET_ACTIVITY_STOP_STOCK_UPSTREAM_FIXED_PARAMETERS = {
+    "pn": "1",
+    "pz": "100",
+    "po": "1",
+    "np": "1",
+    "ut": "bd1d9ddb04089700cf9c27f6f7426281",
+    "fltt": "2",
+    "invt": "2",
+    "fid": "f3",
+    "fs": "m:0 s:3",
+    "fields": (
+        "f2,f3,f4,f5,f6,f7,f8,f9,f10,f12,f13,f14,f15,f16,f17,"
+        "f18,f20,f21,f23,f24,f25,f22,f11,f62,f128,f136,f115,f152"
+    ),
+}
+_MARKET_ACTIVITY_STOP_STOCK_WRAPPER_SOURCE_COLUMN_COUNT = 33
+_MARKET_ACTIVITY_STOP_STOCK_WRAPPER_COLUMN_MAPPING = {
+    "序号": 0,
+    "代码": 12,
+    "名称": 14,
+    "最新价": 2,
+    "涨跌幅": 3,
+    "涨跌额": 4,
+    "成交量": 5,
+    "成交额": 6,
+    "振幅": 7,
+    "最高": 15,
+    "最低": 16,
+    "今开": 17,
+    "昨收": 18,
+    "量比": 10,
+    "换手率": 8,
+    "市盈率-动态": 9,
+    "市净率": 22,
+}
+_MARKET_ACTIVITY_STOP_STOCK_UPSTREAM_TRANSFORMATIONS = {
+    "序号": "sort_by_f3_descending_then_reset_index",
+    **{
+        field: "to_numeric_errors_coerce"
+        for field in (
+            "最新价",
+            "涨跌幅",
+            "涨跌额",
+            "成交量",
+            "成交额",
+            "振幅",
+            "最高",
+            "最低",
+            "今开",
+            "量比",
+            "换手率",
+        )
+    },
+}
 
 _FINANCIAL_STATEMENT_PARAMETER_NAMES = frozenset({"indicator", "statement_date"})
 _EARNINGS_FORECAST_PARAMETER_NAMES = frozenset({"date"})
@@ -8715,6 +8846,36 @@ class AKShareProvider(StructuredDataProvider):
                     )
                 )
                 payload = selected
+            elif endpoint.name == _MARKET_ACTIVITY_STOP_STOCK_ENDPOINT:
+                _validate_market_activity_stop_stock_provider_rows(
+                    rows,
+                    provider=self.identity,
+                    request=request,
+                )
+                selected = _select_listing_rows(
+                    rows,
+                    listing,
+                    provider=self.identity,
+                    request=request,
+                    row_label="market-activity-stop-stock",
+                )
+                response_metadata.update(
+                    _market_activity_stop_stock_response_metadata(
+                        listing_code=listing.code,
+                        row_identity_order=[row["代码"] for row in rows],
+                        selected_row_identity_order=[
+                            row["代码"] for row in selected
+                        ],
+                        selected_row_positions=[
+                            index
+                            for index, row in enumerate(rows)
+                            if row["代码"] == listing.code
+                        ],
+                        upstream_row_count=len(rows),
+                        entity_row_count=len(selected),
+                    )
+                )
+                payload = selected
             elif endpoint.name == "stock_comment_detail_scrd_desire_em":
                 observation_dates = _validate_market_activity_participation_desire_provider_rows(
                     rows,
@@ -11409,6 +11570,9 @@ class AKShareProvider(StructuredDataProvider):
             market_activity_ipo_benefit_requested=(
                 request.parameters.get("view") == _MARKET_ACTIVITY_IPO_BENEFIT_VIEW
             ),
+            market_activity_stop_stock_requested=(
+                request.parameters.get("view") == _MARKET_ACTIVITY_STOP_STOCK_VIEW
+            ),
             market_activity_institution_statistic_requested=(
                 request.parameters.get("view")
                 == _MARKET_ACTIVITY_INSTITUTION_STATISTIC_VIEW
@@ -12307,6 +12471,13 @@ class AKShareNormalizer:
                         rows,
                     )
                     normalizer_flags.add("AKSHARE_IPO_BENEFIT_RAW_ONLY")
+                elif endpoint_name == _MARKET_ACTIVITY_STOP_STOCK_ENDPOINT:
+                    _validate_market_activity_stop_stock_normalizer_scope(
+                        record,
+                        listing,
+                        rows,
+                    )
+                    normalizer_flags.add("AKSHARE_STOP_STOCK_RAW_ONLY")
                 elif record.request.parameters.get("view") == _MARKET_ACTIVITY_NEW_STOCK_VIEW:
                     _validate_market_activity_new_stock_normalizer_scope(
                         record,
@@ -14751,6 +14922,13 @@ class AKShareNormalizer:
                 "market-value ratios do not establish issuer revenue, cash flow, "
                 "ownership, valuation or a canonical accounting fact."
             )
+        if "AKSHARE_STOP_STOCK_RAW_ONLY" in normalizer_flags:
+            notes += (
+                " The documented A-share Eastmoney two-net-and-delisted-stock response "
+                "is retained as raw evidence only: its current quote and provider-defined "
+                "delisting-universe membership do not establish a dated listing, canonical "
+                "price, valuation or accounting fact."
+            )
         if "AKSHARE_MARKET_PARTICIPATION_DESIRE_RAW_ONLY" in normalizer_flags:
             notes += (
                 " The documented A-share market-participation response is retained as "
@@ -15350,6 +15528,7 @@ def _endpoint_candidates(
     market_activity_company_dynamics_requested: bool = False,
     market_activity_new_stock_first_day_requested: bool = False,
     market_activity_ipo_benefit_requested: bool = False,
+    market_activity_stop_stock_requested: bool = False,
     market_quote_sh_a_spot_requested: bool = False,
     market_quote_sz_a_spot_requested: bool = False,
     market_quote_bj_a_spot_requested: bool = False,
@@ -15707,6 +15886,8 @@ def _endpoint_candidates(
                 return (_MARKET_ACTIVITY_NEW_STOCK_FIRST_DAY_ENDPOINT,)
             if market_activity_ipo_benefit_requested:
                 return (_MARKET_ACTIVITY_IPO_BENEFIT_ENDPOINT,)
+            if market_activity_stop_stock_requested:
+                return (_MARKET_ACTIVITY_STOP_STOCK_ENDPOINT,)
             if market_activity_new_stock_requested:
                 return ("stock_zh_a_new_em",)
             if market_activity_sina_new_stock_requested:
@@ -32677,6 +32858,215 @@ def _market_activity_ipo_benefit_response_metadata(
     }
 
 
+def _market_activity_stop_stock_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+    listing: _ListingRef | None = None,
+) -> str | None:
+    """Return a strict-schema error for the two-net/delisted-stock universe."""
+
+    seen_codes: set[str] = set()
+    previous_sequence: int | None = None
+    for index, row in enumerate(rows):
+        missing = [
+            field
+            for field in _MARKET_ACTIVITY_STOP_STOCK_FIELDS
+            if field not in row
+        ]
+        if missing:
+            return (
+                f"market-activity two-net/delisted-stock row {index} is missing "
+                "field(s): "
+                + ", ".join(missing)
+            )
+        unexpected = [
+            field
+            for field in row
+            if field not in _MARKET_ACTIVITY_STOP_STOCK_FIELD_SET
+        ]
+        if unexpected:
+            return (
+                f"market-activity two-net/delisted-stock row {index} contains "
+                "unsupported field(s): "
+                + ", ".join(unexpected)
+            )
+        if tuple(row) != _MARKET_ACTIVITY_STOP_STOCK_FIELDS:
+            return (
+                f"market-activity two-net/delisted-stock row {index} must preserve "
+                "the official field order"
+            )
+
+        raw_code = row["代码"]
+        if not isinstance(raw_code, str) or re.fullmatch(r"\d{6}", raw_code) is None:
+            return (
+                f"market-activity two-net/delisted-stock row {index} 代码 must be "
+                "a six-digit string"
+            )
+        if raw_code in seen_codes:
+            return (
+                "market-activity two-net/delisted-stock response has duplicate "
+                f"listing code {raw_code!r}"
+            )
+        seen_codes.add(raw_code)
+        if listing is not None and raw_code != listing.code:
+            return (
+                f"market-activity two-net/delisted-stock row entity {raw_code!r} "
+                f"does not match requested listing {listing.canonical_id!r}"
+            )
+
+        for field in _MARKET_ACTIVITY_STOP_STOCK_REQUIRED_TEXT_FIELDS:
+            value = row[field]
+            if not isinstance(value, str) or not value.strip():
+                return (
+                    f"market-activity two-net/delisted-stock row {index} field "
+                    f"{field!r} must be a non-empty string"
+                )
+
+        sequence_value = row["序号"]
+        if isinstance(sequence_value, bool) or not isinstance(sequence_value, Real):
+            return (
+                f"market-activity two-net/delisted-stock row {index} field '序号' "
+                "must be a positive integer"
+            )
+        try:
+            sequence_numeric = float(sequence_value)
+        except (OverflowError, TypeError, ValueError):
+            return (
+                f"market-activity two-net/delisted-stock row {index} field '序号' "
+                "must be a positive integer"
+            )
+        if (
+            not math.isfinite(sequence_numeric)
+            or not sequence_numeric.is_integer()
+            or sequence_numeric < 1
+        ):
+            return (
+                f"market-activity two-net/delisted-stock row {index} field '序号' "
+                "must be a positive integer"
+            )
+        sequence = int(sequence_numeric)
+        if previous_sequence is not None and sequence <= previous_sequence:
+            return (
+                "market-activity two-net/delisted-stock response 序号 values must "
+                "be strictly ascending"
+            )
+        previous_sequence = sequence
+
+        for field in _MARKET_ACTIVITY_STOP_STOCK_NUMERIC_FIELDS:
+            value = row[field]
+            if value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, Real):
+                return (
+                    f"market-activity two-net/delisted-stock row {index} field "
+                    f"{field!r} must be numeric or null"
+                )
+            try:
+                numeric = float(value)
+            except (OverflowError, TypeError, ValueError):
+                return (
+                    f"market-activity two-net/delisted-stock row {index} field "
+                    f"{field!r} must be numeric or null"
+                )
+            if not math.isfinite(numeric):
+                return (
+                    f"market-activity two-net/delisted-stock row {index} field "
+                    f"{field!r} must be finite or null"
+                )
+    return None
+
+
+def _validate_market_activity_stop_stock_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> None:
+    """Validate the complete two-net/delisted-stock universe before filtering."""
+
+    message = _market_activity_stop_stock_validation_message(rows)
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message}",
+            provider=provider,
+            request=request,
+        )
+
+
+def _market_activity_stop_stock_response_metadata(
+    *,
+    listing_code: str,
+    row_identity_order: Sequence[JSONValue],
+    selected_row_identity_order: Sequence[JSONValue],
+    selected_row_positions: Sequence[JSONValue],
+    upstream_row_count: int,
+    entity_row_count: int,
+) -> dict[str, JSONValue]:
+    """Build replay metadata for a filtered two-net/delisted-stock snapshot."""
+
+    fixed_parameters = _MARKET_ACTIVITY_STOP_STOCK_UPSTREAM_FIXED_PARAMETERS
+    return {
+        "endpoint": _MARKET_ACTIVITY_STOP_STOCK_ENDPOINT,
+        "market": ListingMarket.A.value,
+        "listing_code": listing_code,
+        "market_activity_view": _MARKET_ACTIVITY_STOP_STOCK_VIEW,
+        "market_scope": "two_net_and_delisted_a_share_stocks",
+        "listing_scoped_request": False,
+        "row_filtering": "provider",
+        "snapshot_scope": "current_trading_day_two_net_and_delisted_universe",
+        "date_binding": "retrieval_only",
+        "listing_code_field": "代码",
+        "sequence_field": "序号",
+        "sequence_ordering": "strictly_ascending",
+        "identity_fields": ["代码"],
+        "identity_ordering": "source_response_order",
+        "row_identity_order": list(row_identity_order),
+        "selected_row_identity_order": list(selected_row_identity_order),
+        "selected_row_positions": list(selected_row_positions),
+        "value_fields": list(_MARKET_ACTIVITY_STOP_STOCK_NUMERIC_FIELDS),
+        "integer_fields": list(_MARKET_ACTIVITY_STOP_STOCK_INTEGER_FIELDS),
+        "text_fields": list(_MARKET_ACTIVITY_STOP_STOCK_TEXT_FIELDS),
+        "required_text_fields": list(
+            _MARKET_ACTIVITY_STOP_STOCK_REQUIRED_TEXT_FIELDS
+        ),
+        "nullable_fields": list(_MARKET_ACTIVITY_STOP_STOCK_NULLABLE_FIELDS),
+        "field_types": dict(_MARKET_ACTIVITY_STOP_STOCK_FIELD_TYPES),
+        "field_count": len(_MARKET_ACTIVITY_STOP_STOCK_FIELDS),
+        "source_field_order": list(_MARKET_ACTIVITY_STOP_STOCK_FIELDS),
+        "documented_units": dict(_MARKET_ACTIVITY_STOP_STOCK_DOCUMENTED_UNITS),
+        "undocumented_numeric_units": dict(
+            _MARKET_ACTIVITY_STOP_STOCK_UNDOCUMENTED_NUMERIC_UNITS
+        ),
+        "upstream_url": _MARKET_ACTIVITY_STOP_STOCK_UPSTREAM_URL,
+        "upstream_protocol": "JSON",
+        "upstream_parameters": list(
+            _MARKET_ACTIVITY_STOP_STOCK_UPSTREAM_PARAMETERS
+        ),
+        "upstream_fixed_parameters": dict(fixed_parameters),
+        "upstream_dynamic_parameters": {},
+        "upstream_authentication": "none",
+        "upstream_page_size": 100,
+        "pagination": "provider_driven_all_pages",
+        "upstream_sort_column": "f3",
+        "upstream_sort_direction": "descending",
+        "upstream_filter": fixed_parameters["fs"],
+        "wrapper_source_page_uri": _MARKET_ACTIVITY_STOP_STOCK_SOURCE_URI,
+        "wrapper_output_ordering": "source_response_order_with_wrapper_sequence",
+        "wrapper_source_column_count": (
+            _MARKET_ACTIVITY_STOP_STOCK_WRAPPER_SOURCE_COLUMN_COUNT
+        ),
+        "wrapper_column_mapping": dict(
+            _MARKET_ACTIVITY_STOP_STOCK_WRAPPER_COLUMN_MAPPING
+        ),
+        "upstream_transformations": dict(
+            _MARKET_ACTIVITY_STOP_STOCK_UPSTREAM_TRANSFORMATIONS
+        ),
+        "full_universe_response": True,
+        "entity_rows_selected": True,
+        "upstream_row_count": upstream_row_count,
+        "entity_row_count": entity_row_count,
+    }
+
+
 def _market_activity_hot_rank_row_listing(value: object) -> _ListingRef | None:
     """Parse the market-prefixed listing code published by the hot-rank endpoint."""
 
@@ -39710,6 +40100,121 @@ def _validate_market_activity_ipo_benefit_normalizer_scope(
         if metadata.get(name) != expected:
             raise ProviderNormalizationError(
                 "AKShare IPO-benefit response metadata "
+                f"{name!r} does not match the requested replay scope"
+            )
+
+
+def _validate_market_activity_stop_stock_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> None:
+    """Validate replay scope for filtered two-net/delisted-stock rows."""
+
+    if listing.market is not ListingMarket.A:
+        raise ProviderNormalizationError(
+            "AKShare two-net/delisted-stock raw slice supports A-share listings only"
+        )
+    if record.response_metadata.get("endpoint") != _MARKET_ACTIVITY_STOP_STOCK_ENDPOINT:
+        raise ProviderNormalizationError(
+            "AKShare two-net/delisted-stock record must come from "
+            f"{_MARKET_ACTIVITY_STOP_STOCK_ENDPOINT}"
+        )
+    if record.source_uri != _MARKET_ACTIVITY_STOP_STOCK_SOURCE_URI:
+        raise ProviderNormalizationError(
+            "AKShare two-net/delisted-stock source URI does not match the "
+            "documented endpoint"
+        )
+    try:
+        _market_activity_stop_stock_kwargs(
+            _MARKET_ACTIVITY_STOP_STOCK_ENDPOINT,
+            listing,
+            record.request,
+        )
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+
+    message = _market_activity_stop_stock_validation_message(rows, listing)
+    if message is not None:
+        raise ProviderNormalizationError(message)
+
+    metadata = record.response_metadata
+    upstream_row_count = metadata.get("upstream_row_count")
+    row_identity_order = metadata.get("row_identity_order")
+    selected_row_identity_order = metadata.get("selected_row_identity_order")
+    selected_row_positions = metadata.get("selected_row_positions")
+    if (
+        isinstance(upstream_row_count, bool)
+        or not isinstance(upstream_row_count, int)
+        or upstream_row_count < len(rows)
+        or not isinstance(row_identity_order, list)
+        or not isinstance(selected_row_identity_order, list)
+        or not isinstance(selected_row_positions, list)
+        or not all(
+            isinstance(identity, str)
+            and re.fullmatch(r"\d{6}", identity) is not None
+            for identity in row_identity_order
+        )
+        or not all(
+            isinstance(identity, str)
+            and re.fullmatch(r"\d{6}", identity) is not None
+            for identity in selected_row_identity_order
+        )
+        or not all(
+            isinstance(position, int) and not isinstance(position, bool)
+            for position in selected_row_positions
+        )
+        or upstream_row_count != len(row_identity_order)
+        or len(selected_row_positions) != len(rows)
+        or any(
+            position < 0 or position >= upstream_row_count
+            for position in selected_row_positions
+        )
+    ):
+        raise ProviderNormalizationError(
+            "AKShare two-net/delisted-stock response universe metadata does not "
+            "match the requested replay scope"
+        )
+    if len(set(row_identity_order)) != len(row_identity_order):
+        raise ProviderNormalizationError(
+            "AKShare two-net/delisted-stock response identity order is not unique"
+        )
+    if selected_row_positions != sorted(set(selected_row_positions)):
+        raise ProviderNormalizationError(
+            "AKShare two-net/delisted-stock response selected positions are not "
+            "in source order"
+        )
+    expected_selected = [row["代码"] for row in rows]
+    if selected_row_identity_order != expected_selected:
+        raise ProviderNormalizationError(
+            "AKShare two-net/delisted-stock response selected identity order does "
+            "not match replayed rows"
+        )
+    if [row_identity_order[position] for position in selected_row_positions] != (
+        expected_selected
+    ):
+        raise ProviderNormalizationError(
+            "AKShare two-net/delisted-stock response selected positions do not "
+            "match replayed rows"
+        )
+    if any(identity not in row_identity_order for identity in expected_selected):
+        raise ProviderNormalizationError(
+            "AKShare two-net/delisted-stock response selected identity is absent "
+            "from the upstream universe"
+        )
+
+    expected_metadata = _market_activity_stop_stock_response_metadata(
+        listing_code=listing.code,
+        row_identity_order=row_identity_order,
+        selected_row_identity_order=selected_row_identity_order,
+        selected_row_positions=selected_row_positions,
+        upstream_row_count=upstream_row_count,
+        entity_row_count=len(rows),
+    )
+    for name, expected in expected_metadata.items():
+        if metadata.get(name) != expected:
+            raise ProviderNormalizationError(
+                "AKShare two-net/delisted-stock response metadata "
                 f"{name!r} does not match the requested replay scope"
             )
 
@@ -48503,6 +49008,8 @@ def _market_activity_kwargs(
             listing,
             request,
         )
+    if endpoint_name == _MARKET_ACTIVITY_STOP_STOCK_ENDPOINT:
+        return _market_activity_stop_stock_kwargs(endpoint_name, listing, request)
     if endpoint_name == _MARKET_ACTIVITY_SINA_NEW_STOCK_ENDPOINT:
         return _market_activity_sina_new_stock_kwargs(endpoint_name, listing, request)
     if endpoint_name == "stock_comment_detail_scrd_desire_em":
@@ -50291,6 +50798,47 @@ def _market_activity_ipo_benefit_kwargs(
         raise ProviderRequestError(
             "the AKShare IPO-benefit endpoint requires "
             f"view={_MARKET_ACTIVITY_IPO_BENEFIT_VIEW!r}",
+            request=request,
+            retryable=False,
+        )
+    return {}
+
+
+def _market_activity_stop_stock_kwargs(
+    endpoint_name: str,
+    listing: _ListingRef,
+    request: ProviderRequest,
+) -> dict[str, object]:
+    """Build the documented no-argument two-net/delisted-stock request."""
+
+    if endpoint_name != _MARKET_ACTIVITY_STOP_STOCK_ENDPOINT:
+        raise ProviderRequestError(
+            "unsupported AKShare two-net/delisted-stock endpoint "
+            f"{endpoint_name!r}",
+            request=request,
+            retryable=False,
+        )
+    if listing.market is not ListingMarket.A:
+        raise ProviderRequestError(
+            "the AKShare two-net/delisted-stock endpoint supports A-share listings "
+            "only",
+            request=request,
+            retryable=False,
+        )
+    unknown = sorted(
+        set(request.parameters) - _MARKET_ACTIVITY_STOP_STOCK_PARAMETER_NAMES
+    )
+    if unknown:
+        raise ProviderRequestError(
+            "unsupported AKShare two-net/delisted-stock parameter(s): "
+            + ", ".join(unknown),
+            request=request,
+            retryable=False,
+        )
+    if request.parameters.get("view") != _MARKET_ACTIVITY_STOP_STOCK_VIEW:
+        raise ProviderRequestError(
+            "the AKShare two-net/delisted-stock endpoint requires "
+            f"view={_MARKET_ACTIVITY_STOP_STOCK_VIEW!r}",
             request=request,
             retryable=False,
         )

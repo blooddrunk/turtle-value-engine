@@ -1899,6 +1899,26 @@ complete-universe validation, empty selection, raw-only normalization, replay
 metadata tampering and offline cache replay. No calculation, gate, pipeline, CLI
 or input-loader contract changes.
 
+Phase 3.53 adds the documented Eastmoney two-net-and-delisted-stock endpoint
+[`stock_zh_a_stop_em`](https://akshare.akfamily.xyz/data/stock/stock.html) under
+`MARKET_ACTIVITY` with explicit `view=stop_stock`. The [official
+implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_zh_a_special.py)
+uses the `40.push2.eastmoney.com` JSON endpoint with `fs=m:0 s:3`, provider-driven
+100-row pagination and an `f3` descending sort, then preserves the exact
+seventeen-field `序号`, `代码`, `名称`, quote, volume, turnover and valuation-ratio
+response before filtering to the requested A-share listing. The adapter records
+the wrapper's 33-column mapping, numeric transformations, source order and
+selected positions in replay metadata.
+
+The two-net-and-delisted-stock response is retained as raw evidence only:
+current quote values and provider-defined delisting-universe membership do not
+establish a dated listing, canonical price, valuation or accounting fact. The
+normalizer emits `AKSHARE_STOP_STOCK_RAW_ONLY` and creates no canonical fact.
+Tests cover explicit routing, exact field/order and JSON-source metadata,
+complete-universe validation, empty selection, raw-only normalization, replay
+metadata tampering and offline cache replay. No calculation, gate, pipeline, CLI
+or input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.
