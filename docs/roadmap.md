@@ -4420,6 +4420,38 @@ adjustments, strict request/response validation, nullable values, empty output,
 raw-only normalization, replay metadata/payload tampering and offline cache
 replay. No calculation, gate, pipeline, CLI or input-loader contract changes.
 
+### Phase 3.74 — Sina A-share daily-history raw acquisition contract (COMPLETE)
+
+The mapping review now covers the next documented AKShare stock endpoint
+[`stock_zh_a_daily`](https://akshare.akfamily.xyz/data/stock/stock.html) under
+`MARKET_HISTORY`. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_zh_a_sina.py)
+requests an A-share symbol from Sina's encrypted JavaScript K-line endpoint and
+supports normalized `start_date`, `end_date` and `adjust` values `''`, `qfq`,
+`hfq`, `qfq-factor` and `hfq-factor`. The adapter exposes an explicit
+`view=sina_a_daily`, accepts A-share listings only, passes the lower-prefixed
+symbol and inclusive date bounds, and preserves the exact regular nine-field
+`date`, `open`, `high`, `low`, `close`, `volume`, `amount`,
+`outstanding_share`, `turnover` order or the exact qfq/hfq factor order.
+
+Provider validation is strict: regular dates must be valid, unique, strictly
+ascending and within the requested inclusive range; factor dates must be
+valid, unique and strictly descending; and numeric values must be finite
+numbers or null. Replay metadata records Sina's K-line, amount and optional
+factor URLs, symbol/date/adjustment binding, decoder/transformation steps,
+derived outstanding-share/turnover operations, exact field order, row identity
+order and conservative undocumented numeric units. The existing no-view
+`stock_zh_a_hist`/`stock_zh_a_daily` compatibility fallback remains unchanged.
+
+The normalizer emits `AKSHARE_SINA_A_DAILY_HISTORY_RAW_ONLY`, retains the
+response as evidence and creates no canonical daily-history, return, valuation
+or accounting fact because provider-owned prices, adjustment/factor behavior,
+derived share/turnover semantics, trading-calendar behavior and numeric units
+are not reconciled to the canonical contract. Focused tests cover A-share
+routing, documented defaults and adjustment/factor shapes, strict request and
+response validation, nullable values, empty output, raw-only normalization,
+replay metadata/payload tampering and offline cache replay. No calculation,
+gate, pipeline, CLI or input-loader contract changes.
+
 ### Future structured-provider deliverables
 
 ```text
@@ -4429,7 +4461,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–3.73 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–3.74 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```

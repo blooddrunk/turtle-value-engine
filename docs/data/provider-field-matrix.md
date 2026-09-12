@@ -4300,6 +4300,29 @@ A+H prices, adjustment behavior, trading-calendar semantics and numeric units
 are not reconciled to the canonical contract. The slice remains outside the
 calculation, gate, pipeline, CLI and input-loader contracts.
 
+## Phase 3.74 Sina A-share daily-history raw slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_zh_a_sina.py)
+document `stock_zh_a_daily` as a symbol-scoped A-share daily-history endpoint.
+The adapter exposes it only under `MARKET_HISTORY` with explicit
+`view=sina_a_daily`, passes normalized inclusive dates and preserves the full
+regular nine-field response or the documented two-field qfq/hfq factor shape.
+
+| Raw upstream item | Phase 3.74 treatment |
+| --- | --- |
+| `date`, `open`, `high`, `low`, `close`, `volume`, `amount`, `outstanding_share`, `turnover` | Required exact field order; dates are valid, unique, strictly ascending and within the inclusive request range; numeric values are finite numbers or null. Numeric units remain conservative `not_documented`. |
+| `date`, `qfq_factor` / `date`, `hfq_factor` | Required exact factor order; dates are valid, unique and strictly descending. The wrapper does not apply request date bounds to factor histories. |
+| request `view`, `start_date`, `end_date`, `adjust` | Only the documented parameters are accepted. Dates accept `YYYYMMDD` or `YYYY-MM-DD`, default to `19900101`/`21000118`, and adjustment is limited to `''`, `qfq`, `hfq`, `qfq-factor` and `hfq-factor`. |
+| Sina K-line, amount and optional factor sources | Replay metadata records source URLs, symbol/date/adjustment binding, decoders, JavaScript/amount/factor transformations, derived outstanding-share/turnover operations, exact field order and row identity order. |
+
+The normalizer emits `AKSHARE_SINA_A_DAILY_HISTORY_RAW_ONLY` and creates no
+canonical daily-history, return, valuation or accounting fact: provider-owned
+prices, adjustment/factor behavior, derived share/turnover semantics,
+trading-calendar behavior and numeric units are not reconciled to the
+canonical contract. The slice remains outside calculation, gate, pipeline, CLI
+and input-loader contracts; the existing no-view history fallback is unchanged.
+
 ## Phase 2 enforcement rule
 
 For every field not marked `STRUCTURED_AUTO` or `DERIVED_DETERMINISTIC`, a

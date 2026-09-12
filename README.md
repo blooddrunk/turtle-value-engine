@@ -2352,6 +2352,37 @@ parameters, malformed rows, nullable values, empty output, raw-only
 normalization, replay metadata/payload tampering and offline cache replay. No
 calculation, gate, pipeline, CLI or input-loader contract changes.
 
+Phase 3.74 adds the next documented Sina A-share daily-history endpoint
+[`stock_zh_a_daily`](https://akshare.akfamily.xyz/data/stock/stock.html) under
+`MARKET_HISTORY`. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_zh_a_sina.py)
+requests an A-share symbol from Sina's encrypted JavaScript K-line endpoint and
+supports `start_date`, `end_date` and `adjust` values `''`, `qfq`, `hfq`,
+`qfq-factor` and `hfq-factor`. The adapter exposes explicit
+`view=sina_a_daily`, accepts A-share listings only, passes the lower-prefixed
+symbol plus normalized inclusive date bounds, and preserves the exact regular
+nine-field `date`, `open`, `high`, `low`, `close`, `volume`, `amount`,
+`outstanding_share`, `turnover` order or the exact two-field factor response
+order.
+
+Provider validation is strict: regular dates must be valid, unique, strictly
+ascending and within the requested inclusive range; factor dates must be
+valid, unique and strictly descending; and numeric values must be finite
+numbers or null. Replay metadata records Sina's K-line, outstanding-share and
+optional qfq/hfq factor URLs, the adjustment mode, decoder/transform steps,
+derived outstanding-share/turnover operations, exact field order and
+conservative undocumented numeric units. The existing no-view A-share history
+compatibility fallback remains unchanged.
+
+The Sina A-share daily-history response is retained as raw evidence only:
+provider-owned prices, adjustment and derived share/turnover semantics,
+trading-calendar behavior and numeric units are not reconciled to the canonical
+daily-history contract. The normalizer emits
+`AKSHARE_SINA_A_DAILY_HISTORY_RAW_ONLY` and creates no canonical fact. Tests
+cover documented defaults and adjustment/factor shapes, strict routing and
+parameters, malformed rows, nullable values, empty output, raw-only
+normalization, replay metadata/payload tampering and offline cache replay. No
+calculation, gate, pipeline, CLI or input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.
