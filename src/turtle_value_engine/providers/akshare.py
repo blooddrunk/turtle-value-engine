@@ -77,7 +77,8 @@ history and Legu market-activity/congestion/equity-bond-spread/Buffett-index/
 A-share PE/PB-history, index-PE/index-PB, market-PE/market-PB, A-share Eastmoney
 growth-comparison, DuPont-comparison and company-scale comparison, A/H
 Eastmoney valuation-comparison and A/H Baidu valuation-history snapshots are
-also available. The Eastmoney generic index-history, Sina index-constituent and
+also available. The Eastmoney generic index-history and A-share daily-history,
+Sina index-constituent and
 Sina H-share daily-history and Tencent A+H daily-history raw slices are also available.
 The A-share Eastmoney top-ten, top-ten-tradable-shareholder and
 top-ten-tradable-shareholder-detail raw slices are also available.
@@ -129,9 +130,9 @@ from .models import (
 )
 from .normalization import deterministic_id
 
-AKSHARE_ADAPTER_VERSION = "191"
+AKSHARE_ADAPTER_VERSION = "192"
 AKSHARE_SOURCE_NAME = "AKShare"
-AKSHARE_MAPPING_VERSION = "192"
+AKSHARE_MAPPING_VERSION = "193"
 
 
 class ListingMarket(StrEnum):
@@ -2502,6 +2503,109 @@ _MARKET_HISTORY_B_DAILY_HFQ_URL_TEMPLATE = (
 _MARKET_HISTORY_B_DAILY_QFQ_URL_TEMPLATE = (
     "https://finance.sina.com.cn/realstock/company/{symbol}/qfq.js"
 )
+
+_MARKET_HISTORY_EASTMONEY_A_HIST_ENDPOINT = "stock_zh_a_hist"
+_MARKET_HISTORY_EASTMONEY_A_HIST_PARAMETER_NAMES = frozenset(
+    {"view", "period", "start_date", "end_date", "adjust"}
+)
+_MARKET_HISTORY_EASTMONEY_A_HIST_VIEW = "eastmoney_a_hist"
+_MARKET_HISTORY_EASTMONEY_A_HIST_PERIODS = frozenset(
+    {"daily", "weekly", "monthly"}
+)
+_MARKET_HISTORY_EASTMONEY_A_HIST_DEFAULT_PERIOD = "daily"
+_MARKET_HISTORY_EASTMONEY_A_HIST_DEFAULT_START = "19700101"
+_MARKET_HISTORY_EASTMONEY_A_HIST_DEFAULT_END = "20500101"
+_MARKET_HISTORY_EASTMONEY_A_HIST_DEFAULT_ADJUST = ""
+_MARKET_HISTORY_EASTMONEY_A_HIST_ADJUSTMENTS = frozenset({"", "qfq", "hfq"})
+_MARKET_HISTORY_EASTMONEY_A_HIST_FIELDS = (
+    "日期",
+    "股票代码",
+    "开盘",
+    "收盘",
+    "最高",
+    "最低",
+    "成交量",
+    "成交额",
+    "振幅",
+    "涨跌幅",
+    "涨跌额",
+    "换手率",
+)
+_MARKET_HISTORY_EASTMONEY_A_HIST_FIELD_SET = frozenset(
+    _MARKET_HISTORY_EASTMONEY_A_HIST_FIELDS
+)
+_MARKET_HISTORY_EASTMONEY_A_HIST_DATE_FIELDS = ("日期",)
+_MARKET_HISTORY_EASTMONEY_A_HIST_NUMERIC_FIELDS = (
+    "开盘",
+    "收盘",
+    "最高",
+    "最低",
+    "成交量",
+    "成交额",
+    "振幅",
+    "涨跌幅",
+    "涨跌额",
+    "换手率",
+)
+_MARKET_HISTORY_EASTMONEY_A_HIST_DOCUMENTED_UNITS = {
+    "成交量": "lots",
+    "成交额": "CNY",
+    "振幅": "percent",
+    "涨跌幅": "percent",
+    "涨跌额": "CNY",
+    "换手率": "percent",
+}
+_MARKET_HISTORY_EASTMONEY_A_HIST_UNDOCUMENTED_NUMERIC_UNITS = {
+    field: "not_documented"
+    for field in _MARKET_HISTORY_EASTMONEY_A_HIST_NUMERIC_FIELDS
+    if field not in _MARKET_HISTORY_EASTMONEY_A_HIST_DOCUMENTED_UNITS
+}
+_MARKET_HISTORY_EASTMONEY_A_HIST_FIELD_TYPES = {
+    "日期": "date",
+    "股票代码": "string",
+    **{
+        field: "number"
+        for field in _MARKET_HISTORY_EASTMONEY_A_HIST_NUMERIC_FIELDS
+    },
+}
+_MARKET_HISTORY_EASTMONEY_A_HIST_SOURCE_URI = _SOURCE_URIS["stock_zh_a_hist"]
+_MARKET_HISTORY_EASTMONEY_A_HIST_UPSTREAM_URL = (
+    "https://push2his.eastmoney.com/api/qt/stock/kline/get"
+)
+_MARKET_HISTORY_EASTMONEY_A_HIST_MARKET_MAP = {
+    "SH": "1",
+    "SZ": "0",
+    "BJ": "0",
+}
+_MARKET_HISTORY_EASTMONEY_A_HIST_PERIOD_CODES = {
+    "daily": "101",
+    "weekly": "102",
+    "monthly": "103",
+}
+_MARKET_HISTORY_EASTMONEY_A_HIST_ADJUSTMENT_CODES = {
+    "": "0",
+    "qfq": "1",
+    "hfq": "2",
+}
+_MARKET_HISTORY_EASTMONEY_A_HIST_UPSTREAM_FIXED_PARAMETERS = {
+    "fields1": "f1,f2,f3,f4,f5,f6",
+    "fields2": "f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61,f116",
+    "ut": "7eea3edcaed734bea9cbfc24409ed989",
+}
+_MARKET_HISTORY_EASTMONEY_A_HIST_WRAPPER_COLUMN_MAPPING = {
+    "日期": 0,
+    "开盘": 1,
+    "收盘": 2,
+    "最高": 3,
+    "最低": 4,
+    "成交量": 5,
+    "成交额": 6,
+    "振幅": 7,
+    "涨跌幅": 8,
+    "涨跌额": 9,
+    "换手率": 10,
+    "股票代码": "appended_symbol",
+}
 
 _MARKET_HISTORY_SINA_A_DAILY_ENDPOINT = "stock_zh_a_daily"
 _MARKET_HISTORY_SINA_A_DAILY_PARAMETER_NAMES = frozenset(
@@ -8621,6 +8725,19 @@ class AKShareProvider(StructuredDataProvider):
             )
         if (
             request.category is DataCategory.MARKET_HISTORY
+            and request.parameters.get("view")
+            == _MARKET_HISTORY_EASTMONEY_A_HIST_VIEW
+            and listing.market is not ListingMarket.A
+        ):
+            raise ProviderRequestError(
+                "the AKShare Eastmoney A-share history endpoint supports A-share "
+                "listings only",
+                provider=self.identity,
+                request=request,
+                retryable=False,
+            )
+        if (
+            request.category is DataCategory.MARKET_HISTORY
             and request.parameters.get("view") == _MARKET_HISTORY_HK_DAILY_VIEW
             and listing.market is not ListingMarket.H
         ):
@@ -11873,6 +11990,42 @@ class AKShareProvider(StructuredDataProvider):
                 response_metadata["observation_end_date"] = (
                     max(observation_dates).isoformat() if observation_dates else None
                 )
+            elif (
+                endpoint.name == _MARKET_HISTORY_EASTMONEY_A_HIST_ENDPOINT
+                and request.parameters.get("view")
+                == _MARKET_HISTORY_EASTMONEY_A_HIST_VIEW
+            ):
+                start_date = _parse_eastmoney_a_hist_date_parameter(
+                    kwargs["start_date"],
+                    name="start_date",
+                    request=request,
+                )
+                end_date = _parse_eastmoney_a_hist_date_parameter(
+                    kwargs["end_date"],
+                    name="end_date",
+                    request=request,
+                )
+                observation_dates = _validate_eastmoney_a_hist_provider_rows(
+                    rows,
+                    symbol=str(kwargs["symbol"]),
+                    period=kwargs["period"],
+                    start_date=start_date,
+                    end_date=end_date,
+                    provider=self.identity,
+                    request=request,
+                )
+                response_metadata.update(
+                    _eastmoney_a_hist_response_metadata(
+                        listing_code=listing.code,
+                        market=listing.canonical_id[:2],
+                        symbol=str(kwargs["symbol"]),
+                        period=str(kwargs["period"]),
+                        start_date=str(kwargs["start_date"]),
+                        end_date=str(kwargs["end_date"]),
+                        adjust=str(kwargs["adjust"]),
+                        observation_dates=observation_dates,
+                    )
+                )
             elif endpoint.name == "stock_zh_index_daily_tx":
                 start_date = _parse_tencent_index_daily_history_date_parameter(
                     kwargs["start_date"],
@@ -14202,6 +14355,10 @@ class AKShareProvider(StructuredDataProvider):
             market_history_b_daily_requested=(
                 request.parameters.get("view") == _MARKET_HISTORY_B_DAILY_VIEW
             ),
+            market_history_eastmoney_a_hist_requested=(
+                request.parameters.get("view")
+                == _MARKET_HISTORY_EASTMONEY_A_HIST_VIEW
+            ),
             market_history_sina_a_daily_requested=(
                 request.parameters.get("view") == _MARKET_HISTORY_SINA_A_DAILY_VIEW
             ),
@@ -15901,6 +16058,15 @@ class AKShareNormalizer:
                     )
                     normalizer_flags.add(
                         "AKSHARE_INDEX_ZH_A_HIST_MIN_EM_RAW_ONLY"
+                    )
+                elif (
+                    record.request.parameters.get("view")
+                    == _MARKET_HISTORY_EASTMONEY_A_HIST_VIEW
+                ):
+                    _validate_eastmoney_a_hist_normalizer_scope(
+                        record,
+                        listing,
+                        rows,
                     )
                 elif endpoint == "stock_zh_a_hist_tx":
                     _validate_tencent_daily_history_normalizer_scope(record, listing, rows)
@@ -18608,6 +18774,7 @@ def _endpoint_candidates(
     market_history_index_zh_a_hist_min_em_requested: bool = False,
     market_history_cdr_daily_requested: bool = False,
     market_history_b_daily_requested: bool = False,
+    market_history_eastmoney_a_hist_requested: bool = False,
     market_history_sina_a_daily_requested: bool = False,
     market_history_kcb_daily_requested: bool = False,
     market_history_index_daily_requested: bool = False,
@@ -18855,6 +19022,10 @@ def _endpoint_candidates(
                 )
             ):
                 return ("stock_zh_b_daily",)
+            return ()
+        if market_history_eastmoney_a_hist_requested:
+            if market is ListingMarket.A:
+                return (_MARKET_HISTORY_EASTMONEY_A_HIST_ENDPOINT,)
             return ()
         if market_history_sina_a_daily_requested:
             if market is ListingMarket.A:
@@ -30991,6 +31162,258 @@ def _index_zh_a_hist_response_metadata(
     }
 
 
+def _eastmoney_a_hist_validation_message(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    symbol: object,
+    period: object,
+    start_date: date,
+    end_date: date,
+) -> tuple[str | None, list[date]]:
+    """Return strict-schema errors for Eastmoney A-share history rows."""
+
+    if (
+        not isinstance(period, str)
+        or period not in _MARKET_HISTORY_EASTMONEY_A_HIST_PERIODS
+    ):
+        return "Eastmoney A-share history period is not supported", []
+    if not isinstance(symbol, str) or not re.fullmatch(r"\d{6}", symbol):
+        return "Eastmoney A-share history symbol is not a six-digit code", []
+
+    observation_dates: list[date] = []
+    previous_date: date | None = None
+    for index, row in enumerate(rows):
+        missing = [
+            field
+            for field in _MARKET_HISTORY_EASTMONEY_A_HIST_FIELDS
+            if field not in row
+        ]
+        unexpected = [
+            field
+            for field in row
+            if field not in _MARKET_HISTORY_EASTMONEY_A_HIST_FIELD_SET
+        ]
+        if missing:
+            return (
+                f"Eastmoney A-share history row {index} is missing field(s): "
+                + ", ".join(missing),
+                [],
+            )
+        if unexpected:
+            return (
+                f"Eastmoney A-share history row {index} contains unsupported "
+                "field(s): "
+                + ", ".join(unexpected),
+                [],
+            )
+        if tuple(row) != _MARKET_HISTORY_EASTMONEY_A_HIST_FIELDS:
+            return (
+                "Eastmoney A-share history rows must preserve the documented "
+                "field order",
+                [],
+            )
+
+        row_symbol = row["股票代码"]
+        if row_symbol != symbol:
+            return (
+                f"Eastmoney A-share history row {index} 股票代码 "
+                f"{row_symbol!r} does not match requested symbol {symbol!r}",
+                [],
+            )
+        observation_date = _parse_date_value(row["日期"])
+        if observation_date is None:
+            return f"Eastmoney A-share history row {index} has an invalid date", []
+        if not start_date <= observation_date <= end_date:
+            return (
+                f"Eastmoney A-share history row {index} date "
+                f"{observation_date.isoformat()!r} is outside requested range "
+                f"{start_date.isoformat()!r}..{end_date.isoformat()!r}",
+                [],
+            )
+        if previous_date is not None and observation_date <= previous_date:
+            if observation_date == previous_date:
+                return (
+                    "Eastmoney A-share history response has duplicate date "
+                    f"{observation_date.isoformat()!r}",
+                    [],
+                )
+            return (
+                "Eastmoney A-share history response date values must be "
+                "strictly ascending",
+                [],
+            )
+        previous_date = observation_date
+        observation_dates.append(observation_date)
+
+        for field in _MARKET_HISTORY_EASTMONEY_A_HIST_NUMERIC_FIELDS:
+            value = row[field]
+            if value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, Real):
+                return (
+                    f"Eastmoney A-share history row {index} field {field!r} "
+                    "must be numeric or null",
+                    [],
+                )
+            try:
+                numeric = float(value)
+            except (OverflowError, TypeError, ValueError):
+                return (
+                    f"Eastmoney A-share history row {index} field {field!r} "
+                    "must be numeric or null",
+                    [],
+                )
+            if not math.isfinite(numeric):
+                return (
+                    f"Eastmoney A-share history row {index} field {field!r} "
+                    "must be finite or null",
+                    [],
+                )
+    return None, observation_dates
+
+
+def _validate_eastmoney_a_hist_provider_rows(
+    rows: Sequence[Mapping[str, JSONValue]],
+    *,
+    symbol: object,
+    period: object,
+    start_date: date,
+    end_date: date,
+    provider: ProviderIdentity,
+    request: ProviderRequest,
+) -> list[date]:
+    message, observation_dates = _eastmoney_a_hist_validation_message(
+        rows,
+        symbol=symbol,
+        period=period,
+        start_date=start_date,
+        end_date=end_date,
+    )
+    if message is not None:
+        raise ProviderResponseError(
+            f"AKShare {message}",
+            provider=provider,
+            request=request,
+        )
+    return observation_dates
+
+
+def _eastmoney_a_hist_response_metadata(
+    *,
+    listing_code: str,
+    market: str,
+    symbol: str,
+    period: str,
+    start_date: str,
+    end_date: str,
+    adjust: str,
+    observation_dates: Sequence[date],
+) -> dict[str, JSONValue]:
+    """Build the replay contract for one Eastmoney A-share history request."""
+
+    market_code = _MARKET_HISTORY_EASTMONEY_A_HIST_MARKET_MAP[market]
+    period_code = _MARKET_HISTORY_EASTMONEY_A_HIST_PERIOD_CODES[period]
+    adjustment_code = _MARKET_HISTORY_EASTMONEY_A_HIST_ADJUSTMENT_CODES[adjust]
+    row_identity_order = [observation.isoformat() for observation in observation_dates]
+    numeric_fields = list(_MARKET_HISTORY_EASTMONEY_A_HIST_NUMERIC_FIELDS)
+    return {
+        "endpoint": _MARKET_HISTORY_EASTMONEY_A_HIST_ENDPOINT,
+        "market": ListingMarket.A.value,
+        "listing_code": listing_code,
+        "market_history_view": _MARKET_HISTORY_EASTMONEY_A_HIST_VIEW,
+        "upstream_symbol": symbol,
+        "upstream_period": period,
+        "market_scope": "requested_a_share_listing",
+        "listing_scoped_request": True,
+        "row_filtering": "upstream",
+        "snapshot_scope": "requested_a_share_history_range",
+        "date_binding": "row_and_request",
+        "range_filtering": "upstream_and_provider_validation",
+        "eastmoney_a_hist_period": period,
+        "eastmoney_a_hist_start_date": start_date,
+        "eastmoney_a_hist_end_date": end_date,
+        "eastmoney_a_hist_adjust": adjust,
+        "adjustment_kind": "unadjusted" if adjust == "" else "price_series",
+        "period_code": period_code,
+        "adjustment_code": adjustment_code,
+        "market_code": market_code,
+        "observation_date_field": "日期",
+        "date_ordering": "strictly_ascending",
+        "identity_fields": ["日期"],
+        "identity_ordering": "strictly_ascending",
+        "row_identity_order": row_identity_order,
+        "selected_row_identity_order": row_identity_order,
+        "field_count": len(_MARKET_HISTORY_EASTMONEY_A_HIST_FIELDS),
+        "source_field_order": list(_MARKET_HISTORY_EASTMONEY_A_HIST_FIELDS),
+        "date_fields": list(_MARKET_HISTORY_EASTMONEY_A_HIST_DATE_FIELDS),
+        "value_fields": numeric_fields,
+        "required_numeric_fields": numeric_fields,
+        "documented_units": dict(
+            _MARKET_HISTORY_EASTMONEY_A_HIST_DOCUMENTED_UNITS
+        ),
+        "undocumented_numeric_units": dict(
+            _MARKET_HISTORY_EASTMONEY_A_HIST_UNDOCUMENTED_NUMERIC_UNITS
+        ),
+        "field_types": dict(_MARKET_HISTORY_EASTMONEY_A_HIST_FIELD_TYPES),
+        "upstream_url": _MARKET_HISTORY_EASTMONEY_A_HIST_UPSTREAM_URL,
+        "upstream_urls": [_MARKET_HISTORY_EASTMONEY_A_HIST_UPSTREAM_URL],
+        "upstream_auxiliary_urls": [],
+        "upstream_auxiliary_roles": [],
+        "upstream_protocol": "JSON",
+        "upstream_parameters": [
+            "fields1",
+            "fields2",
+            "ut",
+            "klt",
+            "fqt",
+            "secid",
+            "beg",
+            "end",
+        ],
+        "upstream_dynamic_parameters": {
+            "symbol": symbol,
+            "period": period,
+            "klt": period_code,
+            "adjust": adjust,
+            "fqt": adjustment_code,
+            "secid": f"{market_code}.{symbol}",
+            "beg": start_date,
+            "end": end_date,
+        },
+        "upstream_fixed_parameters": dict(
+            _MARKET_HISTORY_EASTMONEY_A_HIST_UPSTREAM_FIXED_PARAMETERS
+        ),
+        "upstream_authentication": "none",
+        "wrapper_source_page_uri": _MARKET_HISTORY_EASTMONEY_A_HIST_SOURCE_URI,
+        "wrapper_date_filtering": "none",
+        "wrapper_decoders": ["response.json"],
+        "wrapper_transformations": [
+            "market_code_to_secid",
+            "split_kline_rows",
+            "append_symbol_column",
+            "reorder_to_documented_columns",
+            "date_conversion",
+            "numeric_conversion",
+        ],
+        "wrapper_source_column_count": len(numeric_fields) + 1,
+        "wrapper_column_mapping": dict(
+            _MARKET_HISTORY_EASTMONEY_A_HIST_WRAPPER_COLUMN_MAPPING
+        ),
+        "wrapper_dropped_fields": [],
+        "upstream_page_size": None,
+        "pagination": "single_range_response",
+        "upstream_row_count": len(observation_dates),
+        "entity_row_count": len(observation_dates),
+        "entity_rows_selected": True,
+        "observation_start_date": (
+            min(observation_dates).isoformat() if observation_dates else None
+        ),
+        "observation_end_date": (
+            max(observation_dates).isoformat() if observation_dates else None
+        ),
+    }
+
+
 def _index_zh_a_hist_min_em_validation_message(
     rows: Sequence[Mapping[str, JSONValue]],
     *,
@@ -31777,6 +32200,76 @@ def _validate_tencent_daily_history_normalizer_scope(
         raise ProviderNormalizationError(
             "Tencent daily-history response observation end does not match replayed rows"
         )
+
+
+def _validate_eastmoney_a_hist_normalizer_scope(
+    record: RawProviderRecord,
+    listing: _ListingRef,
+    rows: Sequence[Mapping[str, JSONValue]],
+) -> None:
+    """Validate an explicit Eastmoney A-share history replay scope."""
+
+    if listing.market is not ListingMarket.A:
+        raise ProviderNormalizationError(
+            "AKShare Eastmoney A-share history supports A-share listings only"
+        )
+    if record.source_uri != _MARKET_HISTORY_EASTMONEY_A_HIST_SOURCE_URI:
+        raise ProviderNormalizationError(
+            "AKShare Eastmoney A-share history record has an unexpected source URI"
+        )
+    if record.response_metadata.get("endpoint") != (
+        _MARKET_HISTORY_EASTMONEY_A_HIST_ENDPOINT
+    ):
+        raise ProviderNormalizationError(
+            "AKShare Eastmoney A-share history record must come from "
+            f"{_MARKET_HISTORY_EASTMONEY_A_HIST_ENDPOINT}"
+        )
+    if record.request.parameters.get("view") != _MARKET_HISTORY_EASTMONEY_A_HIST_VIEW:
+        raise ProviderNormalizationError(
+            "AKShare Eastmoney A-share history record requires the explicit "
+            f"view={_MARKET_HISTORY_EASTMONEY_A_HIST_VIEW!r} boundary"
+        )
+    try:
+        upstream_kwargs = _eastmoney_a_hist_kwargs(listing, record.request)
+        start_date = _parse_eastmoney_a_hist_date_parameter(
+            upstream_kwargs["start_date"],
+            name="start_date",
+            request=record.request,
+        )
+        end_date = _parse_eastmoney_a_hist_date_parameter(
+            upstream_kwargs["end_date"],
+            name="end_date",
+            request=record.request,
+        )
+    except ProviderRequestError as exc:
+        raise ProviderNormalizationError(str(exc)) from exc
+
+    message, observation_dates = _eastmoney_a_hist_validation_message(
+        rows,
+        symbol=upstream_kwargs["symbol"],
+        period=upstream_kwargs["period"],
+        start_date=start_date,
+        end_date=end_date,
+    )
+    if message is not None:
+        raise ProviderNormalizationError(message)
+
+    expected_metadata = _eastmoney_a_hist_response_metadata(
+        listing_code=listing.code,
+        market=listing.canonical_id[:2],
+        symbol=str(upstream_kwargs["symbol"]),
+        period=str(upstream_kwargs["period"]),
+        start_date=str(upstream_kwargs["start_date"]),
+        end_date=str(upstream_kwargs["end_date"]),
+        adjust=str(upstream_kwargs["adjust"]),
+        observation_dates=observation_dates,
+    )
+    for name, expected in expected_metadata.items():
+        if record.response_metadata.get(name) != expected:
+            raise ProviderNormalizationError(
+                f"Eastmoney A-share history response metadata {name!r} does not "
+                "match the requested replay scope"
+            )
 
 
 def _validate_tencent_index_daily_history_normalizer_scope(
@@ -61036,6 +61529,12 @@ def _history_kwargs(
         return _tencent_tick_kwargs(listing, request)
     if endpoint_name == "stock_zh_a_hist_tx":
         return _tencent_daily_history_kwargs(listing, request)
+    if (
+        endpoint_name == _MARKET_HISTORY_EASTMONEY_A_HIST_ENDPOINT
+        and request.parameters.get("view")
+        == _MARKET_HISTORY_EASTMONEY_A_HIST_VIEW
+    ):
+        return _eastmoney_a_hist_kwargs(listing, request)
     if endpoint_name == "stock_zh_index_daily_tx":
         return _tencent_index_daily_history_kwargs(listing, request)
     if endpoint_name == "stock_zh_index_daily_em":
@@ -61330,6 +61829,99 @@ def _tencent_daily_history_kwargs(
         )
     return {
         "symbol": listing.canonical_id[:2].lower() + listing.code,
+        "start_date": start_date.strftime("%Y%m%d"),
+        "end_date": end_date.strftime("%Y%m%d"),
+        "adjust": adjust,
+    }
+
+
+def _eastmoney_a_hist_kwargs(
+    listing: _ListingRef,
+    request: ProviderRequest,
+) -> dict[str, object]:
+    """Build the documented Eastmoney A-share historical request."""
+
+    if listing.market is not ListingMarket.A:
+        raise ProviderRequestError(
+            "the AKShare Eastmoney A-share history endpoint supports A-share "
+            "listings only",
+            request=request,
+            retryable=False,
+        )
+    parameters = dict(request.parameters)
+    unknown = sorted(
+        set(parameters) - _MARKET_HISTORY_EASTMONEY_A_HIST_PARAMETER_NAMES
+    )
+    if unknown:
+        raise ProviderRequestError(
+            "unsupported AKShare Eastmoney A-share history parameter(s): "
+            + ", ".join(unknown),
+            request=request,
+            retryable=False,
+        )
+    if parameters.get("view") != _MARKET_HISTORY_EASTMONEY_A_HIST_VIEW:
+        raise ProviderRequestError(
+            "the AKShare Eastmoney A-share history endpoint requires "
+            f"view={_MARKET_HISTORY_EASTMONEY_A_HIST_VIEW!r}",
+            request=request,
+            retryable=False,
+        )
+
+    period = parameters.get(
+        "period",
+        _MARKET_HISTORY_EASTMONEY_A_HIST_DEFAULT_PERIOD,
+    )
+    if (
+        not isinstance(period, str)
+        or period not in _MARKET_HISTORY_EASTMONEY_A_HIST_PERIODS
+    ):
+        raise ProviderRequestError(
+            "AKShare Eastmoney A-share history period must be one of: "
+            + ", ".join(
+                sorted(_MARKET_HISTORY_EASTMONEY_A_HIST_PERIODS)
+            ),
+            request=request,
+            retryable=False,
+        )
+    start_date = _parse_eastmoney_a_hist_date_parameter(
+        parameters.get(
+            "start_date",
+            _MARKET_HISTORY_EASTMONEY_A_HIST_DEFAULT_START,
+        ),
+        name="start_date",
+        request=request,
+    )
+    end_date = _parse_eastmoney_a_hist_date_parameter(
+        parameters.get(
+            "end_date",
+            _MARKET_HISTORY_EASTMONEY_A_HIST_DEFAULT_END,
+        ),
+        name="end_date",
+        request=request,
+    )
+    if start_date > end_date:
+        raise ProviderRequestError(
+            "AKShare Eastmoney A-share history start_date must not be after "
+            "end_date",
+            request=request,
+            retryable=False,
+        )
+    adjust = parameters.get(
+        "adjust",
+        _MARKET_HISTORY_EASTMONEY_A_HIST_DEFAULT_ADJUST,
+    )
+    if (
+        not isinstance(adjust, str)
+        or adjust not in _MARKET_HISTORY_EASTMONEY_A_HIST_ADJUSTMENTS
+    ):
+        raise ProviderRequestError(
+            "AKShare Eastmoney A-share history adjust must be '', 'qfq' or 'hfq'",
+            request=request,
+            retryable=False,
+        )
+    return {
+        "symbol": listing.code,
+        "period": period,
         "start_date": start_date.strftime("%Y%m%d"),
         "end_date": end_date.strftime("%Y%m%d"),
         "adjust": adjust,
@@ -62277,6 +62869,33 @@ def _b_minute_history_kwargs(
         "period": period,
         "adjust": adjust,
     }
+
+
+def _parse_eastmoney_a_hist_date_parameter(
+    value: object,
+    *,
+    name: str,
+    request: ProviderRequest,
+) -> date:
+    if not isinstance(value, str) or not re.fullmatch(
+        r"(?:\d{8}|\d{4}-\d{2}-\d{2})", value
+    ):
+        raise ProviderRequestError(
+            f"AKShare Eastmoney A-share history {name} must be YYYYMMDD "
+            "or YYYY-MM-DD",
+            request=request,
+            retryable=False,
+        )
+    for fmt in ("%Y%m%d", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(value, fmt).date()
+        except ValueError:
+            continue
+    raise ProviderRequestError(
+        f"AKShare Eastmoney A-share history {name} must be a valid date",
+        request=request,
+        retryable=False,
+    )
 
 
 def _parse_sina_a_daily_history_date_parameter(

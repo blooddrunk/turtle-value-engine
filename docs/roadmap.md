@@ -4452,6 +4452,37 @@ response validation, nullable values, empty output, raw-only normalization,
 replay metadata/payload tampering and offline cache replay. No calculation,
 gate, pipeline, CLI or input-loader contract changes.
 
+### Phase 3.75 — Eastmoney A-share historical acquisition contract (COMPLETE)
+
+The mapping review now covers the next documented AKShare stock endpoint
+[`stock_zh_a_hist`](https://akshare.akfamily.xyz/data/stock/stock.html) under
+`MARKET_HISTORY`. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hist_em.py)
+requests a six-digit A-share symbol from Eastmoney's K-line JSON endpoint and
+supports `period` values `daily`, `weekly` and `monthly`, inclusive
+`start_date`/`end_date` bounds, and `adjust` values `''`, `qfq` and `hfq`. The
+adapter adds explicit `view=eastmoney_a_hist` routing, maps SH/SZ/BJ market
+codes to the documented Eastmoney `secid` shape, and preserves the exact
+twelve-field `日期`, `股票代码`, OHLCV, amount, amplitude, change-percent,
+change-amount and turnover order.
+
+Provider validation is strict: request parameters are limited to the
+documented view, period, dates and adjustment; every response row must have
+the exact field set/order, the requested six-digit code, a valid unique
+strictly ascending date within the inclusive range, and finite numeric values
+or null. Replay metadata records the Eastmoney URL, fixed/dynamic parameters,
+period/adjustment/market codes, wrapper projection, field types/order,
+documented lots/CNY/percent units and row identity order. The existing no-view
+`stock_zh_a_hist`/`stock_zh_a_daily` compatibility fallback remains unchanged.
+
+The normalizer maps existing historical OHLCV/turnover/change-percent extension
+facts for all three periods. `振幅`, `涨跌额` and `换手率` remain raw provider
+evidence because they have no canonical aliases in the current normalized
+contract; this standard-history slice therefore adds no raw-only flag. Focused
+tests cover routing, defaults, exchange-specific market codes, strict request
+and response validation, nullable/empty output, canonical mapping, replay
+metadata/payload tampering and offline cache replay. No calculation, gate,
+pipeline, CLI or input-loader contract changes.
+
 ### Future structured-provider deliverables
 
 ```text
@@ -4461,7 +4492,7 @@ src/turtle_value_engine/providers/
   errors.py
   cache.py
   normalization.py
-  akshare.py       # Phase 2.2 market + Phase 2.3–3.74 structured slices
+  akshare.py       # Phase 2.2 market + Phase 2.3–3.75 structured slices
   tushare.py       # future optional adapter
   baostock.py      # future optional adapter
 ```

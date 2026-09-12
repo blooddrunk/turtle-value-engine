@@ -1473,6 +1473,15 @@ class FakeAKShare:
         )
 
 
+class ExplicitEastmoneyAHistoryFake(FakeAKShare):
+    def stock_zh_a_hist(self, **kwargs):
+        return self._return(
+            "stock_zh_a_hist",
+            _fixture("a_eastmoney_history.json"),
+            **kwargs,
+        )
+
+
 class OfficialBalanceAKShare:
     __version__ = "fixture-akshare-official-balance"
 
@@ -1552,8 +1561,8 @@ def test_akshare_capabilities_are_exact_and_provider_import_is_lazy():
         "trading_suspensions",
     )
     assert provider.identity.provider_id == "akshare"
-    assert provider.identity.provider_version == "191"
-    assert AKSHARE_MAPPING_VERSION == "192"
+    assert provider.identity.provider_version == "192"
+    assert AKSHARE_MAPPING_VERSION == "193"
 
 
 def test_a_risk_warning_fetch_filters_the_documented_current_universe():
@@ -15851,6 +15860,549 @@ def test_sina_a_daily_history_cache_replay_does_not_call_upstream(tmp_path: Path
                 "start_date": "19900101",
                 "end_date": "21000118",
                 "adjust": "hfq",
+            },
+        )
+    ]
+
+
+def test_eastmoney_a_hist_fetch_uses_documented_period_range_and_adjustment():
+    fake = ExplicitEastmoneyAHistoryFake()
+    request = _request(
+        DataCategory.MARKET_HISTORY,
+        "SH600000",
+        {
+            "view": "eastmoney_a_hist",
+            "period": "weekly",
+            "start_date": "2026-09-08",
+            "end_date": "20260909",
+            "adjust": "hfq",
+        },
+    )
+    record = _provider(fake).fetch(request)
+
+    fields = [
+        "日期",
+        "股票代码",
+        "开盘",
+        "收盘",
+        "最高",
+        "最低",
+        "成交量",
+        "成交额",
+        "振幅",
+        "涨跌幅",
+        "涨跌额",
+        "换手率",
+    ]
+    assert record.raw_payload == _fixture("a_eastmoney_history.json")
+    assert fake.calls == [
+        (
+            "stock_zh_a_hist",
+            {
+                "symbol": "600000",
+                "period": "weekly",
+                "start_date": "20260908",
+                "end_date": "20260909",
+                "adjust": "hfq",
+            },
+        )
+    ]
+    assert record.source_uri == "https://quote.eastmoney.com/concept/"
+    metadata = record.response_metadata
+    assert metadata["endpoint"] == "stock_zh_a_hist"
+    assert metadata["market"] == "A"
+    assert metadata["listing_code"] == "600000"
+    assert metadata["market_history_view"] == "eastmoney_a_hist"
+    assert metadata["upstream_symbol"] == "600000"
+    assert metadata["upstream_period"] == "weekly"
+    assert metadata["eastmoney_a_hist_start_date"] == "20260908"
+    assert metadata["eastmoney_a_hist_end_date"] == "20260909"
+    assert metadata["eastmoney_a_hist_adjust"] == "hfq"
+    assert metadata["adjustment_kind"] == "price_series"
+    assert metadata["period_code"] == "102"
+    assert metadata["adjustment_code"] == "2"
+    assert metadata["market_code"] == "1"
+    assert metadata["listing_scoped_request"] is True
+    assert metadata["row_filtering"] == "upstream"
+    assert metadata["snapshot_scope"] == "requested_a_share_history_range"
+    assert metadata["date_binding"] == "row_and_request"
+    assert metadata["range_filtering"] == "upstream_and_provider_validation"
+    assert metadata["date_ordering"] == "strictly_ascending"
+    assert metadata["identity_fields"] == ["日期"]
+    assert metadata["row_identity_order"] == ["2026-09-08", "2026-09-09"]
+    assert metadata["selected_row_identity_order"] == metadata["row_identity_order"]
+    assert metadata["field_count"] == 12
+    assert metadata["source_field_order"] == fields
+    assert metadata["date_fields"] == ["日期"]
+    assert metadata["value_fields"] == fields[2:]
+    assert metadata["required_numeric_fields"] == fields[2:]
+    assert metadata["documented_units"] == {
+        "成交量": "lots",
+        "成交额": "CNY",
+        "振幅": "percent",
+        "涨跌幅": "percent",
+        "涨跌额": "CNY",
+        "换手率": "percent",
+    }
+    assert metadata["undocumented_numeric_units"] == {
+        field: "not_documented" for field in fields[2:6]
+    }
+    assert metadata["field_types"]["股票代码"] == "string"
+    assert metadata["field_types"]["成交额"] == "number"
+    assert metadata["upstream_url"] == (
+        "https://push2his.eastmoney.com/api/qt/stock/kline/get"
+    )
+    assert metadata["upstream_parameters"] == [
+        "fields1",
+        "fields2",
+        "ut",
+        "klt",
+        "fqt",
+        "secid",
+        "beg",
+        "end",
+    ]
+    assert metadata["upstream_dynamic_parameters"] == {
+        "symbol": "600000",
+        "period": "weekly",
+        "klt": "102",
+        "adjust": "hfq",
+        "fqt": "2",
+        "secid": "1.600000",
+        "beg": "20260908",
+        "end": "20260909",
+    }
+    assert metadata["wrapper_source_page_uri"] == record.source_uri
+    assert metadata["wrapper_date_filtering"] == "none"
+    assert metadata["wrapper_decoders"] == ["response.json"]
+    assert metadata["wrapper_column_mapping"]["股票代码"] == "appended_symbol"
+    assert metadata["wrapper_source_column_count"] == 11
+    assert metadata["wrapper_dropped_fields"] == []
+    assert metadata["pagination"] == "single_range_response"
+
+
+def test_eastmoney_a_hist_applies_documented_defaults():
+    fake = ExplicitEastmoneyAHistoryFake()
+    record = _provider(fake).fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "SH600000",
+            {"view": "eastmoney_a_hist"},
+        )
+    )
+
+    assert fake.calls == [
+        (
+            "stock_zh_a_hist",
+            {
+                "symbol": "600000",
+                "period": "daily",
+                "start_date": "19700101",
+                "end_date": "20500101",
+                "adjust": "",
+            },
+        )
+    ]
+    assert record.response_metadata["upstream_period"] == "daily"
+    assert record.response_metadata["eastmoney_a_hist_start_date"] == "19700101"
+    assert record.response_metadata["eastmoney_a_hist_end_date"] == "20500101"
+    assert record.response_metadata["eastmoney_a_hist_adjust"] == ""
+    assert record.response_metadata["adjustment_kind"] == "unadjusted"
+
+
+@pytest.mark.parametrize(
+    ("entity_id", "parameters", "match"),
+    [
+        (
+            "HK00700",
+            {"view": "eastmoney_a_hist"},
+            "A-share listings only",
+        ),
+        (
+            "SH600000",
+            {"view": "eastmoney_a_hist", "period": "quarterly"},
+            "period must be one of",
+        ),
+        (
+            "SH600000",
+            {"view": "eastmoney_a_hist", "period": True},
+            "period must be one of",
+        ),
+        (
+            "SH600000",
+            {"view": "eastmoney_a_hist", "start_date": "2026/09/08"},
+            "start_date must be YYYYMMDD or YYYY-MM-DD",
+        ),
+        (
+            "SH600000",
+            {
+                "view": "eastmoney_a_hist",
+                "start_date": "20260909",
+                "end_date": "20260908",
+            },
+            "start_date must not be after end_date",
+        ),
+        (
+            "SH600000",
+            {"view": "eastmoney_a_hist", "adjust": "split"},
+            "adjust must be '', 'qfq' or 'hfq'",
+        ),
+        (
+            "SH600000",
+            {"view": "eastmoney_a_hist", "adjust": True},
+            "adjust must be '', 'qfq' or 'hfq'",
+        ),
+        (
+            "SH600000",
+            {"view": "eastmoney_a_hist", "unexpected": True},
+            "unsupported AKShare Eastmoney A-share history parameter",
+        ),
+    ],
+)
+def test_eastmoney_a_hist_request_rejects_non_documented_scope(
+    entity_id: str,
+    parameters: dict,
+    match: str,
+):
+    fake = ExplicitEastmoneyAHistoryFake()
+
+    with pytest.raises(ProviderRequestError, match=match):
+        _provider(fake).fetch(
+            _request(DataCategory.MARKET_HISTORY, entity_id, parameters)
+        )
+
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize(
+    ("entity_id", "expected_market_code"),
+    [("SZ000001", "0"), ("BJ430047", "0")],
+)
+def test_eastmoney_a_hist_uses_exchange_specific_secid(
+    entity_id: str,
+    expected_market_code: str,
+):
+    class ExchangeBoundRows(ExplicitEastmoneyAHistoryFake):
+        def stock_zh_a_hist(self, **kwargs):
+            rows = _fixture("a_eastmoney_history.json")
+            for row in rows:
+                row["股票代码"] = kwargs["symbol"]
+            return self._return("stock_zh_a_hist", rows, **kwargs)
+
+    code = entity_id[-6:]
+    record = _provider(ExchangeBoundRows()).fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            entity_id,
+            {
+                "view": "eastmoney_a_hist",
+                "start_date": "20260908",
+                "end_date": "20260909",
+            },
+        )
+    )
+
+    assert record.response_metadata["market_code"] == expected_market_code
+    assert record.response_metadata["upstream_dynamic_parameters"]["secid"] == (
+        f"{expected_market_code}.{code}"
+    )
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ("missing_field", "missing field"),
+        ("extra_field", "unsupported field"),
+        ("reordered_fields", "documented field order"),
+        ("wrong_symbol", "does not match requested symbol"),
+        ("invalid_date", "invalid date"),
+        ("outside_range", "outside requested range"),
+        ("descending", "strictly ascending"),
+        ("duplicate_date", "duplicate date"),
+        ("invalid_numeric", "must be numeric or null"),
+        ("bool_numeric", "must be numeric or null"),
+        ("infinite_numeric", "contains infinity"),
+    ],
+)
+def test_eastmoney_a_hist_response_validates_exact_rows(
+    mutation: str,
+    match: str,
+):
+    class InvalidRows(ExplicitEastmoneyAHistoryFake):
+        def stock_zh_a_hist(self, **kwargs):
+            rows = [dict(row) for row in _fixture("a_eastmoney_history.json")]
+            if mutation == "missing_field":
+                rows[0].pop("换手率")
+            elif mutation == "extra_field":
+                rows[0]["unexpected"] = "not documented"
+            elif mutation == "reordered_fields":
+                first = rows[0]
+                rows[0] = {
+                    key: first[key] for key in reversed(list(first))
+                }
+            elif mutation == "wrong_symbol":
+                rows[0]["股票代码"] = "600001"
+            elif mutation == "invalid_date":
+                rows[0]["日期"] = "not-a-date"
+            elif mutation == "outside_range":
+                rows[0]["日期"] = "2026-09-10"
+            elif mutation == "descending":
+                rows.reverse()
+            elif mutation == "duplicate_date":
+                rows[1]["日期"] = rows[0]["日期"]
+            elif mutation == "invalid_numeric":
+                rows[0]["收盘"] = "10.5"
+            elif mutation == "bool_numeric":
+                rows[0]["成交量"] = True
+            else:
+                rows[0]["最高"] = float("inf")
+            return self._return("stock_zh_a_hist", rows, **kwargs)
+
+    with pytest.raises(ProviderResponseError, match=match):
+        _provider(InvalidRows()).fetch(
+            _request(
+                DataCategory.MARKET_HISTORY,
+                "SH600000",
+                {
+                    "view": "eastmoney_a_hist",
+                    "start_date": "20260908",
+                    "end_date": "20260909",
+                },
+            )
+        )
+
+
+def test_eastmoney_a_hist_allows_nullable_numeric_values():
+    class NullableRows(ExplicitEastmoneyAHistoryFake):
+        def stock_zh_a_hist(self, **kwargs):
+            rows = [dict(row) for row in _fixture("a_eastmoney_history.json")]
+            rows[0]["振幅"] = None
+            rows[1]["成交额"] = None
+            return self._return("stock_zh_a_hist", rows, **kwargs)
+
+    record = _provider(NullableRows()).fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "SH600000",
+            {
+                "view": "eastmoney_a_hist",
+                "start_date": "20260908",
+                "end_date": "20260909",
+            },
+        )
+    )
+
+    assert record.response_metadata["upstream_row_count"] == 2
+
+
+def test_eastmoney_a_hist_empty_response_is_a_valid_scoped_snapshot():
+    class EmptyResponse(ExplicitEastmoneyAHistoryFake):
+        def stock_zh_a_hist(self, **kwargs):
+            return self._return("stock_zh_a_hist", [], **kwargs)
+
+    record = _provider(EmptyResponse()).fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "SH600000",
+            {"view": "eastmoney_a_hist"},
+        )
+    )
+
+    assert record.raw_payload == []
+    assert record.response_metadata["upstream_row_count"] == 0
+    assert record.response_metadata["entity_row_count"] == 0
+    assert record.response_metadata["row_identity_order"] == []
+    assert record.response_metadata["observation_start_date"] is None
+    assert record.response_metadata["observation_end_date"] is None
+
+
+def test_eastmoney_a_hist_maps_to_existing_history_facts_without_promoting_extra_fields():
+    record = _provider(ExplicitEastmoneyAHistoryFake()).fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "SH600000",
+            {
+                "view": "eastmoney_a_hist",
+                "start_date": "20260908",
+                "end_date": "20260909",
+            },
+        )
+    )
+    normalized = normalize_akshare_records(
+        [record],
+        analysis_id="eastmoney-a-hist",
+        as_of=date(2026, 9, 9),
+        profile_id="strict-v1",
+        company=_company(),
+    )
+
+    values = {(fact.field, fact.period): fact.value for fact in normalized.facts}
+    assert values[("historical_open", "2026-09-08")] == 10.1
+    assert values[("historical_close", "2026-09-09")] == 10.5
+    assert values[("historical_volume", "2026-09-09")] == 120000.0
+    assert values[("historical_turnover", "2026-09-09")] == 1260000000.0
+    assert values[("historical_change_percent", "2026-09-09")] == 1.94
+    volume = next(
+        fact
+        for fact in normalized.facts
+        if fact.field == "historical_volume" and fact.period == "2026-09-09"
+    )
+    turnover = next(
+        fact
+        for fact in normalized.facts
+        if fact.field == "historical_turnover" and fact.period == "2026-09-09"
+    )
+    assert volume.unit == "lots"
+    assert turnover.currency == "CNY"
+    assert normalized.flags == []
+    assert normalized.data_quality.critical_missing_fields == []
+    assert all(fact.field not in {"振幅", "涨跌额", "换手率"} for fact in normalized.facts)
+
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    assert list(
+        Draft202012Validator(schema).iter_errors(normalized.model_dump(mode="json"))
+    ) == []
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "endpoint",
+        "source_uri",
+        "view",
+        "symbol",
+        "period",
+        "start",
+        "end",
+        "adjust",
+        "market_code",
+        "listing_scope",
+        "snapshot",
+        "date_binding",
+        "range_filtering",
+        "field_count",
+        "source_order",
+        "upstream_url",
+        "wrapper_decoder",
+        "pagination",
+        "count",
+        "observation_start",
+        "payload",
+    ],
+)
+def test_eastmoney_a_hist_normalizer_rejects_replayed_scope_mismatches(
+    mutation: str,
+):
+    record = _provider(ExplicitEastmoneyAHistoryFake()).fetch(
+        _request(
+            DataCategory.MARKET_HISTORY,
+            "SH600000",
+            {
+                "view": "eastmoney_a_hist",
+                "period": "weekly",
+                "start_date": "20260908",
+                "end_date": "20260909",
+                "adjust": "hfq",
+            },
+        )
+    )
+    response_metadata = dict(record.response_metadata)
+    source_uri = record.source_uri
+    payload = [dict(row) for row in record.raw_payload]
+    if mutation == "endpoint":
+        response_metadata["endpoint"] = "stock_zh_a_daily"
+    elif mutation == "source_uri":
+        source_uri = "https://example.invalid/eastmoney-a-hist"
+    elif mutation == "view":
+        response_metadata["market_history_view"] = "daily"
+    elif mutation == "symbol":
+        response_metadata["upstream_symbol"] = "600001"
+    elif mutation == "period":
+        response_metadata["eastmoney_a_hist_period"] = "daily"
+    elif mutation == "start":
+        response_metadata["eastmoney_a_hist_start_date"] = "20260907"
+    elif mutation == "end":
+        response_metadata["eastmoney_a_hist_end_date"] = "20260910"
+    elif mutation == "adjust":
+        response_metadata["eastmoney_a_hist_adjust"] = ""
+    elif mutation == "market_code":
+        response_metadata["market_code"] = "0"
+    elif mutation == "listing_scope":
+        response_metadata["listing_scoped_request"] = False
+    elif mutation == "snapshot":
+        response_metadata["snapshot_scope"] = "current_snapshot"
+    elif mutation == "date_binding":
+        response_metadata["date_binding"] = "row_only"
+    elif mutation == "range_filtering":
+        response_metadata["range_filtering"] = "none"
+    elif mutation == "field_count":
+        response_metadata["field_count"] = 11
+    elif mutation == "source_order":
+        response_metadata["source_field_order"] = list(
+            reversed(response_metadata["source_field_order"])
+        )
+    elif mutation == "upstream_url":
+        response_metadata["upstream_url"] = "https://example.invalid/kline"
+    elif mutation == "wrapper_decoder":
+        response_metadata["wrapper_decoders"] = ["plain_json"]
+    elif mutation == "pagination":
+        response_metadata["pagination"] = "paged"
+    elif mutation == "count":
+        response_metadata["entity_row_count"] = 99
+    elif mutation == "observation_start":
+        response_metadata["observation_start_date"] = "2026-09-07"
+    else:
+        payload[0]["股票代码"] = "600001"
+    replayed = record.__class__(
+        provider=record.provider,
+        request=record.request,
+        retrieved_at=record.retrieved_at,
+        raw_payload=payload,
+        source_uri=source_uri,
+        response_metadata=response_metadata,
+    )
+
+    with pytest.raises(ProviderNormalizationError, match="Eastmoney A-share history"):
+        normalize_akshare_records(
+            [replayed],
+            analysis_id="mismatched-eastmoney-a-hist-scope",
+            as_of=date(2026, 9, 9),
+            profile_id="strict-v1",
+            company=_company("SH600000"),
+        )
+
+
+def test_eastmoney_a_hist_cache_replay_does_not_call_upstream(tmp_path: Path):
+    fake = ExplicitEastmoneyAHistoryFake()
+    provider = _provider(fake)
+    cache = FilesystemRawResponseCache(tmp_path)
+    request = _request(
+        DataCategory.MARKET_HISTORY,
+        "SH600000",
+        {
+            "view": "eastmoney_a_hist",
+            "start_date": "20260908",
+            "end_date": "20260909",
+            "adjust": "qfq",
+        },
+    )
+
+    live = fetch_akshare_with_cache(provider, request, cache)
+    fake.fail = True
+    replay = fetch_akshare_with_cache(provider, request, cache, offline=True)
+
+    assert live.mode is RetrievalMode.LIVE
+    assert replay.mode is RetrievalMode.CACHE_REPLAY
+    assert replay.record == live.record
+    assert fake.calls == [
+        (
+            "stock_zh_a_hist",
+            {
+                "symbol": "600000",
+                "period": "daily",
+                "start_date": "20260908",
+                "end_date": "20260909",
+                "adjust": "qfq",
             },
         )
     ]

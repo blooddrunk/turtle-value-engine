@@ -2383,6 +2383,35 @@ parameters, malformed rows, nullable values, empty output, raw-only
 normalization, replay metadata/payload tampering and offline cache replay. No
 calculation, gate, pipeline, CLI or input-loader contract changes.
 
+Phase 3.75 adds the next documented Eastmoney A-share historical endpoint
+[`stock_zh_a_hist`](https://akshare.akfamily.xyz/data/stock/stock.html) under
+`MARKET_HISTORY`. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hist_em.py)
+requests a six-digit A-share code from Eastmoney's K-line JSON endpoint and
+supports `period` values `daily`, `weekly` and `monthly`, inclusive
+`start_date`/`end_date` bounds, and `adjust` values `''`, `qfq` and `hfq`. The
+adapter exposes explicit `view=eastmoney_a_hist`, passes the documented
+`secid` market code, period code, adjustment code and range, and preserves the
+exact twelve-field `日期`, `股票代码`, OHLCV, amount, amplitude, change,
+change-amount and turnover response order.
+
+Provider validation is strict: the requested A-share code, period, dates and
+adjustment must match the replay scope; rows must use the exact documented
+fields/order, matching code, valid unique strictly ascending dates inside the
+inclusive range, and finite numeric values or null. Replay metadata records
+the Eastmoney K-line URL, fixed/dynamic request parameters, market/period/
+adjustment codes, wrapper projection, exact field order and documented
+lots/CNY/percent units. The existing no-view `stock_zh_a_hist`/`stock_zh_a_daily`
+compatibility fallback remains unchanged.
+
+Unlike the provider-only market-history slices, this symbol-scoped standard
+history maps existing OHLCV/turnover/change-percent extension facts for all
+three periods. `振幅`, `涨跌额` and `换手率` remain raw provider evidence because
+they have no canonical aliases in the current normalized contract. Focused
+tests cover routing, defaults, SH/SZ/BJ market codes, strict request and
+response validation, nullable/empty output, canonical mapping, replay
+metadata/payload tampering and offline cache replay. No calculation, gate,
+pipeline, CLI or input-loader contract changes.
+
 Filing retrieval and LLM-assisted evidence analysis remain unimplemented. The
 deterministic `tve analyze` command is still offline-only and does not call a
 provider or an LLM.

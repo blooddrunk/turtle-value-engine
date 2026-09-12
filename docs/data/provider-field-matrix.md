@@ -4323,6 +4323,33 @@ trading-calendar behavior and numeric units are not reconciled to the
 canonical contract. The slice remains outside calculation, gate, pipeline, CLI
 and input-loader contracts; the existing no-view history fallback is unchanged.
 
+## Phase 3.75 Eastmoney A-share historical structured slice
+
+The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
+and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hist_em.py)
+document `stock_zh_a_hist` as the Eastmoney A-share historical endpoint. The
+adapter selects it only under `MARKET_HISTORY` with explicit
+`view=eastmoney_a_hist`, accepts A-share listings, passes the six-digit code,
+period (`daily`, `weekly` or `monthly`), inclusive date bounds and adjustment
+mode (`''`, `qfq` or `hfq`), and preserves the exact twelve-field output order.
+
+| Raw upstream item | Phase 3.75 treatment |
+| --- | --- |
+| `日期`, `股票代码` | Required exact order and types. `日期` must be valid, unique and strictly ascending inside the inclusive request range; `股票代码` must be the requested six-digit listing code. The date is the history-fact period and the code is an identity/provenance check. |
+| `开盘`, `收盘`, `最高`, `最低` | Finite numeric/null fields mapped to existing `historical_open`, `historical_close`, `historical_high` and `historical_low` extensions with the existing `price_per_share` treatment and CNY listing currency. |
+| `成交量` | Documented lot volume; mapped to `historical_volume` with unit `lots`. |
+| `成交额` | Documented CNY amount; mapped to `historical_turnover` with currency `CNY`. |
+| `涨跌幅` | Documented percentage; mapped to `historical_change_percent` with unit `percent`. |
+| `振幅`, `涨跌额`, `换手率` | Strictly validated as finite numeric/null provider fields and retained in raw evidence; no canonical aliases or metric semantics are added. `振幅`/`换手率` are documented percent fields and `涨跌额` is documented CNY, all recorded in replay metadata. |
+| request `view`, `period`, `start_date`, `end_date`, `adjust` | Exact request scope. Dates accept `YYYYMMDD` or `YYYY-MM-DD`; defaults are `daily`, `19700101`, `20500101` and `''`. SH/SZ/BJ listing prefixes resolve to Eastmoney `secid` market codes `1`, `0` and `0`. |
+| Eastmoney `stock/kline/get` JSON response | Replay metadata records fixed `fields1`/`fields2`/`ut`, dynamic `klt`/`fqt`/`secid`/`beg`/`end`, response decoding, row projection, field order, row identities and documented/undocumented units. |
+
+Unlike the adjacent provider-only history slices, this standard symbol-scoped
+response maps only the existing canonical history aliases; provider-specific
+fields stay in the raw payload. The no-view `stock_zh_a_hist`/`stock_zh_a_daily`
+compatibility fallback is unchanged, and no calculation, gate, pipeline, CLI
+or input-loader contract changes.
+
 ## Phase 2 enforcement rule
 
 For every field not marked `STRUCTURED_AUTO` or `DERIVED_DETERMINISTIC`, a
