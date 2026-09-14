@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/blooddrunk/turtle-value-engine/schemas/research-workflow-result.schema.json",
+  "title": "Turtle Value Engine Research Workflow Result",
+  "type": "object",
+  "required": ["contract", "session", "business_quality_research", "analysis", "decision_trace", "report"],
+  "properties": {
+    "contract": {"const": "research_workflow_result_v1"},
+    "session": {"type": "object"},
+    "business_quality_research": {"type": "object"},
+    "analysis": {"type": "object"},
+    "decision_trace": {"type": "object"},
+    "report": {"type": "object"}
+  },
+  "additionalProperties": false
+}

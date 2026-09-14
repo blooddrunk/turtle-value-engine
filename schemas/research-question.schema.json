@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/blooddrunk/turtle-value-engine/schemas/research-question.schema.json",
+  "title": "Turtle Value Engine Research Question",
+  "type": "object",
+  "required": ["id", "intent", "text"],
+  "properties": {
+    "id": {"type": "string", "minLength": 1},
+    "dimension": {
+      "type": ["string", "null"],
+      "enum": ["demand_durability", "cyclicality", "pricing_power", "moat", "capital_efficiency", "dependency", "regulatory_risk", "predictability", null]
+    },
+    "intent": {"type": "string", "enum": ["THESIS", "FALSIFICATION", "ADJUDICATION"]},
+    "text": {"type": "string", "minLength": 1, "maxLength": 2000},
+    "focus_areas": {"type": "array", "items": {"type": "string"}, "maxItems": 16, "uniqueItems": true},
+    "required": {"type": "boolean"}
+  },
+  "additionalProperties": false
+}

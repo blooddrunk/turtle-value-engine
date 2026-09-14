@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/blooddrunk/turtle-value-engine/schemas/dimension-research-result.schema.json",
+  "title": "Turtle Value Engine Dimension Research Result",
+  "type": "object",
+  "required": ["contract", "analysis_id", "listing_id", "as_of", "profile_id", "dimension", "packets", "tasks", "analyst_runs", "proposed_dimension"],
+  "properties": {
+    "contract": {"const": "dimension_research_result_v1"},
+    "analysis_id": {"type": "string", "minLength": 1},
+    "listing_id": {"type": "string", "minLength": 1},
+    "as_of": {"type": "string", "format": "date"},
+    "profile_id": {"type": "string", "minLength": 1},
+    "dimension": {"type": "string"},
+    "packets": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "object"}},
+    "tasks": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "object"}},
+    "analyst_runs": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "object"}},
+    "proposed_dimension": {"type": "object", "required": ["dimension", "score", "supporting_evidence_ids", "counter_evidence_ids", "confidence"]},
+    "proposed_adjustments": {"type": "array", "maxItems": 32, "items": {"type": "object"}}
+  },
+  "additionalProperties": false
+}

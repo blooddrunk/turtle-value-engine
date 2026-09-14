@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/blooddrunk/turtle-value-engine/schemas/research-task.schema.json",
+  "title": "Turtle Value Engine Research Task",
+  "type": "object",
+  "required": ["contract", "task_id", "analysis_id", "listing_id", "as_of", "profile_id", "role", "question", "packet", "task_sha256"],
+  "properties": {
+    "contract": {"const": "research_task_v1"},
+    "task_id": {"type": "string", "minLength": 1},
+    "analysis_id": {"type": "string", "minLength": 1},
+    "listing_id": {"type": "string", "minLength": 1},
+    "as_of": {"type": "string", "format": "date"},
+    "profile_id": {"type": "string", "minLength": 1},
+    "role": {"type": "string", "enum": ["RESEARCH", "QUALITY_ANALYST", "SKEPTIC", "ADJUDICATOR", "REPORT_COMPOSER"]},
+    "question": {"type": "object"},
+    "packet": {"type": "object", "required": ["packet_id", "analysis_id", "listing_id", "as_of", "evidence", "available_evidence_ids"]},
+    "context_run_ids": {"type": "array", "maxItems": 32, "items": {"type": "string"}, "uniqueItems": true},
+    "context_findings": {"type": "array", "maxItems": 32, "items": {"type": "object"}},
+    "max_output_claims": {"type": "integer", "exclusiveMinimum": 0, "maximum": 128},
+    "max_unresolved_questions": {"type": "integer", "exclusiveMinimum": 0, "maximum": 128},
+    "prompt_version": {"type": "string", "minLength": 1},
+    "protocol_version": {"type": "string", "minLength": 1},
+    "task_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  },
+  "additionalProperties": false
+}

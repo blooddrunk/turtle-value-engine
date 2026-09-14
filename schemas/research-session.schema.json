@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/blooddrunk/turtle-value-engine/schemas/research-session.schema.json",
+  "title": "Turtle Value Engine Research Session",
+  "type": "object",
+  "required": ["contract", "session_id", "analysis_id", "listing_id", "as_of", "profile_id"],
+  "properties": {
+    "contract": {"const": "research_session_v1"},
+    "session_id": {"type": "string", "minLength": 1},
+    "analysis_id": {"type": "string", "minLength": 1},
+    "listing_id": {"type": "string", "minLength": 1},
+    "as_of": {"type": "string", "format": "date"},
+    "profile_id": {"type": "string", "minLength": 1},
+    "protocol_version": {"type": "string", "minLength": 1},
+    "packet_ids": {"type": "array", "maxItems": 1024, "items": {"type": "string"}, "uniqueItems": true},
+    "task_ids": {"type": "array", "maxItems": 1024, "items": {"type": "string"}, "uniqueItems": true},
+    "analyst_run_ids": {"type": "array", "maxItems": 1024, "items": {"type": "string"}, "uniqueItems": true},
+    "proposed_adjustment_ids": {"type": "array", "maxItems": 256, "items": {"type": "string"}, "uniqueItems": true},
+    "accepted_adjustment_ids": {"type": "array", "maxItems": 256, "items": {"type": "string"}, "uniqueItems": true},
+    "business_quality_available": {"type": "boolean"},
+    "business_quality_artifact_id": {"type": ["string", "null"]},
+    "final_analysis_id": {"type": ["string", "null"]},
+    "final_analysis_artifact_id": {"type": ["string", "null"]},
+    "final_trace_artifact_id": {"type": ["string", "null"]},
+    "report_id": {"type": ["string", "null"]}
+  },
+  "additionalProperties": false
+}

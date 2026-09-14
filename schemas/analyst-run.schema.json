@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/blooddrunk/turtle-value-engine/schemas/analyst-run.schema.json",
+  "title": "Turtle Value Engine Analyst Run",
+  "type": "object",
+  "required": ["contract", "run_id", "task_id", "analysis_id", "listing_id", "as_of", "profile_id", "role", "question_id", "packet_id", "finding", "metadata", "input_sha256", "output_sha256"],
+  "properties": {
+    "contract": {"const": "analyst_run_v1"},
+    "run_id": {"type": "string", "minLength": 1},
+    "task_id": {"type": "string", "minLength": 1},
+    "analysis_id": {"type": "string", "minLength": 1},
+    "listing_id": {"type": "string", "minLength": 1},
+    "as_of": {"type": "string", "format": "date"},
+    "profile_id": {"type": "string", "minLength": 1},
+    "role": {"type": "string", "enum": ["RESEARCH", "QUALITY_ANALYST", "SKEPTIC", "ADJUDICATOR", "REPORT_COMPOSER"]},
+    "question_id": {"type": "string", "minLength": 1},
+    "dimension": {"type": ["string", "null"]},
+    "packet_id": {"type": "string", "minLength": 1},
+    "available_evidence_ids": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "finding": {"type": "object", "required": ["id", "analysis_id", "listing_id", "as_of", "role", "question_id", "summary", "confidence"]},
+    "metadata": {"type": "object"},
+    "status": {"const": "COMPLETED"},
+    "protocol_version": {"type": "string", "minLength": 1},
+    "input_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "output_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  },
+  "additionalProperties": false
+}

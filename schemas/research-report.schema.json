@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/blooddrunk/turtle-value-engine/schemas/research-report.schema.json",
+  "title": "Turtle Value Engine Auditable Research Report",
+  "type": "object",
+  "required": ["contract", "report_id", "analysis", "decision_trace", "deterministic_state", "analysis_sha256", "sections", "text"],
+  "properties": {
+    "contract": {"const": "research_report_v1"},
+    "report_id": {"type": "string", "minLength": 1},
+    "analysis": {"type": "object", "required": ["schema_version", "analysis_id", "as_of", "profile_id", "metrics", "gates", "valuation", "decision"]},
+    "decision_trace": {"type": "object", "required": ["contract", "analysis_id", "decision_state", "gates", "metrics", "adjustments", "facts", "evidence", "filings", "links"]},
+    "deterministic_state": {"type": "string"},
+    "analysis_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "research_session_id": {"type": ["string", "null"]},
+    "analyst_run_ids": {"type": "array", "maxItems": 1024, "items": {"type": "string"}, "uniqueItems": true},
+    "proposed_adjustment_ids": {"type": "array", "maxItems": 256, "items": {"type": "string"}, "uniqueItems": true},
+    "evidence_ids": {"type": "array", "maxItems": 4096, "items": {"type": "string"}, "uniqueItems": true},
+    "filing_ids": {"type": "array", "maxItems": 1024, "items": {"type": "string"}, "uniqueItems": true},
+    "accepted_adjustments": {"type": "array", "maxItems": 256, "items": {"type": "object"}},
+    "unresolved_questions": {"type": "array", "maxItems": 256, "items": {"type": "string"}, "uniqueItems": true},
+    "sections": {"type": "array", "minItems": 1, "maxItems": 16, "items": {"type": "object", "required": ["kind", "title", "bullets"]}},
+    "text": {"type": "string", "minLength": 1, "maxLength": 100000}
+  },
+  "additionalProperties": false
+}
