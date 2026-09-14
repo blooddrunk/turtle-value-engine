@@ -49,6 +49,42 @@ A ChatGPT Skill (and optionally a Hermes-compatible Skill) should be a thin orch
 - asks for or proposes explicit adjustments;
 - never reimplements financial formulas in prose.
 
+### Layer C.1 — Phase 4 bounded research contracts
+
+Phase 4 implements the reusable boundary underneath any Skill or external
+runtime. It is intentionally model-neutral; a runtime injects an
+`AnalystClient` and receives/returns JSON-serializable typed contracts:
+
+```text
+NormalizedCompanyInput
+  -> EvidencePacketBuilder
+  -> ResearchTask (bounded question, evidence and read-only metrics)
+  -> AnalystClient: Quality Analyst / Skeptic / Adjudicator
+  -> AnalystRun + ResearchFinding
+  -> deterministic Business Quality validation
+  -> existing adjustment proposal workflow (PROPOSED only)
+  -> explicit HUMAN/RULE_ENGINE approval when applicable
+  -> existing deterministic analysis pipeline
+  -> DecisionTrace + ResearchReport
+```
+
+`EvidencePacket` is assembled deterministically from the normalized input and,
+when already available, metrics produced by the deterministic engine. It keeps
+source evidence/filing provenance distinct from read-only derived metrics,
+limits context size, and excludes evidence published after `as_of`. Each packet,
+task and run carries a stable identity; `ResearchWorkspace` persists them along
+with the validated Business Quality result, session, final analysis, trace and
+report so a different process can resume without chat history.
+
+The Quality Analyst, Skeptic and Adjudicator are separate injected roles. The
+Adjudicator receives only the packet and persisted findings supplied by the
+orchestrator; additional retrieval, if ever needed, must be a new persisted
+research task. Invalid IDs, future evidence, unsupported adjustment targets and
+model attempts to approve adjustments fail closed. No provider or model call is
+performed by `tve analyze`, and no model output owns CDC, Net Cash, Through
+Return, hard gates, valuation or the final deterministic state. A runtime-specific
+Skill is optional; external agents can consume these contracts directly.
+
 ### Layer D — automation / scheduler
 
 Schedulers run data refresh, event monitoring and re-analysis. They should invoke the same deterministic engine rather than duplicating strategy logic.

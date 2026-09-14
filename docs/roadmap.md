@@ -4965,38 +4965,35 @@ Business Quality agents, backtesting and monitoring remain future work.
 
 ---
 
-## Phase 4 — Business-quality agents and Skill interface
+## Phase 4 — Agent-assisted evidence analysis and Business Quality
 
-### ChatGPT Skill
+Status: COMPLETE. See the active-goal closure record in
+[`docs/goals/phase-4-agentic-analysis.md`](goals/phase-4-agentic-analysis.md).
 
-Create a thin Skill that teaches ChatGPT to:
+Phase 4 adds a reusable, model-neutral research layer on top of the completed
+Phase 1–3 deterministic foundation. It does not move CDC, Net Cash, Through
+Return, hard gates, valuation, final state or adjustment approval into a model.
 
-- locate the repository specification;
-- request/retrieve company data;
-- invoke or consume engine output;
-- conduct Bull / Skeptic / Adjudicator evidence analysis;
-- explain results consistently;
-- never recompute deterministic metrics ad hoc.
+The reviewable sub-milestones are:
 
-Do not copy the entire specification into `SKILL.md`; reference repository/spec resources or compact bundled references.
+1. typed research contracts and JSON Schemas for questions, packets, findings,
+   runs, dimension results, sessions and reports;
+2. injected `AnalystClient` plus deterministic scripted clients;
+3. deterministic bounded evidence packets with `as_of` enforcement and a
+   complete B01 Demand Durability vertical slice;
+4. B01–B08 Quality Analyst → Skeptic → Adjudicator workflow with deterministic
+   evidence resolution, score caps, confidence, coverage and gate validation;
+5. filing-backed `PROPOSED` adjustments routed through the existing Phase 3
+   workflow and explicit HUMAN/RULE_ENGINE acceptance;
+6. immutable JSON workspace, resumable research orchestration, deterministic
+   decision trace and non-mutating human-readable report composition;
+7. frozen adversarial acceptance coverage, including an A-share provider/cache
+   replay → filing → research → accepted-adjustment → analysis → report flow.
 
-### Agent roles
-
-```text
-Research/Data Agent
-Business Quality Analyst
-Skeptic Analyst
-Adjudicator
-Report Composer
-```
-
-### Exit criteria
-
-Interactive command such as:
-
-> Analyze China Mobile / 贵州茅台 using strict-v1.
-
-produces an evidence-backed report consistent with deterministic engine output.
+External runtimes such as ChatGPT, Codex and Hermes consume the same contracts;
+no vendor-specific Skill or live-model SDK is required by the core package.
+`tve analyze` remains offline and model-independent. Broad provider endpoint
+expansion is not part of this milestone.
 
 ---
 
@@ -5113,12 +5110,20 @@ This is the project's definition of safe “self-evolution.”
 
 # Current milestone
 
-Phase 2 structured-provider coverage and the top-level Phase 3
-filing/evidence closure are COMPLETE. The repository now has a replayable
-`tve prepare` boundary, an offline-only `tve analyze` boundary and a
-filing-backed accepted-adjustment/effective-input/decision-trace path. Phase 1
-remains frozen: changes to formulas, hard-gate semantics, schemas or
-`strict-v1` thresholds require a separately reviewed, versioned change.
+Phase 4 is COMPLETE at the major integration boundary. The repository now has
+the replayable Phase 2 provider/cache preparation path, the Phase 3
+filing/evidence and accepted-adjustment path, and the Phase 4 bounded research
+path described in
+[`docs/goals/phase-4-agentic-analysis.md`](goals/phase-4-agentic-analysis.md):
+typed model-neutral analyst contracts, persisted packets/runs, all eight
+Business Quality roles, report composition and frozen A-share acceptance
+coverage.
+
+Phase 1 deterministic semantics remain frozen. Changes to formulas, hard-gate
+semantics, schemas or `strict-v1` thresholds require a separately reviewed,
+versioned change. Phase 5 backtesting/calibration is the next major milestone;
+watchlist/event monitoring and additional provider coverage remain separate
+work.
 
 The long endpoint notes below are historical implementation records. Future
 provider categories may still be added one at a time, but they are not part of

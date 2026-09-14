@@ -81,7 +81,22 @@ Key public boundaries include:
 - `run_analyze_with_accepted_adjustments`
 - `build_decision_trace`
 
-The next major milestone is Phase 4: agent-assisted evidence analysis, Business Quality roles, and a thin model-neutral agent/Skill interface. See `docs/goals/phase-4-agentic-analysis.md`.
+Phase 4 adds these model-neutral research boundaries:
+
+- `AnalystClient` / `CallableAnalystClient` for injected external runtimes;
+- `EvidencePacketBuilder` for bounded, reproducible, point-in-time packets;
+- `run_business_quality_dimension` and `run_business_quality_research` for the
+  Quality Analyst → Skeptic → Adjudicator workflow;
+- `ResearchWorkspace` for immutable JSON packets, tasks, runs, sessions,
+  validated Business Quality results, analyses, traces and reports;
+- `ResearchOrchestrator` for research → explicit accepted-adjustment materialization
+  → deterministic analysis → report;
+- `compose_report` for a non-mutating human-readable projection.
+
+The active Phase 4 goal is now implemented and its closure review is recorded in
+`docs/goals/phase-4-agentic-analysis.md`. The next major milestone is Phase 5;
+Phase 4 contracts remain the stable input/output boundary for ChatGPT, Codex,
+Hermes or another external runtime.
 
 ## 5. Working with company data
 
@@ -114,6 +129,18 @@ Official filing
   -> deterministic analysis
   -> Decision -> Gate -> Metric -> Fact -> Evidence -> Filing
 ```
+
+The agent research path is bounded and persisted:
+
+```text
+NormalizedCompanyInput
+  -> EvidencePacket -> ResearchTask -> AnalystRun
+  -> deterministic evidence/score validation
+  -> optional Phase 3 adjustment workflow
+  -> CompanyAnalysis -> DecisionTrace -> ResearchReport
+```
+
+`tve analyze` remains offline and does not instantiate an analyst client.
 
 Evidence identity, source identity, locators, hashes, and provenance are first-class data. Do not replace them with prose-only citations.
 

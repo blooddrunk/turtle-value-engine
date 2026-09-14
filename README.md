@@ -266,6 +266,41 @@ Filing Discovery
 - source-fact/effective-fact lineage
 - Decision → Gate → Metric → Adjustment → Fact → Evidence → Filing trace
 
+## Phase 4：证据研究与 Business Quality
+
+Phase 4 在上述确定性边界之上增加了可恢复、可审计的 agent-assisted research
+流程。外部运行时只需要注入一个 model-neutral 的 `AnalystClient`，就可以消费
+同一套 typed contracts；核心包不依赖 OpenAI、Anthropic、ChatGPT、Hermes 或
+其他厂商 SDK。
+
+```text
+NormalizedCompanyInput
+  → bounded EvidencePacket（带 as_of）
+  → Quality Analyst
+  → Skeptic
+  → Adjudicator
+  → deterministic Business Quality validation
+  → accepted-adjustment materialization（如有明确批准）
+  → deterministic analysis
+  → ResearchReport
+```
+
+八个 Business Quality 维度都使用同一套固定的
+Quality Analyst → Skeptic → Adjudicator 结构。模型只能提交带证据引用的
+研究结论和 `PROPOSED` adjustment；证据 ID、as_of、分数上限、置信度、覆盖率
+和 gate 语义由规则引擎校验。只有现有 Phase 3 workflow 接受的
+`HUMAN` / `RULE_ENGINE` adjustment 才能进入 effective input。
+
+可复用的 Python 边界包括：
+
+- `EvidencePacketBuilder`：按问题组装有大小上限的点时证据包；
+- `run_business_quality_dimension` / `run_business_quality_research`：运行单个维度或全部 B01–B08；
+- `ResearchOrchestrator`：连接研究、批准后的确定性分析和报告；
+- `ResearchWorkspace`：保存 packet、task、analyst run、session、analysis、trace 和 report，支持另一个进程恢复；
+- `compose_report`：从已验证 artifacts 生成不修改分析结果的可读报告。
+
+普通测试使用 `ScriptedAnalystClient`，live model integration 不属于 CI 必需项。
+
 # 当前还不能做什么？
 
 目前：
@@ -297,7 +332,9 @@ tve analyze 600519
 
 现在已经闭合 provider/cache/normalization、accepted-adjustment materialization
 和 filing-to-decision traceability 的确定性组合路径。仍然不会自动猜测公司
-核心上下文、让 LLM 批准 adjustment，或让 LLM 重算指标。
+核心上下文、让 LLM 批准 adjustment，或让 LLM 重算指标。Phase 4 的研究入口
+接受已经准备好的 `NormalizedCompanyInput`；它不会把联网和模型调用隐藏进
+`tve analyze`。
 
 ## 关于 Business Quality
 
@@ -316,7 +353,7 @@ Business Quality Gate
 
 ## 关于 LLM
 
-项目未来允许 LLM 协助：
+Phase 4 允许外部 agent / LLM 协助：
 
 - 阅读财报
 - 查找 restricted cash
@@ -326,6 +363,11 @@ Business Quality Gate
 - 查找治理风险
 - 分析客户集中度
 - 收集 Business Quality 证据
+
+运行时通过 `AnalystClient.analyze(task)` 接收 bounded `ResearchTask`，返回
+`ResearchFinding` 或等价 JSON；每次调用的 prompt/protocol/provider metadata
+会进入 `AnalystRun`。`Quality Analyst` 先建立支持论点，`Skeptic` 主动寻找
+反证，`Adjudicator` 只能使用已经提供给它的 evidence 和前两次 finding。
 
 但 LLM 不负责重新计算确定性指标，也不能直接覆盖 engine facts。
 
@@ -350,6 +392,7 @@ src/turtle_value_engine/
 ├── adjustments.py      # auditable adjustment workflow
 ├── effective_input.py  # accepted-adjustment materialization boundary
 ├── preparation.py      # provider/cache/normalization orchestration
+├── research/            # bounded agent contracts, BQ workflow and report
 ├── traceability.py     # deterministic decision trace projection
 ├── pipeline.py         # deterministic analysis pipeline
 └── cli.py              # command-line interface
@@ -425,10 +468,10 @@ Accepted-adjustment → effective-facts integration
         ✅
 
 LLM-assisted evidence analysis
-        🚧
+        ✅
 
-Business-quality agents / ChatGPT Skill
-        ⏳
+Business-quality agents / model-neutral runtime boundary
+        ✅
 
 Backtesting / calibration
         ⏳

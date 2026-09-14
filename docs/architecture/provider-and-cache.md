@@ -137,6 +137,38 @@ decision can be followed through gate, metric, effective/source fact,
 adjustment, evidence and official filing provenance without recalculating or
 changing any result.
 
+### Phase 4 bounded research boundary
+
+The provider/cache layer ends at the validated `NormalizedCompanyInput` and
+persisted filing/evidence records. Phase 4 consumes that boundary through a
+deterministic `EvidencePacketBuilder`:
+
+```text
+NormalizedCompanyInput + optional deterministic CompanyAnalysis
+  -> bounded EvidencePacket
+  -> injected Quality Analyst / Skeptic / Adjudicator
+  -> typed AnalystRun and ResearchFinding artifacts
+  -> deterministic Business Quality validation
+  -> existing adjustment workflow and explicit approval
+  -> deterministic analysis and report
+```
+
+Packets carry listing identity, profile, `as_of`, source evidence IDs and full
+filing provenance. They may also contain read-only scalar metrics already
+produced by the engine, explicitly marked `DETERMINISTIC_ENGINE`; packet
+assembly never recomputes those metrics. Evidence published after `as_of` is
+excluded by default and an explicit request for it is rejected. Unknown fact
+periods remain out of the packet because their point-in-time safety cannot be
+proven. Evidence is selected for a bounded question and role, so the whole
+provider corpus is never implicitly sent to a model.
+
+`ResearchWorkspace` stores packet, task, run, session, validated Business
+Quality, analysis, decision-trace and report artifacts as immutable JSON. The
+analyst interface is provider-neutral; any live model adapter remains outside
+this package's investment logic. `tve analyze` still reads a frozen normalized
+input, performs no network/model call, and remains the only owner of CDC, Net
+Cash, Through Return, hard gates, valuation and final deterministic state.
+
 ## 3. Provider-neutral categories and capability discovery
 
 The foundation defines independent categories so a later adapter can support
