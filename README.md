@@ -96,6 +96,19 @@ strict-v1
 
 相同输入、相同规则版本，应产生相同结果。
 
+数据准备和计算是两个明确的边界：
+
+```text
+NETWORKED / REPLAYABLE
+A/H listing + as_of → tve prepare → cache / normalization
+                  → NormalizedCompanyInput.json
+
+OFFLINE / DETERMINISTIC
+NormalizedCompanyInput.json → tve analyze → CompanyAnalysis.json
+```
+
+`tve analyze` 不会偷偷联网。
+
 ## 为什么强调“可审计”？
 
 系统尽量避免：
@@ -173,6 +186,23 @@ tve analyze \
 
 输出是 JSON 格式的 `CompanyAnalysis`。
 
+如果从 provider/cache 开始准备一个 A/H 标的：
+
+```bash
+tve prepare 600519.SH \
+  --as-of 2026-09-14 \
+  --provider akshare \
+  --name "示例公司" \
+  --sector "示例行业" \
+  --reporting-currency CNY \
+  --output normalized.json
+```
+
+`tve prepare` 的公司名称、行业和报告货币必须由调用者显式提供，或
+通过 `--company-json` 提供；准备层不会猜测这些核心上下文。重复执行时
+可以使用 `--offline` 从 raw cache replay，之后把生成的 JSON 交给
+`tve analyze --input normalized.json --profile strict-v1`。
+
 也可以保存到文件：
 
 ```bash
@@ -204,6 +234,8 @@ tve analyze \
 - local cache / replay
 - A/H 股结构化数据适配
 - AKShare provider
+- provider-backed `tve prepare` with canonical A/H listing and `as_of`
+- raw cache replay and injected/frozen provider preparation
 - provenance tracking
 - missing-data handling
 - schema validation
@@ -220,6 +252,7 @@ Filing Discovery
 → Text Extraction
 → Evidence Store
 → Adjustment Proposal / Review
+→ explicit acceptance → effective input → deterministic analysis trace
 ```
 
 系统会保留：
@@ -230,6 +263,8 @@ Filing Discovery
 - page / section locator
 - evidence identity
 - adjustment provenance
+- source-fact/effective-fact lineage
+- Decision → Gate → Metric → Adjustment → Fact → Evidence → Filing trace
 
 # 当前还不能做什么？
 
@@ -260,7 +295,9 @@ tve analyze 600519
 → 最终投资分析
 ```
 
-Provider、filing 和 evidence 基础设施已经存在，但完整的真实公司端到端工作流仍在收口中。
+现在已经闭合 provider/cache/normalization、accepted-adjustment materialization
+和 filing-to-decision traceability 的确定性组合路径。仍然不会自动猜测公司
+核心上下文、让 LLM 批准 adjustment，或让 LLM 重算指标。
 
 ## 关于 Business Quality
 
@@ -311,6 +348,9 @@ src/turtle_value_engine/
 ├── providers/          # structured data / filing providers and cache
 ├── models/             # typed contracts
 ├── adjustments.py      # auditable adjustment workflow
+├── effective_input.py  # accepted-adjustment materialization boundary
+├── preparation.py      # provider/cache/normalization orchestration
+├── traceability.py     # deterministic decision trace projection
 ├── pipeline.py         # deterministic analysis pipeline
 └── cli.py              # command-line interface
 
@@ -378,11 +418,11 @@ Structured A/H data infrastructure
 Official filing / evidence infrastructure
         ✅
 
-End-to-end real-company workflow
-        🚧
+Provider preparation + filing-backed deterministic closure
+        ✅
 
 Accepted-adjustment → effective-facts integration
-        🚧
+        ✅
 
 LLM-assisted evidence analysis
         🚧

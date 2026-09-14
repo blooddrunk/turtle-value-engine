@@ -253,6 +253,19 @@
           "type": "number",
           "minimum": 0,
           "maximum": 1
+        },
+        "source_fact_id": {
+          "type": ["string", "null"],
+          "minLength": 1
+        },
+        "source_value": {
+          "type": ["number", "string", "boolean", "null"]
+        },
+        "applied_adjustment_ids": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1},
+          "uniqueItems": true,
+          "default": []
         }
       },
       "additionalProperties": false,
@@ -573,6 +586,10 @@
           "type": "string",
           "minLength": 1,
           "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "target_period": {
+          "type": ["string", "null"],
+          "minLength": 1
         },
         "adjustment_type": {
           "type": "string",

@@ -121,9 +121,16 @@ For frozen inputs, outputs are reproducible and independent of any LLM.
 
 ---
 
-## Phase 2 — Structured data adapters (CURRENT ACTIVE MILESTONE)
+## Phase 2 — Structured data adapters (COMPLETE)
 
 Goal: make the deterministic engine usable on real companies without introducing document-reading complexity yet.
+
+The structured-provider components and their top-level preparation closure are
+complete. A caller can now bind a canonical A/H listing and `as_of` date,
+acquire through a provider/cache boundary, replay the raw cache offline and
+produce a schema-valid `NormalizedCompanyInput` for the unchanged deterministic
+pipeline. Future provider endpoint additions are optional extensions, not a
+prerequisite for the Phase 2 exit criteria.
 
 ### Initial sources
 
@@ -2533,7 +2540,8 @@ view/date/A-share validation, exact source shape and types, identity/date/
 numeric failures, provider filtering, raw-only normalization, replay-scope
 rejection and cache replay. No calculation, gate, pipeline, CLI or input-loader
 contract changes. This numbered 3.00 increment remains structured acquisition;
-the top-level Phase 3 filing/evidence deliverables below are still unimplemented.
+the top-level closure is recorded in the Phase 2/3 closure integration section
+below.
 
 ### Phase 3.01 — A-share Eastmoney institutional-research statistics raw acquisition contract (COMPLETE)
 
@@ -2565,8 +2573,8 @@ Tests cover explicit view/date/A-share validation, exact response fields/order/
 types, identity/date/numeric failures, provider filtering, raw-only
 normalization, replay-scope rejection and cache replay. No calculation, gate,
 pipeline, CLI or input-loader contract changes. This numbered 3.01 increment
-remains structured acquisition; the top-level Phase 3 filing/evidence
-deliverables below are still unimplemented.
+remains structured acquisition; the top-level closure is recorded in the Phase
+2/3 closure integration section below.
 
 ### Phase 3.02 — A-share Eastmoney institutional-research detail raw acquisition contract (COMPLETE)
 
@@ -2599,7 +2607,7 @@ types, multi-institution identity/date/numeric failures, provider filtering,
 nullable context, raw-only normalization, replay-scope rejection and cache
 replay. No calculation, gate, pipeline, CLI or input-loader contract changes.
 This numbered 3.02 increment remains structured acquisition; the top-level
-Phase 3 filing/evidence deliverables below are still unimplemented.
+closure is recorded in the Phase 2/3 closure integration section below.
 
 ### Phase 3.03 — A-share Eastmoney important-shareholder pledge-detail raw acquisition contract (COMPLETE)
 
@@ -2635,8 +2643,8 @@ explicit view/A-share/no-argument routing, exact schema/order/types, date and
 numeric boundaries, duplicate identity, provider filtering, no-match metadata,
 raw-only normalization, replay metadata tampering and offline cache replay.
 No calculation, gate, pipeline, CLI or input-loader contract changes. This
-numbered 3.03 increment remains structured acquisition; the top-level Phase 3
-filing/evidence deliverables below are still unimplemented.
+numbered 3.03 increment remains structured acquisition; the top-level closure
+is recorded in the Phase 2/3 closure integration section below.
 
 ### Phase 3.04 — A-share Eastmoney pledge-institution company-distribution raw acquisition contract (COMPLETE)
 
@@ -2674,8 +2682,8 @@ view/A-share/no-argument routing, exact source order/types/nullability,
 sequence and numeric boundaries, institution identity/order, raw-only
 normalization, replay metadata tampering and offline cache replay. No
 calculation, gate, pipeline, CLI or input-loader contract changes. This
-numbered 3.04 increment remains structured acquisition; the top-level Phase 3
-filing/evidence deliverables below are still unimplemented.
+numbered 3.04 increment remains structured acquisition; the top-level closure
+is recorded in the Phase 2/3 closure integration section below.
 
 ### Phase 3.05 — A-share Eastmoney pledge-institution bank-distribution raw acquisition contract (COMPLETE)
 
@@ -2714,7 +2722,8 @@ order/types/nullability, sequence and numeric boundaries, institution
 identity/order, raw-only normalization, replay metadata tampering and offline
 cache replay. No calculation, gate, pipeline, CLI or input-loader contract
 changes. This numbered 3.05 increment remains structured acquisition; the
-top-level Phase 3 filing/evidence deliverables below are still unimplemented.
+top-level closure is recorded in the Phase 2/3 closure integration section
+below.
 
 ### Phase 3.06 — A-share Eastmoney ownership-pledge industry-data raw acquisition contract (COMPLETE)
 
@@ -2753,8 +2762,8 @@ routing, exact schema/order/types, sequence, industry identity, ratio/date and
 numeric boundaries, raw-only normalization, replay metadata tampering and
 offline cache replay. No calculation, gate, pipeline, CLI or input-loader
 contract changes. This numbered 3.06 increment remains structured acquisition;
-the top-level Phase 3 filing/evidence deliverables below are still
-unimplemented.
+the top-level closure is recorded in the Phase 2/3 closure integration section
+below.
 
 ### Phase 3.07 — A-share Eastmoney goodwill-industry raw acquisition contract (COMPLETE)
 
@@ -2788,7 +2797,8 @@ routing, exact schema/order/types, identity and ordering boundaries, signed
 profit values, raw-only normalization, replay metadata tampering and offline
 cache replay. No calculation, gate, pipeline, CLI or input-loader contract
 changes. This numbered 3.07 increment remains structured acquisition; the
-top-level Phase 3 filing/evidence deliverables below are still unimplemented.
+top-level closure is recorded in the Phase 2/3 closure integration section
+below.
 
 ### Phase 3.08 — A-share Eastmoney stock-account-statistics raw acquisition contract (COMPLETE)
 
@@ -4746,7 +4756,8 @@ Fixtures and adversarial tests cover every A/H source boundary, official URL
 constraints, date/limit/filter validation, deterministic IDs, JSON Schema,
 tampered replay metadata/payload and offline cache replay. No document
 download, extraction, evidence store, adjustment workflow, LLM or CLI change
-is included. The remaining Phase 3 filing deliverables stay explicitly open.
+is included. The subsequent filing components and top-level closure are
+documented in the completed sections below.
 
 ### Phase 3.85 — Official filing document download and cache (COMPLETE)
 
@@ -4876,14 +4887,19 @@ calculation modules.
 
 ### Exit criteria
 
-- fetch real A/H price and basic financial inputs;
-- run first-pass screening;
-- source and timestamp every imported fact;
-- tolerate provider failure without corrupting cached datasets.
+- provider-backed preparation accepts canonical A/H listing identity and an
+  explicit `as_of` date;
+- frozen A-share and H-share acceptance flows cover acquisition, raw-cache
+  replay, normalization, schema validation and offline `CompanyAnalysis`;
+- imported facts retain source evidence, units/currency and period metadata,
+  while unresolved provider slices remain missing/raw-only;
+- provider failure and offline replay do not corrupt or silently replace a
+  prior valid cache entry;
+- `tve analyze` remains an offline-only consumer of normalized input.
 
 ---
 
-## Phase 3 — Official filing and evidence layer
+## Phase 3 — Official filing and evidence layer (COMPLETE)
 
 Goal: convert screening results into auditable deep analysis.
 
@@ -4902,6 +4918,9 @@ H shares -> HKEXnews / company reports and announcements
 - annual/interim report extraction;
 - evidence store;
 - adjustment proposal workflow.
+- accepted-adjustment materialization into a new effective input snapshot;
+- deterministic Decision → Gate → Metric → Adjustment → Fact → Evidence →
+  Filing trace projection.
 
 LLM can assist with:
 
@@ -4917,7 +4936,32 @@ LLM cannot directly overwrite engine-computed values.
 
 ### Exit criteria
 
-A final PASS/WATCH/FAIL result can be traced from decision -> gate -> metric -> adjustment -> fact -> source filing.
+A final PASS/WATCH/FAIL result can be traced from decision -> gate -> metric
+-> adjustment -> fact -> source filing. The explicit acceptance boundary is
+preserved: HUMAN/RULE_ENGINE may approve, LLM may only propose, and the
+deterministic engine remains the sole owner of formulas, gates and valuation.
+
+### Phase 2/3 closure integration (COMPLETE)
+
+The vertical acceptance path is now frozen in
+`tests/test_phase_2_3_closure.py`:
+
+```text
+Phase 2: A/H listing + as_of
+  → injected provider → raw cache/replay → normalization
+  → schema-valid NormalizedCompanyInput → offline analysis
+
+Phase 3: official filing discovery → document cache → extraction
+  → filing evidence → adjustment proposal → HUMAN acceptance
+  → effective input → deterministic analysis → decision trace
+```
+
+The public boundaries are `tve prepare` for provider-backed preparation and
+`tve analyze --input ...` for the offline calculation pipeline. The effective
+input builder is explicit and additive: it never mutates source facts, rejects
+stale/conflicting/unsupported applications, and retains adjustment lineage on
+the effective fact. Additional provider coverage, LLM evidence assistance,
+Business Quality agents, backtesting and monitoring remain future work.
 
 ---
 
@@ -5069,11 +5113,16 @@ This is the project's definition of safe “self-evolution.”
 
 # Current milestone
 
-Phase 2 remains active for structured-provider coverage. The numbered Phase
-3.07 increment is also acquisition-only; the top-level Phase 3 filing/evidence
-layer remains unimplemented. Phase 1 remains frozen: changes to formulas,
-hard-gate semantics, schemas or `strict-v1` thresholds require a separately
-reviewed, versioned change.
+Phase 2 structured-provider coverage and the top-level Phase 3
+filing/evidence closure are COMPLETE. The repository now has a replayable
+`tve prepare` boundary, an offline-only `tve analyze` boundary and a
+filing-backed accepted-adjustment/effective-input/decision-trace path. Phase 1
+remains frozen: changes to formulas, hard-gate semantics, schemas or
+`strict-v1` thresholds require a separately reviewed, versioned change.
+
+The long endpoint notes below are historical implementation records. Future
+provider categories may still be added one at a time, but they are not part of
+the completed Phase 2/3 closure criteria.
 
 Phase 2.94 completes the next documented structured-data boundary by adding
 the A-share `stock_szse_summary` Shenzhen Stock Exchange market-summary view.
@@ -5521,8 +5570,9 @@ replay metadata remain part of its acquisition boundary.
 
 dividend-distribution snapshot remains raw-only because its ratios, status and
 multiple dates do not establish settled ordinary cash or a canonical payout
-denominator. Phase 2 remains active; future documented categories must be
-reviewed before their fields can enter the canonical contract. The A-share
+denominator. Phase 2 is complete at the top level; future documented
+categories must be reviewed before their fields can enter the canonical
+contract. The A-share
 earnings-forecast snapshot remains raw-only because forecast ranges, forecast
 type and announcement dates do not establish reported parent or consolidated
 profit for the requested period. Filing-derived classifications remain a

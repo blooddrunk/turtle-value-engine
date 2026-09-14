@@ -12,10 +12,41 @@ from .adjustments import (
     AdjustmentWorkflowTransition,
     adjustment_id_for,
 )
+from .effective_input import (
+    EFFECTIVE_ADJUSTMENT_FIELDS,
+    EffectiveInputError,
+    materialize_accepted_adjustments,
+    materialize_effective_input,
+)
 from .input_loader import (
     NormalizedInputLoadError,
     load_normalized_input,
     parse_normalized_input,
+)
+from .preparation import (
+    DEFAULT_PREPARATION_CATEGORIES,
+    AcquisitionBundle,
+    AcquisitionFetch,
+    AcquisitionRequest,
+    NormalizedCompanyInputBuilder,
+    PreparationAcquisitionError,
+    PreparationError,
+    PreparationNormalizationError,
+    ProviderPreparationOrchestrator,
+    prepare_normalized_input,
+)
+from .traceability import (
+    DecisionTrace,
+    TraceAdjustment,
+    TraceEvidence,
+    TraceFact,
+    TraceFiling,
+    TraceGate,
+    TraceLink,
+    TraceMetric,
+    build_decision_trace,
+    trace_analysis,
+    trace_decision,
 )
 
 __version__ = "0.1.0"
@@ -35,4 +66,29 @@ __all__ = [
     "__version__",
     "load_normalized_input",
     "parse_normalized_input",
+    "AcquisitionBundle",
+    "AcquisitionFetch",
+    "AcquisitionRequest",
+    "DEFAULT_PREPARATION_CATEGORIES",
+    "EFFECTIVE_ADJUSTMENT_FIELDS",
+    "EffectiveInputError",
+    "NormalizedCompanyInputBuilder",
+    "PreparationAcquisitionError",
+    "PreparationError",
+    "PreparationNormalizationError",
+    "ProviderPreparationOrchestrator",
+    "materialize_accepted_adjustments",
+    "materialize_effective_input",
+    "prepare_normalized_input",
+    "DecisionTrace",
+    "TraceAdjustment",
+    "TraceEvidence",
+    "TraceFact",
+    "TraceFiling",
+    "TraceGate",
+    "TraceLink",
+    "TraceMetric",
+    "build_decision_trace",
+    "trace_analysis",
+    "trace_decision",
 ]

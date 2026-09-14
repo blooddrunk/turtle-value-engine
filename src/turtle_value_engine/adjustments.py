@@ -222,6 +222,7 @@ def _immutable_adjustment_payload(adjustment: Adjustment) -> dict[str, object]:
     payload = adjustment.model_dump(mode="json")
     return {
         "target_field": payload["target_field"],
+        "target_period": payload["target_period"],
         "adjustment_type": payload["adjustment_type"],
         "input_value": payload["input_value"],
         "proposed_adjusted_value": payload["proposed_adjusted_value"],

@@ -15,6 +15,10 @@ from turtle_value_engine.calculations import (
     calculate_valuation,
 )
 from turtle_value_engine.config import RuleProfile, load_profile
+from turtle_value_engine.effective_input import (
+    AdjustmentInput,
+    materialize_effective_input,
+)
 from turtle_value_engine.gates import evaluate_hard_gates, hard_gate_status, hard_gates_passed
 from turtle_value_engine.models import (
     BusinessQuality,
@@ -510,3 +514,32 @@ def run_analyze_from_normalized_input(
         cyclical=cyclical,
         business_quality=business_quality,
     )
+
+
+def run_analyze_with_accepted_adjustments(
+    normalized_input: NormalizedCompanyInput,
+    accepted_adjustments: Sequence[AdjustmentInput] | None = None,
+    profile: RuleProfile | None = None,
+    *,
+    cyclical: bool | None = None,
+    business_quality: BusinessQuality | None = None,
+) -> CompanyAnalysis:
+    """Materialize accepted adjustments, then run the unchanged core.
+
+    This is an explicit composition boundary.  ``run_analyze`` itself remains
+    backwards-compatible and never interprets proposal lifecycle state.
+    """
+
+    effective_input = materialize_effective_input(
+        normalized_input,
+        accepted_adjustments,
+    )
+    return run_analyze(
+        effective_input,
+        profile,
+        cyclical=cyclical,
+        business_quality=business_quality,
+    )
+
+
+run_analyze_from_effective_input = run_analyze_with_accepted_adjustments

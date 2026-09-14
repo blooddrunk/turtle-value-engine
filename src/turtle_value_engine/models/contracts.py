@@ -284,6 +284,13 @@ class Fact(BaseModel):
     estimation_method: str | None = None
     estimated: StrictBool = False
     confidence: StrictFloat = Field(ge=0, le=1)
+    # These fields are populated only when an accepted adjustment is
+    # materialized into an analysis-ready input.  Keeping the source fact's
+    # identity and value on the effective fact makes the transformation
+    # auditable without mutating the source snapshot in place.
+    source_fact_id: str | None = Field(default=None, min_length=1)
+    source_value: FactValue = None
+    applied_adjustment_ids: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def validate_known_field_type(self) -> Self:
@@ -315,6 +322,28 @@ class Fact(BaseModel):
             raise ValueError("source_evidence_ids must not contain duplicates")
         return value
 
+    @field_validator("applied_adjustment_ids")
+    @classmethod
+    def validate_unique_adjustment_ids(cls, value: list[str]) -> list[str]:
+        """Prevent duplicate adjustment links in a materialized fact."""
+
+        if len(value) != len(set(value)):
+            raise ValueError("applied_adjustment_ids must not contain duplicates")
+        return value
+
+    @model_validator(mode="after")
+    def validate_lineage_shape(self) -> Self:
+        """Keep optional effective-fact lineage internally consistent."""
+
+        has_lineage = self.source_fact_id is not None
+        if not has_lineage and (self.source_value is not None or self.applied_adjustment_ids):
+            raise ValueError(
+                "source_value and applied_adjustment_ids require source_fact_id"
+            )
+        if has_lineage and not self.applied_adjustment_ids:
+            raise ValueError("materialized facts require at least one applied adjustment")
+        return self
+
 
 class Adjustment(BaseModel):
     """Explicit economic adjustment with proposal/approval provenance."""
@@ -323,6 +352,7 @@ class Adjustment(BaseModel):
 
     id: str = Field(min_length=1)
     target_field: str = Field(min_length=1, pattern=r"^[a-z][a-z0-9_]*$")
+    target_period: str | None = Field(default=None, min_length=1)
     adjustment_type: AdjustmentType
     input_value: StrictFloat | None = None
     proposed_adjusted_value: StrictFloat | None = None
@@ -631,6 +661,19 @@ class NormalizedCompanyInput(BaseModel):
         adjustment_ids = [item.id for item in self.adjustments]
         if len(adjustment_ids) != len(set(adjustment_ids)):
             raise ValueError("adjustment IDs must be unique")
+
+        known_adjustment_ids = set(adjustment_ids)
+        lineage_adjustment_ids = {
+            adjustment_id
+            for fact in self.facts
+            for adjustment_id in fact.applied_adjustment_ids
+        }
+        unknown_lineage = sorted(lineage_adjustment_ids - known_adjustment_ids)
+        if unknown_lineage:
+            raise ValueError(
+                "undefined applied adjustment ID reference(s): "
+                + ", ".join(unknown_lineage)
+            )
 
         known_evidence_ids = set(evidence_ids)
         references = [

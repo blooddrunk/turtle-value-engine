@@ -1,6 +1,6 @@
 # Goal: Phase 2 / Phase 3 Closure
 
-Status: ACTIVE
+Status: COMPLETE
 
 This goal closes the gap between the repository's mature Phase 2/3 building blocks and a usable, auditable end-to-end workflow.
 
@@ -292,6 +292,23 @@ A filing-backed evidence item can support an adjustment proposal, an allowed act
 ### Safety boundary
 
 LLM-assisted evidence analysis may remain unimplemented. Phase 4 agents are not required for this goal. The deterministic engine remains the sole owner of formulas, gates and valuation calculations.
+
+## Completion record
+
+Completed on 2026-09-14. The frozen acceptance suite in
+`tests/test_phase_2_3_closure.py` covers A-share and H-share provider/cache
+preparation, offline replay, schema-valid normalized input and unchanged
+deterministic analysis. It also covers official filing discovery, document
+cache, extraction, evidence storage, explicit HUMAN acceptance,
+accepted-adjustment materialization, source-fact preservation and the final
+decision trace back to the official filing.
+
+The deterministic boundaries are exposed through `tve prepare`,
+`tve analyze --input ...`, `run_analyze_with_accepted_adjustments` and
+`build_decision_trace`. No CDC, Net Cash, Through Return, hard-gate,
+valuation or `strict-v1` semantics were changed. LLM evidence assistance,
+additional provider coverage, Business Quality agents, backtesting and
+monitoring remain follow-up work.
 
 ## Expected delivery
 

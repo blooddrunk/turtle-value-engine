@@ -76,6 +76,10 @@
           "minLength": 1,
           "pattern": "^[a-z][a-z0-9_]*$"
         },
+        "target_period": {
+          "type": ["string", "null"],
+          "minLength": 1
+        },
         "adjustment_type": {
           "type": "string",
           "enum": [
