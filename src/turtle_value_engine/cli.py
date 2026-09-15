@@ -28,6 +28,7 @@ from turtle_value_engine.historical import (
     HistoricalAcquisitionPlanV1,
     HistoricalAcquisitionService,
     HistoricalArtifactStore,
+    HistoricalDatasetCompiler,
     HistoricalDatasetManifest,
     HistoricalDatasetValidationError,
     HistoricalIngestionCompiler,
@@ -486,9 +487,10 @@ def _run_historical_command(args: argparse.Namespace) -> object:
     if args.historical_command == "compile":
         batch = RawAcquisitionBatchManifestV1.model_validate(_read_json(args.batch))
         raw_store = RawBlobStore(args.raw_store)
+        artifact_store = HistoricalArtifactStore(args.store)
         compiler = HistoricalIngestionCompiler(
             raw_store=raw_store,
-            artifact_store=HistoricalArtifactStore(args.store),
+            artifact_store=artifact_store,
         )
         manifest = (
             compiler.compile_with_replay_check(batch)
@@ -497,7 +499,10 @@ def _run_historical_command(args: argparse.Namespace) -> object:
         )
         _write_optional(args.output, manifest)
         if args.report_output is not None:
-            validation = compiler.validation_summary()
+            validation = HistoricalDatasetCompiler(
+                manifest,
+                artifact_store,
+            ).validation_summary()
             readiness = build_readiness_report(
                 batch.plan,
                 batch=batch,

@@ -272,6 +272,11 @@ class HistoricalArtifactStore:
                 )
 
     def _write_immutable(self, path: Path, serialized: bytes) -> None:
+        # Validate the complete parent chain before even inspecting whether
+        # the destination exists.  Otherwise an existing same-content file
+        # behind a symlinked shard directory could be mistaken for a safe,
+        # idempotent write.
+        self._secure_directory(path.parent)
         if path.exists():
             if path.is_symlink() or not path.is_file():
                 raise HistoricalArtifactError(f"artifact path is not a regular file: {path}")
@@ -281,7 +286,6 @@ class HistoricalArtifactStore:
         descriptor = -1
         temporary_path: Path | None = None
         try:
-            self._secure_directory(path.parent)
             descriptor, temporary_name = tempfile.mkstemp(
                 prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
             )

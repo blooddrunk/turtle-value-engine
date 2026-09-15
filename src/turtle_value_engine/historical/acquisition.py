@@ -3849,13 +3849,11 @@ def build_readiness_report(
             report.source_id
             for report in scoped_probe_reports
             if report.status == ProbeStatus.PASS
-            and report.source_kind
-            in {
-                HistoricalSourceKind.PRICES,
-                HistoricalSourceKind.LISTING_LIFECYCLE,
-                HistoricalSourceKind.DELISTINGS,
-                HistoricalSourceKind.CORPORATE_ACTIONS,
-            }
+            # A lifecycle/action probe cannot establish that the H price
+            # source returned the requested historical bars.  Keep this gate
+            # bound to the actual price request/source instead of allowing a
+            # different category to promote it indirectly.
+            and report.source_kind is HistoricalSourceKind.PRICES
             and report.account_entitlement == AccountEntitlement.CONFIRMED
             and report.historical_capable
             and report.terminal_coverage == CoverageEvidenceStatus.CONFIRMED
@@ -3871,7 +3869,8 @@ def build_readiness_report(
         h_source_ids = {
             request.source_id
             for request in plan.requests
-            if target_h.intersection(request.listing_ids)
+            if request.source_kind is HistoricalSourceKind.PRICES
+            and target_h.intersection(request.listing_ids)
         }
         h_terms_ids = {
             source.source_id
@@ -3894,8 +3893,7 @@ def build_readiness_report(
     if plan.target.membership_claim == "HISTORICAL":
         membership_proven = any(
             report.source_kind is HistoricalSourceKind.UNIVERSE_MEMBERSHIP
-            and report.status == ProbeStatus.PASS
-            and report.historical_capable
+            and _probe_covers_target(report, plan.target)
             for report in scoped_probe_reports
         )
         lifecycle_proven = any(
@@ -3904,8 +3902,7 @@ def build_readiness_report(
                 HistoricalSourceKind.LISTING_LIFECYCLE,
                 HistoricalSourceKind.DELISTINGS,
             }
-            and report.status == ProbeStatus.PASS
-            and report.historical_capable
+            and _probe_covers_target(report, plan.target)
             for report in scoped_probe_reports
         )
         if not membership_proven or not lifecycle_proven:
@@ -3919,7 +3916,7 @@ def build_readiness_report(
             HistoricalSourceKind.LISTING_LIFECYCLE,
             HistoricalSourceKind.DELISTINGS,
         }
-        and report.status == ProbeStatus.PASS
+        and _probe_has_target_observation(report, plan.target)
         and report.terminal_coverage == CoverageEvidenceStatus.CONFIRMED
         for report in scoped_probe_reports
     ):
@@ -4034,6 +4031,39 @@ def _target_market(target: HistoricalTargetScope, listing_id: str) -> str:
     if marker.startswith("H:"):
         return "H"
     return "UNKNOWN"
+
+
+def _probe_covers_target(
+    report: SourceProbeReportV1,
+    target: HistoricalTargetScope,
+) -> bool:
+    """Require a successful, dated probe to cover every target listing."""
+
+    return (
+        report.status == ProbeStatus.PASS
+        and report.historical_capable
+        and set(target.listing_ids).issubset(set(report.observed_listing_ids))
+        and report.observed_start is not None
+        and report.observed_end is not None
+        and report.observed_start <= target.start_date
+        and report.observed_end >= target.end_date
+    )
+
+
+def _probe_has_target_observation(
+    report: SourceProbeReportV1,
+    target: HistoricalTargetScope,
+) -> bool:
+    """Require at least one dated in-target observation for a coverage claim."""
+
+    return (
+        report.status == ProbeStatus.PASS
+        and bool(set(report.observed_listing_ids).intersection(target.listing_ids))
+        and report.observed_start is not None
+        and report.observed_end is not None
+        and report.observed_start <= target.end_date
+        and report.observed_end >= target.start_date
+    )
 
 
 __all__ = [

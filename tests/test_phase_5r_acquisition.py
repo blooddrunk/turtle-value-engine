@@ -336,6 +336,7 @@ def test_historical_compile_cli_is_network_free(tmp_path: Path, monkeypatch):
 
     monkeypatch.setattr("turtle_value_engine.historical.acquisition.urlopen", fail_if_called)
     manifest_path = tmp_path / "manifest.json"
+    report_path = tmp_path / "compile-report.json"
     assert main(
         [
             "historical",
@@ -348,10 +349,17 @@ def test_historical_compile_cli_is_network_free(tmp_path: Path, monkeypatch):
             str(tmp_path / "artifacts"),
             "--output",
             str(manifest_path),
+            "--report-output",
+            str(report_path),
             "--verify-replay",
         ]
     ) == 0
     assert manifest_path.exists()
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert report["readiness"]["network_used"] is False
+    assert report["readiness"]["compiled_dataset_id"] == json.loads(
+        manifest_path.read_text(encoding="utf-8")
+    )["dataset_id"]
 
 
 def test_plan_rejects_credential_reference_aliasing():
@@ -666,6 +674,36 @@ def test_artifact_store_is_private_and_rejects_symlinked_root(tmp_path: Path):
         pytest.skip("symlink creation is unavailable on this platform")
     with pytest.raises(HistoricalArtifactError, match="regular directory"):
         HistoricalArtifactStore(linked)
+
+
+def test_artifact_store_rejects_symlinked_shard_directory_even_for_same_content(
+    tmp_path: Path,
+):
+    store = HistoricalArtifactStore(tmp_path / "artifacts")
+    outside = tmp_path / "outside" / "sha256"
+    outside.mkdir(parents=True)
+    row = {"value": "outside"}
+    serialized = canonical_json_bytes(row) + b"\n"
+    digest = hashlib.sha256(serialized).hexdigest()
+    destination = outside / digest[:2] / f"{digest}.jsonl"
+    destination.parent.mkdir(parents=True)
+    destination.write_bytes(serialized)
+    try:
+        (store.root / "sha256").symlink_to(outside, target_is_directory=True)
+    except OSError:
+        pytest.skip("symlink creation is unavailable on this platform")
+
+    with pytest.raises(HistoricalArtifactError, match="regular directory"):
+        store.freeze_shard(
+            shard_id="symlinked-shard",
+            artifact_kind=ShardArtifactKind.MARKET_BAR,
+            schema_version="test-v1",
+            date_start=date(2020, 1, 1),
+            date_end=date(2020, 1, 1),
+            listing_scope=["A1"],
+            source_artifact_id="source",
+            rows=[row],
+        )
 
 
 def test_empty_event_result_is_not_complete_coverage():
@@ -1373,6 +1411,62 @@ def test_h_readiness_requires_probe_to_observe_every_target_h_listing():
         blockers=[],
     )
     readiness = build_readiness_report(plan, probe_reports=[probe])
+    assert any(item.startswith("H_SOURCE_UNQUALIFIED") for item in readiness.blockers)
+
+
+def test_h_readiness_does_not_promote_lifecycle_probe_to_price_source():
+    base_plan = _plan(include_h=True)
+    price_source = base_plan.sources[0].model_copy(update={"historical_capable": True})
+    price_request = base_plan.requests[0]
+    lifecycle_source = _source(include_h=True).model_copy(
+        update={
+            "source_id": "lifecycle-source",
+            "source_kind": HistoricalSourceKind.LISTING_LIFECYCLE,
+            "adapter_id": "lifecycle-adapter",
+            "historical_capable": True,
+        }
+    )
+    lifecycle_request = _request(include_h=True).model_copy(
+        update={
+            "request_id": "lifecycle-request",
+            "source_id": lifecycle_source.source_id,
+            "source_kind": HistoricalSourceKind.LISTING_LIFECYCLE,
+            "adapter_id": lifecycle_source.adapter_id,
+            "artifact_kind": ShardArtifactKind.LISTING_LIFECYCLE,
+            "schema_version": "listing-lifecycle-v1",
+            "coverage_evidence_basis": CoverageEvidenceBasis.LIFECYCLE_INDEX,
+        }
+    )
+    plan = base_plan.model_copy(
+        update={
+            "sources": [price_source, lifecycle_source],
+            "requests": [price_request, lifecycle_request],
+        }
+    )
+    lifecycle_probe = SourceProbeReportV1.build(
+        report_id="probe-lifecycle",
+        plan_id=plan.plan_id,
+        request_id=lifecycle_request.request_id,
+        source_id=lifecycle_source.source_id,
+        adapter_id=lifecycle_request.adapter_id,
+        adapter_version="1",
+        source_kind=lifecycle_request.source_kind,
+        status=ProbeStatus.PASS,
+        started_at=datetime(2026, 1, 1, tzinfo=UTC),
+        finished_at=datetime(2026, 1, 1, 0, 0, 1, tzinfo=UTC),
+        account_entitlement=AccountEntitlement.CONFIRMED,
+        historical_capable=True,
+        terminal_coverage=CoverageEvidenceStatus.CONFIRMED,
+        action_coverage=CoverageEvidenceStatus.CONFIRMED,
+        license_evidence_uri=lifecycle_source.license_evidence_uri,
+        license_evidence_sha256=lifecycle_source.license_evidence_sha256,
+        observed_listing_ids=list(plan.target.listing_ids),
+        observed_start=plan.target.start_date,
+        observed_end=plan.target.end_date,
+        blockers=[],
+    )
+
+    readiness = build_readiness_report(plan, probe_reports=[lifecycle_probe])
     assert any(item.startswith("H_SOURCE_UNQUALIFIED") for item in readiness.blockers)
 
 
