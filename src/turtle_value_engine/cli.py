@@ -5,13 +5,34 @@ import json
 import os
 import sys
 import tempfile
+from collections.abc import Mapping
 from datetime import date, timedelta
 from pathlib import Path
 
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
+from turtle_value_engine.backtest import (
+    BacktestRunSpec,
+    BacktestWorkspace,
+    CalibrationObservation,
+    CalibrationSearchSpace,
+    ChronologicalSplit,
+    PortfolioPolicy,
+    run_backtest,
+    run_calibration,
+)
 from turtle_value_engine.calculations import CDCCalculationError
 from turtle_value_engine.config import ProfileLoadError, load_profile
+from turtle_value_engine.historical import (
+    HistoricalArtifactStore,
+    HistoricalDatasetManifest,
+    HistoricalDatasetValidationError,
+    HistoricalResearchArchiveError,
+    compile_backtest_manifest,
+    freeze_decision_snapshots,
+    reconcile_observations,
+    validate_historical_dataset,
+)
 from turtle_value_engine.input_loader import NormalizedInputLoadError, parse_normalized_input
 from turtle_value_engine.models import CDCInput, Company
 from turtle_value_engine.pipeline import (
@@ -91,6 +112,66 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help="explicit three-letter reporting currency",
     )
+
+    dataset_parser = subparsers.add_parser(
+        "dataset",
+        help="validate/freeze/report a source-aware offline historical dataset",
+    )
+    dataset_commands = dataset_parser.add_subparsers(dest="dataset_command", required=True)
+    dataset_validate = dataset_commands.add_parser("validate")
+    dataset_validate.add_argument("--manifest", required=True, type=Path)
+    dataset_validate.add_argument("--store", required=True, type=Path)
+    dataset_validate.add_argument("--require-production", action="store_true")
+    dataset_freeze = dataset_commands.add_parser("freeze")
+    dataset_freeze.add_argument("--manifest", required=True, type=Path)
+    dataset_freeze.add_argument("--store", required=True, type=Path)
+    dataset_freeze.add_argument("--output", type=Path, default=None)
+    dataset_freeze.add_argument("--require-production", action="store_true")
+    dataset_coverage = dataset_commands.add_parser("coverage")
+    dataset_coverage.add_argument("--manifest", required=True, type=Path)
+    dataset_coverage.add_argument("--store", required=True, type=Path)
+    dataset_coverage.add_argument("--require-production", action="store_true")
+    dataset_snapshot = dataset_commands.add_parser("snapshot")
+    dataset_snapshot.add_argument("--manifest", required=True, type=Path)
+    dataset_snapshot.add_argument("--store", required=True, type=Path)
+    dataset_snapshot.add_argument("--output", type=Path, default=None)
+    dataset_snapshot.add_argument("--require-production", action="store_true")
+    dataset_reconcile = dataset_commands.add_parser("reconcile")
+    dataset_reconcile.add_argument("--target-id", required=True)
+    dataset_reconcile.add_argument("--canonical", required=True, type=Path)
+    dataset_reconcile.add_argument("--independent", required=True, type=Path)
+    dataset_reconcile.add_argument("--canonical-source", required=True)
+    dataset_reconcile.add_argument("--independent-source", required=True)
+    dataset_reconcile.add_argument("--absolute-tolerance", required=True, type=float)
+    dataset_reconcile.add_argument("--relative-tolerance", required=True, type=float)
+    dataset_reconcile.add_argument("--report-id", default="reconciliation")
+    dataset_reconcile.add_argument("--output", type=Path, default=None)
+
+    backtest_parser = subparsers.add_parser(
+        "backtest",
+        help="run an existing offline signal/portfolio backtest from frozen inputs",
+    )
+    backtest_parser.add_argument("--manifest", required=True, type=Path)
+    backtest_parser.add_argument("--store", required=True, type=Path)
+    backtest_parser.add_argument("--run-spec", required=True, type=Path)
+    backtest_parser.add_argument("--snapshots", type=Path, default=None)
+    backtest_parser.add_argument("--policy", type=Path, default=None)
+    backtest_parser.add_argument("--workspace", type=Path, default=None)
+    backtest_parser.add_argument("--output", type=Path, default=None)
+    backtest_parser.add_argument("--require-production", action="store_true")
+
+    calibrate_parser = subparsers.add_parser(
+        "calibrate",
+        help="run proposal-only calibration against an explicit frozen dataset",
+    )
+    calibrate_parser.add_argument("--manifest", required=True, type=Path)
+    calibrate_parser.add_argument("--store", required=True, type=Path)
+    calibrate_parser.add_argument("--search-space", required=True, type=Path)
+    calibrate_parser.add_argument("--split", required=True, type=Path)
+    calibrate_parser.add_argument("--observations", required=True, type=Path)
+    calibrate_parser.add_argument("--base-profile-sha256", required=True)
+    calibrate_parser.add_argument("--output", type=Path, default=None)
+    calibrate_parser.add_argument("--require-production", action="store_true")
     return parser
 
 
@@ -176,6 +257,160 @@ def _run_prepare(args: argparse.Namespace) -> object:
     return normalized
 
 
+def _read_json(path: Path) -> object:
+    return json.loads(path.read_text(encoding="utf-8"), parse_constant=_reject_json_number)
+
+
+def _reject_json_number(value: str) -> None:
+    raise ValueError(f"invalid JSON numeric constant: {value}")
+
+
+def _write_optional(path: Path | None, result: object) -> None:
+    if path is None:
+        return
+    payload = _json_payload(result)
+    _atomic_write(
+        path,
+        (json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode(
+            "utf-8"
+        ),
+    )
+
+
+def _json_payload(result: object) -> object:
+    if isinstance(result, BaseModel):
+        return result.model_dump(mode="json", warnings=False)
+    if isinstance(result, Mapping):
+        return {key: _json_payload(value) for key, value in result.items()}
+    if isinstance(result, list):
+        return [
+            item.model_dump(mode="json", warnings=False)
+            if isinstance(item, BaseModel)
+            else item
+            for item in result
+        ]
+    return result
+
+
+def _load_historical_manifest_and_store(args: argparse.Namespace):
+    manifest = HistoricalDatasetManifest.model_validate(_read_json(args.manifest))
+    store = HistoricalArtifactStore(args.store)
+    return manifest, store
+
+
+def _run_dataset(args: argparse.Namespace) -> object:
+    if args.dataset_command in {"validate", "coverage", "freeze", "snapshot"}:
+        manifest, store = _load_historical_manifest_and_store(args)
+        require_production = bool(getattr(args, "require_production", False))
+        if args.dataset_command == "validate":
+            return validate_historical_dataset(
+                manifest,
+                store,
+                require_production=require_production,
+            )
+        if args.dataset_command == "coverage":
+            summary = validate_historical_dataset(
+                manifest,
+                store,
+                require_production=require_production,
+            )
+            return {
+                "validation": summary,
+                "coverage_reports": manifest.coverage_reports,
+            }
+        compiled = compile_backtest_manifest(
+            manifest,
+            store,
+            require_production=require_production,
+        )
+        if args.dataset_command == "freeze":
+            _write_optional(args.output, compiled)
+            return compiled
+        snapshots = freeze_decision_snapshots(compiled)
+        _write_optional(args.output, snapshots)
+        return snapshots
+    if args.dataset_command == "reconcile":
+        canonical_rows = _read_json(args.canonical)
+        independent_rows = _read_json(args.independent)
+        if not isinstance(canonical_rows, list) or not isinstance(independent_rows, list):
+            raise ValueError("reconciliation input files must contain JSON arrays")
+
+        def to_values(rows: list[object]) -> dict[tuple[str, date], float | None]:
+            values: dict[tuple[str, date], float | None] = {}
+            for row in rows:
+                if not isinstance(row, Mapping):
+                    raise ValueError("reconciliation rows must be JSON objects")
+                key = (str(row["listing_id"]), date.fromisoformat(str(row["date"])))
+                raw_value = row.get("value")
+                values[key] = None if raw_value is None else float(raw_value)
+            return values
+
+        report = reconcile_observations(
+            target_id=args.target_id,
+            canonical_source_id=args.canonical_source,
+            independent_source_id=args.independent_source,
+            canonical_values=to_values(canonical_rows),
+            independent_values=to_values(independent_rows),
+            absolute_tolerance=args.absolute_tolerance,
+            relative_tolerance=args.relative_tolerance,
+            report_id=args.report_id,
+        )
+        _write_optional(args.output, report)
+        return report
+    raise ValueError(f"unsupported dataset command: {args.dataset_command}")
+
+
+def _run_backtest_command(args: argparse.Namespace) -> object:
+    historical_manifest, store = _load_historical_manifest_and_store(args)
+    manifest = compile_backtest_manifest(
+        historical_manifest,
+        store,
+        require_production=args.require_production,
+    )
+    run_spec = BacktestRunSpec.model_validate(_read_json(args.run_spec))
+    if args.snapshots is None:
+        snapshots = freeze_decision_snapshots(manifest)
+    else:
+        raw_snapshots = _read_json(args.snapshots)
+        if not isinstance(raw_snapshots, list):
+            raise ValueError("--snapshots must contain a JSON array")
+        from turtle_value_engine.backtest import DecisionSnapshot
+
+        snapshots = [DecisionSnapshot.model_validate(item) for item in raw_snapshots]
+    policy = None
+    if args.policy is not None:
+        policy = PortfolioPolicy.model_validate(_read_json(args.policy))
+    workspace = BacktestWorkspace(args.workspace) if args.workspace is not None else None
+    result = run_backtest(manifest, run_spec, snapshots, policy=policy, workspace=workspace)
+    _write_optional(args.output, result)
+    return result
+
+
+def _run_calibration_command(args: argparse.Namespace) -> object:
+    historical_manifest, store = _load_historical_manifest_and_store(args)
+    manifest = compile_backtest_manifest(
+        historical_manifest,
+        store,
+        require_production=args.require_production,
+    )
+    search_space = CalibrationSearchSpace.model_validate(_read_json(args.search_space))
+    split = ChronologicalSplit.model_validate(_read_json(args.split))
+    raw_observations = _read_json(args.observations)
+    if not isinstance(raw_observations, list):
+        raise ValueError("--observations must contain a JSON array")
+    observations = [CalibrationObservation.model_validate(item) for item in raw_observations]
+    result = run_calibration(
+        manifest_id=manifest.dataset_id,
+        base_profile_id=search_space.base_profile_id,
+        base_profile_sha256=args.base_profile_sha256,
+        search_space=search_space,
+        split=split,
+        observations=observations,
+    )
+    _write_optional(args.output, result)
+    return result
+
+
 def main(argv: list[str] | None = None) -> int:
     """Run a CLI command and return a shell-compatible exit code."""
 
@@ -184,6 +419,12 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.command == "prepare":
             result = _run_prepare(args)
+        elif args.command == "dataset":
+            result = _run_dataset(args)
+        elif args.command == "backtest":
+            result = _run_backtest_command(args)
+        elif args.command == "calibrate":
+            result = _run_calibration_command(args)
         else:
             raw_input = args.input.read_bytes()
             profile = load_profile(args.profile, rules_dir=args.rules_dir)
@@ -224,9 +465,11 @@ def main(argv: list[str] | None = None) -> int:
         PreparationError,
         ValidationError,
         ValueError,
+        HistoricalDatasetValidationError,
+        HistoricalResearchArchiveError,
     ) as exc:
         print(f"tve: {exc}", file=sys.stderr)
         return 2
 
-    print(json.dumps(result.model_dump(mode="json"), ensure_ascii=False, indent=2))
+    print(json.dumps(_json_payload(result), ensure_ascii=False, indent=2))
     return 0
