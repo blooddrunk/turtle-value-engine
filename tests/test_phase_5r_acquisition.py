@@ -16,6 +16,7 @@ from turtle_value_engine.backtest import ListingLifecycle, Market, MarketBar, Pr
 from turtle_value_engine.cli import main
 from turtle_value_engine.historical import (
     AccountEntitlement,
+    AcquisitionReadinessReportV1,
     ConfiguredHttpSourceAdapter,
     CoverageClaim,
     CoverageEvidenceBasis,
@@ -315,6 +316,19 @@ def test_plan_rejects_source_coverage_outside_target():
     with pytest.raises(ValueError, match="outside target"):
         HistoricalAcquisitionPlanV1(
             plan_id="out-of-scope-source-plan",
+            plan_version="1",
+            created_at=datetime(2026, 1, 1, tzinfo=UTC),
+            target=_target(),
+            sources=[source],
+            requests=[_request()],
+        )
+
+
+def test_plan_rejects_request_dates_outside_source_coverage():
+    source = _source().model_copy(update={"coverage_end": date(2021, 12, 31)})
+    with pytest.raises(ValueError, match="outside declared source coverage"):
+        HistoricalAcquisitionPlanV1(
+            plan_id="out-of-range-source-plan",
             plan_version="1",
             created_at=datetime(2026, 1, 1, tzinfo=UTC),
             target=_target(),
@@ -1099,6 +1113,50 @@ def test_h_target_readiness_fails_closed_without_qualified_probe():
     )
     assert any(item.startswith("H_SOURCE_UNQUALIFIED") for item in readiness.blockers)
     assert readiness.personal_research_ready is False
+
+
+def test_readiness_rejects_unverified_source_authority_and_history():
+    source = _source().model_copy(
+        update={
+            "authority": "UNKNOWN",
+            "historical_capable": False,
+        }
+    )
+    plan = _plan().model_copy(update={"sources": [source]})
+    readiness = build_readiness_report(plan)
+    assert "SOURCE_AUTHORITY_UNVERIFIED: prices-source" in readiness.blockers
+    assert "HISTORICAL_CAPABILITY_UNVERIFIED: prices-source" in readiness.blockers
+    assert readiness.personal_research_ready is False
+
+
+def test_readiness_report_rejects_ready_flags_with_blockers():
+    with pytest.raises(ValueError, match="raw or authorization blockers"):
+        AcquisitionReadinessReportV1.build(
+            report_id="readiness-invalid",
+            plan_id="plan",
+            generated_at=datetime(2026, 1, 1, tzinfo=UTC),
+            readiness="ACQUISITION_READY",
+            acquisition_ready=True,
+            blockers=["RAW_BLOB_INVALID: raw-1"],
+        )
+    with pytest.raises(ValueError, match="cannot carry blockers"):
+        AcquisitionReadinessReportV1.build(
+            report_id="readiness-invalid-personal",
+            plan_id="plan",
+            generated_at=datetime(2026, 1, 1, tzinfo=UTC),
+            readiness="PERSONAL_RESEARCH_READY",
+            acquisition_ready=True,
+            personal_research_ready=True,
+            blockers=["SOURCE_PROBE_FAILED: source"],
+        )
+    with pytest.raises(ValueError, match="NOT_READY cannot carry"):
+        AcquisitionReadinessReportV1.build(
+            report_id="readiness-invalid-not-ready",
+            plan_id="plan",
+            generated_at=datetime(2026, 1, 1, tzinfo=UTC),
+            readiness="NOT_READY",
+            acquisition_ready=True,
+        )
 
 
 def test_personal_readiness_requires_declared_coverage():

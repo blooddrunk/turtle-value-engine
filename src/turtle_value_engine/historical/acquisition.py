@@ -519,6 +519,14 @@ class HistoricalAcquisitionPlanV1(BaseModel):
                     + request.request_id
                 )
             if (
+                request.start_date < source.coverage_start
+                or request.end_date > source.coverage_end
+            ):
+                raise ValueError(
+                    "request date range is outside declared source coverage: "
+                    + request.request_id
+                )
+            if (
                 request.start_date < self.target.start_date
                 or request.end_date > self.target.end_date
             ):
@@ -963,20 +971,40 @@ class AcquisitionReadinessReportV1(BaseModel):
     def validate_report(self) -> AcquisitionReadinessReportV1:
         if self.generated_at.tzinfo is None:
             raise ValueError("readiness generated_at must be timezone-aware")
+        if self.readiness == ReadinessLevel.NOT_READY and (
+            self.acquisition_ready
+            or self.personal_research_ready
+            or self.production_eligible
+        ):
+            raise ValueError("NOT_READY cannot carry a ready flag")
         if self.production_eligible and self.readiness != ReadinessLevel.PRODUCTION_ELIGIBLE:
             raise ValueError("production_eligible requires PRODUCTION_ELIGIBLE readiness")
         if self.personal_research_ready and not self.acquisition_ready:
             raise ValueError("personal research readiness requires acquisition readiness")
-        if self.readiness is ReadinessLevel.ACQUISITION_READY and not self.acquisition_ready:
+        if self.readiness == ReadinessLevel.ACQUISITION_READY and not self.acquisition_ready:
             raise ValueError("ACQUISITION_READY requires acquisition_ready")
-        if self.readiness is ReadinessLevel.PERSONAL_RESEARCH_READY and not (
+        if self.readiness == ReadinessLevel.PERSONAL_RESEARCH_READY and not (
             self.personal_research_ready
         ):
             raise ValueError("PERSONAL_RESEARCH_READY requires personal_research_ready")
-        if self.readiness is ReadinessLevel.PRODUCTION_ELIGIBLE and not (
+        if self.readiness == ReadinessLevel.PRODUCTION_ELIGIBLE and not (
             self.production_eligible
         ):
             raise ValueError("PRODUCTION_ELIGIBLE requires production_eligible")
+        if self.personal_research_ready and self.blockers:
+            raise ValueError("personal research readiness cannot carry blockers")
+        if self.production_eligible and self.blockers:
+            raise ValueError("production eligibility cannot carry blockers")
+        acquisition_blockers = (
+            "RAW_",
+            "SOURCE_TERMS_UNVERIFIED",
+            "SOURCE_LICENSE_",
+            "ACCESS_GRANT_UNVERIFIED",
+        )
+        if self.acquisition_ready and any(
+            blocker.startswith(acquisition_blockers) for blocker in self.blockers
+        ):
+            raise ValueError("acquisition readiness cannot carry raw or authorization blockers")
         if self.report_sha256 != _model_sha256(self, exclude={"report_sha256"}):
             raise ValueError("readiness report_sha256 does not match report content")
         return self
@@ -3661,6 +3689,9 @@ def build_readiness_report(
             blockers.append("ACCESS_GRANT_UNVERIFIED: " + source.source_id)
         if source.authority in {SourceAuthority.UNKNOWN, SourceAuthority.FIXTURE}:
             warnings.append("SOURCE_AUTHORITY_UNVERIFIED: " + source.source_id)
+            blockers.append("SOURCE_AUTHORITY_UNVERIFIED: " + source.source_id)
+        if source.is_current_snapshot:
+            blockers.append("CURRENT_SNAPSHOT_UNUSABLE: " + source.source_id)
     requests_by_id = {request.request_id: request for request in plan.requests}
     scoped_probe_reports: list[SourceProbeReportV1] = []
     for report in probe_reports:
@@ -3680,6 +3711,14 @@ def build_readiness_report(
             blockers.extend(report.blockers or ["SOURCE_PROBE_FAILED: " + report.source_id])
         elif report.blockers:
             blockers.extend(report.blockers)
+    qualified_historical_sources = {
+        report.source_id
+        for report in scoped_probe_reports
+        if report.status == ProbeStatus.PASS and report.historical_capable
+    }
+    for source in plan.sources:
+        if not source.historical_capable and source.source_id not in qualified_historical_sources:
+            blockers.append("HISTORICAL_CAPABILITY_UNVERIFIED: " + source.source_id)
     target_h = {
         listing_id
         for listing_id in plan.target.listing_ids

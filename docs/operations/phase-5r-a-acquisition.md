@@ -113,6 +113,9 @@ quarantine 路径，按来源条款要求清理本地、备份和临时 `.part` 
   许可状态证据缺失。
 - `SOURCE_LICENSE_PROHIBITED`：来源明确禁止当前存储/研究路径。
 - `ACCESS_GRANT_UNVERIFIED`：受限来源缺少非秘密个人访问授权引用。
+- `SOURCE_AUTHORITY_UNVERIFIED`：来源 authority 仍是未知或仅为测试 fixture。
+- `HISTORICAL_CAPABILITY_UNVERIFIED`：来源尚未证明提供历史数据，而非当前快照。
+- `CURRENT_SNAPSHOT_UNUSABLE`：当前快照不能替代历史来源。
 
 这些 blocker 不能通过要求机构商业订阅、手工整理数据、使用当前成分股或
 放宽既有 `--require-production` 校验来解决。
