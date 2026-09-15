@@ -2869,7 +2869,7 @@ class HistoricalAcquisitionService:
             raise CredentialUnavailableError(
                 "built-in live transport requires EnvironmentCredentialResolver"
             )
-        environment_references: list[CredentialReferenceV1] = []
+        environment_references: dict[str, CredentialReferenceV1] = {}
         for request in plan.requests:
             reference = request.credential_ref
             if reference is None:
@@ -2879,13 +2879,15 @@ class HistoricalAcquisitionService:
                     "built-in live transport accepts only ENVIRONMENT credential references: "
                     + request.request_id
                 )
-            environment_references.append(reference)
+            environment_references[reference.reference_id] = reference
         if not environment_references:
             raise NetworkDisabledError(
                 "live network requires a non-empty ENVIRONMENT credential reference "
                 "and --network=allow"
             )
-        for reference in environment_references:
+        missing_references: list[str] = []
+        resolved_any = False
+        for reference in environment_references.values():
             try:
                 value = self.credentials.resolve(reference)
             except Exception as exc:
@@ -2898,7 +2900,16 @@ class HistoricalAcquisitionService:
                     + reference.reference_id
                 )
             if value:
-                return
+                resolved_any = True
+            elif reference.required:
+                missing_references.append(reference.reference_id)
+        if missing_references:
+            raise CredentialUnavailableError(
+                "required environment credentials are unavailable for live network access: "
+                + ",".join(sorted(missing_references))
+            )
+        if resolved_any:
+            return
         raise CredentialUnavailableError(
             "required environment credential is unavailable for live network access"
         )

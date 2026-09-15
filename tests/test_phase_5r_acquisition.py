@@ -233,6 +233,48 @@ def test_default_live_transport_accepts_available_environment_reference(monkeypa
     )
 
 
+def test_default_live_transport_preflights_all_required_environment_references(monkeypatch):
+    first_reference = CredentialReferenceV1(
+        reference_id="first-env-key",
+        kind="ENVIRONMENT",
+        name="TVE_FIRST_SOURCE_KEY_FOR_TEST",
+    )
+    second_reference = CredentialReferenceV1(
+        reference_id="second-env-key",
+        kind="ENVIRONMENT",
+        name="TVE_SECOND_SOURCE_KEY_FOR_TEST",
+    )
+    first_source = _source().model_copy(update={"source_id": "first-source"})
+    second_source = _source().model_copy(update={"source_id": "second-source"})
+    first_request = _request().model_copy(
+        update={
+            "request_id": "first-request",
+            "source_id": first_source.source_id,
+            "credential_ref": first_reference,
+        }
+    )
+    second_request = _request().model_copy(
+        update={
+            "request_id": "second-request",
+            "source_id": second_source.source_id,
+            "credential_ref": second_reference,
+        }
+    )
+    plan = _plan().model_copy(
+        update={
+            "sources": [first_source, second_source],
+            "requests": [first_request, second_request],
+            "credential_references": [first_reference, second_reference],
+        }
+    )
+    monkeypatch.setenv(first_reference.name, "test-only-value")
+    with pytest.raises(CredentialUnavailableError, match="second-env-key"):
+        HistoricalAcquisitionService()._require_network_authorization(
+            plan,
+            network_allowed=True,
+        )
+
+
 def test_default_live_transport_rejects_non_environment_credential_reference():
     reference = CredentialReferenceV1(
         reference_id="keyring-source-key",
