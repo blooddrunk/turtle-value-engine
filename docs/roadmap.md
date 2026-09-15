@@ -5037,7 +5037,7 @@ calibration holdout guard and remaining gaps are recorded in
 [`docs/goals/phase-5-backtesting-calibration.md`](goals/phase-5-backtesting-calibration.md)
 and [`docs/architecture/backtesting-and-calibration.md`](architecture/backtesting-and-calibration.md).
 
-## Phase 5R — Production historical dataset and research archive readiness (ACTIVE)
+## Phase 5R — Production historical dataset and research archive readiness (ACTIVE / PARTIAL)
 
 Phase 5R extends the completed Phase 5 integration boundary with a declared,
 bounded A/H production target scope, source and coverage registry,
@@ -5051,6 +5051,30 @@ The active work package and exit criteria are recorded in
 [`docs/goals/phase-5r-production-historical-corpus.md`](goals/phase-5r-production-historical-corpus.md).
 Phase 5 remains COMPLETE at its original synthetic/integration boundary; this
 milestone is additive and must not rewrite `strict-v1` or calibration semantics.
+
+### Current status and next stage
+
+The source-aware contracts, content-addressed frozen shards, offline
+compiler, coverage/reconciliation reports and point-in-time research archive
+validator are implemented. The production acquisition boundary is not yet
+implemented, so the checked-in fixture is not a production A/H claim and this
+milestone remains `ACTIVE / PARTIAL`.
+
+The next stage is **Phase 5R-A — Production source acquisition and compiler
+ingestion**. The project, rather than the user, must acquire selected
+historical sources through explicit opt-in adapters, persist raw responses and
+licenses/access grants, and compile them into the existing shards. The first
+scope is historical data needed for replay: membership and listing lifecycle,
+prices, corporate actions, benchmark, FX, filings and frozen research.
+Real-time quotes are not a Phase 5R prerequisite; they belong to Phase 6's
+watchlist/event-monitoring boundary.
+
+Phase 5R-A exit gates are: a named bounded target; source-specific coverage
+and licensing evidence; no current-constituent substitution; complete
+listing/lifecycle and terminal handling; independent return reconciliation;
+point-in-time-valid archived research; deterministic offline replay; and
+`--require-production` passing for that declared scope. Credentials remain
+outside Git and ordinary CI remains network/model independent.
 
 ---
 

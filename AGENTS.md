@@ -129,6 +129,15 @@ No provider or
 live model is invoked by dataset validation, freezing, snapshotting, backtest
 or calibration commands.
 
+Current Phase 5R status is `ACTIVE / PARTIAL`: the offline replay and
+validation boundary is implemented, but the project-owned opt-in acquisition
+and raw-cache-to-shard ingestion path for production historical sources is
+not yet closed. This is not a requirement for the user to manually assemble
+market data. Phase 5R primarily needs historical data; real-time/event-driven
+acquisition belongs to Phase 6. The next implementation stage must add the
+selected source adapters, credential boundary, raw provenance and deterministic
+compiler ingestion while keeping ordinary CI offline and model-independent.
+
 ## 5. Working with company data
 
 Keep networked preparation and deterministic analysis separate:

@@ -1,6 +1,6 @@
 # Phase 5R — Production Historical Dataset and Research Archive Readiness
 
-Status: **ACTIVE**
+Status: **ACTIVE / PARTIAL**
 
 ## Objective
 
@@ -14,6 +14,51 @@ Phase 5 remains complete at its documented integration boundary. Phase 5R is
 additive: it introduces source, coverage, shard, compiler and research-archive
 contracts without changing `strict-v1`, deterministic investment semantics,
 or the Phase 5 signal/portfolio/calibration rules.
+
+## Current project status and next stage — 2026-09-15
+
+The repository has completed the Phase 5R replay and validation boundary, but
+has not completed the production acquisition boundary. This is an
+implementation gap, not a requirement that the project owner manually gather
+or upload market data.
+
+The checked-in corpus is deliberately a compact contract fixture. It proves
+offline shard verification, historical listing/lifecycle semantics,
+point-in-time research validation, reconciliation and fail-closed behavior;
+it does not claim production A/H coverage. The current goal therefore remains
+`ACTIVE / PARTIAL`.
+
+The next stage is **Phase 5R-A — Production source acquisition and compiler
+ingestion**. It must make the project responsible for obtaining data through
+explicitly selected sources and caching it, while keeping credentials and
+restricted content outside Git. The owner should choose a source/access
+policy, not manually assemble bars or research records. The stage is planned
+as follows:
+
+1. **Source decision and scope**: select a bounded A/H target and date range;
+   classify each required source category as official/public, licensed
+   internal, or unavailable; record terms and access-grant evidence. A
+   real-time feed is not required for this stage.
+2. **Networked acquisition boundary**: add opt-in provider adapters for the
+   selected historical universe/lifecycle, prices, actions, benchmark, FX and
+   filings sources. Acquisition must record raw responses, request parameters,
+   retrieval time, source version and content hashes in the existing cache
+   boundary. Credentials come from the local environment or an external
+   secret store and are never committed or sent through chat.
+3. **Deterministic compiler ingestion**: convert acquired raw artifacts into
+   the existing typed JSONL shards and research archive references; produce
+   coverage, missingness and reconciliation reports; reject current-constituent
+   substitution, silent fills, bad hashes and point-in-time violations.
+4. **Real-data acceptance and closure**: run the frozen A/H adversarial
+   corpus plus an independent real-data sample, then mark this goal COMPLETE
+   only for the declared target whose coverage, licensing and replay evidence
+   pass. If a source cannot support the declared scope, narrow the scope or
+   retain `ACTIVE / PARTIAL` with the precise blocker.
+
+This stage is intentionally separate from Phase 6. Phase 6 will consume the
+same provider/cache foundation for watchlist state, event cursors and
+real-time/event-driven re-analysis; it should not be used as a substitute for
+historical backtest data acquisition.
 
 ## Declared target and conservative claim policy
 
@@ -169,15 +214,17 @@ fabricated terminal value, 1 frozen archive reference, and a 2-row
 independent-reference reconciliation that passes its fixture tolerance. These
 are replay/contract metrics, not market-wide coverage metrics.
 
-The remaining production blocker is precise: this repository does not contain
-an authoritative, licensed and redistributable A/H historical source corpus
-with complete membership, lifecycle, price/action, benchmark, FX and filing
-coverage for a declared market-wide target. The compiler therefore reports
-`production_eligible=false` and `--require-production` fails closed. The
-smallest decision needed for closure is a bounded source/access/licensing
-choice (or an explicitly narrower target for which those artifacts and
-coverage reports can be supplied). Phase 5R remains ACTIVE until that choice
-and evidence exist; the Phase 6 goal file is intentionally not created yet.
+The remaining production blocker is precise: this repository does not yet
+implement an opt-in acquisition and raw-cache path that can obtain an
+authoritative or clearly documented licensed A/H historical source corpus and
+compile it into the existing production manifest. The compiler therefore
+reports `production_eligible=false` and `--require-production` fails closed.
+The smallest decision needed for the next stage is a bounded source/access
+choice (or an explicitly narrower target), after which the project should
+acquire and compile the data itself. A manual data handoff may be used as a
+temporary test input, but it is not the intended production solution. Phase
+5R remains `ACTIVE / PARTIAL` until the acquisition path and its evidence
+exist; the Phase 6 goal file is intentionally not created yet.
 
 ### Source-access review — 2026-09-15
 
