@@ -13,9 +13,11 @@ import pytest
 from turtle_value_engine.backtest import ListingLifecycle, Market, MarketBar, PriceBasis
 from turtle_value_engine.cli import main
 from turtle_value_engine.historical import (
+    AccountEntitlement,
     ConfiguredHttpSourceAdapter,
     CoverageClaim,
     CoverageEvidenceBasis,
+    CoverageEvidenceStatus,
     CredentialReferenceV1,
     CredentialUnavailableError,
     HistoricalAcquisitionPlanV1,
@@ -36,6 +38,7 @@ from turtle_value_engine.historical import (
     NetworkDisabledError,
     NetworkResponse,
     OfficialFilingDocumentAdapter,
+    ProbeStatus,
     RawAcquisitionBatchManifestV1,
     RawArtifactReceiptV1,
     RawBlobError,
@@ -44,6 +47,7 @@ from turtle_value_engine.historical import (
     ReconciliationComparison,
     ResilientNetworkTransport,
     ShardArtifactKind,
+    SourceProbeReportV1,
     build_coverage_report,
     build_readiness_report,
 )
@@ -969,6 +973,49 @@ def test_personal_readiness_requires_declared_coverage():
     assert "PERSONAL_COVERAGE_UNVERIFIED: PRICES:A1" in readiness.blockers
     assert "PERSONAL_COVERAGE_UNVERIFIED: PRICES:H1" in readiness.blockers
     assert readiness.personal_research_ready is False
+
+
+def test_h_readiness_requires_probe_to_observe_every_target_h_listing():
+    target = _target(include_h=True).model_copy(
+        update={
+            "listing_ids": ["A1", "H1", "H2"],
+            "listing_markets": {"A1": Market.A, "H1": Market.H, "H2": Market.H},
+            "calendar_ids": {"A1": "A:SSE", "H1": "H:HKEX", "H2": "H:HKEX"},
+        }
+    )
+    source = _source(include_h=True).model_copy(
+        update={"coverage_listing_ids": ["A1", "H1", "H2"]}
+    )
+    request = _request(include_h=True).model_copy(
+        update={"listing_ids": ["A1", "H1", "H2"]}
+    )
+    plan = _plan(include_h=True).model_copy(
+        update={"target": target, "sources": [source], "requests": [request]}
+    )
+    probe = SourceProbeReportV1.build(
+        report_id="probe-prices",
+        plan_id=plan.plan_id,
+        request_id=request.request_id,
+        source_id=source.source_id,
+        adapter_id=request.adapter_id,
+        adapter_version="1",
+        source_kind=request.source_kind,
+        status=ProbeStatus.PASS,
+        started_at=datetime(2026, 1, 1, tzinfo=UTC),
+        finished_at=datetime(2026, 1, 1, 0, 0, 1, tzinfo=UTC),
+        account_entitlement=AccountEntitlement.CONFIRMED,
+        historical_capable=True,
+        terminal_coverage=CoverageEvidenceStatus.CONFIRMED,
+        action_coverage=CoverageEvidenceStatus.CONFIRMED,
+        license_evidence_uri=source.license_evidence_uri,
+        license_evidence_sha256=source.license_evidence_sha256,
+        observed_listing_ids=["A1", "H1"],
+        observed_start=plan.target.start_date,
+        observed_end=plan.target.end_date,
+        blockers=[],
+    )
+    readiness = build_readiness_report(plan, probe_reports=[probe])
+    assert any(item.startswith("H_SOURCE_UNQUALIFIED") for item in readiness.blockers)
 
 
 def test_production_coverage_unions_market_scoped_sources_by_listing():

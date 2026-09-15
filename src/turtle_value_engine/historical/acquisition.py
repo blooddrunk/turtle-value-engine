@@ -3661,7 +3661,7 @@ def build_readiness_report(
             and report.action_coverage == CoverageEvidenceStatus.CONFIRMED
             and report.license_evidence_uri is not None
             and report.license_evidence_sha256 is not None
-            and target_h.intersection(report.observed_listing_ids)
+            and target_h.issubset(set(report.observed_listing_ids))
             and report.observed_start is not None
             and report.observed_end is not None
             and report.observed_start <= plan.target.start_date
