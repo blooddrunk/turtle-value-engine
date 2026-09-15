@@ -42,7 +42,10 @@ corporate action 完整性或合法自动访问时，系统输出
 `H_SOURCE_UNQUALIFIED`，不会改用机构源、当前快照或 scraping workaround。
 官方 filing 适配器可接入现有的 discovery/cache 回调，按 listing、日期和文件类型
 自动选择记录；`filing_ids` 仅是已冻结回放/测试的兼容输入，不是生产获取时要求操作者
-手工整理的清单。
+手工整理的清单。它会把本次请求只覆盖所选官方文件的事实记录为
+`FILING_SCOPE_LIMITED` warning，而不是把一个合法的最小 filing 样本伪装成完整
+历史 filing index；若要宣称 category `COMPLETE`，仍必须提供显式 source-scope
+coverage evidence。
 
 ## 3. Probe、获取与编译
 

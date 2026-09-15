@@ -1936,7 +1936,7 @@ class HithinkMarketDumpAdapter:
         cls,
         request: HistoricalAcquisitionRequestV1,
         body: bytes,
-    ) -> tuple[date, date, list[str]]:
+    ) -> tuple[date, date, list[str], dict[str, tuple[date, date]]]:
         """Inspect a dump without retaining the expiring download URL.
 
         Probe must establish the actual response span and listing coverage;
@@ -1970,6 +1970,7 @@ class HithinkMarketDumpAdapter:
 
         observed_dates: set[date] = set()
         observed_listings: set[str] = set()
+        observed_dates_by_listing: dict[str, set[date]] = defaultdict(set)
         columns = (
             ["thscode", "ex_date_ms", "currency"]
             if dump_type == "adjustment-factors"
@@ -2007,13 +2008,18 @@ class HithinkMarketDumpAdapter:
                         )
                     observed_listings.add(listing_id)
                     observed_dates.add(observation_date)
+                    observed_dates_by_listing[listing_id].add(observation_date)
         except HistoricalIngestionError:
             raise
         except Exception as exc:
             raise HistoricalIngestionError("Hithink dump Parquet rows are invalid") from exc
         if not observed_dates or not observed_listings:
             raise HistoricalIngestionError("Hithink dump Parquet contains no observations")
-        return min(observed_dates), max(observed_dates), sorted(observed_listings)
+        observed_ranges = {
+            listing_id: (min(dates), max(dates))
+            for listing_id, dates in observed_dates_by_listing.items()
+        }
+        return min(observed_dates), max(observed_dates), sorted(observed_listings), observed_ranges
 
     def acquire(
         self,
@@ -2070,10 +2076,12 @@ class HithinkMarketDumpAdapter:
             )
             if data is None:
                 raise HistoricalSourceSchemaError("Hithink response contained no data artifact")
-            observed_start, observed_end, observed_listing_ids = self._inspect_parquet_dump(
-                request,
-                data.body,
-            )
+            (
+                observed_start,
+                observed_end,
+                observed_listing_ids,
+                observed_ranges,
+            ) = self._inspect_parquet_dump(request, data.body)
             finished = _utc_now(clock)
         except CredentialUnavailableError as exc:
             finished = _utc_now(clock)
@@ -2111,8 +2119,15 @@ class HithinkMarketDumpAdapter:
                 ),
                 blockers=[str(exc)],
             )
+        uncovered_listings = [
+            listing_id
+            for listing_id in request.listing_ids
+            if listing_id not in observed_ranges
+            or observed_ranges[listing_id][0] > request.start_date
+            or observed_ranges[listing_id][1] < request.end_date
+        ]
         historical_capable = (
-            set(request.listing_ids).issubset(set(observed_listing_ids))
+            not uncovered_listings
             and observed_start <= request.start_date
             and observed_end >= request.end_date
         )
@@ -2127,10 +2142,15 @@ class HithinkMarketDumpAdapter:
             )
         blockers = []
         if not historical_capable:
-            blockers.append(
+            blocker = (
                 "HISTORICAL_CAPABILITY_UNVERIFIED: observed Hithink dump does not cover "
                 "every requested listing and date"
             )
+            if uncovered_listings and (
+                observed_start <= request.start_date and observed_end >= request.end_date
+            ):
+                blocker += ": " + ",".join(sorted(uncovered_listings))
+            blockers.append(blocker)
         return SourceProbeReportV1.build(
             report_id=f"probe-{request.request_id}",
             plan_id=plan_id,
@@ -2546,7 +2566,7 @@ class OfficialFilingDocumentAdapter:
             account_entitlement=AccountEntitlement.CONFIRMED,
             historical_capable=True,
             terminal_coverage=CoverageEvidenceStatus.UNVERIFIED,
-            blockers=[
+            warnings=[
                 "FILING_SCOPE_LIMITED: probe confirms only supplied official filing "
                 "documents, not complete historical filing coverage"
             ],

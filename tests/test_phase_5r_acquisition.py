@@ -1412,14 +1412,26 @@ def test_official_filing_documents_compile_to_hash_and_locator_shard(tmp_path: P
         sources=[source],
         requests=[request],
     )
+    adapter = OfficialFilingDocumentAdapter(
+        downloader,
+        {filing.filing_id: filing},
+    )
+    probe = adapter.probe(
+        request,
+        transport=FakeTransport([]),
+        credentials=MappingCredentialResolver({}),
+        plan_id=plan.plan_id,
+        clock=lambda: datetime(2026, 1, 2, tzinfo=UTC),
+    )
+    assert probe.status == ProbeStatus.PASS
+    assert probe.blockers == []
+    assert probe.warnings == [
+        "FILING_SCOPE_LIMITED: probe confirms only supplied official filing "
+        "documents, not complete historical filing coverage"
+    ]
     raw_store = RawBlobStore(tmp_path / "raw")
     acquired = HistoricalAcquisitionService(
-        {
-            "official-filing-documents": OfficialFilingDocumentAdapter(
-                downloader,
-                {filing.filing_id: filing},
-            )
-        },
+        {"official-filing-documents": adapter},
         transport=FakeTransport([]),
         clock=lambda: datetime(2026, 1, 2, tzinfo=UTC),
     ).acquire(plan, raw_store=raw_store, network_allowed=True)
@@ -1934,6 +1946,87 @@ def test_hithink_probe_records_observed_span_and_listing_coverage(monkeypatch):
         "delisting, suspension or terminal economics"
     )
     assert warning in readiness.warnings
+
+
+def test_hithink_probe_requires_each_requested_listing_span(monkeypatch):
+    class PartialBatch:
+        def to_pydict(self):
+            return {
+                "thscode": [
+                    "600000.SH",
+                    "600000.SH",
+                    "600001.SH",
+                    "600001.SH",
+                ],
+                "currency": ["CNY"] * 4,
+                "interval": ["1d"] * 4,
+                "adjusted": ["none"] * 4,
+                "date_ms": [
+                    int(datetime(2020, 1, 1, tzinfo=UTC).timestamp() * 1000),
+                    int(datetime(2022, 1, 2, tzinfo=UTC).timestamp() * 1000),
+                    int(datetime(2021, 1, 1, tzinfo=UTC).timestamp() * 1000),
+                    int(datetime(2021, 12, 31, tzinfo=UTC).timestamp() * 1000),
+                ],
+            }
+
+    class PartialParquetFile:
+        schema_arrow = SimpleNamespace(names=sorted(HithinkMarketDumpAdapter._DAILY_K_COLUMNS))
+
+        def __init__(self, _body):
+            pass
+
+        def iter_batches(self, *, columns, batch_size):
+            assert columns == ["thscode", "currency", "interval", "adjusted", "date_ms"]
+            assert batch_size == 65_536
+            return iter((PartialBatch(),))
+
+    fake_parquet = ModuleType("pyarrow.parquet")
+    fake_parquet.ParquetFile = PartialParquetFile
+    fake_pyarrow = ModuleType("pyarrow")
+    fake_pyarrow.parquet = fake_parquet
+    monkeypatch.setitem(sys.modules, "pyarrow", fake_pyarrow)
+    monkeypatch.setitem(sys.modules, "pyarrow.parquet", fake_parquet)
+
+    credential = CredentialReferenceV1(
+        reference_id="hithink-partial-key",
+        kind="INJECTED",
+        required=True,
+    )
+    request = _request(adapter_id="hithink-market-dumps").model_copy(
+        update={
+            "listing_ids": ["SH600000", "SH600001"],
+            "parameters": {"dump_type": "daily-k"},
+            "credential_ref": credential,
+        }
+    )
+    report = HithinkMarketDumpAdapter().probe(
+        request,
+        transport=FakeTransport(
+            [
+                NetworkResponse(
+                    200,
+                    {"Content-Type": "application/json"},
+                    b'{"code":0,"data":{"presigned_url":"https://signed.example.test/file"}}',
+                    "https://fuyao.aicubes.cn/api/dump/market-dumps/daily-k/download-url",
+                ),
+                NetworkResponse(
+                    200,
+                    {"Content-Type": "application/octet-stream"},
+                    b"partial-parquet",
+                    "https://signed.example.test/file",
+                ),
+            ]
+        ),
+        credentials=MappingCredentialResolver({"hithink-partial-key": "probe-only"}),
+        plan_id="hithink-partial-plan",
+        clock=lambda: datetime(2026, 1, 1, tzinfo=UTC),
+    )
+
+    assert report.historical_capable is False
+    assert report.blockers == [
+        "HISTORICAL_CAPABILITY_UNVERIFIED: observed Hithink dump does not cover "
+        "every requested listing and date: SH600001"
+    ]
 
 
 def test_h_target_readiness_fails_closed_without_qualified_probe():

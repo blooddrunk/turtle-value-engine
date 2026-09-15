@@ -80,6 +80,12 @@ the local retrieval-finished timestamp is the conservative availability bound,
 not an inferred source-publication timestamp. See the Chinese-first operator
 [runbook](../operations/phase-5r-a-acquisition.md).
 
+The official filing probe reports `FILING_SCOPE_LIMITED` as a warning when it
+confirms only the requested document sample. This keeps the required
+per-market filing sample usable without turning it into a claim of complete
+historical filing coverage; a `COMPLETE` filing category still requires an
+explicit source-scope coverage basis.
+
 `tve historical accept` is the offline A6 audit boundary. It reads only a
 persisted batch, readiness/probe report, raw CAS, artifact store and manifest;
 it repeats compilation and checks manifest/shard identities, target scope,
