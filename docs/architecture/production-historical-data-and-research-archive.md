@@ -47,6 +47,10 @@ Coverage is recorded per listing and period. Expected sessions must be
 supplied by a declared calendar source; without them the report is `UNKNOWN`.
 Missing sessions, suspended rows and unresolved terminal outcomes remain
 visible in reports and manifest missingness instead of being filled.
+`HistoricalValidationSummary.production_blockers` explains why a bounded
+fixture is not eligible for a production claim even when ordinary replay
+validation is otherwise successful; `--require-production` turns that state
+into a command failure.
 
 ## Shard storage decision
 
