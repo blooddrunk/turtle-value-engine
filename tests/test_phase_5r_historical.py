@@ -578,6 +578,30 @@ def test_coverage_without_authoritative_expected_sessions_is_unknown(tmp_path):
     assert {item.status for item in report.records} == {CoverageClaim.UNKNOWN}
 
 
+def test_unknown_coverage_without_source_ids_remains_explicit_not_dangling(tmp_path):
+    manifest, store = _build_manifest(tmp_path)
+    report = build_coverage_report(
+        target=manifest.target,
+        source_kind=HistoricalSourceKind.FX,
+        expected_sessions_by_listing=None,
+        observed_sessions_by_listing={},
+        source_artifact_ids_by_listing={},
+        report_id="unknown-fx-coverage",
+    )
+    rebuilt = HistoricalDatasetManifest.build(
+        dataset_id=manifest.dataset_id,
+        dataset_version=manifest.dataset_version,
+        target=manifest.target,
+        source_descriptors=manifest.source_descriptors,
+        shards=manifest.shards,
+        coverage_reports=[*manifest.coverage_reports, report],
+        limitations=manifest.limitations,
+    )
+    summary = validate_historical_dataset(rebuilt, store)
+    assert summary.valid is True
+    assert summary.production_eligible is False
+
+
 def test_research_archive_requires_frozen_pit_artifacts_and_locators():
     archive = _archive()
     assert validate_research_archive(archive).archive_id == "archive-1"
@@ -589,6 +613,30 @@ def test_research_archive_requires_frozen_pit_artifacts_and_locators():
     unknown = _archive(available_at=None)
     with pytest.raises(ValueError, match="unknown availability"):
         validate_research_archive(unknown)
+
+
+def test_research_archive_rejects_a_used_artifact_outside_decision_scope():
+    archive = _archive()
+    outside = archive.artifacts[0].model_copy(
+        update={"artifact_id": "bq-a1-outside", "analysis_id": "other-analysis"}
+    )
+    changed = HistoricalResearchArchiveManifest.build(
+        archive_id="outside-scope",
+        target_id=archive.target_id,
+        artifacts=[archive.artifacts[0], outside],
+        decision_bindings=[
+            archive.decision_bindings[0].model_copy(
+                update={
+                    "used_artifact_ids": [
+                        archive.artifacts[0].artifact_id,
+                        outside.artifact_id,
+                    ]
+                }
+            )
+        ],
+    )
+    with pytest.raises(ValueError, match="outside its decision scope"):
+        validate_research_archive(changed)
 
 
 def test_research_archive_reference_can_verify_actual_frozen_json_bytes(tmp_path):

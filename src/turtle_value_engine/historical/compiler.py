@@ -233,6 +233,8 @@ class HistoricalDatasetCompiler:
                         f"{record.source_kind.value}:{record.listing_id}"
                     )
                 for source_id in record.source_artifact_ids:
+                    if source_id == "UNRESOLVED_SOURCE" and record.status.value == "UNKNOWN":
+                        continue
                     source = sources.get(source_id)
                     if source is None:
                         errors.append(
@@ -347,6 +349,14 @@ class HistoricalDatasetCompiler:
                     )
                 elif change.source_hash != source.content_sha256:
                     errors.append("code change/source hash mismatch: " + listing_id)
+                elif source.source_kind not in {
+                    HistoricalSourceKind.LISTING_LIFECYCLE,
+                    HistoricalSourceKind.DELISTINGS,
+                }:
+                    errors.append(
+                        "code change source category is not lifecycle/delisting: "
+                        + listing_id
+                    )
 
         availability = {
             item.artifact_id: item for item in rows_by_kind[ShardArtifactKind.AVAILABILITY]
@@ -532,6 +542,14 @@ class HistoricalDatasetCompiler:
                     )
         elif HistoricalSourceKind.RESEARCH_ARCHIVE in manifest.target.required_source_kinds:
             errors.append("target requires a historical research archive but none is declared")
+
+        if manifest.research_archive is None:
+            for decision in decisions:
+                if decision.research_artifact_id is not None:
+                    errors.append(
+                        "decision artifact has a research reference but no archive is declared: "
+                        + decision.artifact_id
+                    )
 
         if manifest.research_archive is not None:
             bindings = {

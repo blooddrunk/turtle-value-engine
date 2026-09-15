@@ -108,6 +108,15 @@ def validate_research_archive(
                 raise HistoricalResearchArchiveError(
                     f"decision binding references dangling artifact: {artifact_id}"
                 )
+            if (
+                item.listing_id != binding.listing_id
+                or item.analysis_id != binding.analysis_id
+                or item.as_of != binding.as_of
+            ):
+                raise HistoricalResearchArchiveError(
+                    "decision binding uses an artifact outside its decision scope: "
+                    + artifact_id
+                )
             if item.review_status is not ReviewStatus.FROZEN_VALIDATED:
                 raise HistoricalResearchArchiveError(
                     f"decision uses an artifact that is not frozen and validated: {artifact_id}"
