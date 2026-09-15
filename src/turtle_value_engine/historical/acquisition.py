@@ -3629,6 +3629,15 @@ class HistoricalIngestionCompiler:
             if receipt.artifact_role == "FILING_DOCUMENT":
                 request = requests[receipt.request_id]
                 row = _filing_document_row(receipt, batch, request)
+                if row.published_at > request.end_date:
+                    # A future filing must never disappear merely because the
+                    # generic scope filter would otherwise omit it.  Keeping
+                    # the failure explicit protects the point-in-time claim
+                    # when an upstream response ignores its requested range.
+                    raise HistoricalIngestionError(
+                        "future filing lies outside acquisition request: "
+                        + receipt.receipt_id
+                    )
                 if _row_in_request(request, ShardArtifactKind.FILING_DOCUMENT, row):
                     grouped[
                         (

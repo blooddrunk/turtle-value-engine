@@ -1553,6 +1553,134 @@ def test_official_filing_discovery_callback_avoids_hand_assembled_ids(tmp_path: 
     )
 
 
+def test_compiler_rejects_future_filing_instead_of_silently_dropping_it(tmp_path: Path):
+    target = HistoricalTargetScope(
+        target_id="future-filing-target",
+        target_name="future filing target",
+        universe_id="future-filing-universe",
+        markets=[Market.A],
+        listing_ids=["SH600000"],
+        start_date=date(2024, 1, 1),
+        end_date=date(2025, 12, 31),
+        membership_claim="FIXED_RESEARCH_UNIVERSE",
+        coverage_claim="PARTIAL",
+        required_source_kinds=[HistoricalSourceKind.FILINGS],
+        calendar_ids={"SH600000": "A:SSE"},
+        listing_markets={"SH600000": Market.A},
+        licensing_scope="private filing research",
+    )
+    source = HistoricalSourceSpecV1(
+        source_id="future-filing-source",
+        source_kind=HistoricalSourceKind.FILINGS,
+        adapter_id="future-filing-test",
+        provider_id="official-filing-test",
+        source_name="official filing test",
+        source_uri="https://www.cninfo.com.cn",
+        authority="OFFICIAL_EXCHANGE",
+        license_status="RESTRICTED_INTERNAL",
+        licensing_constraints="private local cache only",
+        license_evidence_uri="https://www.cninfo.com.cn/terms",
+        license_evidence_sha256="1" * 64,
+        access_grant_reference="private-filing-test-grant",
+        historical_capable=True,
+        coverage_start=target.start_date,
+        coverage_end=target.end_date,
+        coverage_listing_ids=["SH600000"],
+    )
+    request = HistoricalAcquisitionRequestV1(
+        request_id="future-filing-request",
+        source_id=source.source_id,
+        adapter_id=source.adapter_id,
+        source_kind=HistoricalSourceKind.FILINGS,
+        artifact_kind=ShardArtifactKind.FILING_DOCUMENT,
+        schema_version="filing-document-v1",
+        listing_ids=["SH600000"],
+        start_date=target.start_date,
+        end_date=target.end_date,
+        parameters={"source": "CNINFO"},
+        coverage_evidence_basis=CoverageEvidenceBasis.FILING_INDEX,
+    )
+    plan = HistoricalAcquisitionPlanV1(
+        plan_id="future-filing-plan",
+        plan_version="1",
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+        target=target,
+        sources=[source],
+        requests=[request],
+    )
+
+    class FutureFilingAdapter:
+        adapter_id = "future-filing-test"
+        adapter_version = "1"
+
+        def acquire(self, request, *, transport, credentials):
+            del transport, credentials
+            downloads = []
+            for filing_date, filing_suffix in (
+                (date(2025, 4, 30), "in-scope"),
+                (date(2026, 1, 1), "future"),
+            ):
+                body = ("filing-" + filing_suffix).encode("ascii")
+                document_hash = hashlib.sha256(body).hexdigest()
+                document_url = (
+                    "https://static.cninfo.com.cn/finalpage/"
+                    f"{filing_date.isoformat()}/{filing_suffix}.PDF"
+                )
+                source_document_id = "future-test-" + filing_suffix
+                filing_id = filing_id_for(
+                    listing_id="SH600000",
+                    market=FilingMarket.A,
+                    source=FilingSource.CNINFO,
+                    source_document_id=source_document_id,
+                    url=document_url,
+                )
+                downloads.append(
+                    RawDownload(
+                        body=body,
+                        response=NetworkResponse(
+                            200,
+                            {"Content-Type": "application/pdf"},
+                            body,
+                            document_url,
+                        ),
+                        source_uri=document_url,
+                        artifact_role="FILING_DOCUMENT",
+                        schema_version=request.schema_version,
+                        artifact_metadata={
+                            "filing_id": filing_id,
+                            "listing_id": "SH600000",
+                            "market": "A",
+                            "source": "CNINFO",
+                            "title": "annual report",
+                            "document_type": "ANNUAL_REPORT",
+                            "published_date": filing_date.isoformat(),
+                            "source_document_id": source_document_id,
+                            "report_period": "FY2024",
+                            "document_sha256": document_hash,
+                            "document_size": len(body),
+                            "media_type": "application/pdf",
+                            "retrieved_at": "2026-01-02T00:00:00+00:00",
+                            "final_url": document_url,
+                            "revision_identity": f"{filing_id}:{document_hash}",
+                        },
+                    )
+                )
+            return downloads
+
+    raw_store = RawBlobStore(tmp_path / "raw")
+    acquired = HistoricalAcquisitionService(
+        {source.adapter_id: FutureFilingAdapter()},
+        transport=FakeTransport([]),
+        clock=lambda: datetime(2026, 1, 2, tzinfo=UTC),
+    ).acquire(plan, raw_store=raw_store, network_allowed=True)
+
+    with pytest.raises(HistoricalIngestionError, match="future filing lies outside"):
+        HistoricalIngestionCompiler(
+            raw_store=raw_store,
+            artifact_store=HistoricalArtifactStore(tmp_path / "artifacts"),
+        ).compile(acquired.batch)
+
+
 def test_hithink_credential_is_used_in_memory_and_never_persisted(tmp_path: Path):
     signing = b'{"code":0,"data":{"presigned_url":"https://signed.example.test/file?X-Amz-Signature=secret"}}'
     data = b"parquet bytes"
