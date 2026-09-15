@@ -33,6 +33,11 @@ acceptance is not claimed. The precise unresolved source, membership, terminal
 economics and authorization blockers are recorded in
 `docs/operations/phase-5r-a-acquisition.md` and in readiness reports.
 
+The repository now also exposes `tve historical accept`, a pure offline A6
+audit over a persisted batch, probe report, raw CAS, compiled manifest and
+shard store. It records exact blockers and exits fail closed; this audit tool
+does not itself make the real private acceptance claim pass.
+
 For the project-owner live policy, the built-in CLI transport additionally
 requires a non-empty declared `ENVIRONMENT` credential reference before it can
 touch the network. Keyring/injected resolution remains an explicit library

@@ -25,6 +25,7 @@ from turtle_value_engine.calculations import CDCCalculationError
 from turtle_value_engine.config import ProfileLoadError, load_profile
 from turtle_value_engine.historical import (
     AcquisitionError,
+    AcquisitionReadinessReportV1,
     HistoricalAcquisitionPlanV1,
     HistoricalAcquisitionService,
     HistoricalArtifactStore,
@@ -40,6 +41,7 @@ from turtle_value_engine.historical import (
     freeze_decision_snapshots,
     reconcile_observations,
     validate_historical_dataset,
+    validate_private_acceptance,
 )
 from turtle_value_engine.input_loader import NormalizedInputLoadError, parse_normalized_input
 from turtle_value_engine.models import CDCInput, Company
@@ -193,6 +195,15 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="compile the same local batch twice and verify identical identities",
     )
+    historical_accept = historical_commands.add_parser(
+        "accept", help="audit a private A/H corpus using offline artifacts only"
+    )
+    historical_accept.add_argument("--batch", required=True, type=Path)
+    historical_accept.add_argument("--probe-report", required=True, type=Path)
+    historical_accept.add_argument("--raw-store", required=True, type=Path)
+    historical_accept.add_argument("--manifest", required=True, type=Path)
+    historical_accept.add_argument("--store", required=True, type=Path)
+    historical_accept.add_argument("--output", required=True, type=Path)
 
     backtest_parser = subparsers.add_parser(
         "backtest",
@@ -519,6 +530,27 @@ def _run_historical_command(args: argparse.Namespace) -> object:
                 },
             )
         return manifest
+    if args.historical_command == "accept":
+        batch = RawAcquisitionBatchManifestV1.model_validate(_read_json(args.batch))
+        probe_report = AcquisitionReadinessReportV1.model_validate(
+            _read_json(args.probe_report)
+        )
+        manifest = HistoricalDatasetManifest.model_validate(_read_json(args.manifest))
+        raw_store = RawBlobStore(args.raw_store)
+        artifact_store = HistoricalArtifactStore(args.store)
+        report = validate_private_acceptance(
+            batch,
+            manifest,
+            raw_store,
+            artifact_store,
+            probe_report=probe_report,
+        )
+        _write_optional(args.output, report)
+        if not report.accepted:
+            raise AcquisitionError(
+                "PRIVATE_ACCEPTANCE_BLOCKED: " + "; ".join(report.blockers)
+            )
+        return report
     raise ValueError(f"unsupported historical command: {args.historical_command}")
 
 

@@ -5082,7 +5082,9 @@ listing/lifecycle and terminal handling, independent sampled reconciliation,
 and deterministic offline replay. The existing full `--require-production`
 claim remains stricter and must not be weakened merely to close the acquisition
 milestone. Credentials remain outside Git and ordinary CI remains
-network/model independent.
+network/model independent. The offline `tve historical accept` command now
+audits a persisted batch/probe report/manifest/CAS and writes exact A6 blockers;
+it never performs provider, network, credential or model access.
 
 After the local acquisition/compiler path is stable, an optional storage work
 package may add a private Cloudflare R2 mirror or an owner-VPS backup/runner.

@@ -337,10 +337,18 @@ tve historical acquire --plan plan.json --network=allow \
 tve historical compile --batch .tve-private/batch.json \
   --raw-store .tve-private/raw --store .tve-private/artifacts \
   --output .tve-private/historical-manifest.json
+tve historical accept --batch .tve-private/batch.json \
+  --probe-report .tve-private/live/probe.json \
+  --raw-store .tve-private/raw \
+  --manifest .tve-private/historical-manifest.json \
+  --store .tve-private/artifacts \
+  --output .tve-private/live/acceptance.json
 ```
 
 获取和编译边界、条款证据、备份/删除及当前精确 blocker 见
 [`docs/operations/phase-5r-a-acquisition.md`](docs/operations/phase-5r-a-acquisition.md)。
+`historical accept` 是离线 A6 审计；它会在未证明 A/H 能力、来源覆盖、授权或
+终止经济时 fail closed，并把精确 blocker 写入报告。
 H 股来源、历史 membership、退市经济和授权未核实前不会自动升级为生产级
 历史覆盖，也不会要求机构商业源或手工整理 CSV。
 

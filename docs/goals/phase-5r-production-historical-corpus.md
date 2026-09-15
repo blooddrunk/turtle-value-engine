@@ -232,6 +232,11 @@ narrowed or the exact category remains blocked. Phase 5R remains
 `ACTIVE / PARTIAL` until the acquisition path and its evidence exist; the
 Phase 6 goal file is intentionally not created yet.
 
+The offline `tve historical accept` audit is now available for the next step:
+it replays a persisted batch and records exact A6 blockers without provider,
+network, credential or model access. A successful audit still requires a real
+owner-acquired corpus and verified source evidence.
+
 ### Source-access review — 2026-09-15
 
 The official source pages reviewed during this goal establish authority and

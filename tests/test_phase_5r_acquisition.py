@@ -13,7 +13,13 @@ from types import SimpleNamespace
 import pytest
 from jsonschema import Draft202012Validator
 
-from turtle_value_engine.backtest import ListingLifecycle, Market, MarketBar, PriceBasis
+from turtle_value_engine.backtest import (
+    BenchmarkObservation,
+    ListingLifecycle,
+    Market,
+    MarketBar,
+    PriceBasis,
+)
 from turtle_value_engine.cli import main
 from turtle_value_engine.historical import (
     AccountEntitlement,
@@ -43,6 +49,7 @@ from turtle_value_engine.historical import (
     NetworkDisabledError,
     NetworkResponse,
     OfficialFilingDocumentAdapter,
+    PrivateAcceptanceReportV1,
     ProbeStatus,
     RawAcquisitionBatchManifestV1,
     RawArtifactReceiptV1,
@@ -55,6 +62,7 @@ from turtle_value_engine.historical import (
     SourceProbeReportV1,
     build_coverage_report,
     build_readiness_report,
+    validate_private_acceptance,
 )
 from turtle_value_engine.historical.compiler import _production_scope_blockers
 from turtle_value_engine.providers import (
@@ -360,6 +368,120 @@ def test_historical_compile_cli_is_network_free(tmp_path: Path, monkeypatch):
     assert report["readiness"]["compiled_dataset_id"] == json.loads(
         manifest_path.read_text(encoding="utf-8")
     )["dataset_id"]
+
+
+def test_private_acceptance_audit_is_offline_and_fail_closed(
+    tmp_path: Path, monkeypatch
+):
+    body = _market_bar_body()
+    plan = _plan()
+    raw_store = RawBlobStore(tmp_path / "raw")
+    acquired = HistoricalAcquisitionService(
+        {"http-json": ConfiguredHttpSourceAdapter()},
+        transport=FakeTransport(
+            [
+                NetworkResponse(
+                    200,
+                    {"Content-Type": "application/json"},
+                    body,
+                    "https://source.example.test/history",
+                )
+            ]
+        ),
+    ).acquire(plan, raw_store=raw_store, network_allowed=True)
+    artifact_store = HistoricalArtifactStore(tmp_path / "artifacts")
+    manifest = HistoricalIngestionCompiler(
+        raw_store=raw_store,
+        artifact_store=artifact_store,
+    ).compile_with_replay_check(acquired.batch)
+
+    def fail_if_called(*_args, **_kwargs):
+        raise AssertionError("private acceptance must not touch the network")
+
+    monkeypatch.setattr("turtle_value_engine.historical.acquisition.urlopen", fail_if_called)
+    report = validate_private_acceptance(
+        acquired.batch,
+        manifest,
+        raw_store,
+        artifact_store,
+    )
+
+    assert isinstance(report, PrivateAcceptanceReportV1)
+    assert report.accepted is False
+    assert report.offline_replay_verified is True
+    assert "SOURCE_PROBE_REPORT_MISSING: no persisted probe report was supplied" in (
+        report.blockers
+    )
+    assert any(
+        blocker.startswith("A6_TARGET_H_LISTING_UNVERIFIED") for blocker in report.blockers
+    )
+    schema = json.loads(
+        (Path(__file__).parents[1] / "schemas" / "historical-acceptance.schema.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    Draft202012Validator(schema).validate(report.model_dump(mode="json", warnings=False))
+
+
+def test_private_acceptance_cli_persists_blockers_without_network(
+    tmp_path: Path, monkeypatch, capsys
+):
+    body = _market_bar_body()
+    plan = _plan()
+    raw_store = RawBlobStore(tmp_path / "raw")
+    acquired = HistoricalAcquisitionService(
+        {"http-json": ConfiguredHttpSourceAdapter()},
+        transport=FakeTransport(
+            [
+                NetworkResponse(
+                    200,
+                    {"Content-Type": "application/json"},
+                    body,
+                    "https://source.example.test/history",
+                )
+            ]
+        ),
+    ).acquire(plan, raw_store=raw_store, network_allowed=True)
+    artifact_store = HistoricalArtifactStore(tmp_path / "artifacts")
+    manifest = HistoricalIngestionCompiler(
+        raw_store=raw_store,
+        artifact_store=artifact_store,
+    ).compile_with_replay_check(acquired.batch)
+    batch_path = tmp_path / "batch.json"
+    probe_path = tmp_path / "readiness.json"
+    manifest_path = tmp_path / "manifest.json"
+    output_path = tmp_path / "acceptance.json"
+    batch_path.write_text(acquired.batch.model_dump_json(), encoding="utf-8")
+    probe_path.write_text(acquired.readiness.model_dump_json(), encoding="utf-8")
+    manifest_path.write_text(manifest.model_dump_json(), encoding="utf-8")
+
+    def fail_if_called(*_args, **_kwargs):
+        raise AssertionError("private acceptance CLI must not touch the network")
+
+    monkeypatch.setattr("turtle_value_engine.historical.acquisition.urlopen", fail_if_called)
+    assert main(
+        [
+            "historical",
+            "accept",
+            "--batch",
+            str(batch_path),
+            "--probe-report",
+            str(probe_path),
+            "--raw-store",
+            str(raw_store.root),
+            "--manifest",
+            str(manifest_path),
+            "--store",
+            str(artifact_store.root),
+            "--output",
+            str(output_path),
+        ]
+    ) == 2
+    assert output_path.exists()
+    output = json.loads(output_path.read_text(encoding="utf-8"))
+    assert output["accepted"] is False
+    assert output["offline_replay_verified"] is True
+    assert "PRIVATE_ACCEPTANCE_BLOCKED:" in capsys.readouterr().err
 
 
 def test_plan_rejects_credential_reference_aliasing():
@@ -1309,6 +1431,35 @@ def test_readiness_rejects_unverified_source_authority_and_history():
     assert readiness.personal_research_ready is False
 
 
+def test_readiness_rejects_probe_terms_mismatch():
+    plan = _plan()
+    source = plan.sources[0]
+    request = plan.requests[0]
+    report = SourceProbeReportV1.build(
+        report_id="probe-terms-mismatch",
+        plan_id=plan.plan_id,
+        request_id=request.request_id,
+        source_id=source.source_id,
+        adapter_id=request.adapter_id,
+        adapter_version="1",
+        source_kind=request.source_kind,
+        status=ProbeStatus.PASS,
+        started_at=datetime(2026, 1, 1, tzinfo=UTC),
+        finished_at=datetime(2026, 1, 1, 0, 0, 1, tzinfo=UTC),
+        account_entitlement=AccountEntitlement.CONFIRMED,
+        historical_capable=True,
+        license_evidence_uri="https://source.example.test/other-terms",
+        license_evidence_sha256="2" * 64,
+        access_grant_reference=source.access_grant_reference,
+        observed_listing_ids=list(plan.target.listing_ids),
+        observed_start=plan.target.start_date,
+        observed_end=plan.target.end_date,
+        blockers=[],
+    )
+    readiness = build_readiness_report(plan, probe_reports=[report])
+    assert "SOURCE_PROBE_TERMS_MISMATCH: probe-terms-mismatch" in readiness.blockers
+
+
 def test_readiness_report_rejects_ready_flags_with_blockers():
     with pytest.raises(ValueError, match="raw or authorization blockers"):
         AcquisitionReadinessReportV1.build(
@@ -1405,6 +1556,7 @@ def test_h_readiness_requires_probe_to_observe_every_target_h_listing():
         action_coverage=CoverageEvidenceStatus.CONFIRMED,
         license_evidence_uri=source.license_evidence_uri,
         license_evidence_sha256=source.license_evidence_sha256,
+        access_grant_reference=source.access_grant_reference,
         observed_listing_ids=["A1", "H1"],
         observed_start=plan.target.start_date,
         observed_end=plan.target.end_date,
@@ -1460,6 +1612,7 @@ def test_h_readiness_does_not_promote_lifecycle_probe_to_price_source():
         action_coverage=CoverageEvidenceStatus.CONFIRMED,
         license_evidence_uri=lifecycle_source.license_evidence_uri,
         license_evidence_sha256=lifecycle_source.license_evidence_sha256,
+        access_grant_reference=lifecycle_source.access_grant_reference,
         observed_listing_ids=list(plan.target.listing_ids),
         observed_start=plan.target.start_date,
         observed_end=plan.target.end_date,
@@ -1468,6 +1621,115 @@ def test_h_readiness_does_not_promote_lifecycle_probe_to_price_source():
 
     readiness = build_readiness_report(plan, probe_reports=[lifecycle_probe])
     assert any(item.startswith("H_SOURCE_UNQUALIFIED") for item in readiness.blockers)
+
+
+def test_h_readiness_accepts_separate_price_action_and_lifecycle_probes():
+    base_plan = _plan(include_h=True)
+    price_source = base_plan.sources[0].model_copy(
+        update={"historical_capable": True}
+    )
+    price_request = base_plan.requests[0]
+
+    action_source = _source(include_h=True).model_copy(
+        update={
+            "source_id": "actions-source",
+            "source_kind": HistoricalSourceKind.CORPORATE_ACTIONS,
+            "adapter_id": "actions-adapter",
+            "historical_capable": True,
+        }
+    )
+    action_request = _request(include_h=True).model_copy(
+        update={
+            "request_id": "actions-request",
+            "source_id": action_source.source_id,
+            "source_kind": HistoricalSourceKind.CORPORATE_ACTIONS,
+            "adapter_id": action_source.adapter_id,
+            "artifact_kind": ShardArtifactKind.CORPORATE_ACTION,
+            "schema_version": "corporate-action-v1",
+            "coverage_evidence_basis": CoverageEvidenceBasis.EVENT_INDEX,
+        }
+    )
+    lifecycle_source = _source(include_h=True).model_copy(
+        update={
+            "source_id": "lifecycle-source",
+            "source_kind": HistoricalSourceKind.LISTING_LIFECYCLE,
+            "adapter_id": "lifecycle-adapter",
+            "historical_capable": True,
+        }
+    )
+    lifecycle_request = _request(include_h=True).model_copy(
+        update={
+            "request_id": "lifecycle-request",
+            "source_id": lifecycle_source.source_id,
+            "source_kind": HistoricalSourceKind.LISTING_LIFECYCLE,
+            "adapter_id": lifecycle_source.adapter_id,
+            "artifact_kind": ShardArtifactKind.LISTING_LIFECYCLE,
+            "schema_version": "listing-lifecycle-v1",
+            "coverage_evidence_basis": CoverageEvidenceBasis.LIFECYCLE_INDEX,
+        }
+    )
+    plan = base_plan.model_copy(
+        update={
+            "sources": [price_source, action_source, lifecycle_source],
+            "requests": [price_request, action_request, lifecycle_request],
+        }
+    )
+
+    def probe_for(
+        request: HistoricalAcquisitionRequestV1,
+        source: HistoricalSourceSpecV1,
+        *,
+        action: CoverageEvidenceStatus,
+        terminal: CoverageEvidenceStatus,
+    ) -> SourceProbeReportV1:
+        return SourceProbeReportV1.build(
+            report_id="probe-" + request.request_id,
+            plan_id=plan.plan_id,
+            request_id=request.request_id,
+            source_id=source.source_id,
+            adapter_id=request.adapter_id,
+            adapter_version="1",
+            source_kind=request.source_kind,
+            status=ProbeStatus.PASS,
+            started_at=datetime(2026, 1, 1, tzinfo=UTC),
+            finished_at=datetime(2026, 1, 1, 0, 0, 1, tzinfo=UTC),
+            account_entitlement=AccountEntitlement.CONFIRMED,
+            historical_capable=True,
+            terminal_coverage=terminal,
+            action_coverage=action,
+            license_evidence_uri=source.license_evidence_uri,
+            license_evidence_sha256=source.license_evidence_sha256,
+            access_grant_reference=source.access_grant_reference,
+            observed_listing_ids=list(plan.target.listing_ids),
+            observed_start=plan.target.start_date,
+            observed_end=plan.target.end_date,
+            blockers=[],
+        )
+
+    probes = [
+        probe_for(
+            price_request,
+            price_source,
+            action=CoverageEvidenceStatus.UNKNOWN,
+            terminal=CoverageEvidenceStatus.UNKNOWN,
+        ),
+        probe_for(
+            action_request,
+            action_source,
+            action=CoverageEvidenceStatus.CONFIRMED,
+            terminal=CoverageEvidenceStatus.UNKNOWN,
+        ),
+        probe_for(
+            lifecycle_request,
+            lifecycle_source,
+            action=CoverageEvidenceStatus.UNKNOWN,
+            terminal=CoverageEvidenceStatus.CONFIRMED,
+        ),
+    ]
+    readiness = build_readiness_report(plan, probe_reports=probes)
+    assert not any(
+        item.startswith("H_SOURCE_UNQUALIFIED") for item in readiness.blockers
+    ), readiness.blockers
 
 
 def test_production_coverage_unions_market_scoped_sources_by_listing():
@@ -1560,3 +1822,73 @@ def test_production_coverage_unions_market_scoped_sources_by_listing():
     assert "source coverage union does not span target: PRICES:H1" not in blockers
     assert "complete coverage record is missing: PRICES:A1" not in blockers
     assert "complete coverage record is missing: PRICES:H1" not in blockers
+
+
+def test_compiler_attributes_global_benchmark_rows_to_request_listing_scope(tmp_path: Path):
+    target = _target(include_h=True).model_copy(
+        update={"required_source_kinds": [HistoricalSourceKind.BENCHMARK]}
+    )
+    source = _source(include_h=True).model_copy(
+        update={
+            "source_id": "benchmark-source",
+            "source_kind": HistoricalSourceKind.BENCHMARK,
+            "coverage_listing_ids": list(target.listing_ids),
+        }
+    )
+    observation_date = date(2020, 1, 2)
+    request = _request(include_h=True).model_copy(
+        update={
+            "request_id": "benchmark-request",
+            "source_id": source.source_id,
+            "source_kind": HistoricalSourceKind.BENCHMARK,
+            "artifact_kind": ShardArtifactKind.BENCHMARK_OBSERVATION,
+            "schema_version": "benchmark-observation-v1",
+            "listing_ids": list(target.listing_ids),
+            "expected_sessions_by_listing": {
+                listing_id: [observation_date] for listing_id in target.listing_ids
+            },
+            "coverage_evidence_basis": CoverageEvidenceBasis.OBSERVATION_SESSIONS,
+        }
+    )
+    plan = _plan(include_h=True).model_copy(
+        update={"target": target, "sources": [source], "requests": [request]}
+    )
+    row = BenchmarkObservation(
+        observation_id="benchmark:2020-01-02",
+        benchmark_id="HANG_SENG_TEST",
+        observation_date=observation_date,
+        value=100.0,
+        return_type="PRICE_RETURN",
+        currency="HKD",
+        source_hash=HASH,
+    )
+    body = json.dumps([row.model_dump(mode="json")], separators=(",", ":")).encode()
+    transport = FakeTransport(
+        [
+            NetworkResponse(
+                200,
+                {"Content-Type": "application/json"},
+                body,
+                "https://source.example.test/benchmark",
+            )
+        ]
+    )
+    raw_store = RawBlobStore(tmp_path / "raw")
+    acquired = HistoricalAcquisitionService(
+        {"http-json": ConfiguredHttpSourceAdapter()}, transport=transport
+    ).acquire(plan, raw_store=raw_store, network_allowed=True)
+    manifest = HistoricalIngestionCompiler(
+        raw_store=raw_store,
+        artifact_store=HistoricalArtifactStore(tmp_path / "artifacts"),
+    ).compile(acquired.batch)
+
+    benchmark_report = next(
+        report
+        for report in manifest.coverage_reports
+        if report.records[0].source_kind is HistoricalSourceKind.BENCHMARK
+    )
+    assert [record.status for record in benchmark_report.records] == [
+        CoverageClaim.COMPLETE,
+        CoverageClaim.COMPLETE,
+    ]
+    assert [record.observed_session_count for record in benchmark_report.records] == [1, 1]

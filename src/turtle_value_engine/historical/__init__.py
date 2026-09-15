@@ -1,5 +1,6 @@
 """Production-oriented source, shard, coverage and archive boundaries."""
 
+from .acceptance import PrivateAcceptanceReportV1, validate_private_acceptance
 from .acquisition import (
     ACQUISITION_CONTRACT_VERSION,
     AccountEntitlement,
@@ -76,6 +77,7 @@ from .store import (
 __all__ = [
     *_CONTRACT_EXPORTS,
     "HistoricalArtifactError",
+    "PrivateAcceptanceReportV1",
     "ACQUISITION_CONTRACT_VERSION",
     "AccountEntitlement",
     "AcquisitionError",
@@ -136,5 +138,6 @@ __all__ = [
     "jsonl_sha256",
     "reconcile_observations",
     "validate_historical_dataset",
+    "validate_private_acceptance",
     "validate_research_archive",
 ]

@@ -170,6 +170,7 @@ from .historical import (
     NetworkTransport,
     NetworkTransportError,
     OfficialFilingDocumentAdapter,
+    PrivateAcceptanceReportV1,
     ProbeStatus,
     ProductionHistoricalDatasetManifest,
     RawAcquisitionBatchManifestV1,
@@ -200,6 +201,7 @@ from .historical import (
     jsonl_sha256,
     reconcile_observations,
     validate_historical_dataset,
+    validate_private_acceptance,
     validate_research_archive,
 )
 from .input_loader import (
@@ -513,6 +515,7 @@ __all__ = [
     "HithinkDailyKParquetDecoder",
     "HithinkMarketDumpAdapter",
     "OfficialFilingDocumentAdapter",
+    "PrivateAcceptanceReportV1",
     "HISTORICAL_ARCHIVE_CONTRACT_VERSION",
     "HISTORICAL_CONTRACT_VERSION",
     "HISTORICAL_SHARD_CONTRACT_VERSION",
@@ -550,6 +553,7 @@ __all__ = [
     "jsonl_sha256",
     "reconcile_observations",
     "validate_historical_dataset",
+    "validate_private_acceptance",
     "validate_research_archive",
     "default_decoders",
     "default_source_adapters",

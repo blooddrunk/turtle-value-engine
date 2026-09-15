@@ -3717,6 +3717,22 @@ class HistoricalIngestionCompiler:
                 listing_id = _row_listing(row)
                 row_date = _row_date(artifact_kind, row)
                 if (
+                    source_kind is HistoricalSourceKind.BENCHMARK
+                    and listing_id is None
+                    and row_date is not None
+                    and plan.target.start_date <= row_date <= plan.target.end_date
+                ):
+                    # Benchmark observations are global by contract and do
+                    # not carry a listing_id. Attribute each observation to
+                    # the listing scopes explicitly covered by benchmark
+                    # requests so a complete index series is not reported as
+                    # UNKNOWN merely because the row is not listing-shaped.
+                    for request in requests:
+                        if request.artifact_kind is artifact_kind:
+                            for request_listing_id in request.listing_ids:
+                                observed_by_listing[request_listing_id].add(row_date)
+                    continue
+                if (
                     listing_id is not None
                     and row_date is not None
                     and plan.target.start_date <= row_date <= plan.target.end_date
@@ -3813,17 +3829,29 @@ def build_readiness_report(
         if source.is_current_snapshot:
             blockers.append("CURRENT_SNAPSHOT_UNUSABLE: " + source.source_id)
     requests_by_id = {request.request_id: request for request in plan.requests}
+    sources_by_id = {source.source_id: source for source in plan.sources}
     scoped_probe_reports: list[SourceProbeReportV1] = []
     for report in probe_reports:
         request = requests_by_id.get(report.request_id)
-        if (
+        source = sources_by_id.get(report.source_id)
+        scope_mismatch = (
             report.plan_id != plan.plan_id
             or request is None
+            or source is None
             or report.source_id != request.source_id
             or report.adapter_id != request.adapter_id
             or report.source_kind is not request.source_kind
-        ):
+        )
+        terms_mismatch = source is not None and (
+            report.license_evidence_uri != source.license_evidence_uri
+            or report.license_evidence_sha256 != source.license_evidence_sha256
+            or report.access_grant_reference != source.access_grant_reference
+        )
+        if scope_mismatch:
             blockers.append("SOURCE_PROBE_SCOPE_MISMATCH: " + report.report_id)
+            continue
+        if terms_mismatch:
+            blockers.append("SOURCE_PROBE_TERMS_MISMATCH: " + report.report_id)
             continue
         scoped_probe_reports.append(report)
     for report in scoped_probe_reports:
@@ -3845,31 +3873,29 @@ def build_readiness_report(
         if _target_market(plan.target, listing_id) == "H"
     }
     if target_h:
-        h_probe_ids = {
-            report.source_id
-            for report in scoped_probe_reports
-            if report.status == ProbeStatus.PASS
-            # A lifecycle/action probe cannot establish that the H price
-            # source returned the requested historical bars.  Keep this gate
-            # bound to the actual price request/source instead of allowing a
-            # different category to promote it indirectly.
-            and report.source_kind is HistoricalSourceKind.PRICES
-            and report.account_entitlement == AccountEntitlement.CONFIRMED
-            and report.historical_capable
-            and report.terminal_coverage == CoverageEvidenceStatus.CONFIRMED
-            and report.action_coverage == CoverageEvidenceStatus.CONFIRMED
-            and report.license_evidence_uri is not None
-            and report.license_evidence_sha256 is not None
-            and target_h.issubset(set(report.observed_listing_ids))
-            and report.observed_start is not None
-            and report.observed_end is not None
-            and report.observed_start <= plan.target.start_date
-            and report.observed_end >= plan.target.end_date
-        }
-        h_source_ids = {
+        h_price_source_ids = {
             request.source_id
             for request in plan.requests
             if request.source_kind is HistoricalSourceKind.PRICES
+            and target_h.intersection(request.listing_ids)
+        }
+        h_action_source_ids = {
+            request.source_id
+            for request in plan.requests
+            if request.source_kind
+            in {HistoricalSourceKind.PRICES, HistoricalSourceKind.CORPORATE_ACTIONS}
+            and target_h.intersection(request.listing_ids)
+        }
+        h_terminal_source_ids = {
+            request.source_id
+            for request in plan.requests
+            if request.source_kind
+            in {
+                HistoricalSourceKind.PRICES,
+                HistoricalSourceKind.CORPORATE_ACTIONS,
+                HistoricalSourceKind.LISTING_LIFECYCLE,
+                HistoricalSourceKind.DELISTINGS,
+            }
             and target_h.intersection(request.listing_ids)
         }
         h_terms_ids = {
@@ -3884,11 +3910,55 @@ def build_readiness_report(
                 or source.access_grant_reference is not None
             )
         }
-        if not h_source_ids or not h_source_ids.intersection(h_probe_ids & h_terms_ids):
+        h_price_probe_ids = {
+            report.source_id
+            for report in scoped_probe_reports
+            if report.source_id in h_price_source_ids
+            and report.source_id in h_terms_ids
+            # A lifecycle/action probe cannot establish that the H price
+            # source returned the requested historical bars. Keep this gate
+            # bound to the actual price request/source.
+            and report.source_kind is HistoricalSourceKind.PRICES
+            and _probe_has_h_scope(report, target_h, plan.target)
+        }
+        h_action_probe_ids = {
+            report.source_id
+            for report in scoped_probe_reports
+            if report.source_id in h_action_source_ids
+            and report.source_id in h_terms_ids
+            and report.source_kind
+            in {HistoricalSourceKind.PRICES, HistoricalSourceKind.CORPORATE_ACTIONS}
+            and report.action_coverage == CoverageEvidenceStatus.CONFIRMED
+            and _probe_has_h_scope(report, target_h, plan.target)
+        }
+        h_terminal_probe_ids = {
+            report.source_id
+            for report in scoped_probe_reports
+            if report.source_id in h_terminal_source_ids
+            and report.source_id in h_terms_ids
+            and report.source_kind
+            in {
+                HistoricalSourceKind.PRICES,
+                HistoricalSourceKind.CORPORATE_ACTIONS,
+                HistoricalSourceKind.LISTING_LIFECYCLE,
+                HistoricalSourceKind.DELISTINGS,
+            }
+            and report.terminal_coverage == CoverageEvidenceStatus.CONFIRMED
+            and _probe_has_h_scope(report, target_h, plan.target)
+        }
+        missing_h_evidence = []
+        if not h_price_source_ids.intersection(h_price_probe_ids):
+            missing_h_evidence.append("PRICE_HISTORY")
+        if not h_action_source_ids.intersection(h_action_probe_ids):
+            missing_h_evidence.append("CORPORATE_ACTIONS")
+        if not h_terminal_source_ids.intersection(h_terminal_probe_ids):
+            missing_h_evidence.append("TERMINAL_LIFECYCLE")
+        if missing_h_evidence:
             blockers.append(
-                "H_SOURCE_UNQUALIFIED: no probe has confirmed H-share historical "
-                "capability, terminal retention, action completeness, and permitted "
-                "personal caching"
+                "H_SOURCE_UNQUALIFIED: missing confirmed H-share evidence "
+                + ",".join(missing_h_evidence)
+                + "; price, action, terminal/lifecycle probes and permitted personal caching "
+                "must be confirmed"
             )
     if plan.target.membership_claim == "HISTORICAL":
         membership_proven = any(
@@ -4043,6 +4113,28 @@ def _probe_covers_target(
         report.status == ProbeStatus.PASS
         and report.historical_capable
         and set(target.listing_ids).issubset(set(report.observed_listing_ids))
+        and report.observed_start is not None
+        and report.observed_end is not None
+        and report.observed_start <= target.start_date
+        and report.observed_end >= target.end_date
+    )
+
+
+def _probe_has_h_scope(
+    report: SourceProbeReportV1,
+    listing_ids: set[str],
+    target: HistoricalTargetScope,
+) -> bool:
+    """Require a successful, dated probe to cover every requested H listing."""
+
+    return (
+        report.status == ProbeStatus.PASS
+        and not report.blockers
+        and report.account_entitlement == AccountEntitlement.CONFIRMED
+        and report.historical_capable
+        and report.license_evidence_uri is not None
+        and report.license_evidence_sha256 is not None
+        and listing_ids.issubset(set(report.observed_listing_ids))
         and report.observed_start is not None
         and report.observed_end is not None
         and report.observed_start <= target.start_date

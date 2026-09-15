@@ -77,6 +77,15 @@ the local retrieval-finished timestamp is the conservative availability bound,
 not an inferred source-publication timestamp. See the Chinese-first operator
 [runbook](../operations/phase-5r-a-acquisition.md).
 
+`tve historical accept` is the offline A6 audit boundary. It reads only a
+persisted batch, readiness/probe report, raw CAS, artifact store and manifest;
+it repeats compilation and checks manifest/shard identities, target scope,
+calendars/lifecycle, category coverage, terminal or suspension evidence,
+benchmark/FX, official filings, actions, limitations and reconciliation. It
+persists exact blockers and exits non-zero when the minimum private A/H claim
+is not proven. It never resolves credentials or invokes a provider, network or
+model.
+
 ## Source and coverage contract
 
 `HistoricalSourceDescriptor` records one source artifact's category, provider
@@ -103,6 +112,10 @@ Coverage is recorded per listing and period. Expected sessions must be
 supplied by a declared calendar source; without them the report is `UNKNOWN`.
 Missing sessions, suspended rows and unresolved terminal outcomes remain
 visible in reports and manifest missingness instead of being filled.
+Benchmark observations are global series by contract, so the offline compiler
+projects their observed dates onto the listing scope explicitly declared by
+each benchmark request; it does not require a synthetic `listing_id` on the
+benchmark row.
 `HistoricalValidationSummary.production_blockers` explains why a bounded
 fixture is not eligible for a production claim even when ordinary replay
 validation is otherwise successful; `--require-production` turns that state

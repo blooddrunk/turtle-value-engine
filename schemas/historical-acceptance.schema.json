@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Machine-readable result of the offline A6 acceptance audit.",
+  "properties": {
+    "accepted": {
+      "default": false,
+      "title": "Accepted",
+      "type": "boolean"
+    },
+    "blockers": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 2048,
+      "title": "Blockers",
+      "type": "array"
+    },
+    "checks": {
+      "additionalProperties": {
+        "enum": [
+          "PASS",
+          "BLOCKED"
+        ],
+        "type": "string"
+      },
+      "title": "Checks",
+      "type": "object"
+    },
+    "contract": {
+      "const": "historical_private_acceptance_report_v1",
+      "default": "historical_private_acceptance_report_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "dataset_id": {
+      "minLength": 1,
+      "title": "Dataset Id",
+      "type": "string"
+    },
+    "offline_replay_verified": {
+      "default": false,
+      "title": "Offline Replay Verified",
+      "type": "boolean"
+    },
+    "plan_id": {
+      "minLength": 1,
+      "title": "Plan Id",
+      "type": "string"
+    },
+    "probe_network_used": {
+      "default": false,
+      "title": "Probe Network Used",
+      "type": "boolean"
+    },
+    "probe_report_id": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Probe Report Id"
+    },
+    "report_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Report Sha256",
+      "type": "string"
+    },
+    "target_id": {
+      "minLength": 1,
+      "title": "Target Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "plan_id",
+    "target_id",
+    "dataset_id",
+    "report_sha256"
+  ],
+  "title": "PrivateAcceptanceReportV1",
+  "type": "object"
+}

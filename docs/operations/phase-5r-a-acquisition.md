@@ -68,6 +68,16 @@ tve historical compile \
 tve dataset validate \
   --manifest .tve-private/manifests/historical.json \
   --store .tve-private/artifacts
+
+# 只读取本地 batch、probe 报告、CAS 和 manifest，审计 A6 最小私有验收。
+# 即使失败也会写出精确 blocker，并以退出码 2 fail closed。
+tve historical accept \
+  --batch .tve-private/batches/batch.json \
+  --probe-report .tve-private/live/probe.json \
+  --raw-store .tve-private/raw \
+  --manifest .tve-private/manifests/historical.json \
+  --store .tve-private/artifacts \
+  --output .tve-private/live/acceptance.json
 ```
 
 `--verify-replay` 会在完全离线条件下重复 compile 并自动比较 manifest 和 JSONL
@@ -78,6 +88,14 @@ shard identity；同一 batch 的 hash 必须相同。缺失或
 缺少 request 的部分 batch 不得进入 compiler。新 batch 还会为每个来源持久化
 `RawSourceAggregateV1`，列出全部 child receipt/blob hash；因此多页响应不会用
 任意一页的 hash 冒充整个来源。旧版 v1 batch 若未包含该可选字段仍可读取。
+
+`--probe-report` 应指向前一步 `historical source probe` 输出的 readiness report；
+`historical accept` 不会重新 probe、解析凭据、调用 provider 或模型。它会对已持久化
+batch 做离线重编译，核对 manifest/shard hash，并逐项审计 A/H、两整年、calendar/
+lifecycle、类别 coverage、terminal/suspension、benchmark/FX、A/H 官方 filing、
+corporate actions、limitations 和独立 reconciliation。缺少 probe、授权、H 股能力、
+来源覆盖或任何证明时，报告保留精确 blocker；它不会把失败状态升级为
+`PERSONAL_RESEARCH_READY`。
 
 ## 4. 条款、凭据、备份与删除
 
