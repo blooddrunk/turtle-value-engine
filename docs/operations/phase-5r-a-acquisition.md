@@ -10,8 +10,9 @@
   代码、schema、计划模板和脱敏报告。
 - `tve historical source probe` 与 `tve historical acquire` 默认拒绝网络。
   每次 live 操作都必须显式带 `--network=allow`。
-- CLI 使用内置真实 transport 时，plan 还必须声明至少一个非空的
-  `ENVIRONMENT` credential reference；缺少环境凭据会在触碰网络前 fail closed。
+- CLI 使用内置真实 transport 时，plan 中每个 request 的必需凭据都必须声明为
+  `ENVIRONMENT` credential reference，并在触碰网络前解析为非空值；任一缺失都会
+  fail closed。多 request 计划不会先获取一部分数据再发现凭据缺失。
   `KEYRING`/`INJECTED` 只适用于显式注入的受控 runner 或 fake transport，不会成为
   默认 CLI 的 live 授权。
 - 凭据只在计划中写“引用”：环境变量名、OS keyring 的 service/account，或

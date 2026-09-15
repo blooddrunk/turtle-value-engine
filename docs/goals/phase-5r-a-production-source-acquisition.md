@@ -39,10 +39,11 @@ shard store. It records exact blockers and exits fail closed; this audit tool
 does not itself make the real private acceptance claim pass.
 
 For the project-owner live policy, the built-in CLI transport additionally
-requires a non-empty declared `ENVIRONMENT` credential reference before it can
-touch the network. Keyring/injected resolution remains an explicit library
-boundary for controlled runners and deterministic fake-transport tests; it is
-not a default CLI live authorization.
+requires every required request credential to be declared as an `ENVIRONMENT`
+reference and to resolve to a non-empty value before it can touch the network.
+Keyring/injected resolution remains an explicit library boundary for controlled
+runners and deterministic fake-transport tests; it is not a default CLI live
+authorization.
 
 ## Decisions frozen for this task package
 
