@@ -119,10 +119,13 @@ collections as verified content-addressed JSONL shards. The offline compiler
 projects only validated rows into the Phase 5 manifest. A historical or
 survivorship-free claim requires complete source-backed membership and
 coverage evidence, established authority/licensing and an independent
-reconciliation; the compact Git corpus is an acceptance fixture and does not
-make a market-wide production claim. Delisted/terminal listings and unresolved
-terminal economics remain explicit, and the research archive validator is the
-only permitted path for historical Business Quality artifacts. No provider or
+reconciliation. Production source descriptors must retain license-evidence
+URI/hash and restricted sources must retain an access-grant reference; a prose
+license label is insufficient. The compact Git corpus is an acceptance fixture
+and does not make a market-wide production claim. Delisted/terminal listings
+and unresolved terminal economics remain explicit. The research archive
+validator is the only permitted path for historical Business Quality artifacts.
+No provider or
 live model is invoked by dataset validation, freezing, snapshotting, backtest
 or calibration commands.
 
