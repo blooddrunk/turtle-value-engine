@@ -64,6 +64,31 @@ _COVERAGE_KINDS: dict[str, set[HistoricalSourceKind]] = {
         HistoricalSourceKind.DELISTINGS,
     },
 }
+_COVERAGE_BASES: dict[HistoricalSourceKind, set[CoverageEvidenceBasis]] = {
+    HistoricalSourceKind.UNIVERSE_MEMBERSHIP: {
+        CoverageEvidenceBasis.MEMBERSHIP_INTERVALS,
+        CoverageEvidenceBasis.EXPLICIT_SOURCE_SCOPE,
+    },
+    HistoricalSourceKind.PRICES: {CoverageEvidenceBasis.TRADING_SESSIONS},
+    HistoricalSourceKind.CORPORATE_ACTIONS: {
+        CoverageEvidenceBasis.EVENT_INDEX,
+        CoverageEvidenceBasis.EXPLICIT_SOURCE_SCOPE,
+    },
+    HistoricalSourceKind.BENCHMARK: {CoverageEvidenceBasis.OBSERVATION_SESSIONS},
+    HistoricalSourceKind.FX: {CoverageEvidenceBasis.OBSERVATION_SESSIONS},
+    HistoricalSourceKind.FILINGS: {
+        CoverageEvidenceBasis.FILING_INDEX,
+        CoverageEvidenceBasis.EXPLICIT_SOURCE_SCOPE,
+    },
+    HistoricalSourceKind.LISTING_LIFECYCLE: {
+        CoverageEvidenceBasis.LIFECYCLE_INDEX,
+        CoverageEvidenceBasis.EXPLICIT_SOURCE_SCOPE,
+    },
+    HistoricalSourceKind.DELISTINGS: {
+        CoverageEvidenceBasis.LIFECYCLE_INDEX,
+        CoverageEvidenceBasis.EXPLICIT_SOURCE_SCOPE,
+    },
+}
 _ROW_TYPES: dict[ShardArtifactKind, tuple[type[BaseModel], ...]] = {
     ShardArtifactKind.LISTING_LIFECYCLE: (HistoricalListingLifecycle, ListingLifecycle),
     ShardArtifactKind.UNIVERSE_MEMBERSHIP: (HistoricalMembershipInterval, UniverseMembership),
@@ -159,12 +184,27 @@ def _read_rows(
 
 def _complete_coverage(
     coverage_status: dict[str, str],
+    coverage_reports: Sequence[BaseModel],
     source_kind: HistoricalSourceKind,
     listing_id: str,
 ) -> bool:
-    return any(
+    if not any(
         coverage_status.get(f"{candidate.value}:{listing_id}") == "COMPLETE"
         for candidate in _COVERAGE_KINDS[source_kind.value]
+    ):
+        return False
+    accepted_kinds = _COVERAGE_KINDS[source_kind.value]
+    return any(
+        record.source_kind in accepted_kinds
+        and record.listing_id == listing_id
+        and record.status.value == "COMPLETE"
+        and record.evidence_basis in _COVERAGE_BASES[record.source_kind]
+        and (
+            record.expected_session_count > 0
+            or record.evidence_basis is CoverageEvidenceBasis.EXPLICIT_SOURCE_SCOPE
+        )
+        for report in coverage_reports
+        for record in report.records
     )
 
 
@@ -386,7 +426,12 @@ def validate_private_acceptance(
             continue
         enum_kind = HistoricalSourceKind(source_kind)
         for listing_id in target.listing_ids:
-            if not _complete_coverage(validation.coverage_status, enum_kind, listing_id):
+            if not _complete_coverage(
+                validation.coverage_status,
+                manifest.coverage_reports,
+                enum_kind,
+                listing_id,
+            ):
                 coverage_issues.append(
                     f"A6_COVERAGE_INCOMPLETE: {source_kind}:{listing_id}"
                 )
@@ -510,6 +555,7 @@ def validate_private_acceptance(
                 membership_issues.append("A6_HISTORICAL_MEMBERSHIP_MISSING: " + listing_id)
             elif not _complete_coverage(
                 validation.coverage_status,
+                manifest.coverage_reports,
                 HistoricalSourceKind.UNIVERSE_MEMBERSHIP,
                 listing_id,
             ):
