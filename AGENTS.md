@@ -145,6 +145,10 @@ Phase 5R-A acquisition commands are separate from replay:
 receipts. Credentials may come only from declared environment/keyring
 references or an injected resolver, never from chat. The exact remaining
 blockers are recorded in `docs/operations/phase-5r-a-acquisition.md`.
+The built-in CLI live transport additionally requires a non-empty declared
+`ENVIRONMENT` credential reference before any network request; keyring/injected
+resolution is limited to explicitly controlled library runners or fake
+transports. This repository does not treat a chat value as a credential.
 The executable next-stage package is
 `docs/goals/phase-5r-a-production-source-acquisition.md`. Its minimum path is
 personal-first: official public and documented personal-account sources, local

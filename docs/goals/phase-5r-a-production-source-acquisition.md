@@ -32,6 +32,12 @@ acceptance is not claimed. The precise unresolved source, membership, terminal
 economics and authorization blockers are recorded in
 `docs/operations/phase-5r-a-acquisition.md` and in readiness reports.
 
+For the project-owner live policy, the built-in CLI transport additionally
+requires a non-empty declared `ENVIRONMENT` credential reference before it can
+touch the network. Keyring/injected resolution remains an explicit library
+boundary for controlled runners and deterministic fake-transport tests; it is
+not a default CLI live authorization.
+
 ## Decisions frozen for this task package
 
 1. **Personal-first access**: official public sources and documented

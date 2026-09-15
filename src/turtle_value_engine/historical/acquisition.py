@@ -1213,6 +1213,16 @@ class ResilientNetworkTransport:
         raise NetworkTransportError("network request failed")
 
 
+def _is_builtin_live_transport(transport: object) -> bool:
+    """Identify the standard-library transport used by the live CLI path."""
+
+    if isinstance(transport, UrllibNetworkTransport):
+        return True
+    if isinstance(transport, ResilientNetworkTransport):
+        return _is_builtin_live_transport(transport.inner)
+    return False
+
+
 class RawBlobStore:
     """Private, immutable exact-byte store under ``sha256/<prefix>/<hash>.blob``."""
 
@@ -2467,6 +2477,55 @@ class HistoricalAcquisitionService:
         self.transport = transport or ResilientNetworkTransport(UrllibNetworkTransport())
         self.credentials = credentials or EnvironmentCredentialResolver()
         self.clock = clock
+        # The built-in transport is the only path used by the CLI for real
+        # network access.  Require a non-empty ENVIRONMENT credential before
+        # touching it; injected transports remain available to deterministic
+        # tests and explicitly controlled runners.
+        self._requires_environment_credential = _is_builtin_live_transport(self.transport)
+
+    def _require_network_authorization(
+        self,
+        plan: HistoricalAcquisitionPlanV1,
+        *,
+        network_allowed: bool,
+    ) -> None:
+        if network_allowed is not True:
+            raise NetworkDisabledError(
+                "network is denied; pass --network=allow for an explicit live operation"
+            )
+        if not self._requires_environment_credential:
+            return
+        if not isinstance(self.credentials, EnvironmentCredentialResolver):
+            raise CredentialUnavailableError(
+                "built-in live transport requires EnvironmentCredentialResolver"
+            )
+        saw_environment_reference = False
+        for request in plan.requests:
+            reference = request.credential_ref
+            if reference is None or reference.kind != CredentialKind.ENVIRONMENT:
+                continue
+            saw_environment_reference = True
+            try:
+                value = self.credentials.resolve(reference)
+            except Exception as exc:
+                raise CredentialUnavailableError(
+                    "credential resolver failed for reference: " + reference.reference_id
+                ) from exc
+            if value is not None and not isinstance(value, str):
+                raise CredentialUnavailableError(
+                    "credential resolver returned an invalid value for reference: "
+                    + reference.reference_id
+                )
+            if value:
+                return
+        if not saw_environment_reference:
+            raise NetworkDisabledError(
+                "live network requires a non-empty ENVIRONMENT credential reference "
+                "and --network=allow"
+            )
+        raise CredentialUnavailableError(
+            "required environment credential is unavailable for live network access"
+        )
 
     def _adapter(self, request: HistoricalAcquisitionRequestV1) -> HistoricalSourceAdapter:
         adapter = self.adapters.get(request.adapter_id)
@@ -2490,10 +2549,7 @@ class HistoricalAcquisitionService:
         *,
         network_allowed: bool = False,
     ) -> AcquisitionReadinessReportV1:
-        if network_allowed is not True:
-            raise NetworkDisabledError(
-                "network is denied; pass --network=allow for an explicit live probe"
-            )
+        self._require_network_authorization(plan, network_allowed=network_allowed)
         reports = []
         sources = {source.source_id: source for source in plan.sources}
         for request in plan.requests:
@@ -2533,10 +2589,7 @@ class HistoricalAcquisitionService:
         raw_store: RawBlobStore,
         network_allowed: bool = False,
     ) -> AcquisitionResult:
-        if network_allowed is not True:
-            raise NetworkDisabledError(
-                "network is denied; pass --network=allow for explicit live acquisition"
-            )
+        self._require_network_authorization(plan, network_allowed=network_allowed)
         pending: list[
             tuple[HistoricalAcquisitionRequestV1, RawDownload, str, datetime, datetime]
         ] = []

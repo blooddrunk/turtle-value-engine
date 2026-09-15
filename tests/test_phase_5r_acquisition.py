@@ -17,6 +17,7 @@ from turtle_value_engine.historical import (
     CoverageClaim,
     CoverageEvidenceBasis,
     CredentialReferenceV1,
+    CredentialUnavailableError,
     HistoricalAcquisitionPlanV1,
     HistoricalAcquisitionRequestV1,
     HistoricalAcquisitionService,
@@ -163,6 +164,31 @@ def test_network_is_denied_before_transport_is_touched():
             {"http-json": ConfiguredHttpSourceAdapter()}, transport=transport
         ).probe(_plan(), network_allowed=False)
     assert transport.calls == []
+
+
+def test_default_live_transport_requires_environment_credential_before_network(monkeypatch):
+    def fail_if_called(*_args, **_kwargs):
+        raise AssertionError("the live transport must not be touched")
+
+    monkeypatch.setattr("turtle_value_engine.historical.acquisition.urlopen", fail_if_called)
+    with pytest.raises(NetworkDisabledError, match="ENVIRONMENT credential"):
+        HistoricalAcquisitionService().probe(_plan(), network_allowed=True)
+
+
+def test_default_live_transport_rejects_injected_resolver_for_environment_reference():
+    reference = CredentialReferenceV1(
+        reference_id="env-source-key",
+        kind="ENVIRONMENT",
+        name="TVE_SOURCE_KEY",
+    )
+    request = _request().model_copy(update={"credential_ref": reference})
+    plan = _plan().model_copy(
+        update={"requests": [request], "credential_references": [reference]}
+    )
+    with pytest.raises(CredentialUnavailableError, match="EnvironmentCredentialResolver"):
+        HistoricalAcquisitionService(
+            credentials=MappingCredentialResolver({"env-source-key": "not-a-process-env-value"})
+        ).probe(plan, network_allowed=True)
 
 
 def test_historical_probe_cli_denies_network_by_default(tmp_path: Path, capsys):
@@ -533,6 +559,7 @@ def test_official_filing_documents_compile_to_hash_and_locator_shard(tmp_path: P
                 {filing.filing_id: filing},
             )
         },
+        transport=FakeTransport([]),
         clock=lambda: datetime(2026, 1, 2, tzinfo=UTC),
     ).acquire(plan, raw_store=raw_store, network_allowed=True)
 
@@ -651,6 +678,7 @@ def test_official_filing_discovery_callback_avoids_hand_assembled_ids(tmp_path: 
                 discover=discover,
             )
         },
+        transport=FakeTransport([]),
         clock=lambda: datetime(2026, 1, 2, tzinfo=UTC),
     ).acquire(plan, raw_store=raw_store, network_allowed=True)
 
