@@ -2502,8 +2502,12 @@ class HistoricalAcquisitionService:
         clock: Any = lambda: datetime.now(UTC),
     ) -> None:
         self.adapters = dict(adapters or default_source_adapters())
-        self.transport = transport or ResilientNetworkTransport(UrllibNetworkTransport())
-        self.credentials = credentials or EnvironmentCredentialResolver()
+        self.transport = (
+            ResilientNetworkTransport(UrllibNetworkTransport())
+            if transport is None
+            else transport
+        )
+        self.credentials = EnvironmentCredentialResolver() if credentials is None else credentials
         self.clock = clock
         # The built-in transport is the only path used by the CLI for real
         # network access.  Require a non-empty ENVIRONMENT credential before
@@ -2635,10 +2639,84 @@ class HistoricalAcquisitionService:
                     raise HistoricalSourceSchemaError(
                         "source adapter returned an invalid raw download"
                     )
+                if not isinstance(download.response, NetworkResponse):
+                    raise HistoricalSourceSchemaError(
+                        "source adapter returned an invalid network response"
+                    )
+                if type(download.body) is not bytes or type(download.response.body) is not bytes:
+                    raise HistoricalSourceSchemaError(
+                        "source adapter returned a non-byte response body"
+                    )
+                if type(download.response.status_code) is not int or not (
+                    100 <= download.response.status_code <= 599
+                ):
+                    raise HistoricalSourceSchemaError(
+                        "source adapter returned an invalid HTTP status"
+                    )
                 if not 200 <= download.response.status_code <= 299:
                     raise AcquisitionError(_http_error_blocker(download.response.status_code))
                 if download.body != download.response.body:
                     raise RawBlobError("raw download body does not match transport response")
+                if download.artifact_role not in {"DATA", "FILING_DOCUMENT"}:
+                    raise HistoricalSourceSchemaError(
+                        "source adapter returned an unsupported artifact role"
+                    )
+                if download.schema_version != request.schema_version:
+                    raise HistoricalSourceSchemaError(
+                        "source adapter returned an incompatible schema version: "
+                        + request.request_id
+                    )
+                if download.artifact_role == "DATA" and download.artifact_kind not in {
+                    None,
+                    request.artifact_kind,
+                }:
+                    raise HistoricalSourceSchemaError(
+                        "source adapter returned an incompatible artifact kind: "
+                        + request.request_id
+                    )
+                if download.artifact_role == "FILING_DOCUMENT":
+                    if request.artifact_kind is not ShardArtifactKind.FILING_DOCUMENT:
+                        raise HistoricalSourceSchemaError(
+                            "filing document role does not match request artifact kind: "
+                            + request.request_id
+                        )
+                    if download.artifact_kind is not None:
+                        raise HistoricalSourceSchemaError(
+                            "filing document role must not carry a data artifact kind: "
+                            + request.request_id
+                        )
+                elif request.artifact_kind is ShardArtifactKind.FILING_DOCUMENT:
+                    raise HistoricalSourceSchemaError(
+                        "data role does not match filing request artifact kind: "
+                        + request.request_id
+                    )
+                try:
+                    safe_source_uri = _safe_uri(download.source_uri)
+                    safe_artifact_metadata = _safe_json_object(
+                        download.artifact_metadata,
+                        path="artifact_metadata",
+                    )
+                    safe_headers = _safe_headers(download.response.headers)
+                    content_length = safe_headers.get("content-length")
+                    if content_length is not None and int(content_length) != len(download.body):
+                        raise RawBlobError(
+                            "response content-length does not match raw response bytes"
+                        )
+                except (AttributeError, TypeError, ValueError) as exc:
+                    raise HistoricalSourceSchemaError(
+                        "source adapter returned invalid raw provenance metadata"
+                    ) from exc
+                download = RawDownload(
+                    body=download.body,
+                    response=download.response,
+                    source_uri=safe_source_uri,
+                    artifact_role=download.artifact_role,
+                    parent_blob_sha256=download.parent_blob_sha256,
+                    parent_artifact_id=download.parent_artifact_id,
+                    artifact_kind=download.artifact_kind,
+                    schema_version=download.schema_version,
+                    artifact_metadata=safe_artifact_metadata,
+                )
                 digest = raw_store.put(download.body)
                 pending.append(
                     (
@@ -2657,10 +2735,7 @@ class HistoricalAcquisitionService:
                     "request_identity": request.request_identity,
                     "sha256": digest,
                     "artifact_role": download.artifact_role,
-                    "artifact_metadata": _safe_json_object(
-                        download.artifact_metadata,
-                        path="artifact_metadata",
-                    ),
+                    "artifact_metadata": download.artifact_metadata,
                 }
             )
         batch_id = _batch_id_from_artifacts(plan.content_sha256, batch_artifacts)

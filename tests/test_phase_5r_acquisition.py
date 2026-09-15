@@ -28,6 +28,7 @@ from turtle_value_engine.historical import (
     HistoricalReconciliationReport,
     HistoricalSourceDescriptor,
     HistoricalSourceKind,
+    HistoricalSourceSchemaError,
     HistoricalSourceSpecV1,
     HistoricalTargetScope,
     HithinkMarketDumpAdapter,
@@ -39,6 +40,7 @@ from turtle_value_engine.historical import (
     RawArtifactReceiptV1,
     RawBlobError,
     RawBlobStore,
+    RawDownload,
     ReconciliationComparison,
     ResilientNetworkTransport,
     ShardArtifactKind,
@@ -373,6 +375,40 @@ def test_private_acquisition_and_offline_compile_are_replayable(tmp_path: Path):
     assert [item.content_sha256 for item in first.shards] == [
         item.content_sha256 for item in second.shards
     ]
+
+
+def test_acquisition_rejects_schema_drift_before_persisting_blob(tmp_path: Path):
+    class SchemaDriftAdapter:
+        adapter_id = "schema-drift"
+        adapter_version = "1"
+
+        def acquire(self, request, *, transport, credentials):
+            response = NetworkResponse(
+                200,
+                {"Content-Type": "application/json"},
+                b"payload",
+                "https://source.example.test/history",
+            )
+            return [
+                RawDownload(
+                    body=response.body,
+                    response=response,
+                    source_uri=response.url,
+                    schema_version="unrecognized-schema",
+                )
+            ]
+
+        def probe(self, request, *, transport, credentials, plan_id, clock):
+            raise AssertionError("probe is not part of this test")
+
+    plan = _plan(adapter_id="schema-drift")
+    raw_store = RawBlobStore(tmp_path / "raw")
+    with pytest.raises(HistoricalSourceSchemaError, match="incompatible schema version"):
+        HistoricalAcquisitionService(
+            {"schema-drift": SchemaDriftAdapter()},
+            transport=FakeTransport([]),
+        ).acquire(plan, raw_store=raw_store, network_allowed=True)
+    assert list((tmp_path / "raw").rglob("*.blob")) == []
 
 
 def test_compiler_filters_full_market_rows_to_declared_request_scope(tmp_path: Path):

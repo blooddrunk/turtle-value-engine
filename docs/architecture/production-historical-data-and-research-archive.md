@@ -37,10 +37,12 @@ HistoricalAcquisitionPlanV1
 ```
 
 `tve historical source probe` and `tve historical acquire` require
-`--network=allow`; their default is deny. Credentials are resolved only from a
-declared environment-variable/keyring reference or an injected resolver, and
-are never included in request parameters, hashes, receipts, manifests, logs or
-chat. Raw bytes use the local layout
+`--network=allow`; their default is deny. The built-in CLI transport additionally
+requires a non-empty declared `ENVIRONMENT` credential reference before any
+request is sent. Keyring/injected resolution is reserved for explicitly
+controlled library runners and fake transports. Credential values are never
+included in request parameters, hashes, receipts, manifests, logs or chat. Raw
+bytes use the local layout
 `<raw-store>/sha256/<first-two>/<sha256>.blob`; partial streams remain in a
 quarantine directory until length and SHA-256 checks pass. Remote mirroring is
 not part of the authoritative path.
