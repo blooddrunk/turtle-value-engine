@@ -110,6 +110,22 @@ and chronological calibration proposals. These contracts consume frozen
 artifacts only; they do not change `strict-v1` or recalculate deterministic
 investment semantics.
 
+Phase 5R adds the source-aware production historical boundary described in
+`docs/goals/phase-5r-production-historical-corpus.md` and
+`docs/architecture/production-historical-data-and-research-archive.md`.
+`HistoricalDatasetManifest` declares a named, bounded A/H target scope and
+source/coverage evidence, while `HistoricalArtifactStore` persists large
+collections as verified content-addressed JSONL shards. The offline compiler
+projects only validated rows into the Phase 5 manifest. A historical or
+survivorship-free claim requires complete source-backed membership and
+coverage evidence, established authority/licensing and an independent
+reconciliation; the compact Git corpus is an acceptance fixture and does not
+make a market-wide production claim. Delisted/terminal listings and unresolved
+terminal economics remain explicit, and the research archive validator is the
+only permitted path for historical Business Quality artifacts. No provider or
+live model is invoked by dataset validation, freezing, snapshotting, backtest
+or calibration commands.
+
 ## 5. Working with company data
 
 Keep networked preparation and deterministic analysis separate:

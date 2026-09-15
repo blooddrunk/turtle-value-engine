@@ -110,3 +110,7 @@ repository's proposal, review, tests and human-approval path.
 All public Phase 5 persisted contracts have corresponding JSON Schemas and
 deterministic IDs/content hashes. The frozen tests use synthetic, offline
 fixtures and do not require a network or live model.
+
+The additive Phase 5R source-aware compiler, content-addressed shard layout,
+historical research archive and bounded production-claim rules are documented
+in [`production-historical-data-and-research-archive.md`](production-historical-data-and-research-archive.md).
