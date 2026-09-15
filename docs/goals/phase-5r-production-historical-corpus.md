@@ -153,6 +153,13 @@ adversarial acceptance tests are implemented. The declared checked-in target is
 range `2020-01-01` through `2020-01-03`. It is explicitly
 `FIXED_RESEARCH_UNIVERSE` and `PARTIAL`.
 
+The production validator also requires persisted license-evidence URI/hash
+for every source and an access-grant reference for restricted-internal
+sources. A terminal listing inside a claimed production period must carry an
+explicit terminal-value action; otherwise it must remain unresolved and fail
+closed. Archived document hashes must resolve to a filing source or frozen
+filing artifact.
+
 The compact corpus currently declares target `fixture-ah-2020` in universe
 `fixture-ah`, with A1 and H1 listings over 2020-01-01 through 2020-01-03. It
 proves 2 listing lifecycles, 2 membership intervals, 6 market rows, 2
