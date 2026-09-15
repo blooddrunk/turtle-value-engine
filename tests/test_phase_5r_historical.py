@@ -492,6 +492,19 @@ def test_current_constituent_substitution_is_rejected():
         )
 
 
+def test_production_license_evidence_must_be_persisted_as_a_pair():
+    payload = _source(
+        "licensed",
+        HistoricalSourceKind.PRICES,
+        authority=SourceAuthority.OFFICIAL_EXCHANGE,
+        license_status=LicenseStatus.OPEN_REDISTRIBUTABLE,
+        historical_capable=True,
+    ).model_dump(mode="python")
+    payload["license_evidence_uri"] = "https://example.test/license"
+    with pytest.raises(ValueError, match="supplied together"):
+        HistoricalSourceDescriptor.model_validate(payload)
+
+
 def test_unknown_terminal_outcome_is_retained_without_fabricated_value(tmp_path):
     unresolved = _lifecycle_rows()
     unresolved[1] = unresolved[1].model_copy(

@@ -39,7 +39,9 @@ coverage remains explicit and fails closed for production claims.
   archived research.
 - Persist provider/source identity, authority, query parameters, retrieval
   time, source version where available, coverage dates, content hashes and
-  licensing/redistribution constraints.
+  licensing/redistribution constraints. Production descriptors must also
+  retain license-evidence URI/hash and, for restricted internal sources, an
+  access-grant reference.
 - Add named target scope, per-listing/per-period coverage reports and a
   validator that requires source-backed membership evidence for any historical
   or survivorship-bias-free claim.
@@ -182,6 +184,11 @@ rights:
 - [SSE service guidance](https://www.sse.com.cn/transparency/services/)
   directs market institutions to product authorization, licensing and fee
   materials; public availability is not treated as open redistribution.
+- [SSE legal statement](https://www.sse.com.cn/home/legal/)
+  restricts copying, downloading, storage, automated extraction and
+  dissemination for profit without written permission.
+- [HKEX terms of use](https://www.hkex.com.hk/global/exchange/terms-of-use?sc_lang=en)
+  restrict automated scraping and unauthorized use of website information.
 - [HKEXnews archive disclaimer](https://www.hkexnews.hk/listedco/listconews/mainindex/sehk_dw_datetime_today_c.htm)
   states that copyright may belong to HKEX, the issuer or another party.
 

@@ -166,7 +166,11 @@ class HistoricalDatasetCompiler:
 
         try:
             manifest = HistoricalDatasetManifest.model_validate(
-                self.manifest.model_dump(mode="python", warnings=False)
+                self.manifest.model_dump(
+                    mode="python",
+                    exclude_unset=True,
+                    warnings=False,
+                )
             )
         except (TypeError, ValueError, ValidationError) as exc:
             return HistoricalValidationSummary(
@@ -199,6 +203,12 @@ class HistoricalDatasetCompiler:
             if require_production and (
                 source.license_status.value in {"UNKNOWN", "PROHIBITED"}
                 or source.authority.value in {"UNKNOWN", "FIXTURE"}
+                or source.license_evidence_uri is None
+                or source.license_evidence_sha256 is None
+                or (
+                    source.license_status.value == "RESTRICTED_INTERNAL"
+                    and source.access_grant_reference is None
+                )
             ):
                 errors.append(
                     "source authority/licensing cannot support a production claim: "

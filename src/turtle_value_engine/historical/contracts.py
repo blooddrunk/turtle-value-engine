@@ -43,7 +43,15 @@ HISTORICAL_ARCHIVE_CONTRACT_VERSION = "historical-research-archive-v1"
 
 
 def _hash_model(model: BaseModel, *excluded: str) -> str:
-    payload = model.model_dump(mode="json", exclude=set(excluded), warnings=False)
+    # Preserve hashes for older manifests when a new optional field was not
+    # present in their JSON.  Explicitly persisted nulls remain part of the
+    # identity, while an omitted additive field stays omitted.
+    payload = model.model_dump(
+        mode="json",
+        exclude=set(excluded),
+        exclude_unset=True,
+        warnings=False,
+    )
     return hashlib.sha256(canonical_json_bytes(payload)).hexdigest()
 
 
@@ -230,6 +238,11 @@ class HistoricalSourceDescriptor(BaseModel):
     source_uri: StrictStr | None = Field(default=None, min_length=1)
     license_status: LicenseStatus = LicenseStatus.UNKNOWN
     licensing_constraints: StrictStr = Field(min_length=1)
+    license_evidence_uri: StrictStr | None = Field(default=None, min_length=1)
+    license_evidence_sha256: StrictStr | None = Field(
+        default=None, pattern=_HASH_PATTERN
+    )
+    access_grant_reference: StrictStr | None = Field(default=None, min_length=1)
     historical_capable: StrictBool = False
     is_current_snapshot: StrictBool = False
 
@@ -248,6 +261,12 @@ class HistoricalSourceDescriptor(BaseModel):
             self.is_current_snapshot
         ):
             raise ValueError("current constituent snapshots are not historical membership")
+        if (self.license_evidence_uri is None) != (
+            self.license_evidence_sha256 is None
+        ):
+            raise ValueError(
+                "license_evidence_uri and license_evidence_sha256 must be supplied together"
+            )
         return self
 
 

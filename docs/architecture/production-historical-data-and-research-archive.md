@@ -29,7 +29,10 @@ is an error.
 identity, authority, query parameters, retrieval time, version, source content
 hash, coverage dates/listing scope and licensing constraints. The categories
 cover universe membership, listing lifecycle/delistings, prices, corporate
-actions, benchmarks, FX, filings and research archives.
+actions, benchmarks, FX, filings and research archives. A production source
+must additionally retain a license-evidence URI and hash; a
+`RESTRICTED_INTERNAL` source must carry an access-grant reference. A prose
+license label alone cannot make a production claim eligible.
 
 `HistoricalTargetScope` names the universe, A/H listing IDs, inclusive date
 range, membership claim, required source categories and licensing scope. A
