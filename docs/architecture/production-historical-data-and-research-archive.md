@@ -53,7 +53,11 @@ are validated against their adapter schema and filtered to the declared
 listing/date request scope before canonical rows are frozen. Unknown schemas,
 conflicting natural keys, duplicate semantic rows with different values,
 invalid provenance and out-of-scope rows fail closed. Source hashes for a
-multi-response batch are aggregate hashes over all child blobs.
+multi-response batch are aggregate hashes over all child blobs. New batch
+manifests also persist one `RawSourceAggregateV1` per source; each aggregate
+lists the child receipt IDs and blob SHA-256 values used to derive that source
+hash. Older v1 batch files without this additive field remain readable through
+the legacy batch hash path.
 
 The first documented A-share candidate is the Hithink Financial-API market-dump
 adapter: its official endpoint reference documents unadjusted daily-k and

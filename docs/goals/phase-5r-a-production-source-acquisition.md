@@ -22,9 +22,10 @@ math, Phase 5 signal/portfolio semantics, or point-in-time rules.
 A0–A5 and A7 are implemented. The repository now has category-union production
 coverage evaluation, additive coverage evidence bases, typed acquisition plans
 and receipts, a private immutable raw-byte CAS, explicit network/retry and
-credential boundaries, the documented Hithink A-share dump adapter, an injected
-bridge to the existing official filing downloader, and an offline raw-to-shard
-compiler. Deterministic fake-transport tests cover the new boundaries.
+credential boundaries, per-source aggregate artifacts for multi-response
+batches, the documented Hithink A-share dump adapter, an injected bridge to the
+existing official filing downloader, and an offline raw-to-shard compiler.
+Deterministic fake-transport tests cover the new boundaries.
 
 The goal remains `ACTIVE / PARTIAL`: no credential was read from chat or the
 local environment and no live probe was run, so A6's minimum real private A/H

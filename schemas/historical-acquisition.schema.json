@@ -719,6 +719,76 @@
       "title": "Market",
       "type": "string"
     },
+    "RawSourceAggregateV1": {
+      "additionalProperties": false,
+      "description": "Stable per-source artifact listing every child receipt and blob hash.",
+      "properties": {
+        "contract": {
+          "const": "raw_source_aggregate_v1",
+          "default": "raw_source_aggregate_v1",
+          "title": "Contract",
+          "type": "string"
+        },
+        "aggregate_id": {
+          "minLength": 1,
+          "title": "Aggregate Id",
+          "type": "string"
+        },
+        "source_id": {
+          "minLength": 1,
+          "title": "Source Id",
+          "type": "string"
+        },
+        "source_kind": {
+          "$ref": "#/$defs/HistoricalSourceKind"
+        },
+        "request_ids": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Request Ids",
+          "type": "array",
+          "uniqueItems": true
+        },
+        "child_receipt_ids": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Child Receipt Ids",
+          "type": "array",
+          "uniqueItems": true
+        },
+        "child_blob_sha256": {
+          "items": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Child Blob Sha256",
+          "type": "array"
+        },
+        "content_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Content Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "aggregate_id",
+        "source_id",
+        "source_kind",
+        "request_ids",
+        "child_receipt_ids",
+        "child_blob_sha256",
+        "content_sha256"
+      ],
+      "title": "RawSourceAggregateV1",
+      "type": "object"
+    },
     "RawAcquisitionBatchManifestV1": {
       "additionalProperties": false,
       "description": "Immutable batch index linking requests, receipts and raw blob hashes.",
@@ -758,6 +828,13 @@
           },
           "minItems": 1,
           "title": "Receipts",
+          "type": "array"
+        },
+        "source_aggregates": {
+          "items": {
+            "$ref": "#/$defs/RawSourceAggregateV1"
+          },
+          "title": "Source Aggregates",
           "type": "array"
         },
         "batch_sha256": {
@@ -1342,6 +1419,9 @@
     },
     {
       "$ref": "#/$defs/RawAcquisitionBatchManifestV1"
+    },
+    {
+      "$ref": "#/$defs/RawSourceAggregateV1"
     },
     {
       "$ref": "#/$defs/RawArtifactReceiptV1"

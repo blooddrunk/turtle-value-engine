@@ -75,7 +75,9 @@ shard identity；同一 batch 的 hash 必须相同。缺失或
 损坏 raw blob、未知 schema、冲突 natural key、超出日期/标的范围、未知终止
 经济结果和不完整 calendar 都应失败，不应补零或生成终值。
 一个 acquisition batch 还必须为计划中的每个 request 保留至少一个 receipt；
-缺少 request 的部分 batch 不得进入 compiler。
+缺少 request 的部分 batch 不得进入 compiler。新 batch 还会为每个来源持久化
+`RawSourceAggregateV1`，列出全部 child receipt/blob hash；因此多页响应不会用
+任意一页的 hash 冒充整个来源。旧版 v1 batch 若未包含该可选字段仍可读取。
 
 ## 4. 条款、凭据、备份与删除
 

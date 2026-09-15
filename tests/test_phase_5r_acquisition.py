@@ -11,6 +11,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from jsonschema import Draft202012Validator
 
 from turtle_value_engine.backtest import ListingLifecycle, Market, MarketBar, PriceBasis
 from turtle_value_engine.cli import main
@@ -66,6 +67,7 @@ from turtle_value_engine.providers import (
     FilingSource,
     filing_id_for,
 )
+from turtle_value_engine.providers.models import canonical_json_bytes
 
 HASH = "0" * 64
 
@@ -422,6 +424,82 @@ def test_batch_id_is_bound_to_receipt_identities():
             created_at=datetime(2026, 1, 1, tzinfo=UTC),
             receipts=[receipt],
         )
+
+
+def test_batch_persists_source_aggregate_for_all_child_blobs(tmp_path: Path):
+    first_body = _market_bar_body()
+    second_body = b" " + first_body + b"\n"
+
+    class MultiPageAdapter:
+        adapter_id = "multi-page"
+        adapter_version = "1"
+
+        def acquire(self, request, *, transport, credentials):
+            del transport, credentials
+            return [
+                RawDownload(
+                    body=body,
+                    response=NetworkResponse(
+                        200,
+                        {"Content-Type": "application/json"},
+                        body,
+                        "https://source.example.test/history",
+                    ),
+                    source_uri="https://source.example.test/history",
+                    schema_version=request.schema_version,
+                )
+                for body in (first_body, second_body)
+            ]
+
+    plan = _plan(adapter_id="multi-page")
+    raw_store = RawBlobStore(tmp_path / "raw")
+    result = HistoricalAcquisitionService(
+        {"multi-page": MultiPageAdapter()},
+        transport=FakeTransport([]),
+    ).acquire(plan, raw_store=raw_store, network_allowed=True)
+
+    assert len(result.batch.source_aggregates) == 1
+    aggregate = result.batch.source_aggregates[0]
+    assert aggregate.source_id == "prices-source"
+    assert set(aggregate.child_receipt_ids) == {
+        receipt.receipt_id for receipt in result.batch.receipts
+    }
+    assert set(aggregate.child_blob_sha256) == {
+        hashlib.sha256(first_body).hexdigest(),
+        hashlib.sha256(second_body).hexdigest(),
+    }
+    assert result.batch.source_aggregate_hash("prices-source") == aggregate.content_sha256
+
+    manifest = HistoricalIngestionCompiler(
+        raw_store=raw_store,
+        artifact_store=HistoricalArtifactStore(tmp_path / "artifacts"),
+    ).compile(result.batch)
+    assert manifest.source_descriptors[0].content_sha256 == aggregate.content_sha256
+
+    acquisition_schema = json.loads(
+        (
+            Path(__file__).parents[1] / "schemas" / "historical-acquisition.schema.json"
+        ).read_text(encoding="utf-8")
+    )
+    validator = Draft202012Validator(acquisition_schema)
+    validator.validate(result.batch.model_dump(mode="json", warnings=False))
+    validator.validate(aggregate.model_dump(mode="json", warnings=False))
+
+    # A batch written before source_aggregates was introduced remains a
+    # readable v1 wire artifact through the legacy content hash.
+    legacy_payload = result.batch.model_dump(mode="json", warnings=False)
+    legacy_payload.pop("source_aggregates")
+    legacy_payload["batch_sha256"] = hashlib.sha256(
+        canonical_json_bytes(
+            {
+                key: value
+                for key, value in legacy_payload.items()
+                if key != "batch_sha256"
+            }
+        )
+    ).hexdigest()
+    legacy_batch = RawAcquisitionBatchManifestV1.model_validate(legacy_payload)
+    assert legacy_batch.source_aggregates == []
 
 
 def test_batch_rejects_missing_plan_request_receipts():

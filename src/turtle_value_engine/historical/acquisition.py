@@ -793,6 +793,106 @@ def _expected_batch_id(
     )
 
 
+class RawSourceAggregateV1(BaseModel):
+    """Stable per-source artifact listing every child receipt and blob hash."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    contract: Literal["raw_source_aggregate_v1"] = "raw_source_aggregate_v1"
+    aggregate_id: StrictStr = Field(min_length=1)
+    source_id: StrictStr = Field(min_length=1)
+    source_kind: HistoricalSourceKind
+    request_ids: list[StrictStr] = Field(min_length=1)
+    child_receipt_ids: list[StrictStr] = Field(min_length=1)
+    child_blob_sha256: list[StrictStr] = Field(min_length=1)
+    content_sha256: StrictStr = Field(pattern=_HASH_PATTERN)
+
+    @field_validator("request_ids", "child_receipt_ids")
+    @classmethod
+    def validate_unique_ids(cls, value: list[str]) -> list[str]:
+        if len(value) != len(set(value)):
+            raise ValueError("source aggregate child IDs must not contain duplicates")
+        return value
+
+    @field_validator("child_blob_sha256")
+    @classmethod
+    def validate_child_hashes(cls, value: list[str]) -> list[str]:
+        if any(not re.fullmatch(_HASH_PATTERN, item) for item in value):
+            raise ValueError("source aggregate child blobs must be lowercase SHA-256 hashes")
+        return value
+
+    @model_validator(mode="after")
+    def validate_aggregate(self) -> RawSourceAggregateV1:
+        if len(self.child_receipt_ids) != len(self.child_blob_sha256):
+            raise ValueError("source aggregate receipt/blob lists must have equal length")
+        expected_content = _model_sha256(
+            self,
+            exclude={"content_sha256", "aggregate_id"},
+        )
+        if self.content_sha256 != expected_content:
+            raise ValueError("source aggregate content_sha256 does not match content")
+        if self.aggregate_id != "aggregate-" + self.content_sha256[:32]:
+            raise ValueError("source aggregate ID does not match content")
+        return self
+
+    @classmethod
+    def build(
+        cls,
+        *,
+        source_id: str,
+        source_kind: HistoricalSourceKind,
+        receipts: Sequence[RawArtifactReceiptV1],
+    ) -> RawSourceAggregateV1:
+        ordered = sorted(
+            receipts,
+            key=lambda item: (item.request_id, item.receipt_id, item.sha256),
+        )
+        if not ordered:
+            raise ValueError("source aggregate requires at least one receipt")
+        if any(
+            item.source_id != source_id or item.source_kind is not source_kind
+            for item in ordered
+        ):
+            raise ValueError("source aggregate receipts do not match source identity")
+        candidate = cls.model_construct(
+            contract="raw_source_aggregate_v1",
+            aggregate_id="aggregate-" + "0" * 32,
+            source_id=source_id,
+            source_kind=source_kind,
+            request_ids=sorted({item.request_id for item in ordered}),
+            child_receipt_ids=[item.receipt_id for item in ordered],
+            child_blob_sha256=[item.sha256 for item in ordered],
+            content_sha256="0" * 64,
+        )
+        content_sha256 = _model_sha256(
+            candidate,
+            exclude={"content_sha256", "aggregate_id"},
+        )
+        candidate = candidate.model_copy(
+            update={
+                "content_sha256": content_sha256,
+                "aggregate_id": "aggregate-" + content_sha256[:32],
+            }
+        )
+        return cls.model_validate(candidate.model_dump(mode="python", warnings=False))
+
+
+def _build_source_aggregates(
+    receipts: Sequence[RawArtifactReceiptV1],
+) -> list[RawSourceAggregateV1]:
+    grouped: dict[str, list[RawArtifactReceiptV1]] = defaultdict(list)
+    for receipt in receipts:
+        grouped[receipt.source_id].append(receipt)
+    return [
+        RawSourceAggregateV1.build(
+            source_id=source_id,
+            source_kind=items[0].source_kind,
+            receipts=items,
+        )
+        for source_id, items in sorted(grouped.items())
+    ]
+
+
 class RawAcquisitionBatchManifestV1(BaseModel):
     """Immutable batch index linking requests, receipts and raw blob hashes."""
 
@@ -805,6 +905,10 @@ class RawAcquisitionBatchManifestV1(BaseModel):
     created_at: datetime
     plan: HistoricalAcquisitionPlanV1
     receipts: list[RawArtifactReceiptV1] = Field(min_length=1)
+    # Additive field: old v1 batch files omit it and remain readable.  New
+    # batches persist the explicit aggregate artifact required for multi-page
+    # source provenance.
+    source_aggregates: list[RawSourceAggregateV1] = Field(default_factory=list)
     batch_sha256: StrictStr = Field(pattern=_HASH_PATTERN)
 
     @model_validator(mode="after")
@@ -832,12 +936,23 @@ class RawAcquisitionBatchManifestV1(BaseModel):
                 "batch is missing receipts for requests: "
                 + ",".join(sorted(missing_request_ids))
             )
+        if self.source_aggregates:
+            expected_aggregates = _build_source_aggregates(self.receipts)
+            if self.source_aggregates != expected_aggregates:
+                raise ValueError("source aggregate artifacts do not match receipts")
         expected_batch_id = _expected_batch_id(self.plan_sha256, self.receipts)
         if self.batch_id != expected_batch_id:
             raise ValueError("batch_id does not match plan and receipt identities")
         expected = _model_sha256(self, exclude={"batch_sha256"})
         if self.batch_sha256 != expected:
-            raise ValueError("batch_sha256 does not match batch content")
+            # Batches written before source_aggregates was added remain valid
+            # wire artifacts; no new batch can use this legacy hash path.
+            legacy_expected = _model_sha256(
+                self,
+                exclude={"batch_sha256", "source_aggregates"},
+            )
+            if self.source_aggregates or self.batch_sha256 != legacy_expected:
+                raise ValueError("batch_sha256 does not match batch content")
         return self
 
     @classmethod
@@ -857,6 +972,7 @@ class RawAcquisitionBatchManifestV1(BaseModel):
             created_at=created_at,
             plan=plan,
             receipts=receipts,
+            source_aggregates=_build_source_aggregates(receipts),
             batch_sha256="0" * 64,
         )
         payload = candidate.model_dump(mode="json", warnings=False)
@@ -869,6 +985,10 @@ class RawAcquisitionBatchManifestV1(BaseModel):
 
     def source_aggregate_hash(self, source_id: str) -> str:
         """Hash all child blobs for a source, never an arbitrary page hash."""
+
+        for aggregate in self.source_aggregates:
+            if aggregate.source_id == source_id:
+                return aggregate.content_sha256
 
         child_hashes = sorted(
             {receipt.sha256 for receipt in self.receipts if receipt.source_id == source_id}
@@ -3955,6 +4075,7 @@ __all__ = [
     "RawBlobError",
     "RawBlobStore",
     "ReadinessLevel",
+    "RawSourceAggregateV1",
     "ResilientNetworkTransport",
     "SourceProbeReportV1",
     "StoragePolicy",
