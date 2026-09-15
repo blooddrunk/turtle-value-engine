@@ -3910,48 +3910,59 @@ def build_readiness_report(
                 or source.access_grant_reference is not None
             )
         }
-        h_price_probe_ids = {
-            report.source_id
-            for report in scoped_probe_reports
-            if report.source_id in h_price_source_ids
-            and report.source_id in h_terms_ids
-            # A lifecycle/action probe cannot establish that the H price
-            # source returned the requested historical bars. Keep this gate
-            # bound to the actual price request/source.
-            and report.source_kind is HistoricalSourceKind.PRICES
-            and _probe_has_h_scope(report, target_h, plan.target)
-        }
-        h_action_probe_ids = {
-            report.source_id
-            for report in scoped_probe_reports
-            if report.source_id in h_action_source_ids
-            and report.source_id in h_terms_ids
-            and report.source_kind
-            in {HistoricalSourceKind.PRICES, HistoricalSourceKind.CORPORATE_ACTIONS}
-            and report.action_coverage == CoverageEvidenceStatus.CONFIRMED
-            and _probe_has_h_scope(report, target_h, plan.target)
-        }
-        h_terminal_probe_ids = {
-            report.source_id
-            for report in scoped_probe_reports
-            if report.source_id in h_terminal_source_ids
-            and report.source_id in h_terms_ids
-            and report.source_kind
-            in {
+        def qualified_h_listings(
+            source_ids: set[str],
+            source_kinds: set[HistoricalSourceKind],
+            evidence_field: str | None = None,
+        ) -> set[str]:
+            covered: set[str] = set()
+            for report in scoped_probe_reports:
+                request = requests_by_id.get(report.request_id)
+                request_h_listings = (
+                    target_h
+                    if request is None
+                    else target_h.intersection(request.listing_ids)
+                )
+                if (
+                    not request_h_listings
+                    or report.source_id not in source_ids
+                    or report.source_id not in h_terms_ids
+                    or report.source_kind not in source_kinds
+                    or (
+                        evidence_field is not None
+                        and getattr(report, evidence_field) != CoverageEvidenceStatus.CONFIRMED
+                    )
+                    or not _probe_has_h_scope(report, request_h_listings, plan.target)
+                ):
+                    continue
+                covered.update(request_h_listings)
+            return covered
+
+        h_price_covered = qualified_h_listings(
+            h_price_source_ids,
+            {HistoricalSourceKind.PRICES},
+        )
+        h_action_covered = qualified_h_listings(
+            h_action_source_ids,
+            {HistoricalSourceKind.PRICES, HistoricalSourceKind.CORPORATE_ACTIONS},
+            evidence_field="action_coverage",
+        )
+        h_terminal_covered = qualified_h_listings(
+            h_terminal_source_ids,
+            {
                 HistoricalSourceKind.PRICES,
                 HistoricalSourceKind.CORPORATE_ACTIONS,
                 HistoricalSourceKind.LISTING_LIFECYCLE,
                 HistoricalSourceKind.DELISTINGS,
-            }
-            and report.terminal_coverage == CoverageEvidenceStatus.CONFIRMED
-            and _probe_has_h_scope(report, target_h, plan.target)
-        }
+            },
+            evidence_field="terminal_coverage",
+        )
         missing_h_evidence = []
-        if not h_price_source_ids.intersection(h_price_probe_ids):
+        if not target_h.issubset(h_price_covered):
             missing_h_evidence.append("PRICE_HISTORY")
-        if not h_action_source_ids.intersection(h_action_probe_ids):
+        if not target_h.issubset(h_action_covered):
             missing_h_evidence.append("CORPORATE_ACTIONS")
-        if not h_terminal_source_ids.intersection(h_terminal_probe_ids):
+        if not target_h.issubset(h_terminal_covered):
             missing_h_evidence.append("TERMINAL_LIFECYCLE")
         if missing_h_evidence:
             blockers.append(
