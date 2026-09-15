@@ -1,0 +1,169 @@
+{
+  "$defs": {
+    "HistoricalSourceKind": {
+      "description": "Source categories required to make a historical claim auditable.",
+      "enum": [
+        "UNIVERSE_MEMBERSHIP",
+        "LISTING_LIFECYCLE",
+        "DELISTINGS",
+        "PRICES",
+        "CORPORATE_ACTIONS",
+        "BENCHMARK",
+        "FX",
+        "FILINGS",
+        "RESEARCH_ARCHIVE"
+      ],
+      "title": "HistoricalSourceKind",
+      "type": "string"
+    },
+    "LicenseStatus": {
+      "description": "Redistribution state carried with every persisted source descriptor.",
+      "enum": [
+        "OPEN_REDISTRIBUTABLE",
+        "RESTRICTED_INTERNAL",
+        "UNKNOWN",
+        "PROHIBITED"
+      ],
+      "title": "LicenseStatus",
+      "type": "string"
+    },
+    "SourceAuthority": {
+      "description": "Authority classification; a provider name alone is not authority.",
+      "enum": [
+        "OFFICIAL_EXCHANGE",
+        "REGULATOR",
+        "ISSUER",
+        "DOCUMENTED_PROVIDER",
+        "ARCHIVE",
+        "FIXTURE",
+        "UNKNOWN"
+      ],
+      "title": "SourceAuthority",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Identity and coverage evidence for one acquired source artifact.",
+  "properties": {
+    "contract": {
+      "const": "historical_source_descriptor_v1",
+      "default": "historical_source_descriptor_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "source_id": {
+      "minLength": 1,
+      "title": "Source Id",
+      "type": "string"
+    },
+    "source_kind": {
+      "$ref": "#/$defs/HistoricalSourceKind"
+    },
+    "provider_id": {
+      "minLength": 1,
+      "title": "Provider Id",
+      "type": "string"
+    },
+    "source_name": {
+      "minLength": 1,
+      "title": "Source Name",
+      "type": "string"
+    },
+    "authority": {
+      "$ref": "#/$defs/SourceAuthority"
+    },
+    "query_parameters": {
+      "additionalProperties": true,
+      "title": "Query Parameters",
+      "type": "object"
+    },
+    "retrieved_at": {
+      "format": "date-time",
+      "title": "Retrieved At",
+      "type": "string"
+    },
+    "source_version": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Source Version"
+    },
+    "coverage_start": {
+      "format": "date",
+      "title": "Coverage Start",
+      "type": "string"
+    },
+    "coverage_end": {
+      "format": "date",
+      "title": "Coverage End",
+      "type": "string"
+    },
+    "coverage_listing_ids": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Coverage Listing Ids",
+      "type": "array"
+    },
+    "content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Content Sha256",
+      "type": "string"
+    },
+    "source_uri": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Source Uri"
+    },
+    "license_status": {
+      "$ref": "#/$defs/LicenseStatus",
+      "default": "UNKNOWN"
+    },
+    "licensing_constraints": {
+      "minLength": 1,
+      "title": "Licensing Constraints",
+      "type": "string"
+    },
+    "historical_capable": {
+      "default": false,
+      "title": "Historical Capable",
+      "type": "boolean"
+    },
+    "is_current_snapshot": {
+      "default": false,
+      "title": "Is Current Snapshot",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "source_id",
+    "source_kind",
+    "provider_id",
+    "source_name",
+    "authority",
+    "retrieved_at",
+    "coverage_start",
+    "coverage_end",
+    "coverage_listing_ids",
+    "content_sha256",
+    "licensing_constraints"
+  ],
+  "title": "HistoricalSourceDescriptor",
+  "type": "object"
+}

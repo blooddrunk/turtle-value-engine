@@ -1,0 +1,214 @@
+{
+  "$defs": {
+    "ArchiveArtifactType": {
+      "enum": [
+        "EVIDENCE_PACKET",
+        "RESEARCH_TASK",
+        "ANALYST_RUN",
+        "BUSINESS_QUALITY",
+        "RESEARCH_REPORT",
+        "FILING",
+        "FILING_DOCUMENT",
+        "FILING_EXTRACTION",
+        "FILING_EVIDENCE",
+        "ADJUSTMENT"
+      ],
+      "title": "ArchiveArtifactType",
+      "type": "string"
+    },
+    "HistoricalFilingLocator": {
+      "additionalProperties": false,
+      "description": "Stable locator retained with every archived research artifact.",
+      "properties": {
+        "contract": {
+          "const": "historical_filing_locator_v1",
+          "default": "historical_filing_locator_v1",
+          "title": "Contract",
+          "type": "string"
+        },
+        "filing_id": {
+          "minLength": 1,
+          "title": "Filing Id",
+          "type": "string"
+        },
+        "document_hash": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Document Hash",
+          "type": "string"
+        },
+        "page": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Page"
+        },
+        "section": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Section"
+        },
+        "locator": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Locator"
+        }
+      },
+      "required": [
+        "filing_id",
+        "document_hash"
+      ],
+      "title": "HistoricalFilingLocator",
+      "type": "object"
+    },
+    "ReviewStatus": {
+      "enum": [
+        "FROZEN_VALIDATED",
+        "REVIEW_REQUIRED",
+        "REJECTED"
+      ],
+      "title": "ReviewStatus",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Reference to one immutable Phase 4/research/filing artifact.",
+  "properties": {
+    "contract": {
+      "const": "historical_research_artifact_reference_v1",
+      "default": "historical_research_artifact_reference_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "artifact_id": {
+      "minLength": 1,
+      "title": "Artifact Id",
+      "type": "string"
+    },
+    "artifact_type": {
+      "$ref": "#/$defs/ArchiveArtifactType"
+    },
+    "listing_id": {
+      "minLength": 1,
+      "title": "Listing Id",
+      "type": "string"
+    },
+    "analysis_id": {
+      "minLength": 1,
+      "title": "Analysis Id",
+      "type": "string"
+    },
+    "as_of": {
+      "format": "date",
+      "title": "As Of",
+      "type": "string"
+    },
+    "available_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "format": "date",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Available At"
+    },
+    "source_document_hashes": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Source Document Hashes",
+      "type": "array"
+    },
+    "filing_ids": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Filing Ids",
+      "type": "array"
+    },
+    "locators": {
+      "items": {
+        "$ref": "#/$defs/HistoricalFilingLocator"
+      },
+      "minItems": 1,
+      "title": "Locators",
+      "type": "array"
+    },
+    "source_artifact_ids": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Source Artifact Ids",
+      "type": "array"
+    },
+    "content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Content Sha256",
+      "type": "string"
+    },
+    "review_status": {
+      "$ref": "#/$defs/ReviewStatus"
+    },
+    "relative_path": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Relative Path"
+    }
+  },
+  "required": [
+    "artifact_id",
+    "artifact_type",
+    "listing_id",
+    "analysis_id",
+    "as_of",
+    "source_document_hashes",
+    "filing_ids",
+    "locators",
+    "source_artifact_ids",
+    "content_sha256",
+    "review_status"
+  ],
+  "title": "HistoricalResearchArtifactReference",
+  "type": "object"
+}

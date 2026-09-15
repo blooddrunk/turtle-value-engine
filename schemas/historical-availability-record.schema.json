@@ -1,0 +1,119 @@
+{
+  "$defs": {
+    "AvailabilityStatus": {
+      "enum": [
+        "KNOWN",
+        "UNKNOWN",
+        "EXPLICIT_POLICY"
+      ],
+      "title": "AvailabilityStatus",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Availability evidence tied to exactly one persisted artifact.",
+  "properties": {
+    "contract": {
+      "const": "historical_availability_record_v1",
+      "default": "historical_availability_record_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "artifact_id": {
+      "minLength": 1,
+      "title": "Artifact Id",
+      "type": "string"
+    },
+    "artifact_kind": {
+      "minLength": 1,
+      "title": "Artifact Kind",
+      "type": "string"
+    },
+    "published_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "format": "date",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Published At"
+    },
+    "available_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "format": "date",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Available At"
+    },
+    "retrieved_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "format": "date",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Retrieved At"
+    },
+    "source_artifact_id": {
+      "minLength": 1,
+      "title": "Source Artifact Id",
+      "type": "string"
+    },
+    "source_hash": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Source Hash",
+      "type": "string"
+    },
+    "status": {
+      "$ref": "#/$defs/AvailabilityStatus",
+      "default": "KNOWN"
+    },
+    "notes": {
+      "anyOf": [
+        {
+          "maxLength": 2000,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Notes"
+    }
+  },
+  "required": [
+    "artifact_id",
+    "artifact_kind",
+    "source_artifact_id",
+    "source_hash"
+  ],
+  "title": "HistoricalAvailabilityRecord",
+  "type": "object"
+}

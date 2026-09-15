@@ -1,0 +1,111 @@
+{
+  "$defs": {
+    "ShardArtifactKind": {
+      "enum": [
+        "LISTING_LIFECYCLE",
+        "UNIVERSE_MEMBERSHIP",
+        "AVAILABILITY",
+        "MARKET_BAR",
+        "CORPORATE_ACTION",
+        "FX_OBSERVATION",
+        "BENCHMARK_OBSERVATION",
+        "DECISION_ARTIFACT"
+      ],
+      "title": "ShardArtifactKind",
+      "type": "string"
+    },
+    "ShardFormat": {
+      "enum": [
+        "JSONL"
+      ],
+      "title": "ShardFormat",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Content-addressed JSONL shard metadata; rows are never embedded here.",
+  "properties": {
+    "contract": {
+      "const": "historical_shard_reference_v1",
+      "default": "historical_shard_reference_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "shard_id": {
+      "minLength": 1,
+      "title": "Shard Id",
+      "type": "string"
+    },
+    "artifact_kind": {
+      "$ref": "#/$defs/ShardArtifactKind"
+    },
+    "format": {
+      "$ref": "#/$defs/ShardFormat",
+      "default": "JSONL"
+    },
+    "schema_version": {
+      "minLength": 1,
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Content Sha256",
+      "type": "string"
+    },
+    "row_count": {
+      "minimum": 0,
+      "title": "Row Count",
+      "type": "integer"
+    },
+    "date_start": {
+      "format": "date",
+      "title": "Date Start",
+      "type": "string"
+    },
+    "date_end": {
+      "format": "date",
+      "title": "Date End",
+      "type": "string"
+    },
+    "listing_scope": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Listing Scope",
+      "type": "array"
+    },
+    "source_artifact_id": {
+      "minLength": 1,
+      "title": "Source Artifact Id",
+      "type": "string"
+    },
+    "relative_path": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Relative Path"
+    }
+  },
+  "required": [
+    "shard_id",
+    "artifact_kind",
+    "schema_version",
+    "content_sha256",
+    "row_count",
+    "date_start",
+    "date_end",
+    "listing_scope",
+    "source_artifact_id"
+  ],
+  "title": "HistoricalShardReference",
+  "type": "object"
+}

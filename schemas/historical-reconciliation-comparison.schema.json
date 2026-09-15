@@ -1,0 +1,122 @@
+{
+  "$defs": {
+    "ReconciliationStatus": {
+      "enum": [
+        "PASS",
+        "PARTIAL",
+        "FAIL",
+        "MISSING"
+      ],
+      "title": "ReconciliationStatus",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "One canonical-vs-independent comparison with deterministic tolerance.",
+  "properties": {
+    "contract": {
+      "const": "historical_reconciliation_comparison_v1",
+      "default": "historical_reconciliation_comparison_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "comparison_id": {
+      "minLength": 1,
+      "title": "Comparison Id",
+      "type": "string"
+    },
+    "listing_id": {
+      "minLength": 1,
+      "title": "Listing Id",
+      "type": "string"
+    },
+    "observation_date": {
+      "format": "date",
+      "title": "Observation Date",
+      "type": "string"
+    },
+    "canonical_value": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Canonical Value"
+    },
+    "independent_value": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Independent Value"
+    },
+    "absolute_tolerance": {
+      "minimum": 0,
+      "title": "Absolute Tolerance",
+      "type": "number"
+    },
+    "relative_tolerance": {
+      "minimum": 0,
+      "title": "Relative Tolerance",
+      "type": "number"
+    },
+    "absolute_difference": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Absolute Difference"
+    },
+    "relative_difference": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Relative Difference"
+    },
+    "status": {
+      "$ref": "#/$defs/ReconciliationStatus"
+    },
+    "canonical_source_id": {
+      "minLength": 1,
+      "title": "Canonical Source Id",
+      "type": "string"
+    },
+    "independent_source_id": {
+      "minLength": 1,
+      "title": "Independent Source Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "comparison_id",
+    "listing_id",
+    "observation_date",
+    "absolute_tolerance",
+    "relative_tolerance",
+    "status",
+    "canonical_source_id",
+    "independent_source_id"
+  ],
+  "title": "ReconciliationComparison",
+  "type": "object"
+}

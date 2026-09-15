@@ -1,0 +1,173 @@
+{
+  "$defs": {
+    "HistoricalCodeChange": {
+      "additionalProperties": false,
+      "description": "Effective code/name identity change for a listing.",
+      "properties": {
+        "contract": {
+          "const": "historical_code_change_v1",
+          "default": "historical_code_change_v1",
+          "title": "Contract",
+          "type": "string"
+        },
+        "effective_date": {
+          "format": "date",
+          "title": "Effective Date",
+          "type": "string"
+        },
+        "previous_code": {
+          "minLength": 1,
+          "title": "Previous Code",
+          "type": "string"
+        },
+        "new_code": {
+          "minLength": 1,
+          "title": "New Code",
+          "type": "string"
+        },
+        "source_artifact_id": {
+          "minLength": 1,
+          "title": "Source Artifact Id",
+          "type": "string"
+        },
+        "source_hash": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Source Hash",
+          "type": "string"
+        }
+      },
+      "required": [
+        "effective_date",
+        "previous_code",
+        "new_code",
+        "source_artifact_id",
+        "source_hash"
+      ],
+      "title": "HistoricalCodeChange",
+      "type": "object"
+    },
+    "HistoricalTerminalOutcome": {
+      "description": "Terminal lifecycle outcome without pretending all outcomes have value.",
+      "enum": [
+        "ACTIVE",
+        "DELISTED",
+        "ACQUIRED_CANCELLED",
+        "TRANSFERRED",
+        "PROLONGED_SUSPENSION",
+        "UNRESOLVED_TERMINAL",
+        "UNKNOWN"
+      ],
+      "title": "HistoricalTerminalOutcome",
+      "type": "string"
+    },
+    "Market": {
+      "description": "Listing market; A and H listings are never merged by the simulator.",
+      "enum": [
+        "A",
+        "H"
+      ],
+      "title": "Market",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "A/H listing lifecycle retaining terminal and unresolved outcomes.",
+  "properties": {
+    "contract": {
+      "const": "historical_listing_lifecycle_v1",
+      "default": "historical_listing_lifecycle_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "listing_id": {
+      "minLength": 1,
+      "title": "Listing Id",
+      "type": "string"
+    },
+    "economic_company_id": {
+      "minLength": 1,
+      "title": "Economic Company Id",
+      "type": "string"
+    },
+    "market": {
+      "$ref": "#/$defs/Market"
+    },
+    "currency": {
+      "maxLength": 3,
+      "minLength": 3,
+      "title": "Currency",
+      "type": "string"
+    },
+    "listing_date": {
+      "format": "date",
+      "title": "Listing Date",
+      "type": "string"
+    },
+    "terminal_date": {
+      "anyOf": [
+        {
+          "format": "date",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Terminal Date"
+    },
+    "terminal_outcome": {
+      "$ref": "#/$defs/HistoricalTerminalOutcome",
+      "default": "ACTIVE"
+    },
+    "trading_calendar": {
+      "minLength": 1,
+      "title": "Trading Calendar",
+      "type": "string"
+    },
+    "timezone": {
+      "minLength": 1,
+      "title": "Timezone",
+      "type": "string"
+    },
+    "historical_codes": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Historical Codes",
+      "type": "array"
+    },
+    "code_changes": {
+      "items": {
+        "$ref": "#/$defs/HistoricalCodeChange"
+      },
+      "title": "Code Changes",
+      "type": "array"
+    },
+    "source_artifact_id": {
+      "minLength": 1,
+      "title": "Source Artifact Id",
+      "type": "string"
+    },
+    "source_hash": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Source Hash",
+      "type": "string"
+    }
+  },
+  "required": [
+    "listing_id",
+    "economic_company_id",
+    "market",
+    "currency",
+    "listing_date",
+    "trading_calendar",
+    "timezone",
+    "historical_codes",
+    "source_artifact_id",
+    "source_hash"
+  ],
+  "title": "HistoricalListingLifecycle",
+  "type": "object"
+}

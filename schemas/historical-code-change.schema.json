@@ -1,0 +1,46 @@
+{
+  "additionalProperties": false,
+  "description": "Effective code/name identity change for a listing.",
+  "properties": {
+    "contract": {
+      "const": "historical_code_change_v1",
+      "default": "historical_code_change_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "effective_date": {
+      "format": "date",
+      "title": "Effective Date",
+      "type": "string"
+    },
+    "previous_code": {
+      "minLength": 1,
+      "title": "Previous Code",
+      "type": "string"
+    },
+    "new_code": {
+      "minLength": 1,
+      "title": "New Code",
+      "type": "string"
+    },
+    "source_artifact_id": {
+      "minLength": 1,
+      "title": "Source Artifact Id",
+      "type": "string"
+    },
+    "source_hash": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Source Hash",
+      "type": "string"
+    }
+  },
+  "required": [
+    "effective_date",
+    "previous_code",
+    "new_code",
+    "source_artifact_id",
+    "source_hash"
+  ],
+  "title": "HistoricalCodeChange",
+  "type": "object"
+}

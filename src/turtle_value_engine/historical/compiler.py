@@ -1,0 +1,713 @@
+"""Offline compiler from source-aware shards to the Phase 5 replay boundary."""
+
+from __future__ import annotations
+
+from collections import defaultdict
+from datetime import date
+
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
+
+from turtle_value_engine.backtest import (
+    BacktestDatasetManifest,
+    BenchmarkObservation,
+    CorporateAction,
+    DatasetValidationError,
+    FXObservation,
+    HistoricalAvailability,
+    HistoricalDecisionArtifact,
+    ListingLifecycle,
+    MarketBar,
+    UniverseCoverage,
+    UniverseMembership,
+    build_decision_snapshot,
+    validate_decision_artifact,
+    validate_manifest,
+)
+from turtle_value_engine.backtest.contracts import DecisionSnapshot
+
+from .archive import HistoricalResearchArchiveError, validate_research_archive
+from .contracts import (
+    ArchiveArtifactType,
+    HistoricalAvailabilityRecord,
+    HistoricalDatasetManifest,
+    HistoricalListingLifecycle,
+    HistoricalMembershipInterval,
+    HistoricalSourceDescriptor,
+    HistoricalSourceKind,
+    HistoricalTargetScope,
+    HistoricalTerminalOutcome,
+    ShardArtifactKind,
+)
+from .store import HistoricalArtifactError, HistoricalArtifactStore
+
+
+class HistoricalDatasetValidationError(ValueError):
+    """Raised when a source-aware historical dataset cannot be compiled safely."""
+
+    def __init__(self, message: str, summary: HistoricalValidationSummary | None = None):
+        super().__init__(message)
+        self.summary = summary
+
+
+class HistoricalValidationSummary(BaseModel):
+    """Machine-readable validation output suitable for a coverage report."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    contract: str = "historical_validation_summary_v1"
+    dataset_id: str
+    valid: bool
+    production_eligible: bool
+    shard_rows: dict[str, int] = Field(default_factory=dict)
+    coverage_status: dict[str, str] = Field(default_factory=dict)
+    errors: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
+_MODEL_BY_KIND: dict[ShardArtifactKind, type[BaseModel]] = {
+    ShardArtifactKind.LISTING_LIFECYCLE: HistoricalListingLifecycle,
+    ShardArtifactKind.UNIVERSE_MEMBERSHIP: HistoricalMembershipInterval,
+    ShardArtifactKind.AVAILABILITY: HistoricalAvailabilityRecord,
+    ShardArtifactKind.MARKET_BAR: MarketBar,
+    ShardArtifactKind.CORPORATE_ACTION: CorporateAction,
+    ShardArtifactKind.FX_OBSERVATION: FXObservation,
+    ShardArtifactKind.BENCHMARK_OBSERVATION: BenchmarkObservation,
+    ShardArtifactKind.DECISION_ARTIFACT: HistoricalDecisionArtifact,
+}
+
+_SOURCE_KIND_BY_SHARD: dict[ShardArtifactKind, set[HistoricalSourceKind]] = {
+    ShardArtifactKind.LISTING_LIFECYCLE: {
+        HistoricalSourceKind.LISTING_LIFECYCLE,
+        HistoricalSourceKind.DELISTINGS,
+    },
+    ShardArtifactKind.UNIVERSE_MEMBERSHIP: {HistoricalSourceKind.UNIVERSE_MEMBERSHIP},
+    ShardArtifactKind.AVAILABILITY: set(HistoricalSourceKind),
+    ShardArtifactKind.MARKET_BAR: {HistoricalSourceKind.PRICES},
+    ShardArtifactKind.CORPORATE_ACTION: {HistoricalSourceKind.CORPORATE_ACTIONS},
+    ShardArtifactKind.FX_OBSERVATION: {HistoricalSourceKind.FX},
+    ShardArtifactKind.BENCHMARK_OBSERVATION: {HistoricalSourceKind.BENCHMARK},
+    ShardArtifactKind.DECISION_ARTIFACT: {
+        HistoricalSourceKind.FILINGS,
+        HistoricalSourceKind.RESEARCH_ARCHIVE,
+        HistoricalSourceKind.PRICES,
+    },
+}
+
+
+def _row_id(kind: ShardArtifactKind, row: BaseModel) -> str:
+    field_by_kind = {
+        ShardArtifactKind.LISTING_LIFECYCLE: "listing_id",
+        ShardArtifactKind.UNIVERSE_MEMBERSHIP: "membership_id",
+        ShardArtifactKind.AVAILABILITY: "artifact_id",
+        ShardArtifactKind.MARKET_BAR: "bar_id",
+        ShardArtifactKind.CORPORATE_ACTION: "action_id",
+        ShardArtifactKind.FX_OBSERVATION: "observation_id",
+        ShardArtifactKind.BENCHMARK_OBSERVATION: "observation_id",
+        ShardArtifactKind.DECISION_ARTIFACT: "artifact_id",
+    }
+    return str(getattr(row, field_by_kind[kind]))
+
+
+def _row_listing(row: BaseModel) -> str | None:
+    value = getattr(row, "listing_id", None)
+    return str(value) if value is not None else None
+
+
+def _row_date(kind: ShardArtifactKind, row: BaseModel) -> date | None:
+    field_by_kind = {
+        ShardArtifactKind.LISTING_LIFECYCLE: "listing_date",
+        ShardArtifactKind.UNIVERSE_MEMBERSHIP: "valid_from",
+        ShardArtifactKind.AVAILABILITY: None,
+        ShardArtifactKind.MARKET_BAR: "trading_date",
+        ShardArtifactKind.CORPORATE_ACTION: "effective_date",
+        ShardArtifactKind.FX_OBSERVATION: "observation_date",
+        ShardArtifactKind.BENCHMARK_OBSERVATION: "observation_date",
+        ShardArtifactKind.DECISION_ARTIFACT: "as_of",
+    }
+    field_name = field_by_kind[kind]
+    if field_name is None:
+        return None
+    return getattr(row, field_name)
+
+
+def _source_hash(row: BaseModel) -> str | None:
+    value = getattr(row, "source_hash", None)
+    return str(value) if value is not None else None
+
+
+def _scope_source_kind(kind: HistoricalSourceKind) -> set[HistoricalSourceKind]:
+    if kind is HistoricalSourceKind.LISTING_LIFECYCLE:
+        return {HistoricalSourceKind.LISTING_LIFECYCLE, HistoricalSourceKind.DELISTINGS}
+    return {kind}
+
+
+class HistoricalDatasetCompiler:
+    """Validate frozen shards and project them into Phase 5 contracts."""
+
+    def __init__(
+        self,
+        manifest: HistoricalDatasetManifest,
+        store: HistoricalArtifactStore,
+    ) -> None:
+        self.manifest = manifest
+        self.store = store
+
+    def validation_summary(
+        self,
+        *,
+        require_production: bool = False,
+    ) -> HistoricalValidationSummary:
+        errors: list[str] = []
+        warnings: list[str] = []
+        shard_rows: dict[str, int] = {}
+        coverage_status: dict[str, str] = {}
+        rows_by_kind: dict[ShardArtifactKind, list[BaseModel]] = defaultdict(list)
+
+        try:
+            manifest = HistoricalDatasetManifest.model_validate(
+                self.manifest.model_dump(mode="python", warnings=False)
+            )
+        except (TypeError, ValueError, ValidationError) as exc:
+            return HistoricalValidationSummary(
+                dataset_id=getattr(self.manifest, "dataset_id", "invalid"),
+                valid=False,
+                production_eligible=False,
+                errors=[f"invalid historical manifest: {exc}"],
+            )
+
+        sources = {item.source_id: item for item in manifest.source_descriptors}
+        if len(sources) != len(manifest.source_descriptors):
+            errors.append("source descriptors contain duplicate source IDs")
+
+        for required in manifest.target.required_source_kinds:
+            if not any(
+                item.source_kind in _scope_source_kind(required) for item in sources.values()
+            ):
+                errors.append(f"required source category is missing: {required.value}")
+
+        for source in sources.values():
+            if source.source_kind is HistoricalSourceKind.UNIVERSE_MEMBERSHIP and (
+                source.is_current_snapshot
+            ):
+                errors.append(
+                    "current-constituent substitution is not historical membership: "
+                    + source.source_id
+                )
+            if not _covers_target(source, manifest.target):
+                warnings.append(f"source coverage does not span target: {source.source_id}")
+            if require_production and (
+                source.license_status.value in {"UNKNOWN", "PROHIBITED"}
+                or source.authority.value in {"UNKNOWN", "FIXTURE"}
+            ):
+                errors.append(
+                    "source authority/licensing cannot support a production claim: "
+                    + source.source_id
+                )
+            if require_production and not source.historical_capable:
+                errors.append("source is not declared historical-capable: " + source.source_id)
+
+        for report in manifest.coverage_reports:
+            for record in report.records:
+                key = f"{record.source_kind.value}:{record.listing_id}"
+                previous = coverage_status.get(key)
+                status = record.status.value
+                if previous == "UNKNOWN" or status == "UNKNOWN":
+                    coverage_status[key] = "UNKNOWN"
+                elif previous == "PARTIAL" or status == "PARTIAL":
+                    coverage_status[key] = "PARTIAL"
+                else:
+                    coverage_status[key] = status
+                if record.listing_id not in manifest.target.listing_ids:
+                    errors.append(
+                        f"coverage report references listing outside target: {record.listing_id}"
+                    )
+                for source_id in record.source_artifact_ids:
+                    if source_id not in sources:
+                        errors.append(
+                            f"coverage report references unknown source artifact: {source_id}"
+                        )
+                if record.status.value != "COMPLETE":
+                    warnings.append(
+                        f"incomplete coverage for {record.source_kind.value}:{record.listing_id}"
+                    )
+
+        for shard in manifest.shards:
+            source = sources.get(shard.source_artifact_id)
+            if source is None:
+                errors.append(f"shard references unknown source artifact: {shard.shard_id}")
+                continue
+            if source.source_kind not in _SOURCE_KIND_BY_SHARD[shard.artifact_kind]:
+                errors.append(
+                    "shard/source category mismatch: "
+                    f"{shard.shard_id} -> {source.source_kind.value}"
+                )
+            model_type = _MODEL_BY_KIND[shard.artifact_kind]
+            try:
+                rows = self.store.read_shard(shard, model_type=model_type)
+            except HistoricalArtifactError as exc:
+                errors.append(str(exc))
+                continue
+            shard_rows[shard.shard_id] = len(rows)
+            rows_by_kind[shard.artifact_kind].extend(rows)
+            seen_ids: set[str] = set()
+            for row in rows:
+                row_id = _row_id(shard.artifact_kind, row)
+                if row_id in seen_ids:
+                    errors.append(f"duplicate row ID in shard {shard.shard_id}: {row_id}")
+                seen_ids.add(row_id)
+                listing_id = _row_listing(row)
+                if listing_id is not None and listing_id not in shard.listing_scope:
+                    errors.append(f"row lies outside shard listing scope: {row_id}")
+                if listing_id is not None and listing_id not in manifest.target.listing_ids:
+                    errors.append(f"row references listing outside target: {row_id}")
+                row_date = _row_date(shard.artifact_kind, row)
+                if row_date is not None and not (
+                    shard.date_start <= row_date <= shard.date_end
+                ):
+                    errors.append(f"row lies outside shard date range: {row_id}")
+                if row_date is not None and shard.artifact_kind not in {
+                    ShardArtifactKind.LISTING_LIFECYCLE,
+                    ShardArtifactKind.UNIVERSE_MEMBERSHIP,
+                } and not (manifest.target.start_date <= row_date <= manifest.target.end_date):
+                    errors.append(f"row lies outside target date range: {row_id}")
+                row_hash = _source_hash(row)
+                if row_hash is not None and row_hash != source.content_sha256:
+                    errors.append(f"row/source hash mismatch: {row_id}")
+                row_source_id = getattr(row, "source_artifact_id", None)
+                if row_source_id is not None and row_source_id != source.source_id:
+                    errors.append(f"row/source identity mismatch: {row_id}")
+
+        observed_dates: dict[tuple[HistoricalSourceKind, str], set[date]] = defaultdict(set)
+        for bar in rows_by_kind[ShardArtifactKind.MARKET_BAR]:
+            observed_dates[(HistoricalSourceKind.PRICES, bar.listing_id)].add(
+                bar.trading_date
+            )
+        for action in rows_by_kind[ShardArtifactKind.CORPORATE_ACTION]:
+            observed_dates[(HistoricalSourceKind.CORPORATE_ACTIONS, action.listing_id)].add(
+                action.effective_date
+            )
+        for report in manifest.coverage_reports:
+            for record in report.records:
+                if record.source_kind not in {
+                    HistoricalSourceKind.PRICES,
+                    HistoricalSourceKind.CORPORATE_ACTIONS,
+                }:
+                    continue
+                observed = {
+                    item
+                    for item in observed_dates[(record.source_kind, record.listing_id)]
+                    if record.period_start <= item <= record.period_end
+                }
+                if len(observed) != record.observed_session_count:
+                    errors.append(
+                        "coverage observed count does not match frozen rows: "
+                        f"{record.source_kind.value}:{record.listing_id}"
+                    )
+
+        lifecycles = {
+            item.listing_id: item
+            for item in rows_by_kind[ShardArtifactKind.LISTING_LIFECYCLE]
+        }
+        if len(lifecycles) != len(rows_by_kind[ShardArtifactKind.LISTING_LIFECYCLE]):
+            errors.append("listing lifecycle rows contain duplicate listing IDs")
+        for listing_id in manifest.target.listing_ids:
+            if listing_id not in lifecycles:
+                errors.append(f"target listing has no lifecycle row: {listing_id}")
+
+        availability = {
+            item.artifact_id: item for item in rows_by_kind[ShardArtifactKind.AVAILABILITY]
+        }
+        if len(availability) != len(rows_by_kind[ShardArtifactKind.AVAILABILITY]):
+            errors.append("availability rows contain duplicate artifact IDs")
+        known_artifact_ids = {
+            _row_id(kind, row)
+            for kind, rows in rows_by_kind.items()
+            if kind is not ShardArtifactKind.AVAILABILITY
+            for row in rows
+        }
+        if manifest.research_archive is not None:
+            known_artifact_ids.update(
+                item.artifact_id for item in manifest.research_archive.artifacts
+            )
+        for record in availability.values():
+            if record.artifact_id not in known_artifact_ids:
+                errors.append(
+                    "availability references unrelated artifact: " + record.artifact_id
+                )
+        memberships = rows_by_kind[ShardArtifactKind.UNIVERSE_MEMBERSHIP]
+        membership_ids: set[str] = set()
+        membership_listings: set[str] = set()
+        for membership in memberships:
+            membership_id = membership.membership_id
+            if membership_id in membership_ids:
+                errors.append(f"duplicate membership ID: {membership_id}")
+            membership_ids.add(membership_id)
+            if membership.included and (
+                membership.valid_from <= manifest.target.end_date
+                and (
+                    membership.valid_to is None
+                    or membership.valid_to >= manifest.target.start_date
+                )
+            ):
+                membership_listings.add(membership.listing_id)
+            lifecycle = lifecycles.get(membership.listing_id)
+            if lifecycle is None:
+                continue
+            if membership.universe_id != manifest.target.universe_id:
+                errors.append(f"membership universe mismatch: {membership_id}")
+            if membership.valid_from < lifecycle.listing_date:
+                errors.append(f"membership precedes listing date: {membership_id}")
+            if lifecycle.terminal_date is not None and (
+                membership.valid_to is None or membership.valid_to > lifecycle.terminal_date
+            ):
+                errors.append(f"membership extends beyond terminal date: {membership_id}")
+            availability_record = availability.get(membership.availability_id)
+            if availability_record is None:
+                errors.append(f"membership has dangling availability: {membership_id}")
+            elif availability_record.artifact_kind != "UNIVERSE_MEMBERSHIP":
+                errors.append(f"membership availability kind mismatch: {membership_id}")
+
+        memberships_by_listing: dict[str, list[HistoricalMembershipInterval]] = defaultdict(list)
+        for membership in memberships:
+            if membership.included:
+                memberships_by_listing[membership.listing_id].append(membership)
+        for listing_id, intervals in memberships_by_listing.items():
+            ordered = sorted(intervals, key=lambda item: item.valid_from)
+            for previous, current in zip(ordered, ordered[1:], strict=False):
+                if previous.valid_to is None or previous.valid_to >= current.valid_from:
+                    errors.append("overlapping historical membership intervals: " + listing_id)
+
+        for listing_id in manifest.target.listing_ids:
+            if listing_id not in membership_listings:
+                errors.append(
+                    "target listing has no source-backed membership interval at target start: "
+                    + listing_id
+                )
+
+        decisions = rows_by_kind[ShardArtifactKind.DECISION_ARTIFACT]
+        decision_ids = {item.artifact_id for item in decisions}
+        if len(decision_ids) != len(decisions):
+            errors.append("decision artifact rows contain duplicate IDs")
+        for decision in decisions:
+            if decision.listing_id not in lifecycles:
+                errors.append(
+                    "decision artifact references unknown listing: "
+                    f"{decision.artifact_id}"
+                )
+            try:
+                validate_decision_artifact(
+                    decision,
+                    decision_time=decision.decision_time,
+                    allow_undated_evidence=False,
+                )
+            except (DatasetValidationError, ValueError) as exc:
+                errors.append(f"invalid decision availability {decision.artifact_id}: {exc}")
+
+        if manifest.research_archive is not None:
+            try:
+                validate_research_archive(
+                    manifest.research_archive,
+                    decision_times={item.artifact_id: item.decision_time for item in decisions},
+                )
+            except (HistoricalResearchArchiveError, TypeError, ValueError) as exc:
+                errors.append(f"invalid historical research archive: {exc}")
+            archive_source_hashes = {
+                source.content_sha256
+                for source in sources.values()
+                if source.source_kind is HistoricalSourceKind.FILINGS
+            }
+            for artifact in manifest.research_archive.artifacts:
+                if artifact.relative_path is None:
+                    if require_production:
+                        errors.append(
+                            "production research archive reference has no persisted artifact path: "
+                            + artifact.artifact_id
+                        )
+                else:
+                    try:
+                        self.store.read_json_artifact(
+                            artifact.relative_path,
+                            artifact.content_sha256,
+                        )
+                    except HistoricalArtifactError as exc:
+                        errors.append(str(exc))
+                if require_production and not set(artifact.source_document_hashes).intersection(
+                    archive_source_hashes
+                ):
+                    errors.append(
+                        "research artifact has no filing source descriptor hash: "
+                        + artifact.artifact_id
+                    )
+        elif HistoricalSourceKind.RESEARCH_ARCHIVE in manifest.target.required_source_kinds:
+            errors.append("target requires a historical research archive but none is declared")
+
+        if manifest.research_archive is not None:
+            bindings = {
+                item.decision_artifact_id: item
+                for item in manifest.research_archive.decision_bindings
+            }
+            for decision in decisions:
+                if decision.research_artifact_id is None:
+                    if decision.historical_business_quality_valid:
+                        errors.append(
+                            f"validated historical Business Quality has no research reference: "
+                            f"{decision.artifact_id}"
+                        )
+                    continue
+                binding = bindings.get(decision.artifact_id)
+                if binding is None:
+                    errors.append(f"decision has no research binding: {decision.artifact_id}")
+                elif binding.research_artifact_id != decision.research_artifact_id:
+                    errors.append(f"decision/research reference mismatch: {decision.artifact_id}")
+
+        production_eligible = not errors and _production_scope_is_provable(
+            manifest.target,
+            sources,
+            manifest.coverage_reports,
+            manifest.reconciliation_reports,
+        )
+        if require_production and not production_eligible:
+            errors.append(
+                "declared target does not meet the production historical coverage contract"
+            )
+        if manifest.target.membership_claim == "HISTORICAL" and not production_eligible:
+            errors.append("HISTORICAL claim is not supported by complete auditable evidence")
+
+        summary = HistoricalValidationSummary(
+            dataset_id=manifest.dataset_id,
+            valid=not errors,
+            production_eligible=production_eligible,
+            shard_rows=shard_rows,
+            coverage_status=coverage_status,
+            errors=errors,
+            warnings=sorted(set(warnings)),
+        )
+        return summary
+
+    def validate(
+        self,
+        *,
+        require_production: bool = False,
+        raise_on_error: bool = True,
+    ) -> HistoricalValidationSummary:
+        summary = self.validation_summary(require_production=require_production)
+        if raise_on_error and summary.errors:
+            raise HistoricalDatasetValidationError(
+                "; ".join(summary.errors),
+                summary=summary,
+            )
+        return summary
+
+    def compile_backtest_manifest(
+        self,
+        *,
+        require_production: bool = False,
+    ) -> BacktestDatasetManifest:
+        """Compile only after every source-aware reference has passed validation."""
+
+        self.validate(require_production=require_production)
+        rows_by_kind: dict[ShardArtifactKind, list[BaseModel]] = defaultdict(list)
+        for shard in self.manifest.shards:
+            rows_by_kind[shard.artifact_kind].extend(
+                self.store.read_shard(shard, model_type=_MODEL_BY_KIND[shard.artifact_kind])
+            )
+
+        target = self.manifest.target
+        lifecycles = [
+            _to_backtest_lifecycle(item)
+            for item in rows_by_kind[ShardArtifactKind.LISTING_LIFECYCLE]
+        ]
+        availability_rows = rows_by_kind[ShardArtifactKind.AVAILABILITY]
+        availability = [_to_backtest_availability(item) for item in availability_rows]
+        availability_by_id = {item.artifact_id: item for item in availability}
+        memberships = []
+        for item in rows_by_kind[ShardArtifactKind.UNIVERSE_MEMBERSHIP]:
+            memberships.append(
+                UniverseMembership(
+                    membership_id=item.membership_id,
+                    universe_id=item.universe_id,
+                    listing_id=item.listing_id,
+                    valid_from=item.valid_from,
+                    valid_to=item.valid_to,
+                    included=item.included,
+                    availability=availability_by_id.get(item.availability_id),
+                )
+            )
+        decisions = list(rows_by_kind[ShardArtifactKind.DECISION_ARTIFACT])
+        archive_ids = []
+        if self.manifest.research_archive is not None:
+            archive_ids = [
+                item.artifact_id
+                for item in self.manifest.research_archive.artifacts
+                if item.artifact_type is ArchiveArtifactType.BUSINESS_QUALITY
+            ]
+        compiled = BacktestDatasetManifest.build(
+            dataset_id=self.manifest.dataset_id,
+            dataset_version=self.manifest.dataset_version,
+            start_date=target.start_date,
+            end_date=target.end_date,
+            calendar_id="historical-scope",
+            universe_id=target.universe_id,
+            universe_coverage=UniverseCoverage(target.membership_claim),
+            listing_lifecycles=lifecycles,
+            universe_memberships=memberships,
+            availability=availability,
+            market_bars=list(rows_by_kind[ShardArtifactKind.MARKET_BAR]),
+            corporate_actions=list(rows_by_kind[ShardArtifactKind.CORPORATE_ACTION]),
+            fx_observations=list(rows_by_kind[ShardArtifactKind.FX_OBSERVATION]),
+            benchmarks=list(rows_by_kind[ShardArtifactKind.BENCHMARK_OBSERVATION]),
+            decision_artifacts=decisions,
+            source_artifact_ids=[item.source_id for item in self.manifest.source_descriptors],
+            financial_artifact_ids=[item.source_id for item in self.manifest.source_descriptors],
+            business_quality_artifact_ids=archive_ids,
+            missing_data_summary=self.manifest.missing_data_summary,
+            limitations=self.manifest.limitations,
+            survivorship_bias_note=(
+                "historical membership is source-backed"
+                if target.membership_claim == "HISTORICAL"
+                else "target is not a complete historical-universe claim"
+            ),
+            claims_survivorship_bias_free=(target.membership_claim == "HISTORICAL"),
+        )
+        return validate_manifest(compiled)
+
+
+def _covers_target(source: HistoricalSourceDescriptor, target: HistoricalTargetScope) -> bool:
+    return source.coverage_start <= target.start_date and source.coverage_end >= target.end_date
+
+
+def _production_scope_is_provable(
+    target: HistoricalTargetScope,
+    sources: dict[str, HistoricalSourceDescriptor],
+    reports,
+    reconciliations,
+) -> bool:
+    if target.membership_claim != "HISTORICAL" or target.coverage_claim.value != "COMPLETE":
+        return False
+    if not sources or any(
+        item.authority.value in {"UNKNOWN", "FIXTURE"}
+        or item.license_status.value in {"UNKNOWN", "PROHIBITED"}
+        or not item.historical_capable
+        or not _covers_target(item, target)
+        or not set(target.listing_ids).issubset(item.coverage_listing_ids)
+        for item in sources.values()
+    ):
+        return False
+    required = set(target.required_source_kinds)
+    available = {item.source_kind for item in sources.values()}
+    if not all(
+        any(candidate in available for candidate in _scope_source_kind(kind))
+        for kind in required
+    ):
+        return False
+    if any(record.status.value != "COMPLETE" for report in reports for record in report.records):
+        return False
+    coverage_keys = {
+        (record.source_kind, record.listing_id)
+        for report in reports
+        for record in report.records
+        if record.status.value == "COMPLETE"
+    }
+    for required in required:
+        accepted_kinds = _scope_source_kind(required)
+        for listing_id in target.listing_ids:
+            if not any((candidate, listing_id) in coverage_keys for candidate in accepted_kinds):
+                return False
+    return bool(reconciliations) and all(item.status.value == "PASS" for item in reconciliations)
+
+
+def _to_backtest_lifecycle(item: HistoricalListingLifecycle) -> ListingLifecycle:
+    if item.terminal_outcome is HistoricalTerminalOutcome.ACTIVE:
+        terminal_status = "ACTIVE"
+    elif item.terminal_outcome is HistoricalTerminalOutcome.UNRESOLVED_TERMINAL:
+        terminal_status = "UNKNOWN"
+    elif item.terminal_outcome in {
+        HistoricalTerminalOutcome.PROLONGED_SUSPENSION,
+        HistoricalTerminalOutcome.UNKNOWN,
+    }:
+        terminal_status = "UNKNOWN"
+    else:
+        terminal_status = "DELISTED"
+    return ListingLifecycle(
+        listing_id=item.listing_id,
+        economic_company_id=item.economic_company_id,
+        market=item.market,
+        currency=item.currency,
+        listing_date=item.listing_date,
+        delisting_date=item.terminal_date,
+        terminal_status=terminal_status,
+        trading_calendar=item.trading_calendar,
+        timezone=item.timezone,
+        source_artifact_id=item.source_artifact_id,
+        source_hash=item.source_hash,
+    )
+
+
+def _to_backtest_availability(item: HistoricalAvailabilityRecord) -> HistoricalAvailability:
+    return HistoricalAvailability(
+        artifact_id=item.artifact_id,
+        published_at=item.published_at,
+        available_at=item.available_at,
+        retrieved_at=item.retrieved_at,
+        source_hash=item.source_hash,
+        source_id=item.source_artifact_id,
+        status=item.status,
+        notes=item.notes,
+    )
+
+
+def validate_historical_dataset(
+    manifest: HistoricalDatasetManifest,
+    store: HistoricalArtifactStore,
+    *,
+    require_production: bool = False,
+) -> HistoricalValidationSummary:
+    """Validate a frozen source-aware manifest without any network fallback."""
+
+    return HistoricalDatasetCompiler(manifest, store).validate(
+        require_production=require_production
+    )
+
+
+def compile_backtest_manifest(
+    manifest: HistoricalDatasetManifest,
+    store: HistoricalArtifactStore,
+    *,
+    require_production: bool = False,
+) -> BacktestDatasetManifest:
+    """Functional facade for the offline Phase 5 compiler boundary."""
+
+    return HistoricalDatasetCompiler(manifest, store).compile_backtest_manifest(
+        require_production=require_production
+    )
+
+
+def freeze_decision_snapshots(
+    manifest: BacktestDatasetManifest,
+) -> list[DecisionSnapshot]:
+    """Project existing analyses into immutable Phase 5 decision snapshots."""
+
+    snapshots: list[DecisionSnapshot] = []
+    for artifact in manifest.decision_artifacts:
+        if artifact.analysis is None:
+            continue
+        snapshots.append(
+            build_decision_snapshot(
+                artifact.analysis,
+                decision_time=artifact.decision_time,
+                normalized_input=artifact.normalized_input,
+                input_artifact_id=artifact.artifact_id,
+                research_artifact_id=artifact.research_artifact_id,
+            )
+        )
+    return sorted(snapshots, key=lambda item: (item.decision_time, item.listing_id))
+
+
+__all__ = [
+    "HistoricalDatasetCompiler",
+    "HistoricalDatasetValidationError",
+    "HistoricalValidationSummary",
+    "compile_backtest_manifest",
+    "freeze_decision_snapshots",
+    "validate_historical_dataset",
+]

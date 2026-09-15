@@ -1,0 +1,1177 @@
+{
+  "$defs": {
+    "ArchiveArtifactType": {
+      "enum": [
+        "EVIDENCE_PACKET",
+        "RESEARCH_TASK",
+        "ANALYST_RUN",
+        "BUSINESS_QUALITY",
+        "RESEARCH_REPORT",
+        "FILING",
+        "FILING_DOCUMENT",
+        "FILING_EXTRACTION",
+        "FILING_EVIDENCE",
+        "ADJUSTMENT"
+      ],
+      "title": "ArchiveArtifactType",
+      "type": "string"
+    },
+    "CoverageClaim": {
+      "description": "Evidence level declared for the target, never inferred from row count.",
+      "enum": [
+        "COMPLETE",
+        "PARTIAL",
+        "UNKNOWN"
+      ],
+      "title": "CoverageClaim",
+      "type": "string"
+    },
+    "HistoricalCoverageRecord": {
+      "additionalProperties": false,
+      "description": "Coverage for one listing and one source category over one period.",
+      "properties": {
+        "contract": {
+          "const": "historical_coverage_record_v1",
+          "default": "historical_coverage_record_v1",
+          "title": "Contract",
+          "type": "string"
+        },
+        "source_kind": {
+          "$ref": "#/$defs/HistoricalSourceKind"
+        },
+        "listing_id": {
+          "minLength": 1,
+          "title": "Listing Id",
+          "type": "string"
+        },
+        "period_start": {
+          "format": "date",
+          "title": "Period Start",
+          "type": "string"
+        },
+        "period_end": {
+          "format": "date",
+          "title": "Period End",
+          "type": "string"
+        },
+        "expected_session_count": {
+          "minimum": 0,
+          "title": "Expected Session Count",
+          "type": "integer"
+        },
+        "observed_session_count": {
+          "minimum": 0,
+          "title": "Observed Session Count",
+          "type": "integer"
+        },
+        "missing_dates": {
+          "items": {
+            "format": "date",
+            "type": "string"
+          },
+          "title": "Missing Dates",
+          "type": "array"
+        },
+        "source_artifact_ids": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Source Artifact Ids",
+          "type": "array"
+        },
+        "status": {
+          "$ref": "#/$defs/CoverageClaim"
+        },
+        "terminal_outcome": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HistoricalTerminalOutcome"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "source_kind",
+        "listing_id",
+        "period_start",
+        "period_end",
+        "expected_session_count",
+        "observed_session_count",
+        "source_artifact_ids",
+        "status"
+      ],
+      "title": "HistoricalCoverageRecord",
+      "type": "object"
+    },
+    "HistoricalCoverageReport": {
+      "additionalProperties": false,
+      "description": "Deterministic per-listing/per-period coverage report.",
+      "properties": {
+        "contract": {
+          "const": "historical_coverage_report_v1",
+          "default": "historical_coverage_report_v1",
+          "title": "Contract",
+          "type": "string"
+        },
+        "report_id": {
+          "minLength": 1,
+          "title": "Report Id",
+          "type": "string"
+        },
+        "target_id": {
+          "minLength": 1,
+          "title": "Target Id",
+          "type": "string"
+        },
+        "records": {
+          "items": {
+            "$ref": "#/$defs/HistoricalCoverageRecord"
+          },
+          "minItems": 1,
+          "title": "Records",
+          "type": "array"
+        },
+        "content_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Content Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "report_id",
+        "target_id",
+        "records",
+        "content_sha256"
+      ],
+      "title": "HistoricalCoverageReport",
+      "type": "object"
+    },
+    "HistoricalDecisionResearchBinding": {
+      "additionalProperties": false,
+      "description": "Point-in-time link from a decision artifact to frozen research.",
+      "properties": {
+        "contract": {
+          "const": "historical_decision_research_binding_v1",
+          "default": "historical_decision_research_binding_v1",
+          "title": "Contract",
+          "type": "string"
+        },
+        "decision_artifact_id": {
+          "minLength": 1,
+          "title": "Decision Artifact Id",
+          "type": "string"
+        },
+        "research_artifact_id": {
+          "minLength": 1,
+          "title": "Research Artifact Id",
+          "type": "string"
+        },
+        "business_quality_artifact_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Business Quality Artifact Id"
+        },
+        "listing_id": {
+          "minLength": 1,
+          "title": "Listing Id",
+          "type": "string"
+        },
+        "analysis_id": {
+          "minLength": 1,
+          "title": "Analysis Id",
+          "type": "string"
+        },
+        "as_of": {
+          "format": "date",
+          "title": "As Of",
+          "type": "string"
+        },
+        "decision_time": {
+          "format": "date-time",
+          "title": "Decision Time",
+          "type": "string"
+        },
+        "used_artifact_ids": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Used Artifact Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "decision_artifact_id",
+        "research_artifact_id",
+        "listing_id",
+        "analysis_id",
+        "as_of",
+        "decision_time",
+        "used_artifact_ids"
+      ],
+      "title": "HistoricalDecisionResearchBinding",
+      "type": "object"
+    },
+    "HistoricalFilingLocator": {
+      "additionalProperties": false,
+      "description": "Stable locator retained with every archived research artifact.",
+      "properties": {
+        "contract": {
+          "const": "historical_filing_locator_v1",
+          "default": "historical_filing_locator_v1",
+          "title": "Contract",
+          "type": "string"
+        },
+        "filing_id": {
+          "minLength": 1,
+          "title": "Filing Id",
+          "type": "string"
+        },
+        "document_hash": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Document Hash",
+          "type": "string"
+        },
+        "page": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Page"
+        },
+        "section": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Section"
+        },
+        "locator": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Locator"
+        }
+      },
+      "required": [
+        "filing_id",
+        "document_hash"
+      ],
+      "title": "HistoricalFilingLocator",
+      "type": "object"
+    },
+    "HistoricalReconciliationReport": {
+      "additionalProperties": false,
+      "description": "Persisted independent-reference reconciliation result.",
+      "properties": {
+        "contract": {
+          "const": "historical_reconciliation_report_v1",
+          "default": "historical_reconciliation_report_v1",
+          "title": "Contract",
+          "type": "string"
+        },
+        "report_id": {
+          "minLength": 1,
+          "title": "Report Id",
+          "type": "string"
+        },
+        "target_id": {
+          "minLength": 1,
+          "title": "Target Id",
+          "type": "string"
+        },
+        "canonical_source_id": {
+          "minLength": 1,
+          "title": "Canonical Source Id",
+          "type": "string"
+        },
+        "independent_source_id": {
+          "minLength": 1,
+          "title": "Independent Source Id",
+          "type": "string"
+        },
+        "canonical_price_basis": {
+          "$ref": "#/$defs/PriceBasis"
+        },
+        "return_semantics": {
+          "enum": [
+            "PRICE_RETURN",
+            "TOTAL_RETURN"
+          ],
+          "title": "Return Semantics",
+          "type": "string"
+        },
+        "explicit_actions_used": {
+          "default": false,
+          "title": "Explicit Actions Used",
+          "type": "boolean"
+        },
+        "comparisons": {
+          "items": {
+            "$ref": "#/$defs/ReconciliationComparison"
+          },
+          "minItems": 1,
+          "title": "Comparisons",
+          "type": "array"
+        },
+        "status": {
+          "$ref": "#/$defs/ReconciliationStatus"
+        },
+        "content_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Content Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "report_id",
+        "target_id",
+        "canonical_source_id",
+        "independent_source_id",
+        "canonical_price_basis",
+        "return_semantics",
+        "comparisons",
+        "status",
+        "content_sha256"
+      ],
+      "title": "HistoricalReconciliationReport",
+      "type": "object"
+    },
+    "HistoricalResearchArchiveManifest": {
+      "additionalProperties": false,
+      "description": "Frozen archive index for historical Business Quality and evidence.",
+      "properties": {
+        "contract": {
+          "const": "historical_research_archive_manifest_v1",
+          "default": "historical_research_archive_manifest_v1",
+          "title": "Contract",
+          "type": "string"
+        },
+        "archive_id": {
+          "minLength": 1,
+          "title": "Archive Id",
+          "type": "string"
+        },
+        "target_id": {
+          "minLength": 1,
+          "title": "Target Id",
+          "type": "string"
+        },
+        "artifacts": {
+          "items": {
+            "$ref": "#/$defs/HistoricalResearchArtifactReference"
+          },
+          "minItems": 1,
+          "title": "Artifacts",
+          "type": "array"
+        },
+        "decision_bindings": {
+          "items": {
+            "$ref": "#/$defs/HistoricalDecisionResearchBinding"
+          },
+          "title": "Decision Bindings",
+          "type": "array"
+        },
+        "content_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Content Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "archive_id",
+        "target_id",
+        "artifacts",
+        "content_sha256"
+      ],
+      "title": "HistoricalResearchArchiveManifest",
+      "type": "object"
+    },
+    "HistoricalResearchArtifactReference": {
+      "additionalProperties": false,
+      "description": "Reference to one immutable Phase 4/research/filing artifact.",
+      "properties": {
+        "contract": {
+          "const": "historical_research_artifact_reference_v1",
+          "default": "historical_research_artifact_reference_v1",
+          "title": "Contract",
+          "type": "string"
+        },
+        "artifact_id": {
+          "minLength": 1,
+          "title": "Artifact Id",
+          "type": "string"
+        },
+        "artifact_type": {
+          "$ref": "#/$defs/ArchiveArtifactType"
+        },
+        "listing_id": {
+          "minLength": 1,
+          "title": "Listing Id",
+          "type": "string"
+        },
+        "analysis_id": {
+          "minLength": 1,
+          "title": "Analysis Id",
+          "type": "string"
+        },
+        "as_of": {
+          "format": "date",
+          "title": "As Of",
+          "type": "string"
+        },
+        "available_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Available At"
+        },
+        "source_document_hashes": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Source Document Hashes",
+          "type": "array"
+        },
+        "filing_ids": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Filing Ids",
+          "type": "array"
+        },
+        "locators": {
+          "items": {
+            "$ref": "#/$defs/HistoricalFilingLocator"
+          },
+          "minItems": 1,
+          "title": "Locators",
+          "type": "array"
+        },
+        "source_artifact_ids": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Source Artifact Ids",
+          "type": "array"
+        },
+        "content_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Content Sha256",
+          "type": "string"
+        },
+        "review_status": {
+          "$ref": "#/$defs/ReviewStatus"
+        },
+        "relative_path": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Relative Path"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "artifact_type",
+        "listing_id",
+        "analysis_id",
+        "as_of",
+        "source_document_hashes",
+        "filing_ids",
+        "locators",
+        "source_artifact_ids",
+        "content_sha256",
+        "review_status"
+      ],
+      "title": "HistoricalResearchArtifactReference",
+      "type": "object"
+    },
+    "HistoricalShardReference": {
+      "additionalProperties": false,
+      "description": "Content-addressed JSONL shard metadata; rows are never embedded here.",
+      "properties": {
+        "contract": {
+          "const": "historical_shard_reference_v1",
+          "default": "historical_shard_reference_v1",
+          "title": "Contract",
+          "type": "string"
+        },
+        "shard_id": {
+          "minLength": 1,
+          "title": "Shard Id",
+          "type": "string"
+        },
+        "artifact_kind": {
+          "$ref": "#/$defs/ShardArtifactKind"
+        },
+        "format": {
+          "$ref": "#/$defs/ShardFormat",
+          "default": "JSONL"
+        },
+        "schema_version": {
+          "minLength": 1,
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "content_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Content Sha256",
+          "type": "string"
+        },
+        "row_count": {
+          "minimum": 0,
+          "title": "Row Count",
+          "type": "integer"
+        },
+        "date_start": {
+          "format": "date",
+          "title": "Date Start",
+          "type": "string"
+        },
+        "date_end": {
+          "format": "date",
+          "title": "Date End",
+          "type": "string"
+        },
+        "listing_scope": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Listing Scope",
+          "type": "array"
+        },
+        "source_artifact_id": {
+          "minLength": 1,
+          "title": "Source Artifact Id",
+          "type": "string"
+        },
+        "relative_path": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Relative Path"
+        }
+      },
+      "required": [
+        "shard_id",
+        "artifact_kind",
+        "schema_version",
+        "content_sha256",
+        "row_count",
+        "date_start",
+        "date_end",
+        "listing_scope",
+        "source_artifact_id"
+      ],
+      "title": "HistoricalShardReference",
+      "type": "object"
+    },
+    "HistoricalSourceDescriptor": {
+      "additionalProperties": false,
+      "description": "Identity and coverage evidence for one acquired source artifact.",
+      "properties": {
+        "contract": {
+          "const": "historical_source_descriptor_v1",
+          "default": "historical_source_descriptor_v1",
+          "title": "Contract",
+          "type": "string"
+        },
+        "source_id": {
+          "minLength": 1,
+          "title": "Source Id",
+          "type": "string"
+        },
+        "source_kind": {
+          "$ref": "#/$defs/HistoricalSourceKind"
+        },
+        "provider_id": {
+          "minLength": 1,
+          "title": "Provider Id",
+          "type": "string"
+        },
+        "source_name": {
+          "minLength": 1,
+          "title": "Source Name",
+          "type": "string"
+        },
+        "authority": {
+          "$ref": "#/$defs/SourceAuthority"
+        },
+        "query_parameters": {
+          "additionalProperties": true,
+          "title": "Query Parameters",
+          "type": "object"
+        },
+        "retrieved_at": {
+          "format": "date-time",
+          "title": "Retrieved At",
+          "type": "string"
+        },
+        "source_version": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Version"
+        },
+        "coverage_start": {
+          "format": "date",
+          "title": "Coverage Start",
+          "type": "string"
+        },
+        "coverage_end": {
+          "format": "date",
+          "title": "Coverage End",
+          "type": "string"
+        },
+        "coverage_listing_ids": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Coverage Listing Ids",
+          "type": "array"
+        },
+        "content_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Content Sha256",
+          "type": "string"
+        },
+        "source_uri": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Uri"
+        },
+        "license_status": {
+          "$ref": "#/$defs/LicenseStatus",
+          "default": "UNKNOWN"
+        },
+        "licensing_constraints": {
+          "minLength": 1,
+          "title": "Licensing Constraints",
+          "type": "string"
+        },
+        "historical_capable": {
+          "default": false,
+          "title": "Historical Capable",
+          "type": "boolean"
+        },
+        "is_current_snapshot": {
+          "default": false,
+          "title": "Is Current Snapshot",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "source_id",
+        "source_kind",
+        "provider_id",
+        "source_name",
+        "authority",
+        "retrieved_at",
+        "coverage_start",
+        "coverage_end",
+        "coverage_listing_ids",
+        "content_sha256",
+        "licensing_constraints"
+      ],
+      "title": "HistoricalSourceDescriptor",
+      "type": "object"
+    },
+    "HistoricalSourceKind": {
+      "description": "Source categories required to make a historical claim auditable.",
+      "enum": [
+        "UNIVERSE_MEMBERSHIP",
+        "LISTING_LIFECYCLE",
+        "DELISTINGS",
+        "PRICES",
+        "CORPORATE_ACTIONS",
+        "BENCHMARK",
+        "FX",
+        "FILINGS",
+        "RESEARCH_ARCHIVE"
+      ],
+      "title": "HistoricalSourceKind",
+      "type": "string"
+    },
+    "HistoricalTargetScope": {
+      "additionalProperties": false,
+      "description": "Named, bounded universe against which all production claims are scoped.",
+      "properties": {
+        "contract": {
+          "const": "historical_target_scope_v1",
+          "default": "historical_target_scope_v1",
+          "title": "Contract",
+          "type": "string"
+        },
+        "target_id": {
+          "minLength": 1,
+          "title": "Target Id",
+          "type": "string"
+        },
+        "target_name": {
+          "minLength": 1,
+          "title": "Target Name",
+          "type": "string"
+        },
+        "universe_id": {
+          "minLength": 1,
+          "title": "Universe Id",
+          "type": "string"
+        },
+        "markets": {
+          "items": {
+            "$ref": "#/$defs/Market"
+          },
+          "maxItems": 2,
+          "minItems": 1,
+          "title": "Markets",
+          "type": "array"
+        },
+        "listing_ids": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Listing Ids",
+          "type": "array"
+        },
+        "start_date": {
+          "format": "date",
+          "title": "Start Date",
+          "type": "string"
+        },
+        "end_date": {
+          "format": "date",
+          "title": "End Date",
+          "type": "string"
+        },
+        "membership_claim": {
+          "enum": [
+            "HISTORICAL",
+            "FIXED_RESEARCH_UNIVERSE",
+            "UNKNOWN"
+          ],
+          "title": "Membership Claim",
+          "type": "string"
+        },
+        "coverage_claim": {
+          "$ref": "#/$defs/CoverageClaim"
+        },
+        "required_source_kinds": {
+          "items": {
+            "$ref": "#/$defs/HistoricalSourceKind"
+          },
+          "minItems": 1,
+          "title": "Required Source Kinds",
+          "type": "array"
+        },
+        "calendar_ids": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Calendar Ids",
+          "type": "object"
+        },
+        "licensing_scope": {
+          "minLength": 1,
+          "title": "Licensing Scope",
+          "type": "string"
+        }
+      },
+      "required": [
+        "target_id",
+        "target_name",
+        "universe_id",
+        "markets",
+        "listing_ids",
+        "start_date",
+        "end_date",
+        "membership_claim",
+        "coverage_claim",
+        "required_source_kinds",
+        "licensing_scope"
+      ],
+      "title": "HistoricalTargetScope",
+      "type": "object"
+    },
+    "HistoricalTerminalOutcome": {
+      "description": "Terminal lifecycle outcome without pretending all outcomes have value.",
+      "enum": [
+        "ACTIVE",
+        "DELISTED",
+        "ACQUIRED_CANCELLED",
+        "TRANSFERRED",
+        "PROLONGED_SUSPENSION",
+        "UNRESOLVED_TERMINAL",
+        "UNKNOWN"
+      ],
+      "title": "HistoricalTerminalOutcome",
+      "type": "string"
+    },
+    "LicenseStatus": {
+      "description": "Redistribution state carried with every persisted source descriptor.",
+      "enum": [
+        "OPEN_REDISTRIBUTABLE",
+        "RESTRICTED_INTERNAL",
+        "UNKNOWN",
+        "PROHIBITED"
+      ],
+      "title": "LicenseStatus",
+      "type": "string"
+    },
+    "Market": {
+      "description": "Listing market; A and H listings are never merged by the simulator.",
+      "enum": [
+        "A",
+        "H"
+      ],
+      "title": "Market",
+      "type": "string"
+    },
+    "PriceBasis": {
+      "description": "Whether a market series has already incorporated corporate actions.",
+      "enum": [
+        "UNADJUSTED",
+        "ADJUSTED"
+      ],
+      "title": "PriceBasis",
+      "type": "string"
+    },
+    "ReconciliationComparison": {
+      "additionalProperties": false,
+      "description": "One canonical-vs-independent comparison with deterministic tolerance.",
+      "properties": {
+        "contract": {
+          "const": "historical_reconciliation_comparison_v1",
+          "default": "historical_reconciliation_comparison_v1",
+          "title": "Contract",
+          "type": "string"
+        },
+        "comparison_id": {
+          "minLength": 1,
+          "title": "Comparison Id",
+          "type": "string"
+        },
+        "listing_id": {
+          "minLength": 1,
+          "title": "Listing Id",
+          "type": "string"
+        },
+        "observation_date": {
+          "format": "date",
+          "title": "Observation Date",
+          "type": "string"
+        },
+        "canonical_value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Canonical Value"
+        },
+        "independent_value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Independent Value"
+        },
+        "absolute_tolerance": {
+          "minimum": 0,
+          "title": "Absolute Tolerance",
+          "type": "number"
+        },
+        "relative_tolerance": {
+          "minimum": 0,
+          "title": "Relative Tolerance",
+          "type": "number"
+        },
+        "absolute_difference": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Absolute Difference"
+        },
+        "relative_difference": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Relative Difference"
+        },
+        "status": {
+          "$ref": "#/$defs/ReconciliationStatus"
+        },
+        "canonical_source_id": {
+          "minLength": 1,
+          "title": "Canonical Source Id",
+          "type": "string"
+        },
+        "independent_source_id": {
+          "minLength": 1,
+          "title": "Independent Source Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "comparison_id",
+        "listing_id",
+        "observation_date",
+        "absolute_tolerance",
+        "relative_tolerance",
+        "status",
+        "canonical_source_id",
+        "independent_source_id"
+      ],
+      "title": "ReconciliationComparison",
+      "type": "object"
+    },
+    "ReconciliationStatus": {
+      "enum": [
+        "PASS",
+        "PARTIAL",
+        "FAIL",
+        "MISSING"
+      ],
+      "title": "ReconciliationStatus",
+      "type": "string"
+    },
+    "ReviewStatus": {
+      "enum": [
+        "FROZEN_VALIDATED",
+        "REVIEW_REQUIRED",
+        "REJECTED"
+      ],
+      "title": "ReviewStatus",
+      "type": "string"
+    },
+    "ShardArtifactKind": {
+      "enum": [
+        "LISTING_LIFECYCLE",
+        "UNIVERSE_MEMBERSHIP",
+        "AVAILABILITY",
+        "MARKET_BAR",
+        "CORPORATE_ACTION",
+        "FX_OBSERVATION",
+        "BENCHMARK_OBSERVATION",
+        "DECISION_ARTIFACT"
+      ],
+      "title": "ShardArtifactKind",
+      "type": "string"
+    },
+    "ShardFormat": {
+      "enum": [
+        "JSONL"
+      ],
+      "title": "ShardFormat",
+      "type": "string"
+    },
+    "SourceAuthority": {
+      "description": "Authority classification; a provider name alone is not authority.",
+      "enum": [
+        "OFFICIAL_EXCHANGE",
+        "REGULATOR",
+        "ISSUER",
+        "DOCUMENTED_PROVIDER",
+        "ARCHIVE",
+        "FIXTURE",
+        "UNKNOWN"
+      ],
+      "title": "SourceAuthority",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Source-aware manifest whose large collections live in verified shards.",
+  "properties": {
+    "contract": {
+      "const": "historical_dataset_manifest_v1",
+      "default": "historical_dataset_manifest_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "dataset_id": {
+      "minLength": 1,
+      "title": "Dataset Id",
+      "type": "string"
+    },
+    "dataset_version": {
+      "minLength": 1,
+      "title": "Dataset Version",
+      "type": "string"
+    },
+    "target": {
+      "$ref": "#/$defs/HistoricalTargetScope"
+    },
+    "source_descriptors": {
+      "items": {
+        "$ref": "#/$defs/HistoricalSourceDescriptor"
+      },
+      "minItems": 1,
+      "title": "Source Descriptors",
+      "type": "array"
+    },
+    "shards": {
+      "items": {
+        "$ref": "#/$defs/HistoricalShardReference"
+      },
+      "minItems": 1,
+      "title": "Shards",
+      "type": "array"
+    },
+    "coverage_reports": {
+      "items": {
+        "$ref": "#/$defs/HistoricalCoverageReport"
+      },
+      "minItems": 1,
+      "title": "Coverage Reports",
+      "type": "array"
+    },
+    "research_archive": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/HistoricalResearchArchiveManifest"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "reconciliation_reports": {
+      "items": {
+        "$ref": "#/$defs/HistoricalReconciliationReport"
+      },
+      "title": "Reconciliation Reports",
+      "type": "array"
+    },
+    "missing_data_summary": {
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "title": "Missing Data Summary",
+      "type": "object"
+    },
+    "limitations": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 256,
+      "title": "Limitations",
+      "type": "array"
+    },
+    "content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Content Sha256",
+      "type": "string"
+    }
+  },
+  "required": [
+    "dataset_id",
+    "dataset_version",
+    "target",
+    "source_descriptors",
+    "shards",
+    "coverage_reports",
+    "content_sha256"
+  ],
+  "title": "HistoricalDatasetManifest",
+  "type": "object"
+}

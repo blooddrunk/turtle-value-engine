@@ -1,0 +1,76 @@
+{
+  "additionalProperties": false,
+  "description": "Historical membership interval with a separately auditable availability.",
+  "properties": {
+    "contract": {
+      "const": "historical_membership_interval_v1",
+      "default": "historical_membership_interval_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "membership_id": {
+      "minLength": 1,
+      "title": "Membership Id",
+      "type": "string"
+    },
+    "universe_id": {
+      "minLength": 1,
+      "title": "Universe Id",
+      "type": "string"
+    },
+    "listing_id": {
+      "minLength": 1,
+      "title": "Listing Id",
+      "type": "string"
+    },
+    "valid_from": {
+      "format": "date",
+      "title": "Valid From",
+      "type": "string"
+    },
+    "valid_to": {
+      "anyOf": [
+        {
+          "format": "date",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Valid To"
+    },
+    "included": {
+      "default": true,
+      "title": "Included",
+      "type": "boolean"
+    },
+    "availability_id": {
+      "minLength": 1,
+      "title": "Availability Id",
+      "type": "string"
+    },
+    "source_artifact_id": {
+      "minLength": 1,
+      "title": "Source Artifact Id",
+      "type": "string"
+    },
+    "source_hash": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Source Hash",
+      "type": "string"
+    }
+  },
+  "required": [
+    "membership_id",
+    "universe_id",
+    "listing_id",
+    "valid_from",
+    "availability_id",
+    "source_artifact_id",
+    "source_hash"
+  ],
+  "title": "HistoricalMembershipInterval",
+  "type": "object"
+}

@@ -1,0 +1,208 @@
+{
+  "$defs": {
+    "PriceBasis": {
+      "description": "Whether a market series has already incorporated corporate actions.",
+      "enum": [
+        "UNADJUSTED",
+        "ADJUSTED"
+      ],
+      "title": "PriceBasis",
+      "type": "string"
+    },
+    "ReconciliationComparison": {
+      "additionalProperties": false,
+      "description": "One canonical-vs-independent comparison with deterministic tolerance.",
+      "properties": {
+        "contract": {
+          "const": "historical_reconciliation_comparison_v1",
+          "default": "historical_reconciliation_comparison_v1",
+          "title": "Contract",
+          "type": "string"
+        },
+        "comparison_id": {
+          "minLength": 1,
+          "title": "Comparison Id",
+          "type": "string"
+        },
+        "listing_id": {
+          "minLength": 1,
+          "title": "Listing Id",
+          "type": "string"
+        },
+        "observation_date": {
+          "format": "date",
+          "title": "Observation Date",
+          "type": "string"
+        },
+        "canonical_value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Canonical Value"
+        },
+        "independent_value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Independent Value"
+        },
+        "absolute_tolerance": {
+          "minimum": 0,
+          "title": "Absolute Tolerance",
+          "type": "number"
+        },
+        "relative_tolerance": {
+          "minimum": 0,
+          "title": "Relative Tolerance",
+          "type": "number"
+        },
+        "absolute_difference": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Absolute Difference"
+        },
+        "relative_difference": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Relative Difference"
+        },
+        "status": {
+          "$ref": "#/$defs/ReconciliationStatus"
+        },
+        "canonical_source_id": {
+          "minLength": 1,
+          "title": "Canonical Source Id",
+          "type": "string"
+        },
+        "independent_source_id": {
+          "minLength": 1,
+          "title": "Independent Source Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "comparison_id",
+        "listing_id",
+        "observation_date",
+        "absolute_tolerance",
+        "relative_tolerance",
+        "status",
+        "canonical_source_id",
+        "independent_source_id"
+      ],
+      "title": "ReconciliationComparison",
+      "type": "object"
+    },
+    "ReconciliationStatus": {
+      "enum": [
+        "PASS",
+        "PARTIAL",
+        "FAIL",
+        "MISSING"
+      ],
+      "title": "ReconciliationStatus",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Persisted independent-reference reconciliation result.",
+  "properties": {
+    "contract": {
+      "const": "historical_reconciliation_report_v1",
+      "default": "historical_reconciliation_report_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "report_id": {
+      "minLength": 1,
+      "title": "Report Id",
+      "type": "string"
+    },
+    "target_id": {
+      "minLength": 1,
+      "title": "Target Id",
+      "type": "string"
+    },
+    "canonical_source_id": {
+      "minLength": 1,
+      "title": "Canonical Source Id",
+      "type": "string"
+    },
+    "independent_source_id": {
+      "minLength": 1,
+      "title": "Independent Source Id",
+      "type": "string"
+    },
+    "canonical_price_basis": {
+      "$ref": "#/$defs/PriceBasis"
+    },
+    "return_semantics": {
+      "enum": [
+        "PRICE_RETURN",
+        "TOTAL_RETURN"
+      ],
+      "title": "Return Semantics",
+      "type": "string"
+    },
+    "explicit_actions_used": {
+      "default": false,
+      "title": "Explicit Actions Used",
+      "type": "boolean"
+    },
+    "comparisons": {
+      "items": {
+        "$ref": "#/$defs/ReconciliationComparison"
+      },
+      "minItems": 1,
+      "title": "Comparisons",
+      "type": "array"
+    },
+    "status": {
+      "$ref": "#/$defs/ReconciliationStatus"
+    },
+    "content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Content Sha256",
+      "type": "string"
+    }
+  },
+  "required": [
+    "report_id",
+    "target_id",
+    "canonical_source_id",
+    "independent_source_id",
+    "canonical_price_basis",
+    "return_semantics",
+    "comparisons",
+    "status",
+    "content_sha256"
+  ],
+  "title": "HistoricalReconciliationReport",
+  "type": "object"
+}
