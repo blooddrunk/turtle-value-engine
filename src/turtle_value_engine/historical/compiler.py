@@ -514,6 +514,18 @@ class HistoricalDatasetCompiler:
                 for source in sources.values()
                 if source.source_kind is HistoricalSourceKind.FILINGS
             }
+            archive_document_hashes = set(archive_source_hashes)
+            archive_document_hashes.update(
+                artifact.content_sha256
+                for artifact in manifest.research_archive.artifacts
+                if artifact.artifact_type
+                in {
+                    ArchiveArtifactType.FILING,
+                    ArchiveArtifactType.FILING_DOCUMENT,
+                    ArchiveArtifactType.FILING_EXTRACTION,
+                    ArchiveArtifactType.FILING_EVIDENCE,
+                }
+            )
             for artifact in manifest.research_archive.artifacts:
                 if artifact.listing_id not in manifest.target.listing_ids:
                     errors.append(
@@ -525,6 +537,12 @@ class HistoricalDatasetCompiler:
                         errors.append(
                             "research artifact references unknown source artifact: "
                             + source_id
+                        )
+                for document_hash in artifact.source_document_hashes:
+                    if document_hash not in archive_document_hashes:
+                        errors.append(
+                            "research artifact references unknown source document hash: "
+                            + artifact.artifact_id
                         )
                 if artifact.relative_path is None:
                     if require_production:

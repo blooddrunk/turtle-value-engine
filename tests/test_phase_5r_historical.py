@@ -711,6 +711,13 @@ def test_compiler_rejects_dangling_research_binding_and_source(tmp_path):
         compile_backtest_manifest(manifest, store)
 
 
+def test_compiler_rejects_dangling_research_document_hash(tmp_path):
+    archive = _archive()
+    manifest, store = _build_manifest(tmp_path, research_archive=archive)
+    with pytest.raises(ValueError, match="unknown source document hash"):
+        compile_backtest_manifest(manifest, store)
+
+
 def test_compiler_rejects_dangling_reconciliation_source(tmp_path):
     report = reconcile_observations(
         target_id="fixture-ah-2020",
