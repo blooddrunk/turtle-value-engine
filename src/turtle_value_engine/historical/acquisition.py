@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import random
 import re
@@ -1839,14 +1840,41 @@ class HithinkMarketDumpAdapter:
         "daily-k-10d": "daily-k-10d/download-url",
         "adjustment-factors": "adjustment-factors/download-url",
     }
+    _DAILY_K_COLUMNS = frozenset(
+        {
+            "thscode",
+            "currency",
+            "interval",
+            "adjusted",
+            "date_ms",
+            "open_price",
+            "high_price",
+            "low_price",
+            "close_price",
+            "volume",
+            "turnover",
+        }
+    )
+    _ADJUSTMENT_COLUMNS = frozenset(
+        {
+            "thscode",
+            "ticker",
+            "ex_date_ms",
+            "dividend_per_share",
+            "per_share_bonus",
+            "allotment_ratio",
+            "allotment_price",
+            "currency",
+        }
+    )
 
     def _endpoint(self, request: HistoricalAcquisitionRequestV1) -> str:
         if any(
-            not re.fullmatch(r"(?:\d{6}\.(?:SH|SZ|BJ)|(?:SH|SZ|BJ)\d{6})", listing_id)
+            not re.fullmatch(r"(?:SH|SZ|BJ)\d{6}", listing_id)
             for listing_id in request.listing_ids
         ):
             raise HistoricalSourceSchemaError(
-                "Hithink market-dump adapter supports A-share listings only"
+                "Hithink market-dump adapter requires canonical A-share listing IDs"
             )
         dump_type = request.parameters.get("dump_type")
         if dump_type not in self._ENDPOINTS:
@@ -1884,6 +1912,108 @@ class HithinkMarketDumpAdapter:
         if parsed.scheme not in {"http", "https"} or not parsed.netloc:
             raise HistoricalSourceSchemaError("Hithink presigned URL is invalid")
         return url
+
+    @staticmethod
+    def _date_from_milliseconds(value: object, *, field_name: str) -> date:
+        if isinstance(value, bool):
+            raise HistoricalIngestionError(f"Hithink {field_name} is invalid")
+        try:
+            milliseconds = float(value)
+        except (TypeError, ValueError) as exc:
+            raise HistoricalIngestionError(f"Hithink {field_name} is invalid") from exc
+        if not math.isfinite(milliseconds):
+            raise HistoricalIngestionError(f"Hithink {field_name} is invalid")
+        try:
+            return datetime.fromtimestamp(
+                milliseconds / 1000,
+                tz=ZoneInfo("Asia/Shanghai"),
+            ).date()
+        except (OverflowError, OSError, ValueError) as exc:
+            raise HistoricalIngestionError(f"Hithink {field_name} is invalid") from exc
+
+    @classmethod
+    def _inspect_parquet_dump(
+        cls,
+        request: HistoricalAcquisitionRequestV1,
+        body: bytes,
+    ) -> tuple[date, date, list[str]]:
+        """Inspect a dump without retaining the expiring download URL.
+
+        Probe must establish the actual response span and listing coverage;
+        an HTTP 200 from the signing endpoint alone is not evidence that the
+        account received a usable historical file.  The full row decoder still
+        performs the same strict checks during offline compilation.
+        """
+
+        try:
+            import io
+
+            import pyarrow.parquet as parquet  # type: ignore[import-not-found]
+        except ImportError as exc:
+            raise HistoricalIngestionError(
+                "Hithink Parquet probe requires the optional parquet dependency"
+            ) from exc
+        try:
+            parquet_file = parquet.ParquetFile(io.BytesIO(body))
+            column_names = list(parquet_file.schema_arrow.names)
+        except Exception as exc:
+            raise HistoricalIngestionError("Hithink dump Parquet schema is invalid") from exc
+
+        dump_type = request.parameters.get("dump_type")
+        expected_columns = (
+            cls._ADJUSTMENT_COLUMNS
+            if dump_type == "adjustment-factors"
+            else cls._DAILY_K_COLUMNS
+        )
+        if len(column_names) != len(expected_columns) or set(column_names) != expected_columns:
+            raise HistoricalIngestionError("Hithink dump Parquet columns changed")
+
+        observed_dates: set[date] = set()
+        observed_listings: set[str] = set()
+        columns = (
+            ["thscode", "ex_date_ms", "currency"]
+            if dump_type == "adjustment-factors"
+            else ["thscode", "currency", "interval", "adjusted", "date_ms"]
+        )
+        try:
+            batches = parquet_file.iter_batches(columns=columns, batch_size=65_536)
+            for record_batch in batches:
+                values = record_batch.to_pydict()
+                row_count = len(values[columns[0]])
+                for index in range(row_count):
+                    listing_id = _canonical_hithink_a_listing(values["thscode"][index])
+                    currency = values["currency"][index]
+                    if currency != "CNY":
+                        raise HistoricalIngestionError(
+                            "Hithink dump currency is not the documented CNY value"
+                        )
+                    if dump_type != "adjustment-factors":
+                        if values["interval"][index] != "1d":
+                            raise HistoricalIngestionError(
+                                "Hithink dump contains a non-daily interval"
+                            )
+                        if values["adjusted"][index] != "none":
+                            raise HistoricalIngestionError(
+                                "Hithink dump contains adjusted prices"
+                            )
+                        observation_date = cls._date_from_milliseconds(
+                            values["date_ms"][index],
+                            field_name="date_ms",
+                        )
+                    else:
+                        observation_date = cls._date_from_milliseconds(
+                            values["ex_date_ms"][index],
+                            field_name="ex_date_ms",
+                        )
+                    observed_listings.add(listing_id)
+                    observed_dates.add(observation_date)
+        except HistoricalIngestionError:
+            raise
+        except Exception as exc:
+            raise HistoricalIngestionError("Hithink dump Parquet rows are invalid") from exc
+        if not observed_dates or not observed_listings:
+            raise HistoricalIngestionError("Hithink dump Parquet contains no observations")
+        return min(observed_dates), max(observed_dates), sorted(observed_listings)
 
     def acquire(
         self,
@@ -1934,6 +2064,16 @@ class HithinkMarketDumpAdapter:
         started = _utc_now(clock)
         try:
             downloads = self.acquire(request, transport=transport, credentials=credentials)
+            data = next(
+                (item for item in downloads if item.artifact_role == "DATA"),
+                None,
+            )
+            if data is None:
+                raise HistoricalSourceSchemaError("Hithink response contained no data artifact")
+            observed_start, observed_end, observed_listing_ids = self._inspect_parquet_dump(
+                request,
+                data.body,
+            )
             finished = _utc_now(clock)
         except CredentialUnavailableError as exc:
             finished = _utc_now(clock)
@@ -1971,7 +2111,20 @@ class HithinkMarketDumpAdapter:
                 ),
                 blockers=[str(exc)],
             )
-        data = next(item for item in downloads if item.artifact_role == "DATA")
+        historical_capable = (
+            set(request.listing_ids).issubset(set(observed_listing_ids))
+            and observed_start <= request.start_date
+            and observed_end >= request.end_date
+        )
+        dump_type = request.parameters.get("dump_type")
+        warnings = [
+            "HITHINK_TERMINAL_LIFECYCLE_NOT_INCLUDED: market dumps do not prove "
+            "delisting, suspension or terminal economics"
+        ]
+        if dump_type == "daily-k-10d":
+            warnings.append(
+                "HITHINK_RECENT_WINDOW_ONLY: daily-k-10d is a recent incremental dump"
+            )
         return SourceProbeReportV1.build(
             report_id=f"probe-{request.request_id}",
             plan_id=plan_id,
@@ -1989,18 +2142,18 @@ class HithinkMarketDumpAdapter:
             response_sha256=hashlib.sha256(data.body).hexdigest(),
             source_uri=self.base_uri,
             account_entitlement=AccountEntitlement.CONFIRMED,
-            historical_capable=False,
+            observed_start=observed_start,
+            observed_end=observed_end,
+            observed_listing_ids=observed_listing_ids,
+            historical_capable=historical_capable,
             terminal_coverage=CoverageEvidenceStatus.UNVERIFIED,
             action_coverage=(
                 CoverageEvidenceStatus.CONFIRMED
-                if request.parameters.get("dump_type") == "adjustment-factors"
+                if dump_type == "adjustment-factors"
                 else CoverageEvidenceStatus.UNKNOWN
             ),
             throttling_observed=False,
-            blockers=[
-                "HITHINK_SCOPE_UNVERIFIED: probe did not establish delisted/terminal "
-                "retention, complete listing coverage, revisions, or private caching terms"
-            ],
+            warnings=warnings,
         )
 
 
@@ -2475,6 +2628,10 @@ class HithinkDailyKParquetDecoder:
                 raise HistoricalIngestionError(
                     "Hithink adjusted/non-daily data cannot become canonical unadjusted bars"
                 )
+            if row["currency"] != "CNY":
+                raise HistoricalIngestionError(
+                    "Hithink daily-k currency is not the documented CNY value"
+                )
             listing_id = _canonical_hithink_a_listing(row["thscode"])
             try:
                 trading_datetime = datetime.fromtimestamp(float(row["date_ms"]) / 1000, tz=zone)
@@ -2598,7 +2755,7 @@ class HithinkAdjustmentFactorParquetDecoder:
             listing_id = _canonical_hithink_a_listing(row["thscode"])
             effective_date = self._date(row["ex_date_ms"])
             currency = row["currency"]
-            if not isinstance(currency, str) or len(currency) != 3:
+            if currency != "CNY":
                 raise HistoricalIngestionError("Hithink adjustment currency is invalid")
             dividend = self._nonnegative(row["dividend_per_share"], "dividend_per_share")
             bonus = self._nonnegative(row["per_share_bonus"], "per_share_bonus")
@@ -3855,6 +4012,7 @@ def build_readiness_report(
             continue
         scoped_probe_reports.append(report)
     for report in scoped_probe_reports:
+        warnings.extend(report.warnings)
         if report.status != ProbeStatus.PASS:
             blockers.extend(report.blockers or ["SOURCE_PROBE_FAILED: " + report.source_id])
         elif report.blockers:

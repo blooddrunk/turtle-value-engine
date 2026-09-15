@@ -63,10 +63,12 @@ The first documented A-share candidate is the Hithink Financial-API market-dump
 adapter: its official endpoint reference documents unadjusted daily-k and
 adjustment-factor Parquet shapes, but documentation alone does not establish an
 owner account's entitlement, retention of terminal listings, caching terms or
-coverage. Adjustment factors remain reconciliation-only unless an operator
-explicitly enables their decoder after those facts are evidenced. H-share
-sources are never inferred from current snapshots; absent a successful
-source-specific probe the readiness report keeps the exact
+coverage. The source probe inspects the downloaded Parquet schema and actual
+observed date/listing span before setting historical capability; a successful
+signing response alone is insufficient. Adjustment factors remain
+reconciliation-only unless an operator explicitly enables their decoder after
+those facts are evidenced. H-share sources are never inferred from current
+snapshots; absent a successful source-specific probe the readiness report keeps the exact
 `H_SOURCE_UNQUALIFIED` blocker. Official filing downloads are bridged through
 the existing injected filing downloader and do not add an unauthorised scraping
 route. Filing receipts retain the non-sensitive filing ID, publication date,

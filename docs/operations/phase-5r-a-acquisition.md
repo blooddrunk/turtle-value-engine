@@ -32,7 +32,9 @@ Hithink market-dump 适配器只接受官方文档定义的三个 `dump_type`：
 `daily-k`、`daily-k-10d` 和 `adjustment-factors`。官方文档证明端点和字段形状，
 不证明个人账户权限、历史退市保留、缓存权或再分发权；这些必须由 probe 和
 条款证据确认。adjustment factor 在其 basis 未经确认前只能作为 reconciliation
-输入。
+输入。Hithink probe 还会在内存中检查实际 Parquet schema、日期跨度和 listing
+覆盖；HTTP 200 或签名 URL 本身不构成可用历史数据证据。缺少可选的 `historical`
+依赖或 schema 不可识别时保持 fail closed，签名 URL 不写入 receipt/CAS。
 
 H 股没有默认的免费权威来源。H 股来源必须先 probe；未确认历史范围、退市、
 corporate action 完整性或合法自动访问时，系统输出

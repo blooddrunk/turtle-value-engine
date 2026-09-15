@@ -6,9 +6,10 @@ import hashlib
 import json
 import os
 import stat
+import sys
 from datetime import UTC, date, datetime
 from pathlib import Path
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
 
 import pytest
 from jsonschema import Draft202012Validator
@@ -1577,6 +1578,163 @@ def test_hithink_credential_is_used_in_memory_and_never_persisted(tmp_path: Path
         b"X-Amz-Signature" not in path.read_bytes()
         for path in (tmp_path / "raw").rglob("*.blob")
     )
+
+
+def test_hithink_probe_does_not_treat_http_200_as_usable_history():
+    credential = CredentialReferenceV1(
+        reference_id="hithink-probe-key",
+        kind="INJECTED",
+        required=True,
+    )
+    request = _request(adapter_id="hithink-market-dumps").model_copy(
+        update={
+            "parameters": {"dump_type": "daily-k"},
+            "credential_ref": credential,
+            "listing_ids": ["SH000001"],
+        }
+    )
+    transport = FakeTransport(
+        [
+            NetworkResponse(
+                200,
+                {"Content-Type": "application/json"},
+                b'{"code":0,"data":{"presigned_url":"https://signed.example.test/file"}}',
+                "https://fuyao.aicubes.cn/api/dump/market-dumps/daily-k/download-url",
+            ),
+            NetworkResponse(
+                200,
+                {"Content-Type": "application/octet-stream"},
+                b"not-a-parquet-file",
+                "https://signed.example.test/file",
+            ),
+        ]
+    )
+
+    report = HithinkMarketDumpAdapter().probe(
+        request,
+        transport=transport,
+        credentials=MappingCredentialResolver({"hithink-probe-key": "probe-only"}),
+        plan_id="hithink-probe-plan",
+        clock=lambda: datetime(2026, 1, 1, tzinfo=UTC),
+    )
+
+    assert report.status == ProbeStatus.FAILED
+    assert report.historical_capable is False
+    assert any("Parquet" in blocker for blocker in report.blockers)
+
+
+def test_hithink_probe_records_observed_span_and_listing_coverage(monkeypatch):
+    class FakeBatch:
+        def to_pydict(self):
+            return {
+                "thscode": ["600000.SH", "600000.SH"],
+                "currency": ["CNY", "CNY"],
+                "interval": ["1d", "1d"],
+                "adjusted": ["none", "none"],
+                "date_ms": [
+                    int(datetime(2020, 1, 1, tzinfo=UTC).timestamp() * 1000),
+                    int(datetime(2022, 1, 2, tzinfo=UTC).timestamp() * 1000),
+                ],
+            }
+
+    class FakeParquetFile:
+        schema_arrow = SimpleNamespace(names=sorted(HithinkMarketDumpAdapter._DAILY_K_COLUMNS))
+
+        def __init__(self, _body):
+            pass
+
+        def iter_batches(self, *, columns, batch_size):
+            assert columns == ["thscode", "currency", "interval", "adjusted", "date_ms"]
+            assert batch_size == 65_536
+            return iter((FakeBatch(),))
+
+    fake_parquet = ModuleType("pyarrow.parquet")
+    fake_parquet.ParquetFile = FakeParquetFile
+    fake_pyarrow = ModuleType("pyarrow")
+    fake_pyarrow.parquet = fake_parquet
+    monkeypatch.setitem(sys.modules, "pyarrow", fake_pyarrow)
+    monkeypatch.setitem(sys.modules, "pyarrow.parquet", fake_parquet)
+
+    credential = CredentialReferenceV1(
+        reference_id="hithink-span-key",
+        kind="INJECTED",
+        required=True,
+    )
+    request = _request(adapter_id="hithink-market-dumps").model_copy(
+        update={
+            "listing_ids": ["SH600000"],
+            "parameters": {"dump_type": "daily-k"},
+            "credential_ref": credential,
+        }
+    )
+    report = HithinkMarketDumpAdapter().probe(
+        request,
+        transport=FakeTransport(
+            [
+                NetworkResponse(
+                    200,
+                    {"Content-Type": "application/json"},
+                    b'{"code":0,"data":{"presigned_url":"https://signed.example.test/file"}}',
+                    "https://fuyao.aicubes.cn/api/dump/market-dumps/daily-k/download-url",
+                ),
+                NetworkResponse(
+                    200,
+                    {"Content-Type": "application/octet-stream"},
+                    b"fake-parquet",
+                    "https://signed.example.test/file",
+                ),
+            ]
+        ),
+        credentials=MappingCredentialResolver({"hithink-span-key": "probe-only"}),
+        plan_id="hithink-span-plan",
+        clock=lambda: datetime(2026, 1, 1, tzinfo=UTC),
+    )
+
+    assert report.status == ProbeStatus.PASS
+    assert report.historical_capable is True
+    assert report.observed_start == date(2020, 1, 1)
+    assert report.observed_end == date(2022, 1, 2)
+    assert report.observed_listing_ids == ["SH600000"]
+    assert report.blockers == []
+
+    target = _target().model_copy(
+        update={
+            "listing_ids": ["SH600000"],
+            "listing_markets": {"SH600000": Market.A},
+            "calendar_ids": {"SH600000": "A:SSE"},
+        }
+    )
+    source = _source(adapter_id="hithink-market-dumps").model_copy(
+        update={"coverage_listing_ids": ["SH600000"]}
+    )
+    report_payload = report.model_dump(
+        mode="python",
+        exclude={"report_sha256"},
+        warnings=False,
+    )
+    report_payload.update(
+        {
+            "license_evidence_uri": source.license_evidence_uri,
+            "license_evidence_sha256": source.license_evidence_sha256,
+            "access_grant_reference": source.access_grant_reference,
+        }
+    )
+    report = SourceProbeReportV1.build(**report_payload)
+    plan = HistoricalAcquisitionPlanV1(
+        plan_id="hithink-span-plan",
+        plan_version="1",
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+        target=target,
+        sources=[source],
+        requests=[request],
+        credential_references=[credential],
+    )
+    readiness = build_readiness_report(plan, probe_reports=[report])
+    warning = (
+        "HITHINK_TERMINAL_LIFECYCLE_NOT_INCLUDED: market dumps do not prove "
+        "delisting, suspension or terminal economics"
+    )
+    assert warning in readiness.warnings
 
 
 def test_h_target_readiness_fails_closed_without_qualified_probe():
