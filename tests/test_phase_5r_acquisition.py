@@ -1739,6 +1739,35 @@ def test_hithink_probe_records_observed_span_and_listing_coverage(monkeypatch):
     assert report.observed_listing_ids == ["SH600000"]
     assert report.blockers == []
 
+    undercovered_request = request.model_copy(update={"start_date": date(2019, 1, 1)})
+    undercovered_report = HithinkMarketDumpAdapter().probe(
+        undercovered_request,
+        transport=FakeTransport(
+            [
+                NetworkResponse(
+                    200,
+                    {"Content-Type": "application/json"},
+                    b'{"code":0,"data":{"presigned_url":"https://signed.example.test/file"}}',
+                    "https://fuyao.aicubes.cn/api/dump/market-dumps/daily-k/download-url",
+                ),
+                NetworkResponse(
+                    200,
+                    {"Content-Type": "application/octet-stream"},
+                    b"fake-parquet",
+                    "https://signed.example.test/file",
+                ),
+            ]
+        ),
+        credentials=MappingCredentialResolver({"hithink-span-key": "probe-only"}),
+        plan_id="hithink-span-plan",
+        clock=lambda: datetime(2026, 1, 1, tzinfo=UTC),
+    )
+    assert undercovered_report.historical_capable is False
+    assert undercovered_report.blockers == [
+        "HISTORICAL_CAPABILITY_UNVERIFIED: observed Hithink dump does not cover "
+        "every requested listing and date"
+    ]
+
     target = _target().model_copy(
         update={
             "listing_ids": ["SH600000"],

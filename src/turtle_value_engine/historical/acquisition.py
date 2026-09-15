@@ -2125,6 +2125,12 @@ class HithinkMarketDumpAdapter:
             warnings.append(
                 "HITHINK_RECENT_WINDOW_ONLY: daily-k-10d is a recent incremental dump"
             )
+        blockers = []
+        if not historical_capable:
+            blockers.append(
+                "HISTORICAL_CAPABILITY_UNVERIFIED: observed Hithink dump does not cover "
+                "every requested listing and date"
+            )
         return SourceProbeReportV1.build(
             report_id=f"probe-{request.request_id}",
             plan_id=plan_id,
@@ -2153,6 +2159,7 @@ class HithinkMarketDumpAdapter:
                 else CoverageEvidenceStatus.UNKNOWN
             ),
             throttling_observed=False,
+            blockers=blockers,
             warnings=warnings,
         )
 
