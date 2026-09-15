@@ -150,10 +150,11 @@ persisted batch, probe report, raw CAS, compiled manifest and shard store,
 replays compilation, and writes exact blockers before failing closed. It does
 not resolve credentials, access the network, invoke a provider, or invoke a
 model.
-The built-in CLI live transport additionally requires a non-empty declared
-`ENVIRONMENT` credential reference before any network request; keyring/injected
-resolution is limited to explicitly controlled library runners or fake
-transports. This repository does not treat a chat value as a credential.
+The built-in CLI live transport additionally requires every required request
+credential to be declared as an `ENVIRONMENT` reference and resolved to a
+non-empty value before any network request; keyring/injected resolution is
+limited to explicitly controlled library runners or fake transports. This
+repository does not treat a chat value as a credential.
 The executable next-stage package is
 `docs/goals/phase-5r-a-production-source-acquisition.md`. Its minimum path is
 personal-first: official public and documented personal-account sources, local

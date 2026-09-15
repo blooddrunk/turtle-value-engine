@@ -2848,7 +2848,7 @@ class HistoricalAcquisitionService:
         self.credentials = EnvironmentCredentialResolver() if credentials is None else credentials
         self.clock = clock
         # The built-in transport is the only path used by the CLI for real
-        # network access.  Require a non-empty ENVIRONMENT credential before
+        # network access. Require every required ENVIRONMENT credential before
         # touching it; injected transports remain available to deterministic
         # tests and explicitly controlled runners.
         self._requires_environment_credential = _is_builtin_live_transport(self.transport)

@@ -326,9 +326,9 @@ manifest、decision artifact 和 research archive；校准只输出 proposal。�
 
 Phase 5R-A 增加了独立的 source probe、raw-byte receipt、私有本地 CAS 和离线
 compiler。live 网络默认关闭，只有命令显式带 `--network=allow` 才会访问来源；
-默认 CLI 的内置真实 transport 还要求 plan 声明一个非空的 `ENVIRONMENT`
-credential reference。OS keyring 或显式注入 resolver 只用于受控 library runner
-和 fake transport；凭据绝不从聊天读取。
+默认 CLI 的内置真实 transport 还要求 plan 中每个 request 的必需凭据都声明为
+`ENVIRONMENT` credential reference，并在首次触网前解析为非空值。OS keyring 或
+显式注入 resolver 只用于受控 library runner 和 fake transport；凭据绝不从聊天读取。
 
 ```bash
 tve historical source probe --plan plan.json --network=allow
