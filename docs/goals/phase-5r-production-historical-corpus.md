@@ -191,3 +191,17 @@ pages alone. The smallest closure decision is either (a) supply a bounded
 licensed cache plus its permission/redistribution evidence, or (b) explicitly
 narrow the target and accept an internal-only source scope. Until then the
 checked-in corpus remains an acceptance fixture.
+
+The source triage is therefore:
+
+| Required category | Official availability signal | Current production decision |
+| --- | --- | --- |
+| A/H membership and listing lifecycle | Exchange service and listed-company information pages | No complete point-in-time membership/lifecycle artifact has been supplied for the declared target. |
+| Prices and corporate actions | HKEX historical products and SSE market-data services | Access is available through source products, but no licensed cache and redistribution terms are persisted in this repository. |
+| Benchmarks and FX | Exchange/index and market-data service channels | A complete, target-spanning source identity, calendar/currency scope and redistribution permission are not established. |
+| Filings and archived research | Public HKEXnews/issuer documents | Public visibility does not by itself establish archival redistribution rights or a frozen point-in-time research review. |
+
+The [SSE public-data catalogue](https://www.sse.com.cn/market/publicdata/)
+is retained as an availability lead, not as an implicit open-data license. A
+real-source promotion must add the corresponding descriptor, cached artifact
+hashes, target coverage records and permission evidence together.
