@@ -1,74 +1,433 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/blooddrunk/turtle-value-engine/schemas/research-finding.schema.json",
-  "title": "Turtle Value Engine Research Finding",
-  "type": "object",
-  "required": ["contract", "id", "analysis_id", "listing_id", "as_of", "role", "question_id", "summary", "confidence"],
-  "properties": {
-    "contract": {"const": "research_finding_v1"},
-    "id": {"type": "string", "minLength": 1},
-    "analysis_id": {"type": "string", "minLength": 1},
-    "listing_id": {"type": "string", "minLength": 1},
-    "as_of": {"type": "string", "format": "date"},
-    "role": {"type": "string", "enum": ["RESEARCH", "QUALITY_ANALYST", "SKEPTIC", "ADJUDICATOR", "REPORT_COMPOSER"]},
-    "question_id": {"type": "string", "minLength": 1},
-    "dimension": {"type": ["string", "null"]},
-    "summary": {"type": "string", "minLength": 1, "maxLength": 8000},
-    "supporting_claims": {"type": "array", "maxItems": 64, "items": {"$ref": "#/$defs/claim"}},
-    "counter_evidence_claims": {"type": "array", "maxItems": 64, "items": {"$ref": "#/$defs/counterClaim"}},
-    "proposed_score": {"type": ["integer", "null"], "minimum": 0, "maximum": 5},
-    "confidence": {"type": "string", "enum": ["HIGH", "MEDIUM", "LOW"]},
-    "deterministic_metric_ids": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
-    "unresolved_questions": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
-    "counter_evidence_checked": {"type": "boolean"},
-    "proposed_adjustments": {"type": "array", "maxItems": 32, "items": {"$ref": "#/$defs/adjustment"}}
-  },
   "$defs": {
-    "claim": {
-      "type": "object",
-      "required": ["id", "statement", "evidence_ids", "confidence"],
+    "Adjustment": {
+      "additionalProperties": false,
+      "description": "Explicit economic adjustment with proposal/approval provenance.",
       "properties": {
-        "id": {"type": "string", "minLength": 1},
-        "direction": {"const": "SUPPORT"},
-        "statement": {"type": "string", "minLength": 1, "maxLength": 4000},
-        "evidence_ids": {"type": "array", "minItems": 1, "items": {"type": "string"}, "uniqueItems": true},
-        "deterministic_metric_ids": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
-        "confidence": {"type": "number", "minimum": 0, "maximum": 1}
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "target_field": {
+          "minLength": 1,
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "title": "Target Field",
+          "type": "string"
+        },
+        "target_period": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Period"
+        },
+        "adjustment_type": {
+          "$ref": "#/$defs/AdjustmentType"
+        },
+        "input_value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Input Value"
+        },
+        "proposed_adjusted_value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Proposed Adjusted Value"
+        },
+        "status": {
+          "$ref": "#/$defs/AdjustmentStatus"
+        },
+        "reason": {
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        },
+        "source_evidence_ids": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Source Evidence Ids",
+          "type": "array"
+        },
+        "proposed_by": {
+          "$ref": "#/$defs/ProposedBy"
+        },
+        "approved_by": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ApprovedBy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "confidence": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Confidence"
+        }
       },
-      "additionalProperties": false
+      "required": [
+        "id",
+        "target_field",
+        "adjustment_type",
+        "status",
+        "reason",
+        "source_evidence_ids",
+        "proposed_by"
+      ],
+      "title": "Adjustment",
+      "type": "object"
     },
-    "counterClaim": {
-      "type": "object",
-      "required": ["id", "statement", "evidence_ids", "confidence"],
-      "properties": {
-        "id": {"type": "string", "minLength": 1},
-        "direction": {"const": "COUNTER"},
-        "statement": {"type": "string", "minLength": 1, "maxLength": 4000},
-        "evidence_ids": {"type": "array", "minItems": 1, "items": {"type": "string"}, "uniqueItems": true},
-        "deterministic_metric_ids": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
-        "confidence": {"type": "number", "minimum": 0, "maximum": 1}
-      },
-      "additionalProperties": false
+    "AdjustmentStatus": {
+      "description": "Lifecycle state of an adjustment proposal.",
+      "enum": [
+        "PROPOSED",
+        "ACCEPTED",
+        "REJECTED"
+      ],
+      "title": "AdjustmentStatus",
+      "type": "string"
     },
-    "adjustment": {
-      "type": "object",
-      "required": ["id", "target_field", "adjustment_type", "status", "reason", "source_evidence_ids", "proposed_by"],
+    "AdjustmentType": {
+      "description": "Adjustment types permitted by the data contract.",
+      "enum": [
+        "RECLASSIFY",
+        "EXCLUDE",
+        "INCLUDE",
+        "HAIRCUT",
+        "OWNERSHIP_ADJUST",
+        "UPSTREAMABILITY_ADJUST",
+        "NORMALIZE",
+        "OTHER"
+      ],
+      "title": "AdjustmentType",
+      "type": "string"
+    },
+    "AnalystRole": {
+      "description": "Stable role names understood by external agent runtimes.",
+      "enum": [
+        "RESEARCH",
+        "QUALITY_ANALYST",
+        "SKEPTIC",
+        "ADJUDICATOR",
+        "REPORT_COMPOSER"
+      ],
+      "title": "AnalystRole",
+      "type": "string"
+    },
+    "ApprovedBy": {
+      "description": "Actor that approved an adjustment.",
+      "enum": [
+        "RULE_ENGINE",
+        "HUMAN"
+      ],
+      "title": "ApprovedBy",
+      "type": "string"
+    },
+    "ConfidenceLevel": {
+      "description": "Qualitative confidence used by metrics, gates and decisions.",
+      "enum": [
+        "HIGH",
+        "MEDIUM",
+        "LOW"
+      ],
+      "title": "ConfidenceLevel",
+      "type": "string"
+    },
+    "CounterEvidenceClaim": {
+      "additionalProperties": false,
+      "description": "A falsifying/counter claim whose evidence must be in the task packet.",
       "properties": {
-        "id": {"type": "string", "minLength": 1},
-        "target_field": {"type": "string", "minLength": 1},
-        "target_period": {"type": ["string", "null"]},
-        "adjustment_type": {"type": "string"},
-        "input_value": {"type": ["number", "null"]},
-        "proposed_adjusted_value": {"type": ["number", "null"]},
-        "status": {"const": "PROPOSED"},
-        "reason": {"type": "string", "minLength": 1},
-        "source_evidence_ids": {"type": "array", "minItems": 1, "items": {"type": "string"}, "uniqueItems": true},
-        "proposed_by": {"const": "LLM"},
-        "approved_by": {"type": "null"},
-        "confidence": {"type": ["number", "null"], "minimum": 0, "maximum": 1}
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "direction": {
+          "const": "COUNTER",
+          "default": "COUNTER",
+          "title": "Direction",
+          "type": "string"
+        },
+        "statement": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Statement",
+          "type": "string"
+        },
+        "evidence_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "minItems": 1,
+          "title": "Evidence Ids",
+          "type": "array"
+        },
+        "deterministic_metric_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Deterministic Metric Ids",
+          "type": "array"
+        },
+        "confidence": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Confidence",
+          "type": "number"
+        }
       },
-      "additionalProperties": true
+      "required": [
+        "id",
+        "statement",
+        "evidence_ids",
+        "confidence"
+      ],
+      "title": "CounterEvidenceClaim",
+      "type": "object"
+    },
+    "EvidenceClaim": {
+      "additionalProperties": false,
+      "description": "A supporting claim whose evidence must be in the task packet.",
+      "properties": {
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "direction": {
+          "const": "SUPPORT",
+          "default": "SUPPORT",
+          "title": "Direction",
+          "type": "string"
+        },
+        "statement": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Statement",
+          "type": "string"
+        },
+        "evidence_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "minItems": 1,
+          "title": "Evidence Ids",
+          "type": "array"
+        },
+        "deterministic_metric_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Deterministic Metric Ids",
+          "type": "array"
+        },
+        "confidence": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Confidence",
+          "type": "number"
+        }
+      },
+      "required": [
+        "id",
+        "statement",
+        "evidence_ids",
+        "confidence"
+      ],
+      "title": "EvidenceClaim",
+      "type": "object"
+    },
+    "ProposedBy": {
+      "description": "Actor that proposed an adjustment.",
+      "enum": [
+        "RULE_ENGINE",
+        "LLM",
+        "HUMAN"
+      ],
+      "title": "ProposedBy",
+      "type": "string"
     }
   },
-  "additionalProperties": false
+  "additionalProperties": false,
+  "description": "One analyst's structured, untrusted research finding.",
+  "properties": {
+    "contract": {
+      "const": "research_finding_v1",
+      "default": "research_finding_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "id": {
+      "minLength": 1,
+      "title": "Id",
+      "type": "string"
+    },
+    "analysis_id": {
+      "minLength": 1,
+      "title": "Analysis Id",
+      "type": "string"
+    },
+    "listing_id": {
+      "minLength": 1,
+      "title": "Listing Id",
+      "type": "string"
+    },
+    "as_of": {
+      "format": "date",
+      "title": "As Of",
+      "type": "string"
+    },
+    "role": {
+      "$ref": "#/$defs/AnalystRole"
+    },
+    "question_id": {
+      "minLength": 1,
+      "title": "Question Id",
+      "type": "string"
+    },
+    "dimension": {
+      "anyOf": [
+        {
+          "enum": [
+            "demand_durability",
+            "cyclicality",
+            "pricing_power",
+            "moat",
+            "capital_efficiency",
+            "dependency",
+            "regulatory_risk",
+            "predictability"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Dimension"
+    },
+    "summary": {
+      "maxLength": 8000,
+      "minLength": 1,
+      "title": "Summary",
+      "type": "string"
+    },
+    "supporting_claims": {
+      "items": {
+        "$ref": "#/$defs/EvidenceClaim"
+      },
+      "maxItems": 64,
+      "title": "Supporting Claims",
+      "type": "array"
+    },
+    "counter_evidence_claims": {
+      "items": {
+        "$ref": "#/$defs/CounterEvidenceClaim"
+      },
+      "maxItems": 64,
+      "title": "Counter Evidence Claims",
+      "type": "array"
+    },
+    "proposed_score": {
+      "anyOf": [
+        {
+          "maximum": 5,
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Proposed Score"
+    },
+    "confidence": {
+      "$ref": "#/$defs/ConfidenceLevel"
+    },
+    "deterministic_metric_ids": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 64,
+      "title": "Deterministic Metric Ids",
+      "type": "array"
+    },
+    "unresolved_questions": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 64,
+      "title": "Unresolved Questions",
+      "type": "array"
+    },
+    "counter_evidence_checked": {
+      "default": false,
+      "title": "Counter Evidence Checked",
+      "type": "boolean"
+    },
+    "proposed_adjustments": {
+      "items": {
+        "$ref": "#/$defs/Adjustment"
+      },
+      "maxItems": 32,
+      "title": "Proposed Adjustments",
+      "type": "array"
+    }
+  },
+  "required": [
+    "contract",
+    "id",
+    "analysis_id",
+    "listing_id",
+    "as_of",
+    "role",
+    "question_id",
+    "summary",
+    "confidence"
+  ],
+  "title": "Turtle Value Engine research-finding",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/blooddrunk/turtle-value-engine/schemas/research-finding.schema.json"
 }

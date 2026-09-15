@@ -1,0 +1,103 @@
+{
+  "$defs": {
+    "BenchmarkReturnType": {
+      "enum": [
+        "PRICE_RETURN",
+        "TOTAL_RETURN"
+      ],
+      "title": "BenchmarkReturnType",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Benchmark return result with explicit return type.",
+  "properties": {
+    "contract": {
+      "const": "benchmark_result_v1",
+      "default": "benchmark_result_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "benchmark_id": {
+      "minLength": 1,
+      "title": "Benchmark Id",
+      "type": "string"
+    },
+    "return_type": {
+      "$ref": "#/$defs/BenchmarkReturnType"
+    },
+    "currency": {
+      "maxLength": 3,
+      "minLength": 3,
+      "title": "Currency",
+      "type": "string"
+    },
+    "start_value": {
+      "anyOf": [
+        {
+          "exclusiveMinimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Start Value"
+    },
+    "end_value": {
+      "anyOf": [
+        {
+          "exclusiveMinimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "End Value"
+    },
+    "total_return": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Total Return"
+    },
+    "cagr": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Cagr"
+    },
+    "coverage_ratio": {
+      "maximum": 1,
+      "minimum": 0,
+      "title": "Coverage Ratio",
+      "type": "number"
+    }
+  },
+  "required": [
+    "contract",
+    "benchmark_id",
+    "return_type",
+    "currency",
+    "coverage_ratio"
+  ],
+  "title": "BenchmarkResult",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/blooddrunk/turtle-value-engine/schemas/benchmark-result.schema.json"
+}

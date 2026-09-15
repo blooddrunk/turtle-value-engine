@@ -1,0 +1,167 @@
+{
+  "$defs": {
+    "Market": {
+      "description": "Listing market; A and H listings are never merged by the simulator.",
+      "enum": [
+        "A",
+        "H"
+      ],
+      "title": "Market",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Listing-level lifecycle; A/H classes remain distinct assets.",
+  "properties": {
+    "contract": {
+      "const": "listing_lifecycle_v1",
+      "default": "listing_lifecycle_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "listing_id": {
+      "minLength": 1,
+      "title": "Listing Id",
+      "type": "string"
+    },
+    "company_id": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Company Id"
+    },
+    "economic_company_id": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Economic Company Id"
+    },
+    "market": {
+      "$ref": "#/$defs/Market"
+    },
+    "currency": {
+      "maxLength": 3,
+      "minLength": 3,
+      "title": "Currency",
+      "type": "string"
+    },
+    "listing_date": {
+      "format": "date",
+      "title": "Listing Date",
+      "type": "string"
+    },
+    "delisting_date": {
+      "anyOf": [
+        {
+          "format": "date",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Delisting Date"
+    },
+    "terminal_status": {
+      "default": "ACTIVE",
+      "enum": [
+        "ACTIVE",
+        "DELISTED",
+        "TERMINAL",
+        "UNKNOWN"
+      ],
+      "title": "Terminal Status",
+      "type": "string"
+    },
+    "trading_calendar": {
+      "default": "UNSPECIFIED",
+      "minLength": 1,
+      "title": "Trading Calendar",
+      "type": "string"
+    },
+    "timezone": {
+      "default": "UTC",
+      "minLength": 1,
+      "title": "Timezone",
+      "type": "string"
+    },
+    "sector": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Sector"
+    },
+    "industry": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Industry"
+    },
+    "source_artifact_id": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Source Artifact Id"
+    },
+    "source_hash": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Source Hash"
+    }
+  },
+  "required": [
+    "contract",
+    "listing_id",
+    "market",
+    "currency",
+    "listing_date"
+  ],
+  "title": "Turtle Value Engine listing-lifecycle",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/blooddrunk/turtle-value-engine/schemas/listing-lifecycle.schema.json"
+}

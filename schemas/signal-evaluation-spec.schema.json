@@ -1,0 +1,51 @@
+{
+  "additionalProperties": false,
+  "description": "Horizon/timing assumptions kept outside the strict investment profile.",
+  "properties": {
+    "contract": {
+      "const": "signal_evaluation_spec_v1",
+      "default": "signal_evaluation_spec_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "spec_id": {
+      "minLength": 1,
+      "title": "Spec Id",
+      "type": "string"
+    },
+    "horizons": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Horizons",
+      "type": "array"
+    },
+    "entry_price": {
+      "default": "open",
+      "enum": [
+        "open",
+        "close"
+      ],
+      "title": "Entry Price",
+      "type": "string"
+    },
+    "include_price_return": {
+      "default": true,
+      "title": "Include Price Return",
+      "type": "boolean"
+    },
+    "include_total_return": {
+      "default": true,
+      "title": "Include Total Return",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "contract",
+    "spec_id"
+  ],
+  "title": "Turtle Value Engine signal-evaluation-spec",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/blooddrunk/turtle-value-engine/schemas/signal-evaluation-spec.schema.json"
+}

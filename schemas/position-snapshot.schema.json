@@ -1,0 +1,86 @@
+{
+  "$defs": {
+    "Market": {
+      "description": "Listing market; A and H listings are never merged by the simulator.",
+      "enum": [
+        "A",
+        "H"
+      ],
+      "title": "Market",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "One listing position at a portfolio valuation timestamp.",
+  "properties": {
+    "listing_id": {
+      "minLength": 1,
+      "title": "Listing Id",
+      "type": "string"
+    },
+    "market": {
+      "$ref": "#/$defs/Market"
+    },
+    "sector": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Sector"
+    },
+    "quantity": {
+      "minimum": 0,
+      "title": "Quantity",
+      "type": "number"
+    },
+    "mark_price": {
+      "anyOf": [
+        {
+          "exclusiveMinimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Mark Price"
+    },
+    "market_value": {
+      "minimum": 0,
+      "title": "Market Value",
+      "type": "number"
+    },
+    "average_cost": {
+      "minimum": 0,
+      "title": "Average Cost",
+      "type": "number"
+    },
+    "suspended": {
+      "default": false,
+      "title": "Suspended",
+      "type": "boolean"
+    },
+    "price_missing": {
+      "default": false,
+      "title": "Price Missing",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "listing_id",
+    "market",
+    "quantity",
+    "market_value",
+    "average_cost"
+  ],
+  "title": "Turtle Value Engine position-snapshot",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/blooddrunk/turtle-value-engine/schemas/position-snapshot.schema.json"
+}

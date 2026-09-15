@@ -1,0 +1,49 @@
+{
+  "additionalProperties": false,
+  "description": "Explicit, versioned transaction-cost assumptions.",
+  "properties": {
+    "contract": {
+      "const": "transaction_cost_policy_v1",
+      "default": "transaction_cost_policy_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "commission_bps": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Commission Bps",
+      "type": "number"
+    },
+    "sell_stamp_duty_bps": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Sell Stamp Duty Bps",
+      "type": "number"
+    },
+    "transfer_fee_bps": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Transfer Fee Bps",
+      "type": "number"
+    },
+    "slippage_bps": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Slippage Bps",
+      "type": "number"
+    },
+    "minimum_fee": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Minimum Fee",
+      "type": "number"
+    }
+  },
+  "title": "Turtle Value Engine transaction-cost-policy",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/blooddrunk/turtle-value-engine/schemas/transaction-cost-policy.schema.json",
+  "required": [
+    "contract"
+  ]
+}

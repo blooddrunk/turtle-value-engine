@@ -1,6 +1,6 @@
 # Goal: Phase 5 — Point-in-Time Backtesting and Calibration
 
-Status: ACTIVE
+Status: COMPLETE
 
 ## Objective
 
@@ -477,3 +477,59 @@ At completion, summarize:
 - proof that `strict-v1` was not mutated;
 - test/CI results;
 - unresolved gaps before Phase 6 watchlist/event-driven monitoring.
+
+## Closure review
+
+Phase 5 is complete at the documented integration boundary. The implementation
+adds typed, schema-covered contracts for frozen dataset manifests,
+availability, listing lifecycle and membership, market bars and corporate
+actions, decision snapshots, forward returns, portfolio policy/events/
+snapshots, benchmarks, metrics, failure attribution, run specifications,
+workspace artifacts and calibration experiments/holdout results. Persisted
+results carry deterministic content hashes; portfolio results also carry the
+policy version and hash.
+
+PIT semantics distinguish accounting period end from publication, availability
+and retrieval. Timestamped artifacts must be available at or before the
+decision boundary; date-only evidence is conservatively usable only after its
+date; unknown evidence is rejected unless an explicit frozen attestation is
+present. Historical Business Quality is accepted only through a frozen,
+point-in-time-valid research artifact. Future market prices remain forward
+return labels, not historical decision inputs.
+
+The frozen A/H mini-universe preserves listing-level A/H identity, later
+listing and terminal/delisting behavior, and documents that its synthetic
+membership is not production-grade survivorship-free coverage. A signal
+evaluation run over two A/H listings and 1D/1M horizons produced four
+complete observations with 100% fixture coverage. This is a replay test, not
+an investment conclusion.
+
+Returns use unadjusted prices plus explicit dividends, splits and terminal
+values. Adjusted-price series that represent the same actions are rejected;
+suspensions and missing prices cannot create fills; after-close signals use a
+strictly later executable bar. The separate `portfolio-policy-v1` simulator is
+long-only and unlevered, with explicit sizing, exposure, lots, costs,
+liquidity, FX, corporate-action and execution assumptions. It persists every
+fill, fee, cash-flow, action and mark for replay. Benchmark identity and
+price-return/total-return type are explicit, and the metrics/attribution layer
+covers the required return, risk, factor-exposure, concentration, coverage,
+missingness and failure dimensions.
+
+Calibration uses a finite candidate space with chronological train,
+validation and locked holdout ranges. Search trials contain no holdout rows or
+scores, include stability/sample-size penalties, and emit only a
+`PROPOSAL_ONLY` candidate profile. No candidate profile is justified by the
+synthetic fixture; no automatic threshold change was made.
+
+`rules/strict-v1.yaml` was not modified. The frozen tests verify its working
+tree bytes against `HEAD`, and `git diff -- rules/strict-v1.yaml` remains
+empty. Ordinary CI is offline and model-independent: `python3 -m ruff check .`
+passes and the full suite passes with 6083 tests and 2 opt-in live-provider
+skips. The Phase 5 signal and portfolio E2E/adversarial tests are included in
+that suite.
+
+Remaining gaps before Phase 6 are production historical-universe and
+delisting coverage, broader point-in-time filing/research archive coverage,
+real-data return-quality validation, and watchlist/event-monitoring
+orchestration. These gaps must not be filled by current constituents,
+hindsight Business Quality or silent data defaults.

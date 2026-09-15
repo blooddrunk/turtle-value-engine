@@ -30,6 +30,7 @@ from .contracts import (
     ResearchQuestion,
     ResearchSession,
     ResearchTask,
+    UndatedEvidencePolicy,
     packet_fact_from_fact,
 )
 from .orchestration import (
@@ -82,6 +83,7 @@ __all__ = [
     "ResearchReport",
     "ResearchSession",
     "ResearchTask",
+    "UndatedEvidencePolicy",
     "ResearchValidationError",
     "ResearchWorkflowResult",
     "ResearchWorkspace",

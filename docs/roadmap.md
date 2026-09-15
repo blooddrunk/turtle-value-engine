@@ -4960,8 +4960,9 @@ The public boundaries are `tve prepare` for provider-backed preparation and
 `tve analyze --input ...` for the offline calculation pipeline. The effective
 input builder is explicit and additive: it never mutates source facts, rejects
 stale/conflicting/unsupported applications, and retains adjustment lineage on
-the effective fact. Additional provider coverage, LLM evidence assistance,
-Business Quality agents, backtesting and monitoring remain future work.
+the effective fact. Additional provider coverage and watchlist/event
+monitoring remain separate work; the Phase 4 research and Phase 5 backtesting
+boundaries are documented below.
 
 ---
 
@@ -4997,9 +4998,13 @@ expansion is not part of this milestone.
 
 ---
 
-## Phase 5 — Backtesting and calibration
+## Phase 5 — Backtesting and calibration (COMPLETE)
 
-Do not tune strict-v1 thresholds before the deterministic engine and point-in-time data semantics are stable.
+The point-in-time data, signal-evaluation, portfolio-replay and
+calibration-proposal boundary is complete. It consumes frozen artifacts and
+leaves the deterministic engine and `strict-v1` unchanged. Do not treat the
+synthetic frozen fixtures as evidence that a production candidate profile is
+ready.
 
 Requirements:
 
@@ -5026,6 +5031,11 @@ failure-mode attribution
 ```
 
 Threshold changes require a new versioned profile rather than silently rewriting `strict-v1`.
+
+The public contracts, PIT semantics, separate `portfolio-policy-v1` mechanics,
+calibration holdout guard and remaining gaps are recorded in
+[`docs/goals/phase-5-backtesting-calibration.md`](goals/phase-5-backtesting-calibration.md)
+and [`docs/architecture/backtesting-and-calibration.md`](architecture/backtesting-and-calibration.md).
 
 ---
 
@@ -5110,20 +5120,21 @@ This is the project's definition of safe “self-evolution.”
 
 # Current milestone
 
-Phase 4 is COMPLETE at the major integration boundary. The repository now has
+Phase 5 is COMPLETE at the major integration boundary. The repository now has
 the replayable Phase 2 provider/cache preparation path, the Phase 3
 filing/evidence and accepted-adjustment path, and the Phase 4 bounded research
 path described in
 [`docs/goals/phase-4-agentic-analysis.md`](goals/phase-4-agentic-analysis.md):
 typed model-neutral analyst contracts, persisted packets/runs, all eight
 Business Quality roles, report composition and frozen A-share acceptance
-coverage.
+coverage. It also has the Phase 5 frozen manifest, signal/return evaluator,
+long-only portfolio policy replay, benchmark/attribution metrics and
+chronological calibration proposal boundary.
 
 Phase 1 deterministic semantics remain frozen. Changes to formulas, hard-gate
 semantics, schemas or `strict-v1` thresholds require a separately reviewed,
-versioned change. Phase 5 backtesting/calibration is the next major milestone;
-watchlist/event monitoring and additional provider coverage remain separate
-work.
+versioned change. Watchlist/event monitoring and additional provider coverage
+remain separate work.
 
 The long endpoint notes below are historical implementation records. Future
 provider categories may still be added one at a time, but they are not part of

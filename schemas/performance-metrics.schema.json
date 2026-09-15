@@ -1,0 +1,212 @@
+{
+  "additionalProperties": false,
+  "description": "Deterministic performance and coverage metrics.",
+  "properties": {
+    "contract": {
+      "const": "performance_metrics_v1",
+      "default": "performance_metrics_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "observation_count": {
+      "minimum": 0,
+      "title": "Observation Count",
+      "type": "integer"
+    },
+    "complete_observation_count": {
+      "minimum": 0,
+      "title": "Complete Observation Count",
+      "type": "integer"
+    },
+    "cagr": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Cagr"
+    },
+    "max_drawdown": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Max Drawdown"
+    },
+    "volatility": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Volatility"
+    },
+    "sharpe": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Sharpe"
+    },
+    "sortino": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Sortino"
+    },
+    "turnover": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Turnover",
+      "type": "number"
+    },
+    "hit_rate": {
+      "anyOf": [
+        {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Hit Rate"
+    },
+    "excess_return": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Excess Return"
+    },
+    "tracking_error": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Tracking Error"
+    },
+    "max_sector_concentration": {
+      "anyOf": [
+        {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Max Sector Concentration"
+    },
+    "max_position_concentration": {
+      "anyOf": [
+        {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Max Position Concentration"
+    },
+    "average_cash_exposure": {
+      "anyOf": [
+        {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Average Cash Exposure"
+    },
+    "coverage_ratio": {
+      "anyOf": [
+        {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Coverage Ratio"
+    },
+    "missing_data_ratio": {
+      "anyOf": [
+        {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Missing Data Ratio"
+    },
+    "factor_exposure": {
+      "additionalProperties": {
+        "type": "number"
+      },
+      "title": "Factor Exposure",
+      "type": "object"
+    }
+  },
+  "required": [
+    "contract",
+    "observation_count",
+    "complete_observation_count"
+  ],
+  "title": "PerformanceMetrics",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/blooddrunk/turtle-value-engine/schemas/performance-metrics.schema.json"
+}

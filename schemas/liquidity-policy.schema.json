@@ -1,0 +1,80 @@
+{
+  "$defs": {
+    "MissingDataAction": {
+      "enum": [
+        "SKIP",
+        "NO_FILL",
+        "FAIL"
+      ],
+      "title": "MissingDataAction",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Participation and missing-liquidity behavior for fills.",
+  "properties": {
+    "contract": {
+      "const": "liquidity_policy_v1",
+      "default": "liquidity_policy_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "max_participation_rate": {
+      "default": 1,
+      "exclusiveMinimum": 0,
+      "maximum": 1,
+      "title": "Max Participation Rate",
+      "type": "number"
+    },
+    "min_daily_volume": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Min Daily Volume"
+    },
+    "min_daily_amount": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Min Daily Amount"
+    },
+    "max_order_notional": {
+      "anyOf": [
+        {
+          "exclusiveMinimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Max Order Notional"
+    },
+    "missing_data_action": {
+      "$ref": "#/$defs/MissingDataAction",
+      "default": "NO_FILL"
+    }
+  },
+  "title": "Turtle Value Engine liquidity-policy",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/blooddrunk/turtle-value-engine/schemas/liquidity-policy.schema.json",
+  "required": [
+    "contract"
+  ]
+}

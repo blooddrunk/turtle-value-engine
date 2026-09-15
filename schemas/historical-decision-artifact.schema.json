@@ -835,89 +835,6 @@
       "title": "DecisionState",
       "type": "string"
     },
-    "DecisionTrace": {
-      "additionalProperties": false,
-      "description": "Complete deterministic trace projection; no new investment judgment.",
-      "properties": {
-        "contract": {
-          "const": "decision_trace_v1",
-          "default": "decision_trace_v1",
-          "title": "Contract",
-          "type": "string"
-        },
-        "analysis_id": {
-          "title": "Analysis Id",
-          "type": "string"
-        },
-        "decision_state": {
-          "title": "Decision State",
-          "type": "string"
-        },
-        "gates": {
-          "items": {
-            "$ref": "#/$defs/TraceGate"
-          },
-          "title": "Gates",
-          "type": "array"
-        },
-        "metrics": {
-          "items": {
-            "$ref": "#/$defs/TraceMetric"
-          },
-          "title": "Metrics",
-          "type": "array"
-        },
-        "adjustments": {
-          "items": {
-            "$ref": "#/$defs/TraceAdjustment"
-          },
-          "title": "Adjustments",
-          "type": "array"
-        },
-        "facts": {
-          "items": {
-            "$ref": "#/$defs/TraceFact"
-          },
-          "title": "Facts",
-          "type": "array"
-        },
-        "evidence": {
-          "items": {
-            "$ref": "#/$defs/TraceEvidence"
-          },
-          "title": "Evidence",
-          "type": "array"
-        },
-        "filings": {
-          "items": {
-            "$ref": "#/$defs/TraceFiling"
-          },
-          "title": "Filings",
-          "type": "array"
-        },
-        "links": {
-          "items": {
-            "$ref": "#/$defs/TraceLink"
-          },
-          "title": "Links",
-          "type": "array"
-        }
-      },
-      "required": [
-        "contract",
-        "analysis_id",
-        "decision_state",
-        "gates",
-        "metrics",
-        "adjustments",
-        "facts",
-        "evidence",
-        "filings",
-        "links"
-      ],
-      "title": "DecisionTrace",
-      "type": "object"
-    },
     "Evidence": {
       "additionalProperties": false,
       "description": "Auditable evidence item used by facts, adjustments and judgments.",
@@ -1792,6 +1709,79 @@
       "title": "NetCashMetric",
       "type": "object"
     },
+    "NormalizedCompanyInput": {
+      "additionalProperties": false,
+      "description": "Frozen input-side contract for deterministic calculations.\n\nThis is intentionally separate from ``CompanyAnalysis`` at the field\nboundary: it contains only identity, source facts, evidence, adjustments\nand data-quality metadata.  Metrics, gates, valuation and decision fields\nare output-only and are rejected by ``extra='forbid'``.",
+      "properties": {
+        "schema_version": {
+          "const": "1.0.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "analysis_id": {
+          "minLength": 1,
+          "title": "Analysis Id",
+          "type": "string"
+        },
+        "as_of": {
+          "format": "date",
+          "title": "As Of",
+          "type": "string"
+        },
+        "profile_id": {
+          "minLength": 1,
+          "title": "Profile Id",
+          "type": "string"
+        },
+        "company": {
+          "$ref": "#/$defs/Company"
+        },
+        "data_quality": {
+          "$ref": "#/$defs/DataQuality"
+        },
+        "facts": {
+          "items": {
+            "$ref": "#/$defs/Fact"
+          },
+          "title": "Facts",
+          "type": "array"
+        },
+        "adjustments": {
+          "items": {
+            "$ref": "#/$defs/Adjustment"
+          },
+          "title": "Adjustments",
+          "type": "array"
+        },
+        "evidence_index": {
+          "items": {
+            "$ref": "#/$defs/Evidence"
+          },
+          "title": "Evidence Index",
+          "type": "array"
+        },
+        "flags": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Flags",
+          "type": "array"
+        }
+      },
+      "required": [
+        "schema_version",
+        "analysis_id",
+        "as_of",
+        "profile_id",
+        "company",
+        "data_quality",
+        "facts",
+        "adjustments",
+        "evidence_index"
+      ],
+      "title": "NormalizedCompanyInput",
+      "type": "object"
+    },
     "ProposedBy": {
       "description": "Actor that proposed an adjustment.",
       "enum": [
@@ -1801,46 +1791,6 @@
       ],
       "title": "ProposedBy",
       "type": "string"
-    },
-    "ReportSection": {
-      "additionalProperties": false,
-      "description": "A structured report section with a stable category.",
-      "properties": {
-        "kind": {
-          "enum": [
-            "METADATA",
-            "DETERMINISTIC_METRICS",
-            "DETERMINISTIC_GATES",
-            "BUSINESS_QUALITY",
-            "ADJUSTMENTS",
-            "DATA_QUALITY",
-            "VALUATION",
-            "DECISION",
-            "PROVENANCE"
-          ],
-          "title": "Kind",
-          "type": "string"
-        },
-        "title": {
-          "minLength": 1,
-          "title": "Title",
-          "type": "string"
-        },
-        "bullets": {
-          "items": {
-            "type": "string"
-          },
-          "maxItems": 128,
-          "title": "Bullets",
-          "type": "array"
-        }
-      },
-      "required": [
-        "kind",
-        "title"
-      ],
-      "title": "ReportSection",
-      "type": "object"
     },
     "Source": {
       "additionalProperties": false,
@@ -2170,456 +2120,6 @@
         }
       },
       "title": "ThroughReturnMetric",
-      "type": "object"
-    },
-    "TraceAdjustment": {
-      "additionalProperties": false,
-      "description": "Adjustment node retained in the final trace.",
-      "properties": {
-        "id": {
-          "title": "Id",
-          "type": "string"
-        },
-        "target_field": {
-          "title": "Target Field",
-          "type": "string"
-        },
-        "target_period": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Target Period"
-        },
-        "status": {
-          "title": "Status",
-          "type": "string"
-        },
-        "proposed_by": {
-          "title": "Proposed By",
-          "type": "string"
-        },
-        "approved_by": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Approved By"
-        },
-        "source_evidence_ids": {
-          "items": {
-            "type": "string"
-          },
-          "title": "Source Evidence Ids",
-          "type": "array"
-        }
-      },
-      "required": [
-        "id",
-        "target_field",
-        "status",
-        "proposed_by",
-        "source_evidence_ids"
-      ],
-      "title": "TraceAdjustment",
-      "type": "object"
-    },
-    "TraceEvidence": {
-      "additionalProperties": false,
-      "description": "Evidence node and optional official-filing identity.",
-      "properties": {
-        "id": {
-          "title": "Id",
-          "type": "string"
-        },
-        "direction": {
-          "title": "Direction",
-          "type": "string"
-        },
-        "strength": {
-          "title": "Strength",
-          "type": "string"
-        },
-        "source_type": {
-          "title": "Source Type",
-          "type": "string"
-        },
-        "source_title": {
-          "title": "Source Title",
-          "type": "string"
-        },
-        "source_url": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Source Url"
-        },
-        "filing_id": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Filing Id"
-        },
-        "filing_source": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Filing Source"
-        },
-        "source_document_id": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Source Document Id"
-        },
-        "block_sequence": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Block Sequence"
-        }
-      },
-      "required": [
-        "id",
-        "direction",
-        "strength",
-        "source_type",
-        "source_title"
-      ],
-      "title": "TraceEvidence",
-      "type": "object"
-    },
-    "TraceFact": {
-      "additionalProperties": false,
-      "description": "Fact node, including effective-fact lineage when present.",
-      "properties": {
-        "id": {
-          "title": "Id",
-          "type": "string"
-        },
-        "field": {
-          "title": "Field",
-          "type": "string"
-        },
-        "period": {
-          "title": "Period",
-          "type": "string"
-        },
-        "value": {
-          "anyOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "string"
-            },
-            {
-              "type": "boolean"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Value"
-        },
-        "source_fact_id": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Source Fact Id"
-        },
-        "source_value": {
-          "anyOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "string"
-            },
-            {
-              "type": "boolean"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Source Value"
-        },
-        "applied_adjustment_ids": {
-          "items": {
-            "type": "string"
-          },
-          "title": "Applied Adjustment Ids",
-          "type": "array"
-        },
-        "source_evidence_ids": {
-          "items": {
-            "type": "string"
-          },
-          "title": "Source Evidence Ids",
-          "type": "array"
-        }
-      },
-      "required": [
-        "id",
-        "field",
-        "period",
-        "value",
-        "source_evidence_ids"
-      ],
-      "title": "TraceFact",
-      "type": "object"
-    },
-    "TraceFiling": {
-      "additionalProperties": false,
-      "description": "Official filing node inferred only from filing evidence provenance.",
-      "properties": {
-        "filing_id": {
-          "title": "Filing Id",
-          "type": "string"
-        },
-        "filing_source": {
-          "title": "Filing Source",
-          "type": "string"
-        },
-        "title": {
-          "title": "Title",
-          "type": "string"
-        },
-        "url": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Url"
-        },
-        "source_document_id": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Source Document Id"
-        },
-        "evidence_ids": {
-          "items": {
-            "type": "string"
-          },
-          "title": "Evidence Ids",
-          "type": "array"
-        }
-      },
-      "required": [
-        "filing_id",
-        "filing_source",
-        "title",
-        "evidence_ids"
-      ],
-      "title": "TraceFiling",
-      "type": "object"
-    },
-    "TraceGate": {
-      "additionalProperties": false,
-      "description": "One gate with its deterministic rule IDs.",
-      "properties": {
-        "name": {
-          "title": "Name",
-          "type": "string"
-        },
-        "status": {
-          "title": "Status",
-          "type": "string"
-        },
-        "rule_ids": {
-          "items": {
-            "type": "string"
-          },
-          "title": "Rule Ids",
-          "type": "array"
-        }
-      },
-      "required": [
-        "name",
-        "status",
-        "rule_ids"
-      ],
-      "title": "TraceGate",
-      "type": "object"
-    },
-    "TraceLink": {
-      "additionalProperties": false,
-      "description": "One explicit edge along Decision→...→Filing.",
-      "properties": {
-        "decision_state": {
-          "title": "Decision State",
-          "type": "string"
-        },
-        "gate": {
-          "title": "Gate",
-          "type": "string"
-        },
-        "gate_status": {
-          "title": "Gate Status",
-          "type": "string"
-        },
-        "rule_id": {
-          "title": "Rule Id",
-          "type": "string"
-        },
-        "metric": {
-          "title": "Metric",
-          "type": "string"
-        },
-        "evidence_id": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Evidence Id"
-        },
-        "fact_id": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Fact Id"
-        },
-        "adjustment_ids": {
-          "items": {
-            "type": "string"
-          },
-          "title": "Adjustment Ids",
-          "type": "array"
-        },
-        "filing_id": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Filing Id"
-        }
-      },
-      "required": [
-        "decision_state",
-        "gate",
-        "gate_status",
-        "rule_id",
-        "metric"
-      ],
-      "title": "TraceLink",
-      "type": "object"
-    },
-    "TraceMetric": {
-      "additionalProperties": false,
-      "description": "One metric group and the source-side lineage it can reach.",
-      "properties": {
-        "name": {
-          "title": "Name",
-          "type": "string"
-        },
-        "value": {
-          "additionalProperties": true,
-          "title": "Value",
-          "type": "object"
-        },
-        "fact_ids": {
-          "items": {
-            "type": "string"
-          },
-          "title": "Fact Ids",
-          "type": "array"
-        },
-        "adjustment_ids": {
-          "items": {
-            "type": "string"
-          },
-          "title": "Adjustment Ids",
-          "type": "array"
-        },
-        "evidence_ids": {
-          "items": {
-            "type": "string"
-          },
-          "title": "Evidence Ids",
-          "type": "array"
-        }
-      },
-      "required": [
-        "name",
-        "value"
-      ],
-      "title": "TraceMetric",
       "type": "object"
     },
     "ValuationResult": {
@@ -2985,34 +2485,74 @@
     }
   },
   "additionalProperties": false,
-  "description": "Self-contained report whose embedded analysis is the authority.",
+  "description": "Frozen input/output artifact from which a decision snapshot is projected.",
   "properties": {
     "contract": {
-      "const": "research_report_v1",
-      "default": "research_report_v1",
+      "const": "historical_decision_artifact_v1",
+      "default": "historical_decision_artifact_v1",
       "title": "Contract",
       "type": "string"
     },
-    "report_id": {
+    "artifact_id": {
       "minLength": 1,
-      "title": "Report Id",
+      "title": "Artifact Id",
       "type": "string"
+    },
+    "listing_id": {
+      "minLength": 1,
+      "title": "Listing Id",
+      "type": "string"
+    },
+    "decision_time": {
+      "format": "date-time",
+      "title": "Decision Time",
+      "type": "string"
+    },
+    "as_of": {
+      "format": "date",
+      "title": "As Of",
+      "type": "string"
+    },
+    "available_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "format": "date",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Available At"
+    },
+    "normalized_input": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/NormalizedCompanyInput"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
     },
     "analysis": {
-      "$ref": "#/$defs/CompanyAnalysis"
+      "anyOf": [
+        {
+          "$ref": "#/$defs/CompanyAnalysis"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
     },
-    "decision_trace": {
-      "$ref": "#/$defs/DecisionTrace"
-    },
-    "deterministic_state": {
-      "$ref": "#/$defs/DecisionState"
-    },
-    "analysis_sha256": {
-      "pattern": "^[0-9a-f]{64}$",
-      "title": "Analysis Sha256",
-      "type": "string"
-    },
-    "research_session_id": {
+    "research_artifact_id": {
       "anyOf": [
         {
           "minLength": 1,
@@ -3023,84 +2563,29 @@
         }
       ],
       "default": null,
-      "title": "Research Session Id"
+      "title": "Research Artifact Id"
     },
-    "analyst_run_ids": {
-      "items": {
-        "type": "string"
-      },
-      "maxItems": 1024,
-      "title": "Analyst Run Ids",
-      "type": "array"
-    },
-    "proposed_adjustment_ids": {
-      "items": {
-        "type": "string"
-      },
-      "maxItems": 256,
-      "title": "Proposed Adjustment Ids",
-      "type": "array"
-    },
-    "evidence_ids": {
-      "items": {
-        "type": "string"
-      },
-      "maxItems": 4096,
-      "title": "Evidence Ids",
-      "type": "array"
-    },
-    "filing_ids": {
-      "items": {
-        "type": "string"
-      },
-      "maxItems": 1024,
-      "title": "Filing Ids",
-      "type": "array"
-    },
-    "accepted_adjustments": {
-      "items": {
-        "$ref": "#/$defs/Adjustment"
-      },
-      "maxItems": 256,
-      "title": "Accepted Adjustments",
-      "type": "array"
-    },
-    "unresolved_questions": {
-      "items": {
-        "type": "string"
-      },
-      "maxItems": 256,
-      "title": "Unresolved Questions",
-      "type": "array"
-    },
-    "sections": {
-      "items": {
-        "$ref": "#/$defs/ReportSection"
-      },
-      "maxItems": 16,
-      "minItems": 1,
-      "title": "Sections",
-      "type": "array"
-    },
-    "text": {
-      "maxLength": 100000,
-      "minLength": 1,
-      "title": "Text",
+    "source_hash": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Source Hash",
       "type": "string"
+    },
+    "historical_business_quality_valid": {
+      "default": false,
+      "title": "Historical Business Quality Valid",
+      "type": "boolean"
     }
   },
   "required": [
     "contract",
-    "report_id",
-    "analysis",
-    "decision_trace",
-    "deterministic_state",
-    "analysis_sha256",
-    "sections",
-    "text"
+    "artifact_id",
+    "listing_id",
+    "decision_time",
+    "as_of",
+    "source_hash"
   ],
-  "title": "Turtle Value Engine research-report",
+  "title": "Turtle Value Engine historical-decision-artifact",
   "type": "object",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/blooddrunk/turtle-value-engine/schemas/research-report.schema.json"
+  "$id": "https://github.com/blooddrunk/turtle-value-engine/schemas/historical-decision-artifact.schema.json"
 }

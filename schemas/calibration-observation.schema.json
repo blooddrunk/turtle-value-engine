@@ -1,0 +1,83 @@
+{
+  "additionalProperties": false,
+  "description": "One point-in-time target and feature row available to calibration.",
+  "properties": {
+    "contract": {
+      "const": "calibration_observation_v1",
+      "default": "calibration_observation_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "observation_id": {
+      "minLength": 1,
+      "title": "Observation Id",
+      "type": "string"
+    },
+    "observed_at": {
+      "format": "date",
+      "title": "Observed At",
+      "type": "string"
+    },
+    "target_return": {
+      "title": "Target Return",
+      "type": "number"
+    },
+    "eligible": {
+      "default": true,
+      "title": "Eligible",
+      "type": "boolean"
+    },
+    "feature_values": {
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "type": "number"
+          },
+          {
+            "type": "integer"
+          },
+          {
+            "type": "string"
+          },
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "title": "Feature Values",
+      "type": "object"
+    },
+    "source_observation_id": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Source Observation Id"
+    },
+    "source_hash": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Source Hash",
+      "type": "string"
+    }
+  },
+  "required": [
+    "contract",
+    "observation_id",
+    "observed_at",
+    "target_return",
+    "source_hash"
+  ],
+  "title": "Turtle Value Engine calibration-observation",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/blooddrunk/turtle-value-engine/schemas/calibration-observation.schema.json"
+}

@@ -1,0 +1,150 @@
+{
+  "$defs": {
+    "CalibrationStage": {
+      "enum": [
+        "SEARCH",
+        "HOLDOUT_EVALUATION"
+      ],
+      "title": "CalibrationStage",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "One candidate result; search trials never contain holdout outcomes.",
+  "properties": {
+    "contract": {
+      "const": "calibration_trial_v1",
+      "default": "calibration_trial_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "trial_id": {
+      "minLength": 1,
+      "title": "Trial Id",
+      "type": "string"
+    },
+    "experiment_id": {
+      "minLength": 1,
+      "title": "Experiment Id",
+      "type": "string"
+    },
+    "candidate_profile_id": {
+      "minLength": 1,
+      "title": "Candidate Profile Id",
+      "type": "string"
+    },
+    "parameters": {
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "type": "number"
+          },
+          {
+            "type": "integer"
+          },
+          {
+            "type": "string"
+          },
+          {
+            "type": "boolean"
+          }
+        ]
+      },
+      "title": "Parameters",
+      "type": "object"
+    },
+    "stage": {
+      "$ref": "#/$defs/CalibrationStage",
+      "default": "SEARCH"
+    },
+    "train_count": {
+      "minimum": 0,
+      "title": "Train Count",
+      "type": "integer"
+    },
+    "validation_count": {
+      "minimum": 0,
+      "title": "Validation Count",
+      "type": "integer"
+    },
+    "holdout_count": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Holdout Count",
+      "type": "integer"
+    },
+    "train_score": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Train Score"
+    },
+    "validation_score": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Validation Score"
+    },
+    "holdout_score": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Holdout Score"
+    },
+    "stability_penalty": {
+      "default": 0,
+      "title": "Stability Penalty",
+      "type": "number"
+    },
+    "objective_score": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Objective Score"
+    },
+    "observation_ids": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Observation Ids",
+      "type": "array"
+    }
+  },
+  "required": [
+    "contract",
+    "trial_id",
+    "experiment_id",
+    "candidate_profile_id",
+    "parameters",
+    "train_count",
+    "validation_count"
+  ],
+  "title": "Turtle Value Engine calibration-trial",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/blooddrunk/turtle-value-engine/schemas/calibration-trial.schema.json"
+}

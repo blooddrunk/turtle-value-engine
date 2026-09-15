@@ -1,0 +1,1299 @@
+{
+  "$defs": {
+    "BenchmarkResult": {
+      "additionalProperties": false,
+      "description": "Benchmark return result with explicit return type.",
+      "properties": {
+        "benchmark_id": {
+          "minLength": 1,
+          "title": "Benchmark Id",
+          "type": "string"
+        },
+        "return_type": {
+          "$ref": "#/$defs/BenchmarkReturnType"
+        },
+        "currency": {
+          "maxLength": 3,
+          "minLength": 3,
+          "title": "Currency",
+          "type": "string"
+        },
+        "start_value": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Start Value"
+        },
+        "end_value": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "End Value"
+        },
+        "total_return": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Total Return"
+        },
+        "cagr": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cagr"
+        },
+        "coverage_ratio": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Coverage Ratio",
+          "type": "number"
+        }
+      },
+      "required": [
+        "benchmark_id",
+        "return_type",
+        "currency",
+        "coverage_ratio"
+      ],
+      "title": "BenchmarkResult",
+      "type": "object"
+    },
+    "BenchmarkReturnType": {
+      "enum": [
+        "PRICE_RETURN",
+        "TOTAL_RETURN"
+      ],
+      "title": "BenchmarkReturnType",
+      "type": "string"
+    },
+    "FailureAttribution": {
+      "additionalProperties": false,
+      "description": "Structured attribution of exclusions, losses, missingness and sensitivity.",
+      "properties": {
+        "contract": {
+          "const": "failure_attribution_v1",
+          "default": "failure_attribution_v1",
+          "title": "Contract",
+          "type": "string"
+        },
+        "excluded_later_winners": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "title": "Excluded Later Winners",
+          "type": "object"
+        },
+        "largest_passed_losses": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "title": "Largest Passed Losses",
+          "type": "object"
+        },
+        "manual_review_coverage": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "title": "Manual Review Coverage",
+          "type": "object"
+        },
+        "by_valuation_tier": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "title": "By Valuation Tier",
+          "type": "object"
+        },
+        "by_business_quality_bucket": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "title": "By Business Quality Bucket",
+          "type": "object"
+        },
+        "by_sector": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "title": "By Sector",
+          "type": "object"
+        },
+        "by_market": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "title": "By Market",
+          "type": "object"
+        },
+        "by_listing": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "title": "By Listing",
+          "type": "object"
+        },
+        "cost_liquidity_sensitivity": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "title": "Cost Liquidity Sensitivity",
+          "type": "object"
+        }
+      },
+      "title": "FailureAttribution",
+      "type": "object",
+      "required": [
+        "contract"
+      ]
+    },
+    "ForwardReturnObservation": {
+      "additionalProperties": false,
+      "description": "One signal-to-forward-outcome observation, including missingness.",
+      "properties": {
+        "contract": {
+          "const": "forward_return_observation_v1",
+          "default": "forward_return_observation_v1",
+          "title": "Contract",
+          "type": "string"
+        },
+        "observation_id": {
+          "minLength": 1,
+          "title": "Observation Id",
+          "type": "string"
+        },
+        "snapshot_id": {
+          "minLength": 1,
+          "title": "Snapshot Id",
+          "type": "string"
+        },
+        "listing_id": {
+          "minLength": 1,
+          "title": "Listing Id",
+          "type": "string"
+        },
+        "decision_time": {
+          "format": "date-time",
+          "title": "Decision Time",
+          "type": "string"
+        },
+        "horizon": {
+          "pattern": "^[0-9]+[DWMY]$",
+          "title": "Horizon",
+          "type": "string"
+        },
+        "target_date": {
+          "format": "date",
+          "title": "Target Date",
+          "type": "string"
+        },
+        "entry_date": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Entry Date"
+        },
+        "exit_date": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Exit Date"
+        },
+        "entry_price": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Entry Price"
+        },
+        "exit_price": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Exit Price"
+        },
+        "price_return": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Price Return"
+        },
+        "total_return": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Total Return"
+        },
+        "dividends_per_share": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Dividends Per Share",
+          "type": "number"
+        },
+        "share_multiplier": {
+          "default": 1,
+          "exclusiveMinimum": 0,
+          "title": "Share Multiplier",
+          "type": "number"
+        },
+        "terminal_value_per_share": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Terminal Value Per Share",
+          "type": "number"
+        },
+        "entry_bar_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Entry Bar Id"
+        },
+        "exit_bar_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Exit Bar Id"
+        },
+        "corporate_action_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Corporate Action Ids",
+          "type": "array"
+        },
+        "status": {
+          "$ref": "#/$defs/SignalOutcomeStatus"
+        },
+        "missing_reason": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Missing Reason"
+        },
+        "currency": {
+          "anyOf": [
+            {
+              "maxLength": 3,
+              "minLength": 3,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Currency"
+        }
+      },
+      "required": [
+        "contract",
+        "observation_id",
+        "snapshot_id",
+        "listing_id",
+        "decision_time",
+        "horizon",
+        "target_date",
+        "status"
+      ],
+      "title": "ForwardReturnObservation",
+      "type": "object"
+    },
+    "Market": {
+      "description": "Listing market; A and H listings are never merged by the simulator.",
+      "enum": [
+        "A",
+        "H"
+      ],
+      "title": "Market",
+      "type": "string"
+    },
+    "PerformanceMetrics": {
+      "additionalProperties": false,
+      "description": "Deterministic performance and coverage metrics.",
+      "properties": {
+        "contract": {
+          "const": "performance_metrics_v1",
+          "default": "performance_metrics_v1",
+          "title": "Contract",
+          "type": "string"
+        },
+        "observation_count": {
+          "minimum": 0,
+          "title": "Observation Count",
+          "type": "integer"
+        },
+        "complete_observation_count": {
+          "minimum": 0,
+          "title": "Complete Observation Count",
+          "type": "integer"
+        },
+        "cagr": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cagr"
+        },
+        "max_drawdown": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Drawdown"
+        },
+        "volatility": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Volatility"
+        },
+        "sharpe": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sharpe"
+        },
+        "sortino": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sortino"
+        },
+        "turnover": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Turnover",
+          "type": "number"
+        },
+        "hit_rate": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Hit Rate"
+        },
+        "excess_return": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Excess Return"
+        },
+        "tracking_error": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tracking Error"
+        },
+        "max_sector_concentration": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Sector Concentration"
+        },
+        "max_position_concentration": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Position Concentration"
+        },
+        "average_cash_exposure": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Average Cash Exposure"
+        },
+        "coverage_ratio": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Coverage Ratio"
+        },
+        "missing_data_ratio": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Missing Data Ratio"
+        }
+      },
+      "required": [
+        "contract",
+        "observation_count",
+        "complete_observation_count"
+      ],
+      "title": "PerformanceMetrics",
+      "type": "object"
+    },
+    "PortfolioEvent": {
+      "additionalProperties": false,
+      "description": "Replayable event emitted by the deterministic simulator.",
+      "properties": {
+        "contract": {
+          "const": "portfolio_event_v1",
+          "default": "portfolio_event_v1",
+          "title": "Contract",
+          "type": "string"
+        },
+        "event_id": {
+          "minLength": 1,
+          "title": "Event Id",
+          "type": "string"
+        },
+        "timestamp": {
+          "format": "date-time",
+          "title": "Timestamp",
+          "type": "string"
+        },
+        "event_type": {
+          "$ref": "#/$defs/PortfolioEventType"
+        },
+        "listing_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Listing Id"
+        },
+        "side": {
+          "default": "NONE",
+          "enum": [
+            "BUY",
+            "SELL",
+            "NONE"
+          ],
+          "title": "Side",
+          "type": "string"
+        },
+        "quantity": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Quantity",
+          "type": "number"
+        },
+        "price": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Price"
+        },
+        "gross_value": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Gross Value",
+          "type": "number"
+        },
+        "fees": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Fees",
+          "type": "number"
+        },
+        "cash_delta": {
+          "default": 0,
+          "title": "Cash Delta",
+          "type": "number"
+        },
+        "action_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Action Id"
+        },
+        "bar_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Bar Id"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        },
+        "source_hashes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Source Hashes",
+          "type": "array"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "title": "Metadata",
+          "type": "object"
+        }
+      },
+      "required": [
+        "contract",
+        "event_id",
+        "timestamp",
+        "event_type"
+      ],
+      "title": "PortfolioEvent",
+      "type": "object"
+    },
+    "PortfolioEventType": {
+      "enum": [
+        "INITIAL_CASH",
+        "ORDER",
+        "FILL",
+        "DIVIDEND",
+        "SPLIT",
+        "TERMINAL_VALUE",
+        "FEE",
+        "MARK",
+        "REBALANCE",
+        "CASH_FLOW",
+        "SKIP"
+      ],
+      "title": "PortfolioEventType",
+      "type": "string"
+    },
+    "PortfolioSimulationResult": {
+      "additionalProperties": false,
+      "description": "Replayable long-only portfolio simulation output.",
+      "properties": {
+        "contract": {
+          "const": "portfolio_simulation_result_v1",
+          "default": "portfolio_simulation_result_v1",
+          "title": "Contract",
+          "type": "string"
+        },
+        "simulation_id": {
+          "minLength": 1,
+          "title": "Simulation Id",
+          "type": "string"
+        },
+        "manifest_id": {
+          "minLength": 1,
+          "title": "Manifest Id",
+          "type": "string"
+        },
+        "policy_id": {
+          "minLength": 1,
+          "title": "Policy Id",
+          "type": "string"
+        },
+        "start_date": {
+          "format": "date",
+          "title": "Start Date",
+          "type": "string"
+        },
+        "end_date": {
+          "format": "date",
+          "title": "End Date",
+          "type": "string"
+        },
+        "events": {
+          "items": {
+            "$ref": "#/$defs/PortfolioEvent"
+          },
+          "title": "Events",
+          "type": "array"
+        },
+        "snapshots": {
+          "items": {
+            "$ref": "#/$defs/PortfolioSnapshot"
+          },
+          "title": "Snapshots",
+          "type": "array"
+        },
+        "metrics": {
+          "$ref": "#/$defs/PerformanceMetrics"
+        },
+        "benchmark_results": {
+          "items": {
+            "$ref": "#/$defs/BenchmarkResult"
+          },
+          "title": "Benchmark Results",
+          "type": "array"
+        },
+        "failure_attribution": {
+          "$ref": "#/$defs/FailureAttribution"
+        },
+        "final_net_asset_value": {
+          "exclusiveMinimum": 0,
+          "title": "Final Net Asset Value",
+          "type": "number"
+        },
+        "content_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Content Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "contract",
+        "simulation_id",
+        "manifest_id",
+        "policy_id",
+        "start_date",
+        "end_date",
+        "metrics",
+        "final_net_asset_value",
+        "content_sha256"
+      ],
+      "title": "PortfolioSimulationResult",
+      "type": "object"
+    },
+    "PortfolioSnapshot": {
+      "additionalProperties": false,
+      "description": "Portfolio state required to replay P&L and inspect cash drag.",
+      "properties": {
+        "contract": {
+          "const": "portfolio_snapshot_v1",
+          "default": "portfolio_snapshot_v1",
+          "title": "Contract",
+          "type": "string"
+        },
+        "timestamp": {
+          "format": "date-time",
+          "title": "Timestamp",
+          "type": "string"
+        },
+        "cash": {
+          "minimum": 0,
+          "title": "Cash",
+          "type": "number"
+        },
+        "gross_exposure": {
+          "minimum": 0,
+          "title": "Gross Exposure",
+          "type": "number"
+        },
+        "net_asset_value": {
+          "exclusiveMinimum": 0,
+          "title": "Net Asset Value",
+          "type": "number"
+        },
+        "positions": {
+          "items": {
+            "$ref": "#/$defs/PositionSnapshot"
+          },
+          "title": "Positions",
+          "type": "array"
+        },
+        "daily_return": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Daily Return"
+        },
+        "cumulative_return": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cumulative Return"
+        },
+        "cash_exposure": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Cash Exposure",
+          "type": "number"
+        },
+        "turnover": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Turnover",
+          "type": "number"
+        },
+        "missing_price_listings": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Missing Price Listings",
+          "type": "array"
+        },
+        "source_bar_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Source Bar Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "contract",
+        "timestamp",
+        "cash",
+        "gross_exposure",
+        "net_asset_value",
+        "cash_exposure"
+      ],
+      "title": "PortfolioSnapshot",
+      "type": "object"
+    },
+    "PositionSnapshot": {
+      "additionalProperties": false,
+      "description": "One listing position at a portfolio valuation timestamp.",
+      "properties": {
+        "listing_id": {
+          "minLength": 1,
+          "title": "Listing Id",
+          "type": "string"
+        },
+        "market": {
+          "$ref": "#/$defs/Market"
+        },
+        "sector": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sector"
+        },
+        "quantity": {
+          "minimum": 0,
+          "title": "Quantity",
+          "type": "number"
+        },
+        "mark_price": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mark Price"
+        },
+        "market_value": {
+          "minimum": 0,
+          "title": "Market Value",
+          "type": "number"
+        },
+        "average_cost": {
+          "minimum": 0,
+          "title": "Average Cost",
+          "type": "number"
+        },
+        "suspended": {
+          "default": false,
+          "title": "Suspended",
+          "type": "boolean"
+        },
+        "price_missing": {
+          "default": false,
+          "title": "Price Missing",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "listing_id",
+        "market",
+        "quantity",
+        "market_value",
+        "average_cost"
+      ],
+      "title": "PositionSnapshot",
+      "type": "object"
+    },
+    "SignalBucket": {
+      "additionalProperties": false,
+      "description": "Aggregated signal bucket used for auditable attribution.",
+      "properties": {
+        "bucket_key": {
+          "minLength": 1,
+          "title": "Bucket Key",
+          "type": "string"
+        },
+        "horizon": {
+          "pattern": "^[0-9]+[DWMY]$",
+          "title": "Horizon",
+          "type": "string"
+        },
+        "observation_count": {
+          "minimum": 0,
+          "title": "Observation Count",
+          "type": "integer"
+        },
+        "complete_count": {
+          "minimum": 0,
+          "title": "Complete Count",
+          "type": "integer"
+        },
+        "mean_price_return": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mean Price Return"
+        },
+        "median_price_return": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Median Price Return"
+        },
+        "mean_total_return": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mean Total Return"
+        },
+        "median_total_return": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Median Total Return"
+        },
+        "positive_total_return_rate": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Positive Total Return Rate"
+        },
+        "failure_rate": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Failure Rate"
+        }
+      },
+      "required": [
+        "bucket_key",
+        "horizon",
+        "observation_count",
+        "complete_count"
+      ],
+      "title": "SignalBucket",
+      "type": "object"
+    },
+    "SignalEvaluationResult": {
+      "additionalProperties": false,
+      "description": "Reproducible signal-level evaluation before portfolio construction.",
+      "properties": {
+        "contract": {
+          "const": "signal_evaluation_result_v1",
+          "default": "signal_evaluation_result_v1",
+          "title": "Contract",
+          "type": "string"
+        },
+        "evaluation_id": {
+          "minLength": 1,
+          "title": "Evaluation Id",
+          "type": "string"
+        },
+        "manifest_id": {
+          "minLength": 1,
+          "title": "Manifest Id",
+          "type": "string"
+        },
+        "profile_id": {
+          "minLength": 1,
+          "title": "Profile Id",
+          "type": "string"
+        },
+        "snapshot_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Snapshot Ids",
+          "type": "array"
+        },
+        "horizons": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Horizons",
+          "type": "array"
+        },
+        "observations": {
+          "items": {
+            "$ref": "#/$defs/ForwardReturnObservation"
+          },
+          "title": "Observations",
+          "type": "array"
+        },
+        "buckets": {
+          "items": {
+            "$ref": "#/$defs/SignalBucket"
+          },
+          "title": "Buckets",
+          "type": "array"
+        },
+        "coverage": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "title": "Coverage",
+          "type": "object"
+        },
+        "failure_attribution": {
+          "$ref": "#/$defs/FailureAttribution"
+        },
+        "content_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Content Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "contract",
+        "evaluation_id",
+        "manifest_id",
+        "profile_id",
+        "horizons",
+        "content_sha256"
+      ],
+      "title": "SignalEvaluationResult",
+      "type": "object"
+    },
+    "SignalOutcomeStatus": {
+      "enum": [
+        "COMPLETE",
+        "NO_ENTRY",
+        "NO_EXIT",
+        "MISSING_PRICE",
+        "SUSPENDED",
+        "DELISTED_TERMINAL",
+        "INVALID_CORPORATE_ACTION_DATA"
+      ],
+      "title": "SignalOutcomeStatus",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Combined signal/portfolio result for one immutable run.",
+  "properties": {
+    "contract": {
+      "const": "backtest_result_v1",
+      "default": "backtest_result_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "run_id": {
+      "minLength": 1,
+      "title": "Run Id",
+      "type": "string"
+    },
+    "manifest_id": {
+      "minLength": 1,
+      "title": "Manifest Id",
+      "type": "string"
+    },
+    "run_spec_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Run Spec Sha256",
+      "type": "string"
+    },
+    "signal_evaluation": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SignalEvaluationResult"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "portfolio_simulation": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PortfolioSimulationResult"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "metrics": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PerformanceMetrics"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "failure_attribution": {
+      "$ref": "#/$defs/FailureAttribution"
+    },
+    "content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Content Sha256",
+      "type": "string"
+    }
+  },
+  "required": [
+    "contract",
+    "run_id",
+    "manifest_id",
+    "run_spec_sha256",
+    "content_sha256"
+  ],
+  "title": "Turtle Value Engine backtest-result",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/blooddrunk/turtle-value-engine/schemas/backtest-result.schema.json"
+}

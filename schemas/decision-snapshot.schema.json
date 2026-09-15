@@ -1,0 +1,188 @@
+{
+  "additionalProperties": false,
+  "description": "A non-mutating projection of an existing deterministic CompanyAnalysis.",
+  "properties": {
+    "contract": {
+      "const": "decision_snapshot_v1",
+      "default": "decision_snapshot_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "snapshot_id": {
+      "minLength": 1,
+      "title": "Snapshot Id",
+      "type": "string"
+    },
+    "analysis_id": {
+      "minLength": 1,
+      "title": "Analysis Id",
+      "type": "string"
+    },
+    "listing_id": {
+      "minLength": 1,
+      "title": "Listing Id",
+      "type": "string"
+    },
+    "company_id": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Company Id"
+    },
+    "decision_time": {
+      "format": "date-time",
+      "title": "Decision Time",
+      "type": "string"
+    },
+    "as_of": {
+      "format": "date",
+      "title": "As Of",
+      "type": "string"
+    },
+    "profile_id": {
+      "minLength": 1,
+      "title": "Profile Id",
+      "type": "string"
+    },
+    "input_artifact_id": {
+      "minLength": 1,
+      "title": "Input Artifact Id",
+      "type": "string"
+    },
+    "input_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Input Sha256",
+      "type": "string"
+    },
+    "analysis_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Analysis Sha256",
+      "type": "string"
+    },
+    "research_artifact_id": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Research Artifact Id"
+    },
+    "final_state": {
+      "minLength": 1,
+      "title": "Final State",
+      "type": "string"
+    },
+    "valuation_state": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Valuation State"
+    },
+    "valuation_tier": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Valuation Tier"
+    },
+    "gate_statuses": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Gate Statuses",
+      "type": "object"
+    },
+    "gate_failure_reasons": {
+      "additionalProperties": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "title": "Gate Failure Reasons",
+      "type": "object"
+    },
+    "selected_metrics": {
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "type": "number"
+          },
+          {
+            "type": "integer"
+          },
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "title": "Selected Metrics",
+      "type": "object"
+    },
+    "business_quality_evaluated": {
+      "default": false,
+      "title": "Business Quality Evaluated",
+      "type": "boolean"
+    },
+    "unresolved_flags": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Unresolved Flags",
+      "type": "array"
+    },
+    "flags": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Flags",
+      "type": "array"
+    }
+  },
+  "required": [
+    "contract",
+    "snapshot_id",
+    "analysis_id",
+    "listing_id",
+    "decision_time",
+    "as_of",
+    "profile_id",
+    "input_artifact_id",
+    "input_sha256",
+    "analysis_sha256",
+    "final_state",
+    "gate_statuses"
+  ],
+  "title": "Turtle Value Engine decision-snapshot",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/blooddrunk/turtle-value-engine/schemas/decision-snapshot.schema.json"
+}

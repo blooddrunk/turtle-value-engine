@@ -1,0 +1,228 @@
+{
+  "$defs": {
+    "SignalOutcomeStatus": {
+      "enum": [
+        "COMPLETE",
+        "NO_ENTRY",
+        "NO_EXIT",
+        "MISSING_PRICE",
+        "SUSPENDED",
+        "DELISTED_TERMINAL",
+        "INVALID_CORPORATE_ACTION_DATA"
+      ],
+      "title": "SignalOutcomeStatus",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "One signal-to-forward-outcome observation, including missingness.",
+  "properties": {
+    "contract": {
+      "const": "forward_return_observation_v1",
+      "default": "forward_return_observation_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "observation_id": {
+      "minLength": 1,
+      "title": "Observation Id",
+      "type": "string"
+    },
+    "snapshot_id": {
+      "minLength": 1,
+      "title": "Snapshot Id",
+      "type": "string"
+    },
+    "listing_id": {
+      "minLength": 1,
+      "title": "Listing Id",
+      "type": "string"
+    },
+    "decision_time": {
+      "format": "date-time",
+      "title": "Decision Time",
+      "type": "string"
+    },
+    "horizon": {
+      "pattern": "^[0-9]+[DWMY]$",
+      "title": "Horizon",
+      "type": "string"
+    },
+    "target_date": {
+      "format": "date",
+      "title": "Target Date",
+      "type": "string"
+    },
+    "entry_date": {
+      "anyOf": [
+        {
+          "format": "date",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Entry Date"
+    },
+    "exit_date": {
+      "anyOf": [
+        {
+          "format": "date",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Exit Date"
+    },
+    "entry_price": {
+      "anyOf": [
+        {
+          "exclusiveMinimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Entry Price"
+    },
+    "exit_price": {
+      "anyOf": [
+        {
+          "exclusiveMinimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Exit Price"
+    },
+    "price_return": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Price Return"
+    },
+    "total_return": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Total Return"
+    },
+    "dividends_per_share": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Dividends Per Share",
+      "type": "number"
+    },
+    "share_multiplier": {
+      "default": 1,
+      "exclusiveMinimum": 0,
+      "title": "Share Multiplier",
+      "type": "number"
+    },
+    "terminal_value_per_share": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Terminal Value Per Share",
+      "type": "number"
+    },
+    "entry_bar_id": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Entry Bar Id"
+    },
+    "exit_bar_id": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Exit Bar Id"
+    },
+    "corporate_action_ids": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Corporate Action Ids",
+      "type": "array"
+    },
+    "status": {
+      "$ref": "#/$defs/SignalOutcomeStatus"
+    },
+    "missing_reason": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Missing Reason"
+    },
+    "currency": {
+      "anyOf": [
+        {
+          "maxLength": 3,
+          "minLength": 3,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Currency"
+    }
+  },
+  "required": [
+    "contract",
+    "observation_id",
+    "snapshot_id",
+    "listing_id",
+    "decision_time",
+    "horizon",
+    "target_date",
+    "status"
+  ],
+  "title": "Turtle Value Engine forward-return-observation",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/blooddrunk/turtle-value-engine/schemas/forward-return-observation.schema.json"
+}

@@ -1,0 +1,164 @@
+{
+  "$defs": {
+    "PortfolioEventType": {
+      "enum": [
+        "INITIAL_CASH",
+        "ORDER",
+        "FILL",
+        "DIVIDEND",
+        "SPLIT",
+        "TERMINAL_VALUE",
+        "FEE",
+        "MARK",
+        "REBALANCE",
+        "CASH_FLOW",
+        "SKIP"
+      ],
+      "title": "PortfolioEventType",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Replayable event emitted by the deterministic simulator.",
+  "properties": {
+    "contract": {
+      "const": "portfolio_event_v1",
+      "default": "portfolio_event_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "event_id": {
+      "minLength": 1,
+      "title": "Event Id",
+      "type": "string"
+    },
+    "timestamp": {
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
+    },
+    "event_type": {
+      "$ref": "#/$defs/PortfolioEventType"
+    },
+    "listing_id": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Listing Id"
+    },
+    "side": {
+      "default": "NONE",
+      "enum": [
+        "BUY",
+        "SELL",
+        "NONE"
+      ],
+      "title": "Side",
+      "type": "string"
+    },
+    "quantity": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Quantity",
+      "type": "number"
+    },
+    "price": {
+      "anyOf": [
+        {
+          "exclusiveMinimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Price"
+    },
+    "gross_value": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Gross Value",
+      "type": "number"
+    },
+    "fees": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Fees",
+      "type": "number"
+    },
+    "cash_delta": {
+      "default": 0,
+      "title": "Cash Delta",
+      "type": "number"
+    },
+    "action_id": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Action Id"
+    },
+    "bar_id": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Bar Id"
+    },
+    "reason": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Reason"
+    },
+    "source_hashes": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Source Hashes",
+      "type": "array"
+    },
+    "metadata": {
+      "additionalProperties": true,
+      "title": "Metadata",
+      "type": "object"
+    }
+  },
+  "required": [
+    "contract",
+    "event_id",
+    "timestamp",
+    "event_type"
+  ],
+  "title": "Turtle Value Engine portfolio-event",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/blooddrunk/turtle-value-engine/schemas/portfolio-event.schema.json"
+}

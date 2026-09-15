@@ -95,9 +95,22 @@ def _strong_input() -> NormalizedCompanyInput:
     return _with_evidence(
         _base_input(),
         [
-            _evidence("strong-primary-000000000000000001", strength="E3"),
-            _evidence("strong-operating-000000000000000002", strength="E2"),
-            _evidence("strong-counter-000000000000000003", direction="COUNTER", strength="E1"),
+            _evidence(
+                "strong-primary-000000000000000001",
+                strength="E3",
+                published_date=date(2026, 9, 8),
+            ),
+            _evidence(
+                "strong-operating-000000000000000002",
+                strength="E2",
+                published_date=date(2026, 9, 8),
+            ),
+            _evidence(
+                "strong-counter-000000000000000003",
+                direction="COUNTER",
+                strength="E1",
+                published_date=date(2026, 9, 8),
+            ),
         ],
     )
 

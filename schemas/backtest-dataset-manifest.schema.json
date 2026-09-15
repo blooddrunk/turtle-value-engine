@@ -146,6 +146,98 @@
       "title": "ApprovedBy",
       "type": "string"
     },
+    "AvailabilityStatus": {
+      "enum": [
+        "KNOWN",
+        "UNKNOWN",
+        "EXPLICIT_POLICY"
+      ],
+      "title": "AvailabilityStatus",
+      "type": "string"
+    },
+    "BenchmarkObservation": {
+      "additionalProperties": false,
+      "description": "One benchmark level with an explicit price/total return identity.",
+      "properties": {
+        "contract": {
+          "const": "benchmark_observation_v1",
+          "default": "benchmark_observation_v1",
+          "title": "Contract",
+          "type": "string"
+        },
+        "observation_id": {
+          "minLength": 1,
+          "title": "Observation Id",
+          "type": "string"
+        },
+        "benchmark_id": {
+          "minLength": 1,
+          "title": "Benchmark Id",
+          "type": "string"
+        },
+        "observation_date": {
+          "format": "date",
+          "title": "Observation Date",
+          "type": "string"
+        },
+        "value": {
+          "exclusiveMinimum": 0,
+          "title": "Value",
+          "type": "number"
+        },
+        "return_type": {
+          "$ref": "#/$defs/BenchmarkReturnType"
+        },
+        "currency": {
+          "maxLength": 3,
+          "minLength": 3,
+          "title": "Currency",
+          "type": "string"
+        },
+        "available_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Available At"
+        },
+        "source_hash": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Source Hash",
+          "type": "string"
+        }
+      },
+      "required": [
+        "contract",
+        "observation_id",
+        "benchmark_id",
+        "observation_date",
+        "value",
+        "return_type",
+        "currency",
+        "source_hash"
+      ],
+      "title": "BenchmarkObservation",
+      "type": "object"
+    },
+    "BenchmarkReturnType": {
+      "enum": [
+        "PRICE_RETURN",
+        "TOTAL_RETURN"
+      ],
+      "title": "BenchmarkReturnType",
+      "type": "string"
+    },
     "BusinessQuality": {
       "additionalProperties": false,
       "description": "Structured business-quality assessment.",
@@ -721,6 +813,216 @@
       "title": "ConfidenceLevel",
       "type": "string"
     },
+    "CorporateAction": {
+      "additionalProperties": false,
+      "description": "Listing-level corporate action used exactly once by return paths.",
+      "properties": {
+        "contract": {
+          "const": "corporate_action_v1",
+          "default": "corporate_action_v1",
+          "title": "Contract",
+          "type": "string"
+        },
+        "action_id": {
+          "minLength": 1,
+          "title": "Action Id",
+          "type": "string"
+        },
+        "listing_id": {
+          "minLength": 1,
+          "title": "Listing Id",
+          "type": "string"
+        },
+        "action_type": {
+          "$ref": "#/$defs/CorporateActionType"
+        },
+        "effective_date": {
+          "format": "date",
+          "title": "Effective Date",
+          "type": "string"
+        },
+        "ex_date": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ex Date"
+        },
+        "payment_date": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Payment Date"
+        },
+        "announced_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Announced At"
+        },
+        "available_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Available At"
+        },
+        "cash_per_share": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cash Per Share"
+        },
+        "split_factor": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Split Factor"
+        },
+        "rights_ratio": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rights Ratio"
+        },
+        "rights_price": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rights Price"
+        },
+        "terminal_value_per_share": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Terminal Value Per Share"
+        },
+        "currency": {
+          "anyOf": [
+            {
+              "maxLength": 3,
+              "minLength": 3,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Currency"
+        },
+        "source_hash": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Source Hash",
+          "type": "string"
+        },
+        "notes": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Notes"
+        }
+      },
+      "required": [
+        "contract",
+        "action_id",
+        "listing_id",
+        "action_type",
+        "effective_date",
+        "source_hash"
+      ],
+      "title": "CorporateAction",
+      "type": "object"
+    },
+    "CorporateActionType": {
+      "enum": [
+        "CASH_DIVIDEND",
+        "SPLIT",
+        "CONSOLIDATION",
+        "RIGHTS_ISSUE",
+        "SHARE_ISSUANCE",
+        "DELISTING",
+        "TERMINAL_VALUE"
+      ],
+      "title": "CorporateActionType",
+      "type": "string"
+    },
     "DataQuality": {
       "additionalProperties": false,
       "description": "Overall data-quality summary for an analysis.",
@@ -834,89 +1136,6 @@
       ],
       "title": "DecisionState",
       "type": "string"
-    },
-    "DecisionTrace": {
-      "additionalProperties": false,
-      "description": "Complete deterministic trace projection; no new investment judgment.",
-      "properties": {
-        "contract": {
-          "const": "decision_trace_v1",
-          "default": "decision_trace_v1",
-          "title": "Contract",
-          "type": "string"
-        },
-        "analysis_id": {
-          "title": "Analysis Id",
-          "type": "string"
-        },
-        "decision_state": {
-          "title": "Decision State",
-          "type": "string"
-        },
-        "gates": {
-          "items": {
-            "$ref": "#/$defs/TraceGate"
-          },
-          "title": "Gates",
-          "type": "array"
-        },
-        "metrics": {
-          "items": {
-            "$ref": "#/$defs/TraceMetric"
-          },
-          "title": "Metrics",
-          "type": "array"
-        },
-        "adjustments": {
-          "items": {
-            "$ref": "#/$defs/TraceAdjustment"
-          },
-          "title": "Adjustments",
-          "type": "array"
-        },
-        "facts": {
-          "items": {
-            "$ref": "#/$defs/TraceFact"
-          },
-          "title": "Facts",
-          "type": "array"
-        },
-        "evidence": {
-          "items": {
-            "$ref": "#/$defs/TraceEvidence"
-          },
-          "title": "Evidence",
-          "type": "array"
-        },
-        "filings": {
-          "items": {
-            "$ref": "#/$defs/TraceFiling"
-          },
-          "title": "Filings",
-          "type": "array"
-        },
-        "links": {
-          "items": {
-            "$ref": "#/$defs/TraceLink"
-          },
-          "title": "Links",
-          "type": "array"
-        }
-      },
-      "required": [
-        "contract",
-        "analysis_id",
-        "decision_state",
-        "gates",
-        "metrics",
-        "adjustments",
-        "facts",
-        "evidence",
-        "filings",
-        "links"
-      ],
-      "title": "DecisionTrace",
-      "type": "object"
     },
     "Evidence": {
       "additionalProperties": false,
@@ -1118,6 +1337,78 @@
       ],
       "title": "EvidenceStrength",
       "type": "string"
+    },
+    "FXObservation": {
+      "additionalProperties": false,
+      "description": "Point-in-time FX observation for optional reporting conversion.",
+      "properties": {
+        "contract": {
+          "const": "fx_observation_v1",
+          "default": "fx_observation_v1",
+          "title": "Contract",
+          "type": "string"
+        },
+        "observation_id": {
+          "minLength": 1,
+          "title": "Observation Id",
+          "type": "string"
+        },
+        "base_currency": {
+          "maxLength": 3,
+          "minLength": 3,
+          "title": "Base Currency",
+          "type": "string"
+        },
+        "quote_currency": {
+          "maxLength": 3,
+          "minLength": 3,
+          "title": "Quote Currency",
+          "type": "string"
+        },
+        "observation_date": {
+          "format": "date",
+          "title": "Observation Date",
+          "type": "string"
+        },
+        "rate": {
+          "exclusiveMinimum": 0,
+          "title": "Rate",
+          "type": "number"
+        },
+        "available_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Available At"
+        },
+        "source_hash": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Source Hash",
+          "type": "string"
+        }
+      },
+      "required": [
+        "contract",
+        "observation_id",
+        "base_currency",
+        "quote_currency",
+        "observation_date",
+        "rate",
+        "source_hash"
+      ],
+      "title": "FXObservation",
+      "type": "object"
     },
     "Fact": {
       "additionalProperties": false,
@@ -1421,6 +1712,616 @@
         "governance_data_quality"
       ],
       "title": "Gates",
+      "type": "object"
+    },
+    "HistoricalAvailability": {
+      "additionalProperties": false,
+      "description": "Availability metadata for one frozen historical artifact.",
+      "properties": {
+        "contract": {
+          "const": "historical_availability_v1",
+          "default": "historical_availability_v1",
+          "title": "Contract",
+          "type": "string"
+        },
+        "artifact_id": {
+          "minLength": 1,
+          "title": "Artifact Id",
+          "type": "string"
+        },
+        "period_end": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Period End"
+        },
+        "published_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Published At"
+        },
+        "available_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Available At"
+        },
+        "retrieved_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Retrieved At"
+        },
+        "source_hash": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Source Hash",
+          "type": "string"
+        },
+        "source_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Id"
+        },
+        "status": {
+          "$ref": "#/$defs/AvailabilityStatus",
+          "default": "KNOWN"
+        },
+        "notes": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Notes"
+        }
+      },
+      "required": [
+        "contract",
+        "artifact_id",
+        "source_hash"
+      ],
+      "title": "HistoricalAvailability",
+      "type": "object"
+    },
+    "HistoricalDecisionArtifact": {
+      "additionalProperties": false,
+      "description": "Frozen input/output artifact from which a decision snapshot is projected.",
+      "properties": {
+        "contract": {
+          "const": "historical_decision_artifact_v1",
+          "default": "historical_decision_artifact_v1",
+          "title": "Contract",
+          "type": "string"
+        },
+        "artifact_id": {
+          "minLength": 1,
+          "title": "Artifact Id",
+          "type": "string"
+        },
+        "listing_id": {
+          "minLength": 1,
+          "title": "Listing Id",
+          "type": "string"
+        },
+        "decision_time": {
+          "format": "date-time",
+          "title": "Decision Time",
+          "type": "string"
+        },
+        "as_of": {
+          "format": "date",
+          "title": "As Of",
+          "type": "string"
+        },
+        "available_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Available At"
+        },
+        "normalized_input": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NormalizedCompanyInput"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "analysis": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CompanyAnalysis"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "research_artifact_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Research Artifact Id"
+        },
+        "source_hash": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Source Hash",
+          "type": "string"
+        },
+        "historical_business_quality_valid": {
+          "default": false,
+          "title": "Historical Business Quality Valid",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "contract",
+        "artifact_id",
+        "listing_id",
+        "decision_time",
+        "as_of",
+        "source_hash"
+      ],
+      "title": "HistoricalDecisionArtifact",
+      "type": "object"
+    },
+    "ListingLifecycle": {
+      "additionalProperties": false,
+      "description": "Listing-level lifecycle; A/H classes remain distinct assets.",
+      "properties": {
+        "contract": {
+          "const": "listing_lifecycle_v1",
+          "default": "listing_lifecycle_v1",
+          "title": "Contract",
+          "type": "string"
+        },
+        "listing_id": {
+          "minLength": 1,
+          "title": "Listing Id",
+          "type": "string"
+        },
+        "company_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Company Id"
+        },
+        "economic_company_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Economic Company Id"
+        },
+        "market": {
+          "$ref": "#/$defs/Market"
+        },
+        "currency": {
+          "maxLength": 3,
+          "minLength": 3,
+          "title": "Currency",
+          "type": "string"
+        },
+        "listing_date": {
+          "format": "date",
+          "title": "Listing Date",
+          "type": "string"
+        },
+        "delisting_date": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Delisting Date"
+        },
+        "terminal_status": {
+          "default": "ACTIVE",
+          "enum": [
+            "ACTIVE",
+            "DELISTED",
+            "TERMINAL",
+            "UNKNOWN"
+          ],
+          "title": "Terminal Status",
+          "type": "string"
+        },
+        "trading_calendar": {
+          "default": "UNSPECIFIED",
+          "minLength": 1,
+          "title": "Trading Calendar",
+          "type": "string"
+        },
+        "timezone": {
+          "default": "UTC",
+          "minLength": 1,
+          "title": "Timezone",
+          "type": "string"
+        },
+        "sector": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sector"
+        },
+        "industry": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Industry"
+        },
+        "source_artifact_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Artifact Id"
+        },
+        "source_hash": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Hash"
+        }
+      },
+      "required": [
+        "contract",
+        "listing_id",
+        "market",
+        "currency",
+        "listing_date"
+      ],
+      "title": "ListingLifecycle",
+      "type": "object"
+    },
+    "Market": {
+      "description": "Listing market; A and H listings are never merged by the simulator.",
+      "enum": [
+        "A",
+        "H"
+      ],
+      "title": "Market",
+      "type": "string"
+    },
+    "MarketBar": {
+      "additionalProperties": false,
+      "description": "One immutable listing-specific market observation.",
+      "properties": {
+        "contract": {
+          "const": "market_bar_v1",
+          "default": "market_bar_v1",
+          "title": "Contract",
+          "type": "string"
+        },
+        "bar_id": {
+          "minLength": 1,
+          "title": "Bar Id",
+          "type": "string"
+        },
+        "listing_id": {
+          "minLength": 1,
+          "title": "Listing Id",
+          "type": "string"
+        },
+        "market": {
+          "$ref": "#/$defs/Market"
+        },
+        "trading_date": {
+          "format": "date",
+          "title": "Trading Date",
+          "type": "string"
+        },
+        "timestamp": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Timestamp"
+        },
+        "session_open_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Session Open At"
+        },
+        "session_close_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Session Close At"
+        },
+        "open": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Open"
+        },
+        "high": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "High"
+        },
+        "low": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Low"
+        },
+        "close": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Close"
+        },
+        "volume": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Volume"
+        },
+        "amount": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Amount"
+        },
+        "currency": {
+          "maxLength": 3,
+          "minLength": 3,
+          "title": "Currency",
+          "type": "string"
+        },
+        "price_basis": {
+          "$ref": "#/$defs/PriceBasis",
+          "default": "UNADJUSTED"
+        },
+        "adjustment_scope": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Adjustment Scope",
+          "type": "array"
+        },
+        "tradable": {
+          "default": true,
+          "title": "Tradable",
+          "type": "boolean"
+        },
+        "suspended": {
+          "default": false,
+          "title": "Suspended",
+          "type": "boolean"
+        },
+        "missing_reason": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Missing Reason"
+        },
+        "available_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Available At"
+        },
+        "source_hash": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Source Hash",
+          "type": "string"
+        }
+      },
+      "required": [
+        "contract",
+        "bar_id",
+        "listing_id",
+        "market",
+        "trading_date",
+        "currency",
+        "source_hash"
+      ],
+      "title": "MarketBar",
       "type": "object"
     },
     "MetricContext": {
@@ -1792,6 +2693,88 @@
       "title": "NetCashMetric",
       "type": "object"
     },
+    "NormalizedCompanyInput": {
+      "additionalProperties": false,
+      "description": "Frozen input-side contract for deterministic calculations.\n\nThis is intentionally separate from ``CompanyAnalysis`` at the field\nboundary: it contains only identity, source facts, evidence, adjustments\nand data-quality metadata.  Metrics, gates, valuation and decision fields\nare output-only and are rejected by ``extra='forbid'``.",
+      "properties": {
+        "schema_version": {
+          "const": "1.0.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "analysis_id": {
+          "minLength": 1,
+          "title": "Analysis Id",
+          "type": "string"
+        },
+        "as_of": {
+          "format": "date",
+          "title": "As Of",
+          "type": "string"
+        },
+        "profile_id": {
+          "minLength": 1,
+          "title": "Profile Id",
+          "type": "string"
+        },
+        "company": {
+          "$ref": "#/$defs/Company"
+        },
+        "data_quality": {
+          "$ref": "#/$defs/DataQuality"
+        },
+        "facts": {
+          "items": {
+            "$ref": "#/$defs/Fact"
+          },
+          "title": "Facts",
+          "type": "array"
+        },
+        "adjustments": {
+          "items": {
+            "$ref": "#/$defs/Adjustment"
+          },
+          "title": "Adjustments",
+          "type": "array"
+        },
+        "evidence_index": {
+          "items": {
+            "$ref": "#/$defs/Evidence"
+          },
+          "title": "Evidence Index",
+          "type": "array"
+        },
+        "flags": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Flags",
+          "type": "array"
+        }
+      },
+      "required": [
+        "schema_version",
+        "analysis_id",
+        "as_of",
+        "profile_id",
+        "company",
+        "data_quality",
+        "facts",
+        "adjustments",
+        "evidence_index"
+      ],
+      "title": "NormalizedCompanyInput",
+      "type": "object"
+    },
+    "PriceBasis": {
+      "description": "Whether a market series has already incorporated corporate actions.",
+      "enum": [
+        "UNADJUSTED",
+        "ADJUSTED"
+      ],
+      "title": "PriceBasis",
+      "type": "string"
+    },
     "ProposedBy": {
       "description": "Actor that proposed an adjustment.",
       "enum": [
@@ -1801,46 +2784,6 @@
       ],
       "title": "ProposedBy",
       "type": "string"
-    },
-    "ReportSection": {
-      "additionalProperties": false,
-      "description": "A structured report section with a stable category.",
-      "properties": {
-        "kind": {
-          "enum": [
-            "METADATA",
-            "DETERMINISTIC_METRICS",
-            "DETERMINISTIC_GATES",
-            "BUSINESS_QUALITY",
-            "ADJUSTMENTS",
-            "DATA_QUALITY",
-            "VALUATION",
-            "DECISION",
-            "PROVENANCE"
-          ],
-          "title": "Kind",
-          "type": "string"
-        },
-        "title": {
-          "minLength": 1,
-          "title": "Title",
-          "type": "string"
-        },
-        "bullets": {
-          "items": {
-            "type": "string"
-          },
-          "maxItems": 128,
-          "title": "Bullets",
-          "type": "array"
-        }
-      },
-      "required": [
-        "kind",
-        "title"
-      ],
-      "title": "ReportSection",
-      "type": "object"
     },
     "Source": {
       "additionalProperties": false,
@@ -2172,95 +3115,50 @@
       "title": "ThroughReturnMetric",
       "type": "object"
     },
-    "TraceAdjustment": {
-      "additionalProperties": false,
-      "description": "Adjustment node retained in the final trace.",
-      "properties": {
-        "id": {
-          "title": "Id",
-          "type": "string"
-        },
-        "target_field": {
-          "title": "Target Field",
-          "type": "string"
-        },
-        "target_period": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Target Period"
-        },
-        "status": {
-          "title": "Status",
-          "type": "string"
-        },
-        "proposed_by": {
-          "title": "Proposed By",
-          "type": "string"
-        },
-        "approved_by": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Approved By"
-        },
-        "source_evidence_ids": {
-          "items": {
-            "type": "string"
-          },
-          "title": "Source Evidence Ids",
-          "type": "array"
-        }
-      },
-      "required": [
-        "id",
-        "target_field",
-        "status",
-        "proposed_by",
-        "source_evidence_ids"
+    "UniverseCoverage": {
+      "enum": [
+        "HISTORICAL",
+        "FIXED_RESEARCH_UNIVERSE",
+        "CURRENT_UNIVERSE",
+        "UNKNOWN"
       ],
-      "title": "TraceAdjustment",
-      "type": "object"
+      "title": "UniverseCoverage",
+      "type": "string"
     },
-    "TraceEvidence": {
+    "UniverseMembership": {
       "additionalProperties": false,
-      "description": "Evidence node and optional official-filing identity.",
+      "description": "One historical membership interval for one listing.",
       "properties": {
-        "id": {
-          "title": "Id",
+        "contract": {
+          "const": "universe_membership_v1",
+          "default": "universe_membership_v1",
+          "title": "Contract",
           "type": "string"
         },
-        "direction": {
-          "title": "Direction",
+        "membership_id": {
+          "minLength": 1,
+          "title": "Membership Id",
           "type": "string"
         },
-        "strength": {
-          "title": "Strength",
+        "universe_id": {
+          "minLength": 1,
+          "title": "Universe Id",
           "type": "string"
         },
-        "source_type": {
-          "title": "Source Type",
+        "listing_id": {
+          "minLength": 1,
+          "title": "Listing Id",
           "type": "string"
         },
-        "source_title": {
-          "title": "Source Title",
+        "valid_from": {
+          "format": "date",
+          "title": "Valid From",
           "type": "string"
         },
-        "source_url": {
+        "valid_to": {
           "anyOf": [
             {
+              "format": "date",
               "type": "string"
             },
             {
@@ -2268,358 +3166,33 @@
             }
           ],
           "default": null,
-          "title": "Source Url"
+          "title": "Valid To"
         },
-        "filing_id": {
+        "included": {
+          "default": true,
+          "title": "Included",
+          "type": "boolean"
+        },
+        "availability": {
           "anyOf": [
             {
-              "type": "string"
+              "$ref": "#/$defs/HistoricalAvailability"
             },
             {
               "type": "null"
             }
           ],
-          "default": null,
-          "title": "Filing Id"
-        },
-        "filing_source": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Filing Source"
-        },
-        "source_document_id": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Source Document Id"
-        },
-        "block_sequence": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Block Sequence"
+          "default": null
         }
       },
       "required": [
-        "id",
-        "direction",
-        "strength",
-        "source_type",
-        "source_title"
+        "contract",
+        "membership_id",
+        "universe_id",
+        "listing_id",
+        "valid_from"
       ],
-      "title": "TraceEvidence",
-      "type": "object"
-    },
-    "TraceFact": {
-      "additionalProperties": false,
-      "description": "Fact node, including effective-fact lineage when present.",
-      "properties": {
-        "id": {
-          "title": "Id",
-          "type": "string"
-        },
-        "field": {
-          "title": "Field",
-          "type": "string"
-        },
-        "period": {
-          "title": "Period",
-          "type": "string"
-        },
-        "value": {
-          "anyOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "string"
-            },
-            {
-              "type": "boolean"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Value"
-        },
-        "source_fact_id": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Source Fact Id"
-        },
-        "source_value": {
-          "anyOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "string"
-            },
-            {
-              "type": "boolean"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Source Value"
-        },
-        "applied_adjustment_ids": {
-          "items": {
-            "type": "string"
-          },
-          "title": "Applied Adjustment Ids",
-          "type": "array"
-        },
-        "source_evidence_ids": {
-          "items": {
-            "type": "string"
-          },
-          "title": "Source Evidence Ids",
-          "type": "array"
-        }
-      },
-      "required": [
-        "id",
-        "field",
-        "period",
-        "value",
-        "source_evidence_ids"
-      ],
-      "title": "TraceFact",
-      "type": "object"
-    },
-    "TraceFiling": {
-      "additionalProperties": false,
-      "description": "Official filing node inferred only from filing evidence provenance.",
-      "properties": {
-        "filing_id": {
-          "title": "Filing Id",
-          "type": "string"
-        },
-        "filing_source": {
-          "title": "Filing Source",
-          "type": "string"
-        },
-        "title": {
-          "title": "Title",
-          "type": "string"
-        },
-        "url": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Url"
-        },
-        "source_document_id": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Source Document Id"
-        },
-        "evidence_ids": {
-          "items": {
-            "type": "string"
-          },
-          "title": "Evidence Ids",
-          "type": "array"
-        }
-      },
-      "required": [
-        "filing_id",
-        "filing_source",
-        "title",
-        "evidence_ids"
-      ],
-      "title": "TraceFiling",
-      "type": "object"
-    },
-    "TraceGate": {
-      "additionalProperties": false,
-      "description": "One gate with its deterministic rule IDs.",
-      "properties": {
-        "name": {
-          "title": "Name",
-          "type": "string"
-        },
-        "status": {
-          "title": "Status",
-          "type": "string"
-        },
-        "rule_ids": {
-          "items": {
-            "type": "string"
-          },
-          "title": "Rule Ids",
-          "type": "array"
-        }
-      },
-      "required": [
-        "name",
-        "status",
-        "rule_ids"
-      ],
-      "title": "TraceGate",
-      "type": "object"
-    },
-    "TraceLink": {
-      "additionalProperties": false,
-      "description": "One explicit edge along Decision→...→Filing.",
-      "properties": {
-        "decision_state": {
-          "title": "Decision State",
-          "type": "string"
-        },
-        "gate": {
-          "title": "Gate",
-          "type": "string"
-        },
-        "gate_status": {
-          "title": "Gate Status",
-          "type": "string"
-        },
-        "rule_id": {
-          "title": "Rule Id",
-          "type": "string"
-        },
-        "metric": {
-          "title": "Metric",
-          "type": "string"
-        },
-        "evidence_id": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Evidence Id"
-        },
-        "fact_id": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Fact Id"
-        },
-        "adjustment_ids": {
-          "items": {
-            "type": "string"
-          },
-          "title": "Adjustment Ids",
-          "type": "array"
-        },
-        "filing_id": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Filing Id"
-        }
-      },
-      "required": [
-        "decision_state",
-        "gate",
-        "gate_status",
-        "rule_id",
-        "metric"
-      ],
-      "title": "TraceLink",
-      "type": "object"
-    },
-    "TraceMetric": {
-      "additionalProperties": false,
-      "description": "One metric group and the source-side lineage it can reach.",
-      "properties": {
-        "name": {
-          "title": "Name",
-          "type": "string"
-        },
-        "value": {
-          "additionalProperties": true,
-          "title": "Value",
-          "type": "object"
-        },
-        "fact_ids": {
-          "items": {
-            "type": "string"
-          },
-          "title": "Fact Ids",
-          "type": "array"
-        },
-        "adjustment_ids": {
-          "items": {
-            "type": "string"
-          },
-          "title": "Adjustment Ids",
-          "type": "array"
-        },
-        "evidence_ids": {
-          "items": {
-            "type": "string"
-          },
-          "title": "Evidence Ids",
-          "type": "array"
-        }
-      },
-      "required": [
-        "name",
-        "value"
-      ],
-      "title": "TraceMetric",
+      "title": "UniverseMembership",
       "type": "object"
     },
     "ValuationResult": {
@@ -2985,34 +3558,181 @@
     }
   },
   "additionalProperties": false,
-  "description": "Self-contained report whose embedded analysis is the authority.",
+  "description": "Complete frozen data boundary for an offline backtest.",
   "properties": {
     "contract": {
-      "const": "research_report_v1",
-      "default": "research_report_v1",
+      "const": "backtest_dataset_manifest_v1",
+      "default": "backtest_dataset_manifest_v1",
       "title": "Contract",
       "type": "string"
     },
-    "report_id": {
+    "dataset_id": {
       "minLength": 1,
-      "title": "Report Id",
+      "title": "Dataset Id",
       "type": "string"
     },
-    "analysis": {
-      "$ref": "#/$defs/CompanyAnalysis"
-    },
-    "decision_trace": {
-      "$ref": "#/$defs/DecisionTrace"
-    },
-    "deterministic_state": {
-      "$ref": "#/$defs/DecisionState"
-    },
-    "analysis_sha256": {
-      "pattern": "^[0-9a-f]{64}$",
-      "title": "Analysis Sha256",
+    "dataset_version": {
+      "minLength": 1,
+      "title": "Dataset Version",
       "type": "string"
     },
-    "research_session_id": {
+    "start_date": {
+      "format": "date",
+      "title": "Start Date",
+      "type": "string"
+    },
+    "end_date": {
+      "format": "date",
+      "title": "End Date",
+      "type": "string"
+    },
+    "timezone": {
+      "default": "UTC",
+      "minLength": 1,
+      "title": "Timezone",
+      "type": "string"
+    },
+    "calendar_id": {
+      "minLength": 1,
+      "title": "Calendar Id",
+      "type": "string"
+    },
+    "universe_id": {
+      "minLength": 1,
+      "title": "Universe Id",
+      "type": "string"
+    },
+    "universe_coverage": {
+      "$ref": "#/$defs/UniverseCoverage"
+    },
+    "listing_lifecycles": {
+      "items": {
+        "$ref": "#/$defs/ListingLifecycle"
+      },
+      "maxItems": 100000,
+      "minItems": 1,
+      "title": "Listing Lifecycles",
+      "type": "array"
+    },
+    "universe_memberships": {
+      "items": {
+        "$ref": "#/$defs/UniverseMembership"
+      },
+      "maxItems": 1000000,
+      "title": "Universe Memberships",
+      "type": "array"
+    },
+    "availability": {
+      "items": {
+        "$ref": "#/$defs/HistoricalAvailability"
+      },
+      "maxItems": 1000000,
+      "title": "Availability",
+      "type": "array"
+    },
+    "market_bars": {
+      "items": {
+        "$ref": "#/$defs/MarketBar"
+      },
+      "maxItems": 10000000,
+      "title": "Market Bars",
+      "type": "array"
+    },
+    "corporate_actions": {
+      "items": {
+        "$ref": "#/$defs/CorporateAction"
+      },
+      "maxItems": 1000000,
+      "title": "Corporate Actions",
+      "type": "array"
+    },
+    "fx_observations": {
+      "items": {
+        "$ref": "#/$defs/FXObservation"
+      },
+      "maxItems": 1000000,
+      "title": "Fx Observations",
+      "type": "array"
+    },
+    "benchmarks": {
+      "items": {
+        "$ref": "#/$defs/BenchmarkObservation"
+      },
+      "maxItems": 1000000,
+      "title": "Benchmarks",
+      "type": "array"
+    },
+    "decision_artifacts": {
+      "items": {
+        "$ref": "#/$defs/HistoricalDecisionArtifact"
+      },
+      "maxItems": 1000000,
+      "title": "Decision Artifacts",
+      "type": "array"
+    },
+    "source_artifact_ids": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 1000000,
+      "title": "Source Artifact Ids",
+      "type": "array"
+    },
+    "financial_artifact_ids": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 1000000,
+      "title": "Financial Artifact Ids",
+      "type": "array"
+    },
+    "business_quality_artifact_ids": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 1000000,
+      "title": "Business Quality Artifact Ids",
+      "type": "array"
+    },
+    "missing_data_summary": {
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "title": "Missing Data Summary",
+      "type": "object"
+    },
+    "limitations": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 256,
+      "title": "Limitations",
+      "type": "array"
+    },
+    "survivorship_bias_note": {
+      "anyOf": [
+        {
+          "maxLength": 2000,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Survivorship Bias Note"
+    },
+    "claims_survivorship_bias_free": {
+      "default": false,
+      "title": "Claims Survivorship Bias Free",
+      "type": "boolean"
+    },
+    "allow_undated_evidence": {
+      "default": false,
+      "title": "Allow Undated Evidence",
+      "type": "boolean"
+    },
+    "undated_evidence_attestation": {
       "anyOf": [
         {
           "minLength": 1,
@@ -3023,84 +3743,28 @@
         }
       ],
       "default": null,
-      "title": "Research Session Id"
+      "title": "Undated Evidence Attestation"
     },
-    "analyst_run_ids": {
-      "items": {
-        "type": "string"
-      },
-      "maxItems": 1024,
-      "title": "Analyst Run Ids",
-      "type": "array"
-    },
-    "proposed_adjustment_ids": {
-      "items": {
-        "type": "string"
-      },
-      "maxItems": 256,
-      "title": "Proposed Adjustment Ids",
-      "type": "array"
-    },
-    "evidence_ids": {
-      "items": {
-        "type": "string"
-      },
-      "maxItems": 4096,
-      "title": "Evidence Ids",
-      "type": "array"
-    },
-    "filing_ids": {
-      "items": {
-        "type": "string"
-      },
-      "maxItems": 1024,
-      "title": "Filing Ids",
-      "type": "array"
-    },
-    "accepted_adjustments": {
-      "items": {
-        "$ref": "#/$defs/Adjustment"
-      },
-      "maxItems": 256,
-      "title": "Accepted Adjustments",
-      "type": "array"
-    },
-    "unresolved_questions": {
-      "items": {
-        "type": "string"
-      },
-      "maxItems": 256,
-      "title": "Unresolved Questions",
-      "type": "array"
-    },
-    "sections": {
-      "items": {
-        "$ref": "#/$defs/ReportSection"
-      },
-      "maxItems": 16,
-      "minItems": 1,
-      "title": "Sections",
-      "type": "array"
-    },
-    "text": {
-      "maxLength": 100000,
-      "minLength": 1,
-      "title": "Text",
+    "content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Content Sha256",
       "type": "string"
     }
   },
   "required": [
     "contract",
-    "report_id",
-    "analysis",
-    "decision_trace",
-    "deterministic_state",
-    "analysis_sha256",
-    "sections",
-    "text"
+    "dataset_id",
+    "dataset_version",
+    "start_date",
+    "end_date",
+    "calendar_id",
+    "universe_id",
+    "universe_coverage",
+    "listing_lifecycles",
+    "content_sha256"
   ],
-  "title": "Turtle Value Engine research-report",
+  "title": "Turtle Value Engine backtest-dataset-manifest",
   "type": "object",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/blooddrunk/turtle-value-engine/schemas/research-report.schema.json"
+  "$id": "https://github.com/blooddrunk/turtle-value-engine/schemas/backtest-dataset-manifest.schema.json"
 }

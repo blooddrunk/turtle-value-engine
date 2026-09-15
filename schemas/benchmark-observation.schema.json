@@ -1,0 +1,87 @@
+{
+  "$defs": {
+    "BenchmarkReturnType": {
+      "enum": [
+        "PRICE_RETURN",
+        "TOTAL_RETURN"
+      ],
+      "title": "BenchmarkReturnType",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "One benchmark level with an explicit price/total return identity.",
+  "properties": {
+    "contract": {
+      "const": "benchmark_observation_v1",
+      "default": "benchmark_observation_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "observation_id": {
+      "minLength": 1,
+      "title": "Observation Id",
+      "type": "string"
+    },
+    "benchmark_id": {
+      "minLength": 1,
+      "title": "Benchmark Id",
+      "type": "string"
+    },
+    "observation_date": {
+      "format": "date",
+      "title": "Observation Date",
+      "type": "string"
+    },
+    "value": {
+      "exclusiveMinimum": 0,
+      "title": "Value",
+      "type": "number"
+    },
+    "return_type": {
+      "$ref": "#/$defs/BenchmarkReturnType"
+    },
+    "currency": {
+      "maxLength": 3,
+      "minLength": 3,
+      "title": "Currency",
+      "type": "string"
+    },
+    "available_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "format": "date",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Available At"
+    },
+    "source_hash": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Source Hash",
+      "type": "string"
+    }
+  },
+  "required": [
+    "contract",
+    "observation_id",
+    "benchmark_id",
+    "observation_date",
+    "value",
+    "return_type",
+    "currency",
+    "source_hash"
+  ],
+  "title": "Turtle Value Engine benchmark-observation",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/blooddrunk/turtle-value-engine/schemas/benchmark-observation.schema.json"
+}

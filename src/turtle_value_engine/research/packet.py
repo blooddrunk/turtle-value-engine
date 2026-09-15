@@ -24,6 +24,7 @@ from .contracts import (
     PacketFact,
     ResearchIntent,
     ResearchQuestion,
+    UndatedEvidencePolicy,
 )
 
 
@@ -191,9 +192,16 @@ def _fact_available(fact: Fact, as_of: date) -> bool:
     return period_end is not None and period_end <= as_of
 
 
-def _evidence_available(evidence: Evidence, as_of: date) -> bool:
+def _evidence_available(
+    evidence: Evidence,
+    as_of: date,
+    *,
+    undated_policy: UndatedEvidencePolicy = UndatedEvidencePolicy.REJECT,
+) -> bool:
     published_date = evidence.source.published_date
-    return published_date is None or published_date <= as_of
+    if published_date is None:
+        return undated_policy is UndatedEvidencePolicy.EXPLICIT_FROZEN
+    return published_date <= as_of
 
 
 def _validated_input(value: NormalizedCompanyInput) -> NormalizedCompanyInput:
@@ -268,6 +276,7 @@ def _select_evidence(
     explicit_ids: Sequence[str] | None,
     required_ids: Iterable[str],
     max_evidence_items: int,
+    undated_evidence_policy: UndatedEvidencePolicy,
 ) -> tuple[list[Evidence], list[str]]:
     by_id = {item.id: item for item in normalized_input.evidence_index}
     if len(by_id) != len(normalized_input.evidence_index):
@@ -291,7 +300,13 @@ def _select_evidence(
             for evidence_id in fact.source_evidence_ids
         }
         candidates = [
-            item for item in normalized_input.evidence_index if _evidence_available(item, as_of)
+            item
+            for item in normalized_input.evidence_index
+            if _evidence_available(
+                item,
+                as_of,
+                undated_policy=undated_evidence_policy,
+            )
         ]
         candidates.sort(
             key=lambda item: (
@@ -311,7 +326,11 @@ def _select_evidence(
     future = [
         evidence_id
         for evidence_id in selected_ids
-        if not _evidence_available(by_id[evidence_id], as_of)
+        if not _evidence_available(
+            by_id[evidence_id],
+            as_of,
+            undated_policy=undated_evidence_policy,
+        )
     ]
     if future:
         raise EvidencePacketError(
@@ -332,6 +351,8 @@ def build_evidence_packet(
     max_evidence_items: int = 32,
     max_fact_items: int = 128,
     max_metric_items: int = 64,
+    undated_evidence_policy: UndatedEvidencePolicy = UndatedEvidencePolicy.REJECT,
+    undated_evidence_attestation: str | None = None,
     protocol_version: str = RESEARCH_PROTOCOL_VERSION,
 ) -> EvidencePacket:
     """Build a reproducible packet with strict point-in-time and size bounds."""
@@ -352,6 +373,18 @@ def build_evidence_packet(
         raise ValueError("max_fact_items must be between 1 and 256")
     if max_metric_items <= 0 or max_metric_items > 128:
         raise ValueError("max_metric_items must be between 1 and 128")
+    if (
+        undated_evidence_policy is UndatedEvidencePolicy.EXPLICIT_FROZEN
+        and not undated_evidence_attestation
+    ):
+        raise EvidencePacketError(
+            "EXPLICIT_FROZEN undated evidence requires an availability attestation"
+        )
+    if (
+        undated_evidence_policy is UndatedEvidencePolicy.REJECT
+        and undated_evidence_attestation is not None
+    ):
+        raise EvidencePacketError("an undated evidence attestation requires EXPLICIT_FROZEN policy")
     expected_intent = _EXPECTED_INTENTS.get(role)
     if expected_intent is not None and question.intent is not expected_intent:
         raise EvidencePacketError(f"{role.value} packets require {expected_intent.value} intent")
@@ -376,6 +409,7 @@ def build_evidence_packet(
         explicit_ids=explicit,
         required_ids=metric_evidence_ids,
         max_evidence_items=max_evidence_items,
+        undated_evidence_policy=undated_evidence_policy,
     )
     available_ids = {item.id for item in evidence}
     facts = [
@@ -403,6 +437,8 @@ def build_evidence_packet(
         facts=facts,
         deterministic_metrics=metrics,
         undated_evidence_ids=undated_ids,
+        undated_evidence_policy=undated_evidence_policy,
+        undated_evidence_attestation=undated_evidence_attestation,
         protocol_version=protocol_version,
     )
     # ``excluded_evidence_ids`` is intentionally not passed through as a
@@ -422,11 +458,15 @@ class EvidencePacketBuilder:
         max_evidence_items: int = 32,
         max_fact_items: int = 128,
         max_metric_items: int = 64,
+        undated_evidence_policy: UndatedEvidencePolicy = UndatedEvidencePolicy.REJECT,
+        undated_evidence_attestation: str | None = None,
         protocol_version: str = RESEARCH_PROTOCOL_VERSION,
     ) -> None:
         self.max_evidence_items = max_evidence_items
         self.max_fact_items = max_fact_items
         self.max_metric_items = max_metric_items
+        self.undated_evidence_policy = undated_evidence_policy
+        self.undated_evidence_attestation = undated_evidence_attestation
         self.protocol_version = protocol_version
 
     def build(
@@ -447,6 +487,8 @@ class EvidencePacketBuilder:
             max_evidence_items=self.max_evidence_items,
             max_fact_items=self.max_fact_items,
             max_metric_items=self.max_metric_items,
+            undated_evidence_policy=self.undated_evidence_policy,
+            undated_evidence_attestation=self.undated_evidence_attestation,
             protocol_version=self.protocol_version,
         )
 

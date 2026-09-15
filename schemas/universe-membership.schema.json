@@ -1,0 +1,206 @@
+{
+  "$defs": {
+    "AvailabilityStatus": {
+      "enum": [
+        "KNOWN",
+        "UNKNOWN",
+        "EXPLICIT_POLICY"
+      ],
+      "title": "AvailabilityStatus",
+      "type": "string"
+    },
+    "HistoricalAvailability": {
+      "additionalProperties": false,
+      "description": "Availability metadata for one frozen historical artifact.",
+      "properties": {
+        "contract": {
+          "const": "historical_availability_v1",
+          "default": "historical_availability_v1",
+          "title": "Contract",
+          "type": "string"
+        },
+        "artifact_id": {
+          "minLength": 1,
+          "title": "Artifact Id",
+          "type": "string"
+        },
+        "period_end": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Period End"
+        },
+        "published_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Published At"
+        },
+        "available_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Available At"
+        },
+        "retrieved_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Retrieved At"
+        },
+        "source_hash": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Source Hash",
+          "type": "string"
+        },
+        "source_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Id"
+        },
+        "status": {
+          "$ref": "#/$defs/AvailabilityStatus",
+          "default": "KNOWN"
+        },
+        "notes": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Notes"
+        }
+      },
+      "required": [
+        "contract",
+        "artifact_id",
+        "source_hash"
+      ],
+      "title": "HistoricalAvailability",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "One historical membership interval for one listing.",
+  "properties": {
+    "contract": {
+      "const": "universe_membership_v1",
+      "default": "universe_membership_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "membership_id": {
+      "minLength": 1,
+      "title": "Membership Id",
+      "type": "string"
+    },
+    "universe_id": {
+      "minLength": 1,
+      "title": "Universe Id",
+      "type": "string"
+    },
+    "listing_id": {
+      "minLength": 1,
+      "title": "Listing Id",
+      "type": "string"
+    },
+    "valid_from": {
+      "format": "date",
+      "title": "Valid From",
+      "type": "string"
+    },
+    "valid_to": {
+      "anyOf": [
+        {
+          "format": "date",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Valid To"
+    },
+    "included": {
+      "default": true,
+      "title": "Included",
+      "type": "boolean"
+    },
+    "availability": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/HistoricalAvailability"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    }
+  },
+  "required": [
+    "contract",
+    "membership_id",
+    "universe_id",
+    "listing_id",
+    "valid_from"
+  ],
+  "title": "Turtle Value Engine universe-membership",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/blooddrunk/turtle-value-engine/schemas/universe-membership.schema.json"
+}

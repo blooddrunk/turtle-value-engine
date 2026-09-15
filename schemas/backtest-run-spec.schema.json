@@ -1,0 +1,104 @@
+{
+  "additionalProperties": false,
+  "description": "Offline run specification tying a manifest to signal/portfolio work.",
+  "properties": {
+    "contract": {
+      "const": "backtest_run_spec_v1",
+      "default": "backtest_run_spec_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "run_id": {
+      "minLength": 1,
+      "title": "Run Id",
+      "type": "string"
+    },
+    "manifest_id": {
+      "minLength": 1,
+      "title": "Manifest Id",
+      "type": "string"
+    },
+    "profile_id": {
+      "minLength": 1,
+      "title": "Profile Id",
+      "type": "string"
+    },
+    "start_date": {
+      "format": "date",
+      "title": "Start Date",
+      "type": "string"
+    },
+    "end_date": {
+      "format": "date",
+      "title": "End Date",
+      "type": "string"
+    },
+    "horizons": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Horizons",
+      "type": "array"
+    },
+    "snapshot_ids": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Snapshot Ids",
+      "type": "array"
+    },
+    "portfolio_policy_id": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Portfolio Policy Id"
+    },
+    "benchmark_ids": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Benchmark Ids",
+      "type": "array"
+    },
+    "run_signal_evaluation": {
+      "default": true,
+      "title": "Run Signal Evaluation",
+      "type": "boolean"
+    },
+    "run_portfolio_simulation": {
+      "default": false,
+      "title": "Run Portfolio Simulation",
+      "type": "boolean"
+    },
+    "assumptions": {
+      "additionalProperties": true,
+      "title": "Assumptions",
+      "type": "object"
+    },
+    "spec_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Spec Sha256",
+      "type": "string"
+    }
+  },
+  "required": [
+    "contract",
+    "run_id",
+    "manifest_id",
+    "profile_id",
+    "start_date",
+    "end_date",
+    "spec_sha256"
+  ],
+  "title": "Turtle Value Engine backtest-run-spec",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/blooddrunk/turtle-value-engine/schemas/backtest-run-spec.schema.json"
+}
