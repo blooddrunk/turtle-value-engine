@@ -111,6 +111,7 @@ _SAFE_CREDENTIAL_CONFIGURATION_KEYS = {
     "credential_header",
     "credential_scheme",
 }
+_MAX_DOWNLOADS_PER_REQUEST = 10_000
 _UNSET = object()
 _MODEL_BY_KIND: dict[ShardArtifactKind, type[BaseModel]] = {
     ShardArtifactKind.LISTING_LIFECYCLE: ListingLifecycle,
@@ -497,6 +498,11 @@ class HistoricalAcquisitionPlanV1(BaseModel):
             raise ValueError("request IDs must be unique")
         source_by_id = {item.source_id: item for item in self.sources}
         target_ids = set(self.target.listing_ids)
+        for source in self.sources:
+            if not set(source.coverage_listing_ids).issubset(target_ids):
+                raise ValueError(
+                    "source coverage lists a listing outside target: " + source.source_id
+                )
         for request in self.requests:
             source = source_by_id.get(request.source_id)
             if source is None:
@@ -507,6 +513,11 @@ class HistoricalAcquisitionPlanV1(BaseModel):
                 raise ValueError("request/source category mismatch: " + request.request_id)
             if not set(request.listing_ids).issubset(target_ids):
                 raise ValueError("request listing lies outside target: " + request.request_id)
+            if not set(request.listing_ids).issubset(set(source.coverage_listing_ids)):
+                raise ValueError(
+                    "request listing is outside declared source coverage: "
+                    + request.request_id
+                )
             if (
                 request.start_date < self.target.start_date
                 or request.end_date > self.target.end_date
@@ -2501,7 +2512,7 @@ class HistoricalAcquisitionService:
         credentials: CredentialResolver | None = None,
         clock: Any = lambda: datetime.now(UTC),
     ) -> None:
-        self.adapters = dict(adapters or default_source_adapters())
+        self.adapters = dict(default_source_adapters() if adapters is None else adapters)
         self.transport = (
             ResilientNetworkTransport(UrllibNetworkTransport())
             if transport is None
@@ -2534,8 +2545,13 @@ class HistoricalAcquisitionService:
         saw_environment_reference = False
         for request in plan.requests:
             reference = request.credential_ref
-            if reference is None or reference.kind != CredentialKind.ENVIRONMENT:
+            if reference is None:
                 continue
+            if reference.kind is not CredentialKind.ENVIRONMENT:
+                raise CredentialUnavailableError(
+                    "built-in live transport accepts only ENVIRONMENT credential references: "
+                    + request.request_id
+                )
             saw_environment_reference = True
             try:
                 value = self.credentials.resolve(reference)
@@ -2634,7 +2650,18 @@ class HistoricalAcquisitionService:
                 credentials=self.credentials,
             )
             retrieval_finished_at = _utc_now(self.clock)
-            for download in downloads:
+            try:
+                iterator = iter(downloads)
+            except TypeError as exc:
+                raise HistoricalSourceSchemaError(
+                    "source adapter returned a non-iterable raw download collection"
+                ) from exc
+            for download_index, download in enumerate(iterator, start=1):
+                if download_index > _MAX_DOWNLOADS_PER_REQUEST:
+                    raise HistoricalSourceSchemaError(
+                        "source adapter returned too many raw downloads for request: "
+                        + request.request_id
+                    )
                 if not isinstance(download, RawDownload):
                     raise HistoricalSourceSchemaError(
                         "source adapter returned an invalid raw download"
@@ -2692,6 +2719,15 @@ class HistoricalAcquisitionService:
                     )
                 try:
                     safe_source_uri = _safe_uri(download.source_uri)
+                except (AttributeError, TypeError, ValueError) as exc:
+                    raise HistoricalSourceSchemaError(
+                        "source adapter returned an invalid source URI"
+                    ) from exc
+                if safe_source_uri is None:
+                    raise HistoricalSourceSchemaError(
+                        "source adapter returned a raw download without a stable source URI"
+                    )
+                try:
                     safe_artifact_metadata = _safe_json_object(
                         download.artifact_metadata,
                         path="artifact_metadata",

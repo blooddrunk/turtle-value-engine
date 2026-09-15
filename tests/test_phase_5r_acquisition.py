@@ -193,6 +193,28 @@ def test_default_live_transport_rejects_injected_resolver_for_environment_refere
         ).probe(plan, network_allowed=True)
 
 
+def test_default_live_transport_rejects_non_environment_credential_reference():
+    reference = CredentialReferenceV1(
+        reference_id="keyring-source-key",
+        kind="KEYRING",
+        service="tve",
+        account="source",
+    )
+    request = _request().model_copy(update={"credential_ref": reference})
+    plan = _plan().model_copy(
+        update={"requests": [request], "credential_references": [reference]}
+    )
+    with pytest.raises(CredentialUnavailableError, match="only ENVIRONMENT"):
+        HistoricalAcquisitionService().probe(plan, network_allowed=True)
+
+
+def test_empty_adapter_mapping_is_not_replaced_by_defaults():
+    with pytest.raises(HistoricalSourceSchemaError, match="no adapter is registered"):
+        HistoricalAcquisitionService({}, transport=FakeTransport([])).probe(
+            _plan(), network_allowed=True
+        )
+
+
 def test_historical_probe_cli_denies_network_by_default(tmp_path: Path, capsys):
     plan_path = tmp_path / "plan.json"
     plan_path.write_text(_plan().model_dump_json(), encoding="utf-8")
@@ -221,6 +243,19 @@ def test_plan_rejects_credential_reference_aliasing():
             sources=[_source()],
             requests=[request],
             credential_references=[declared],
+        )
+
+
+def test_plan_rejects_source_coverage_outside_target():
+    source = _source().model_copy(update={"coverage_listing_ids": ["A1", "A2"]})
+    with pytest.raises(ValueError, match="outside target"):
+        HistoricalAcquisitionPlanV1(
+            plan_id="out-of-scope-source-plan",
+            plan_version="1",
+            created_at=datetime(2026, 1, 1, tzinfo=UTC),
+            target=_target(),
+            sources=[source],
+            requests=[_request()],
         )
 
 
@@ -406,6 +441,46 @@ def test_acquisition_rejects_schema_drift_before_persisting_blob(tmp_path: Path)
     with pytest.raises(HistoricalSourceSchemaError, match="incompatible schema version"):
         HistoricalAcquisitionService(
             {"schema-drift": SchemaDriftAdapter()},
+            transport=FakeTransport([]),
+        ).acquire(plan, raw_store=raw_store, network_allowed=True)
+    assert list((tmp_path / "raw").rglob("*.blob")) == []
+
+
+def test_acquisition_rejects_missing_source_uri_before_persisting_blob(tmp_path: Path):
+    class MissingSourceUriAdapter:
+        adapter_id = "missing-source-uri"
+        adapter_version = "1"
+
+        def acquire(self, request, *, transport, credentials):
+            response = NetworkResponse(
+                200,
+                {"Content-Type": "application/json"},
+                b"payload",
+                "https://source.example.test/history",
+            )
+            return [
+                RawDownload(
+                    body=response.body,
+                    response=response,
+                    source_uri=None,
+                    schema_version=request.schema_version,
+                )
+            ]
+
+        def probe(self, request, *, transport, credentials, plan_id, clock):
+            raise AssertionError("probe is not part of this test")
+
+    source = _source(adapter_id="missing-source-uri").model_copy(
+        update={"source_uri": "https://source.example.test/history"}
+    )
+    request = _request(adapter_id="missing-source-uri")
+    plan = _plan(adapter_id="missing-source-uri").model_copy(
+        update={"sources": [source], "requests": [request]}
+    )
+    raw_store = RawBlobStore(tmp_path / "raw")
+    with pytest.raises(HistoricalSourceSchemaError, match="stable source URI"):
+        HistoricalAcquisitionService(
+            {"missing-source-uri": MissingSourceUriAdapter()},
             transport=FakeTransport([]),
         ).acquire(plan, raw_store=raw_store, network_allowed=True)
     assert list((tmp_path / "raw").rglob("*.blob")) == []
