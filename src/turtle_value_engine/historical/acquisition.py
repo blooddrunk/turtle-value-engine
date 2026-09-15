@@ -3187,7 +3187,7 @@ class HistoricalIngestionCompiler:
     ) -> None:
         self.raw_store = raw_store
         self.artifact_store = artifact_store
-        self.decoders = dict(decoders or default_decoders())
+        self.decoders = dict(default_decoders() if decoders is None else decoders)
 
     def _decoder(self, receipt: RawArtifactReceiptV1) -> HistoricalRawDecoder:
         if receipt.artifact_kind is None or receipt.schema_version is None:

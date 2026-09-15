@@ -438,6 +438,15 @@ def test_compiler_rebinds_receipt_terms_to_the_embedded_plan(tmp_path: Path):
         compiler.compile(tampered_batch)
 
 
+def test_empty_decoder_mapping_is_not_replaced_by_defaults(tmp_path: Path):
+    compiler = HistoricalIngestionCompiler(
+        raw_store=RawBlobStore(tmp_path / "raw"),
+        artifact_store=HistoricalArtifactStore(tmp_path / "artifacts"),
+        decoders={},
+    )
+    assert compiler.decoders == {}
+
+
 def test_private_acquisition_and_offline_compile_are_replayable(tmp_path: Path):
     body = _market_bar_body()
     transport = FakeTransport(
