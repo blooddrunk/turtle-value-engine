@@ -193,6 +193,23 @@ def test_default_live_transport_rejects_injected_resolver_for_environment_refere
         ).probe(plan, network_allowed=True)
 
 
+def test_default_live_transport_accepts_available_environment_reference(monkeypatch):
+    reference = CredentialReferenceV1(
+        reference_id="env-source-key",
+        kind="ENVIRONMENT",
+        name="TVE_SOURCE_KEY_FOR_TEST",
+    )
+    request = _request().model_copy(update={"credential_ref": reference})
+    plan = _plan().model_copy(
+        update={"requests": [request], "credential_references": [reference]}
+    )
+    monkeypatch.setenv("TVE_SOURCE_KEY_FOR_TEST", "test-only-value")
+    HistoricalAcquisitionService()._require_network_authorization(
+        plan,
+        network_allowed=True,
+    )
+
+
 def test_default_live_transport_rejects_non_environment_credential_reference():
     reference = CredentialReferenceV1(
         reference_id="keyring-source-key",
@@ -204,6 +221,46 @@ def test_default_live_transport_rejects_non_environment_credential_reference():
     plan = _plan().model_copy(
         update={"requests": [request], "credential_references": [reference]}
     )
+    with pytest.raises(CredentialUnavailableError, match="only ENVIRONMENT"):
+        HistoricalAcquisitionService().probe(plan, network_allowed=True)
+
+
+def test_default_live_transport_checks_all_credential_reference_kinds(monkeypatch):
+    environment_reference = CredentialReferenceV1(
+        reference_id="env-source-key",
+        kind="ENVIRONMENT",
+        name="TVE_SOURCE_KEY_FOR_TEST",
+    )
+    keyring_reference = CredentialReferenceV1(
+        reference_id="keyring-source-key",
+        kind="KEYRING",
+        service="tve",
+        account="source",
+    )
+    first_source = _source().model_copy(update={"source_id": "first-source"})
+    second_source = _source().model_copy(update={"source_id": "second-source"})
+    first_request = _request().model_copy(
+        update={
+            "request_id": "first-request",
+            "source_id": "first-source",
+            "credential_ref": environment_reference,
+        }
+    )
+    second_request = _request().model_copy(
+        update={
+            "request_id": "second-request",
+            "source_id": "second-source",
+            "credential_ref": keyring_reference,
+        }
+    )
+    plan = _plan().model_copy(
+        update={
+            "sources": [first_source, second_source],
+            "requests": [first_request, second_request],
+            "credential_references": [environment_reference, keyring_reference],
+        }
+    )
+    monkeypatch.setenv("TVE_SOURCE_KEY_FOR_TEST", "test-only-value")
     with pytest.raises(CredentialUnavailableError, match="only ENVIRONMENT"):
         HistoricalAcquisitionService().probe(plan, network_allowed=True)
 

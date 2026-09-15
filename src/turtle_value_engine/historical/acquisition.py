@@ -2542,17 +2542,23 @@ class HistoricalAcquisitionService:
             raise CredentialUnavailableError(
                 "built-in live transport requires EnvironmentCredentialResolver"
             )
-        saw_environment_reference = False
+        environment_references: list[CredentialReferenceV1] = []
         for request in plan.requests:
             reference = request.credential_ref
             if reference is None:
                 continue
-            if reference.kind is not CredentialKind.ENVIRONMENT:
+            if reference.kind != CredentialKind.ENVIRONMENT:
                 raise CredentialUnavailableError(
                     "built-in live transport accepts only ENVIRONMENT credential references: "
                     + request.request_id
                 )
-            saw_environment_reference = True
+            environment_references.append(reference)
+        if not environment_references:
+            raise NetworkDisabledError(
+                "live network requires a non-empty ENVIRONMENT credential reference "
+                "and --network=allow"
+            )
+        for reference in environment_references:
             try:
                 value = self.credentials.resolve(reference)
             except Exception as exc:
@@ -2566,11 +2572,6 @@ class HistoricalAcquisitionService:
                 )
             if value:
                 return
-        if not saw_environment_reference:
-            raise NetworkDisabledError(
-                "live network requires a non-empty ENVIRONMENT credential reference "
-                "and --network=allow"
-            )
         raise CredentialUnavailableError(
             "required environment credential is unavailable for live network access"
         )
