@@ -14,7 +14,11 @@ import pytest
 from jsonschema import Draft202012Validator
 
 from turtle_value_engine.backtest import (
+    BacktestRunSpec,
     BenchmarkObservation,
+    CalibrationObservation,
+    CalibrationSearchSpace,
+    ChronologicalSplit,
     ListingLifecycle,
     Market,
     MarketBar,
@@ -368,6 +372,173 @@ def test_historical_compile_cli_is_network_free(tmp_path: Path, monkeypatch):
     assert report["readiness"]["compiled_dataset_id"] == json.loads(
         manifest_path.read_text(encoding="utf-8")
     )["dataset_id"]
+
+
+def test_all_offline_cli_commands_are_network_free(tmp_path: Path, monkeypatch):
+    """A7: every replay/validation CLI path must stay usable without network."""
+
+    def fail_if_called(*_args, **_kwargs):
+        raise AssertionError("offline CLI command must not touch the network")
+
+    monkeypatch.setattr("turtle_value_engine.historical.acquisition.urlopen", fail_if_called)
+    monkeypatch.setattr("urllib.request.urlopen", fail_if_called)
+
+    fixture_root = Path(__file__).parents[1] / "fixtures" / "historical" / "phase5r-compact-v1"
+    manifest_path = fixture_root / "manifest.json"
+    store_path = fixture_root / "store"
+
+    assert main(
+        [
+            "dataset",
+            "validate",
+            "--manifest",
+            str(manifest_path),
+            "--store",
+            str(store_path),
+        ]
+    ) == 0
+    assert main(
+        [
+            "dataset",
+            "coverage",
+            "--manifest",
+            str(manifest_path),
+            "--store",
+            str(store_path),
+        ]
+    ) == 0
+    assert main(
+        [
+            "dataset",
+            "freeze",
+            "--manifest",
+            str(manifest_path),
+            "--store",
+            str(store_path),
+            "--output",
+            str(tmp_path / "backtest-manifest.json"),
+        ]
+    ) == 0
+    assert main(
+        [
+            "dataset",
+            "snapshot",
+            "--manifest",
+            str(manifest_path),
+            "--store",
+            str(store_path),
+            "--output",
+            str(tmp_path / "snapshots.json"),
+        ]
+    ) == 0
+
+    canonical_path = tmp_path / "canonical.json"
+    independent_path = tmp_path / "independent.json"
+    reconciliation_row = [{"listing_id": "A1", "date": "2020-01-02", "value": 1.0}]
+    canonical_path.write_text(json.dumps(reconciliation_row), encoding="utf-8")
+    independent_path.write_text(json.dumps(reconciliation_row), encoding="utf-8")
+    assert main(
+        [
+            "dataset",
+            "reconcile",
+            "--target-id",
+            "fixture-ah",
+            "--canonical",
+            str(canonical_path),
+            "--independent",
+            str(independent_path),
+            "--canonical-source",
+            "source-a",
+            "--independent-source",
+            "source-b",
+            "--absolute-tolerance",
+            "0",
+            "--relative-tolerance",
+            "0",
+            "--output",
+            str(tmp_path / "reconciliation.json"),
+        ]
+    ) == 0
+
+    run_spec = BacktestRunSpec.build(
+        run_id="offline-cli-run",
+        manifest_id="phase5r-compact-dataset-v2",
+        profile_id="strict-v1",
+        start_date=date(2020, 1, 1),
+        end_date=date(2020, 1, 3),
+        horizons=["1D"],
+    )
+    run_spec_path = tmp_path / "run-spec.json"
+    run_spec_path.write_text(run_spec.model_dump_json(), encoding="utf-8")
+    assert main(
+        [
+            "backtest",
+            "--manifest",
+            str(manifest_path),
+            "--store",
+            str(store_path),
+            "--run-spec",
+            str(run_spec_path),
+            "--output",
+            str(tmp_path / "backtest.json"),
+        ]
+    ) == 0
+
+    search_space = CalibrationSearchSpace(
+        space_id="offline-cli-space",
+        base_profile_id="strict-v1",
+        parameters={"min_quality": [0.0]},
+        objective="MEAN_RETURN",
+    )
+    split = ChronologicalSplit(
+        train_start=date(2020, 1, 1),
+        train_end=date(2020, 1, 1),
+        validation_start=date(2020, 1, 2),
+        validation_end=date(2020, 1, 2),
+        holdout_start=date(2020, 1, 3),
+        holdout_end=date(2020, 1, 3),
+    )
+    observations = [
+        CalibrationObservation(
+            observation_id=f"offline-cli-observation-{index}",
+            observed_at=observed_at,
+            target_return=float(index),
+            feature_values={"quality": float(index)},
+            source_hash=HASH,
+        )
+        for index, observed_at in enumerate(
+            (date(2020, 1, 1), date(2020, 1, 2), date(2020, 1, 3)),
+            start=1,
+        )
+    ]
+    search_space_path = tmp_path / "search-space.json"
+    split_path = tmp_path / "split.json"
+    observations_path = tmp_path / "observations.json"
+    search_space_path.write_text(search_space.model_dump_json(), encoding="utf-8")
+    split_path.write_text(split.model_dump_json(), encoding="utf-8")
+    observations_path.write_text(
+        json.dumps([item.model_dump(mode="json") for item in observations]),
+        encoding="utf-8",
+    )
+    assert main(
+        [
+            "calibrate",
+            "--manifest",
+            str(manifest_path),
+            "--store",
+            str(store_path),
+            "--search-space",
+            str(search_space_path),
+            "--split",
+            str(split_path),
+            "--observations",
+            str(observations_path),
+            "--base-profile-sha256",
+            HASH,
+            "--output",
+            str(tmp_path / "calibration.json"),
+        ]
+    ) == 0
 
 
 def test_private_acceptance_audit_is_offline_and_fail_closed(
