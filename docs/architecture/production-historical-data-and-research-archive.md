@@ -121,6 +121,9 @@ standard library. A future Parquet/columnar adapter may be added only as an
 explicit format contract; it must retain the same hash and provenance fields.
 Git contains only compact fixtures. Large, private or licensed artifacts are
 external inputs and are never silently fetched during replay.
+The local artifact store creates its root and shard directories as private
+`0700` directories and rejects symlinked roots or directory components; a
+missing or redirected artifact is an error rather than a network fallback.
 
 ## Listing lifecycle and replay semantics
 

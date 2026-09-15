@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import stat
 from datetime import UTC, date, datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -23,6 +25,7 @@ from turtle_value_engine.historical import (
     HistoricalAcquisitionPlanV1,
     HistoricalAcquisitionRequestV1,
     HistoricalAcquisitionService,
+    HistoricalArtifactError,
     HistoricalArtifactStore,
     HistoricalFilingDocumentRecord,
     HistoricalIngestionCompiler,
@@ -492,6 +495,21 @@ def test_raw_blob_store_rejects_symlinked_quarantine_partial(tmp_path: Path):
     with pytest.raises(RawBlobError, match="quarantine partial path"):
         store.put_stream([b"must not overwrite"], quarantine_id="unsafe")
     assert target.read_bytes() == b"untouched"
+
+
+def test_artifact_store_is_private_and_rejects_symlinked_root(tmp_path: Path):
+    store = HistoricalArtifactStore(tmp_path / "artifacts")
+    if os.name != "nt":
+        assert stat.S_IMODE(store.root.stat().st_mode) == 0o700
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    linked = tmp_path / "linked-artifacts"
+    try:
+        linked.symlink_to(outside, target_is_directory=True)
+    except OSError:
+        pytest.skip("symlink creation is unavailable on this platform")
+    with pytest.raises(HistoricalArtifactError, match="regular directory"):
+        HistoricalArtifactStore(linked)
 
 
 def test_empty_event_result_is_not_complete_coverage():

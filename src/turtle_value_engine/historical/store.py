@@ -58,6 +58,13 @@ class HistoricalArtifactStore:
 
     def __init__(self, root: str | Path) -> None:
         self.root = Path(root)
+        if self.root.is_symlink() or (self.root.exists() and not self.root.is_dir()):
+            raise HistoricalArtifactError("artifact store root must be a regular directory")
+        try:
+            self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
+            self.root.chmod(0o700)
+        except OSError as exc:
+            raise HistoricalArtifactError("cannot secure artifact store root") from exc
 
     def path_for(self, reference: HistoricalShardReference) -> Path:
         if reference.format is not ShardFormat.JSONL:
@@ -136,6 +143,7 @@ class HistoricalArtifactStore:
         """Read and verify a shard; never fetch a missing shard."""
 
         path = self.path_for(reference)
+        self._check_directory(path.parent)
         if path.is_symlink() or not path.is_file():
             raise HistoricalArtifactError(f"historical shard is missing: {path}")
         try:
@@ -185,6 +193,7 @@ class HistoricalArtifactStore:
         ):
             raise HistoricalArtifactError("JSON artifact path escapes the artifact store")
         path = self.root / relative
+        self._check_directory(path.parent)
         if path.is_symlink() or not path.is_file():
             raise HistoricalArtifactError(f"historical JSON artifact is missing: {path}")
         try:
@@ -219,8 +228,50 @@ class HistoricalArtifactStore:
         self._write_immutable(self.root / relative_path, serialized)
         return str(relative_path), content_sha256
 
-    @staticmethod
-    def _write_immutable(path: Path, serialized: bytes) -> None:
+    def _secure_directory(self, path: Path) -> None:
+        """Create a store-relative directory without following symlinks."""
+
+        try:
+            relative = path.relative_to(self.root)
+        except ValueError as exc:
+            raise HistoricalArtifactError(
+                "artifact path escapes the artifact store"
+            ) from exc
+        current = self.root
+        try:
+            for component in relative.parts:
+                current = current / component
+                if current.is_symlink() or (current.exists() and not current.is_dir()):
+                    raise HistoricalArtifactError(
+                        "artifact store directory component is not a regular directory: "
+                        + str(current)
+                    )
+                current.mkdir(exist_ok=True, mode=0o700)
+                current.chmod(0o700)
+        except HistoricalArtifactError:
+            raise
+        except OSError as exc:
+            raise HistoricalArtifactError("cannot secure artifact store directory") from exc
+
+    def _check_directory(self, path: Path) -> None:
+        """Check an existing store-relative directory without following links."""
+
+        try:
+            relative = path.relative_to(self.root)
+        except ValueError as exc:
+            raise HistoricalArtifactError(
+                "artifact path escapes the artifact store"
+            ) from exc
+        current = self.root
+        for component in relative.parts:
+            current = current / component
+            if current.is_symlink() or not current.is_dir():
+                raise HistoricalArtifactError(
+                    "artifact store directory component is not a regular directory: "
+                    + str(current)
+                )
+
+    def _write_immutable(self, path: Path, serialized: bytes) -> None:
         if path.exists():
             if path.is_symlink() or not path.is_file():
                 raise HistoricalArtifactError(f"artifact path is not a regular file: {path}")
@@ -230,7 +281,7 @@ class HistoricalArtifactStore:
         descriptor = -1
         temporary_path: Path | None = None
         try:
-            path.parent.mkdir(parents=True, exist_ok=True)
+            self._secure_directory(path.parent)
             descriptor, temporary_name = tempfile.mkstemp(
                 prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
             )
