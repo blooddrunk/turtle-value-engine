@@ -1,108 +1,847 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/blooddrunk/turtle-value-engine/schemas/evidence-packet.schema.json",
-  "title": "Turtle Value Engine Bounded Evidence Packet",
-  "type": "object",
-  "required": ["contract", "packet_id", "analysis_id", "listing_id", "as_of", "profile_id", "role", "question", "intent", "evidence", "facts", "deterministic_metrics", "content_sha256"],
-  "properties": {
-    "contract": {"const": "evidence_packet_v1"},
-    "packet_id": {"type": "string", "minLength": 1},
-    "analysis_id": {"type": "string", "minLength": 1},
-    "listing_id": {"type": "string", "minLength": 1},
-    "as_of": {"type": "string", "format": "date"},
-    "profile_id": {"type": "string", "minLength": 1},
-    "role": {"type": "string", "enum": ["RESEARCH", "QUALITY_ANALYST", "SKEPTIC", "ADJUDICATOR", "REPORT_COMPOSER"]},
-    "question": {"$ref": "#/$defs/question"},
-    "intent": {"type": "string", "enum": ["THESIS", "FALSIFICATION", "ADJUDICATION"]},
-    "evidence": {"type": "array", "maxItems": 128, "items": {"$ref": "#/$defs/evidence"}},
-    "facts": {"type": "array", "maxItems": 256, "items": {"$ref": "#/$defs/packetFact"}},
-    "deterministic_metrics": {"type": "array", "maxItems": 128, "items": {"$ref": "#/$defs/metric"}},
-    "available_evidence_ids": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
-    "available_fact_ids": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
-    "undated_evidence_ids": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
-    "protocol_version": {"type": "string", "minLength": 1},
-    "content_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
-  },
   "$defs": {
-    "question": {
-      "type": "object",
-      "required": ["id", "intent", "text"],
-      "properties": {
-        "id": {"type": "string", "minLength": 1},
-        "dimension": {"type": ["string", "null"]},
-        "intent": {"type": "string", "enum": ["THESIS", "FALSIFICATION", "ADJUDICATION"]},
-        "text": {"type": "string", "minLength": 1},
-        "focus_areas": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
-        "required": {"type": "boolean"}
-      },
-      "additionalProperties": false
+    "AnalystRole": {
+      "description": "Stable role names understood by external agent runtimes.",
+      "enum": [
+        "RESEARCH",
+        "QUALITY_ANALYST",
+        "SKEPTIC",
+        "ADJUDICATOR",
+        "REPORT_COMPOSER"
+      ],
+      "title": "AnalystRole",
+      "type": "string"
     },
-    "source": {
-      "type": "object",
-      "required": ["type", "title"],
+    "DeterministicMetric": {
+      "additionalProperties": false,
+      "description": "A read-only metric already produced by deterministic engine code.",
       "properties": {
-        "type": {"type": "string"},
-        "title": {"type": "string", "minLength": 1},
-        "issuer": {"type": ["string", "null"]},
-        "published_date": {"type": ["string", "null"], "format": "date"},
-        "fiscal_period": {"type": ["string", "null"]},
-        "url": {"type": ["string", "null"]},
-        "document_id": {"type": ["string", "null"]},
-        "page": {"type": ["integer", "null"], "minimum": 1},
-        "section": {"type": ["string", "null"]},
-        "table_or_note": {"type": ["string", "null"]},
-        "locator": {"type": ["string", "null"]}
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Value"
+        },
+        "unit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unit"
+        },
+        "period": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Period"
+        },
+        "calculation_contract": {
+          "const": "DETERMINISTIC_ENGINE",
+          "default": "DETERMINISTIC_ENGINE",
+          "title": "Calculation Contract",
+          "type": "string"
+        },
+        "source_evidence_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Source Evidence Ids",
+          "type": "array"
+        }
       },
-      "additionalProperties": true
+      "required": [
+        "id",
+        "name"
+      ],
+      "title": "DeterministicMetric",
+      "type": "object"
     },
-    "evidence": {
-      "type": "object",
-      "required": ["id", "direction", "strength", "statement", "source", "confidence"],
+    "Evidence": {
+      "additionalProperties": false,
+      "description": "Auditable evidence item used by facts, adjustments and judgments.",
       "properties": {
-        "id": {"type": "string", "minLength": 1},
-        "direction": {"type": "string", "enum": ["SUPPORT", "COUNTER", "CONTEXT"]},
-        "strength": {"type": "string", "enum": ["E3", "E2", "E1", "E0"]},
-        "statement": {"type": "string", "minLength": 1},
-        "source": {"$ref": "#/$defs/source"},
-        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
-        "metric_context": {"type": ["object", "null"]},
-        "notes": {"type": ["string", "null"]},
-        "provenance": {"type": ["object", "null"]}
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "direction": {
+          "$ref": "#/$defs/EvidenceDirection"
+        },
+        "strength": {
+          "$ref": "#/$defs/EvidenceStrength"
+        },
+        "statement": {
+          "minLength": 1,
+          "title": "Statement",
+          "type": "string"
+        },
+        "metric_context": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MetricContext"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "source": {
+          "$ref": "#/$defs/Source"
+        },
+        "confidence": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "notes": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Notes"
+        },
+        "provenance": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EvidenceProvenance"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
       },
-      "additionalProperties": true
+      "required": [
+        "id",
+        "direction",
+        "strength",
+        "statement",
+        "source",
+        "confidence"
+      ],
+      "title": "Evidence",
+      "type": "object"
     },
-    "packetFact": {
-      "type": "object",
-      "required": ["fact_id", "field", "value", "period", "source_evidence_ids", "confidence"],
-      "properties": {
-        "fact_id": {"type": "string", "minLength": 1},
-        "field": {"type": "string", "minLength": 1},
-        "value": {"type": ["number", "string", "boolean", "null"]},
-        "unit": {"type": ["string", "null"]},
-        "currency": {"type": ["string", "null"]},
-        "period": {"type": "string", "minLength": 1},
-        "source_evidence_ids": {"type": "array", "minItems": 1, "items": {"type": "string"}, "uniqueItems": true},
-        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
-        "origin": {"type": "string", "enum": ["NORMALIZED_SOURCE_FACT", "EFFECTIVE_INPUT_FACT"]},
-        "source_fact_id": {"type": ["string", "null"]},
-        "applied_adjustment_ids": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}
-      },
-      "additionalProperties": false
+    "EvidenceDirection": {
+      "description": "Whether evidence supports, challenges or contextualizes a claim.",
+      "enum": [
+        "SUPPORT",
+        "COUNTER",
+        "CONTEXT"
+      ],
+      "title": "EvidenceDirection",
+      "type": "string"
     },
-    "metric": {
-      "type": "object",
-      "required": ["id", "name"],
+    "EvidenceProvenance": {
+      "additionalProperties": false,
+      "description": "Exact filing-extraction identity behind one evidence item.\n\nThe provider layer uses this additive metadata to bind an evidence item\nto one immutable document snapshot and one extracted text block.  It is\ndeliberately separate from ``Source`` so existing structured-data\nevidence keeps its original shape while filing evidence can carry the\nstronger byte- and parser-level provenance required for replay.",
       "properties": {
-        "id": {"type": "string", "minLength": 1},
-        "name": {"type": "string", "minLength": 1},
-        "value": {"type": ["number", "null"]},
-        "unit": {"type": ["string", "null"]},
-        "period": {"type": ["string", "null"]},
-        "calculation_contract": {"const": "DETERMINISTIC_ENGINE"},
-        "source_evidence_ids": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}
+        "filing_id": {
+          "minLength": 1,
+          "pattern": "^filing-[0-9a-f]{24}$",
+          "title": "Filing Id",
+          "type": "string"
+        },
+        "filing_source": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[A-Z][A-Z0-9_]*$",
+          "title": "Filing Source",
+          "type": "string"
+        },
+        "source_document_id": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Document Id"
+        },
+        "report_period": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Report Period"
+        },
+        "content_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Content Sha256",
+          "type": "string"
+        },
+        "content_size": {
+          "minimum": 1,
+          "title": "Content Size",
+          "type": "integer"
+        },
+        "media_type": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Media Type",
+          "type": "string"
+        },
+        "extraction_contract": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Extraction Contract",
+          "type": "string"
+        },
+        "parser_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Parser Id",
+          "type": "string"
+        },
+        "parser_version": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Parser Version",
+          "type": "string"
+        },
+        "block_sequence": {
+          "minimum": 1,
+          "title": "Block Sequence",
+          "type": "integer"
+        },
+        "block_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Block Sha256",
+          "type": "string"
+        }
       },
-      "additionalProperties": false
+      "required": [
+        "filing_id",
+        "filing_source",
+        "content_sha256",
+        "content_size",
+        "media_type",
+        "extraction_contract",
+        "parser_id",
+        "parser_version",
+        "block_sequence",
+        "block_sha256"
+      ],
+      "title": "EvidenceProvenance",
+      "type": "object"
+    },
+    "EvidenceStrength": {
+      "description": "Evidence quality level defined by the repository specification.",
+      "enum": [
+        "E3",
+        "E2",
+        "E1",
+        "E0"
+      ],
+      "title": "EvidenceStrength",
+      "type": "string"
+    },
+    "MetricContext": {
+      "additionalProperties": false,
+      "description": "Optional metric context attached to evidence.",
+      "properties": {
+        "metric": {
+          "title": "Metric",
+          "type": "string"
+        },
+        "period": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Period"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Value"
+        },
+        "unit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unit"
+        },
+        "currency": {
+          "anyOf": [
+            {
+              "maxLength": 3,
+              "minLength": 3,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Currency"
+        }
+      },
+      "required": [
+        "metric"
+      ],
+      "title": "MetricContext",
+      "type": "object"
+    },
+    "PacketFact": {
+      "additionalProperties": false,
+      "description": "A source fact exposed to an analyst without presenting it as a metric.",
+      "properties": {
+        "fact_id": {
+          "minLength": 1,
+          "title": "Fact Id",
+          "type": "string"
+        },
+        "field": {
+          "minLength": 1,
+          "title": "Field",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Value"
+        },
+        "unit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unit"
+        },
+        "currency": {
+          "anyOf": [
+            {
+              "maxLength": 3,
+              "minLength": 3,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Currency"
+        },
+        "period": {
+          "minLength": 1,
+          "title": "Period",
+          "type": "string"
+        },
+        "source_evidence_ids": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Source Evidence Ids",
+          "type": "array"
+        },
+        "confidence": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "origin": {
+          "default": "NORMALIZED_SOURCE_FACT",
+          "enum": [
+            "NORMALIZED_SOURCE_FACT",
+            "EFFECTIVE_INPUT_FACT"
+          ],
+          "title": "Origin",
+          "type": "string"
+        },
+        "source_fact_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Fact Id"
+        },
+        "applied_adjustment_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Applied Adjustment Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "fact_id",
+        "field",
+        "value",
+        "period",
+        "source_evidence_ids",
+        "confidence"
+      ],
+      "title": "PacketFact",
+      "type": "object"
+    },
+    "ResearchIntent": {
+      "description": "The bounded purpose of one research packet.",
+      "enum": [
+        "THESIS",
+        "FALSIFICATION",
+        "ADJUDICATION"
+      ],
+      "title": "ResearchIntent",
+      "type": "string"
+    },
+    "ResearchQuestion": {
+      "additionalProperties": false,
+      "description": "One exact, bounded research question.",
+      "properties": {
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "dimension": {
+          "anyOf": [
+            {
+              "enum": [
+                "demand_durability",
+                "cyclicality",
+                "pricing_power",
+                "moat",
+                "capital_efficiency",
+                "dependency",
+                "regulatory_risk",
+                "predictability"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Dimension"
+        },
+        "intent": {
+          "$ref": "#/$defs/ResearchIntent"
+        },
+        "text": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        },
+        "focus_areas": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 16,
+          "title": "Focus Areas",
+          "type": "array"
+        },
+        "required": {
+          "default": true,
+          "title": "Required",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "intent",
+        "text"
+      ],
+      "title": "ResearchQuestion",
+      "type": "object"
+    },
+    "Source": {
+      "additionalProperties": false,
+      "description": "Stable provenance locator for an evidence item.",
+      "properties": {
+        "type": {
+          "$ref": "#/$defs/SourceType"
+        },
+        "title": {
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "issuer": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Issuer"
+        },
+        "published_date": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Published Date"
+        },
+        "fiscal_period": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fiscal Period"
+        },
+        "url": {
+          "anyOf": [
+            {
+              "format": "uri",
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Url"
+        },
+        "document_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Document Id"
+        },
+        "page": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Page"
+        },
+        "section": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Section"
+        },
+        "table_or_note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Table Or Note"
+        },
+        "locator": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Locator"
+        }
+      },
+      "required": [
+        "type",
+        "title"
+      ],
+      "title": "Source",
+      "type": "object"
+    },
+    "SourceType": {
+      "description": "Source types permitted by evidence.schema.json.",
+      "enum": [
+        "ANNUAL_REPORT",
+        "INTERIM_REPORT",
+        "EXCHANGE_FILING",
+        "COMPANY_ANNOUNCEMENT",
+        "COMPANY_OPERATING_DISCLOSURE",
+        "GOVERNMENT",
+        "REGULATOR",
+        "INDUSTRY_ASSOCIATION",
+        "STRUCTURED_DATA_VENDOR",
+        "RESEARCH_PROVIDER",
+        "NEWS",
+        "OTHER"
+      ],
+      "title": "SourceType",
+      "type": "string"
+    },
+    "UndatedEvidencePolicy": {
+      "description": "Whether a packet may opt into evidence without a publication date.",
+      "enum": [
+        "REJECT",
+        "EXPLICIT_FROZEN"
+      ],
+      "title": "UndatedEvidencePolicy",
+      "type": "string"
     }
   },
-  "additionalProperties": false
+  "additionalProperties": false,
+  "description": "The complete bounded input made available to one analyst task.",
+  "properties": {
+    "contract": {
+      "const": "evidence_packet_v1",
+      "default": "evidence_packet_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "packet_id": {
+      "minLength": 1,
+      "title": "Packet Id",
+      "type": "string"
+    },
+    "analysis_id": {
+      "minLength": 1,
+      "title": "Analysis Id",
+      "type": "string"
+    },
+    "listing_id": {
+      "minLength": 1,
+      "title": "Listing Id",
+      "type": "string"
+    },
+    "as_of": {
+      "format": "date",
+      "title": "As Of",
+      "type": "string"
+    },
+    "profile_id": {
+      "minLength": 1,
+      "title": "Profile Id",
+      "type": "string"
+    },
+    "role": {
+      "$ref": "#/$defs/AnalystRole"
+    },
+    "question": {
+      "$ref": "#/$defs/ResearchQuestion"
+    },
+    "intent": {
+      "$ref": "#/$defs/ResearchIntent"
+    },
+    "evidence": {
+      "items": {
+        "$ref": "#/$defs/Evidence"
+      },
+      "maxItems": 128,
+      "title": "Evidence",
+      "type": "array"
+    },
+    "facts": {
+      "items": {
+        "$ref": "#/$defs/PacketFact"
+      },
+      "maxItems": 256,
+      "title": "Facts",
+      "type": "array"
+    },
+    "deterministic_metrics": {
+      "items": {
+        "$ref": "#/$defs/DeterministicMetric"
+      },
+      "maxItems": 128,
+      "title": "Deterministic Metrics",
+      "type": "array"
+    },
+    "available_evidence_ids": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Available Evidence Ids",
+      "type": "array"
+    },
+    "available_fact_ids": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Available Fact Ids",
+      "type": "array"
+    },
+    "undated_evidence_ids": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Undated Evidence Ids",
+      "type": "array"
+    },
+    "undated_evidence_policy": {
+      "$ref": "#/$defs/UndatedEvidencePolicy",
+      "default": "REJECT"
+    },
+    "undated_evidence_attestation": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Undated Evidence Attestation"
+    },
+    "protocol_version": {
+      "default": "research-protocol-v1",
+      "minLength": 1,
+      "title": "Protocol Version",
+      "type": "string"
+    },
+    "content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Content Sha256",
+      "type": "string"
+    }
+  },
+  "required": [
+    "contract",
+    "packet_id",
+    "analysis_id",
+    "listing_id",
+    "as_of",
+    "profile_id",
+    "role",
+    "question",
+    "intent",
+    "evidence",
+    "facts",
+    "deterministic_metrics",
+    "content_sha256"
+  ],
+  "title": "Turtle Value Engine evidence-packet",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/blooddrunk/turtle-value-engine/schemas/evidence-packet.schema.json"
 }

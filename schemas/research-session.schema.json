@@ -1,28 +1,165 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/blooddrunk/turtle-value-engine/schemas/research-session.schema.json",
-  "title": "Turtle Value Engine Research Session",
-  "type": "object",
-  "required": ["contract", "session_id", "analysis_id", "listing_id", "as_of", "profile_id"],
+  "additionalProperties": false,
+  "description": "Resume-friendly index of persisted packets, tasks, runs and outputs.",
   "properties": {
-    "contract": {"const": "research_session_v1"},
-    "session_id": {"type": "string", "minLength": 1},
-    "analysis_id": {"type": "string", "minLength": 1},
-    "listing_id": {"type": "string", "minLength": 1},
-    "as_of": {"type": "string", "format": "date"},
-    "profile_id": {"type": "string", "minLength": 1},
-    "protocol_version": {"type": "string", "minLength": 1},
-    "packet_ids": {"type": "array", "maxItems": 1024, "items": {"type": "string"}, "uniqueItems": true},
-    "task_ids": {"type": "array", "maxItems": 1024, "items": {"type": "string"}, "uniqueItems": true},
-    "analyst_run_ids": {"type": "array", "maxItems": 1024, "items": {"type": "string"}, "uniqueItems": true},
-    "proposed_adjustment_ids": {"type": "array", "maxItems": 256, "items": {"type": "string"}, "uniqueItems": true},
-    "accepted_adjustment_ids": {"type": "array", "maxItems": 256, "items": {"type": "string"}, "uniqueItems": true},
-    "business_quality_available": {"type": "boolean"},
-    "business_quality_artifact_id": {"type": ["string", "null"]},
-    "final_analysis_id": {"type": ["string", "null"]},
-    "final_analysis_artifact_id": {"type": ["string", "null"]},
-    "final_trace_artifact_id": {"type": ["string", "null"]},
-    "report_id": {"type": ["string", "null"]}
+    "contract": {
+      "const": "research_session_v1",
+      "default": "research_session_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "session_id": {
+      "minLength": 1,
+      "title": "Session Id",
+      "type": "string"
+    },
+    "analysis_id": {
+      "minLength": 1,
+      "title": "Analysis Id",
+      "type": "string"
+    },
+    "listing_id": {
+      "minLength": 1,
+      "title": "Listing Id",
+      "type": "string"
+    },
+    "as_of": {
+      "format": "date",
+      "title": "As Of",
+      "type": "string"
+    },
+    "profile_id": {
+      "minLength": 1,
+      "title": "Profile Id",
+      "type": "string"
+    },
+    "protocol_version": {
+      "default": "research-protocol-v1",
+      "minLength": 1,
+      "title": "Protocol Version",
+      "type": "string"
+    },
+    "packet_ids": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 1024,
+      "title": "Packet Ids",
+      "type": "array"
+    },
+    "task_ids": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 1024,
+      "title": "Task Ids",
+      "type": "array"
+    },
+    "analyst_run_ids": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 1024,
+      "title": "Analyst Run Ids",
+      "type": "array"
+    },
+    "proposed_adjustment_ids": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 256,
+      "title": "Proposed Adjustment Ids",
+      "type": "array"
+    },
+    "accepted_adjustment_ids": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 256,
+      "title": "Accepted Adjustment Ids",
+      "type": "array"
+    },
+    "business_quality_available": {
+      "default": false,
+      "title": "Business Quality Available",
+      "type": "boolean"
+    },
+    "business_quality_artifact_id": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Business Quality Artifact Id"
+    },
+    "final_analysis_id": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Final Analysis Id"
+    },
+    "final_analysis_artifact_id": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Final Analysis Artifact Id"
+    },
+    "final_trace_artifact_id": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Final Trace Artifact Id"
+    },
+    "report_id": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Report Id"
+    }
   },
-  "additionalProperties": false
+  "required": [
+    "contract",
+    "session_id",
+    "analysis_id",
+    "listing_id",
+    "as_of",
+    "profile_id"
+  ],
+  "title": "Turtle Value Engine research-session",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/blooddrunk/turtle-value-engine/schemas/research-session.schema.json"
 }

@@ -86,6 +86,13 @@ class AnalystRunStatus(StrEnum):
     COMPLETED = "COMPLETED"
 
 
+class UndatedEvidencePolicy(StrEnum):
+    """Whether a packet may opt into evidence without a publication date."""
+
+    REJECT = "REJECT"
+    EXPLICIT_FROZEN = "EXPLICIT_FROZEN"
+
+
 BusinessQualityDimensionName: TypeAlias = Literal[
     "demand_durability",
     "cyclicality",
@@ -217,6 +224,8 @@ class EvidencePacket(BaseModel):
     available_evidence_ids: list[StrictStr] = Field(default_factory=list)
     available_fact_ids: list[StrictStr] = Field(default_factory=list)
     undated_evidence_ids: list[StrictStr] = Field(default_factory=list)
+    undated_evidence_policy: UndatedEvidencePolicy = UndatedEvidencePolicy.REJECT
+    undated_evidence_attestation: StrictStr | None = Field(default=None, min_length=1)
     protocol_version: StrictStr = Field(default=RESEARCH_PROTOCOL_VERSION, min_length=1)
     content_sha256: StrictStr = Field(pattern=_HASH_PATTERN)
 
@@ -240,6 +249,21 @@ class EvidencePacket(BaseModel):
             raise ValueError("available_fact_ids must preserve packet fact order")
         if not set(self.undated_evidence_ids).issubset(evidence_ids):
             raise ValueError("undated_evidence_ids must refer to packet evidence")
+        if (
+            self.undated_evidence_ids
+            and self.undated_evidence_policy is UndatedEvidencePolicy.REJECT
+        ):
+            raise ValueError("undated evidence requires an explicit frozen-availability policy")
+        if (
+            self.undated_evidence_policy is UndatedEvidencePolicy.EXPLICIT_FROZEN
+            and not self.undated_evidence_attestation
+        ):
+            raise ValueError("explicit frozen undated evidence requires an attestation")
+        if (
+            self.undated_evidence_policy is UndatedEvidencePolicy.REJECT
+            and self.undated_evidence_attestation is not None
+        ):
+            raise ValueError("undated evidence attestation requires EXPLICIT_FROZEN policy")
         if len(metric_ids) != len(set(metric_ids)):
             raise ValueError("deterministic metric IDs must be unique")
         expected = _hash_payload(self, "content_sha256")
@@ -263,6 +287,8 @@ class EvidencePacket(BaseModel):
         facts: list[PacketFact],
         deterministic_metrics: list[DeterministicMetric],
         undated_evidence_ids: list[str] | None = None,
+        undated_evidence_policy: UndatedEvidencePolicy = UndatedEvidencePolicy.REJECT,
+        undated_evidence_attestation: str | None = None,
         protocol_version: str = RESEARCH_PROTOCOL_VERSION,
     ) -> EvidencePacket:
         """Construct a packet and derive its content identity canonically."""
@@ -287,6 +313,8 @@ class EvidencePacket(BaseModel):
             "available_evidence_ids": evidence_ids,
             "available_fact_ids": fact_ids,
             "undated_evidence_ids": undated_evidence_ids or [],
+            "undated_evidence_policy": undated_evidence_policy.value,
+            "undated_evidence_attestation": undated_evidence_attestation,
             "protocol_version": protocol_version,
         }
         content_sha256 = hashlib.sha256(canonical_json_bytes(payload)).hexdigest()
@@ -302,6 +330,9 @@ class EvidencePacket(BaseModel):
             evidence_ids,
             fact_ids,
             [item.id for item in deterministic_metrics],
+            undated_evidence_policy.value,
+            undated_evidence_attestation,
+            protocol_version,
         )
         payload["packet_id"] = packet_id
         # The packet hash intentionally includes the deterministic packet ID;
@@ -429,6 +460,9 @@ class AgentRunMetadata(BaseModel):
     output_tokens: StrictInt | None = Field(default=None, ge=0)
     timeout_seconds: StrictFloat | None = Field(default=None, gt=0)
     max_context_items: StrictInt | None = Field(default=None, gt=0)
+    max_output_claims: StrictInt | None = Field(default=None, gt=0)
+    max_unresolved_questions: StrictInt | None = Field(default=None, gt=0)
+    max_output_bytes: StrictInt | None = Field(default=None, gt=0)
     notes: StrictStr | None = Field(default=None, max_length=1_000)
 
     @model_validator(mode="after")
@@ -464,6 +498,9 @@ class ResearchTask(BaseModel):
     context_findings: list[ResearchFinding] = Field(default_factory=list, max_length=32)
     max_output_claims: StrictInt = Field(default=64, gt=0, le=128)
     max_unresolved_questions: StrictInt = Field(default=64, gt=0, le=128)
+    timeout_seconds: StrictFloat = Field(default=60.0, gt=0, le=3_600)
+    max_context_items: StrictInt = Field(default=256, gt=0, le=4_096)
+    max_output_bytes: StrictInt = Field(default=100_000, gt=0, le=10_000_000)
     prompt_version: StrictStr = Field(default=RESEARCH_PROMPT_VERSION, min_length=1)
     protocol_version: StrictStr = Field(default=RESEARCH_PROTOCOL_VERSION, min_length=1)
     task_sha256: StrictStr = Field(pattern=_HASH_PATTERN)
@@ -486,6 +523,17 @@ class ResearchTask(BaseModel):
             raise ValueError("research task and evidence packet scope must match")
         if len(self.context_run_ids) != len(self.context_findings):
             raise ValueError("context_run_ids and context_findings must have equal length")
+        context_item_count = (
+            len(self.packet.evidence)
+            + len(self.packet.facts)
+            + len(self.packet.deterministic_metrics)
+            + len(self.context_findings)
+        )
+        if context_item_count > self.max_context_items:
+            raise ValueError(
+                "research task context exceeds max_context_items "
+                f"({context_item_count} > {self.max_context_items})"
+            )
         for finding in self.context_findings:
             if (
                 finding.analysis_id != self.analysis_id
@@ -517,6 +565,9 @@ class ResearchTask(BaseModel):
         context_findings: list[ResearchFinding] | None = None,
         max_output_claims: int = 64,
         max_unresolved_questions: int = 64,
+        timeout_seconds: float = 60.0,
+        max_context_items: int = 256,
+        max_output_bytes: int = 100_000,
         prompt_version: str = RESEARCH_PROMPT_VERSION,
         protocol_version: str = RESEARCH_PROTOCOL_VERSION,
     ) -> ResearchTask:
@@ -536,6 +587,9 @@ class ResearchTask(BaseModel):
             ],
             "max_output_claims": max_output_claims,
             "max_unresolved_questions": max_unresolved_questions,
+            "timeout_seconds": timeout_seconds,
+            "max_context_items": max_context_items,
+            "max_output_bytes": max_output_bytes,
             "prompt_version": prompt_version,
             "protocol_version": protocol_version,
         }
@@ -549,6 +603,13 @@ class ResearchTask(BaseModel):
             question.id,
             packet.packet_id,
             context_run_ids or [],
+            max_output_claims,
+            max_unresolved_questions,
+            timeout_seconds,
+            max_context_items,
+            max_output_bytes,
+            prompt_version,
+            protocol_version,
         )
         payload["task_id"] = task_id
         task_sha256 = hashlib.sha256(canonical_json_bytes(payload)).hexdigest()
@@ -968,6 +1029,7 @@ __all__ = [
     "ResearchQuestion",
     "ResearchSession",
     "ResearchTask",
+    "UndatedEvidencePolicy",
     "RESEARCH_CONTRACT_VERSION",
     "RESEARCH_PROTOCOL_VERSION",
     "RESEARCH_PROMPT_VERSION",
