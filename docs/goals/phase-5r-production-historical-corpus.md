@@ -151,12 +151,13 @@ adversarial acceptance tests are implemented. The declared checked-in target is
 date range `2020-01-01` through `2020-01-03`. It is explicitly
 `FIXED_RESEARCH_UNIVERSE` and `PARTIAL`.
 
-The compact corpus currently proves 2 listing lifecycles, 2 membership
-intervals, 6 market rows, 2 corporate actions, 1 suspended session, 1
-delisted terminal listing with no fabricated terminal value, 1 frozen archive
-reference, and a 2-row independent-reference reconciliation that passes its
-fixture tolerance. These are replay/contract metrics, not market-wide
-coverage metrics.
+The compact corpus currently declares target `fixture-ah-2020` in universe
+`fixture-ah`, with A1 and H1 listings over 2020-01-01 through 2020-01-03. It
+proves 2 listing lifecycles, 2 membership intervals, 6 market rows, 2
+corporate actions, 1 suspended session, 1 delisted terminal listing with no
+fabricated terminal value, 1 frozen archive reference, and a 2-row
+independent-reference reconciliation that passes its fixture tolerance. These
+are replay/contract metrics, not market-wide coverage metrics.
 
 The remaining production blocker is precise: this repository does not contain
 an authoritative, licensed and redistributable A/H historical source corpus
