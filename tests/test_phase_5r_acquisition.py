@@ -2029,6 +2029,85 @@ def test_hithink_probe_requires_each_requested_listing_span(monkeypatch):
     ]
 
 
+def test_hithink_probe_rejects_missing_declared_sessions(monkeypatch):
+    class GapBatch:
+        def to_pydict(self):
+            return {
+                "thscode": ["600000.SH", "600000.SH"],
+                "currency": ["CNY", "CNY"],
+                "interval": ["1d", "1d"],
+                "adjusted": ["none", "none"],
+                "date_ms": [
+                    int(datetime(2020, 1, 1, tzinfo=UTC).timestamp() * 1000),
+                    int(datetime(2020, 1, 3, tzinfo=UTC).timestamp() * 1000),
+                ],
+            }
+
+    class GapParquetFile:
+        schema_arrow = SimpleNamespace(names=sorted(HithinkMarketDumpAdapter._DAILY_K_COLUMNS))
+
+        def __init__(self, _body):
+            pass
+
+        def iter_batches(self, *, columns, batch_size):
+            assert columns == ["thscode", "currency", "interval", "adjusted", "date_ms"]
+            assert batch_size == 65_536
+            return iter((GapBatch(),))
+
+    fake_parquet = ModuleType("pyarrow.parquet")
+    fake_parquet.ParquetFile = GapParquetFile
+    fake_pyarrow = ModuleType("pyarrow")
+    fake_pyarrow.parquet = fake_parquet
+    monkeypatch.setitem(sys.modules, "pyarrow", fake_pyarrow)
+    monkeypatch.setitem(sys.modules, "pyarrow.parquet", fake_parquet)
+
+    credential = CredentialReferenceV1(
+        reference_id="hithink-gap-key",
+        kind="INJECTED",
+        required=True,
+    )
+    request = _request(adapter_id="hithink-market-dumps").model_copy(
+        update={
+            "listing_ids": ["SH600000"],
+            "start_date": date(2020, 1, 1),
+            "end_date": date(2020, 1, 3),
+            "parameters": {"dump_type": "daily-k"},
+            "credential_ref": credential,
+            "expected_sessions_by_listing": {
+                "SH600000": [date(2020, 1, 1), date(2020, 1, 2), date(2020, 1, 3)]
+            },
+        }
+    )
+    report = HithinkMarketDumpAdapter().probe(
+        request,
+        transport=FakeTransport(
+            [
+                NetworkResponse(
+                    200,
+                    {"Content-Type": "application/json"},
+                    b'{"code":0,"data":{"presigned_url":"https://signed.example.test/file"}}',
+                    "https://fuyao.aicubes.cn/api/dump/market-dumps/daily-k/download-url",
+                ),
+                NetworkResponse(
+                    200,
+                    {"Content-Type": "application/octet-stream"},
+                    b"gap-parquet",
+                    "https://signed.example.test/file",
+                ),
+            ]
+        ),
+        credentials=MappingCredentialResolver({"hithink-gap-key": "probe-only"}),
+        plan_id="hithink-gap-plan",
+        clock=lambda: datetime(2026, 1, 1, tzinfo=UTC),
+    )
+
+    assert report.historical_capable is False
+    assert report.blockers == [
+        "HISTORICAL_CAPABILITY_UNVERIFIED: expected Hithink sessions are missing: "
+        "SH600000"
+    ]
+
+
 def test_h_target_readiness_fails_closed_without_qualified_probe():
     readiness = build_readiness_report(
         _plan(include_h=True),

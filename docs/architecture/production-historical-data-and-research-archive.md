@@ -66,7 +66,9 @@ adjustment-factor Parquet shapes, but documentation alone does not establish an
 owner account's entitlement, retention of terminal listings, caching terms or
 coverage. The source probe inspects the downloaded Parquet schema and actual
 observed date/listing span before setting historical capability; a successful
-signing response alone is insufficient. Adjustment factors remain
+signing response alone is insufficient. When a request declares
+`expected_sessions_by_listing`, the probe also checks every declared session
+for each listing; a gap keeps historical capability unverified. Adjustment factors remain
 reconciliation-only unless an operator explicitly enables their decoder after
 those facts are evidenced. H-share sources are never inferred from current
 snapshots; absent a successful source-specific probe the readiness report keeps the exact

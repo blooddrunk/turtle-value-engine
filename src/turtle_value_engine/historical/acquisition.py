@@ -1936,7 +1936,13 @@ class HithinkMarketDumpAdapter:
         cls,
         request: HistoricalAcquisitionRequestV1,
         body: bytes,
-    ) -> tuple[date, date, list[str], dict[str, tuple[date, date]]]:
+    ) -> tuple[
+        date,
+        date,
+        list[str],
+        dict[str, tuple[date, date]],
+        dict[str, set[date]],
+    ]:
         """Inspect a dump without retaining the expiring download URL.
 
         Probe must establish the actual response span and listing coverage;
@@ -2019,7 +2025,13 @@ class HithinkMarketDumpAdapter:
             listing_id: (min(dates), max(dates))
             for listing_id, dates in observed_dates_by_listing.items()
         }
-        return min(observed_dates), max(observed_dates), sorted(observed_listings), observed_ranges
+        return (
+            min(observed_dates),
+            max(observed_dates),
+            sorted(observed_listings),
+            observed_ranges,
+            dict(observed_dates_by_listing),
+        )
 
     def acquire(
         self,
@@ -2081,6 +2093,7 @@ class HithinkMarketDumpAdapter:
                 observed_end,
                 observed_listing_ids,
                 observed_ranges,
+                observed_dates_by_listing,
             ) = self._inspect_parquet_dump(request, data.body)
             finished = _utc_now(clock)
         except CredentialUnavailableError as exc:
@@ -2131,6 +2144,14 @@ class HithinkMarketDumpAdapter:
             and observed_start <= request.start_date
             and observed_end >= request.end_date
         )
+        missing_expected_sessions = sorted(
+            listing_id
+            for listing_id, expected_sessions in (
+                request.expected_sessions_by_listing or {}
+            ).items()
+            if set(expected_sessions) - observed_dates_by_listing.get(listing_id, set())
+        )
+        historical_capable = historical_capable and not missing_expected_sessions
         dump_type = request.parameters.get("dump_type")
         warnings = [
             "HITHINK_TERMINAL_LIFECYCLE_NOT_INCLUDED: market dumps do not prove "
@@ -2150,7 +2171,15 @@ class HithinkMarketDumpAdapter:
                 observed_start <= request.start_date and observed_end >= request.end_date
             ):
                 blocker += ": " + ",".join(sorted(uncovered_listings))
-            blockers.append(blocker)
+            if uncovered_listings or (
+                observed_start > request.start_date or observed_end < request.end_date
+            ):
+                blockers.append(blocker)
+        if missing_expected_sessions:
+            blockers.append(
+                "HISTORICAL_CAPABILITY_UNVERIFIED: expected Hithink sessions are missing: "
+                + ",".join(missing_expected_sessions)
+            )
         return SourceProbeReportV1.build(
             report_id=f"probe-{request.request_id}",
             plan_id=plan_id,

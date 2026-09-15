@@ -34,7 +34,9 @@ Hithink market-dump 适配器只接受官方文档定义的三个 `dump_type`：
 不证明个人账户权限、历史退市保留、缓存权或再分发权；这些必须由 probe 和
 条款证据确认。adjustment factor 在其 basis 未经确认前只能作为 reconciliation
 输入。Hithink probe 还会在内存中检查实际 Parquet schema、日期跨度和 listing
-覆盖；HTTP 200 或签名 URL 本身不构成可用历史数据证据。缺少可选的 `historical`
+覆盖；若 request 声明 `expected_sessions_by_listing`，probe 还会逐标的检查声明的
+session 是否全部出现；中间缺失也保持 fail closed。HTTP 200 或签名 URL 本身不构成
+可用历史数据证据。缺少可选的 `historical`
 依赖或 schema 不可识别时保持 fail closed，签名 URL 不写入 receipt/CAS。
 
 H 股没有默认的免费权威来源。H 股来源必须先 probe；未确认历史范围、退市、
