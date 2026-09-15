@@ -301,6 +301,27 @@ Quality Analyst → Skeptic → Adjudicator 结构。模型只能提交带证据
 
 普通测试使用 `ScriptedAnalystClient`，live model integration 不属于 CI 必需项。
 
+## Phase 5R：历史数据冻结与离线回放
+
+Phase 5R 增加了带来源、覆盖率和许可证声明的历史数据边界。大数据通过
+content-addressed JSONL shard 保存；缺失或 hash 不一致时会失败，不会偷偷联网。
+仓库内的 compact corpus 只是离线验收 fixture，不代表完整 A/H 市场覆盖：
+
+```bash
+tve dataset validate \
+  --manifest fixtures/historical/phase5r-compact-v1/manifest.json \
+  --store fixtures/historical/phase5r-compact-v1/store
+tve dataset freeze \
+  --manifest fixtures/historical/phase5r-compact-v1/manifest.json \
+  --store fixtures/historical/phase5r-compact-v1/store \
+  --output backtest-manifest.json
+```
+
+`tve dataset snapshot`、`tve backtest` 和 `tve calibrate` 只消费已经冻结的
+manifest、decision artifact 和 research archive；校准只输出 proposal。要声明
+生产级历史覆盖，必须另行提供可审计、具备访问/再分发条件的来源及完整覆盖证据，
+并使用 `--require-production` 验证。
+
 # 当前还不能做什么？
 
 目前：
@@ -393,6 +414,7 @@ src/turtle_value_engine/
 ├── effective_input.py  # accepted-adjustment materialization boundary
 ├── preparation.py      # provider/cache/normalization orchestration
 ├── research/            # bounded agent contracts, BQ workflow and report
+├── historical/          # source-aware shards, coverage, archive and compiler
 ├── traceability.py     # deterministic decision trace projection
 ├── pipeline.py         # deterministic analysis pipeline
 └── cli.py              # command-line interface
@@ -475,6 +497,9 @@ Business-quality agents / model-neutral runtime boundary
 
 Backtesting / calibration
         ✅
+
+Production historical corpus / research archive
+        ⏳（边界已实现；权威来源、许可与完整 A/H 覆盖待补）
 
 Watchlist / event-driven monitoring
         ⏳

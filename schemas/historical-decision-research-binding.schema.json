@@ -1,0 +1,74 @@
+{
+  "additionalProperties": false,
+  "description": "Point-in-time link from a decision artifact to frozen research.",
+  "properties": {
+    "contract": {
+      "const": "historical_decision_research_binding_v1",
+      "default": "historical_decision_research_binding_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "decision_artifact_id": {
+      "minLength": 1,
+      "title": "Decision Artifact Id",
+      "type": "string"
+    },
+    "research_artifact_id": {
+      "minLength": 1,
+      "title": "Research Artifact Id",
+      "type": "string"
+    },
+    "business_quality_artifact_id": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Business Quality Artifact Id"
+    },
+    "listing_id": {
+      "minLength": 1,
+      "title": "Listing Id",
+      "type": "string"
+    },
+    "analysis_id": {
+      "minLength": 1,
+      "title": "Analysis Id",
+      "type": "string"
+    },
+    "as_of": {
+      "format": "date",
+      "title": "As Of",
+      "type": "string"
+    },
+    "decision_time": {
+      "format": "date-time",
+      "title": "Decision Time",
+      "type": "string"
+    },
+    "used_artifact_ids": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Used Artifact Ids",
+      "type": "array"
+    }
+  },
+  "required": [
+    "decision_artifact_id",
+    "research_artifact_id",
+    "listing_id",
+    "analysis_id",
+    "as_of",
+    "decision_time",
+    "used_artifact_ids"
+  ],
+  "title": "HistoricalDecisionResearchBinding",
+  "type": "object"
+}

@@ -1,0 +1,65 @@
+{
+  "additionalProperties": false,
+  "description": "Machine-readable validation output suitable for a coverage report.",
+  "properties": {
+    "contract": {
+      "default": "historical_validation_summary_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "dataset_id": {
+      "title": "Dataset Id",
+      "type": "string"
+    },
+    "valid": {
+      "title": "Valid",
+      "type": "boolean"
+    },
+    "production_eligible": {
+      "title": "Production Eligible",
+      "type": "boolean"
+    },
+    "shard_rows": {
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "title": "Shard Rows",
+      "type": "object"
+    },
+    "coverage_status": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Coverage Status",
+      "type": "object"
+    },
+    "production_blockers": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Production Blockers",
+      "type": "array"
+    },
+    "errors": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Errors",
+      "type": "array"
+    },
+    "warnings": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Warnings",
+      "type": "array"
+    }
+  },
+  "required": [
+    "dataset_id",
+    "valid",
+    "production_eligible"
+  ],
+  "title": "HistoricalValidationSummary",
+  "type": "object"
+}

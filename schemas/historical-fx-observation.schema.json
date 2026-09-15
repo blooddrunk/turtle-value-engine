@@ -1,10 +1,10 @@
 {
   "additionalProperties": false,
-  "description": "Point-in-time FX observation for optional reporting conversion.",
+  "description": "Listing-specific FX observation retained before Phase 5 projection.",
   "properties": {
     "contract": {
-      "const": "fx_observation_v1",
-      "default": "fx_observation_v1",
+      "const": "historical_fx_observation_v1",
+      "default": "historical_fx_observation_v1",
       "title": "Contract",
       "type": "string"
     },
@@ -14,17 +14,9 @@
       "type": "string"
     },
     "listing_id": {
-      "anyOf": [
-        {
-          "minLength": 1,
-          "type": "string"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null,
-      "title": "Listing Id"
+      "minLength": 1,
+      "title": "Listing Id",
+      "type": "string"
     },
     "base_currency": {
       "maxLength": 3,
@@ -72,16 +64,14 @@
     }
   },
   "required": [
-    "contract",
     "observation_id",
+    "listing_id",
     "base_currency",
     "quote_currency",
     "observation_date",
     "rate",
     "source_hash"
   ],
-  "title": "Turtle Value Engine fx-observation",
-  "type": "object",
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/blooddrunk/turtle-value-engine/schemas/fx-observation.schema.json"
+  "title": "HistoricalFXObservation",
+  "type": "object"
 }

@@ -1,0 +1,67 @@
+{
+  "additionalProperties": false,
+  "description": "Stable locator retained with every archived research artifact.",
+  "properties": {
+    "contract": {
+      "const": "historical_filing_locator_v1",
+      "default": "historical_filing_locator_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "filing_id": {
+      "minLength": 1,
+      "title": "Filing Id",
+      "type": "string"
+    },
+    "document_hash": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Document Hash",
+      "type": "string"
+    },
+    "page": {
+      "anyOf": [
+        {
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Page"
+    },
+    "section": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Section"
+    },
+    "locator": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Locator"
+    }
+  },
+  "required": [
+    "filing_id",
+    "document_hash"
+  ],
+  "title": "HistoricalFilingLocator",
+  "type": "object"
+}

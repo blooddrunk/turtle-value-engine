@@ -1,0 +1,167 @@
+{
+  "$defs": {
+    "CoverageClaim": {
+      "description": "Evidence level declared for the target, never inferred from row count.",
+      "enum": [
+        "COMPLETE",
+        "PARTIAL",
+        "UNKNOWN"
+      ],
+      "title": "CoverageClaim",
+      "type": "string"
+    },
+    "HistoricalCoverageRecord": {
+      "additionalProperties": false,
+      "description": "Coverage for one listing and one source category over one period.",
+      "properties": {
+        "contract": {
+          "const": "historical_coverage_record_v1",
+          "default": "historical_coverage_record_v1",
+          "title": "Contract",
+          "type": "string"
+        },
+        "source_kind": {
+          "$ref": "#/$defs/HistoricalSourceKind"
+        },
+        "listing_id": {
+          "minLength": 1,
+          "title": "Listing Id",
+          "type": "string"
+        },
+        "period_start": {
+          "format": "date",
+          "title": "Period Start",
+          "type": "string"
+        },
+        "period_end": {
+          "format": "date",
+          "title": "Period End",
+          "type": "string"
+        },
+        "expected_session_count": {
+          "minimum": 0,
+          "title": "Expected Session Count",
+          "type": "integer"
+        },
+        "observed_session_count": {
+          "minimum": 0,
+          "title": "Observed Session Count",
+          "type": "integer"
+        },
+        "missing_dates": {
+          "items": {
+            "format": "date",
+            "type": "string"
+          },
+          "title": "Missing Dates",
+          "type": "array"
+        },
+        "source_artifact_ids": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Source Artifact Ids",
+          "type": "array"
+        },
+        "status": {
+          "$ref": "#/$defs/CoverageClaim"
+        },
+        "terminal_outcome": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HistoricalTerminalOutcome"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "source_kind",
+        "listing_id",
+        "period_start",
+        "period_end",
+        "expected_session_count",
+        "observed_session_count",
+        "source_artifact_ids",
+        "status"
+      ],
+      "title": "HistoricalCoverageRecord",
+      "type": "object"
+    },
+    "HistoricalSourceKind": {
+      "description": "Source categories required to make a historical claim auditable.",
+      "enum": [
+        "UNIVERSE_MEMBERSHIP",
+        "LISTING_LIFECYCLE",
+        "DELISTINGS",
+        "PRICES",
+        "CORPORATE_ACTIONS",
+        "BENCHMARK",
+        "FX",
+        "FILINGS",
+        "RESEARCH_ARCHIVE"
+      ],
+      "title": "HistoricalSourceKind",
+      "type": "string"
+    },
+    "HistoricalTerminalOutcome": {
+      "description": "Terminal lifecycle outcome without pretending all outcomes have value.",
+      "enum": [
+        "ACTIVE",
+        "DELISTED",
+        "ACQUIRED_CANCELLED",
+        "TRANSFERRED",
+        "PROLONGED_SUSPENSION",
+        "UNRESOLVED_TERMINAL",
+        "UNKNOWN"
+      ],
+      "title": "HistoricalTerminalOutcome",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Deterministic per-listing/per-period coverage report.",
+  "properties": {
+    "contract": {
+      "const": "historical_coverage_report_v1",
+      "default": "historical_coverage_report_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "report_id": {
+      "minLength": 1,
+      "title": "Report Id",
+      "type": "string"
+    },
+    "target_id": {
+      "minLength": 1,
+      "title": "Target Id",
+      "type": "string"
+    },
+    "records": {
+      "items": {
+        "$ref": "#/$defs/HistoricalCoverageRecord"
+      },
+      "minItems": 1,
+      "title": "Records",
+      "type": "array"
+    },
+    "content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Content Sha256",
+      "type": "string"
+    }
+  },
+  "required": [
+    "report_id",
+    "target_id",
+    "records",
+    "content_sha256"
+  ],
+  "title": "HistoricalCoverageReport",
+  "type": "object"
+}

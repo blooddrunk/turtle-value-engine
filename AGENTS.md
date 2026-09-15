@@ -110,6 +110,34 @@ and chronological calibration proposals. These contracts consume frozen
 artifacts only; they do not change `strict-v1` or recalculate deterministic
 investment semantics.
 
+Phase 5R adds the source-aware production historical boundary described in
+`docs/goals/phase-5r-production-historical-corpus.md` and
+`docs/architecture/production-historical-data-and-research-archive.md`.
+`HistoricalDatasetManifest` declares a named, bounded A/H target scope and
+source/coverage evidence, while `HistoricalArtifactStore` persists large
+collections as verified content-addressed JSONL shards. The offline compiler
+projects only validated rows into the Phase 5 manifest. A historical or
+survivorship-free claim requires complete source-backed membership and
+coverage evidence, established authority/licensing and an independent
+reconciliation. Production source descriptors must retain license-evidence
+URI/hash and restricted sources must retain an access-grant reference; a prose
+license label is insufficient. The compact Git corpus is an acceptance fixture
+and does not make a market-wide production claim. Delisted/terminal listings
+and unresolved terminal economics remain explicit. The research archive
+validator is the only permitted path for historical Business Quality artifacts.
+No provider or
+live model is invoked by dataset validation, freezing, snapshotting, backtest
+or calibration commands.
+
+Current Phase 5R status is `ACTIVE / PARTIAL`: the offline replay and
+validation boundary is implemented, but the project-owned opt-in acquisition
+and raw-cache-to-shard ingestion path for production historical sources is
+not yet closed. This is not a requirement for the user to manually assemble
+market data. Phase 5R primarily needs historical data; real-time/event-driven
+acquisition belongs to Phase 6. The next implementation stage must add the
+selected source adapters, credential boundary, raw provenance and deterministic
+compiler ingestion while keeping ordinary CI offline and model-independent.
+
 ## 5. Working with company data
 
 Keep networked preparation and deterministic analysis separate:
