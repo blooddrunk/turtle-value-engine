@@ -3220,6 +3220,7 @@ class HistoricalIngestionCompiler:
     ) -> None:
         self.raw_store = raw_store
         self.artifact_store = artifact_store
+        self._allow_generic_json_decoder = decoders is None
         self.decoders = dict(default_decoders() if decoders is None else decoders)
 
     def _decoder(self, receipt: RawArtifactReceiptV1) -> HistoricalRawDecoder:
@@ -3228,7 +3229,11 @@ class HistoricalIngestionCompiler:
         decoder = self.decoders.get(
             (receipt.adapter_id, receipt.artifact_kind, receipt.schema_version)
         )
-        if decoder is None and receipt.content_type in {"application/json", "text/json"}:
+        if (
+            decoder is None
+            and self._allow_generic_json_decoder
+            and receipt.content_type in {"application/json", "text/json"}
+        ):
             decoder = CanonicalJsonDecoder(receipt.artifact_kind, receipt.schema_version)
         if decoder is None:
             raise HistoricalIngestionError(

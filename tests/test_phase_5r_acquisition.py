@@ -541,6 +541,20 @@ def test_empty_decoder_mapping_is_not_replaced_by_defaults(tmp_path: Path):
         decoders={},
     )
     assert compiler.decoders == {}
+    receipt = RawArtifactReceiptV1.build(
+        batch_id="batch-explicit-decoders",
+        request=_request(),
+        adapter_version="1",
+        body=b"[]",
+        retrieval_started_at=datetime(2026, 1, 1, tzinfo=UTC),
+        retrieval_finished_at=datetime(2026, 1, 1, 0, 0, 1, tzinfo=UTC),
+        source_uri="https://source.example.test/history",
+        http_status=200,
+        content_type="application/json",
+        response_headers={},
+    )
+    with pytest.raises(HistoricalIngestionError, match="no decoder is registered"):
+        compiler._decoder(receipt)
 
 
 def test_private_acquisition_and_offline_compile_are_replayable(tmp_path: Path):
