@@ -5037,6 +5037,21 @@ calibration holdout guard and remaining gaps are recorded in
 [`docs/goals/phase-5-backtesting-calibration.md`](goals/phase-5-backtesting-calibration.md)
 and [`docs/architecture/backtesting-and-calibration.md`](architecture/backtesting-and-calibration.md).
 
+## Phase 5R — Production historical dataset and research archive readiness (ACTIVE)
+
+Phase 5R extends the completed Phase 5 integration boundary with a declared,
+bounded A/H production target scope, source and coverage registry,
+content-addressed frozen shards, listing-lifecycle and terminal-outcome
+contracts, replayable market/action/FX/benchmark reconciliation, and a
+point-in-time-valid frozen research archive. It is not a claim that the whole
+A/H market is production-ready: that claim requires source, licensing and
+coverage evidence for the named target universe and date range.
+
+The active work package and exit criteria are recorded in
+[`docs/goals/phase-5r-production-historical-corpus.md`](goals/phase-5r-production-historical-corpus.md).
+Phase 5 remains COMPLETE at its original synthetic/integration boundary; this
+milestone is additive and must not rewrite `strict-v1` or calibration semantics.
+
 ---
 
 ## Phase 6 — Watchlist and event-driven re-analysis
