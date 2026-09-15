@@ -343,6 +343,22 @@ def test_batch_id_is_bound_to_receipt_identities():
         )
 
 
+def test_raw_receipt_requires_stable_source_uri():
+    with pytest.raises(ValueError, match="source_uri"):
+        RawArtifactReceiptV1.build(
+            batch_id="batch-missing-source-uri",
+            request=_request(),
+            adapter_version="1",
+            body=b"raw batch bytes",
+            retrieval_started_at=datetime(2026, 1, 1, tzinfo=UTC),
+            retrieval_finished_at=datetime(2026, 1, 1, 0, 0, 1, tzinfo=UTC),
+            source_uri=None,
+            http_status=200,
+            content_type="application/json",
+            response_headers={},
+        )
+
+
 def test_resilient_transport_retries_only_bounded_transient_responses():
     responses = [
         NetworkResponse(429, {"Retry-After": "2"}, b"busy", "https://source.example.test"),

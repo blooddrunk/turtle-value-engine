@@ -580,7 +580,7 @@ class RawArtifactReceiptV1(BaseModel):
     schema_version: StrictStr | None = Field(default=None, min_length=1)
     canonical_parameters: dict[str, JSONValue] = Field(default_factory=dict)
     artifact_metadata: dict[str, JSONValue] = Field(default_factory=dict)
-    source_uri: StrictStr | None = Field(default=None, min_length=1)
+    source_uri: StrictStr = Field(min_length=1)
     retrieval_started_at: datetime
     retrieval_finished_at: datetime
     http_status: StrictInt | None = Field(default=None, ge=100, le=599)
@@ -606,9 +606,17 @@ class RawArtifactReceiptV1(BaseModel):
     def validate_artifact_metadata(cls, value: Mapping[str, object]) -> dict[str, JSONValue]:
         return _safe_json_object(value, path="artifact_metadata")
 
-    @field_validator("source_uri", "license_evidence_uri")
+    @field_validator("source_uri")
     @classmethod
-    def validate_source_uri(cls, value: str | None) -> str | None:
+    def validate_source_uri(cls, value: str) -> str:
+        safe = _safe_uri(value)
+        if safe is None:
+            raise ValueError("raw receipt requires a stable source URI")
+        return safe
+
+    @field_validator("license_evidence_uri")
+    @classmethod
+    def validate_license_evidence_uri(cls, value: str | None) -> str | None:
         return _safe_uri(value)
 
     @field_validator("response_headers")
@@ -664,7 +672,7 @@ class RawArtifactReceiptV1(BaseModel):
         body: bytes,
         retrieval_started_at: datetime,
         retrieval_finished_at: datetime,
-        source_uri: str | None,
+        source_uri: str,
         http_status: int | None,
         content_type: str | None,
         response_headers: Mapping[str, object] | None,

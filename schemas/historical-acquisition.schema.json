@@ -888,17 +888,9 @@
           "type": "object"
         },
         "source_uri": {
-          "anyOf": [
-            {
-              "minLength": 1,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Source Uri"
+          "minLength": 1,
+          "title": "Source Uri",
+          "type": "string"
         },
         "retrieval_started_at": {
           "format": "date-time",
@@ -1019,6 +1011,7 @@
         "source_kind",
         "adapter_id",
         "adapter_version",
+        "source_uri",
         "retrieval_started_at",
         "retrieval_finished_at",
         "content_length",
