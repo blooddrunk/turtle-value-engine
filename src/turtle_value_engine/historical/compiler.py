@@ -873,7 +873,11 @@ def _production_scope_blockers(
             blockers.append("source coverage does not span target: " + item.source_id)
         if not target_listings.issubset(item.coverage_listing_ids):
             blockers.append("source listing coverage does not span target: " + item.source_id)
-    required = set(target.required_source_kinds)
+    # A caller may declare a smaller obligation set for a compact acceptance
+    # fixture, but a production Phase 5R claim must cover every source class in
+    # the contract.  This prevents an apparently complete price-only manifest
+    # from being presented as a complete historical research dataset.
+    required = set(target.required_source_kinds) | set(HistoricalSourceKind)
     available = {item.source_kind for item in sources.values()}
     for kind in required:
         if not any(candidate in available for candidate in _scope_source_kind(kind)):
@@ -884,6 +888,14 @@ def _production_scope_blockers(
                 blockers.append(
                     "coverage is not COMPLETE: "
                     f"{record.source_kind.value}:{record.listing_id}"
+                )
+            if (
+                record.source_kind is HistoricalSourceKind.PRICES
+                and record.status.value == "COMPLETE"
+                and record.expected_session_count == 0
+            ):
+                blockers.append(
+                    "price coverage has no expected sessions: " + record.listing_id
                 )
     coverage_keys = {
         (record.source_kind, record.listing_id)

@@ -44,7 +44,8 @@ coverage remains explicit and fails closed for production claims.
   access-grant reference.
 - Add named target scope, per-listing/per-period coverage reports and a
   validator that requires source-backed membership evidence for any historical
-  or survivorship-bias-free claim.
+  or survivorship-bias-free claim. Production validation evaluates all nine
+  source categories even when a compact fixture declares fewer requirements.
 
 ### B. Scalable frozen dataset layout
 

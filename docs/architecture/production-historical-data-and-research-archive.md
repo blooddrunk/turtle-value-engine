@@ -40,8 +40,10 @@ historical/survivorship-free claim is eligible only when source descriptors are
 historical-capable, coverage is complete, authority/licensing is established,
 membership intervals exist, coverage reports are complete and an independent
 reconciliation report passes. The validator never infers completeness from a
-non-empty row count. Current-constituent snapshots are rejected as historical
-membership.
+non-empty row count. For a production Phase 5R claim, the validator evaluates
+all nine source categories in the contract even if a compact fixture declares a
+smaller `required_source_kinds` list. Current-constituent snapshots are
+rejected as historical membership.
 
 Coverage is recorded per listing and period. Expected sessions must be
 supplied by a declared calendar source; without them the report is `UNKNOWN`.

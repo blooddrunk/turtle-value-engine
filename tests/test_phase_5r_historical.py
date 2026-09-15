@@ -448,6 +448,14 @@ def test_source_aware_compilation_keeps_a_h_lifecycles_and_shards(tmp_path):
     assert summary.valid is True
     assert summary.production_eligible is False
     assert any("HISTORICAL" in item for item in summary.production_blockers)
+    assert any(
+        "complete coverage record is missing: FX:A1" in item
+        for item in summary.production_blockers
+    )
+    assert any(
+        "complete coverage record is missing: RESEARCH_ARCHIVE:A1" in item
+        for item in summary.production_blockers
+    )
     assert len(compiled.market_bars) == 6
     assert {item.market for item in compiled.listing_lifecycles} == {Market.A, Market.H}
     assert (
