@@ -474,7 +474,7 @@ Business-quality agents / model-neutral runtime boundary
         ✅
 
 Backtesting / calibration
-        ⏳
+        ✅
 
 Watchlist / event-driven monitoring
         ⏳

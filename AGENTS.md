@@ -93,10 +93,22 @@ Phase 4 adds these model-neutral research boundaries:
   → deterministic analysis → report;
 - `compose_report` for a non-mutating human-readable projection.
 
-The active Phase 4 goal is now implemented and its closure review is recorded in
-`docs/goals/phase-4-agentic-analysis.md`. The next major milestone is Phase 5;
-Phase 4 contracts remain the stable input/output boundary for ChatGPT, Codex,
-Hermes or another external runtime.
+The Phase 4 goal is implemented and its closure review is recorded in
+`docs/goals/phase-4-agentic-analysis.md`. Phase 5 is implemented at its
+documented integration boundary and its closure review is recorded in
+`docs/goals/phase-5-backtesting-calibration.md`. Phase 4 contracts remain the
+stable input/output boundary for ChatGPT, Codex, Hermes or another external
+runtime; Phase 5 consumes their frozen artifacts without live-model
+reconstruction.
+
+Phase 5 adds the offline, model-neutral backtesting boundary described in
+`docs/goals/phase-5-backtesting-calibration.md` and
+`docs/architecture/backtesting-and-calibration.md`: `BacktestDatasetManifest`,
+`HistoricalDecisionArtifact`, `DecisionSnapshot`, signal/return evaluation,
+the versioned `portfolio-policy-v1` simulator, benchmark/metric attribution,
+and chronological calibration proposals. These contracts consume frozen
+artifacts only; they do not change `strict-v1` or recalculate deterministic
+investment semantics.
 
 ## 5. Working with company data
 
@@ -108,6 +120,10 @@ listing + as_of -> provider acquisition -> raw cache -> normalization
 
 OFFLINE / DETERMINISTIC
 NormalizedCompanyInput -> accepted-adjustment materialization -> analysis
+
+OFFLINE / DETERMINISTIC BACKTEST
+BacktestDatasetManifest + frozen decisions -> signals -> optional portfolio
+policy replay -> metrics / calibration proposal
 ```
 
 Provider-specific field names must not leak into calculation modules.
@@ -143,6 +159,11 @@ NormalizedCompanyInput
 `tve analyze` remains offline and does not instantiate an analyst client.
 
 Evidence identity, source identity, locators, hashes, and provenance are first-class data. Do not replace them with prose-only citations.
+
+Phase 5 backtest artifacts persist manifest IDs/content hashes, snapshot and
+analysis identities, run specifications, policy version/hash, replayable
+portfolio events and calibration experiment/holdout boundaries. Calibration
+may emit only a candidate profile proposal; it cannot apply a rule change.
 
 ## 7. Business Quality rules for agents
 
