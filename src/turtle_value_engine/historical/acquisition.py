@@ -810,6 +810,20 @@ class RawAcquisitionBatchManifestV1(BaseModel):
         receipt_ids = [item.receipt_id for item in self.receipts]
         if len(receipt_ids) != len(set(receipt_ids)):
             raise ValueError("receipt IDs must be unique within a batch")
+        plan_request_ids = {item.request_id for item in self.plan.requests}
+        receipt_request_ids = {item.request_id for item in self.receipts}
+        unknown_request_ids = receipt_request_ids - plan_request_ids
+        if unknown_request_ids:
+            raise ValueError(
+                "batch receipts reference unknown requests: "
+                + ",".join(sorted(unknown_request_ids))
+            )
+        missing_request_ids = plan_request_ids - receipt_request_ids
+        if missing_request_ids:
+            raise ValueError(
+                "batch is missing receipts for requests: "
+                + ",".join(sorted(missing_request_ids))
+            )
         expected_batch_id = _expected_batch_id(self.plan_sha256, self.receipts)
         if self.batch_id != expected_batch_id:
             raise ValueError("batch_id does not match plan and receipt identities")
@@ -2782,6 +2796,17 @@ class HistoricalAcquisitionService:
                     "artifact_role": download.artifact_role,
                     "artifact_metadata": download.artifact_metadata,
                 }
+            )
+        acquired_request_ids = {item[0].request_id for item in pending}
+        missing_request_ids = {
+            request.request_id
+            for request in plan.requests
+            if request.request_id not in acquired_request_ids
+        }
+        if missing_request_ids:
+            raise HistoricalIngestionError(
+                "RAW_REQUEST_MISSING: acquisition returned no raw artifact for requests: "
+                + ",".join(sorted(missing_request_ids))
             )
         batch_id = _batch_id_from_artifacts(plan.content_sha256, batch_artifacts)
         artifact_by_digest = {

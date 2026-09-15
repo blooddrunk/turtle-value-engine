@@ -343,6 +343,86 @@ def test_batch_id_is_bound_to_receipt_identities():
         )
 
 
+def test_batch_rejects_missing_plan_request_receipts():
+    request = _request()
+    second_request = request.model_copy(update={"request_id": "second-request"})
+    plan = _plan().model_copy(update={"requests": [request, second_request]})
+    receipt = RawArtifactReceiptV1.build(
+        batch_id="batch-wrong",
+        request=request,
+        adapter_version="1",
+        body=b"raw batch bytes",
+        retrieval_started_at=datetime(2026, 1, 1, tzinfo=UTC),
+        retrieval_finished_at=datetime(2026, 1, 1, 0, 0, 1, tzinfo=UTC),
+        source_uri="https://source.example.test/history",
+        http_status=200,
+        content_type="application/json",
+        response_headers={},
+    )
+    batch_id = "batch-" + "0" * 32
+    receipt = receipt.model_copy(update={"batch_id": batch_id})
+    with pytest.raises(ValueError, match="missing receipts for requests"):
+        RawAcquisitionBatchManifestV1.build(
+            batch_id=batch_id,
+            plan=plan,
+            created_at=datetime(2026, 1, 1, tzinfo=UTC),
+            receipts=[receipt],
+        )
+
+
+def test_acquisition_rejects_request_without_raw_artifact(tmp_path: Path):
+    class PartialAdapter:
+        adapter_id = "partial-adapter"
+        adapter_version = "1"
+
+        def acquire(self, request, *, transport, credentials):
+            if request.request_id == "second-request":
+                return []
+            body = _market_bar_body()
+            response = NetworkResponse(
+                200,
+                {"Content-Type": "application/json"},
+                body,
+                "https://source.example.test/history",
+            )
+            return [
+                RawDownload(
+                    body=body,
+                    response=response,
+                    source_uri="https://source.example.test/history",
+                    schema_version=request.schema_version,
+                )
+            ]
+
+    first_source = _source(adapter_id="partial-adapter").model_copy(
+        update={"source_id": "first-source"}
+    )
+    second_source = _source(adapter_id="partial-adapter").model_copy(
+        update={"source_id": "second-source"}
+    )
+    first_request = _request(adapter_id="partial-adapter").model_copy(
+        update={"request_id": "first-request", "source_id": "first-source"}
+    )
+    second_request = _request(adapter_id="partial-adapter").model_copy(
+        update={"request_id": "second-request", "source_id": "second-source"}
+    )
+    plan = _plan(adapter_id="partial-adapter").model_copy(
+        update={
+            "sources": [first_source, second_source],
+            "requests": [first_request, second_request],
+        }
+    )
+    with pytest.raises(HistoricalIngestionError, match="RAW_REQUEST_MISSING"):
+        HistoricalAcquisitionService(
+            {"partial-adapter": PartialAdapter()},
+            transport=FakeTransport([]),
+        ).acquire(
+            plan,
+            raw_store=RawBlobStore(tmp_path / "raw"),
+            network_allowed=True,
+        )
+
+
 def test_raw_receipt_requires_stable_source_uri():
     with pytest.raises(ValueError, match="source_uri"):
         RawArtifactReceiptV1.build(
