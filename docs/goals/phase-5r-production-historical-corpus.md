@@ -147,8 +147,8 @@ production claim until source access and coverage evidence are established.
 The source-aware contracts, content-addressed JSONL store, offline compiler,
 coverage/reconciliation reports, frozen research-archive PIT validator, CLI and
 adversarial acceptance tests are implemented. The declared checked-in target is
-`phase5r-compact-ah-v1` / `phase5r-compact-ah`, listings `A1` and `H1`, with
-date range `2020-01-01` through `2020-01-03`. It is explicitly
+`fixture-ah-2020` in universe `fixture-ah`, listings `A1` and `H1`, with date
+range `2020-01-01` through `2020-01-03`. It is explicitly
 `FIXED_RESEARCH_UNIVERSE` and `PARTIAL`.
 
 The compact corpus currently declares target `fixture-ah-2020` in universe
