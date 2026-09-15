@@ -2689,9 +2689,17 @@ class HithinkDailyKParquetDecoder:
                     "Hithink daily-k currency is not the documented CNY value"
                 )
             listing_id = _canonical_hithink_a_listing(row["thscode"])
+            if isinstance(row["date_ms"], bool):
+                raise HistoricalIngestionError("Hithink daily-k date_ms is invalid")
             try:
-                trading_datetime = datetime.fromtimestamp(float(row["date_ms"]) / 1000, tz=zone)
-            except (TypeError, ValueError, OverflowError) as exc:
+                milliseconds = float(row["date_ms"])
+            except (TypeError, ValueError) as exc:
+                raise HistoricalIngestionError("Hithink daily-k date_ms is invalid") from exc
+            if not math.isfinite(milliseconds):
+                raise HistoricalIngestionError("Hithink daily-k date_ms is invalid")
+            try:
+                trading_datetime = datetime.fromtimestamp(milliseconds / 1000, tz=zone)
+            except (OSError, ValueError, OverflowError) as exc:
                 raise HistoricalIngestionError("Hithink daily-k date_ms is invalid") from exc
             try:
                 result.append(
@@ -2763,6 +2771,8 @@ class HithinkAdjustmentFactorParquetDecoder:
 
     @staticmethod
     def _nonnegative(value: object, field_name: str) -> float:
+        if isinstance(value, bool):
+            raise HistoricalIngestionError(f"Hithink {field_name} is invalid")
         try:
             number = float(value)
         except (TypeError, ValueError) as exc:
@@ -2773,9 +2783,20 @@ class HithinkAdjustmentFactorParquetDecoder:
 
     @staticmethod
     def _date(value: object) -> date:
+        if isinstance(value, bool):
+            raise HistoricalIngestionError("Hithink ex_date_ms is invalid")
         try:
-            return datetime.fromtimestamp(float(value) / 1000, tz=ZoneInfo("Asia/Shanghai")).date()
-        except (TypeError, ValueError, OverflowError) as exc:
+            milliseconds = float(value)
+        except (TypeError, ValueError) as exc:
+            raise HistoricalIngestionError("Hithink ex_date_ms is invalid") from exc
+        if not math.isfinite(milliseconds):
+            raise HistoricalIngestionError("Hithink ex_date_ms is invalid")
+        try:
+            return datetime.fromtimestamp(
+                milliseconds / 1000,
+                tz=ZoneInfo("Asia/Shanghai"),
+            ).date()
+        except (OSError, ValueError, OverflowError) as exc:
             raise HistoricalIngestionError("Hithink ex_date_ms is invalid") from exc
 
     def decode(self, receipt: RawArtifactReceiptV1, raw_bytes: bytes) -> list[BaseModel]:
@@ -2813,6 +2834,9 @@ class HithinkAdjustmentFactorParquetDecoder:
             currency = row["currency"]
             if currency != "CNY":
                 raise HistoricalIngestionError("Hithink adjustment currency is invalid")
+            ticker = row["ticker"]
+            if not isinstance(ticker, str) or not ticker.strip():
+                raise HistoricalIngestionError("Hithink adjustment ticker is invalid")
             dividend = self._nonnegative(row["dividend_per_share"], "dividend_per_share")
             bonus = self._nonnegative(row["per_share_bonus"], "per_share_bonus")
             rights_ratio = self._nonnegative(row["allotment_ratio"], "allotment_ratio")
@@ -2828,7 +2852,7 @@ class HithinkAdjustmentFactorParquetDecoder:
             identity = {
                 "listing_id": listing_id,
                 "date": effective_date.isoformat(),
-                "ticker": str(row["ticker"]),
+                "ticker": ticker,
                 "dividend": dividend,
                 "bonus": bonus,
                 "rights_ratio": rights_ratio,

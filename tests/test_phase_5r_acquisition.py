@@ -49,6 +49,7 @@ from turtle_value_engine.historical import (
     HistoricalSourceSchemaError,
     HistoricalSourceSpecV1,
     HistoricalTargetScope,
+    HithinkAdjustmentFactorParquetDecoder,
     HithinkMarketDumpAdapter,
     MappingCredentialResolver,
     NetworkDisabledError,
@@ -2106,6 +2107,17 @@ def test_hithink_probe_rejects_missing_declared_sessions(monkeypatch):
         "HISTORICAL_CAPABILITY_UNVERIFIED: expected Hithink sessions are missing: "
         "SH600000"
     ]
+
+
+@pytest.mark.parametrize("value", [True, float("nan"), float("inf")])
+def test_hithink_adjustment_decoder_rejects_invalid_dates(value):
+    with pytest.raises(HistoricalIngestionError, match="ex_date_ms is invalid"):
+        HithinkAdjustmentFactorParquetDecoder._date(value)
+
+
+def test_hithink_adjustment_decoder_rejects_boolean_numeric_values():
+    with pytest.raises(HistoricalIngestionError, match="dividend_per_share is invalid"):
+        HithinkAdjustmentFactorParquetDecoder._nonnegative(True, "dividend_per_share")
 
 
 def test_h_target_readiness_fails_closed_without_qualified_probe():
