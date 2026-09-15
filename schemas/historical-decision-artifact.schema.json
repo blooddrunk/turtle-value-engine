@@ -1,0 +1,2591 @@
+{
+  "$defs": {
+    "Adjustment": {
+      "additionalProperties": false,
+      "description": "Explicit economic adjustment with proposal/approval provenance.",
+      "properties": {
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "target_field": {
+          "minLength": 1,
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "title": "Target Field",
+          "type": "string"
+        },
+        "target_period": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Period"
+        },
+        "adjustment_type": {
+          "$ref": "#/$defs/AdjustmentType"
+        },
+        "input_value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Input Value"
+        },
+        "proposed_adjusted_value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Proposed Adjusted Value"
+        },
+        "status": {
+          "$ref": "#/$defs/AdjustmentStatus"
+        },
+        "reason": {
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        },
+        "source_evidence_ids": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Source Evidence Ids",
+          "type": "array"
+        },
+        "proposed_by": {
+          "$ref": "#/$defs/ProposedBy"
+        },
+        "approved_by": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ApprovedBy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "confidence": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Confidence"
+        }
+      },
+      "required": [
+        "id",
+        "target_field",
+        "adjustment_type",
+        "status",
+        "reason",
+        "source_evidence_ids",
+        "proposed_by"
+      ],
+      "title": "Adjustment",
+      "type": "object"
+    },
+    "AdjustmentStatus": {
+      "description": "Lifecycle state of an adjustment proposal.",
+      "enum": [
+        "PROPOSED",
+        "ACCEPTED",
+        "REJECTED"
+      ],
+      "title": "AdjustmentStatus",
+      "type": "string"
+    },
+    "AdjustmentType": {
+      "description": "Adjustment types permitted by the data contract.",
+      "enum": [
+        "RECLASSIFY",
+        "EXCLUDE",
+        "INCLUDE",
+        "HAIRCUT",
+        "OWNERSHIP_ADJUST",
+        "UPSTREAMABILITY_ADJUST",
+        "NORMALIZE",
+        "OTHER"
+      ],
+      "title": "AdjustmentType",
+      "type": "string"
+    },
+    "ApprovedBy": {
+      "description": "Actor that approved an adjustment.",
+      "enum": [
+        "RULE_ENGINE",
+        "HUMAN"
+      ],
+      "title": "ApprovedBy",
+      "type": "string"
+    },
+    "BusinessQuality": {
+      "additionalProperties": false,
+      "description": "Structured business-quality assessment.",
+      "properties": {
+        "score": {
+          "anyOf": [
+            {
+              "maximum": 40,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Score"
+        },
+        "grade": {
+          "anyOf": [
+            {
+              "enum": [
+                "S",
+                "A",
+                "B",
+                "WATCH",
+                "FAIL"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Grade"
+        },
+        "confidence": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ConfidenceLevel"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "evidence_coverage": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Evidence Coverage"
+        },
+        "critical_weaknesses": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Critical Weaknesses",
+          "type": "array"
+        },
+        "unresolved_questions": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Unresolved Questions",
+          "type": "array"
+        },
+        "flags": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Flags",
+          "type": "array"
+        },
+        "dimension_results": {
+          "items": {
+            "$ref": "#/$defs/BusinessQualityDimension"
+          },
+          "title": "Dimension Results",
+          "type": "array"
+        }
+      },
+      "title": "BusinessQuality",
+      "type": "object"
+    },
+    "BusinessQualityDimension": {
+      "additionalProperties": false,
+      "description": "One evidence-backed business-quality dimension.",
+      "properties": {
+        "dimension": {
+          "enum": [
+            "demand_durability",
+            "cyclicality",
+            "pricing_power",
+            "moat",
+            "capital_efficiency",
+            "dependency",
+            "regulatory_risk",
+            "predictability"
+          ],
+          "title": "Dimension",
+          "type": "string"
+        },
+        "score": {
+          "maximum": 5,
+          "minimum": 0,
+          "title": "Score",
+          "type": "integer"
+        },
+        "supporting_evidence_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Supporting Evidence Ids",
+          "type": "array"
+        },
+        "counter_evidence_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Counter Evidence Ids",
+          "type": "array"
+        },
+        "confidence": {
+          "$ref": "#/$defs/ConfidenceLevel"
+        },
+        "reasoning_summary": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reasoning Summary"
+        }
+      },
+      "required": [
+        "dimension",
+        "score",
+        "supporting_evidence_ids",
+        "counter_evidence_ids",
+        "confidence"
+      ],
+      "title": "BusinessQualityDimension",
+      "type": "object"
+    },
+    "CDCMetric": {
+      "additionalProperties": true,
+      "description": "CDC metric payload; fields extend the permissive CDC schema section.",
+      "properties": {
+        "reported_cfo": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reported Cfo"
+        },
+        "adjusted_cfo": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Adjusted Cfo"
+        },
+        "economic_gross_capex": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Economic Gross Capex"
+        },
+        "lease_principal_outside_cfo": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Lease Principal Outside Cfo"
+        },
+        "core_cdc": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Core Cdc"
+        },
+        "parent_core_cdc": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Parent Core Cdc"
+        },
+        "normalized_core_cdc": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Normalized Core Cdc"
+        },
+        "normalized_parent_core_cdc": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Normalized Parent Core Cdc"
+        },
+        "cdc_yield": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cdc Yield"
+        },
+        "positive_years_5y": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Positive Years 5Y"
+        },
+        "cumulative_core_cdc_5y": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cumulative Core Cdc 5Y"
+        },
+        "all_in_cdc": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "All In Cdc"
+        },
+        "all_in_cdc_5y": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "All In Cdc 5Y"
+        },
+        "flags": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Flags",
+          "type": "array"
+        },
+        "confidence": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ConfidenceLevel"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "title": "CDCMetric",
+      "type": "object"
+    },
+    "Company": {
+      "additionalProperties": false,
+      "description": "Company identity and accounting context.\n\n``primary_listing`` is the canonical stable issuer/listing identifier;\nadditional listings stay in ``other_listings`` for later price mapping.",
+      "properties": {
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "legal_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Legal Name"
+        },
+        "primary_listing": {
+          "minLength": 1,
+          "title": "Primary Listing",
+          "type": "string"
+        },
+        "other_listings": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Other Listings",
+          "type": "array"
+        },
+        "sector": {
+          "minLength": 1,
+          "title": "Sector",
+          "type": "string"
+        },
+        "industry": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Industry"
+        },
+        "country_or_region": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Country Or Region"
+        },
+        "reporting_currency": {
+          "maxLength": 3,
+          "minLength": 3,
+          "title": "Reporting Currency",
+          "type": "string"
+        },
+        "accounting_standard": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Accounting Standard"
+        },
+        "accounting_standard_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Accounting Standard Version"
+        },
+        "fiscal_year_end": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fiscal Year End"
+        },
+        "special_model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Special Model"
+        }
+      },
+      "required": [
+        "name",
+        "primary_listing",
+        "sector",
+        "reporting_currency"
+      ],
+      "title": "Company",
+      "type": "object"
+    },
+    "CompanyAnalysis": {
+      "additionalProperties": false,
+      "description": "Complete top-level CompanyAnalysis output contract.",
+      "properties": {
+        "schema_version": {
+          "const": "1.0.0",
+          "default": "1.0.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "analysis_id": {
+          "minLength": 1,
+          "title": "Analysis Id",
+          "type": "string"
+        },
+        "as_of": {
+          "format": "date",
+          "title": "As Of",
+          "type": "string"
+        },
+        "profile_id": {
+          "minLength": 1,
+          "title": "Profile Id",
+          "type": "string"
+        },
+        "company": {
+          "$ref": "#/$defs/Company"
+        },
+        "data_quality": {
+          "$ref": "#/$defs/DataQuality"
+        },
+        "facts": {
+          "items": {
+            "$ref": "#/$defs/Fact"
+          },
+          "title": "Facts",
+          "type": "array"
+        },
+        "adjustments": {
+          "items": {
+            "$ref": "#/$defs/Adjustment"
+          },
+          "title": "Adjustments",
+          "type": "array"
+        },
+        "metrics": {
+          "$ref": "#/$defs/Metrics"
+        },
+        "gates": {
+          "$ref": "#/$defs/Gates"
+        },
+        "valuation": {
+          "$ref": "#/$defs/ValuationResult"
+        },
+        "decision": {
+          "$ref": "#/$defs/Decision"
+        },
+        "business_quality": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BusinessQuality"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "evidence_index": {
+          "items": {
+            "$ref": "#/$defs/Evidence"
+          },
+          "title": "Evidence Index",
+          "type": "array"
+        },
+        "flags": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Flags",
+          "type": "array"
+        }
+      },
+      "required": [
+        "analysis_id",
+        "as_of",
+        "profile_id",
+        "company",
+        "data_quality",
+        "facts",
+        "adjustments",
+        "metrics",
+        "gates",
+        "valuation",
+        "decision"
+      ],
+      "title": "CompanyAnalysis",
+      "type": "object"
+    },
+    "ConfidenceLevel": {
+      "description": "Qualitative confidence used by metrics, gates and decisions.",
+      "enum": [
+        "HIGH",
+        "MEDIUM",
+        "LOW"
+      ],
+      "title": "ConfidenceLevel",
+      "type": "string"
+    },
+    "DataQuality": {
+      "additionalProperties": false,
+      "description": "Overall data-quality summary for an analysis.",
+      "properties": {
+        "confidence": {
+          "$ref": "#/$defs/ConfidenceLevel"
+        },
+        "evidence_coverage": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Evidence Coverage",
+          "type": "number"
+        },
+        "critical_missing_fields": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Critical Missing Fields",
+          "type": "array"
+        },
+        "notes": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Notes"
+        }
+      },
+      "required": [
+        "confidence",
+        "evidence_coverage",
+        "critical_missing_fields"
+      ],
+      "title": "DataQuality",
+      "type": "object"
+    },
+    "Decision": {
+      "additionalProperties": false,
+      "description": "Final derived decision; never an independent narrative opinion.",
+      "properties": {
+        "state": {
+          "$ref": "#/$defs/DecisionState"
+        },
+        "auto_decision_allowed": {
+          "title": "Auto Decision Allowed",
+          "type": "boolean"
+        },
+        "summary": {
+          "title": "Summary",
+          "type": "string"
+        },
+        "blocking_reasons": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Blocking Reasons",
+          "type": "array"
+        },
+        "top_supporting_evidence_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Top Supporting Evidence Ids",
+          "type": "array"
+        },
+        "top_counter_evidence_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Top Counter Evidence Ids",
+          "type": "array"
+        },
+        "confidence": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ConfidenceLevel"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "state",
+        "auto_decision_allowed",
+        "summary",
+        "blocking_reasons"
+      ],
+      "title": "Decision",
+      "type": "object"
+    },
+    "DecisionState": {
+      "description": "States allowed by the CompanyAnalysis decision contract.",
+      "enum": [
+        "PASS",
+        "WATCH",
+        "FAIL",
+        "SPECIAL_REVIEW",
+        "ACCEPTABLE",
+        "TURTLE_ENTRY",
+        "EXTREME_SAFETY",
+        "TOO_EXPENSIVE_FOR_STRICT_MODEL",
+        "NO_NORMAL_VALUATION"
+      ],
+      "title": "DecisionState",
+      "type": "string"
+    },
+    "Evidence": {
+      "additionalProperties": false,
+      "description": "Auditable evidence item used by facts, adjustments and judgments.",
+      "properties": {
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "direction": {
+          "$ref": "#/$defs/EvidenceDirection"
+        },
+        "strength": {
+          "$ref": "#/$defs/EvidenceStrength"
+        },
+        "statement": {
+          "minLength": 1,
+          "title": "Statement",
+          "type": "string"
+        },
+        "metric_context": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MetricContext"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "source": {
+          "$ref": "#/$defs/Source"
+        },
+        "confidence": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "notes": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Notes"
+        },
+        "provenance": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EvidenceProvenance"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "id",
+        "direction",
+        "strength",
+        "statement",
+        "source",
+        "confidence"
+      ],
+      "title": "Evidence",
+      "type": "object"
+    },
+    "EvidenceDirection": {
+      "description": "Whether evidence supports, challenges or contextualizes a claim.",
+      "enum": [
+        "SUPPORT",
+        "COUNTER",
+        "CONTEXT"
+      ],
+      "title": "EvidenceDirection",
+      "type": "string"
+    },
+    "EvidenceProvenance": {
+      "additionalProperties": false,
+      "description": "Exact filing-extraction identity behind one evidence item.\n\nThe provider layer uses this additive metadata to bind an evidence item\nto one immutable document snapshot and one extracted text block.  It is\ndeliberately separate from ``Source`` so existing structured-data\nevidence keeps its original shape while filing evidence can carry the\nstronger byte- and parser-level provenance required for replay.",
+      "properties": {
+        "filing_id": {
+          "minLength": 1,
+          "pattern": "^filing-[0-9a-f]{24}$",
+          "title": "Filing Id",
+          "type": "string"
+        },
+        "filing_source": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[A-Z][A-Z0-9_]*$",
+          "title": "Filing Source",
+          "type": "string"
+        },
+        "source_document_id": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Document Id"
+        },
+        "report_period": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Report Period"
+        },
+        "content_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Content Sha256",
+          "type": "string"
+        },
+        "content_size": {
+          "minimum": 1,
+          "title": "Content Size",
+          "type": "integer"
+        },
+        "media_type": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Media Type",
+          "type": "string"
+        },
+        "extraction_contract": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Extraction Contract",
+          "type": "string"
+        },
+        "parser_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Parser Id",
+          "type": "string"
+        },
+        "parser_version": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Parser Version",
+          "type": "string"
+        },
+        "block_sequence": {
+          "minimum": 1,
+          "title": "Block Sequence",
+          "type": "integer"
+        },
+        "block_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Block Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "filing_id",
+        "filing_source",
+        "content_sha256",
+        "content_size",
+        "media_type",
+        "extraction_contract",
+        "parser_id",
+        "parser_version",
+        "block_sequence",
+        "block_sha256"
+      ],
+      "title": "EvidenceProvenance",
+      "type": "object"
+    },
+    "EvidenceStrength": {
+      "description": "Evidence quality level defined by the repository specification.",
+      "enum": [
+        "E3",
+        "E2",
+        "E1",
+        "E0"
+      ],
+      "title": "EvidenceStrength",
+      "type": "string"
+    },
+    "Fact": {
+      "additionalProperties": false,
+      "description": "Sourced fact before strategy interpretation or adjustment.",
+      "properties": {
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "field": {
+          "minLength": 1,
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "title": "Field",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Value"
+        },
+        "unit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unit"
+        },
+        "currency": {
+          "anyOf": [
+            {
+              "maxLength": 3,
+              "minLength": 3,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Currency"
+        },
+        "period": {
+          "minLength": 1,
+          "title": "Period",
+          "type": "string"
+        },
+        "source_evidence_ids": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Source Evidence Ids",
+          "type": "array"
+        },
+        "estimation_method": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Estimation Method"
+        },
+        "estimated": {
+          "default": false,
+          "title": "Estimated",
+          "type": "boolean"
+        },
+        "confidence": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "source_fact_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Fact Id"
+        },
+        "source_value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Value"
+        },
+        "applied_adjustment_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Applied Adjustment Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "field",
+        "value",
+        "period",
+        "source_evidence_ids",
+        "confidence"
+      ],
+      "title": "Fact",
+      "type": "object"
+    },
+    "GateResult": {
+      "additionalProperties": false,
+      "description": "Independent gate result with explainable rule outcomes.",
+      "properties": {
+        "status": {
+          "$ref": "#/$defs/GateStatus"
+        },
+        "rules": {
+          "items": {
+            "$ref": "#/$defs/GateRule"
+          },
+          "title": "Rules",
+          "type": "array"
+        },
+        "blocking_reasons": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Blocking Reasons",
+          "type": "array"
+        },
+        "confidence": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ConfidenceLevel"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "status",
+        "rules"
+      ],
+      "title": "GateResult",
+      "type": "object"
+    },
+    "GateRule": {
+      "additionalProperties": false,
+      "description": "One deterministic rule result within a gate.",
+      "properties": {
+        "rule_id": {
+          "title": "Rule Id",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/GateStatus"
+        },
+        "actual": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Actual"
+        },
+        "threshold": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Threshold"
+        },
+        "evidence_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence Ids",
+          "type": "array"
+        },
+        "message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Message"
+        }
+      },
+      "required": [
+        "rule_id",
+        "status"
+      ],
+      "title": "GateRule",
+      "type": "object"
+    },
+    "GateStatus": {
+      "description": "Status of one independent gate or one rule inside a gate.",
+      "enum": [
+        "PASS",
+        "WATCH",
+        "FAIL",
+        "SPECIAL_REVIEW",
+        "NOT_EVALUATED"
+      ],
+      "title": "GateStatus",
+      "type": "string"
+    },
+    "Gates": {
+      "additionalProperties": false,
+      "description": "The fixed independent gate keys required by CompanyAnalysis.",
+      "properties": {
+        "universe": {
+          "$ref": "#/$defs/GateResult"
+        },
+        "balance_sheet": {
+          "$ref": "#/$defs/GateResult"
+        },
+        "cdc": {
+          "$ref": "#/$defs/GateResult"
+        },
+        "through_return": {
+          "$ref": "#/$defs/GateResult"
+        },
+        "business_quality": {
+          "$ref": "#/$defs/GateResult"
+        },
+        "governance_data_quality": {
+          "$ref": "#/$defs/GateResult"
+        }
+      },
+      "required": [
+        "universe",
+        "balance_sheet",
+        "cdc",
+        "through_return",
+        "business_quality",
+        "governance_data_quality"
+      ],
+      "title": "Gates",
+      "type": "object"
+    },
+    "MetricContext": {
+      "additionalProperties": false,
+      "description": "Optional metric context attached to evidence.",
+      "properties": {
+        "metric": {
+          "title": "Metric",
+          "type": "string"
+        },
+        "period": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Period"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Value"
+        },
+        "unit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unit"
+        },
+        "currency": {
+          "anyOf": [
+            {
+              "maxLength": 3,
+              "minLength": 3,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Currency"
+        }
+      },
+      "required": [
+        "metric"
+      ],
+      "title": "MetricContext",
+      "type": "object"
+    },
+    "Metrics": {
+      "additionalProperties": false,
+      "description": "Top-level deterministic metric groups.",
+      "properties": {
+        "cdc": {
+          "$ref": "#/$defs/CDCMetric"
+        },
+        "net_cash": {
+          "$ref": "#/$defs/NetCashMetric"
+        },
+        "through_return": {
+          "$ref": "#/$defs/ThroughReturnMetric"
+        }
+      },
+      "required": [
+        "cdc",
+        "net_cash",
+        "through_return"
+      ],
+      "title": "Metrics",
+      "type": "object"
+    },
+    "NetCashMetric": {
+      "additionalProperties": true,
+      "description": "Net-cash metric payload.",
+      "properties": {
+        "book_cash": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Book Cash"
+        },
+        "strict_cash": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Strict Cash"
+        },
+        "owner_accessible_cash": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Owner Accessible Cash"
+        },
+        "financial_debt": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Financial Debt"
+        },
+        "lease_debt": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Lease Debt"
+        },
+        "debt_equivalent": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Debt Equivalent"
+        },
+        "financial_net_cash": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Financial Net Cash"
+        },
+        "obligation_adjusted_net_cash": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Obligation Adjusted Net Cash"
+        },
+        "owner_debt_equivalent": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Owner Debt Equivalent"
+        },
+        "book_net_cash": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Book Net Cash"
+        },
+        "strict_net_cash": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Strict Net Cash"
+        },
+        "owner_realizable_net_cash": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Owner Realizable Net Cash"
+        },
+        "valuation_net_cash": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Valuation Net Cash"
+        },
+        "adjusted_ev": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Adjusted Ev"
+        },
+        "ex_cash_cdc_yield": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ex Cash Cdc Yield"
+        },
+        "owner_net_cash_ratio": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Owner Net Cash Ratio"
+        },
+        "liquidity_coverage": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Liquidity Coverage"
+        },
+        "stress_coverage": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stress Coverage"
+        },
+        "net_debt_to_ebitda": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Net Debt To Ebitda"
+        },
+        "interest_coverage": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Interest Coverage"
+        },
+        "source_evidence_ids": {
+          "additionalProperties": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "title": "Source Evidence Ids",
+          "type": "object"
+        },
+        "flags": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Flags",
+          "type": "array"
+        },
+        "confidence": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ConfidenceLevel"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "title": "NetCashMetric",
+      "type": "object"
+    },
+    "NormalizedCompanyInput": {
+      "additionalProperties": false,
+      "description": "Frozen input-side contract for deterministic calculations.\n\nThis is intentionally separate from ``CompanyAnalysis`` at the field\nboundary: it contains only identity, source facts, evidence, adjustments\nand data-quality metadata.  Metrics, gates, valuation and decision fields\nare output-only and are rejected by ``extra='forbid'``.",
+      "properties": {
+        "schema_version": {
+          "const": "1.0.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "analysis_id": {
+          "minLength": 1,
+          "title": "Analysis Id",
+          "type": "string"
+        },
+        "as_of": {
+          "format": "date",
+          "title": "As Of",
+          "type": "string"
+        },
+        "profile_id": {
+          "minLength": 1,
+          "title": "Profile Id",
+          "type": "string"
+        },
+        "company": {
+          "$ref": "#/$defs/Company"
+        },
+        "data_quality": {
+          "$ref": "#/$defs/DataQuality"
+        },
+        "facts": {
+          "items": {
+            "$ref": "#/$defs/Fact"
+          },
+          "title": "Facts",
+          "type": "array"
+        },
+        "adjustments": {
+          "items": {
+            "$ref": "#/$defs/Adjustment"
+          },
+          "title": "Adjustments",
+          "type": "array"
+        },
+        "evidence_index": {
+          "items": {
+            "$ref": "#/$defs/Evidence"
+          },
+          "title": "Evidence Index",
+          "type": "array"
+        },
+        "flags": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Flags",
+          "type": "array"
+        }
+      },
+      "required": [
+        "schema_version",
+        "analysis_id",
+        "as_of",
+        "profile_id",
+        "company",
+        "data_quality",
+        "facts",
+        "adjustments",
+        "evidence_index"
+      ],
+      "title": "NormalizedCompanyInput",
+      "type": "object"
+    },
+    "ProposedBy": {
+      "description": "Actor that proposed an adjustment.",
+      "enum": [
+        "RULE_ENGINE",
+        "LLM",
+        "HUMAN"
+      ],
+      "title": "ProposedBy",
+      "type": "string"
+    },
+    "Source": {
+      "additionalProperties": false,
+      "description": "Stable provenance locator for an evidence item.",
+      "properties": {
+        "type": {
+          "$ref": "#/$defs/SourceType"
+        },
+        "title": {
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "issuer": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Issuer"
+        },
+        "published_date": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Published Date"
+        },
+        "fiscal_period": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fiscal Period"
+        },
+        "url": {
+          "anyOf": [
+            {
+              "format": "uri",
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Url"
+        },
+        "document_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Document Id"
+        },
+        "page": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Page"
+        },
+        "section": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Section"
+        },
+        "table_or_note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Table Or Note"
+        },
+        "locator": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Locator"
+        }
+      },
+      "required": [
+        "type",
+        "title"
+      ],
+      "title": "Source",
+      "type": "object"
+    },
+    "SourceType": {
+      "description": "Source types permitted by evidence.schema.json.",
+      "enum": [
+        "ANNUAL_REPORT",
+        "INTERIM_REPORT",
+        "EXCHANGE_FILING",
+        "COMPANY_ANNOUNCEMENT",
+        "COMPANY_OPERATING_DISCLOSURE",
+        "GOVERNMENT",
+        "REGULATOR",
+        "INDUSTRY_ASSOCIATION",
+        "STRUCTURED_DATA_VENDOR",
+        "RESEARCH_PROVIDER",
+        "NEWS",
+        "OTHER"
+      ],
+      "title": "SourceType",
+      "type": "string"
+    },
+    "ThroughReturnMetric": {
+      "additionalProperties": true,
+      "description": "Shareholder-through-return metric payload.",
+      "properties": {
+        "normalized_parent_profit": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Normalized Parent Profit"
+        },
+        "normalized_parent_core_cdc": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Normalized Parent Core Cdc"
+        },
+        "distributable_base": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Distributable Base"
+        },
+        "payout_policy_floor": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Payout Policy Floor"
+        },
+        "conservative_payout_ratio": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Conservative Payout Ratio"
+        },
+        "dividend_through_return": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Dividend Through Return"
+        },
+        "normalized_net_share_reduction": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Normalized Net Share Reduction"
+        },
+        "through_return": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Through Return"
+        },
+        "special_return": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Special Return"
+        },
+        "flags": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Flags",
+          "type": "array"
+        },
+        "policy_confidence": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ConfidenceLevel"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "confidence": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ConfidenceLevel"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "verified_recurring_buyback_cash": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Verified Recurring Buyback Cash",
+          "type": "number"
+        },
+        "buyback_credit_eligible": {
+          "default": false,
+          "title": "Buyback Credit Eligible",
+          "type": "boolean"
+        },
+        "buyback_history_years": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Buyback History Years"
+        },
+        "source_evidence_ids": {
+          "additionalProperties": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "title": "Source Evidence Ids",
+          "type": "object"
+        }
+      },
+      "title": "ThroughReturnMetric",
+      "type": "object"
+    },
+    "ValuationResult": {
+      "additionalProperties": false,
+      "description": "Strict-v1 valuation output matching valuation-result.schema.json.",
+      "properties": {
+        "as_of": {
+          "format": "date",
+          "title": "As Of",
+          "type": "string"
+        },
+        "valuation_currency": {
+          "maxLength": 3,
+          "minLength": 3,
+          "title": "Valuation Currency",
+          "type": "string"
+        },
+        "listing": {
+          "title": "Listing",
+          "type": "string"
+        },
+        "current_price": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Current Price"
+        },
+        "listing_equivalent_market_cap": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Listing Equivalent Market Cap"
+        },
+        "actual_aggregate_company_market_cap": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Actual Aggregate Company Market Cap"
+        },
+        "normalized_diluted_economic_shares": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Normalized Diluted Economic Shares"
+        },
+        "normalized_parent_core_cdc": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Normalized Parent Core Cdc"
+        },
+        "distributable_base": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Distributable Base"
+        },
+        "recurring_dividend_cash": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Recurring Dividend Cash"
+        },
+        "verified_recurring_buyback_cash": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Verified Recurring Buyback Cash",
+          "type": "number"
+        },
+        "recurring_shareholder_cash": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Recurring Shareholder Cash"
+        },
+        "owner_realizable_net_cash": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Owner Realizable Net Cash"
+        },
+        "valuation_net_cash": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Valuation Net Cash"
+        },
+        "adjusted_ev": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Adjusted Ev"
+        },
+        "ex_cash_cdc_yield": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ex Cash Cdc Yield"
+        },
+        "asset_supported_market_cap": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Asset Supported Market Cap"
+        },
+        "tiers": {
+          "$ref": "#/$defs/ValuationTiers"
+        },
+        "current_valuation_state": {
+          "$ref": "#/$defs/ValuationState"
+        },
+        "mos_acceptable": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mos Acceptable"
+        },
+        "mos_turtle": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mos Turtle"
+        },
+        "mos_extreme": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mos Extreme"
+        },
+        "flags": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Flags",
+          "type": "array"
+        },
+        "confidence": {
+          "$ref": "#/$defs/ConfidenceLevel"
+        }
+      },
+      "required": [
+        "as_of",
+        "valuation_currency",
+        "listing",
+        "normalized_parent_core_cdc",
+        "distributable_base",
+        "recurring_shareholder_cash",
+        "tiers",
+        "current_valuation_state",
+        "confidence"
+      ],
+      "title": "ValuationResult",
+      "type": "object"
+    },
+    "ValuationState": {
+      "description": "States specific to the valuation-result contract.",
+      "enum": [
+        "EXTREME_SAFETY",
+        "TURTLE_ENTRY",
+        "ACCEPTABLE",
+        "WATCH",
+        "TOO_EXPENSIVE_FOR_STRICT_MODEL",
+        "NO_NORMAL_VALUATION",
+        "SPECIAL_REVIEW"
+      ],
+      "title": "ValuationState",
+      "type": "string"
+    },
+    "ValuationTier": {
+      "additionalProperties": false,
+      "description": "One strict-v1 valuation tier.",
+      "properties": {
+        "cdc_hurdle": {
+          "exclusiveMinimum": 0,
+          "title": "Cdc Hurdle",
+          "type": "number"
+        },
+        "return_hurdle": {
+          "exclusiveMinimum": 0,
+          "title": "Return Hurdle",
+          "type": "number"
+        },
+        "market_cap": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Market Cap"
+        },
+        "price": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Price"
+        },
+        "owner_net_cash_ratio": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Owner Net Cash Ratio"
+        },
+        "valuation_net_cash_ratio": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Valuation Net Cash Ratio"
+        }
+      },
+      "required": [
+        "cdc_hurdle",
+        "return_hurdle"
+      ],
+      "title": "ValuationTier",
+      "type": "object"
+    },
+    "ValuationTiers": {
+      "additionalProperties": false,
+      "description": "The four fixed tier keys required by valuation-result.schema.json.",
+      "properties": {
+        "observation": {
+          "$ref": "#/$defs/ValuationTier"
+        },
+        "acceptable": {
+          "$ref": "#/$defs/ValuationTier"
+        },
+        "turtle_entry": {
+          "$ref": "#/$defs/ValuationTier"
+        },
+        "extreme_safety": {
+          "$ref": "#/$defs/ValuationTier"
+        }
+      },
+      "required": [
+        "observation",
+        "acceptable",
+        "turtle_entry",
+        "extreme_safety"
+      ],
+      "title": "ValuationTiers",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Frozen input/output artifact from which a decision snapshot is projected.",
+  "properties": {
+    "contract": {
+      "const": "historical_decision_artifact_v1",
+      "default": "historical_decision_artifact_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "artifact_id": {
+      "minLength": 1,
+      "title": "Artifact Id",
+      "type": "string"
+    },
+    "listing_id": {
+      "minLength": 1,
+      "title": "Listing Id",
+      "type": "string"
+    },
+    "decision_time": {
+      "format": "date-time",
+      "title": "Decision Time",
+      "type": "string"
+    },
+    "as_of": {
+      "format": "date",
+      "title": "As Of",
+      "type": "string"
+    },
+    "available_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "format": "date",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Available At"
+    },
+    "normalized_input": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/NormalizedCompanyInput"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "analysis": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/CompanyAnalysis"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "research_artifact_id": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Research Artifact Id"
+    },
+    "source_hash": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Source Hash",
+      "type": "string"
+    },
+    "historical_business_quality_valid": {
+      "default": false,
+      "title": "Historical Business Quality Valid",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "contract",
+    "artifact_id",
+    "listing_id",
+    "decision_time",
+    "as_of",
+    "source_hash"
+  ],
+  "title": "Turtle Value Engine historical-decision-artifact",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/blooddrunk/turtle-value-engine/schemas/historical-decision-artifact.schema.json"
+}

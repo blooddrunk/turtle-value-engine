@@ -1,0 +1,75 @@
+{
+  "additionalProperties": false,
+  "description": "Explicit finite candidate values; no hidden mutation of strict-v1.",
+  "properties": {
+    "contract": {
+      "const": "calibration_search_space_v1",
+      "default": "calibration_search_space_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "space_id": {
+      "minLength": 1,
+      "title": "Space Id",
+      "type": "string"
+    },
+    "base_profile_id": {
+      "minLength": 1,
+      "title": "Base Profile Id",
+      "type": "string"
+    },
+    "parameters": {
+      "additionalProperties": {
+        "items": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "boolean"
+            }
+          ]
+        },
+        "type": "array"
+      },
+      "maxProperties": 64,
+      "minProperties": 1,
+      "title": "Parameters",
+      "type": "object"
+    },
+    "max_trials": {
+      "default": 10000,
+      "exclusiveMinimum": 0,
+      "maximum": 1000000,
+      "title": "Max Trials",
+      "type": "integer"
+    },
+    "objective": {
+      "default": "RISK_ADJUSTED",
+      "enum": [
+        "MEAN_RETURN",
+        "MEDIAN_RETURN",
+        "HIT_RATE",
+        "RISK_ADJUSTED"
+      ],
+      "title": "Objective",
+      "type": "string"
+    }
+  },
+  "required": [
+    "contract",
+    "space_id",
+    "base_profile_id",
+    "parameters"
+  ],
+  "title": "Turtle Value Engine calibration-search-space",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/blooddrunk/turtle-value-engine/schemas/calibration-search-space.schema.json"
+}

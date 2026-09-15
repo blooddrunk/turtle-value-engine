@@ -1,0 +1,55 @@
+{
+  "additionalProperties": false,
+  "description": "Non-overlapping train/validation/holdout time ranges.",
+  "properties": {
+    "contract": {
+      "const": "chronological_split_v1",
+      "default": "chronological_split_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "train_start": {
+      "format": "date",
+      "title": "Train Start",
+      "type": "string"
+    },
+    "train_end": {
+      "format": "date",
+      "title": "Train End",
+      "type": "string"
+    },
+    "validation_start": {
+      "format": "date",
+      "title": "Validation Start",
+      "type": "string"
+    },
+    "validation_end": {
+      "format": "date",
+      "title": "Validation End",
+      "type": "string"
+    },
+    "holdout_start": {
+      "format": "date",
+      "title": "Holdout Start",
+      "type": "string"
+    },
+    "holdout_end": {
+      "format": "date",
+      "title": "Holdout End",
+      "type": "string"
+    }
+  },
+  "required": [
+    "contract",
+    "train_start",
+    "train_end",
+    "validation_start",
+    "validation_end",
+    "holdout_start",
+    "holdout_end"
+  ],
+  "title": "Turtle Value Engine chronological-split",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/blooddrunk/turtle-value-engine/schemas/chronological-split.schema.json"
+}

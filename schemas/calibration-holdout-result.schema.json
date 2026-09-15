@@ -1,0 +1,74 @@
+{
+  "additionalProperties": false,
+  "description": "Separate post-selection holdout evaluation, never fed back into search.",
+  "properties": {
+    "contract": {
+      "const": "calibration_holdout_result_v1",
+      "default": "calibration_holdout_result_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "experiment_id": {
+      "minLength": 1,
+      "title": "Experiment Id",
+      "type": "string"
+    },
+    "proposal_id": {
+      "minLength": 1,
+      "title": "Proposal Id",
+      "type": "string"
+    },
+    "holdout_start": {
+      "format": "date",
+      "title": "Holdout Start",
+      "type": "string"
+    },
+    "holdout_end": {
+      "format": "date",
+      "title": "Holdout End",
+      "type": "string"
+    },
+    "observation_count": {
+      "minimum": 0,
+      "title": "Observation Count",
+      "type": "integer"
+    },
+    "score": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Score"
+    },
+    "notes": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Notes",
+      "type": "array"
+    },
+    "content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Content Sha256",
+      "type": "string"
+    }
+  },
+  "required": [
+    "contract",
+    "experiment_id",
+    "proposal_id",
+    "holdout_start",
+    "holdout_end",
+    "observation_count",
+    "content_sha256"
+  ],
+  "title": "Turtle Value Engine calibration-holdout-result",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/blooddrunk/turtle-value-engine/schemas/calibration-holdout-result.schema.json"
+}

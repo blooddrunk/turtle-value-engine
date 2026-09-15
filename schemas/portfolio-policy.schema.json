@@ -1,0 +1,306 @@
+{
+  "$defs": {
+    "ExecutionPrice": {
+      "enum": [
+        "NEXT_OPEN",
+        "NEXT_CLOSE"
+      ],
+      "title": "ExecutionPrice",
+      "type": "string"
+    },
+    "LiquidityPolicy": {
+      "additionalProperties": false,
+      "description": "Participation and missing-liquidity behavior for fills.",
+      "properties": {
+        "contract": {
+          "const": "liquidity_policy_v1",
+          "default": "liquidity_policy_v1",
+          "title": "Contract",
+          "type": "string"
+        },
+        "max_participation_rate": {
+          "default": 1,
+          "exclusiveMinimum": 0,
+          "maximum": 1,
+          "title": "Max Participation Rate",
+          "type": "number"
+        },
+        "min_daily_volume": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Min Daily Volume"
+        },
+        "min_daily_amount": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Min Daily Amount"
+        },
+        "max_order_notional": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Order Notional"
+        },
+        "missing_data_action": {
+          "$ref": "#/$defs/MissingDataAction",
+          "default": "NO_FILL"
+        }
+      },
+      "title": "LiquidityPolicy",
+      "type": "object",
+      "required": [
+        "contract"
+      ]
+    },
+    "MissingDataAction": {
+      "enum": [
+        "SKIP",
+        "NO_FILL",
+        "FAIL"
+      ],
+      "title": "MissingDataAction",
+      "type": "string"
+    },
+    "RebalanceFrequency": {
+      "enum": [
+        "DAILY",
+        "WEEKLY",
+        "MONTHLY"
+      ],
+      "title": "RebalanceFrequency",
+      "type": "string"
+    },
+    "SizingRule": {
+      "enum": [
+        "EQUAL_WEIGHT",
+        "EQUAL_RISK"
+      ],
+      "title": "SizingRule",
+      "type": "string"
+    },
+    "TransactionCostPolicy": {
+      "additionalProperties": false,
+      "description": "Explicit, versioned transaction-cost assumptions.",
+      "properties": {
+        "contract": {
+          "const": "transaction_cost_policy_v1",
+          "default": "transaction_cost_policy_v1",
+          "title": "Contract",
+          "type": "string"
+        },
+        "commission_bps": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Commission Bps",
+          "type": "number"
+        },
+        "sell_stamp_duty_bps": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Sell Stamp Duty Bps",
+          "type": "number"
+        },
+        "transfer_fee_bps": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Transfer Fee Bps",
+          "type": "number"
+        },
+        "slippage_bps": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Slippage Bps",
+          "type": "number"
+        },
+        "minimum_fee": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Minimum Fee",
+          "type": "number"
+        }
+      },
+      "title": "TransactionCostPolicy",
+      "type": "object",
+      "required": [
+        "contract"
+      ]
+    }
+  },
+  "additionalProperties": false,
+  "description": "Separate portfolio/execution policy; never folded into strict-v1.",
+  "properties": {
+    "contract": {
+      "const": "portfolio_policy_v1",
+      "default": "portfolio_policy_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "policy_id": {
+      "minLength": 1,
+      "title": "Policy Id",
+      "type": "string"
+    },
+    "policy_version": {
+      "default": "portfolio-policy-v1",
+      "minLength": 1,
+      "title": "Policy Version",
+      "type": "string"
+    },
+    "base_currency": {
+      "maxLength": 3,
+      "minLength": 3,
+      "title": "Base Currency",
+      "type": "string"
+    },
+    "initial_cash": {
+      "exclusiveMinimum": 0,
+      "title": "Initial Cash",
+      "type": "number"
+    },
+    "rebalance_frequency": {
+      "$ref": "#/$defs/RebalanceFrequency",
+      "default": "MONTHLY"
+    },
+    "eligible_states": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 16,
+      "minItems": 1,
+      "title": "Eligible States",
+      "type": "array"
+    },
+    "sizing_rule": {
+      "$ref": "#/$defs/SizingRule",
+      "default": "EQUAL_WEIGHT"
+    },
+    "max_position_weight": {
+      "default": 1,
+      "exclusiveMinimum": 0,
+      "maximum": 1,
+      "title": "Max Position Weight",
+      "type": "number"
+    },
+    "max_sector_weight": {
+      "anyOf": [
+        {
+          "exclusiveMinimum": 0,
+          "maximum": 1,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Max Sector Weight"
+    },
+    "execution_price": {
+      "$ref": "#/$defs/ExecutionPrice",
+      "default": "NEXT_OPEN"
+    },
+    "transaction_costs": {
+      "$ref": "#/$defs/TransactionCostPolicy"
+    },
+    "liquidity": {
+      "$ref": "#/$defs/LiquidityPolicy"
+    },
+    "cash_buffer": {
+      "default": 0,
+      "exclusiveMaximum": 1,
+      "minimum": 0,
+      "title": "Cash Buffer",
+      "type": "number"
+    },
+    "lot_size_a": {
+      "default": 100,
+      "exclusiveMinimum": 0,
+      "title": "Lot Size A",
+      "type": "integer"
+    },
+    "lot_size_h": {
+      "default": 1,
+      "exclusiveMinimum": 0,
+      "title": "Lot Size H",
+      "type": "integer"
+    },
+    "dividends_to_cash": {
+      "default": true,
+      "title": "Dividends To Cash",
+      "type": "boolean"
+    },
+    "allow_short": {
+      "default": false,
+      "title": "Allow Short",
+      "type": "boolean"
+    },
+    "allow_leverage": {
+      "default": false,
+      "title": "Allow Leverage",
+      "type": "boolean"
+    },
+    "terminal_value_policy": {
+      "default": "USE_EXPLICIT_ACTION",
+      "enum": [
+        "USE_EXPLICIT_ACTION",
+        "NO_VALUE"
+      ],
+      "title": "Terminal Value Policy",
+      "type": "string"
+    },
+    "rights_issue_policy": {
+      "default": "FAIL",
+      "enum": [
+        "FAIL",
+        "IGNORE",
+        "SUBSCRIBE_IF_FUNDED"
+      ],
+      "title": "Rights Issue Policy",
+      "type": "string"
+    },
+    "share_issuance_policy": {
+      "default": "FAIL",
+      "enum": [
+        "FAIL",
+        "IGNORE",
+        "APPLY_FACTOR"
+      ],
+      "title": "Share Issuance Policy",
+      "type": "string"
+    }
+  },
+  "required": [
+    "contract",
+    "policy_id",
+    "base_currency",
+    "initial_cash",
+    "eligible_states"
+  ],
+  "title": "Turtle Value Engine portfolio-policy",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/blooddrunk/turtle-value-engine/schemas/portfolio-policy.schema.json"
+}

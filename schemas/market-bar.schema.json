@@ -1,0 +1,242 @@
+{
+  "$defs": {
+    "Market": {
+      "description": "Listing market; A and H listings are never merged by the simulator.",
+      "enum": [
+        "A",
+        "H"
+      ],
+      "title": "Market",
+      "type": "string"
+    },
+    "PriceBasis": {
+      "description": "Whether a market series has already incorporated corporate actions.",
+      "enum": [
+        "UNADJUSTED",
+        "ADJUSTED"
+      ],
+      "title": "PriceBasis",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "One immutable listing-specific market observation.",
+  "properties": {
+    "contract": {
+      "const": "market_bar_v1",
+      "default": "market_bar_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "bar_id": {
+      "minLength": 1,
+      "title": "Bar Id",
+      "type": "string"
+    },
+    "listing_id": {
+      "minLength": 1,
+      "title": "Listing Id",
+      "type": "string"
+    },
+    "market": {
+      "$ref": "#/$defs/Market"
+    },
+    "trading_date": {
+      "format": "date",
+      "title": "Trading Date",
+      "type": "string"
+    },
+    "timestamp": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "format": "date",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Timestamp"
+    },
+    "session_open_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Session Open At"
+    },
+    "session_close_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Session Close At"
+    },
+    "open": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Open"
+    },
+    "high": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "High"
+    },
+    "low": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Low"
+    },
+    "close": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Close"
+    },
+    "volume": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Volume"
+    },
+    "amount": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Amount"
+    },
+    "currency": {
+      "maxLength": 3,
+      "minLength": 3,
+      "title": "Currency",
+      "type": "string"
+    },
+    "price_basis": {
+      "$ref": "#/$defs/PriceBasis",
+      "default": "UNADJUSTED"
+    },
+    "adjustment_scope": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Adjustment Scope",
+      "type": "array"
+    },
+    "tradable": {
+      "default": true,
+      "title": "Tradable",
+      "type": "boolean"
+    },
+    "suspended": {
+      "default": false,
+      "title": "Suspended",
+      "type": "boolean"
+    },
+    "missing_reason": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Missing Reason"
+    },
+    "available_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "format": "date",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Available At"
+    },
+    "source_hash": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Source Hash",
+      "type": "string"
+    }
+  },
+  "required": [
+    "contract",
+    "bar_id",
+    "listing_id",
+    "market",
+    "trading_date",
+    "currency",
+    "source_hash"
+  ],
+  "title": "Turtle Value Engine market-bar",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/blooddrunk/turtle-value-engine/schemas/market-bar.schema.json"
+}

@@ -1,0 +1,112 @@
+{
+  "additionalProperties": false,
+  "description": "Aggregated signal bucket used for auditable attribution.",
+  "properties": {
+    "bucket_key": {
+      "minLength": 1,
+      "title": "Bucket Key",
+      "type": "string"
+    },
+    "horizon": {
+      "pattern": "^[0-9]+[DWMY]$",
+      "title": "Horizon",
+      "type": "string"
+    },
+    "observation_count": {
+      "minimum": 0,
+      "title": "Observation Count",
+      "type": "integer"
+    },
+    "complete_count": {
+      "minimum": 0,
+      "title": "Complete Count",
+      "type": "integer"
+    },
+    "mean_price_return": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Mean Price Return"
+    },
+    "median_price_return": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Median Price Return"
+    },
+    "mean_total_return": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Mean Total Return"
+    },
+    "median_total_return": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Median Total Return"
+    },
+    "positive_total_return_rate": {
+      "anyOf": [
+        {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Positive Total Return Rate"
+    },
+    "failure_rate": {
+      "anyOf": [
+        {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Failure Rate"
+    }
+  },
+  "required": [
+    "bucket_key",
+    "horizon",
+    "observation_count",
+    "complete_count"
+  ],
+  "title": "Turtle Value Engine signal-bucket",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/blooddrunk/turtle-value-engine/schemas/signal-bucket.schema.json"
+}

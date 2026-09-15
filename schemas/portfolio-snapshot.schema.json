@@ -1,0 +1,185 @@
+{
+  "$defs": {
+    "Market": {
+      "description": "Listing market; A and H listings are never merged by the simulator.",
+      "enum": [
+        "A",
+        "H"
+      ],
+      "title": "Market",
+      "type": "string"
+    },
+    "PositionSnapshot": {
+      "additionalProperties": false,
+      "description": "One listing position at a portfolio valuation timestamp.",
+      "properties": {
+        "listing_id": {
+          "minLength": 1,
+          "title": "Listing Id",
+          "type": "string"
+        },
+        "market": {
+          "$ref": "#/$defs/Market"
+        },
+        "sector": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sector"
+        },
+        "quantity": {
+          "minimum": 0,
+          "title": "Quantity",
+          "type": "number"
+        },
+        "mark_price": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mark Price"
+        },
+        "market_value": {
+          "minimum": 0,
+          "title": "Market Value",
+          "type": "number"
+        },
+        "average_cost": {
+          "minimum": 0,
+          "title": "Average Cost",
+          "type": "number"
+        },
+        "suspended": {
+          "default": false,
+          "title": "Suspended",
+          "type": "boolean"
+        },
+        "price_missing": {
+          "default": false,
+          "title": "Price Missing",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "listing_id",
+        "market",
+        "quantity",
+        "market_value",
+        "average_cost"
+      ],
+      "title": "PositionSnapshot",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Portfolio state required to replay P&L and inspect cash drag.",
+  "properties": {
+    "contract": {
+      "const": "portfolio_snapshot_v1",
+      "default": "portfolio_snapshot_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "timestamp": {
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
+    },
+    "cash": {
+      "minimum": 0,
+      "title": "Cash",
+      "type": "number"
+    },
+    "gross_exposure": {
+      "minimum": 0,
+      "title": "Gross Exposure",
+      "type": "number"
+    },
+    "net_asset_value": {
+      "exclusiveMinimum": 0,
+      "title": "Net Asset Value",
+      "type": "number"
+    },
+    "positions": {
+      "items": {
+        "$ref": "#/$defs/PositionSnapshot"
+      },
+      "title": "Positions",
+      "type": "array"
+    },
+    "daily_return": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Daily Return"
+    },
+    "cumulative_return": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Cumulative Return"
+    },
+    "cash_exposure": {
+      "maximum": 1,
+      "minimum": 0,
+      "title": "Cash Exposure",
+      "type": "number"
+    },
+    "turnover": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Turnover",
+      "type": "number"
+    },
+    "missing_price_listings": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Missing Price Listings",
+      "type": "array"
+    },
+    "source_bar_ids": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Source Bar Ids",
+      "type": "array"
+    }
+  },
+  "required": [
+    "contract",
+    "timestamp",
+    "cash",
+    "gross_exposure",
+    "net_asset_value",
+    "cash_exposure"
+  ],
+  "title": "Turtle Value Engine portfolio-snapshot",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/blooddrunk/turtle-value-engine/schemas/portfolio-snapshot.schema.json"
+}

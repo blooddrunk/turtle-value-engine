@@ -1,0 +1,59 @@
+{
+  "additionalProperties": false,
+  "description": "Optional immutable index for resumable backtest artifacts.",
+  "properties": {
+    "contract": {
+      "const": "backtest_workspace_index_v1",
+      "default": "backtest_workspace_index_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "workspace_id": {
+      "minLength": 1,
+      "title": "Workspace Id",
+      "type": "string"
+    },
+    "manifest_ids": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Manifest Ids",
+      "type": "array"
+    },
+    "run_spec_ids": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Run Spec Ids",
+      "type": "array"
+    },
+    "result_ids": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Result Ids",
+      "type": "array"
+    },
+    "calibration_experiment_ids": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Calibration Experiment Ids",
+      "type": "array"
+    },
+    "updated_at": {
+      "format": "date-time",
+      "title": "Updated At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "contract",
+    "workspace_id",
+    "updated_at"
+  ],
+  "title": "Turtle Value Engine backtest-workspace-index",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/blooddrunk/turtle-value-engine/schemas/backtest-workspace-index.schema.json"
+}

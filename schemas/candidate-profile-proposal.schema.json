@@ -1,0 +1,129 @@
+{
+  "additionalProperties": false,
+  "description": "Calibration output that is a proposal, never an automatic rule change.",
+  "properties": {
+    "contract": {
+      "const": "candidate_profile_proposal_v1",
+      "default": "candidate_profile_proposal_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "proposal_id": {
+      "minLength": 1,
+      "title": "Proposal Id",
+      "type": "string"
+    },
+    "base_profile_id": {
+      "minLength": 1,
+      "title": "Base Profile Id",
+      "type": "string"
+    },
+    "base_profile_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Base Profile Sha256",
+      "type": "string"
+    },
+    "candidate_profile_id": {
+      "minLength": 1,
+      "title": "Candidate Profile Id",
+      "type": "string"
+    },
+    "parameter_overrides": {
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "type": "number"
+          },
+          {
+            "type": "integer"
+          },
+          {
+            "type": "string"
+          },
+          {
+            "type": "boolean"
+          }
+        ]
+      },
+      "title": "Parameter Overrides",
+      "type": "object"
+    },
+    "train_score": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Train Score"
+    },
+    "validation_score": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Validation Score"
+    },
+    "holdout_score": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Holdout Score"
+    },
+    "stability_summary": {
+      "additionalProperties": {
+        "type": "number"
+      },
+      "title": "Stability Summary",
+      "type": "object"
+    },
+    "rationale": {
+      "maxLength": 8000,
+      "minLength": 1,
+      "title": "Rationale",
+      "type": "string"
+    },
+    "status": {
+      "default": "PROPOSAL_ONLY",
+      "enum": [
+        "PROPOSAL_ONLY",
+        "HUMAN_APPROVED",
+        "REJECTED"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "automatic_application_allowed": {
+      "default": false,
+      "title": "Automatic Application Allowed",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "contract",
+    "proposal_id",
+    "base_profile_id",
+    "base_profile_sha256",
+    "candidate_profile_id",
+    "parameter_overrides",
+    "rationale"
+  ],
+  "title": "Turtle Value Engine candidate-profile-proposal",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/blooddrunk/turtle-value-engine/schemas/candidate-profile-proposal.schema.json"
+}

@@ -1,0 +1,214 @@
+{
+  "$defs": {
+    "CorporateActionType": {
+      "enum": [
+        "CASH_DIVIDEND",
+        "SPLIT",
+        "CONSOLIDATION",
+        "RIGHTS_ISSUE",
+        "SHARE_ISSUANCE",
+        "DELISTING",
+        "TERMINAL_VALUE"
+      ],
+      "title": "CorporateActionType",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Listing-level corporate action used exactly once by return paths.",
+  "properties": {
+    "contract": {
+      "const": "corporate_action_v1",
+      "default": "corporate_action_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "action_id": {
+      "minLength": 1,
+      "title": "Action Id",
+      "type": "string"
+    },
+    "listing_id": {
+      "minLength": 1,
+      "title": "Listing Id",
+      "type": "string"
+    },
+    "action_type": {
+      "$ref": "#/$defs/CorporateActionType"
+    },
+    "effective_date": {
+      "format": "date",
+      "title": "Effective Date",
+      "type": "string"
+    },
+    "ex_date": {
+      "anyOf": [
+        {
+          "format": "date",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Ex Date"
+    },
+    "payment_date": {
+      "anyOf": [
+        {
+          "format": "date",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Payment Date"
+    },
+    "announced_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "format": "date",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Announced At"
+    },
+    "available_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "format": "date",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Available At"
+    },
+    "cash_per_share": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Cash Per Share"
+    },
+    "split_factor": {
+      "anyOf": [
+        {
+          "exclusiveMinimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Split Factor"
+    },
+    "rights_ratio": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Rights Ratio"
+    },
+    "rights_price": {
+      "anyOf": [
+        {
+          "exclusiveMinimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Rights Price"
+    },
+    "terminal_value_per_share": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Terminal Value Per Share"
+    },
+    "currency": {
+      "anyOf": [
+        {
+          "maxLength": 3,
+          "minLength": 3,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Currency"
+    },
+    "source_hash": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Source Hash",
+      "type": "string"
+    },
+    "notes": {
+      "anyOf": [
+        {
+          "maxLength": 2000,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Notes"
+    }
+  },
+  "required": [
+    "contract",
+    "action_id",
+    "listing_id",
+    "action_type",
+    "effective_date",
+    "source_hash"
+  ],
+  "title": "Turtle Value Engine corporate-action",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/blooddrunk/turtle-value-engine/schemas/corporate-action.schema.json"
+}

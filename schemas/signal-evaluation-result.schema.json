@@ -1,0 +1,499 @@
+{
+  "$defs": {
+    "FailureAttribution": {
+      "additionalProperties": false,
+      "description": "Structured attribution of exclusions, losses, missingness and sensitivity.",
+      "properties": {
+        "contract": {
+          "const": "failure_attribution_v1",
+          "default": "failure_attribution_v1",
+          "title": "Contract",
+          "type": "string"
+        },
+        "excluded_later_winners": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "title": "Excluded Later Winners",
+          "type": "object"
+        },
+        "largest_passed_losses": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "title": "Largest Passed Losses",
+          "type": "object"
+        },
+        "manual_review_coverage": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "title": "Manual Review Coverage",
+          "type": "object"
+        },
+        "by_valuation_tier": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "title": "By Valuation Tier",
+          "type": "object"
+        },
+        "by_business_quality_bucket": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "title": "By Business Quality Bucket",
+          "type": "object"
+        },
+        "by_sector": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "title": "By Sector",
+          "type": "object"
+        },
+        "by_market": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "title": "By Market",
+          "type": "object"
+        },
+        "by_listing": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "title": "By Listing",
+          "type": "object"
+        },
+        "cost_liquidity_sensitivity": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "title": "Cost Liquidity Sensitivity",
+          "type": "object"
+        }
+      },
+      "title": "FailureAttribution",
+      "type": "object",
+      "required": [
+        "contract"
+      ]
+    },
+    "ForwardReturnObservation": {
+      "additionalProperties": false,
+      "description": "One signal-to-forward-outcome observation, including missingness.",
+      "properties": {
+        "contract": {
+          "const": "forward_return_observation_v1",
+          "default": "forward_return_observation_v1",
+          "title": "Contract",
+          "type": "string"
+        },
+        "observation_id": {
+          "minLength": 1,
+          "title": "Observation Id",
+          "type": "string"
+        },
+        "snapshot_id": {
+          "minLength": 1,
+          "title": "Snapshot Id",
+          "type": "string"
+        },
+        "listing_id": {
+          "minLength": 1,
+          "title": "Listing Id",
+          "type": "string"
+        },
+        "decision_time": {
+          "format": "date-time",
+          "title": "Decision Time",
+          "type": "string"
+        },
+        "horizon": {
+          "pattern": "^[0-9]+[DWMY]$",
+          "title": "Horizon",
+          "type": "string"
+        },
+        "target_date": {
+          "format": "date",
+          "title": "Target Date",
+          "type": "string"
+        },
+        "entry_date": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Entry Date"
+        },
+        "exit_date": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Exit Date"
+        },
+        "entry_price": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Entry Price"
+        },
+        "exit_price": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Exit Price"
+        },
+        "price_return": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Price Return"
+        },
+        "total_return": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Total Return"
+        },
+        "dividends_per_share": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Dividends Per Share",
+          "type": "number"
+        },
+        "share_multiplier": {
+          "default": 1,
+          "exclusiveMinimum": 0,
+          "title": "Share Multiplier",
+          "type": "number"
+        },
+        "terminal_value_per_share": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Terminal Value Per Share",
+          "type": "number"
+        },
+        "entry_bar_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Entry Bar Id"
+        },
+        "exit_bar_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Exit Bar Id"
+        },
+        "corporate_action_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Corporate Action Ids",
+          "type": "array"
+        },
+        "status": {
+          "$ref": "#/$defs/SignalOutcomeStatus"
+        },
+        "missing_reason": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Missing Reason"
+        },
+        "currency": {
+          "anyOf": [
+            {
+              "maxLength": 3,
+              "minLength": 3,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Currency"
+        }
+      },
+      "required": [
+        "contract",
+        "observation_id",
+        "snapshot_id",
+        "listing_id",
+        "decision_time",
+        "horizon",
+        "target_date",
+        "status"
+      ],
+      "title": "ForwardReturnObservation",
+      "type": "object"
+    },
+    "SignalBucket": {
+      "additionalProperties": false,
+      "description": "Aggregated signal bucket used for auditable attribution.",
+      "properties": {
+        "bucket_key": {
+          "minLength": 1,
+          "title": "Bucket Key",
+          "type": "string"
+        },
+        "horizon": {
+          "pattern": "^[0-9]+[DWMY]$",
+          "title": "Horizon",
+          "type": "string"
+        },
+        "observation_count": {
+          "minimum": 0,
+          "title": "Observation Count",
+          "type": "integer"
+        },
+        "complete_count": {
+          "minimum": 0,
+          "title": "Complete Count",
+          "type": "integer"
+        },
+        "mean_price_return": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mean Price Return"
+        },
+        "median_price_return": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Median Price Return"
+        },
+        "mean_total_return": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mean Total Return"
+        },
+        "median_total_return": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Median Total Return"
+        },
+        "positive_total_return_rate": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Positive Total Return Rate"
+        },
+        "failure_rate": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Failure Rate"
+        }
+      },
+      "required": [
+        "bucket_key",
+        "horizon",
+        "observation_count",
+        "complete_count"
+      ],
+      "title": "SignalBucket",
+      "type": "object"
+    },
+    "SignalOutcomeStatus": {
+      "enum": [
+        "COMPLETE",
+        "NO_ENTRY",
+        "NO_EXIT",
+        "MISSING_PRICE",
+        "SUSPENDED",
+        "DELISTED_TERMINAL",
+        "INVALID_CORPORATE_ACTION_DATA"
+      ],
+      "title": "SignalOutcomeStatus",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Reproducible signal-level evaluation before portfolio construction.",
+  "properties": {
+    "contract": {
+      "const": "signal_evaluation_result_v1",
+      "default": "signal_evaluation_result_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "evaluation_id": {
+      "minLength": 1,
+      "title": "Evaluation Id",
+      "type": "string"
+    },
+    "manifest_id": {
+      "minLength": 1,
+      "title": "Manifest Id",
+      "type": "string"
+    },
+    "profile_id": {
+      "minLength": 1,
+      "title": "Profile Id",
+      "type": "string"
+    },
+    "snapshot_ids": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Snapshot Ids",
+      "type": "array"
+    },
+    "horizons": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Horizons",
+      "type": "array"
+    },
+    "observations": {
+      "items": {
+        "$ref": "#/$defs/ForwardReturnObservation"
+      },
+      "title": "Observations",
+      "type": "array"
+    },
+    "buckets": {
+      "items": {
+        "$ref": "#/$defs/SignalBucket"
+      },
+      "title": "Buckets",
+      "type": "array"
+    },
+    "coverage": {
+      "additionalProperties": {
+        "type": "number"
+      },
+      "title": "Coverage",
+      "type": "object"
+    },
+    "failure_attribution": {
+      "$ref": "#/$defs/FailureAttribution"
+    },
+    "content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Content Sha256",
+      "type": "string"
+    }
+  },
+  "required": [
+    "contract",
+    "evaluation_id",
+    "manifest_id",
+    "profile_id",
+    "horizons",
+    "content_sha256"
+  ],
+  "title": "Turtle Value Engine signal-evaluation-result",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/blooddrunk/turtle-value-engine/schemas/signal-evaluation-result.schema.json"
+}
