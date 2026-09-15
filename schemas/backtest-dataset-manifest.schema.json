@@ -1353,6 +1353,19 @@
           "title": "Observation Id",
           "type": "string"
         },
+        "listing_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Listing Id"
+        },
         "base_currency": {
           "maxLength": 3,
           "minLength": 3,

@@ -379,6 +379,40 @@ class HistoricalMembershipInterval(BaseModel):
         return value >= self.valid_from and (self.valid_to is None or value <= self.valid_to)
 
 
+class HistoricalFXObservation(BaseModel):
+    """Listing-specific FX observation retained before Phase 5 projection."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    contract: Literal["historical_fx_observation_v1"] = "historical_fx_observation_v1"
+    observation_id: StrictStr = Field(min_length=1)
+    listing_id: StrictStr = Field(min_length=1)
+    base_currency: StrictStr = Field(min_length=3, max_length=3)
+    quote_currency: StrictStr = Field(min_length=3, max_length=3)
+    observation_date: date
+    rate: StrictFloat = Field(gt=0)
+    available_at: DateTimeLike | None = None
+    source_hash: StrictStr = Field(pattern=_HASH_PATTERN)
+
+    @model_validator(mode="before")
+    @classmethod
+    def preserve_date_only_availability(cls, value: object) -> object:
+        if not isinstance(value, Mapping):
+            return value
+        copied = dict(value)
+        copied["available_at"] = _preserve_date_only(copied.get("available_at"))
+        return copied
+
+    @model_validator(mode="after")
+    def validate_fx(self) -> Self:
+        _finite(self.rate, "rate")
+        if self.base_currency == self.quote_currency:
+            raise ValueError("FX base and quote currencies must differ")
+        if isinstance(self.available_at, datetime) and self.available_at.tzinfo is None:
+            raise ValueError("available_at must be timezone-aware")
+        return self
+
+
 class HistoricalCoverageRecord(BaseModel):
     """Coverage for one listing and one source category over one period."""
 
@@ -567,6 +601,11 @@ class HistoricalResearchArtifactReference(BaseModel):
         locator_filing_ids = {item.filing_id for item in self.locators}
         if not locator_filing_ids.issubset(self.filing_ids):
             raise ValueError("filing locators must refer to filing_ids on the artifact")
+        locator_document_hashes = {item.document_hash for item in self.locators}
+        if not locator_document_hashes.issubset(self.source_document_hashes):
+            raise ValueError(
+                "filing locator document hashes must be retained in source_document_hashes"
+            )
         if self.relative_path is not None and (
             self.relative_path.startswith("/")
             or "\\" in self.relative_path
@@ -947,6 +986,7 @@ __all__ = [
     "HistoricalDatasetManifest",
     "HistoricalDecisionResearchBinding",
     "HistoricalFilingLocator",
+    "HistoricalFXObservation",
     "HistoricalListingLifecycle",
     "HistoricalMembershipInterval",
     "HistoricalReconciliationReport",

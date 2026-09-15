@@ -167,3 +167,26 @@ smallest decision needed for closure is a bounded source/access/licensing
 choice (or an explicitly narrower target for which those artifacts and
 coverage reports can be supplied). Phase 5R remains ACTIVE until that choice
 and evidence exist; the Phase 6 goal file is intentionally not created yet.
+
+### Source-access review — 2026-09-15
+
+The official source pages reviewed during this goal establish authority and
+availability, but do not by themselves establish repository redistribution
+rights:
+
+- [HKEX historical data marketplace](https://www.hkex.com.hk/Services/Market-Data-Services/Historical-Data-Services/HKEX-Data-Marketplace?sc_lang=en)
+  and [HKEX market-data FAQ](https://www.hkex.com.hk/Global/Exchange/FAQ/Market-Data/Getting-Market-Data?sc_lang=en)
+  describe subscription products and separate licensing/redistribution
+  arrangements.
+- [SSE service guidance](https://www.sse.com.cn/transparency/services/)
+  directs market institutions to product authorization, licensing and fee
+  materials; public availability is not treated as open redistribution.
+- [HKEXnews archive disclaimer](https://www.hkexnews.hk/listedco/listconews/mainindex/sehk_dw_datetime_today_c.htm)
+  states that copyright may belong to HKEX, the issuer or another party.
+
+Accordingly no downloaded market, index or filing content was promoted into a
+production fixture, and no source was marked `OPEN_REDISTRIBUTABLE` from these
+pages alone. The smallest closure decision is either (a) supply a bounded
+licensed cache plus its permission/redistribution evidence, or (b) explicitly
+narrow the target and accept an internal-only source scope. Until then the
+checked-in corpus remains an acceptance fixture.

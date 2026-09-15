@@ -367,6 +367,9 @@ class FXObservation(BaseModel):
 
     contract: Literal["fx_observation_v1"] = "fx_observation_v1"
     observation_id: StrictStr = Field(min_length=1)
+    # Optional for backward compatibility with compact Phase 5 manifests;
+    # source-aware historical datasets preserve listing-specific FX identity.
+    listing_id: StrictStr | None = Field(default=None, min_length=1)
     base_currency: StrictStr = Field(min_length=3, max_length=3)
     quote_currency: StrictStr = Field(min_length=3, max_length=3)
     observation_date: date
@@ -550,6 +553,16 @@ class BacktestDatasetManifest(BaseModel):
                 raise ValueError("corporate action follows listing terminal date")
             if action.currency is not None and action.currency != lifecycle.currency:
                 raise ValueError("corporate action currency does not match listing lifecycle")
+        for fx in self.fx_observations:
+            if fx.listing_id is None:
+                continue
+            lifecycle = lifecycle_by_listing.get(fx.listing_id)
+            if lifecycle is None:
+                raise ValueError(f"FX observation references unknown listing: {fx.listing_id}")
+            if fx.base_currency != lifecycle.currency:
+                raise ValueError("FX base currency does not match listing lifecycle")
+            if not lifecycle.is_listed_on(fx.observation_date):
+                raise ValueError("FX observation lies outside listing lifecycle")
         for listing_id in lifecycle_by_listing:
             listing_bars = [bar for bar in self.market_bars if bar.listing_id == listing_id]
             adjusted_scopes = {

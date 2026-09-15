@@ -30,6 +30,7 @@ from .contracts import (
     ArchiveArtifactType,
     HistoricalAvailabilityRecord,
     HistoricalDatasetManifest,
+    HistoricalFXObservation,
     HistoricalListingLifecycle,
     HistoricalMembershipInterval,
     HistoricalSourceDescriptor,
@@ -70,7 +71,7 @@ _MODEL_BY_KIND: dict[ShardArtifactKind, type[BaseModel]] = {
     ShardArtifactKind.AVAILABILITY: HistoricalAvailabilityRecord,
     ShardArtifactKind.MARKET_BAR: MarketBar,
     ShardArtifactKind.CORPORATE_ACTION: CorporateAction,
-    ShardArtifactKind.FX_OBSERVATION: FXObservation,
+    ShardArtifactKind.FX_OBSERVATION: HistoricalFXObservation,
     ShardArtifactKind.BENCHMARK_OBSERVATION: BenchmarkObservation,
     ShardArtifactKind.DECISION_ARTIFACT: HistoricalDecisionArtifact,
 }
@@ -221,10 +222,26 @@ class HistoricalDatasetCompiler:
                     errors.append(
                         f"coverage report references listing outside target: {record.listing_id}"
                     )
+                if not (
+                    manifest.target.start_date
+                    <= record.period_start
+                    <= record.period_end
+                    <= manifest.target.end_date
+                ):
+                    errors.append(
+                        "coverage report period lies outside target: "
+                        f"{record.source_kind.value}:{record.listing_id}"
+                    )
                 for source_id in record.source_artifact_ids:
-                    if source_id not in sources:
+                    source = sources.get(source_id)
+                    if source is None:
                         errors.append(
                             f"coverage report references unknown source artifact: {source_id}"
+                        )
+                    elif source.source_kind not in _scope_source_kind(record.source_kind):
+                        errors.append(
+                            "coverage report/source category mismatch: "
+                            f"{record.source_kind.value}:{record.listing_id} -> {source_id}"
                         )
                 if record.status.value != "COMPLETE":
                     warnings.append(
@@ -313,26 +330,61 @@ class HistoricalDatasetCompiler:
         for listing_id in manifest.target.listing_ids:
             if listing_id not in lifecycles:
                 errors.append(f"target listing has no lifecycle row: {listing_id}")
+        for listing_id, lifecycle in lifecycles.items():
+            if listing_id not in manifest.target.listing_ids:
+                errors.append(f"lifecycle references listing outside target: {listing_id}")
+            if lifecycle.market not in manifest.target.markets:
+                errors.append(f"lifecycle market lies outside target markets: {listing_id}")
+            expected_calendar = manifest.target.calendar_ids.get(listing_id)
+            if expected_calendar is not None and expected_calendar != lifecycle.trading_calendar:
+                errors.append(f"listing calendar does not match target scope: {listing_id}")
+            for change in lifecycle.code_changes:
+                source = sources.get(change.source_artifact_id)
+                if source is None:
+                    errors.append(
+                        "code change references unknown source artifact: "
+                        + change.source_artifact_id
+                    )
+                elif change.source_hash != source.content_sha256:
+                    errors.append("code change/source hash mismatch: " + listing_id)
 
         availability = {
             item.artifact_id: item for item in rows_by_kind[ShardArtifactKind.AVAILABILITY]
         }
         if len(availability) != len(rows_by_kind[ShardArtifactKind.AVAILABILITY]):
             errors.append("availability rows contain duplicate artifact IDs")
-        known_artifact_ids = {
-            _row_id(kind, row)
-            for kind, rows in rows_by_kind.items()
-            if kind is not ShardArtifactKind.AVAILABILITY
-            for row in rows
-        }
+        artifact_kind_by_id: dict[str, str] = {}
+        for kind, rows in rows_by_kind.items():
+            if kind is ShardArtifactKind.AVAILABILITY:
+                continue
+            for row in rows:
+                row_id = _row_id(kind, row)
+                previous_kind = artifact_kind_by_id.get(row_id)
+                if previous_kind is not None:
+                    errors.append(
+                        "artifact ID is duplicated across frozen rows: " + row_id
+                    )
+                else:
+                    artifact_kind_by_id[row_id] = kind.value
+        known_artifact_ids = set(artifact_kind_by_id)
         if manifest.research_archive is not None:
-            known_artifact_ids.update(
-                item.artifact_id for item in manifest.research_archive.artifacts
-            )
+            for item in manifest.research_archive.artifacts:
+                known_artifact_ids.add(item.artifact_id)
+                if item.artifact_id in artifact_kind_by_id:
+                    errors.append(
+                        "research artifact ID collides with frozen row: " + item.artifact_id
+                    )
+                artifact_kind_by_id[item.artifact_id] = item.artifact_type.value
         for record in availability.values():
             if record.artifact_id not in known_artifact_ids:
                 errors.append(
                     "availability references unrelated artifact: " + record.artifact_id
+                )
+            expected_kind = artifact_kind_by_id.get(record.artifact_id)
+            if expected_kind is not None and record.artifact_kind != expected_kind:
+                errors.append(
+                    "availability artifact kind does not match referenced artifact: "
+                    + record.artifact_id
                 )
         memberships = rows_by_kind[ShardArtifactKind.UNIVERSE_MEMBERSHIP]
         membership_ids: set[str] = set()
@@ -384,6 +436,32 @@ class HistoricalDatasetCompiler:
                     + listing_id
                 )
 
+        for fx in rows_by_kind[ShardArtifactKind.FX_OBSERVATION]:
+            lifecycle = lifecycles.get(fx.listing_id)
+            if lifecycle is None:
+                errors.append(f"FX observation references unknown listing: {fx.observation_id}")
+            elif fx.base_currency != lifecycle.currency:
+                errors.append(
+                    "FX base currency does not match listing currency: " + fx.observation_id
+                )
+
+        for action in rows_by_kind[ShardArtifactKind.CORPORATE_ACTION]:
+            lifecycle = lifecycles.get(action.listing_id)
+            if lifecycle is None:
+                continue
+            if action.action_type.value != "TERMINAL_VALUE":
+                continue
+            if lifecycle.terminal_outcome in {
+                HistoricalTerminalOutcome.ACTIVE,
+                HistoricalTerminalOutcome.PROLONGED_SUSPENSION,
+                HistoricalTerminalOutcome.UNRESOLVED_TERMINAL,
+                HistoricalTerminalOutcome.UNKNOWN,
+            }:
+                errors.append(
+                    "terminal value is not permitted for unresolved or non-terminal listing: "
+                    + action.action_id
+                )
+
         decisions = rows_by_kind[ShardArtifactKind.DECISION_ARTIFACT]
         decision_ids = {item.artifact_id for item in decisions}
         if len(decision_ids) != len(decisions):
@@ -417,6 +495,17 @@ class HistoricalDatasetCompiler:
                 if source.source_kind is HistoricalSourceKind.FILINGS
             }
             for artifact in manifest.research_archive.artifacts:
+                if artifact.listing_id not in manifest.target.listing_ids:
+                    errors.append(
+                        "research artifact references listing outside target: "
+                        + artifact.artifact_id
+                    )
+                for source_id in artifact.source_artifact_ids:
+                    if source_id not in sources:
+                        errors.append(
+                            "research artifact references unknown source artifact: "
+                            + source_id
+                        )
                 if artifact.relative_path is None:
                     if require_production:
                         errors.append(
@@ -425,10 +514,13 @@ class HistoricalDatasetCompiler:
                         )
                 else:
                     try:
-                        self.store.read_json_artifact(
+                        payload = self.store.read_json_artifact(
                             artifact.relative_path,
                             artifact.content_sha256,
                         )
+                        scope_error = _archived_json_scope_error(artifact, payload)
+                        if scope_error is not None:
+                            errors.append(scope_error)
                     except HistoricalArtifactError as exc:
                         errors.append(str(exc))
                 if require_production and not set(artifact.source_document_hashes).intersection(
@@ -446,6 +538,38 @@ class HistoricalDatasetCompiler:
                 item.decision_artifact_id: item
                 for item in manifest.research_archive.decision_bindings
             }
+            for binding in manifest.research_archive.decision_bindings:
+                decision = next(
+                    (
+                        item
+                        for item in decisions
+                        if item.artifact_id == binding.decision_artifact_id
+                    ),
+                    None,
+                )
+                if decision is None:
+                    errors.append(
+                        "research binding references unknown decision artifact: "
+                        + binding.decision_artifact_id
+                    )
+                    continue
+                if (
+                    decision.listing_id != binding.listing_id
+                    or decision.as_of != binding.as_of
+                    or decision.decision_time != binding.decision_time
+                ):
+                    errors.append(
+                        "decision/research binding scope mismatch: "
+                        + binding.decision_artifact_id
+                    )
+                if (
+                    decision.analysis is not None
+                    and decision.analysis.analysis_id != binding.analysis_id
+                ):
+                    errors.append(
+                        "decision/research binding analysis mismatch: "
+                        + binding.decision_artifact_id
+                    )
             for decision in decisions:
                 if decision.research_artifact_id is None:
                     if decision.historical_business_quality_valid:
@@ -459,6 +583,39 @@ class HistoricalDatasetCompiler:
                     errors.append(f"decision has no research binding: {decision.artifact_id}")
                 elif binding.research_artifact_id != decision.research_artifact_id:
                     errors.append(f"decision/research reference mismatch: {decision.artifact_id}")
+                if decision.historical_business_quality_valid and (
+                    binding is None or binding.business_quality_artifact_id is None
+                ):
+                    errors.append(
+                        "validated historical Business Quality has no archive binding: "
+                        + decision.artifact_id
+                    )
+
+        for report in manifest.reconciliation_reports:
+            for source_id in (report.canonical_source_id, report.independent_source_id):
+                if source_id not in sources:
+                    errors.append(
+                        "reconciliation references unknown source artifact: " + source_id
+                    )
+            for comparison in report.comparisons:
+                if comparison.canonical_source_id != report.canonical_source_id:
+                    errors.append("reconciliation canonical source identity mismatch")
+                if comparison.independent_source_id != report.independent_source_id:
+                    errors.append("reconciliation independent source identity mismatch")
+                if comparison.listing_id not in manifest.target.listing_ids:
+                    errors.append(
+                        "reconciliation references listing outside target: "
+                        + comparison.listing_id
+                    )
+                if not (
+                    manifest.target.start_date
+                    <= comparison.observation_date
+                    <= manifest.target.end_date
+                ):
+                    errors.append(
+                        "reconciliation observation lies outside target: "
+                        + comparison.comparison_id
+                    )
 
         production_eligible = not errors and _production_scope_is_provable(
             manifest.target,
@@ -554,7 +711,19 @@ class HistoricalDatasetCompiler:
             availability=availability,
             market_bars=list(rows_by_kind[ShardArtifactKind.MARKET_BAR]),
             corporate_actions=list(rows_by_kind[ShardArtifactKind.CORPORATE_ACTION]),
-            fx_observations=list(rows_by_kind[ShardArtifactKind.FX_OBSERVATION]),
+            fx_observations=[
+                FXObservation(
+                    observation_id=item.observation_id,
+                    listing_id=item.listing_id,
+                    base_currency=item.base_currency,
+                    quote_currency=item.quote_currency,
+                    observation_date=item.observation_date,
+                    rate=item.rate,
+                    available_at=item.available_at,
+                    source_hash=item.source_hash,
+                )
+                for item in rows_by_kind[ShardArtifactKind.FX_OBSERVATION]
+            ],
             benchmarks=list(rows_by_kind[ShardArtifactKind.BENCHMARK_OBSERVATION]),
             decision_artifacts=decisions,
             source_artifact_ids=[item.source_id for item in self.manifest.source_descriptors],
@@ -574,6 +743,41 @@ class HistoricalDatasetCompiler:
 
 def _covers_target(source: HistoricalSourceDescriptor, target: HistoricalTargetScope) -> bool:
     return source.coverage_start <= target.start_date and source.coverage_end >= target.end_date
+
+
+def _archived_json_scope_error(artifact, payload: object) -> str | None:
+    """Reject a persisted JSON object that contradicts its archive reference."""
+
+    if not isinstance(payload, dict):
+        return "historical research artifact must contain a JSON object: " + artifact.artifact_id
+    for field_name, expected in (
+        ("artifact_id", artifact.artifact_id),
+        ("listing_id", artifact.listing_id),
+        ("analysis_id", artifact.analysis_id),
+    ):
+        if field_name in payload and payload[field_name] != expected:
+            return (
+                "historical research artifact scope does not match persisted JSON: "
+                + artifact.artifact_id
+            )
+    if "artifact_type" in payload and payload["artifact_type"] != artifact.artifact_type.value:
+        return (
+            "historical research artifact type does not match persisted JSON: "
+            + artifact.artifact_id
+        )
+    if "as_of" in payload:
+        try:
+            if date.fromisoformat(str(payload["as_of"])) != artifact.as_of:
+                return (
+                    "historical research artifact as_of does not match persisted JSON: "
+                    + artifact.artifact_id
+                )
+        except ValueError:
+            return (
+                "historical research artifact has invalid persisted as_of: "
+                + artifact.artifact_id
+            )
+    return None
 
 
 def _production_scope_is_provable(

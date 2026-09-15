@@ -1,9 +1,9 @@
 {
-  "content_sha256": "84403704fb7c842192e0d825e7d71560bc5c67958bba745d32b0c1739f804c10",
+  "content_sha256": "aefae8748b39ada2082d63203a6fd9d08c1c7b1b78504abd584f38250ac4c9b5",
   "contract": "historical_dataset_manifest_v1",
   "coverage_reports": [
     {
-      "content_sha256": "88bf34d0b082d32f2339c7d005bde569eecfb0d7134e8140c643e413d50c948f",
+      "content_sha256": "11ef05d058bb1ff643efcfe2cf4b1a6495a8cdadcc19f0a45e4d8af4d26763df",
       "contract": "historical_coverage_report_v1",
       "records": [
         {
@@ -34,15 +34,15 @@
           ],
           "source_kind": "PRICES",
           "status": "COMPLETE",
-          "terminal_outcome": "DELISTED"
+          "terminal_outcome": null
         }
       ],
-      "report_id": "prices-compact-v1",
-      "target_id": "phase5r-compact-ah-v1"
+      "report_id": "prices-coverage",
+      "target_id": "fixture-ah-2020"
     }
   ],
-  "dataset_id": "phase5r-compact-dataset-v1",
-  "dataset_version": "1",
+  "dataset_id": "phase5r-compact-dataset-v2",
+  "dataset_version": "2",
   "limitations": [
     "Acceptance/replay fixture only; no production source or redistribution claim."
   ],
@@ -86,26 +86,26 @@
           "status": "PASS"
         }
       ],
-      "content_sha256": "8a1d29a47b82f18f6ce1a28ee0c13b6c892f7feacf181ca666b2c4aeb5dc9170",
+      "content_sha256": "adb1e682122272556ad513ab60588192457663ebeaae9a91ff6a655188a0962a",
       "contract": "historical_reconciliation_report_v1",
       "explicit_actions_used": false,
       "independent_source_id": "src-independent",
-      "report_id": "reconciliation-compact-v1",
+      "report_id": "reconciliation-compact-v2",
       "return_semantics": "PRICE_RETURN",
       "status": "PASS",
-      "target_id": "phase5r-compact-ah-v1"
+      "target_id": "fixture-ah-2020"
     }
   ],
   "research_archive": {
-    "archive_id": "archive-compact-v1",
+    "archive_id": "archive-1",
     "artifacts": [
       {
-        "analysis_id": "archive-only-analysis",
+        "analysis_id": "analysis-a1-2020",
         "artifact_id": "bq-a1-2020",
         "artifact_type": "BUSINESS_QUALITY",
         "as_of": "2020-01-01",
-        "available_at": "2019-12-01",
-        "content_sha256": "c8192b349ba1aee714ef754633c2205746da73b9b7e3134bf271e2c361b7dffe",
+        "available_at": "2020-01-02T12:00:00Z",
+        "content_sha256": "9659af0a1f56fbf7635c3514340e8abb1cb0b7a4c0367960f1654486c5e02c6c",
         "contract": "historical_research_artifact_reference_v1",
         "filing_ids": [
           "filing-a1-2020"
@@ -114,27 +114,27 @@
         "locators": [
           {
             "contract": "historical_filing_locator_v1",
-            "document_hash": "a82c51b1069fa80dce2f2a32b79c7193a6b2017f735098e3c863b5da0c77ad18",
+            "document_hash": "38b73c5ff9b2e2a98042e459034f4c0c69d74664b04d592bfa109f241a9e9fd9",
             "filing_id": "filing-a1-2020",
             "locator": null,
             "page": 12,
             "section": "Business risks"
           }
         ],
-        "relative_path": null,
+        "relative_path": "json/96/9659af0a1f56fbf7635c3514340e8abb1cb0b7a4c0367960f1654486c5e02c6c.json",
         "review_status": "FROZEN_VALIDATED",
         "source_artifact_ids": [
-          "src-research"
+          "filing-source"
         ],
         "source_document_hashes": [
-          "a82c51b1069fa80dce2f2a32b79c7193a6b2017f735098e3c863b5da0c77ad18"
+          "38b73c5ff9b2e2a98042e459034f4c0c69d74664b04d592bfa109f241a9e9fd9"
         ]
       }
     ],
-    "content_sha256": "a340f80295ba1aa9899881efab07d85e30f34d5c85ba7df4ceabd35ee2867dd5",
+    "content_sha256": "8640c91f4de6f0bab37ddd11fd3b87caa124f96e0e8ea21e2b1221f90654de94",
     "contract": "historical_research_archive_manifest_v1",
     "decision_bindings": [],
-    "target_id": "phase5r-compact-ah-v1"
+    "target_id": "fixture-ah-2020"
   },
   "shards": [
     {
@@ -156,7 +156,7 @@
     },
     {
       "artifact_kind": "UNIVERSE_MEMBERSHIP",
-      "content_sha256": "94d3a9c6545fb4eaf81a6c2f6187ca6c396e53ae1a3ae50730a1020f1d1141b6",
+      "content_sha256": "b04e97cc7c46348ca31fbb32a5e5010a5d2b809173facb40ffbafb3a1d756714",
       "contract": "historical_shard_reference_v1",
       "date_end": "2020-01-03",
       "date_start": "2019-01-01",
@@ -190,7 +190,7 @@
     },
     {
       "artifact_kind": "MARKET_BAR",
-      "content_sha256": "c68f5b2463bd3aac5d760126fdfbeae61edca481791adb3fdbaed1167d04fe81",
+      "content_sha256": "b26547f551804d2c9c7a0dfcc69e63cf49a1f3239e97ba452c64ad9745124f5d",
       "contract": "historical_shard_reference_v1",
       "date_end": "2020-01-03",
       "date_start": "2020-01-01",
@@ -221,6 +221,38 @@
       "schema_version": "corporate-action-v1",
       "shard_id": "actions",
       "source_artifact_id": "src-actions"
+    },
+    {
+      "artifact_kind": "FX_OBSERVATION",
+      "content_sha256": "c4f20cab2a7f39b5e66b95e48f6b3b0df89c5fbd9d733b95909775a2e11560be",
+      "contract": "historical_shard_reference_v1",
+      "date_end": "2020-01-02",
+      "date_start": "2020-01-02",
+      "format": "JSONL",
+      "listing_scope": [
+        "H1"
+      ],
+      "relative_path": null,
+      "row_count": 1,
+      "schema_version": "historical-fx-observation-v1",
+      "shard_id": "fx",
+      "source_artifact_id": "src-fx"
+    },
+    {
+      "artifact_kind": "BENCHMARK_OBSERVATION",
+      "content_sha256": "e00b3c2f75786795dd9892216a970c79577f4ab1fa96542376b8dfd20eeb0fb8",
+      "contract": "historical_shard_reference_v1",
+      "date_end": "2020-01-02",
+      "date_start": "2020-01-02",
+      "format": "JSONL",
+      "listing_scope": [
+        "__BENCHMARK__"
+      ],
+      "relative_path": null,
+      "row_count": 1,
+      "schema_version": "benchmark-observation-v1",
+      "shard_id": "benchmarks",
+      "source_artifact_id": "src-benchmark"
     }
   ],
   "source_descriptors": [
@@ -237,12 +269,35 @@
       "historical_capable": false,
       "is_current_snapshot": false,
       "license_status": "UNKNOWN",
-      "licensing_constraints": "acceptance-only; not licensed production data",
-      "provider_id": "fixture",
+      "licensing_constraints": "acceptance-only; no redistribution claim",
+      "provider_id": "frozen-test",
       "query_parameters": {},
       "retrieved_at": "2020-01-04T00:00:00Z",
       "source_id": "src-lifecycle",
       "source_kind": "LISTING_LIFECYCLE",
+      "source_name": "compact acceptance fixture",
+      "source_uri": null,
+      "source_version": null
+    },
+    {
+      "authority": "FIXTURE",
+      "content_sha256": "339af5518a6d12d8b2b6942379ae32ea09e83fb254af167de9911d7873a7840a",
+      "contract": "historical_source_descriptor_v1",
+      "coverage_end": "2020-01-03",
+      "coverage_listing_ids": [
+        "A1",
+        "H1"
+      ],
+      "coverage_start": "2020-01-01",
+      "historical_capable": false,
+      "is_current_snapshot": false,
+      "license_status": "UNKNOWN",
+      "licensing_constraints": "acceptance-only; no redistribution claim",
+      "provider_id": "frozen-test",
+      "query_parameters": {},
+      "retrieved_at": "2020-01-04T00:00:00Z",
+      "source_id": "src-delistings",
+      "source_kind": "DELISTINGS",
       "source_name": "compact acceptance fixture",
       "source_uri": null,
       "source_version": null
@@ -260,8 +315,8 @@
       "historical_capable": false,
       "is_current_snapshot": false,
       "license_status": "UNKNOWN",
-      "licensing_constraints": "acceptance-only; not licensed production data",
-      "provider_id": "fixture",
+      "licensing_constraints": "acceptance-only; no redistribution claim",
+      "provider_id": "frozen-test",
       "query_parameters": {},
       "retrieved_at": "2020-01-04T00:00:00Z",
       "source_id": "src-membership",
@@ -283,8 +338,8 @@
       "historical_capable": false,
       "is_current_snapshot": false,
       "license_status": "UNKNOWN",
-      "licensing_constraints": "acceptance-only; not licensed production data",
-      "provider_id": "fixture",
+      "licensing_constraints": "acceptance-only; no redistribution claim",
+      "provider_id": "frozen-test",
       "query_parameters": {},
       "retrieved_at": "2020-01-04T00:00:00Z",
       "source_id": "src-prices",
@@ -306,8 +361,8 @@
       "historical_capable": false,
       "is_current_snapshot": false,
       "license_status": "UNKNOWN",
-      "licensing_constraints": "acceptance-only; not licensed production data",
-      "provider_id": "fixture",
+      "licensing_constraints": "acceptance-only; no redistribution claim",
+      "provider_id": "frozen-test",
       "query_parameters": {},
       "retrieved_at": "2020-01-04T00:00:00Z",
       "source_id": "src-actions",
@@ -318,7 +373,7 @@
     },
     {
       "authority": "FIXTURE",
-      "content_sha256": "826f99b5bd0add1fe4640c472af3bb920e965583c8888b189c82af4cd86292c2",
+      "content_sha256": "032ce3b1f650d3d91b391a0710c5ed5a9967db7fc99646bf781c4ed4e97dfa16",
       "contract": "historical_source_descriptor_v1",
       "coverage_end": "2020-01-03",
       "coverage_listing_ids": [
@@ -329,12 +384,35 @@
       "historical_capable": false,
       "is_current_snapshot": false,
       "license_status": "UNKNOWN",
-      "licensing_constraints": "acceptance-only; not licensed production data",
-      "provider_id": "fixture",
+      "licensing_constraints": "acceptance-only; no redistribution claim",
+      "provider_id": "frozen-test",
       "query_parameters": {},
       "retrieved_at": "2020-01-04T00:00:00Z",
-      "source_id": "src-research",
-      "source_kind": "RESEARCH_ARCHIVE",
+      "source_id": "src-fx",
+      "source_kind": "FX",
+      "source_name": "compact acceptance fixture",
+      "source_uri": null,
+      "source_version": null
+    },
+    {
+      "authority": "FIXTURE",
+      "content_sha256": "d7520d43143bc00d725e3ad19a38df2c193a1c43ddf1c3a4969e04c00d9ce51b",
+      "contract": "historical_source_descriptor_v1",
+      "coverage_end": "2020-01-03",
+      "coverage_listing_ids": [
+        "A1",
+        "H1"
+      ],
+      "coverage_start": "2020-01-01",
+      "historical_capable": false,
+      "is_current_snapshot": false,
+      "license_status": "UNKNOWN",
+      "licensing_constraints": "acceptance-only; no redistribution claim",
+      "provider_id": "frozen-test",
+      "query_parameters": {},
+      "retrieved_at": "2020-01-04T00:00:00Z",
+      "source_id": "src-benchmark",
+      "source_kind": "BENCHMARK",
       "source_name": "compact acceptance fixture",
       "source_uri": null,
       "source_version": null
@@ -352,12 +430,58 @@
       "historical_capable": false,
       "is_current_snapshot": false,
       "license_status": "UNKNOWN",
-      "licensing_constraints": "acceptance-only; not licensed production data",
-      "provider_id": "fixture",
+      "licensing_constraints": "acceptance-only; no redistribution claim",
+      "provider_id": "frozen-test",
       "query_parameters": {},
       "retrieved_at": "2020-01-04T00:00:00Z",
       "source_id": "src-independent",
       "source_kind": "PRICES",
+      "source_name": "compact acceptance fixture",
+      "source_uri": null,
+      "source_version": null
+    },
+    {
+      "authority": "FIXTURE",
+      "content_sha256": "38b73c5ff9b2e2a98042e459034f4c0c69d74664b04d592bfa109f241a9e9fd9",
+      "contract": "historical_source_descriptor_v1",
+      "coverage_end": "2020-01-03",
+      "coverage_listing_ids": [
+        "A1",
+        "H1"
+      ],
+      "coverage_start": "2020-01-01",
+      "historical_capable": false,
+      "is_current_snapshot": false,
+      "license_status": "UNKNOWN",
+      "licensing_constraints": "acceptance-only; no redistribution claim",
+      "provider_id": "frozen-test",
+      "query_parameters": {},
+      "retrieved_at": "2020-01-04T00:00:00Z",
+      "source_id": "filing-source",
+      "source_kind": "FILINGS",
+      "source_name": "compact acceptance fixture",
+      "source_uri": null,
+      "source_version": null
+    },
+    {
+      "authority": "FIXTURE",
+      "content_sha256": "b2c6e235b8ecda9a4556df2cc0f75c2b842de1b6cd980ecf4bce730e79fb0a7e",
+      "contract": "historical_source_descriptor_v1",
+      "coverage_end": "2020-01-03",
+      "coverage_listing_ids": [
+        "A1",
+        "H1"
+      ],
+      "coverage_start": "2020-01-01",
+      "historical_capable": false,
+      "is_current_snapshot": false,
+      "license_status": "UNKNOWN",
+      "licensing_constraints": "acceptance-only; no redistribution claim",
+      "provider_id": "frozen-test",
+      "query_parameters": {},
+      "retrieved_at": "2020-01-04T00:00:00Z",
+      "source_id": "research-source",
+      "source_kind": "RESEARCH_ARCHIVE",
       "source_name": "compact acceptance fixture",
       "source_uri": null,
       "source_version": null
@@ -383,11 +507,12 @@
       "UNIVERSE_MEMBERSHIP",
       "PRICES",
       "CORPORATE_ACTIONS",
-      "RESEARCH_ARCHIVE"
+      "FX",
+      "BENCHMARK"
     ],
     "start_date": "2020-01-01",
-    "target_id": "phase5r-compact-ah-v1",
-    "target_name": "Compact A/H replay acceptance universe",
-    "universe_id": "phase5r-compact-ah"
+    "target_id": "fixture-ah-2020",
+    "target_name": "Compact A/H replay universe",
+    "universe_id": "fixture-ah"
   }
 }

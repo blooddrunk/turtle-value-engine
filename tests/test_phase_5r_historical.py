@@ -11,6 +11,8 @@ import pytest
 from jsonschema import Draft202012Validator
 
 from turtle_value_engine.backtest.contracts import (
+    BenchmarkObservation,
+    BenchmarkReturnType,
     CorporateAction,
     CorporateActionType,
     Market,
@@ -25,6 +27,7 @@ from turtle_value_engine.historical import (
     HistoricalCodeChange,
     HistoricalDatasetManifest,
     HistoricalFilingLocator,
+    HistoricalFXObservation,
     HistoricalListingLifecycle,
     HistoricalMembershipInterval,
     HistoricalResearchArchiveManifest,
@@ -123,15 +126,23 @@ def _build_manifest(
     tmp_path,
     *,
     bars: list[MarketBar] | None = None,
+    actions: list[CorporateAction] | None = None,
     lifecycle_rows: list[HistoricalListingLifecycle] | None = None,
     later_h_listing: bool = False,
+    research_archive: HistoricalResearchArchiveManifest | None = None,
+    reconciliation_reports=None,
 ) -> tuple[HistoricalDatasetManifest, HistoricalArtifactStore]:
     store = HistoricalArtifactStore(tmp_path / "artifacts")
     sources = [
         _source("src-lifecycle", HistoricalSourceKind.LISTING_LIFECYCLE),
+        _source("src-delistings", HistoricalSourceKind.DELISTINGS),
         _source("src-membership", HistoricalSourceKind.UNIVERSE_MEMBERSHIP),
         _source("src-prices", HistoricalSourceKind.PRICES),
         _source("src-actions", HistoricalSourceKind.CORPORATE_ACTIONS),
+        _source("src-fx", HistoricalSourceKind.FX),
+        _source("src-benchmark", HistoricalSourceKind.BENCHMARK),
+        _source("filing-source", HistoricalSourceKind.FILINGS),
+        _source("research-source", HistoricalSourceKind.RESEARCH_ARCHIVE),
     ]
     target = HistoricalTargetScope(
         target_id="fixture-ah-2020",
@@ -148,6 +159,8 @@ def _build_manifest(
             HistoricalSourceKind.UNIVERSE_MEMBERSHIP,
             HistoricalSourceKind.PRICES,
             HistoricalSourceKind.CORPORATE_ACTIONS,
+            HistoricalSourceKind.FX,
+            HistoricalSourceKind.BENCHMARK,
         ],
         licensing_scope="acceptance-only",
     )
@@ -231,33 +244,58 @@ def _build_manifest(
             for item in bars
             if item.listing_id == "A1" or item.trading_date == END
         ]
-    actions = [
-        CorporateAction(
-            action_id="div-a1",
-            listing_id="A1",
-            action_type=CorporateActionType.CASH_DIVIDEND,
-            effective_date=date(2020, 1, 2),
-            cash_per_share=0.2,
-            currency="CNY",
-            source_hash=_hash("src-actions"),
-        ),
-        CorporateAction(
-            action_id="split-h1",
-            listing_id="H1",
-            action_type=CorporateActionType.SPLIT,
-            effective_date=date(2020, 1, 2),
-            split_factor=2.0,
-            currency="HKD",
-            source_hash=_hash("src-actions"),
-        ),
-    ]
-    if later_h_listing:
+    if actions is None:
+        actions = [
+            CorporateAction(
+                action_id="div-a1",
+                listing_id="A1",
+                action_type=CorporateActionType.CASH_DIVIDEND,
+                effective_date=date(2020, 1, 2),
+                cash_per_share=0.2,
+                currency="CNY",
+                source_hash=_hash("src-actions"),
+            ),
+            CorporateAction(
+                action_id="split-h1",
+                listing_id="H1",
+                action_type=CorporateActionType.SPLIT,
+                effective_date=date(2020, 1, 2),
+                split_factor=2.0,
+                currency="HKD",
+                source_hash=_hash("src-actions"),
+            ),
+        ]
+    if later_h_listing and actions is not None:
         actions = [
             item.model_copy(update={"effective_date": END})
             if item.listing_id == "H1"
             else item
             for item in actions
         ]
+    fx_rows = [
+        HistoricalFXObservation(
+            observation_id=f"fx-h1-{(END if later_h_listing else date(2020, 1, 2)).isoformat()}",
+            listing_id="H1",
+            base_currency="HKD",
+            quote_currency="CNY",
+            observation_date=END if later_h_listing else date(2020, 1, 2),
+            rate=0.91,
+            available_at=UTC_NOON,
+            source_hash=_hash("src-fx"),
+        )
+    ]
+    benchmark_rows = [
+        BenchmarkObservation(
+            observation_id="benchmark-hsi-2020-01-02",
+            benchmark_id="HSI",
+            observation_date=date(2020, 1, 2),
+            value=28_000.0,
+            return_type=BenchmarkReturnType.PRICE_RETURN,
+            currency="HKD",
+            available_at=UTC_NOON,
+            source_hash=_hash("src-benchmark"),
+        )
+    ]
     refs = [
         store.freeze_shard(
             shard_id="lifecycles",
@@ -309,6 +347,26 @@ def _build_manifest(
             source_artifact_id="src-actions",
             rows=actions,
         ),
+        store.freeze_shard(
+            shard_id="fx",
+            artifact_kind=ShardArtifactKind.FX_OBSERVATION,
+            schema_version="historical-fx-observation-v1",
+            date_start=END if later_h_listing else date(2020, 1, 2),
+            date_end=END if later_h_listing else date(2020, 1, 2),
+            listing_scope=["H1"],
+            source_artifact_id="src-fx",
+            rows=fx_rows,
+        ),
+        store.freeze_shard(
+            shard_id="benchmarks",
+            artifact_kind=ShardArtifactKind.BENCHMARK_OBSERVATION,
+            schema_version="benchmark-observation-v1",
+            date_start=date(2020, 1, 2),
+            date_end=date(2020, 1, 2),
+            listing_scope=["__BENCHMARK__"],
+            source_artifact_id="src-benchmark",
+            rows=benchmark_rows,
+        ),
     ]
     coverage = build_coverage_report(
         target=target,
@@ -331,6 +389,8 @@ def _build_manifest(
         source_descriptors=sources,
         shards=refs,
         coverage_reports=[coverage],
+        research_archive=research_archive,
+        reconciliation_reports=reconciliation_reports or [],
         limitations=["compact acceptance fixture; not a production market claim"],
     )
     return manifest, store
@@ -394,6 +454,9 @@ def test_source_aware_compilation_keeps_a_h_lifecycles_and_shards(tmp_path):
         == compiled.lifecycle("H1").economic_company_id
     )
     assert compiled.universe_memberships[0].availability is not None
+    assert compiled.fx_observations[0].listing_id == "H1"
+    assert compiled.fx_observations[0].base_currency == "HKD"
+    assert compiled.benchmarks[0].return_type is BenchmarkReturnType.PRICE_RETURN
     assert not hasattr(manifest, "market_bars")
 
 
@@ -444,6 +507,34 @@ def test_unknown_terminal_outcome_is_retained_without_fabricated_value(tmp_path)
         action.listing_id == "H1" and action.action_type is CorporateActionType.TERMINAL_VALUE
         for action in compiled.corporate_actions
     )
+
+
+def test_unresolved_terminal_outcome_rejects_a_terminal_value_action(tmp_path):
+    unresolved = _lifecycle_rows()
+    unresolved[1] = unresolved[1].model_copy(
+        update={
+            "terminal_date": END,
+            "terminal_outcome": HistoricalTerminalOutcome.UNRESOLVED_TERMINAL,
+        }
+    )
+    actions = [
+        CorporateAction(
+            action_id="invented-terminal-value",
+            listing_id="H1",
+            action_type=CorporateActionType.TERMINAL_VALUE,
+            effective_date=END,
+            terminal_value_per_share=0.0,
+            currency="HKD",
+            source_hash=_hash("src-actions"),
+        )
+    ]
+    manifest, store = _build_manifest(
+        tmp_path,
+        lifecycle_rows=unresolved,
+        actions=actions,
+    )
+    with pytest.raises(ValueError, match="terminal value.*unresolved"):
+        compile_backtest_manifest(manifest, store)
 
 
 def test_adjusted_prices_and_explicit_actions_cannot_be_double_counted(tmp_path):
@@ -500,6 +591,80 @@ def test_research_archive_requires_frozen_pit_artifacts_and_locators():
         validate_research_archive(unknown)
 
 
+def test_research_archive_reference_can_verify_actual_frozen_json_bytes(tmp_path):
+    store = HistoricalArtifactStore(tmp_path / "archive-store")
+    source = _source("source-artifact", HistoricalSourceKind.FILINGS)
+    relative_path, content_sha256 = store.freeze_json_artifact(source)
+    reference = HistoricalResearchArtifactReference.from_model(
+        artifact_id="filing-document-1",
+        artifact_type="FILING_DOCUMENT",
+        artifact=source,
+        listing_id="A1",
+        analysis_id="analysis-a1-2020",
+        as_of=START,
+        available_at=UTC_NOON,
+        source_document_hashes=[_hash("filing-document")],
+        filing_ids=["filing-a1-2020"],
+        locators=[
+            HistoricalFilingLocator(
+                filing_id="filing-a1-2020",
+                document_hash=_hash("filing-document"),
+                page=1,
+            )
+        ],
+        source_artifact_ids=[source.source_id],
+        review_status="FROZEN_VALIDATED",
+        relative_path=relative_path,
+    )
+    assert reference.content_sha256 == content_sha256
+    archive = HistoricalResearchArchiveManifest.build(
+        archive_id="archive-with-bytes",
+        target_id="fixture-ah-2020",
+        artifacts=[reference],
+        decision_bindings=[],
+    )
+    assert validate_research_archive(archive).archive_id == "archive-with-bytes"
+
+    path = store.root / relative_path
+    path.write_bytes(b"tampered")
+    with pytest.raises(ValueError, match="hash mismatch"):
+        store.read_json_artifact(relative_path, content_sha256)
+
+
+def test_review_required_research_artifact_cannot_support_a_decision():
+    archive = _archive()
+    reference = archive.artifacts[0].model_copy(update={"review_status": "REVIEW_REQUIRED"})
+    changed = HistoricalResearchArchiveManifest.build(
+        archive_id="review-required",
+        target_id=archive.target_id,
+        artifacts=[reference],
+        decision_bindings=archive.decision_bindings,
+    )
+    with pytest.raises(ValueError, match="not frozen|FROZEN_VALIDATED"):
+        validate_research_archive(changed)
+
+
+def test_compiler_rejects_dangling_research_binding_and_source(tmp_path):
+    manifest, store = _build_manifest(tmp_path, research_archive=_archive())
+    with pytest.raises(ValueError, match="unknown source artifact|unknown decision artifact"):
+        compile_backtest_manifest(manifest, store)
+
+
+def test_compiler_rejects_dangling_reconciliation_source(tmp_path):
+    report = reconcile_observations(
+        target_id="fixture-ah-2020",
+        canonical_source_id="missing-canonical-source",
+        independent_source_id="src-prices",
+        canonical_values={("A1", START): 10.0},
+        independent_values={("A1", START): 10.0},
+        absolute_tolerance=0.01,
+        relative_tolerance=0.01,
+    )
+    manifest, store = _build_manifest(tmp_path, reconciliation_reports=[report])
+    with pytest.raises(ValueError, match="reconciliation references unknown source"):
+        compile_backtest_manifest(manifest, store)
+
+
 def test_reconciliation_persists_tolerance_and_independent_identity():
     report = reconcile_observations(
         target_id="fixture-ah-2020",
@@ -546,6 +711,8 @@ def test_checked_in_compact_corpus_replays_without_network_or_model():
     assert summary.production_eligible is False
     assert compiled.lifecycle("H1").terminal_status == "DELISTED"
     assert any(item.suspended for item in compiled.market_bars)
+    assert len(compiled.fx_observations) == 1
+    assert len(compiled.benchmarks) == 1
     assert {item.market for item in compiled.listing_lifecycles} == {Market.A, Market.H}
 
 

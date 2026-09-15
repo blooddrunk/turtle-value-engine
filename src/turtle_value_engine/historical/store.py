@@ -205,6 +205,20 @@ class HistoricalArtifactStore:
                 f"invalid historical JSON artifact {path}: {exc}"
             ) from exc
 
+    def freeze_json_artifact(self, artifact: BaseModel | object) -> tuple[str, str]:
+        """Persist one canonical JSON artifact and return ``(path, sha256)``."""
+
+        payload = (
+            artifact.model_dump(mode="json", warnings=False)
+            if isinstance(artifact, BaseModel)
+            else artifact
+        )
+        serialized = canonical_json_bytes(payload)
+        content_sha256 = hashlib.sha256(serialized).hexdigest()
+        relative_path = Path("json") / content_sha256[:2] / f"{content_sha256}.json"
+        self._write_immutable(self.root / relative_path, serialized)
+        return str(relative_path), content_sha256
+
     @staticmethod
     def _write_immutable(path: Path, serialized: bytes) -> None:
         if path.exists():

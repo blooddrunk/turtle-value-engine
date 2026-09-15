@@ -3,8 +3,9 @@
 This Git fixture is a small, deterministic contract and adversarial replay
 corpus. It contains both A/H listing identities for one economic company, a
 historical code change, a later/terminal H listing, a suspended price session,
-dividend and split actions, a frozen research-archive reference, and an
-independent-reference reconciliation sample.
+dividend and split actions, listing-specific FX, an explicit price-return
+benchmark, a frozen research-archive reference, and an independent-reference
+reconciliation sample.
 
 The rows are acceptance fixtures assembled from repository snapshots. They are
 not asserted to be authoritative market history, are not a claim of complete

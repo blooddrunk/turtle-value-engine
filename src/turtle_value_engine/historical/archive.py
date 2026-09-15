@@ -42,6 +42,7 @@ def validate_research_archive(
     if not isinstance(archive, HistoricalResearchArchiveManifest):
         raise TypeError("archive must be a HistoricalResearchArchiveManifest")
     by_id = {item.artifact_id: item for item in archive.artifacts}
+    decision_times = decision_times or {}
     for item in archive.artifacts:
         if item.available_at is None:
             raise HistoricalResearchArchiveError(
@@ -77,6 +78,10 @@ def validate_research_archive(
         if binding.research_artifact_id not in by_id:
             raise HistoricalResearchArchiveError("research binding has no archive reference")
         if binding.business_quality_artifact_id is not None:
+            if binding.business_quality_artifact_id not in binding.used_artifact_ids:
+                raise HistoricalResearchArchiveError(
+                    "business_quality_artifact_id must be included in used_artifact_ids"
+                )
             quality = by_id.get(binding.business_quality_artifact_id)
             if quality is None:
                 raise HistoricalResearchArchiveError(
@@ -92,7 +97,6 @@ def validate_research_archive(
                     "Business Quality artifact is not frozen and validated"
                 )
         boundary = binding.decision_time
-        decision_times = decision_times or {}
         explicit_boundary = decision_times.get(binding.decision_artifact_id)
         if explicit_boundary is not None:
             if explicit_boundary.tzinfo is None:
@@ -103,6 +107,10 @@ def validate_research_archive(
             if item is None:
                 raise HistoricalResearchArchiveError(
                     f"decision binding references dangling artifact: {artifact_id}"
+                )
+            if item.review_status is not ReviewStatus.FROZEN_VALIDATED:
+                raise HistoricalResearchArchiveError(
+                    f"decision uses an artifact that is not frozen and validated: {artifact_id}"
                 )
             if not _available_at(item.available_at, boundary):
                 raise HistoricalResearchArchiveError(
