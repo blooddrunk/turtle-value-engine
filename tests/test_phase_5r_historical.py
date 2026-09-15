@@ -591,6 +591,28 @@ def test_coverage_without_authoritative_expected_sessions_is_unknown(tmp_path):
     assert {item.status for item in report.records} == {CoverageClaim.UNKNOWN}
 
 
+def test_coverage_builder_rejects_out_of_scope_sessions_and_listings(tmp_path):
+    target = _build_manifest(tmp_path)[0].target
+    with pytest.raises(ValueError, match="outside target"):
+        build_coverage_report(
+            target=target,
+            source_kind=HistoricalSourceKind.PRICES,
+            expected_sessions_by_listing={"A1": [date(2019, 12, 31)]},
+            observed_sessions_by_listing={},
+            source_artifact_ids_by_listing={"A1": ["src-prices"]},
+            report_id="out-of-range",
+        )
+    with pytest.raises(ValueError, match="outside target"):
+        build_coverage_report(
+            target=target,
+            source_kind=HistoricalSourceKind.PRICES,
+            expected_sessions_by_listing=None,
+            observed_sessions_by_listing={"outside": [START]},
+            source_artifact_ids_by_listing={},
+            report_id="out-of-scope-listing",
+        )
+
+
 def test_unknown_coverage_without_source_ids_remains_explicit_not_dangling(tmp_path):
     manifest, store = _build_manifest(tmp_path)
     report = build_coverage_report(

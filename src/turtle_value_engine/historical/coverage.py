@@ -33,9 +33,27 @@ def build_coverage_report(
     """
 
     terminal_outcomes = terminal_outcomes or {}
+    target_listings = set(target.listing_ids)
+    for mapping_name, mapping in (
+        ("expected_sessions_by_listing", expected_sessions_by_listing or {}),
+        ("observed_sessions_by_listing", observed_sessions_by_listing),
+        ("source_artifact_ids_by_listing", source_artifact_ids_by_listing),
+        ("terminal_outcomes", terminal_outcomes),
+    ):
+        outside = set(mapping) - target_listings
+        if outside:
+            raise ValueError(
+                f"{mapping_name} contains listings outside target: {sorted(outside)}"
+            )
     records: list[HistoricalCoverageRecord] = []
     for listing_id in target.listing_ids:
         observed = set(observed_sessions_by_listing.get(listing_id, ()))
+        if any(
+            value < target.start_date or value > target.end_date for value in observed
+        ):
+            raise ValueError(
+                f"observed sessions lie outside target: {listing_id}"
+            )
         source_ids = list(source_artifact_ids_by_listing.get(listing_id, ()))
         if not source_ids:
             source_ids = ["UNRESOLVED_SOURCE"]
@@ -56,6 +74,12 @@ def build_coverage_report(
             )
             continue
         expected = set(expected_sessions_by_listing[listing_id])
+        if any(
+            value < target.start_date or value > target.end_date for value in expected
+        ):
+            raise ValueError(
+                f"expected sessions lie outside target: {listing_id}"
+            )
         missing = sorted(expected - observed)
         status = CoverageClaim.COMPLETE if not missing else CoverageClaim.PARTIAL
         records.append(
