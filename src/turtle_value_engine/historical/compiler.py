@@ -482,6 +482,14 @@ class HistoricalDatasetCompiler:
                     + action.action_id
                 )
 
+        terminal_scope_errors = _terminal_scope_errors(
+            target=manifest.target,
+            lifecycles=lifecycles.values(),
+            actions=rows_by_kind[ShardArtifactKind.CORPORATE_ACTION],
+        )
+        if require_production or manifest.target.membership_claim == "HISTORICAL":
+            errors.extend(terminal_scope_errors)
+
         decisions = rows_by_kind[ShardArtifactKind.DECISION_ARTIFACT]
         decision_ids = {item.artifact_id for item in decisions}
         if len(decision_ids) != len(decisions):
@@ -668,7 +676,7 @@ class HistoricalDatasetCompiler:
             sources,
             manifest.coverage_reports,
             manifest.reconciliation_reports,
-        )
+        ) and not terminal_scope_errors
         if require_production and not production_eligible:
             errors.append(
                 "declared target does not meet the production historical coverage contract"
@@ -864,6 +872,39 @@ def _production_scope_is_provable(
             if not any((candidate, listing_id) in coverage_keys for candidate in accepted_kinds):
                 return False
     return bool(reconciliations) and all(item.status.value == "PASS" for item in reconciliations)
+
+
+def _terminal_scope_errors(
+    *,
+    target: HistoricalTargetScope,
+    lifecycles,
+    actions,
+) -> list[str]:
+    """Return terminal-economics failures for a claimed production scope."""
+
+    terminal_actions_by_listing: dict[str, bool] = defaultdict(bool)
+    for action in actions:
+        if action.action_type.value == "TERMINAL_VALUE":
+            terminal_actions_by_listing[action.listing_id] = True
+    errors: list[str] = []
+    unresolved = {
+        HistoricalTerminalOutcome.PROLONGED_SUSPENSION,
+        HistoricalTerminalOutcome.UNRESOLVED_TERMINAL,
+        HistoricalTerminalOutcome.UNKNOWN,
+    }
+    for lifecycle in lifecycles:
+        if lifecycle.terminal_date is None or lifecycle.terminal_date > target.end_date:
+            continue
+        if lifecycle.terminal_outcome in unresolved:
+            errors.append(
+                "production terminal economics are unresolved: " + lifecycle.listing_id
+            )
+        elif not terminal_actions_by_listing.get(lifecycle.listing_id, False):
+            errors.append(
+                "production terminal listing has no explicit terminal value: "
+                + lifecycle.listing_id
+            )
+    return errors
 
 
 def _to_backtest_lifecycle(item: HistoricalListingLifecycle) -> ListingLifecycle:

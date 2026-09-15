@@ -787,6 +787,34 @@ def test_production_claim_requires_real_source_and_complete_evidence(tmp_path):
         validate_historical_dataset(manifest, store, require_production=True)
 
 
+def test_production_scope_rejects_terminal_listing_without_terminal_economics(tmp_path):
+    lifecycles = _lifecycle_rows()
+    lifecycles[1] = lifecycles[1].model_copy(
+        update={
+            "terminal_date": END,
+            "terminal_outcome": HistoricalTerminalOutcome.DELISTED,
+        }
+    )
+    manifest, store = _build_manifest(tmp_path, lifecycle_rows=lifecycles)
+    target = manifest.target.model_copy(
+        update={
+            "membership_claim": "HISTORICAL",
+            "coverage_claim": CoverageClaim.COMPLETE,
+        }
+    )
+    manifest = HistoricalDatasetManifest.build(
+        dataset_id=manifest.dataset_id,
+        dataset_version=manifest.dataset_version,
+        target=target,
+        source_descriptors=manifest.source_descriptors,
+        shards=manifest.shards,
+        coverage_reports=manifest.coverage_reports,
+        limitations=manifest.limitations,
+    )
+    with pytest.raises(ValueError, match="terminal"):
+        validate_historical_dataset(manifest, store, require_production=True)
+
+
 def test_checked_in_compact_corpus_replays_without_network_or_model():
     root = Path(__file__).parents[1] / "fixtures" / "historical" / "phase5r-compact-v1"
     from turtle_value_engine.historical import HistoricalDatasetManifest
