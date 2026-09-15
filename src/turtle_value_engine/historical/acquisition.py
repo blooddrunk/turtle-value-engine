@@ -3603,10 +3603,14 @@ def build_readiness_report(
     else:
         if batch.plan_id != plan.plan_id or batch.plan_sha256 != plan.content_sha256:
             blockers.append("RAW_BATCH_SCOPE_MISMATCH: " + batch.batch_id)
+        receipt_request_ids = {receipt.request_id for receipt in batch.receipts}
+        for request in plan.requests:
+            if request.request_id not in receipt_request_ids:
+                blockers.append("RAW_REQUEST_MISSING: " + request.request_id)
         for receipt in batch.receipts:
             if raw_store is None:
-                warnings.append(
-                    "RAW_STORE_UNCHECKED: receipt bytes were not verified in this report"
+                blockers.append(
+                    "RAW_STORE_UNVERIFIED: receipt bytes were not verified in this report"
                 )
                 break
             try:

@@ -484,6 +484,12 @@ def test_private_acquisition_and_offline_compile_are_replayable(tmp_path: Path):
     assert result.batch.receipts[0].sha256 == hashlib.sha256(body).hexdigest()
     assert result.batch.receipts[0].model_dump_json().find("secret") == -1
 
+    unverified = build_readiness_report(plan, batch=result.batch)
+    assert unverified.acquisition_ready is False
+    assert "RAW_STORE_UNVERIFIED: receipt bytes were not verified in this report" in (
+        unverified.blockers
+    )
+
     compiler = HistoricalIngestionCompiler(
         raw_store=raw_store,
         artifact_store=HistoricalArtifactStore(tmp_path / "artifacts"),
@@ -998,6 +1004,21 @@ def test_personal_readiness_requires_declared_coverage():
     assert "PERSONAL_COVERAGE_UNVERIFIED: PRICES:A1" in readiness.blockers
     assert "PERSONAL_COVERAGE_UNVERIFIED: PRICES:H1" in readiness.blockers
     assert readiness.personal_research_ready is False
+
+
+def test_readiness_reports_requests_missing_from_batch():
+    first_request = _request()
+    second_request = first_request.model_copy(update={"request_id": "second-request"})
+    plan = _plan().model_copy(update={"requests": [first_request, second_request]})
+    batch = SimpleNamespace(
+        batch_id="batch-partial",
+        plan_id=plan.plan_id,
+        plan_sha256=plan.content_sha256,
+        receipts=[SimpleNamespace(request_id=first_request.request_id)],
+    )
+    readiness = build_readiness_report(plan, batch=batch)
+    assert "RAW_REQUEST_MISSING: second-request" in readiness.blockers
+    assert readiness.acquisition_ready is False
 
 
 def test_h_readiness_requires_probe_to_observe_every_target_h_listing():
