@@ -61,6 +61,7 @@ class HistoricalValidationSummary(BaseModel):
     production_eligible: bool
     shard_rows: dict[str, int] = Field(default_factory=dict)
     coverage_status: dict[str, str] = Field(default_factory=dict)
+    production_blockers: list[str] = Field(default_factory=list)
     errors: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
 
@@ -177,6 +178,7 @@ class HistoricalDatasetCompiler:
                 dataset_id=getattr(self.manifest, "dataset_id", "invalid"),
                 valid=False,
                 production_eligible=False,
+                production_blockers=[f"invalid historical manifest: {exc}"],
                 errors=[f"invalid historical manifest: {exc}"],
             )
 
@@ -671,12 +673,14 @@ class HistoricalDatasetCompiler:
                         + comparison.comparison_id
                     )
 
-        production_eligible = not errors and _production_scope_is_provable(
+        production_blockers = _production_scope_blockers(
             manifest.target,
             sources,
             manifest.coverage_reports,
             manifest.reconciliation_reports,
-        ) and not terminal_scope_errors
+            terminal_scope_errors=terminal_scope_errors,
+        )
+        production_eligible = not errors and not production_blockers
         if require_production and not production_eligible:
             errors.append(
                 "declared target does not meet the production historical coverage contract"
@@ -690,6 +694,7 @@ class HistoricalDatasetCompiler:
             production_eligible=production_eligible,
             shard_rows=shard_rows,
             coverage_status=coverage_status,
+            production_blockers=production_blockers,
             errors=errors,
             warnings=sorted(set(warnings)),
         )
@@ -834,44 +839,74 @@ def _archived_json_scope_error(artifact, payload: object) -> str | None:
     return None
 
 
-def _production_scope_is_provable(
+def _production_scope_blockers(
     target: HistoricalTargetScope,
     sources: dict[str, HistoricalSourceDescriptor],
     reports,
     reconciliations,
-) -> bool:
-    if target.membership_claim != "HISTORICAL" or target.coverage_claim.value != "COMPLETE":
-        return False
-    if not sources or any(
-        item.authority.value in {"UNKNOWN", "FIXTURE"}
-        or item.license_status.value in {"UNKNOWN", "PROHIBITED"}
-        or not item.historical_capable
-        or not _covers_target(item, target)
-        or not set(target.listing_ids).issubset(item.coverage_listing_ids)
-        for item in sources.values()
-    ):
-        return False
+    *,
+    terminal_scope_errors: list[str],
+) -> list[str]:
+    blockers: list[str] = []
+    if target.membership_claim != "HISTORICAL":
+        blockers.append("target membership claim is not HISTORICAL")
+    if target.coverage_claim.value != "COMPLETE":
+        blockers.append("target coverage claim is not COMPLETE")
+    if not sources:
+        blockers.append("no source descriptors are declared")
+    target_listings = set(target.listing_ids)
+    for item in sources.values():
+        if (
+            item.authority.value in {"UNKNOWN", "FIXTURE"}
+            or item.license_status.value in {"UNKNOWN", "PROHIBITED"}
+            or item.license_evidence_uri is None
+            or item.license_evidence_sha256 is None
+            or (
+                item.license_status.value == "RESTRICTED_INTERNAL"
+                and item.access_grant_reference is None
+            )
+        ):
+            blockers.append("source authority/licensing evidence is incomplete: " + item.source_id)
+        if not item.historical_capable:
+            blockers.append("source is not historical-capable: " + item.source_id)
+        if not _covers_target(item, target):
+            blockers.append("source coverage does not span target: " + item.source_id)
+        if not target_listings.issubset(item.coverage_listing_ids):
+            blockers.append("source listing coverage does not span target: " + item.source_id)
     required = set(target.required_source_kinds)
     available = {item.source_kind for item in sources.values()}
-    if not all(
-        any(candidate in available for candidate in _scope_source_kind(kind))
-        for kind in required
-    ):
-        return False
-    if any(record.status.value != "COMPLETE" for report in reports for record in report.records):
-        return False
+    for kind in required:
+        if not any(candidate in available for candidate in _scope_source_kind(kind)):
+            blockers.append("required source category is missing: " + kind.value)
+    for report in reports:
+        for record in report.records:
+            if record.status.value != "COMPLETE":
+                blockers.append(
+                    "coverage is not COMPLETE: "
+                    f"{record.source_kind.value}:{record.listing_id}"
+                )
     coverage_keys = {
         (record.source_kind, record.listing_id)
         for report in reports
         for record in report.records
         if record.status.value == "COMPLETE"
     }
-    for required in required:
-        accepted_kinds = _scope_source_kind(required)
+    for kind in required:
+        accepted_kinds = _scope_source_kind(kind)
         for listing_id in target.listing_ids:
             if not any((candidate, listing_id) in coverage_keys for candidate in accepted_kinds):
-                return False
-    return bool(reconciliations) and all(item.status.value == "PASS" for item in reconciliations)
+                blockers.append(
+                    "complete coverage record is missing: "
+                    f"{kind.value}:{listing_id}"
+                )
+    if not reconciliations:
+        blockers.append("no independent reconciliation report is declared")
+    else:
+        for report in reconciliations:
+            if report.status.value != "PASS":
+                blockers.append("reconciliation is not PASS: " + report.report_id)
+    blockers.extend(terminal_scope_errors)
+    return sorted(set(blockers))
 
 
 def _terminal_scope_errors(

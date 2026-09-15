@@ -33,6 +33,13 @@
       "title": "Coverage Status",
       "type": "object"
     },
+    "production_blockers": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Production Blockers",
+      "type": "array"
+    },
     "errors": {
       "items": {
         "type": "string"
