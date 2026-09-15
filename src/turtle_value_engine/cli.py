@@ -24,10 +24,17 @@ from turtle_value_engine.backtest import (
 from turtle_value_engine.calculations import CDCCalculationError
 from turtle_value_engine.config import ProfileLoadError, load_profile
 from turtle_value_engine.historical import (
+    AcquisitionError,
+    HistoricalAcquisitionPlanV1,
+    HistoricalAcquisitionService,
     HistoricalArtifactStore,
     HistoricalDatasetManifest,
     HistoricalDatasetValidationError,
+    HistoricalIngestionCompiler,
     HistoricalResearchArchiveError,
+    RawAcquisitionBatchManifestV1,
+    RawBlobStore,
+    build_readiness_report,
     compile_backtest_manifest,
     freeze_decision_snapshots,
     reconcile_observations,
@@ -146,6 +153,45 @@ def _build_parser() -> argparse.ArgumentParser:
     dataset_reconcile.add_argument("--relative-tolerance", required=True, type=float)
     dataset_reconcile.add_argument("--report-id", default="reconciliation")
     dataset_reconcile.add_argument("--output", type=Path, default=None)
+
+    historical_parser = subparsers.add_parser(
+        "historical",
+        help="explicitly opt-in to historical source acquisition or compile raw bytes offline",
+    )
+    historical_commands = historical_parser.add_subparsers(
+        dest="historical_command", required=True
+    )
+    historical_source = historical_commands.add_parser(
+        "source", help="probe a documented source with explicit network opt-in"
+    )
+    historical_source_commands = historical_source.add_subparsers(
+        dest="historical_source_command", required=True
+    )
+    historical_probe = historical_source_commands.add_parser("probe")
+    historical_probe.add_argument("--plan", required=True, type=Path)
+    historical_probe.add_argument("--network", choices=("deny", "allow"), default="deny")
+    historical_probe.add_argument("--output", type=Path, default=None)
+    historical_acquire = historical_commands.add_parser(
+        "acquire", help="download exact raw bytes into a private local CAS"
+    )
+    historical_acquire.add_argument("--plan", required=True, type=Path)
+    historical_acquire.add_argument("--network", choices=("deny", "allow"), default="deny")
+    historical_acquire.add_argument("--raw-store", required=True, type=Path)
+    historical_acquire.add_argument("--batch-output", required=True, type=Path)
+    historical_acquire.add_argument("--report-output", type=Path, default=None)
+    historical_compile = historical_commands.add_parser(
+        "compile", help="compile a previously acquired batch without network access"
+    )
+    historical_compile.add_argument("--batch", required=True, type=Path)
+    historical_compile.add_argument("--raw-store", required=True, type=Path)
+    historical_compile.add_argument("--store", required=True, type=Path)
+    historical_compile.add_argument("--output", required=True, type=Path)
+    historical_compile.add_argument("--report-output", type=Path, default=None)
+    historical_compile.add_argument(
+        "--verify-replay",
+        action="store_true",
+        help="compile the same local batch twice and verify identical identities",
+    )
 
     backtest_parser = subparsers.add_parser(
         "backtest",
@@ -411,6 +457,66 @@ def _run_calibration_command(args: argparse.Namespace) -> object:
     return result
 
 
+def _load_acquisition_plan(path: Path) -> HistoricalAcquisitionPlanV1:
+    return HistoricalAcquisitionPlanV1.model_validate(_read_json(path))
+
+
+def _run_historical_command(args: argparse.Namespace) -> object:
+    if args.historical_command == "source":
+        if args.historical_source_command != "probe":
+            raise ValueError("unsupported historical source command")
+        plan = _load_acquisition_plan(args.plan)
+        result = HistoricalAcquisitionService().probe(
+            plan,
+            network_allowed=args.network == "allow",
+        )
+        _write_optional(args.output, result)
+        return result
+    if args.historical_command == "acquire":
+        plan = _load_acquisition_plan(args.plan)
+        raw_store = RawBlobStore(args.raw_store)
+        result = HistoricalAcquisitionService().acquire(
+            plan,
+            raw_store=raw_store,
+            network_allowed=args.network == "allow",
+        )
+        _write_optional(args.batch_output, result.batch)
+        _write_optional(args.report_output, result.readiness)
+        return {"batch": result.batch, "readiness": result.readiness}
+    if args.historical_command == "compile":
+        batch = RawAcquisitionBatchManifestV1.model_validate(_read_json(args.batch))
+        raw_store = RawBlobStore(args.raw_store)
+        compiler = HistoricalIngestionCompiler(
+            raw_store=raw_store,
+            artifact_store=HistoricalArtifactStore(args.store),
+        )
+        manifest = (
+            compiler.compile_with_replay_check(batch)
+            if args.verify_replay
+            else compiler.compile(batch)
+        )
+        _write_optional(args.output, manifest)
+        if args.report_output is not None:
+            validation = compiler.validation_summary()
+            readiness = build_readiness_report(
+                batch.plan,
+                batch=batch,
+                raw_store=raw_store,
+                validation_summary=validation,
+                compiled_manifest=manifest,
+                network_used=False,
+            )
+            _write_optional(
+                args.report_output,
+                {
+                    "readiness": readiness,
+                    "validation": validation,
+                },
+            )
+        return manifest
+    raise ValueError(f"unsupported historical command: {args.historical_command}")
+
+
 def main(argv: list[str] | None = None) -> int:
     """Run a CLI command and return a shell-compatible exit code."""
 
@@ -425,6 +531,8 @@ def main(argv: list[str] | None = None) -> int:
             result = _run_backtest_command(args)
         elif args.command == "calibrate":
             result = _run_calibration_command(args)
+        elif args.command == "historical":
+            result = _run_historical_command(args)
         else:
             raw_input = args.input.read_bytes()
             profile = load_profile(args.profile, rules_dir=args.rules_dir)
@@ -467,6 +575,7 @@ def main(argv: list[str] | None = None) -> int:
         ValueError,
         HistoricalDatasetValidationError,
         HistoricalResearchArchiveError,
+        AcquisitionError,
     ) as exc:
         print(f"tve: {exc}", file=sys.stderr)
         return 2

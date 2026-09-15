@@ -322,6 +322,26 @@ manifest、decision artifact 和 research archive；校准只输出 proposal。�
 生产级历史覆盖，必须另行提供可审计、具备访问/再分发条件的来源及完整覆盖证据，
 并使用 `--require-production` 验证。
 
+## Phase 5R-A：个人优先的原始数据获取
+
+Phase 5R-A 增加了独立的 source probe、raw-byte receipt、私有本地 CAS 和离线
+compiler。live 网络默认关闭，只有命令显式带 `--network=allow` 才会访问来源；
+凭据只通过环境变量、OS keyring 或显式注入 resolver 提供，绝不从聊天读取。
+
+```bash
+tve historical source probe --plan plan.json --network=allow
+tve historical acquire --plan plan.json --network=allow \
+  --raw-store .tve-private/raw --batch-output .tve-private/batch.json
+tve historical compile --batch .tve-private/batch.json \
+  --raw-store .tve-private/raw --store .tve-private/artifacts \
+  --output .tve-private/historical-manifest.json
+```
+
+获取和编译边界、条款证据、备份/删除及当前精确 blocker 见
+[`docs/operations/phase-5r-a-acquisition.md`](docs/operations/phase-5r-a-acquisition.md)。
+H 股来源、历史 membership、退市经济和授权未核实前不会自动升级为生产级
+历史覆盖，也不会要求机构商业源或手工整理 CSV。
+
 # 当前还不能做什么？
 
 目前：
@@ -500,6 +520,9 @@ Backtesting / calibration
 
 Production historical corpus / research archive
         ⏳（边界已实现；权威来源、许可与完整 A/H 覆盖待补）
+
+Phase 5R-A acquisition/compiler
+        ⚠️（A0–A5/A7 已实现；真实私有 A/H acceptance 待 live probe）
 
 Watchlist / event-driven monitoring
         ⏳

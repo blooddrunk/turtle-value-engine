@@ -1,0 +1,1366 @@
+{
+  "$defs": {
+    "AcquisitionReadinessReportV1": {
+      "additionalProperties": false,
+      "description": "Separate readiness claims; ``production_eligible`` is never inferred.",
+      "properties": {
+        "contract": {
+          "const": "acquisition_readiness_report_v1",
+          "default": "acquisition_readiness_report_v1",
+          "title": "Contract",
+          "type": "string"
+        },
+        "report_id": {
+          "minLength": 1,
+          "title": "Report Id",
+          "type": "string"
+        },
+        "plan_id": {
+          "minLength": 1,
+          "title": "Plan Id",
+          "type": "string"
+        },
+        "generated_at": {
+          "format": "date-time",
+          "title": "Generated At",
+          "type": "string"
+        },
+        "network_used": {
+          "default": false,
+          "title": "Network Used",
+          "type": "boolean"
+        },
+        "readiness": {
+          "default": "NOT_READY",
+          "enum": [
+            "NOT_READY",
+            "ACQUISITION_READY",
+            "PERSONAL_RESEARCH_READY",
+            "PRODUCTION_ELIGIBLE"
+          ],
+          "title": "Readiness",
+          "type": "string"
+        },
+        "acquisition_ready": {
+          "default": false,
+          "title": "Acquisition Ready",
+          "type": "boolean"
+        },
+        "personal_research_ready": {
+          "default": false,
+          "title": "Personal Research Ready",
+          "type": "boolean"
+        },
+        "production_eligible": {
+          "default": false,
+          "title": "Production Eligible",
+          "type": "boolean"
+        },
+        "probe_reports": {
+          "items": {
+            "$ref": "#/$defs/SourceProbeReportV1"
+          },
+          "title": "Probe Reports",
+          "type": "array"
+        },
+        "batch_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Batch Ids",
+          "type": "array"
+        },
+        "compiled_dataset_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Compiled Dataset Id"
+        },
+        "blockers": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 512,
+          "title": "Blockers",
+          "type": "array"
+        },
+        "warnings": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 512,
+          "title": "Warnings",
+          "type": "array"
+        },
+        "report_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Report Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "report_id",
+        "plan_id",
+        "generated_at",
+        "report_sha256"
+      ],
+      "title": "AcquisitionReadinessReportV1",
+      "type": "object"
+    },
+    "CoverageClaim": {
+      "description": "Evidence level declared for the target, never inferred from row count.",
+      "enum": [
+        "COMPLETE",
+        "PARTIAL",
+        "UNKNOWN"
+      ],
+      "title": "CoverageClaim",
+      "type": "string"
+    },
+    "CoverageEvidenceBasis": {
+      "description": "Evidence basis required before a coverage claim can be trusted.\n\nA row count is meaningful for trading sessions, but an empty corporate\naction or filing result is not evidence that the source was complete.  The\nbasis is additive so historical-v1 manifests without it remain readable.",
+      "enum": [
+        "TRADING_SESSIONS",
+        "OBSERVATION_SESSIONS",
+        "MEMBERSHIP_INTERVALS",
+        "LIFECYCLE_INDEX",
+        "EVENT_INDEX",
+        "FILING_INDEX",
+        "ARCHIVE_BINDING",
+        "EXPLICIT_SOURCE_SCOPE"
+      ],
+      "title": "CoverageEvidenceBasis",
+      "type": "string"
+    },
+    "CredentialReferenceV1": {
+      "additionalProperties": false,
+      "description": "A non-secret pointer to an environment variable or OS keyring entry.",
+      "properties": {
+        "contract": {
+          "const": "credential_reference_v1",
+          "default": "credential_reference_v1",
+          "title": "Contract",
+          "type": "string"
+        },
+        "reference_id": {
+          "minLength": 1,
+          "title": "Reference Id",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "ENVIRONMENT",
+            "KEYRING",
+            "INJECTED",
+            "NONE"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Name"
+        },
+        "service": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Service"
+        },
+        "account": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Account"
+        },
+        "required": {
+          "default": true,
+          "title": "Required",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "reference_id",
+        "kind"
+      ],
+      "title": "CredentialReferenceV1",
+      "type": "object"
+    },
+    "HistoricalAcquisitionPlanV1": {
+      "additionalProperties": false,
+      "description": "Complete non-secret plan needed to reproduce an acquisition batch.",
+      "properties": {
+        "contract": {
+          "const": "historical_acquisition_plan_v1",
+          "default": "historical_acquisition_plan_v1",
+          "title": "Contract",
+          "type": "string"
+        },
+        "plan_id": {
+          "minLength": 1,
+          "title": "Plan Id",
+          "type": "string"
+        },
+        "plan_version": {
+          "minLength": 1,
+          "title": "Plan Version",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "target": {
+          "$ref": "#/$defs/HistoricalTargetScope"
+        },
+        "sources": {
+          "items": {
+            "$ref": "#/$defs/HistoricalSourceSpecV1"
+          },
+          "minItems": 1,
+          "title": "Sources",
+          "type": "array"
+        },
+        "requests": {
+          "items": {
+            "$ref": "#/$defs/HistoricalAcquisitionRequestV1"
+          },
+          "minItems": 1,
+          "title": "Requests",
+          "type": "array"
+        },
+        "credential_references": {
+          "items": {
+            "$ref": "#/$defs/CredentialReferenceV1"
+          },
+          "title": "Credential References",
+          "type": "array"
+        },
+        "network_default": {
+          "default": "deny",
+          "enum": [
+            "deny",
+            "allow"
+          ],
+          "title": "Network Default",
+          "type": "string"
+        },
+        "storage_policy": {
+          "default": "LOCAL_ONLY",
+          "enum": [
+            "LOCAL_ONLY",
+            "PRIVATE_REMOTE_ALLOWED",
+            "REDISTRIBUTABLE"
+          ],
+          "title": "Storage Policy",
+          "type": "string"
+        },
+        "notes": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 256,
+          "title": "Notes",
+          "type": "array"
+        }
+      },
+      "required": [
+        "plan_id",
+        "plan_version",
+        "created_at",
+        "target",
+        "sources",
+        "requests"
+      ],
+      "title": "HistoricalAcquisitionPlanV1",
+      "type": "object"
+    },
+    "HistoricalAcquisitionRequestV1": {
+      "additionalProperties": false,
+      "description": "One bounded, replayable request owned by a source adapter.",
+      "properties": {
+        "contract": {
+          "const": "historical_acquisition_request_v1",
+          "default": "historical_acquisition_request_v1",
+          "title": "Contract",
+          "type": "string"
+        },
+        "request_id": {
+          "minLength": 1,
+          "title": "Request Id",
+          "type": "string"
+        },
+        "source_id": {
+          "minLength": 1,
+          "title": "Source Id",
+          "type": "string"
+        },
+        "adapter_id": {
+          "minLength": 1,
+          "title": "Adapter Id",
+          "type": "string"
+        },
+        "source_kind": {
+          "$ref": "#/$defs/HistoricalSourceKind"
+        },
+        "artifact_kind": {
+          "$ref": "#/$defs/ShardArtifactKind"
+        },
+        "schema_version": {
+          "minLength": 1,
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "listing_ids": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Listing Ids",
+          "type": "array"
+        },
+        "start_date": {
+          "format": "date",
+          "title": "Start Date",
+          "type": "string"
+        },
+        "end_date": {
+          "format": "date",
+          "title": "End Date",
+          "type": "string"
+        },
+        "parameters": {
+          "additionalProperties": true,
+          "title": "Parameters",
+          "type": "object"
+        },
+        "credential_ref": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CredentialReferenceV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "expected_sessions_by_listing": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "items": {
+                  "format": "date",
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expected Sessions By Listing"
+        },
+        "coverage_evidence_basis": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CoverageEvidenceBasis"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "request_id",
+        "source_id",
+        "adapter_id",
+        "source_kind",
+        "artifact_kind",
+        "schema_version",
+        "listing_ids",
+        "start_date",
+        "end_date"
+      ],
+      "title": "HistoricalAcquisitionRequestV1",
+      "type": "object"
+    },
+    "HistoricalSourceKind": {
+      "description": "Source categories required to make a historical claim auditable.",
+      "enum": [
+        "UNIVERSE_MEMBERSHIP",
+        "LISTING_LIFECYCLE",
+        "DELISTINGS",
+        "PRICES",
+        "CORPORATE_ACTIONS",
+        "BENCHMARK",
+        "FX",
+        "FILINGS",
+        "RESEARCH_ARCHIVE"
+      ],
+      "title": "HistoricalSourceKind",
+      "type": "string"
+    },
+    "HistoricalSourceSpecV1": {
+      "additionalProperties": false,
+      "description": "Operator-declared source policy; actual access is established by probes.",
+      "properties": {
+        "contract": {
+          "const": "historical_source_spec_v1",
+          "default": "historical_source_spec_v1",
+          "title": "Contract",
+          "type": "string"
+        },
+        "source_id": {
+          "minLength": 1,
+          "title": "Source Id",
+          "type": "string"
+        },
+        "source_kind": {
+          "$ref": "#/$defs/HistoricalSourceKind"
+        },
+        "adapter_id": {
+          "minLength": 1,
+          "title": "Adapter Id",
+          "type": "string"
+        },
+        "provider_id": {
+          "minLength": 1,
+          "title": "Provider Id",
+          "type": "string"
+        },
+        "source_name": {
+          "minLength": 1,
+          "title": "Source Name",
+          "type": "string"
+        },
+        "source_uri": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Uri"
+        },
+        "authority": {
+          "$ref": "#/$defs/SourceAuthority",
+          "default": "UNKNOWN"
+        },
+        "license_status": {
+          "$ref": "#/$defs/LicenseStatus",
+          "default": "UNKNOWN"
+        },
+        "licensing_constraints": {
+          "minLength": 1,
+          "title": "Licensing Constraints",
+          "type": "string"
+        },
+        "license_evidence_uri": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "License Evidence Uri"
+        },
+        "license_evidence_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "License Evidence Sha256"
+        },
+        "access_grant_reference": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Access Grant Reference"
+        },
+        "historical_capable": {
+          "default": false,
+          "title": "Historical Capable",
+          "type": "boolean"
+        },
+        "is_current_snapshot": {
+          "default": false,
+          "title": "Is Current Snapshot",
+          "type": "boolean"
+        },
+        "coverage_start": {
+          "format": "date",
+          "title": "Coverage Start",
+          "type": "string"
+        },
+        "coverage_end": {
+          "format": "date",
+          "title": "Coverage End",
+          "type": "string"
+        },
+        "coverage_listing_ids": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Coverage Listing Ids",
+          "type": "array"
+        },
+        "source_version": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Version"
+        }
+      },
+      "required": [
+        "source_id",
+        "source_kind",
+        "adapter_id",
+        "provider_id",
+        "source_name",
+        "licensing_constraints",
+        "coverage_start",
+        "coverage_end",
+        "coverage_listing_ids"
+      ],
+      "title": "HistoricalSourceSpecV1",
+      "type": "object"
+    },
+    "HistoricalTargetScope": {
+      "additionalProperties": false,
+      "description": "Named, bounded universe against which all production claims are scoped.",
+      "properties": {
+        "contract": {
+          "const": "historical_target_scope_v1",
+          "default": "historical_target_scope_v1",
+          "title": "Contract",
+          "type": "string"
+        },
+        "target_id": {
+          "minLength": 1,
+          "title": "Target Id",
+          "type": "string"
+        },
+        "target_name": {
+          "minLength": 1,
+          "title": "Target Name",
+          "type": "string"
+        },
+        "universe_id": {
+          "minLength": 1,
+          "title": "Universe Id",
+          "type": "string"
+        },
+        "markets": {
+          "items": {
+            "$ref": "#/$defs/Market"
+          },
+          "maxItems": 2,
+          "minItems": 1,
+          "title": "Markets",
+          "type": "array"
+        },
+        "listing_ids": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Listing Ids",
+          "type": "array"
+        },
+        "start_date": {
+          "format": "date",
+          "title": "Start Date",
+          "type": "string"
+        },
+        "end_date": {
+          "format": "date",
+          "title": "End Date",
+          "type": "string"
+        },
+        "membership_claim": {
+          "enum": [
+            "HISTORICAL",
+            "FIXED_RESEARCH_UNIVERSE",
+            "UNKNOWN"
+          ],
+          "title": "Membership Claim",
+          "type": "string"
+        },
+        "coverage_claim": {
+          "$ref": "#/$defs/CoverageClaim"
+        },
+        "required_source_kinds": {
+          "items": {
+            "$ref": "#/$defs/HistoricalSourceKind"
+          },
+          "minItems": 1,
+          "title": "Required Source Kinds",
+          "type": "array"
+        },
+        "calendar_ids": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Calendar Ids",
+          "type": "object"
+        },
+        "listing_markets": {
+          "additionalProperties": {
+            "$ref": "#/$defs/Market"
+          },
+          "title": "Listing Markets",
+          "type": "object"
+        },
+        "licensing_scope": {
+          "minLength": 1,
+          "title": "Licensing Scope",
+          "type": "string"
+        }
+      },
+      "required": [
+        "target_id",
+        "target_name",
+        "universe_id",
+        "markets",
+        "listing_ids",
+        "start_date",
+        "end_date",
+        "membership_claim",
+        "coverage_claim",
+        "required_source_kinds",
+        "licensing_scope"
+      ],
+      "title": "HistoricalTargetScope",
+      "type": "object"
+    },
+    "LicenseStatus": {
+      "description": "Redistribution state carried with every persisted source descriptor.",
+      "enum": [
+        "OPEN_REDISTRIBUTABLE",
+        "RESTRICTED_INTERNAL",
+        "UNKNOWN",
+        "PROHIBITED"
+      ],
+      "title": "LicenseStatus",
+      "type": "string"
+    },
+    "Market": {
+      "description": "Listing market; A and H listings are never merged by the simulator.",
+      "enum": [
+        "A",
+        "H"
+      ],
+      "title": "Market",
+      "type": "string"
+    },
+    "RawAcquisitionBatchManifestV1": {
+      "additionalProperties": false,
+      "description": "Immutable batch index linking requests, receipts and raw blob hashes.",
+      "properties": {
+        "contract": {
+          "const": "raw_acquisition_batch_manifest_v1",
+          "default": "raw_acquisition_batch_manifest_v1",
+          "title": "Contract",
+          "type": "string"
+        },
+        "batch_id": {
+          "minLength": 1,
+          "title": "Batch Id",
+          "type": "string"
+        },
+        "plan_id": {
+          "minLength": 1,
+          "title": "Plan Id",
+          "type": "string"
+        },
+        "plan_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Plan Sha256",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "plan": {
+          "$ref": "#/$defs/HistoricalAcquisitionPlanV1"
+        },
+        "receipts": {
+          "items": {
+            "$ref": "#/$defs/RawArtifactReceiptV1"
+          },
+          "minItems": 1,
+          "title": "Receipts",
+          "type": "array"
+        },
+        "batch_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Batch Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "batch_id",
+        "plan_id",
+        "plan_sha256",
+        "created_at",
+        "plan",
+        "receipts",
+        "batch_sha256"
+      ],
+      "title": "RawAcquisitionBatchManifestV1",
+      "type": "object"
+    },
+    "RawArtifactReceiptV1": {
+      "additionalProperties": false,
+      "description": "Receipt for one exact raw response body; no secret value is persisted.",
+      "properties": {
+        "contract": {
+          "const": "raw_artifact_receipt_v1",
+          "default": "raw_artifact_receipt_v1",
+          "title": "Contract",
+          "type": "string"
+        },
+        "receipt_id": {
+          "minLength": 1,
+          "title": "Receipt Id",
+          "type": "string"
+        },
+        "artifact_id": {
+          "minLength": 1,
+          "title": "Artifact Id",
+          "type": "string"
+        },
+        "batch_id": {
+          "minLength": 1,
+          "title": "Batch Id",
+          "type": "string"
+        },
+        "parent_artifact_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Parent Artifact Id"
+        },
+        "request_id": {
+          "minLength": 1,
+          "title": "Request Id",
+          "type": "string"
+        },
+        "request_identity": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Request Identity",
+          "type": "string"
+        },
+        "source_id": {
+          "minLength": 1,
+          "title": "Source Id",
+          "type": "string"
+        },
+        "source_kind": {
+          "$ref": "#/$defs/HistoricalSourceKind"
+        },
+        "adapter_id": {
+          "minLength": 1,
+          "title": "Adapter Id",
+          "type": "string"
+        },
+        "adapter_version": {
+          "minLength": 1,
+          "title": "Adapter Version",
+          "type": "string"
+        },
+        "artifact_role": {
+          "default": "DATA",
+          "enum": [
+            "DATA",
+            "FILING_DOCUMENT"
+          ],
+          "title": "Artifact Role",
+          "type": "string"
+        },
+        "artifact_kind": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ShardArtifactKind"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "schema_version": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Schema Version"
+        },
+        "canonical_parameters": {
+          "additionalProperties": true,
+          "title": "Canonical Parameters",
+          "type": "object"
+        },
+        "artifact_metadata": {
+          "additionalProperties": true,
+          "title": "Artifact Metadata",
+          "type": "object"
+        },
+        "source_uri": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Uri"
+        },
+        "retrieval_started_at": {
+          "format": "date-time",
+          "title": "Retrieval Started At",
+          "type": "string"
+        },
+        "retrieval_finished_at": {
+          "format": "date-time",
+          "title": "Retrieval Finished At",
+          "type": "string"
+        },
+        "http_status": {
+          "anyOf": [
+            {
+              "maximum": 599,
+              "minimum": 100,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Http Status"
+        },
+        "content_type": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Content Type"
+        },
+        "content_length": {
+          "minimum": 0,
+          "title": "Content Length",
+          "type": "integer"
+        },
+        "response_headers": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Response Headers",
+          "type": "object"
+        },
+        "byte_length": {
+          "minimum": 0,
+          "title": "Byte Length",
+          "type": "integer"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "license_evidence_uri": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "License Evidence Uri"
+        },
+        "license_evidence_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "License Evidence Sha256"
+        },
+        "access_grant_reference": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Access Grant Reference"
+        },
+        "storage_policy": {
+          "default": "LOCAL_ONLY",
+          "enum": [
+            "LOCAL_ONLY",
+            "PRIVATE_REMOTE_ALLOWED",
+            "REDISTRIBUTABLE"
+          ],
+          "title": "Storage Policy",
+          "type": "string"
+        }
+      },
+      "required": [
+        "receipt_id",
+        "artifact_id",
+        "batch_id",
+        "request_id",
+        "request_identity",
+        "source_id",
+        "source_kind",
+        "adapter_id",
+        "adapter_version",
+        "retrieval_started_at",
+        "retrieval_finished_at",
+        "content_length",
+        "byte_length",
+        "sha256"
+      ],
+      "title": "RawArtifactReceiptV1",
+      "type": "object"
+    },
+    "ShardArtifactKind": {
+      "enum": [
+        "LISTING_LIFECYCLE",
+        "UNIVERSE_MEMBERSHIP",
+        "AVAILABILITY",
+        "MARKET_BAR",
+        "CORPORATE_ACTION",
+        "FX_OBSERVATION",
+        "BENCHMARK_OBSERVATION",
+        "DECISION_ARTIFACT",
+        "FILING_DOCUMENT"
+      ],
+      "title": "ShardArtifactKind",
+      "type": "string"
+    },
+    "SourceAuthority": {
+      "description": "Authority classification; a provider name alone is not authority.",
+      "enum": [
+        "OFFICIAL_EXCHANGE",
+        "REGULATOR",
+        "ISSUER",
+        "DOCUMENTED_PROVIDER",
+        "ARCHIVE",
+        "FIXTURE",
+        "UNKNOWN"
+      ],
+      "title": "SourceAuthority",
+      "type": "string"
+    },
+    "SourceProbeReportV1": {
+      "additionalProperties": false,
+      "description": "Observed source capability, entitlement and coverage evidence.",
+      "properties": {
+        "contract": {
+          "const": "source_probe_report_v1",
+          "default": "source_probe_report_v1",
+          "title": "Contract",
+          "type": "string"
+        },
+        "report_id": {
+          "minLength": 1,
+          "title": "Report Id",
+          "type": "string"
+        },
+        "plan_id": {
+          "minLength": 1,
+          "title": "Plan Id",
+          "type": "string"
+        },
+        "request_id": {
+          "minLength": 1,
+          "title": "Request Id",
+          "type": "string"
+        },
+        "source_id": {
+          "minLength": 1,
+          "title": "Source Id",
+          "type": "string"
+        },
+        "adapter_id": {
+          "minLength": 1,
+          "title": "Adapter Id",
+          "type": "string"
+        },
+        "adapter_version": {
+          "minLength": 1,
+          "title": "Adapter Version",
+          "type": "string"
+        },
+        "source_kind": {
+          "$ref": "#/$defs/HistoricalSourceKind"
+        },
+        "status": {
+          "enum": [
+            "PASS",
+            "FAILED",
+            "BLOCKED",
+            "NOT_RUN"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "started_at": {
+          "format": "date-time",
+          "title": "Started At",
+          "type": "string"
+        },
+        "finished_at": {
+          "format": "date-time",
+          "title": "Finished At",
+          "type": "string"
+        },
+        "http_status": {
+          "anyOf": [
+            {
+              "maximum": 599,
+              "minimum": 100,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Http Status"
+        },
+        "content_type": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Content Type"
+        },
+        "content_length": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Content Length"
+        },
+        "response_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Response Sha256"
+        },
+        "source_uri": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Uri"
+        },
+        "observed_start": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Observed Start"
+        },
+        "observed_end": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Observed End"
+        },
+        "observed_listing_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Observed Listing Ids",
+          "type": "array"
+        },
+        "account_entitlement": {
+          "default": "UNKNOWN",
+          "enum": [
+            "CONFIRMED",
+            "DENIED",
+            "UNKNOWN"
+          ],
+          "title": "Account Entitlement",
+          "type": "string"
+        },
+        "historical_capable": {
+          "default": false,
+          "title": "Historical Capable",
+          "type": "boolean"
+        },
+        "terminal_coverage": {
+          "default": "UNKNOWN",
+          "enum": [
+            "CONFIRMED",
+            "UNVERIFIED",
+            "UNKNOWN"
+          ],
+          "title": "Terminal Coverage",
+          "type": "string"
+        },
+        "action_coverage": {
+          "default": "UNKNOWN",
+          "enum": [
+            "CONFIRMED",
+            "UNVERIFIED",
+            "UNKNOWN"
+          ],
+          "title": "Action Coverage",
+          "type": "string"
+        },
+        "throttling_observed": {
+          "default": false,
+          "title": "Throttling Observed",
+          "type": "boolean"
+        },
+        "license_evidence_uri": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "License Evidence Uri"
+        },
+        "license_evidence_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "License Evidence Sha256"
+        },
+        "access_grant_reference": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Access Grant Reference"
+        },
+        "blockers": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 256,
+          "title": "Blockers",
+          "type": "array"
+        },
+        "warnings": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 256,
+          "title": "Warnings",
+          "type": "array"
+        },
+        "report_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Report Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "report_id",
+        "plan_id",
+        "request_id",
+        "source_id",
+        "adapter_id",
+        "adapter_version",
+        "source_kind",
+        "status",
+        "started_at",
+        "finished_at",
+        "report_sha256"
+      ],
+      "title": "SourceProbeReportV1",
+      "type": "object"
+    }
+  },
+  "anyOf": [
+    {
+      "$ref": "#/$defs/AcquisitionReadinessReportV1"
+    },
+    {
+      "$ref": "#/$defs/HistoricalAcquisitionPlanV1"
+    },
+    {
+      "$ref": "#/$defs/HistoricalAcquisitionRequestV1"
+    },
+    {
+      "$ref": "#/$defs/RawAcquisitionBatchManifestV1"
+    },
+    {
+      "$ref": "#/$defs/RawArtifactReceiptV1"
+    },
+    {
+      "$ref": "#/$defs/SourceProbeReportV1"
+    },
+    {
+      "$ref": "#/$defs/HistoricalSourceSpecV1"
+    },
+    {
+      "$ref": "#/$defs/CredentialReferenceV1"
+    }
+  ]
+}

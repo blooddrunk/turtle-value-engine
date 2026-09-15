@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import date
+from datetime import date, timedelta
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -28,8 +28,10 @@ from turtle_value_engine.backtest.contracts import DecisionSnapshot
 from .archive import HistoricalResearchArchiveError, validate_research_archive
 from .contracts import (
     ArchiveArtifactType,
+    CoverageEvidenceBasis,
     HistoricalAvailabilityRecord,
     HistoricalDatasetManifest,
+    HistoricalFilingDocumentRecord,
     HistoricalFXObservation,
     HistoricalListingLifecycle,
     HistoricalMembershipInterval,
@@ -75,6 +77,7 @@ _MODEL_BY_KIND: dict[ShardArtifactKind, type[BaseModel]] = {
     ShardArtifactKind.FX_OBSERVATION: HistoricalFXObservation,
     ShardArtifactKind.BENCHMARK_OBSERVATION: BenchmarkObservation,
     ShardArtifactKind.DECISION_ARTIFACT: HistoricalDecisionArtifact,
+    ShardArtifactKind.FILING_DOCUMENT: HistoricalFilingDocumentRecord,
 }
 
 _SOURCE_KIND_BY_SHARD: dict[ShardArtifactKind, set[HistoricalSourceKind]] = {
@@ -93,6 +96,7 @@ _SOURCE_KIND_BY_SHARD: dict[ShardArtifactKind, set[HistoricalSourceKind]] = {
         HistoricalSourceKind.RESEARCH_ARCHIVE,
         HistoricalSourceKind.PRICES,
     },
+    ShardArtifactKind.FILING_DOCUMENT: {HistoricalSourceKind.FILINGS},
 }
 
 
@@ -106,6 +110,7 @@ def _row_id(kind: ShardArtifactKind, row: BaseModel) -> str:
         ShardArtifactKind.FX_OBSERVATION: "observation_id",
         ShardArtifactKind.BENCHMARK_OBSERVATION: "observation_id",
         ShardArtifactKind.DECISION_ARTIFACT: "artifact_id",
+        ShardArtifactKind.FILING_DOCUMENT: "artifact_id",
     }
     return str(getattr(row, field_by_kind[kind]))
 
@@ -125,6 +130,7 @@ def _row_date(kind: ShardArtifactKind, row: BaseModel) -> date | None:
         ShardArtifactKind.FX_OBSERVATION: "observation_date",
         ShardArtifactKind.BENCHMARK_OBSERVATION: "observation_date",
         ShardArtifactKind.DECISION_ARTIFACT: "as_of",
+        ShardArtifactKind.FILING_DOCUMENT: "published_at",
     }
     field_name = field_by_kind[kind]
     if field_name is None:
@@ -200,7 +206,15 @@ class HistoricalDatasetCompiler:
                     "current-constituent substitution is not historical membership: "
                     + source.source_id
                 )
-            if not _covers_target(source, manifest.target):
+            category_sources = [
+                candidate
+                for candidate in sources.values()
+                if candidate.source_kind in _scope_source_kind(source.source_kind)
+            ]
+            if not all(
+                _interval_union_covers_target(category_sources, manifest.target, listing_id)
+                for listing_id in manifest.target.listing_ids
+            ):
                 warnings.append(f"source coverage does not span target: {source.source_id}")
             if require_production and (
                 source.license_status.value in {"UNKNOWN", "PROHIBITED"}
@@ -257,10 +271,35 @@ class HistoricalDatasetCompiler:
                             "coverage report/source category mismatch: "
                             f"{record.source_kind.value}:{record.listing_id} -> {source_id}"
                         )
+                    elif record.listing_id not in source.coverage_listing_ids:
+                        errors.append(
+                            "coverage report/source listing mismatch: "
+                            f"{record.source_kind.value}:{record.listing_id} -> {source_id}"
+                        )
                 if record.status.value != "COMPLETE":
                     warnings.append(
                         f"incomplete coverage for {record.source_kind.value}:{record.listing_id}"
                     )
+
+        # A production category may be assembled from market- or period-scoped
+        # sources.  Reflect the same union semantics in the summary instead of
+        # reporting a partial child record as if it were the category result.
+        coverage_kinds = set(manifest.target.required_source_kinds)
+        coverage_kinds.update(
+            record.source_kind
+            for report in manifest.coverage_reports
+            for record in report.records
+        )
+        for source_kind in coverage_kinds:
+            accepted_kinds = _scope_source_kind(source_kind)
+            for listing_id in manifest.target.listing_ids:
+                if _coverage_records_cover_target(
+                    manifest.coverage_reports,
+                    accepted_kinds,
+                    listing_id,
+                    manifest.target,
+                ):
+                    coverage_status[f"{source_kind.value}:{listing_id}"] = "COMPLETE"
 
         for shard in manifest.shards:
             source = sources.get(shard.source_artifact_id)
@@ -854,7 +893,6 @@ def _production_scope_blockers(
         blockers.append("target coverage claim is not COMPLETE")
     if not sources:
         blockers.append("no source descriptors are declared")
-    target_listings = set(target.listing_ids)
     for item in sources.values():
         if (
             item.authority.value in {"UNKNOWN", "FIXTURE"}
@@ -869,10 +907,9 @@ def _production_scope_blockers(
             blockers.append("source authority/licensing evidence is incomplete: " + item.source_id)
         if not item.historical_capable:
             blockers.append("source is not historical-capable: " + item.source_id)
-        if not _covers_target(item, target):
-            blockers.append("source coverage does not span target: " + item.source_id)
-        if not target_listings.issubset(item.coverage_listing_ids):
-            blockers.append("source listing coverage does not span target: " + item.source_id)
+        # Individual sources are allowed to be market- or period-scoped.  The
+        # category-level union checks below prevent a source limited to A
+        # listings from being incorrectly required to cover H listings too.
     # A caller may declare a smaller obligation set for a compact acceptance
     # fixture, but a production Phase 5R claim must cover every source class in
     # the contract.  This prevents an apparently complete price-only manifest
@@ -884,11 +921,6 @@ def _production_scope_blockers(
             blockers.append("required source category is missing: " + kind.value)
     for report in reports:
         for record in report.records:
-            if record.status.value != "COMPLETE":
-                blockers.append(
-                    "coverage is not COMPLETE: "
-                    f"{record.source_kind.value}:{record.listing_id}"
-                )
             if (
                 record.source_kind is HistoricalSourceKind.PRICES
                 and record.status.value == "COMPLETE"
@@ -897,16 +929,26 @@ def _production_scope_blockers(
                 blockers.append(
                     "price coverage has no expected sessions: " + record.listing_id
                 )
-    coverage_keys = {
-        (record.source_kind, record.listing_id)
-        for report in reports
-        for record in report.records
-        if record.status.value == "COMPLETE"
-    }
     for kind in required:
         accepted_kinds = _scope_source_kind(kind)
         for listing_id in target.listing_ids:
-            if not any((candidate, listing_id) in coverage_keys for candidate in accepted_kinds):
+            candidate_sources = [
+                source
+                for source in sources.values()
+                if source.source_kind in accepted_kinds
+                and listing_id in source.coverage_listing_ids
+            ]
+            if not _interval_union_covers_target(candidate_sources, target, listing_id):
+                blockers.append(
+                    "source coverage union does not span target: "
+                    f"{kind.value}:{listing_id}"
+                )
+            if not _coverage_records_cover_target(
+                reports,
+                accepted_kinds,
+                listing_id,
+                target,
+            ):
                 blockers.append(
                     "complete coverage record is missing: "
                     f"{kind.value}:{listing_id}"
@@ -919,6 +961,106 @@ def _production_scope_blockers(
                 blockers.append("reconciliation is not PASS: " + report.report_id)
     blockers.extend(terminal_scope_errors)
     return sorted(set(blockers))
+
+
+_PRODUCTION_EVIDENCE_BASIS: dict[HistoricalSourceKind, set[CoverageEvidenceBasis]] = {
+    HistoricalSourceKind.UNIVERSE_MEMBERSHIP: {
+        CoverageEvidenceBasis.MEMBERSHIP_INTERVALS,
+        CoverageEvidenceBasis.EXPLICIT_SOURCE_SCOPE,
+    },
+    HistoricalSourceKind.LISTING_LIFECYCLE: {
+        CoverageEvidenceBasis.LIFECYCLE_INDEX,
+        CoverageEvidenceBasis.EXPLICIT_SOURCE_SCOPE,
+    },
+    HistoricalSourceKind.DELISTINGS: {
+        CoverageEvidenceBasis.LIFECYCLE_INDEX,
+        CoverageEvidenceBasis.EXPLICIT_SOURCE_SCOPE,
+    },
+    HistoricalSourceKind.PRICES: {CoverageEvidenceBasis.TRADING_SESSIONS},
+    HistoricalSourceKind.CORPORATE_ACTIONS: {
+        CoverageEvidenceBasis.EVENT_INDEX,
+        CoverageEvidenceBasis.EXPLICIT_SOURCE_SCOPE,
+    },
+    HistoricalSourceKind.BENCHMARK: {CoverageEvidenceBasis.OBSERVATION_SESSIONS},
+    HistoricalSourceKind.FX: {CoverageEvidenceBasis.OBSERVATION_SESSIONS},
+    HistoricalSourceKind.FILINGS: {
+        CoverageEvidenceBasis.FILING_INDEX,
+        CoverageEvidenceBasis.EXPLICIT_SOURCE_SCOPE,
+    },
+    HistoricalSourceKind.RESEARCH_ARCHIVE: {CoverageEvidenceBasis.ARCHIVE_BINDING},
+}
+
+
+def _interval_union_covers_target(
+    sources: list[HistoricalSourceDescriptor],
+    target: HistoricalTargetScope,
+    listing_id: str,
+) -> bool:
+    """Return whether source descriptors cover one listing/date interval."""
+
+    intervals = sorted(
+        (
+            max(item.coverage_start, target.start_date),
+            min(item.coverage_end, target.end_date),
+        )
+        for item in sources
+        if listing_id in item.coverage_listing_ids
+    )
+    intervals = [item for item in intervals if item[0] <= item[1]]
+    if not intervals:
+        return False
+    cursor = target.start_date
+    for start, end in intervals:
+        if start > cursor:
+            return False
+        if end >= cursor:
+            cursor = end + timedelta(days=1)
+        if cursor > target.end_date:
+            return True
+    return cursor > target.end_date
+
+
+def _coverage_records_cover_target(
+    reports,
+    accepted_kinds: set[HistoricalSourceKind],
+    listing_id: str,
+    target: HistoricalTargetScope,
+) -> bool:
+    """Check complete category evidence without treating empty rows as proof."""
+
+    records = [
+        record
+        for report in reports
+        for record in report.records
+        if record.source_kind in accepted_kinds and record.listing_id == listing_id
+    ]
+    if not records:
+        return False
+    expected_basis = set().union(
+        *(_PRODUCTION_EVIDENCE_BASIS[kind] for kind in accepted_kinds),
+    )
+    complete = [
+        record
+        for record in records
+        if record.status.value == "COMPLETE"
+        and record.evidence_basis in expected_basis
+        and (
+            record.expected_session_count > 0
+            or record.evidence_basis is CoverageEvidenceBasis.EXPLICIT_SOURCE_SCOPE
+        )
+    ]
+    intervals = sorted((item.period_start, item.period_end) for item in complete)
+    if not intervals:
+        return False
+    cursor = target.start_date
+    for start, end in intervals:
+        if start > cursor:
+            return False
+        if end >= cursor:
+            cursor = end + timedelta(days=1)
+        if cursor > target.end_date:
+            return True
+    return cursor > target.end_date
 
 
 def _terminal_scope_errors(

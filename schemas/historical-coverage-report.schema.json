@@ -10,6 +10,21 @@
       "title": "CoverageClaim",
       "type": "string"
     },
+    "CoverageEvidenceBasis": {
+      "description": "Evidence basis required before a coverage claim can be trusted.\n\nA row count is meaningful for trading sessions, but an empty corporate\naction or filing result is not evidence that the source was complete.  The\nbasis is additive so historical-v1 manifests without it remain readable.",
+      "enum": [
+        "TRADING_SESSIONS",
+        "OBSERVATION_SESSIONS",
+        "MEMBERSHIP_INTERVALS",
+        "LIFECYCLE_INDEX",
+        "EVENT_INDEX",
+        "FILING_INDEX",
+        "ARCHIVE_BINDING",
+        "EXPLICIT_SOURCE_SCOPE"
+      ],
+      "title": "CoverageEvidenceBasis",
+      "type": "string"
+    },
     "HistoricalCoverageRecord": {
       "additionalProperties": false,
       "description": "Coverage for one listing and one source category over one period.",
@@ -20,33 +35,26 @@
           "title": "Contract",
           "type": "string"
         },
-        "source_kind": {
-          "$ref": "#/$defs/HistoricalSourceKind"
-        },
-        "listing_id": {
-          "minLength": 1,
-          "title": "Listing Id",
-          "type": "string"
-        },
-        "period_start": {
-          "format": "date",
-          "title": "Period Start",
-          "type": "string"
-        },
-        "period_end": {
-          "format": "date",
-          "title": "Period End",
-          "type": "string"
+        "evidence_basis": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CoverageEvidenceBasis"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "expected_session_count": {
           "minimum": 0,
           "title": "Expected Session Count",
           "type": "integer"
         },
-        "observed_session_count": {
-          "minimum": 0,
-          "title": "Observed Session Count",
-          "type": "integer"
+        "listing_id": {
+          "minLength": 1,
+          "title": "Listing Id",
+          "type": "string"
         },
         "missing_dates": {
           "items": {
@@ -56,6 +64,21 @@
           "title": "Missing Dates",
           "type": "array"
         },
+        "observed_session_count": {
+          "minimum": 0,
+          "title": "Observed Session Count",
+          "type": "integer"
+        },
+        "period_end": {
+          "format": "date",
+          "title": "Period End",
+          "type": "string"
+        },
+        "period_start": {
+          "format": "date",
+          "title": "Period Start",
+          "type": "string"
+        },
         "source_artifact_ids": {
           "items": {
             "type": "string"
@@ -63,6 +86,9 @@
           "minItems": 1,
           "title": "Source Artifact Ids",
           "type": "array"
+        },
+        "source_kind": {
+          "$ref": "#/$defs/HistoricalSourceKind"
         },
         "status": {
           "$ref": "#/$defs/CoverageClaim"
@@ -126,20 +152,15 @@
   "additionalProperties": false,
   "description": "Deterministic per-listing/per-period coverage report.",
   "properties": {
+    "content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Content Sha256",
+      "type": "string"
+    },
     "contract": {
       "const": "historical_coverage_report_v1",
       "default": "historical_coverage_report_v1",
       "title": "Contract",
-      "type": "string"
-    },
-    "report_id": {
-      "minLength": 1,
-      "title": "Report Id",
-      "type": "string"
-    },
-    "target_id": {
-      "minLength": 1,
-      "title": "Target Id",
       "type": "string"
     },
     "records": {
@@ -150,9 +171,14 @@
       "title": "Records",
       "type": "array"
     },
-    "content_sha256": {
-      "pattern": "^[0-9a-f]{64}$",
-      "title": "Content Sha256",
+    "report_id": {
+      "minLength": 1,
+      "title": "Report Id",
+      "type": "string"
+    },
+    "target_id": {
+      "minLength": 1,
+      "title": "Target Id",
       "type": "string"
     }
   },

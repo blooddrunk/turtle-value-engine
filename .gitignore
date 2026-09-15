@@ -4,3 +4,20 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 *.egg-info/
+
+# Private Phase 5R-A acquisition state; committed fixtures live under fixtures/.
+.tve-private/
+.tve-raw/
+.tve-artifacts/
+private-historical/
+*.tve-live.json
+*.tve-batch.json
+*.parquet
+*.blob
+
+# A committed legal fixture remains visible even if it uses a private-store
+# file suffix.
+!fixtures/**/*.tve-live.json
+!fixtures/**/*.tve-batch.json
+!fixtures/**/*.parquet
+!fixtures/**/*.blob

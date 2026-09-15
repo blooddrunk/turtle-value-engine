@@ -15,6 +15,7 @@ from collections.abc import Mapping
 from datetime import date, datetime
 from enum import StrEnum
 from typing import Literal, Self
+from urllib.parse import parse_qsl, urlsplit, urlunsplit
 
 from pydantic import (
     BaseModel,
@@ -37,6 +38,7 @@ from turtle_value_engine.backtest.contracts import (
 from turtle_value_engine.providers.models import canonical_json_bytes
 
 _HASH_PATTERN = r"^[0-9a-f]{64}$"
+_MEDIA_TYPE_PATTERN = re.compile(r"^[a-z0-9!#$&^_.+\-]+/[a-z0-9!#$&^_.+\-]+$")
 HISTORICAL_CONTRACT_VERSION = "historical-v1"
 HISTORICAL_SHARD_CONTRACT_VERSION = "historical-shard-v1"
 HISTORICAL_ARCHIVE_CONTRACT_VERSION = "historical-research-archive-v1"
@@ -76,6 +78,33 @@ def _preserve_date_only(value: object) -> object:
         except ValueError:
             return value
     return value
+
+
+def _safe_http_uri(value: str) -> str:
+    """Normalize a persisted filing URI without retaining credentials/signatures."""
+
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError("filing URI must be a non-empty string")
+    parsed = urlsplit(value)
+    if parsed.scheme.lower() not in {"http", "https"} or not parsed.netloc:
+        raise ValueError("filing URI must be an absolute HTTP(S) URI")
+    if parsed.username is not None or parsed.password is not None:
+        raise ValueError("filing URI must not contain userinfo")
+    for key, _ in parse_qsl(parsed.query, keep_blank_values=True):
+        normalized = key.lower().replace("-", "_")
+        if any(
+            fragment in normalized
+            for fragment in (
+                "signature",
+                "token",
+                "secret",
+                "credential",
+                "access_key",
+                "authorization",
+            )
+        ):
+            raise ValueError("filing URI must not contain credential/signature query parameters")
+    return urlunsplit((parsed.scheme.lower(), parsed.netloc, parsed.path, "", ""))
 
 
 class HistoricalSourceKind(StrEnum):
@@ -121,6 +150,24 @@ class CoverageClaim(StrEnum):
     UNKNOWN = "UNKNOWN"
 
 
+class CoverageEvidenceBasis(StrEnum):
+    """Evidence basis required before a coverage claim can be trusted.
+
+    A row count is meaningful for trading sessions, but an empty corporate
+    action or filing result is not evidence that the source was complete.  The
+    basis is additive so historical-v1 manifests without it remain readable.
+    """
+
+    TRADING_SESSIONS = "TRADING_SESSIONS"
+    OBSERVATION_SESSIONS = "OBSERVATION_SESSIONS"
+    MEMBERSHIP_INTERVALS = "MEMBERSHIP_INTERVALS"
+    LIFECYCLE_INDEX = "LIFECYCLE_INDEX"
+    EVENT_INDEX = "EVENT_INDEX"
+    FILING_INDEX = "FILING_INDEX"
+    ARCHIVE_BINDING = "ARCHIVE_BINDING"
+    EXPLICIT_SOURCE_SCOPE = "EXPLICIT_SOURCE_SCOPE"
+
+
 class HistoricalTerminalOutcome(StrEnum):
     """Terminal lifecycle outcome without pretending all outcomes have value."""
 
@@ -146,6 +193,7 @@ class ShardArtifactKind(StrEnum):
     FX_OBSERVATION = "FX_OBSERVATION"
     BENCHMARK_OBSERVATION = "BENCHMARK_OBSERVATION"
     DECISION_ARTIFACT = "DECISION_ARTIFACT"
+    FILING_DOCUMENT = "FILING_DOCUMENT"
 
 
 class ArchiveArtifactType(StrEnum):
@@ -287,6 +335,10 @@ class HistoricalTargetScope(BaseModel):
     coverage_claim: CoverageClaim
     required_source_kinds: list[HistoricalSourceKind] = Field(min_length=1)
     calendar_ids: dict[StrictStr, StrictStr] = Field(default_factory=dict)
+    # Optional additive identity map.  Acquisition plans use it to prove that
+    # a bounded target really contains distinct A/H listings; old manifests
+    # remain readable when the map is absent.
+    listing_markets: dict[StrictStr, Market] = Field(default_factory=dict)
     licensing_scope: StrictStr = Field(min_length=1)
 
     @model_validator(mode="after")
@@ -296,6 +348,10 @@ class HistoricalTargetScope(BaseModel):
         if len(self.markets) != len(set(self.markets)):
             raise ValueError("target markets must be unique")
         _unique(self.listing_ids, "target listing_ids")
+        if not set(self.listing_markets).issubset(self.listing_ids):
+            raise ValueError("listing_markets contains listings outside target")
+        if any(market not in self.markets for market in self.listing_markets.values()):
+            raise ValueError("listing_markets contains a market outside target markets")
         _unique([item.value for item in self.required_source_kinds], "required_source_kinds")
         if (
             self.membership_claim == "HISTORICAL"
@@ -448,6 +504,9 @@ class HistoricalCoverageRecord(BaseModel):
     source_artifact_ids: list[StrictStr] = Field(min_length=1)
     status: CoverageClaim
     terminal_outcome: HistoricalTerminalOutcome | None = None
+    # Optional for wire compatibility with previously persisted manifests.
+    # Production validation requires a category-appropriate value.
+    evidence_basis: CoverageEvidenceBasis | None = None
 
     @model_validator(mode="after")
     def validate_coverage(self) -> Self:
@@ -463,6 +522,14 @@ class HistoricalCoverageRecord(BaseModel):
             self.observed_session_count != self.expected_session_count or self.missing_dates
         ):
             raise ValueError("COMPLETE coverage cannot contain missing sessions")
+        if (
+            self.status is CoverageClaim.COMPLETE
+            and self.expected_session_count == 0
+            and self.evidence_basis is not CoverageEvidenceBasis.EXPLICIT_SOURCE_SCOPE
+        ):
+            raise ValueError(
+                "COMPLETE coverage with zero expected observations requires explicit source scope"
+            )
         if self.status is CoverageClaim.PARTIAL and not self.missing_dates:
             raise ValueError("PARTIAL coverage must report missing dates")
         return self
@@ -566,6 +633,95 @@ class HistoricalFilingLocator(BaseModel):
     def validate_locator(self) -> Self:
         if self.page is None and self.section is None and self.locator is None:
             raise ValueError("filing locator requires page, section or locator")
+        return self
+
+
+def filing_document_artifact_id(filing_id: str, document_hash: str) -> str:
+    """Return the stable artifact identity for one filing revision."""
+
+    if not isinstance(filing_id, str) or not filing_id:
+        raise ValueError("filing_id must be a non-empty string")
+    if not re.fullmatch(_HASH_PATTERN, document_hash):
+        raise ValueError("document_hash must be a lowercase SHA-256 value")
+    identity = canonical_json_bytes(
+        {"filing_id": filing_id, "document_hash": document_hash}
+    )
+    return "filing-document-" + hashlib.sha256(identity).hexdigest()[:32]
+
+
+class HistoricalFilingDocumentRecord(BaseModel):
+    """One immutable official filing revision projected from a raw document."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    contract: Literal["historical_filing_document_record_v1"] = (
+        "historical_filing_document_record_v1"
+    )
+    artifact_id: StrictStr = Field(min_length=1)
+    filing_id: StrictStr = Field(min_length=1)
+    listing_id: StrictStr = Field(min_length=1)
+    market: Market
+    source: StrictStr = Field(min_length=1)
+    title: StrictStr = Field(min_length=1)
+    document_type: StrictStr = Field(min_length=1)
+    published_at: date
+    available_at: datetime
+    retrieved_at: datetime
+    source_uri: StrictStr = Field(min_length=1)
+    document_locator: StrictStr = Field(min_length=1)
+    source_document_id: StrictStr | None = Field(default=None, min_length=1)
+    report_period: StrictStr | None = Field(default=None, min_length=1)
+    document_hash: StrictStr = Field(pattern=_HASH_PATTERN)
+    document_size: StrictInt = Field(ge=1)
+    media_type: StrictStr = Field(min_length=1, max_length=256)
+    revision_identity: StrictStr = Field(min_length=1)
+    source_artifact_id: StrictStr = Field(min_length=1)
+    source_hash: StrictStr = Field(pattern=_HASH_PATTERN)
+
+    @field_validator("source_uri", "document_locator")
+    @classmethod
+    def validate_uri(cls, value: str) -> str:
+        return _safe_http_uri(value)
+
+    @field_validator(
+        "title",
+        "document_type",
+        "source_document_id",
+        "report_period",
+        "source",
+    )
+    @classmethod
+    def normalize_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        if not normalized or any(ord(char) < 32 for char in normalized):
+            raise ValueError("filing metadata text must be non-empty and printable")
+        return normalized
+
+    @field_validator("media_type")
+    @classmethod
+    def normalize_media_type(cls, value: str) -> str:
+        normalized = value.split(";", 1)[0].strip().lower()
+        if not _MEDIA_TYPE_PATTERN.fullmatch(normalized):
+            raise ValueError("media_type must be a valid type/subtype")
+        return normalized
+
+    @model_validator(mode="after")
+    def validate_record(self) -> Self:
+        for field_name in ("available_at", "retrieved_at"):
+            value = getattr(self, field_name)
+            if value.tzinfo is None or value.utcoffset() is None:
+                raise ValueError(f"{field_name} must be timezone-aware")
+        if self.available_at < self.retrieved_at:
+            raise ValueError("available_at must not precede retrieved_at")
+        expected_revision = f"{self.filing_id}:{self.document_hash}"
+        if self.revision_identity != expected_revision:
+            raise ValueError("revision_identity does not match filing/document hash")
+        if self.artifact_id != filing_document_artifact_id(
+            self.filing_id, self.document_hash
+        ):
+            raise ValueError("artifact_id does not match filing/document identity")
         return self
 
 
@@ -998,12 +1154,14 @@ ProductionHistoricalDatasetManifest = HistoricalDatasetManifest
 __all__ = [
     "ArchiveArtifactType",
     "CoverageClaim",
+    "CoverageEvidenceBasis",
     "HistoricalAvailabilityRecord",
     "HistoricalCodeChange",
     "HistoricalCoverageRecord",
     "HistoricalCoverageReport",
     "HistoricalDatasetManifest",
     "HistoricalDecisionResearchBinding",
+    "HistoricalFilingDocumentRecord",
     "HistoricalFilingLocator",
     "HistoricalFXObservation",
     "HistoricalListingLifecycle",
@@ -1023,6 +1181,7 @@ __all__ = [
     "ProductionHistoricalDatasetManifest",
     "ReconciliationComparison",
     "ReconciliationStatus",
+    "filing_document_artifact_id",
     "ReviewStatus",
     "ShardArtifactKind",
     "ShardFormat",

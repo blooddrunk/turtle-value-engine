@@ -7,6 +7,7 @@ from datetime import date
 
 from .contracts import (
     CoverageClaim,
+    CoverageEvidenceBasis,
     HistoricalCoverageRecord,
     HistoricalCoverageReport,
     HistoricalSourceKind,
@@ -24,6 +25,7 @@ def build_coverage_report(
     source_artifact_ids_by_listing: Mapping[str, Iterable[str]],
     report_id: str,
     terminal_outcomes: Mapping[str, HistoricalTerminalOutcome] | None = None,
+    evidence_basis: CoverageEvidenceBasis | None = None,
 ) -> HistoricalCoverageReport:
     """Build one deterministic report for every declared listing.
 
@@ -70,6 +72,7 @@ def build_coverage_report(
                     source_artifact_ids=source_ids,
                     status=CoverageClaim.UNKNOWN,
                     terminal_outcome=terminal_outcomes.get(listing_id),
+                    evidence_basis=evidence_basis,
                 )
             )
             continue
@@ -82,6 +85,15 @@ def build_coverage_report(
             )
         missing = sorted(expected - observed)
         status = CoverageClaim.COMPLETE if not missing else CoverageClaim.PARTIAL
+        if (
+            status is CoverageClaim.COMPLETE
+            and not expected
+            and evidence_basis is not CoverageEvidenceBasis.EXPLICIT_SOURCE_SCOPE
+        ):
+            # An empty event/filing/action result is not evidence that the
+            # source was complete.  Only a separately documented source-scope
+            # assertion can make an empty category explicit.
+            status = CoverageClaim.UNKNOWN
         records.append(
             HistoricalCoverageRecord(
                 source_kind=source_kind,
@@ -94,6 +106,7 @@ def build_coverage_report(
                 source_artifact_ids=source_ids,
                 status=status,
                 terminal_outcome=terminal_outcomes.get(listing_id),
+                evidence_basis=evidence_basis,
             )
         )
     return HistoricalCoverageReport.build(

@@ -130,13 +130,21 @@ live model is invoked by dataset validation, freezing, snapshotting, backtest
 or calibration commands.
 
 Current Phase 5R status is `ACTIVE / PARTIAL`: the offline replay and
-validation boundary is implemented, but the project-owned opt-in acquisition
-and raw-cache-to-shard ingestion path for production historical sources is
-not yet closed. This is not a requirement for the user to manually assemble
-market data. Phase 5R primarily needs historical data; real-time/event-driven
-acquisition belongs to Phase 6. The next implementation stage must add the
-selected source adapters, credential boundary, raw provenance and deterministic
-compiler ingestion while keeping ordinary CI offline and model-independent.
+validation boundary plus the Phase 5R-A project-owned opt-in acquisition,
+credential, raw provenance and deterministic compiler foundation are
+implemented. A real private A/H corpus has not been accepted, so H-share
+capability, historical membership, terminal economics, source terms and full
+category coverage remain fail-closed blockers. This is not a requirement for
+the user to manually assemble market data. Phase 5R primarily needs historical
+data; real-time/event-driven acquisition belongs to Phase 6. Ordinary CI
+remains offline and model-independent.
+
+Phase 5R-A acquisition commands are separate from replay:
+`tve historical source probe` and `tve historical acquire` require explicit
+`--network=allow`; `tve historical compile` only reads local raw CAS and batch
+receipts. Credentials may come only from declared environment/keyring
+references or an injected resolver, never from chat. The exact remaining
+blockers are recorded in `docs/operations/phase-5r-a-acquisition.md`.
 The executable next-stage package is
 `docs/goals/phase-5r-a-production-source-acquisition.md`. Its minimum path is
 personal-first: official public and documented personal-account sources, local

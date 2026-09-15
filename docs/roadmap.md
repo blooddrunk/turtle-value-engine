@@ -5056,9 +5056,11 @@ milestone is additive and must not rewrite `strict-v1` or calibration semantics.
 
 The source-aware contracts, content-addressed frozen shards, offline
 compiler, coverage/reconciliation reports and point-in-time research archive
-validator are implemented. The production acquisition boundary is not yet
-implemented, so the checked-in fixture is not a production A/H claim and this
-milestone remains `ACTIVE / PARTIAL`.
+validator are implemented. Phase 5R-A now adds the project-owned opt-in
+acquisition contracts, local raw-byte CAS/receipts, source probes, bounded
+retry transport and deterministic raw-to-shard compiler. The checked-in
+fixture is still not a production A/H claim and this milestone remains
+`ACTIVE / PARTIAL` until a real private acceptance passes.
 
 The next stage is **Phase 5R-A — Production source acquisition and compiler
 ingestion**, specified in

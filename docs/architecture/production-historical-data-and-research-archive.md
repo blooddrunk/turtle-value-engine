@@ -23,6 +23,54 @@ client and no fallback acquisition path. A missing shard, changed byte,
 dangling ID, unrelated availability record or invalid point-in-time reference
 is an error.
 
+## Phase 5R-A acquisition boundary
+
+Phase 5R-A adds a separate, opt-in path before the cache-only compiler:
+
+```text
+HistoricalAcquisitionPlanV1
+  -> explicit source probe / adapter request
+  -> exact response bytes in private RawBlobStore
+  -> immutable RawArtifactReceiptV1 + batch manifest
+  -> offline HistoricalIngestionCompiler
+  -> HistoricalDatasetManifest and verified JSONL shards
+```
+
+`tve historical source probe` and `tve historical acquire` require
+`--network=allow`; their default is deny. Credentials are resolved only from a
+declared environment-variable/keyring reference or an injected resolver, and
+are never included in request parameters, hashes, receipts, manifests, logs or
+chat. Raw bytes use the local layout
+`<raw-store>/sha256/<first-two>/<sha256>.blob`; partial streams remain in a
+quarantine directory until length and SHA-256 checks pass. Remote mirroring is
+not part of the authoritative path.
+
+`tve historical compile` reads only a batch and local raw CAS. It does not
+construct a provider, model client or network fallback. Full-market responses
+are validated against their adapter schema and filtered to the declared
+listing/date request scope before canonical rows are frozen. Unknown schemas,
+conflicting natural keys, duplicate semantic rows with different values,
+invalid provenance and out-of-scope rows fail closed. Source hashes for a
+multi-response batch are aggregate hashes over all child blobs.
+
+The first documented A-share candidate is the Hithink Financial-API market-dump
+adapter: its official endpoint reference documents unadjusted daily-k and
+adjustment-factor Parquet shapes, but documentation alone does not establish an
+owner account's entitlement, retention of terminal listings, caching terms or
+coverage. Adjustment factors remain reconciliation-only unless an operator
+explicitly enables their decoder after those facts are evidenced. H-share
+sources are never inferred from current snapshots; absent a successful
+source-specific probe the readiness report keeps the exact
+`H_SOURCE_UNQUALIFIED` blocker. Official filing downloads are bridged through
+the existing injected filing downloader and do not add an unauthorised scraping
+route. Filing receipts retain the non-sensitive filing ID, publication date,
+document hash/size, retrieval timestamp, final URL and revision identity; later
+bytes remain distinct immutable artifacts. The offline compiler projects those
+receipt fields into a `FILING_DOCUMENT` shard without parsing document content;
+the local retrieval-finished timestamp is the conservative availability bound,
+not an inferred source-publication timestamp. See the Chinese-first operator
+[runbook](../operations/phase-5r-a-acquisition.md).
+
 ## Source and coverage contract
 
 `HistoricalSourceDescriptor` records one source artifact's category, provider

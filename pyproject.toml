@@ -22,6 +22,9 @@ dev = [
 akshare = [
   "akshare>=1.18,<2",
 ]
+historical = [
+  "pyarrow>=15,<23",
+]
 
 [project.scripts]
 tve = "turtle_value_engine.cli:main"

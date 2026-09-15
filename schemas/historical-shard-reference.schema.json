@@ -9,7 +9,8 @@
         "CORPORATE_ACTION",
         "FX_OBSERVATION",
         "BENCHMARK_OBSERVATION",
-        "DECISION_ARTIFACT"
+        "DECISION_ARTIFACT",
+        "FILING_DOCUMENT"
       ],
       "title": "ShardArtifactKind",
       "type": "string"

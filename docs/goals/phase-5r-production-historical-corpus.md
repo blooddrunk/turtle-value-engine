@@ -17,10 +17,10 @@ or the Phase 5 signal/portfolio/calibration rules.
 
 ## Current project status and next stage — 2026-09-15
 
-The repository has completed the Phase 5R replay and validation boundary, but
-has not completed the production acquisition boundary. This is an
-implementation gap, not a requirement that the project owner manually gather
-or upload market data.
+The repository has completed the Phase 5R replay and validation boundary and
+now has the Phase 5R-A acquisition/compiler foundation. This is still not a
+claim that a complete production corpus exists, and it is not a requirement
+that the project owner manually gather or upload market data.
 
 The checked-in corpus is deliberately a compact contract fixture. It proves
 offline shard verification, historical listing/lifecycle semantics,
@@ -220,18 +220,17 @@ fabricated terminal value, 1 frozen archive reference, and a 2-row
 independent-reference reconciliation that passes its fixture tolerance. These
 are replay/contract metrics, not market-wide coverage metrics.
 
-The remaining production blocker is precise: this repository does not yet
-implement an opt-in acquisition and raw-cache path that can obtain an
-authoritative or clearly documented licensed A/H historical source corpus and
-compile it into the existing production manifest. The compiler therefore
-reports `production_eligible=false` and `--require-production` fails closed.
-The next step is not a commercial-license purchase or a manual data handoff.
-It is the personal-first acquisition task package: qualify actual account/API
-capabilities, implement the raw-byte acquisition boundary, and let the project
-acquire and compile a bounded target itself. If a source cannot support an
-honest claim, the target is narrowed or the exact category remains blocked.
-Phase 5R remains `ACTIVE / PARTIAL` until the acquisition path and its evidence
-exist; the Phase 6 goal file is intentionally not created yet.
+The remaining production blocker is precise: no real private A/H acquisition
+acceptance has been run, so source entitlement, H-share capability, historical
+membership, terminal economics and complete category coverage remain
+unverified. The compiler therefore reports `production_eligible=false` and
+`--require-production` fails closed. The next step is not a commercial-license
+purchase or a manual data handoff: it is an explicit owner-side probe using
+configured environment/keyring credentials, followed by local acquisition and
+offline compilation. If a source cannot support an honest claim, the target is
+narrowed or the exact category remains blocked. Phase 5R remains
+`ACTIVE / PARTIAL` until the acquisition path and its evidence exist; the
+Phase 6 goal file is intentionally not created yet.
 
 ### Source-access review — 2026-09-15
 

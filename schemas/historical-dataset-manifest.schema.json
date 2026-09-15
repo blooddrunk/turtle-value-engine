@@ -26,6 +26,21 @@
       "title": "CoverageClaim",
       "type": "string"
     },
+    "CoverageEvidenceBasis": {
+      "description": "Evidence basis required before a coverage claim can be trusted.\n\nA row count is meaningful for trading sessions, but an empty corporate\naction or filing result is not evidence that the source was complete.  The\nbasis is additive so historical-v1 manifests without it remain readable.",
+      "enum": [
+        "TRADING_SESSIONS",
+        "OBSERVATION_SESSIONS",
+        "MEMBERSHIP_INTERVALS",
+        "LIFECYCLE_INDEX",
+        "EVENT_INDEX",
+        "FILING_INDEX",
+        "ARCHIVE_BINDING",
+        "EXPLICIT_SOURCE_SCOPE"
+      ],
+      "title": "CoverageEvidenceBasis",
+      "type": "string"
+    },
     "HistoricalCoverageRecord": {
       "additionalProperties": false,
       "description": "Coverage for one listing and one source category over one period.",
@@ -87,6 +102,17 @@
           "anyOf": [
             {
               "$ref": "#/$defs/HistoricalTerminalOutcome"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "evidence_basis": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CoverageEvidenceBasis"
             },
             {
               "type": "null"
@@ -887,6 +913,13 @@
           "title": "Calendar Ids",
           "type": "object"
         },
+        "listing_markets": {
+          "additionalProperties": {
+            "$ref": "#/$defs/Market"
+          },
+          "title": "Listing Markets",
+          "type": "object"
+        },
         "licensing_scope": {
           "minLength": 1,
           "title": "Licensing Scope",
@@ -1090,7 +1123,8 @@
         "CORPORATE_ACTION",
         "FX_OBSERVATION",
         "BENCHMARK_OBSERVATION",
-        "DECISION_ARTIFACT"
+        "DECISION_ARTIFACT",
+        "FILING_DOCUMENT"
       ],
       "title": "ShardArtifactKind",
       "type": "string"

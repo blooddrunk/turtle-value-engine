@@ -114,6 +114,13 @@
       "title": "Calendar Ids",
       "type": "object"
     },
+    "listing_markets": {
+      "additionalProperties": {
+        "$ref": "#/$defs/Market"
+      },
+      "title": "Listing Markets",
+      "type": "object"
+    },
     "licensing_scope": {
       "minLength": 1,
       "title": "Licensing Scope",

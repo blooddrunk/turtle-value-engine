@@ -1,6 +1,6 @@
 # Phase 5R-A — Personal-First Production Source Acquisition and Compiler Ingestion
 
-Status: **READY / NEXT**
+Status: **ACTIVE / PARTIAL**
 
 ## Objective
 
@@ -16,6 +16,21 @@ redistributed, published, or used to provide a public data service.
 
 This goal is additive. It must not change `strict-v1`, deterministic investment
 math, Phase 5 signal/portfolio semantics, or point-in-time rules.
+
+## Implementation status — 2026-09-15
+
+A0–A5 and A7 are implemented. The repository now has category-union production
+coverage evaluation, additive coverage evidence bases, typed acquisition plans
+and receipts, a private immutable raw-byte CAS, explicit network/retry and
+credential boundaries, the documented Hithink A-share dump adapter, an injected
+bridge to the existing official filing downloader, and an offline raw-to-shard
+compiler. Deterministic fake-transport tests cover the new boundaries.
+
+The goal remains `ACTIVE / PARTIAL`: no credential was read from chat or the
+local environment and no live probe was run, so A6's minimum real private A/H
+acceptance is not claimed. The precise unresolved source, membership, terminal
+economics and authorization blockers are recorded in
+`docs/operations/phase-5r-a-acquisition.md` and in readiness reports.
 
 ## Decisions frozen for this task package
 
