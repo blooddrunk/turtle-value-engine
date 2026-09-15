@@ -288,6 +288,70 @@ def test_historical_probe_cli_denies_network_by_default(tmp_path: Path, capsys):
     assert "--network=allow" in capsys.readouterr().err
 
 
+def test_historical_acquire_cli_denies_network_by_default(tmp_path: Path, capsys):
+    plan_path = tmp_path / "plan.json"
+    batch_path = tmp_path / "batch.json"
+    plan_path.write_text(_plan().model_dump_json(), encoding="utf-8")
+
+    assert main(
+        [
+            "historical",
+            "acquire",
+            "--plan",
+            str(plan_path),
+            "--raw-store",
+            str(tmp_path / "raw"),
+            "--batch-output",
+            str(batch_path),
+        ]
+    ) == 2
+    assert "--network=allow" in capsys.readouterr().err
+    assert not batch_path.exists()
+
+
+def test_historical_compile_cli_is_network_free(tmp_path: Path, monkeypatch):
+    body = _market_bar_body()
+    transport = FakeTransport(
+        [
+            NetworkResponse(
+                200,
+                {"Content-Type": "application/json"},
+                body,
+                "https://source.example.test/history",
+            )
+        ]
+    )
+    plan = _plan()
+    raw_store = RawBlobStore(tmp_path / "raw")
+    acquired = HistoricalAcquisitionService(
+        {"http-json": ConfiguredHttpSourceAdapter()}, transport=transport
+    ).acquire(plan, raw_store=raw_store, network_allowed=True)
+    batch_path = tmp_path / "batch.json"
+    batch_path.write_text(acquired.batch.model_dump_json(), encoding="utf-8")
+
+    def fail_if_called(*_args, **_kwargs):
+        raise AssertionError("offline historical compile must not touch urlopen")
+
+    monkeypatch.setattr("turtle_value_engine.historical.acquisition.urlopen", fail_if_called)
+    manifest_path = tmp_path / "manifest.json"
+    assert main(
+        [
+            "historical",
+            "compile",
+            "--batch",
+            str(batch_path),
+            "--raw-store",
+            str(tmp_path / "raw"),
+            "--store",
+            str(tmp_path / "artifacts"),
+            "--output",
+            str(manifest_path),
+            "--verify-replay",
+        ]
+    ) == 0
+    assert manifest_path.exists()
+
+
 def test_plan_rejects_credential_reference_aliasing():
     declared = CredentialReferenceV1(
         reference_id="source-key",
