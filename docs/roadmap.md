@@ -1,5822 +1,310 @@
-# Development Roadmap
-
-> Repository: `blooddrunk/turtle-value-engine`
->
-> Goal: turn the strict Turtle value-investing specification into an auditable deterministic engine first, then add data adapters, LLM-assisted evidence analysis and unattended monitoring.
-
-## Phase 0 â€” Freeze the contracts
-
-Status: mostly complete.
-
-Deliverables:
-
-- strategy specifications under `docs/spec/`;
-- `rules/strict-v1.yaml`;
-- evidence and CompanyAnalysis JSON Schemas;
-- valuation result schema;
-- runtime/automation architecture.
-
-Exit criteria:
-
-- formulas and hard-gate semantics are explicit;
-- no critical investment rule exists only in chat history;
-- machine-readable thresholds exist.
-
----
-
-## Phase 1 â€” Deterministic calculation engine (COMPLETE)
-
-No network, no LLM, no live market data.
-
-Status: complete. The deterministic offline pipeline and `tve analyze` CLI
-are implemented and tested. CDC, net cash, Through Return, valuation tiers,
-offline evidence-backed Business-quality scoring and the fixed hard-gate
-primitives are composed into a schema-valid `CompanyAnalysis`.
-
-The analyze command does not invent Business Quality judgments. Unless an
-explicit structured assessment is supplied through the Python pipeline API,
-that gate remains `NOT_EVALUATED`, valuation remains indicative and the final
-decision disables automatic investment output.
-
-### Deliverables
-
-Python package and CLI with modules approximately equivalent to:
-
-```text
-src/turtle_value_engine/
-  models/
-  config/
-  calculations/
-    business_quality.py
-    cdc.py
-    net_cash.py
-    through_return.py
-    valuation.py
-  gates/
-    eligibility.py
-    balance_sheet.py
-    cdc.py
-    through_return.py
-    business_quality.py
-    governance.py
-  pipeline.py
-  cli.py
-```
-
-CLI minimum:
-
-```text
-tve analyze --input fixtures/company.json --profile strict-v1
-```
-
-The engine must:
-
-1. load and validate normalized input;
-2. load `strict-v1` parameters;
-3. compute deterministic metrics;
-4. evaluate hard gates;
-5. compute valuation tiers when eligible;
-6. output valid `CompanyAnalysis` JSON.
-
-The CLI is intentionally offline-only. Provider adapters, network access,
-LLM-assisted evidence analysis and automatic Business Quality assessment are
-later-phase boundaries.
-
-### Fixtures
-
-Create synthetic cases:
-
-- `healthy_cash_cow`;
-- `high_dividend_bad_cashflow`;
-- `cash_rich_dying_business`;
-- `excellent_business_too_expensive`;
-- `leveraged_dividend_trap`;
-- `negative_ev_governance_risk`;
-- `cyclical_peak_false_cheap`;
-- `share_dilution_offsets_buyback`.
-
-The committed baseline lives under `fixtures/` and is validated by
-`schemas/normalized-input.schema.json`. Scenario expectations are kept in a
-separate metadata file so they cannot be mistaken for input facts or already
-validated engine outputs.
-
-### Tests
-
-At minimum:
-
-- formula unit tests;
-- threshold boundary tests;
-- missing-data behavior;
-- confidence propagation;
-- hard-gate precedence;
-- valuation monotonicity;
-- no double-counting of capitalized development;
-- no double-counting of lease/interest cash flows;
-- buyback/dilution normalization;
-- schema validation.
-
-### Exit criteria
-
-For frozen inputs, outputs are reproducible and independent of any LLM.
-
----
-
-## Phase 2 â€” Structured data adapters (COMPLETE)
-
-Goal: make the deterministic engine usable on real companies without introducing document-reading complexity yet.
-
-The structured-provider components and their top-level preparation closure are
-complete. A caller can now bind a canonical A/H listing and `as_of` date,
-acquire through a provider/cache boundary, replay the raw cache offline and
-produce a schema-valid `NormalizedCompanyInput` for the unchanged deterministic
-pipeline. Future provider endpoint additions are optional extensions, not a
-prerequisite for the Phase 2 exit criteria.
-
-### Initial sources
-
-Preferred prototype stack:
-
-```text
-AKShare        -> A/H quotes, history, convenient public-data aggregation
-Tushare Pro    -> optional richer A-share structured fundamentals
-BaoStock       -> optional A-share historical/backtest data
-local cache    -> reproducibility and rate-limit protection
-```
-
-### Phase 2.1 â€” Provider and cache foundation (COMPLETE)
-
-The provider-neutral acquisition boundary, raw-response filesystem cache,
-capability model, error-isolation rules, provider field matrix and CI
-guardrails are now frozen. No live provider is included in this sub-phase.
-
-### Phase 2.2 â€” First structured provider adapter (COMPLETE)
-
-The read-only `AKShareProvider` now sits behind the foundation and supports
-`COMPANY_METADATA`, `LISTING_METADATA`, `MARKET_QUOTE` and
-`MARKET_HISTORY` for A/H listing identifiers. It lazily loads the optional
-AKShare dependency, converts tabular responses to JSON-safe opaque raw
-records, selects the requested listing row, preserves source/version metadata
-and uses the existing cache/replay helper without writing on provider
-failure.
-
-`AKShareNormalizer` maps only provider-neutral metadata, quote and history
-facts into the existing `NormalizedCompanyInput` contract. It creates
-structured-data evidence, preserves nulls, rejects ambiguous periods and
-records unresolved quote/history coverage. It does not map financial
-statements, filing-derived classifications, provider headline market caps or
-any deterministic metric.
-
-The deterministic tests use injected clients and frozen fixtures. Live
-integration is explicitly opt-in with `TVE_RUN_AKSHARE_LIVE=1` and is not part
-of ordinary CI.
-
-### Phase 2.3 â€” First financial-statement mapping slice (COMPLETE)
-
-The AKShare adapter now supports read-only `CASH_FLOW_STATEMENT` acquisition
-for A-share and H-share listings using documented market-specific endpoints.
-Deterministic fixtures cover the A-share wide-row and H-share long-row shapes.
-The normalizer maps only explicit `reported_cfo` and `acquisition_cash` lines
-with exact report periods and reported currency. It preserves explicit nulls,
-rejects ambiguous periods/items, and does not map aggregate capex into
-PPE/intangible fields or calculate CDC/financing metrics.
-
-The adapter and mapping versions are bumped so old raw-cache namespaces are
-not replayed under the new endpoint/mapping contract. Live calls remain
-opt-in; ordinary CI uses injected clients and frozen fixtures.
-
-Unresolved mapping questions are intentionally deferred: A/H field-level
-coverage for all statement variants, parent-versus-consolidated attribution,
-cash-flow classification of interest/leases, capex component separation and
-all filing-derived adjustments require primary disclosures or a later mapping
-review.
-
-### Phase 2.4 â€” Income-statement mapping slice (COMPLETE)
-
-The AKShare adapter now supports read-only `INCOME_STATEMENT` acquisition for
-A-share and H-share listings. The A-share report-period endpoint is normalized
-from wide rows and the H-share endpoint from long-form statement items. Only
-explicit `parent_net_profit` and `consolidated_net_profit` lines are mapped;
-revenue, operating profit, margins, provider ratios and filing-derived
-classifications remain outside this slice. Exact report periods, reported
-currency and explicit nulls are preserved, and ambiguous periods/items are
-rejected.
-
-The adapter and mapping versions are bumped so this endpoint contract has a
-separate cache/fact namespace. Tests use injected clients and frozen fixtures;
-live integration remains explicitly opt-in. Unresolved income-mapping
-questions are owned by the Phase 2 mapping review: field-name coverage across
-all A/H statement variants, the precise parent/consolidated entity basis,
-currency/unit scaling, and point-in-time publication semantics.
-
-### Phase 2.5 â€” Balance-sheet mapping slice (COMPLETE)
-
-The AKShare adapter now supports read-only `BALANCE_SHEET` acquisition for
-A-share and H-share listings. The A-share detailed report-period endpoint is
-normalized from wide rows and the H-share endpoint from long-form statement
-items. The slice maps only explicit `book_cash`, `parent_equity`,
-`total_equity` and an explicit aggregate `reported_interest_bearing_debt`
-when the upstream label has that same economic meaning. It does not rename
-`total_liabilities`, sum short- or long-term borrowing rows, or infer
-restricted cash, lease debt, minority attribution or upstreamability.
-
-Exact report dates, reported currency and explicit nulls are preserved, and
-ambiguous periods/items are rejected. The adapter and mapping versions are
-bumped so this endpoint contract has a separate cache/fact namespace. Tests
-use injected clients and frozen fixtures; live integration remains explicitly
-opt-in. Unresolved balance-sheet mapping questions are owned by the Phase 2
-mapping review: field-name coverage across all A/H statement variants, the
-consolidated-versus-standalone entity basis, currency/unit scaling,
-interest-bearing-debt aggregate availability, and point-in-time publication
-semantics.
-
-### Phase 2.6 â€” Verified A-share balance endpoint contract (COMPLETE)
-
-The mapping review now covers the current documented AKShare aggregate
-balance endpoint, `stock_zcfz_em` (and `stock_zcfz_bj_em` for Beijing-listed
-shares). These endpoints accept an exact quarter-end `statement_date`, return
-an A-share universe, and expose only a limited aggregate shape. The provider
-selects the requested listing before creating the raw record and the
-normalizer uses the requested statement date rather than the announcement
-date as the point-in-time period. The documented aggregate fields map only
-`book_cash` and `total_equity`; `è´Ÿå€º-æ€»è´Ÿå€º` is deliberately not promoted to
-debt, and parent equity remains missing when it is not reported. The existing
-detailed report-period endpoint remains a compatibility fallback when the
-installed AKShare client exposes it.
-
-The adapter and mapping versions are bumped for this endpoint contract.
-Offline tests cover date validation, row selection, exact periods, explicit
-missing fields and the no-total-liabilities rule. Live calls remain opt-in.
-
-### Phase 2.7 â€” Dividend event acquisition boundary (COMPLETE)
-
-The AKShare adapter now exposes the documented A-share `stock_dividend_cninfo`
-and H-share `stock_hk_dividend_payout_em` endpoints through the same
-read-only provider boundary. Their historical rows are retained in opaque
-raw records and structured-data evidence. The normalizer deliberately emits
-no `ordinary_dividend_cash`, `special_dividend_cash` or `payout_ratio`: the
-A-share feed reports per-10-share plans and announcement/payment dates, while
-the H-share feed reports plan strings and fiscal years. Neither shape alone
-establishes a total cash amount, ordinary-versus-special policy
-classification, or a single accepted period basis.
-
-Offline fixtures cover both markets, endpoint arguments, replay metadata and
-the no-fabrication behavior. Live calls remain opt-in. The next Phase 2 task
-is a similarly narrow review of A-share share-capital history; H-share share
-class equivalence and diluted-share treatment remain unresolved.
-
-### Phase 2.8 â€” A-share share-capital raw acquisition contract (COMPLETE)
-
-The mapping review now covers the current documented AKShare A-share
-share-capital endpoint, `stock_zh_a_gbjg_em`. The endpoint accepts a `symbol`
-and returns all historical capital-structure records with `å˜æ›´æ—¥æœŸ`, `æ€»è‚¡æœ¬`,
-circulation fields and `å˜åŠ¨åŽŸå› `. The provider passes the requested six-digit
-A-share code, retains the complete response as an opaque raw record and records
-the returned row count for replay diagnostics.
-
-The official documentation types `æ€»è‚¡æœ¬` as `int64`, but does not declare an
-explicit unit or a fully diluted economic scope. The change-date semantics,
-options/convertibles, A/H class relationship and change-reason classification
-are therefore unresolved. The normalizer records the raw evidence and an
-explicit `AKSHARE_SHARE_CAPITAL_RAW_ONLY` flag, marks
-`normalized_diluted_economic_shares` as missing and emits no canonical share,
-dilution, buyback, issuance or split fact. H-share share capital remains
-outside this slice. Live calls remain opt-in; tests use an injected client and
-a frozen fixture.
-
-### Phase 2.9 â€” A-share repurchase raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented AKShare A-share
-`stock_repurchase_em` endpoint. It accepts no request arguments and returns an
-all-company response containing planned and completed repurchase fields,
-repurchase-start dates and latest-announcement dates. The provider filters the
-universe to the requested A-share code before creating the raw record, retains
-all matching rows rather than selecting an arbitrary latest row, records both
-upstream and selected row counts, and rejects any universe row without an
-explicit listing code. A listing with no matching row produces an empty raw
-snapshot rather than an invented zero.
-
-The documentation identifies planned and completed monetary fields in yuan,
-but the response does not establish one settled cash-flow period: completed
-amounts can be cumulative, the latest announcement is an update date, and
-planned and completed status are different economic states. The normalizer
-therefore retains the filtered raw evidence, sets `buyback_cash` in the
-critical-missing inventory and emits `AKSHARE_CORPORATE_ACTIONS_RAW_ONLY`; it
-does not emit buyback cash, recurrence, net share reduction or any valuation
-credit. H-share repurchase data and filing-backed action classification remain
-outside this slice. Live calls remain opt-in; tests use an injected client and
-a frozen fixture.
-
-### Phase 2.10 â€” A-share rights-issue corporate-action raw contract (COMPLETE)
-
-The mapping review now covers the current documented AKShare CNINFO
-`stock_allotment_cninfo` endpoint under the provider-neutral
-`CORPORATE_ACTIONS` category. The endpoint accepts an A-share `symbol` plus
-`start_date` and `end_date` strings in `YYYYMMDD` form and returns historical
-rights-issue plan/result rows with multiple dates, share quantities, prices,
-proceeds and fees. The provider passes the requested six-digit code and date
-range, retains the complete response as an opaque raw record and records its
-row count and effective request range.
-
-The documented response does not establish one canonical event period,
-planned-versus-completed outcome, amount unit/scaling, or fully diluted
-share-class scope. The normalizer therefore emits structured evidence only,
-sets `share_issuance_cash` as critically missing and emits
-`AKSHARE_ALLOTMENT_RAW_ONLY`; it creates no canonical issuance, dilution,
-buyback, split or share-count fact. H-share corporate actions and
-filing-backed interpretation remain unresolved. Live calls remain opt-in;
-tests use an injected client and a frozen fixture.
-
-This slice leaves the next documented structured-data review open; no
-additional dividend, buyback, split, issuance or diluted-share fact is admitted
-until its period, unit and economic scope are explicit.
-
-### Phase 2.11 â€” A-share company share-change raw contract (COMPLETE)
-
-The mapping review now covers the current documented AKShare CNINFO
-`stock_share_change_cninfo` endpoint under the provider-neutral
-`SHARE_CAPITAL` category. The endpoint accepts an A-share `symbol` plus
-`start_date` and `end_date` strings in `YYYYMMDD` form and returns historical
-company-share-change rows with change/announcement dates, total and
-circulation holdings, share-class holdings and change reasons. The provider
-uses this endpoint only when a date range is explicitly requested, passes the
-six-digit code and range, retains every returned row and records the range and
-row count.
-
-The documented numeric fields do not define a unit or fully diluted economic
-scope, and the response dates do not establish one canonical event period.
-The normalizer therefore validates explicit row identity, emits structured
-evidence only, sets `normalized_diluted_economic_shares` as critically missing
-and emits `AKSHARE_SHARE_CAPITAL_CHANGE_RAW_ONLY`; it creates no canonical
-share, issuance, buyback or split fact. The existing no-parameter
-`stock_zh_a_gbjg_em` raw slice remains unchanged. H-share share capital and
-filing-backed action classification remain unresolved. Live calls remain
-opt-in; tests use an injected client and a frozen fixture.
-
-### Phase 2.11 â€” A-share ownership-pledge snapshot raw contract (COMPLETE)
-
-The mapping review now covers the documented AKShare Eastmoney
-`stock_gpzy_pledge_ratio_em` endpoint under the provider-neutral
-`OWNERSHIP_PLEDGE` category. The endpoint requires an A-share `date` in
-`YYYYMMDD` form and returns a date-specific universe snapshot with pledge ratio,
-pledged shares/value, pledge counts, share-class pledge counts, one-year
-performance and industry-code context. The provider validates the exact
-trading date and explicit listing identity, filters the universe to the
-requested A-share code and retains the matching row as raw evidence.
-
-The documented ratio and counts do not identify the affected holder or
-controlling-shareholder status, establish governance severity, settle units or
-cash accessibility, or define a debt-equivalent fact. The normalizer therefore
-emits `AKSHARE_OWNERSHIP_PLEDGE_RAW_ONLY`, marks `governance_risk_level` as
-critically missing and creates no governance, pledged-cash, debt-equivalent or
-valuation fact. H-share pledge coverage and filing-backed governance
-interpretation remain unresolved. Live calls remain opt-in; tests use an
-injected client and a frozen fixture.
-
-### Phase 2.12 â€” A-share dividend-distribution snapshot raw contract (COMPLETE)
-
-The mapping review now covers the documented AKShare Eastmoney
-`stock_fhps_em` endpoint under the existing provider-neutral `DIVIDENDS`
-category. The endpoint accepts an explicit A-share report date in `YYYYMMDD`
-form, limited to the documented June 30 or December 31 periods, and returns a
-universe snapshot with distribution ratios, multiple event/announcement dates,
-progress and per-share context. The provider validates the report date and
-explicit listing identity, filters the universe to the requested A-share code
-and retains the matching rows as raw evidence.
-
-The documented ratios and status do not establish a settled total cash amount,
-declared-versus-paid state, ordinary-versus-special classification or the
-canonical payout denominator. The normalizer therefore emits
-`AKSHARE_DIVIDEND_SNAPSHOT_RAW_ONLY`, marks `ordinary_dividend_cash` as
-critically missing and creates no dividend-cash, payout-ratio, split, dilution
-or share-count fact. The existing no-parameter A/H dividend endpoints remain
-unchanged. Live calls remain opt-in; tests use an injected client and a frozen
-fixture.
-
-This slice left the next Phase 2 task as a focused mapping review of one
-documented structured-data or corporate-action boundary. Phase 2.13 below
-covers that next boundary; no additional share, dividend, buyback, split or
-issuance fact is admitted until its period, unit, entity, status and economic
-scope are explicit.
-
-This mapping-review hardening keeps statement currency provenance conservative
-across all three slices: only explicit valid three-letter codes are accepted,
-missing currency is preserved as `null` rather than inferred from the listing
-market, and conflicting currencies within one report period are rejected. Unit
-scaling and consolidated-versus-standalone presentation basis remain open
-questions for a later review.
-
-### Phase 2.13 â€” A-share earnings-forecast raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented AKShare Eastmoney
-`stock_yjyg_em` endpoint under a new provider-neutral `EARNINGS_FORECAST`
-category. The endpoint accepts an A-share quarterly report date in `YYYYMMDD`
-form, from the documented `20081231` start date, and returns a universe of
-forecast rows containing listing identity, forecast indicators, forecast
-values/ranges, change reasons, forecast type, prior-period values and
-announcement dates. The provider validates the exact quarter-end request,
-rejects rows without explicit listing identity, filters to the requested
-six-digit A-share code and retains all matching rows.
-
-Forecast values and announcement dates do not establish reported parent or
-consolidated net profit for the requested statement period. The normalizer
-therefore retains the filtered response as structured evidence, marks
-`parent_net_profit` and `consolidated_net_profit` as critically missing and
-emits `AKSHARE_EARNINGS_FORECAST_RAW_ONLY`; it creates no canonical profit,
-margin, CDC or valuation fact. H-share earnings forecasts remain outside this
-slice. Live calls remain opt-in; tests use an injected client and a frozen
-fixture.
-
-### Phase 2.14 â€” A-share performance-report raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented AKShare Eastmoney
-`stock_yjbb_em` endpoint under a new provider-neutral `PERFORMANCE_REPORT`
-category. The endpoint accepts an A-share quarterly report date in `YYYYMMDD`
-form, from the documented `20100331` start date, and returns a universe of
-headline performance rows containing listing identity, revenue and net-profit
-headlines, per-share indicators, ratios, industry and latest-announcement
-metadata. The provider validates the exact quarter-end request, rejects rows
-without explicit listing identity, filters to the requested six-digit A-share
-code and retains all matching rows.
-
-The headline net-profit field does not establish the accepted
-parent-versus-consolidated entity basis, and operating cash flow is reported
-per share rather than as a total CFO fact. The normalizer therefore retains
-the filtered response as structured evidence, marks `parent_net_profit`,
-`consolidated_net_profit` and `reported_cfo` as critically missing and emits
-`AKSHARE_PERFORMANCE_REPORT_RAW_ONLY`; it creates no canonical profit,
-revenue, margin, CFO, CDC or valuation fact. H-share performance reports
-remain outside this slice. Live calls remain opt-in; tests use an injected
-client and a frozen fixture.
-
-### Phase 2.15 â€” A-share earnings-quick-report raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented AKShare Eastmoney
-`stock_yjkb_em` endpoint under a new provider-neutral
-`EARNINGS_QUICK_REPORT` category. The endpoint accepts an A-share quarterly
-report date in `YYYYMMDD` form, from the documented `20100331` start date, and
-returns a universe of quick-report rows containing listing identity, headline
-revenue and net-profit values, prior-period comparisons, per-share indicators,
-ratios, industry and announcement-date metadata. The provider validates the
-exact quarter-end request, rejects rows without explicit listing identity,
-filters to the requested six-digit A-share code and retains all matching rows.
-
-The headline net-profit field does not establish the accepted
-parent-versus-consolidated entity basis, and the revenue/per-share fields do
-not settle the canonical period, unit or diluted-share scope. The normalizer
-therefore retains the filtered response as structured evidence, marks
-`parent_net_profit` and `consolidated_net_profit` as critically missing and
-emits `AKSHARE_EARNINGS_QUICK_REPORT_RAW_ONLY`; it creates no canonical
-profit, revenue, margin, CFO, CDC or valuation fact. H-share quick reports
-remain outside this slice. Live calls remain opt-in; tests use an injected
-client and a frozen fixture.
-
-### Phase 2.16 â€” A-share business-composition raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented AKShare Eastmoney
-`stock_zygc_em` endpoint under a new provider-neutral
-`BUSINESS_COMPOSITION` category. The endpoint accepts a market-prefixed A-share
-`symbol` and returns all historical main-business composition rows with report
-dates, classification type, constituent business, revenue/cost/profit amounts,
-ratios and gross-margin context. The provider passes the canonical listing
-identifier, validates explicit listing identity and parseable report dates,
-retains the complete listing-scoped response and records row and distinct
-report-period counts.
-
-The product, industry and geographic views overlap and do not establish one
-canonical revenue or core-revenue series. Their units, entity basis, aggregation
-rules and classification semantics therefore remain unresolved. The normalizer
-retains structured evidence, marks `revenue` and `core_revenue` as critically
-missing and emits `AKSHARE_BUSINESS_COMPOSITION_RAW_ONLY`; it creates no
-canonical revenue, operating-profit, margin or business-quality fact. H-share
-business composition remains outside this slice. Live calls remain opt-in;
-tests use an injected client and a frozen fixture.
-
-### Phase 2.17 â€” A-share financial-abstract raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented AKShare Sina
-`stock_financial_abstract` endpoint under a new provider-neutral
-`FINANCIAL_ABSTRACT` category. The endpoint accepts a six-digit A-share
-`symbol` and returns the issuer's historical key-indicator matrix with
-`é€‰é¡¹`, `æŒ‡æ ‡` and report-period columns. The provider passes the requested
-listing code, retains the complete listing-scoped response as an opaque raw
-record, validates explicit metric identity and date-shaped period columns, and
-records row and distinct-period counts.
-
-The response mixes amount rows such as revenue and profit with per-share
-indicators and ratios. Its wide presentation does not establish the canonical
-entity, unit/scaling, period or diluted-share basis required by the normalized
-contract. The normalizer therefore retains structured evidence, marks
-`revenue`, `parent_net_profit`, `consolidated_net_profit` and `reported_cfo` as
-critically missing and emits `AKSHARE_FINANCIAL_ABSTRACT_RAW_ONLY`; it creates
-no canonical fact, metric or valuation input. H-share financial abstracts
-remain outside this slice. Live calls remain opt-in; tests use an injected
-client and a frozen fixture.
-
-### Phase 2.18 â€” A-share financial-indicator raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented AKShare Eastmoney
-`stock_financial_analysis_indicator_em` endpoint under a new provider-neutral
-`FINANCIAL_INDICATORS` category. The endpoint accepts a market-suffixed A-share
-`symbol` and the documented `indicator` choice of `æŒ‰æŠ¥å‘ŠæœŸ` or `æŒ‰å•å­£åº¦`; it
-returns explicit listing identity, report dates, amount fields, per-share
-indicators and provider-calculated ratios. The provider passes the requested
-listing and indicator mode, retains the complete listing-scoped response as an
-opaque raw record, validates explicit listing identity and parseable report
-dates, and records row, period and indicator metadata.
-
-The mixed response does not establish one canonical statement entity,
-unit/scaling, point-in-time availability basis or ratio calculation
-methodology. The normalizer therefore retains structured evidence, marks
-`revenue`, `parent_net_profit`, `consolidated_net_profit` and `reported_cfo` as
-critically missing and emits `AKSHARE_FINANCIAL_INDICATORS_RAW_ONLY`; it
-creates no canonical fact, metric or valuation input. H-share financial
-indicators remain outside this slice. Live calls remain opt-in; tests use an
-injected client and a frozen fixture.
-
-### Phase 2.19 â€” SSE insider share-change raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented AKShare SSE
-`stock_share_hold_change_sse` endpoint under a new provider-neutral
-`INSIDER_SHARE_CHANGES` category. The endpoint accepts a Shanghai A-share
-`symbol` and returns listing-scoped rows with company code, holder and role,
-share class, currency label, before/after holdings, change quantity and price,
-change reason, change date and filing date. The provider passes the six-digit
-code, retains every returned row as an opaque raw record and validates explicit
-listing identity plus any supplied event dates.
-
-The documented holdings and transaction prices describe insider events, not a
-company-level fully diluted share series, and they do not by themselves
-establish governance severity or a canonical buyback/issuance cash flow. The
-normalizer therefore retains structured evidence, marks
-`governance_risk_level` as critically missing and emits
-`AKSHARE_INSIDER_SHARE_CHANGE_RAW_ONLY`; it creates no share-count, dilution,
-governance, buyback or issuance fact. Beijing coverage is handled by Phase 2.21
-below. H-share coverage, holder interpretation and filing-backed governance
-analysis remain outside this slice. Shenzhen coverage is handled by Phase 2.20
-below. Live calls remain opt-in; tests use an injected client and a frozen
-fixture.
-
-### Phase 2.20 â€” SZSE insider share-change raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented AKShare Shenzhen
-`stock_share_hold_change_szse` endpoint under the existing provider-neutral
-`INSIDER_SHARE_CHANGES` category. The endpoint accepts a Shenzhen A-share
-`symbol` and returns listing-scoped rows with security identity, insider and
-related-person roles, change dates, changed quantities, prices, change ratios,
-and same-day holdings. The provider passes the six-digit code, retains every
-returned row as an opaque raw record, validates explicit listing identity and
-any supplied change dates, and records the listing-scoped response metadata.
-
-The documented quantities are reported in ten-thousand shares and the change
-ratio in thousandths, but the response still describes insider events rather
-than a company-level fully diluted share series. The normalizer therefore
-retains structured evidence, marks `governance_risk_level` as critically
-missing and emits `AKSHARE_INSIDER_SHARE_CHANGE_RAW_ONLY`; it creates no
-share-count, dilution, governance, buyback or issuance fact. H-share
-insider-share coverage, holder interpretation and filing-backed governance
-analysis remain outside this slice. Live calls remain opt-in; tests use an
-injected client and a frozen fixture.
-
-### Phase 2.21 â€” BSE insider share-change raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented AKShare Beijing Stock Exchange
-`stock_share_hold_change_bse` endpoint under the existing provider-neutral
-`INSIDER_SHARE_CHANGES` category. The endpoint accepts a Beijing A-share
-`symbol` and returns listing-scoped rows with security identity, insider name
-and role, change date, before/after holdings, changed quantity, average price
-and change reason. The provider passes the six-digit code, retains every
-returned row as an opaque raw record, validates explicit listing identity and
-any supplied change dates, and records the listing-scoped response metadata.
-
-The documented holding quantities are reported in ten-thousand shares and the
-average price in yuan, but the response still describes insider events rather
-than a company-level fully diluted share series. The normalizer therefore
-retains structured evidence, marks `governance_risk_level` as critically
-missing and emits `AKSHARE_INSIDER_SHARE_CHANGE_RAW_ONLY`; it creates no
-share-count, dilution, governance, buyback or issuance fact. H-share coverage,
-holder interpretation and filing-backed governance analysis remain unresolved.
-Live calls remain opt-in; tests use an injected client and a frozen fixture.
-
-### Phase 2.22 â€” H-share financial-indicator raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented AKShare Eastmoney
-`stock_financial_hk_analysis_indicator_em` endpoint under the existing
-provider-neutral `FINANCIAL_INDICATORS` category. The endpoint accepts a
-five-digit H-share `symbol` and the documented `å¹´åº¦` or `æŠ¥å‘ŠæœŸ` mode; it
-returns explicit listing identity, report dates, amount fields, per-share
-indicators, provider-calculated ratios and currency labels. The provider
-passes the requested listing code and mode, retains the complete
-listing-scoped response as an opaque raw record, validates explicit listing
-identity and parseable report dates, and records row, period and indicator
-metadata.
-
-The mixed response does not establish one canonical statement entity,
-unit/scaling, point-in-time availability basis or ratio calculation
-methodology. The normalizer therefore retains structured evidence, marks
-`revenue`, `parent_net_profit`, `consolidated_net_profit` and `reported_cfo` as
-critically missing and emits `AKSHARE_FINANCIAL_INDICATORS_RAW_ONLY`; it
-creates no canonical fact, metric or valuation input. H-share insider-share
-coverage remains unresolved because the current AKShare stock documentation
-does not define an equivalent H-share insider endpoint. Live calls remain
-opt-in; tests use an injected client and a frozen fixture.
-
-### Phase 2.23 â€” H-share latest-indicator raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented AKShare Eastmoney
-`stock_hk_financial_indicator_em` endpoint under a new provider-neutral
-`LATEST_INDICATORS` category. The endpoint accepts a five-digit H-share
-`symbol` and returns a symbol-scoped latest-indicator row containing per-share,
-share-capital, dividend, headline financial and valuation fields. The provider
-passes the requested code, retains the complete response as an opaque raw
-record, records the symbol-scoped row count and rejects an ambiguous multi-row
-response. The published AKShare output does not retain a row-level listing code
-or canonical statement period, so the request boundary is the only entity
-scope admitted by this slice.
-
-The mixed latest snapshot does not establish a canonical statement entity,
-period, unit/scaling, diluted-share scope or valuation methodology. The
-normalizer therefore retains structured evidence, marks `revenue`,
-`parent_net_profit`, `consolidated_net_profit` and `reported_cfo` as critically
-missing and emits `AKSHARE_LATEST_INDICATORS_RAW_ONLY`; it creates no canonical
-financial, share, dividend, market-cap, metric or valuation fact. H-share
-insider-share coverage remains unresolved because the current AKShare stock
-documentation does not define an equivalent H-share insider endpoint. Live
-calls remain opt-in; tests use an injected client and a frozen fixture.
-
-### Phase 2.24 â€” A-share disclosure-notice raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented AKShare CNINFO
-`stock_zh_a_disclosure_report_cninfo` endpoint under a new provider-neutral
-`DISCLOSURE_NOTICES` category. The endpoint accepts a six-digit A-share
-`symbol`, the documented `æ²ªæ·±äº¬` market, optional keyword/category filters and
-an explicit `YYYYMMDD` date range. It returns listing-bound announcement
-metadata: code, short name, title, announcement time and disclosure link.
-
-The provider passes the requested listing and documented filters, validates
-the date range and every returned row's explicit listing identity/date, and
-retains the complete response as an opaque raw record. The normalizer emits
-`AKSHARE_DISCLOSURE_NOTICES_RAW_ONLY`, marks `accounting_opinion` and
-`governance_risk_level` as critically missing, and creates no filing-content,
-accounting, governance, financial or valuation fact. Announcement titles and
-links are discovery metadata only; linked documents remain outside this
-slice. H-share disclosure coverage and Phase 3 filing retrieval/parsing remain
-unresolved. Live calls remain opt-in; tests use an injected client and a
-frozen fixture.
-
-### Phase 2.25 â€” H-share dividend-event detail raw acquisition contract (COMPLETE)
-
-The remaining H-share disclosure gap was reviewed against the current
-documented AKShare stock interfaces. The documentation exposes no general
-H-share disclosure-notice counterpart to the A-share CNINFO endpoint, so this
-phase does not invent one or promote a company-profile/financial snapshot into
-disclosure metadata. It instead adds one adjacent, separately selectable
-documented event source: the Tonghuashun
-`stock_hk_fhpx_detail_ths` endpoint under the existing `DIVIDENDS` category.
-
-The endpoint accepts a five-digit H-share `symbol` and returns symbol-scoped
-historical dividend-event rows with announcement date, plan, ex-date, payment
-date, transfer-date range, event type, progress and scrip-dividend context. The
-provider selects it only for the explicit provider-neutral request view
-`view=event_detail`, validates any non-null event dates, preserves the full
-symbol-scoped response and records the request scope for replay. The published
-rows do not carry a canonical listing code, so the request boundary is retained
-without inventing row-level identity.
-
-The normalizer emits `AKSHARE_HK_DIVIDEND_DETAIL_RAW_ONLY`, marks
-`ordinary_dividend_cash` as critically missing and creates no dividend-cash,
-payout-ratio, share-count, filing-content or governance fact. Plan strings,
-event status and dates do not establish settled amount, ordinary-versus-special
-classification or a canonical financial period. General H-share disclosure
-retrieval and linked-document parsing remain Phase 3 work. Live calls remain
-opt-in; tests use an injected client and a frozen fixture.
-
-### Phase 2.26 â€” A-share risk-warning-status raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented AKShare Eastmoney
-`stock_zh_a_st_em` endpoint under a new provider-neutral
-`RISK_WARNING_STATUS` category. The endpoint accepts no request
-arguments and returns the current risk-warning-board universe with explicit
-listing code/name plus current market-observation fields. The provider
-validates every returned row's listing code, filters the universe to the
-requested six-digit A-share code, retains the matching rows and records both
-upstream and selected row counts.
-
-Risk-warning-board membership is a positive current snapshot, not a dated
-status history or a complete assertion about a listing when it is absent from
-the response. The normalizer therefore retains the filtered response as
-structured evidence, marks `special_treatment` as critically missing and
-emits `AKSHARE_RISK_WARNING_STATUS_RAW_ONLY`; it creates no canonical
-special-treatment fact and does not infer `special_treatment=False` from
-an empty match. H-share risk-warning coverage remains outside this slice. Live
-calls remain opt-in; tests use an injected client and a frozen fixture.
-
-### Phase 2.27 â€” A-share main-shareholder raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented AKShare Sina
-`stock_main_stock_holder` endpoint under a new provider-neutral
-`SHAREHOLDER_HOLDINGS` category. The endpoint accepts an A-share `stock` code
-and returns all historical main-shareholder rows with holder names, holding
-quantities/ratios, share-class labels, as-of dates, announcement dates and
-holder context. The provider passes the requested six-digit code, retains the
-complete symbol-scoped response and records its row count.
-
-The documented holder rows do not establish beneficial control, a governance
-severity, a canonical share class or a company-level diluted-share series.
-The normalizer therefore retains structured evidence, marks
-`governance_risk_level` as critically missing and emits
-`AKSHARE_MAIN_SHAREHOLDERS_RAW_ONLY`; it creates no ownership, share-count,
-dilution, buyback, issuance or valuation fact. H-share main-shareholder
-coverage and filing-backed ownership interpretation remain outside this
-slice. Live calls remain opt-in; tests use an injected client and a frozen
-fixture.
-
-### Phase 2.28 â€” A-share trading-suspension raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented AKShare Eastmoney
-`stock_tfp_em` endpoint under a new provider-neutral `TRADING_SUSPENSIONS`
-category. The endpoint accepts an A-share date in `YYYYMMDD` form and returns a
-date-bound universe of suspension/resumption rows with explicit listing code,
-suspension dates, duration, reason, market and expected resume date. The
-provider validates the request and every returned row's listing identity and
-nullable event dates, filters the universe to the requested listing and retains
-all matching rows as raw evidence.
-
-The event rows describe suspension activity for the requested date, not a
-complete listing-status history, special-treatment state or filing-backed
-governance conclusion. The normalizer therefore emits
-`AKSHARE_TRADING_SUSPENSIONS_RAW_ONLY`, marks `special_treatment` and
-`governance_risk_level` as critically missing and creates no canonical status,
-governance or accounting fact. H-share trading-suspension coverage remains
-outside this slice. Live calls remain opt-in; tests use an injected client and
-a frozen fixture.
-
-### Phase 2.29 â€” A-share restricted-share-release raw acquisition contract (COMPLETE)
-
-The mapping review now covers the current documented AKShare Eastmoney
-`stock_restricted_release_queue_em` endpoint under the existing
-`SHARE_CAPITAL` category. The endpoint accepts a six-digit A-share `symbol`
-and returns the listing's historical restricted-share release batches with
-release dates, planned/actual/remaining quantities, market-value context,
-lock-up type and pre/post release observations. Because the published
-symbol-scoped output omits row-level listing codes, the request scope is
-preserved and any optional returned code is checked when present.
-
-The provider selects this endpoint only for the explicit
-`view=restricted_release_queue` request, passes the six-digit code and
-retains all returned rows. The documented quantities/values and release date
-do not by themselves establish one canonical diluted-economic-share
-treatment, and planned/actual/remaining states cannot be silently collapsed
-into a share-count fact. The normalizer therefore emits
-`AKSHARE_RESTRICTED_SHARE_RELEASES_RAW_ONLY`, marks
-`normalized_diluted_economic_shares` as critically missing and creates no
-canonical share, dilution, issuance, buyback or valuation fact. H-share
-restricted-release coverage and filing-backed action classification remain
-unresolved. Live calls remain opt-in; tests use an injected client and a
-frozen fixture.
-
-### Phase 2.30 â€” A-share goodwill-impairment raw acquisition contract (COMPLETE)
-
-The mapping review now covers the current documented AKShare Eastmoney
-`stock_sy_jz_em` endpoint under a new provider-neutral
-`GOODWILL_IMPAIRMENT` category. The endpoint accepts an A-share report-date
-`date` in `YYYYMMDD` form and returns a universe of listing rows with goodwill,
-goodwill-impairment, ratio, profit, announcement-date and market context. The
-provider validates explicit listing identity and nullable announcement dates,
-filters to the requested six-digit A-share code, retains all matching rows and
-records the requested report period for replay.
-
-The goodwill and impairment amounts are aggregator fields whose accounting
-entity, scope, reconciliation and point-in-time semantics still require a
-primary filing. The normalizer therefore retains the filtered response as
-structured evidence, marks `goodwill` and `impairment` as critically missing
-and emits `AKSHARE_GOODWILL_IMPAIRMENT_RAW_ONLY`; it creates no canonical
-goodwill, impairment, profit, ratio or business-quality fact. H-share goodwill
-coverage and filing-backed impairment review remain outside this slice. Live
-calls remain opt-in; tests use an injected client and a frozen fixture.
-
-### Phase 2.31 â€” A/H ESG-rating raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented Sina `stock_esg_rate_sina`
-endpoint under a new provider-neutral `ESG_RATINGS` category. The official
-AKShare documentation describes a no-argument response containing a mixed A/H
-universe with component code, rating agency, rating, rating quarter, marker
-and `cn`/`hk` market; the [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_esg_sina.py)
-retrieves the paginated multi-agency response. The provider validates each
-row's explicit code and market, filters to the requested A/H listing and
-retains every matching agency/quarter row with endpoint and row-count
-provenance.
-
-Agency ratings use provider-specific scales and may be letters or numeric
-values, while `è¯„çº§å­£åº¦` is a provider reporting label. Those fields do not
-establish a comparable ESG score, governance-risk judgment or strict-v1
-Business Quality assessment. The normalizer therefore emits
-`AKSHARE_ESG_RATINGS_RAW_ONLY`, marks `governance_risk_level` as critically
-missing and creates no canonical ESG, governance, Business Quality, filing,
-financial or valuation fact. Live calls remain opt-in; tests use an injected
-client and a frozen fixture. See the [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
-for the documented interface and fields.
-
-### Phase 2.32 â€” SSE margin-detail raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented SSE
-`stock_margin_detail_sse` endpoint under a new provider-neutral
-`MARGIN_TRADING` category. The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
-and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_margin_sse.py)
-define an exact `date` in `YYYYMMDD` form and a full SSE universe of security
-rows with explicit security code, security name, financing balances and
-financing/short-sale quantities. The provider supports Shanghai A-share
-listing identifiers only, validates every returned code and observation date,
-filters to all rows for the requested security and preserves row/count/date
-provenance.
-
-The response describes customer financing against a security, not the issuer's
-reported financial debt, cash or a settled issuer accounting period. The
-normalizer therefore retains the structured evidence, marks `financial_debt`
-as critically missing and emits `AKSHARE_MARGIN_TRADING_RAW_ONLY`; it creates
-no canonical debt, cash, leverage, margin or valuation fact. SZSE margin
-detail, market-level margin summaries and filing-backed interpretation remain
-outside this slice. Live calls remain opt-in; tests use an injected client and
-a frozen fixture.
-
-### Phase 2.33 â€” A-share external-guarantee raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented CNINFO
-`stock_cg_guarantee_cninfo` endpoint under a new provider-neutral
-`EXTERNAL_GUARANTEES` category. The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
-and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_cg_guarantee.py)
-define a board/universe `symbol` plus `start_date` and `end_date` in
-`YYYYMMDD` form; the documented defaults are `å…¨éƒ¨`, `20180630` and
-`20210927`. The provider calls the documented `symbol="å…¨éƒ¨"` universe,
-requires an explicit A-share code on every returned row, filters to the
-requested listing and retains all matching rows with date-range, scope and
-row-count provenance.
-
-The response exposes announcement-statistics interval, guarantee count and
-amount, parent-company equity and a published guarantee-to-net-assets ratio.
-The amount and equity are documented in ä¸‡å…ƒ, but the date-range aggregate
-does not settle guarantee purpose, legal status, canonical period/entity scope
-or whether the amount is a quasi-debt obligation. The normalizer therefore
-retains raw evidence, emits `AKSHARE_EXTERNAL_GUARANTEES_RAW_ONLY`, marks
-`material_quasi_debt`, `major_illegal_guarantee` and `governance_risk_level` as
-critically missing and creates no canonical guarantee, debt, governance or
-ratio fact. H-share coverage and filing-backed illegal-guarantee/governance
-review remain outside this slice. Live calls remain opt-in; tests use an
-injected client and a frozen fixture.
-
-### Phase 2.34 â€” A-share individual ownership-pledge detail raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented Eastmoney
-`stock_gpzy_individual_pledge_ratio_detail_em` endpoint under the existing
-`OWNERSHIP_PLEDGE` category. It accepts a six-digit A-share `symbol` and
-returns symbol-scoped historical important-shareholder pledge rows with
-explicit listing code, holder/institution, quantities/ratios, prices,
-announcement/start/end dates and status. The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
-and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_gpzy_em.py)
-define the documented interface and its `SECURITY_CODE` filter.
-
-The provider selects this endpoint only for the explicit request
-`view=individual_pledge_detail`, passes the requested code, validates explicit
-listing identity and any populated event dates, and retains every row with
-listing-scoped provenance. The documented quantities, ratios, prices and
-status do not establish a fully diluted share count, settled pledged
-cash/debt-equivalent amount, beneficial control or governance judgment. The
-normalizer therefore retains raw evidence, emits
-`AKSHARE_INDIVIDUAL_PLEDGE_DETAIL_RAW_ONLY`, marks
-`governance_risk_level` critically missing and creates no canonical fact.
-H-share coverage and filing-backed pledge interpretation remain unresolved.
-Live calls remain opt-in; tests use an injected client and a frozen fixture.
-
-### Phase 2.35 â€” A-share company-litigation raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented CNINFO
-`stock_cg_lawsuit_cninfo` endpoint under a new provider-neutral `LITIGATION`
-category. The endpoint accepts a board/universe `symbol` plus `start_date` and
-`end_date` in `YYYYMMDD` form; the documented defaults are `å…¨éƒ¨`, `20180630`
-and `20210927`. Its response contains explicit A-share code/name,
-announcement-statistics interval, lawsuit count and lawsuit amount, with the
-amount documented in ä¸‡å…ƒ. The provider calls the documented `symbol="å…¨éƒ¨"`
-universe, requires an explicit code on every row, filters to the requested
-listing and retains all matching rows with range, scope and row-count
-provenance.
-
-The date-range aggregate does not establish a canonical event or statement
-period, legal status, accounting entity/scope, or whether a reported amount is
-a material expected cash obligation. The normalizer therefore retains the
-response as structured evidence, emits `AKSHARE_LITIGATION_RAW_ONLY`, marks
-`material_quasi_debt` and `governance_risk_level` as critically missing, and
-creates no canonical litigation, quasi-debt, governance or valuation fact.
-H-share coverage and filing-backed litigation review remain unresolved. Live
-calls remain opt-in; tests use an injected client and a frozen fixture.
-
-### Phase 2.36 â€” A-share CNINFO equity-mortgage raw acquisition contract (COMPLETE)
-
-The mapping review now covers the current documented CNINFO
-`stock_cg_equity_mortgage_cninfo` endpoint under the existing
-`OWNERSHIP_PLEDGE` category. The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
-defines a `date` parameter with documented default `20210930`, and the
-[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_cg_equity_mortgage.py)
-retrieves the CNINFO thematic-statistics response. Its rows contain explicit
-A-share code/name, announcement date, pledgor/pledgee, pledge and release
-quantities, percentage fields and an opaque pledge-event description.
-
-The provider selects this endpoint only for the explicit request view
-`view=equity_mortgage`, passes the documented date or default, validates every
-returned listing code and any populated announcement date, filters the
-universe to the requested A-share code and retains every matching row. The
-query date is preserved as a request boundary; the multiple announcement
-dates and event descriptions do not establish one canonical pledge or
-accounting period. The documented quantities and ratios also do not establish
-a fully diluted share count, settled pledged cash/debt-equivalent amount,
-beneficial control or a governance judgment. The normalizer therefore emits
-`AKSHARE_EQUITY_MORTGAGE_RAW_ONLY`, marks `governance_risk_level` as critically
-missing and creates no canonical fact. H-share coverage and filing-backed
-pledge interpretation remain unresolved. Live calls remain opt-in; tests use
-an injected client and a frozen fixture.
-
-### Phase 2.37 â€” SZSE margin-detail raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented Shenzhen
-`stock_margin_detail_szse` endpoint under the existing `MARGIN_TRADING`
-category. The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
-defines an exact `date` in `YYYYMMDD` form and a full SZSE security universe
-with explicit security code/name, financing balances and financing/short-sale
-quantities. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_margin_szse.py)
-passes the requested date to the SZSE report request and returns the published
-columns in a tabular response; unlike the SSE detail response, the documented
-SZSE rows do not contain a row-level observation date.
-
-The provider supports Shenzhen A-share identifiers, passes the exact
-requested date, validates every returned security code, filters the universe
-to the requested listing and retains the matching row with endpoint, date and
-row-count provenance. The requested date remains the binding observation
-boundary in metadata; the adapter does not add a synthetic date field to the
-upstream rows.
-
-The response describes customer financing against a security, not the
-issuer's reported financial debt, cash or a settled issuer accounting period.
-The normalizer therefore retains the structured evidence, marks
-`financial_debt` as critically missing and emits
-`AKSHARE_MARGIN_TRADING_RAW_ONLY`; it creates no canonical debt, cash,
-leverage, margin or valuation fact. Market-level margin summaries and
-filing-backed interpretation remain outside this slice. Live
-calls remain opt-in; tests use an injected client and a frozen fixture.
-
-### Phase 2.38 â€” A-share shareholder-count raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented CNINFO
-`stock_hold_num_cninfo` endpoint under the existing
-`SHAREHOLDER_HOLDINGS` category. The [AKShare stock-data
-documentation](https://akshare.akfamily.xyz/data/stock/stock.html) defines an
-exact quarter-end `date` in `YYYYMMDD` form, from `20170331` onward, and the
-[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hold_num_cninfo.py)
-returns the full A-share universe with explicit code/name, `å˜åŠ¨æ—¥æœŸ`, current
-and prior shareholder counts, count change percentage, current and prior
-average holdings and average-holdings change percentage.
-
-The provider selects this endpoint when a `date` parameter is supplied, checks
-that the date is a supported exact quarter end and validates every returned
-listing code and row date against the request. It filters the full response to
-the requested A-share listing and preserves the selected row, requested date,
-observation date and upstream/selected row counts as raw provenance. The
-existing no-parameter `stock_main_stock_holder` route remains unchanged.
-
-The response's counts, average holdings and change percentages remain raw
-structured evidence: they do not establish a canonical shareholder
-concentration metric, beneficial-control or governance judgment, or a
-company-level diluted-share series. The normalizer emits
-`AKSHARE_SHAREHOLDER_COUNTS_RAW_ONLY`, leaves `governance_risk_level`
-critically missing and creates no canonical fact. H-share shareholder-count
-coverage and filing-backed interpretation remain unresolved. Live calls remain
-opt-in; tests use an injected client and a frozen fixture.
-
-### Phase 2.39 â€” BSE margin-detail raw acquisition contract (COMPLETE)
-
-The mapping review now covers the current documented Beijing Stock Exchange
-`stock_margin_detail_bse` endpoint under the existing `MARGIN_TRADING`
-category. The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
-defines an exact `date` in `YYYYMMDD` form and a full BSE security universe
-with explicit security code/name, financing balances and financing/short-sale
-quantities. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_margin_bse.py)
-passes the requested date to the BSE detail request, paginates the published
-response and returns the documented columns.
-
-The provider supports Beijing A-share identifiers, passes the exact requested
-date, validates every returned security code, filters the universe to the
-requested listing and retains the matching row with endpoint, request-date and
-row-count provenance. The documented BSE rows do not contain a row-level
-observation date, so the request date is preserved as the binding observation
-boundary in metadata rather than added to the opaque payload.
-
-The response describes customer financing against a security, not the issuer's
-reported financial debt, cash or a settled issuer accounting period. The
-normalizer therefore retains the structured evidence, marks `financial_debt`
-as critically missing and emits `AKSHARE_MARGIN_TRADING_RAW_ONLY`; it creates
-no canonical debt, cash, leverage, margin or valuation fact. Market-level
-margin summaries and filing-backed interpretation remain unresolved. Live
-calls remain opt-in; tests use an injected client and a frozen fixture.
-
-### Phase 2.40 â€” A/H HSGT individual-holdings raw acquisition contract (COMPLETE)
-
-The mapping review now covers the current documented AKShare Eastmoney
-`stock_hsgt_individual_em` endpoint under the existing
-`SHAREHOLDER_HOLDINGS` category. The [AKShare stock-data
-documentation](https://akshare.akfamily.xyz/data/stock/stock.html) defines a
-symbol input supporting A-share and H-share listings and publishes dated
-holdings, closing price, holding quantity, holding market value, holding-ratio
-and change fields. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hsgt_em.py)
-dispatches six-digit symbols to the A-share response and five-digit symbols to
-the H-share response; it removes the row-level security identity from the
-published output, so the request scope is the retained entity boundary.
-
-The provider selects this endpoint only for the explicit request
-`view=hsgt_individual`, passes the canonical six- or five-digit listing code,
-validates each row's holding date and any optional returned identity, and
-retains the complete symbol-scoped response with listing and row-count
-provenance. The data is an investor north-/southbound holding snapshot rather
-than a complete beneficial-ownership record or company share-capital series.
-Its quantities, market values, ratios and change fields therefore do not
-establish beneficial control, governance severity, shareholder concentration,
-issuer buyback/issuance cash or a fully diluted share count.
-
-The normalizer emits `AKSHARE_HSGT_INDIVIDUAL_HOLDINGS_RAW_ONLY`, marks
-`governance_risk_level` as critically missing and creates no canonical
-ownership, concentration, share-count, dilution, buyback, issuance, return or
-valuation fact. The documented dataset is bounded by its published coverage
-and its A/H field conventions are not collapsed into one canonical metric.
-Live calls remain opt-in; tests use injected clients and frozen A/H fixtures.
-
-### Phase 2.41 â€” A-share actual-controller holding-change raw acquisition contract (COMPLETE)
-
-The mapping review now covers the current documented AKShare CNINFO
-`stock_hold_control_cninfo` endpoint under the existing
-`SHAREHOLDER_HOLDINGS` category. The [AKShare stock-data
-documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and [official
-implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hold_control_cninfo.py)
-define an A-share full-universe response selected by `symbol`, with control
-scopes `å•ç‹¬æŽ§åˆ¶`, `å®žé™…æŽ§åˆ¶äºº`, `ä¸€è‡´è¡ŒåŠ¨äºº`, `å®¶æ—æŽ§åˆ¶` and `å…¨éƒ¨`. The
-published fields are security identity, `å˜åŠ¨æ—¥æœŸ`, actual/direct controller
-names, `æŽ§è‚¡æ•°é‡`, `æŽ§è‚¡æ¯”ä¾‹` and `æŽ§åˆ¶ç±»åž‹`.
-
-The provider selects this endpoint only for the explicit request
-`view=control_changes`, defaults to the documented `symbol=å…¨éƒ¨` universe (or
-passes the requested `control_type`), validates every upstream code and change
-date, filters the universe to the requested A-share listing and retains the
-control scope and row-count provenance. The normalizer emits
-`AKSHARE_CONTROL_HOLDINGS_RAW_ONLY`, leaves `governance_risk_level` critically
-missing and creates no canonical ownership, control, concentration,
-share-count, dilution or valuation fact. Filing-backed legal and point-in-time
-interpretation remains a later concern. Live calls remain opt-in; tests use an
-injected client and a frozen fixture with cache replay and invalid-scope/
-response-validation coverage.
-
-### Phase 2.42 â€” A-share management-holding raw acquisition contract (COMPLETE)
-
-The mapping review now covers the current documented AKShare Eastmoney
-`stock_hold_management_detail_em` endpoint under the existing
-`INSIDER_SHARE_CHANGES` category. The [AKShare stock-data
-documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and [official
-implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hold_control_em.py)
-define a no-argument full management/related-person holding-change universe.
-Its published fields are `æ—¥æœŸ`, `ä»£ç `, `åç§°`, `å˜åŠ¨äºº`, `å˜åŠ¨è‚¡æ•°`, `æˆäº¤å‡ä»·`,
-`å˜åŠ¨é‡‘é¢`, `å˜åŠ¨åŽŸå› `, `å˜åŠ¨æ¯”ä¾‹`, `å˜åŠ¨åŽæŒè‚¡æ•°`, `æŒè‚¡ç§ç±»`,
-`è‘£ç›‘é«˜äººå‘˜å§“å`, `èŒåŠ¡`, `å˜åŠ¨äººä¸Žè‘£ç›‘é«˜çš„å…³ç³»`, `å¼€å§‹æ—¶æŒæœ‰` and
-`ç»“æŸåŽæŒæœ‰`.
-
-The provider selects this endpoint only for the explicit request
-`view=management_detail`, passes no upstream arguments, validates every
-returned listing code and `æ—¥æœŸ`, filters the full response to the requested
-A-share listing and retains endpoint/view and row-count provenance. The
-normalizer emits `AKSHARE_MANAGEMENT_HOLDINGS_RAW_ONLY`, leaves
-`governance_risk_level` critically missing and creates no canonical share,
-dilution, buyback, issuance, ownership, return or valuation fact. Live calls
-remain opt-in; tests use an injected client and a frozen fixture with cache
-replay, invalid-parameter, response-validation and replay-scope coverage.
-
-### Phase 2.43 â€” A-share individual-info raw share snapshot (COMPLETE)
-
-The mapping review now covers the current documented Eastmoney
-[`stock_individual_info_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
-endpoint and its [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_info_em.py).
-It accepts a six-digit A-share `symbol` and returns an `item/value` snapshot
-with `è‚¡ç¥¨ä»£ç `, `è‚¡ç¥¨ç®€ç§°`, `æ€»è‚¡æœ¬`, `æµé€šè‚¡`, `æ€»å¸‚å€¼`, `æµé€šå¸‚å€¼`, `è¡Œä¸š`,
-`ä¸Šå¸‚æ—¶é—´` and `æœ€æ–°`. The provider selects it only for the explicit
-`SHARE_CAPITAL` request `view=individual_info`, passes the six-digit code,
-validates the returned code and any populated listing date, and retains the
-complete response with listing/view/snapshot provenance.
-
-The documented snapshot does not establish a canonical reporting period,
-amount unit/scaling or fully diluted economic-share scope. The normalizer
-therefore emits `AKSHARE_INDIVIDUAL_INFO_RAW_ONLY`, marks
-`normalized_diluted_economic_shares` as critically missing and creates no
-canonical share, market-cap or valuation fact. Live calls remain opt-in; tests
-use an injected client and a frozen fixture with cache replay, invalid-
-parameter, response-validation and replay-scope coverage.
-
-### Phase 2.44 â€” A-share individual-fund-flow raw acquisition contract (COMPLETE)
-
-The mapping review now covers the current documented AKShare Eastmoney
-[`stock_individual_fund_flow`](https://akshare.akfamily.xyz/data/stock/stock.html)
-endpoint and its [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_fund_em.py).
-It accepts a six-digit A-share `stock` code and a `market` selector of `sh`,
-`sz` or `bj`, and returns approximately 100 recent trading-day rows with the
-documented date, close-price, return, net-amount and net-percentage columns.
-The provider derives the market selector from the requested A-share identity,
-passes both documented arguments, validates optional row identity plus exact
-observation dates, and records the observed range and listing-scoped
-provenance.
-
-The daily investor-flow aggregates and close-price context do not establish
-issuer operating cash flow, an accounting period, a canonical liquidity metric
-or a valuation fact. The normalizer therefore retains the complete response as
-raw evidence, emits `AKSHARE_INDIVIDUAL_FUND_FLOW_RAW_ONLY` and creates no
-canonical fact. Live calls remain opt-in; tests use an injected client and a
-frozen fixture with cache replay, invalid-parameter, response-validation and
-replay-scope coverage.
-
-### Phase 2.45 â€” A-share top-ten-shareholder raw acquisition contract (COMPLETE)
-
-The mapping review now covers the current Eastmoney
-[`stock_gdfx_top_10_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
-endpoint and its [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_gdfx_em.py).
-It accepts a market-prefixed A-share `symbol` and an exact quarter-end `date`
-such as `20240930`, returning the documented top-ten rows with rank, holder,
-share type, holding quantity, total-share ratio and change fields.
-
-The provider selects this boundary only with the explicit
-`SHAREHOLDER_HOLDINGS` request `view=top_10`, validates the quarter-end report
-date plus rank/holder identity, preserves the request date and symbol scope and
-retains the provider's raw row fields without inventing a row-level code or
-filing date. The normalizer emits
-`AKSHARE_TOP_10_SHAREHOLDERS_RAW_ONLY`, leaves `governance_risk_level`
-critically missing and creates no beneficial-control, concentration, share,
-dilution or valuation fact. Live calls remain opt-in; tests use an injected
-client and a frozen fixture with cache replay, invalid-parameter,
-response-validation and replay-scope coverage.
-
-### Phase 2.46 â€” A-share top-ten-tradable-shareholder raw acquisition contract (COMPLETE)
-
-The mapping review now covers the current Eastmoney
-[`stock_gdfx_free_top_10_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
-endpoint and its [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_gdfx_em.py).
-It accepts a market-prefixed A-share `symbol` and an exact quarter-end `date`
-such as `20240930`, returning the documented top-ten-tradable rows with rank,
-holder, holder type, share type, holding quantity, float-share ratio and change
-fields.
-
-The provider selects this boundary only with the explicit
-`SHAREHOLDER_HOLDINGS` request `view=free_top_10`, validates the quarter-end
-date plus rank/holder identity, preserves the request date and symbol scope and
-retains the provider's raw row fields without inventing a row-level listing
-code or filing date. The normalizer emits
-`AKSHARE_FREE_TOP_10_SHAREHOLDERS_RAW_ONLY`, leaves
-`governance_risk_level` critically missing and creates no beneficial-control,
-concentration, share, dilution or valuation fact. Live calls remain opt-in;
-tests use an injected client and a frozen fixture with cache replay,
-invalid-parameter, response-validation and replay-scope coverage.
-
-### Phase 2.47 â€” A-share top-ten-tradable-shareholder detail raw acquisition contract (COMPLETE)
-
-The mapping review now covers the current Eastmoney
-[`stock_gdfx_free_holding_detail_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
-endpoint and its [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_gdfx_em.py).
-It accepts an exact quarter-end `date` such as `20240930` and returns the
-documented full-universe top-ten-tradable-holder detail rows with listing code,
-holder identity/type, report period, holding quantity/change, float-market value
-and announcement date fields.
-
-The provider selects this boundary only with the explicit
-`SHAREHOLDER_HOLDINGS` request `view=free_holding_detail`, passes the upstream
-`date`, validates every returned listing code and holder plus the exact report
-period and optional announcement date, and filters the universe to the
-requested A-share listing. It preserves the raw report-period holding detail
-without treating announcement dates as filing contents or canonical ownership,
-concentration, share or dilution facts. The normalizer emits
-`AKSHARE_FREE_HOLDING_DETAIL_RAW_ONLY`, leaves `governance_risk_level`
-critically missing and creates no canonical fact. Live calls remain opt-in;
-tests use an injected client and a frozen fixture with cache replay,
-invalid-parameter, response-validation and replay-scope coverage.
-
-### Phase 2.48 â€” A-share Dragon-Tiger market-activity raw acquisition contract (COMPLETE)
-
-The mapping review now covers the current Eastmoney
-[`stock_lhb_detail_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
-endpoint and its [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_lhb_em.py).
-It accepts explicit inclusive `start_date` and `end_date` values in `YYYYMMDD`
-form and returns the documented full-universe listing-day Dragon-Tiger detail
-rows: listing identity, activity labels, close/return context, amount/ratio
-fields, turnover/float-market-value context, listing reasons and post-listing
-return columns.
-
-The provider selects this boundary under the new provider-neutral
-`MARKET_ACTIVITY` category for A-share listings only, validates every returned
-listing code and `ä¸Šæ¦œæ—¥` against the requested range, and filters the
-full-universe response to the requested listing. The normalizer emits
-`AKSHARE_MARKET_ACTIVITY_RAW_ONLY`; no canonical market, issuer cash-flow,
-shareholder-return, governance or valuation fact is admitted. Post-listing
-returns remain forward-looking raw evidence and are never used as as-of facts.
-Live calls remain opt-in; tests use an injected client and a frozen fixture with
-cache replay, invalid-parameter, response-validation and replay-scope coverage.
-
-### Phase 2.49 â€” A-share Dragon-Tiger stock-statistic raw acquisition contract (COMPLETE)
-
-The mapping review now covers the current Eastmoney
-[`stock_lhb_stock_statistic_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
-endpoint and its [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_lhb_em.py).
-It accepts an explicit statistic window represented by the documented
-`symbol` choices `è¿‘ä¸€æœˆ`, `è¿‘ä¸‰æœˆ`, `è¿‘å…­æœˆ` and `è¿‘ä¸€å¹´`, and returns the
-full-universe per-listing Dragon-Tiger statistics: recent listing date,
-listing count, activity amount aggregates, institution-activity aggregates and
-trailing return context.
-
-The provider selects this boundary under the existing provider-neutral
-`MARKET_ACTIVITY` category only with `view=stock_statistic`, maps the explicit
-`period` to the upstream `symbol`, validates every returned listing code and
-`æœ€è¿‘ä¸Šæ¦œæ—¥`, and filters the full-universe response to the requested A-share
-listing. The normalizer emits
-`AKSHARE_MARKET_ACTIVITY_STATISTICS_RAW_ONLY`; no issuer cash-flow,
-shareholder-return, governance, canonical market or valuation fact is
-admitted. The statistic window and trailing returns remain provider context,
-not as-of calculation inputs. Live calls remain opt-in; tests use an injected
-client and a frozen fixture with cache replay, invalid-parameter,
-response-validation and replay-scope coverage.
-
-### Phase 2.50 â€” A-share Dragon-Tiger institution-statistic raw acquisition contract (COMPLETE)
-
-The mapping review now covers the distinct Eastmoney
-[`stock_lhb_jgstatistic_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
-endpoint and its [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_lhb_em.py).
-It accepts an explicit statistic window represented by the documented `symbol`
-choices `è¿‘ä¸€æœˆ`, `è¿‘ä¸‰æœˆ`, `è¿‘å…­æœˆ` and `è¿‘ä¸€å¹´`, and returns full-universe
-per-listing institution-seat tracking rows with Dragon-Tiger amount/count
-fields and trailing return context.
-
-The provider selects this boundary under the existing provider-neutral
-`MARKET_ACTIVITY` category only with `view=institution_statistic`, maps the
-explicit `period` to the upstream `symbol`, validates every returned listing
-code and filters the full-universe response to the requested A-share listing.
-The normalizer emits
-`AKSHARE_MARKET_ACTIVITY_INSTITUTION_STATISTICS_RAW_ONLY`; no issuer
-cash-flow, shareholder-return, governance, canonical market or valuation fact
-is admitted. The statistic window and trailing returns remain provider
-context, not as-of calculation inputs. Live calls remain opt-in; tests use an
-injected client and a frozen fixture with cache replay, invalid-parameter,
-response-validation and replay-scope coverage.
-
-### Phase 2.51 â€” A-share five-level bid-ask raw acquisition contract (COMPLETE)
-
-The mapping review now covers the distinct Eastmoney
-[`stock_bid_ask_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
-endpoint and its [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_ask_bid_em.py).
-It accepts a six-digit A-share `symbol` and returns the documented fixed
-36-row `item`/`value` response: five ask levels, five bid levels and intraday
-quote context.
-
-The provider selects this boundary under the existing provider-neutral
-`MARKET_QUOTE` category only with explicit `view=bid_ask` for Shanghai and
-Shenzhen A-share listings. It passes the normalized listing code, validates
-the exact item vocabulary and numeric/null values, preserves the full
-listing-scoped response and records view/symbol/current-snapshot replay scope.
-The normalizer emits `AKSHARE_BID_ASK_RAW_ONLY`; the order-book and quote
-context do not become canonical current-price, liquidity or valuation facts
-because the response has no stable observation timestamp. Live calls remain
-opt-in; tests use an injected client and a frozen fixture with cache replay,
-invalid-parameter, response-validation and replay-scope coverage.
-
-### Phase 2.52 â€” A-share intraday-history raw acquisition contract (COMPLETE)
-
-The mapping review now covers the distinct Eastmoney
-[`stock_zh_a_hist_min_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
-endpoint and its [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hist_em.py).
-It accepts a six-digit A-share `symbol`, explicit `start_date` and `end_date`
-datetimes, a documented interval of `1`, `5`, `15`, `30` or `60` minutes and
-an adjustment choice of empty string, `qfq` or `hfq`. The official response
-shape differs for the one-minute interval (`å‡ä»·`) and the other intervals
-(change, amplitude and turnover fields).
-
-The provider selects this endpoint only under the existing provider-neutral
-`MARKET_HISTORY` category with explicit `view=intraday`, passes the normalized
-listing code and effective range/interval/adjustment, validates the
-period-specific field set, finite numeric values, ascending timestamps and
-requested range, and records the complete listing-scoped response plus its
-replay scope. The normalizer emits
-`AKSHARE_INTRADAY_HISTORY_RAW_ONLY`; minute-bar interval, adjustment mode and
-the documented recent-data limitation do not establish the canonical daily
-history contract or a valuation input. Live calls remain opt-in; tests use
-injected clients and frozen fixtures with cache replay, invalid-parameter,
-response-validation and replay-scope coverage.
-
-### Phase 2.53 â€” A-share pre-market-history raw acquisition contract (COMPLETE)
-
-The mapping review now covers the distinct Eastmoney
-[`stock_zh_a_hist_pre_min_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
-endpoint and its [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hist_em.py).
-It accepts a six-digit A-share `symbol` plus `start_time` and `end_time`
-time-of-day bounds, and returns the most recent trading day's minute rows
-including pre-market observations. The response contains timestamp, OHLC,
-volume, turnover and latest-price fields.
-
-The provider selects this endpoint only under the existing provider-neutral
-`MARKET_HISTORY` category with explicit `view=pre_market`, passes the normalized
-listing code and effective time window, validates the exact response shape,
-finite numeric values, one trading date, ascending timestamps and requested
-time range, and records the complete listing-scoped response plus its replay
-scope. The normalizer emits
-`AKSHARE_PRE_MARKET_HISTORY_RAW_ONLY`; the latest-day time-of-day snapshot does
-not establish the canonical daily history contract or a valuation input. Live
-calls remain opt-in; tests use an injected client and a frozen fixture with
-cache replay, invalid-parameter, response-validation and replay-scope
-coverage.
-
-### Phase 2.54 â€” A-share Sina minute-history raw acquisition contract (COMPLETE)
-
-The mapping review now covers the distinct Sina
-[`stock_zh_a_minute`](https://akshare.akfamily.xyz/data/stock/stock.html)
-endpoint and its [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_zh_a_sina.py).
-It accepts a market-prefixed A-share `symbol`, a documented minute interval of
-`1`, `5`, `15`, `30` or `60`, and an adjustment mode of empty string, `qfq` or
-`hfq`. The response contains timestamped `day`, OHLC, volume and amount rows
-for a recent provider window.
-
-The provider selects this endpoint only under the existing provider-neutral
-`MARKET_HISTORY` category with explicit `view=sina_minute`, derives the
-market-prefixed symbol from the requested listing, validates the exact response
-shape, finite numeric/null values and strictly ascending timestamps, and
-records the complete listing-scoped response plus its interval, adjustment and
-recent-window replay scope. The normalizer emits
-`AKSHARE_SINA_MINUTE_HISTORY_RAW_ONLY`; the provider-window minute bars do not
-establish the canonical daily history contract or a valuation input. Live calls
-remain opt-in; tests use an injected client and a frozen fixture with cache
-replay, invalid-parameter, response-validation and replay-scope coverage.
-
-### Phase 2.55 â€” A-share Tencent daily-history acquisition contract (COMPLETE)
-
-The mapping review now covers the distinct Tencent
-[`stock_zh_a_hist_tx`](https://akshare.akfamily.xyz/data/stock/stock.html)
-endpoint and its [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hist_tx.py).
-It accepts a market-prefixed or six-digit A-share `symbol`, `start_date`
-defaulting to `19000101`, `end_date` defaulting to `20500101`, and an
-adjustment mode of empty string, `qfq` or `hfq`. The response contains dated
-OHLC rows plus `volume` in shares, decimal `turnover` and `amount` in yuan.
-
-The provider selects this endpoint only under the existing provider-neutral
-`MARKET_HISTORY` category with explicit `view=tencent_daily`, derives the
-market-prefixed symbol, applies and records the effective date/adjustment
-scope, validates the exact response shape, finite numeric/null values,
-strictly ascending dates and inclusive requested range, and preserves the
-complete raw response for replay. Because the response is a dated daily
-series, the normalizer maps the existing daily-history extension facts with
-`shares` volume and `CNY` amount units; the provider turnover ratio remains
-raw evidence and does not introduce a new canonical metric or valuation input.
-Live calls remain opt-in; tests use an injected client and a frozen fixture
-with cache replay, invalid-parameter, response-validation and replay-scope
-coverage.
-
-### Phase 2.56 â€” A-share Tencent latest-trading-day tick acquisition contract (COMPLETE)
-
-The mapping review now covers the distinct Tencent historical-tick endpoint
-documented as
-[`stock_zh_a_tick_tx`](https://akshare.akfamily.xyz/data/stock/stock.html)
-and implemented by the current official source as
-[`stock_zh_a_tick_tx_js`](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_zh_a_tick_tx.py).
-It accepts one market-prefixed A-share `symbol` and returns the latest
-available trading day's time-only trade rows. The documented output contains
-trade time, price, price change, volume in lots, amount in yuan and a buy/sell
-marker; the current source names the amount column `æˆäº¤é‡‘é¢` while the
-documentation table labels it `æˆäº¤é¢`.
-
-The provider selects this callable only under the existing provider-neutral
-`MARKET_HISTORY` category with explicit `view=tencent_tick`, derives the
-market-prefixed symbol, validates one exact documented/source amount-column
-variant, finite numeric/null values, integer volume/amount values, recognized
-trade sides and non-decreasing time order, and records the complete
-listing-scoped response plus its time-only replay scope. The normalizer emits
-`AKSHARE_TENCENT_TICK_RAW_ONLY`; because the response has no trading date and
-only represents a latest-day tick snapshot, it creates no canonical daily
-history, liquidity or valuation fact. Live calls remain opt-in; tests use an
-injected client and a frozen fixture with cache replay, invalid-parameter,
-response-validation and replay-scope coverage.
-
-### Phase 2.57 â€” H-share intraday-history raw acquisition contract (COMPLETE)
-
-The mapping review now covers the distinct Eastmoney H-share minute-history
-endpoint documented as
-[`stock_hk_hist_min_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
-and implemented by the current official source in
-[`stock_hist_em.py`](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hist_em.py).
-It accepts an unprefixed six-digit H-share `symbol`, an explicit
-`start_date`/`end_date` datetime range, a `period` of `1`, `5`, `15`, `30` or
-`60`, and an adjustment mode of empty string, `qfq` or `hfq`. Period `1`
-returns `æ—¶é—´`, OHLC, `æˆäº¤é‡`, `æˆäº¤é¢` and `æœ€æ–°ä»·`; the other documented
-periods return `æ—¶é—´`, OHLC, change fields, `æˆäº¤é‡`, `æˆäº¤é¢`, `æŒ¯å¹…` and
-`æ¢æ‰‹çŽ‡`.
-
-The provider selects this callable only under the existing provider-neutral
-`MARKET_HISTORY` category with explicit `view=hk_intraday`, passes the
-unprefixed H-share code and effective range/interval/adjustment, validates the
-exact period-specific fields, finite numeric/null values, strict timestamp
-ordering and inclusive range, and records the listing, symbol, request scope,
-schema mode and `shares`/`HKD_per_share`/`HKD` units for replay. The normalizer
-emits `AKSHARE_HK_INTRADAY_HISTORY_RAW_ONLY`; recent H-share minute bars remain
-raw evidence and do not become canonical daily-history, liquidity or valuation
-facts. Live calls remain opt-in; tests use an injected client and frozen
-period-specific fixtures with cache replay, invalid-parameter,
-response-validation, raw-only and replay-scope coverage.
-
-### Phase 2.58 â€” A-share chip-distribution raw acquisition contract (COMPLETE)
-
-The mapping review now covers the distinct Eastmoney chip-distribution endpoint
-documented as
-[`stock_cyq_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
-and implemented by the current [official source](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_cyq_em.py).
-It accepts an A-share six-digit `symbol` and an adjustment mode of empty string,
-`qfq` or `hfq`, and returns the latest approximately 90 trading days using the
-exact fields `æ—¥æœŸ`, `èŽ·åˆ©æ¯”ä¾‹`, `å¹³å‡æˆæœ¬`, `90æˆæœ¬-ä½Ž`, `90æˆæœ¬-é«˜`, `90é›†ä¸­åº¦`,
-`70æˆæœ¬-ä½Ž`, `70æˆæœ¬-é«˜` and `70é›†ä¸­åº¦`.
-
-The provider selects this callable only under the existing provider-neutral
-`MARKET_HISTORY` category with explicit `view=chip_distribution`, passes the
-unprefixed A-share code and adjustment mode, validates the exact response shape,
-finite numeric/null values, ISO dates in strict ascending order and the maximum
-90-row window, and records the listing, symbol, adjustment, row limit and
-observed date bounds for replay. The normalizer emits
-`AKSHARE_CHIP_DISTRIBUTION_RAW_ONLY`; provider-defined benefit, cost and
-concentration values remain raw evidence and create no canonical daily-history,
-liquidity, concentration or valuation fact. Live calls remain opt-in; tests use
-an injected client and a frozen fixture with cache replay, invalid-parameter,
-response-validation, raw-only and replay-scope coverage.
-
-### Phase 2.59 â€” A-share market-participation desire raw acquisition contract (COMPLETE)
-
-The mapping review now covers the distinct Eastmoney market-participation-desire
-endpoint documented as
-[`stock_comment_detail_scrd_desire_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
-and implemented by the current [official source](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_comment_em.py).
-It accepts an A-share six-digit `symbol` and returns the exact fields `äº¤æ˜“æ—¥æœŸ`,
-`è‚¡ç¥¨ä»£ç `, `å‚ä¸Žæ„æ„¿`, `5æ—¥å¹³å‡å‚ä¸Žæ„æ„¿`, `å‚ä¸Žæ„æ„¿å˜åŒ–` and `5æ—¥å¹³å‡å˜åŒ–`;
-the current implementation requests a maximum 30-row window and orders the
-response by `äº¤æ˜“æ—¥æœŸ`.
-
-The provider selects this callable only under the existing provider-neutral
-`MARKET_ACTIVITY` category with explicit `view=participation_desire`, passes the
-unprefixed A-share code, validates the exact response shape, listing identity,
-finite numeric/null values, strict ascending ISO dates and the maximum 30-row
-window, and records the listing, symbol, row limit and observed date bounds for
-replay. The normalizer emits
-`AKSHARE_MARKET_PARTICIPATION_DESIRE_RAW_ONLY`; provider-defined participation
-scores and changes remain raw evidence and create no canonical market,
-issuer-cash-flow, shareholder-return, governance or valuation fact. Live calls
-remain opt-in; tests use an injected client and a frozen fixture with cache
-replay, invalid-parameter, response-validation, raw-only and replay-scope
-coverage.
-
-### Phase 2.60 â€” A-share Eastmoney intraday-trade raw acquisition contract (COMPLETE)
-
-The mapping review now covers the distinct Eastmoney intraday-trade endpoint
-documented as
-[`stock_intraday_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
-and implemented by the current [official source](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_intraday_em.py).
-It accepts an A-share six-digit `symbol` and returns the latest trading day's
-time-only fields `æ—¶é—´`, `æˆäº¤ä»·`, `æ‰‹æ•°` and `ä¹°å–ç›˜æ€§è´¨`, including pre-market
-observations.
-
-The provider selects this callable only under the existing provider-neutral
-`MARKET_HISTORY` category with explicit `view=intraday_trades`, passes the
-unprefixed A-share code, validates the exact response shape, finite numeric/null
-prices, integer/null lot counts, recognized trade sides and non-decreasing
-times, and records the listing, symbol, latest-day snapshot, time-only date
-binding and observed time bounds for replay. The normalizer emits
-`AKSHARE_INTRADAY_TRADES_RAW_ONLY`; without a trading date, provider trade
-prices and lot counts remain raw evidence and create no canonical daily-history,
-liquidity, order-flow or valuation fact. Live calls remain opt-in; tests use an
-injected client and a frozen fixture with cache replay, invalid-parameter,
-response-validation, raw-only and replay-scope coverage.
-
-### Phase 2.61 â€” A-share Eastmoney stock hot-rank raw acquisition contract (COMPLETE)
-
-The mapping review now covers the distinct Eastmoney stock-popularity endpoint
-documented as
-[`stock_hot_rank_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
-and implemented by the current [official source](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hot_rank_em.py).
-It accepts no upstream arguments and returns the current-trading-day top-100
-A-share popularity rows with `å½“å‰æŽ’å`, market-prefixed `ä»£ç `, `è‚¡ç¥¨åç§°`,
-`æœ€æ–°ä»·`, `æ¶¨è·Œé¢` and `æ¶¨è·Œå¹…`.
-
-The provider selects this callable only under the existing provider-neutral
-`MARKET_ACTIVITY` category with explicit `view=hot_rank`, validates the exact
-field set, A-share listing identity, unique strictly ascending ranks, finite
-numeric/null quote fields and the maximum 100-row window, and filters the full
-universe to the requested listing while retaining the current-day, retrieval-
-only date boundary in response metadata. The normalizer emits
-`AKSHARE_HOT_RANK_RAW_ONLY`; popularity ordering and quote context remain raw
-evidence and create no canonical market, issuer-cash-flow, shareholder-return,
-governance or valuation fact. Live calls remain opt-in; tests use an injected
-client and a frozen fixture with cache replay, invalid-parameter,
-response-validation, raw-only and replay-scope coverage.
-
-### Phase 2.62 â€” A+H Eastmoney quote-comparison raw acquisition contract (COMPLETE)
-
-The mapping review now covers the distinct Eastmoney A+H comparison endpoint
-documented as
-[`stock_zh_ah_spot_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
-and implemented by the current [official source](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hsgt_em.py).
-It accepts no upstream arguments and returns the full A+H comparison snapshot
-with the exact fields `åºå·`, `åç§°`, `Hè‚¡ä»£ç `, `æœ€æ–°ä»·-HKD`, `Hè‚¡-æ¶¨è·Œå¹…`,
-`Aè‚¡ä»£ç `, `æœ€æ–°ä»·-RMB`, `Aè‚¡-æ¶¨è·Œå¹…`, `æ¯”ä»·` and `æº¢ä»·`; the documentation
-describes the quote as delayed by 15 minutes.
-
-The provider selects this callable only under the existing provider-neutral
-`MARKET_QUOTE` category with explicit `view=ah_comparison`, validates the exact
-field set, five-/six-digit H/A codes, unique strictly ascending sequence and
-finite numeric/null price, change, ratio and premium values, and filters the
-full response by the requested A- or H-share code. It records the side-specific
-code field, units, delayed current-day snapshot, retrieval-only date binding
-and filtered row counts for replay. The normalizer emits
-`AKSHARE_AH_COMPARISON_RAW_ONLY`; cross-market values remain raw evidence
-because the response has no stable observation timestamp and does not establish
-canonical current price, FX, comparison, valuation or calculation facts. Live
-calls remain opt-in; tests use an injected client and a frozen fixture with
-cache replay, invalid-parameter, response-validation, raw-only and replay-scope
-coverage.
-
-### Phase 2.63 â€” A-share Eastmoney dividend-distribution detail raw acquisition contract (COMPLETE)
-
-The mapping review now covers the distinct Eastmoney A-share dividend-distribution
-detail endpoint documented as
-[`stock_fhps_detail_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
-and implemented by the current [official source](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_fhps_em.py).
-It accepts a six-digit A-share `symbol` and returns the exact 19 fields
-`æŠ¥å‘ŠæœŸ`, `ä¸šç»©æŠ«éœ²æ—¥æœŸ`, distribution and cash-ratio fields, per-share
-indicators, `æ€»è‚¡æœ¬`, and announcement/record/ex-rights/progress dates.
-
-The provider selects this callable only under the existing provider-neutral
-`DIVIDENDS` category with explicit `view=event_detail`, passes the unprefixed
-A-share code, validates the exact field set, strictly ascending report periods,
-valid optional event dates, finite numeric/null values, non-negative integer
-share counts and string/null status fields, and records the upstream symbol,
-row counts, historical-detail scope and row-date binding for replay. The
-normalizer emits `AKSHARE_A_DIVIDEND_DETAIL_RAW_ONLY`; distribution ratios,
-event plans, per-share indicators and share-count context remain raw evidence
-because they do not establish settled ordinary dividend cash or a canonical
-payout denominator. Live calls remain opt-in; tests use an injected client and
-a frozen fixture with cache replay, invalid-parameter, response-validation,
-raw-only and replay-scope coverage.
-
-### Phase 2.64 â€” A-share CNINFO IPO-summary raw acquisition contract (COMPLETE)
-
-The mapping review now covers the distinct CNINFO A-share IPO-summary endpoint
-documented as
-[`stock_ipo_summary_cninfo`](https://akshare.akfamily.xyz/data/stock/stock.html)
-and implemented by the current [official source](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_ipo_summary_cninfo.py).
-It accepts a six-digit A-share `symbol` and returns the exact fields
-`è‚¡ç¥¨ä»£ç `, `æ‹›è‚¡å…¬å‘Šæ—¥æœŸ`, `ä¸­ç­¾çŽ‡å…¬å‘Šæ—¥`, `æ¯è‚¡é¢å€¼`, `æ€»å‘è¡Œæ•°é‡`,
-`å‘è¡Œå‰æ¯è‚¡å‡€èµ„äº§`, `æ‘Šè–„å‘è¡Œå¸‚ç›ˆçŽ‡`, `å‹Ÿé›†èµ„é‡‘å‡€é¢`, `ä¸Šç½‘å‘è¡Œæ—¥æœŸ`,
-`ä¸Šå¸‚æ—¥æœŸ`, `å‘è¡Œä»·æ ¼`, `å‘è¡Œè´¹ç”¨æ€»é¢`, `å‘è¡ŒåŽæ¯è‚¡å‡€èµ„äº§`,
-`ä¸Šç½‘å‘è¡Œä¸­ç­¾çŽ‡` and `ä¸»æ‰¿é”€å•†`.
-
-The provider selects this callable only under the existing provider-neutral
-`CORPORATE_ACTIONS` category with explicit `view=ipo_summary`, passes the
-unprefixed A-share code, requires one exact symbol-matching row, validates
-optional dates, finite numeric/null fields and string/null underwriter text,
-and records the view, symbol, row counts, historical scope and row-date
-binding for replay. The normalizer emits
-`AKSHARE_IPO_SUMMARY_RAW_ONLY`, marks `share_issuance_cash` critically missing
-and creates no canonical issuance, dilution or share fact. Live calls remain
-opt-in; tests use an injected client and frozen fixture coverage for cache
-replay, invalid requests, response validation, raw-only normalization and
-replayed-scope validation.
-
-### Phase 2.65 â€” A-share Eastmoney new-stock-board raw acquisition contract (COMPLETE)
-
-The mapping review now covers the distinct Eastmoney A-share new-stock-board
-endpoint documented as
-[`stock_zh_a_new_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
-and implemented by the current [official source](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_zh_a_special.py).
-It accepts no upstream arguments and returns the exact fields `åºå·`, `ä»£ç `,
-`åç§°`, `æœ€æ–°ä»·`, `æ¶¨è·Œå¹…`, `æ¶¨è·Œé¢`, `æˆäº¤é‡`, `æˆäº¤é¢`, `æŒ¯å¹…`, `æœ€é«˜`, `æœ€ä½Ž`,
-`ä»Šå¼€`, `æ˜¨æ”¶`, `é‡æ¯”`, `æ¢æ‰‹çŽ‡`, `å¸‚ç›ˆçŽ‡-åŠ¨æ€` and `å¸‚å‡€çŽ‡`.
-
-The provider selects this callable only under the existing provider-neutral
-`MARKET_ACTIVITY` category with explicit `view=new_stock`, validates the exact
-field set, six-digit A-share identity, unique positive sequence numbers,
-finite numeric/null quote fields and non-empty names, and filters the current
-trading-day universe to the requested listing. The normalizer emits
-`AKSHARE_NEW_STOCKS_RAW_ONLY`; the retrieval-only quote snapshot does not
-establish a dated listing, return, valuation, governance or canonical market
-fact. Live calls remain opt-in; tests use an injected client and a frozen
-fixture with cache replay, invalid-parameter, response-validation, raw-only
-and replay-scope coverage.
-
-### Phase 2.66 â€” A-share Eastmoney individual-notice raw acquisition contract (COMPLETE)
-
-The mapping review now covers the distinct Eastmoney A-share individual-notice
-endpoint documented as
-[`stock_individual_notice_report`](https://akshare.akfamily.xyz/data/stock/stock.html)
-and implemented by the current [official source](https://github.com/akfamily/akshare/blob/main/akshare/stock_fundamental/stock_notice.py).
-It accepts the listing `security`, category `symbol` (default `å…¨éƒ¨`) and
-optional `begin_date`/`end_date` bounds, and returns the exact fields `ä»£ç `,
-`åç§°`, `å…¬å‘Šæ ‡é¢˜`, `å…¬å‘Šç±»åž‹`, `å…¬å‘Šæ—¥æœŸ` and `ç½‘å€`.
-
-The provider selects this callable only under the existing provider-neutral
-`DISCLOSURE_NOTICES` category with explicit `view=individual_notice`, maps the
-category and optional `YYYYMMDD` request bounds to the official upstream names,
-validates the exact six-field response, six-digit requested-listing identity,
-non-empty text, valid dates/URLs and inclusive range, and records the upstream
-listing scope and replay metadata. The normalizer emits
-`AKSHARE_INDIVIDUAL_NOTICES_RAW_ONLY`, marks `accounting_opinion` and
-`governance_risk_level` critically missing and creates no filing-derived fact.
-Live calls remain opt-in; tests use an injected client and a frozen fixture with
-cache replay, invalid-parameter, response-validation, raw-only and
-replay-scope coverage.
-
-### Phase 2.67 â€” A-share Eastmoney market-focus raw acquisition contract (COMPLETE)
-
-The mapping review now covers the distinct Eastmoney A-share market-focus
-endpoint documented as
-[`stock_comment_detail_scrd_focus_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
-and implemented by the current [official source](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_comment_em.py).
-It accepts a six-digit `symbol`, requests a 30-row latest trading-day window,
-and returns the exact fields `äº¤æ˜“æ—¥` and `ç”¨æˆ·å…³æ³¨æŒ‡æ•°`.
-
-The provider selects this callable only under the existing provider-neutral
-`MARKET_ACTIVITY` category with explicit `view=focus`, passes the unprefixed
-listing code, validates the exact two-field response, strict ascending ISO
-dates, finite numeric/null values and the official 30-row maximum, and records
-the symbol, latest-window scope and observed date bounds for replay. The
-normalizer emits `AKSHARE_MARKET_FOCUS_RAW_ONLY`; provider-defined user-attention
-scores remain raw evidence and create no canonical market, issuer-cash-flow,
-shareholder-return, governance or valuation fact. Live calls remain opt-in;
-tests use an injected client and a frozen fixture with cache replay, invalid-
-parameter, response-validation, raw-only and replay-scope coverage.
-
-### Phase 2.68 â€” A-share Eastmoney institution-participation raw acquisition contract (COMPLETE)
-
-The mapping review now covers the distinct Eastmoney A-share institution-
-participation endpoint documented as
-[`stock_comment_detail_zlkp_jgcyd_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
-and implemented by the current [official source](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_comment_em.py).
-It accepts a six-digit `symbol`, retrieves the symbol's historical series and
-returns the exact fields `äº¤æ˜“æ—¥` and `æœºæž„å‚ä¸Žåº¦`; the implementation publishes
-the participation value in percent.
-
-The provider selects this callable only under the existing provider-neutral
-`MARKET_ACTIVITY` category with explicit `view=institution_participation`, passes
-the unprefixed listing code, validates the exact two-field response, strict
-ascending ISO dates and finite numeric/null percentage values, and records the
-symbol, value unit and observed date bounds for replay. The normalizer emits
-`AKSHARE_MARKET_INSTITUTION_PARTICIPATION_RAW_ONLY`; provider-defined
-institution-participation percentages remain raw evidence and create no
-canonical market, issuer-cash-flow, shareholder-return, governance or valuation
-fact. Live calls remain opt-in; tests use an injected client and a frozen
-fixture with cache replay, invalid-parameter, response-validation, raw-only and
-replay-scope coverage.
-
-### Phase 2.69 â€” A-share Eastmoney limit-up-pool raw acquisition contract (COMPLETE)
-
-The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
-documents `stock_zt_pool_em` as the Eastmoney A-share limit-up-pool endpoint;
-the [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_ztb_em.py)
-confirms that it accepts a required `YYYYMMDD` `date` for recent data and
-returns the exact 16 fields `åºå·`, `ä»£ç `, `åç§°`, `æ¶¨è·Œå¹…`, `æœ€æ–°ä»·`, `æˆäº¤é¢`,
-`æµé€šå¸‚å€¼`, `æ€»å¸‚å€¼`, `æ¢æ‰‹çŽ‡`, `å°æ¿èµ„é‡‘`, `é¦–æ¬¡å°æ¿æ—¶é—´`, `æœ€åŽå°æ¿æ—¶é—´`,
-`ç‚¸æ¿æ¬¡æ•°`, `æ¶¨åœç»Ÿè®¡`, `è¿žæ¿æ•°` and `æ‰€å±žè¡Œä¸š`.
-
-The provider selects this callable only under `MARKET_ACTIVITY` with explicit
-`view=limit_up_pool`, passes the requested trading date unchanged, validates the
-full response before filtering it to the requested A-share listing, and binds
-the request date, observation-date interpretation, exact fields, six-digit
-codes, strictly ascending rank, `HHMMSS` lock times, `days/ct` statistics and
-finite numeric/null values into replay metadata. Empty listing matches remain
-valid while preserving upstream and selected row counts.
-
-The normalizer emits `AKSHARE_LIMIT_UP_POOL_RAW_ONLY`; quote, limit-up activity,
-provider ranking and market-cap fields remain structured evidence only and do
-not establish issuer cash flow, shareholder return, governance, valuation or a
-canonical market metric. No calculation, gate, pipeline, CLI or input-loader
-contract is changed. Live calls remain opt-in; tests use an injected client and
-a frozen fixture with cache replay, invalid-request, response-validation,
-raw-only and replay-scope coverage.
-
-### Phase 2.70 â€” A-share Eastmoney latest stock-hot-rank raw acquisition contract (COMPLETE)
-
-The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
-documents `stock_hot_rank_latest_em` as the Eastmoney A-share latest-rank
-endpoint; the [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hot_rank_em.py)
-confirms that it accepts a market-prefixed `symbol` and returns the exact
-`item`/`value` table for `marketType`, `marketAllCount`, `calcTime`, `innerCode`,
-`srcSecurityCode`, `rank`, `rankChange`, `hisRankChange`, `hisRankChange_rank`
-and `flag`.
-
-The provider selects this callable only under `MARKET_ACTIVITY` with explicit
-`view=hot_rank_latest`, passes the requested market-prefixed A-share symbol,
-validates the exact ten-row response, item uniqueness, symbol identity,
-`calcTime` timestamp and integer/null values, and binds the upstream symbol,
-current-day latest-rank scope, row counts and row-derived observation time into
-replay metadata.
-
-The normalizer emits `AKSHARE_HOT_RANK_LATEST_RAW_ONLY`; provider popularity
-rank and timing remain structured evidence only and do not establish issuer
-cash flow, shareholder return, governance, valuation or a canonical market
-metric. No calculation, gate, pipeline, CLI or input-loader contract is
-changed. Live calls remain opt-in; tests use an injected client and a frozen
-fixture with cache replay, invalid-request, response-validation, raw-only and
-replay-scope coverage.
-
-### Phase 2.71 â€” A-share Xueqiu individual-spot quote acquisition contract (COMPLETE)
-
-The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
-documents `stock_individual_spot_xq` as a symbol-scoped Xueqiu A-share quote
-endpoint; the [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_xq.py)
-confirms a market-prefixed `symbol`, optional Xueqiu token/timeout arguments
-and a two-column `item`/`value` response containing the mapped `çŽ°ä»·` and
-`æ—¶é—´` items.
-
-The provider selects this callable only under `MARKET_QUOTE` with explicit
-`view=xueqiu_spot`, derives and passes the requested market-prefixed A-share
-symbol, deliberately excludes credentials and timeout controls from the
-provider request/cache identity, validates the documented item allowlist,
-unique item/value rows, code identity, finite numeric values and quote
-timestamp, and records the symbol-scoped current-quote replay metadata.
-
-The existing canonical quote contract maps only `çŽ°ä»·` to `current_price` and
-`æ—¶é—´` to `market_quote_timestamp`; all other Xueqiu fields remain opaque raw
-evidence. No calculation, gate, pipeline, CLI or input-loader contract is
-changed. Live calls remain opt-in; tests use an injected client and a frozen
-fixture with cache replay, invalid-request, response-validation, canonical
-mapping and replay-scope coverage.
-
-### Phase 2.72 â€” A-share Xueqiu company-profile raw acquisition contract (COMPLETE)
-
-The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
-documents `stock_individual_basic_info_xq` as a symbol-scoped Xueqiu A-share
-company-profile endpoint; the [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_fundamental/stock_basic_info_xq.py)
-confirms a market-prefixed `symbol`, optional Xueqiu token/timeout arguments
-and an `item`/`value` profile response.
-
-The provider selects this callable only under `COMPANY_METADATA` with explicit
-`view=xueqiu_basic_info`, derives and passes the requested market-prefixed
-A-share symbol, deliberately excludes credentials and timeout controls from
-the provider request/cache identity, validates the exact two-field response,
-documented item allowlist, required profile identifiers, scalar values, the
-documented `affiliate_industry` object and finite numeric date/asset/personnel/
-issuance fields, and records the symbol-scoped company-profile snapshot for
-replay.
-
-The normalizer emits `AKSHARE_XUEQIU_BASIC_INFO_RAW_ONLY`; descriptive,
-registration, personnel, control and provider-specific date fields remain raw
-evidence and do not become canonical company or listing facts. No calculation,
-gate, pipeline, CLI or input-loader contract is changed. Live calls remain
-opt-in; tests use an injected client and a frozen fixture with cache replay,
-invalid-request, response-validation, raw-only and replay-scope coverage.
-
-### Phase 2.73 â€” A-share CNINFO company-profile raw acquisition contract (COMPLETE)
-
-The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
-documents `stock_profile_cninfo` as a symbol-scoped CNINFO A-share
-company-profile endpoint; the [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_profile_cninfo.py)
-passes the six-digit `symbol` as `scode` and returns the documented 26 profile
-fields.
-
-The provider selects this callable only under `COMPANY_METADATA` with explicit
-`view=cninfo_profile`, passes the unprefixed six-digit A-share code, validates
-the exact single-row field set, A-share code identity, scalar/null values and
-valid date-or-null profile values, and records the symbol-scoped current company-profile
-snapshot for replay.
-
-The normalizer emits `AKSHARE_CNINFO_PROFILE_RAW_ONLY`; descriptive,
-registration, contact and provider-specific date fields remain raw evidence
-and do not become canonical company or listing facts. No calculation, gate,
-pipeline, CLI or input-loader contract is changed. Live calls remain opt-in;
-tests use an injected client and a frozen fixture with cache replay,
-invalid-request, response-validation, raw-only and replay-scope coverage.
-
-### Phase 2.74 â€” A-share Tonghuashun main-business-introduction raw acquisition contract (COMPLETE)
-
-The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
-documents `stock_zyjs_ths` as a symbol-scoped Tonghuashun A-share
-main-business-introduction endpoint; the [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_fundamental/stock_zyjs_ths.py)
-passes the six-digit `symbol` to the upstream operate page and returns the
-documented five fields `è‚¡ç¥¨ä»£ç `, `ä¸»è¥ä¸šåŠ¡`, `äº§å“ç±»åž‹`, `äº§å“åç§°` and `ç»è¥èŒƒå›´`.
-
-The provider selects this callable only under `COMPANY_METADATA` with explicit
-`view=business_intro`, passes the unprefixed six-digit A-share code, validates
-the exact single-row field set, A-share code identity and string/null values,
-and records the symbol-scoped current business-introduction snapshot for
-replay.
-
-The normalizer emits `AKSHARE_BUSINESS_INTRO_RAW_ONLY`; descriptive business,
-product and operating-scope text remains raw evidence and does not become
-canonical revenue, core-business or Business Quality facts. No calculation,
-gate, pipeline, CLI or input-loader contract is changed. Live calls remain
-opt-in; tests use an injected client and a frozen fixture with cache replay,
-invalid-request, response-validation, raw-only and replay-scope coverage. No
-H-share counterpart is added because the selected documented slice is
-A-share-only.
-
-### Phase 2.75 â€” A-share Eastmoney ownership-pledge market-profile raw acquisition contract (COMPLETE)
-
-The current [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
-documents `stock_gpzy_profile_em` as an A-share Eastmoney market-wide
-historical ownership-pledge profile; the [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_gpzy_em.py)
-accepts no upstream arguments and returns the exact eight fields `äº¤æ˜“æ—¥æœŸ`,
-`Aè‚¡è´¨æŠ¼æ€»æ¯”ä¾‹`, `è´¨æŠ¼å…¬å¸æ•°é‡`, `è´¨æŠ¼ç¬”æ•°`, `è´¨æŠ¼æ€»è‚¡æ•°`, `è´¨æŠ¼æ€»å¸‚å€¼`,
-`æ²ªæ·±300æŒ‡æ•°` and `æ¶¨è·Œå¹…`. The implementation converts its percent ratio to
-a fraction by dividing by 100 before returning the table, so the adapter
-preserves that source-returned scale and records it explicitly.
-
-The provider selects this callable only under `OWNERSHIP_PLEDGE` with explicit
-`view=market_profile`, passes no upstream arguments, validates the exact row
-shape and strictly ascending `äº¤æ˜“æ—¥æœŸ` values, and retains the complete
-market-wide response. The requested A-share listing is provenance context only:
-the response has no issuer identity, so no listing-row filtering or entity-row
-selection is claimed. The normalizer emits
-`AKSHARE_OWNERSHIP_PLEDGE_PROFILE_RAW_ONLY`, leaves
-`governance_risk_level` critically missing and creates no canonical pledge,
-governance, cash, debt-equivalent or share fact. No H-share counterpart or
-calculation, gate, pipeline, CLI or input-loader contract is added. Live calls
-remain opt-in; tests use an injected client and a frozen fixture with cache
-replay, invalid-request, strict-response, raw-only and replay-scope coverage.
-
-### Phase 2.76 â€” A-share Eastmoney goodwill market-profile raw acquisition contract (COMPLETE)
-
-The mapping review now covers the next distinct documented AKShare Eastmoney
-goodwill view, `stock_sy_profile_em`, under the existing
-`GOODWILL_IMPAIRMENT` category. The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
-describes a no-argument A-share market overview returning all historical rows;
-the [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_sy_em.py)
-returns the exact eight fields `æŠ¥å‘ŠæœŸ`, `å•†èª‰`, `å•†èª‰å‡å€¼`, `å‡€èµ„äº§`,
-`å•†èª‰å å‡€èµ„äº§æ¯”ä¾‹`, `å•†èª‰å‡å€¼å å‡€èµ„äº§æ¯”ä¾‹`, `å‡€åˆ©æ¶¦è§„æ¨¡` and
-`å•†èª‰å‡å€¼å å‡€åˆ©æ¶¦æ¯”ä¾‹`, with amount columns in yuan and provider ratios.
-
-The provider selects this callable only with explicit `view=market_profile`,
-passes no upstream arguments, validates the exact row shape, finite
-numeric/null values and strictly ascending report periods, and retains the
-complete market-wide response. The requested A-share listing is provenance
-context only: the response has no issuer identity, so no row filtering or
-entity selection is claimed. The normalizer emits
-`AKSHARE_GOODWILL_PROFILE_RAW_ONLY`, marks `goodwill` and `impairment` as
-critically missing and creates no canonical accounting, profit, ratio or
-business-quality fact. Aggregate values mix annual and interim report periods
-and require primary-filing entity, scope and reconciliation review. H-share
-goodwill coverage remains outside this slice. Live calls remain opt-in; tests
-use an injected client and a frozen fixture with cache replay, invalid-request,
-strict-response, raw-only and replay-scope coverage.
-
-### Phase 2.77 â€” A-share Eastmoney goodwill-impairment forecast raw acquisition contract (COMPLETE)
-
-The mapping review now covers the next distinct documented AKShare Eastmoney
-goodwill view, `stock_sy_yq_em`, under the existing
-`GOODWILL_IMPAIRMENT` category. The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
-describes a required report-date `date` and the [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_sy_em.py)
-filters `REPORT_DATE` before returning the exact 14 fields `åºå·`, `è‚¡ç¥¨ä»£ç `,
-`è‚¡ç¥¨ç®€ç§°`, `ä¸šç»©å˜åŠ¨åŽŸå› `, `æœ€æ–°å•†èª‰æŠ¥å‘ŠæœŸ`, `æœ€æ–°ä¸€æœŸå•†èª‰`, `ä¸Šå¹´å•†èª‰`,
-`é¢„è®¡å‡€åˆ©æ¶¦-ä¸‹é™`, `é¢„è®¡å‡€åˆ©æ¶¦-ä¸Šé™`, `ä¸šç»©å˜åŠ¨å¹…åº¦-ä¸‹é™`,
-`ä¸šç»©å˜åŠ¨å¹…åº¦-ä¸Šé™`, `ä¸Šå¹´åº¦åŒæœŸå‡€åˆ©æ¶¦`, `å…¬å‘Šæ—¥æœŸ` and `äº¤æ˜“å¸‚åœº`.
-The documented amount fields are primarily yuan and the change-range fields
-are percent values; both remain provider-reported raw context.
-
-The provider selects this callable only with explicit
-`view=impairment_forecast`, passes the validated `date=YYYYMMDD`, validates
-the complete universe's exact schema, positive ascending sequence, nullable
-dates/numbers and text fields, then filters to the requested A-share code.
-Replay metadata distinguishes the request-period filter from the separate
-`æœ€æ–°å•†èª‰æŠ¥å‘ŠæœŸ` field and records the market-wide upstream scope plus
-provider row filtering. The normalizer emits
-`AKSHARE_GOODWILL_FORECAST_RAW_ONLY`, marks `goodwill` and `impairment` as
-critically missing and creates no canonical forecast, profit, accounting,
-ratio or Business Quality fact. Provider expectations and goodwill context
-still require primary-filing entity, period and reconciliation review; H-share
-goodwill coverage remains outside this slice. Live calls remain opt-in; tests
-use an injected client and a frozen fixture with cache replay, invalid-request,
-strict-response, raw-only and replay-scope coverage.
-
-### Phase 2.78 â€” A-share Sina intraday-trade raw acquisition contract (COMPLETE)
-
-The mapping review now covers the distinct documented AKShare Sina
-`stock_intraday_sina` endpoint under the existing `MARKET_HISTORY` category.
-The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
-defines a market-prefixed `symbol` and required `date` in `YYYYMMDD` form; the
-[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_intraday_sina.py)
-returns the exact seven fields `symbol`, `name`, `ticktime`, `price`, `volume`,
-`prev_price` and `kind` for large intraday orders on the requested trading day.
-The documented kind examples are `U`, `D` and `E`.
-
-The provider selects this callable only with explicit `view=intraday_sina`,
-derives the lower-case market-prefixed symbol from the requested A-share
-listing, passes the validated date unchanged, and rejects H-share requests or
-extra parameters. It validates the exact response shape, requested symbol,
-non-empty names, `HH:MM:SS` times in non-decreasing order, recognized kind
-values and finite numeric/null price/volume fields with integer/null volume.
-Replay metadata binds the requested date to the listing-scoped response while
-recording that the rows themselves expose only time-of-day observations.
-
-The normalizer emits `AKSHARE_SINA_INTRADAY_RAW_ONLY`, marks `market_history`
-as critically missing and creates no canonical daily-history, liquidity,
-order-flow or valuation fact: even with a requested date, the row schema does
-not carry a row-level trading date or a supported canonical mapping. Live calls
-remain opt-in; tests use an injected client and a frozen fixture with cache
-replay, invalid-request, exact-schema, response-validation, raw-only and
-replay-scope coverage. No calculation, gate, pipeline, CLI or input-loader
-contract changes.
-
-### Phase 2.79 â€” A-share Eastmoney goodwill-detail raw acquisition contract (COMPLETE)
-
-The mapping review now covers the distinct documented AKShare Eastmoney
-`stock_sy_em` endpoint under the existing `GOODWILL_IMPAIRMENT` category. The
-[AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
-and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_sy_em.py)
-define a required `date=YYYYMMDD` report-date filter and the exact ten fields
-`åºå·`, `è‚¡ç¥¨ä»£ç `, `è‚¡ç¥¨ç®€ç§°`, `å•†èª‰`, `å•†èª‰å å‡€èµ„äº§æ¯”ä¾‹`, `å‡€åˆ©æ¶¦`,
-`å‡€åˆ©æ¶¦åŒæ¯”`, `ä¸Šå¹´å•†èª‰`, `å…¬å‘Šæ—¥æœŸ` and `äº¤æ˜“å¸‚åœº`. Amounts are primarily
-in yuan and ratios remain provider-reported values.
-
-The provider selects this callable only with explicit
-`view=goodwill_detail`, supports A-share listings only, passes the validated
-date unchanged, validates the complete market-wide response before selecting
-the requested listing, and records request-period, provider-filter, sequence,
-unit and exact-field replay metadata. It rejects missing or unexpected fields,
-non-positive/non-ascending sequence values, invalid populated dates, non-finite
-or non-numeric numeric values and invalid text values. No matching listing is
-retained as an empty raw snapshot.
-
-The normalizer emits `AKSHARE_GOODWILL_DETAIL_RAW_ONLY`, marks `goodwill` and
-`impairment` as critically missing and creates no canonical accounting, profit,
-ratio or Business Quality fact: aggregator amounts, ratios, profit context and
-announcement metadata require primary-filing entity, accounting scope and
-reconciliation review. H-share goodwill coverage remains outside this slice.
-Live calls remain opt-in; tests use an injected client and a frozen fixture with
-cache replay, invalid-request, exact-schema, response-validation, raw-only and
-replay-scope coverage. No calculation, gate, pipeline, CLI or input-loader
-contract changes.
-
-### Phase 2.80 â€” A-share Eastmoney market-wide notice raw acquisition contract (COMPLETE)
-
-The mapping review now covers the distinct documented AKShare Eastmoney
-`stock_notice_report` endpoint under the existing `DISCLOSURE_NOTICES` category.
-The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
-and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_fundamental/stock_notice.py)
-define the category choices for `symbol`, a required `date=YYYYMMDD` and the
-exact six fields `ä»£ç `, `åç§°`, `å…¬å‘Šæ ‡é¢˜`, `å…¬å‘Šç±»åž‹`, `å…¬å‘Šæ—¥æœŸ` and `ç½‘å€`.
-
-The provider selects this callable only with explicit `view=market_notice`,
-supports A-share listings only, passes the selected category and validated date
-to the upstream function, validates the complete market-wide response before
-selecting the requested listing, and records the request date, row date,
-provider-filter and market-universe scope for replay. It rejects missing or
-unexpected fields, non-six-digit codes, blank text, invalid URLs and any row
-whose `å…¬å‘Šæ—¥æœŸ` does not match the requested date. An empty listing selection
-is retained as an explicit empty raw snapshot.
-
-The normalizer emits `AKSHARE_MARKET_NOTICES_RAW_ONLY`, marks
-`accounting_opinion` and `governance_risk_level` as critically missing and
-creates no filing-content, accounting or governance fact: date-bound notice
-metadata identifies announcement candidates but does not establish their
-contents, audit language or governance severity. H-share notice coverage
-remains outside this slice. Live calls remain opt-in; tests use an injected
-client and a frozen fixture with cache replay, invalid-request, exact-schema,
-response-validation, raw-only and replay-scope coverage. No calculation, gate,
-pipeline, CLI or input-loader contract changes.
-
-### Phase 2.81 â€” A-share Eastmoney shareholder-meeting raw acquisition contract (COMPLETE)
-
-The mapping review now covers the distinct documented AKShare Eastmoney
-`stock_gddh_em` endpoint under the existing `DISCLOSURE_NOTICES` category. The
-[AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
-and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_gddh_em.py)
-define a no-argument current-published-data call and the exact twelve fields
-`ä»£ç `, `ç®€ç§°`, `è‚¡ä¸œå¤§ä¼šåç§°`, `å¬å¼€å¼€å§‹æ—¥`, `è‚¡æƒç™»è®°æ—¥`, `çŽ°åœºç™»è®°æ—¥`,
-`ç½‘ç»œæŠ•ç¥¨æ—¶é—´-å¼€å§‹æ—¥`, `ç½‘ç»œæŠ•ç¥¨æ—¶é—´-ç»“æŸæ—¥`, `å†³è®®å…¬å‘Šæ—¥`, `å…¬å‘Šæ—¥`,
-`åºåˆ—å·` and `ææ¡ˆ`.
-
-The provider selects this callable only with explicit
-`view=shareholder_meeting`, supports A-share listings only, validates the
-complete market-wide response before selecting the requested listing, retains
-all matching rows and records field-order, event-date, provider-filter and
-selected/upstream-count metadata for replay. Nullable dates and proposal text
-are preserved, and an empty listing selection is retained as an explicit raw
-snapshot. No report-period or corporate-action date is inferred.
-
-The normalizer emits `AKSHARE_SHAREHOLDER_MEETINGS_RAW_ONLY`, marks
-`governance_risk_level` as critically missing and creates no canonical fact:
-meeting dates, proposals and announcement context do not establish a
-filing-backed governance judgment or corporate-action interpretation. H-share
-meeting coverage remains outside this slice. Live calls remain opt-in; tests use
-an injected client and a frozen fixture with cache replay, invalid-request,
-exact-schema, response-validation, raw-only and replay-scope coverage. No
-calculation, gate, pipeline, CLI or input-loader contract changes.
-
-### Phase 2.82 â€” H-share Eastmoney latest stock-hot-rank raw acquisition contract (COMPLETE)
-
-The mapping review now covers the distinct documented AKShare Eastmoney
-`stock_hk_hot_rank_latest_em` endpoint under the existing `MARKET_ACTIVITY`
-category. The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
-and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hk_hot_rank_em.py)
-define a symbol-scoped H-share latest-rank call using an unprefixed five-digit
-`symbol`, `marketType=000003` and the exact ten `item`/`value` items
-`marketType`, `marketAllCount`, `calcTime`, `innerCode`, `srcSecurityCode`,
-`rank`, `rankChange`, `hisRankChange`, `hisRankChange_rank` and `flag`.
-
-The provider selects this callable only with explicit `view=hot_rank_latest`,
-passes the requested H-share code such as `00700`, validates the exact response
-shape, item uniqueness, H-share identity, `calcTime` and integer/null values,
-and records the endpoint, symbol format, provider market type, current-day
-latest-rank scope, row counts and row-derived observation time for replay. The
-normalizer emits `AKSHARE_HK_HOT_RANK_LATEST_RAW_ONLY` and creates no canonical
-fact: popularity rank and provider timing remain raw evidence only. H-share
-latest-rank response handling stays outside calculations, gates, pipeline, CLI
-and input-loader contracts. Live calls remain opt-in; tests use the official-doc
-fixture with cache replay, market-specific request/response validation,
-raw-only normalization and replay-scope coverage.
-
-### Phase 2.83 â€” A-share Eastmoney limit-down-pool raw acquisition contract (COMPLETE)
-
-The mapping review now covers the distinct documented AKShare Eastmoney
-`stock_zt_pool_dtgc_em` endpoint under the existing `MARKET_ACTIVITY` category.
-The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
-and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_ztb_em.py)
-define a recent-data A-share limit-down-pool call with required `date=YYYYMMDD`
-and the exact fields `åºå·`, `ä»£ç `, `åç§°`, `æ¶¨è·Œå¹…`, `æœ€æ–°ä»·`, `æˆäº¤é¢`,
-`æµé€šå¸‚å€¼`, `æ€»å¸‚å€¼`, `åŠ¨æ€å¸‚ç›ˆçŽ‡`, `æ¢æ‰‹çŽ‡`, `å°å•èµ„é‡‘`, `æœ€åŽå°æ¿æ—¶é—´`,
-`æ¿ä¸Šæˆäº¤é¢`, `è¿žç»­è·Œåœ`, `å¼€æ¿æ¬¡æ•°` and `æ‰€å±žè¡Œä¸š`.
-
-The provider selects this callable only with explicit `view=limit_down_pool`,
-passes the requested date unchanged, validates the complete upstream universe
-before filtering by six-digit A-share code, and records the endpoint, source
-URI, requested/observed dates, row counts, provider filtering, rank field and
-strict ordering for cache replay. Validation rejects missing or extra fields,
-invalid codes, duplicate codes or ranks, non-ascending ranks, empty text,
-invalid `HHMMSS` lock times, non-finite values and non-integer activity
-counters. The checked-in fixture is a frozen real response snapshot for
-20260910.
-
-The normalizer emits `AKSHARE_LIMIT_DOWN_POOL_RAW_ONLY` and creates no
-canonical fact: quote, limit-down activity, provider ranking and market-cap
-fields remain raw evidence and do not establish issuer cash flow, shareholder
-return, governance, valuation or a canonical market metric. Live calls remain
-opt-in; tests cover explicit request validation, exact response schema,
-listing filtering including an empty selection, raw-only normalization,
-cache/raw replay and replay-scope metadata. No calculation, gate, pipeline,
-CLI or input-loader contract changes.
-
-### Phase 2.84 â€” A-share Eastmoney shareholder-count-detail raw acquisition contract (COMPLETE)
-
-The mapping review now covers the distinct documented AKShare
-`stock_zh_a_gdhs_detail_em` endpoint under the existing
-`SHAREHOLDER_HOLDINGS` category. The [AKShare stock-data
-documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and
-[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_gdhs.py)
-define a six-digit A-share `symbol`, the `RPT_HOLDERNUM_DET` report and the
-provider-neutral `view=holder_count_detail` selector. The adapter freezes the
-15-field response schema, including cut-off/announcement date semantics,
-integer count/share-base fields, provider-defined percent/value fields, code
-and name identity, and ascending row order by `è‚¡ä¸œæˆ·æ•°ç»Ÿè®¡æˆªæ­¢æ—¥`. The
-upstream request is frozen to `reportName=RPT_HOLDERNUM_DET`,
-`sortColumns=END_DATE`, descending source order with adapter-side ascending
-output, `pageSize=500` pagination, `quoteColumns=f2,f3`, `source=WEB`,
-`client=WEB` and the exact `SECURITY_CODE="{symbol}"` filter. Percent fields,
-integer holder/share-base fields and provider-reported raw value scales remain
-explicitly distinct; no currency conversion is inferred.
-
-The request passes only the upstream `symbol`, relies on Eastmoney's listing
-filter and records upstream scope, view, row counts and row-derived date range.
-Validation rejects missing/extra/reordered fields, identity mismatches,
-invalid dates, non-decreasing-order violations, wrong numeric types,
-non-finite values and invalid non-negative ranges. The checked-in fixture is a
-real 61-row official response snapshot for `600000` covering
-`2013-03-07` through `2026-06-30`. The normalizer emits
-`AKSHARE_SHAREHOLDER_COUNT_DETAIL_RAW_ONLY` and creates no canonical fact;
-holder counts, capital-change context and market-value fields do not establish
-concentration, governance, valuation or a diluted-share series. Tests cover
-positive fetch, request/field/type/range/date failures, raw-only normalization,
-cache replay and replay-scope rejection. No calculation, gate, pipeline, CLI or
-input-loader contract changes.
-
-### Phase 2.85 â€” A-share CNINFO management-holding-detail raw acquisition contract (COMPLETE)
-
-The mapping review now covers the distinct documented AKShare
-`stock_hold_management_detail_cninfo` endpoint under the existing
-`INSIDER_SHARE_CHANGES` category. The [AKShare stock-data
-documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and
-[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hold_control_cninfo.py)
-define `symbol` choices `å¢žæŒ` and `å‡æŒ`, a CNINFO `p_sysapi1030` request and a
-rolling near-one-year full universe. The adapter freezes the provider-neutral
-`view=cninfo_management_detail` plus explicit `direction` contract, maps
-direction to upstream `symbol`, validates the exact 16-field output order,
-six-digit codes, dates, finite numeric/null values and non-negative holdings,
-price and market-value ranges, and filters the universe to the requested
-A-share listing. Direction, rolling-window scope, units, source field order,
-row counts and observed cut-off-date bounds are retained for cache replay. The
-checked-in fixture contains eight rows copied from an official `å¢žæŒ` response,
-including selected and non-selected codes.
-
-The normalizer emits `AKSHARE_CNINFO_MANAGEMENT_HOLDINGS_RAW_ONLY` and creates
-no canonical fact: management person/role/relationship, transaction quantity,
-price, value, percentage and reason/source fields remain raw evidence and do not
-establish a diluted-share series, settled transaction cash or governance
-judgment. Tests cover positive fetch and filtering, explicit view/direction and
-market/parameter rejection, exact field order, type/date/range response
-failures, raw-only normalization, cache replay and replay-scope rejection. No
-calculation, gate, pipeline, CLI or input-loader contract changes.
-
-### Phase 2.86 â€” H-share Eastmoney historical stock-hot-rank raw acquisition contract (COMPLETE)
-
-The mapping review now covers the distinct documented AKShare Eastmoney
-`stock_hk_hot_rank_detail_em` endpoint under the existing `MARKET_ACTIVITY`
-category. The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
-and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hk_hot_rank_em.py)
-define an explicit H-share historical-rank call with an unprefixed five-digit
-`symbol`, provider `marketType=000003` and the exact output fields `æ—¶é—´`, `æŽ’å`
-and `è¯åˆ¸ä»£ç `.
-
-The provider selects this callable only with explicit
-`view=hk_hot_rank_detail`, supports H-share listings only, passes the requested
-five-digit symbol, validates the complete symbol-scoped response before retaining
-all rows and records the upstream symbol, market type, source field order,
-row counts, strict date ordering and observed date bounds for cache replay. It
-rejects missing, extra or reordered fields, invalid dates, duplicate or
-descending dates, wrong H-share identity and non-positive/non-integer ranks.
-The checked-in official response fixture for `00700` contains 120 rows covering
-`2026-05-15` through `2026-09-11`; no universe-level selected/non-selected row
-filter is applicable because the upstream request is already symbol-scoped.
-
-The normalizer emits `AKSHARE_HK_HOT_RANK_DETAIL_RAW_ONLY` and creates no
-canonical fact: date-bound popularity rank and provider security identity remain
-raw evidence only and do not establish issuer cash flow, shareholder return,
-governance, valuation or a canonical market metric. Tests cover explicit request
-and market validation, exact response shape, date/identity/rank failures,
-raw-only normalization, cache replay and replay-scope rejection. No calculation,
-gate, pipeline, CLI or input-loader contract changes.
-
-### Phase 2.87 â€” A-share Eastmoney A+B quote-comparison raw acquisition contract (COMPLETE)
-
-The mapping review now covers the distinct documented AKShare
-`stock_zh_ab_comparison_em` endpoint under the existing `MARKET_QUOTE`
-category. The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
-and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hist_em.py)
-define a no-argument A/B comparison universe with the exact output fields
-`åºå·`, `Bè‚¡ä»£ç `, `Bè‚¡åç§°`, `æœ€æ–°ä»·B`, `æ¶¨è·Œå¹…B`, `Aè‚¡ä»£ç `, `Aè‚¡åç§°`,
-`æœ€æ–°ä»·A`, `æ¶¨è·Œå¹…A` and `æ¯”ä»·`; the implementation divides the published
-quote/change/ratio values by 100 before returning the table.
-
-The provider selects this callable only with explicit `view=ab_comparison`,
-supports A-share listings only, validates the complete universe and official
-field order before filtering by the requested A-share code, and records the
-retrieval-only current-trading-day scope, field order, provider-reported
-per-share values, percent/ratio units and row counts for cache replay. The
-checked-in fixture preserves three official documentation sample rows with
-one selected and two non-selected A-share codes. The endpoint does not
-document the B-share currency, so no currency is invented.
-
-The normalizer emits `AKSHARE_AB_COMPARISON_RAW_ONLY` and creates no canonical
-fact: cross-share-class prices, changes and ratio remain raw evidence and do
-not establish current price, currency, comparison, valuation or calculation
-inputs. Tests cover explicit request and market/parameter validation, complete
-response validation before filtering, raw-only normalization, cache replay and
-replay-scope rejection. No calculation, gate, pipeline, CLI or input-loader
-contract changes.
-
-### Phase 2.88 â€” A-share Eastmoney historical stock-hot-rank raw acquisition contract (COMPLETE)
-
-The mapping review now covers the distinct documented AKShare
-`stock_hot_rank_detail_em` endpoint under the existing `MARKET_ACTIVITY`
-category. The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
-and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hot_rank_em.py)
-define a symbol-scoped A-share historical-rank call with market-prefixed
-`symbol=SZ000665`, `marketType=""` and the exact output fields `æ—¶é—´`, `æŽ’å`,
-`è¯åˆ¸ä»£ç `, `æ–°æ™‹ç²‰ä¸` and `é“æ†ç²‰ä¸` in source order. The official adapter
-obtains the rank and follower-rate components from its historical sources and
-divides the published percent rates by 100 into fractions.
-
-The provider selects this callable only with explicit
-`view=hot_rank_detail`, passes the requested market-prefixed symbol, validates
-the complete symbol-scoped payload before retaining it, and records the
-documented Eastmoney source URI
-`https://guba.eastmoney.com/rank/stock?code=000665`, source field order, rate
-units/scaling, row counts and observed date bounds for cache replay. It rejects
-missing/extra/reordered fields, invalid or duplicate/descending dates, a
-non-matching market-prefixed A-share identity, non-positive/non-integer ranks
-and non-finite or out-of-range follower ratios. The checked-in official
-snapshot contains 366 rows from `2025-09-11` through `2026-09-11`; because the
-upstream request is already listing-scoped, no selected/non-selected universe
-filter is applicable.
-
-The normalizer emits `AKSHARE_HOT_RANK_DETAIL_RAW_ONLY` and creates no
-canonical fact: date-bound popularity rank and follower ratios remain raw
-evidence only and do not establish issuer cash flow, shareholder return,
-governance, valuation or a canonical market metric. Tests cover explicit
-request and market/parameter validation, complete response validation,
-raw-only normalization, cache replay and replay-scope rejection. No
-calculation, gate, pipeline, CLI or input-loader contract changes.
-
-### Phase 2.89 â€” A-share Eastmoney IPO-yield raw acquisition contract (COMPLETE)
-
-The mapping review now covers the distinct documented AKShare
-`stock_dxsyl_em` endpoint under the existing `CORPORATE_ACTIONS` category with
-explicit `view=ipo_yield`. The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
-and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_dxsyl_em.py)
-define a no-argument Eastmoney A-share IPO-yield universe at
-`https://data.eastmoney.com/xg/xg/dxsyl.html` with the exact 17-field order
-`åºå·`, `è‚¡ç¥¨ä»£ç `, `è‚¡ç¥¨ç®€ç§°`, `å‘è¡Œä»·`, `æœ€æ–°ä»·`, `ç½‘ä¸Š-å‘è¡Œä¸­ç­¾çŽ‡`,
-`ç½‘ä¸Š-æœ‰æ•ˆç”³è´­è‚¡æ•°`, `ç½‘ä¸Š-æœ‰æ•ˆç”³è´­æˆ·æ•°`, `ç½‘ä¸Š-è¶…é¢è®¤è´­å€æ•°`, `ç½‘ä¸‹-é…å”®ä¸­ç­¾çŽ‡`,
-`ç½‘ä¸‹-æœ‰æ•ˆç”³è´­è‚¡æ•°`, `ç½‘ä¸‹-æœ‰æ•ˆç”³è´­æˆ·æ•°`, `ç½‘ä¸‹-é…å”®è®¤è´­å€æ•°`, `æ€»å‘è¡Œæ•°é‡`,
-`å¼€ç›˜æº¢ä»·`, `é¦–æ—¥æ¶¨å¹…` and `ä¸Šå¸‚æ—¥æœŸ`.
-
-The provider validates the complete upstream response before filtering to the
-requested six-digit A-share code. It preserves the source order, provider
-numeric/null values, row-level listing dates, documented percent/household
-units, source URI and full/selected row counts in replay metadata. The checked-in
-fixture contains three official response rows for `688801`, `301689` and
-`301699`, with one selected row and two non-selected rows. The normalizer emits
-`AKSHARE_IPO_YIELD_RAW_ONLY`, marks `share_issuance_cash` critically missing
-and creates no issuance, dilution, price, return or listing-date fact because
-the endpoint does not establish a settled issuance-cash period, unit or
-diluted-share scope. Tests cover request/market validation, exact schema and
-field order, complete-universe validation before filtering, raw-only
-normalization, cache replay and replay-scope rejection. No calculation, gate,
-pipeline, CLI or input-loader contract changes.
-
-### Phase 2.90 â€” A-share Eastmoney block-trade detail raw acquisition contract (COMPLETE)
-
-The mapping review now covers the distinct documented AKShare
-`stock_dzjy_mrmx` endpoint under the existing `MARKET_ACTIVITY` category with
-explicit `view=block_trade_detail`. The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
-and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_dzjy_em.py)
-define the A-share full-universe request parameters `symbol="Aè‚¡"`,
-`start_date` and `end_date`, returning the exact 13-field order `åºå·`, `äº¤æ˜“æ—¥æœŸ`,
-`è¯åˆ¸ä»£ç `, `è¯åˆ¸ç®€ç§°`, `æ¶¨è·Œå¹…`, `æ”¶ç›˜ä»·`, `æˆäº¤ä»·`, `æŠ˜æº¢çŽ‡`, `æˆäº¤é‡`, `æˆäº¤é¢`,
-`æˆäº¤é¢/æµé€šå¸‚å€¼`, `ä¹°æ–¹è¥ä¸šéƒ¨` and `å–æ–¹è¥ä¸šéƒ¨`.
-
-The provider validates every upstream row before filtering by the requested
-six-digit A-share code. It enforces the documented date-range binding, exact
-field order, six-digit security identity, strictly ascending sequence numbers,
-valid observation dates, finite numeric/null values and non-empty security and
-brokerage text. It records the Eastmoney source URI, upstream symbol, request
-dates, source field order, documented units (`æ¶¨è·Œå¹…`/`æˆäº¤é¢/æµé€šå¸‚å€¼` as
-percent, `æˆäº¤é‡` as shares and `æˆäº¤é¢` as CNY), unresolved price/discount
-units and full/selected row counts for cache replay. The checked-in fixture
-contains three source rows for `2026-09-10`, with two selected trades for
-`001335` and one non-selected `001309` trade.
-
-The normalizer emits `AKSHARE_BLOCK_TRADE_RAW_ONLY` and creates no canonical
-fact: date-bound trade prices, quantities, amounts, discount/premium and
-brokerage context do not establish issuer cash flow, shareholder return,
-governance, valuation or a canonical market metric. Tests cover explicit
-request and market/parameter validation, complete-universe validation before
-filtering, raw-only normalization, cache replay and replay-scope rejection. No
-calculation, gate, pipeline, CLI or input-loader contract changes.
-
-### Phase 2.91 â€” H-share Eastmoney main-board quote raw acquisition contract (COMPLETE)
-
-The mapping review now covers the distinct documented AKShare
-`stock_hk_main_board_spot_em` endpoint under the existing `MARKET_QUOTE`
-category with explicit `view=hk_main_board`. The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
-and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hist_em.py)
-define a no-argument Eastmoney H-share main-board universe at
-`https://quote.eastmoney.com/center/gridlist.html#hk_mainboard` with the exact
-12-field order `åºå·`, `ä»£ç `, `åç§°`, `æœ€æ–°ä»·`, `æ¶¨è·Œé¢`, `æ¶¨è·Œå¹…`, `ä»Šå¼€`, `æœ€é«˜`,
-`æœ€ä½Ž`, `æ˜¨æ”¶`, `æˆäº¤é‡` and `æˆäº¤é¢`. The documented units are HKD per share
-for prices/change amount, percent for change, shares for volume and HKD for
-turnover.
-
-The provider validates the complete upstream response before filtering to the
-requested five-digit H-share code. It enforces the official field order,
-strictly ascending positive sequence numbers, unique five-digit identities,
-non-empty names and finite numeric/null values, and records the main-board
-scope, source URI, units, source field order and full/selected row counts for
-cache replay. The checked-in fixture freezes three source-shaped rows with one
-selected listing.
-
-The official documentation describes this as a 15-minute-delayed realtime
-snapshot and does not provide a stable observation timestamp. The normalizer
-therefore emits `AKSHARE_HK_MAIN_BOARD_QUOTE_RAW_ONLY`, marks `current_price`
-critically missing and creates no canonical quote fact. Tests cover explicit
-request and market/parameter validation, exact schema and field order,
-complete-universe validation before filtering, raw-only normalization, cache
-replay and replay-scope rejection. No calculation, gate, pipeline, CLI or
-input-loader contract changes.
-
-### Phase 2.92 â€” SSE daily-deal overview raw acquisition contract (COMPLETE)
-
-The mapping review now covers the distinct documented AKShare
-`stock_sse_deal_daily` endpoint under the existing `MARKET_ACTIVITY` category
-with explicit `view=sse_deal_daily` and a required `date=YYYYMMDD`. The [AKShare
-stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
-and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_summary.py)
-define the SSE requested-trading-day overview and its final six-field order
-`å•æ—¥æƒ…å†µ`, `è‚¡ç¥¨`, `ä¸»æ¿A`, `ä¸»æ¿B`, `ç§‘åˆ›æ¿`, `è‚¡ç¥¨å›žè´­`. The implementation
-also defines the eight metric rows, orders them as `æŒ‚ç‰Œæ•°`, `å¸‚ä»·æ€»å€¼`,
-`æµé€šå¸‚å€¼`, `æˆäº¤é‡‘é¢`, `æˆäº¤é‡`, `å¹³å‡å¸‚ç›ˆçŽ‡`, `æ¢æ‰‹çŽ‡` and `æµé€šæ¢æ‰‹çŽ‡`,
-and supports dates from `20211227` onward.
-
-The provider validates the complete market-level response before retention,
-including exact field order, exact metric order and finite numeric-or-null
-values. It passes only the documented date to the no-symbol upstream call and
-records the SSE market scope, requested/observation date, field/metric order,
-the fact that no numeric units are documented, and non-listing row counts for
-cache replay. The checked-in fixture preserves the official documentation
-sample, including its explicit null average P/E value.
-
-The normalizer emits `AKSHARE_SSE_DEAL_DAILY_RAW_ONLY` and creates no canonical
-fact: exchange-wide aggregate counts, amounts, turnover, valuation and board
-breakdowns do not establish a requested listing's quote, issuer cash flow,
-shareholder return, governance, valuation or canonical market metric. Tests
-cover request/date validation, exact response shape and values, raw-only
-normalization, replay-scope rejection and cache replay. No calculation, gate,
-pipeline, CLI or input-loader contract changes.
-
-### Phase 2.93 â€” SSE market-summary raw acquisition contract (COMPLETE)
-
-The mapping review now covers the distinct documented AKShare `stock_sse_summary`
-endpoint under the existing `MARKET_ACTIVITY` category with explicit
-`view=sse_summary`. The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
-and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_summary.py)
-define a no-argument Shanghai Stock Exchange market summary with the eight
-metrics `æµé€šè‚¡æœ¬`, `æ€»å¸‚å€¼`, `å¹³å‡å¸‚ç›ˆçŽ‡`, `ä¸Šå¸‚å…¬å¸`, `ä¸Šå¸‚è‚¡ç¥¨`, `æµé€šå¸‚å€¼`,
-`æŠ¥å‘Šæ—¶é—´` and `æ€»è‚¡æœ¬`. The implementation emits the source-shaped field
-order `é¡¹ç›®`, `è‚¡ç¥¨`, `ä¸»æ¿`, `ç§‘åˆ›æ¿`; the adapter preserves that order and
-requires a consistent valid report date in the `æŠ¥å‘Šæ—¶é—´` row.
-
-The provider validates the complete market-level response before retention,
-including exact field and metric order, finite numeric-or-null values and the
-embedded report-date scope. It passes no arguments to the upstream callable and
-records the Shanghai Stock Exchange scope, source field/metric order, absence of
-documented numeric units and non-listing row counts for cache replay.
-
-The normalizer emits `AKSHARE_SSE_SUMMARY_RAW_ONLY` and creates no canonical
-fact: exchange-wide market/board aggregates do not establish a requested
-listing's quote, issuer cash flow, shareholder return, governance, valuation or
-canonical market metric. Tests cover explicit request validation, exact response
-shape/ordering/types, raw-only normalization, replay-scope rejection and cache
-replay. No calculation, gate, pipeline, CLI or input-loader contract changes.
-
-### Phase 2.94 â€” SZSE market-summary raw acquisition contract (COMPLETE)
-
-The mapping review now covers the distinct documented AKShare
-`stock_szse_summary` endpoint under the existing `MARKET_ACTIVITY` category
-with explicit `view=szse_summary` and a required `date=YYYYMMDD`. The [AKShare
-stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
-and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_summary.py)
-define the Shenzhen Stock Exchange securities-category report and its final
-five-field order `è¯åˆ¸ç±»åˆ«`, `æ•°é‡`, `æˆäº¤é‡‘é¢`, `æ€»å¸‚å€¼` and `æµé€šå¸‚å€¼`.
-The implementation passes the requested date to the SZSE report request and
-converts the numeric columns without filling missing market values.
-
-The provider validates every returned category row before retention, including
-exact field order, non-empty unique category labels, the required `è‚¡ç¥¨`
-category, non-negative integer security counts and finite non-negative numeric
-or null values. It passes only the normalized date to the upstream callable and
-records the Shenzhen market scope, request/observation date, returned category
-order, source field order, documented `æ•°é‡`/`æˆäº¤é‡‘é¢` units, undocumented
-market-value units and non-listing row counts for cache replay. The checked-in
-fixture preserves the official documentation sample, including null market
-values for categories where the source does not report them.
-
-The normalizer emits `AKSHARE_SZSE_SUMMARY_RAW_ONLY` and creates no canonical
-fact: exchange-wide security-category counts, transaction amounts and market
-values do not establish a requested listing's quote, issuer cash flow,
-shareholder return, governance, valuation or canonical market metric. Tests
-cover explicit request/date validation, exact fields and ordering, category
-and numeric validation, raw-only normalization, replay-scope rejection and
-cache replay. No calculation, gate, pipeline, CLI or input-loader contract
-changes.
-
-### Phase 2.95 â€” SZSE area-summary raw acquisition contract (COMPLETE)
-
-The mapping review now covers the distinct documented AKShare
-`stock_szse_area_summary` endpoint under the existing `MARKET_ACTIVITY`
-category with explicit `view=szse_area_summary` and required monthly
-`date=YYYYMM`. The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
-and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_summary.py)
-define a Shenzhen Stock Exchange region-ranked report with the source-shaped
-base fields `åºå·`, `åœ°åŒº`, `æ€»äº¤æ˜“é¢`, `å å¸‚åœº`, `è‚¡ç¥¨äº¤æ˜“é¢`, `åŸºé‡‘äº¤æ˜“é¢` and
-`å€ºåˆ¸äº¤æ˜“é¢`; the documentation also adds `ä¼˜å…ˆè‚¡äº¤æ˜“é¢` and `æœŸæƒäº¤æ˜“é¢`
-from 2025 onward. The adapter accepts either exact documented field order and
-retains the requested month as request-bound provenance.
-
-The provider validates the complete area-ranked response before retention,
-including positive strictly ascending ranks, unique non-empty region labels,
-finite non-negative numeric-or-null values and exact base/extended field
-ordering. It passes only the normalized month to the upstream callable and
-records the Shenzhen scope, requested/observation month, documented CNY and
-percentage units, source field order and non-listing row counts for cache
-replay. The checked-in fixture freezes the documented base-column sample, and
-tests also exercise the extended 2025 shape.
-
-The normalizer emits `AKSHARE_SZSE_AREA_SUMMARY_RAW_ONLY` and creates no
-canonical fact: region-level monthly transaction aggregates do not establish
-a requested listing's quote, issuer cash flow, shareholder return, governance,
-valuation or canonical market metric. Tests cover explicit request/month
-validation, exact base and extended fields/order/types, raw-only normalization,
-replay-scope rejection and cache replay. No calculation, gate, pipeline, CLI
-or input-loader contract changes.
-
-### Phase 2.96 â€” SZSE sector-summary raw acquisition contract (COMPLETE)
-
-The mapping review now covers the next distinct documented AKShare
-`stock_szse_sector_summary` endpoint under the existing `MARKET_ACTIVITY`
-category with explicit `view=szse_sector_summary`, `symbol=å½“æœˆ` or `å½“å¹´` and
-monthly `date=YYYYMM`. The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
-and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_summary.py)
-define the nine-field Shenzhen industry-trading response and the separate
-month/year-to-date tables selected by `symbol`.
-
-The provider validates the complete source field order, requires the source
-`åˆè®¡` row to lead the unique industry order, rejects non-finite or negative
-numeric values and preserves the selector, request/observation month,
-documented CNY/share/transaction/percentage units and non-listing row counts
-for replay. The checked-in fixture freezes three source-shaped industry rows.
-The normalizer emits `AKSHARE_SZSE_SECTOR_SUMMARY_RAW_ONLY` and creates no
-canonical fact: exchange-wide industry transaction aggregates do not establish
-a requested listing's quote, issuer cash flow, shareholder return, governance,
-valuation or canonical market metric. Tests cover selector/month validation,
-exact response fields/order/types, raw-only normalization, replay-scope
-rejection and cache replay. No calculation, gate, pipeline, CLI or input-loader
-contract changes.
-
-### Phase 2.97 â€” A-share Eastmoney industry-board raw acquisition contract (COMPLETE)
-
-The mapping review now covers the distinct documented AKShare Eastmoney
-`stock_board_industry_name_em` endpoint under the existing `MARKET_ACTIVITY`
-category with explicit `view=industry_board`. The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
-and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_board_industry_em.py)
-define a no-argument current snapshot of all A-share industry boards with the
-12 source-shaped fields `æŽ’å`, `æ¿å—åç§°`, `æ¿å—ä»£ç `, `æœ€æ–°ä»·`, `æ¶¨è·Œé¢`,
-`æ¶¨è·Œå¹…`, `æ€»å¸‚å€¼`, `æ¢æ‰‹çŽ‡`, `ä¸Šæ¶¨å®¶æ•°`, `ä¸‹è·Œå®¶æ•°`, `é¢†æ¶¨è‚¡ç¥¨` and
-`é¢†æ¶¨è‚¡ç¥¨-æ¶¨è·Œå¹…`.
-
-The provider validates the complete source field order, positive ascending
-ranks, unique board names/codes, finite numeric-or-null values and documented
-percentage units. It records the source board ordering, no-argument request
-scope and non-listing row counts for replay. The checked-in fixture freezes
-three source-shaped board rows. The normalizer emits
-`AKSHARE_INDUSTRY_BOARD_RAW_ONLY` and creates no canonical fact: a current
-industry-board snapshot does not establish a requested listing's quote, issuer
-cash flow, shareholder return, governance, valuation or canonical market
-metric. Tests cover explicit view/A-share validation, exact response
-fields/order/types, raw-only normalization, replay-scope rejection and cache
-replay. No calculation, gate, pipeline, CLI or input-loader contract changes.
-
-### Phase 2.98 â€” A-share Eastmoney executive/shareholder-change raw acquisition contract (COMPLETE)
-
-The mapping review now covers the distinct documented AKShare Eastmoney
-`stock_ggcg_em` endpoint under the existing `INSIDER_SHARE_CHANGES` category
-with explicit `view=executive_share_changes` and `direction` values `å…¨éƒ¨`,
-`è‚¡ä¸œå¢žæŒ` or `è‚¡ä¸œå‡æŒ`. The [AKShare stock-data
-documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and
-[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_gdzjc_em.py)
-define a direction-filtered full A-share universe with 16 source-shaped fields
-covering security identity, latest quote context, holder, direction,
-quantity/ratio fields and start/end/announcement dates.
-
-The provider passes the documented direction selector, validates the complete
-source field order, six-digit codes, direction scope, finite numeric/null
-values, non-negative holding quantities/ratios and nullable event dates, then
-filters the full response to the requested A-share listing. It records the
-direction, source field order, documented ä¸‡è‚¡/% units, undocumented latest-price
-unit, event-date bounds, upstream page size and upstream/selected row counts
-for replay. The checked-in fixture freezes four source-shaped rows across
-Shanghai, Shenzhen and Beijing listings. The normalizer emits
-`AKSHARE_EXECUTIVE_SHARE_CHANGES_RAW_ONLY` and creates no canonical fact:
-direction-filtered holder changes, quote context and event dates do not
-establish a company-level diluted-share series, settled transaction cash,
-governance judgment or shareholder-return fact. Tests cover explicit
-view/direction/A-share validation, exact response fields/order/types,
-direction-filtering, raw-only normalization, replay-scope rejection and cache
-replay. No calculation, gate, pipeline, CLI or input-loader contract changes.
-
-### Phase 2.99 â€” A-share Eastmoney management-person raw acquisition contract (COMPLETE)
-
-The mapping review now covers the distinct documented AKShare Eastmoney
-`stock_hold_management_person_em` endpoint under the existing
-`INSIDER_SHARE_CHANGES` category with explicit `view=management_person` and a
-non-empty executive `name`. The [AKShare stock-data
-documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and
-[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hold_control_em.py)
-define a symbol-and-person-scoped A-share response with the exact 16
-source-shaped fields for change date, security/person identity, transaction
-quantity/price/amount/reason/ratio, holding type, role/relationship and
-beginning/ending holdings.
-
-The provider passes the six-digit A-share `symbol` and requested `name`,
-validates the exact source field order, listing/person identity, ISO change
-dates, finite numeric/null values and non-negative price/holding fields, then
-retains the upstream symbol-and-person scope and observed date bounds for
-replay. Numeric units remain explicitly `not_documented` because the official
-contract does not settle them. The checked-in fixture freezes four
-source-shaped rows across two listings and two people. The normalizer emits
-`AKSHARE_MANAGEMENT_PERSON_RAW_ONLY` and creates no canonical share, dilution,
-transaction-cash, governance or shareholder-return fact. Tests cover explicit
-view/name/A-share validation, exact response fields/order/types, identity and
-range failures, raw-only normalization, replay-scope rejection and cache
-replay. No calculation, gate, pipeline, CLI or input-loader contract changes.
-
-### Phase 3.00 â€” A-share Eastmoney Dragon-Tiger institution-daily raw acquisition contract (COMPLETE)
-
-The mapping review now covers the distinct documented AKShare Eastmoney
-`stock_lhb_jgmmtj_em` endpoint under the existing `MARKET_ACTIVITY` category
-with explicit `view=institution_daily` and inclusive `start_date`/
-`end_date` parameters. The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
-and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_lhb_em.py)
-define a date-filtered full A-share universe and the exact 16 source-shaped
-fields `åºå·`, `ä»£ç `, `åç§°`, `æ”¶ç›˜ä»·`, `æ¶¨è·Œå¹…`, `ä¹°æ–¹æœºæž„æ•°`, `å–æ–¹æœºæž„æ•°`,
-`æœºæž„ä¹°å…¥æ€»é¢`, `æœºæž„å–å‡ºæ€»é¢`, `æœºæž„ä¹°å…¥å‡€é¢`, `å¸‚åœºæ€»æˆäº¤é¢`,
-`æœºæž„å‡€ä¹°é¢å æ€»æˆäº¤é¢æ¯”`, `æ¢æ‰‹çŽ‡`, `æµé€šå¸‚å€¼`, `ä¸Šæ¦œåŽŸå› ` and `ä¸Šæ¦œæ—¥æœŸ`.
-
-The provider validates the complete response before filtering it to the
-requested A-share listing. It enforces exact field order, six-digit code
-identity, ISO row dates inside the requested range, strictly ascending source
-sequence, finite numeric/null values, non-negative price/count/amount/turnover
-fields and unique listing/date identities. It records the documented CNY
-amount and äº¿å…ƒ market-value units, marks every other numeric unit
-`not_documented`, and preserves full/selected row counts and observed date
-bounds for replay. The checked-in fixture freezes three source-shaped rows
-across two listings and two dates.
-
-The normalizer emits
-`AKSHARE_MARKET_ACTIVITY_INSTITUTION_DAILY_RAW_ONLY` and creates no canonical
-cash-flow, shareholder-return, governance, valuation or market fact: the
-institution counts and aggregate trading context are provider evidence, not
-issuer accounting or a canonical market metric. Tests cover explicit
-view/date/A-share validation, exact source shape and types, identity/date/
-numeric failures, provider filtering, raw-only normalization, replay-scope
-rejection and cache replay. No calculation, gate, pipeline, CLI or input-loader
-contract changes. This numbered 3.00 increment remains structured acquisition;
-the top-level closure is recorded in the Phase 2/3 closure integration section
-below.
-
-### Phase 3.01 â€” A-share Eastmoney institutional-research statistics raw acquisition contract (COMPLETE)
-
-The mapping review now covers the distinct documented AKShare Eastmoney
-`stock_jgdy_tj_em` endpoint under the existing `MARKET_ACTIVITY` category
-with explicit `view=institution_research` and a `date=YYYYMMDD` start cutoff.
-The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
-and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_jgdy_em.py)
-define a full A-share response with the exact 11 source-shaped fields `åºå·`,
-`ä»£ç `, `åç§°`, `æœ€æ–°ä»·`, `æ¶¨è·Œå¹…`, `æŽ¥å¾…æœºæž„æ•°é‡`, `æŽ¥å¾…æ–¹å¼`, `æŽ¥å¾…äººå‘˜`,
-`æŽ¥å¾…åœ°ç‚¹`, `æŽ¥å¾…æ—¥æœŸ` and `å…¬å‘Šæ—¥æœŸ`.
-
-The provider validates the complete response before filtering it to the
-requested A-share listing. It enforces exact field order, six-digit code
-identity, valid ISO research-visit and announcement dates, the official strict
-`å…¬å‘Šæ—¥æœŸ > date` boundary, strictly ascending source sequence, finite
-numeric/null values, integer institution counts, non-negative price/count
-fields and unique listing/research-date/announcement-date identities. It
-records the documented percentage unit, leaves the price and institution-count
-units `not_documented`, and preserves the requested cutoff, both date-field
-bounds, source order and full/selected row counts for replay. The checked-in
-fixture freezes three source-shaped rows across two listings.
-
-The normalizer emits
-`AKSHARE_MARKET_ACTIVITY_INSTITUTION_RESEARCH_RAW_ONLY` and creates no
-canonical cash-flow, shareholder-return, governance, valuation or market fact:
-research visits, institution counts and quote context remain provider evidence.
-Tests cover explicit view/date/A-share validation, exact response fields/order/
-types, identity/date/numeric failures, provider filtering, raw-only
-normalization, replay-scope rejection and cache replay. No calculation, gate,
-pipeline, CLI or input-loader contract changes. This numbered 3.01 increment
-remains structured acquisition; the top-level closure is recorded in the Phase
-2/3 closure integration section below.
-
-### Phase 3.02 â€” A-share Eastmoney institutional-research detail raw acquisition contract (COMPLETE)
-
-The mapping review now covers the distinct documented AKShare Eastmoney
-`stock_jgdy_detail_em` endpoint under the existing `MARKET_ACTIVITY` category
-with explicit `view=institution_research_detail` and a `date=YYYYMMDD` research-
-date start cutoff. The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
-and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_jgdy_em.py)
-define a full A-share response with the exact 13 source-shaped fields `åºå·`,
-`ä»£ç `, `åç§°`, `æœ€æ–°ä»·`, `æ¶¨è·Œå¹…`, `è°ƒç ”æœºæž„`, `æœºæž„ç±»åž‹`, `è°ƒç ”äººå‘˜`,
-`æŽ¥å¾…æ–¹å¼`, `æŽ¥å¾…äººå‘˜`, `æŽ¥å¾…åœ°ç‚¹`, `è°ƒç ”æ—¥æœŸ` and `å…¬å‘Šæ—¥æœŸ`.
-
-The provider validates the complete response before filtering it to the
-requested A-share listing. It enforces exact field order, six-digit code
-identity, valid ISO research/announcement dates, the official strict
-`è°ƒç ”æ—¥æœŸ > date` boundary, strictly ascending source sequence, finite
-numeric/null values, non-negative price and detail identity including
-institution/reception context. It records the documented percentage unit,
-leaves price units `not_documented`, and preserves the requested cutoff, both
-date-field bounds, source order and full/selected row counts for replay. The
-checked-in fixture freezes three source-shaped rows across two listings,
-including two institutions sharing one listing/date/announcement identity.
-
-The normalizer emits
-`AKSHARE_MARKET_ACTIVITY_INSTITUTION_RESEARCH_DETAIL_RAW_ONLY` and creates no
-canonical cash-flow, shareholder-return, governance, valuation or market fact:
-research participants, visit dates and quote context remain provider evidence.
-Tests cover explicit view/date/A-share validation, exact response fields/order/
-types, multi-institution identity/date/numeric failures, provider filtering,
-nullable context, raw-only normalization, replay-scope rejection and cache
-replay. No calculation, gate, pipeline, CLI or input-loader contract changes.
-This numbered 3.02 increment remains structured acquisition; the top-level
-closure is recorded in the Phase 2/3 closure integration section below.
-
-### Phase 3.03 â€” A-share Eastmoney important-shareholder pledge-detail raw acquisition contract (COMPLETE)
-
-The mapping review now covers the next distinct documented AKShare Eastmoney
-`stock_gpzy_pledge_ratio_detail_em` endpoint under the existing
-`OWNERSHIP_PLEDGE` category with explicit `view=market_pledge_detail` and no
-upstream arguments. The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
-and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_gpzy_em.py)
-define a full A-share response backed by `RPTA_APP_ACCUMDETAILS`, fetched in
-500-row pages ordered by descending `NOTICE_DATE`, with the exact 15-field
-source-shaped order `åºå·`, `è‚¡ç¥¨ä»£ç `, `è‚¡ç¥¨ç®€ç§°`, `è‚¡ä¸œåç§°`, `è´¨æŠ¼è‚¡ä»½æ•°é‡`,
-`å æ‰€æŒè‚¡ä»½æ¯”ä¾‹`, `å æ€»è‚¡æœ¬æ¯”ä¾‹`, `è´¨æŠ¼æœºæž„`, `æœ€æ–°ä»·`, `è´¨æŠ¼æ—¥æ”¶ç›˜ä»·`,
-`é¢„ä¼°å¹³ä»“çº¿`, `è´¨æŠ¼å¼€å§‹æ—¥æœŸ`, `è´¨æŠ¼ç»“æŸæ—¥æœŸ`, `çŠ¶æ€`, `å…¬å‘Šæ—¥æœŸ`.
-
-The provider validates the complete response before filtering it to the
-requested A-share listing. It enforces exact source field order, six-digit
-code identity, required text/announcement fields, nullable source-coerced
-`è´¨æŠ¼æœºæž„` and `è´¨æŠ¼å¼€å§‹æ—¥æœŸ`, one-based source sequence, finite non-negative
-numeric values, 0â€“100 percent ratios, ISO date boundaries, non-increasing
-announcement dates and duplicate pledge identity. It records field types,
-required/nullable fields, nullable identity fields, source order,
-shares/percent/CNY-per-share units, date bounds, page size, all-page
-pagination, sort order and full/selected counts for replay. The fixture
-freezes three source-shaped rows across two listings, including nullable
-institution/start/end values and a future scheduled end date.
-
-The normalizer emits
-`AKSHARE_OWNERSHIP_PLEDGE_MARKET_DETAIL_RAW_ONLY`, leaves
-`governance_risk_level` critically missing and creates no canonical share,
-cash, debt-equivalent or governance fact: holder, counterparty, quantity,
-ratio, price, status and event-date context remain raw evidence. Tests cover
-explicit view/A-share/no-argument routing, exact schema/order/types, date and
-numeric boundaries, duplicate identity, provider filtering, no-match metadata,
-raw-only normalization, replay metadata tampering and offline cache replay.
-No calculation, gate, pipeline, CLI or input-loader contract changes. This
-numbered 3.03 increment remains structured acquisition; the top-level closure
-is recorded in the Phase 2/3 closure integration section below.
-
-### Phase 3.04 â€” A-share Eastmoney pledge-institution company-distribution raw acquisition contract (COMPLETE)
-
-The mapping review now covers the next distinct documented AKShare Eastmoney
-`stock_gpzy_distribute_statistics_company_em` endpoint under the existing
-`OWNERSHIP_PLEDGE` category with explicit `view=company_distribution` and no
-upstream arguments. The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
-and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_gpzy_em.py)
-define a current market-wide pledge-institution response backed by the
-`RPT_GDZY_ZYJG_SUM` report, filtered to securities with
-`(PFORG_TYPE="è¯åˆ¸")`, requested in one 500-row page ordered by descending
-`ORG_NUM`, and returned in the exact eight-field source order `åºå·`, `è´¨æŠ¼æœºæž„`,
-`è´¨æŠ¼å…¬å¸æ•°é‡`, `è´¨æŠ¼ç¬”æ•°`, `è´¨æŠ¼æ•°é‡`, `æœªè¾¾é¢„è­¦çº¿æ¯”ä¾‹`,
-`è¾¾åˆ°é¢„è­¦çº¿æœªè¾¾å¹³ä»“çº¿æ¯”ä¾‹`, `è¾¾åˆ°å¹³ä»“çº¿æ¯”ä¾‹`.
-
-The provider validates the complete response before storage. It enforces the
-one-based source sequence, unique non-empty institution identity, non-increasing
-company-count source ordering, finite non-negative numeric values, integer
-count types, 0â€“100 documented percentage bounds and non-nullability. It
-records that `è´¨æŠ¼æ•°é‡` is in shares and the three risk-state fields are in
-percent; source-returned numeric values are preserved unchanged because the
-official implementation does not rescale them. Retrieval date binding is
-explicitly not applicable: this endpoint has no date parameter or row date.
-The source report, filter, page size, single-page behavior, sort order, field
-order/types, identity, units and full row count remain replay metadata. Since
-the response is institution-scoped rather than listing-scoped, the full rows
-are retained with no provider filtering.
-
-The normalizer emits
-`AKSHARE_OWNERSHIP_PLEDGE_COMPANY_DISTRIBUTION_RAW_ONLY`, leaves
-`governance_risk_level` critically missing and creates no canonical share,
-cash, debt-equivalent or governance fact: market-wide institution distribution
-and provider percentages remain structured evidence. Tests cover explicit
-view/A-share/no-argument routing, exact source order/types/nullability,
-sequence and numeric boundaries, institution identity/order, raw-only
-normalization, replay metadata tampering and offline cache replay. No
-calculation, gate, pipeline, CLI or input-loader contract changes. This
-numbered 3.04 increment remains structured acquisition; the top-level closure
-is recorded in the Phase 2/3 closure integration section below.
-
-### Phase 3.05 â€” A-share Eastmoney pledge-institution bank-distribution raw acquisition contract (COMPLETE)
-
-The mapping review now covers the next distinct documented AKShare Eastmoney
-`stock_gpzy_distribute_statistics_bank_em` endpoint under the existing
-`OWNERSHIP_PLEDGE` category with explicit `view=bank_distribution` and no
-upstream arguments. The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
-and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_gpzy_em.py)
-define a current market-wide bank pledge-institution response backed by the
-`RPT_GDZY_ZYJG_SUM` report, filtered with `(PFORG_TYPE="é“¶è¡Œ")`, requested in
-one 500-row page ordered by descending `ORG_NUM`, and returned in the exact
-eight-field source order `åºå·`, `è´¨æŠ¼æœºæž„`, `è´¨æŠ¼å…¬å¸æ•°é‡`, `è´¨æŠ¼ç¬”æ•°`, `è´¨æŠ¼æ•°é‡`,
-`æœªè¾¾é¢„è­¦çº¿æ¯”ä¾‹`, `è¾¾åˆ°é¢„è­¦çº¿æœªè¾¾å¹³ä»“çº¿æ¯”ä¾‹`, `è¾¾åˆ°å¹³ä»“çº¿æ¯”ä¾‹`.
-
-The provider validates the complete response before storage. It enforces the
-one-based source sequence, unique non-empty institution identity,
-non-increasing company-count source ordering, finite non-negative numeric
-values, integer count types, 0â€“100 documented percentage bounds and
-non-nullability. It records shares/percent units, unchanged source numeric
-scale, exact field order/types, identity/order, the fixed report/filter/page/
-sort contract and non-listing row scope for replay. A live probe on
-2026-09-11 observed current Eastmoney report labels `é“¶è¡Œâ…¡`/`è¯åˆ¸â…¡`, while the
-exact documented `é“¶è¡Œ` filter used by the current AKShare wrapper returned no
-rows. The adapter records the official wrapper filter contract and does not
-silently reinterpret or merge the suffixed labels; that upstream drift needs a
-separately reviewed upstream/adapter fix rather than a fixture-specific
-fallback.
-
-The normalizer emits
-`AKSHARE_OWNERSHIP_PLEDGE_BANK_DISTRIBUTION_RAW_ONLY`, leaves
-`governance_risk_level` critically missing and creates no canonical share,
-cash, debt-equivalent or governance fact: market-wide bank-institution rows,
-pledge counts, shares, provider percentages and report context remain raw
-evidence. Tests cover explicit view/A-share/no-argument routing, exact source
-order/types/nullability, sequence and numeric boundaries, institution
-identity/order, raw-only normalization, replay metadata tampering and offline
-cache replay. No calculation, gate, pipeline, CLI or input-loader contract
-changes. This numbered 3.05 increment remains structured acquisition; the
-top-level closure is recorded in the Phase 2/3 closure integration section
-below.
-
-### Phase 3.06 â€” A-share Eastmoney ownership-pledge industry-data raw acquisition contract (COMPLETE)
-
-The mapping review now covers the next distinct documented AKShare Eastmoney
-`stock_gpzy_industry_data_em` endpoint under the existing
-`OWNERSHIP_PLEDGE` category with explicit `view=industry_data` and no upstream
-arguments. The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
-and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_gpzy_em.py)
-define a current market-wide industry response backed by the
-`RPT_CSDC_INDUSTRY_STATISTICS` report, requested in one 500-row page ordered by
-descending `AVERAGE_PLEDGE_RATIO`. The wrapper requests the upstream columns
-`INDUSTRY_CODE`, `INDUSTRY`, `TRADE_DATE`, `AVERAGE_PLEDGE_RATIO`, `ORG_NUM`,
-`PLEDGE_TOTAL_NUM`, `TOTAL_PLEDGE_SHARES` and `PLEDGE_TOTAL_MARKETCAP`, drops
-the code column and returns the exact eight-field source order `åºå·`, `è¡Œä¸š`,
-`å¹³å‡è´¨æŠ¼æ¯”ä¾‹`, `å…¬å¸å®¶æ•°`, `è´¨æŠ¼æ€»ç¬”æ•°`, `è´¨æŠ¼æ€»è‚¡æœ¬`, `æœ€æ–°è´¨æŠ¼å¸‚å€¼`,
-`ç»Ÿè®¡æ—¶é—´`.
-
-The provider validates the complete response before retention. It enforces
-one-based source sequence, unique non-empty industry identity, non-increasing
-average-pledge-ratio ordering, finite non-negative numeric values, integer
-count fields, a 0â€“100 percent bound for `å¹³å‡è´¨æŠ¼æ¯”ä¾‹` and required ISO row
-dates from `ç»Ÿè®¡æ—¶é—´`.
-It records the row-specific date range, source field order/types, documented
-percent/shares/CNY units, undocumented count units, fixed report/page/sort
-contract and non-listing row counts for replay. A live probe on 2026-09-11
-observed provider industry labels with the `â…¡` suffix; the adapter preserves
-those labels and does not normalize or merge provider text.
-
-The normalizer emits
-`AKSHARE_OWNERSHIP_PLEDGE_INDUSTRY_DATA_RAW_ONLY`, leaves
-`governance_risk_level` critically missing and creates no canonical share,
-cash, debt-equivalent or governance fact: market-wide industry rows,
-provider-reported ratio, counts, shares, market values and row dates remain
-raw structured evidence. Tests cover explicit view/A-share/no-argument
-routing, exact schema/order/types, sequence, industry identity, ratio/date and
-numeric boundaries, raw-only normalization, replay metadata tampering and
-offline cache replay. No calculation, gate, pipeline, CLI or input-loader
-contract changes. This numbered 3.06 increment remains structured acquisition;
-the top-level closure is recorded in the Phase 2/3 closure integration section
-below.
-
-### Phase 3.07 â€” A-share Eastmoney goodwill-industry raw acquisition contract (COMPLETE)
-
-The mapping review now covers the next distinct documented AKShare Eastmoney
-`stock_sy_hy_em` endpoint under the existing `GOODWILL_IMPAIRMENT` category
-with explicit `view=industry_data` and a required `date=YYYYMMDD`. The
-[AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
-and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_sy_em.py)
-define the market-wide `RPT_GOODWILL_INDUSTATISTICS` response, filtered by
-`REPORT_DATE`, paginated at 5000 rows and ordered by descending
-`SUMSHEQUITY_RATIO`. The wrapper returns the exact six fields `è¡Œä¸šåç§°`,
-`å…¬å¸å®¶æ•°`, `å•†èª‰è§„æ¨¡`, `å‡€èµ„äº§`, `å•†èª‰è§„æ¨¡å å‡€èµ„äº§è§„æ¨¡æ¯”ä¾‹` and
-`å‡€åˆ©æ¶¦è§„æ¨¡`; the adapter records the upstream columns and the five source
-fields dropped by the wrapper.
-
-The provider validates the complete response before retention. It enforces
-unique non-empty industry identity, non-increasing goodwill-to-net-assets ratio
-ordering, finite numeric values, an integer non-negative company count and
-non-null required values, while preserving signed net-profit aggregates and
-the provider's ratio scale. It records request-period binding, exact field
-order/types, documented CNY amounts, undocumented count/ratio units, fixed
-report/page/sort/filter/pagination metadata and market-wide row counts for
-replay.
-
-The normalizer emits
-`AKSHARE_GOODWILL_INDUSTRY_DATA_RAW_ONLY`, leaves `goodwill` and `impairment`
-critically missing and creates no canonical accounting, profit, ratio or
-Business Quality fact: market-wide industry aggregates require issuer-level
-primary-filing scope and reconciliation. Tests cover explicit view/date/A-share
-routing, exact schema/order/types, identity and ordering boundaries, signed
-profit values, raw-only normalization, replay metadata tampering and offline
-cache replay. No calculation, gate, pipeline, CLI or input-loader contract
-changes. This numbered 3.07 increment remains structured acquisition; the
-top-level closure is recorded in the Phase 2/3 closure integration section
-below.
-
-### Phase 3.08 â€” A-share Eastmoney stock-account-statistics raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented A-share Eastmoney
-`stock_account_statistics_em` endpoint under the existing `MARKET_ACTIVITY`
-category with explicit `view=account_statistics` and no upstream arguments.
-The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
-and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_account_em.py)
-define the complete 101-row monthly history beginning at `2015-04` and
-document the published `2023-08` endpoint range. The wrapper returns the exact 11 fields
-`æ•°æ®æ—¥æœŸ`, investor-account counts and changes, `æ²ªæ·±æ€»å¸‚å€¼`, `æ²ªæ·±æˆ·å‡å¸‚å€¼`,
-`ä¸Šè¯æŒ‡æ•°-æ”¶ç›˜` and `ä¸Šè¯æŒ‡æ•°-æ¶¨è·Œå¹…`; the upstream report is
-`RPT_STOCK_OPEN_DATA` with 500-row single-page retrieval and descending
-`STATISTICS_DATE` ordering before wrapper output is sorted ascending by
-`æ•°æ®æ—¥æœŸ`.
-
-The provider validates the non-empty complete response, exact field order,
-strict contiguous 101-month `YYYY-MM` ordering, nullable
-month-over-month/year-over-year changes, finite numeric values and non-negative
-account, market-cap and index close fields. It records the wrapper-dropped `STATISTICS_DATE_NY` field,
-documented `ä¸‡æˆ·`/`ä¸‡` units, undocumented numeric units, source columns and
-full market-wide row counts for deterministic cache replay.
-
-The normalizer emits `AKSHARE_ACCOUNT_STATISTICS_RAW_ONLY` and creates no
-canonical accounting, shareholder-return, governance, market or valuation
-fact: the market-wide investor-account, market-cap and index history has no
-listing/entity accounting scope. Tests cover explicit view/A-share/no-argument
-routing, exact schema/order/types, date and numeric boundaries, nullable
-changes, raw-only normalization, replay metadata tampering and offline cache
-replay. No calculation, gate, pipeline, CLI or input-loader contract changes.
-
-### Phase 3.09 â€” A-share Legu market-activity raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented A-share Legu
-`stock_market_activity_legu` endpoint under the existing `MARKET_ACTIVITY`
-category with explicit `view=market_activity_legu` and no upstream arguments.
-The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
-and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_market_legu.py)
-define an HTML-backed current Shanghai/Shenzhen A-share market snapshot with
-the exact 12-row `item`/`value` response: rise/fall, limit-up/down,
-flat/suspended, activity and statistic-date metrics. Numeric counts are
-validated as finite and non-negative; `æ´»è·ƒåº¦` remains provider text and
-`ç»Ÿè®¡æ—¥æœŸ` is validated as a strict `YYYY-MM-DD HH:MM:SS` timestamp. No units
-are inferred because the endpoint documents only object-valued output fields.
-
-The provider records the official item order, mixed value types, timestamp,
-HTML/no-parameter upstream boundary, no filtering and complete market-wide row
-counts for deterministic cache replay. The normalizer emits
-`AKSHARE_MARKET_ACTIVITY_LEGU_RAW_ONLY` and creates no canonical market,
-return, governance, valuation or accounting fact: this current market-wide
-snapshot has no listing/entity accounting scope. Tests cover explicit view,
-A-share/no-argument routing, exact item/value schema and ordering, numeric/text
-and timestamp boundaries, raw-only normalization, replay metadata tampering and
-offline cache replay. No calculation, gate, pipeline, CLI or input-loader
-contract changes.
-
-### Phase 3.10 â€” A-share Legu congestion raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented A-share Legu
-`stock_a_congestion_lg` endpoint under the existing `MARKET_ACTIVITY` category
-with explicit `view=congestion` and no user-supplied upstream arguments. The
-[AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
-and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_congestion_lg.py)
-define a token-backed JSON response for the latest four years with exact
-`date`, `close` and `congestion` fields. The provider validates the non-empty
-strictly ascending ISO-date history, finite non-negative numeric values, exact
-field order and source/API metadata; no units are inferred for the provider's
-index-close or congestion values.
-
-The provider records the rolling-history boundary, token/cookie-CSRF upstream
-transport, no user parameters, no filtering and complete market-wide row
-counts for deterministic cache replay. The normalizer emits
-`AKSHARE_MARKET_CONGESTION_RAW_ONLY` and creates no canonical market, return,
-governance, valuation or accounting fact: provider-defined congestion history
-has no listing/entity accounting scope. Tests cover explicit view,
-A-share/no-argument routing, exact schema/order/types, date and numeric
-boundaries, raw-only normalization, replay metadata tampering and offline cache
-replay. No calculation, gate, pipeline, CLI or input-loader contract changes.
-
-### Phase 3.11 â€” A-share Legu equity-bond-spread raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented A-share Legu `stock_ebs_lg`
-endpoint under the existing `MARKET_ACTIVITY` category with explicit
-`view=equity_bond_spread` and no user-supplied arguments. The [AKShare
-stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
-and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_ebs_lg.py)
-define a token-backed JSON history with exact `æ—¥æœŸ`, `æ²ªæ·±300æŒ‡æ•°`, `è‚¡å€ºåˆ©å·®`
-and `è‚¡å€ºåˆ©å·®å‡çº¿` fields in ascending date order. The provider validates the
-non-empty history, strict ISO dates, finite numeric values and the non-negative
-index series while allowing signed spread values and preserving undocumented
-units.
-
-The provider records the fixed upstream `code=000300.SH`, token/cookie-CSRF
-transport, no user parameters, no filtering and complete market-wide row
-counts for deterministic cache replay. The normalizer emits
-`AKSHARE_EQUITY_BOND_SPREAD_RAW_ONLY` and creates no canonical market, return,
-valuation, governance or accounting fact: this index/spread context has no
-listing/entity accounting scope. Tests cover explicit view, A-share/no-argument
-routing, exact schema/order/types, date/numeric and signed-spread boundaries,
-raw-only normalization, replay metadata tampering and offline cache replay. No
-calculation, gate, pipeline, CLI or input-loader contract changes.
-
-### Phase 3.12 â€” A-share Legu Buffett-index raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented A-share Legu
-`stock_buffett_index_lg` endpoint under the existing `MARKET_ACTIVITY` category
-with explicit `view=buffett_index` and no user-supplied arguments. The [AKShare
-stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
-and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_buffett_index_lg.py)
-define a token-backed JSON history with the four documented fields `æ—¥æœŸ`,
-`æ”¶ç›˜ä»·`, `æ€»å¸‚å€¼` and `GDP` in ascending date order. The provider validates a
-non-empty history, strict ISO dates and finite non-negative base values; the
-wrapper's two named percentile extensions are accepted only in their official
-optional order and remain raw without inferred units.
-
-The provider records the all-history boundary, token/cookie-CSRF transport, no
-user parameters, no filtering and complete market-wide row counts for
-deterministic cache replay. The normalizer emits
-`AKSHARE_BUFFETT_INDEX_RAW_ONLY` and creates no canonical market, return,
-valuation, governance or accounting fact: the index, market-capitalization and
-GDP context has no listing/entity accounting scope. Tests cover explicit view,
-A-share/no-argument routing, exact base and optional schemas, date/numeric
-boundaries, raw-only normalization, replay metadata tampering and offline cache
-replay. No calculation, gate, pipeline, CLI or input-loader contract changes.
-
-### Phase 3.13 â€” A-share Legu TTM/LYR PE raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented A-share Legu `stock_a_ttm_lyr`
-endpoint under the existing `MARKET_ACTIVITY` category with explicit
-`view=ttm_lyr` and no user-supplied arguments. The [AKShare stock-data
-documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and [official
-implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_ttm_lyr.py)
-define a token-backed JSON history with the date, equal-weight and median
-TTM/LYR PE fields, percentile context and CSI 300 close. The provider validates
-the complete 14-field schema, strict ascending ISO dates, finite numeric values
-and a non-negative index-close field without inferring units or PE semantics.
-
-The provider records the fixed upstream `marketId=5`, token/cookie-CSRF
-transport, no user parameters, no filtering and complete market-wide row
-counts for deterministic cache replay. The normalizer emits
-`AKSHARE_A_TTM_LYR_RAW_ONLY` and creates no canonical market, return, valuation,
-governance or accounting fact: this market-wide valuation context has no
-listing/entity accounting scope. Tests cover explicit view, A-share/no-argument
-routing, exact schema/order/types, signed PE and date/numeric boundaries,
-raw-only normalization, replay metadata tampering and offline cache replay. No
-calculation, gate, pipeline, CLI or input-loader contract changes.
-
-### Phase 3.14 â€” A-share Legu all-PB raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented A-share Legu `stock_a_all_pb`
-endpoint under the existing `MARKET_ACTIVITY` category with explicit
-`view=all_pb` and no user-supplied arguments. The [AKShare stock-data
-documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and [official
-implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_all_pb.py)
-define a token-backed JSON history with the median and equal-weight-average PB
-fields, percentile context and Shanghai index close. The wrapper drops the
-upstream `weightingAveragePB` field; the provider validates the complete
-eight-field output schema, strict ascending ISO dates, finite numeric values
-and a non-negative index-close field without inferring units or PB semantics.
-
-The provider records the fixed upstream `marketId=ALL`, token/cookie-CSRF
-transport, dropped wrapper field, no user parameters, no filtering and complete
-market-wide row counts for deterministic cache replay. The normalizer emits
-`AKSHARE_A_ALL_PB_RAW_ONLY` and creates no canonical market, return, valuation,
-governance or accounting fact: this market-wide valuation context has no
-listing/entity accounting scope. Tests cover explicit view, A-share/no-argument
-routing, exact schema/order/types, signed PB and date/numeric boundaries,
-raw-only normalization, replay metadata tampering and offline cache replay. No
-calculation, gate, pipeline, CLI or input-loader contract changes.
-
-### Phase 3.15 â€” A-share Legu market PE raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented A-share Legu `stock_market_pe_lg`
-endpoint under the existing `MARKET_ACTIVITY` category with explicit
-`view=market_pe` and a required symbol in `ä¸Šè¯`, `æ·±è¯`, `åˆ›ä¸šæ¿` or `ç§‘åˆ›ç‰ˆ`.
-The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
-and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_a_pe_and_pb.py)
-define the standard-board `æ—¥æœŸ`/`æŒ‡æ•°`/`å¹³å‡å¸‚ç›ˆçŽ‡` variant and the ç§‘åˆ›ç‰ˆ
-`æ—¥æœŸ`/`æ€»å¸‚å€¼`/`å¸‚ç›ˆçŽ‡` variant. Standard boards use the shared Legu API with
-fixed `marketId` 1, 2 or 4; ç§‘åˆ›ç‰ˆ uses its dedicated API without a market ID.
-The provider records symbol-specific source/API metadata, validates the exact
-variant schema, strict ascending all-history dates, finite numerics and
-non-negative index/market-capitalization values, while retaining signed PE as
-raw context because no PE unit or domain is documented.
-
-The normalizer emits `AKSHARE_MARKET_PE_RAW_ONLY` and creates no canonical
-market, return, valuation, governance or accounting fact because the board/index
-history has no listing/entity accounting scope. Tests cover all four symbols,
-explicit view and A-share routing, variant schemas and metadata, signed PE and
-boundary validation, raw-only normalization, replay metadata tampering and
-offline cache replay. No calculation, gate, pipeline, CLI or input-loader
-contract changes.
-
-### Phase 3.16 â€” A-share Legu market PB raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented A-share Legu `stock_market_pb_lg`
-endpoint under the existing `MARKET_ACTIVITY` category with explicit
-`view=market_pb` and a required symbol in `ä¸Šè¯`, `æ·±è¯`, `åˆ›ä¸šæ¿` or `ç§‘åˆ›ç‰ˆ`.
-The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
-and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_a_pe_and_pb.py)
-define the exact five-field `æ—¥æœŸ`/`æŒ‡æ•°`/`å¸‚å‡€çŽ‡`/`ç­‰æƒå¸‚å‡€çŽ‡`/
-`å¸‚å‡€çŽ‡ä¸­ä½æ•°` output. All four symbols use the Legu `index-basic-pb` API
-with fixed `indexCode` values 1, 2, 4 or 7. The provider records
-symbol-specific source/API metadata, validates the complete exact schema,
-strict ascending all-history dates, finite numerics and the non-negative index
-boundary, while retaining signed PB as raw context because no PB unit or
-universal domain is documented.
-
-The normalizer emits `AKSHARE_MARKET_PB_RAW_ONLY` and creates no canonical
-market, return, valuation, governance or accounting fact because the board/index
-history has no listing/entity accounting scope. Tests cover all four symbols,
-explicit view and A-share routing, exact schema and metadata, signed PB and
-boundary validation, raw-only normalization, replay metadata tampering and
-offline cache replay. No calculation, gate, pipeline, CLI or input-loader
-contract changes.
-
-### Phase 3.17 â€” A-share Legu index PE raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented A-share Legu `stock_index_pe_lg`
-endpoint under the existing `MARKET_ACTIVITY` category with explicit
-`view=index_pe` and a required symbol in the 12 documented index choices.
-The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
-and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_a_pe_and_pb.py)
-define the exact eight-field `æ—¥æœŸ`/`æŒ‡æ•°`/static-PE/rolling-PE output. All
-symbols use the Legu `index-basic-pe` API with the documented fixed index code.
-The provider records the fixed code and source/API metadata, validates the
-complete exact schema, strict ascending all-history dates, finite numerics and
-the non-negative index boundary, while retaining signed PE as raw context
-because no PE unit or universal domain is documented.
-
-The normalizer emits `AKSHARE_INDEX_PE_RAW_ONLY` and creates no canonical
-market, return, valuation, governance or accounting fact because the index
-history has no listing/entity accounting scope. Tests cover all 12 symbols,
-explicit view and A-share routing, exact schema and metadata, signed PE and
-boundary validation, raw-only normalization, replay metadata tampering and
-offline cache replay. No calculation, gate, pipeline, CLI or input-loader
-contract changes.
-
-### Phase 3.18 â€” A-share Legu index PB raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented A-share Legu `stock_index_pb_lg`
-index-PB history under `MARKET_ACTIVITY` with explicit `view=index_pb` and a
-required symbol in the same 12 documented index choices. The [AKShare stock-data
-documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and [official
-implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_a_pe_and_pb.py)
-define the exact five-field `æ—¥æœŸ`/`æŒ‡æ•°`/PB output. All symbols use the Legu
-`index-basic-pb` API with the documented fixed index code. The provider records
-the fixed code and source/API metadata, validates the complete exact schema,
-strict ascending all-history dates, finite numerics and the non-negative index
-boundary, while retaining signed PB as raw context because no PB unit or
-universal domain is documented. The documented `sz50-pb` source page and the
-official wrapper's actual `zz500-ttm-lyr` CSRF transport page are retained as
-separate provenance fields.
-
-The normalizer emits `AKSHARE_INDEX_PB_RAW_ONLY` and creates no canonical
-market, return, valuation, governance or accounting fact because the index
-history has no listing/entity accounting scope. Tests cover all 12 symbols,
-explicit view and A-share routing, exact schema and metadata, signed PB and
-boundary validation, raw-only normalization, replay metadata tampering and
-offline cache replay. No calculation, gate, pipeline, CLI or input-loader
-contract changes.
-
-### Phase 3.19 â€” A-share Baidu valuation raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented A-share Baidu
-`stock_zh_valuation_baidu` endpoint under `MARKET_ACTIVITY` with explicit
-`view=valuation_baidu`, the requested six-digit listing code, one of five
-documented indicators and one of five documented periods. The [AKShare stock-data
-documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and [official
-implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_zh_valuation_baidu.py)
-define the exact `date`/`value` output and Baidu JSON parameters. The provider
-freezes the documented fixed request parameters, records the dynamic
-indicator/code/period mapping and validates the complete non-empty history,
-strict ascending dates and finite numeric values; signed values remain raw
-because no unit or universal valuation domain is documented.
-
-The normalizer emits `AKSHARE_BAIDU_VALUATION_RAW_ONLY` and creates no
-canonical valuation, market, return, governance or accounting fact because the
-provider-defined indicator/period semantics are not yet reconciled to
-filing-backed accounting periods, units or the canonical valuation contract.
-Tests cover all indicator/period choices, explicit view and A-share routing,
-derived upstream symbol, exact schema and fixed/dynamic request metadata,
-signed values and boundary validation, raw-only normalization, replay metadata
-tampering and offline cache replay. No calculation, gate, pipeline, CLI or
-input-loader contract changes.
-
-### Phase 3.20 â€” H-share Baidu valuation raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented H-share Baidu
-`stock_hk_valuation_baidu` endpoint under `MARKET_ACTIVITY` with explicit
-`view=valuation_baidu_hk`, the requested five-digit H-share listing code, one of
-five documented indicators and one of three documented periods. The [AKShare
-stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
-and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hk_valuation_baidu.py)
-define the exact `date`/`value` output and Baidu JSON parameters. The provider
-freezes the documented fixed request parameters including `market=hk`, records
-the dynamic indicator/code/period mapping and validates the complete non-empty
-history, strict ascending dates and finite numeric values; signed values remain
-raw because no unit or universal valuation domain is documented.
-
-The normalizer emits `AKSHARE_HK_BAIDU_VALUATION_RAW_ONLY` and creates no
-canonical valuation, market, return, governance or accounting fact because the
-provider-defined indicator/period semantics are not yet reconciled to
-filing-backed accounting periods, units or the canonical valuation contract.
-Tests cover all indicator/period choices, explicit view and H-share routing,
-five-digit symbol derivation, exact schema and fixed/dynamic request metadata,
-signed values and boundary validation, raw-only normalization, replay metadata
-tampering and offline cache replay. No calculation, gate, pipeline, CLI or
-input-loader contract changes.
-
-### Phase 3.21 â€” A-share Eastmoney valuation-comparison raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented A-share Eastmoney
-`stock_zh_valuation_comparison_em` endpoint under `MARKET_ACTIVITY` with
-explicit `view=valuation_comparison` and the exchange-prefixed six-digit
-listing symbol expected by the wrapper. The [AKShare stock-data
-documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and [official
-implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_zh_comparison_em.py)
-define the current 20-field target/industry-summary/peer output; the current
-wrapper does not select the separately listed `å¸‚ç›ˆçŽ‡-24A` field. The provider
-freezes the Eastmoney JSON report, filter, sort and client parameters, records
-the target/summary/peer row roles and strict peer rank order, and validates
-nullable finite numeric comparison values without inferring units or a
-universal non-negative domain.
-
-The normalizer emits `AKSHARE_VALUATION_COMPARISON_RAW_ONLY` and creates no
-canonical valuation, market, return, governance or accounting fact because the
-provider-defined peer comparison is not reconciled to filing-backed periods,
-units or accounting scope. Tests cover the official output schema, explicit
-view and A-share routing, derived upstream symbol/filter, nullable and signed
-values, boundary validation, raw-only normalization, replay metadata tampering
-and offline cache replay. No calculation, gate, pipeline, CLI or input-loader
-contract changes.
-
-### Phase 3.22 â€” H-share Eastmoney valuation-comparison raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented H-share Eastmoney
-`stock_hk_valuation_comparison_em` endpoint under `MARKET_ACTIVITY` with
-explicit `view=valuation_comparison_hk` and the unprefixed five-digit listing
-symbol expected by the wrapper. The [AKShare stock-data
-documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and [official
-implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hk_comparison_em.py)
-define the current 18-field single-listing output: two identity fields, eight
-nullable/signed valuation multiples and eight positive integer ranks. The
-provider freezes the explicit Eastmoney report/columns/filter/client request,
-records the one-row scope and validates the exact wrapper schema and listing
-identity without inferring units or a universal non-negative domain.
-
-The normalizer emits `AKSHARE_HK_VALUATION_COMPARISON_RAW_ONLY` and creates no
-canonical valuation, market, return, governance or accounting fact because the
-provider-defined comparison is not reconciled to filing-backed periods, units
-or accounting scope. Tests cover the official output schema, explicit view and
-H-share routing, five-digit symbol derivation, nullable and signed multiples,
-positive integer rank boundaries, raw-only normalization, replay metadata
-tampering and offline cache replay. No calculation, gate, pipeline, CLI or
-input-loader contract changes.
-
-### Phase 3.23 â€” A-share Eastmoney growth-comparison raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented A-share Eastmoney
-`stock_zh_growth_comparison_em` endpoint under `MARKET_ACTIVITY` with explicit
-`view=growth_comparison` and the exchange-prefixed six-digit listing symbol
-expected by the wrapper. The [AKShare stock-data
-documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and [official
-implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_zh_comparison_em.py)
-define the current 21-field industry-average/industry-median/peer/target
-output, including nullable growth values and the provider's growth-rank field.
-The provider freezes the Eastmoney JSON report, `columns=ALL`, filter, sort,
-client and version parameters, records the wrapper row roles and validates
-exact field order, listing identity, nullable/signed growth values and positive
-rank ordering.
-
-The normalizer emits `AKSHARE_GROWTH_COMPARISON_RAW_ONLY` and creates no
-canonical growth, valuation, market, return, governance or accounting fact
-because the provider-defined comparison is not reconciled to filing-backed
-periods, units or accounting scope. Tests cover the official output schema,
-explicit view and A-share routing, derived upstream symbol/filter, nullable and
-signed values, rank boundaries, raw-only normalization, replay metadata
-tampering and offline cache replay. No calculation, gate, pipeline, CLI or
-input-loader contract changes.
-
-### Phase 3.24 â€” H-share Eastmoney growth-comparison raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented H-share Eastmoney
-`stock_hk_growth_comparison_em` endpoint under `MARKET_ACTIVITY` with explicit
-`view=growth_comparison_hk` and the unprefixed five-digit listing symbol
-expected by the wrapper. The [AKShare stock-data
-documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and [official
-implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hk_comparison_em.py)
-define the current 10-field single-listing output, including the source's
-mapped `åŸºæœ¬æ¯è‚¡æ”¶æ€»èµ„äº§åŒæ¯”å¢žé•¿çŽ‡ç›ŠåŒæ¯”å¢žé•¿çŽ‡` label, four nullable/signed
-growth metrics and four positive integer ranks. The provider freezes the
-explicit Eastmoney report/columns, dual listing filter, page/client/version
-parameters and dropped fields, records the one-row scope and validates exact
-field order, identity, numeric boundaries and replay metadata.
-
-The normalizer emits `AKSHARE_HK_GROWTH_COMPARISON_RAW_ONLY` and creates no
-canonical growth, valuation, market, return, governance or accounting fact
-because the provider-defined comparison is not reconciled to filing-backed
-periods, units or accounting scope. Tests cover the official output schema,
-explicit view and H-share routing, derived upstream symbol/filter, nullable and
-signed growth metrics, positive rank boundaries, raw-only normalization, replay
-metadata tampering and offline cache replay. No calculation, gate, pipeline,
-CLI or input-loader contract changes.
-
-### Phase 3.25 â€” A-share Eastmoney DuPont-comparison raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented A-share Eastmoney
-`stock_zh_dupont_comparison_em` endpoint under `MARKET_ACTIVITY` with explicit
-`view=dupont_comparison` and the exchange-prefixed six-digit listing symbol
-expected by the wrapper. The [AKShare stock-data
-documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and [official
-implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_zh_comparison_em.py)
-define the current 19-field industry-summary/ranked-comparison output: two
-text identity fields, 16 nullable/signed DuPont metrics and a nullable positive
-integer `ROE-3å¹´å¹³å‡æŽ’å` field. The provider freezes the explicit Eastmoney
-report/columns/filter/sort/page/source/client/version parameters, records the
-current two-summary-row and ranked-comparison ordering, validates the requested
-target identity and preserves the exact wrapper schema for replay.
-
-The normalizer emits `AKSHARE_DUPONT_COMPARISON_RAW_ONLY` and creates no
-canonical profitability, growth, valuation, market, return, governance or
-accounting fact because the provider-defined comparison is not reconciled to
-filing-backed periods, units or accounting scope. Tests cover the official
-output schema, explicit view and A-share routing, derived upstream symbol/filter,
-nullable/signed metrics, positive rank boundaries, raw-only normalization,
-replay metadata tampering and offline cache replay. No calculation, gate,
-pipeline, CLI or input-loader contract changes.
-
-### Phase 3.26 â€” A-share Eastmoney company-scale comparison raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented A-share Eastmoney
-`stock_zh_scale_comparison_em` company-scale comparison endpoint under
-`MARKET_ACTIVITY` with explicit `view=scale_comparison` and the
-exchange-prefixed six-digit listing symbol expected by the wrapper. The
-[AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
-and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_zh_comparison_em.py)
-define the current 10-field single-listing output: two text identity fields,
-four nullable numeric scale metrics and four positive integer rank fields. The
-provider freezes the Eastmoney report/columns/filter/page/sort/source/client/
-version parameters, validates the exact wrapper schema and listing identity,
-and preserves the official row as raw evidence with replay metadata.
-
-The normalizer emits `AKSHARE_SCALE_COMPARISON_RAW_ONLY` and creates no
-canonical market, valuation or accounting fact because the provider-defined
-values are not reconciled to filing-backed periods, units or economic scope.
-Tests cover the official output schema, explicit view and A-share routing,
-derived upstream symbol/filter, nullable and signed metrics, positive rank
-boundaries, raw-only normalization, replay metadata tampering and offline
-cache replay. No calculation, gate, pipeline, CLI or input-loader contract
-changes.
-
-### Phase 3.27 â€” A-share CDR daily-history raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented A-share CDR
-`stock_zh_a_cdr_daily` daily-history endpoint under `MARKET_HISTORY` with
-explicit `view=cdr_daily`, an exchange-prefixed Sina symbol and inclusive
-date-range parameters. The
-[AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
-and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_zh_a_sina.py)
-define the exact six-field `date`/OHLC/`volume` wrapper output. The provider
-freezes the CDR source page, encrypted-JavaScript upstream URL, `hk_js_decode`
-decoder, date filtering and replay metadata, records the documented lot-volume
-unit, validates strict date ordering and finite numeric rows, and preserves
-the response as raw evidence.
-
-The normalizer emits `AKSHARE_CDR_DAILY_HISTORY_RAW_ONLY` and creates no
-canonical daily market-history, return, valuation or accounting fact because
-the CDR-specific series is not reconciled to the canonical adjustment,
-trading-calendar or unit contract. Tests cover the official output schema,
-explicit view and A-share routing, derived symbol and date range, invalid
-schema/value/date boundaries, raw-only normalization, replay metadata
-tampering and offline cache replay. No calculation, gate, pipeline, CLI or
-input-loader contract changes.
-
-### Phase 3.28 â€” H-share famous-stock quote raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented H-share Eastmoney
-`stock_hk_famous_spot_em` famous-stock quote endpoint under `MARKET_QUOTE` with
-explicit `view=hk_famous`. The
-[AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
-and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hk_famous.py)
-define the exact 12-field `åºå·`/`ä»£ç `/`åç§°`/delayed-quote/volume-turnover
-output and the no-argument `b:DLMK0106` Eastmoney JSON request. The provider
-freezes the fixed upstream parameters and source page, validates every row in
-the full five-digit H-share universe before filtering to the requested listing,
-and preserves documented HKD/share, percent, shares and HKD units plus
-full/selected row counts in replay metadata.
-
-The normalizer emits `AKSHARE_HK_FAMOUS_QUOTE_RAW_ONLY` and creates no
-canonical current-price, return, valuation or accounting fact because the
-official quote is a 15-minute-delayed current-day snapshot without a stable
-observation timestamp. Tests cover the exact wrapper schema, full-universe
-validation and filtering, explicit H-share routing, fixed upstream query
-metadata, raw-only normalization, replay metadata tampering and offline cache
-replay. No calculation, gate, pipeline, CLI or input-loader contract changes.
-
-### Phase 3.29 â€” H-share Stock Connect constituent quote raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented H-share Eastmoney
-`stock_hk_ggt_components_em` Stock Connect constituent quote endpoint under
-`MARKET_QUOTE` with explicit `view=hk_ggt_components`. The
-[AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
-and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hsgt_em.py)
-define a no-argument paginated request for the `b:DLMK0146,b:DLMK0144` H-share
-universe through `https://33.push2.eastmoney.com/api/qt/clist/get`, with
-`pz=100`, `fid=f12` and the exact 12-field wrapper order `åºå·`, `ä»£ç `, `åç§°`,
-`æœ€æ–°ä»·`, `æ¶¨è·Œé¢`, `æ¶¨è·Œå¹…`, `ä»Šå¼€`, `æœ€é«˜`, `æœ€ä½Ž`, `æ˜¨æ”¶`, `æˆäº¤é‡` and `æˆäº¤é¢`.
-The provider freezes the official query, source page and pagination metadata,
-validates the complete five-digit H-share universe before filtering to the
-requested listing, and records HKD/share, percent, shares and HKD-turnover
-units plus full/selected row counts for cache replay.
-
-The normalizer emits `AKSHARE_HK_GGT_COMPONENTS_QUOTE_RAW_ONLY` and creates no
-canonical current-price, return, valuation or accounting fact because the
-documented quote is a 15-minute-delayed current-day snapshot without a stable
-observation timestamp. Tests cover exact fields and values, full-universe
-validation before filtering, H-share routing and parameter rejection,
-raw-only normalization, replay metadata tampering and offline cache replay. No
-calculation, gate, pipeline, CLI or input-loader contract changes.
-
-### Phase 3.30 â€” HSGT minute-fund-flow raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented Eastmoney
-`stock_hsgt_fund_min_em` HSGT minute-fund-flow endpoint under `CAPITAL_FLOW`
-with explicit `view=hsgt_fund_min` and required `symbol=åŒ—å‘èµ„é‡‘` or
-`symbol=å—å‘èµ„é‡‘`. The
-[AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
-and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hsgt_min_em.py)
-define the exact five-field northbound or southbound minute-flow response and
-state that the source stopped providing data from 2024-05-13. The provider
-freezes the official `kamtbs.rtmin/get` JSON endpoint, fixed upstream
-parameters, direction-specific field order and documented `ä¸‡å…ƒ` units; it
-requires northbound/A-share or southbound/H-share request context, validates a
-single observation date with strict minute ordering and preserves the complete
-market-wide response as raw evidence without listing-row filtering.
-
-The normalizer emits `AKSHARE_HSGT_FUND_MIN_RAW_ONLY` and creates no canonical
-issuer cash-flow, listing-specific liquidity, return or valuation fact because
-the response is a deprecated market-wide intraday flow snapshot. Tests cover
-both directions, exact fields and values, parameter and context rejection,
-date/time/numeric boundaries, raw-only normalization, replay metadata tampering
-and offline cache replay. No calculation, gate, pipeline, CLI or input-loader
-contract changes.
-
-### Phase 3.31 â€” HSGT board-rank raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented Eastmoney
-`stock_hsgt_board_rank_em` HSGT board-rank endpoint under `MARKET_ACTIVITY`
-with explicit `view=hsgt_board_rank`. The
-[AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
-and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hsgt_em.py)
-define the three board selectors `åŒ—å‘èµ„é‡‘å¢žæŒè¡Œä¸šæ¿å—æŽ’è¡Œ`,
-`åŒ—å‘èµ„é‡‘å¢žæŒæ¦‚å¿µæ¿å—æŽ’è¡Œ` and `åŒ—å‘èµ„é‡‘å¢žæŒåœ°åŸŸæ¿å—æŽ’è¡Œ`, plus the seven
-period selectors `ä»Šæ—¥`, `3æ—¥`, `5æ—¥`, `10æ—¥`, `1æœˆ`, `1å­£` and `1å¹´`. The
-provider maps these choices to the exact Eastmoney `BOARD_TYPE` and
-`INTERVAL_TYPE` filters, derives the report date from `bkph_date`, validates
-the complete 17-field source order and ranked board universe, and retains
-the report date, source order, numeric/text field contract, upstream JSON
-report/filter, sort and pagination metadata for cache replay. The last four
-largest-increase/decrease fields are preserved as text because that is the
-current official wrapper behavior even where documentation typing is broader.
-
-The normalizer emits `AKSHARE_HSGT_BOARD_RANK_RAW_ONLY` and creates no
-canonical issuer cash-flow, shareholder-return, governance, valuation or market
-fact: this is market-wide northbound board context rather than a listing-scoped
-or issuer-accounting observation. Tests cover all selector families, exact
-fields and values, request/context rejection, schema and rank/date/type
-boundaries, raw-only normalization, replay metadata tampering and offline
-cache replay. No calculation, gate, pipeline, CLI or input-loader contract
-changes.
-
-### Phase 3.32 â€” HSGT individual-ranking raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented Eastmoney
-`stock_hsgt_hold_stock_em` HSGT individual-ranking endpoint under
-`SHAREHOLDER_HOLDINGS` with explicit `view=hsgt_hold_stock`. The
-[AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
-and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hsgt_em.py)
-define the A-share market choices `åŒ—å‘`, `æ²ªè‚¡é€š` and `æ·±è‚¡é€š`, plus the
-period choices `ä»Šæ—¥æŽ’è¡Œ`, `3æ—¥æŽ’è¡Œ`, `5æ—¥æŽ’è¡Œ`, `10æ—¥æŽ’è¡Œ`, `æœˆæŽ’è¡Œ`, `å­£æŽ’è¡Œ`
-and `å¹´æŽ’è¡Œ`. The provider maps the two directional markets to
-`MUTUAL_TYPE=001`/`003`, maps periods to `INTERVAL_TYPE=1`/`3`/`5`/`10`/`M`/`Q`/`Y`,
-derives the report date from `div.title span`, and freezes the exact
-`RPT_MUTUAL_STOCK_NORTHSTA` JSON report, date/market/interval filter,
-descending `ADD_MARKET_CAP` sort, `50000` page size and all-page pagination.
-It validates and retains the complete dynamic 16-field source order, where
-the five `å¢žæŒä¼°è®¡` fields use the selected period prefix, and preserves
-provider numeric/null behavior and documented unit metadata.
-
-The full A-share ranked universe is validated before filtering to the
-requested listing; cache metadata binds full and selected rank/code order,
-the report date, source filter, field typing and source provenance. The
-normalizer emits `AKSHARE_HSGT_HOLD_STOCK_RAW_ONLY` and creates no canonical
-ownership, concentration, share, dilution, governance, issuer cash-flow,
-return or valuation fact. Tests cover all 21 market/period combinations,
-request/context rejection, full-universe schema/rank/date/type boundaries,
-empty selected listings, raw-only normalization, replay metadata tampering and
-offline cache replay. No calculation, gate, pipeline, CLI or input-loader
-contract changes.
-
-### Phase 3.33 â€” HSGT daily stock-statistics raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented Eastmoney
-`stock_hsgt_stock_statistics_em` HSGT daily stock-statistics endpoint
-under `SHAREHOLDER_HOLDINGS` with explicit
-`view=hsgt_stock_statistics`, the four documented selectors
-`åŒ—å‘æŒè‚¡`, `æ²ªè‚¡é€šæŒè‚¡`, `æ·±è‚¡é€šæŒè‚¡` and `å—å‘æŒè‚¡`, and inclusive
-`start_date`/`end_date` date ranges. The [AKShare stock-data
-documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and
-[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hsgt_em.py)
-define the exact 11-field output and the Eastmoney report/filter branches:
-`RPT_MUTUAL_STOCK_NORTHSTA` with the aggregate or directional mutual types
-for northbound holdings, and `RPT_MUTUAL_STOCK_HOLDRANKS` with `RN=1` for
-southbound holdings. The provider freezes `INTERVAL_TYPE=1`, inclusive
-trade-date filters, descending date order, page size `1000` and all-page
-pagination; it validates exact field order, fixed-width A/H codes, unique
-date/code identities and finite numeric/null values before filtering the
-full response to the requested listing.
-
-The normalizer emits `AKSHARE_HSGT_STOCK_STATISTICS_RAW_ONLY` and creates no
-canonical ownership, concentration, share, dilution, governance, issuer
-cash-flow, return or valuation fact. Replay metadata retains the selected
-symbol/direction, date range, report/filter, source-column mapping and
-CNY/HKD price, quantity, market-value, percentage and market-value-change
-context. Tests cover all selector branches, request/context rejection,
-full-universe schema/date/type boundaries, empty selected listings, raw-only
-normalization, replay metadata tampering and offline cache replay. No
-calculation, gate, pipeline, CLI or input-loader contract changes.
-
-### Phase 3.34 â€” HSGT institution-statistics raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented Eastmoney
-`stock_hsgt_institution_statistics_em` HSGT institution-statistics endpoint
-under `SHAREHOLDER_HOLDINGS` with explicit
-`view=hsgt_institution_statistics`, the four documented `market` selectors
-`åŒ—å‘æŒè‚¡`, `æ²ªè‚¡é€šæŒè‚¡`, `æ·±è‚¡é€šæŒè‚¡` and `å—å‘æŒè‚¡`, and inclusive
-`start_date`/`end_date` date ranges. The [AKShare stock-data
-documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and
-[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hsgt_em.py)
-define the exact seven-field output and call the
-`PRT_MUTUAL_ORG_STA` Eastmoney JSON report with descending `HOLD_DATE`, page
-size `500` and market-type filters `N`, `001`, `003` or `S`. The provider
-freezes the official date filter, report, sort, page and fixed parameters,
-validates the complete market-wide response, and preserves the official
-19-column source mapping (date `0`, count `2`, value `4`, 1/5/10-day changes
-`5`/`6`/`7`, institution `9`). Northbound branches retain provider-driven
-pagination while the southbound branch is the documented single-page path.
-
-Because the wrapper rows contain no listing or security code, the provider
-retains the full market-wide institution response and records requested A/H
-listing identity as context only; it does not invent a row-level listing key
-or filter institutions to a company. The normalizer emits
-`AKSHARE_HSGT_INSTITUTION_STATISTICS_RAW_ONLY` and creates no canonical
-ownership, concentration, share, dilution, governance or issuer cash-flow
-fact. Tests cover all market branches, exact filters/units and field order,
-request/context/date rejection, full-response schema and value boundaries,
-raw-only normalization, replay metadata tampering and offline cache replay. No
-calculation, gate, pipeline, CLI or input-loader contract changes.
-
-### Phase 3.35 â€” HSGT Shanghai-to-Hong Kong quote raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented Eastmoney
-`stock_hsgt_sh_hk_spot_em` HSGT Shanghai-to-Hong Kong real-time quote endpoint
-under `MARKET_QUOTE` with explicit `view=hk_sh_spot` and H-share listing
-context. The [AKShare stock-data
-documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and
-[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hsgt_em.py)
-define the no-argument `b:DLMK0144` universe and exact 12-field wrapper
-output. The provider freezes the `push2.eastmoney.com/api/qt/clist/get` JSON
-request, field mapping and HKD/share, percent, shares and HKD transforms,
-validates every five-digit-code row and code-ascending reset sequence before
-filtering the full response, and records full/selected identity order for
-cache replay.
-
-The delayed current-day snapshot has no stable observation timestamp, so the
-normalizer emits `AKSHARE_HK_SH_SPOT_QUOTE_RAW_ONLY` and creates no canonical
-current-price fact. Tests cover request/context rejection, exact field order,
-full-universe code/rank/type boundaries, invalid unrequested rows, empty
-selected listings, raw-only normalization, replay metadata tampering and
-offline cache replay. No calculation, gate, pipeline, CLI or input-loader
-contract changes.
-
-### Phase 3.36 â€” HSGT historical-flow raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented Eastmoney
-`stock_hsgt_hist_em` HSGT historical-flow endpoint under
-`CAPITAL_FLOW` with explicit `view=hsgt_hist` and
-the six official symbols `åŒ—å‘èµ„é‡‘`, `æ²ªè‚¡é€š`,
-`æ·±è‚¡é€š`, `å—å‘èµ„é‡‘`, `æ¸¯è‚¡é€šæ²ª` and
-`æ¸¯è‚¡é€šæ·±`. The [AKShare stock-data
-documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and
-[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hsgt_em.py)
-define the symbol-to-`MUTUAL_TYPE` mapping and the exact
-13-field output, including direction-specific index names. The provider
-freezes the `RPT_MUTUAL_DEAL_HISTORY` JSON report, exact
-filters, descending `TRADE_DATE` upstream order, page size
-`1000` and all-page pagination, validates the complete
-ascending-date response and records documented money/index/percentage units
-and transforms for replay.
-
-Northbound symbols require A-share listing context and southbound symbols require
-H-share context, but the response has no listing-row identity and is never
-filtered to a company. The normalizer emits
-`AKSHARE_HSGT_HIST_RAW_ONLY` and creates no canonical issuer
-cash-flow, liquidity, return or valuation fact. Tests cover all six symbols,
-exact fields, filters, unit metadata and routing, parameter/context rejection,
-complete-response date/numeric/text boundaries, raw-only normalization,
-replay metadata tampering and offline cache replay. No calculation, gate,
-pipeline, CLI or input-loader contract changes.
-
-### Phase 3.37 â€” HSGT individual-detail raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented A-share Eastmoney
-`stock_hsgt_individual_detail_em` HSGT individual-detail endpoint under
-`SHAREHOLDER_HOLDINGS` with explicit `view=hsgt_individual_detail` and
-inclusive `start_date`/`end_date` date ranges. The
-[AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
-and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hsgt_em.py)
-define the six-digit symbol input, exact ten-field output and the
-`RPT_MUTUAL_HOLD_DET` Eastmoney JSON report. The wrapper first tries
-`MARKET_CODE="003"` and retries with `MARKET_CODE="001"` when no result is
-available; the provider records both filters, descending `HOLD_DATE` order,
-page size `500`, provider-driven pagination and the official 17-column source
-mapping.
-
-The provider requires an A-share listing context and exact `YYYYMMDD` bounds,
-validates the complete institution/date response before storage, allows an
-empty listing selection, and preserves CNY/share, shares, CNY and percentage
-units as documented. The normalizer emits
-`AKSHARE_HSGT_INDIVIDUAL_DETAIL_RAW_ONLY`, leaves
-`governance_risk_level` critically missing and creates no canonical ownership,
-concentration, share-count, dilution, issuer cash-flow, return or valuation
-fact. Tests cover request/context/date rejection, exact schema and values,
-empty responses, raw-only normalization, replay metadata tampering and offline
-cache replay. No calculation, gate, pipeline, CLI or input-loader contract
-changes.
-
-### Phase 3.38 â€” HSGT fund-flow-summary raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented Eastmoney
-`stock_hsgt_fund_flow_summary_em` market-wide HSGT fund-flow-summary endpoint
-under `CAPITAL_FLOW` with explicit `view=hsgt_fund_flow_summary` and A/H listing
-context. The [AKShare stock-data
-documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and
-[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hsgt_em.py)
-define the no-argument `RPT_MUTUAL_QUOTA` JSON report, exact 13-field output,
-`MUTUAL_TYPE` ascending order, 2000-row single-page request and 17-column
-wrapper mapping. The provider freezes the report, quote columns, amount/count/
-status/percentage units and complete market-wide response metadata, including
-the source order and one trading-date observation.
-
-The response has no requested-listing identity and is never filtered to a
-company; A/H listing context remains request metadata only with
-`listing_context_only=true` and `row_filtering=none`. The normalizer emits
-`AKSHARE_HSGT_FUND_FLOW_SUMMARY_RAW_ONLY` and creates no canonical issuer
-cash-flow, liquidity, return or valuation fact. Tests cover both listing
-contexts, exact fields, report parameters, units and wrapper mapping,
-context/parameter rejection, complete-response date/numeric/integer/text
-boundaries, empty responses, raw-only normalization, replay metadata tampering
-and offline cache replay. No calculation, gate, pipeline, CLI or input-loader
-contract changes.
-
-### Phase 3.39 â€” Shanghai A-share quote raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented Eastmoney
-`stock_sh_a_spot_em` Shanghai A-share real-time quote endpoint under
-`MARKET_QUOTE` with explicit `view=sh_a_spot` and a Shanghai A-share listing
-context. The [AKShare stock-data
-documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and
-[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hist_em.py)
-define the no-argument `push2.eastmoney.com/api/qt/clist/get` JSON universe,
-fixed `m:1 t:2,m:1 t:23` filter, `f3` descending sort, page size `100` and
-provider-driven all-page pagination. The provider preserves the exact
-23-field wrapper order, 33-column source mapping, documented price/volume/
-turnover/percentage units and complete-universe code order before selecting
-the requested listing.
-
-The current-day response has no stable observation timestamp and is retained
-as raw evidence only. The normalizer emits
-`AKSHARE_SH_A_SPOT_QUOTE_RAW_ONLY` and creates no canonical current-price or
-other market fact. Tests cover Shanghai-only routing, exact upstream
-parameters, complete-response schema/rank/code/type boundaries, invalid
-unrequested rows, empty selections, raw-only normalization, replay metadata
-tampering and offline cache replay. No calculation, gate, pipeline, CLI or
-input-loader contract changes.
-
-### Phase 3.40 â€” Shenzhen A-share quote raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented Eastmoney
-`stock_sz_a_spot_em` Shenzhen A-share real-time quote endpoint under
-`MARKET_QUOTE` with explicit `view=sz_a_spot` and a Shenzhen A-share listing
-context. The [AKShare stock-data
-documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and
-[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hist_em.py)
-define the no-argument `push2.eastmoney.com/api/qt/clist/get` JSON universe,
-fixed `m:0 t:6,m:0 t:80` filter, `f3` descending sort, page size `100` and
-provider-driven all-page pagination. The provider preserves the exact
-23-field wrapper order, 33-column source mapping, documented price/volume/
-turnover/percentage units and complete-universe code order before selecting
-the requested listing.
-
-The current-day response has no stable observation timestamp and is retained
-as raw evidence only. The normalizer emits
-`AKSHARE_SZ_A_SPOT_QUOTE_RAW_ONLY` and creates no canonical current-price or
-other market fact. Tests cover Shenzhen-only routing, exact upstream
-parameters, complete-response schema/rank/code/type boundaries, invalid
-unrequested rows, empty selections, raw-only normalization, replay metadata
-tampering and offline cache replay. No calculation, gate, pipeline, CLI or
-input-loader contract changes.
-
-### Phase 3.41 â€” Beijing A-share quote raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented Eastmoney
-`stock_bj_a_spot_em` Beijing A-share real-time quote endpoint under
-`MARKET_QUOTE` with explicit `view=bj_a_spot` and a Beijing A-share listing
-context. The [AKShare stock-data
-documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and
-[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hist_em.py)
-define the no-argument `push2.eastmoney.com/api/qt/clist/get` JSON universe,
-fixed `m:0 t:81 s:2048` filter, `f3` descending sort, page size `100` and
-provider-driven all-page pagination. The provider preserves the exact
-23-field wrapper order, 33-column source mapping, documented price/volume/
-turnover/percentage units and complete-universe code order before selecting
-the requested listing.
-
-The current-day response has no stable observation timestamp and is retained
-as raw evidence only. The normalizer emits
-`AKSHARE_BJ_A_SPOT_QUOTE_RAW_ONLY` and creates no canonical current-price or
-other market fact. Tests cover Beijing-only routing, exact upstream
-parameters, complete-response schema/rank/code/type boundaries, invalid
-unrequested rows, empty selections, raw-only normalization, replay metadata
-tampering and offline cache replay. No calculation, gate, pipeline, CLI or
-input-loader contract changes.
-
-### Phase 3.42 â€” A-share new-stock quote raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented Eastmoney
-`stock_new_a_spot_em` A-share new-stock real-time quote endpoint under
-`MARKET_QUOTE` with explicit `view=new_a_spot` and an A-share listing context.
-The [AKShare stock-data
-documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and
-[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hist_em.py)
-define the no-argument `push2.eastmoney.com/api/qt/clist/get` JSON universe,
-fixed `m:0 f:8,m:1 f:8` filter, `fid=f26`, `f3` descending sort, page size
-`100` and provider-driven all-page pagination. The provider preserves the
-exact 24-field wrapper order, including `ä¸Šå¸‚æ—¥æœŸ`, the 33-column source
-mapping, listing-date bounds, documented price/volume/turnover/percentage
-units and complete-universe code order before selecting the requested listing.
-
-The current-day new-stock quote has no stable observation timestamp and is
-retained as raw evidence only. The normalizer emits
-`AKSHARE_NEW_A_SPOT_QUOTE_RAW_ONLY` and creates no canonical current-price or
-other market fact. Tests cover A-share-only routing, exact upstream parameters,
-complete-response schema/rank/code/date/type boundaries, invalid unrequested
-rows, empty selections, raw-only normalization, replay metadata tampering and
-offline cache replay. No calculation, gate, pipeline, CLI or input-loader
-contract changes.
-
-### Phase 3.43 â€” Growth Enterprise Market quote raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented Eastmoney
-`stock_cy_a_spot_em` Shenzhen Growth Enterprise Market real-time quote endpoint
-under `MARKET_QUOTE` with explicit `view=cy_a_spot` and a Shenzhen Growth
-Enterprise Market listing context. The [AKShare stock-data
-documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and
-[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hist_em.py)
-define the no-argument `7.push2.eastmoney.com/api/qt/clist/get` JSON universe,
-fixed `m:0 t:80` filter, `fid=f12`, `f3` descending sort, page size `100` and
-provider-driven all-page pagination. The provider preserves the exact
-23-field wrapper order, 33-column source mapping, documented
-price/volume/turnover/percentage units and complete-universe code order before
-selecting the requested listing.
-
-The current-day quote has no stable observation timestamp and is retained as
-raw evidence only. The normalizer emits
-`AKSHARE_CY_A_SPOT_QUOTE_RAW_ONLY` and creates no canonical current-price or
-other market fact. Tests cover Growth Enterprise Market-only routing, exact
-upstream parameters, complete-response schema/rank/code/type boundaries,
-invalid unrequested rows, empty selections, raw-only normalization, replay
-metadata tampering and offline cache replay. No calculation, gate, pipeline,
-CLI or input-loader contract changes.
-
-### Phase 3.44 â€” STAR Market quote raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented Eastmoney
-`stock_kc_a_spot_em` Shanghai STAR Market real-time quote endpoint under
-`MARKET_QUOTE` with explicit `view=kc_a_spot` and a Shanghai STAR Market listing
-context. The [AKShare stock-data
-documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and
-[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hist_em.py)
-define the no-argument `7.push2.eastmoney.com/api/qt/clist/get` JSON universe,
-fixed `m:1 t:23` filter, `fid=f12`, `f3` descending sort, page size `100` and
-provider-driven all-page pagination. The provider preserves the exact
-23-field wrapper order, 33-column source mapping, documented
-price/volume/turnover/percentage units and complete-universe code order before
-selecting the requested listing.
-
-The current-day quote has no stable observation timestamp and is retained as
-raw evidence only. The normalizer emits
-`AKSHARE_KC_A_SPOT_QUOTE_RAW_ONLY` and creates no canonical current-price or
-other market fact. Tests cover STAR Market-only routing, exact upstream
-parameters, complete-response schema/rank/code/type boundaries, invalid
-unrequested rows, empty selections, raw-only normalization, replay metadata
-tampering and offline cache replay. No calculation, gate, pipeline, CLI or
-input-loader contract changes.
-
-### Phase 3.45 â€” B-share quote raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented Eastmoney
-`stock_zh_b_spot_em` B-share real-time quote endpoint under `MARKET_QUOTE` with
-explicit `view=b_spot` and Shanghai 900xxx or Shenzhen 200xxx listing context.
-The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
-and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hist_em.py)
-define the no-argument `28.push2.eastmoney.com/api/qt/clist/get` JSON universe,
-fixed `m:0 t:7,m:1 t:3` filter, `fid=f12`, `f3` descending sort, page size `100`
-and provider-driven all-page pagination. The provider preserves the exact
-23-field wrapper order, 33-column source mapping, documented lots/CNY/percentage
-units and complete-universe code order before selecting the requested listing;
-the B-share currency remains undocumented.
-
-The current-day quote has no stable observation timestamp and is retained as
-raw evidence only. The normalizer emits
-`AKSHARE_B_SPOT_QUOTE_RAW_ONLY` and creates no canonical current-price or other
-market fact. Tests cover B-share routing for both mainland exchanges, exact
-upstream parameters, complete-response schema/rank/code/type boundaries,
-invalid unrequested rows, empty selections, raw-only normalization, replay
-metadata tampering and offline cache replay. No calculation, gate, pipeline,
-CLI or input-loader contract changes.
-
-### Phase 3.46 â€” Sina B-share quote raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented Sina
-[`stock_zh_b_spot`](https://akshare.akfamily.xyz/data/stock/stock.html)
-B-share real-time quote endpoint under `MARKET_QUOTE` with explicit
-`view=b_sina_spot` and Shanghai 900xxx or Shenzhen 200xxx listing context. The
-[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_zh_b_sina.py)
-defines a `Market_Center.getHQNodeStockCount` page-count request followed by
-`Market_Center.getHQNodeData` JSON pages of 80 rows with fixed `node=hs_b`,
-empty `symbol`, `_s_r_a=page` and ascending `symbol` order. The provider
-preserves the exact 13-field wrapper order, 23-column source mapping,
-documented percentage/share/CNY units and lower-prefixed source symbols before
-selecting the requested listing.
-
-The current-day Sina B-share quote has no stable observation timestamp and is
-retained as raw evidence only. The normalizer emits
-`AKSHARE_B_SINA_SPOT_QUOTE_RAW_ONLY` and creates no canonical current-price or
-other market fact. Repeated upstream calls may be temporarily IP-blocked, so
-that limitation is recorded as provenance rather than hidden by retry logic.
-Tests cover both mainland exchanges, exact upstream parameters,
-complete-response field/order/code/type boundaries, invalid unrequested rows,
-empty selection, raw-only normalization and offline cache replay. No
-calculation, gate, pipeline, CLI or input-loader contract changes.
-
-### Phase 3.47 â€” Sina B-share daily-history raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented Sina
-[`stock_zh_b_daily`](https://akshare.akfamily.xyz/data/stock/stock.html)
-B-share daily-history endpoint under `MARKET_HISTORY` with explicit
-`view=b_daily`, Shanghai 900xxx or Shenzhen 200xxx listing context, inclusive
-`start_date`/`end_date` and `adjust` values `''`, `qfq`, `hfq`, `qfq-factor` or
-`hfq-factor`. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_zh_b_sina.py)
-fetches Sina's encrypted-JavaScript full history, an outstanding-share
-auxiliary response and optional qfq/hfq factor history. The provider preserves
-the exact regular fields `date`, `open`, `high`, `low`, `close`, `volume`,
-`outstanding_share`, `turnover`, or the exact two-field factor response, along
-with the requested range, lower-prefixed symbol, adjustment mode, source URLs,
-decoder/transform steps and factor-series full-snapshot scope in replay
-metadata.
-
-The B-share daily-history response remains raw evidence only because the
-documented response does not establish the Shanghai/Shenzhen B-share price
-currency or a canonical adjustment/trading-calendar basis. The normalizer
-emits `AKSHARE_B_DAILY_HISTORY_RAW_ONLY` and creates no canonical daily-history,
-return, valuation or accounting fact. Tests cover routing, defaults, exact
-regular/factor schemas, invalid rows, raw-only normalization, replay metadata
-tampering, out-of-range replay and offline cache replay. No calculation, gate,
-pipeline, CLI or input-loader contract changes.
-
-### Phase 3.48 â€” Sina B-share minute-history raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented Sina
-[`stock_zh_b_minute`](https://akshare.akfamily.xyz/data/stock/stock.html)
-B-share minute-history endpoint under `MARKET_HISTORY` with explicit
-`view=b_minute`, Shanghai 900xxx or Shenzhen 200xxx listing context, periods
-`1`, `5`, `15`, `30` or `60`, and adjustment modes `''`, `qfq` or `hfq`. The
-[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_zh_b_sina.py)
-requests the Sina JSONP K-line endpoint with the market-prefixed symbol,
-`scale` equal to the requested period and fixed `datalen=1970`. The provider
-preserves the exact six-field `day`, `open`, `high`, `low`, `close`, `volume`
-response and records the symbol, interval, adjustment, recent-trading-day
-scope, source parameters, JSONP decoder and adjustment transform in replay
-metadata.
-
-The B-share minute-history response remains raw evidence only because it is a
-recent minute window with undocumented price/volume units and does not
-establish the canonical daily-history, currency or valuation inputs. The
-normalizer emits `AKSHARE_B_MINUTE_HISTORY_RAW_ONLY` and creates no canonical
-fact. Tests cover both mainland exchanges, defaults, parameter and row
-validation, empty output, raw-only normalization, replay metadata tampering
-and offline cache replay. No calculation, gate, pipeline, CLI or input-loader
-contract changes.
-
-### Phase 3.49 â€” Sina next-new-stock raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented Sina
-[`stock_zh_a_new`](https://akshare.akfamily.xyz/data/stock/stock.html)
-next-new-stock endpoint under `MARKET_ACTIVITY` with explicit
-`view=sina_new_stock` and Shanghai or Shenzhen A-share listing context. The
-[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_zh_a_special.py)
-uses `Market_Center.getHQNodeStockCount` with `node=new_stock`, then paginates
-`Market_Center.getHQNodeData` in ascending `symbol` order with page size 80.
-The provider preserves the exact ten-field `symbol`, `code`, `name`, price,
-volume, amount, market-cap and turnover-ratio output and filters the complete
-validated universe by the requested listing.
-
-The Sina next-new-stock response remains raw evidence only because it is a
-latest-trading-day quote universe without a stable observation date or a
-filing-backed valuation/unit basis. The normalizer emits
-`AKSHARE_SINA_NEW_STOCK_RAW_ONLY` and creates no canonical fact. Tests cover
-exact routing, pagination metadata, full-universe field/order/identity/type
-validation, invalid unrequested rows, empty selection, raw-only normalization,
-replay metadata tampering and offline cache replay. No calculation, gate,
-pipeline, CLI or input-loader contract changes.
-
-### Phase 3.50 â€” Eastmoney company-dynamics raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented Eastmoney
-[`stock_gsrl_gsdt_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
-company-dynamics endpoint under `MARKET_ACTIVITY` with explicit
-`view=company_dynamics` and a required `date=YYYYMMDD`. The [official
-implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_gsrl_em.py)
-queries the `RPT_ORGOP_ALL` report with a date filter, ascending security-code
-sort and a 5000-row page, then returns the exact six fields `åºå·`, `ä»£ç `, `ç®€ç§°`,
-`äº‹ä»¶ç±»åž‹`, `å…·ä½“äº‹é¡¹` and `äº¤æ˜“æ—¥` after dropping the internal `SECUCODE`
-column. The provider validates the complete requested-date universe before
-filtering it to the requested A-share listing and records the exact upstream
-filter, wrapper field order and replay scope.
-
-The company-dynamics response remains raw evidence only because event labels and
-descriptions do not establish filing contents, accounting periods, governance
-conclusions or a canonical market fact. The normalizer emits
-`AKSHARE_COMPANY_DYNAMICS_RAW_ONLY` and creates no canonical fact. Tests cover
-date/view routing, exact schema and field order, full-universe validation,
-duplicate listing events, empty selection, raw-only normalization, replay
-metadata tampering and offline cache replay. No calculation, gate, pipeline,
-CLI or input-loader contract changes.
-
-### Phase 3.51 â€” Tonghuashun new-stock-first-day raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented Tonghuashun
-[`stock_xgsr_ths`](https://akshare.akfamily.xyz/data/stock/stock.html)
-new-stock-first-day endpoint under `MARKET_ACTIVITY` with explicit
-`view=new_stock_first_day`. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_board_industry_ths.py)
-discovers the page count from the HTML response, refreshes the `ths.js` `v` and
-`hexin-v` headers for each page, parses each table with `pandas.read_html` and
-returns the exact twelve-field response `åºå·`, `è‚¡ç¥¨ä»£ç `, `è‚¡ç¥¨ç®€ç§°`, `ä¸Šå¸‚æ—¥æœŸ`,
-`å‘è¡Œä»·`, `æœ€æ–°ä»·`, first-day OHLC/return and `æ˜¯å¦ç ´å‘`. The adapter records
-the HTML pagination/authentication contract, output transformations, full
-source order, code/date order and provider-side selection scope.
-
-The response remains raw evidence only because provider-transformed historical
-prices, returns and issue-status labels do not establish a canonical listing,
-return, valuation or accounting fact. The normalizer emits
-`AKSHARE_NEW_STOCK_FIRST_DAY_RAW_ONLY` and creates no canonical fact. Tests cover
-explicit routing, exact field/order and source metadata, complete-universe
-validation, empty selection, raw-only normalization, replay metadata tampering
-and offline cache replay. No calculation, gate, pipeline, CLI or input-loader
-contract changes.
-
-### Phase 3.52 â€” Tonghuashun IPO-benefit raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented Tonghuashun
-[`stock_ipo_benefit_ths`](https://akshare.akfamily.xyz/data/stock/stock.html)
-IPO-benefit endpoint under `MARKET_ACTIVITY` with explicit `view=ipo_benefit`.
-The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_board_industry_ths.py)
-discovers the HTML page count, refreshes the `ths.js` `v` and `hexin-v` headers
-for each page and parses the full table with `pandas.read_html`, then returns
-the exact ten fields `åºå·`, `è‚¡ç¥¨ä»£ç `, `è‚¡ç¥¨ç®€ç§°`, `æ”¶ç›˜ä»·`, `æ¶¨è·Œå¹…`, `å¸‚å€¼`,
-`å‚è‚¡å®¶æ•°`, `æŠ•èµ„æ€»é¢`, `æŠ•èµ„å å¸‚å€¼æ¯”` and `å‚è‚¡å¯¹è±¡`. The adapter records the
-weekly snapshot, HTML pagination/authentication contract, provider transforms,
-full source identity order and provider-side selection scope.
-
-The response remains raw evidence only because provider-defined investee counts,
-investment amounts and market-value ratios do not establish issuer revenue,
-cash flow, ownership, valuation or a canonical accounting fact. The normalizer
-emits `AKSHARE_IPO_BENEFIT_RAW_ONLY` and creates no canonical fact. Tests cover
-explicit routing, exact field/order and HTML-source metadata, complete-universe
-validation, empty selection, raw-only normalization, replay metadata tampering
-and offline cache replay. No calculation, gate, pipeline, CLI or input-loader
-contract changes.
-
-### Phase 3.53 â€” Eastmoney two-net-and-delisted-stock raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented Eastmoney
-[`stock_zh_a_stop_em`](https://akshare.akfamily.xyz/data/stock/stock.html)
-two-net-and-delisted-stock endpoint under `MARKET_ACTIVITY` with explicit
-`view=stop_stock`. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_zh_a_special.py)
-uses the `40.push2.eastmoney.com` JSON endpoint with `fs=m:0 s:3`, page size 100
-and `f3` descending sorting through `fetch_paginated_data`, then returns the
-exact seventeen fields `åºå·`, `ä»£ç `, `åç§°`, `æœ€æ–°ä»·`, `æ¶¨è·Œå¹…`, `æ¶¨è·Œé¢`,
-`æˆäº¤é‡`, `æˆäº¤é¢`, `æŒ¯å¹…`, `æœ€é«˜`, `æœ€ä½Ž`, `ä»Šå¼€`, `æ˜¨æ”¶`, `é‡æ¯”`, `æ¢æ‰‹çŽ‡`,
-`å¸‚ç›ˆçŽ‡-åŠ¨æ€` and `å¸‚å‡€çŽ‡`. The adapter records the fixed query, provider-driven
-pagination, 33-column wrapper mapping, numeric transformations, source identity
-order and provider-side selection scope.
-
-The response remains raw evidence only because current quote values and
-provider-defined two-net/delisted membership do not establish a dated listing,
-canonical price, valuation or accounting fact. The normalizer emits
-`AKSHARE_STOP_STOCK_RAW_ONLY` and creates no canonical fact. Tests cover explicit
-routing, exact field/order and JSON-source metadata, complete-universe
-validation, empty selection, raw-only normalization, replay metadata tampering
-and offline cache replay. No calculation, gate, pipeline, CLI or input-loader
-contract changes.
-
-### Phase 3.54 â€” Sina STAR Market quote raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented Sina
-[`stock_zh_kcb_spot`](https://akshare.akfamily.xyz/data/stock/stock.html)
-realtime quote endpoint under `MARKET_QUOTE` with explicit
-`view=kcb_sina_spot`. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_zh_kcb_sina.py)
-discovers the `node=kcb` universe size, paginates the JSON response in
-ascending `symbol` order with page size 80 and returns the exact nineteen
-fields `ä»£ç `, `åç§°`, quote/valuation values, `æ—¶ç‚¹`, `æµé€šå¸‚å€¼`, `æ€»å¸‚å€¼` and
-`æ¢æ‰‹çŽ‡` after dropping the internal second column. The adapter preserves the
-lower-prefixed Shanghai symbols, numeric conversion, provider observation time,
-wrapper mapping, full-universe order and provider-side selection scope in
-replay metadata before filtering to the requested 688xxx/689xxx listing.
-
-The response remains raw evidence only: realtime quote and valuation fields,
-even with the provider's observation-time string, do not establish the
-canonical current-price input. The normalizer emits
-`AKSHARE_KCB_SINA_SPOT_QUOTE_RAW_ONLY` and creates no canonical fact. Tests
-cover explicit routing, exact schema and field order, pagination metadata,
-complete-universe validation, invalid unrequested rows, empty selection,
-raw-only normalization, replay metadata tampering and offline cache replay. No
-calculation, gate, pipeline, CLI or input-loader contract changes.
-
-### Phase 3.55 â€” Sina STAR Market daily-history raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented Sina
-[`stock_zh_kcb_daily`](https://akshare.akfamily.xyz/data/stock/stock.html)
-daily-history endpoint under `MARKET_HISTORY` with explicit
-`view=kcb_daily`. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_zh_kcb_sina.py)
-requests one Shanghai 688xxx/689xxx STAR Market symbol, returns a full
-history from Sina's JSONP K-line service, merges the outstanding-share history
-and optionally applies qfq/hfq factors. The adapter preserves the exact ten
-regular fields `date`, `open`, `high`, `low`, `close`, `volume`, `after_volume`,
-`after_amount`, `outstanding_share` and `turnover`, or the exact two-field
-factor response for `qfq-factor` and `hfq-factor`. It records the full-history
-scope, five documented adjustment modes, source URLs, wrapper decoders,
-provider transformations and conservative units in replay metadata.
-
-The response remains raw evidence only: provider-derived outstanding-share,
-after-hours, turnover and adjusted-price values are not reconciled to the
-canonical daily-history contract or filing-backed market facts. The normalizer
-emits `AKSHARE_KCB_DAILY_HISTORY_RAW_ONLY` and creates no canonical fact.
-Tests cover routing, defaults, adjustment/factor schemas, invalid rows,
-raw-only normalization, replay metadata tampering and offline cache replay. No
-calculation, gate, pipeline, CLI or input-loader contract changes.
-
-### Phase 3.56 â€” Sina index daily-history raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented Sina
-[`stock_zh_index_daily`](https://akshare.akfamily.xyz/data/index/index.html)
-index daily-history endpoint under `MARKET_HISTORY` with explicit
-`view=index_daily`. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/index/index_stock_zh.py)
-requests one Shanghai 000xxx or Shenzhen 399xxx index symbol from Sina's
-encrypted JavaScript K-line history endpoint with fixed `d=2020_2_4`, then
-decodes the response with `hk_js_decode` and `py_mini_racer`. The adapter
-preserves the exact six fields `date`, `open`, `high`, `low`, `close`, `volume`,
-full-history scope, lower-prefixed symbol, source URL, fixed/dynamic parameters,
-decoder steps, strict date order and conservative unit metadata in replay
-metadata.
-
-The Sina index daily-history response remains raw evidence only: index-level
-OHLCV has no listing/entity accounting scope and does not establish the
-canonical daily-history, return, valuation or accounting inputs. The normalizer
-emits `AKSHARE_INDEX_DAILY_HISTORY_RAW_ONLY` and creates no canonical fact.
-Tests cover Shanghai and Shenzhen routing, exact schema/order and numeric/date
-boundaries, unsupported listing/parameter requests, empty output, raw-only
-normalization, replay metadata tampering and offline cache replay. No
-calculation, gate, pipeline, CLI or input-loader contract changes.
-
-### Phase 3.57 â€” Tencent index daily-history raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented Tencent
-[`stock_zh_index_daily_tx`](https://akshare.akfamily.xyz/data/index/index.html)
-index daily-history endpoint under `MARKET_HISTORY` with explicit
-`view=tencent_index_daily`. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/index/index_stock_zh.py)
-requests a Shanghai 000xxx or Shenzhen 399xxx index symbol with optional
-`start_date` and `end_date`, fetches Tencent's qfq series in year partitions,
-uses an earliest-date lookup for an empty start bound and returns the exact six
-fields `date`, `open`, `close`, `high`, `low` and `amount`. The adapter preserves
-the inclusive range, always-front-adjusted mode, documented lot amount unit,
-source/auxiliary URLs, fixed/dynamic parameters, decoder/transformation steps,
-strict date order and replay row counts in metadata.
-
-The Tencent index daily-history response remains raw evidence only: its index
-OHLC and lot amount series have no listing/entity accounting scope and do not
-establish the canonical daily-history, return, valuation or accounting inputs.
-The normalizer emits `AKSHARE_TENCENT_INDEX_DAILY_HISTORY_RAW_ONLY` and creates
-no canonical fact. Tests cover explicit/default ranges, Shanghai and Shenzhen
-index routing, exact schema/order and numeric/date boundaries, unsupported
-listing/parameter requests, empty output, raw-only normalization, replay
-metadata tampering and offline cache replay. No calculation, gate, pipeline,
-CLI or input-loader contract changes.
-
-### Phase 3.58 â€” Eastmoney index daily-history raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented Eastmoney
-[`stock_zh_index_daily_em`](https://akshare.akfamily.xyz/data/index/index.html)
-index daily-history endpoint under `MARKET_HISTORY` with explicit
-`view=index_daily_em`. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/index/index_stock_zh.py)
-requests a Shanghai 000xxx, Shenzhen 399xxx or Beijing 899xxx index symbol,
-maps its market prefix to an Eastmoney `secid`, requests daily K-lines with
-`fqt=0`, drops the provider's internal eighth column and returns the exact
-seven fields `date`, `open`, `close`, `high`, `low`, `volume` and `amount`. The
-adapter preserves the inclusive range, unadjusted mode, source URL,
-fixed/dynamic parameters, wrapper column/drop steps, strict date order and
-replay row counts in metadata.
-
-The Eastmoney index daily-history response remains raw evidence only: its
-unadjusted index OHLCV/amount series have no listing/entity accounting scope
-and do not establish the canonical daily-history, return, valuation or
-accounting inputs. The normalizer emits `AKSHARE_INDEX_DAILY_EM_RAW_ONLY` and
-creates no canonical fact. Tests cover default/explicit ranges, Shanghai,
-Shenzhen and Beijing routing, secid mapping, exact schema/order and numeric/date
-boundaries, unsupported listing/parameter requests, empty output, raw-only
-normalization, replay metadata tampering and offline cache replay. No
-calculation, gate, pipeline, CLI or input-loader contract changes.
-
-### Phase 3.59 â€” Generic Eastmoney index-history raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented generic Eastmoney
-[`index_zh_a_hist`](https://akshare.akfamily.xyz/data/index/index.html)
-index-history endpoint under `MARKET_HISTORY` with explicit
-`view=index_zh_a_hist`, `daily`/`weekly`/`monthly` periods and default bounds
-`19700101` through `22220101`. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/index/index_zh_em.py)
-resolves the raw index code through the Eastmoney index-code map with market
-fallbacks, requests unadjusted K-lines with period-specific `klt` values,
-fetches the full response, filters it by the requested range and returns the
-exact eleven fields `æ—¥æœŸ`, `å¼€ç›˜`, `æ”¶ç›˜`, `æœ€é«˜`, `æœ€ä½Ž`, `æˆäº¤é‡`, `æˆäº¤é¢`,
-`æŒ¯å¹…`, `æ¶¨è·Œå¹…`, `æ¶¨è·Œé¢` and `æ¢æ‰‹çŽ‡`. The adapter preserves the period,
-range, map/fallback resolution, source/auxiliary URLs, fixed/dynamic
-parameters, wrapper filtering and transformation steps, strict date order and
-replay row counts in metadata.
-
-The generic index-history response remains raw evidence only: its unadjusted
-multi-period OHLCV, turnover and provider-derived change fields have no
-listing/entity accounting scope and do not establish the canonical
-daily-history, return, valuation or accounting inputs. The normalizer emits
-`AKSHARE_INDEX_ZH_A_HIST_RAW_ONLY` and creates no canonical fact. Tests cover
-default/explicit periods and ranges, Shanghai/Shenzhen/Beijing routing, exact
-schema/order and numeric/date boundaries, unsupported listing/parameter
-requests, empty output, raw-only normalization, replay metadata tampering and
-offline cache replay. No calculation, gate, pipeline, CLI or input-loader
-contract changes.
-
-### Phase 3.60 â€” Eastmoney index minute-history raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented Eastmoney index minute-history
-[`index_zh_a_hist_min_em`](https://akshare.akfamily.xyz/data/index/index.html)
-endpoint under `MARKET_HISTORY` with explicit
-`view=index_zh_a_hist_min_em`, periods `1`, `5`, `15`, `30` and `60`, and
-default datetimes `1979-09-01 09:32:00` through `2222-01-01 09:32:00`. The
-[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/index/index_zh_em.py)
-uses the trends endpoint for one-minute rows and the K-line endpoint for other
-periods, resolves the raw index code through the Eastmoney index-code map with
-market fallbacks, uses no adjustment for one-minute data and front adjustment
-for other periods, applies the inclusive datetime filter and returns the
-period-specific eight- or eleven-field output order. The adapter preserves the
-range, adjustment mode, map/endpoint URLs, fixed/dynamic parameters, wrapper
-filtering and transformation steps, strict timestamp order and replay row
-counts in metadata.
-
-The index minute-history response remains raw evidence only: its recent
-intraday bars, provider adjustment mode and limited history window have no
-listing/entity accounting scope and do not establish the canonical
-daily-history, return, valuation or accounting inputs. The normalizer emits
-`AKSHARE_INDEX_ZH_A_HIST_MIN_EM_RAW_ONLY` and creates no canonical fact. Tests
-cover one-minute and multi-period schemas, default/explicit datetime ranges,
-Shanghai/Shenzhen/Beijing routing, exact schema/order and numeric/timestamp
-boundaries, unsupported listing/parameter requests, empty output, raw-only
-normalization, replay metadata tampering and offline cache replay. No
-calculation, gate, pipeline, CLI or input-loader contract changes.
-
-### Phase 3.61 â€” Eastmoney index spot raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented Eastmoney
-[`stock_zh_index_spot_em`](https://akshare.akfamily.xyz/data/index/index.html)
-real-time index-universe endpoint under `MARKET_QUOTE` with explicit
-`view=index_spot` and the five documented `symbol` selectors: `æ²ªæ·±é‡è¦æŒ‡æ•°`,
-`ä¸Šè¯ç³»åˆ—æŒ‡æ•°`, `æ·±è¯ç³»åˆ—æŒ‡æ•°`, `æŒ‡æ•°æˆä»½` and `ä¸­è¯ç³»åˆ—æŒ‡æ•°`. The
-[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/index/index_stock_zh.py)
-uses a special `33.push2` request for important indices and a `48.push2`
-request for the other categories, with category filters, page size 100 and
-the exact fourteen-field wrapper order. The adapter preserves the complete
-index universe, selector, source/upstream URLs, fixed/dynamic parameters,
-field mappings, documented percentage units and replay row counts.
-
-The index spot response remains raw evidence only: its current-day index
-prices, changes, volume and amount context have no stable listing
-observation timestamp or issuer accounting scope and do not establish the
-canonical current-price input. The normalizer emits
-`AKSHARE_INDEX_SPOT_QUOTE_RAW_ONLY` and creates no canonical fact. Tests cover
-all selectors, exact schema/order and numeric/rank boundaries, unsupported
-listing/parameter requests, empty output, raw-only normalization, replay
-metadata tampering and offline cache replay. No calculation, gate, pipeline,
-CLI or input-loader contract changes.
-
-### Phase 3.62 â€” Sina index spot raw acquisition contract (COMPLETE)
-
-The mapping review now covers the documented Sina
-[`stock_zh_index_spot_sina`](https://akshare.akfamily.xyz/data/index/index.html)
-real-time full index-universe endpoint under `MARKET_QUOTE` with explicit
-`view=index_spot_sina` and A-share listing context. The
-[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/index/index_stock_zh.py)
-requests the `hs_s` node, discovers the provider-reported page count, then
-fetches 80-row pages sorted by symbol. The adapter preserves the exact eleven
-documented output fields, documented percent/lots/CNY units, source and
-upstream URLs, fixed/dynamic parameters, wrapper field mapping and replay row
-counts.
-
-The Sina index spot response remains raw evidence only: its current index
-prices, changes, volume and turnover are a market-wide snapshot without a
-stable listing-level observation timestamp and do not establish the canonical
-current-price input. The normalizer emits
-`AKSHARE_INDEX_SPOT_SINA_RAW_ONLY` and creates no canonical fact. Tests cover
-fetch and metadata, request validation, malformed rows, empty output,
-raw-only normalization, replay metadata/payload tampering and offline cache
-replay. No calculation, gate, pipeline, CLI or input-loader contract changes.
-
-### Phase 3.63 â€” Sina Hong Kong-index spot raw acquisition contract (COMPLETE)
-
-The mapping review now covers the next documented Sina
-[`stock_hk_index_spot_sina`](https://akshare.akfamily.xyz/data/index/index.html)
-real-time Hong Kong-index universe under `MARKET_QUOTE` with explicit
-`view=hk_index_spot_sina` and H-share listing context. The
-[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/index/index_stock_hk.py)
-requests Sina's fixed `hq.sinajs.cn` symbol list in one quoted-text response,
-selects the exact nine documented output fields and converts the seven numeric
-fields. The adapter preserves the source page, fixed `rn`/`list` parameters,
-positional field mapping, dropped provider columns, documented percentage unit
-and replay row counts.
-
-The Sina Hong Kong-index spot response remains raw evidence only: its current
-index prices and changes are a market-wide snapshot without a stable
-listing-level observation timestamp or issuer accounting scope and do not
-establish the canonical current-price input. The normalizer emits
-`AKSHARE_HK_INDEX_SPOT_SINA_RAW_ONLY` and creates no canonical fact. Tests cover
-fetch and metadata, H-share-only request validation, malformed rows, empty
-output, raw-only normalization, replay metadata/payload tampering and offline
-cache replay. No calculation, gate, pipeline, CLI or input-loader contract
-changes.
-
-### Phase 3.64 â€” Eastmoney Hong Kong-index spot raw acquisition contract (COMPLETE)
-
-The mapping review now covers the next documented Eastmoney
-[`stock_hk_index_spot_em`](https://akshare.akfamily.xyz/data/index/index.html)
-real-time Hong Kong-index universe under `MARKET_QUOTE` with explicit
-`view=hk_index_spot_em` and H-share listing context. The
-[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/index/index_stock_hk.py)
-uses the `15.push2` Eastmoney `clist/get` JSON endpoint with fixed
-`m:124,m:125,m:305` filters, `f3` descending ordering and provider-driven
-pages of 100 rows. The adapter preserves the exact thirteen documented output
-fields, internal market number, source/upstream URLs, fixed parameters,
-wrapper mapping, documented percentage/HKD units and replay row counts.
-
-The Eastmoney Hong Kong-index spot response remains raw evidence only: its
-current index prices, changes, volume and turnover are a market-wide snapshot
-without a stable listing-level observation timestamp or issuer accounting
-scope and do not establish the canonical current-price input. The normalizer
-emits `AKSHARE_HK_INDEX_SPOT_EM_RAW_ONLY` and creates no canonical fact. Tests
-cover H-share-only request validation, malformed rows, empty output, raw-only
-normalization, replay metadata/payload tampering and offline cache replay. No
-calculation, gate, pipeline, CLI or input-loader contract changes.
-
-### Phase 3.65 â€” Sina Hong Kong-index daily-history raw acquisition contract (COMPLETE)
-
-The mapping review now covers the next documented Sina
-[`stock_hk_index_daily_sina`](https://akshare.akfamily.xyz/data/index/index.html)
-Hong Kong-index history endpoint under `MARKET_HISTORY`. The
-[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/index/index_stock_hk.py)
-accepts an index symbol defaulting to `CES100`, requests the encrypted
-`klc2_kl.js` payload with fixed `d=2023_5_01`, and decodes it with
-`hk_js_decode` and `py_mini_racer`. The adapter exposes explicit
-`view=hk_index_daily_sina` and `index_symbol` parameters, requires H-share
-listing context, normalizes the symbol to uppercase and preserves the exact
-`date`, `open`, `close`, `high`, `low`, `volume` field order with strict dates,
-numeric/null values and replay identity metadata.
-
-The Sina Hong Kong-index daily-history response remains raw evidence only:
-index-level OHLCV is not an H-share listing history and does not establish the
-canonical daily-history, return, valuation or accounting inputs. The normalizer
-emits `AKSHARE_HK_INDEX_DAILY_SINA_RAW_ONLY` and creates no canonical fact.
-Focused tests cover routing, strict request and response validation, empty
-output, raw-only normalization, replay metadata/payload tampering and offline
-cache replay. No calculation, gate, pipeline, CLI or input-loader contract
-changes.
-
-### Phase 3.66 â€” Eastmoney Hong Kong-index daily-history raw acquisition contract (COMPLETE)
-
-The mapping review now covers the next documented Eastmoney
-[`stock_hk_index_daily_em`](https://akshare.akfamily.xyz/data/index/index.html)
-Hong Kong-index history endpoint under `MARKET_HISTORY`. The
-[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/index/index_stock_hk.py)
-accepts an index symbol defaulting to `HSTECF2L`, resolves its Eastmoney market
-code through the Hong Kong-index spot universe with the `HSAHP`/`100` fallback,
-and requests the full `push2his` JSON K-line response with fixed `klt=101`,
-`fqt=1`, `lmt=10000`, `end=20500000`, `iscca=1`, field selectors, `ut` and
-`forcect` parameters. The adapter exposes explicit `view=hk_index_daily_em` and
-`index_symbol` parameters, requires H-share listing context, normalizes the
-symbol to uppercase and preserves the exact `date`, `open`, `high`, `low`,
-`latest` field order with strict dates, numeric/null values and replay identity
-metadata. The provider-reported `fqt=1` parameter remains metadata
-(`provider_reported_fqt_1`) rather than an inferred canonical adjustment.
-
-The Eastmoney Hong Kong-index daily-history response remains raw evidence only:
-its provider-resolved index OHLC series is not an H-share listing history and
-does not establish the canonical daily-history, return, valuation or accounting
-inputs. The normalizer emits `AKSHARE_HK_INDEX_DAILY_EM_RAW_ONLY` and creates no
-canonical fact. Focused tests cover routing, strict request and response
-validation, finite/null values, empty output, raw-only normalization, replay
-metadata/payload tampering and offline cache replay. No calculation, gate,
-pipeline, CLI or input-loader contract changes.
-
-### Phase 3.67 â€” Sina US-index daily-history raw acquisition contract (COMPLETE)
-
-The mapping review now covers the next documented Sina
-[`index_us_stock_sina`](https://akshare.akfamily.xyz/data/index/index.html)
-US-index history endpoint under `MARKET_HISTORY`. The
-[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/index/index_stock_us_sina.py)
-supports `.INX`, `.IXIC`, `.DJI` and `.NDX`, requests the encrypted
-`staticdata/us/{symbol}` payload and decodes it with `zh_js_decode` and
-`py_mini_racer`. The adapter exposes explicit `view=us_index_sina` and
-`index_symbol` parameters, accepts A- or H-share listing context only for
-provenance, and preserves the exact `date`, `open`, `high`, `low`, `close`,
-`volume`, `amount` field order with strict dates, numeric/null values and replay
-identity metadata.
-
-The Sina US-index daily-history response remains raw evidence only: its global
-index OHLCV/amount series has no listing/entity accounting scope and does not
-establish the canonical daily-history, return, valuation or accounting inputs.
-The normalizer emits `AKSHARE_US_INDEX_SINA_RAW_ONLY` and creates no canonical
-fact. Focused tests cover A/H routing, strict request and response validation,
-finite/null values, empty output, raw-only normalization, replay metadata/payload
-tampering and offline cache replay. No calculation, gate, pipeline, CLI or
-input-loader contract changes.
-
-### Phase 3.68 â€” Eastmoney global-index spot raw acquisition contract (COMPLETE)
-
-The mapping review now covers the next documented Eastmoney
-[`index_global_spot_em`](https://akshare.akfamily.xyz/data/index/index.html)
-global-index real-time endpoint under `MARKET_QUOTE`. The
-[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/index/index_global_em.py)
-uses a no-argument request to Eastmoney's JSON `clist/get` endpoint with a
-fixed global-index filter, `f3` sort selector and 200-row page size. The adapter
-exposes explicit `view=global_index_spot`, accepts A- or H-share listing context
-only as provenance, and preserves the complete twelve-field output in the
-documented order: `åºå·`, `ä»£ç `, `åç§°`, `æœ€æ–°ä»·`, `æ¶¨è·Œé¢`, `æ¶¨è·Œå¹…`, `å¼€ç›˜ä»·`,
-`æœ€é«˜ä»·`, `æœ€ä½Žä»·`, `æ˜¨æ”¶ä»·`, `æŒ¯å¹…`, `æœ€æ–°è¡Œæƒ…æ—¶é—´`.
-
-Provider validation is strict: wrapper rank values must reset from one in
-source order; codes must be non-empty and unique; names must be non-empty;
-timestamps must be valid `YYYY-MM-DD HH:MM:SS` values or null; and every
-numeric field must be finite or null. Replay metadata records the exact
-upstream URL, fixed parameters/filter, no auxiliary lookup, JSON decoder,
-positional source mapping, dropped fields, numeric division-by-100 transform,
-Unix-seconds-to-Asia/Shanghai timestamp conversion, source row identity/time
-order and complete-universe/no-listing-filter scope. The normalizer emits
-`AKSHARE_GLOBAL_INDEX_SPOT_RAW_ONLY`, retains the response as evidence and
-creates no canonical current-price fact because a global index snapshot has no
-listing/entity accounting scope.
-
-Focused tests cover A/H routing, strict parameter rejection, exact schema/order,
-rank/code/timestamp/numeric boundaries, nulls, empty output, raw-only
-normalization, replay metadata/payload tampering and offline cache replay. No
-calculation, gate, pipeline, CLI or input-loader contract changes.
-
-### Phase 3.69 â€” Eastmoney global-index daily-history raw acquisition contract (COMPLETE)
-
-The mapping review now covers the next documented Eastmoney
-[`index_global_hist_em`](https://akshare.akfamily.xyz/data/index/index.html)
-global-index historical endpoint under `MARKET_HISTORY`. The
-[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/index/index_global_em.py)
-accepts a documented global-index name, resolves its code and market through the
-local `index_global_em_symbol_map`, and requests the complete daily history from
-Eastmoney's JSON `stock/kline/get` endpoint with dynamic `secid` plus fixed
-`klt=101`, `fqt=1`, `lmt=50000`, `end=20500000`, `iscca=1`, field selectors,
-`ut` and `forcect` parameters. The adapter exposes explicit
-`view=global_index_hist` and `index_symbol`, accepts A- or H-share listing
-context only as provenance, and preserves the exact eight-field output order:
-`æ—¥æœŸ`, `ä»£ç `, `åç§°`, `ä»Šå¼€`, `æœ€æ–°ä»·`, `æœ€é«˜`, `æœ€ä½Ž`, `æŒ¯å¹…`.
-
-Provider validation is strict: the selector must be one of the documented
-global-index names; dates must be valid, strictly ascending and unique; codes
-must match the resolved symbol; names must be stable non-empty strings; and
-numeric values must be finite numbers or null. Replay metadata records the
-upstream URL, dynamic/fixed parameters, local symbol-map resolution, sixteen
-source columns, positional mapping, eight dropped placeholders, date/numeric
-conversions, full-history/no-date-filtering scope and row identity order. The
-normalizer emits `AKSHARE_GLOBAL_INDEX_HISTORY_RAW_ONLY`, retains the response
-as evidence and creates no canonical daily-history, return, valuation or
-accounting fact because a global-index series has no listing/entity accounting
-scope.
-
-Focused tests cover A/H routing, strict parameter rejection, exact schema/order,
-symbol/code/date identity, finite/null values, empty output, raw-only
-normalization, replay metadata/payload tampering and offline cache replay. No
-calculation, gate, pipeline, CLI or input-loader contract changes.
-
-### Phase 3.70 â€” Sina global-index daily-history raw acquisition contract (COMPLETE)
-
-The mapping review now covers the next documented Sina
-[`index_global_hist_sina`](https://akshare.akfamily.xyz/data/index/index.html)
-global-index historical endpoint under `MARKET_HISTORY`. The
-[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/index/index_global_sina.py)
-maps one documented global-index name to its Sina code and requests the JSON
-`gi.finance.sina.com.cn/hq/daily` endpoint with `symbol` and fixed `num=10000`
-parameters. The adapter exposes explicit `view=global_index_hist_sina` and
-`index_symbol`, accepts A- or H-share listing context only as provenance, and
-preserves the exact six-field output order: `date`, `open`, `high`, `low`,
-`close`, `volume`.
-
-Provider validation is strict: the selector must be one of the documented
-Sina global-index names; dates must be valid, strictly ascending and unique;
-numeric values must be finite numbers or null; and responses over the
-documented recent 1000-row limit are rejected. Replay metadata records the
-upstream URL, wrapper symbol and mapped index code, fixed `num=10000`, source
-field rename from `d/o/h/l/c/v`, date/numeric conversions, recent-window
-boundary and row identity order. The normalizer emits
-`AKSHARE_GLOBAL_INDEX_SINA_RAW_ONLY`, retains the response as evidence and
-creates no canonical daily-history, return, valuation or accounting fact
-because a global-index series has no listing/entity accounting scope.
-
-Focused tests cover A/H routing, documented symbol mapping, strict request and
-response validation, exact schema/order, finite/null values, the documented
-row limit, empty output, raw-only normalization, replay metadata/payload
-tampering and offline cache replay. No calculation, gate, pipeline, CLI or
-input-loader contract changes.
-
-### Phase 3.71 â€” Sina index latest-constituent raw acquisition contract (COMPLETE)
-
-The mapping review now covers the next documented Sina index endpoint
-[`index_stock_cons`](https://akshare.akfamily.xyz/data/index/index.html) under
-`MARKET_ACTIVITY`. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/index/index_cons.py)
-selects the requested index code, decodes GB2312 HTML, parses the provider's
-page count and requests each component page. The adapter exposes explicit
-`view=index_stock_cons`, accepts only Shanghai `000xxx` or Shenzhen `399xxx`
-index-shaped A-share listing context, derives `symbol` from the listing code
-and preserves the exact three-field output order: `å“ç§ä»£ç `, `å“ç§åç§°`,
-`çº³å…¥æ—¥æœŸ`.
-
-Provider validation is strict: constituent codes must be six-digit strings,
-names must be non-empty strings, and inclusion dates must be valid dates or
-null. The AKShare documentation warns that source rows may be duplicated or
-missing, so duplicate rows are preserved, missing membership rows are not
-imputed, and positional row identity is recorded in replay metadata. The
-metadata also records the two HTML page URL forms, `page`/`indexid` parameters,
-GB2312/BeautifulSoup/read-html decoding, first-three-column selection,
-zero-filling/date conversion and provider-reported page-count pagination.
-
-The normalizer emits `AKSHARE_INDEX_STOCK_CONS_RAW_ONLY`, retains the response
-as evidence and creates no canonical quote, return, governance, valuation or
-accounting fact because index membership has no listing/entity accounting
-scope. Focused tests cover index routing, strict parameter rejection, exact
-schema/order/type validation, nullable dates, documented duplicate
-preservation, empty output, raw-only normalization, replay metadata/payload
-tampering and offline cache replay. No calculation, gate, pipeline, CLI or
-input-loader contract changes.
-
-### Phase 3.72 â€” Sina H-share daily-history raw acquisition contract (COMPLETE)
-
-The mapping review now covers the next documented AKShare stock endpoint
-[`stock_hk_daily`](https://akshare.akfamily.xyz/data/stock/stock.html) under
-`MARKET_HISTORY`. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hk_sina.py)
-requests a single H-share symbol from Sina's encrypted JavaScript K-line
-endpoint and supports `adjust` values `''`, `qfq`, `hfq`, `qfq-factor` and
-`hfq-factor`. The adapter exposes an explicit `view=hk_daily`, accepts only
-H-share listings, passes the six-digit `symbol` without adapter date
-arguments, and preserves the exact regular six-field `date`, `open`, `high`,
-`low`, `close`, `volume` order or the documented factor response order:
-`date`, `qfq_factor` or `date`, `hfq_factor`, `cash`.
-
-Provider validation is strict: request parameters are limited to `view` and
-`adjust`; regular dates must be valid, unique and strictly ascending; factor
-dates must be valid, unique and strictly descending; and numeric values must
-be finite numbers or null. Replay metadata records the K-line URL, optional
-qfq/hfq factor URL, listing symbol, adjustment mode, exact field order,
-row-identity order, decoder/transformation steps, full-history scope and
-undocumented numeric units. The existing no-view `stock_hk_daily` compatibility
-route is unchanged.
-
-The normalizer emits `AKSHARE_HK_DAILY_HISTORY_RAW_ONLY`, retains the response
-as evidence and creates no canonical daily-history, return, valuation or
-accounting fact because provider-owned H-share price/adjustment semantics,
-trading-calendar behavior and numeric units are not reconciled to the
-canonical contract. Focused tests cover H-share routing, adjustment/factor
-shapes, strict request and response validation, empty output, raw-only
-normalization, replay metadata/payload tampering and offline cache replay. No
-calculation, gate, pipeline, CLI or input-loader contract changes.
-
-### Phase 3.73 â€” Tencent A+H daily-history raw acquisition contract (COMPLETE)
-
-The mapping review now covers the next documented AKShare stock endpoint
-[`stock_zh_ah_daily`](https://akshare.akfamily.xyz/data/stock/stock.html) under
-`MARKET_HISTORY`. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_zh_ah_tx.py)
-requests an H-share code from Tencent's year-partitioned K-line endpoints and
-supports `start_year`, `end_year` and `adjust` values `''`, `qfq` and `hfq`.
-The adapter exposes an explicit `view=ah_daily`, accepts H-share listings only,
-passes the documented `symbol`/year/adjustment arguments and preserves the exact
-six-field `æ—¥æœŸ`, `å¼€ç›˜`, `æ”¶ç›˜`, `æœ€é«˜`, `æœ€ä½Ž`, `æˆäº¤é‡` order.
-
-Provider validation is strict: year parameters are four-digit strings with a
-non-inverted range; regular dates must be valid, unique, strictly ascending and
-within the requested half-open year range; and numeric values must be finite
-numbers or null. Replay metadata records the Tencent K-line URL, year-partition
-scope, adjustment mode, payload-key mapping, decoder/projection steps and
-undocumented numeric units. The existing no-view `stock_zh_ah_daily`
-compatibility fallback remains unchanged.
-
-The normalizer emits `AKSHARE_AH_DAILY_HISTORY_RAW_ONLY`, retains the response
-as evidence and creates no canonical daily-history, return, valuation or
-accounting fact because provider-owned A+H prices, adjustment behavior,
-trading-calendar semantics and numeric units are not reconciled to the canonical
-contract. Focused tests cover H-share routing, documented defaults and
-adjustments, strict request/response validation, nullable values, empty output,
-raw-only normalization, replay metadata/payload tampering and offline cache
-replay. No calculation, gate, pipeline, CLI or input-loader contract changes.
-
-### Phase 3.74 â€” Sina A-share daily-history raw acquisition contract (COMPLETE)
-
-The mapping review now covers the next documented AKShare stock endpoint
-[`stock_zh_a_daily`](https://akshare.akfamily.xyz/data/stock/stock.html) under
-`MARKET_HISTORY`. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_zh_a_sina.py)
-requests an A-share symbol from Sina's encrypted JavaScript K-line endpoint and
-supports normalized `start_date`, `end_date` and `adjust` values `''`, `qfq`,
-`hfq`, `qfq-factor` and `hfq-factor`. The adapter exposes an explicit
-`view=sina_a_daily`, accepts A-share listings only, passes the lower-prefixed
-symbol and inclusive date bounds, and preserves the exact regular nine-field
-`date`, `open`, `high`, `low`, `close`, `volume`, `amount`,
-`outstanding_share`, `turnover` order or the exact qfq/hfq factor order.
-
-Provider validation is strict: regular dates must be valid, unique, strictly
-ascending and within the requested inclusive range; factor dates must be
-valid, unique and strictly descending; and numeric values must be finite
-numbers or null. Replay metadata records Sina's K-line, amount and optional
-factor URLs, symbol/date/adjustment binding, decoder/transformation steps,
-derived outstanding-share/turnover operations, exact field order, row identity
-order and conservative undocumented numeric units. The existing no-view
-`stock_zh_a_hist`/`stock_zh_a_daily` compatibility fallback remains unchanged.
-
-The normalizer emits `AKSHARE_SINA_A_DAILY_HISTORY_RAW_ONLY`, retains the
-response as evidence and creates no canonical daily-history, return, valuation
-or accounting fact because provider-owned prices, adjustment/factor behavior,
-derived share/turnover semantics, trading-calendar behavior and numeric units
-are not reconciled to the canonical contract. Focused tests cover A-share
-routing, documented defaults and adjustment/factor shapes, strict request and
-response validation, nullable values, empty output, raw-only normalization,
-replay metadata/payload tampering and offline cache replay. No calculation,
-gate, pipeline, CLI or input-loader contract changes.
-
-### Phase 3.75 â€” Eastmoney A-share historical acquisition contract (COMPLETE)
-
-The mapping review now covers the next documented AKShare stock endpoint
-[`stock_zh_a_hist`](https://akshare.akfamily.xyz/data/stock/stock.html) under
-`MARKET_HISTORY`. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hist_em.py)
-requests a six-digit A-share symbol from Eastmoney's K-line JSON endpoint and
-supports `period` values `daily`, `weekly` and `monthly`, inclusive
-`start_date`/`end_date` bounds, and `adjust` values `''`, `qfq` and `hfq`. The
-adapter adds explicit `view=eastmoney_a_hist` routing, maps SH/SZ/BJ market
-codes to the documented Eastmoney `secid` shape, and preserves the exact
-twelve-field `æ—¥æœŸ`, `è‚¡ç¥¨ä»£ç `, OHLCV, amount, amplitude, change-percent,
-change-amount and turnover order.
-
-Provider validation is strict: request parameters are limited to the
-documented view, period, dates and adjustment; every response row must have
-the exact field set/order, the requested six-digit code, a valid unique
-strictly ascending date within the inclusive range, and finite numeric values
-or null. Replay metadata records the Eastmoney URL, fixed/dynamic parameters,
-period/adjustment/market codes, wrapper projection, field types/order,
-documented lots/CNY/percent units and row identity order. The existing no-view
-`stock_zh_a_hist`/`stock_zh_a_daily` compatibility fallback remains unchanged.
-
-The normalizer maps existing historical OHLCV/turnover/change-percent extension
-facts for all three periods. `æŒ¯å¹…`, `æ¶¨è·Œé¢` and `æ¢æ‰‹çŽ‡` remain raw provider
-evidence because they have no canonical aliases in the current normalized
-contract; this standard-history slice therefore adds no raw-only flag. Focused
-tests cover routing, defaults, exchange-specific market codes, strict request
-and response validation, nullable/empty output, canonical mapping, replay
-metadata/payload tampering and offline cache replay. No calculation, gate,
-pipeline, CLI or input-loader contract changes.
-
-### Phase 3.76 â€” Eastmoney H-share historical acquisition contract (COMPLETE)
-
-The mapping review now covers the next documented AKShare stock endpoint
-[`stock_hk_hist`](https://akshare.akfamily.xyz/data/stock/stock.html) under
-`MARKET_HISTORY`. The [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hist_em.py)
-requests an unprefixed five-digit H-share symbol from Eastmoney's K-line JSON
-endpoint and supports `period` values `daily`, `weekly` and `monthly`, inclusive
-`start_date`/`end_date` bounds, and `adjust` values `''`, `qfq` and `hfq`. The
-adapter adds explicit `view=eastmoney_hk_hist` routing, restricts it to H-share
-listings, sends `secid=116.<symbol>`, and preserves the exact eleven-field
-`æ—¥æœŸ`, OHLCV, amount, amplitude, change-percent, change-amount and turnover
-order.
-
-Provider validation is strict: request parameters are limited to the
-documented view, period, dates and adjustment; every response row must have
-the exact field set/order, a valid unique strictly ascending date within the
-inclusive range, and finite numeric values or null. Replay metadata records
-the full-history upstream response, fixed `end=20500000`/`lmt=1000000`, wrapper
-inclusive date slicing, dynamic period/adjustment/secid values, field types,
-documented HKD/share units and row identity order. The existing no-view
-H-share history compatibility fallback remains unchanged.
-
-The normalizer emits `AKSHARE_EASTMONEY_HK_HIST_RAW_ONLY` and creates no
-canonical daily-history, return, valuation or accounting fact because
-provider-owned prices, adjustment/trading-calendar semantics and HKD/share
-units are not reconciled to the canonical contract. Focused tests cover
-H-share routing, defaults, strict request and response validation,
-nullable/empty output, raw-only normalization, replay metadata/payload
-tampering and offline cache replay. No calculation, gate, pipeline, CLI or
-input-loader contract changes.
-
-### Phase 3.77 â€” Sina H-share realtime quote acquisition contract (COMPLETE)
-
-The mapping review now covers the next documented AKShare stock endpoint
-[`stock_hk_spot`](https://akshare.akfamily.xyz/data/stock/stock.html), based on
-the [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hk_sina.py),
-under `MARKET_QUOTE` with explicit `view=hk_spot_sina`. The endpoint has no
-user parameters, reports a 15-minute-delayed full H-share universe and
-returns the exact sixteen-field `æ—¥æœŸæ—¶é—´`, `ä»£ç `, name/type, price/change,
-OHLC, volume/turnover and bid/ask order. The adapter filters only after
-strictly validating every five-digit code, timestamp, text field, numeric/null
-value and official field order.
-
-Replay metadata freezes the Sina JSON source, `node=qbgg_hk`, fixed page size
-60, pages 1â€“99 until empty, 27-column wrapper mapping/dropped positions,
-numeric transformations, row observation-time order and selected row order.
-Numeric units remain undocumented. The normalizer emits
-`AKSHARE_HK_SINA_SPOT_QUOTE_RAW_ONLY` and creates no canonical current-price,
-return, valuation or accounting fact; the existing no-view H-share quote
-compatibility fallback remains unchanged. Focused tests cover routing, strict
-adversarial response validation, empty selection, raw-only normalization,
-replay metadata/payload tampering and offline cache replay. No calculation,
-gate, pipeline, CLI or input-loader contract changes.
-
-### Phase 3.78 â€” Eastmoney H-share realtime quote acquisition contract (COMPLETE)
-
-The mapping review now covers the documented Eastmoney H-share realtime quote
-endpoint [`stock_hk_spot_em`](https://akshare.akfamily.xyz/data/stock/stock.html),
-based on the [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock_feature/stock_hist_em.py),
-under `MARKET_QUOTE` with explicit `view=hk_spot_em`. The no-argument wrapper
-fetches a full five-digit H-share universe with a 15-minute delay and returns
-the exact twelve-field `åºå·`, `ä»£ç `, `åç§°`, latest/change, OHLC, volume and
-turnover order. The adapter strictly validates the full provider response,
-including wrapper sequence reset, unique five-digit codes, text and finite
-numeric/null values, before filtering the requested H-share listing.
-
-Replay metadata freezes the `72.push2.eastmoney.com` JSON URL, fixed Eastmoney
-query, provider-driven pagination by `pn` with page size 100, `f3` descending
-sort followed by wrapper sequence reset, source-column projection/dropped
-indices, numeric transformations, documented HKD/share, percent, shares and
-HKD units, and full/selected identity order. The normalizer emits
-`AKSHARE_HK_SPOT_EM_QUOTE_RAW_ONLY` and creates no canonical current-price,
-return, valuation or accounting fact because the delayed current-day snapshot
-has no stable observation timestamp. The existing no-view H-share quote
-compatibility fallback remains unchanged. Focused tests cover H-share-only
-routing, exact schema/order and adversarial response validation including
-invalid unrequested rows, empty selection, raw-only normalization, replay
-metadata/payload tampering and offline cache replay. No calculation, gate,
-pipeline, CLI or input-loader contract changes.
-
-### Phase 3.79 â€” Eastmoney H-share realtime hot-rank-detail acquisition contract (COMPLETE)
-
-The next documented inventory item after the Eastmoney H-share realtime quote
-is `stock_hk_hot_rank_detail_realtime_em`, selected through the provider
-capability table with explicit `MARKET_ACTIVITY` `view=hk_hot_rank_detail_realtime`.
-The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
-and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hk_hot_rank_em.py)
-document a symbol-scoped H-share endpoint that passes the unprefixed five-digit
-code to Eastmoney's `getCurrentHkUsList` JSON POST as `HK|<code>`, with fixed
-`appId`, `globalId` and `marketType=000003` parameters. The adapter preserves
-the exact two-field `æ—¶é—´`/`æŽ’å` wrapper order and strictly validates every
-timestamp and positive integer rank in strictly ascending time order.
-
-The source URI, upstream POST URL/parameters, fixed and dynamic security
-identity, wrapper decoder/rename mapping, listing scope, row counts and
-observation-time bounds are recorded in provenance metadata. The response is
-raw-only and the normalizer emits
-`AKSHARE_HK_HOT_RANK_DETAIL_REALTIME_RAW_ONLY`; intraday popularity rank does
-not create a canonical market, return, valuation, governance or accounting
-fact. Focused tests cover H-share-only routing, unsupported parameters,
-missing/extra/reordered fields, malformed/duplicate/descending timestamps,
-invalid ranks, raw-only normalization, replay metadata/payload tampering and
-offline cache replay. No calculation, gate, pipeline, CLI or input-loader
-contract changes.
-
-### Phase 3.80 â€” A-share Eastmoney hot-keyword acquisition contract (COMPLETE)
-
-The next documented-but-unimplemented AKShare inventory item after Phase 3.79
-is the A-share `stock_hot_keyword_em` endpoint. The
-[AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
-and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hot_rank_em.py)
-document it under `MARKET_ACTIVITY` with explicit `view=hot_keyword`. The
-adapter routes only A-share listings and passes the market-prefixed symbol
-(`SZ000665` in the documented example) to the wrapper's Eastmoney JSON POST.
-
-The wrapper contract is frozen as fixed `appId=appId01` and
-`globalId=786e4c21-70dc-435a-93bb-38`, dynamic `srcSecurityCode`, and the
-`getHotStockRankList` URL. It extracts `data`, drops the upstream `flag`
-column and preserves the exact output order `æ—¶é—´`, `è‚¡ç¥¨ä»£ç `, `æ¦‚å¿µåç§°`,
-`æ¦‚å¿µä»£ç `, `çƒ­åº¦`. Strict provider validation requires exact fields/order,
-valid timestamps shared by all rows, market-prefixed identity matching the
-request, non-empty concept labels/codes, unique concept codes and
-non-negative integer heat values. Empty symbol-scoped snapshots are retained
-as valid empty raw responses.
-
-Provenance metadata records the source URI, listing/view scope, upstream
-request contract, wrapper source order/drop/rename mapping, conservative
-numeric-unit treatment (`çƒ­åº¦` is undocumented), concept-code order,
-observation timestamp and row counts. Normalization is explicitly raw-only
-with `AKSHARE_HOT_KEYWORD_RAW_ONLY`; provider-defined concept labels, codes and
-heat do not become canonical market, return, valuation, governance or
-accounting facts. Focused tests cover routing, unsupported parameters,
-adversarial provider rows, empty responses, raw-only normalization, replay
-metadata/payload tampering and offline cache replay. No calculation, gate,
-pipeline, CLI or input-loader contract changes.
-
-### Phase 3.81 â€” A-share Eastmoney related-stock hot-rank acquisition contract (COMPLETE)
-
-The next documented-but-unimplemented AKShare inventory item after Phase 3.80
-is the A-share `stock_hot_rank_relate_em` endpoint. The
-[AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
-and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hot_rank_em.py)
-document it under `MARKET_ACTIVITY` with explicit `view=hot_rank_relate`. The
-adapter routes only A-share listings and passes the market-prefixed symbol to
-the wrapper's Eastmoney JSON POST.
-
-The wrapper contract is frozen as fixed `appId=appId01` and
-`globalId=786e4c21-70dc-435a-93bb-38`, dynamic `srcSecurityCode`, and the
-`getFollowStockRankList` URL. It receives seven positional columns, drops
-positions 1, 3 and 6, and preserves the exact output order `æ—¶é—´`, `è‚¡ç¥¨ä»£ç `,
-`ç›¸å…³è‚¡ç¥¨ä»£ç `, `æ¶¨è·Œå¹…`; the final field is stripped of `%` and converted to
-a numeric percent value. Strict provider validation requires exact fields/order,
-a valid shared timestamp, market-prefixed requested and related A-share
-identities, and finite numeric-or-null percentage changes. Empty symbol-scoped
-snapshots are retained as valid empty raw responses.
-
-Provenance metadata records the source URI, listing/view scope, upstream POST
-contract, seven-column wrapper order, positional output mapping and dropped
-positions, percentage conversion, related-code order, observation timestamp and
-row counts. Normalization is explicitly raw-only with
-`AKSHARE_HOT_RANK_RELATE_RAW_ONLY`; provider-defined related-stock links and
-percentage changes do not become canonical market, return, valuation,
-governance or accounting facts. Focused tests cover routing, unsupported
-parameters, adversarial provider rows, empty responses, raw-only normalization,
-replay metadata/payload tampering and offline cache replay. No calculation,
-gate, pipeline, CLI or input-loader contract changes.
-
-### Phase 3.82 â€” H-share Eastmoney market-wide hot-rank acquisition contract (COMPLETE)
-
-The next documented-but-unimplemented AKShare inventory item after Phase 3.81
-is `stock_hk_hot_rank_em`, the market-wide H-share popularity ranking endpoint.
-The [AKShare stock-data documentation](https://akshare.akfamily.xyz/data/stock/stock.html)
-and [official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hk_hot_rank_em.py)
-document it under `MARKET_ACTIVITY` with explicit `view=hk_hot_rank`. The
-adapter routes only H-share listings, calls the official no-argument wrapper and
-filters the full response to the requested five-digit H-share code after
-validation.
-
-The wrapper contract is frozen as a JSON POST to
-`https://emappdata.eastmoney.com/stockrank/getAllCurrHkUsList` with fixed
-`appId=appId01`, `globalId=786e4c21-70dc-435a-93bb-38`, `marketType=000003`,
-`pageNo=1` and `pageSize=100`. It then performs a JSON GET to
-`https://push2.eastmoney.com/api/qt/ulist.np/get` with fixed
-`ut=f057cbcbce2a86e2866ab8877db1d059`, `fltt=2`, `invt=2` and
-`fields=f14,f3,f12,f2`, plus `secids` derived as `116.<code>` from the first
-response. The adapter preserves exactly `å½“å‰æŽ’å`, `ä»£ç `, `è‚¡ç¥¨åç§°`, `æœ€æ–°ä»·`,
-`æ¶¨è·Œå¹…` in that order, validates the complete top-100 universe, unique
-five-digit codes, strictly ascending ranks, non-empty names and finite
-numeric-or-null quote values, and accepts an empty selected result when the
-requested code is absent.
-
-Provenance/replay metadata records both upstream calls and their fixed/dynamic
-parameters, derived secids, source field order, wrapper mappings and
-transformations, full-universe and selected identity/rank order, documented
-units and row counts. Normalization is explicitly raw-only with
-`AKSHARE_HK_HOT_RANK_RAW_ONLY`; provider-defined popularity and quote context do
-not become canonical market, return, valuation, governance or accounting facts.
-Focused tests cover routing, unsupported parameters, exact schema/order,
-full-universe adversarial validation including unrequested rows, raw-only
-normalization, replay metadata/payload tampering and offline cache replay. No
-calculation, gate, pipeline, CLI or input-loader contract changes.
-
-### Phase 3.83 â€” A-share Eastmoney realtime hot-rank-detail acquisition contract (COMPLETE)
-
-The next documented-but-unimplemented AKShare inventory item after Phase 3.82
-is `stock_hot_rank_detail_realtime_em`, the symbol-scoped A-share realtime
-popularity-rank history endpoint. The [AKShare stock-data
-documentation](https://akshare.akfamily.xyz/data/stock/stock.html) and
-[official implementation](https://github.com/akfamily/akshare/blob/main/akshare/stock/stock_hot_rank_em.py)
-document it under `MARKET_ACTIVITY` with explicit
-`view=hot_rank_detail_realtime`. The adapter routes only A-share listings and
-passes the market-prefixed code to the official wrapper.
-
-The wrapper contract is frozen as a JSON POST to
-`https://emappdata.eastmoney.com/stockrank/getCurrentList` with fixed
-`appId=appId01`, `globalId=786e4c21-70dc-435a-93bb-38`, empty `marketType` and
-dynamic `srcSecurityCode`. It preserves exactly `æ—¶é—´`, `æŽ’å`, validates the
-exact field order, timestamp syntax, strictly ascending timestamps and
-positive integer ranks, and accepts an empty symbol-scoped response.
-Provenance/replay metadata records the fixed/dynamic parameters, positional
-mapping, observation-time bounds and row counts.
-
-Normalization is explicitly raw-only with
-`AKSHARE_HOT_RANK_DETAIL_REALTIME_RAW_ONLY`; intraday popularity rank does not
-become a canonical market, return, valuation, governance or accounting fact.
-Focused tests cover routing, unsupported parameters, exact-schema adversarial
-responses, empty snapshots, raw-only normalization, replay metadata/payload
-tampering and offline cache replay. No calculation, gate, pipeline, CLI or
-input-loader contract changes.
-
-### Phase 3.84 â€” Official A/H filing discovery metadata contract (COMPLETE)
-
-The first top-level Phase 3 filing/evidence deliverable is the smallest
-bounded filing-discovery contract. The new provider-neutral
-`FILING_DISCOVERY` category accepts one canonical A/H listing, one explicit
-source, optional publication-date bounds, an optional source document-type
-label, a maximum of 100 rows and an optional `as_of` cutoff. Source clients
-and the retrieval clock are injected; this keeps the contract deterministic
-and avoids hiding an unstable upstream transport inside the engine.
-
-The source matrix is explicit: A-share listings may use CNINFO, their matching
-SSE/SZSE/BSE exchange, or an issuer's HTTPS announcement source. H-share
-listings may use HKEXnews, an issuer's HTTPS report source or an issuer's HTTPS
-announcement source. Cross-market and wrong-exchange requests are rejected;
-official collection/document URLs must remain on the declared official host.
-The client returns metadata only (`title`, source document type, publication
-date, URL, optional source document ID, report-period label and issuer name).
-The provider does not download, parse or classify a document.
-
-`FilingRecord` assigns a deterministic `filing-<24 hex>` ID from market,
-listing, source and source document ID, falling back to canonical URL. Results
-are sorted by publication date descending and filing ID ascending; duplicate
-IDs/URLs, out-of-range rows, unhonored filters, malformed metadata and
-over-limit responses fail closed. The schema is
-`schemas/filing-discovery.schema.json`. The existing raw-record cache stores
-the canonical metadata payload plus source URI, query, IDs, ordering, counts
-and `download_performed=false`; offline replay never calls a source client and
-`parse_filing_discovery_record` revalidates payload/provenance integrity.
-
-Fixtures and adversarial tests cover every A/H source boundary, official URL
-constraints, date/limit/filter validation, deterministic IDs, JSON Schema,
-tampered replay metadata/payload and offline cache replay. No document
-download, extraction, evidence store, adjustment workflow, LLM or CLI change
-is included. The subsequent filing components and top-level closure are
-documented in the completed sections below.
-
-### Phase 3.85 â€” Official filing document download and cache (COMPLETE)
-
-The document-byte deliverable consumes one validated `FilingRecord` from Phase
-3.84 and stops before parsing. `FilingDocumentDownloader` selects an injected
-`FilingDocumentSourceClient` by source, revalidates the A/H official URL
-boundary (including an optional redirect/final URL), enforces non-empty bytes
-and a 50 MiB limit, computes SHA-256 and byte size, and records media type,
-UTC retrieval time and transport metadata from an injected clock/client. The
-complete filing provenance, including `filing_id`, source-document ID and URL,
-remains attached to the returned `FilingDocument`.
-
-`FilesystemFilingDocumentCache` writes a JSON manifest and a separate
-content-addressed binary blob under a filing/source-scoped path. The manifest
-is defined by `schemas/filing-document.schema.json`; replay checks filing
-identity, source/final URL scope, media type, size, blob naming and the
-recomputed SHA-256. The blob is fsynced and atomically replaced before the
-manifest is atomically published, so a manifest replacement failure leaves a
-previous valid snapshot usable; no implicit cleanup deletes an orphaned new
-blob. `fetch_filing_document_with_cache` supports explicit offline replay and
-optional stale fallback with `LIVE`, `CACHE_REPLAY` and
-`STALE_CACHE_REPLAY` modes.
-
-Fixtures and focused adversarial tests cover A/H provenance, mutated official
-URLs, out-of-scope redirects, invalid media/empty/oversize responses, hash and
-size mismatch, manifest/blob corruption, offline replay, explicit provider
-failure fallback, schema validation and atomic replacement recovery. This
-slice does not parse documents, extract reports, create Source/Evidence/Fact
-objects, propose adjustments, add LLM behavior or wire a broad CLI.
-
-### Phase 3.86 â€” Bounded annual/interim report text extraction (COMPLETE)
-
-The extraction deliverable consumes one verified `FilingDocument` from Phase
-3.85 and emits only an ordered, immutable sequence of text blocks. Parser
-implementations are injected per media type, so the core package adds no PDF
-or HTML parser dependency and performs no network access. The supported media
-types are `application/pdf`, `text/html` and `application/xhtml+xml`; PDF
-parsers must return page-located blocks and HTML parsers must return
-section-located blocks. Every parser block supplies a contiguous sequence,
-location and non-empty text, and PDF page locations must be non-decreasing.
-
-The result is bounded at 2,048 blocks, 100,000 characters per block and
-5,000,000 total characters. It stores a SHA-256 for each text block and keeps
-the complete `FilingRecord` (including `filing_id`, source-document ID and the
-opaque source `report_period`) alongside the exact raw `content_sha256`, byte
-size, media type and parser version. The extractor never infers annual/interim
-classification from a title or text and never turns extracted text into a
-numeric value, `Source`/`Evidence`/`Fact`, adjustment, LLM input or CLI result.
-
-`schemas/filing-extraction.schema.json` defines the serialized result.
-`FilingReportExtractor.validate` revalidates serialized output against the
-same cached document and parser identity; an offline document replay therefore
-remains deterministic and does not call a downloader. Missing parser support,
-unsupported media, malformed parser output, hash/provenance mismatch, bad
-location order and bound violations fail closed. Synthetic parser-neutral
-fixtures and adversarial tests cover A/H report provenance, page/section
-locations, ordering, block/text hashes, unsupported media and cache replay.
-
-### Phase 3.87 â€” Deterministic filing evidence store (COMPLETE)
-
-The evidence-store deliverable consumes a validated
-`FilingExtractionResult` (or its serialized equivalent) and a caller-supplied
-`Evidence` statement. `FilingEvidenceStore` binds the item to one exact
-extracted block, preserves the complete filing identity, official source,
-source-document ID, report period, document and block hashes, parser and
-extraction identity, and stable page/section plus `block:<sequence>` locator.
-The additive `EvidenceProvenance` contract keeps those fields explicit while
-remaining compatible with existing structured evidence.
-
-Records are deterministic JSON envelopes under a local filesystem root.
-Writes are append-only and idempotent for identical content; conflicting
-reuse of a deterministic evidence ID is rejected. Reads, lookup and explicit
-replay are offline-only and verify the envelope hash, evidence provenance and
-the requested extraction. An optional exact `FilingDocument` allows the store
-to recompute the document digest at the boundary. No numeric Fact extraction,
-accounting interpretation, adjustment proposal, LLM call or CLI wiring is
-included. The contract is defined by
-`schemas/filing-evidence.schema.json`; focused fixtures and adversarial tests
-cover A/H provenance, bad references, tampered hashes, conflicts and replay.
-
-### Phase 3.88 â€” Deterministic adjustment proposal workflow (COMPLETE)
-
-The adjustment workflow reuses the existing `Adjustment` contract and accepts
-only explicit caller-supplied `PROPOSED` values, reasons, types and target
-fields. Before a proposal is persisted, every `source_evidence_ids` reference
-must resolve through a normalized input, explicit evidence index or the local
-Phase 3.87 filing-evidence store; duplicate, missing or conflicting evidence
-records are rejected. A deterministic
-`adjustment-proposal-<24 hex>` ID binds the immutable proposal payload and
-optional normalized-input scope to the evidence references.
-
-`AdjustmentProposalWorkflow` persists an integrity-checked JSON envelope with
-evidence digests, optional filing-store record digests and transition history.
-Writes are atomic and idempotent; replay and lookup are offline-only and
-verify the envelope hash and provenance. The only terminal transitions are
-`PROPOSED -> ACCEPTED` or `PROPOSED -> REJECTED`. Acceptance requires an
-explicit `HUMAN` or `RULE_ENGINE` approver; `LLM` may be recorded as a proposer
-but cannot approve. No transition mutates normalized facts, applies a proposed
-value, infers accounting treatment, calls an LLM or wires the CLI. The contract
-is `schemas/adjustment-workflow.schema.json`; adversarial fixtures/tests cover
-evidence reference failures, A/H filing evidence, lifecycle actors, conflicts,
-scope, tampering and replay.
-
-### Future structured-provider deliverables
-
-```text
-src/turtle_value_engine/
-  adjustments.py       # Phase 3.88 deterministic adjustment proposals
-  providers/
-    base.py
-    models.py
-    errors.py
-    cache.py
-    normalization.py
-    akshare.py          # Phase 2.2 market + Phase 2.3â€“3.83 structured slices
-    filings.py          # Phase 3.84 metadata-only official filing discovery
-    filing_documents.py # Phase 3.85 byte retrieval and content cache
-    filing_extraction.py # Phase 3.86 bounded annual/interim report text blocks
-    evidence_store.py   # Phase 3.87 deterministic filing evidence store
-    tushare.py          # future optional adapter
-    baostock.py         # future optional adapter
-```
-
-Provider output must map into normalized `Fact` records through the frozen
-normalization boundary; provider-specific field names must not leak into
-calculation modules.
-
-### Exit criteria
-
-- provider-backed preparation accepts canonical A/H listing identity and an
-  explicit `as_of` date;
-- frozen A-share and H-share acceptance flows cover acquisition, raw-cache
-  replay, normalization, schema validation and offline `CompanyAnalysis`;
-- imported facts retain source evidence, units/currency and period metadata,
-  while unresolved provider slices remain missing/raw-only;
-- provider failure and offline replay do not corrupt or silently replace a
-  prior valid cache entry;
-- `tve analyze` remains an offline-only consumer of normalized input.
-
----
-
-## Phase 3 â€” Official filing and evidence layer (COMPLETE)
-
-Goal: convert screening results into auditable deep analysis.
-
-### Sources
-
-```text
-A shares -> CNINFO / exchange filings / company announcements
-H shares -> HKEXnews / company reports and announcements
-```
-
-### Deliverables
-
-- filing discovery;
-- document download/cache;
-- metadata and filing IDs;
-- annual/interim report extraction;
-- evidence store;
-- adjustment proposal workflow.
-- accepted-adjustment materialization into a new effective input snapshot;
-- deterministic Decision â†’ Gate â†’ Metric â†’ Adjustment â†’ Fact â†’ Evidence â†’
-  Filing trace projection.
-
-LLM can assist with:
-
-- locating restricted cash;
-- lease/interest classification;
-- acquisition details;
-- payout policy;
-- governance risks;
-- customer concentration;
-- business-quality evidence.
-
-LLM cannot directly overwrite engine-computed values.
-
-### Exit criteria
-
-A final PASS/WATCH/FAIL result can be traced from decision -> gate -> metric
--> adjustment -> fact -> source filing. The explicit acceptance boundary is
-preserved: HUMAN/RULE_ENGINE may approve, LLM may only propose, and the
-deterministic engine remains the sole owner of formulas, gates and valuation.
-
-### Phase 2/3 closure integration (COMPLETE)
-
-The vertical acceptance path is now frozen in
-`tests/test_phase_2_3_closure.py`:
-
-```text
-Phase 2: A/H listing + as_of
-  â†’ injected provider â†’ raw cache/replay â†’ normalization
-  â†’ schema-valid NormalizedCompanyInput â†’ offline analysis
-
-Phase 3: official filing discovery â†’ document cache â†’ extraction
-  â†’ filing evidence â†’ adjustment proposal â†’ HUMAN acceptance
-  â†’ effective input â†’ deterministic analysis â†’ decision trace
-```
-
-The public boundaries are `tve prepare` for provider-backed preparation and
-`tve analyze --input ...` for the offline calculation pipeline. The effective
-input builder is explicit and additive: it never mutates source facts, rejects
-stale/conflicting/unsupported applications, and retains adjustment lineage on
-the effective fact. Additional provider coverage and watchlist/event
-monitoring remain separate work; the Phase 4 research and Phase 5 backtesting
-boundaries are documented below.
-
----
-
-## Phase 4 â€” Agent-assisted evidence analysis and Business Quality
-
-Status: COMPLETE. See the active-goal closure record in
-[`docs/goals/phase-4-agentic-analysis.md`](goals/phase-4-agentic-analysis.md).
-
-Phase 4 adds a reusable, model-neutral research layer on top of the completed
-Phase 1â€“3 deterministic foundation. It does not move CDC, Net Cash, Through
-Return, hard gates, valuation, final state or adjustment approval into a model.
-
-The reviewable sub-milestones are:
-
-1. typed research contracts and JSON Schemas for questions, packets, findings,
-   runs, dimension results, sessions and reports;
-2. injected `AnalystClient` plus deterministic scripted clients;
-3. deterministic bounded evidence packets with `as_of` enforcement and a
-   complete B01 Demand Durability vertical slice;
-4. B01â€“B08 Quality Analyst â†’ Skeptic â†’ Adjudicator workflow with deterministic
-   evidence resolution, score caps, confidence, coverage and gate validation;
-5. filing-backed `PROPOSED` adjustments routed through the existing Phase 3
-   workflow and explicit HUMAN/RULE_ENGINE acceptance;
-6. immutable JSON workspace, resumable research orchestration, deterministic
-   decision trace and non-mutating human-readable report composition;
-7. frozen adversarial acceptance coverage, including an A-share provider/cache
-   replay â†’ filing â†’ research â†’ accepted-adjustment â†’ analysis â†’ report flow.
-
-External runtimes such as ChatGPT, Codex and Hermes consume the same contracts;
-no vendor-specific Skill or live-model SDK is required by the core package.
-`tve analyze` remains offline and model-independent. Broad provider endpoint
-expansion is not part of this milestone.
-
----
-
-## Phase 5 â€” Backtesting and calibration (COMPLETE)
-
-The point-in-time data, signal-evaluation, portfolio-replay and
-calibration-proposal boundary is complete. It consumes frozen artifacts and
-leaves the deterministic engine and `strict-v1` unchanged. Do not treat the
-synthetic frozen fixtures as evidence that a production candidate profile is
-ready.
-
-Requirements:
-
-- survivorship-bias-aware universe where possible;
-- filing publication date / point-in-time availability;
-- no future financial data leakage;
-- dividends, corporate actions and delistings;
-- transaction costs and liquidity assumptions;
-- A/H listing-specific prices;
-- explicit benchmark set.
-
-Metrics:
-
-```text
-CAGR
-max drawdown
-volatility
-Sharpe / Sortino
-turnover
-hit rate
-factor exposure
-sector concentration
-failure-mode attribution
-```
-
-Threshold changes require a new versioned profile rather than silently rewriting `strict-v1`.
-
-The public contracts, PIT semantics, separate `portfolio-policy-v1` mechanics,
-calibration holdout guard and remaining gaps are recorded in
-[`docs/goals/phase-5-backtesting-calibration.md`](goals/phase-5-backtesting-calibration.md)
-and [`docs/architecture/backtesting-and-calibration.md`](architecture/backtesting-and-calibration.md).
-
-## Phase 5R â€” Production historical dataset and research archive readiness (ACTIVE / PARTIAL)
-
-Phase 5R extends the completed Phase 5 integration boundary with a declared,
-bounded A/H production target scope, source and coverage registry,
-content-addressed frozen shards, listing-lifecycle and terminal-outcome
-contracts, replayable market/action/FX/benchmark reconciliation, and a
-point-in-time-valid frozen research archive. It is not a claim that the whole
-A/H market is production-ready: that claim requires source, licensing and
-coverage evidence for the named target universe and date range.
-
-The active work package and exit criteria are recorded in
-[`docs/goals/phase-5r-production-historical-corpus.md`](goals/phase-5r-production-historical-corpus.md).
-Phase 5 remains COMPLETE at its original synthetic/integration boundary; this
-milestone is additive and must not rewrite `strict-v1` or calibration semantics.
-
-### Current status and next stage
-
-The source-aware contracts, content-addressed frozen shards, offline
-compiler, coverage/reconciliation reports and point-in-time research archive
-validator are implemented. The production acquisition boundary is not yet
-implemented, so the checked-in fixture is not a production A/H claim and this
-milestone remains `ACTIVE / PARTIAL`.
-
-The next stage is **Phase 5R-A â€” Production source acquisition and compiler
-ingestion**. The project, rather than the user, must acquire selected
-historical sources through explicit opt-in adapters, persist raw responses and
-licenses/access grants, and compile them into the existing shards. The first
-scope is historical data needed for replay: membership and listing lifecycle,
-prices, corporate actions, benchmark, FX, filings and frozen research.
-Real-time quotes are not a Phase 5R prerequisite; they belong to Phase 6's
-watchlist/event-monitoring boundary.
-
-Phase 5R-A exit gates are: a named bounded target; source-specific coverage
-and licensing evidence; no current-constituent substitution; complete
-listing/lifecycle and terminal handling; independent return reconciliation;
-point-in-time-valid archived research; deterministic offline replay; and
-`--require-production` passing for that declared scope. Credentials remain
-outside Git and ordinary CI remains network/model independent.
-
----
-
-## Phase 6 â€” Watchlist and event-driven re-analysis
-
-### Watchlist state
-
-Persist:
-
-```text
-company
-listing
-last_analysis_commit/version
-last_filing_seen
-last_event_cursor
-last_result
-open_questions
-```
-
-### Event monitor
-
-Detect events such as:
-
-- annual/interim reports;
-- earnings warnings;
-- dividend changes;
-- buybacks / issuance;
-- acquisitions / disposals;
-- audit-opinion changes;
-- regulatory penalties;
-- material litigation;
-- controlling-shareholder events.
-
-Map events to:
-
-```text
-NO_REANALYSIS
-PARTIAL_REANALYSIS
-FULL_REANALYSIS
-URGENT_MANUAL_REVIEW
-```
-
-### Runtime options
-
-- GitHub Actions for deterministic scheduled jobs;
-- Hermes cron for self-hosted unattended CLI + agent workflows;
-- ChatGPT Scheduled for user-facing monitoring/research alerts where supported.
-
----
-
-## Phase 7 â€” Controlled evolution
-
-The system may improve procedures, but may not autonomously mutate the investment rule core.
-
-### Automatically learnable
-
-- source mappings;
-- document-locator heuristics;
-- company-specific accounting quirks;
-- known payout policies;
-- watchlist state;
-- extraction heuristics;
-- agent workflow skills.
-
-### Protected core
-
-- formulas;
-- hard-gate semantics;
-- rule profiles;
-- schemas;
-- valuation definitions.
-
-Core changes require:
-
-```text
-proposal -> evaluation -> tests -> point-in-time validation/backtest -> PR -> human approval
-```
-
-This is the project's definition of safe â€œself-evolution.â€
-
----
-
-# Current milestone
-
-Phase 5 is COMPLETE at the major integration boundary. The repository now has
-the replayable Phase 2 provider/cache preparation path, the Phase 3
-filing/evidence and accepted-adjustment path, and the Phase 4 bounded research
-path described in
-[`docs/goals/phase-4-agentic-analysis.md`](goals/phase-4-agentic-analysis.md):
-typed model-neutral analyst contracts, persisted packets/runs, all eight
-Business Quality roles, report composition and frozen A-share acceptance
-coverage. It also has the Phase 5 frozen manifest, signal/return evaluator,
-long-only portfolio policy replay, benchmark/attribution metrics and
-chronological calibration proposal boundary.
-
-Phase 1 deterministic semantics remain frozen. Changes to formulas, hard-gate
-semantics, schemas or `strict-v1` thresholds require a separately reviewed,
-versioned change. Watchlist/event monitoring and additional provider coverage
-remain separate work.
-
-The long endpoint notes below are historical implementation records. Future
-provider categories may still be added one at a time, but they are not part of
-the completed Phase 2/3 closure criteria.
-
-Phase 2.94 completes the next documented structured-data boundary by adding
-the A-share `stock_szse_summary` Shenzhen Stock Exchange market-summary view.
-Its requested-date security-category rows are validated as raw-only evidence;
-documented quantity/transaction-amount units and undocumented market-value
-units remain explicit replay metadata, and no listing-level or canonical market
-fact is inferred.
-Phase 2.95 adds the documented A-share `stock_szse_area_summary` Shenzhen Stock
-Exchange region-ranked monthly view. Its base and 2025 extended source field
-variants are validated with strict rank/region/order checks; CNY and percentage
-units remain explicit replay metadata, and no listing-level or canonical market
-fact is inferred.
-Phase 2.96 adds the documented A-share `stock_szse_sector_summary` Shenzhen
-Stock Exchange industry-trading view. Its explicit `å½“æœˆ`/`å½“å¹´` selector and
-monthly source-shaped nine-field response are validated with strict
-field/industry/order/type checks; CNY, share, transaction and percentage units
-remain explicit replay metadata, and no listing-level or canonical market fact
-is inferred.
-Phase 2.97 adds the documented A-share Eastmoney
-`stock_board_industry_name_em` current industry-board snapshot. Its explicit
-`industry_board` view and source-shaped 12-field ranked board response are
-validated with strict field/order/identity/type checks; percentage units and
-undocumented price/market-value units remain explicit replay metadata, and no
-listing-level or canonical market fact is inferred.
-Phase 2.98 adds the documented A-share Eastmoney `stock_ggcg_em`
-executive/shareholder-change view. Its explicit `executive_share_changes` view
-and `å…¨éƒ¨`/`è‚¡ä¸œå¢žæŒ`/`è‚¡ä¸œå‡æŒ` direction selector are validated against the
-16-field full-universe response before provider filtering; documented ä¸‡è‚¡/%
-units, the undocumented latest-price unit, event-date bounds and replay row
-counts remain explicit metadata, and no listing-level share, dilution, cash,
-governance or shareholder-return fact is inferred.
-Phase 2.99 adds the documented A-share Eastmoney
-`stock_hold_management_person_em` management-person view under
-`INSIDER_SHARE_CHANGES`. Its explicit `management_person` view passes the
-six-digit symbol and executive name to the symbol/person-scoped endpoint and
-validates the exact 16-field response, identity, dates, numeric ranges and
-replay scope. Numeric units remain `not_documented`, and the raw-only
-normalizer flag creates no listing-level share, dilution, cash, governance or
-shareholder-return fact.
-Phase 3.00 adds the documented A-share Eastmoney
-`stock_lhb_jgmmtj_em` institution-daily Dragon-Tiger view under
-`MARKET_ACTIVITY`. Its explicit `institution_daily` view and inclusive date
-range are validated against the 16-field full-universe response before provider
-filtering; documented CNY/äº¿å…ƒ monetary units, undocumented quote/count/ratio
-units, exact row identity/date/sequence checks and replay scope remain explicit
-metadata. The raw-only normalizer flag creates no issuer cash-flow,
-shareholder-return, governance, valuation or canonical market fact.
-Phase 3.01 adds the documented A-share Eastmoney
-`stock_jgdy_tj_em` institutional-research statistics view under
-`MARKET_ACTIVITY`. Its explicit `institution_research` view and start
-`date=YYYYMMDD` cutoff are validated against the 11-field full-universe
-response before provider filtering; the official strict announcement-date
-boundary, two date fields, integer institution counts, documented percentage
-unit, undocumented price/count units, exact row identity/sequence checks and
-replay scope remain explicit metadata. The raw-only normalizer flag creates no
-issuer cash-flow, shareholder-return, governance, valuation or canonical market
-fact.
-Phase 3.02 adds the documented A-share Eastmoney
-`stock_jgdy_detail_em` institutional-research detail view under
-`MARKET_ACTIVITY`. Its explicit `institution_research_detail` view and start
-`date=YYYYMMDD` cutoff are validated against the 13-field full-universe
-response before provider filtering; the official strict research-date
-boundary, two date fields, institution/reception identity context, documented
-percentage unit, undocumented price unit, exact sequence checks and replay
-scope remain explicit metadata. The raw-only normalizer flag creates no issuer
-cash-flow, shareholder-return, governance, valuation or canonical market fact.
-Phase 3.03 adds the documented A-share Eastmoney
-`stock_gpzy_pledge_ratio_detail_em` important-shareholder pledge-detail view
-under `OWNERSHIP_PLEDGE`. Its explicit `market_pledge_detail` view and
-no-argument full-universe response are validated against the exact 15-field
-source order before provider filtering; 500-row all-page pagination,
-descending announcement ordering, shares/percent/CNY-per-share units, explicit
-nullability, pledge-date boundaries, duplicate identity and replay metadata
-remain explicit. The raw-only normalizer flag creates no canonical share,
-cash, debt-equivalent or governance fact.
-Phase 3.04 adds the documented A-share Eastmoney
-`stock_gpzy_distribute_statistics_company_em` pledge-institution
-company-distribution view under `OWNERSHIP_PLEDGE`. Its explicit
-`company_distribution` view and no-argument `RPT_GDZY_ZYJG_SUM` response are
-validated as a complete eight-field institution-ranked snapshot before
-retention, with one-based sequence, unique institution identity, non-increasing
-company-count ordering, shares/percent units, unchanged source numeric scale,
-single-page report/filter/sort metadata and no listing filtering. The raw-only
-normalizer flag creates no canonical share, cash, debt-equivalent or governance
-fact and leaves `governance_risk_level` critically missing.
-Phase 3.05 adds the documented A-share Eastmoney
-`stock_gpzy_distribute_statistics_bank_em` pledge-institution bank-distribution
-view under `OWNERSHIP_PLEDGE`. Its explicit `bank_distribution` view and
-no-argument `RPT_GDZY_ZYJG_SUM` response are validated as a complete eight-field
-institution-ranked snapshot before retention, with one-based sequence, unique
-institution identity, non-increasing company-count ordering, shares/percent
-units, unchanged source numeric scale, single-page report/filter/sort metadata
-and no listing filtering. A live probe observed `é“¶è¡Œâ…¡`/`è¯åˆ¸â…¡` report labels
-while the documented `é“¶è¡Œ` wrapper filter returned no rows; this contract is
-recorded without silently merging the suffixed labels. The raw-only normalizer
-flag creates no canonical share, cash, debt-equivalent or governance fact and
-leaves `governance_risk_level` critically missing.
-Phase 3.06 adds the documented A-share Eastmoney
-`stock_gpzy_industry_data_em` ownership-pledge industry-data view under
-`OWNERSHIP_PLEDGE`. Its explicit `industry_data` view and no-argument
-`RPT_CSDC_INDUSTRY_STATISTICS` response are validated as a complete
-industry-ranked snapshot before retention, with one-based sequence, unique
-industry identity, non-increasing average pledge ratio, required row dates,
-documented percent/shares/CNY units, fixed report/page/sort metadata and no
-listing filtering. A live probe observed industry labels with the `â…¡` suffix;
-the adapter preserves provider text. The raw-only normalizer flag creates no
-canonical share, cash, debt-equivalent or governance fact and leaves
-`governance_risk_level` critically missing.
-Phase 3.07 adds the documented A-share Eastmoney
-`stock_sy_hy_em` goodwill-industry view under `GOODWILL_IMPAIRMENT` with
-explicit `view=industry_data` and required `date=YYYYMMDD`. Its
-`RPT_GOODWILL_INDUSTATISTICS` response is a market-wide, date-filtered,
-5000-row-paged snapshot ordered by descending `SUMSHEQUITY_RATIO` and
-returning six exact industry aggregate fields. The adapter validates unique
-industry identity, ratio ordering, finite values, integer/non-negative company
-counts and the request-period binding, while preserving signed net-profit
-aggregates, exact source order, CNY amount context and undocumented
-count/ratio units. The normalizer emits
-`AKSHARE_GOODWILL_INDUSTRY_DATA_RAW_ONLY`, leaves `goodwill` and `impairment`
-critically missing and creates no canonical accounting, profit, ratio or
-Business Quality fact; primary-filing issuer scope and reconciliation remain
-unresolved.
-Phase 3.08 adds the documented A-share Eastmoney
-`stock_account_statistics_em` stock-account-statistics view under
-`MARKET_ACTIVITY`. Its explicit `account_statistics` view and no-argument
-`RPT_STOCK_OPEN_DATA` response are validated as a complete monthly history
-with 11 exact fields, strict ascending `YYYY-MM` dates, nullable change
-fields, non-negative account/market-cap/index-close aggregates and explicit
-source/drop/sort/unit metadata. The raw-only normalizer flag creates no
-canonical accounting, shareholder-return, governance, market or valuation
-fact because the history is market-wide and has no listing/entity accounting
-scope.
-Phase 3.09 adds the documented A-share Legu
-`stock_market_activity_legu` market-activity view under `MARKET_ACTIVITY` with
-explicit `view=market_activity_legu` and no upstream arguments. Its HTML-backed
-current Shanghai/Shenzhen snapshot is validated as exactly 12 ordered
-`item`/`value` rows covering rise/fall, limit-up/down, flat/suspended, activity
-and statistic-date metrics. Numeric counts remain finite non-negative raw
-values, `æ´»è·ƒåº¦` remains provider text, and `ç»Ÿè®¡æ—¥æœŸ` is a strict
-`YYYY-MM-DD HH:MM:SS` response timestamp. The raw-only normalizer flag creates
-no canonical market, return, governance, valuation or accounting fact because
-the snapshot is market-wide and has no listing/entity accounting scope. No
-calculation, gate, pipeline, CLI or input-loader contract changes.
-Phase 3.10 adds the documented A-share Legu
-`stock_a_congestion_lg` market-congestion history under `MARKET_ACTIVITY` with
-explicit `view=congestion` and no user-supplied upstream arguments. Its
-token-backed JSON response is validated as a non-empty, strictly ascending
-latest-four-year history with exact `date`, `close` and `congestion` fields,
-finite non-negative values and no inferred units. The raw-only normalizer flag
-creates no canonical market, return, governance, valuation or accounting fact
-because provider-defined congestion history has no listing/entity accounting
-scope. No calculation, gate, pipeline, CLI or input-loader contract changes.
-Phase 3.11 adds the documented A-share Legu
-`stock_ebs_lg` equity-bond-spread history under `MARKET_ACTIVITY` with
-explicit `view=equity_bond_spread` and no user-supplied arguments. Its
-token-backed JSON response is validated as a non-empty, strictly ascending
-history with exact `æ—¥æœŸ`, `æ²ªæ·±300æŒ‡æ•°`, `è‚¡å€ºåˆ©å·®` and `è‚¡å€ºåˆ©å·®å‡çº¿` fields,
-finite numeric values, a non-negative index series and signed spread values.
-The raw-only normalizer flag creates no canonical market, return, valuation,
-governance or accounting fact because this index/spread context has no
-listing/entity accounting scope. No calculation, gate, pipeline, CLI or
-input-loader contract changes.
-Phase 3.12 adds the documented A-share Legu
-`stock_buffett_index_lg` Buffett-index history under `MARKET_ACTIVITY` with
-explicit `view=buffett_index` and no user-supplied arguments. Its token-backed
-JSON response is validated as a non-empty, strictly ascending all-history
-series with the four documented `æ—¥æœŸ`, `æ”¶ç›˜ä»·`, `æ€»å¸‚å€¼` and `GDP` fields,
-finite non-negative base values and optional named percentile extensions. The
-raw-only normalizer flag creates no canonical market, return, valuation,
-governance or accounting fact because the index/market-capitalization/GDP
-context has no listing/entity accounting scope. No calculation, gate, pipeline,
-CLI or input-loader contract changes.
-
-Phase 3.13 adds the documented A-share Legu
-`stock_a_ttm_lyr` PE history under `MARKET_ACTIVITY` with explicit
-`view=ttm_lyr` and no user-supplied arguments. Its token-backed JSON response is
-validated as a non-empty, strictly ascending all-history series with the full
-14-field date/TTM/LYR/percentile/index schema, finite numeric values and a
-non-negative index-close field. The raw-only normalizer flag creates no
-canonical market, return, valuation, governance or accounting fact because the
-market-wide PE context has no listing/entity accounting scope. No calculation,
-gate, pipeline, CLI or input-loader contract changes.
-Phase 3.14 adds the documented A-share Legu
-`stock_a_all_pb` PB history under `MARKET_ACTIVITY` with explicit
-`view=all_pb` and no user-supplied arguments. Its token-backed JSON response is
-validated as a non-empty, strictly ascending all-history series with the full
-eight-field date/PB/percentile/index schema; the wrapper-dropped
-`weightingAveragePB` field, finite numeric values and non-negative index-close
-boundary are recorded explicitly. The raw-only normalizer flag creates no
-canonical market, return, valuation, governance or accounting fact because the
-market-wide PB context has no listing/entity accounting scope. No calculation,
-gate, pipeline, CLI or input-loader contract changes.
-Phase 3.15 adds the documented A-share Legu `stock_market_pe_lg` market-PE
-history under `MARKET_ACTIVITY` with explicit `view=market_pe` and a required
-board symbol. The standard-board and ç§‘åˆ›ç‰ˆ field variants, symbol-specific
-APIs/fixed IDs, strict all-history schema and signed-PE raw-only boundary are
-recorded; no canonical market, return, valuation, governance or accounting
-fact is created and no calculation, gate, pipeline, CLI or input-loader
-contract changes.
-Phase 3.16 adds the documented A-share Legu `stock_market_pb_lg` market-PB
-history under `MARKET_ACTIVITY` with explicit `view=market_pb` and a required
-board symbol. Its five-field schema, symbol-specific source pages and fixed
-`indexCode` values, strict all-history validation and signed-PB raw-only
-boundary are recorded; no canonical market, return, valuation, governance or
-accounting fact is created and no calculation, gate, pipeline, CLI or
-input-loader contract changes.
-Phase 3.17 adds the documented A-share Legu `stock_index_pe_lg` index-PE
-history under `MARKET_ACTIVITY` with explicit `view=index_pe` and a required
-index symbol. Its eight-field schema, official fixed index-code mapping,
-strict all-history validation and signed-PE raw-only boundary are recorded;
-no canonical market, return, valuation, governance or accounting fact is
-created and no calculation, gate, pipeline, CLI or input-loader contract
-changes.
-Phase 3.18 adds the documented A-share Legu `stock_index_pb_lg` index-PB
-history under `MARKET_ACTIVITY` with explicit `view=index_pb` and a required
-index symbol. Its five-field schema, official fixed index-code mapping, strict
-all-history validation and signed-PB raw-only boundary are recorded; the
-documented `sz50-pb` source page and actual `zz500-ttm-lyr` CSRF transport page
-remain distinct provenance metadata, and no calculation, gate, pipeline, CLI or
-input-loader contract changes.
-Phase 3.19 adds the documented A-share Baidu `stock_zh_valuation_baidu`
-valuation-history endpoint under `MARKET_ACTIVITY` with explicit
-`view=valuation_baidu`, a derived six-digit listing symbol, five indicator
-choices and five period choices. Its exact `date`/`value` schema, official
-fixed/dynamic JSON parameters, listing-scoped date bounds and strict history
-validation are recorded; the normalizer emits
-`AKSHARE_BAIDU_VALUATION_RAW_ONLY` and creates no canonical valuation, market,
-return, governance or accounting fact, and no calculation, gate, pipeline, CLI
-or input-loader contract changes.
-Phase 3.20 adds the documented H-share Baidu `stock_hk_valuation_baidu`
-valuation-history endpoint under `MARKET_ACTIVITY` with explicit
-`view=valuation_baidu_hk`, a derived five-digit listing symbol, five indicator
-choices and three period choices. Its exact `date`/`value` schema, official
-fixed/dynamic JSON parameters including `market=hk`, listing-scoped date bounds
-and strict history validation are recorded; the normalizer emits
-`AKSHARE_HK_BAIDU_VALUATION_RAW_ONLY` and creates no canonical valuation,
-market, return, governance or accounting fact, and no calculation, gate,
-pipeline, CLI or input-loader contract changes.
-Phase 3.21 adds the documented A-share Eastmoney
-`stock_zh_valuation_comparison_em` valuation-comparison endpoint under
-`MARKET_ACTIVITY` with explicit `view=valuation_comparison` and an
-exchange-prefixed six-digit listing symbol. Its current 20-field target,
-industry-summary and ranked-peer output, exact Eastmoney JSON report/filter/
-sort parameters, nullable/signed numeric boundary and replay metadata are
-recorded; the normalizer emits
-`AKSHARE_VALUATION_COMPARISON_RAW_ONLY` and creates no canonical valuation,
-market, return, governance or accounting fact, and no calculation, gate,
-pipeline, CLI or input-loader contract changes.
-Phase 3.22 adds the documented H-share Eastmoney
-`stock_hk_valuation_comparison_em` valuation-comparison endpoint under
-`MARKET_ACTIVITY` with explicit `view=valuation_comparison_hk` and an
-unprefixed five-digit listing symbol. Its current 18-field single-listing
-output, explicit JSON report/columns/filter/client parameters, nullable/signed
-multiples, positive integer ranks and replay metadata are recorded; the
-normalizer emits `AKSHARE_HK_VALUATION_COMPARISON_RAW_ONLY` and creates no
-canonical valuation, market, return, governance or accounting fact, and no
-calculation, gate, pipeline, CLI or input-loader contract changes.
-Phase 3.23 adds the documented A-share Eastmoney
-`stock_zh_growth_comparison_em` growth-comparison endpoint under
-`MARKET_ACTIVITY` with explicit `view=growth_comparison` and an
-exchange-prefixed six-digit listing symbol. Its current 21-field
-industry-average/industry-median/peer/target output, explicit JSON report,
-filter, sort, client and version parameters, nullable/signed growth values,
-rank ordering and replay metadata are recorded; the normalizer emits
-`AKSHARE_GROWTH_COMPARISON_RAW_ONLY` and creates no canonical growth, valuation,
-market, return, governance or accounting fact, and no calculation, gate,
-pipeline, CLI or input-loader contract changes.
-Phase 3.24 adds the documented H-share Eastmoney
-`stock_hk_growth_comparison_em` growth-comparison endpoint under
-`MARKET_ACTIVITY` with explicit `view=growth_comparison_hk` and an unprefixed
-five-digit listing symbol. Its current 10-field single-listing output, explicit
-JSON report/columns/filter/page/client/version parameters, nullable/signed
-growth metrics, positive integer ranks and replay metadata are recorded; the
-normalizer emits `AKSHARE_HK_GROWTH_COMPARISON_RAW_ONLY` and creates no
-canonical growth, valuation, market, return, governance or accounting fact, and
-no calculation, gate, pipeline, CLI or input-loader contract changes.
-Phase 3.25 adds the documented A-share Eastmoney
-`stock_zh_dupont_comparison_em` DuPont-comparison endpoint under
-`MARKET_ACTIVITY` with explicit `view=dupont_comparison` and an
-exchange-prefixed six-digit listing symbol. Its current 19-field
-industry-summary/ranked-comparison output, explicit JSON report/columns/filter/
-sort/page/source/client/version parameters, nullable/signed DuPont metrics,
-positive integer rank handling and replay metadata are recorded; the normalizer
-emits `AKSHARE_DUPONT_COMPARISON_RAW_ONLY` and creates no canonical
-profitability, growth, valuation, market, return, governance or accounting fact,
-and no calculation, gate, pipeline, CLI or input-loader contract changes.
-Phase 2.75 completes the next documented structured-data boundary by adding
-the A-share `stock_gpzy_profile_em` market-wide historical ownership-pledge
-view. Its no-argument eight-field response is validated as an ascending raw
-date series, preserves the source percent-to-fraction ratio scaling and does
-not claim listing-level rows or facts. The milestone continues to keep
-share-change, repurchase and rights-issue period, status, unit and
-economic-scope questions unresolved, and keeps ownership-pledge holder,
-governance and economic-scope questions unresolved. Phase 2.76 adds the
-documented A-share `stock_sy_profile_em` goodwill market-profile view under
-`GOODWILL_IMPAIRMENT`. Its no-argument eight-field history is strictly ordered
-by `æŠ¥å‘ŠæœŸ`, records CNY/provider-ratio context and remains raw-only because
-aggregate annual/interim values do not establish listing accounting scope;
-`goodwill` and `impairment` remain critically missing pending primary-filing
-reconciliation. The milestone keeps H-share goodwill coverage and issuer-level
-accounting interpretation unresolved. Phase 2.77 adds the next documented
-A-share `stock_sy_yq_em` goodwill-impairment forecast view under
-`GOODWILL_IMPAIRMENT` with explicit `view=impairment_forecast` and a required
-`date=YYYYMMDD`. Its exact 14-field date-filtered universe is validated before
-listing selection, with positive ascending sequence, nullable dates/numbers,
-text checks, documented CNY/percent units and request-period/provider-filter
-replay metadata. The
-normalizer emits `AKSHARE_GOODWILL_FORECAST_RAW_ONLY`, leaves `goodwill` and
-`impairment` critically missing and creates no canonical forecast, profit,
-accounting or ratio fact pending primary-filing scope and reconciliation. H-
-share goodwill coverage remains unresolved. The A-share
-Sina `stock_intraday_sina` response is a requested-date, listing-scoped large-
-order snapshot whose exact `symbol`/`name`/`ticktime`/`price`/`volume`/
-`prev_price`/`kind` schema is validated with non-decreasing time order and
-`U`/`D`/`E` kind codes. Because the rows are time-only even though the request
-date is explicit, the normalizer emits `AKSHARE_SINA_INTRADAY_RAW_ONLY`, leaves
-`market_history` critically missing and creates no canonical daily-history,
-liquidity, order-flow or valuation fact; the requested date, derived symbol,
-units and observed time bounds remain part of the replay scope. The A-share
-Eastmoney `stock_sy_em` goodwill-detail response is a distinct requested-date,
-market-wide universe whose exact ten-field schema, positive ascending sequence,
-listing identity, nullable announcement date, numeric/null fields and text
-fields are validated before provider filtering. With explicit
-`view=goodwill_detail`, the normalizer emits
-`AKSHARE_GOODWILL_DETAIL_RAW_ONLY`, leaves `goodwill` and `impairment`
-critically missing and creates no canonical accounting, profit, ratio or
-Business Quality fact; CNY/provider-ratio units and request-period/provider-
-filter scope remain replay metadata pending primary-filing reconciliation. The
-A-share
-Tencent daily-history response is the dated-series exception among the recent
-market-history slices: it maps the existing daily-history extension facts,
-preserves volume as `shares` and amount as `CNY`, and retains its market-
-prefixed symbol, date range, adjustment and raw turnover ratio as replayable
-provider context. The A-share
-Tencent latest-trading-day tick response remains raw-only because its
-time-only trade rows have no trading date and do not establish canonical daily
-history, liquidity or valuation facts; `view=tencent_tick`, the derived
-market-prefixed symbol, recognized amount-column variant and time ordering
-remain part of its replayable acquisition boundary. The A-share
-Sina minute-history response remains raw-only because its recent provider
-window, minute interval and adjustment mode do not establish canonical daily
-history or a valuation input; `view=sina_minute`, the market-prefixed symbol,
-interval and adjustment remain part of its replayable acquisition boundary.
-The A-share market-participation-desire response remains raw-only because its
-provider-defined participation scores/change fields and latest 30-trading-day
-window do not establish a canonical market metric, issuer cash flow,
-shareholder return, governance or valuation fact; `view=participation_desire`,
-the unprefixed symbol, exact field set, row limit and observed date bounds
-remain part of its replayable acquisition boundary.
-The A-share Eastmoney intraday-trade response remains raw-only because its
-latest-trading-day `æ—¶é—´`, `æˆäº¤ä»·`, `æ‰‹æ•°` and `ä¹°å–ç›˜æ€§è´¨` rows have no trading
-date and do not establish canonical daily history, liquidity, order flow or
-valuation facts; `view=intraday_trades`, the unprefixed symbol, exact field set,
-time ordering and observed time bounds remain part of its replayable
-acquisition boundary.
-The H-share intraday-history response remains raw-only because its recent
-minute-bar window, period-specific schema, adjustment mode and HKD market
-context do not establish canonical daily history or a valuation input;
-`view=hk_intraday`, the unprefixed H-share symbol, datetime range, interval,
-adjustment and `shares`/`HKD_per_share`/`HKD` units remain part of its replayable
-acquisition boundary.
-The A-share chip-distribution response remains raw-only because its
-provider-defined benefit, cost and concentration fields describe a rolling
-latest-90-trading-day window rather than the canonical daily-history contract;
-`view=chip_distribution`, the unprefixed A-share symbol, adjustment mode, exact
-field set, 90-row limit and observed date bounds remain part of its replayable
-acquisition boundary.
-The A+H Eastmoney quote-comparison response remains raw-only because its
-15-minute-delayed cross-market prices, changes, ratio and premium have no
-stable observation timestamp and do not establish canonical current price, FX,
-comparison, valuation or calculation facts. The explicit
-`view=ah_comparison`, no-argument endpoint, exact ten-field response,
-five-/six-digit code identities, side-specific filtering, units and
-retrieval-only snapshot remain part of its replayable acquisition boundary.
-The A-share dividend-distribution detail response remains raw-only because its
-historical report periods, event dates, distribution ratios, per-share
-indicators and share-count context do not establish settled ordinary dividend
-cash or a canonical payout denominator. The explicit `view=event_detail`,
-unprefixed symbol, exact 19-field response, ascending report-period ordering,
-row-date binding and symbol-scoped historical-detail snapshot remain part of
-its replayable acquisition boundary.
-The A-share CNINFO IPO-summary response remains raw-only because its offering
-dates, proceeds, fees, quantities and underwriter context do not establish a
-settled issuance-cash period, dilution or a canonical share fact. The explicit
-`view=ipo_summary`, unprefixed symbol, exact 15-field response, symbol-scoped
-historical scope and row-date binding remain part of its replayable acquisition
-boundary.
-The A-share Eastmoney new-stock-board response remains raw-only because its
-current-trading-day quote universe does not establish a dated listing, return,
-valuation, governance or canonical market fact. The explicit
-`view=new_stock`, no-argument upstream request, exact 17-field response,
-six-digit code validation, provider filtering, unique sequence validation and
-retrieval-only date binding remain part of its replayable acquisition boundary.
-The A-share Eastmoney individual-notice response remains raw-only because its
-announcement title/type/date/link metadata does not establish filing contents,
-an accounting opinion or a governance-risk judgment. The explicit
-`view=individual_notice`, `security`/category/date-bound request mapping, exact
-six-field response, six-digit code validation, upstream listing scope,
-inclusive date-range checks and symbol-scoped history/range replay metadata
-remain part of its replayable acquisition boundary.
-The A-share Eastmoney market-focus response remains raw-only because its
-provider-defined user-attention scores and recent trading-day window do not
-establish a canonical market metric, issuer cash flow, shareholder return,
-governance or valuation fact. The explicit `view=focus`, unprefixed symbol,
-exact two-field response, strict date ordering, official 30-row limit and
-symbol-scoped observed-date replay metadata remain part of its acquisition
-boundary.
-The A-share Eastmoney institution-participation response remains raw-only
-because its provider-defined percentages and historical trading-day series do
-not establish a canonical market metric, issuer cash flow, shareholder return,
-governance or valuation fact. The explicit
-`view=institution_participation`, unprefixed symbol, exact two-field response,
-strict date ordering, percent unit and symbol-scoped observed-date replay
-metadata remain part of its acquisition boundary.
-The A-share Eastmoney latest stock-hot-rank response remains raw-only because
-its symbol-scoped popularity rank and provider timing do not establish a
-canonical market metric, issuer cash flow, shareholder return, governance or
-valuation fact. The explicit `view=hot_rank_latest`, market-prefixed symbol,
-exact ten-row `item`/`value` response, `calcTime` row timestamp and replay
-metadata remain part of its acquisition boundary.
-The A-share Xueqiu individual-spot response uses the existing canonical quote
-contract narrowly: `view=xueqiu_spot`, the derived market-prefixed symbol,
-exact `item`/`value` row shape, `ä»£ç ` identity, `çŽ°ä»·` price item, `æ—¶é—´`
-timestamp and replay metadata remain part of its acquisition boundary; all
-other Xueqiu fields remain raw evidence.
-The A-share Xueqiu company-profile response remains raw-only because its
-descriptive, registration, personnel, control and provider-specific date
-fields do not establish canonical company or listing facts. The explicit
-`view=xueqiu_basic_info`, derived market-prefixed symbol, exact `item`/`value`
-row shape, documented item allowlist, required profile identifiers, scalar and
-finite numeric value rules, and symbol-scoped company-profile replay metadata
-remain part of its acquisition boundary.
-The A-share CNINFO company-profile response remains raw-only because its
-descriptive, registration, contact and provider-specific date fields do not
-establish canonical company or listing facts. The explicit
-`view=cninfo_profile`, unprefixed six-digit symbol, exact 26-field row shape,
-A-share code identity, scalar/null and valid date-or-null rules, and symbol-scoped
-company-profile replay metadata remain part of its acquisition boundary.
-The A-share Tonghuashun main-business-introduction response remains raw-only
-because its business, product and operating-scope descriptions do not establish
-canonical revenue, core-business or Business Quality facts. The explicit
-`view=business_intro`, unprefixed six-digit symbol, exact five-field row shape,
-A-share code identity, string/null rules and symbol-scoped current snapshot
-replay metadata remain part of its acquisition boundary.
-
-dividend-distribution snapshot remains raw-only because its ratios, status and
-multiple dates do not establish settled ordinary cash or a canonical payout
-denominator. Phase 2 is complete at the top level; future documented
-categories must be reviewed before their fields can enter the canonical
-contract. The A-share
-earnings-forecast snapshot remains raw-only because forecast ranges, forecast
-type and announcement dates do not establish reported parent or consolidated
-profit for the requested period. Filing-derived classifications remain a
-Phase 3 concern. The A-share performance-report snapshot remains raw-only
-because its headline net profit has no admitted parent/consolidated basis and
-its operating cash flow is per share rather than a canonical reported CFO
-total. The A-share earnings-quick-report snapshot remains raw-only because its
-headline profit and revenue comparisons, per-share indicators and announcement
-date do not establish the canonical entity, unit, diluted-share or filing
-period semantics.
-
-The A-share top-ten-shareholder report-period rows remain raw-only because
-holder rank, quantities, ratios and report-date context do not establish
-beneficial control, a canonical concentration metric or a company-level
-diluted-share series. The explicit `view=top_10` and quarter-end `date` remain
-part of the replayable acquisition boundary.
-
-The A-share top-ten-tradable-shareholder report-period rows remain raw-only
-because holder rank, quantities, float-share ratios and report-date context do
-not establish beneficial control, a canonical concentration metric or a
-company-level diluted-share series. The explicit `view=free_top_10` and
-quarter-end `date` remain part of the replayable acquisition boundary.
-
-The A-share top-ten-tradable-shareholder detail universe remains raw-only
-because its report-period holder rows, quantities, change fields,
-float-market values and announcement dates do not establish beneficial control,
-a canonical concentration metric, a company-level diluted-share series or a
-filing-backed governance conclusion. The explicit
-`view=free_holding_detail` and quarter-end `date` remain part of the replayable
-acquisition boundary.
-
-The A-share Dragon-Tiger stock-statistic response remains raw-only because its
-per-listing activity counts, amount aggregates, recent listing date and
-trailing returns are a provider-window summary rather than issuer accounting,
-shareholder-return, governance or canonical market facts. The explicit
-`view=stock_statistic` and `period` remain part of the replayable acquisition
-boundary.
-
-The A-share Dragon-Tiger institution-statistic response remains raw-only
-because its per-listing institution-seat counts, amount aggregates and
-trailing returns are a provider-window summary rather than issuer accounting,
-shareholder-return, governance or canonical market facts. The explicit
-`view=institution_statistic` and `period` remain part of the replayable
-acquisition boundary.
-
-The A-share five-level bid-ask response remains raw-only because its order-book
-levels and intraday quote context have no stable observation timestamp and do
-not establish the canonical current-price, liquidity or valuation inputs. The
-explicit `view=bid_ask` and derived listing symbol remain part of the
-replayable acquisition boundary.
-
-The A-share `stock_zh_a_hist_min_em` response is retained under
-`AKSHARE_INTRADAY_HISTORY_RAW_ONLY` because its period-specific minute bars,
-adjustment mode and recent-data limitation do not establish canonical daily
-history or valuation inputs. The explicit `view=intraday`, datetime range,
-interval, adjustment and listing symbol remain part of the replayable
-acquisition boundary.
-
-The A-share business-composition snapshot remains raw-only because its
-overlapping product, industry and geographic rows do not establish a canonical
-revenue or core-revenue series; aggregation, unit, entity and classification
-semantics remain unresolved. Filing-derived business-quality judgments remain
-a later-phase concern.
-
-The A-share financial-abstract matrix remains raw-only because its amount,
-per-share and ratio rows use a wide historical presentation without an
-admitted canonical entity, unit, period or diluted-share basis. Filing-derived
-statement facts and analytical classifications remain outside this slice.
-The A-share financial-indicator response remains raw-only because its reported
-amounts, per-share values and provider ratios do not establish the canonical
-entity, unit, point-in-time basis or calculation methodology. Filing-derived
-statement facts and analytical classifications remain outside this slice.
-The documented SSE insider-share-change response is also raw-only because
-holder roles, holdings, transaction prices and event dates do not establish a
-company-level diluted-share series or a governance-risk judgment. The documented
-SZSE insider-share-change response is retained under the same raw-only
-boundary: its change quantities, prices, units and event dates do not establish
-a company-level diluted-share series or a governance-risk judgment.
-The documented BSE insider-share-change response is retained under the same
-raw-only boundary: its holding quantities, prices and event dates do not
-establish a company-level diluted-share series or a governance-risk judgment.
-The H-share financial-indicator response is retained under the same raw-only
-boundary: its amounts, per-share values, provider ratios and currency label do
-not establish a canonical statement entity, unit, point-in-time basis or
-calculation methodology. The H-share latest-indicator response is retained
-under a separate raw-only snapshot boundary because its mixed per-share,
-capital, dividend, headline financial and valuation fields do not establish a
-canonical period, entity, unit or diluted-share basis. H-share insider-share
-coverage remains unresolved. The A-share disclosure-notice response is retained
-under a separate raw-only discovery boundary because its listing-bound title,
-timestamp and link do not establish filing contents, an accounting opinion or a
-governance-risk judgment; linked-document retrieval and parsing remain Phase 3
-work. The current AKShare documentation has no general H-share
-disclosure-notice endpoint; the separately selected H-share dividend-event
-detail response is retained under `AKSHARE_HK_DIVIDEND_DETAIL_RAW_ONLY` and
-does not replace Phase 3 disclosure retrieval or parsing.
-The documented A-share risk-warning-board response is retained under
-`AKSHARE_RISK_WARNING_STATUS_RAW_ONLY` because its current-trading-day
-universe membership does not establish dated status history or an explicit
-`special_treatment=False` result for listings absent from the response.
-The documented A-share main-shareholder response is retained under
-`AKSHARE_MAIN_SHAREHOLDERS_RAW_ONLY` because its historical holder names,
-quantities, ratios and share-class labels do not establish beneficial control,
-a company-level diluted-share series or a filing-backed governance conclusion.
-The documented A-share trading-suspension response is retained under
-`AKSHARE_TRADING_SUSPENSIONS_RAW_ONLY` because its requested-date suspension
-events, dates and reasons do not establish a complete special-treatment status
-or a filing-backed governance conclusion.
-The documented A-share restricted-share-release response is retained under
-`AKSHARE_RESTRICTED_SHARE_RELEASES_RAW_ONLY` because its release dates,
-quantities, market values and lock-up types do not establish canonical
-diluted-economic-share treatment or a share-count event. H-share coverage and
-filing-backed release interpretation remain unresolved.
-The documented A-share goodwill-impairment response is retained under
-`AKSHARE_GOODWILL_IMPAIRMENT_RAW_ONLY` because its goodwill and impairment
-amounts, ratios, profit and announcement dates do not establish the canonical
-accounting entity, report-period scope or a filing-backed reconciliation. H-share
-coverage and filing-backed impairment interpretation remain unresolved.
-The documented A-share goodwill-impairment forecast response is retained under
-`AKSHARE_GOODWILL_FORECAST_RAW_ONLY` because its expected-profit ranges,
-change-rate bounds, prior-year profit, goodwill context and announcement date
-remain provider evidence rather than filing-backed canonical forecast, profit,
-goodwill or impairment facts. The request's `REPORT_DATE` filter is preserved
-as replay metadata, while `æœ€æ–°å•†èª‰æŠ¥å‘ŠæœŸ` remains a separate provider field;
-H-share coverage and primary-filing reconciliation remain unresolved.
-The documented Sina A/H ESG-rating response is retained under
-`AKSHARE_ESG_RATINGS_RAW_ONLY` because agency-specific scales, rating values,
-provider quarter labels and markers do not establish a comparable ESG score,
-governance-risk level or Business Quality judgment. The provider validates and
-filters the mixed universe by explicit code plus `cn`/`hk` market while
-retaining all matching agency/quarter rows; no canonical ESG, governance,
-financial or valuation fact is admitted.
-
-The documented SSE, SZSE and BSE margin-detail responses are retained under
-`AKSHARE_MARGIN_TRADING_RAW_ONLY` because their security-level investor
-financing balances, quantities and transaction flows do not establish issuer
-financial debt, cash, leverage or a canonical margin fact; `financial_debt`
-remains critically missing. The SSE response carries its exact observation
-date in each row, while the documented SZSE and BSE responses bind the exact
-request date only through the request and response metadata; none is an issuer
-accounting period.
-
-The documented A/H `stock_hsgt_individual_em` response is retained under
-`AKSHARE_HSGT_INDIVIDUAL_HOLDINGS_RAW_ONLY` because its symbol-scoped
-north-/southbound investor holdings, quantities, market values, ratios and
-dated changes do not establish beneficial control, governance severity,
-shareholder concentration, issuer corporate-action cash or a company-level
-diluted-share series. Its official implementation removes row-level security
-identity from the published output, so the explicit request scope is retained
-without inventing a row-level listing code. `governance_risk_level` remains
-critically missing and no ownership, share, buyback, issuance, return or
-valuation fact is emitted.
-
-The documented A-share `stock_hold_control_cninfo` response is retained under
-`AKSHARE_CONTROL_HOLDINGS_RAW_ONLY` because its controller names, holding
-quantities, ratios, provider control categories and change dates do not by
-themselves establish filing-backed legal control, governance severity,
-canonical ownership/concentration or a company-level diluted-share series.
-`governance_risk_level` remains critically missing and no canonical fact is
-emitted; the explicit `view=control_changes` and control-scope selector remain
-part of the replayable acquisition boundary.
-
-The documented A-share external-guarantee response is retained under
-`AKSHARE_EXTERNAL_GUARANTEES_RAW_ONLY` because its date-range aggregate,
-parent-equity denominator and published ratio do not establish a settled
-quasi-debt amount, legal guarantee status, canonical period/entity scope or a
-governance judgment. It leaves `material_quasi_debt`,
-`major_illegal_guarantee` and `governance_risk_level` critically missing; H-share
-coverage and filing-backed review remain unresolved.
-
-The documented A-share individual ownership-pledge detail response is retained
-under `AKSHARE_INDIVIDUAL_PLEDGE_DETAIL_RAW_ONLY` because its holder,
-institution, quantity, ratio, price, status and event-date fields do not
-establish a fully diluted share count, settled pledged cash/debt-equivalent
-amount, beneficial control or a governance judgment. It leaves
-`governance_risk_level` critically missing; H-share coverage and filing-backed
-pledge interpretation remain unresolved.
-
-The documented A-share company-litigation response is retained under
-`AKSHARE_LITIGATION_RAW_ONLY` because its date-range lawsuit count, amount and
-aggregate interval do not establish a canonical event/statement period, legal
-status, accounting scope, material quasi-debt amount or governance judgment.
-It leaves `material_quasi_debt` and `governance_risk_level` critically missing;
-H-share coverage and filing-backed litigation review remain unresolved.
-
-The documented A-share CNINFO equity-mortgage response is retained under
-`AKSHARE_EQUITY_MORTGAGE_RAW_ONLY` because its query date, announcement dates,
-pledgor/pledgee, quantities, ratios and event descriptions do not establish a
-canonical pledge period, fully diluted share count, settled pledged
-cash/debt-equivalent amount, beneficial control or a governance judgment. It
-leaves `governance_risk_level` critically missing; H-share coverage and
-filing-backed pledge interpretation remain unresolved.
+YªçŠx-®éÜj×¢ëiºÚ+Š§j[h‘éÜ¢éí×m;Û´èµ©hºÚn¶X§zÍHÈ]™[ÜY[›ØYX\‚ˆ™\ÜÚ]ÜžNˆ›ÛÙ[šËÝ\K]˜[YKY[™Ú[™X‚ˆÛØ[ˆ\›ˆHÝšXÝ\H˜[YKZ[™\Ý[™ÈÜXÚYšXØ][Ûˆ[È[ˆ]Y]X›H]\›Z[š\ÝXÈ[™Ú[™Hš\œÝ[ˆY]HY\\œËKX\ÜÚ\ÝY]šY[˜ÙH[˜[\Ú\È[™[˜][™Y[Ûš]Üš[™Ë‚‚ˆÈÈ\ÙH8 %œ™Y^™HHÛÛ˜XÝÂ‚”Ý]\Îˆ[ÜÝHÛÛ\]K‚‚‘[]™\˜X›\Î‚‚‹HÝ˜]YÞHÜXÚYšXØ][ÛœÈ[™\ˆØÜËÜÜXËØÂ‹H[\ËÜÝšXÝ]ŒKžX[[Â‹H]šY[˜ÙH[™ÛÛ\[žP[˜[\Ú\È”ÓÓˆØÚ[X\ÎÂ‹H˜[X][Ûˆ™\Ý[ØÚ[XNÂ‹H[[YKØ]]ÛX][Ûˆ\˜Ú]XÝ\™K‚‚‘^]Üš]\šXN‚‚‹H›Ü›][\È[™\™YØ]HÙ[X[XÜÈ\™H^XÚ]Â‹H›ÈÜš]XØ[[™\ÝY[[H^\ÝÈÛ›H[ˆÚ]\ÝÜžNÂ‹HXXÚ[™K\™XYX›H™\ÚÛÈ^\Ý‚‚‹KKB‚ˆÈÈ\ÙHH8 %]\›Z[š\ÝXÈØ[Ý[][Ûˆ[™Ú[™H
+ÓÓTUJB‚“›È™]ÛÜšË›ÈK›È]™HX\šÙ]]K‚‚”Ý]\ÎˆÛÛ\]KˆH]\›Z[š\ÝXÈÙ™›[™H\[[™H[™™H[˜[^™XÓB˜\™H[\[Y[Y[™\ÝYˆÑË™]Ø\Ú›ÝYÚ™]\›‹˜[X][ÛˆY\œË›Ù™›[™H]šY[˜ÙKX˜XÚÙY\Ú[™\ÜË\]X[]HØÛÜš[™È[™Hš^Y\™YØ]Bœš[Z]]™\È\™HÛÛ\ÜÙY[ÈHØÚ[XK]˜[YÛÛ\[žP[˜[\Ú\Ø‚‚•H[˜[^™HÛÛ[X[™Ù\È›Ý[™[\Ú[™\ÜÈ]X[]HYÛY[Ëˆ[›\ÜÈ[‚™^XÚ]ÝXÝ\™Y\ÜÙ\ÜÛY[\ÈÝ\YY›ÝYÚH]Ûˆ\[[™HTK]Ø]H™[XZ[œÈ“ÕÑUSPUQ˜[X][Ûˆ™[XZ[œÈ[™XØ]]™H[™Hš[˜[™XÚ\Ú[Ûˆ\ØX›\È]]ÛX]XÈ[™\ÝY[Ý]]‚‚ˆÈÈÈ[]™\˜X›\Â‚”]ÛˆXÚØYÙH[™ÓHÚ][Ù[\È\›Þ[X][H\]Z]˜[[Î‚‚˜^œÜ˜ËÝ\WÝ˜[YWÙ[™Ú[™KÂˆ[Ù[ËÂˆÛÛ™šYËÂˆØ[Ý[][ÛœËÂˆ\Ú[™\Ü×Ü]X[]KœBˆÙËœBˆ™]ØØ\ÚœBˆ›ÝYÚÜ™]\›‹œBˆ˜[X][Û‹œBˆØ]\ËÂˆ[YÚXš[]KœBˆ˜[[˜ÙWÜÚY]œBˆÙËœBˆ›ÝYÚÜ™]\›‹œBˆ\Ú[™\Ü×Ü]X[]KœBˆÛÝ™\›˜[˜ÙKœBˆ\[[™KœBˆÛKœB˜‚ÓHZ[š[][N‚‚˜^™H[˜[^™HKZ[œ]š^\™\ËØÛÛ\[žKšœÛÛˆK\›Ùš[HÝšXÝ]ŒB˜‚•H[™Ú[™H]\Ý‚‚ŒKˆØY[™˜[Y]H›Ü›X[^™Y[œ]ÂŒ‹ˆØYÝšXÝ]ŒX\˜[Y]\œÎÂŒËˆÛÛ\]H]\›Z[š\ÝXÈY]šXÜÎÂˆ]˜[X]H\™Ø]\ÎÂKˆÛÛ\]H˜[X][ÛˆY\œÈÚ[ˆ[YÚX›NÂ‹ˆÝ]]˜[YÛÛ\[žP[˜[\Ú\Ø”ÓÓ‹‚‚•HÓH\È[[[Û˜[HÙ™›[™K[Û›Kˆ›ÝšY\ˆY\\œË™]ÛÜšÈXØÙ\ÜË“KX\ÜÚ\ÝY]šY[˜ÙH[˜[\Ú\È[™]]ÛX]XÈ\Ú[™\ÜÈ]X[]H\ÜÙ\ÜÛY[\™B›]\‹\\ÙH›Ý[™\šY\Ë‚‚ˆÈÈÈš^\™\Â‚Ü™X]HÞ[]XÈØ\Ù\Î‚‚‹HX[WØØ\ÚØÛÝØÂ‹HYÚÙ]šY[™Ø˜YØØ\Ú›ÝØÂ‹HØ\ÚÜšXÚÙZ[™×Ø\Ú[™\ÜØÂ‹H^Ù[[Ø\Ú[™\Ü×ÝÛ×Ù^[œÚ]™XÂ‹H]™\˜YÙYÙ]šY[™Ý˜\Â‹H™YØ]]™WÙ]—ÙÛÝ™\›˜[˜ÙWÜš\ÚØÂ‹HÞXÛXØ[ÜXZ×Ù˜[ÙWØÚX\Â‹HÚ\™WÙ[][Û—ÛÙ™œÙ]×Ø^X˜XÚØ‚‚•HÛÛ[Z]Y˜\Ù[[™H]™\È[™\ˆš^\™\ËØ[™\È˜[Y]YžB˜ØÚ[X\ËÛ›Ü›X[^™YZ[œ]œØÚ[XKšœÛÛ˜ˆØÙ[˜\š[È^XÝ][ÛœÈ\™HÙ\[ˆBœÙ\\˜]HY]Y]Hš[HÛÈ^HØ[››Ý™HZ\ÝZÙ[ˆ›Üˆ[œ]˜XÝÈÜˆ[™XYB˜[Y]Y[™Ú[™HÝ]]Ë‚‚ˆÈÈÈ\ÝÂ‚]Z[š[][N‚‚‹H›Ü›][H[š]\ÝÎÂ‹H™\ÚÛ›Ý[™\žH\ÝÎÂ‹HZ\ÜÚ[™ËY]H™Z]š[ÜŽÂ‹HÛÛ™šY[˜ÙH›ÜYØ][ÛŽÂ‹H\™YØ]H™XÙY[˜ÙNÂ‹H˜[X][Ûˆ[Û›ÝÛšXÚ]NÂ‹H›ÈÝX›KXÛÝ[[™ÈÙˆØ\][^™Y]™[ÜY[Â‹H›ÈÝX›KXÛÝ[[™ÈÙˆX\ÙKÚ[\™\ÝØ\Ú›ÝÜÎÂ‹H^X˜XÚËÙ[][Ûˆ›Ü›X[^˜][ÛŽÂ‹HØÚ[XH˜[Y][Û‹‚‚ˆÈÈÈ^]Üš]\šXB‚‘›Üˆœ›Þ™[ˆ[œ]ËÝ]]È\™H™\›ÙXÚX›H[™[™\[™[Ùˆ[žHK‚‚‹KKB‚ˆÈÈ\ÙHˆ8 %ÝXÝ\™Y]HY\\œÈ
+ÓÓTUJB‚‘ÛØ[ˆXZÙHH]\›Z[š\ÝXÈ[™Ú[™H\ØX›HÛˆ™X[ÛÛ\[šY\ÈÚ]Ý][›ÙXÚ[™ÈØÝ[Y[\™XY[™ÈÛÛ\^]HY]‚‚•HÝXÝ\™Y\›ÝšY\ˆÛÛ\Û™[È[™Z\ˆÜ[]™[™\\˜][ÛˆÛÜÝ\™H\™B˜ÛÛ\]KˆHØ[\ˆØ[ˆ›ÝÈš[™HØ[›ÛšXØ[KÒ\Ý[™È[™\×ÛÙ˜]K˜XÜ]Z\™H›ÝYÚH›ÝšY\‹ØØXÚH›Ý[™\žK™\^HH˜]ÈØXÚHÙ™›[™H[™œ›ÙXÙHHØÚ[XK]˜[Y›Ü›X[^™YÛÛ\[žR[œ]›ÜˆH[˜Ú[™ÙY]\›Z[š\ÝXÂœ\[[™Kˆ]\™H›ÝšY\ˆ[™Ú[Y][ÛœÈ\™HÜ[Û˜[^[œÚ[ÛœË›ÝBœ™\™\]Z\Ú]H›ÜˆH\ÙHˆ^]Üš]\šXK‚‚ˆÈÈÈ[š]X[ÛÝ\˜Ù\Â‚”™Y™\œ™Y›ÝÝ\HÝXÚÎ‚‚˜^RÔÚ\™HOˆKÒ][Ý\Ë\ÝÜžKÛÛ™[šY[X›XËY]HYÙÜ™YØ][Û‚•\Ú\™H›ÈOˆÜ[Û˜[šXÚ\ˆK\Ú\™HÝXÝ\™Y[™[Y[[Â˜[ÔÝØÚÈOˆÜ[Û˜[K\Ú\™H\ÝÜšXØ[Ø˜XÚÝ\Ý]B›ØØ[ØXÚHOˆ™\›ÙXÚXš[]H[™˜]K[[Z]›ÝXÝ[Û‚˜‚ˆÈÈÈ\ÙH‹ŒH8 %›ÝšY\ˆ[™ØXÚH›Ý[™][Ûˆ
+ÓÓTUJB‚•H›ÝšY\‹[™]]˜[XÜ]Z\Ú][Ûˆ›Ý[™\žK˜]Ë\™\ÜÛœÙHš[\Þ\Ý[HØXÚK˜Ø\Xš[]H[Ù[\œ›Ü‹Z\ÛÛ][Ûˆ[\Ë›ÝšY\ˆšY[X]š^[™ÒB™ÝX\™˜Z[È\™H›ÝÈœ›Þ™[‹ˆ›È]™H›ÝšY\ˆ\È[˜ÛYY[ˆ\ÈÝX‹\\ÙK‚‚ˆÈÈÈ\ÙH‹Œˆ8 %š\œÝÝXÝ\™Y›ÝšY\ˆY\\ˆ
+ÓÓTUJB‚•H™XY[Û›HRÔÚ\™T›ÝšY\˜›ÝÈÚ]È™Z[™H›Ý[™][Ûˆ[™Ý\ÜÂ˜ÓÓTS–WÓQUQUXTÕS‘×ÓQUQUXPT’ÑUÔUSÕX[™˜PT’ÑUÒTÕÔ–X›ÜˆKÒ\Ý[™ÈY[YšY\œËˆ]^š[HØYÈHÜ[Û˜[RÔÚ\™H\[™[˜ÞKÛÛ™\ÈX[\ˆ™\ÜÛœÙ\ÈÈ”ÓÓ‹\ØY™HÜ\]YH˜]Âœ™XÛÜ™ËÙ[XÝÈH™\]Y\ÝY\Ý[™È›ÝË™\Ù\™\ÈÛÝ\˜ÙKÝ™\œÚ[ÛˆY]Y]B˜[™\Ù\ÈH^\Ý[™ÈØXÚKÜ™\^H[\ˆÚ]Ý]Üš][™ÈÛˆ›ÝšY\‚™˜Z[\™K‚‚˜RÔÚ\™S›Ü›X[^™\˜X\ÈÛ›H›ÝšY\‹[™]]˜[Y]Y]K][ÝH[™\ÝÜžB™˜XÝÈ[ÈH^\Ý[™È›Ü›X[^™YÛÛ\[žR[œ]ÛÛ˜XÝˆ]Ü™X]\ÂœÝXÝ\™YY]H]šY[˜ÙK™\Ù\™\È[Ë™Z™XÝÈ[XšYÝ[Ý\È\š[ÙÈ[™œ™XÛÜ™È[œ™\ÛÛ™Y][ÝKÚ\ÝÜžHÛÝ™\˜YÙKˆ]Ù\È›ÝX\š[˜[˜ÚX[œÝ][Y[Ëš[[™ËY\š]™YÛ\ÜÚYšXØ][ÛœË›ÝšY\ˆXY[™HX\šÙ]Ø\ÈÜ‚˜[žH]\›Z[š\ÝXÈY]šXË‚‚•H]\›Z[š\ÝXÈ\ÝÈ\ÙH[š™XÝYÛY[È[™œ›Þ™[ˆš^\™\Ëˆ]™Bš[YÜ˜][Ûˆ\È^XÚ]HÜZ[ˆÚ]‘WÔ•S—ÐRÔÒT‘WÓU‘OLX[™\È›Ý\›ÙˆÜ™[˜\žHÒK‚‚ˆÈÈÈ\ÙH‹ŒÈ8 %š\œÝš[˜[˜ÚX[\Ý][Y[X\[™ÈÛXÙH
+ÓÓTUJB‚•HRÔÚ\™HY\\ˆ›ÝÈÝ\ÜÈ™XY[Û›HÐTÒÑ“Õ×ÔÕUSQS•XÜ]Z\Ú][Û‚™›ÜˆK\Ú\™H[™\Ú\™H\Ý[™ÜÈ\Ú[™ÈØÝ[Y[YX\šÙ]\ÜXÚYšXÈ[™Ú[Ë‚‘]\›Z[š\ÝXÈš^\™\ÈÛÝ™\ˆHK\Ú\™HÚYK\›ÝÈ[™\Ú\™HÛ™Ë\›ÝÈÚ\\Ë‚•H›Ü›X[^™\ˆX\ÈÛ›H^XÚ]™\ÜYØÙ›Ø[™XÜ]Z\Ú][Û—ØØ\Ú[™\ÂÚ]^XÝ™\Ü\š[ÙÈ[™™\ÜYÝ\œ™[˜ÞKˆ]™\Ù\™\È^XÚ][Ëœ™Z™XÝÈ[XšYÝ[Ý\È\š[ÙËÚ][\Ë[™Ù\È›ÝX\YÙÜ™YØ]HØ\^[Â”KÚ[[™ÚX›HšY[ÈÜˆØ[Ý[]HÑËÙš[˜[˜Ú[™ÈY]šXÜË‚‚•HY\\ˆ[™X\[™È™\œÚ[ÛœÈ\™H[\YÛÈÛ˜]ËXØXÚH˜[Y\ÜXÙ\È\™B››Ý™\^YY[™\ˆH™]È[™Ú[ÛX\[™ÈÛÛ˜XÝˆ]™HØ[È™[XZ[‚›ÜZ[ŽÈÜ™[˜\žHÒH\Ù\È[š™XÝYÛY[È[™œ›Þ™[ˆš^\™\Ë‚‚•[œ™\ÛÛ™YX\[™È]Y\Ý[ÛœÈ\™H[[[Û˜[HY™\œ™YˆKÒšY[[]™[˜ÛÝ™\˜YÙH›Üˆ[Ý][Y[˜\šX[Ë\™[]™\œÝ\ËXÛÛœÛÛY]Y]šX][Û‹˜Ø\ÚY›ÝÈÛ\ÜÚYšXØ][ÛˆÙˆ[\™\ÝÛX\Ù\ËØ\^ÛÛ\Û™[Ù\\˜][Ûˆ[™˜[š[[™ËY\š]™YY\ÝY[È™\]Z\™Hš[X\žH\ØÛÜÝ\™\ÈÜˆH]\ˆX\[™Âœ™]šY]Ë‚‚ˆÈÈÈ\ÙH‹8 %[˜ÛÛYK\Ý][Y[X\[™ÈÛXÙH
+ÓÓTUJB‚•HRÔÚ\™HY\\ˆ›ÝÈÝ\ÜÈ™XY[Û›HSÓÓQWÔÕUSQS•XÜ]Z\Ú][Ûˆ›Ü‚K\Ú\™H[™\Ú\™H\Ý[™ÜËˆHK\Ú\™H™\Ü\\š[Ù[™Ú[\È›Ü›X[^™Y™œ›ÛHÚYH›ÝÜÈ[™H\Ú\™H[™Ú[œ›ÛHÛ™ËY›Ü›HÝ][Y[][\ËˆÛ›B™^XÚ]\™[Û™]Ü›Ùš][™ÛÛœÛÛY]YÛ™]Ü›Ùš][™\È\™HX\YÂœ™]™[YKÜ\˜][™È›Ùš]X\™Ú[œË›ÝšY\ˆ˜][ÜÈ[™š[[™ËY\š]™Y˜Û\ÜÚYšXØ][ÛœÈ™[XZ[ˆÝ]ÚYH\ÈÛXÙKˆ^XÝ™\Ü\š[ÙË™\ÜY˜Ý\œ™[˜ÞH[™^XÚ][È\™H™\Ù\™Y[™[XšYÝ[Ý\È\š[ÙËÚ][\È\™Bœ™Z™XÝY‚‚•HY\\ˆ[™X\[™È™\œÚ[ÛœÈ\™H[\YÛÈ\È[™Ú[ÛÛ˜XÝ\ÈBœÙ\\˜]HØXÚKÙ˜XÝ˜[Y\ÜXÙKˆ\ÝÈ\ÙH[š™XÝYÛY[È[™œ›Þ™[ˆš^\™\ÎÂ›]™H[YÜ˜][Ûˆ™[XZ[œÈ^XÚ]HÜZ[‹ˆ[œ™\ÛÛ™Y[˜ÛÛYK[X\[™Âœ]Y\Ý[ÛœÈ\™HÝÛ™YžHH\ÙHˆX\[™È™]šY]ÎˆšY[[˜[YHÛÝ™\˜YÙHXÜ›ÜÜÂ˜[KÒÝ][Y[˜\šX[ËH™XÚ\ÙH\™[ØÛÛœÛÛY]Y[]H˜\Ú\Ë˜Ý\œ™[˜ÞKÝ[š]ØØ[[™Ë[™Ú[Z[‹][YHX›XØ][ÛˆÙ[X[XÜË‚‚ˆÈÈÈ\ÙH‹H8 %˜[[˜ÙK\ÚY]X\[™ÈÛXÙH
+ÓÓTUJB‚•HRÔÚ\™HY\\ˆ›ÝÈÝ\ÜÈ™XY[Û›HSSÑWÔÒQUXÜ]Z\Ú][Ûˆ›Ü‚K\Ú\™H[™\Ú\™H\Ý[™ÜËˆHK\Ú\™H]Z[Y™\Ü\\š[Ù[™Ú[\Â››Ü›X[^™Yœ›ÛHÚYH›ÝÜÈ[™H\Ú\™H[™Ú[œ›ÛHÛ™ËY›Ü›HÝ][Y[š][\ËˆHÛXÙHX\ÈÛ›H^XÚ]›ÛÚ×ØØ\Ú\™[Ù\]Z]X˜Ý[Ù\]Z]X[™[ˆ^XÚ]YÙÜ™YØ]H™\ÜYÚ[\™\ÝØ™X\š[™×ÙXÚ[ˆH\Ý™X[HX™[\È]Ø[YHXÛÛ›ÛZXÈYX[š[™Ëˆ]Ù\È›Ý™[˜[YB˜Ý[ÛXXš[]Y\ØÝ[HÚÜHÜˆÛ™Ë]\›H›Üœ›ÝÚ[™È›ÝÜËÜˆ[™™\‚œ™\ÝšXÝYØ\ÚX\ÙHXZ[›Üš]H]šX][ÛˆÜˆ\Ý™X[XXš[]K‚‚‘^XÝ™\Ü]\Ë™\ÜYÝ\œ™[˜ÞH[™^XÚ][È\™H™\Ù\™Y[™˜[XšYÝ[Ý\È\š[ÙËÚ][\È\™H™Z™XÝYˆHY\\ˆ[™X\[™È™\œÚ[ÛœÈ\™B˜[\YÛÈ\È[™Ú[ÛÛ˜XÝ\ÈHÙ\\˜]HØXÚKÙ˜XÝ˜[Y\ÜXÙKˆ\ÝÂ\ÙH[š™XÝYÛY[È[™œ›Þ™[ˆš^\™\ÎÈ]™H[YÜ˜][Ûˆ™[XZ[œÈ^XÚ]B›ÜZ[‹ˆ[œ™\ÛÛ™Y˜[[˜ÙK\ÚY]X\[™È]Y\Ý[ÛœÈ\™HÝÛ™YžHH\ÙH‚›X\[™È™]šY]ÎˆšY[[˜[YHÛÝ™\˜YÙHXÜ›ÜÜÈ[KÒÝ][Y[˜\šX[ËB˜ÛÛœÛÛY]Y]™\œÝ\Ë\Ý[™[Û™H[]H˜\Ú\ËÝ\œ™[˜ÞKÝ[š]ØØ[[™Ëš[\™\ÝX™X\š[™ËYXYÙÜ™YØ]H]˜Z[Xš[]K[™Ú[Z[‹][YHX›XØ][Û‚œÙ[X[XÜË‚‚ˆÈÈÈ\ÙH‹ˆ8 %™\šYšYYK\Ú\™H˜[[˜ÙH[™Ú[ÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHÝ\œ™[ØÝ[Y[YRÔÚ\™HYÙÜ™YØ]B˜˜[[˜ÙH[™Ú[ÝØÚ×Þ˜Ùž—Ù[X
+[™ÝØÚ×Þ˜Ùž—Øš—Ù[X›Üˆ™ZZš[™Ë[\ÝYœÚ\™\ÊKˆ\ÙH[™Ú[ÈXØÙ\[ˆ^XÝ]X\\‹Y[™Ý][Y[Ù]X™]\›‚˜[ˆK\Ú\™H[š]™\œÙK[™^ÜÙHÛ›HH[Z]YYÙÜ™YØ]HÚ\KˆH›ÝšY\‚œÙ[XÝÈH™\]Y\ÝY\Ý[™È™Y›Ü™HÜ™X][™ÈH˜]È™XÛÜ™[™B››Ü›X[^™\ˆ\Ù\ÈH™\]Y\ÝYÝ][Y[]H˜]\ˆ[ˆH[››Ý[˜Ù[Y[™]H\ÈHÚ[Z[‹][YH\š[ÙˆHØÝ[Y[YYÙÜ™YØ]HšY[ÈX\Û›B˜›ÛÚ×ØØ\Ú[™Ý[Ù\]Z]XÈ:-'ù`.‹y .ú-'ù`.˜\È[X™\˜][H›Ý›Û[ÝYÂ™X[™\™[\]Z]H™[XZ[œÈZ\ÜÚ[™ÈÚ[ˆ]\È›Ý™\ÜYˆH^\Ý[™Â™]Z[Y™\Ü\\š[Ù[™Ú[™[XZ[œÈHÛÛ\]Xš[]H˜[˜XÚÈÚ[ˆBš[œÝ[YRÔÚ\™HÛY[^ÜÙ\È]‚‚•HY\\ˆ[™X\[™È™\œÚ[ÛœÈ\™H[\Y›Üˆ\È[™Ú[ÛÛ˜XÝ‚“Ù™›[™H\ÝÈÛÝ™\ˆ]H˜[Y][Û‹›ÝÈÙ[XÝ[Û‹^XÝ\š[ÙË^XÚ]›Z\ÜÚ[™ÈšY[È[™H›Ë]Ý[[XXš[]Y\È[Kˆ]™HØ[È™[XZ[ˆÜZ[‹‚‚ˆÈÈÈ\ÙH‹È8 %]šY[™]™[XÜ]Z\Ú][Ûˆ›Ý[™\žH
+ÓÓTUJB‚•HRÔÚ\™HY\\ˆ›ÝÈ^ÜÙ\ÈHØÝ[Y[YK\Ú\™HÝØÚ×Ù]šY[™ØÛš[™›Ø˜[™\Ú\™HÝØÚ×Ú×Ù]šY[™Ü^[Ý]Ù[X[™Ú[È›ÝYÚHØ[YBœ™XY[Û›H›ÝšY\ˆ›Ý[™\žKˆZ\ˆ\ÝÜšXØ[›ÝÜÈ\™H™]Z[™Y[ˆÜ\]YBœ˜]È™XÛÜ™È[™ÝXÝ\™YY]H]šY[˜ÙKˆH›Ü›X[^™\ˆ[X™\˜][H[Z]Â››ÈÜ™[˜\žWÙ]šY[™ØØ\ÚÜXÚX[Ù]šY[™ØØ\ÚÜˆ^[Ý]Ü˜][ØˆBK\Ú\™H™YY™\ÜÈ\‹LL\Ú\™H[œÈ[™[››Ý[˜Ù[Y[Ü^[Y[]\ËÚ[BH\Ú\™H™YY™\ÜÈ[ˆÝš[™ÜÈ[™š\ØØ[YX\œËˆ™Z]\ˆÚ\H[Û™B™\ÝX›\Ú\ÈHÝ[Ø\Ú[[Ý[Ü™[˜\žK]™\œÝ\Ë\ÜXÚX[ÛXÞB˜Û\ÜÚYšXØ][Û‹ÜˆHÚ[™ÛHXØÙ\Y\š[Ù˜\Ú\Ë‚‚“Ù™›[™Hš^\™\ÈÛÝ™\ˆ›ÝX\šÙ]Ë[™Ú[\™Ý[Y[Ë™\^HY]Y]H[™H›ËY˜XœšXØ][Ûˆ™Z]š[Ü‹ˆ]™HØ[È™[XZ[ˆÜZ[‹ˆH™^\ÙHˆ\ÚÂš\ÈHÚ[Z[\›H˜\œ›ÝÈ™]šY]ÈÙˆK\Ú\™HÚ\™KXØ\][\ÝÜžNÈ\Ú\™HÚ\™B˜Û\ÜÈ\]Z]˜[[˜ÙH[™[]Y\Ú\™H™X]Y[™[XZ[ˆ[œ™\ÛÛ™Y‚‚ˆÈÈÈ\ÙH‹Ž8 %K\Ú\™HÚ\™KXØ\][˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHÝ\œ™[ØÝ[Y[YRÔÚ\™HK\Ú\™BœÚ\™KXØ\][[™Ú[ÝØÚ×ÞšØWÙØš™×Ù[XˆH[™Ú[XØÙ\ÈHÞ[X›Û˜[™™]\›œÈ[\ÝÜšXØ[Ø\][\ÝXÝ\™H™XÛÜ™ÈÚ]9cæ9¦í9¥éy§'Ø9 .ú ¨y§+˜Ú\˜Ý[][ÛˆšY[È[™9cæ9bª9c§ùfèˆH›ÝšY\ˆ\ÜÙ\ÈH™\]Y\ÝYÚ^YYÚ]K\Ú\™HÛÙK™]Z[œÈHÛÛ\]H™\ÜÛœÙH\È[ˆÜ\]YH˜]È™XÛÜ™[™™XÛÜ™ÂH™]\›™Y›ÝÈÛÝ[›Üˆ™\^HXYÛ›ÜÝXÜË‚‚•HÙ™šXÚX[ØÝ[Y[][Ûˆ\\È9 .ú ¨y§+\È[]Ù\È›ÝXÛ\™H[‚™^XÚ][š]ÜˆH[H[]YXÛÛ›ÛZXÈØÛÜKˆHÚ[™ÙKY]HÙ[X[XÜË›Ü[ÛœËØÛÛ™\X›\ËKÒÛ\ÜÈ™[][ÛœÚ\[™Ú[™ÙK\™X\ÛÛˆÛ\ÜÚYšXØ][Û‚˜\™H\™Y›Ü™H[œ™\ÛÛ™YˆH›Ü›X[^™\ˆ™XÛÜ™ÈH˜]È]šY[˜ÙH[™[‚™^XÚ]RÔÒT‘WÔÒT‘WÐÐTUSÔU×ÓÓ“X›YËX\šÜÂ˜›Ü›X[^™YÙ[]YÙXÛÛ›ÛZX×ÜÚ\™\Ø\ÈZ\ÜÚ[™È[™[Z]È›ÈØ[›ÛšXØ[Ú\™K™[][Û‹^X˜XÚË\ÜÝX[˜ÙHÜˆÜ]˜XÝˆ\Ú\™HÚ\™HØ\][™[XZ[œÂ›Ý]ÚYH\ÈÛXÙKˆ]™HØ[È™[XZ[ˆÜZ[ŽÈ\ÝÈ\ÙH[ˆ[š™XÝYÛY[[™˜Hœ›Þ™[ˆš^\™K‚‚ˆÈÈÈ\ÙH‹ŽH8 %K\Ú\™H™\\˜Ú\ÙH˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHØÝ[Y[YRÔÚ\™HK\Ú\™B˜ÝØÚ×Ü™\\˜Ú\ÙWÙ[X[™Ú[ˆ]XØÙ\È›È™\]Y\Ý\™Ý[Y[È[™™]\›œÈ[‚˜[XÛÛ\[žH™\ÜÛœÙHÛÛZ[š[™È[›™Y[™ÛÛ\]Y™\\˜Ú\ÙHšY[Ëœ™\\˜Ú\ÙK\Ý\]\È[™]\ÝX[››Ý[˜Ù[Y[]\ËˆH›ÝšY\ˆš[\œÈB[š]™\œÙHÈH™\]Y\ÝYK\Ú\™HÛÙH™Y›Ü™HÜ™X][™ÈH˜]È™XÛÜ™™]Z[œÂ˜[X]Ú[™È›ÝÜÈ˜]\ˆ[ˆÙ[XÝ[™È[ˆ\˜š]˜\žH]\Ý›ÝË™XÛÜ™È›Ý\Ý™X[H[™Ù[XÝY›ÝÈÛÝ[Ë[™™Z™XÝÈ[žH[š]™\œÙH›ÝÈÚ]Ý][‚™^XÚ]\Ý[™ÈÛÙKˆH\Ý[™ÈÚ]›ÈX]Ú[™È›ÝÈ›ÙXÙ\È[ˆ[\H˜]ÂœÛ˜\ÚÝ˜]\ˆ[ˆ[ˆ[™[Y™\›Ë‚‚•HØÝ[Y[][ÛˆY[YšY\È[›™Y[™ÛÛ\]Y[Û™]\žHšY[È[ˆ]X[‹˜]H™\ÜÛœÙHÙ\È›Ý\ÝX›\ÚÛ™HÙ]YØ\ÚY›ÝÈ\š[ÙˆÛÛ\]Y˜[[Ý[ÈØ[ˆ™HÝ[][]]™KH]\Ý[››Ý[˜Ù[Y[\È[ˆ\]H]K[™œ[›™Y[™ÛÛ\]YÝ]\È\™HY™™\™[XÛÛ›ÛZXÈÝ]\ËˆH›Ü›X[^™\‚\™Y›Ü™H™]Z[œÈHš[\™Y˜]È]šY[˜ÙKÙ]È^X˜XÚ×ØØ\Ú[ˆB˜Üš]XØ[[Z\ÜÚ[™È[™[ÜžH[™[Z]ÈRÔÒT‘WÐÓÔ”ÔUWÐPÕSÓ”×ÔU×ÓÓ“XÈ]™Ù\È›Ý[Z]^X˜XÚÈØ\Ú™XÝ\œ™[˜ÙK™]Ú\™H™YXÝ[ÛˆÜˆ[žH˜[X][Û‚˜Ü™Y]ˆ\Ú\™H™\\˜Ú\ÙH]H[™š[[™ËX˜XÚÙYXÝ[ÛˆÛ\ÜÚYšXØ][Ûˆ™[XZ[‚›Ý]ÚYH\ÈÛXÙKˆ]™HØ[È™[XZ[ˆÜZ[ŽÈ\ÝÈ\ÙH[ˆ[š™XÝYÛY[[™˜Hœ›Þ™[ˆš^\™K‚‚ˆÈÈÈ\ÙH‹ŒL8 %K\Ú\™HšYÚËZ\ÜÝYHÛÜœÜ˜]KXXÝ[Ûˆ˜]ÈÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHÝ\œ™[ØÝ[Y[YRÔÚ\™HÓ’S‘“Â˜ÝØÚ×Ø[ÝY[ØÛš[™›Ø[™Ú[[™\ˆH›ÝšY\‹[™]]˜[˜ÓÔ”ÔUWÐPÕSÓ”ØØ]YÛÜžKˆH[™Ú[XØÙ\È[ˆK\Ú\™HÞ[X›Û\Â˜Ý\Ù]X[™[™Ù]XÝš[™ÜÈ[ˆVVVSSQ›Ü›H[™™]\›œÈ\ÝÜšXØ[œšYÚËZ\ÜÝYH[‹Ü™\Ý[›ÝÜÈÚ]][\H]\ËÚ\™H]X[]Y\ËšXÙ\Ëœ›ØÙYYÈ[™™Y\ËˆH›ÝšY\ˆ\ÜÙ\ÈH™\]Y\ÝYÚ^YYÚ]ÛÙH[™]Bœ˜[™ÙK™]Z[œÈHÛÛ\]H™\ÜÛœÙH\È[ˆÜ\]YH˜]È™XÛÜ™[™™XÛÜ™È]Âœ›ÝÈÛÝ[[™Y™™XÝ]™H™\]Y\Ý˜[™ÙK‚‚•HØÝ[Y[Y™\ÜÛœÙHÙ\È›Ý\ÝX›\ÚÛ™HØ[›ÛšXØ[]™[\š[Ùœ[›™Y]™\œÝ\ËXÛÛ\]YÝ]ÛÛYK[[Ý[[š]ÜØØ[[™ËÜˆ[H[]YœÚ\™KXÛ\ÜÈØÛÜKˆH›Ü›X[^™\ˆ\™Y›Ü™H[Z]ÈÝXÝ\™Y]šY[˜ÙHÛ›KœÙ]ÈÚ\™WÚ\ÜÝX[˜ÙWØØ\Ú\ÈÜš]XØ[HZ\ÜÚ[™È[™[Z]Â˜RÔÒT‘WÐSÕQS•ÔU×ÓÓ“XÈ]Ü™X]\È›ÈØ[›ÛšXØ[\ÜÝX[˜ÙK[][Û‹˜^X˜XÚËÜ]ÜˆÚ\™KXÛÝ[˜XÝˆ\Ú\™HÛÜœÜ˜]HXÝ[ÛœÈ[™™š[[™ËX˜XÚÙY[\œ™]][Ûˆ™[XZ[ˆ[œ™\ÛÛ™Yˆ]™HØ[È™[XZ[ˆÜZ[ŽÂ\ÝÈ\ÙH[ˆ[š™XÝYÛY[[™Hœ›Þ™[ˆš^\™K‚‚•\ÈÛXÙHX]™\ÈH™^ØÝ[Y[YÝXÝ\™YY]H™]šY]ÈÜ[ŽÈ›Â˜Y][Û˜[]šY[™^X˜XÚËÜ]\ÜÝX[˜ÙHÜˆ[]Y\Ú\™H˜XÝ\ÈYZ]Y[[]È\š[Ù[š][™XÛÛ›ÛZXÈØÛÜH\™H^XÚ]‚‚ˆÈÈÈ\ÙH‹ŒLH8 %K\Ú\™HÛÛ\[žHÚ\™KXÚ[™ÙH˜]ÈÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHÝ\œ™[ØÝ[Y[YRÔÚ\™HÓ’S‘“Â˜ÝØÚ×ÜÚ\™WØÚ[™ÙWØÛš[™›Ø[™Ú[[™\ˆH›ÝšY\‹[™]]˜[˜ÒT‘WÐÐTUSØ]YÛÜžKˆH[™Ú[XØÙ\È[ˆK\Ú\™HÞ[X›Û\Â˜Ý\Ù]X[™[™Ù]XÝš[™ÜÈ[ˆVVVSSQ›Ü›H[™™]\›œÈ\ÝÜšXØ[˜ÛÛ\[žK\Ú\™KXÚ[™ÙH›ÝÜÈÚ]Ú[™ÙKØ[››Ý[˜Ù[Y[]\ËÝ[[™˜Ú\˜Ý[][ÛˆÛ[™ÜËÚ\™KXÛ\ÜÈÛ[™ÜÈ[™Ú[™ÙH™X\ÛÛœËˆH›ÝšY\‚\Ù\È\È[™Ú[Û›HÚ[ˆH]H˜[™ÙH\È^XÚ]H™\]Y\ÝY\ÜÙ\ÈBœÚ^YYÚ]ÛÙH[™˜[™ÙK™]Z[œÈ]™\žH™]\›™Y›ÝÈ[™™XÛÜ™ÈH˜[™ÙH[™œ›ÝÈÛÝ[‚‚•HØÝ[Y[Y[Y\šXÈšY[ÈÈ›ÝYš[™HH[š]Üˆ[H[]YXÛÛ›ÛZXÂœØÛÜK[™H™\ÜÛœÙH]\ÈÈ›Ý\ÝX›\ÚÛ™HØ[›ÛšXØ[]™[\š[Ù‚•H›Ü›X[^™\ˆ\™Y›Ü™H˜[Y]\È^XÚ]›ÝÈY[]K[Z]ÈÝXÝ\™Y™]šY[˜ÙHÛ›KÙ]È›Ü›X[^™YÙ[]YÙXÛÛ›ÛZX×ÜÚ\™\Ø\ÈÜš]XØ[HZ\ÜÚ[™Â˜[™[Z]ÈRÔÒT‘WÔÒT‘WÐÐTUSÐÒS‘ÑWÔU×ÓÓ“XÈ]Ü™X]\È›ÈØ[›ÛšXØ[œÚ\™K\ÜÝX[˜ÙK^X˜XÚÈÜˆÜ]˜XÝˆH^\Ý[™È›Ë\\˜[Y]\‚˜ÝØÚ×ÞšØWÙØš™×Ù[X˜]ÈÛXÙH™[XZ[œÈ[˜Ú[™ÙYˆ\Ú\™HÚ\™HØ\][[™™š[[™ËX˜XÚÙYXÝ[ÛˆÛ\ÜÚYšXØ][Ûˆ™[XZ[ˆ[œ™\ÛÛ™Yˆ]™HØ[È™[XZ[‚›ÜZ[ŽÈ\ÝÈ\ÙH[ˆ[š™XÝYÛY[[™Hœ›Þ™[ˆš^\™K‚‚ˆÈÈÈ\ÙH‹ŒLH8 %K\Ú\™HÝÛ™\œÚ\\YÙHÛ˜\ÚÝ˜]ÈÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHØÝ[Y[YRÔÚ\™HX\Ý[Û™^B˜ÝØÚ×ÙÜžWÜYÙWÜ˜][×Ù[X[™Ú[[™\ˆH›ÝšY\‹[™]]˜[˜ÕÓ‘T”ÒTÔQÑXØ]YÛÜžKˆH[™Ú[™\]Z\™\È[ˆK\Ú\™H]X[‚˜VVVSSQ›Ü›H[™™]\›œÈH]K\ÜXÚYšXÈ[š]™\œÙHÛ˜\ÚÝÚ]YÙH˜][ËœYÙYÚ\™\ËÝ˜[YKYÙHÛÝ[ËÚ\™KXÛ\ÜÈYÙHÛÝ[ËÛ™K^YX\‚œ\™›Ü›X[˜ÙH[™[™\ÝžKXÛÙHÛÛ^ˆH›ÝšY\ˆ˜[Y]\ÈH^XÝ˜Y[™È]H[™^XÚ]\Ý[™ÈY[]Kš[\œÈH[š]™\œÙHÈBœ™\]Y\ÝYK\Ú\™HÛÙH[™™]Z[œÈHX]Ú[™È›ÝÈ\È˜]È]šY[˜ÙK‚‚•HØÝ[Y[Y˜][È[™ÛÝ[ÈÈ›ÝY[YžHHY™™XÝYÛ\ˆÜ‚˜ÛÛ›Û[™Ë\Ú\™ZÛ\ˆÝ]\Ë\ÝX›\ÚÛÝ™\›˜[˜ÙHÙ]™\š]KÙ]H[š]ÈÜ‚˜Ø\ÚXØÙ\ÜÚXš[]KÜˆYš[™HHXY\]Z]˜[[˜XÝˆH›Ü›X[^™\ˆ\™Y›Ü™B™[Z]ÈRÔÒT‘WÓÕÓ‘T”ÒTÔQÑWÔU×ÓÓ“XX\šÜÈÛÝ™\›˜[˜ÙWÜš\Ú×Û]™[\Â˜Üš]XØ[HZ\ÜÚ[™È[™Ü™X]\È›ÈÛÝ™\›˜[˜ÙKYÙYXØ\ÚXY\]Z]˜[[Ü‚˜[X][Ûˆ˜XÝˆ\Ú\™HYÙHÛÝ™\˜YÙH[™š[[™ËX˜XÚÙYÛÝ™\›˜[˜ÙBš[\œ™]][Ûˆ™[XZ[ˆ[œ™\ÛÛ™Yˆ]™HØ[È™[XZ[ˆÜZ[ŽÈ\ÝÈ\ÙH[‚š[š™XÝYÛY[[™Hœ›Þ™[ˆš^\™K‚‚ˆÈÈÈ\ÙH‹ŒLˆ8 %K\Ú\™H]šY[™Y\ÝšX][ÛˆÛ˜\ÚÝ˜]ÈÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHØÝ[Y[YRÔÚ\™HX\Ý[Û™^B˜ÝØÚ×Ùš×Ù[X[™Ú[[™\ˆH^\Ý[™È›ÝšY\‹[™]]˜[U’QS‘Ø˜Ø]YÛÜžKˆH[™Ú[XØÙ\È[ˆ^XÚ]K\Ú\™H™\Ü]H[ˆVVVSSQ™›Ü›K[Z]YÈHØÝ[Y[Y[™HÌÜˆXÙ[X™\ˆÌH\š[ÙË[™™]\›œÈB[š]™\œÙHÛ˜\ÚÝÚ]\ÝšX][Ûˆ˜][ÜË][\H]™[Ø[››Ý[˜Ù[Y[]\Ëœ›ÙÜ™\ÜÈ[™\‹\Ú\™HÛÛ^ˆH›ÝšY\ˆ˜[Y]\ÈH™\Ü]H[™™^XÚ]\Ý[™ÈY[]Kš[\œÈH[š]™\œÙHÈH™\]Y\ÝYK\Ú\™HÛÙB˜[™™]Z[œÈHX]Ú[™È›ÝÜÈ\È˜]È]šY[˜ÙK‚‚•HØÝ[Y[Y˜][ÜÈ[™Ý]\ÈÈ›Ý\ÝX›\ÚHÙ]YÝ[Ø\Ú[[Ý[™XÛ\™Y]™\œÝ\Ë\ZYÝ]KÜ™[˜\žK]™\œÝ\Ë\ÜXÚX[Û\ÜÚYšXØ][ÛˆÜˆB˜Ø[›ÛšXØ[^[Ý][›ÛZ[˜]Ü‹ˆH›Ü›X[^™\ˆ\™Y›Ü™H[Z]Â˜RÔÒT‘WÑU’QS‘ÔÓTÒÕÔU×ÓÓ“XX\šÜÈÜ™[˜\žWÙ]šY[™ØØ\Ú\Â˜Üš]XØ[HZ\ÜÚ[™È[™Ü™X]\È›È]šY[™XØ\Ú^[Ý]\˜][ËÜ][][Û‚›ÜˆÚ\™KXÛÝ[˜XÝˆH^\Ý[™È›Ë\\˜[Y]\ˆKÒ]šY[™[™Ú[È™[XZ[‚[˜Ú[™ÙYˆ]™HØ[È™[XZ[ˆÜZ[ŽÈ\ÝÈ\ÙH[ˆ[š™XÝYÛY[[™Hœ›Þ™[‚™š^\™K‚‚•\ÈÛXÙHYH™^\ÙHˆ\ÚÈ\ÈH›ØÝ\ÙYX\[™È™]šY]ÈÙˆÛ™B™ØÝ[Y[YÝXÝ\™YY]HÜˆÛÜœÜ˜]KXXÝ[Ûˆ›Ý[™\žKˆ\ÙH‹ŒLÈ™[ÝÂ˜ÛÝ™\œÈ]™^›Ý[™\žNÈ›ÈY][Û˜[Ú\™K]šY[™^X˜XÚËÜ]Ü‚š\ÜÝX[˜ÙH˜XÝ\ÈYZ]Y[[]È\š[Ù[š][]KÝ]\È[™XÛÛ›ÛZXÂœØÛÜH\™H^XÚ]‚‚•\ÈX\[™Ë\™]šY]È\™[š[™ÈÙY\ÈÝ][Y[Ý\œ™[˜ÞH›Ý™[˜[˜ÙHÛÛœÙ\˜]]™B˜XÜ›ÜÜÈ[™YHÛXÙ\ÎˆÛ›H^XÚ]˜[Y™YK[]\ˆÛÙ\È\™HXØÙ\Y›Z\ÜÚ[™ÈÝ\œ™[˜ÞH\È™\Ù\™Y\È[˜]\ˆ[ˆ[™™\œ™Yœ›ÛHH\Ý[™Â›X\šÙ][™ÛÛ™›XÝ[™ÈÝ\œ™[˜ÚY\ÈÚ][ˆÛ™H™\Ü\š[Ù\™H™Z™XÝYˆ[š]œØØ[[™È[™ÛÛœÛÛY]Y]™\œÝ\Ë\Ý[™[Û™H™\Ù[][Ûˆ˜\Ú\È™[XZ[ˆÜ[‚œ]Y\Ý[ÛœÈ›ÜˆH]\ˆ™]šY]Ë‚‚ˆÈÈÈ\ÙH‹ŒLÈ8 %K\Ú\™HX\›š[™ÜËY›Ü™XØ\Ý˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHØÝ[Y[YRÔÚ\™HX\Ý[Û™^B˜ÝØÚ×ÞZžY×Ù[X[™Ú[[™\ˆH™]È›ÝšY\‹[™]]˜[PT“’S‘Ô×Ñ“Ô‘PÐTÕ˜Ø]YÛÜžKˆH[™Ú[XØÙ\È[ˆK\Ú\™H]X\\›H™\Ü]H[ˆVVVSSQ™›Ü›Kœ›ÛHHØÝ[Y[YŒLŒÌXÝ\]K[™™]\›œÈH[š]™\œÙHÙ‚™›Ü™XØ\Ý›ÝÜÈÛÛZ[š[™È\Ý[™ÈY[]K›Ü™XØ\Ý[™XØ]ÜœË›Ü™XØ\Ý˜[Y\ËÜ˜[™Ù\ËÚ[™ÙH™X\ÛÛœË›Ü™XØ\Ý\Kš[Ü‹\\š[Ù˜[Y\È[™˜[››Ý[˜Ù[Y[]\ËˆH›ÝšY\ˆ˜[Y]\ÈH^XÝ]X\\‹Y[™™\]Y\Ýœ™Z™XÝÈ›ÝÜÈÚ]Ý]^XÚ]\Ý[™ÈY[]Kš[\œÈÈH™\]Y\ÝYœÚ^YYÚ]K\Ú\™HÛÙH[™™]Z[œÈ[X]Ú[™È›ÝÜË‚‚‘›Ü™XØ\Ý˜[Y\È[™[››Ý[˜Ù[Y[]\ÈÈ›Ý\ÝX›\Ú™\ÜY\™[Ü‚˜ÛÛœÛÛY]Y™]›Ùš]›ÜˆH™\]Y\ÝYÝ][Y[\š[ÙˆH›Ü›X[^™\‚\™Y›Ü™H™]Z[œÈHš[\™Y™\ÜÛœÙH\ÈÝXÝ\™Y]šY[˜ÙKX\šÜÂ˜\™[Û™]Ü›Ùš][™ÛÛœÛÛY]YÛ™]Ü›Ùš]\ÈÜš]XØ[HZ\ÜÚ[™È[™™[Z]ÈRÔÒT‘WÑPT“’S‘Ô×Ñ“Ô‘PÐTÕÔU×ÓÓ“XÈ]Ü™X]\È›ÈØ[›ÛšXØ[›Ùš]›X\™Ú[‹ÑÈÜˆ˜[X][Ûˆ˜XÝˆ\Ú\™HX\›š[™ÜÈ›Ü™XØ\ÝÈ™[XZ[ˆÝ]ÚYH\ÂœÛXÙKˆ]™HØ[È™[XZ[ˆÜZ[ŽÈ\ÝÈ\ÙH[ˆ[š™XÝYÛY[[™Hœ›Þ™[‚™š^\™K‚‚ˆÈÈÈ\ÙH‹ŒM8 %K\Ú\™H\™›Ü›X[˜ÙK\™\Ü˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHØÝ[Y[YRÔÚ\™HX\Ý[Û™^B˜ÝØÚ×ÞZ˜˜—Ù[X[™Ú[[™\ˆH™]È›ÝšY\‹[™]]˜[T‘“Ô“PSÑWÔ‘TÔ•˜Ø]YÛÜžKˆH[™Ú[XØÙ\È[ˆK\Ú\™H]X\\›H™\Ü]H[ˆVVVSSQ™›Ü›Kœ›ÛHHØÝ[Y[YŒLÌÌXÝ\]K[™™]\›œÈH[š]™\œÙHÙ‚šXY[™H\™›Ü›X[˜ÙH›ÝÜÈÛÛZ[š[™È\Ý[™ÈY[]K™]™[YH[™™]\›Ùš]šXY[™\Ë\‹\Ú\™H[™XØ]ÜœË˜][ÜË[™\ÝžH[™]\ÝX[››Ý[˜Ù[Y[›Y]Y]KˆH›ÝšY\ˆ˜[Y]\ÈH^XÝ]X\\‹Y[™™\]Y\Ý™Z™XÝÈ›ÝÜÂÚ]Ý]^XÚ]\Ý[™ÈY[]Kš[\œÈÈH™\]Y\ÝYÚ^YYÚ]K\Ú\™B˜ÛÙH[™™]Z[œÈ[X]Ú[™È›ÝÜË‚‚•HXY[™H™]\›Ùš]šY[Ù\È›Ý\ÝX›\ÚHXØÙ\Yœ\™[]™\œÝ\ËXÛÛœÛÛY]Y[]H˜\Ú\Ë[™Ü\˜][™ÈØ\Ú›ÝÈ\È™\ÜYœ\ˆÚ\™H˜]\ˆ[ˆ\ÈHÝ[Ñ“È˜XÝˆH›Ü›X[^™\ˆ\™Y›Ü™H™]Z[œÂHš[\™Y™\ÜÛœÙH\ÈÝXÝ\™Y]šY[˜ÙKX\šÜÈ\™[Û™]Ü›Ùš]˜ÛÛœÛÛY]YÛ™]Ü›Ùš][™™\ÜYØÙ›Ø\ÈÜš]XØ[HZ\ÜÚ[™È[™[Z]Â˜RÔÒT‘WÔT‘“Ô“PSÑWÔ‘TÔ•ÔU×ÓÓ“XÈ]Ü™X]\È›ÈØ[›ÛšXØ[›Ùš]œ™]™[YKX\™Ú[‹Ñ“ËÑÈÜˆ˜[X][Ûˆ˜XÝˆ\Ú\™H\™›Ü›X[˜ÙH™\ÜÂœ™[XZ[ˆÝ]ÚYH\ÈÛXÙKˆ]™HØ[È™[XZ[ˆÜZ[ŽÈ\ÝÈ\ÙH[ˆ[š™XÝY˜ÛY[[™Hœ›Þ™[ˆš^\™K‚‚ˆÈÈÈ\ÙH‹ŒMH8 %K\Ú\™HX\›š[™ÜË\]ZXÚË\™\Ü˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHØÝ[Y[YRÔÚ\™HX\Ý[Û™^B˜ÝØÚ×ÞZšØ—Ù[X[™Ú[[™\ˆH™]È›ÝšY\‹[™]]˜[˜PT“’S‘Ô×ÔURPÒ×Ô‘TÔ•Ø]YÛÜžKˆH[™Ú[XØÙ\È[ˆK\Ú\™H]X\\›Bœ™\Ü]H[ˆVVVSSQ›Ü›Kœ›ÛHHØÝ[Y[YŒLÌÌXÝ\]K[™œ™]\›œÈH[š]™\œÙHÙˆ]ZXÚË\™\Ü›ÝÜÈÛÛZ[š[™È\Ý[™ÈY[]KXY[™Bœ™]™[YH[™™]\›Ùš]˜[Y\Ëš[Ü‹\\š[ÙÛÛ\\š\ÛÛœË\‹\Ú\™H[™XØ]ÜœËœ˜][ÜË[™\ÝžH[™[››Ý[˜Ù[Y[Y]HY]Y]KˆH›ÝšY\ˆ˜[Y]\ÈB™^XÝ]X\\‹Y[™™\]Y\Ý™Z™XÝÈ›ÝÜÈÚ]Ý]^XÚ]\Ý[™ÈY[]K™š[\œÈÈH™\]Y\ÝYÚ^YYÚ]K\Ú\™HÛÙH[™™]Z[œÈ[X]Ú[™È›ÝÜË‚‚•HXY[™H™]\›Ùš]šY[Ù\È›Ý\ÝX›\ÚHXØÙ\Yœ\™[]™\œÝ\ËXÛÛœÛÛY]Y[]H˜\Ú\Ë[™H™]™[YKÜ\‹\Ú\™HšY[ÈÂ››ÝÙ]HHØ[›ÛšXØ[\š[Ù[š]Üˆ[]Y\Ú\™HØÛÜKˆH›Ü›X[^™\‚\™Y›Ü™H™]Z[œÈHš[\™Y™\ÜÛœÙH\ÈÝXÝ\™Y]šY[˜ÙKX\šÜÂ˜\™[Û™]Ü›Ùš][™ÛÛœÛÛY]YÛ™]Ü›Ùš]\ÈÜš]XØ[HZ\ÜÚ[™È[™™[Z]ÈRÔÒT‘WÑPT“’S‘Ô×ÔURPÒ×Ô‘TÔ•ÔU×ÓÓ“XÈ]Ü™X]\È›ÈØ[›ÛšXØ[œ›Ùš]™]™[YKX\™Ú[‹Ñ“ËÑÈÜˆ˜[X][Ûˆ˜XÝˆ\Ú\™H]ZXÚÈ™\ÜÂœ™[XZ[ˆÝ]ÚYH\ÈÛXÙKˆ]™HØ[È™[XZ[ˆÜZ[ŽÈ\ÝÈ\ÙH[ˆ[š™XÝY˜ÛY[[™Hœ›Þ™[ˆš^\™K‚‚ˆÈÈÈ\ÙH‹ŒMˆ8 %K\Ú\™H\Ú[™\ÜËXÛÛ\ÜÚ][Ûˆ˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHØÝ[Y[YRÔÚ\™HX\Ý[Û™^B˜ÝØÚ×ÞžYØ×Ù[X[™Ú[[™\ˆH™]È›ÝšY\‹[™]]˜[˜•TÒS‘TÔ×ÐÓÓTÔÒUSÓ˜Ø]YÛÜžKˆH[™Ú[XØÙ\ÈHX\šÙ]\™Yš^YK\Ú\™B˜Þ[X›Û[™™]\›œÈ[\ÝÜšXØ[XZ[‹X\Ú[™\ÜÈÛÛ\ÜÚ][Ûˆ›ÝÜÈÚ]™\Ü™]\ËÛ\ÜÚYšXØ][Ûˆ\KÛÛœÝ]Y[\Ú[™\ÜË™]™[YKØÛÜÝÜ›Ùš][[Ý[Ëœ˜][ÜÈ[™Ü›ÜÜË[X\™Ú[ˆÛÛ^ˆH›ÝšY\ˆ\ÜÙ\ÈHØ[›ÛšXØ[\Ý[™ÂšY[YšY\‹˜[Y]\È^XÚ]\Ý[™ÈY[]H[™\œÙXX›H™\Ü]\Ëœ™]Z[œÈHÛÛ\]H\Ý[™Ë\ØÛÜY™\ÜÛœÙH[™™XÛÜ™È›ÝÈ[™\Ý[˜Ýœ™\Ü\\š[ÙÛÝ[Ë‚‚•H›ÙXÝ[™\ÝžH[™Ù[ÙÜ˜\XÈšY]ÜÈÝ™\›\[™È›Ý\ÝX›\ÚÛ™B˜Ø[›ÛšXØ[™]™[YHÜˆÛÜ™K\™]™[YHÙ\šY\ËˆZ\ˆ[š]Ë[]H˜\Ú\ËYÙÜ™YØ][Û‚œ[\È[™Û\ÜÚYšXØ][ÛˆÙ[X[XÜÈ\™Y›Ü™H™[XZ[ˆ[œ™\ÛÛ™YˆH›Ü›X[^™\‚œ™]Z[œÈÝXÝ\™Y]šY[˜ÙKX\šÜÈ™]™[YX[™ÛÜ™WÜ™]™[YX\ÈÜš]XØ[B›Z\ÜÚ[™È[™[Z]ÈRÔÒT‘WÐ•TÒS‘TÔ×ÐÓÓTÔÒUSÓ—ÔU×ÓÓ“XÈ]Ü™X]\È›Â˜Ø[›ÛšXØ[™]™[YKÜ\˜][™Ë\›Ùš]X\™Ú[ˆÜˆ\Ú[™\ÜË\]X[]H˜XÝˆ\Ú\™B˜\Ú[™\ÜÈÛÛ\ÜÚ][Ûˆ™[XZ[œÈÝ]ÚYH\ÈÛXÙKˆ]™HØ[È™[XZ[ˆÜZ[ŽÂ\ÝÈ\ÙH[ˆ[š™XÝYÛY[[™Hœ›Þ™[ˆš^\™K‚‚ˆÈÈÈ\ÙH‹ŒMÈ8 %K\Ú\™Hš[˜[˜ÚX[XXœÝ˜XÝ˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHØÝ[Y[YRÔÚ\™HÚ[˜B˜ÝØÚ×Ùš[˜[˜ÚX[ØXœÝ˜XÝ[™Ú[[™\ˆH™]È›ÝšY\‹[™]]˜[˜’SSÒPSÐP”ÕPÕØ]YÛÜžKˆH[™Ú[XØÙ\ÈHÚ^YYÚ]K\Ú\™B˜Þ[X›Û[™™]\›œÈH\ÜÝY\‰ÜÈ\ÝÜšXØ[Ù^KZ[™XØ]ÜˆX]š^Ú]˜:`"zhnX9£!ù¨!Ø[™™\Ü\\š[ÙÛÛ[[œËˆH›ÝšY\ˆ\ÜÙ\ÈH™\]Y\ÝY›\Ý[™ÈÛÙK™]Z[œÈHÛÛ\]H\Ý[™Ë\ØÛÜY™\ÜÛœÙH\È[ˆÜ\]YH˜]Âœ™XÛÜ™˜[Y]\È^XÚ]Y]šXÈY[]H[™]K\Ú\Y\š[ÙÛÛ[[œË[™œ™XÛÜ™È›ÝÈ[™\Ý[˜Ý\\š[ÙÛÝ[Ë‚‚•H™\ÜÛœÙHZ^\È[[Ý[›ÝÜÈÝXÚ\È™]™[YH[™›Ùš]Ú]\‹\Ú\™Bš[™XØ]ÜœÈ[™˜][ÜËˆ]ÈÚYH™\Ù[][ÛˆÙ\È›Ý\ÝX›\ÚHØ[›ÛšXØ[™[]K[š]ÜØØ[[™Ë\š[ÙÜˆ[]Y\Ú\™H˜\Ú\È™\]Z\™YžHH›Ü›X[^™Y˜ÛÛ˜XÝˆH›Ü›X[^™\ˆ\™Y›Ü™H™]Z[œÈÝXÝ\™Y]šY[˜ÙKX\šÜÂ˜™]™[YX\™[Û™]Ü›Ùš]ÛÛœÛÛY]YÛ™]Ü›Ùš][™™\ÜYØÙ›Ø\Â˜Üš]XØ[HZ\ÜÚ[™È[™[Z]ÈRÔÒT‘WÑ’SSÒPSÐP”ÕPÕÔU×ÓÓ“XÈ]Ü™X]\Â››ÈØ[›ÛšXØ[˜XÝY]šXÈÜˆ˜[X][Ûˆ[œ]ˆ\Ú\™Hš[˜[˜ÚX[XœÝ˜XÝÂœ™[XZ[ˆÝ]ÚYH\ÈÛXÙKˆ]™HØ[È™[XZ[ˆÜZ[ŽÈ\ÝÈ\ÙH[ˆ[š™XÝY˜ÛY[[™Hœ›Þ™[ˆš^\™K‚‚ˆÈÈÈ\ÙH‹ŒN8 %K\Ú\™Hš[˜[˜ÚX[Z[™XØ]Üˆ˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHØÝ[Y[YRÔÚ\™HX\Ý[Û™^B˜ÝØÚ×Ùš[˜[˜ÚX[Ø[˜[\Ú\×Ú[™XØ]Ü—Ù[X[™Ú[[™\ˆH™]È›ÝšY\‹[™]]˜[˜’SSÒPSÒS‘PÐUÔ”ØØ]YÛÜžKˆH[™Ú[XØÙ\ÈHX\šÙ]\ÝY™š^YK\Ú\™B˜Þ[X›Û[™HØÝ[Y[Y[™XØ]Ü˜ÚÚXÙHÙˆ9£"y¢©ydb¹§'ØÜˆ9£"yceykhùn©˜È]œ™]\›œÈ^XÚ]\Ý[™ÈY[]K™\Ü]\Ë[[Ý[šY[Ë\‹\Ú\™Bš[™XØ]ÜœÈ[™›ÝšY\‹XØ[Ý[]Y˜][ÜËˆH›ÝšY\ˆ\ÜÙ\ÈH™\]Y\ÝY›\Ý[™È[™[™XØ]Üˆ[ÙK™]Z[œÈHÛÛ\]H\Ý[™Ë\ØÛÜY™\ÜÛœÙH\È[‚›Ü\]YH˜]È™XÛÜ™˜[Y]\È^XÚ]\Ý[™ÈY[]H[™\œÙXX›H™\Ü™]\Ë[™™XÛÜ™È›ÝË\š[Ù[™[™XØ]ÜˆY]Y]K‚‚•HZ^Y™\ÜÛœÙHÙ\È›Ý\ÝX›\ÚÛ™HØ[›ÛšXØ[Ý][Y[[]K[š]ÜØØ[[™ËÚ[Z[‹][YH]˜Z[Xš[]H˜\Ú\ÈÜˆ˜][ÈØ[Ý[][Û‚›Y]ÙÛÙÞKˆH›Ü›X[^™\ˆ\™Y›Ü™H™]Z[œÈÝXÝ\™Y]šY[˜ÙKX\šÜÂ˜™]™[YX\™[Û™]Ü›Ùš]ÛÛœÛÛY]YÛ™]Ü›Ùš][™™\ÜYØÙ›Ø\Â˜Üš]XØ[HZ\ÜÚ[™È[™[Z]ÈRÔÒT‘WÑ’SSÒPSÒS‘PÐUÔ”×ÔU×ÓÓ“XÈ]˜Ü™X]\È›ÈØ[›ÛšXØ[˜XÝY]šXÈÜˆ˜[X][Ûˆ[œ]ˆ\Ú\™Hš[˜[˜ÚX[š[™XØ]ÜœÈ™[XZ[ˆÝ]ÚYH\ÈÛXÙKˆ]™HØ[È™[XZ[ˆÜZ[ŽÈ\ÝÈ\ÙH[‚š[š™XÝYÛY[[™Hœ›Þ™[ˆš^\™K‚‚ˆÈÈÈ\ÙH‹ŒNH8 %ÔÑH[œÚY\ˆÚ\™KXÚ[™ÙH˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHØÝ[Y[YRÔÚ\™HÔÑB˜ÝØÚ×ÜÚ\™WÚÛØÚ[™ÙWÜÜÙX[™Ú[[™\ˆH™]È›ÝšY\‹[™]]˜[˜S”ÒQT—ÔÒT‘WÐÒS‘ÑTØØ]YÛÜžKˆH[™Ú[XØÙ\ÈHÚ[™ÚZHK\Ú\™B˜Þ[X›Û[™™]\›œÈ\Ý[™Ë\ØÛÜY›ÝÜÈÚ]ÛÛ\[žHÛÙKÛ\ˆ[™›ÛKœÚ\™HÛ\ÜËÝ\œ™[˜ÞHX™[™Y›Ü™KØY\ˆÛ[™ÜËÚ[™ÙH]X[]H[™šXÙK˜Ú[™ÙH™X\ÛÛ‹Ú[™ÙH]H[™š[[™È]KˆH›ÝšY\ˆ\ÜÙ\ÈHÚ^YYÚ]˜ÛÙK™]Z[œÈ]™\žH™]\›™Y›ÝÈ\È[ˆÜ\]YH˜]È™XÛÜ™[™˜[Y]\È^XÚ]›\Ý[™ÈY[]H\È[žHÝ\YY]™[]\Ë‚‚•HØÝ[Y[YÛ[™ÜÈ[™˜[œØXÝ[ÛˆšXÙ\È\ØÜšX™H[œÚY\ˆ]™[Ë›ÝB˜ÛÛ\[žK[]™[[H[]YÚ\™HÙ\šY\Ë[™^HÈ›ÝžH[\Ù[™\Â™\ÝX›\ÚÛÝ™\›˜[˜ÙHÙ]™\š]HÜˆHØ[›ÛšXØ[^X˜XÚËÚ\ÜÝX[˜ÙHØ\Ú›ÝËˆB››Ü›X[^™\ˆ\™Y›Ü™H™]Z[œÈÝXÝ\™Y]šY[˜ÙKX\šÜÂ˜ÛÝ™\›˜[˜ÙWÜš\Ú×Û]™[\ÈÜš]XØ[HZ\ÜÚ[™È[™[Z]Â˜RÔÒT‘WÒS”ÒQT—ÔÒT‘WÐÒS‘ÑWÔU×ÓÓ“XÈ]Ü™X]\È›ÈÚ\™KXÛÝ[[][Û‹™ÛÝ™\›˜[˜ÙK^X˜XÚÈÜˆ\ÜÝX[˜ÙH˜XÝˆ™ZZš[™ÈÛÝ™\˜YÙH\È[™YžH\ÙH‹ŒŒB˜™[ÝËˆ\Ú\™HÛÝ™\˜YÙKÛ\ˆ[\œ™]][Ûˆ[™š[[™ËX˜XÚÙYÛÝ™\›˜[˜ÙB˜[˜[\Ú\È™[XZ[ˆÝ]ÚYH\ÈÛXÙKˆÚ[žš[ˆÛÝ™\˜YÙH\È[™YžH\ÙH‹ŒŒ˜™[ÝËˆ]™HØ[È™[XZ[ˆÜZ[ŽÈ\ÝÈ\ÙH[ˆ[š™XÝYÛY[[™Hœ›Þ™[‚™š^\™K‚‚ˆÈÈÈ\ÙH‹ŒŒ8 %Ö”ÑH[œÚY\ˆÚ\™KXÚ[™ÙH˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHØÝ[Y[YRÔÚ\™HÚ[žš[‚˜ÝØÚ×ÜÚ\™WÚÛØÚ[™ÙWÜÞœÙX[™Ú[[™\ˆH^\Ý[™È›ÝšY\‹[™]]˜[˜S”ÒQT—ÔÒT‘WÐÒS‘ÑTØØ]YÛÜžKˆH[™Ú[XØÙ\ÈHÚ[žš[ˆK\Ú\™B˜Þ[X›Û[™™]\›œÈ\Ý[™Ë\ØÛÜY›ÝÜÈÚ]ÙXÝ\š]HY[]K[œÚY\ˆ[™œ™[]Y\\œÛÛˆ›Û\ËÚ[™ÙH]\ËÚ[™ÙY]X[]Y\ËšXÙ\ËÚ[™ÙH˜][ÜË˜[™Ø[YKY^HÛ[™ÜËˆH›ÝšY\ˆ\ÜÙ\ÈHÚ^YYÚ]ÛÙK™]Z[œÈ]™\žBœ™]\›™Y›ÝÈ\È[ˆÜ\]YH˜]È™XÛÜ™˜[Y]\È^XÚ]\Ý[™ÈY[]H[™˜[žHÝ\YYÚ[™ÙH]\Ë[™™XÛÜ™ÈH\Ý[™Ë\ØÛÜY™\ÜÛœÙHY]Y]K‚‚•HØÝ[Y[Y]X[]Y\È\™H™\ÜY[ˆ[‹]Ý\Ø[™Ú\™\È[™HÚ[™ÙBœ˜][È[ˆÝ\Ø[™Ë]H™\ÜÛœÙHÝ[\ØÜšX™\È[œÚY\ˆ]™[È˜]\‚[ˆHÛÛ\[žK[]™[[H[]YÚ\™HÙ\šY\ËˆH›Ü›X[^™\ˆ\™Y›Ü™Bœ™]Z[œÈÝXÝ\™Y]šY[˜ÙKX\šÜÈÛÝ™\›˜[˜ÙWÜš\Ú×Û]™[\ÈÜš]XØ[B›Z\ÜÚ[™È[™[Z]ÈRÔÒT‘WÒS”ÒQT—ÔÒT‘WÐÒS‘ÑWÔU×ÓÓ“XÈ]Ü™X]\È›ÂœÚ\™KXÛÝ[[][Û‹ÛÝ™\›˜[˜ÙK^X˜XÚÈÜˆ\ÜÝX[˜ÙH˜XÝˆ\Ú\™Bš[œÚY\‹\Ú\™HÛÝ™\˜YÙKÛ\ˆ[\œ™]][Ûˆ[™š[[™ËX˜XÚÙYÛÝ™\›˜[˜ÙB˜[˜[\Ú\È™[XZ[ˆÝ]ÚYH\ÈÛXÙKˆ]™HØ[È™[XZ[ˆÜZ[ŽÈ\ÝÈ\ÙH[‚š[š™XÝYÛY[[™Hœ›Þ™[ˆš^\™K‚‚ˆÈÈÈ\ÙH‹ŒŒH8 %”ÑH[œÚY\ˆÚ\™KXÚ[™ÙH˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHØÝ[Y[YRÔÚ\™H™ZZš[™ÈÝØÚÈ^Ú[™ÙB˜ÝØÚ×ÜÚ\™WÚÛØÚ[™ÙWØœÙX[™Ú[[™\ˆH^\Ý[™È›ÝšY\‹[™]]˜[˜S”ÒQT—ÔÒT‘WÐÒS‘ÑTØØ]YÛÜžKˆH[™Ú[XØÙ\ÈH™ZZš[™ÈK\Ú\™B˜Þ[X›Û[™™]\›œÈ\Ý[™Ë\ØÛÜY›ÝÜÈÚ]ÙXÝ\š]HY[]K[œÚY\ˆ˜[YB˜[™›ÛKÚ[™ÙH]K™Y›Ü™KØY\ˆÛ[™ÜËÚ[™ÙY]X[]K]™\˜YÙHšXÙB˜[™Ú[™ÙH™X\ÛÛ‹ˆH›ÝšY\ˆ\ÜÙ\ÈHÚ^YYÚ]ÛÙK™]Z[œÈ]™\žBœ™]\›™Y›ÝÈ\È[ˆÜ\]YH˜]È™XÛÜ™˜[Y]\È^XÚ]\Ý[™ÈY[]H[™˜[žHÝ\YYÚ[™ÙH]\Ë[™™XÛÜ™ÈH\Ý[™Ë\ØÛÜY™\ÜÛœÙHY]Y]K‚‚•HØÝ[Y[YÛ[™È]X[]Y\È\™H™\ÜY[ˆ[‹]Ý\Ø[™Ú\™\È[™B˜]™\˜YÙHšXÙH[ˆ]X[‹]H™\ÜÛœÙHÝ[\ØÜšX™\È[œÚY\ˆ]™[È˜]\‚[ˆHÛÛ\[žK[]™[[H[]YÚ\™HÙ\šY\ËˆH›Ü›X[^™\ˆ\™Y›Ü™Bœ™]Z[œÈÝXÝ\™Y]šY[˜ÙKX\šÜÈÛÝ™\›˜[˜ÙWÜš\Ú×Û]™[\ÈÜš]XØ[B›Z\ÜÚ[™È[™[Z]ÈRÔÒT‘WÒS”ÒQT—ÔÒT‘WÐÒS‘ÑWÔU×ÓÓ“XÈ]Ü™X]\È›ÂœÚ\™KXÛÝ[[][Û‹ÛÝ™\›˜[˜ÙK^X˜XÚÈÜˆ\ÜÝX[˜ÙH˜XÝˆ\Ú\™HÛÝ™\˜YÙKšÛ\ˆ[\œ™]][Ûˆ[™š[[™ËX˜XÚÙYÛÝ™\›˜[˜ÙH[˜[\Ú\È™[XZ[ˆ[œ™\ÛÛ™Y‚“]™HØ[È™[XZ[ˆÜZ[ŽÈ\ÝÈ\ÙH[ˆ[š™XÝYÛY[[™Hœ›Þ™[ˆš^\™K‚‚ˆÈÈÈ\ÙH‹ŒŒˆ8 %\Ú\™Hš[˜[˜ÚX[Z[™XØ]Üˆ˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHØÝ[Y[YRÔÚ\™HX\Ý[Û™^B˜ÝØÚ×Ùš[˜[˜ÚX[Ú×Ø[˜[\Ú\×Ú[™XØ]Ü—Ù[X[™Ú[[™\ˆH^\Ý[™Âœ›ÝšY\‹[™]]˜[’SSÒPSÒS‘PÐUÔ”ØØ]YÛÜžKˆH[™Ú[XØÙ\ÈB™š]™KYYÚ]\Ú\™HÞ[X›Û[™HØÝ[Y[Y9nm9n©˜Üˆ9¢©ydb¹§'Ø[ÙNÈ]œ™]\›œÈ^XÚ]\Ý[™ÈY[]K™\Ü]\Ë[[Ý[šY[Ë\‹\Ú\™Bš[™XØ]ÜœË›ÝšY\‹XØ[Ý[]Y˜][ÜÈ[™Ý\œ™[˜ÞHX™[ËˆH›ÝšY\‚œ\ÜÙ\ÈH™\]Y\ÝY\Ý[™ÈÛÙH[™[ÙK™]Z[œÈHÛÛ\]B›\Ý[™Ë\ØÛÜY™\ÜÛœÙH\È[ˆÜ\]YH˜]È™XÛÜ™˜[Y]\È^XÚ]\Ý[™ÂšY[]H[™\œÙXX›H™\Ü]\Ë[™™XÛÜ™È›ÝË\š[Ù[™[™XØ]Ü‚›Y]Y]K‚‚•HZ^Y™\ÜÛœÙHÙ\È›Ý\ÝX›\ÚÛ™HØ[›ÛšXØ[Ý][Y[[]K[š]ÜØØ[[™ËÚ[Z[‹][YH]˜Z[Xš[]H˜\Ú\ÈÜˆ˜][ÈØ[Ý[][Û‚›Y]ÙÛÙÞKˆH›Ü›X[^™\ˆ\™Y›Ü™H™]Z[œÈÝXÝ\™Y]šY[˜ÙKX\šÜÂ˜™]™[YX\™[Û™]Ü›Ùš]ÛÛœÛÛY]YÛ™]Ü›Ùš][™™\ÜYØÙ›Ø\Â˜Üš]XØ[HZ\ÜÚ[™È[™[Z]ÈRÔÒT‘WÑ’SSÒPSÒS‘PÐUÔ”×ÔU×ÓÓ“XÈ]˜Ü™X]\È›ÈØ[›ÛšXØ[˜XÝY]šXÈÜˆ˜[X][Ûˆ[œ]ˆ\Ú\™H[œÚY\‹\Ú\™B˜ÛÝ™\˜YÙH™[XZ[œÈ[œ™\ÛÛ™Y™XØ]\ÙHHÝ\œ™[RÔÚ\™HÝØÚÈØÝ[Y[][Û‚™Ù\È›ÝYš[™H[ˆ\]Z]˜[[\Ú\™H[œÚY\ˆ[™Ú[ˆ]™HØ[È™[XZ[‚›ÜZ[ŽÈ\ÝÈ\ÙH[ˆ[š™XÝYÛY[[™Hœ›Þ™[ˆš^\™K‚‚ˆÈÈÈ\ÙH‹ŒŒÈ8 %\Ú\™H]\ÝZ[™XØ]Üˆ˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHØÝ[Y[YRÔÚ\™HX\Ý[Û™^B˜ÝØÚ×Ú×Ùš[˜[˜ÚX[Ú[™XØ]Ü—Ù[X[™Ú[[™\ˆH™]È›ÝšY\‹[™]]˜[˜UTÕÒS‘PÐUÔ”ØØ]YÛÜžKˆH[™Ú[XØÙ\ÈHš]™KYYÚ]\Ú\™B˜Þ[X›Û[™™]\›œÈHÞ[X›Û\ØÛÜY]\ÝZ[™XØ]Üˆ›ÝÈÛÛZ[š[™È\‹\Ú\™KœÚ\™KXØ\][]šY[™XY[™Hš[˜[˜ÚX[[™˜[X][ÛˆšY[ËˆH›ÝšY\‚œ\ÜÙ\ÈH™\]Y\ÝYÛÙK™]Z[œÈHÛÛ\]H™\ÜÛœÙH\È[ˆÜ\]YH˜]Âœ™XÛÜ™™XÛÜ™ÈHÞ[X›Û\ØÛÜY›ÝÈÛÝ[[™™Z™XÝÈ[ˆ[XšYÝ[Ý\È][K\›ÝÂœ™\ÜÛœÙKˆHX›\ÚYRÔÚ\™HÝ]]Ù\È›Ý™]Z[ˆH›ÝË[]™[\Ý[™ÈÛÙB›ÜˆØ[›ÛšXØ[Ý][Y[\š[ÙÛÈH™\]Y\Ý›Ý[™\žH\ÈHÛ›H[]BœØÛÜHYZ]YžH\ÈÛXÙK‚‚•HZ^Y]\ÝÛ˜\ÚÝÙ\È›Ý\ÝX›\ÚHØ[›ÛšXØ[Ý][Y[[]Kœ\š[Ù[š]ÜØØ[[™Ë[]Y\Ú\™HØÛÜHÜˆ˜[X][ÛˆY]ÙÛÙÞKˆB››Ü›X[^™\ˆ\™Y›Ü™H™]Z[œÈÝXÝ\™Y]šY[˜ÙKX\šÜÈ™]™[YX˜\™[Û™]Ü›Ùš]ÛÛœÛÛY]YÛ™]Ü›Ùš][™™\ÜYØÙ›Ø\ÈÜš]XØ[B›Z\ÜÚ[™È[™[Z]ÈRÔÒT‘WÓUTÕÒS‘PÐUÔ”×ÔU×ÓÓ“XÈ]Ü™X]\È›ÈØ[›ÛšXØ[™š[˜[˜ÚX[Ú\™K]šY[™X\šÙ]XØ\Y]šXÈÜˆ˜[X][Ûˆ˜XÝˆ\Ú\™Bš[œÚY\‹\Ú\™HÛÝ™\˜YÙH™[XZ[œÈ[œ™\ÛÛ™Y™XØ]\ÙHHÝ\œ™[RÔÚ\™HÝØÚÂ™ØÝ[Y[][ÛˆÙ\È›ÝYš[™H[ˆ\]Z]˜[[\Ú\™H[œÚY\ˆ[™Ú[ˆ]™B˜Ø[È™[XZ[ˆÜZ[ŽÈ\ÝÈ\ÙH[ˆ[š™XÝYÛY[[™Hœ›Þ™[ˆš^\™K‚‚ˆÈÈÈ\ÙH‹Œ8 %K\Ú\™H\ØÛÜÝ\™K[›ÝXÙH˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHØÝ[Y[YRÔÚ\™HÓ’S‘“Â˜ÝØÚ×ÞšØWÙ\ØÛÜÝ\™WÜ™\ÜØÛš[™›Ø[™Ú[[™\ˆH™]È›ÝšY\‹[™]]˜[˜TÐÓÔÕT‘WÓ“ÕPÑTØØ]YÛÜžKˆH[™Ú[XØÙ\ÈHÚ^YYÚ]K\Ú\™B˜Þ[X›ÛHØÝ[Y[Y9¬ª¹­ìy.«X\šÙ]Ü[Û˜[Ù^]ÛÜ™ØØ]YÛÜžHš[\œÈ[™˜[ˆ^XÚ]VVVSSQ]H˜[™ÙKˆ]™]\›œÈ\Ý[™ËX›Ý[™[››Ý[˜Ù[Y[›Y]Y]NˆÛÙKÚÜ˜[YK]K[››Ý[˜Ù[Y[[YH[™\ØÛÜÝ\™H[šË‚‚•H›ÝšY\ˆ\ÜÙ\ÈH™\]Y\ÝY\Ý[™È[™ØÝ[Y[Yš[\œË˜[Y]\ÂH]H˜[™ÙH[™]™\žH™]\›™Y›ÝÉÜÈ^XÚ]\Ý[™ÈY[]KÙ]K[™œ™]Z[œÈHÛÛ\]H™\ÜÛœÙH\È[ˆÜ\]YH˜]È™XÛÜ™ˆH›Ü›X[^™\ˆ[Z]Â˜RÔÒT‘WÑTÐÓÔÕT‘WÓ“ÕPÑT×ÔU×ÓÓ“XX\šÜÈXØÛÝ[[™×ÛÜ[š[Û˜[™˜ÛÝ™\›˜[˜ÙWÜš\Ú×Û]™[\ÈÜš]XØ[HZ\ÜÚ[™Ë[™Ü™X]\È›Èš[[™ËXÛÛ[˜XØÛÝ[[™ËÛÝ™\›˜[˜ÙKš[˜[˜ÚX[Üˆ˜[X][Ûˆ˜XÝˆ[››Ý[˜Ù[Y[]\È[™›[šÜÈ\™H\ØÛÝ™\žHY]Y]HÛ›NÈ[šÙYØÝ[Y[È™[XZ[ˆÝ]ÚYH\ÂœÛXÙKˆ\Ú\™H\ØÛÜÝ\™HÛÝ™\˜YÙH[™\ÙHÈš[[™È™]šY]˜[Ü\œÚ[™È™[XZ[‚[œ™\ÛÛ™Yˆ]™HØ[È™[XZ[ˆÜZ[ŽÈ\ÝÈ\ÙH[ˆ[š™XÝYÛY[[™B™œ›Þ™[ˆš^\™K‚‚ˆÈÈÈ\ÙH‹ŒH8 %\Ú\™H]šY[™Y]™[]Z[˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•H™[XZ[š[™È\Ú\™H\ØÛÜÝ\™HØ\Ø\È™]šY]ÙYYØZ[œÝHÝ\œ™[™ØÝ[Y[YRÔÚ\™HÝØÚÈ[\™˜XÙ\ËˆHØÝ[Y[][Ûˆ^ÜÙ\È›ÈÙ[™\˜[’\Ú\™H\ØÛÜÝ\™K[›ÝXÙHÛÝ[\œ\ÈHK\Ú\™HÓ’S‘“È[™Ú[ÛÈ\Âœ\ÙHÙ\È›Ý[™[Û™HÜˆ›Û[ÝHHÛÛ\[žK\›Ùš[KÙš[˜[˜ÚX[Û˜\ÚÝ[Â™\ØÛÜÝ\™HY]Y]Kˆ][œÝXYYÈÛ™HY˜XÙ[Ù\\˜][HÙ[XÝX›B™ØÝ[Y[Y]™[ÛÝ\˜ÙNˆHÛ™ÚX\Ú[‚˜ÝØÚ×Ú×ÙšÙ]Z[ÝØ[™Ú[[™\ˆH^\Ý[™ÈU’QS‘ØØ]YÛÜžK‚‚•H[™Ú[XØÙ\ÈHš]™KYYÚ]\Ú\™HÞ[X›Û[™™]\›œÈÞ[X›Û\ØÛÜYš\ÝÜšXØ[]šY[™Y]™[›ÝÜÈÚ][››Ý[˜Ù[Y[]K[‹^Y]K^[Y[™]K˜[œÙ™\‹Y]H˜[™ÙK]™[\K›ÙÜ™\ÜÈ[™ØÜš\Y]šY[™ÛÛ^ˆBœ›ÝšY\ˆÙ[XÝÈ]Û›H›ÜˆH^XÚ]›ÝšY\‹[™]]˜[™\]Y\ÝšY]Â˜šY]ÏY]™[Ù]Z[˜[Y]\È[žH›Û‹[[]™[]\Ë™\Ù\™\ÈH[œÞ[X›Û\ØÛÜY™\ÜÛœÙH[™™XÛÜ™ÈH™\]Y\ÝØÛÜH›Üˆ™\^KˆHX›\ÚYœ›ÝÜÈÈ›ÝØ\œžHHØ[›ÛšXØ[\Ý[™ÈÛÙKÛÈH™\]Y\Ý›Ý[™\žH\È™]Z[™YÚ]Ý][™[[™È›ÝË[]™[Y[]K‚‚•H›Ü›X[^™\ˆ[Z]ÈRÔÒT‘WÒ×ÑU’QS‘ÑURSÔU×ÓÓ“XX\šÜÂ˜Ü™[˜\žWÙ]šY[™ØØ\Ú\ÈÜš]XØ[HZ\ÜÚ[™È[™Ü™X]\È›È]šY[™XØ\Úœ^[Ý]\˜][ËÚ\™KXÛÝ[š[[™ËXÛÛ[ÜˆÛÝ™\›˜[˜ÙH˜XÝˆ[ˆÝš[™ÜË™]™[Ý]\È[™]\ÈÈ›Ý\ÝX›\ÚÙ]Y[[Ý[Ü™[˜\žK]™\œÝ\Ë\ÜXÚX[˜Û\ÜÚYšXØ][ÛˆÜˆHØ[›ÛšXØ[š[˜[˜ÚX[\š[ÙˆÙ[™\˜[\Ú\™H\ØÛÜÝ\™Bœ™]šY]˜[[™[šÙYYØÝ[Y[\œÚ[™È™[XZ[ˆ\ÙHÈÛÜšËˆ]™HØ[È™[XZ[‚›ÜZ[ŽÈ\ÝÈ\ÙH[ˆ[š™XÝYÛY[[™Hœ›Þ™[ˆš^\™K‚‚ˆÈÈÈ\ÙH‹Œˆ8 %K\Ú\™Hš\ÚË]Ø\›š[™Ë\Ý]\È˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHØÝ[Y[YRÔÚ\™HX\Ý[Û™^B˜ÝØÚ×ÞšØWÜÝÙ[X[™Ú[[™\ˆH™]È›ÝšY\‹[™]]˜[˜’TÒ×ÕÐT“’S‘×ÔÕUTØØ]YÛÜžKˆH[™Ú[XØÙ\È›È™\]Y\Ý˜\™Ý[Y[È[™™]\›œÈHÝ\œ™[š\ÚË]Ø\›š[™ËX›Ø\™[š]™\œÙHÚ]^XÚ]›\Ý[™ÈÛÙKÛ˜[YH\ÈÝ\œ™[X\šÙ][ØœÙ\˜][ÛˆšY[ËˆH›ÝšY\‚˜[Y]\È]™\žH™]\›™Y›ÝÉÜÈ\Ý[™ÈÛÙKš[\œÈH[š]™\œÙHÈBœ™\]Y\ÝYÚ^YYÚ]K\Ú\™HÛÙK™]Z[œÈHX]Ú[™È›ÝÜÈ[™™XÛÜ™È›Ý\Ý™X[H[™Ù[XÝY›ÝÈÛÝ[Ë‚‚”š\ÚË]Ø\›š[™ËX›Ø\™Y[X™\œÚ\\ÈHÜÚ]]™HÝ\œ™[Û˜\ÚÝ›ÝH]YœÝ]\È\ÝÜžHÜˆHÛÛ\]H\ÜÙ\[ÛˆX›Ý]H\Ý[™ÈÚ[ˆ]\ÈXœÙ[œ›ÛBH™\ÜÛœÙKˆH›Ü›X[^™\ˆ\™Y›Ü™H™]Z[œÈHš[\™Y™\ÜÛœÙH\ÂœÝXÝ\™Y]šY[˜ÙKX\šÜÈÜXÚX[Ý™X]Y[\ÈÜš]XØ[HZ\ÜÚ[™È[™™[Z]ÈRÔÒT‘WÔ’TÒ×ÕÐT“’S‘×ÔÕUT×ÔU×ÓÓ“XÈ]Ü™X]\È›ÈØ[›ÛšXØ[œÜXÚX[]™X]Y[˜XÝ[™Ù\È›Ý[™™\ˆÜXÚX[Ý™X]Y[Q˜[ÙXœ›ÛB˜[ˆ[\HX]Úˆ\Ú\™Hš\ÚË]Ø\›š[™ÈÛÝ™\˜YÙH™[XZ[œÈÝ]ÚYH\ÈÛXÙKˆ]™B˜Ø[È™[XZ[ˆÜZ[ŽÈ\ÝÈ\ÙH[ˆ[š™XÝYÛY[[™Hœ›Þ™[ˆš^\™K‚‚ˆÈÈÈ\ÙH‹ŒÈ8 %K\Ú\™HXZ[‹\Ú\™ZÛ\ˆ˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHØÝ[Y[YRÔÚ\™HÚ[˜B˜ÝØÚ×ÛXZ[—ÜÝØÚ×ÚÛ\˜[™Ú[[™\ˆH™]È›ÝšY\‹[™]]˜[˜ÒT‘RÓT—ÒÓS‘ÔØØ]YÛÜžKˆH[™Ú[XØÙ\È[ˆK\Ú\™HÝØÚØÛÙB˜[™™]\›œÈ[\ÝÜšXØ[XZ[‹\Ú\™ZÛ\ˆ›ÝÜÈÚ]Û\ˆ˜[Y\ËÛ[™Âœ]X[]Y\ËÜ˜][ÜËÚ\™KXÛ\ÜÈX™[Ë\Ë[Ùˆ]\Ë[››Ý[˜Ù[Y[]\È[™šÛ\ˆÛÛ^ˆH›ÝšY\ˆ\ÜÙ\ÈH™\]Y\ÝYÚ^YYÚ]ÛÙK™]Z[œÈB˜ÛÛ\]HÞ[X›Û\ØÛÜY™\ÜÛœÙH[™™XÛÜ™È]È›ÝÈÛÝ[‚‚•HØÝ[Y[YÛ\ˆ›ÝÜÈÈ›Ý\ÝX›\Ú™[™YšXÚX[ÛÛ›ÛHÛÝ™\›˜[˜ÙBœÙ]™\š]KHØ[›ÛšXØ[Ú\™HÛ\ÜÈÜˆHÛÛ\[žK[]™[[]Y\Ú\™HÙ\šY\Ë‚•H›Ü›X[^™\ˆ\™Y›Ü™H™]Z[œÈÝXÝ\™Y]šY[˜ÙKX\šÜÂ˜ÛÝ™\›˜[˜ÙWÜš\Ú×Û]™[\ÈÜš]XØ[HZ\ÜÚ[™È[™[Z]Â˜RÔÒT‘WÓPRS—ÔÒT‘RÓT”×ÔU×ÓÓ“XÈ]Ü™X]\È›ÈÝÛ™\œÚ\Ú\™KXÛÝ[™[][Û‹^X˜XÚË\ÜÝX[˜ÙHÜˆ˜[X][Ûˆ˜XÝˆ\Ú\™HXZ[‹\Ú\™ZÛ\‚˜ÛÝ™\˜YÙH[™š[[™ËX˜XÚÙYÝÛ™\œÚ\[\œ™]][Ûˆ™[XZ[ˆÝ]ÚYH\ÂœÛXÙKˆ]™HØ[È™[XZ[ˆÜZ[ŽÈ\ÝÈ\ÙH[ˆ[š™XÝYÛY[[™Hœ›Þ™[‚™š^\™K‚‚ˆÈÈÈ\ÙH‹ŒŽ8 %K\Ú\™H˜Y[™Ë\Ý\Ü[œÚ[Ûˆ˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHØÝ[Y[YRÔÚ\™HX\Ý[Û™^B˜ÝØÚ×ÝœÙ[X[™Ú[[™\ˆH™]È›ÝšY\‹[™]]˜[QS‘×ÔÕTÔS”ÒSÓ”Ø˜Ø]YÛÜžKˆH[™Ú[XØÙ\È[ˆK\Ú\™H]H[ˆVVVSSQ›Ü›H[™™]\›œÈB™]KX›Ý[™[š]™\œÙHÙˆÝ\Ü[œÚ[Û‹Ü™\Ý[\[Ûˆ›ÝÜÈÚ]^XÚ]\Ý[™ÈÛÙKœÝ\Ü[œÚ[Ûˆ]\Ë\˜][Û‹™X\ÛÛ‹X\šÙ][™^XÝY™\Ý[YH]KˆBœ›ÝšY\ˆ˜[Y]\ÈH™\]Y\Ý[™]™\žH™]\›™Y›ÝÉÜÈ\Ý[™ÈY[]H[™›[X›H]™[]\Ëš[\œÈH[š]™\œÙHÈH™\]Y\ÝY\Ý[™È[™™]Z[œÂ˜[X]Ú[™È›ÝÜÈ\È˜]È]šY[˜ÙK‚‚•H]™[›ÝÜÈ\ØÜšX™HÝ\Ü[œÚ[ÛˆXÝ]š]H›ÜˆH™\]Y\ÝY]K›ÝB˜ÛÛ\]H\Ý[™Ë\Ý]\È\ÝÜžKÜXÚX[]™X]Y[Ý]HÜˆš[[™ËX˜XÚÙY™ÛÝ™\›˜[˜ÙHÛÛ˜Û\Ú[Û‹ˆH›Ü›X[^™\ˆ\™Y›Ü™H[Z]Â˜RÔÒT‘WÕQS‘×ÔÕTÔS”ÒSÓ”×ÔU×ÓÓ“XX\šÜÈÜXÚX[Ý™X]Y[[™˜ÛÝ™\›˜[˜ÙWÜš\Ú×Û]™[\ÈÜš]XØ[HZ\ÜÚ[™È[™Ü™X]\È›ÈØ[›ÛšXØ[Ý]\Ë™ÛÝ™\›˜[˜ÙHÜˆXØÛÝ[[™È˜XÝˆ\Ú\™H˜Y[™Ë\Ý\Ü[œÚ[ÛˆÛÝ™\˜YÙH™[XZ[œÂ›Ý]ÚYH\ÈÛXÙKˆ]™HØ[È™[XZ[ˆÜZ[ŽÈ\ÝÈ\ÙH[ˆ[š™XÝYÛY[[™˜Hœ›Þ™[ˆš^\™K‚‚ˆÈÈÈ\ÙH‹ŒŽH8 %K\Ú\™H™\ÝšXÝY\Ú\™K\™[X\ÙH˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHÝ\œ™[ØÝ[Y[YRÔÚ\™HX\Ý[Û™^B˜ÝØÚ×Ü™\ÝšXÝYÜ™[X\ÙWÜ]Y]YWÙ[X[™Ú[[™\ˆH^\Ý[™Â˜ÒT‘WÐÐTUSØ]YÛÜžKˆH[™Ú[XØÙ\ÈHÚ^YYÚ]K\Ú\™HÞ[X›Û˜[™™]\›œÈH\Ý[™ÉÜÈ\ÝÜšXØ[™\ÝšXÝY\Ú\™H™[X\ÙH˜]Ú\ÈÚ]œ™[X\ÙH]\Ë[›™YØXÝX[Ü™[XZ[š[™È]X[]Y\ËX\šÙ]]˜[YHÛÛ^›ØÚË]\\H[™™KÜÜÝ™[X\ÙHØœÙ\˜][ÛœËˆ™XØ]\ÙHHX›\ÚYœÞ[X›Û\ØÛÜYÝ]]ÛZ]È›ÝË[]™[\Ý[™ÈÛÙ\ËH™\]Y\ÝØÛÜH\Âœ™\Ù\™Y[™[žHÜ[Û˜[™]\›™YÛÙH\ÈÚXÚÙYÚ[ˆ™\Ù[‚‚•H›ÝšY\ˆÙ[XÝÈ\È[™Ú[Û›H›ÜˆH^XÚ]˜šY]Ï\™\ÝšXÝYÜ™[X\ÙWÜ]Y]YX™\]Y\Ý\ÜÙ\ÈHÚ^YYÚ]ÛÙH[™œ™]Z[œÈ[™]\›™Y›ÝÜËˆHØÝ[Y[Y]X[]Y\ËÝ˜[Y\È[™™[X\ÙH]B™È›ÝžH[\Ù[™\È\ÝX›\ÚÛ™HØ[›ÛšXØ[[]YYXÛÛ›ÛZXË\Ú\™B™X]Y[[™[›™YØXÝX[Ü™[XZ[š[™ÈÝ]\ÈØ[››Ý™HÚ[[HÛÛ\ÙYš[ÈHÚ\™KXÛÝ[˜XÝˆH›Ü›X[^™\ˆ\™Y›Ü™H[Z]Â˜RÔÒT‘WÔ‘TÕ’PÕQÔÒT‘WÔ‘SPTÑT×ÔU×ÓÓ“XX\šÜÂ˜›Ü›X[^™YÙ[]YÙXÛÛ›ÛZX×ÜÚ\™\Ø\ÈÜš]XØ[HZ\ÜÚ[™È[™Ü™X]\È›Â˜Ø[›ÛšXØ[Ú\™K[][Û‹\ÜÝX[˜ÙK^X˜XÚÈÜˆ˜[X][Ûˆ˜XÝˆ\Ú\™Bœ™\ÝšXÝY\™[X\ÙHÛÝ™\˜YÙH[™š[[™ËX˜XÚÙYXÝ[ÛˆÛ\ÜÚYšXØ][Ûˆ™[XZ[‚[œ™\ÛÛ™Yˆ]™HØ[È™[XZ[ˆÜZ[ŽÈ\ÝÈ\ÙH[ˆ[š™XÝYÛY[[™B™œ›Þ™[ˆš^\™K‚‚ˆÈÈÈ\ÙH‹ŒÌ8 %K\Ú\™HÛÛÙÚ[Z[\Z\›Y[˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHÝ\œ™[ØÝ[Y[YRÔÚ\™HX\Ý[Û™^B˜ÝØÚ×ÜÞWÚž—Ù[X[™Ú[[™\ˆH™]È›ÝšY\‹[™]]˜[˜ÓÓÑÒSÒSTRT“QS•Ø]YÛÜžKˆH[™Ú[XØÙ\È[ˆK\Ú\™H™\ÜY]B˜]X[ˆVVVSSQ›Ü›H[™™]\›œÈH[š]™\œÙHÙˆ\Ý[™È›ÝÜÈÚ]ÛÛÙÚ[™ÛÛÙÚ[Z[\Z\›Y[˜][Ë›Ùš][››Ý[˜Ù[Y[Y]H[™X\šÙ]ÛÛ^ˆBœ›ÝšY\ˆ˜[Y]\È^XÚ]\Ý[™ÈY[]H[™[X›H[››Ý[˜Ù[Y[]\Ë™š[\œÈÈH™\]Y\ÝYÚ^YYÚ]K\Ú\™HÛÙK™]Z[œÈ[X]Ú[™È›ÝÜÈ[™œ™XÛÜ™ÈH™\]Y\ÝY™\Ü\š[Ù›Üˆ™\^K‚‚•HÛÛÙÚ[[™[\Z\›Y[[[Ý[È\™HYÙÜ™YØ]ÜˆšY[ÈÚÜÙHXØÛÝ[[™Â™[]KØÛÜK™XÛÛ˜Ú[X][Ûˆ[™Ú[Z[‹][YHÙ[X[XÜÈÝ[™\]Z\™HBœš[X\žHš[[™ËˆH›Ü›X[^™\ˆ\™Y›Ü™H™]Z[œÈHš[\™Y™\ÜÛœÙH\ÂœÝXÝ\™Y]šY[˜ÙKX\šÜÈÛÛÙÚ[[™[\Z\›Y[\ÈÜš]XØ[HZ\ÜÚ[™Â˜[™[Z]ÈRÔÒT‘WÑÓÓÑÒSÒSTRT“QS•ÔU×ÓÓ“XÈ]Ü™X]\È›ÈØ[›ÛšXØ[™ÛÛÙÚ[[\Z\›Y[›Ùš]˜][ÈÜˆ\Ú[™\ÜË\]X[]H˜XÝˆ\Ú\™HÛÛÙÚ[˜ÛÝ™\˜YÙH[™š[[™ËX˜XÚÙY[\Z\›Y[™]šY]È™[XZ[ˆÝ]ÚYH\ÈÛXÙKˆ]™B˜Ø[È™[XZ[ˆÜZ[ŽÈ\ÝÈ\ÙH[ˆ[š™XÝYÛY[[™Hœ›Þ™[ˆš^\™K‚‚ˆÈÈÈ\ÙH‹ŒÌH8 %KÒTÑË\˜][™È˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHØÝ[Y[YÚ[˜HÝØÚ×Ù\Ù×Ü˜]WÜÚ[˜X™[™Ú[[™\ˆH™]È›ÝšY\‹[™]]˜[TÑ×ÔUS‘ÔØØ]YÛÜžKˆHÙ™šXÚX[RÔÚ\™HØÝ[Y[][Ûˆ\ØÜšX™\ÈH›ËX\™Ý[Y[™\ÜÛœÙHÛÛZ[š[™ÈHZ^YKÒ[š]™\œÙHÚ]ÛÛ\Û™[ÛÙK˜][™ÈYÙ[˜ÞK˜][™Ë˜][™È]X\\‹X\šÙ\‚˜[™Û˜ØØX\šÙ]ÈHÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚ×Ù™X]\™KÜÝØÚ×Ù\Ù×ÜÚ[˜KœJBœ™]šY]™\ÈHYÚ[˜]Y][KXYÙ[˜ÞH™\ÜÛœÙKˆH›ÝšY\ˆ˜[Y]\ÈXXÚœ›ÝÉÜÈ^XÚ]ÛÙH[™X\šÙ]š[\œÈÈH™\]Y\ÝYKÒ\Ý[™È[™œ™]Z[œÈ]™\žHX]Ú[™ÈYÙ[˜ÞKÜ]X\\ˆ›ÝÈÚ][™Ú[[™›ÝËXÛÝ[œ›Ý™[˜[˜ÙK‚‚YÙ[˜ÞH˜][™ÜÈ\ÙH›ÝšY\‹\ÜXÚYšXÈØØ[\È[™X^H™H]\œÈÜˆ[Y\šXÂ˜[Y\ËÚ[H:+á9î©ùkhùn©˜\ÈH›ÝšY\ˆ™\Ü[™ÈX™[ˆÜÙHšY[ÈÈ›Ý™\ÝX›\ÚHÛÛ\\˜X›HTÑÈØÛÜ™KÛÝ™\›˜[˜ÙK\š\ÚÈYÛY[ÜˆÝšXÝ]ŒB\Ú[™\ÜÈ]X[]H\ÜÙ\ÜÛY[ˆH›Ü›X[^™\ˆ\™Y›Ü™H[Z]Â˜RÔÒT‘WÑTÑ×ÔUS‘Ô×ÔU×ÓÓ“XX\šÜÈÛÝ™\›˜[˜ÙWÜš\Ú×Û]™[\ÈÜš]XØ[B›Z\ÜÚ[™È[™Ü™X]\È›ÈØ[›ÛšXØ[TÑËÛÝ™\›˜[˜ÙK\Ú[™\ÜÈ]X[]Kš[[™Ë™š[˜[˜ÚX[Üˆ˜[X][Ûˆ˜XÝˆ]™HØ[È™[XZ[ˆÜZ[ŽÈ\ÝÈ\ÙH[ˆ[š™XÝY˜ÛY[[™Hœ›Þ™[ˆš^\™KˆÙYHHÐRÔÚ\™HÝØÚËY]HØÝ[Y[][Û—JÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B™›ÜˆHØÝ[Y[Y[\™˜XÙH[™šY[Ë‚‚ˆÈÈÈ\ÙH‹ŒÌˆ8 %ÔÑHX\™Ú[‹Y]Z[˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHØÝ[Y[YÔÑB˜ÝØÚ×ÛX\™Ú[—Ù]Z[ÜÜÙX[™Ú[[™\ˆH™]È›ÝšY\‹[™]]˜[˜PT‘ÒS—ÕQS‘ØØ]YÛÜžKˆHÐRÔÚ\™HÝØÚËY]HØÝ[Y[][Û—JÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B˜[™ÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚ×Ù™X]\™KÜÝØÚ×ÛX\™Ú[—ÜÜÙKœJB™Yš[™H[ˆ^XÝ]X[ˆVVVSSQ›Ü›H[™H[ÔÑH[š]™\œÙHÙˆÙXÝ\š]Bœ›ÝÜÈÚ]^XÚ]ÙXÝ\š]HÛÙKÙXÝ\š]H˜[YKš[˜[˜Ú[™È˜[[˜Ù\È[™™š[˜[˜Ú[™ËÜÚÜ\Ø[H]X[]Y\ËˆH›ÝšY\ˆÝ\ÜÈÚ[™ÚZHK\Ú\™B›\Ý[™ÈY[YšY\œÈÛ›K˜[Y]\È]™\žH™]\›™YÛÙH[™ØœÙ\˜][Ûˆ]K™š[\œÈÈ[›ÝÜÈ›ÜˆH™\]Y\ÝYÙXÝ\š]H[™™\Ù\™\È›ÝËØÛÝ[Ù]Bœ›Ý™[˜[˜ÙK‚‚•H™\ÜÛœÙH\ØÜšX™\ÈÝ\ÝÛY\ˆš[˜[˜Ú[™ÈYØZ[œÝHÙXÝ\š]K›ÝH\ÜÝY\‰ÜÂœ™\ÜYš[˜[˜ÚX[XØ\ÚÜˆHÙ]Y\ÜÝY\ˆXØÛÝ[[™È\š[ÙˆB››Ü›X[^™\ˆ\™Y›Ü™H™]Z[œÈHÝXÝ\™Y]šY[˜ÙKX\šÜÈš[˜[˜ÚX[ÙX˜\ÈÜš]XØ[HZ\ÜÚ[™È[™[Z]ÈRÔÒT‘WÓPT‘ÒS—ÕQS‘×ÔU×ÓÓ“XÈ]Ü™X]\Â››ÈØ[›ÛšXØ[XØ\Ú]™\˜YÙKX\™Ú[ˆÜˆ˜[X][Ûˆ˜XÝˆÖ”ÑHX\™Ú[‚™]Z[X\šÙ][]™[X\™Ú[ˆÝ[[X\šY\È[™š[[™ËX˜XÚÙY[\œ™]][Ûˆ™[XZ[‚›Ý]ÚYH\ÈÛXÙKˆ]™HØ[È™[XZ[ˆÜZ[ŽÈ\ÝÈ\ÙH[ˆ[š™XÝYÛY[[™˜Hœ›Þ™[ˆš^\™K‚‚ˆÈÈÈ\ÙH‹ŒÌÈ8 %K\Ú\™H^\›˜[YÝX\˜[YH˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHØÝ[Y[YÓ’S‘“Â˜ÝØÚ×ØÙ×ÙÝX\˜[YWØÛš[™›Ø[™Ú[[™\ˆH™]È›ÝšY\‹[™]]˜[˜VT“SÑÕPTS•QTØØ]YÛÜžKˆHÐRÔÚ\™HÝØÚËY]HØÝ[Y[][Û—JÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B˜[™ÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚËÜÝØÚ×ØÙ×ÙÝX\˜[YKœJB™Yš[™HH›Ø\™Ý[š]™\œÙHÞ[X›Û\ÈÝ\Ù]X[™[™Ù]X[‚˜VVVSSQ›Ü›NÈHØÝ[Y[YY˜][È\™H9aj:`êŒNŒÌ[™˜ŒŒLLØˆH›ÝšY\ˆØ[ÈHØÝ[Y[YÞ[X›ÛH¹aj:`ê˜[š]™\œÙKœ™\]Z\™\È[ˆ^XÚ]K\Ú\™HÛÙHÛˆ]™\žH™]\›™Y›ÝËš[\œÈÈBœ™\]Y\ÝY\Ý[™È[™™]Z[œÈ[X]Ú[™È›ÝÜÈÚ]]K\˜[™ÙKØÛÜH[™œ›ÝËXÛÝ[›Ý™[˜[˜ÙK‚‚•H™\ÜÛœÙH^ÜÙ\È[››Ý[˜Ù[Y[\Ý]\ÝXÜÈ[\˜[ÝX\˜[YHÛÝ[[™˜[[Ý[\™[XÛÛ\[žH\]Z]H[™HX›\ÚYÝX\˜[YK]Ë[™]X\ÜÙ]È˜][Ë‚•H[[Ý[[™\]Z]H\™HØÝ[Y[Y[ˆ9.!ùa`Ë]H]K\˜[™ÙHYÙÜ™YØ]B™Ù\È›ÝÙ]HÝX\˜[YH\œÜÙKYØ[Ý]\ËØ[›ÛšXØ[\š[ÙÙ[]HØÛÜB›ÜˆÚ]\ˆH[[Ý[\ÈH]X\ÚKYXØ›YØ][Û‹ˆH›Ü›X[^™\ˆ\™Y›Ü™Bœ™]Z[œÈ˜]È]šY[˜ÙK[Z]ÈRÔÒT‘WÑVT“SÑÕPTS•QT×ÔU×ÓÓ“XX\šÜÂ˜X]\šX[Ü]X\ÚWÙXXZ›Ü—Ú[YØ[ÙÝX\˜[YX[™ÛÝ™\›˜[˜ÙWÜš\Ú×Û]™[\Â˜Üš]XØ[HZ\ÜÚ[™È[™Ü™X]\È›ÈØ[›ÛšXØ[ÝX\˜[YKXÛÝ™\›˜[˜ÙHÜ‚œ˜][È˜XÝˆ\Ú\™HÛÝ™\˜YÙH[™š[[™ËX˜XÚÙY[YØ[YÝX\˜[YKÙÛÝ™\›˜[˜ÙBœ™]šY]È™[XZ[ˆÝ]ÚYH\ÈÛXÙKˆ]™HØ[È™[XZ[ˆÜZ[ŽÈ\ÝÈ\ÙH[‚š[š™XÝYÛY[[™Hœ›Þ™[ˆš^\™K‚‚ˆÈÈÈ\ÙH‹ŒÍ8 %K\Ú\™H[™]šYX[ÝÛ™\œÚ\\YÙH]Z[˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHØÝ[Y[YX\Ý[Û™^B˜ÝØÚ×ÙÜžWÚ[™]šYX[ÜYÙWÜ˜][×Ù]Z[Ù[X[™Ú[[™\ˆH^\Ý[™Â˜ÕÓ‘T”ÒTÔQÑXØ]YÛÜžKˆ]XØÙ\ÈHÚ^YYÚ]K\Ú\™HÞ[X›Û[™œ™]\›œÈÞ[X›Û\ØÛÜY\ÝÜšXØ[[\Ü[\Ú\™ZÛ\ˆYÙH›ÝÜÈÚ]™^XÚ]\Ý[™ÈÛÙKÛ\‹Ú[œÝ]][Û‹]X[]Y\ËÜ˜][ÜËšXÙ\Ë˜[››Ý[˜Ù[Y[ÜÝ\Ù[™]\È[™Ý]\ËˆHÐRÔÚ\™HÝØÚËY]HØÝ[Y[][Û—JÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B˜[™ÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚ×Ù™X]\™KÜÝØÚ×ÙÜžWÙ[KœJB™Yš[™HHØÝ[Y[Y[\™˜XÙH[™]ÈÑPÕT’UWÐÓÑXš[\‹‚‚•H›ÝšY\ˆÙ[XÝÈ\È[™Ú[Û›H›ÜˆH^XÚ]™\]Y\Ý˜šY]ÏZ[™]šYX[ÜYÙWÙ]Z[\ÜÙ\ÈH™\]Y\ÝYÛÙK˜[Y]\È^XÚ]›\Ý[™ÈY[]H[™[žHÜ[]Y]™[]\Ë[™™]Z[œÈ]™\žH›ÝÈÚ]›\Ý[™Ë\ØÛÜY›Ý™[˜[˜ÙKˆHØÝ[Y[Y]X[]Y\Ë˜][ÜËšXÙ\È[™œÝ]\ÈÈ›Ý\ÝX›\ÚH[H[]YÚ\™HÛÝ[Ù]YYÙY˜Ø\ÚÙXY\]Z]˜[[[[Ý[™[™YšXÚX[ÛÛ›ÛÜˆÛÝ™\›˜[˜ÙHYÛY[ˆB››Ü›X[^™\ˆ\™Y›Ü™H™]Z[œÈ˜]È]šY[˜ÙK[Z]Â˜RÔÒT‘WÒS‘U’QPSÔQÑWÑURSÔU×ÓÓ“XX\šÜÂ˜ÛÝ™\›˜[˜ÙWÜš\Ú×Û]™[Üš]XØ[HZ\ÜÚ[™È[™Ü™X]\È›ÈØ[›ÛšXØ[˜XÝ‚’\Ú\™HÛÝ™\˜YÙH[™š[[™ËX˜XÚÙYYÙH[\œ™]][Ûˆ™[XZ[ˆ[œ™\ÛÛ™Y‚“]™HØ[È™[XZ[ˆÜZ[ŽÈ\ÝÈ\ÙH[ˆ[š™XÝYÛY[[™Hœ›Þ™[ˆš^\™K‚‚ˆÈÈÈ\ÙH‹ŒÍH8 %K\Ú\™HÛÛ\[žK[]YØ][Ûˆ˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHØÝ[Y[YÓ’S‘“Â˜ÝØÚ×ØÙ×Û]ÜÝZ]ØÛš[™›Ø[™Ú[[™\ˆH™]È›ÝšY\‹[™]]˜[UQÐUSÓ˜˜Ø]YÛÜžKˆH[™Ú[XØÙ\ÈH›Ø\™Ý[š]™\œÙHÞ[X›Û\ÈÝ\Ù]X[™˜[™Ù]X[ˆVVVSSQ›Ü›NÈHØÝ[Y[YY˜][È\™H9aj:`êŒNŒÌ˜[™ŒŒLLØˆ]È™\ÜÛœÙHÛÛZ[œÈ^XÚ]K\Ú\™HÛÙKÛ˜[YK˜[››Ý[˜Ù[Y[\Ý]\ÝXÜÈ[\˜[]ÜÝZ]ÛÝ[[™]ÜÝZ][[Ý[Ú]B˜[[Ý[ØÝ[Y[Y[ˆ9.!ùa`ËˆH›ÝšY\ˆØ[ÈHØÝ[Y[YÞ[X›ÛH¹aj:`ê˜[š]™\œÙK™\]Z\™\È[ˆ^XÚ]ÛÙHÛˆ]™\žH›ÝËš[\œÈÈH™\]Y\ÝY›\Ý[™È[™™]Z[œÈ[X]Ú[™È›ÝÜÈÚ]˜[™ÙKØÛÜH[™›ÝËXÛÝ[œ›Ý™[˜[˜ÙK‚‚•H]K\˜[™ÙHYÙÜ™YØ]HÙ\È›Ý\ÝX›\ÚHØ[›ÛšXØ[]™[ÜˆÝ][Y[œ\š[ÙYØ[Ý]\ËXØÛÝ[[™È[]KÜØÛÜKÜˆÚ]\ˆH™\ÜY[[Ý[\Â˜HX]\šX[^XÝYØ\ÚØ›YØ][Û‹ˆH›Ü›X[^™\ˆ\™Y›Ü™H™]Z[œÈBœ™\ÜÛœÙH\ÈÝXÝ\™Y]šY[˜ÙK[Z]ÈRÔÒT‘WÓUQÐUSÓ—ÔU×ÓÓ“XX\šÜÂ˜X]\šX[Ü]X\ÚWÙX[™ÛÝ™\›˜[˜ÙWÜš\Ú×Û]™[\ÈÜš]XØ[HZ\ÜÚ[™Ë[™˜Ü™X]\È›ÈØ[›ÛšXØ[]YØ][Û‹]X\ÚKYXÛÝ™\›˜[˜ÙHÜˆ˜[X][Ûˆ˜XÝ‚’\Ú\™HÛÝ™\˜YÙH[™š[[™ËX˜XÚÙY]YØ][Ûˆ™]šY]È™[XZ[ˆ[œ™\ÛÛ™Yˆ]™B˜Ø[È™[XZ[ˆÜZ[ŽÈ\ÝÈ\ÙH[ˆ[š™XÝYÛY[[™Hœ›Þ™[ˆš^\™K‚‚ˆÈÈÈ\ÙH‹ŒÍˆ8 %K\Ú\™HÓ’S‘“È\]Z]K[[ÜØYÙH˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHÝ\œ™[ØÝ[Y[YÓ’S‘“Â˜ÝØÚ×ØÙ×Ù\]Z]WÛ[ÜØYÙWØÛš[™›Ø[™Ú[[™\ˆH^\Ý[™Â˜ÕÓ‘T”ÒTÔQÑXØ]YÛÜžKˆHÐRÔÚ\™HÝØÚËY]HØÝ[Y[][Û—JÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B™Yš[™\ÈH]X\˜[Y]\ˆÚ]ØÝ[Y[YY˜][ŒŒLLÌ[™B–ÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚËÜÝØÚ×ØÙ×Ù\]Z]WÛ[ÜØYÙKœJBœ™]šY]™\ÈHÓ’S‘“È[X]XË\Ý]\ÝXÜÈ™\ÜÛœÙKˆ]È›ÝÜÈÛÛZ[ˆ^XÚ]K\Ú\™HÛÙKÛ˜[YK[››Ý[˜Ù[Y[]KYÛÜ‹ÜYÙYKYÙH[™™[X\ÙBœ]X[]Y\Ë\˜Ù[YÙHšY[È[™[ˆÜ\]YHYÙKY]™[\ØÜš\[Û‹‚‚•H›ÝšY\ˆÙ[XÝÈ\È[™Ú[Û›H›ÜˆH^XÚ]™\]Y\ÝšY]Â˜šY]ÏY\]Z]WÛ[ÜØYÙX\ÜÙ\ÈHØÝ[Y[Y]HÜˆY˜][˜[Y]\È]™\žBœ™]\›™Y\Ý[™ÈÛÙH[™[žHÜ[]Y[››Ý[˜Ù[Y[]Kš[\œÈB[š]™\œÙHÈH™\]Y\ÝYK\Ú\™HÛÙH[™™]Z[œÈ]™\žHX]Ú[™È›ÝËˆBœ]Y\žH]H\È™\Ù\™Y\ÈH™\]Y\Ý›Ý[™\žNÈH][\H[››Ý[˜Ù[Y[™]\È[™]™[\ØÜš\[ÛœÈÈ›Ý\ÝX›\ÚÛ™HØ[›ÛšXØ[YÙHÜ‚˜XØÛÝ[[™È\š[ÙˆHØÝ[Y[Y]X[]Y\È[™˜][ÜÈ[ÛÈÈ›Ý\ÝX›\Ú˜H[H[]YÚ\™HÛÝ[Ù]YYÙYØ\ÚÙXY\]Z]˜[[[[Ý[˜™[™YšXÚX[ÛÛ›ÛÜˆHÛÝ™\›˜[˜ÙHYÛY[ˆH›Ü›X[^™\ˆ\™Y›Ü™H[Z]Â˜RÔÒT‘WÑTURUWÓSÔ•ÐQÑWÔU×ÓÓ“XX\šÜÈÛÝ™\›˜[˜ÙWÜš\Ú×Û]™[\ÈÜš]XØ[B›Z\ÜÚ[™È[™Ü™X]\È›ÈØ[›ÛšXØ[˜XÝˆ\Ú\™HÛÝ™\˜YÙH[™š[[™ËX˜XÚÙYœYÙH[\œ™]][Ûˆ™[XZ[ˆ[œ™\ÛÛ™Yˆ]™HØ[È™[XZ[ˆÜZ[ŽÈ\ÝÈ\ÙB˜[ˆ[š™XÝYÛY[[™Hœ›Þ™[ˆš^\™K‚‚ˆÈÈÈ\ÙH‹ŒÍÈ8 %Ö”ÑHX\™Ú[‹Y]Z[˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHØÝ[Y[YÚ[žš[‚˜ÝØÚ×ÛX\™Ú[—Ù]Z[ÜÞœÙX[™Ú[[™\ˆH^\Ý[™ÈPT‘ÒS—ÕQS‘Ø˜Ø]YÛÜžKˆHÐRÔÚ\™HÝØÚËY]HØÝ[Y[][Û—JÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B™Yš[™\È[ˆ^XÝ]X[ˆVVVSSQ›Ü›H[™H[Ö”ÑHÙXÝ\š]H[š]™\œÙBÚ]^XÚ]ÙXÝ\š]HÛÙKÛ˜[YKš[˜[˜Ú[™È˜[[˜Ù\È[™š[˜[˜Ú[™ËÜÚÜ\Ø[Bœ]X[]Y\ËˆHÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚ×Ù™X]\™KÜÝØÚ×ÛX\™Ú[—ÜÞœÙKœJBœ\ÜÙ\ÈH™\]Y\ÝY]HÈHÖ”ÑH™\Ü™\]Y\Ý[™™]\›œÈHX›\ÚY˜ÛÛ[[œÈ[ˆHX[\ˆ™\ÜÛœÙNÈ[›ZÙHHÔÑH]Z[™\ÜÛœÙKHØÝ[Y[Y”Ö”ÑH›ÝÜÈÈ›ÝÛÛZ[ˆH›ÝË[]™[ØœÙ\˜][Ûˆ]K‚‚•H›ÝšY\ˆÝ\ÜÈÚ[žš[ˆK\Ú\™HY[YšY\œË\ÜÙ\ÈH^XÝœ™\]Y\ÝY]K˜[Y]\È]™\žH™]\›™YÙXÝ\š]HÛÙKš[\œÈH[š]™\œÙBÈH™\]Y\ÝY\Ý[™È[™™]Z[œÈHX]Ú[™È›ÝÈÚ][™Ú[]H[™œ›ÝËXÛÝ[›Ý™[˜[˜ÙKˆH™\]Y\ÝY]H™[XZ[œÈHš[™[™ÈØœÙ\˜][Û‚˜›Ý[™\žH[ˆY]Y]NÈHY\\ˆÙ\È›ÝYHÞ[]XÈ]HšY[ÈB\Ý™X[H›ÝÜË‚‚•H™\ÜÛœÙH\ØÜšX™\ÈÝ\ÝÛY\ˆš[˜[˜Ú[™ÈYØZ[œÝHÙXÝ\š]K›ÝBš\ÜÝY\‰ÜÈ™\ÜYš[˜[˜ÚX[XØ\ÚÜˆHÙ]Y\ÜÝY\ˆXØÛÝ[[™È\š[Ù‚•H›Ü›X[^™\ˆ\™Y›Ü™H™]Z[œÈHÝXÝ\™Y]šY[˜ÙKX\šÜÂ˜š[˜[˜ÚX[ÙX\ÈÜš]XØ[HZ\ÜÚ[™È[™[Z]Â˜RÔÒT‘WÓPT‘ÒS—ÕQS‘×ÔU×ÓÓ“XÈ]Ü™X]\È›ÈØ[›ÛšXØ[XØ\Ú›]™\˜YÙKX\™Ú[ˆÜˆ˜[X][Ûˆ˜XÝˆX\šÙ][]™[X\™Ú[ˆÝ[[X\šY\È[™™š[[™ËX˜XÚÙY[\œ™]][Ûˆ™[XZ[ˆÝ]ÚYH\ÈÛXÙKˆ]™B˜Ø[È™[XZ[ˆÜZ[ŽÈ\ÝÈ\ÙH[ˆ[š™XÝYÛY[[™Hœ›Þ™[ˆš^\™K‚‚ˆÈÈÈ\ÙH‹ŒÎ8 %K\Ú\™HÚ\™ZÛ\‹XÛÝ[˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHØÝ[Y[YÓ’S‘“Â˜ÝØÚ×ÚÛÛ[WØÛš[™›Ø[™Ú[[™\ˆH^\Ý[™Â˜ÒT‘RÓT—ÒÓS‘ÔØØ]YÛÜžKˆHÐRÔÚ\™HÝØÚËY]B™ØÝ[Y[][Û—JÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+HYš[™\È[‚™^XÝ]X\\‹Y[™]X[ˆVVVSSQ›Ü›Kœ›ÛHŒMÌÌÌXÛØ\™[™B–ÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚËÜÝØÚ×ÚÛÛ[WØÛš[™›ËœJBœ™]\›œÈH[K\Ú\™H[š]™\œÙHÚ]^XÚ]ÛÙKÛ˜[YK9cæ9bª9¥éy§'ØÝ\œ™[˜[™š[ÜˆÚ\™ZÛ\ˆÛÝ[ËÛÝ[Ú[™ÙH\˜Ù[YÙKÝ\œ™[[™š[Ü‚˜]™\˜YÙHÛ[™ÜÈ[™]™\˜YÙKZÛ[™ÜÈÚ[™ÙH\˜Ù[YÙK‚‚•H›ÝšY\ˆÙ[XÝÈ\È[™Ú[Ú[ˆH]X\˜[Y]\ˆ\ÈÝ\YYÚXÚÜÂ]H]H\ÈHÝ\ÜY^XÝ]X\\ˆ[™[™˜[Y]\È]™\žH™]\›™Y›\Ý[™ÈÛÙH[™›ÝÈ]HYØZ[œÝH™\]Y\Ýˆ]š[\œÈH[™\ÜÛœÙHÂH™\]Y\ÝYK\Ú\™H\Ý[™È[™™\Ù\™\ÈHÙ[XÝY›ÝË™\]Y\ÝY]K›ØœÙ\˜][Ûˆ]H[™\Ý™X[KÜÙ[XÝY›ÝÈÛÝ[È\È˜]È›Ý™[˜[˜ÙKˆB™^\Ý[™È›Ë\\˜[Y]\ˆÝØÚ×ÛXZ[—ÜÝØÚ×ÚÛ\˜›Ý]H™[XZ[œÈ[˜Ú[™ÙY‚‚•H™\ÜÛœÙIÜÈÛÝ[Ë]™\˜YÙHÛ[™ÜÈ[™Ú[™ÙH\˜Ù[YÙ\È™[XZ[ˆ˜]ÂœÝXÝ\™Y]šY[˜ÙNˆ^HÈ›Ý\ÝX›\ÚHØ[›ÛšXØ[Ú\™ZÛ\‚˜ÛÛ˜Ù[˜][ÛˆY]šXË™[™YšXÚX[XÛÛ›ÛÜˆÛÝ™\›˜[˜ÙHYÛY[ÜˆB˜ÛÛ\[žK[]™[[]Y\Ú\™HÙ\šY\ËˆH›Ü›X[^™\ˆ[Z]Â˜RÔÒT‘WÔÒT‘RÓT—ÐÓÕS•×ÔU×ÓÓ“XX]™\ÈÛÝ™\›˜[˜ÙWÜš\Ú×Û]™[˜Üš]XØ[HZ\ÜÚ[™È[™Ü™X]\È›ÈØ[›ÛšXØ[˜XÝˆ\Ú\™HÚ\™ZÛ\‹XÛÝ[˜ÛÝ™\˜YÙH[™š[[™ËX˜XÚÙY[\œ™]][Ûˆ™[XZ[ˆ[œ™\ÛÛ™Yˆ]™HØ[È™[XZ[‚›ÜZ[ŽÈ\ÝÈ\ÙH[ˆ[š™XÝYÛY[[™Hœ›Þ™[ˆš^\™K‚‚ˆÈÈÈ\ÙH‹ŒÎH8 %”ÑHX\™Ú[‹Y]Z[˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHÝ\œ™[ØÝ[Y[Y™ZZš[™ÈÝØÚÈ^Ú[™ÙB˜ÝØÚ×ÛX\™Ú[—Ù]Z[ØœÙX[™Ú[[™\ˆH^\Ý[™ÈPT‘ÒS—ÕQS‘Ø˜Ø]YÛÜžKˆHÐRÔÚ\™HÝØÚËY]HØÝ[Y[][Û—JÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B™Yš[™\È[ˆ^XÝ]X[ˆVVVSSQ›Ü›H[™H[”ÑHÙXÝ\š]H[š]™\œÙBÚ]^XÚ]ÙXÝ\š]HÛÙKÛ˜[YKš[˜[˜Ú[™È˜[[˜Ù\È[™š[˜[˜Ú[™ËÜÚÜ\Ø[Bœ]X[]Y\ËˆHÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚ×Ù™X]\™KÜÝØÚ×ÛX\™Ú[—ØœÙKœJBœ\ÜÙ\ÈH™\]Y\ÝY]HÈH”ÑH]Z[™\]Y\ÝYÚ[˜]\ÈHX›\ÚYœ™\ÜÛœÙH[™™]\›œÈHØÝ[Y[YÛÛ[[œË‚‚•H›ÝšY\ˆÝ\ÜÈ™ZZš[™ÈK\Ú\™HY[YšY\œË\ÜÙ\ÈH^XÝ™\]Y\ÝY™]K˜[Y]\È]™\žH™]\›™YÙXÝ\š]HÛÙKš[\œÈH[š]™\œÙHÈBœ™\]Y\ÝY\Ý[™È[™™]Z[œÈHX]Ú[™È›ÝÈÚ][™Ú[™\]Y\ÝY]H[™œ›ÝËXÛÝ[›Ý™[˜[˜ÙKˆHØÝ[Y[Y”ÑH›ÝÜÈÈ›ÝÛÛZ[ˆH›ÝË[]™[›ØœÙ\˜][Ûˆ]KÛÈH™\]Y\Ý]H\È™\Ù\™Y\ÈHš[™[™ÈØœÙ\˜][Û‚˜›Ý[™\žH[ˆY]Y]H˜]\ˆ[ˆYYÈHÜ\]YH^[ØY‚‚•H™\ÜÛœÙH\ØÜšX™\ÈÝ\ÝÛY\ˆš[˜[˜Ú[™ÈYØZ[œÝHÙXÝ\š]K›ÝH\ÜÝY\‰ÜÂœ™\ÜYš[˜[˜ÚX[XØ\ÚÜˆHÙ]Y\ÜÝY\ˆXØÛÝ[[™È\š[ÙˆB››Ü›X[^™\ˆ\™Y›Ü™H™]Z[œÈHÝXÝ\™Y]šY[˜ÙKX\šÜÈš[˜[˜ÚX[ÙX˜\ÈÜš]XØ[HZ\ÜÚ[™È[™[Z]ÈRÔÒT‘WÓPT‘ÒS—ÕQS‘×ÔU×ÓÓ“XÈ]Ü™X]\Â››ÈØ[›ÛšXØ[XØ\Ú]™\˜YÙKX\™Ú[ˆÜˆ˜[X][Ûˆ˜XÝˆX\šÙ][]™[›X\™Ú[ˆÝ[[X\šY\È[™š[[™ËX˜XÚÙY[\œ™]][Ûˆ™[XZ[ˆ[œ™\ÛÛ™Yˆ]™B˜Ø[È™[XZ[ˆÜZ[ŽÈ\ÝÈ\ÙH[ˆ[š™XÝYÛY[[™Hœ›Þ™[ˆš^\™K‚‚ˆÈÈÈ\ÙH‹8 %KÒÑÕ[™]šYX[ZÛ[™ÜÈ˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHÝ\œ™[ØÝ[Y[YRÔÚ\™HX\Ý[Û™^B˜ÝØÚ×ÚÙÝÚ[™]šYX[Ù[X[™Ú[[™\ˆH^\Ý[™Â˜ÒT‘RÓT—ÒÓS‘ÔØØ]YÛÜžKˆHÐRÔÚ\™HÝØÚËY]B™ØÝ[Y[][Û—JÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+HYš[™\ÈBœÞ[X›Û[œ]Ý\Ü[™ÈK\Ú\™H[™\Ú\™H\Ý[™ÜÈ[™X›\Ú\È]YšÛ[™ÜËÛÜÚ[™ÈšXÙKÛ[™È]X[]KÛ[™ÈX\šÙ]˜[YKÛ[™Ë\˜][Â˜[™Ú[™ÙHšY[ËˆHÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚ×Ù™X]\™KÜÝØÚ×ÚÙÝÙ[KœJB™\Ü]Ú\ÈÚ^YYÚ]Þ[X›ÛÈÈHK\Ú\™H™\ÜÛœÙH[™š]™KYYÚ]Þ[X›ÛÈÂH\Ú\™H™\ÜÛœÙNÈ]™[[Ý™\ÈH›ÝË[]™[ÙXÝ\š]HY[]Hœ›ÛHBœX›\ÚYÝ]]ÛÈH™\]Y\ÝØÛÜH\ÈH™]Z[™Y[]H›Ý[™\žK‚‚•H›ÝšY\ˆÙ[XÝÈ\È[™Ú[Û›H›ÜˆH^XÚ]™\]Y\Ý˜šY]ÏZÙÝÚ[™]šYX[\ÜÙ\ÈHØ[›ÛšXØ[Ú^HÜˆš]™KYYÚ]\Ý[™ÈÛÙK˜[Y]\ÈXXÚ›ÝÉÜÈÛ[™È]H[™[žHÜ[Û˜[™]\›™YY[]K[™œ™]Z[œÈHÛÛ\]HÞ[X›Û\ØÛÜY™\ÜÛœÙHÚ]\Ý[™È[™›ÝËXÛÝ[œ›Ý™[˜[˜ÙKˆH]H\È[ˆ[™\ÝÜˆ›ÜKÜÛÝ]›Ý[™Û[™ÈÛ˜\ÚÝ˜]\‚[ˆHÛÛ\]H™[™YšXÚX[[ÝÛ™\œÚ\™XÛÜ™ÜˆÛÛ\[žHÚ\™KXØ\][Ù\šY\Ë‚’]È]X[]Y\ËX\šÙ]˜[Y\Ë˜][ÜÈ[™Ú[™ÙHšY[È\™Y›Ü™HÈ›Ý™\ÝX›\Ú™[™YšXÚX[ÛÛ›ÛÛÝ™\›˜[˜ÙHÙ]™\š]KÚ\™ZÛ\ˆÛÛ˜Ù[˜][Û‹š\ÜÝY\ˆ^X˜XÚËÚ\ÜÝX[˜ÙHØ\ÚÜˆH[H[]YÚ\™HÛÝ[‚‚•H›Ü›X[^™\ˆ[Z]ÈRÔÒT‘WÒÑÕÒS‘U’QPSÒÓS‘Ô×ÔU×ÓÓ“XX\šÜÂ˜ÛÝ™\›˜[˜ÙWÜš\Ú×Û]™[\ÈÜš]XØ[HZ\ÜÚ[™È[™Ü™X]\È›ÈØ[›ÛšXØ[›ÝÛ™\œÚ\ÛÛ˜Ù[˜][Û‹Ú\™KXÛÝ[[][Û‹^X˜XÚË\ÜÝX[˜ÙK™]\›ˆÜ‚˜[X][Ûˆ˜XÝˆHØÝ[Y[Y]\Ù]\È›Ý[™YžH]ÈX›\ÚYÛÝ™\˜YÙB˜[™]ÈKÒšY[ÛÛ™[[ÛœÈ\™H›ÝÛÛ\ÙY[ÈÛ™HØ[›ÛšXØ[Y]šXË‚“]™HØ[È™[XZ[ˆÜZ[ŽÈ\ÝÈ\ÙH[š™XÝYÛY[È[™œ›Þ™[ˆKÒš^\™\Ë‚‚ˆÈÈÈ\ÙH‹H8 %K\Ú\™HXÝX[XÛÛ›Û\ˆÛ[™ËXÚ[™ÙH˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHÝ\œ™[ØÝ[Y[YRÔÚ\™HÓ’S‘“Â˜ÝØÚ×ÚÛØÛÛ›ÛØÛš[™›Ø[™Ú[[™\ˆH^\Ý[™Â˜ÒT‘RÓT—ÒÓS‘ÔØØ]YÛÜžKˆHÐRÔÚ\™HÝØÚËY]B™ØÝ[Y[][Û—JÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+H[™ÛÙ™šXÚX[š[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚËÜÝØÚ×ÚÛØÛÛ›ÛØÛš[™›ËœJB™Yš[™H[ˆK\Ú\™H[][š]™\œÙH™\ÜÛœÙHÙ[XÝYžHÞ[X›ÛÚ]ÛÛ›ÛœØÛÜ\È9ceyâë9£©ùb-˜9k§ºfay£©ùb-¹.®˜9. :!í:(c9bª9.®˜9k­¹¥ãù£©ùb-˜[™9aj:`êˆBœX›\ÚYšY[È\™HÙXÝ\š]HY[]K9cæ9bª9¥éy§'ØXÝX[Ù\™XÝÛÛ›Û\‚›˜[Y\Ë9£©ú ¨y¥l:aãØ9£©ú ¨y«å9/¢Ø[™9£©ùb-¹ìnùg¢Ø‚‚•H›ÝšY\ˆÙ[XÝÈ\È[™Ú[Û›H›ÜˆH^XÚ]™\]Y\Ý˜šY]ÏXÛÛ›ÛØÚ[™Ù\ØY˜][ÈÈHØÝ[Y[YÞ[X›Ûyaj:`ê[š]™\œÙH
+Ü‚œ\ÜÙ\ÈH™\]Y\ÝYÛÛ›ÛÝ\X
+K˜[Y]\È]™\žH\Ý™X[HÛÙH[™Ú[™ÙB™]Kš[\œÈH[š]™\œÙHÈH™\]Y\ÝYK\Ú\™H\Ý[™È[™™]Z[œÈB˜ÛÛ›ÛØÛÜH[™›ÝËXÛÝ[›Ý™[˜[˜ÙKˆH›Ü›X[^™\ˆ[Z]Â˜RÔÒT‘WÐÓÓ•“ÓÒÓS‘Ô×ÔU×ÓÓ“XX]™\ÈÛÝ™\›˜[˜ÙWÜš\Ú×Û]™[Üš]XØ[B›Z\ÜÚ[™È[™Ü™X]\È›ÈØ[›ÛšXØ[ÝÛ™\œÚ\ÛÛ›ÛÛÛ˜Ù[˜][Û‹œÚ\™KXÛÝ[[][ÛˆÜˆ˜[X][Ûˆ˜XÝˆš[[™ËX˜XÚÙYYØ[[™Ú[Z[‹][YBš[\œ™]][Ûˆ™[XZ[œÈH]\ˆÛÛ˜Ù\›‹ˆ]™HØ[È™[XZ[ˆÜZ[ŽÈ\ÝÈ\ÙH[‚š[š™XÝYÛY[[™Hœ›Þ™[ˆš^\™HÚ]ØXÚH™\^H[™[˜[Y\ØÛÜKÂœ™\ÜÛœÙK]˜[Y][ÛˆÛÝ™\˜YÙK‚‚ˆÈÈÈ\ÙH‹ˆ8 %K\Ú\™HX[˜YÙ[Y[ZÛ[™È˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHÝ\œ™[ØÝ[Y[YRÔÚ\™HX\Ý[Û™^B˜ÝØÚ×ÚÛÛX[˜YÙ[Y[Ù]Z[Ù[X[™Ú[[™\ˆH^\Ý[™Â˜S”ÒQT—ÔÒT‘WÐÒS‘ÑTØØ]YÛÜžKˆHÐRÔÚ\™HÝØÚËY]B™ØÝ[Y[][Û—JÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+H[™ÛÙ™šXÚX[š[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚËÜÝØÚ×ÚÛØÛÛ›ÛÙ[KœJB™Yš[™HH›ËX\™Ý[Y[[X[˜YÙ[Y[Ü™[]Y\\œÛÛˆÛ[™ËXÚ[™ÙH[š]™\œÙK‚’]ÈX›\ÚYšY[È\™H9¥éy§'Ø9.èùè X9d#yéì9cæ9bª9.®˜9cæ9bª: ¨y¥l9¢$9.©9gaù.íØ˜9cæ9bª:aäzh§X9cæ9bª9c§ùfè9cæ9bª9«å9/¢Ø9cæ9bª9d#¹£ z ¨y¥l9£ z ¨yéãyìnØ˜:$hùæäzjæ9.®¹df9iäùd#X: c9b¨X9cæ9bª9.®¹.#º$hùæäzjæ9æ¡9alùìîØ9o 9iâù¥í¹£ y§"X[™˜9îäù§gùd#¹£ y§"X‚‚•H›ÝšY\ˆÙ[XÝÈ\È[™Ú[Û›H›ÜˆH^XÚ]™\]Y\Ý˜šY]Ï[X[˜YÙ[Y[Ù]Z[\ÜÙ\È›È\Ý™X[H\™Ý[Y[Ë˜[Y]\È]™\žBœ™]\›™Y\Ý[™ÈÛÙH[™9¥éy§'Øš[\œÈH[™\ÜÛœÙHÈH™\]Y\ÝYK\Ú\™H\Ý[™È[™™]Z[œÈ[™Ú[ÝšY]È[™›ÝËXÛÝ[›Ý™[˜[˜ÙKˆB››Ü›X[^™\ˆ[Z]ÈRÔÒT‘WÓPSQÑSQS•ÒÓS‘Ô×ÔU×ÓÓ“XX]™\Â˜ÛÝ™\›˜[˜ÙWÜš\Ú×Û]™[Üš]XØ[HZ\ÜÚ[™È[™Ü™X]\È›ÈØ[›ÛšXØ[Ú\™K™[][Û‹^X˜XÚË\ÜÝX[˜ÙKÝÛ™\œÚ\™]\›ˆÜˆ˜[X][Ûˆ˜XÝˆ]™HØ[Âœ™[XZ[ˆÜZ[ŽÈ\ÝÈ\ÙH[ˆ[š™XÝYÛY[[™Hœ›Þ™[ˆš^\™HÚ]ØXÚBœ™\^K[˜[Y\\˜[Y]\‹™\ÜÛœÙK]˜[Y][Ûˆ[™™\^K\ØÛÜHÛÝ™\˜YÙK‚‚ˆÈÈÈ\ÙH‹È8 %K\Ú\™H[™]šYX[Z[™›È˜]ÈÚ\™HÛ˜\ÚÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHÝ\œ™[ØÝ[Y[YX\Ý[Û™^B–ØÝØÚ×Ú[™]šYX[Ú[™›×Ù[XJÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B™[™Ú[[™]ÈÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚËÜÝØÚ×Ú[™›×Ù[KœJK‚’]XØÙ\ÈHÚ^YYÚ]K\Ú\™HÞ[X›Û[™™]\›œÈ[ˆ][KÝ˜[YXÛ˜\ÚÝÚ]: ¨yéj9.èùè X: ¨yéj9ë 9éì9 .ú ¨y§+9­`z`&º ¨X9 .ùn ¹`/9­`z`&¹n ¹`/:(c9.&˜˜9."¹n ¹¥íºeí[™9§ 9¥¬ˆH›ÝšY\ˆÙ[XÝÈ]Û›H›ÜˆH^XÚ]˜ÒT‘WÐÐTUS™\]Y\ÝšY]ÏZ[™]šYX[Ú[™›Ø\ÜÙ\ÈHÚ^YYÚ]ÛÙK˜[Y]\ÈH™]\›™YÛÙH[™[žHÜ[]Y\Ý[™È]K[™™]Z[œÈB˜ÛÛ\]H™\ÜÛœÙHÚ]\Ý[™ËÝšY]ËÜÛ˜\ÚÝ›Ý™[˜[˜ÙK‚‚•HØÝ[Y[YÛ˜\ÚÝÙ\È›Ý\ÝX›\ÚHØ[›ÛšXØ[™\Ü[™È\š[Ù˜[[Ý[[š]ÜØØ[[™ÈÜˆ[H[]YXÛÛ›ÛZXË\Ú\™HØÛÜKˆH›Ü›X[^™\‚\™Y›Ü™H[Z]ÈRÔÒT‘WÒS‘U’QPSÒS‘“×ÔU×ÓÓ“XX\šÜÂ˜›Ü›X[^™YÙ[]YÙXÛÛ›ÛZX×ÜÚ\™\Ø\ÈÜš]XØ[HZ\ÜÚ[™È[™Ü™X]\È›Â˜Ø[›ÛšXØ[Ú\™KX\šÙ]XØ\Üˆ˜[X][Ûˆ˜XÝˆ]™HØ[È™[XZ[ˆÜZ[ŽÈ\ÝÂ\ÙH[ˆ[š™XÝYÛY[[™Hœ›Þ™[ˆš^\™HÚ]ØXÚH™\^K[˜[YBœ\˜[Y]\‹™\ÜÛœÙK]˜[Y][Ûˆ[™™\^K\ØÛÜHÛÝ™\˜YÙK‚‚ˆÈÈÈ\ÙH‹8 %K\Ú\™H[™]šYX[Y[™Y›ÝÈ˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHÝ\œ™[ØÝ[Y[YRÔÚ\™HX\Ý[Û™^B–ØÝØÚ×Ú[™]šYX[Ù[™Ù›ÝØJÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B™[™Ú[[™]ÈÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚËÜÝØÚ×Ù[™Ù[KœJK‚’]XØÙ\ÈHÚ^YYÚ]K\Ú\™HÝØÚØÛÙH[™HX\šÙ]Ù[XÝÜˆÙˆÚ˜Þ˜Üˆš˜[™™]\›œÈ\›Þ[X][HL™XÙ[˜Y[™ËY^H›ÝÜÈÚ]B™ØÝ[Y[Y]KÛÜÙK\šXÙK™]\›‹™]X[[Ý[[™™]\\˜Ù[YÙHÛÛ[[œË‚•H›ÝšY\ˆ\š]™\ÈHX\šÙ]Ù[XÝÜˆœ›ÛHH™\]Y\ÝYK\Ú\™HY[]Kœ\ÜÙ\È›ÝØÝ[Y[Y\™Ý[Y[Ë˜[Y]\ÈÜ[Û˜[›ÝÈY[]H\È^XÝ›ØœÙ\˜][Ûˆ]\Ë[™™XÛÜ™ÈHØœÙ\™Y˜[™ÙH[™\Ý[™Ë\ØÛÜYœ›Ý™[˜[˜ÙK‚‚•HZ[H[™\ÝÜ‹Y›ÝÈYÙÜ™YØ]\È[™ÛÜÙK\šXÙHÛÛ^È›Ý\ÝX›\Úš\ÜÝY\ˆÜ\˜][™ÈØ\Ú›ÝË[ˆXØÛÝ[[™È\š[ÙHØ[›ÛšXØ[\]ZY]HY]šXÂ›ÜˆH˜[X][Ûˆ˜XÝˆH›Ü›X[^™\ˆ\™Y›Ü™H™]Z[œÈHÛÛ\]H™\ÜÛœÙH\Âœ˜]È]šY[˜ÙK[Z]ÈRÔÒT‘WÒS‘U’QPSÑ•S‘Ñ“Õ×ÔU×ÓÓ“X[™Ü™X]\È›Â˜Ø[›ÛšXØ[˜XÝˆ]™HØ[È™[XZ[ˆÜZ[ŽÈ\ÝÈ\ÙH[ˆ[š™XÝYÛY[[™B™œ›Þ™[ˆš^\™HÚ]ØXÚH™\^K[˜[Y\\˜[Y]\‹™\ÜÛœÙK]˜[Y][Ûˆ[™œ™\^K\ØÛÜHÛÝ™\˜YÙK‚‚ˆÈÈÈ\ÙH‹H8 %K\Ú\™HÜ][‹\Ú\™ZÛ\ˆ˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHÝ\œ™[X\Ý[Û™^B–ØÝØÚ×ÙÙžÝÜÌLÙ[XJÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B™[™Ú[[™]ÈÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚ×Ù™X]\™KÜÝØÚ×ÙÙžÙ[KœJK‚’]XØÙ\ÈHX\šÙ]\™Yš^YK\Ú\™HÞ[X›Û[™[ˆ^XÝ]X\\‹Y[™]XœÝXÚ\ÈŒLÌ™]\›š[™ÈHØÝ[Y[YÜ][ˆ›ÝÜÈÚ]˜[šËÛ\‹œÚ\™H\KÛ[™È]X[]KÝ[\Ú\™H˜][È[™Ú[™ÙHšY[Ë‚‚•H›ÝšY\ˆÙ[XÝÈ\È›Ý[™\žHÛ›HÚ]H^XÚ]˜ÒT‘RÓT—ÒÓS‘ÔØ™\]Y\ÝšY]Ï]ÜÌL˜[Y]\ÈH]X\\‹Y[™™\Ü™]H\È˜[šËÚÛ\ˆY[]K™\Ù\™\ÈH™\]Y\Ý]H[™Þ[X›ÛØÛÜH[™œ™]Z[œÈH›ÝšY\‰ÜÈ˜]È›ÝÈšY[ÈÚ]Ý][™[[™ÈH›ÝË[]™[ÛÙHÜ‚™š[[™È]KˆH›Ü›X[^™\ˆ[Z]Â˜RÔÒT‘WÕÔÌLÔÒT‘RÓT”×ÔU×ÓÓ“XX]™\ÈÛÝ™\›˜[˜ÙWÜš\Ú×Û]™[˜Üš]XØ[HZ\ÜÚ[™È[™Ü™X]\È›È™[™YšXÚX[XÛÛ›ÛÛÛ˜Ù[˜][Û‹Ú\™K™[][ÛˆÜˆ˜[X][Ûˆ˜XÝˆ]™HØ[È™[XZ[ˆÜZ[ŽÈ\ÝÈ\ÙH[ˆ[š™XÝY˜ÛY[[™Hœ›Þ™[ˆš^\™HÚ]ØXÚH™\^K[˜[Y\\˜[Y]\‹œ™\ÜÛœÙK]˜[Y][Ûˆ[™™\^K\ØÛÜHÛÝ™\˜YÙK‚‚ˆÈÈÈ\ÙH‹ˆ8 %K\Ú\™HÜ][‹]˜YX›K\Ú\™ZÛ\ˆ˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHÝ\œ™[X\Ý[Û™^B–ØÝØÚ×ÙÙžÙœ™YWÝÜÌLÙ[XJÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B™[™Ú[[™]ÈÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚ×Ù™X]\™KÜÝØÚ×ÙÙžÙ[KœJK‚’]XØÙ\ÈHX\šÙ]\™Yš^YK\Ú\™HÞ[X›Û[™[ˆ^XÝ]X\\‹Y[™]XœÝXÚ\ÈŒLÌ™]\›š[™ÈHØÝ[Y[YÜ][‹]˜YX›H›ÝÜÈÚ]˜[šËšÛ\‹Û\ˆ\KÚ\™H\KÛ[™È]X[]K›Ø]\Ú\™H˜][È[™Ú[™ÙB™šY[Ë‚‚•H›ÝšY\ˆÙ[XÝÈ\È›Ý[™\žHÛ›HÚ]H^XÚ]˜ÒT‘RÓT—ÒÓS‘ÔØ™\]Y\ÝšY]ÏYœ™YWÝÜÌL˜[Y]\ÈH]X\\‹Y[™™]H\È˜[šËÚÛ\ˆY[]K™\Ù\™\ÈH™\]Y\Ý]H[™Þ[X›ÛØÛÜH[™œ™]Z[œÈH›ÝšY\‰ÜÈ˜]È›ÝÈšY[ÈÚ]Ý][™[[™ÈH›ÝË[]™[\Ý[™Â˜ÛÙHÜˆš[[™È]KˆH›Ü›X[^™\ˆ[Z]Â˜RÔÒT‘WÑ”‘QWÕÔÌLÔÒT‘RÓT”×ÔU×ÓÓ“XX]™\Â˜ÛÝ™\›˜[˜ÙWÜš\Ú×Û]™[Üš]XØ[HZ\ÜÚ[™È[™Ü™X]\È›È™[™YšXÚX[XÛÛ›Û˜ÛÛ˜Ù[˜][Û‹Ú\™K[][ÛˆÜˆ˜[X][Ûˆ˜XÝˆ]™HØ[È™[XZ[ˆÜZ[ŽÂ\ÝÈ\ÙH[ˆ[š™XÝYÛY[[™Hœ›Þ™[ˆš^\™HÚ]ØXÚH™\^Kš[˜[Y\\˜[Y]\‹™\ÜÛœÙK]˜[Y][Ûˆ[™™\^K\ØÛÜHÛÝ™\˜YÙK‚‚ˆÈÈÈ\ÙH‹È8 %K\Ú\™HÜ][‹]˜YX›K\Ú\™ZÛ\ˆ]Z[˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHÝ\œ™[X\Ý[Û™^B–ØÝØÚ×ÙÙžÙœ™YWÚÛ[™×Ù]Z[Ù[XJÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B™[™Ú[[™]ÈÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚ×Ù™X]\™KÜÝØÚ×ÙÙžÙ[KœJK‚’]XØÙ\È[ˆ^XÝ]X\\‹Y[™]XÝXÚ\ÈŒLÌ[™™]\›œÈB™ØÝ[Y[Y[][š]™\œÙHÜ][‹]˜YX›KZÛ\ˆ]Z[›ÝÜÈÚ]\Ý[™ÈÛÙKšÛ\ˆY[]KÝ\K™\Ü\š[ÙÛ[™È]X[]KØÚ[™ÙK›Ø][X\šÙ]˜[YB˜[™[››Ý[˜Ù[Y[]HšY[Ë‚‚•H›ÝšY\ˆÙ[XÝÈ\È›Ý[™\žHÛ›HÚ]H^XÚ]˜ÒT‘RÓT—ÒÓS‘ÔØ™\]Y\ÝšY]ÏYœ™YWÚÛ[™×Ù]Z[\ÜÙ\ÈH\Ý™X[B˜]X˜[Y]\È]™\žH™]\›™Y\Ý[™ÈÛÙH[™Û\ˆ\ÈH^XÝ™\Üœ\š[Ù[™Ü[Û˜[[››Ý[˜Ù[Y[]K[™š[\œÈH[š]™\œÙHÈBœ™\]Y\ÝYK\Ú\™H\Ý[™Ëˆ]™\Ù\™\ÈH˜]È™\Ü\\š[ÙÛ[™È]Z[Ú]Ý]™X][™È[››Ý[˜Ù[Y[]\È\Èš[[™ÈÛÛ[ÈÜˆØ[›ÛšXØ[ÝÛ™\œÚ\˜ÛÛ˜Ù[˜][Û‹Ú\™HÜˆ[][Ûˆ˜XÝËˆH›Ü›X[^™\ˆ[Z]Â˜RÔÒT‘WÑ”‘QWÒÓS‘×ÑURSÔU×ÓÓ“XX]™\ÈÛÝ™\›˜[˜ÙWÜš\Ú×Û]™[˜Üš]XØ[HZ\ÜÚ[™È[™Ü™X]\È›ÈØ[›ÛšXØ[˜XÝˆ]™HØ[È™[XZ[ˆÜZ[ŽÂ\ÝÈ\ÙH[ˆ[š™XÝYÛY[[™Hœ›Þ™[ˆš^\™HÚ]ØXÚH™\^Kš[˜[Y\\˜[Y]\‹™\ÜÛœÙK]˜[Y][Ûˆ[™™\^K\ØÛÜHÛÝ™\˜YÙK‚‚ˆÈÈÈ\ÙH‹8 %K\Ú\™H˜YÛÛ‹UYÙ\ˆX\šÙ]XXÝ]š]H˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHÝ\œ™[X\Ý[Û™^B–ØÝØÚ×Û—Ù]Z[Ù[XJÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B™[™Ú[[™]ÈÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚ×Ù™X]\™KÜÝØÚ×Û—Ù[KœJK‚’]XØÙ\È^XÚ][˜Û\Ú]™HÝ\Ù]X[™[™Ù]X˜[Y\È[ˆVVVSSQ™›Ü›H[™™]\›œÈHØÝ[Y[Y[][š]™\œÙH\Ý[™ËY^H˜YÛÛ‹UYÙ\ˆ]Z[œ›ÝÜÎˆ\Ý[™ÈY[]KXÝ]š]HX™[ËÛÜÙKÜ™]\›ˆÛÛ^[[Ý[Ü˜][Â™šY[Ë\››Ý™\‹Ù›Ø][X\šÙ]]˜[YHÛÛ^\Ý[™È™X\ÛÛœÈ[™ÜÝ[\Ý[™Âœ™]\›ˆÛÛ[[œË‚‚•H›ÝšY\ˆÙ[XÝÈ\È›Ý[™\žH[™\ˆH™]È›ÝšY\‹[™]]˜[˜PT’ÑUÐPÕU’UXØ]YÛÜžH›ÜˆK\Ú\™H\Ý[™ÜÈÛ›K˜[Y]\È]™\žH™]\›™Y›\Ý[™ÈÛÙH[™9."¹©§9¥éXYØZ[œÝH™\]Y\ÝY˜[™ÙK[™š[\œÈB™[][š]™\œÙH™\ÜÛœÙHÈH™\]Y\ÝY\Ý[™ËˆH›Ü›X[^™\ˆ[Z]Â˜RÔÒT‘WÓPT’ÑUÐPÕU’UWÔU×ÓÓ“XÈ›ÈØ[›ÛšXØ[X\šÙ]\ÜÝY\ˆØ\ÚY›ÝËœÚ\™ZÛ\‹\™]\›‹ÛÝ™\›˜[˜ÙHÜˆ˜[X][Ûˆ˜XÝ\ÈYZ]YˆÜÝ[\Ý[™Âœ™]\›œÈ™[XZ[ˆ›ÜØ\™[ÛÚÚ[™È˜]È]šY[˜ÙH[™\™H™]™\ˆ\ÙY\È\Ë[Ùˆ˜XÝË‚“]™HØ[È™[XZ[ˆÜZ[ŽÈ\ÝÈ\ÙH[ˆ[š™XÝYÛY[[™Hœ›Þ™[ˆš^\™HÚ]˜ØXÚH™\^K[˜[Y\\˜[Y]\‹™\ÜÛœÙK]˜[Y][Ûˆ[™™\^K\ØÛÜHÛÝ™\˜YÙK‚‚ˆÈÈÈ\ÙH‹H8 %K\Ú\™H˜YÛÛ‹UYÙ\ˆÝØÚË\Ý]\ÝXÈ˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHÝ\œ™[X\Ý[Û™^B–ØÝØÚ×Û—ÜÝØÚ×ÜÝ]\ÝX×Ù[XJÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B™[™Ú[[™]ÈÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚ×Ù™X]\™KÜÝØÚ×Û—Ù[KœJK‚’]XØÙ\È[ˆ^XÚ]Ý]\ÝXÈÚ[™ÝÈ™\™\Ù[YžHHØÝ[Y[Y˜Þ[X›ÛÚÚXÙ\È:/äy. 9§":/äy."y§":/äyaky§"[™:/äy. 9nm[™™]\›œÈB™[][š]™\œÙH\‹[\Ý[™È˜YÛÛ‹UYÙ\ˆÝ]\ÝXÜÎˆ™XÙ[\Ý[™È]K›\Ý[™ÈÛÝ[XÝ]š]H[[Ý[YÙÜ™YØ]\Ë[œÝ]][Û‹XXÝ]š]HYÙÜ™YØ]\È[™˜Z[[™È™]\›ˆÛÛ^‚‚•H›ÝšY\ˆÙ[XÝÈ\È›Ý[™\žH[™\ˆH^\Ý[™È›ÝšY\‹[™]]˜[˜PT’ÑUÐPÕU’UXØ]YÛÜžHÛ›HÚ]šY]Ï\ÝØÚ×ÜÝ]\ÝXØX\ÈH^XÚ]˜\š[ÙÈH\Ý™X[HÞ[X›Û˜[Y]\È]™\žH™]\›™Y\Ý[™ÈÛÙH[™˜9§ :/äy."¹©§9¥éX[™š[\œÈH[][š]™\œÙH™\ÜÛœÙHÈH™\]Y\ÝYK\Ú\™B›\Ý[™ËˆH›Ü›X[^™\ˆ[Z]Â˜RÔÒT‘WÓPT’ÑUÐPÕU’UWÔÕUTÕPÔ×ÔU×ÓÓ“XÈ›È\ÜÝY\ˆØ\ÚY›ÝËœÚ\™ZÛ\‹\™]\›‹ÛÝ™\›˜[˜ÙKØ[›ÛšXØ[X\šÙ]Üˆ˜[X][Ûˆ˜XÝ\Â˜YZ]YˆHÝ]\ÝXÈÚ[™ÝÈ[™˜Z[[™È™]\›œÈ™[XZ[ˆ›ÝšY\ˆÛÛ^››Ý\Ë[ÙˆØ[Ý[][Ûˆ[œ]Ëˆ]™HØ[È™[XZ[ˆÜZ[ŽÈ\ÝÈ\ÙH[ˆ[š™XÝY˜ÛY[[™Hœ›Þ™[ˆš^\™HÚ]ØXÚH™\^K[˜[Y\\˜[Y]\‹œ™\ÜÛœÙK]˜[Y][Ûˆ[™™\^K\ØÛÜHÛÝ™\˜YÙK‚‚ˆÈÈÈ\ÙH‹L8 %K\Ú\™H˜YÛÛ‹UYÙ\ˆ[œÝ]][Û‹\Ý]\ÝXÈ˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈH\Ý[˜ÝX\Ý[Û™^B–ØÝØÚ×Û—Ú™ÜÝ]\ÝX×Ù[XJÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B™[™Ú[[™]ÈÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚ×Ù™X]\™KÜÝØÚ×Û—Ù[KœJK‚’]XØÙ\È[ˆ^XÚ]Ý]\ÝXÈÚ[™ÝÈ™\™\Ù[YžHHØÝ[Y[YÞ[X›Û˜ÚÚXÙ\È:/äy. 9§":/äy."y§":/äyaky§"[™:/äy. 9nm[™™]\›œÈ[][š]™\œÙBœ\‹[\Ý[™È[œÝ]][Û‹\ÙX]˜XÚÚ[™È›ÝÜÈÚ]˜YÛÛ‹UYÙ\ˆ[[Ý[ØÛÝ[™šY[È[™˜Z[[™È™]\›ˆÛÛ^‚‚•H›ÝšY\ˆÙ[XÝÈ\È›Ý[™\žH[™\ˆH^\Ý[™È›ÝšY\‹[™]]˜[˜PT’ÑUÐPÕU’UXØ]YÛÜžHÛ›HÚ]šY]ÏZ[œÝ]][Û—ÜÝ]\ÝXØX\ÈB™^XÚ]\š[ÙÈH\Ý™X[HÞ[X›Û˜[Y]\È]™\žH™]\›™Y\Ý[™Â˜ÛÙH[™š[\œÈH[][š]™\œÙH™\ÜÛœÙHÈH™\]Y\ÝYK\Ú\™H\Ý[™Ë‚•H›Ü›X[^™\ˆ[Z]Â˜RÔÒT‘WÓPT’ÑUÐPÕU’UWÒS”ÕUUSÓ—ÔÕUTÕPÔ×ÔU×ÓÓ“XÈ›È\ÜÝY\‚˜Ø\ÚY›ÝËÚ\™ZÛ\‹\™]\›‹ÛÝ™\›˜[˜ÙKØ[›ÛšXØ[X\šÙ]Üˆ˜[X][Ûˆ˜XÝš\ÈYZ]YˆHÝ]\ÝXÈÚ[™ÝÈ[™˜Z[[™È™]\›œÈ™[XZ[ˆ›ÝšY\‚˜ÛÛ^›Ý\Ë[ÙˆØ[Ý[][Ûˆ[œ]Ëˆ]™HØ[È™[XZ[ˆÜZ[ŽÈ\ÝÈ\ÙH[‚š[š™XÝYÛY[[™Hœ›Þ™[ˆš^\™HÚ]ØXÚH™\^K[˜[Y\\˜[Y]\‹œ™\ÜÛœÙK]˜[Y][Ûˆ[™™\^K\ØÛÜHÛÝ™\˜YÙK‚‚ˆÈÈÈ\ÙH‹LH8 %K\Ú\™Hš]™K[]™[šYX\ÚÈ˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈH\Ý[˜ÝX\Ý[Û™^B–ØÝØÚ×ØšYØ\Ú×Ù[XJÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B™[™Ú[[™]ÈÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚËÜÝØÚ×Ø\Ú×ØšYÙ[KœJK‚’]XØÙ\ÈHÚ^YYÚ]K\Ú\™HÞ[X›Û[™™]\›œÈHØÝ[Y[Yš^YŒÍ‹\›ÝÈ][XØ˜[YX™\ÜÛœÙNˆš]™H\ÚÈ]™[Ëš]™HšY]™[È[™[˜Y^Bœ][ÝHÛÛ^‚‚•H›ÝšY\ˆÙ[XÝÈ\È›Ý[™\žH[™\ˆH^\Ý[™È›ÝšY\‹[™]]˜[˜PT’ÑUÔUSÕXØ]YÛÜžHÛ›HÚ]^XÚ]šY]ÏXšYØ\ÚØ›ÜˆÚ[™ÚZH[™”Ú[žš[ˆK\Ú\™H\Ý[™ÜËˆ]\ÜÙ\ÈH›Ü›X[^™Y\Ý[™ÈÛÙK˜[Y]\ÂH^XÝ][H›ØØX[\žH[™[Y\šXËÛ[˜[Y\Ë™\Ù\™\ÈH[›\Ý[™Ë\ØÛÜY™\ÜÛœÙH[™™XÛÜ™ÈšY]ËÜÞ[X›ÛØÝ\œ™[\Û˜\ÚÝ™\^HØÛÜK‚•H›Ü›X[^™\ˆ[Z]ÈRÔÒT‘WÐ’QÐTÒ×ÔU×ÓÓ“XÈHÜ™\‹X›ÛÚÈ[™][ÝB˜ÛÛ^È›Ý™XÛÛYHØ[›ÛšXØ[Ý\œ™[\šXÙK\]ZY]HÜˆ˜[X][Ûˆ˜XÝÂ˜™XØ]\ÙHH™\ÜÛœÙH\È›ÈÝX›HØœÙ\˜][Ûˆ[Y\Ý[\ˆ]™HØ[È™[XZ[‚›ÜZ[ŽÈ\ÝÈ\ÙH[ˆ[š™XÝYÛY[[™Hœ›Þ™[ˆš^\™HÚ]ØXÚH™\^Kš[˜[Y\\˜[Y]\‹™\ÜÛœÙK]˜[Y][Ûˆ[™™\^K\ØÛÜHÛÝ™\˜YÙK‚‚ˆÈÈÈ\ÙH‹Lˆ8 %K\Ú\™H[˜Y^KZ\ÝÜžH˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈH\Ý[˜ÝX\Ý[Û™^B–ØÝØÚ×ÞšØWÚ\ÝÛZ[—Ù[XJÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B™[™Ú[[™]ÈÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚ×Ù™X]\™KÜÝØÚ×Ú\ÝÙ[KœJK‚’]XØÙ\ÈHÚ^YYÚ]K\Ú\™HÞ[X›Û^XÚ]Ý\Ù]X[™[™Ù]X™]][Y\ËHØÝ[Y[Y[\˜[ÙˆXXMXÌÜˆŒZ[]\È[™˜[ˆY\ÝY[ÚÚXÙHÙˆ[\HÝš[™ËYœXÜˆœXˆHÙ™šXÚX[™\ÜÛœÙBœÚ\HY™™\œÈ›ÜˆHÛ™K[Z[]H[\˜[
+9gaù.íØ
+H[™HÝ\ˆ[\˜[ÂŠÚ[™ÙK[\]YH[™\››Ý™\ˆšY[ÊK‚‚•H›ÝšY\ˆÙ[XÝÈ\È[™Ú[Û›H[™\ˆH^\Ý[™È›ÝšY\‹[™]]˜[˜PT’ÑUÒTÕÔ–XØ]YÛÜžHÚ]^XÚ]šY]ÏZ[˜Y^X\ÜÙ\ÈH›Ü›X[^™Y›\Ý[™ÈÛÙH[™Y™™XÝ]™H˜[™ÙKÚ[\˜[ØY\ÝY[˜[Y]\ÈBœ\š[Ù\ÜXÚYšXÈšY[Ù]š[š]H[Y\šXÈ˜[Y\Ë\ØÙ[™[™È[Y\Ý[\È[™œ™\]Y\ÝY˜[™ÙK[™™XÛÜ™ÈHÛÛ\]H\Ý[™Ë\ØÛÜY™\ÜÛœÙH\È]Âœ™\^HØÛÜKˆH›Ü›X[^™\ˆ[Z]Â˜RÔÒT‘WÒS•QVWÒTÕÔ–WÔU×ÓÓ“XÈZ[]KX˜\ˆ[\˜[Y\ÝY[[ÙH[™HØÝ[Y[Y™XÙ[Y]H[Z]][ÛˆÈ›Ý\ÝX›\ÚHØ[›ÛšXØ[Z[Bš\ÝÜžHÛÛ˜XÝÜˆH˜[X][Ûˆ[œ]ˆ]™HØ[È™[XZ[ˆÜZ[ŽÈ\ÝÈ\ÙBš[š™XÝYÛY[È[™œ›Þ™[ˆš^\™\ÈÚ]ØXÚH™\^K[˜[Y\\˜[Y]\‹œ™\ÜÛœÙK]˜[Y][Ûˆ[™™\^K\ØÛÜHÛÝ™\˜YÙK‚‚ˆÈÈÈ\ÙH‹LÈ8 %K\Ú\™H™K[X\šÙ]Z\ÝÜžH˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈH\Ý[˜ÝX\Ý[Û™^B–ØÝØÚ×ÞšØWÚ\ÝÜ™WÛZ[—Ù[XJÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B™[™Ú[[™]ÈÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚ×Ù™X]\™KÜÝØÚ×Ú\ÝÙ[KœJK‚’]XØÙ\ÈHÚ^YYÚ]K\Ú\™HÞ[X›Û\ÈÝ\Ý[YX[™[™Ý[YX[YK[Ù‹Y^H›Ý[™Ë[™™]\›œÈH[ÜÝ™XÙ[˜Y[™È^IÜÈZ[]H›ÝÜÂš[˜ÛY[™È™K[X\šÙ]ØœÙ\˜][ÛœËˆH™\ÜÛœÙHÛÛZ[œÈ[Y\Ý[\ÒË›Û[YK\››Ý™\ˆ[™]\Ý\šXÙHšY[Ë‚‚•H›ÝšY\ˆÙ[XÝÈ\È[™Ú[Û›H[™\ˆH^\Ý[™È›ÝšY\‹[™]]˜[˜PT’ÑUÒTÕÔ–XØ]YÛÜžHÚ]^XÚ]šY]Ï\™WÛX\šÙ]\ÜÙ\ÈH›Ü›X[^™Y›\Ý[™ÈÛÙH[™Y™™XÝ]™H[YHÚ[™ÝË˜[Y]\ÈH^XÝ™\ÜÛœÙHÚ\K™š[š]H[Y\šXÈ˜[Y\ËÛ™H˜Y[™È]K\ØÙ[™[™È[Y\Ý[\È[™™\]Y\ÝY[YH˜[™ÙK[™™XÛÜ™ÈHÛÛ\]H\Ý[™Ë\ØÛÜY™\ÜÛœÙH\È]È™\^BœØÛÜKˆH›Ü›X[^™\ˆ[Z]Â˜RÔÒT‘WÔ‘WÓPT’ÑUÒTÕÔ–WÔU×ÓÓ“XÈH]\ÝY^H[YK[Ù‹Y^HÛ˜\ÚÝÙ\Â››Ý\ÝX›\ÚHØ[›ÛšXØ[Z[H\ÝÜžHÛÛ˜XÝÜˆH˜[X][Ûˆ[œ]ˆ]™B˜Ø[È™[XZ[ˆÜZ[ŽÈ\ÝÈ\ÙH[ˆ[š™XÝYÛY[[™Hœ›Þ™[ˆš^\™HÚ]˜ØXÚH™\^K[˜[Y\\˜[Y]\‹™\ÜÛœÙK]˜[Y][Ûˆ[™™\^K\ØÛÜB˜ÛÝ™\˜YÙK‚‚ˆÈÈÈ\ÙH‹M8 %K\Ú\™HÚ[˜HZ[]KZ\ÝÜžH˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈH\Ý[˜ÝÚ[˜B–ØÝØÚ×ÞšØWÛZ[]XJÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B™[™Ú[[™]ÈÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚËÜÝØÚ×ÞšØWÜÚ[˜KœJK‚’]XØÙ\ÈHX\šÙ]\™Yš^YK\Ú\™HÞ[X›ÛHØÝ[Y[YZ[]H[\˜[Ù‚˜XXMXÌÜˆŒ[™[ˆY\ÝY[[ÙHÙˆ[\HÝš[™ËYœXÜ‚˜œXˆH™\ÜÛœÙHÛÛZ[œÈ[Y\Ý[\Y^XÒË›Û[YH[™[[Ý[›ÝÜÂ™›ÜˆH™XÙ[›ÝšY\ˆÚ[™ÝË‚‚•H›ÝšY\ˆÙ[XÝÈ\È[™Ú[Û›H[™\ˆH^\Ý[™È›ÝšY\‹[™]]˜[˜PT’ÑUÒTÕÔ–XØ]YÛÜžHÚ]^XÚ]šY]Ï\Ú[˜WÛZ[]X\š]™\ÈB›X\šÙ]\™Yš^YÞ[X›Ûœ›ÛHH™\]Y\ÝY\Ý[™Ë˜[Y]\ÈH^XÝ™\ÜÛœÙBœÚ\Kš[š]H[Y\šXËÛ[˜[Y\È[™ÝšXÝH\ØÙ[™[™È[Y\Ý[\Ë[™œ™XÛÜ™ÈHÛÛ\]H\Ý[™Ë\ØÛÜY™\ÜÛœÙH\È]È[\˜[Y\ÝY[[™œ™XÙ[]Ú[™ÝÈ™\^HØÛÜKˆH›Ü›X[^™\ˆ[Z]Â˜RÔÒT‘WÔÒSWÓRS•UWÒTÕÔ–WÔU×ÓÓ“XÈH›ÝšY\‹]Ú[™ÝÈZ[]H˜\œÈÈ›Ý™\ÝX›\ÚHØ[›ÛšXØ[Z[H\ÝÜžHÛÛ˜XÝÜˆH˜[X][Ûˆ[œ]ˆ]™HØ[Âœ™[XZ[ˆÜZ[ŽÈ\ÝÈ\ÙH[ˆ[š™XÝYÛY[[™Hœ›Þ™[ˆš^\™HÚ]ØXÚBœ™\^K[˜[Y\\˜[Y]\‹™\ÜÛœÙK]˜[Y][Ûˆ[™™\^K\ØÛÜHÛÝ™\˜YÙK‚‚ˆÈÈÈ\ÙH‹MH8 %K\Ú\™H[˜Ù[Z[KZ\ÝÜžHXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈH\Ý[˜Ý[˜Ù[–ØÝØÚ×ÞšØWÚ\ÝÝJÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B™[™Ú[[™]ÈÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚ×Ù™X]\™KÜÝØÚ×Ú\ÝÝœJK‚’]XØÙ\ÈHX\šÙ]\™Yš^YÜˆÚ^YYÚ]K\Ú\™HÞ[X›ÛÝ\Ù]X™Y˜][[™ÈÈNLLX[™Ù]XY˜][[™ÈÈŒLLX[™[‚˜Y\ÝY[[ÙHÙˆ[\HÝš[™ËYœXÜˆœXˆH™\ÜÛœÙHÛÛZ[œÈ]Y“ÒÈ›ÝÜÈ\È›Û[YX[ˆÚ\™\ËXÚ[X[\››Ý™\˜[™[[Ý[[ˆ]X[‹‚‚•H›ÝšY\ˆÙ[XÝÈ\È[™Ú[Û›H[™\ˆH^\Ý[™È›ÝšY\‹[™]]˜[˜PT’ÑUÒTÕÔ–XØ]YÛÜžHÚ]^XÚ]šY]Ï][˜Ù[ÙZ[X\š]™\ÈB›X\šÙ]\™Yš^YÞ[X›Û\Y\È[™™XÛÜ™ÈHY™™XÝ]™H]KØY\ÝY[œØÛÜK˜[Y]\ÈH^XÝ™\ÜÛœÙHÚ\Kš[š]H[Y\šXËÛ[˜[Y\ËœÝšXÝH\ØÙ[™[™È]\È[™[˜Û\Ú]™H™\]Y\ÝY˜[™ÙK[™™\Ù\™\ÈB˜ÛÛ\]H˜]È™\ÜÛœÙH›Üˆ™\^Kˆ™XØ]\ÙHH™\ÜÛœÙH\ÈH]YZ[BœÙ\šY\ËH›Ü›X[^™\ˆX\ÈH^\Ý[™ÈZ[KZ\ÝÜžH^[œÚ[Ûˆ˜XÝÈÚ]˜Ú\™\Ø›Û[YH[™Ó–X[[Ý[[š]ÎÈH›ÝšY\ˆ\››Ý™\ˆ˜][È™[XZ[œÂœ˜]È]šY[˜ÙH[™Ù\È›Ý[›ÙXÙHH™]ÈØ[›ÛšXØ[Y]šXÈÜˆ˜[X][Ûˆ[œ]‚“]™HØ[È™[XZ[ˆÜZ[ŽÈ\ÝÈ\ÙH[ˆ[š™XÝYÛY[[™Hœ›Þ™[ˆš^\™BÚ]ØXÚH™\^K[˜[Y\\˜[Y]\‹™\ÜÛœÙK]˜[Y][Ûˆ[™™\^K\ØÛÜB˜ÛÝ™\˜YÙK‚‚ˆÈÈÈ\ÙH‹Mˆ8 %K\Ú\™H[˜Ù[]\Ý]˜Y[™ËY^HXÚÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈH\Ý[˜Ý[˜Ù[\ÝÜšXØ[]XÚÈ[™Ú[™ØÝ[Y[Y\Â–ØÝØÚ×ÞšØWÝXÚ×ÝJÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B˜[™[\[Y[YžHHÝ\œ™[Ù™šXÚX[ÛÝ\˜ÙH\Â–ØÝØÚ×ÞšØWÝXÚ×ÝÚœØJÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚËÜÝØÚ×ÞšØWÝXÚ×ÝœJK‚’]XØÙ\ÈÛ™HX\šÙ]\™Yš^YK\Ú\™HÞ[X›Û[™™]\›œÈH]\Ý˜]˜Z[X›H˜Y[™È^IÜÈ[YK[Û›H˜YH›ÝÜËˆHØÝ[Y[YÝ]]ÛÛZ[œÂ˜YH[YKšXÙKšXÙHÚ[™ÙK›Û[YH[ˆÝË[[Ý[[ˆ]X[ˆ[™H^KÜÙ[›X\šÙ\ŽÈHÝ\œ™[ÛÝ\˜ÙH˜[Y\ÈH[[Ý[ÛÛ[[ˆ9¢$9.©:aäzh§XÚ[HB™ØÝ[Y[][ÛˆX›HX™[È]9¢$9.©:h§X‚‚•H›ÝšY\ˆÙ[XÝÈ\ÈØ[X›HÛ›H[™\ˆH^\Ý[™È›ÝšY\‹[™]]˜[˜PT’ÑUÒTÕÔ–XØ]YÛÜžHÚ]^XÚ]šY]Ï][˜Ù[ÝXÚØ\š]™\ÈB›X\šÙ]\™Yš^YÞ[X›Û˜[Y]\ÈÛ™H^XÝØÝ[Y[YÜÛÝ\˜ÙH[[Ý[XÛÛ[[‚˜\šX[š[š]H[Y\šXËÛ[˜[Y\Ë[YÙ\ˆ›Û[YKØ[[Ý[˜[Y\Ë™XÛÙÛš^™Y˜YHÚY\È[™›Û‹YXÜ™X\Ú[™È[YHÜ™\‹[™™XÛÜ™ÈHÛÛ\]B›\Ý[™Ë\ØÛÜY™\ÜÛœÙH\È]È[YK[Û›H™\^HØÛÜKˆH›Ü›X[^™\ˆ[Z]Â˜RÔÒT‘WÕSÑS•ÕPÒ×ÔU×ÓÓ“XÈ™XØ]\ÙHH™\ÜÛœÙH\È›È˜Y[™È]H[™›Û›H™\™\Ù[ÈH]\ÝY^HXÚÈÛ˜\ÚÝ]Ü™X]\È›ÈØ[›ÛšXØ[Z[Bš\ÝÜžK\]ZY]HÜˆ˜[X][Ûˆ˜XÝˆ]™HØ[È™[XZ[ˆÜZ[ŽÈ\ÝÈ\ÙH[‚š[š™XÝYÛY[[™Hœ›Þ™[ˆš^\™HÚ]ØXÚH™\^K[˜[Y\\˜[Y]\‹œ™\ÜÛœÙK]˜[Y][Ûˆ[™™\^K\ØÛÜHÛÝ™\˜YÙK‚‚ˆÈÈÈ\ÙH‹MÈ8 %\Ú\™H[˜Y^KZ\ÝÜžH˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈH\Ý[˜ÝX\Ý[Û™^H\Ú\™HZ[]KZ\ÝÜžB™[™Ú[ØÝ[Y[Y\Â–ØÝØÚ×Ú×Ú\ÝÛZ[—Ù[XJÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B˜[™[\[Y[YžHHÝ\œ™[Ù™šXÚX[ÛÝ\˜ÙH[‚–ØÝØÚ×Ú\ÝÙ[KœXJÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚ×Ù™X]\™KÜÝØÚ×Ú\ÝÙ[KœJK‚’]XØÙ\È[ˆ[œ™Yš^YÚ^YYÚ]\Ú\™HÞ[X›Û[ˆ^XÚ]˜Ý\Ù]XØ[™Ù]X]][YH˜[™ÙKH\š[ÙÙˆXXMXÌÜ‚˜Œ[™[ˆY\ÝY[[ÙHÙˆ[\HÝš[™ËYœXÜˆœXˆ\š[ÙXœ™]\›œÈ9¥íºeíÒË9¢$9.©:aãØ9¢$9.©:h§X[™9§ 9¥¬9.íØÈHÝ\ˆØÝ[Y[Yœ\š[ÙÈ™]\›ˆ9¥íºeíÒËÚ[™ÙHšY[Ë9¢$9.©:aãØ9¢$9.©:h§X9£+ùnaX[™˜9£h¹¢bùã¡Ø‚‚•H›ÝšY\ˆÙ[XÝÈ\ÈØ[X›HÛ›H[™\ˆH^\Ý[™È›ÝšY\‹[™]]˜[˜PT’ÑUÒTÕÔ–XØ]YÛÜžHÚ]^XÚ]šY]ÏZ×Ú[˜Y^X\ÜÙ\ÈB[œ™Yš^Y\Ú\™HÛÙH[™Y™™XÝ]™H˜[™ÙKÚ[\˜[ØY\ÝY[˜[Y]\ÈB™^XÝ\š[Ù\ÜXÚYšXÈšY[Ëš[š]H[Y\šXËÛ[˜[Y\ËÝšXÝ[Y\Ý[\›Ü™\š[™È[™[˜Û\Ú]™H˜[™ÙK[™™XÛÜ™ÈH\Ý[™ËÞ[X›Û™\]Y\ÝØÛÜKœØÚ[XH[ÙH[™Ú\™\ØØÑÜ\—ÜÚ\™XØÑ[š]È›Üˆ™\^KˆH›Ü›X[^™\‚™[Z]ÈRÔÒT‘WÒ×ÒS•QVWÒTÕÔ–WÔU×ÓÓ“XÈ™XÙ[\Ú\™HZ[]H˜\œÈ™[XZ[‚œ˜]È]šY[˜ÙH[™È›Ý™XÛÛYHØ[›ÛšXØ[Z[KZ\ÝÜžK\]ZY]HÜˆ˜[X][Û‚™˜XÝËˆ]™HØ[È™[XZ[ˆÜZ[ŽÈ\ÝÈ\ÙH[ˆ[š™XÝYÛY[[™œ›Þ™[‚œ\š[Ù\ÜXÚYšXÈš^\™\ÈÚ]ØXÚH™\^K[˜[Y\\˜[Y]\‹œ™\ÜÛœÙK]˜[Y][Û‹˜]Ë[Û›H[™™\^K\ØÛÜHÛÝ™\˜YÙK‚‚ˆÈÈÈ\ÙH‹N8 %K\Ú\™HÚ\Y\ÝšX][Ûˆ˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈH\Ý[˜ÝX\Ý[Û™^HÚ\Y\ÝšX][Ûˆ[™Ú[™ØÝ[Y[Y\Â–ØÝØÚ×ØÞ\WÙ[XJÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B˜[™[\[Y[YžHHÝ\œ™[ÛÙ™šXÚX[ÛÝ\˜ÙWJÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚ×Ù™X]\™KÜÝØÚ×ØÞ\WÙ[KœJK‚’]XØÙ\È[ˆK\Ú\™HÚ^YYÚ]Þ[X›Û[™[ˆY\ÝY[[ÙHÙˆ[\HÝš[™Ë˜YœXÜˆœX[™™]\›œÈH]\Ý\›Þ[X][HL˜Y[™È^\È\Ú[™ÈB™^XÝšY[È9¥éy§'Ø:#­ùb*y«å9/¢Ø9nlùgaù¢$9§+L9¢$9§+y/c˜L9¢$9§+zjæL:fá¹.+yn©˜˜Ì9¢$9§+y/c˜Ì9¢$9§+zjæ[™Ì:fá¹.+yn©˜‚‚•H›ÝšY\ˆÙ[XÝÈ\ÈØ[X›HÛ›H[™\ˆH^\Ý[™È›ÝšY\‹[™]]˜[˜PT’ÑUÒTÕÔ–XØ]YÛÜžHÚ]^XÚ]šY]ÏXÚ\Ù\ÝšX][Û˜\ÜÙ\ÈB[œ™Yš^YK\Ú\™HÛÙH[™Y\ÝY[[ÙK˜[Y]\ÈH^XÝ™\ÜÛœÙHÚ\K™š[š]H[Y\šXËÛ[˜[Y\ËTÓÈ]\È[ˆÝšXÝ\ØÙ[™[™ÈÜ™\ˆ[™HX^[][BŽL\›ÝÈÚ[™ÝË[™™XÛÜ™ÈH\Ý[™ËÞ[X›ÛY\ÝY[›ÝÈ[Z][™›ØœÙ\™Y]H›Ý[™È›Üˆ™\^KˆH›Ü›X[^™\ˆ[Z]Â˜RÔÒT‘WÐÒTÑTÕ’P•USÓ—ÔU×ÓÓ“XÈ›ÝšY\‹YYš[™Y™[™Yš]ÛÜÝ[™˜ÛÛ˜Ù[˜][Ûˆ˜[Y\È™[XZ[ˆ˜]È]šY[˜ÙH[™Ü™X]H›ÈØ[›ÛšXØ[Z[KZ\ÝÜžK›\]ZY]KÛÛ˜Ù[˜][ÛˆÜˆ˜[X][Ûˆ˜XÝˆ]™HØ[È™[XZ[ˆÜZ[ŽÈ\ÝÈ\ÙB˜[ˆ[š™XÝYÛY[[™Hœ›Þ™[ˆš^\™HÚ]ØXÚH™\^K[˜[Y\\˜[Y]\‹œ™\ÜÛœÙK]˜[Y][Û‹˜]Ë[Û›H[™™\^K\ØÛÜHÛÝ™\˜YÙK‚‚ˆÈÈÈ\ÙH‹NH8 %K\Ú\™HX\šÙ]\\XÚ\][Ûˆ\Ú\™H˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈH\Ý[˜ÝX\Ý[Û™^HX\šÙ]\\XÚ\][Û‹Y\Ú\™B™[™Ú[ØÝ[Y[Y\Â–ØÝØÚ×ØÛÛ[Y[Ù]Z[ÜØÜ™Ù\Ú\™WÙ[XJÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B˜[™[\[Y[YžHHÝ\œ™[ÛÙ™šXÚX[ÛÝ\˜ÙWJÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚ×Ù™X]\™KÜÝØÚ×ØÛÛ[Y[Ù[KœJK‚’]XØÙ\È[ˆK\Ú\™HÚ^YYÚ]Þ[X›Û[™™]\›œÈH^XÝšY[È9.©9¦$ù¥éy§'Ø˜: ¨yéj9.èùè X9cà¹.#¹¡#ù¡/Øy¥éynlùgaùcà¹.#¹¡#ù¡/Ø9cà¹.#¹¡#ù¡/ùcæ9c%˜[™y¥éynlùgaùcæ9c%˜ÂHÝ\œ™[[\[Y[][Ûˆ™\]Y\ÝÈHX^[][HÌ\›ÝÈÚ[™ÝÈ[™Ü™\œÈBœ™\ÜÛœÙHžH9.©9¦$ù¥éy§'Ø‚‚•H›ÝšY\ˆÙ[XÝÈ\ÈØ[X›HÛ›H[™\ˆH^\Ý[™È›ÝšY\‹[™]]˜[˜PT’ÑUÐPÕU’UXØ]YÛÜžHÚ]^XÚ]šY]Ï\\XÚ\][Û—Ù\Ú\™X\ÜÙ\ÈB[œ™Yš^YK\Ú\™HÛÙK˜[Y]\ÈH^XÝ™\ÜÛœÙHÚ\K\Ý[™ÈY[]K™š[š]H[Y\šXËÛ[˜[Y\ËÝšXÝ\ØÙ[™[™ÈTÓÈ]\È[™HX^[][HÌ\›ÝÂÚ[™ÝË[™™XÛÜ™ÈH\Ý[™ËÞ[X›Û›ÝÈ[Z][™ØœÙ\™Y]H›Ý[™È›Ü‚œ™\^KˆH›Ü›X[^™\ˆ[Z]Â˜RÔÒT‘WÓPT’ÑUÔT•PÒTUSÓ—ÑTÒT‘WÔU×ÓÓ“XÈ›ÝšY\‹YYš[™Y\XÚ\][Û‚œØÛÜ™\È[™Ú[™Ù\È™[XZ[ˆ˜]È]šY[˜ÙH[™Ü™X]H›ÈØ[›ÛšXØ[X\šÙ]š\ÜÝY\‹XØ\ÚY›ÝËÚ\™ZÛ\‹\™]\›‹ÛÝ™\›˜[˜ÙHÜˆ˜[X][Ûˆ˜XÝˆ]™HØ[Âœ™[XZ[ˆÜZ[ŽÈ\ÝÈ\ÙH[ˆ[š™XÝYÛY[[™Hœ›Þ™[ˆš^\™HÚ]ØXÚBœ™\^K[˜[Y\\˜[Y]\‹™\ÜÛœÙK]˜[Y][Û‹˜]Ë[Û›H[™™\^K\ØÛÜB˜ÛÝ™\˜YÙK‚‚ˆÈÈÈ\ÙH‹Œ8 %K\Ú\™HX\Ý[Û™^H[˜Y^K]˜YH˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈH\Ý[˜ÝX\Ý[Û™^H[˜Y^K]˜YH[™Ú[™ØÝ[Y[Y\Â–ØÝØÚ×Ú[˜Y^WÙ[XJÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B˜[™[\[Y[YžHHÝ\œ™[ÛÙ™šXÚX[ÛÝ\˜ÙWJÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚËÜÝØÚ×Ú[˜Y^WÙ[KœJK‚’]XØÙ\È[ˆK\Ú\™HÚ^YYÚ]Þ[X›Û[™™]\›œÈH]\Ý˜Y[™È^IÜÂ[YK[Û›HšY[È9¥íºeí9¢$9.©9.íØ9¢bù¥l[™9.l9ce¹ææ9 )ú-*[˜ÛY[™È™K[X\šÙ]›ØœÙ\˜][ÛœË‚‚•H›ÝšY\ˆÙ[XÝÈ\ÈØ[X›HÛ›H[™\ˆH^\Ý[™È›ÝšY\‹[™]]˜[˜PT’ÑUÒTÕÔ–XØ]YÛÜžHÚ]^XÚ]šY]ÏZ[˜Y^WÝ˜Y\Ø\ÜÙ\ÈB[œ™Yš^YK\Ú\™HÛÙK˜[Y]\ÈH^XÝ™\ÜÛœÙHÚ\Kš[š]H[Y\šXËÛ[œšXÙ\Ë[YÙ\‹Û[ÝÛÝ[Ë™XÛÙÛš^™Y˜YHÚY\È[™›Û‹YXÜ™X\Ú[™Â[Y\Ë[™™XÛÜ™ÈH\Ý[™ËÞ[X›Û]\ÝY^HÛ˜\ÚÝ[YK[Û›H]B˜š[™[™È[™ØœÙ\™Y[YH›Ý[™È›Üˆ™\^KˆH›Ü›X[^™\ˆ[Z]Â˜RÔÒT‘WÒS•QVWÕQT×ÔU×ÓÓ“XÈÚ]Ý]H˜Y[™È]K›ÝšY\ˆ˜YBœšXÙ\È[™ÝÛÝ[È™[XZ[ˆ˜]È]šY[˜ÙH[™Ü™X]H›ÈØ[›ÛšXØ[Z[KZ\ÝÜžK›\]ZY]KÜ™\‹Y›ÝÈÜˆ˜[X][Ûˆ˜XÝˆ]™HØ[È™[XZ[ˆÜZ[ŽÈ\ÝÈ\ÙH[‚š[š™XÝYÛY[[™Hœ›Þ™[ˆš^\™HÚ]ØXÚH™\^K[˜[Y\\˜[Y]\‹œ™\ÜÛœÙK]˜[Y][Û‹˜]Ë[Û›H[™™\^K\ØÛÜHÛÝ™\˜YÙK‚‚ˆÈÈÈ\ÙH‹ŒH8 %K\Ú\™HX\Ý[Û™^HÝØÚÈÝ\˜[šÈ˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈH\Ý[˜ÝX\Ý[Û™^HÝØÚË\Ü[\š]H[™Ú[™ØÝ[Y[Y\Â–ØÝØÚ×ÚÝÜ˜[š×Ù[XJÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B˜[™[\[Y[YžHHÝ\œ™[ÛÙ™šXÚX[ÛÝ\˜ÙWJÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚËÜÝØÚ×ÚÝÜ˜[š×Ù[KœJK‚’]XØÙ\È›È\Ý™X[H\™Ý[Y[È[™™]\›œÈHÝ\œ™[]˜Y[™ËY^HÜLLK\Ú\™HÜ[\š]H›ÝÜÈÚ]9odùbcy£¤¹d#XX\šÙ]\™Yš^Y9.èùè X: ¨yéj9d#yéì˜9§ 9¥¬9.íØ9­ª:-ã:h§X[™9­ª:-ã9naX‚‚•H›ÝšY\ˆÙ[XÝÈ\ÈØ[X›HÛ›H[™\ˆH^\Ý[™È›ÝšY\‹[™]]˜[˜PT’ÑUÐPÕU’UXØ]YÛÜžHÚ]^XÚ]šY]ÏZÝÜ˜[šØ˜[Y]\ÈH^XÝ™šY[Ù]K\Ú\™H\Ý[™ÈY[]K[š\]YHÝšXÝH\ØÙ[™[™È˜[šÜËš[š]B›[Y\šXËÛ[][ÝHšY[È[™HX^[][HL\›ÝÈÚ[™ÝË[™š[\œÈH[[š]™\œÙHÈH™\]Y\ÝY\Ý[™ÈÚ[H™]Z[š[™ÈHÝ\œ™[Y^K™]šY]˜[B›Û›H]H›Ý[™\žH[ˆ™\ÜÛœÙHY]Y]KˆH›Ü›X[^™\ˆ[Z]Â˜RÔÒT‘WÒÕÔS’×ÔU×ÓÓ“XÈÜ[\š]HÜ™\š[™È[™][ÝHÛÛ^™[XZ[ˆ˜]Â™]šY[˜ÙH[™Ü™X]H›ÈØ[›ÛšXØ[X\šÙ]\ÜÝY\‹XØ\ÚY›ÝËÚ\™ZÛ\‹\™]\›‹™ÛÝ™\›˜[˜ÙHÜˆ˜[X][Ûˆ˜XÝˆ]™HØ[È™[XZ[ˆÜZ[ŽÈ\ÝÈ\ÙH[ˆ[š™XÝY˜ÛY[[™Hœ›Þ™[ˆš^\™HÚ]ØXÚH™\^K[˜[Y\\˜[Y]\‹œ™\ÜÛœÙK]˜[Y][Û‹˜]Ë[Û›H[™™\^K\ØÛÜHÛÝ™\˜YÙK‚‚ˆÈÈÈ\ÙH‹Œˆ8 %JÒX\Ý[Û™^H][ÝKXÛÛ\\š\ÛÛˆ˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈH\Ý[˜ÝX\Ý[Û™^HJÒÛÛ\\š\ÛÛˆ[™Ú[™ØÝ[Y[Y\Â–ØÝØÚ×ÞšØZÜÜÝÙ[XJÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B˜[™[\[Y[YžHHÝ\œ™[ÛÙ™šXÚX[ÛÝ\˜ÙWJÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚËÜÝØÚ×ÚÙÝÙ[KœJK‚’]XØÙ\È›È\Ý™X[H\™Ý[Y[È[™™]\›œÈH[JÒÛÛ\\š\ÛÛˆÛ˜\ÚÝÚ]H^XÝšY[È9n£ùcíØ9d#yéì: ¨y.èùè X9§ 9¥¬9.íËRÑ: ¨Ky­ª:-ã9naX˜z ¨y.èùè X9§ 9¥¬9.íËT“P˜z ¨Ky­ª:-ã9naX9«å9.íØ[™9®¨¹.íØÈHØÝ[Y[][Û‚™\ØÜšX™\ÈH][ÝH\È[^YYžHMHZ[]\Ë‚‚•H›ÝšY\ˆÙ[XÝÈ\ÈØ[X›HÛ›H[™\ˆH^\Ý[™È›ÝšY\‹[™]]˜[˜PT’ÑUÔUSÕXØ]YÛÜžHÚ]^XÚ]šY]ÏXZØÛÛ\\š\ÛÛ˜˜[Y]\ÈH^XÝ™šY[Ù]š]™KKÜÚ^YYÚ]ÐHÛÙ\Ë[š\]YHÝšXÝH\ØÙ[™[™ÈÙ\]Y[˜ÙH[™™š[š]H[Y\šXËÛ[šXÙKÚ[™ÙK˜][È[™™[Z][H˜[Y\Ë[™š[\œÈB™[™\ÜÛœÙHžHH™\]Y\ÝYKHÜˆ\Ú\™HÛÙKˆ]™XÛÜ™ÈHÚYK\ÜXÚYšXÂ˜ÛÙHšY[[š]Ë[^YYÝ\œ™[Y^HÛ˜\ÚÝ™]šY]˜[[Û›H]Hš[™[™Â˜[™š[\™Y›ÝÈÛÝ[È›Üˆ™\^KˆH›Ü›X[^™\ˆ[Z]Â˜RÔÒT‘WÐRÐÓÓTT’TÓÓ—ÔU×ÓÓ“XÈÜ›ÜÜË[X\šÙ]˜[Y\È™[XZ[ˆ˜]È]šY[˜ÙB˜™XØ]\ÙHH™\ÜÛœÙH\È›ÈÝX›HØœÙ\˜][Ûˆ[Y\Ý[\[™Ù\È›Ý\ÝX›\Ú˜Ø[›ÛšXØ[Ý\œ™[šXÙK–ÛÛ\\š\ÛÛ‹˜[X][ÛˆÜˆØ[Ý[][Ûˆ˜XÝËˆ]™B˜Ø[È™[XZ[ˆÜZ[ŽÈ\ÝÈ\ÙH[ˆ[š™XÝYÛY[[™Hœ›Þ™[ˆš^\™HÚ]˜ØXÚH™\^K[˜[Y\\˜[Y]\‹™\ÜÛœÙK]˜[Y][Û‹˜]Ë[Û›H[™™\^K\ØÛÜB˜ÛÝ™\˜YÙK‚‚ˆÈÈÈ\ÙH‹ŒÈ8 %K\Ú\™HX\Ý[Û™^H]šY[™Y\ÝšX][Ûˆ]Z[˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈH\Ý[˜ÝX\Ý[Û™^HK\Ú\™H]šY[™Y\ÝšX][Û‚™]Z[[™Ú[ØÝ[Y[Y\Â–ØÝØÚ×Ùš×Ù]Z[Ù[XJÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B˜[™[\[Y[YžHHÝ\œ™[ÛÙ™šXÚX[ÛÝ\˜ÙWJÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚ×Ù™X]\™KÜÝØÚ×Ùš×Ù[KœJK‚’]XØÙ\ÈHÚ^YYÚ]K\Ú\™HÞ[X›Û[™™]\›œÈH^XÝNHšY[Â˜9¢©ydb¹§'Ø9.&¹îêy¢ªúg,¹¥éy§'Ø\ÝšX][Ûˆ[™Ø\Ú\˜][ÈšY[Ë\‹\Ú\™Bš[™XØ]ÜœË9 .ú ¨y§+[™[››Ý[˜Ù[Y[Ü™XÛÜ™Ù^\šYÚËÜ›ÙÜ™\ÜÈ]\Ë‚‚•H›ÝšY\ˆÙ[XÝÈ\ÈØ[X›HÛ›H[™\ˆH^\Ý[™È›ÝšY\‹[™]]˜[˜U’QS‘ØØ]YÛÜžHÚ]^XÚ]šY]ÏY]™[Ù]Z[\ÜÙ\ÈH[œ™Yš^YK\Ú\™HÛÙK˜[Y]\ÈH^XÝšY[Ù]ÝšXÝH\ØÙ[™[™È™\Ü\š[ÙË˜[YÜ[Û˜[]™[]\Ëš[š]H[Y\šXËÛ[˜[Y\Ë›Û‹[™YØ]]™H[YÙ\‚œÚ\™HÛÝ[È[™Ýš[™ËÛ[Ý]\ÈšY[Ë[™™XÛÜ™ÈH\Ý™X[HÞ[X›Ûœ›ÝÈÛÝ[Ë\ÝÜšXØ[Y]Z[ØÛÜH[™›ÝËY]Hš[™[™È›Üˆ™\^KˆB››Ü›X[^™\ˆ[Z]ÈRÔÒT‘WÐWÑU’QS‘ÑURSÔU×ÓÓ“XÈ\ÝšX][Ûˆ˜][ÜË™]™[[œË\‹\Ú\™H[™XØ]ÜœÈ[™Ú\™KXÛÝ[ÛÛ^™[XZ[ˆ˜]È]šY[˜ÙB˜™XØ]\ÙH^HÈ›Ý\ÝX›\ÚÙ]YÜ™[˜\žH]šY[™Ø\ÚÜˆHØ[›ÛšXØ[œ^[Ý][›ÛZ[˜]Ü‹ˆ]™HØ[È™[XZ[ˆÜZ[ŽÈ\ÝÈ\ÙH[ˆ[š™XÝYÛY[[™˜Hœ›Þ™[ˆš^\™HÚ]ØXÚH™\^K[˜[Y\\˜[Y]\‹™\ÜÛœÙK]˜[Y][Û‹œ˜]Ë[Û›H[™™\^K\ØÛÜHÛÝ™\˜YÙK‚‚ˆÈÈÈ\ÙH‹8 %K\Ú\™HÓ’S‘“ÈTË\Ý[[X\žH˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈH\Ý[˜ÝÓ’S‘“ÈK\Ú\™HTË\Ý[[X\žH[™Ú[™ØÝ[Y[Y\Â–ØÝØÚ×Ú\×ÜÝ[[X\žWØÛš[™›ØJÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B˜[™[\[Y[YžHHÝ\œ™[ÛÙ™šXÚX[ÛÝ\˜ÙWJÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚËÜÝØÚ×Ú\×ÜÝ[[X\žWØÛš[™›ËœJK‚’]XØÙ\ÈHÚ^YYÚ]K\Ú\™HÞ[X›Û[™™]\›œÈH^XÝšY[Â˜: ¨yéj9.èùè X9¢æú ¨yak9db¹¥éy§'Ø9.+yëo¹ã¡ùak9db¹¥éX9«ãú ¨zgh¹`/9 .ùcäz(c9¥l:aãØ˜9cäz(c9bcy«ãú ¨yaà:-a9.©Ø9¤bº%¡9cäz(c9n ¹æâ9ã¡Ø9bçúfáº-a:aäyaà:h§X9."¹ïdycäz(c9¥éy§'Ø˜9."¹n ¹¥éy§'Ø9cäz(c9.íù¨/9cäz(c:-.yå*9 .úh§X9cäz(c9d#¹«ãú ¨yaà:-a9.©Ø˜9."¹ïdycäz(c9.+yëo¹ã¡Ø[™9..ù¢oúe 9ea˜‚‚•H›ÝšY\ˆÙ[XÝÈ\ÈØ[X›HÛ›H[™\ˆH^\Ý[™È›ÝšY\‹[™]]˜[˜ÓÔ”ÔUWÐPÕSÓ”ØØ]YÛÜžHÚ]^XÚ]šY]ÏZ\×ÜÝ[[X\žX\ÜÙ\ÈB[œ™Yš^YK\Ú\™HÛÙK™\]Z\™\ÈÛ™H^XÝÞ[X›Û[X]Ú[™È›ÝË˜[Y]\Â›Ü[Û˜[]\Ëš[š]H[Y\šXËÛ[šY[È[™Ýš[™ËÛ[[™\Üš]\ˆ^˜[™™XÛÜ™ÈHšY]ËÞ[X›Û›ÝÈÛÝ[Ë\ÝÜšXØ[ØÛÜH[™›ÝËY]B˜š[™[™È›Üˆ™\^KˆH›Ü›X[^™\ˆ[Z]Â˜RÔÒT‘WÒT×ÔÕSSPT–WÔU×ÓÓ“XX\šÜÈÚ\™WÚ\ÜÝX[˜ÙWØØ\ÚÜš]XØ[HZ\ÜÚ[™Â˜[™Ü™X]\È›ÈØ[›ÛšXØ[\ÜÝX[˜ÙK[][ÛˆÜˆÚ\™H˜XÝˆ]™HØ[È™[XZ[‚›ÜZ[ŽÈ\ÝÈ\ÙH[ˆ[š™XÝYÛY[[™œ›Þ™[ˆš^\™HÛÝ™\˜YÙH›ÜˆØXÚBœ™\^K[˜[Y™\]Y\ÝË™\ÜÛœÙH˜[Y][Û‹˜]Ë[Û›H›Ü›X[^˜][Ûˆ[™œ™\^YY\ØÛÜH˜[Y][Û‹‚‚ˆÈÈÈ\ÙH‹H8 %K\Ú\™HX\Ý[Û™^H™]Ë\ÝØÚËX›Ø\™˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈH\Ý[˜ÝX\Ý[Û™^HK\Ú\™H™]Ë\ÝØÚËX›Ø\™™[™Ú[ØÝ[Y[Y\Â–ØÝØÚ×ÞšØWÛ™]×Ù[XJÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B˜[™[\[Y[YžHHÝ\œ™[ÛÙ™šXÚX[ÛÝ\˜ÙWJÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚËÜÝØÚ×ÞšØWÜÜXÚX[œJK‚’]XØÙ\È›È\Ý™X[H\™Ý[Y[È[™™]\›œÈH^XÝšY[È9n£ùcíØ9.èùè X˜9d#yéì9§ 9¥¬9.íØ9­ª:-ã9naX9­ª:-ã:h§X9¢$9.©:aãØ9¢$9.©:h§X9£+ùnaX9§ :jæ9§ 9/c˜˜9.â¹o 9¦*9¥-˜:aãù«å9£h¹¢bùã¡Ø9n ¹æâ9ã¡Ëybª9  X[™9n ¹aà9ã¡Ø‚‚•H›ÝšY\ˆÙ[XÝÈ\ÈØ[X›HÛ›H[™\ˆH^\Ý[™È›ÝšY\‹[™]]˜[˜PT’ÑUÐPÕU’UXØ]YÛÜžHÚ]^XÚ]šY]Ï[™]×ÜÝØÚØ˜[Y]\ÈH^XÝ™šY[Ù]Ú^YYÚ]K\Ú\™HY[]K[š\]YHÜÚ]]™HÙ\]Y[˜ÙH[X™\œË™š[š]H[Y\šXËÛ[][ÝHšY[È[™›Û‹Y[\H˜[Y\Ë[™š[\œÈHÝ\œ™[˜Y[™ËY^H[š]™\œÙHÈH™\]Y\ÝY\Ý[™ËˆH›Ü›X[^™\ˆ[Z]Â˜RÔÒT‘WÓ‘U×ÔÕÐÒÔ×ÔU×ÓÓ“XÈH™]šY]˜[[Û›H][ÝHÛ˜\ÚÝÙ\È›Ý™\ÝX›\ÚH]Y\Ý[™Ë™]\›‹˜[X][Û‹ÛÝ™\›˜[˜ÙHÜˆØ[›ÛšXØ[X\šÙ]™˜XÝˆ]™HØ[È™[XZ[ˆÜZ[ŽÈ\ÝÈ\ÙH[ˆ[š™XÝYÛY[[™Hœ›Þ™[‚™š^\™HÚ]ØXÚH™\^K[˜[Y\\˜[Y]\‹™\ÜÛœÙK]˜[Y][Û‹˜]Ë[Û›B˜[™™\^K\ØÛÜHÛÝ™\˜YÙK‚‚ˆÈÈÈ\ÙH‹ˆ8 %K\Ú\™HX\Ý[Û™^H[™]šYX[[›ÝXÙH˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈH\Ý[˜ÝX\Ý[Û™^HK\Ú\™H[™]šYX[[›ÝXÙB™[™Ú[ØÝ[Y[Y\Â–ØÝØÚ×Ú[™]šYX[Û›ÝXÙWÜ™\ÜJÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B˜[™[\[Y[YžHHÝ\œ™[ÛÙ™šXÚX[ÛÝ\˜ÙWJÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚ×Ù[™[Y[[ÜÝØÚ×Û›ÝXÙKœJK‚’]XØÙ\ÈH\Ý[™ÈÙXÝ\š]XØ]YÛÜžHÞ[X›Û
+Y˜][9aj:`ê
+H[™›Ü[Û˜[™YÚ[—Ù]XØ[™Ù]X›Ý[™Ë[™™]\›œÈH^XÝšY[È9.èùè X˜9d#yéì9ak9db¹¨!úh¦9ak9db¹ìnùg¢Ø9ak9db¹¥éy§'Ø[™9ïdyg`‚‚•H›ÝšY\ˆÙ[XÝÈ\ÈØ[X›HÛ›H[™\ˆH^\Ý[™È›ÝšY\‹[™]]˜[˜TÐÓÔÕT‘WÓ“ÕPÑTØØ]YÛÜžHÚ]^XÚ]šY]ÏZ[™]šYX[Û›ÝXÙXX\ÈB˜Ø]YÛÜžH[™Ü[Û˜[VVVSSQ™\]Y\Ý›Ý[™ÈÈHÙ™šXÚX[\Ý™X[H˜[Y\Ë˜[Y]\ÈH^XÝÚ^YšY[™\ÜÛœÙKÚ^YYÚ]™\]Y\ÝY[\Ý[™ÈY[]K››Û‹Y[\H^˜[Y]\ËÕT“È[™[˜Û\Ú]™H˜[™ÙK[™™XÛÜ™ÈH\Ý™X[B›\Ý[™ÈØÛÜH[™™\^HY]Y]KˆH›Ü›X[^™\ˆ[Z]Â˜RÔÒT‘WÒS‘U’QPSÓ“ÕPÑT×ÔU×ÓÓ“XX\šÜÈXØÛÝ[[™×ÛÜ[š[Û˜[™˜ÛÝ™\›˜[˜ÙWÜš\Ú×Û]™[Üš]XØ[HZ\ÜÚ[™È[™Ü™X]\È›Èš[[™ËY\š]™Y˜XÝ‚“]™HØ[È™[XZ[ˆÜZ[ŽÈ\ÝÈ\ÙH[ˆ[š™XÝYÛY[[™Hœ›Þ™[ˆš^\™HÚ]˜ØXÚH™\^K[˜[Y\\˜[Y]\‹™\ÜÛœÙK]˜[Y][Û‹˜]Ë[Û›H[™œ™\^K\ØÛÜHÛÝ™\˜YÙK‚‚ˆÈÈÈ\ÙH‹È8 %K\Ú\™HX\Ý[Û™^HX\šÙ]Y›ØÝ\È˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈH\Ý[˜ÝX\Ý[Û™^HK\Ú\™HX\šÙ]Y›ØÝ\Â™[™Ú[ØÝ[Y[Y\Â–ØÝØÚ×ØÛÛ[Y[Ù]Z[ÜØÜ™Ù›ØÝ\×Ù[XJÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B˜[™[\[Y[YžHHÝ\œ™[ÛÙ™šXÚX[ÛÝ\˜ÙWJÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚ×Ù™X]\™KÜÝØÚ×ØÛÛ[Y[Ù[KœJK‚’]XØÙ\ÈHÚ^YYÚ]Þ[X›Û™\]Y\ÝÈHÌ\›ÝÈ]\Ý˜Y[™ËY^HÚ[™ÝË˜[™™]\›œÈH^XÝšY[È9.©9¦$ù¥éX[™9å*9¢-ùalù¬ê9£!ù¥l‚‚•H›ÝšY\ˆÙ[XÝÈ\ÈØ[X›HÛ›H[™\ˆH^\Ý[™È›ÝšY\‹[™]]˜[˜PT’ÑUÐPÕU’UXØ]YÛÜžHÚ]^XÚ]šY]ÏY›ØÝ\Ø\ÜÙ\ÈH[œ™Yš^Y›\Ý[™ÈÛÙK˜[Y]\ÈH^XÝÛËYšY[™\ÜÛœÙKÝšXÝ\ØÙ[™[™ÈTÓÂ™]\Ëš[š]H[Y\šXËÛ[˜[Y\È[™HÙ™šXÚX[Ì\›ÝÈX^[][K[™™XÛÜ™ÂHÞ[X›Û]\Ý]Ú[™ÝÈØÛÜH[™ØœÙ\™Y]H›Ý[™È›Üˆ™\^KˆB››Ü›X[^™\ˆ[Z]ÈRÔÒT‘WÓPT’ÑUÑ“ÐÕT×ÔU×ÓÓ“XÈ›ÝšY\‹YYš[™Y\Ù\‹X][[Û‚œØÛÜ™\È™[XZ[ˆ˜]È]šY[˜ÙH[™Ü™X]H›ÈØ[›ÛšXØ[X\šÙ]\ÜÝY\‹XØ\ÚY›ÝËœÚ\™ZÛ\‹\™]\›‹ÛÝ™\›˜[˜ÙHÜˆ˜[X][Ûˆ˜XÝˆ]™HØ[È™[XZ[ˆÜZ[ŽÂ\ÝÈ\ÙH[ˆ[š™XÝYÛY[[™Hœ›Þ™[ˆš^\™HÚ]ØXÚH™\^K[˜[YBœ\˜[Y]\‹™\ÜÛœÙK]˜[Y][Û‹˜]Ë[Û›H[™™\^K\ØÛÜHÛÝ™\˜YÙK‚‚ˆÈÈÈ\ÙH‹Ž8 %K\Ú\™HX\Ý[Û™^H[œÝ]][Û‹\\XÚ\][Ûˆ˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈH\Ý[˜ÝX\Ý[Û™^HK\Ú\™H[œÝ]][Û‹Bœ\XÚ\][Ûˆ[™Ú[ØÝ[Y[Y\Â–ØÝØÚ×ØÛÛ[Y[Ù]Z[Þ›ÜÚ™ØÞYÙ[XJÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B˜[™[\[Y[YžHHÝ\œ™[ÛÙ™šXÚX[ÛÝ\˜ÙWJÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚ×Ù™X]\™KÜÝØÚ×ØÛÛ[Y[Ù[KœJK‚’]XØÙ\ÈHÚ^YYÚ]Þ[X›Û™]šY]™\ÈHÞ[X›Û	ÜÈ\ÝÜšXØ[Ù\šY\È[™œ™]\›œÈH^XÝšY[È9.©9¦$ù¥éX[™9§.¹§¡9cà¹.#¹n©˜ÈH[\[Y[][ÛˆX›\Ú\ÂH\XÚ\][Ûˆ˜[YH[ˆ\˜Ù[‚‚•H›ÝšY\ˆÙ[XÝÈ\ÈØ[X›HÛ›H[™\ˆH^\Ý[™È›ÝšY\‹[™]]˜[˜PT’ÑUÐPÕU’UXØ]YÛÜžHÚ]^XÚ]šY]ÏZ[œÝ]][Û—Ü\XÚ\][Û˜\ÜÙ\ÂH[œ™Yš^Y\Ý[™ÈÛÙK˜[Y]\ÈH^XÝÛËYšY[™\ÜÛœÙKÝšXÝ˜\ØÙ[™[™ÈTÓÈ]\È[™š[š]H[Y\šXËÛ[\˜Ù[YÙH˜[Y\Ë[™™XÛÜ™ÈBœÞ[X›Û˜[YH[š][™ØœÙ\™Y]H›Ý[™È›Üˆ™\^KˆH›Ü›X[^™\ˆ[Z]Â˜RÔÒT‘WÓPT’ÑUÒS”ÕUUSÓ—ÔT•PÒTUSÓ—ÔU×ÓÓ“XÈ›ÝšY\‹YYš[™Yš[œÝ]][Û‹\\XÚ\][Ûˆ\˜Ù[YÙ\È™[XZ[ˆ˜]È]šY[˜ÙH[™Ü™X]H›Â˜Ø[›ÛšXØ[X\šÙ]\ÜÝY\‹XØ\ÚY›ÝËÚ\™ZÛ\‹\™]\›‹ÛÝ™\›˜[˜ÙHÜˆ˜[X][Û‚™˜XÝˆ]™HØ[È™[XZ[ˆÜZ[ŽÈ\ÝÈ\ÙH[ˆ[š™XÝYÛY[[™Hœ›Þ™[‚™š^\™HÚ]ØXÚH™\^K[˜[Y\\˜[Y]\‹™\ÜÛœÙK]˜[Y][Û‹˜]Ë[Û›H[™œ™\^K\ØÛÜHÛÝ™\˜YÙK‚‚ˆÈÈÈ\ÙH‹ŽH8 %K\Ú\™HX\Ý[Û™^H[Z]]\\ÛÛ˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HÝ\œ™[ÐRÔÚ\™HÝØÚËY]HØÝ[Y[][Û—JÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B™ØÝ[Y[ÈÝØÚ×ÞÜÛÛÙ[X\ÈHX\Ý[Û™^HK\Ú\™H[Z]]\\ÛÛ[™Ú[ÂHÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚ×Ù™X]\™KÜÝØÚ×Þ—Ù[KœJB˜ÛÛ™š\›\È]]XØÙ\ÈH™\]Z\™YVVVSSQ]X›Üˆ™XÙ[]H[™œ™]\›œÈH^XÝMˆšY[È9n£ùcíØ9.èùè X9d#yéì9­ª:-ã9naX9§ 9¥¬9.íØ9¢$9.©:h§X˜9­`z`&¹n ¹`/9 .ùn ¹`/9£h¹¢bùã¡Ø9l y§oú-a:aäX:i¥¹«(yl y§où¥íºeí9§ 9d#¹l y§où¥íºeí˜9à®9§où«(y¥l9­ª9`g9îçú+¨X:/ç¹§où¥l[™9¢`9lgº(c9.&˜‚‚•H›ÝšY\ˆÙ[XÝÈ\ÈØ[X›HÛ›H[™\ˆPT’ÑUÐPÕU’UXÚ]^XÚ]˜šY]Ï[[Z]Ý\ÜÛÛ\ÜÙ\ÈH™\]Y\ÝY˜Y[™È]H[˜Ú[™ÙY˜[Y]\ÈB™[™\ÜÛœÙH™Y›Ü™Hš[\š[™È]ÈH™\]Y\ÝYK\Ú\™H\Ý[™Ë[™š[™ÂH™\]Y\Ý]KØœÙ\˜][Û‹Y]H[\œ™]][Û‹^XÝšY[ËÚ^YYÚ]˜ÛÙ\ËÝšXÝH\ØÙ[™[™È˜[šËSTÔØØÚÈ[Y\Ë^\ËØÝÝ]\ÝXÜÈ[™™š[š]H[Y\šXËÛ[˜[Y\È[È™\^HY]Y]Kˆ[\H\Ý[™ÈX]Ú\È™[XZ[‚˜[YÚ[H™\Ù\š[™È\Ý™X[H[™Ù[XÝY›ÝÈÛÝ[Ë‚‚•H›Ü›X[^™\ˆ[Z]ÈRÔÒT‘WÓSRUÕTÔÓÓÔU×ÓÓ“XÈ][ÝK[Z]]\XÝ]š]Kœ›ÝšY\ˆ˜[šÚ[™È[™X\šÙ]XØ\šY[È™[XZ[ˆÝXÝ\™Y]šY[˜ÙHÛ›H[™Â››Ý\ÝX›\Ú\ÜÝY\ˆØ\Ú›ÝËÚ\™ZÛ\ˆ™]\›‹ÛÝ™\›˜[˜ÙK˜[X][ÛˆÜˆB˜Ø[›ÛšXØ[X\šÙ]Y]šXËˆ›ÈØ[Ý[][Û‹Ø]K\[[™KÓHÜˆ[œ][ØY\‚˜ÛÛ˜XÝ\ÈÚ[™ÙYˆ]™HØ[È™[XZ[ˆÜZ[ŽÈ\ÝÈ\ÙH[ˆ[š™XÝYÛY[[™˜Hœ›Þ™[ˆš^\™HÚ]ØXÚH™\^K[˜[Y\™\]Y\Ý™\ÜÛœÙK]˜[Y][Û‹œ˜]Ë[Û›H[™™\^K\ØÛÜHÛÝ™\˜YÙK‚‚ˆÈÈÈ\ÙH‹Ì8 %K\Ú\™HX\Ý[Û™^H]\ÝÝØÚËZÝ\˜[šÈ˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HÝ\œ™[ÐRÔÚ\™HÝØÚËY]HØÝ[Y[][Û—JÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B™ØÝ[Y[ÈÝØÚ×ÚÝÜ˜[š×Û]\ÝÙ[X\ÈHX\Ý[Û™^HK\Ú\™H]\Ý\˜[šÂ™[™Ú[ÈHÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚËÜÝØÚ×ÚÝÜ˜[š×Ù[KœJB˜ÛÛ™š\›\È]]XØÙ\ÈHX\šÙ]\™Yš^YÞ[X›Û[™™]\›œÈH^XÝ˜][XØ˜[YXX›H›ÜˆX\šÙ]\XX\šÙ][ÛÝ[Ø[Õ[YX[›™\ÛÙX˜Ü˜ÔÙXÝ\š]PÛÙX˜[šØ˜[šÐÚ[™ÙX\Ô˜[šÐÚ[™ÙX\Ô˜[šÐÚ[™ÙWÜ˜[šØ˜[™›YØ‚‚•H›ÝšY\ˆÙ[XÝÈ\ÈØ[X›HÛ›H[™\ˆPT’ÑUÐPÕU’UXÚ]^XÚ]˜šY]ÏZÝÜ˜[š×Û]\Ý\ÜÙ\ÈH™\]Y\ÝYX\šÙ]\™Yš^YK\Ú\™HÞ[X›Û˜[Y]\ÈH^XÝ[‹\›ÝÈ™\ÜÛœÙK][H[š\]Y[™\ÜËÞ[X›ÛY[]K˜Ø[Õ[YX[Y\Ý[\[™[YÙ\‹Û[˜[Y\Ë[™š[™ÈH\Ý™X[HÞ[X›Û˜Ý\œ™[Y^H]\Ý\˜[šÈØÛÜK›ÝÈÛÝ[È[™›ÝËY\š]™YØœÙ\˜][Ûˆ[YH[Âœ™\^HY]Y]K‚‚•H›Ü›X[^™\ˆ[Z]ÈRÔÒT‘WÒÕÔS’×ÓUTÕÔU×ÓÓ“XÈ›ÝšY\ˆÜ[\š]Bœ˜[šÈ[™[Z[™È™[XZ[ˆÝXÝ\™Y]šY[˜ÙHÛ›H[™È›Ý\ÝX›\Ú\ÜÝY\‚˜Ø\Ú›ÝËÚ\™ZÛ\ˆ™]\›‹ÛÝ™\›˜[˜ÙK˜[X][ÛˆÜˆHØ[›ÛšXØ[X\šÙ]›Y]šXËˆ›ÈØ[Ý[][Û‹Ø]K\[[™KÓHÜˆ[œ][ØY\ˆÛÛ˜XÝ\Â˜Ú[™ÙYˆ]™HØ[È™[XZ[ˆÜZ[ŽÈ\ÝÈ\ÙH[ˆ[š™XÝYÛY[[™Hœ›Þ™[‚™š^\™HÚ]ØXÚH™\^K[˜[Y\™\]Y\Ý™\ÜÛœÙK]˜[Y][Û‹˜]Ë[Û›H[™œ™\^K\ØÛÜHÛÝ™\˜YÙK‚‚ˆÈÈÈ\ÙH‹ÌH8 %K\Ú\™HY\Z]H[™]šYX[\ÜÝ][ÝHXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HÝ\œ™[ÐRÔÚ\™HÝØÚËY]HØÝ[Y[][Û—JÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B™ØÝ[Y[ÈÝØÚ×Ú[™]šYX[ÜÜÝÞX\ÈHÞ[X›Û\ØÛÜYY\Z]HK\Ú\™H][ÝB™[™Ú[ÈHÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚËÜÝØÚ×ÞKœJB˜ÛÛ™š\›\ÈHX\šÙ]\™Yš^YÞ[X›ÛÜ[Û˜[Y\Z]HÚÙ[‹Ý[Y[Ý]\™Ý[Y[Â˜[™HÛËXÛÛ[[ˆ][XØ˜[YX™\ÜÛœÙHÛÛZ[š[™ÈHX\Y9ã¬9.íØ[™˜9¥íºeí][\Ë‚‚•H›ÝšY\ˆÙ[XÝÈ\ÈØ[X›HÛ›H[™\ˆPT’ÑUÔUSÕXÚ]^XÚ]˜šY]Ï^Y\Z]WÜÜÝ\š]™\È[™\ÜÙ\ÈH™\]Y\ÝYX\šÙ]\™Yš^YK\Ú\™BœÞ[X›Û[X™\˜][H^ÛY\ÈÜ™Y[X[È[™[Y[Ý]ÛÛ›ÛÈœ›ÛHBœ›ÝšY\ˆ™\]Y\ÝØØXÚHY[]K˜[Y]\ÈHØÝ[Y[Y][H[ÝÛ\Ý[š\]YH][KÝ˜[YH›ÝÜËÛÙHY[]Kš[š]H[Y\šXÈ˜[Y\È[™][ÝB[Y\Ý[\[™™XÛÜ™ÈHÞ[X›Û\ØÛÜYÝ\œ™[\][ÝH™\^HY]Y]K‚‚•H^\Ý[™ÈØ[›ÛšXØ[][ÝHÛÛ˜XÝX\ÈÛ›H9ã¬9.íØÈÝ\œ™[ÜšXÙX[™˜9¥íºeíÈX\šÙ]Ü][ÝWÝ[Y\Ý[\È[Ý\ˆY\Z]HšY[È™[XZ[ˆÜ\]YH˜]Â™]šY[˜ÙKˆ›ÈØ[Ý[][Û‹Ø]K\[[™KÓHÜˆ[œ][ØY\ˆÛÛ˜XÝ\Â˜Ú[™ÙYˆ]™HØ[È™[XZ[ˆÜZ[ŽÈ\ÝÈ\ÙH[ˆ[š™XÝYÛY[[™Hœ›Þ™[‚™š^\™HÚ]ØXÚH™\^K[˜[Y\™\]Y\Ý™\ÜÛœÙK]˜[Y][Û‹Ø[›ÛšXØ[›X\[™È[™™\^K\ØÛÜHÛÝ™\˜YÙK‚‚ˆÈÈÈ\ÙH‹Ìˆ8 %K\Ú\™HY\Z]HÛÛ\[žK\›Ùš[H˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HÝ\œ™[ÐRÔÚ\™HÝØÚËY]HØÝ[Y[][Û—JÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B™ØÝ[Y[ÈÝØÚ×Ú[™]šYX[Ø˜\ÚX×Ú[™›×ÞX\ÈHÞ[X›Û\ØÛÜYY\Z]HK\Ú\™B˜ÛÛ\[žK\›Ùš[H[™Ú[ÈHÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚ×Ù[™[Y[[ÜÝØÚ×Ø˜\ÚX×Ú[™›×ÞKœJB˜ÛÛ™š\›\ÈHX\šÙ]\™Yš^YÞ[X›ÛÜ[Û˜[Y\Z]HÚÙ[‹Ý[Y[Ý]\™Ý[Y[Â˜[™[ˆ][XØ˜[YX›Ùš[H™\ÜÛœÙK‚‚•H›ÝšY\ˆÙ[XÝÈ\ÈØ[X›HÛ›H[™\ˆÓÓTS–WÓQUQUXÚ]^XÚ]˜šY]Ï^Y\Z]WØ˜\ÚX×Ú[™›Ø\š]™\È[™\ÜÙ\ÈH™\]Y\ÝYX\šÙ]\™Yš^YK\Ú\™HÞ[X›Û[X™\˜][H^ÛY\ÈÜ™Y[X[È[™[Y[Ý]ÛÛ›ÛÈœ›ÛBH›ÝšY\ˆ™\]Y\ÝØØXÚHY[]K˜[Y]\ÈH^XÝÛËYšY[™\ÜÛœÙK™ØÝ[Y[Y][H[ÝÛ\Ý™\]Z\™Y›Ùš[HY[YšY\œËØØ[\ˆ˜[Y\ËB™ØÝ[Y[YY™š[X]WÚ[™\ÝžXØš™XÝ[™š[š]H[Y\šXÈ]KØ\ÜÙ]Ü\œÛÛ›™[Âš\ÜÝX[˜ÙHšY[Ë[™™XÛÜ™ÈHÞ[X›Û\ØÛÜYÛÛ\[žK\›Ùš[HÛ˜\ÚÝ›Ü‚œ™\^K‚‚•H›Ü›X[^™\ˆ[Z]ÈRÔÒT‘WÖQTRUWÐTÒP×ÒS‘“×ÔU×ÓÓ“XÈ\ØÜš\]™Kœ™YÚ\Ý˜][Û‹\œÛÛ›™[ÛÛ›Û[™›ÝšY\‹\ÜXÚYšXÈ]HšY[È™[XZ[ˆ˜]Â™]šY[˜ÙH[™È›Ý™XÛÛYHØ[›ÛšXØ[ÛÛ\[žHÜˆ\Ý[™È˜XÝËˆ›ÈØ[Ý[][Û‹™Ø]K\[[™KÓHÜˆ[œ][ØY\ˆÛÛ˜XÝ\ÈÚ[™ÙYˆ]™HØ[È™[XZ[‚›ÜZ[ŽÈ\ÝÈ\ÙH[ˆ[š™XÝYÛY[[™Hœ›Þ™[ˆš^\™HÚ]ØXÚH™\^Kš[˜[Y\™\]Y\Ý™\ÜÛœÙK]˜[Y][Û‹˜]Ë[Û›H[™™\^K\ØÛÜHÛÝ™\˜YÙK‚‚ˆÈÈÈ\ÙH‹ÌÈ8 %K\Ú\™HÓ’S‘“ÈÛÛ\[žK\›Ùš[H˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HÝ\œ™[ÐRÔÚ\™HÝØÚËY]HØÝ[Y[][Û—JÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B™ØÝ[Y[ÈÝØÚ×Ü›Ùš[WØÛš[™›Ø\ÈHÞ[X›Û\ØÛÜYÓ’S‘“ÈK\Ú\™B˜ÛÛ\[žK\›Ùš[H[™Ú[ÈHÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚËÜÝØÚ×Ü›Ùš[WØÛš[™›ËœJBœ\ÜÙ\ÈHÚ^YYÚ]Þ[X›Û\ÈØÛÙX[™™]\›œÈHØÝ[Y[Yˆ›Ùš[B™šY[Ë‚‚•H›ÝšY\ˆÙ[XÝÈ\ÈØ[X›HÛ›H[™\ˆÓÓTS–WÓQUQUXÚ]^XÚ]˜šY]ÏXÛš[™›×Ü›Ùš[X\ÜÙ\ÈH[œ™Yš^YÚ^YYÚ]K\Ú\™HÛÙK˜[Y]\ÂH^XÝÚ[™ÛK\›ÝÈšY[Ù]K\Ú\™HÛÙHY[]KØØ[\‹Û[˜[Y\È[™˜[Y]K[Ü‹[[›Ùš[H˜[Y\Ë[™™XÛÜ™ÈHÞ[X›Û\ØÛÜYÝ\œ™[ÛÛ\[žK\›Ùš[BœÛ˜\ÚÝ›Üˆ™\^K‚‚•H›Ü›X[^™\ˆ[Z]ÈRÔÒT‘WÐÓ’S‘“×Ô“Ñ’SWÔU×ÓÓ“XÈ\ØÜš\]™Kœ™YÚ\Ý˜][Û‹ÛÛXÝ[™›ÝšY\‹\ÜXÚYšXÈ]HšY[È™[XZ[ˆ˜]È]šY[˜ÙB˜[™È›Ý™XÛÛYHØ[›ÛšXØ[ÛÛ\[žHÜˆ\Ý[™È˜XÝËˆ›ÈØ[Ý[][Û‹Ø]Kœ\[[™KÓHÜˆ[œ][ØY\ˆÛÛ˜XÝ\ÈÚ[™ÙYˆ]™HØ[È™[XZ[ˆÜZ[ŽÂ\ÝÈ\ÙH[ˆ[š™XÝYÛY[[™Hœ›Þ™[ˆš^\™HÚ]ØXÚH™\^Kš[˜[Y\™\]Y\Ý™\ÜÛœÙK]˜[Y][Û‹˜]Ë[Û›H[™™\^K\ØÛÜHÛÝ™\˜YÙK‚‚ˆÈÈÈ\ÙH‹Í8 %K\Ú\™HÛ™ÚX\Ú[ˆXZ[‹X\Ú[™\ÜËZ[›ÙXÝ[Ûˆ˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HÝ\œ™[ÐRÔÚ\™HÝØÚËY]HØÝ[Y[][Û—JÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B™ØÝ[Y[ÈÝØÚ×ÞžZœ×ÝØ\ÈHÞ[X›Û\ØÛÜYÛ™ÚX\Ú[ˆK\Ú\™B›XZ[‹X\Ú[™\ÜËZ[›ÙXÝ[Ûˆ[™Ú[ÈHÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚ×Ù[™[Y[[ÜÝØÚ×ÞžZœ×ÝËœJBœ\ÜÙ\ÈHÚ^YYÚ]Þ[X›ÛÈH\Ý™X[HÜ\˜]HYÙH[™™]\›œÈB™ØÝ[Y[Yš]™HšY[È: ¨yéj9.èùè X9..ú$)y.&¹b¨X9.©ùdàyìnùg¢Ø9.©ùdàyd#yéì[™9îãú$)z# ùfí‚‚•H›ÝšY\ˆÙ[XÝÈ\ÈØ[X›HÛ›H[™\ˆÓÓTS–WÓQUQUXÚ]^XÚ]˜šY]ÏX\Ú[™\Ü×Ú[›Ø\ÜÙ\ÈH[œ™Yš^YÚ^YYÚ]K\Ú\™HÛÙK˜[Y]\ÂH^XÝÚ[™ÛK\›ÝÈšY[Ù]K\Ú\™HÛÙHY[]H[™Ýš[™ËÛ[˜[Y\Ë˜[™™XÛÜ™ÈHÞ[X›Û\ØÛÜYÝ\œ™[\Ú[™\ÜËZ[›ÙXÝ[ÛˆÛ˜\ÚÝ›Ü‚œ™\^K‚‚•H›Ü›X[^™\ˆ[Z]ÈRÔÒT‘WÐ•TÒS‘TÔ×ÒS•“×ÔU×ÓÓ“XÈ\ØÜš\]™H\Ú[™\ÜËœ›ÙXÝ[™Ü\˜][™Ë\ØÛÜH^™[XZ[œÈ˜]È]šY[˜ÙH[™Ù\È›Ý™XÛÛYB˜Ø[›ÛšXØ[™]™[YKÛÜ™KX\Ú[™\ÜÈÜˆ\Ú[™\ÜÈ]X[]H˜XÝËˆ›ÈØ[Ý[][Û‹™Ø]K\[[™KÓHÜˆ[œ][ØY\ˆÛÛ˜XÝ\ÈÚ[™ÙYˆ]™HØ[È™[XZ[‚›ÜZ[ŽÈ\ÝÈ\ÙH[ˆ[š™XÝYÛY[[™Hœ›Þ™[ˆš^\™HÚ]ØXÚH™\^Kš[˜[Y\™\]Y\Ý™\ÜÛœÙK]˜[Y][Û‹˜]Ë[Û›H[™™\^K\ØÛÜHÛÝ™\˜YÙKˆ›Â’\Ú\™HÛÝ[\œ\\ÈYY™XØ]\ÙHHÙ[XÝYØÝ[Y[YÛXÙH\ÂK\Ú\™K[Û›K‚‚ˆÈÈÈ\ÙH‹ÍH8 %K\Ú\™HX\Ý[Û™^HÝÛ™\œÚ\\YÙHX\šÙ]\›Ùš[H˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HÝ\œ™[ÐRÔÚ\™HÝØÚËY]HØÝ[Y[][Û—JÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B™ØÝ[Y[ÈÝØÚ×ÙÜžWÜ›Ùš[WÙ[X\È[ˆK\Ú\™HX\Ý[Û™^HX\šÙ]]ÚYBš\ÝÜšXØ[ÝÛ™\œÚ\\YÙH›Ùš[NÈHÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚ×Ù™X]\™KÜÝØÚ×ÙÜžWÙ[KœJB˜XØÙ\È›È\Ý™X[H\™Ý[Y[È[™™]\›œÈH^XÝZYÚšY[È9.©9¦$ù¥éy§'Ø˜z ¨z-*9¢¯9 .ù«å9/¢Ø:-*9¢¯9ak9cî9¥l:aãØ:-*9¢¯9ë%9¥l:-*9¢¯9 .ú ¨y¥l:-*9¢¯9 .ùn ¹`/˜9¬ª¹­ìLÌ9£!ù¥l[™9­ª:-ã9naXˆH[\[Y[][ÛˆÛÛ™\È]È\˜Ù[˜][ÈÂ˜Hœ˜XÝ[ÛˆžH]šY[™ÈžHL™Y›Ü™H™]\›š[™ÈHX›KÛÈHY\\‚œ™\Ù\™\È]ÛÝ\˜ÙK\™]\›™YØØ[H[™™XÛÜ™È]^XÚ]K‚‚•H›ÝšY\ˆÙ[XÝÈ\ÈØ[X›HÛ›H[™\ˆÕÓ‘T”ÒTÔQÑXÚ]^XÚ]˜šY]Ï[X\šÙ]Ü›Ùš[X\ÜÙ\È›È\Ý™X[H\™Ý[Y[Ë˜[Y]\ÈH^XÝ›ÝÂœÚ\H[™ÝšXÝH\ØÙ[™[™È9.©9¦$ù¥éy§'Ø˜[Y\Ë[™™]Z[œÈHÛÛ\]B›X\šÙ]]ÚYH™\ÜÛœÙKˆH™\]Y\ÝYK\Ú\™H\Ý[™È\È›Ý™[˜[˜ÙHÛÛ^Û›N‚H™\ÜÛœÙH\È›È\ÜÝY\ˆY[]KÛÈ›È\Ý[™Ë\›ÝÈš[\š[™ÈÜˆ[]K\›ÝÂœÙ[XÝ[Ûˆ\ÈÛZ[YYˆH›Ü›X[^™\ˆ[Z]Â˜RÔÒT‘WÓÕÓ‘T”ÒTÔQÑWÔ“Ñ’SWÔU×ÓÓ“XX]™\Â˜ÛÝ™\›˜[˜ÙWÜš\Ú×Û]™[Üš]XØ[HZ\ÜÚ[™È[™Ü™X]\È›ÈØ[›ÛšXØ[YÙK™ÛÝ™\›˜[˜ÙKØ\ÚXY\]Z]˜[[ÜˆÚ\™H˜XÝˆ›È\Ú\™HÛÝ[\œ\Ü‚˜Ø[Ý[][Û‹Ø]K\[[™KÓHÜˆ[œ][ØY\ˆÛÛ˜XÝ\ÈYYˆ]™HØ[Âœ™[XZ[ˆÜZ[ŽÈ\ÝÈ\ÙH[ˆ[š™XÝYÛY[[™Hœ›Þ™[ˆš^\™HÚ]ØXÚBœ™\^K[˜[Y\™\]Y\ÝÝšXÝ\™\ÜÛœÙK˜]Ë[Û›H[™™\^K\ØÛÜHÛÝ™\˜YÙK‚‚ˆÈÈÈ\ÙH‹Íˆ8 %K\Ú\™HX\Ý[Û™^HÛÛÙÚ[X\šÙ]\›Ùš[H˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈH™^\Ý[˜ÝØÝ[Y[YRÔÚ\™HX\Ý[Û™^B™ÛÛÙÚ[šY]ËÝØÚ×ÜÞWÜ›Ùš[WÙ[X[™\ˆH^\Ý[™Â˜ÓÓÑÒSÒSTRT“QS•Ø]YÛÜžKˆHÐRÔÚ\™HÝØÚËY]HØÝ[Y[][Û—JÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B™\ØÜšX™\ÈH›ËX\™Ý[Y[K\Ú\™HX\šÙ]Ý™\šY]È™]\›š[™È[\ÝÜšXØ[›ÝÜÎÂHÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚ×Ù™X]\™KÜÝØÚ×ÜÞWÙ[KœJBœ™]\›œÈH^XÝZYÚšY[È9¢©ydb¹§'Ø9eaº*¢X9eaº*¢yaãù`/9aà:-a9.©Ø˜9eaº*¢ych9aà:-a9.©ù«å9/¢Ø9eaº*¢yaãù`/9ch9aà:-a9.©ù«å9/¢Ø9aà9b*y­©º)á9ª(X[™˜9eaº*¢yaãù`/9ch9aà9b*y­©¹«å9/¢ØÚ][[Ý[ÛÛ[[œÈ[ˆ]X[ˆ[™›ÝšY\ˆ˜][ÜË‚‚•H›ÝšY\ˆÙ[XÝÈ\ÈØ[X›HÛ›HÚ]^XÚ]šY]Ï[X\šÙ]Ü›Ùš[Xœ\ÜÙ\È›È\Ý™X[H\™Ý[Y[Ë˜[Y]\ÈH^XÝ›ÝÈÚ\Kš[š]B›[Y\šXËÛ[˜[Y\È[™ÝšXÝH\ØÙ[™[™È™\Ü\š[ÙË[™™]Z[œÈB˜ÛÛ\]HX\šÙ]]ÚYH™\ÜÛœÙKˆH™\]Y\ÝYK\Ú\™H\Ý[™È\È›Ý™[˜[˜ÙB˜ÛÛ^Û›NˆH™\ÜÛœÙH\È›È\ÜÝY\ˆY[]KÛÈ›È›ÝÈš[\š[™ÈÜ‚™[]HÙ[XÝ[Ûˆ\ÈÛZ[YYˆH›Ü›X[^™\ˆ[Z]Â˜RÔÒT‘WÑÓÓÑÒSÔ“Ñ’SWÔU×ÓÓ“XX\šÜÈÛÛÙÚ[[™[\Z\›Y[\Â˜Üš]XØ[HZ\ÜÚ[™È[™Ü™X]\È›ÈØ[›ÛšXØ[XØÛÝ[[™Ë›Ùš]˜][ÈÜ‚˜\Ú[™\ÜË\]X[]H˜XÝˆYÙÜ™YØ]H˜[Y\ÈZ^[›X[[™[\š[H™\Ü\š[ÙÂ˜[™™\]Z\™Hš[X\žKYš[[™È[]KØÛÜH[™™XÛÛ˜Ú[X][Ûˆ™]šY]Ëˆ\Ú\™B™ÛÛÙÚ[ÛÝ™\˜YÙH™[XZ[œÈÝ]ÚYH\ÈÛXÙKˆ]™HØ[È™[XZ[ˆÜZ[ŽÈ\ÝÂ\ÙH[ˆ[š™XÝYÛY[[™Hœ›Þ™[ˆš^\™HÚ]ØXÚH™\^K[˜[Y\™\]Y\ÝœÝšXÝ\™\ÜÛœÙK˜]Ë[Û›H[™™\^K\ØÛÜHÛÝ™\˜YÙK‚‚ˆÈÈÈ\ÙH‹ÍÈ8 %K\Ú\™HX\Ý[Û™^HÛÛÙÚ[Z[\Z\›Y[›Ü™XØ\Ý˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈH™^\Ý[˜ÝØÝ[Y[YRÔÚ\™HX\Ý[Û™^B™ÛÛÙÚ[šY]ËÝØÚ×ÜÞWÞ\WÙ[X[™\ˆH^\Ý[™Â˜ÓÓÑÒSÒSTRT“QS•Ø]YÛÜžKˆHÐRÔÚ\™HÝØÚËY]HØÝ[Y[][Û—JÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B™\ØÜšX™\ÈH™\]Z\™Y™\ÜY]H]X[™HÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚ×Ù™X]\™KÜÝØÚ×ÜÞWÙ[KœJB™š[\œÈ‘TÔ•ÑUX™Y›Ü™H™]\›š[™ÈH^XÝMšY[È9n£ùcíØ: ¨yéj9.èùè X˜: ¨yéj9ë 9éì9.&¹îêycæ9bª9c§ùfè9§ 9¥¬9eaº*¢y¢©ydb¹§'Ø9§ 9¥¬9. 9§'ùeaº*¢X9."¹nm9eaº*¢X˜:h¡:+¨yaà9b*y­©‹y."úfd:h¡:+¨yaà9b*y­©‹y."ºfd9.&¹îêycæ9bª9nayn©‹y."úfd˜9.&¹îêycæ9bª9nayn©‹y."ºfd9."¹nm9n©¹d#9§'ùaà9b*y­©˜9ak9db¹¥éy§'Ø[™9.©9¦$ùn ¹g.˜‚•HØÝ[Y[Y[[Ý[šY[È\™Hš[X\š[H]X[ˆ[™HÚ[™ÙK\˜[™ÙHšY[Â˜\™H\˜Ù[˜[Y\ÎÈ›Ý™[XZ[ˆ›ÝšY\‹\™\ÜY˜]ÈÛÛ^‚‚•H›ÝšY\ˆÙ[XÝÈ\ÈØ[X›HÛ›HÚ]^XÚ]˜šY]ÏZ[\Z\›Y[Ù›Ü™XØ\Ý\ÜÙ\ÈH˜[Y]Y]OVVVVSSQ˜[Y]\ÂHÛÛ\]H[š]™\œÙIÜÈ^XÝØÚ[XKÜÚ]]™H\ØÙ[™[™ÈÙ\]Y[˜ÙK[X›B™]\ËÛ[X™\œÈ[™^šY[Ë[ˆš[\œÈÈH™\]Y\ÝYK\Ú\™HÛÙK‚”™\^HY]Y]H\Ý[™ÝZ\Ú\ÈH™\]Y\Ý\\š[Ùš[\ˆœ›ÛHHÙ\\˜]B˜9§ 9¥¬9eaº*¢y¢©ydb¹§'ØšY[[™™XÛÜ™ÈHX\šÙ]]ÚYH\Ý™X[HØÛÜH\Âœ›ÝšY\ˆ›ÝÈš[\š[™ËˆH›Ü›X[^™\ˆ[Z]Â˜RÔÒT‘WÑÓÓÑÒSÑ“Ô‘PÐTÕÔU×ÓÓ“XX\šÜÈÛÛÙÚ[[™[\Z\›Y[\Â˜Üš]XØ[HZ\ÜÚ[™È[™Ü™X]\È›ÈØ[›ÛšXØ[›Ü™XØ\Ý›Ùš]XØÛÝ[[™Ëœ˜][ÈÜˆ\Ú[™\ÜÈ]X[]H˜XÝˆ›ÝšY\ˆ^XÝ][ÛœÈ[™ÛÛÙÚ[ÛÛ^œÝ[™\]Z\™Hš[X\žKYš[[™È[]K\š[Ù[™™XÛÛ˜Ú[X][Ûˆ™]šY]ÎÈ\Ú\™B™ÛÛÙÚ[ÛÝ™\˜YÙH™[XZ[œÈÝ]ÚYH\ÈÛXÙKˆ]™HØ[È™[XZ[ˆÜZ[ŽÈ\ÝÂ\ÙH[ˆ[š™XÝYÛY[[™Hœ›Þ™[ˆš^\™HÚ]ØXÚH™\^K[˜[Y\™\]Y\ÝœÝšXÝ\™\ÜÛœÙK˜]Ë[Û›H[™™\^K\ØÛÜHÛÝ™\˜YÙK‚‚ˆÈÈÈ\ÙH‹Î8 %K\Ú\™HÚ[˜H[˜Y^K]˜YH˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈH\Ý[˜ÝØÝ[Y[YRÔÚ\™HÚ[˜B˜ÝØÚ×Ú[˜Y^WÜÚ[˜X[™Ú[[™\ˆH^\Ý[™ÈPT’ÑUÒTÕÔ–XØ]YÛÜžK‚•HÐRÔÚ\™HÝØÚËY]HØÝ[Y[][Û—JÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B™Yš[™\ÈHX\šÙ]\™Yš^YÞ[X›Û[™™\]Z\™Y]X[ˆVVVSSQ›Ü›NÈB–ÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚËÜÝØÚ×Ú[˜Y^WÜÚ[˜KœJBœ™]\›œÈH^XÝÙ]™[ˆšY[ÈÞ[X›Û˜[YXXÚÝ[YXšXÙX›Û[YX˜™]—ÜšXÙX[™Ú[™›Üˆ\™ÙH[˜Y^HÜ™\œÈÛˆH™\]Y\ÝY˜Y[™È^K‚•HØÝ[Y[YÚ[™^[\\È\™HX[™X‚‚•H›ÝšY\ˆÙ[XÝÈ\ÈØ[X›HÛ›HÚ]^XÚ]šY]ÏZ[˜Y^WÜÚ[˜X™\š]™\ÈHÝÙ\‹XØ\ÙHX\šÙ]\™Yš^YÞ[X›Ûœ›ÛHH™\]Y\ÝYK\Ú\™B›\Ý[™Ë\ÜÙ\ÈH˜[Y]Y]H[˜Ú[™ÙY[™™Z™XÝÈ\Ú\™H™\]Y\ÝÈÜ‚™^˜H\˜[Y]\œËˆ]˜[Y]\ÈH^XÝ™\ÜÛœÙHÚ\K™\]Y\ÝYÞ[X›Û››Û‹Y[\H˜[Y\Ë“SN”ÔØ[Y\È[ˆ›Û‹YXÜ™X\Ú[™ÈÜ™\‹™XÛÙÛš^™YÚ[™˜[Y\È[™š[š]H[Y\šXËÛ[šXÙKÝ›Û[YHšY[ÈÚ][YÙ\‹Û[›Û[YK‚”™\^HY]Y]Hš[™ÈH™\]Y\ÝY]HÈH\Ý[™Ë\ØÛÜY™\ÜÛœÙHÚ[Bœ™XÛÜ™[™È]H›ÝÜÈ[\Ù[™\È^ÜÙHÛ›H[YK[Ù‹Y^HØœÙ\˜][ÛœË‚‚•H›Ü›X[^™\ˆ[Z]ÈRÔÒT‘WÔÒSWÒS•QVWÔU×ÓÓ“XX\šÜÈX\šÙ]Ú\ÝÜžX˜\ÈÜš]XØ[HZ\ÜÚ[™È[™Ü™X]\È›ÈØ[›ÛšXØ[Z[KZ\ÝÜžK\]ZY]K›Ü™\‹Y›ÝÈÜˆ˜[X][Ûˆ˜XÝˆ]™[ˆÚ]H™\]Y\ÝY]KH›ÝÈØÚ[XHÙ\Â››ÝØ\œžHH›ÝË[]™[˜Y[™È]HÜˆHÝ\ÜYØ[›ÛšXØ[X\[™Ëˆ]™HØ[Âœ™[XZ[ˆÜZ[ŽÈ\ÝÈ\ÙH[ˆ[š™XÝYÛY[[™Hœ›Þ™[ˆš^\™HÚ]ØXÚBœ™\^K[˜[Y\™\]Y\Ý^XÝ\ØÚ[XK™\ÜÛœÙK]˜[Y][Û‹˜]Ë[Û›H[™œ™\^K\ØÛÜHÛÝ™\˜YÙKˆ›ÈØ[Ý[][Û‹Ø]K\[[™KÓHÜˆ[œ][ØY\‚˜ÛÛ˜XÝÚ[™Ù\Ë‚‚ˆÈÈÈ\ÙH‹ÎH8 %K\Ú\™HX\Ý[Û™^HÛÛÙÚ[Y]Z[˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈH\Ý[˜ÝØÝ[Y[YRÔÚ\™HX\Ý[Û™^B˜ÝØÚ×ÜÞWÙ[X[™Ú[[™\ˆH^\Ý[™ÈÓÓÑÒSÒSTRT“QS•Ø]YÛÜžKˆB–ÐRÔÚ\™HÝØÚËY]HØÝ[Y[][Û—JÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B˜[™ÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚ×Ù™X]\™KÜÝØÚ×ÜÞWÙ[KœJB™Yš[™HH™\]Z\™Y]OVVVVSSQ™\ÜY]Hš[\ˆ[™H^XÝ[ˆšY[Â˜9n£ùcíØ: ¨yéj9.èùè X: ¨yéj9ë 9éì9eaº*¢X9eaº*¢ych9aà:-a9.©ù«å9/¢Ø9aà9b*y­©˜˜9aà9b*y­©¹d#9«å9."¹nm9eaº*¢X9ak9db¹¥éy§'Ø[™9.©9¦$ùn ¹g.˜ˆ[[Ý[È\™Hš[X\š[Bš[ˆ]X[ˆ[™˜][ÜÈ™[XZ[ˆ›ÝšY\‹\™\ÜY˜[Y\Ë‚‚•H›ÝšY\ˆÙ[XÝÈ\ÈØ[X›HÛ›HÚ]^XÚ]˜šY]ÏYÛÛÙÚ[Ù]Z[Ý\ÜÈK\Ú\™H\Ý[™ÜÈÛ›K\ÜÙ\ÈH˜[Y]Y™]H[˜Ú[™ÙY˜[Y]\ÈHÛÛ\]HX\šÙ]]ÚYH™\ÜÛœÙH™Y›Ü™HÙ[XÝ[™ÂH™\]Y\ÝY\Ý[™Ë[™™XÛÜ™È™\]Y\Ý\\š[Ù›ÝšY\‹Yš[\‹Ù\]Y[˜ÙK[š][™^XÝYšY[™\^HY]Y]Kˆ]™Z™XÝÈZ\ÜÚ[™ÈÜˆ[™^XÝYšY[Ë››Û‹\ÜÚ]]™KÛ›Û‹X\ØÙ[™[™ÈÙ\]Y[˜ÙH˜[Y\Ë[˜[YÜ[]Y]\Ë›Û‹Yš[š]B›Üˆ›Û‹[[Y\šXÈ[Y\šXÈ˜[Y\È[™[˜[Y^˜[Y\Ëˆ›ÈX]Ú[™È\Ý[™È\Âœ™]Z[™Y\È[ˆ[\H˜]ÈÛ˜\ÚÝ‚‚•H›Ü›X[^™\ˆ[Z]ÈRÔÒT‘WÑÓÓÑÒSÑURSÔU×ÓÓ“XX\šÜÈÛÛÙÚ[[™˜[\Z\›Y[\ÈÜš]XØ[HZ\ÜÚ[™È[™Ü™X]\È›ÈØ[›ÛšXØ[XØÛÝ[[™Ë›Ùš]œ˜][ÈÜˆ\Ú[™\ÜÈ]X[]H˜XÝˆYÙÜ™YØ]Üˆ[[Ý[Ë˜][ÜË›Ùš]ÛÛ^[™˜[››Ý[˜Ù[Y[Y]Y]H™\]Z\™Hš[X\žKYš[[™È[]KXØÛÝ[[™ÈØÛÜH[™œ™XÛÛ˜Ú[X][Ûˆ™]šY]Ëˆ\Ú\™HÛÛÙÚ[ÛÝ™\˜YÙH™[XZ[œÈÝ]ÚYH\ÈÛXÙK‚“]™HØ[È™[XZ[ˆÜZ[ŽÈ\ÝÈ\ÙH[ˆ[š™XÝYÛY[[™Hœ›Þ™[ˆš^\™HÚ]˜ØXÚH™\^K[˜[Y\™\]Y\Ý^XÝ\ØÚ[XK™\ÜÛœÙK]˜[Y][Û‹˜]Ë[Û›H[™œ™\^K\ØÛÜHÛÝ™\˜YÙKˆ›ÈØ[Ý[][Û‹Ø]K\[[™KÓHÜˆ[œ][ØY\‚˜ÛÛ˜XÝÚ[™Ù\Ë‚‚ˆÈÈÈ\ÙH‹Ž8 %K\Ú\™HX\Ý[Û™^HX\šÙ]]ÚYH›ÝXÙH˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈH\Ý[˜ÝØÝ[Y[YRÔÚ\™HX\Ý[Û™^B˜ÝØÚ×Û›ÝXÙWÜ™\Ü[™Ú[[™\ˆH^\Ý[™ÈTÐÓÔÕT‘WÓ“ÕPÑTØØ]YÛÜžK‚•HÐRÔÚ\™HÝØÚËY]HØÝ[Y[][Û—JÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B˜[™ÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚ×Ù[™[Y[[ÜÝØÚ×Û›ÝXÙKœJB™Yš[™HHØ]YÛÜžHÚÚXÙ\È›ÜˆÞ[X›ÛH™\]Z\™Y]OVVVVSSQ[™B™^XÝÚ^šY[È9.èùè X9d#yéì9ak9db¹¨!úh¦9ak9db¹ìnùg¢Ø9ak9db¹¥éy§'Ø[™9ïdyg`‚‚•H›ÝšY\ˆÙ[XÝÈ\ÈØ[X›HÛ›HÚ]^XÚ]šY]Ï[X\šÙ]Û›ÝXÙXœÝ\ÜÈK\Ú\™H\Ý[™ÜÈÛ›K\ÜÙ\ÈHÙ[XÝYØ]YÛÜžH[™˜[Y]Y]BÈH\Ý™X[H[˜Ý[Û‹˜[Y]\ÈHÛÛ\]HX\šÙ]]ÚYH™\ÜÛœÙH™Y›Ü™BœÙ[XÝ[™ÈH™\]Y\ÝY\Ý[™Ë[™™XÛÜ™ÈH™\]Y\Ý]K›ÝÈ]Kœ›ÝšY\‹Yš[\ˆ[™X\šÙ]][š]™\œÙHØÛÜH›Üˆ™\^Kˆ]™Z™XÝÈZ\ÜÚ[™ÈÜ‚[™^XÝYšY[Ë›Û‹\Ú^YYÚ]ÛÙ\Ë›[šÈ^[˜[YT“È[™[žH›ÝÂÚÜÙH9ak9db¹¥éy§'ØÙ\È›ÝX]ÚH™\]Y\ÝY]Kˆ[ˆ[\H\Ý[™ÈÙ[XÝ[Û‚š\È™]Z[™Y\È[ˆ^XÚ][\H˜]ÈÛ˜\ÚÝ‚‚•H›Ü›X[^™\ˆ[Z]ÈRÔÒT‘WÓPT’ÑUÓ“ÕPÑT×ÔU×ÓÓ“XX\šÜÂ˜XØÛÝ[[™×ÛÜ[š[Û˜[™ÛÝ™\›˜[˜ÙWÜš\Ú×Û]™[\ÈÜš]XØ[HZ\ÜÚ[™È[™˜Ü™X]\È›Èš[[™ËXÛÛ[XØÛÝ[[™ÈÜˆÛÝ™\›˜[˜ÙH˜XÝˆ]KX›Ý[™›ÝXÙB›Y]Y]HY[YšY\È[››Ý[˜Ù[Y[Ø[™Y]\È]Ù\È›Ý\ÝX›\ÚZ\‚˜ÛÛ[Ë]Y][™ÝXYÙHÜˆÛÝ™\›˜[˜ÙHÙ]™\š]Kˆ\Ú\™H›ÝXÙHÛÝ™\˜YÙBœ™[XZ[œÈÝ]ÚYH\ÈÛXÙKˆ]™HØ[È™[XZ[ˆÜZ[ŽÈ\ÝÈ\ÙH[ˆ[š™XÝY˜ÛY[[™Hœ›Þ™[ˆš^\™HÚ]ØXÚH™\^K[˜[Y\™\]Y\Ý^XÝ\ØÚ[XKœ™\ÜÛœÙK]˜[Y][Û‹˜]Ë[Û›H[™™\^K\ØÛÜHÛÝ™\˜YÙKˆ›ÈØ[Ý[][Û‹Ø]Kœ\[[™KÓHÜˆ[œ][ØY\ˆÛÛ˜XÝÚ[™Ù\Ë‚‚ˆÈÈÈ\ÙH‹ŽH8 %K\Ú\™HX\Ý[Û™^HÚ\™ZÛ\‹[YY][™È˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈH\Ý[˜ÝØÝ[Y[YRÔÚ\™HX\Ý[Û™^B˜ÝØÚ×ÙÙÙ[X[™Ú[[™\ˆH^\Ý[™ÈTÐÓÔÕT‘WÓ“ÕPÑTØØ]YÛÜžKˆB–ÐRÔÚ\™HÝØÚËY]HØÝ[Y[][Û—JÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B˜[™ÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚ×Ù™X]\™KÜÝØÚ×ÙÙÙ[KœJB™Yš[™HH›ËX\™Ý[Y[Ý\œ™[\X›\ÚYY]HØ[[™H^XÝÙ[™HšY[Â˜9.èùè X9ë 9éì: ¨y.'9i)ù/&¹d#yéì9cë9o 9o 9iâù¥éX: ¨y§`ùænú+¬9¥éX9ã¬9g.¹ænú+¬9¥éX˜9ïdyîç9¢¥yéj9¥íºeíyo 9iâù¥éX9ïdyîç9¢¥yéj9¥íºeíyîäù§gù¥éX9a¬ú+«¹ak9db¹¥éX9ak9db¹¥éX˜9n£ùb%ùcíØ[™9£ä9¨b‚‚•H›ÝšY\ˆÙ[XÝÈ\ÈØ[X›HÛ›HÚ]^XÚ]˜šY]Ï\Ú\™ZÛ\—ÛYY][™ØÝ\ÜÈK\Ú\™H\Ý[™ÜÈÛ›K˜[Y]\ÈB˜ÛÛ\]HX\šÙ]]ÚYH™\ÜÛœÙH™Y›Ü™HÙ[XÝ[™ÈH™\]Y\ÝY\Ý[™Ë™]Z[œÂ˜[X]Ú[™È›ÝÜÈ[™™XÛÜ™ÈšY[[Ü™\‹]™[Y]K›ÝšY\‹Yš[\ˆ[™œÙ[XÝYÝ\Ý™X[KXÛÝ[Y]Y]H›Üˆ™\^Kˆ[X›H]\È[™›ÜÜØ[^˜\™H™\Ù\™Y[™[ˆ[\H\Ý[™ÈÙ[XÝ[Ûˆ\È™]Z[™Y\È[ˆ^XÚ]˜]ÂœÛ˜\ÚÝˆ›È™\Ü\\š[ÙÜˆÛÜœÜ˜]KXXÝ[Ûˆ]H\È[™™\œ™Y‚‚•H›Ü›X[^™\ˆ[Z]ÈRÔÒT‘WÔÒT‘RÓT—ÓQQUS‘Ô×ÔU×ÓÓ“XX\šÜÂ˜ÛÝ™\›˜[˜ÙWÜš\Ú×Û]™[\ÈÜš]XØ[HZ\ÜÚ[™È[™Ü™X]\È›ÈØ[›ÛšXØ[˜XÝ‚›YY][™È]\Ë›ÜÜØ[È[™[››Ý[˜Ù[Y[ÛÛ^È›Ý\ÝX›\ÚB™š[[™ËX˜XÚÙYÛÝ™\›˜[˜ÙHYÛY[ÜˆÛÜœÜ˜]KXXÝ[Ûˆ[\œ™]][Û‹ˆ\Ú\™B›YY][™ÈÛÝ™\˜YÙH™[XZ[œÈÝ]ÚYH\ÈÛXÙKˆ]™HØ[È™[XZ[ˆÜZ[ŽÈ\ÝÈ\ÙB˜[ˆ[š™XÝYÛY[[™Hœ›Þ™[ˆš^\™HÚ]ØXÚH™\^K[˜[Y\™\]Y\Ý™^XÝ\ØÚ[XK™\ÜÛœÙK]˜[Y][Û‹˜]Ë[Û›H[™™\^K\ØÛÜHÛÝ™\˜YÙKˆ›Â˜Ø[Ý[][Û‹Ø]K\[[™KÓHÜˆ[œ][ØY\ˆÛÛ˜XÝÚ[™Ù\Ë‚‚ˆÈÈÈ\ÙH‹Žˆ8 %\Ú\™HX\Ý[Û™^H]\ÝÝØÚËZÝ\˜[šÈ˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈH\Ý[˜ÝØÝ[Y[YRÔÚ\™HX\Ý[Û™^B˜ÝØÚ×Ú×ÚÝÜ˜[š×Û]\ÝÙ[X[™Ú[[™\ˆH^\Ý[™ÈPT’ÑUÐPÕU’UX˜Ø]YÛÜžKˆHÐRÔÚ\™HÝØÚËY]HØÝ[Y[][Û—JÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B˜[™ÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚËÜÝØÚ×Ú×ÚÝÜ˜[š×Ù[KœJB™Yš[™HHÞ[X›Û\ØÛÜY\Ú\™H]\Ý\˜[šÈØ[\Ú[™È[ˆ[œ™Yš^Yš]™KYYÚ]˜Þ[X›ÛX\šÙ]\OLØ[™H^XÝ[ˆ][XØ˜[YX][\Â˜X\šÙ]\XX\šÙ][ÛÝ[Ø[Õ[YX[›™\ÛÙXÜ˜ÔÙXÝ\š]PÛÙX˜˜[šØ˜[šÐÚ[™ÙX\Ô˜[šÐÚ[™ÙX\Ô˜[šÐÚ[™ÙWÜ˜[šØ[™›YØ‚‚•H›ÝšY\ˆÙ[XÝÈ\ÈØ[X›HÛ›HÚ]^XÚ]šY]ÏZÝÜ˜[š×Û]\Ýœ\ÜÙ\ÈH™\]Y\ÝY\Ú\™HÛÙHÝXÚ\ÈÌ˜[Y]\ÈH^XÝ™\ÜÛœÙBœÚ\K][H[š\]Y[™\ÜË\Ú\™HY[]KØ[Õ[YX[™[YÙ\‹Û[˜[Y\Ë˜[™™XÛÜ™ÈH[™Ú[Þ[X›Û›Ü›X]›ÝšY\ˆX\šÙ]\KÝ\œ™[Y^B›]\Ý\˜[šÈØÛÜK›ÝÈÛÝ[È[™›ÝËY\š]™YØœÙ\˜][Ûˆ[YH›Üˆ™\^KˆB››Ü›X[^™\ˆ[Z]ÈRÔÒT‘WÒ×ÒÕÔS’×ÓUTÕÔU×ÓÓ“X[™Ü™X]\È›ÈØ[›ÛšXØ[™˜XÝˆÜ[\š]H˜[šÈ[™›ÝšY\ˆ[Z[™È™[XZ[ˆ˜]È]šY[˜ÙHÛ›Kˆ\Ú\™B›]\Ý\˜[šÈ™\ÜÛœÙH[™[™ÈÝ^\ÈÝ]ÚYHØ[Ý[][ÛœËØ]\Ë\[[™KÓB˜[™[œ][ØY\ˆÛÛ˜XÝËˆ]™HØ[È™[XZ[ˆÜZ[ŽÈ\ÝÈ\ÙHHÙ™šXÚX[YØÂ™š^\™HÚ]ØXÚH™\^KX\šÙ]\ÜXÚYšXÈ™\]Y\ÝÜ™\ÜÛœÙH˜[Y][Û‹œ˜]Ë[Û›H›Ü›X[^˜][Ûˆ[™™\^K\ØÛÜHÛÝ™\˜YÙK‚‚ˆÈÈÈ\ÙH‹ŽÈ8 %K\Ú\™HX\Ý[Û™^H[Z]YÝÛ‹\ÛÛ˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈH\Ý[˜ÝØÝ[Y[YRÔÚ\™HX\Ý[Û™^B˜ÝØÚ×ÞÜÛÛÙØ×Ù[X[™Ú[[™\ˆH^\Ý[™ÈPT’ÑUÐPÕU’UXØ]YÛÜžK‚•HÐRÔÚ\™HÝØÚËY]HØÝ[Y[][Û—JÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B˜[™ÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚ×Ù™X]\™KÜÝØÚ×Þ—Ù[KœJB™Yš[™HH™XÙ[Y]HK\Ú\™H[Z]YÝÛ‹\ÛÛØ[Ú]™\]Z\™Y]OVVVVSSQ˜[™H^XÝšY[È9n£ùcíØ9.èùè X9d#yéì9­ª:-ã9naX9§ 9¥¬9.íØ9¢$9.©:h§X˜9­`z`&¹n ¹`/9 .ùn ¹`/9bª9  yn ¹æâ9ã¡Ø9£h¹¢bùã¡Ø9l ycez-a:aäX9§ 9d#¹l y§où¥íºeí˜9§où."¹¢$9.©:h§X:/ç¹îëz-ã9`g9o 9§où«(y¥l[™9¢`9lgº(c9.&˜‚‚•H›ÝšY\ˆÙ[XÝÈ\ÈØ[X›HÛ›HÚ]^XÚ]šY]Ï[[Z]ÙÝÛ—ÜÛÛœ\ÜÙ\ÈH™\]Y\ÝY]H[˜Ú[™ÙY˜[Y]\ÈHÛÛ\]H\Ý™X[H[š]™\œÙB˜™Y›Ü™Hš[\š[™ÈžHÚ^YYÚ]K\Ú\™HÛÙK[™™XÛÜ™ÈH[™Ú[ÛÝ\˜ÙB•T’K™\]Y\ÝYÛØœÙ\™Y]\Ë›ÝÈÛÝ[Ë›ÝšY\ˆš[\š[™Ë˜[šÈšY[[™œÝšXÝÜ™\š[™È›ÜˆØXÚH™\^Kˆ˜[Y][Ûˆ™Z™XÝÈZ\ÜÚ[™ÈÜˆ^˜HšY[Ëš[˜[YÛÙ\Ë\XØ]HÛÙ\ÈÜˆ˜[šÜË›Û‹X\ØÙ[™[™È˜[šÜË[\H^š[˜[YSTÔØØÚÈ[Y\Ë›Û‹Yš[š]H˜[Y\È[™›Û‹Z[YÙ\ˆXÝ]š]B˜ÛÝ[\œËˆHÚXÚÙYZ[ˆš^\™H\ÈHœ›Þ™[ˆ™X[™\ÜÛœÙHÛ˜\ÚÝ›Ü‚ŒŒŒLL‚‚•H›Ü›X[^™\ˆ[Z]ÈRÔÒT‘WÓSRUÑÕÓ—ÔÓÓÔU×ÓÓ“X[™Ü™X]\È›Â˜Ø[›ÛšXØ[˜XÝˆ][ÝK[Z]YÝÛˆXÝ]š]K›ÝšY\ˆ˜[šÚ[™È[™X\šÙ]XØ\™šY[È™[XZ[ˆ˜]È]šY[˜ÙH[™È›Ý\ÝX›\Ú\ÜÝY\ˆØ\Ú›ÝËÚ\™ZÛ\‚œ™]\›‹ÛÝ™\›˜[˜ÙK˜[X][ÛˆÜˆHØ[›ÛšXØ[X\šÙ]Y]šXËˆ]™HØ[È™[XZ[‚›ÜZ[ŽÈ\ÝÈÛÝ™\ˆ^XÚ]™\]Y\Ý˜[Y][Û‹^XÝ™\ÜÛœÙHØÚ[XK›\Ý[™Èš[\š[™È[˜ÛY[™È[ˆ[\HÙ[XÝ[Û‹˜]Ë[Û›H›Ü›X[^˜][Û‹˜ØXÚKÜ˜]È™\^H[™™\^K\ØÛÜHY]Y]Kˆ›ÈØ[Ý[][Û‹Ø]K\[[™KÓHÜˆ[œ][ØY\ˆÛÛ˜XÝÚ[™Ù\Ë‚‚ˆÈÈÈ\ÙH‹Ž8 %K\Ú\™HX\Ý[Û™^HÚ\™ZÛ\‹XÛÝ[Y]Z[˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈH\Ý[˜ÝØÝ[Y[YRÔÚ\™B˜ÝØÚ×ÞšØWÙÙ×Ù]Z[Ù[X[™Ú[[™\ˆH^\Ý[™Â˜ÒT‘RÓT—ÒÓS‘ÔØØ]YÛÜžKˆHÐRÔÚ\™HÝØÚËY]B™ØÝ[Y[][Û—JÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+H[™–ÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚ×Ù™X]\™KÜÝØÚ×ÙÙËœJB™Yš[™HHÚ^YYÚ]K\Ú\™HÞ[X›ÛH”ÒÓT“•SWÑU™\Ü[™Bœ›ÝšY\‹[™]]˜[šY]ÏZÛ\—ØÛÝ[Ù]Z[Ù[XÝÜ‹ˆHY\\ˆœ™Y^™\ÈBŒMKYšY[™\ÜÛœÙHØÚ[XK[˜ÛY[™ÈÝ][Ù™‹Ø[››Ý[˜Ù[Y[]HÙ[X[XÜËš[YÙ\ˆÛÝ[ÜÚ\™KX˜\ÙHšY[Ë›ÝšY\‹YYš[™Y\˜Ù[Ý˜[YHšY[ËÛÙB˜[™˜[YHY[]K[™\ØÙ[™[™È›ÝÈÜ™\ˆžH: ¨y.'9¢-ù¥l9îçú+¨y¢*¹«h¹¥éXˆB\Ý™X[H™\]Y\Ý\Èœ›Þ™[ˆÈ™\Ü˜[YOT”ÒÓT“•SWÑU˜ÛÜÛÛ[[œÏQS‘ÑUX\ØÙ[™[™ÈÛÝ\˜ÙHÜ™\ˆÚ]Y\\‹\ÚYH\ØÙ[™[™Â›Ý]]YÙTÚ^™OMLYÚ[˜][Û‹][ÝPÛÛ[[œÏYŒ‹ŒØÛÝ\˜ÙOUÑP˜˜ÛY[UÑP˜[™H^XÝÑPÕT’UWÐÓÑOHžÜÞ[X›ÛH˜š[\‹ˆ\˜Ù[šY[Ëš[YÙ\ˆÛ\‹ÜÚ\™KX˜\ÙHšY[È[™›ÝšY\‹\™\ÜY˜]È˜[YHØØ[\È™[XZ[‚™^XÚ]H\Ý[˜ÝÈ›ÈÝ\œ™[˜ÞHÛÛ™\œÚ[Ûˆ\È[™™\œ™Y‚‚•H™\]Y\Ý\ÜÙ\ÈÛ›HH\Ý™X[HÞ[X›Û™[Y\ÈÛˆX\Ý[Û™^IÜÈ\Ý[™Â™š[\ˆ[™™XÛÜ™È\Ý™X[HØÛÜKšY]Ë›ÝÈÛÝ[È[™›ÝËY\š]™Y]H˜[™ÙK‚•˜[Y][Ûˆ™Z™XÝÈZ\ÜÚ[™ËÙ^˜KÜ™[Ü™\™YšY[ËY[]HZ\ÛX]Ú\Ëš[˜[Y]\Ë›Û‹YXÜ™X\Ú[™Ë[Ü™\ˆš[Û][ÛœËÜ›Û™È[Y\šXÈ\\Ë››Û‹Yš[š]H˜[Y\È[™[˜[Y›Û‹[™YØ]]™H˜[™Ù\ËˆHÚXÚÙYZ[ˆš^\™H\ÈBœ™X[ŒK\›ÝÈÙ™šXÚX[™\ÜÛœÙHÛ˜\ÚÝ›ÜˆŒÛÝ™\š[™Â˜ŒLËLËLØ›ÝYÚŒ‹L‹LÌˆH›Ü›X[^™\ˆ[Z]Â˜RÔÒT‘WÔÒT‘RÓT—ÐÓÕS•ÑURSÔU×ÓÓ“X[™Ü™X]\È›ÈØ[›ÛšXØ[˜XÝÂšÛ\ˆÛÝ[ËØ\][XÚ[™ÙHÛÛ^[™X\šÙ]]˜[YHšY[ÈÈ›Ý\ÝX›\Ú˜ÛÛ˜Ù[˜][Û‹ÛÝ™\›˜[˜ÙK˜[X][ÛˆÜˆH[]Y\Ú\™HÙ\šY\Ëˆ\ÝÈÛÝ™\‚œÜÚ]]™H™]Ú™\]Y\ÝÙšY[Ý\KÜ˜[™ÙKÙ]H˜Z[\™\Ë˜]Ë[Û›H›Ü›X[^˜][Û‹˜ØXÚH™\^H[™™\^K\ØÛÜH™Z™XÝ[Û‹ˆ›ÈØ[Ý[][Û‹Ø]K\[[™KÓHÜ‚š[œ][ØY\ˆÛÛ˜XÝÚ[™Ù\Ë‚‚ˆÈÈÈ\ÙH‹ŽH8 %K\Ú\™HÓ’S‘“ÈX[˜YÙ[Y[ZÛ[™ËY]Z[˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈH\Ý[˜ÝØÝ[Y[YRÔÚ\™B˜ÝØÚ×ÚÛÛX[˜YÙ[Y[Ù]Z[ØÛš[™›Ø[™Ú[[™\ˆH^\Ý[™Â˜S”ÒQT—ÔÒT‘WÐÒS‘ÑTØØ]YÛÜžKˆHÐRÔÚ\™HÝØÚËY]B™ØÝ[Y[][Û—JÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+H[™–ÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚËÜÝØÚ×ÚÛØÛÛ›ÛØÛš[™›ËœJB™Yš[™HÞ[X›ÛÚÚXÙ\È9h§¹£ X[™9aãù£ XHÓ’S‘“ÈÜÞ\Ø\LLÌ™\]Y\Ý[™Bœ›Û[™È™X\‹[Û™K^YX\ˆ[[š]™\œÙKˆHY\\ˆœ™Y^™\ÈH›ÝšY\‹[™]]˜[˜šY]ÏXÛš[™›×ÛX[˜YÙ[Y[Ù]Z[\È^XÚ]\™XÝ[Û˜ÛÛ˜XÝX\Â™\™XÝ[ÛˆÈ\Ý™X[HÞ[X›Û˜[Y]\ÈH^XÝM‹YšY[Ý]]Ü™\‹œÚ^YYÚ]ÛÙ\Ë]\Ëš[š]H[Y\šXËÛ[˜[Y\È[™›Û‹[™YØ]]™HÛ[™ÜËœšXÙH[™X\šÙ]]˜[YH˜[™Ù\Ë[™š[\œÈH[š]™\œÙHÈH™\]Y\ÝYK\Ú\™H\Ý[™Ëˆ\™XÝ[Û‹›Û[™Ë]Ú[™ÝÈØÛÜK[š]ËÛÝ\˜ÙHšY[Ü™\‹œ›ÝÈÛÝ[È[™ØœÙ\™YÝ][Ù™‹Y]H›Ý[™È\™H™]Z[™Y›ÜˆØXÚH™\^KˆB˜ÚXÚÙYZ[ˆš^\™HÛÛZ[œÈZYÚ›ÝÜÈÛÜYYœ›ÛH[ˆÙ™šXÚX[9h§¹£ X™\ÜÛœÙKš[˜ÛY[™ÈÙ[XÝY[™›Û‹\Ù[XÝYÛÙ\Ë‚‚•H›Ü›X[^™\ˆ[Z]ÈRÔÒT‘WÐÓ’S‘“×ÓPSQÑSQS•ÒÓS‘Ô×ÔU×ÓÓ“X[™Ü™X]\Â››ÈØ[›ÛšXØ[˜XÝˆX[˜YÙ[Y[\œÛÛ‹Ü›ÛKÜ™[][ÛœÚ\˜[œØXÝ[Ûˆ]X[]KœšXÙK˜[YK\˜Ù[YÙH[™™X\ÛÛ‹ÜÛÝ\˜ÙHšY[È™[XZ[ˆ˜]È]šY[˜ÙH[™È›Ý™\ÝX›\ÚH[]Y\Ú\™HÙ\šY\ËÙ]Y˜[œØXÝ[ÛˆØ\ÚÜˆÛÝ™\›˜[˜ÙBšYÛY[ˆ\ÝÈÛÝ™\ˆÜÚ]]™H™]Ú[™š[\š[™Ë^XÚ]šY]ËÙ\™XÝ[Ûˆ[™›X\šÙ]Ü\˜[Y]\ˆ™Z™XÝ[Û‹^XÝšY[Ü™\‹\KÙ]KÜ˜[™ÙH™\ÜÛœÙB™˜Z[\™\Ë˜]Ë[Û›H›Ü›X[^˜][Û‹ØXÚH™\^H[™™\^K\ØÛÜH™Z™XÝ[Û‹ˆ›Â˜Ø[Ý[][Û‹Ø]K\[[™KÓHÜˆ[œ][ØY\ˆÛÛ˜XÝÚ[™Ù\Ë‚‚ˆÈÈÈ\ÙH‹Žˆ8 %\Ú\™HX\Ý[Û™^H\ÝÜšXØ[ÝØÚËZÝ\˜[šÈ˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈH\Ý[˜ÝØÝ[Y[YRÔÚ\™HX\Ý[Û™^B˜ÝØÚ×Ú×ÚÝÜ˜[š×Ù]Z[Ù[X[™Ú[[™\ˆH^\Ý[™ÈPT’ÑUÐPÕU’UX˜Ø]YÛÜžKˆHÐRÔÚ\™HÝØÚËY]HØÝ[Y[][Û—JÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B˜[™ÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚËÜÝØÚ×Ú×ÚÝÜ˜[š×Ù[KœJB™Yš[™H[ˆ^XÚ]\Ú\™H\ÝÜšXØ[\˜[šÈØ[Ú][ˆ[œ™Yš^Yš]™KYYÚ]˜Þ[X›Û›ÝšY\ˆX\šÙ]\OLØ[™H^XÝÝ]]šY[È9¥íºeí9£¤¹d#X˜[™:+àyb.9.èùè X‚‚•H›ÝšY\ˆÙ[XÝÈ\ÈØ[X›HÛ›HÚ]^XÚ]˜šY]ÏZ×ÚÝÜ˜[š×Ù]Z[Ý\ÜÈ\Ú\™H\Ý[™ÜÈÛ›K\ÜÙ\ÈH™\]Y\ÝY™š]™KYYÚ]Þ[X›Û˜[Y]\ÈHÛÛ\]HÞ[X›Û\ØÛÜY™\ÜÛœÙH™Y›Ü™H™]Z[š[™Â˜[›ÝÜÈ[™™XÛÜ™ÈH\Ý™X[HÞ[X›ÛX\šÙ]\KÛÝ\˜ÙHšY[Ü™\‹œ›ÝÈÛÝ[ËÝšXÝ]HÜ™\š[™È[™ØœÙ\™Y]H›Ý[™È›ÜˆØXÚH™\^Kˆ]œ™Z™XÝÈZ\ÜÚ[™Ë^˜HÜˆ™[Ü™\™YšY[Ë[˜[Y]\Ë\XØ]HÜ‚™\ØÙ[™[™È]\ËÜ›Û™È\Ú\™HY[]H[™›Û‹\ÜÚ]]™KÛ›Û‹Z[YÙ\ˆ˜[šÜË‚•HÚXÚÙYZ[ˆÙ™šXÚX[™\ÜÛœÙHš^\™H›ÜˆÌÛÛZ[œÈLŒ›ÝÜÈÛÝ™\š[™Â˜Œ‹LKLMX›ÝYÚŒ‹LKLLXÈ›È[š]™\œÙK[]™[Ù[XÝYÛ›Û‹\Ù[XÝY›ÝÂ™š[\ˆ\È\XØX›H™XØ]\ÙHH\Ý™X[H™\]Y\Ý\È[™XYHÞ[X›Û\ØÛÜY‚‚•H›Ü›X[^™\ˆ[Z]ÈRÔÒT‘WÒ×ÒÕÔS’×ÑURSÔU×ÓÓ“X[™Ü™X]\È›Â˜Ø[›ÛšXØ[˜XÝˆ]KX›Ý[™Ü[\š]H˜[šÈ[™›ÝšY\ˆÙXÝ\š]HY[]H™[XZ[‚œ˜]È]šY[˜ÙHÛ›H[™È›Ý\ÝX›\Ú\ÜÝY\ˆØ\Ú›ÝËÚ\™ZÛ\ˆ™]\›‹™ÛÝ™\›˜[˜ÙK˜[X][ÛˆÜˆHØ[›ÛšXØ[X\šÙ]Y]šXËˆ\ÝÈÛÝ™\ˆ^XÚ]™\]Y\Ý˜[™X\šÙ]˜[Y][Û‹^XÝ™\ÜÛœÙHÚ\K]KÚY[]KÜ˜[šÈ˜Z[\™\Ëœ˜]Ë[Û›H›Ü›X[^˜][Û‹ØXÚH™\^H[™™\^K\ØÛÜH™Z™XÝ[Û‹ˆ›ÈØ[Ý[][Û‹™Ø]K\[[™KÓHÜˆ[œ][ØY\ˆÛÛ˜XÝÚ[™Ù\Ë‚‚ˆÈÈÈ\ÙH‹ŽÈ8 %K\Ú\™HX\Ý[Û™^HJÐˆ][ÝKXÛÛ\\š\ÛÛˆ˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈH\Ý[˜ÝØÝ[Y[YRÔÚ\™B˜ÝØÚ×ÞšØX—ØÛÛ\\š\ÛÛ—Ù[X[™Ú[[™\ˆH^\Ý[™ÈPT’ÑUÔUSÕX˜Ø]YÛÜžKˆHÐRÔÚ\™HÝØÚËY]HØÝ[Y[][Û—JÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B˜[™ÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚ×Ù™X]\™KÜÝØÚ×Ú\ÝÙ[KœJB™Yš[™HH›ËX\™Ý[Y[KÐˆÛÛ\\š\ÛÛˆ[š]™\œÙHÚ]H^XÝÝ]]šY[Â˜9n£ùcíØº ¨y.èùè Xº ¨yd#yéì9§ 9¥¬9.íÐ˜9­ª:-ã9naP˜z ¨y.èùè Xz ¨yd#yéì˜9§ 9¥¬9.íÐX9­ª:-ã9naPX[™9«å9.íØÈH[\[Y[][Ûˆ]šY\ÈHX›\ÚYœ][ÝKØÚ[™ÙKÜ˜][È˜[Y\ÈžHL™Y›Ü™H™]\›š[™ÈHX›K‚‚•H›ÝšY\ˆÙ[XÝÈ\ÈØ[X›HÛ›HÚ]^XÚ]šY]ÏXX—ØÛÛ\\š\ÛÛ˜œÝ\ÜÈK\Ú\™H\Ý[™ÜÈÛ›K˜[Y]\ÈHÛÛ\]H[š]™\œÙH[™Ù™šXÚX[™šY[Ü™\ˆ™Y›Ü™Hš[\š[™ÈžHH™\]Y\ÝYK\Ú\™HÛÙK[™™XÛÜ™ÈBœ™]šY]˜[[Û›HÝ\œ™[]˜Y[™ËY^HØÛÜKšY[Ü™\‹›ÝšY\‹\™\ÜYœ\‹\Ú\™H˜[Y\Ë\˜Ù[Ü˜][È[š]È[™›ÝÈÛÝ[È›ÜˆØXÚH™\^KˆB˜ÚXÚÙYZ[ˆš^\™H™\Ù\™\È™YHÙ™šXÚX[ØÝ[Y[][ÛˆØ[\H›ÝÜÈÚ]›Û™HÙ[XÝY[™ÛÈ›Û‹\Ù[XÝYK\Ú\™HÛÙ\ËˆH[™Ú[Ù\È›Ý™ØÝ[Y[H‹\Ú\™HÝ\œ™[˜ÞKÛÈ›ÈÝ\œ™[˜ÞH\È[™[Y‚‚•H›Ü›X[^™\ˆ[Z]ÈRÔÒT‘WÐP—ÐÓÓTT’TÓÓ—ÔU×ÓÓ“X[™Ü™X]\È›ÈØ[›ÛšXØ[™˜XÝˆÜ›ÜÜË\Ú\™KXÛ\ÜÈšXÙ\ËÚ[™Ù\È[™˜][È™[XZ[ˆ˜]È]šY[˜ÙH[™Â››Ý\ÝX›\ÚÝ\œ™[šXÙKÝ\œ™[˜ÞKÛÛ\\š\ÛÛ‹˜[X][ÛˆÜˆØ[Ý[][Û‚š[œ]Ëˆ\ÝÈÛÝ™\ˆ^XÚ]™\]Y\Ý[™X\šÙ]Ü\˜[Y]\ˆ˜[Y][Û‹ÛÛ\]Bœ™\ÜÛœÙH˜[Y][Ûˆ™Y›Ü™Hš[\š[™Ë˜]Ë[Û›H›Ü›X[^˜][Û‹ØXÚH™\^H[™œ™\^K\ØÛÜH™Z™XÝ[Û‹ˆ›ÈØ[Ý[][Û‹Ø]K\[[™KÓHÜˆ[œ][ØY\‚˜ÛÛ˜XÝÚ[™Ù\Ë‚‚ˆÈÈÈ\ÙH‹Ž8 %K\Ú\™HX\Ý[Û™^H\ÝÜšXØ[ÝØÚËZÝ\˜[šÈ˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈH\Ý[˜ÝØÝ[Y[YRÔÚ\™B˜ÝØÚ×ÚÝÜ˜[š×Ù]Z[Ù[X[™Ú[[™\ˆH^\Ý[™ÈPT’ÑUÐPÕU’UX˜Ø]YÛÜžKˆHÐRÔÚ\™HÝØÚËY]HØÝ[Y[][Û—JÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B˜[™ÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚËÜÝØÚ×ÚÝÜ˜[š×Ù[KœJB™Yš[™HHÞ[X›Û\ØÛÜYK\Ú\™H\ÝÜšXØ[\˜[šÈØ[Ú]X\šÙ]\™Yš^Y˜Þ[X›ÛTÖŒXX\šÙ]\OHˆ˜[™H^XÝÝ]]šY[È9¥íºeí9£¤¹d#X˜:+àyb.9.èùè X9¥¬9¦bùì¢y.'X[™:dày§a¹ì¢y.'X[ˆÛÝ\˜ÙHÜ™\‹ˆHÙ™šXÚX[Y\\‚›ØZ[œÈH˜[šÈ[™›ÛÝÙ\‹\˜]HÛÛ\Û™[Èœ›ÛH]È\ÝÜšXØ[ÛÝ\˜Ù\È[™™]šY\ÈHX›\ÚY\˜Ù[˜]\ÈžHL[Èœ˜XÝ[ÛœË‚‚•H›ÝšY\ˆÙ[XÝÈ\ÈØ[X›HÛ›HÚ]^XÚ]˜šY]ÏZÝÜ˜[š×Ù]Z[\ÜÙ\ÈH™\]Y\ÝYX\šÙ]\™Yš^YÞ[X›Û˜[Y]\ÂHÛÛ\]HÞ[X›Û\ØÛÜY^[ØY™Y›Ü™H™]Z[š[™È][™™XÛÜ™ÈB™ØÝ[Y[YX\Ý[Û™^HÛÝ\˜ÙHT’B˜Î‹ËÙÝX˜K™X\Ý[Û™^K˜ÛÛKÜ˜[šËÜÝØÚÏØÛÙOLXÛÝ\˜ÙHšY[Ü™\‹˜]B[š]ËÜØØ[[™Ë›ÝÈÛÝ[È[™ØœÙ\™Y]H›Ý[™È›ÜˆØXÚH™\^Kˆ]™Z™XÝÂ›Z\ÜÚ[™ËÙ^˜KÜ™[Ü™\™YšY[Ë[˜[YÜˆ\XØ]KÙ\ØÙ[™[™È]\ËB››Û‹[X]Ú[™ÈX\šÙ]\™Yš^YK\Ú\™HY[]K›Û‹\ÜÚ]]™KÛ›Û‹Z[YÙ\ˆ˜[šÜÂ˜[™›Û‹Yš[š]HÜˆÝ][Ù‹\˜[™ÙH›ÛÝÙ\ˆ˜][ÜËˆHÚXÚÙYZ[ˆÙ™šXÚX[œÛ˜\ÚÝÛÛZ[œÈÍˆ›ÝÜÈœ›ÛHŒKLKLLX›ÝYÚŒ‹LKLLXÈ™XØ]\ÙHB\Ý™X[H™\]Y\Ý\È[™XYH\Ý[™Ë\ØÛÜY›ÈÙ[XÝYÛ›Û‹\Ù[XÝY[š]™\œÙB™š[\ˆ\È\XØX›K‚‚•H›Ü›X[^™\ˆ[Z]ÈRÔÒT‘WÒÕÔS’×ÑURSÔU×ÓÓ“X[™Ü™X]\È›Â˜Ø[›ÛšXØ[˜XÝˆ]KX›Ý[™Ü[\š]H˜[šÈ[™›ÛÝÙ\ˆ˜][ÜÈ™[XZ[ˆ˜]Â™]šY[˜ÙHÛ›H[™È›Ý\ÝX›\Ú\ÜÝY\ˆØ\Ú›ÝËÚ\™ZÛ\ˆ™]\›‹™ÛÝ™\›˜[˜ÙK˜[X][ÛˆÜˆHØ[›ÛšXØ[X\šÙ]Y]šXËˆ\ÝÈÛÝ™\ˆ^XÚ]œ™\]Y\Ý[™X\šÙ]Ü\˜[Y]\ˆ˜[Y][Û‹ÛÛ\]H™\ÜÛœÙH˜[Y][Û‹œ˜]Ë[Û›H›Ü›X[^˜][Û‹ØXÚH™\^H[™™\^K\ØÛÜH™Z™XÝ[Û‹ˆ›Â˜Ø[Ý[][Û‹Ø]K\[[™KÓHÜˆ[œ][ØY\ˆÛÛ˜XÝÚ[™Ù\Ë‚‚ˆÈÈÈ\ÙH‹ŽH8 %K\Ú\™HX\Ý[Û™^HTË^ZY[˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈH\Ý[˜ÝØÝ[Y[YRÔÚ\™B˜ÝØÚ×ÙÞ[Ù[X[™Ú[[™\ˆH^\Ý[™ÈÓÔ”ÔUWÐPÕSÓ”ØØ]YÛÜžHÚ]™^XÚ]šY]ÏZ\×ÞZY[ˆHÐRÔÚ\™HÝØÚËY]HØÝ[Y[][Û—JÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B˜[™ÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚ×Ù™X]\™KÜÝØÚ×ÙÞ[Ù[KœJB™Yš[™HH›ËX\™Ý[Y[X\Ý[Û™^HK\Ú\™HTË^ZY[[š]™\œÙH]˜Î‹ËÙ]K™X\Ý[Û™^K˜ÛÛKÞËÞËÙÞ[š[Ú]H^XÝMËYšY[Ü™\‚˜9n£ùcíØ: ¨yéj9.èùè X: ¨yéj9ë 9éì9cäz(c9.íØ9§ 9¥¬9.íØ9ïdy."‹ycäz(c9.+yëo¹ã¡Ø˜9ïdy."‹y§"y¥b9å,ú-+z ¨y¥l9ïdy."‹y§"y¥b9å,ú-+y¢-ù¥l9ïdy."‹z-¡zh§z+©:-+y`#y¥l9ïdy."Ëzacye+¹.+yëo¹ã¡Ø˜9ïdy."Ëy§"y¥b9å,ú-+z ¨y¥l9ïdy."Ëy§"y¥b9å,ú-+y¢-ù¥l9ïdy."Ëzacye+º+©:-+y`#y¥l9 .ùcäz(c9¥l:aãØ˜9o 9ææ9®¨¹.íØ:i¥¹¥éy­ª9naX[™9."¹n ¹¥éy§'Ø‚‚•H›ÝšY\ˆ˜[Y]\ÈHÛÛ\]H\Ý™X[H™\ÜÛœÙH™Y›Ü™Hš[\š[™ÈÈBœ™\]Y\ÝYÚ^YYÚ]K\Ú\™HÛÙKˆ]™\Ù\™\ÈHÛÝ\˜ÙHÜ™\‹›ÝšY\‚›[Y\šXËÛ[˜[Y\Ë›ÝË[]™[\Ý[™È]\ËØÝ[Y[Y\˜Ù[ÚÝ\ÙZÛ[š]ËÛÝ\˜ÙHT’H[™[ÜÙ[XÝY›ÝÈÛÝ[È[ˆ™\^HY]Y]KˆHÚXÚÙYZ[‚™š^\™HÛÛZ[œÈ™YHÙ™šXÚX[™\ÜÛœÙH›ÝÜÈ›ÜˆŽXÌMŽX[™˜ÌMŽNXÚ]Û™HÙ[XÝY›ÝÈ[™ÛÈ›Û‹\Ù[XÝY›ÝÜËˆH›Ü›X[^™\ˆ[Z]Â˜RÔÒT‘WÒT×ÖRQSÔU×ÓÓ“XX\šÜÈÚ\™WÚ\ÜÝX[˜ÙWØØ\ÚÜš]XØ[HZ\ÜÚ[™Â˜[™Ü™X]\È›È\ÜÝX[˜ÙK[][Û‹šXÙK™]\›ˆÜˆ\Ý[™ËY]H˜XÝ™XØ]\ÙBH[™Ú[Ù\È›Ý\ÝX›\ÚHÙ]Y\ÜÝX[˜ÙKXØ\Ú\š[Ù[š]Ü‚™[]Y\Ú\™HØÛÜKˆ\ÝÈÛÝ™\ˆ™\]Y\ÝÛX\šÙ]˜[Y][Û‹^XÝØÚ[XH[™™šY[Ü™\‹ÛÛ\]K][š]™\œÙH˜[Y][Ûˆ™Y›Ü™Hš[\š[™Ë˜]Ë[Û›B››Ü›X[^˜][Û‹ØXÚH™\^H[™™\^K\ØÛÜH™Z™XÝ[Û‹ˆ›ÈØ[Ý[][Û‹Ø]Kœ\[[™KÓHÜˆ[œ][ØY\ˆÛÛ˜XÝÚ[™Ù\Ë‚‚ˆÈÈÈ\ÙH‹ŽL8 %K\Ú\™HX\Ý[Û™^H›ØÚË]˜YH]Z[˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈH\Ý[˜ÝØÝ[Y[YRÔÚ\™B˜ÝØÚ×ÙšžWÛ\›^[™Ú[[™\ˆH^\Ý[™ÈPT’ÑUÐPÕU’UXØ]YÛÜžHÚ]™^XÚ]šY]ÏX›ØÚ×Ý˜YWÙ]Z[ˆHÐRÔÚ\™HÝØÚËY]HØÝ[Y[][Û—JÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B˜[™ÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚËÜÝØÚ×ÙšžWÙ[KœJB™Yš[™HHK\Ú\™H[][š]™\œÙH™\]Y\Ý\˜[Y]\œÈÞ[X›ÛHz ¨H˜˜Ý\Ù]X[™[™Ù]X™]\›š[™ÈH^XÝLËYšY[Ü™\ˆ9n£ùcíØ9.©9¦$ù¥éy§'Ø˜:+àyb.9.èùè X:+àyb.9ë 9éì9­ª:-ã9naX9¥-¹ææ9.íØ9¢$9.©9.íØ9¢¦9®¨¹ã¡Ø9¢$9.©:aãØ9¢$9.©:h§X˜9¢$9.©:h§Kù­`z`&¹n ¹`/9.l9¥®z$)y.&º`ê[™9ce¹¥®z$)y.&º`ê‚‚•H›ÝšY\ˆ˜[Y]\È]™\žH\Ý™X[H›ÝÈ™Y›Ü™Hš[\š[™ÈžHH™\]Y\ÝYœÚ^YYÚ]K\Ú\™HÛÙKˆ][™›Ü˜Ù\ÈHØÝ[Y[Y]K\˜[™ÙHš[™[™Ë^XÝ™šY[Ü™\‹Ú^YYÚ]ÙXÝ\š]HY[]KÝšXÝH\ØÙ[™[™ÈÙ\]Y[˜ÙH[X™\œË˜[YØœÙ\˜][Ûˆ]\Ëš[š]H[Y\šXËÛ[˜[Y\È[™›Û‹Y[\HÙXÝ\š]H[™˜œ›ÚÙ\˜YÙH^ˆ]™XÛÜ™ÈHX\Ý[Û™^HÛÝ\˜ÙHT’K\Ý™X[HÞ[X›Û™\]Y\Ý™]\ËÛÝ\˜ÙHšY[Ü™\‹ØÝ[Y[Y[š]È
+9­ª:-ã9naXØ9¢$9.©:h§Kù­`z`&¹n ¹`/\Âœ\˜Ù[9¢$9.©:aãØ\ÈÚ\™\È[™9¢$9.©:h§X\ÈÓ–JK[œ™\ÛÛ™YšXÙKÙ\ØÛÝ[[š]È[™[ÜÙ[XÝY›ÝÈÛÝ[È›ÜˆØXÚH™\^KˆHÚXÚÙYZ[ˆš^\™B˜ÛÛZ[œÈ™YHÛÝ\˜ÙH›ÝÜÈ›ÜˆŒ‹LKLLÚ]ÛÈÙ[XÝY˜Y\È›Ü‚˜LÌÍX[™Û™H›Û‹\Ù[XÝYLÌX˜YK‚‚•H›Ü›X[^™\ˆ[Z]ÈRÔÒT‘WÐ“ÐÒ×ÕQWÔU×ÓÓ“X[™Ü™X]\È›ÈØ[›ÛšXØ[™˜XÝˆ]KX›Ý[™˜YHšXÙ\Ë]X[]Y\Ë[[Ý[Ë\ØÛÝ[Ü™[Z][H[™˜œ›ÚÙ\˜YÙHÛÛ^È›Ý\ÝX›\Ú\ÜÝY\ˆØ\Ú›ÝËÚ\™ZÛ\ˆ™]\›‹™ÛÝ™\›˜[˜ÙK˜[X][ÛˆÜˆHØ[›ÛšXØ[X\šÙ]Y]šXËˆ\ÝÈÛÝ™\ˆ^XÚ]œ™\]Y\Ý[™X\šÙ]Ü\˜[Y]\ˆ˜[Y][Û‹ÛÛ\]K][š]™\œÙH˜[Y][Ûˆ™Y›Ü™B™š[\š[™Ë˜]Ë[Û›H›Ü›X[^˜][Û‹ØXÚH™\^H[™™\^K\ØÛÜH™Z™XÝ[Û‹ˆ›Â˜Ø[Ý[][Û‹Ø]K\[[™KÓHÜˆ[œ][ØY\ˆÛÛ˜XÝÚ[™Ù\Ë‚‚ˆÈÈÈ\ÙH‹ŽLH8 %\Ú\™HX\Ý[Û™^HXZ[‹X›Ø\™][ÝH˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈH\Ý[˜ÝØÝ[Y[YRÔÚ\™B˜ÝØÚ×Ú×ÛXZ[—Ø›Ø\™ÜÜÝÙ[X[™Ú[[™\ˆH^\Ý[™ÈPT’ÑUÔUSÕX˜Ø]YÛÜžHÚ]^XÚ]šY]ÏZ×ÛXZ[—Ø›Ø\™ˆHÐRÔÚ\™HÝØÚËY]HØÝ[Y[][Û—JÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B˜[™ÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚ×Ù™X]\™KÜÝØÚ×Ú\ÝÙ[KœJB™Yš[™HH›ËX\™Ý[Y[X\Ý[Û™^H\Ú\™HXZ[‹X›Ø\™[š]™\œÙH]˜Î‹ËÜ][ÝK™X\Ý[Û™^K˜ÛÛKØÙ[\‹ÙÜšY\Ýš[Ú×ÛXZ[˜›Ø\™Ú]H^XÝŒL‹YšY[Ü™\ˆ9n£ùcíØ9.èùè X9d#yéì9§ 9¥¬9.íØ9­ª:-ã:h§X9­ª:-ã9naX9.â¹o 9§ :jæ˜9§ 9/c˜9¦*9¥-˜9¢$9.©:aãØ[™9¢$9.©:h§XˆHØÝ[Y[Y[š]È\™HÑ\ˆÚ\™B™›ÜˆšXÙ\ËØÚ[™ÙH[[Ý[\˜Ù[›ÜˆÚ[™ÙKÚ\™\È›Üˆ›Û[YH[™Ñ›Ü‚\››Ý™\‹‚‚•H›ÝšY\ˆ˜[Y]\ÈHÛÛ\]H\Ý™X[H™\ÜÛœÙH™Y›Ü™Hš[\š[™ÈÈBœ™\]Y\ÝYš]™KYYÚ]\Ú\™HÛÙKˆ][™›Ü˜Ù\ÈHÙ™šXÚX[šY[Ü™\‹œÝšXÝH\ØÙ[™[™ÈÜÚ]]™HÙ\]Y[˜ÙH[X™\œË[š\]YHš]™KYYÚ]Y[]Y\Ë››Û‹Y[\H˜[Y\È[™š[š]H[Y\šXËÛ[˜[Y\Ë[™™XÛÜ™ÈHXZ[‹X›Ø\™œØÛÜKÛÝ\˜ÙHT’K[š]ËÛÝ\˜ÙHšY[Ü™\ˆ[™[ÜÙ[XÝY›ÝÈÛÝ[È›Ü‚˜ØXÚH™\^KˆHÚXÚÙYZ[ˆš^\™Hœ™Y^™\È™YHÛÝ\˜ÙK\Ú\Y›ÝÜÈÚ]Û™BœÙ[XÝY\Ý[™Ë‚‚•HÙ™šXÚX[ØÝ[Y[][Ûˆ\ØÜšX™\È\È\ÈHMK[Z[]KY[^YY™X[[YBœÛ˜\ÚÝ[™Ù\È›Ý›ÝšYHHÝX›HØœÙ\˜][Ûˆ[Y\Ý[\ˆH›Ü›X[^™\‚\™Y›Ü™H[Z]ÈRÔÒT‘WÒ×ÓPRS—Ð“ÐT‘ÔUSÕWÔU×ÓÓ“XX\šÜÈÝ\œ™[ÜšXÙX˜Üš]XØ[HZ\ÜÚ[™È[™Ü™X]\È›ÈØ[›ÛšXØ[][ÝH˜XÝˆ\ÝÈÛÝ™\ˆ^XÚ]œ™\]Y\Ý[™X\šÙ]Ü\˜[Y]\ˆ˜[Y][Û‹^XÝØÚ[XH[™šY[Ü™\‹˜ÛÛ\]K][š]™\œÙH˜[Y][Ûˆ™Y›Ü™Hš[\š[™Ë˜]Ë[Û›H›Ü›X[^˜][Û‹ØXÚBœ™\^H[™™\^K\ØÛÜH™Z™XÝ[Û‹ˆ›ÈØ[Ý[][Û‹Ø]K\[[™KÓHÜ‚š[œ][ØY\ˆÛÛ˜XÝÚ[™Ù\Ë‚‚ˆÈÈÈ\ÙH‹ŽLˆ8 %ÔÑHZ[KYX[Ý™\šY]È˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈH\Ý[˜ÝØÝ[Y[YRÔÚ\™B˜ÝØÚ×ÜÜÙWÙX[ÙZ[X[™Ú[[™\ˆH^\Ý[™ÈPT’ÑUÐPÕU’UXØ]YÛÜžBÚ]^XÚ]šY]Ï\ÜÙWÙX[ÙZ[X[™H™\]Z\™Y]OVVVVSSQˆHÐRÔÚ\™BœÝØÚËY]HØÝ[Y[][Û—JÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B˜[™ÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚËÜÝØÚ×ÜÝ[[X\žKœJB™Yš[™HHÔÑH™\]Y\ÝY]˜Y[™ËY^HÝ™\šY]È[™]Èš[˜[Ú^YšY[Ü™\‚˜9cey¥éy áya­X: ¨yéj9..ù§oÐX9..ù§oÐ˜9éäyb&ù§oØ: ¨yéj9fçº-+XˆH[\[Y[][Û‚˜[ÛÈYš[™\ÈHZYÚY]šXÈ›ÝÜËÜ™\œÈ[H\È9£ ¹âc9¥l9n ¹.íù .ù`/˜9­`z`&¹n ¹`/9¢$9.©:aäzh§X9¢$9.©:aãØ9nlùgaùn ¹æâ9ã¡Ø9£h¹¢bùã¡Ø[™9­`z`&¹£h¹¢bùã¡Ø˜[™Ý\ÜÈ]\Èœ›ÛHŒŒLLŒØÛØ\™‚‚•H›ÝšY\ˆ˜[Y]\ÈHÛÛ\]HX\šÙ][]™[™\ÜÛœÙH™Y›Ü™H™][[Û‹š[˜ÛY[™È^XÝšY[Ü™\‹^XÝY]šXÈÜ™\ˆ[™š[š]H[Y\šXË[Ü‹[[˜[Y\Ëˆ]\ÜÙ\ÈÛ›HHØÝ[Y[Y]HÈH›Ë\Þ[X›Û\Ý™X[HØ[[™œ™XÛÜ™ÈHÔÑHX\šÙ]ØÛÜK™\]Y\ÝYÛØœÙ\˜][Ûˆ]KšY[ÛY]šXÈÜ™\‹H˜XÝ]›È[Y\šXÈ[š]È\™HØÝ[Y[Y[™›Û‹[\Ý[™È›ÝÈÛÝ[È›Ü‚˜ØXÚH™\^KˆHÚXÚÙYZ[ˆš^\™H™\Ù\™\ÈHÙ™šXÚX[ØÝ[Y[][Û‚œØ[\K[˜ÛY[™È]È^XÚ][]™\˜YÙHÑH˜[YK‚‚•H›Ü›X[^™\ˆ[Z]ÈRÔÒT‘WÔÔÑWÑPSÑRSWÔU×ÓÓ“X[™Ü™X]\È›ÈØ[›ÛšXØ[™˜XÝˆ^Ú[™ÙK]ÚYHYÙÜ™YØ]HÛÝ[Ë[[Ý[Ë\››Ý™\‹˜[X][Ûˆ[™›Ø\™˜œ™XZÙÝÛœÈÈ›Ý\ÝX›\ÚH™\]Y\ÝY\Ý[™ÉÜÈ][ÝK\ÜÝY\ˆØ\Ú›ÝËœÚ\™ZÛ\ˆ™]\›‹ÛÝ™\›˜[˜ÙK˜[X][ÛˆÜˆØ[›ÛšXØ[X\šÙ]Y]šXËˆ\ÝÂ˜ÛÝ™\ˆ™\]Y\ÝÙ]H˜[Y][Û‹^XÝ™\ÜÛœÙHÚ\H[™˜[Y\Ë˜]Ë[Û›B››Ü›X[^˜][Û‹™\^K\ØÛÜH™Z™XÝ[Ûˆ[™ØXÚH™\^Kˆ›ÈØ[Ý[][Û‹Ø]Kœ\[[™KÓHÜˆ[œ][ØY\ˆÛÛ˜XÝÚ[™Ù\Ë‚‚ˆÈÈÈ\ÙH‹ŽLÈ8 %ÔÑHX\šÙ]\Ý[[X\žH˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈH\Ý[˜ÝØÝ[Y[YRÔÚ\™HÝØÚ×ÜÜÙWÜÝ[[X\žX™[™Ú[[™\ˆH^\Ý[™ÈPT’ÑUÐPÕU’UXØ]YÛÜžHÚ]^XÚ]˜šY]Ï\ÜÙWÜÝ[[X\žXˆHÐRÔÚ\™HÝØÚËY]HØÝ[Y[][Û—JÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B˜[™ÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚËÜÝØÚ×ÜÝ[[X\žKœJB™Yš[™HH›ËX\™Ý[Y[Ú[™ÚZHÝØÚÈ^Ú[™ÙHX\šÙ]Ý[[X\žHÚ]HZYÚ›Y]šXÜÈ9­`z`&º ¨y§+9 .ùn ¹`/9nlùgaùn ¹æâ9ã¡Ø9."¹n ¹ak9cî9."¹n º ¨yéj9­`z`&¹n ¹`/˜9¢©ydb¹¥íºeí[™9 .ú ¨y§+ˆH[\[Y[][Ûˆ[Z]ÈHÛÝ\˜ÙK\Ú\YšY[›Ü™\ˆ:hnyæë˜: ¨yéj9..ù§oØ9éäyb&ù§oØÈHY\\ˆ™\Ù\™\È]Ü™\ˆ[™œ™\]Z\™\ÈHÛÛœÚ\Ý[˜[Y™\Ü]H[ˆH9¢©ydb¹¥íºeí›ÝË‚‚•H›ÝšY\ˆ˜[Y]\ÈHÛÛ\]HX\šÙ][]™[™\ÜÛœÙH™Y›Ü™H™][[Û‹š[˜ÛY[™È^XÝšY[[™Y]šXÈÜ™\‹š[š]H[Y\šXË[Ü‹[[˜[Y\È[™B™[X™YY™\ÜY]HØÛÜKˆ]\ÜÙ\È›È\™Ý[Y[ÈÈH\Ý™X[HØ[X›H[™œ™XÛÜ™ÈHÚ[™ÚZHÝØÚÈ^Ú[™ÙHØÛÜKÛÝ\˜ÙHšY[ÛY]šXÈÜ™\‹XœÙ[˜ÙHÙ‚™ØÝ[Y[Y[Y\šXÈ[š]È[™›Û‹[\Ý[™È›ÝÈÛÝ[È›ÜˆØXÚH™\^K‚‚•H›Ü›X[^™\ˆ[Z]ÈRÔÒT‘WÔÔÑWÔÕSSPT–WÔU×ÓÓ“X[™Ü™X]\È›ÈØ[›ÛšXØ[™˜XÝˆ^Ú[™ÙK]ÚYHX\šÙ]Ø›Ø\™YÙÜ™YØ]\ÈÈ›Ý\ÝX›\ÚH™\]Y\ÝY›\Ý[™ÉÜÈ][ÝK\ÜÝY\ˆØ\Ú›ÝËÚ\™ZÛ\ˆ™]\›‹ÛÝ™\›˜[˜ÙK˜[X][ÛˆÜ‚˜Ø[›ÛšXØ[X\šÙ]Y]šXËˆ\ÝÈÛÝ™\ˆ^XÚ]™\]Y\Ý˜[Y][Û‹^XÝ™\ÜÛœÙBœÚ\KÛÜ™\š[™ËÝ\\Ë˜]Ë[Û›H›Ü›X[^˜][Û‹™\^K\ØÛÜH™Z™XÝ[Ûˆ[™ØXÚBœ™\^Kˆ›ÈØ[Ý[][Û‹Ø]K\[[™KÓHÜˆ[œ][ØY\ˆÛÛ˜XÝÚ[™Ù\Ë‚‚ˆÈÈÈ\ÙH‹ŽM8 %Ö”ÑHX\šÙ]\Ý[[X\žH˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈH\Ý[˜ÝØÝ[Y[YRÔÚ\™B˜ÝØÚ×ÜÞœÙWÜÝ[[X\žX[™Ú[[™\ˆH^\Ý[™ÈPT’ÑUÐPÕU’UXØ]YÛÜžBÚ]^XÚ]šY]Ï\ÞœÙWÜÝ[[X\žX[™H™\]Z\™Y]OVVVVSSQˆHÐRÔÚ\™BœÝØÚËY]HØÝ[Y[][Û—JÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B˜[™ÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚËÜÝØÚ×ÜÝ[[X\žKœJB™Yš[™HHÚ[žš[ˆÝØÚÈ^Ú[™ÙHÙXÝ\š]Y\ËXØ]YÛÜžH™\Ü[™]Èš[˜[™š]™KYšY[Ü™\ˆ:+àyb.9ìnùb*Ø9¥l:aãØ9¢$9.©:aäzh§X9 .ùn ¹`/[™9­`z`&¹n ¹`/‚•H[\[Y[][Ûˆ\ÜÙ\ÈH™\]Y\ÝY]HÈHÖ”ÑH™\Ü™\]Y\Ý[™˜ÛÛ™\ÈH[Y\šXÈÛÛ[[œÈÚ]Ý]š[[™ÈZ\ÜÚ[™ÈX\šÙ]˜[Y\Ë‚‚•H›ÝšY\ˆ˜[Y]\È]™\žH™]\›™YØ]YÛÜžH›ÝÈ™Y›Ü™H™][[Û‹[˜ÛY[™Â™^XÝšY[Ü™\‹›Û‹Y[\H[š\]YHØ]YÛÜžHX™[ËH™\]Z\™Y: ¨yéj˜Ø]YÛÜžK›Û‹[™YØ]]™H[YÙ\ˆÙXÝ\š]HÛÝ[È[™š[š]H›Û‹[™YØ]]™H[Y\šXÂ›Üˆ[˜[Y\Ëˆ]\ÜÙ\ÈÛ›HH›Ü›X[^™Y]HÈH\Ý™X[HØ[X›H[™œ™XÛÜ™ÈHÚ[žš[ˆX\šÙ]ØÛÜK™\]Y\ÝÛØœÙ\˜][Ûˆ]K™]\›™YØ]YÛÜžB›Ü™\‹ÛÝ\˜ÙHšY[Ü™\‹ØÝ[Y[Y9¥l:aãØØ9¢$9.©:aäzh§X[š]Ë[™ØÝ[Y[Y›X\šÙ]]˜[YH[š]È[™›Û‹[\Ý[™È›ÝÈÛÝ[È›ÜˆØXÚH™\^KˆHÚXÚÙYZ[‚™š^\™H™\Ù\™\ÈHÙ™šXÚX[ØÝ[Y[][ÛˆØ[\K[˜ÛY[™È[X\šÙ]˜[Y\È›ÜˆØ]YÛÜšY\ÈÚ\™HHÛÝ\˜ÙHÙ\È›Ý™\Ü[K‚‚•H›Ü›X[^™\ˆ[Z]ÈRÔÒT‘WÔÖ”ÑWÔÕSSPT–WÔU×ÓÓ“X[™Ü™X]\È›ÈØ[›ÛšXØ[™˜XÝˆ^Ú[™ÙK]ÚYHÙXÝ\š]KXØ]YÛÜžHÛÝ[Ë˜[œØXÝ[Ûˆ[[Ý[È[™X\šÙ]˜[Y\ÈÈ›Ý\ÝX›\ÚH™\]Y\ÝY\Ý[™ÉÜÈ][ÝK\ÜÝY\ˆØ\Ú›ÝËœÚ\™ZÛ\ˆ™]\›‹ÛÝ™\›˜[˜ÙK˜[X][ÛˆÜˆØ[›ÛšXØ[X\šÙ]Y]šXËˆ\ÝÂ˜ÛÝ™\ˆ^XÚ]™\]Y\ÝÙ]H˜[Y][Û‹^XÝšY[È[™Ü™\š[™ËØ]YÛÜžB˜[™[Y\šXÈ˜[Y][Û‹˜]Ë[Û›H›Ü›X[^˜][Û‹™\^K\ØÛÜH™Z™XÝ[Ûˆ[™˜ØXÚH™\^Kˆ›ÈØ[Ý[][Û‹Ø]K\[[™KÓHÜˆ[œ][ØY\ˆÛÛ˜XÝ˜Ú[™Ù\Ë‚‚ˆÈÈÈ\ÙH‹ŽMH8 %Ö”ÑH\™XK\Ý[[X\žH˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈH\Ý[˜ÝØÝ[Y[YRÔÚ\™B˜ÝØÚ×ÜÞœÙWØ\™XWÜÝ[[X\žX[™Ú[[™\ˆH^\Ý[™ÈPT’ÑUÐPÕU’UX˜Ø]YÛÜžHÚ]^XÚ]šY]Ï\ÞœÙWØ\™XWÜÝ[[X\žX[™™\]Z\™Y[ÛB˜]OVVVVSSXˆHÐRÔÚ\™HÝØÚËY]HØÝ[Y[][Û—JÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B˜[™ÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚËÜÝØÚ×ÜÝ[[X\žKœJB™Yš[™HHÚ[žš[ˆÝØÚÈ^Ú[™ÙH™YÚ[Û‹\˜[šÙY™\ÜÚ]HÛÝ\˜ÙK\Ú\Y˜˜\ÙHšY[È9n£ùcíØ9g,9c.˜9 .ù.©9¦$úh§X9ch9n ¹g.˜: ¨yéj9.©9¦$úh§X9gîºaäy.©9¦$úh§X[™˜9`.¹b.9.©9¦$úh§XÈHØÝ[Y[][Ûˆ[ÛÈYÈ9/&9ab: ¨y.©9¦$úh§X[™9§'ù§`ù.©9¦$úh§X™œ›ÛHŒHÛØ\™ˆHY\\ˆXØÙ\ÈZ]\ˆ^XÝØÝ[Y[YšY[Ü™\ˆ[™œ™]Z[œÈH™\]Y\ÝY[Û\È™\]Y\ÝX›Ý[™›Ý™[˜[˜ÙK‚‚•H›ÝšY\ˆ˜[Y]\ÈHÛÛ\]H\™XK\˜[šÙY™\ÜÛœÙH™Y›Ü™H™][[Û‹š[˜ÛY[™ÈÜÚ]]™HÝšXÝH\ØÙ[™[™È˜[šÜË[š\]YH›Û‹Y[\H™YÚ[ÛˆX™[Ë™š[š]H›Û‹[™YØ]]™H[Y\šXË[Ü‹[[˜[Y\È[™^XÝ˜\ÙKÙ^[™YšY[›Ü™\š[™Ëˆ]\ÜÙ\ÈÛ›HH›Ü›X[^™Y[ÛÈH\Ý™X[HØ[X›H[™œ™XÛÜ™ÈHÚ[žš[ˆØÛÜK™\]Y\ÝYÛØœÙ\˜][Ûˆ[ÛØÝ[Y[YÓ–H[™œ\˜Ù[YÙH[š]ËÛÝ\˜ÙHšY[Ü™\ˆ[™›Û‹[\Ý[™È›ÝÈÛÝ[È›ÜˆØXÚBœ™\^KˆHÚXÚÙYZ[ˆš^\™Hœ™Y^™\ÈHØÝ[Y[Y˜\ÙKXÛÛ[[ˆØ[\K[™\ÝÈ[ÛÈ^\˜Ú\ÙHH^[™YŒHÚ\K‚‚•H›Ü›X[^™\ˆ[Z]ÈRÔÒT‘WÔÖ”ÑWÐT‘PWÔÕSSPT–WÔU×ÓÓ“X[™Ü™X]\È›Â˜Ø[›ÛšXØ[˜XÝˆ™YÚ[Û‹[]™[[ÛH˜[œØXÝ[ÛˆYÙÜ™YØ]\ÈÈ›Ý\ÝX›\Ú˜H™\]Y\ÝY\Ý[™ÉÜÈ][ÝK\ÜÝY\ˆØ\Ú›ÝËÚ\™ZÛ\ˆ™]\›‹ÛÝ™\›˜[˜ÙK˜[X][ÛˆÜˆØ[›ÛšXØ[X\šÙ]Y]šXËˆ\ÝÈÛÝ™\ˆ^XÚ]™\]Y\ÝÛ[Û˜[Y][Û‹^XÝ˜\ÙH[™^[™YšY[ËÛÜ™\‹Ý\\Ë˜]Ë[Û›H›Ü›X[^˜][Û‹œ™\^K\ØÛÜH™Z™XÝ[Ûˆ[™ØXÚH™\^Kˆ›ÈØ[Ý[][Û‹Ø]K\[[™KÓB›Üˆ[œ][ØY\ˆÛÛ˜XÝÚ[™Ù\Ë‚‚ˆÈÈÈ\ÙH‹ŽMˆ8 %Ö”ÑHÙXÝÜ‹\Ý[[X\žH˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈH™^\Ý[˜ÝØÝ[Y[YRÔÚ\™B˜ÝØÚ×ÜÞœÙWÜÙXÝÜ—ÜÝ[[X\žX[™Ú[[™\ˆH^\Ý[™ÈPT’ÑUÐPÕU’UX˜Ø]YÛÜžHÚ]^XÚ]šY]Ï\ÞœÙWÜÙXÝÜ—ÜÝ[[X\žXÞ[X›Ûyodù§"Üˆ9odùnm[™›[ÛH]OVVVVSSXˆHÐRÔÚ\™HÝØÚËY]HØÝ[Y[][Û—JÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B˜[™ÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚËÜÝØÚ×ÜÝ[[X\žKœJB™Yš[™HHš[™KYšY[Ú[žš[ˆ[™\ÝžK]˜Y[™È™\ÜÛœÙH[™HÙ\\˜]B›[ÛÞYX\‹]ËY]HX›\ÈÙ[XÝYžHÞ[X›Û‚‚•H›ÝšY\ˆ˜[Y]\ÈHÛÛ\]HÛÝ\˜ÙHšY[Ü™\‹™\]Z\™\ÈHÛÝ\˜ÙB˜9d":+¨X›ÝÈÈXYH[š\]YH[™\ÝžHÜ™\‹™Z™XÝÈ›Û‹Yš[š]HÜˆ™YØ]]™B›[Y\šXÈ˜[Y\È[™™\Ù\™\ÈHÙ[XÝÜ‹™\]Y\ÝÛØœÙ\˜][Ûˆ[Û™ØÝ[Y[YÓ–KÜÚ\™KÝ˜[œØXÝ[Û‹Ü\˜Ù[YÙH[š]È[™›Û‹[\Ý[™È›ÝÈÛÝ[Â™›Üˆ™\^KˆHÚXÚÙYZ[ˆš^\™Hœ™Y^™\È™YHÛÝ\˜ÙK\Ú\Y[™\ÝžH›ÝÜË‚•H›Ü›X[^™\ˆ[Z]ÈRÔÒT‘WÔÖ”ÑWÔÑPÕÔ—ÔÕSSPT–WÔU×ÓÓ“X[™Ü™X]\È›Â˜Ø[›ÛšXØ[˜XÝˆ^Ú[™ÙK]ÚYH[™\ÝžH˜[œØXÝ[ÛˆYÙÜ™YØ]\ÈÈ›Ý\ÝX›\Ú˜H™\]Y\ÝY\Ý[™ÉÜÈ][ÝK\ÜÝY\ˆØ\Ú›ÝËÚ\™ZÛ\ˆ™]\›‹ÛÝ™\›˜[˜ÙK˜[X][ÛˆÜˆØ[›ÛšXØ[X\šÙ]Y]šXËˆ\ÝÈÛÝ™\ˆÙ[XÝÜ‹Û[Û˜[Y][Û‹™^XÝ™\ÜÛœÙHšY[ËÛÜ™\‹Ý\\Ë˜]Ë[Û›H›Ü›X[^˜][Û‹™\^K\ØÛÜBœ™Z™XÝ[Ûˆ[™ØXÚH™\^Kˆ›ÈØ[Ý[][Û‹Ø]K\[[™KÓHÜˆ[œ][ØY\‚˜ÛÛ˜XÝÚ[™Ù\Ë‚‚ˆÈÈÈ\ÙH‹ŽMÈ8 %K\Ú\™HX\Ý[Û™^H[™\ÝžKX›Ø\™˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈH\Ý[˜ÝØÝ[Y[YRÔÚ\™HX\Ý[Û™^B˜ÝØÚ×Ø›Ø\™Ú[™\ÝžWÛ˜[YWÙ[X[™Ú[[™\ˆH^\Ý[™ÈPT’ÑUÐPÕU’UX˜Ø]YÛÜžHÚ]^XÚ]šY]ÏZ[™\ÝžWØ›Ø\™ˆHÐRÔÚ\™HÝØÚËY]HØÝ[Y[][Û—JÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B˜[™ÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚËÜÝØÚ×Ø›Ø\™Ú[™\ÝžWÙ[KœJB™Yš[™HH›ËX\™Ý[Y[Ý\œ™[Û˜\ÚÝÙˆ[K\Ú\™H[¶Ó½»¶‰žËkºwµç]KÛX\šÙ]Ú[\˜[š[\‹™\ØÙ[™[™ÈQÓPT’ÑUÐÐTÛÜLYÙHÚ^™H[™[\YÙHYÚ[˜][Û‹‚’]˜[Y]\È[™™]Z[œÈHÛÛ\]H[˜[ZXÈM‹YšY[ÛÝ\˜ÙHÜ™\‹Ú\™BHš]™H9h§¹£ y/,:+¨XšY[È\ÙHHÙ[XÝY\š[Ù™Yš^[™™\Ù\™\Âœ›ÝšY\ˆ[Y\šXËÛ[™Z]š[Üˆ[™ØÝ[Y[Y[š]Y]Y]K‚‚•H[K\Ú\™H˜[šÙY[š]™\œÙH\È˜[Y]Y™Y›Ü™Hš[\š[™ÈÈBœ™\]Y\ÝY\Ý[™ÎÈØXÚHY]Y]Hš[™È[[™Ù[XÝY˜[šËØÛÙHÜ™\‹H™\Ü]KÛÝ\˜ÙHš[\‹šY[\[™È[™ÛÝ\˜ÙH›Ý™[˜[˜ÙKˆB››Ü›X[^™\ˆ[Z]ÈRÔÒT‘WÒÑÕÒÓÔÕÐÒ×ÔU×ÓÓ“X[™Ü™X]\È›ÈØ[›ÛšXØ[›ÝÛ™\œÚ\ÛÛ˜Ù[˜][Û‹Ú\™K[][Û‹ÛÝ™\›˜[˜ÙK\ÜÝY\ˆØ\ÚY›ÝËœ™]\›ˆÜˆ˜[X][Ûˆ˜XÝˆ\ÝÈÛÝ™\ˆ[ŒHX\šÙ]Ü\š[ÙÛÛXš[˜][ÛœËœ™\]Y\ÝØÛÛ^™Z™XÝ[Û‹[][š]™\œÙHØÚ[XKÜ˜[šËÙ]KÝ\H›Ý[™\šY\Ë™[\HÙ[XÝY\Ý[™ÜË˜]Ë[Û›H›Ü›X[^˜][Û‹™\^HY]Y]H[\\š[™È[™›Ù™›[™HØXÚH™\^Kˆ›ÈØ[Ý[][Û‹Ø]K\[[™KÓHÜˆ[œ][ØY\‚˜ÛÛ˜XÝÚ[™Ù\Ë‚‚ˆÈÈÈ\ÙHËŒÌÈ8 %ÑÕZ[HÝØÚË\Ý]\ÝXÜÈ˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHØÝ[Y[YX\Ý[Û™^B˜ÝØÚ×ÚÙÝÜÝØÚ×ÜÝ]\ÝXÜ×Ù[XÑÕZ[HÝØÚË\Ý]\ÝXÜÈ[™Ú[[™\ˆÒT‘RÓT—ÒÓS‘ÔØÚ]^XÚ]˜šY]ÏZÙÝÜÝØÚ×ÜÝ]\ÝXÜØH›Ý\ˆØÝ[Y[YÙ[XÝÜœÂ˜9c%ùd$y£ z ¨X9¬ªº ¨z`&¹£ z ¨X9­ìz ¨z`&¹£ z ¨X[™9ceùd$y£ z ¨X[™[˜Û\Ú]™B˜Ý\Ù]XØ[™Ù]X]H˜[™Ù\ËˆHÐRÔÚ\™HÝØÚËY]B™ØÝ[Y[][Û—JÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+H[™–ÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚ×Ù™X]\™KÜÝØÚ×ÚÙÝÙ[KœJB™Yš[™HH^XÝLKYšY[Ý]][™HX\Ý[Û™^H™\ÜÙš[\ˆœ˜[˜Ú\Î‚˜”ÓUUPSÔÕÐÒ×Ó“Ô•ÕXÚ]HYÙÜ™YØ]HÜˆ\™XÝ[Û˜[]]X[\\Â™›Üˆ›Ü›Ý[™Û[™ÜË[™”ÓUUPSÔÕÐÒ×ÒÓS’ÔØÚ]“LX›Ü‚œÛÝ]›Ý[™Û[™ÜËˆH›ÝšY\ˆœ™Y^™\ÈS•T•SÕTOLX[˜Û\Ú]™B˜YKY]Hš[\œË\ØÙ[™[™È]HÜ™\‹YÙHÚ^™HL[™[\YÙBœYÚ[˜][ÛŽÈ]˜[Y]\È^XÝšY[Ü™\‹š^Y]ÚYKÒÛÙ\Ë[š\]YB™]KØÛÙHY[]Y\È[™š[š]H[Y\šXËÛ[˜[Y\È™Y›Ü™Hš[\š[™ÈB™[™\ÜÛœÙHÈH™\]Y\ÝY\Ý[™Ë‚‚•H›Ü›X[^™\ˆ[Z]ÈRÔÒT‘WÒÑÕÔÕÐÒ×ÔÕUTÕPÔ×ÔU×ÓÓ“X[™Ü™X]\È›Â˜Ø[›ÛšXØ[ÝÛ™\œÚ\ÛÛ˜Ù[˜][Û‹Ú\™K[][Û‹ÛÝ™\›˜[˜ÙK\ÜÝY\‚˜Ø\ÚY›ÝË™]\›ˆÜˆ˜[X][Ûˆ˜XÝˆ™\^HY]Y]H™]Z[œÈHÙ[XÝYœÞ[X›ÛÙ\™XÝ[Û‹]H˜[™ÙK™\ÜÙš[\‹ÛÝ\˜ÙKXÛÛ[[ˆX\[™È[™Ó–KÒÑšXÙK]X[]KX\šÙ]]˜[YK\˜Ù[YÙH[™X\šÙ]]˜[YKXÚ[™ÙB˜ÛÛ^ˆ\ÝÈÛÝ™\ˆ[Ù[XÝÜˆœ˜[˜Ú\Ë™\]Y\ÝØÛÛ^™Z™XÝ[Û‹™[][š]™\œÙHØÚ[XKÙ]KÝ\H›Ý[™\šY\Ë[\HÙ[XÝY\Ý[™ÜË˜]Ë[Û›B››Ü›X[^˜][Û‹™\^HY]Y]H[\\š[™È[™Ù™›[™HØXÚH™\^Kˆ›Â˜Ø[Ý[][Û‹Ø]K\[[™KÓHÜˆ[œ][ØY\ˆÛÛ˜XÝÚ[™Ù\Ë‚‚ˆÈÈÈ\ÙHËŒÍ8 %ÑÕ[œÝ]][Û‹\Ý]\ÝXÜÈ˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHØÝ[Y[YX\Ý[Û™^B˜ÝØÚ×ÚÙÝÚ[œÝ]][Û—ÜÝ]\ÝXÜ×Ù[XÑÕ[œÝ]][Û‹\Ý]\ÝXÜÈ[™Ú[[™\ˆÒT‘RÓT—ÒÓS‘ÔØÚ]^XÚ]˜šY]ÏZÙÝÚ[œÝ]][Û—ÜÝ]\ÝXÜØH›Ý\ˆØÝ[Y[YX\šÙ]Ù[XÝÜœÂ˜9c%ùd$y£ z ¨X9¬ªº ¨z`&¹£ z ¨X9­ìz ¨z`&¹£ z ¨X[™9ceùd$y£ z ¨X[™[˜Û\Ú]™B˜Ý\Ù]XØ[™Ù]X]H˜[™Ù\ËˆHÐRÔÚ\™HÝØÚËY]B™ØÝ[Y[][Û—JÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+H[™–ÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚ×Ù™X]\™KÜÝØÚ×ÚÙÝÙ[KœJB™Yš[™HH^XÝÙ]™[‹YšY[Ý]][™Ø[B˜•ÓUUPSÓÔ‘×ÔÕXX\Ý[Û™^H”ÓÓˆ™\ÜÚ]\ØÙ[™[™ÈÓÑUXYÙBœÚ^™HL[™X\šÙ]]\Hš[\œÈ˜XØÜˆØˆH›ÝšY\‚™œ™Y^™\ÈHÙ™šXÚX[]Hš[\‹™\ÜÛÜYÙH[™š^Y\˜[Y]\œË˜[Y]\ÈHÛÛ\]HX\šÙ]]ÚYH™\ÜÛœÙK[™™\Ù\™\ÈHÙ™šXÚX[ŒNKXÛÛ[[ˆÛÝ\˜ÙHX\[™È
+]HÛÝ[˜˜[YHKÍKÌLY^HÚ[™Ù\Â˜XØ˜ØØ[œÝ]][ÛˆX
+Kˆ›Ü›Ý[™œ˜[˜Ú\È™]Z[ˆ›ÝšY\‹Yš]™[‚œYÚ[˜][ÛˆÚ[HHÛÝ]›Ý[™œ˜[˜Ú\ÈHØÝ[Y[YÚ[™ÛK\YÙH]‚‚™XØ]\ÙHHÜ˜\\ˆ›ÝÜÈÛÛZ[ˆ›È\Ý[™ÈÜˆÙXÝ\š]HÛÙKH›ÝšY\‚œ™]Z[œÈH[X\šÙ]]ÚYH[œÝ]][Ûˆ™\ÜÛœÙH[™™XÛÜ™È™\]Y\ÝYKÒ›\Ý[™ÈY[]H\ÈÛÛ^Û›NÈ]Ù\È›Ý[™[H›ÝË[]™[\Ý[™ÈÙ^B›Üˆš[\ˆ[œÝ]][ÛœÈÈHÛÛ\[žKˆH›Ü›X[^™\ˆ[Z]Â˜RÔÒT‘WÒÑÕÒS”ÕUUSÓ—ÔÕUTÕPÔ×ÔU×ÓÓ“X[™Ü™X]\È›ÈØ[›ÛšXØ[›ÝÛ™\œÚ\ÛÛ˜Ù[˜][Û‹Ú\™K[][Û‹ÛÝ™\›˜[˜ÙHÜˆ\ÜÝY\ˆØ\ÚY›ÝÂ™˜XÝˆ\ÝÈÛÝ™\ˆ[X\šÙ]œ˜[˜Ú\Ë^XÝš[\œËÝ[š]È[™šY[Ü™\‹œ™\]Y\ÝØÛÛ^Ù]H™Z™XÝ[Û‹[\™\ÜÛœÙHØÚ[XH[™˜[YH›Ý[™\šY\Ëœ˜]Ë[Û›H›Ü›X[^˜][Û‹™\^HY]Y]H[\\š[™È[™Ù™›[™HØXÚH™\^Kˆ›Â˜Ø[Ý[][Û‹Ø]K\[[™KÓHÜˆ[œ][ØY\ˆÛÛ˜XÝÚ[™Ù\Ë‚‚ˆÈÈÈ\ÙHËŒÍH8 %ÑÕÚ[™ÚZK]ËRÛ™ÈÛÛ™È][ÝH˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHØÝ[Y[YX\Ý[Û™^B˜ÝØÚ×ÚÙÝÜÚÚ×ÜÜÝÙ[XÑÕÚ[™ÚZK]ËRÛ™ÈÛÛ™È™X[][YH][ÝH[™Ú[[™\ˆPT’ÑUÔUSÕXÚ]^XÚ]šY]ÏZ×ÜÚÜÜÝ[™\Ú\™H\Ý[™Â˜ÛÛ^ˆHÐRÔÚ\™HÝØÚËY]B™ØÝ[Y[][Û—JÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+H[™–ÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚËÜÝØÚ×ÚÙÝÙ[KœJB™Yš[™HH›ËX\™Ý[Y[Ž‘RÌM[š]™\œÙH[™^XÝL‹YšY[Ü˜\\‚›Ý]]ˆH›ÝšY\ˆœ™Y^™\ÈH\Ú‹™X\Ý[Û™^K˜ÛÛKØ\KÜ]ØÛ\ÝÙÙ]”ÓÓ‚œ™\]Y\ÝšY[X\[™È[™ÑÜÚ\™K\˜Ù[Ú\™\È[™Ñ˜[œÙ›Ü›\Ë˜[Y]\È]™\žHš]™KYYÚ]XÛÙH›ÝÈ[™ÛÙKX\ØÙ[™[™È™\Ù]Ù\]Y[˜ÙH™Y›Ü™B™š[\š[™ÈH[™\ÜÛœÙK[™™XÛÜ™È[ÜÙ[XÝYY[]HÜ™\ˆ›Ü‚˜ØXÚH™\^K‚‚•H[^YYÝ\œ™[Y^HÛ˜\ÚÝ\È›ÈÝX›HØœÙ\˜][Ûˆ[Y\Ý[\ÛÈB››Ü›X[^™\ˆ[Z]ÈRÔÒT‘WÒ×ÔÒÔÔÕÔUSÕWÔU×ÓÓ“X[™Ü™X]\È›ÈØ[›ÛšXØ[˜Ý\œ™[\šXÙH˜XÝˆ\ÝÈÛÝ™\ˆ™\]Y\ÝØÛÛ^™Z™XÝ[Û‹^XÝšY[Ü™\‹™[][š]™\œÙHÛÙKÜ˜[šËÝ\H›Ý[™\šY\Ë[˜[Y[œ™\]Y\ÝY›ÝÜË[\BœÙ[XÝY\Ý[™ÜË˜]Ë[Û›H›Ü›X[^˜][Û‹™\^HY]Y]H[\\š[™È[™›Ù™›[™HØXÚH™\^Kˆ›ÈØ[Ý[][Û‹Ø]K\[[™KÓHÜˆ[œ][ØY\‚˜ÛÛ˜XÝÚ[™Ù\Ë‚‚ˆÈÈÈ\ÙHËŒÍˆ8 %ÑÕ\ÝÜšXØ[Y›ÝÈ˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHØÝ[Y[YX\Ý[Û™^B˜ÝØÚ×ÚÙÝÚ\ÝÙ[XÑÕ\ÝÜšXØ[Y›ÝÈ[™Ú[[™\‚˜ÐTUSÑ“ÕØÚ]^XÚ]šY]ÏZÙÝÚ\Ý[™HÚ^Ù™šXÚX[Þ[X›ÛÈ9c%ùd$z-a:aäX9¬ªº ¨z`&˜˜9­ìz ¨z`&˜9ceùd$z-a:aäX9®+ú ¨z`&¹¬ª˜[™˜9®+ú ¨z`&¹­ìXˆHÐRÔÚ\™HÝØÚËY]B™ØÝ[Y[][Û—JÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+H[™–ÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚ×Ù™X]\™KÜÝØÚ×ÚÙÝÙ[KœJB™Yš[™HHÞ[X›Û]ËXUUPSÕTXX\[™È[™H^XÝŒLËYšY[Ý]][˜ÛY[™È\™XÝ[Û‹\ÜXÚYšXÈ[™^˜[Y\ËˆH›ÝšY\‚™œ™Y^™\ÈH”ÓUUPSÑPSÒTÕÔ–X”ÓÓˆ™\Ü^XÝ™š[\œË\ØÙ[™[™ÈQWÑUX\Ý™X[HÜ™\‹YÙHÚ^™B˜L[™[\YÙHYÚ[˜][Û‹˜[Y]\ÈHÛÛ\]B˜\ØÙ[™[™ËY]H™\ÜÛœÙH[™™XÛÜ™ÈØÝ[Y[Y[Û™^KÚ[™^Ü\˜Ù[YÙH[š]Â˜[™˜[œÙ›Ü›\È›Üˆ™\^K‚‚“›Ü›Ý[™Þ[X›ÛÈ™\]Z\™HK\Ú\™H\Ý[™ÈÛÛ^[™ÛÝ]›Ý[™Þ[X›ÛÈ™\]Z\™B’\Ú\™HÛÛ^]H™\ÜÛœÙH\È›È\Ý[™Ë\›ÝÈY[]H[™\È™]™\‚™š[\™YÈHÛÛ\[žKˆH›Ü›X[^™\ˆ[Z]Â˜RÔÒT‘WÒÑÕÒTÕÔU×ÓÓ“X[™Ü™X]\È›ÈØ[›ÛšXØ[\ÜÝY\‚˜Ø\ÚY›ÝË\]ZY]K™]\›ˆÜˆ˜[X][Ûˆ˜XÝˆ\ÝÈÛÝ™\ˆ[Ú^Þ[X›ÛË™^XÝšY[Ëš[\œË[š]Y]Y]H[™›Ý][™Ë\˜[Y]\‹ØÛÛ^™Z™XÝ[Û‹˜ÛÛ\]K\™\ÜÛœÙH]KÛ[Y\šXËÝ^›Ý[™\šY\Ë˜]Ë[Û›H›Ü›X[^˜][Û‹œ™\^HY]Y]H[\\š[™È[™Ù™›[™HØXÚH™\^Kˆ›ÈØ[Ý[][Û‹Ø]Kœ\[[™KÓHÜˆ[œ][ØY\ˆÛÛ˜XÝÚ[™Ù\Ë‚‚ˆÈÈÈ\ÙHËŒÍÈ8 %ÑÕ[™]šYX[Y]Z[˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHØÝ[Y[YK\Ú\™HX\Ý[Û™^B˜ÝØÚ×ÚÙÝÚ[™]šYX[Ù]Z[Ù[XÑÕ[™]šYX[Y]Z[[™Ú[[™\‚˜ÒT‘RÓT—ÒÓS‘ÔØÚ]^XÚ]šY]ÏZÙÝÚ[™]šYX[Ù]Z[[™š[˜Û\Ú]™HÝ\Ù]XØ[™Ù]X]H˜[™Ù\ËˆB–ÐRÔÚ\™HÝØÚËY]HØÝ[Y[][Û—JÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B˜[™ÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚ×Ù™X]\™KÜÝØÚ×ÚÙÝÙ[KœJB™Yš[™HHÚ^YYÚ]Þ[X›Û[œ]^XÝ[‹YšY[Ý]][™B˜”ÓUUPSÒÓÑUX\Ý[Û™^H”ÓÓˆ™\ÜˆHÜ˜\\ˆš\œÝšY\Â˜PT’ÑUÐÓÑOHŒÈ˜[™™]šY\ÈÚ]PT’ÑUÐÓÑOHŒH˜Ú[ˆ›È™\Ý[\Â˜]˜Z[X›NÈH›ÝšY\ˆ™XÛÜ™È›Ýš[\œË\ØÙ[™[™ÈÓÑUXÜ™\‹œYÙHÚ^™HL›ÝšY\‹Yš]™[ˆYÚ[˜][Ûˆ[™HÙ™šXÚX[MËXÛÛ[[ˆÛÝ\˜ÙB›X\[™Ë‚‚•H›ÝšY\ˆ™\]Z\™\È[ˆK\Ú\™H\Ý[™ÈÛÛ^[™^XÝVVVSSQ›Ý[™Ë˜[Y]\ÈHÛÛ\]H[œÝ]][Û‹Ù]H™\ÜÛœÙH™Y›Ü™HÝÜ˜YÙK[ÝÜÈ[‚™[\H\Ý[™ÈÙ[XÝ[Û‹[™™\Ù\™\ÈÓ–KÜÚ\™KÚ\™\ËÓ–H[™\˜Ù[YÙB[š]È\ÈØÝ[Y[YˆH›Ü›X[^™\ˆ[Z]Â˜RÔÒT‘WÒÑÕÒS‘U’QPSÑURSÔU×ÓÓ“XX]™\Â˜ÛÝ™\›˜[˜ÙWÜš\Ú×Û]™[Üš]XØ[HZ\ÜÚ[™È[™Ü™X]\È›ÈØ[›ÛšXØ[ÝÛ™\œÚ\˜ÛÛ˜Ù[˜][Û‹Ú\™KXÛÝ[[][Û‹\ÜÝY\ˆØ\ÚY›ÝË™]\›ˆÜˆ˜[X][Û‚™˜XÝˆ\ÝÈÛÝ™\ˆ™\]Y\ÝØÛÛ^Ù]H™Z™XÝ[Û‹^XÝØÚ[XH[™˜[Y\Ë™[\H™\ÜÛœÙ\Ë˜]Ë[Û›H›Ü›X[^˜][Û‹™\^HY]Y]H[\\š[™È[™Ù™›[™B˜ØXÚH™\^Kˆ›ÈØ[Ý[][Û‹Ø]K\[[™KÓHÜˆ[œ][ØY\ˆÛÛ˜XÝ˜Ú[™Ù\Ë‚‚ˆÈÈÈ\ÙHËŒÎ8 %ÑÕ[™Y›ÝË\Ý[[X\žH˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHØÝ[Y[YX\Ý[Û™^B˜ÝØÚ×ÚÙÝÙ[™Ù›Ý×ÜÝ[[X\žWÙ[XX\šÙ]]ÚYHÑÕ[™Y›ÝË\Ý[[X\žH[™Ú[[™\ˆÐTUSÑ“ÕØÚ]^XÚ]šY]ÏZÙÝÙ[™Ù›Ý×ÜÝ[[X\žX[™KÒ\Ý[™Â˜ÛÛ^ˆHÐRÔÚ\™HÝØÚËY]B™ØÝ[Y[][Û—JÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+H[™–ÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚËÜÝØÚ×ÚÙÝÙ[KœJB™Yš[™HH›ËX\™Ý[Y[”ÓUUPSÔUSÕX”ÓÓˆ™\Ü^XÝLËYšY[Ý]]˜UUPSÕTX\ØÙ[™[™ÈÜ™\‹Œ\›ÝÈÚ[™ÛK\YÙH™\]Y\Ý[™MËXÛÛ[[‚Ü˜\\ˆX\[™ËˆH›ÝšY\ˆœ™Y^™\ÈH™\Ü][ÝHÛÛ[[œË[[Ý[ØÛÝ[ÂœÝ]\ËÜ\˜Ù[YÙH[š]È[™ÛÛ\]HX\šÙ]]ÚYH™\ÜÛœÙHY]Y]K[˜ÛY[™ÂHÛÝ\˜ÙHÜ™\ˆ[™Û™H˜Y[™ËY]HØœÙ\˜][Û‹‚‚•H™\ÜÛœÙH\È›È™\]Y\ÝY[\Ý[™ÈY[]H[™\È™]™\ˆš[\™YÈB˜ÛÛ\[žNÈKÒ\Ý[™ÈÛÛ^™[XZ[œÈ™\]Y\ÝY]Y]HÛ›HÚ]˜\Ý[™×ØÛÛ^ÛÛ›O]YX[™›Ý×Ùš[\š[™Ï[›Û™XˆH›Ü›X[^™\ˆ[Z]Â˜RÔÒT‘WÒÑÕÑ•S‘Ñ“Õ×ÔÕSSPT–WÔU×ÓÓ“X[™Ü™X]\È›ÈØ[›ÛšXØ[\ÜÝY\‚˜Ø\ÚY›ÝË\]ZY]K™]\›ˆÜˆ˜[X][Ûˆ˜XÝˆ\ÝÈÛÝ™\ˆ›Ý\Ý[™Â˜ÛÛ^Ë^XÝšY[Ë™\Ü\˜[Y]\œË[š]È[™Ü˜\\ˆX\[™Ë˜ÛÛ^Ü\˜[Y]\ˆ™Z™XÝ[Û‹ÛÛ\]K\™\ÜÛœÙH]KÛ[Y\šXËÚ[YÙ\‹Ý^˜›Ý[™\šY\Ë[\H™\ÜÛœÙ\Ë˜]Ë[Û›H›Ü›X[^˜][Û‹™\^HY]Y]H[\\š[™Â˜[™Ù™›[™HØXÚH™\^Kˆ›ÈØ[Ý[][Û‹Ø]K\[[™KÓHÜˆ[œ][ØY\‚˜ÛÛ˜XÝÚ[™Ù\Ë‚‚ˆÈÈÈ\ÙHËŒÎH8 %Ú[™ÚZHK\Ú\™H][ÝH˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHØÝ[Y[YX\Ý[Û™^B˜ÝØÚ×ÜÚØWÜÜÝÙ[XÚ[™ÚZHK\Ú\™H™X[][YH][ÝH[™Ú[[™\‚˜PT’ÑUÔUSÕXÚ]^XÚ]šY]Ï\ÚØWÜÜÝ[™HÚ[™ÚZHK\Ú\™H\Ý[™Â˜ÛÛ^ˆHÐRÔÚ\™HÝØÚËY]B™ØÝ[Y[][Û—JÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+H[™–ÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚ×Ù™X]\™KÜÝØÚ×Ú\ÝÙ[KœJB™Yš[™HH›ËX\™Ý[Y[\Ú‹™X\Ý[Û™^K˜ÛÛKØ\KÜ]ØÛ\ÝÙÙ]”ÓÓˆ[š]™\œÙK™š^YNŒHŒ‹NŒHŒŒØš[\‹ŒØ\ØÙ[™[™ÈÛÜYÙHÚ^™HL[™œ›ÝšY\‹Yš]™[ˆ[\YÙHYÚ[˜][Û‹ˆH›ÝšY\ˆ™\Ù\™\ÈH^XÝŒŒËYšY[Ü˜\\ˆÜ™\‹ÌËXÛÛ[[ˆÛÝ\˜ÙHX\[™ËØÝ[Y[YšXÙKÝ›Û[YKÂ\››Ý™\‹Ü\˜Ù[YÙH[š]È[™ÛÛ\]K][š]™\œÙHÛÙHÜ™\ˆ™Y›Ü™HÙ[XÝ[™ÂH™\]Y\ÝY\Ý[™Ë‚‚•HÝ\œ™[Y^H™\ÜÛœÙH\È›ÈÝX›HØœÙ\˜][Ûˆ[Y\Ý[\[™\È™]Z[™Y˜\È˜]È]šY[˜ÙHÛ›KˆH›Ü›X[^™\ˆ[Z]Â˜RÔÒT‘WÔÒÐWÔÔÕÔUSÕWÔU×ÓÓ“X[™Ü™X]\È›ÈØ[›ÛšXØ[Ý\œ™[\šXÙHÜ‚›Ý\ˆX\šÙ]˜XÝˆ\ÝÈÛÝ™\ˆÚ[™ÚZK[Û›H›Ý][™Ë^XÝ\Ý™X[Bœ\˜[Y]\œËÛÛ\]K\™\ÜÛœÙHØÚ[XKÜ˜[šËØÛÙKÝ\H›Ý[™\šY\Ë[˜[Y[œ™\]Y\ÝY›ÝÜË[\HÙ[XÝ[ÛœË˜]Ë[Û›H›Ü›X[^˜][Û‹™\^HY]Y]B[\\š[™È[™Ù™›[™HØXÚH™\^Kˆ›ÈØ[Ý[][Û‹Ø]K\[[™KÓHÜ‚š[œ][ØY\ˆÛÛ˜XÝÚ[™Ù\Ë‚‚ˆÈÈÈ\ÙHË8 %Ú[žš[ˆK\Ú\™H][ÝH˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHØÝ[Y[YX\Ý[Û™^B˜ÝØÚ×ÜÞ—ØWÜÜÝÙ[XÚ[žš[ˆK\Ú\™H™X[][YH][ÝH[™Ú[[™\‚˜PT’ÑUÔUSÕXÚ]^XÚ]šY]Ï\Þ—ØWÜÜÝ[™HÚ[žš[ˆK\Ú\™H\Ý[™Â˜ÛÛ^ˆHÐRÔÚ\™HÝØÚËY]B™ØÝ[Y[][Û—JÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+H[™–ÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚ×Ù™X]\™KÜÝØÚ×Ú\ÝÙ[KœJB™Yš[™HH›ËX\™Ý[Y[\Ú‹™X\Ý[Û™^K˜ÛÛKØ\KÜ]ØÛ\ÝÙÙ]”ÓÓˆ[š]™\œÙK™š^YNŒ‹NŒŽš[\‹ŒØ\ØÙ[™[™ÈÛÜYÙHÚ^™HL[™œ›ÝšY\‹Yš]™[ˆ[\YÙHYÚ[˜][Û‹ˆH›ÝšY\ˆ™\Ù\™\ÈH^XÝŒŒËYšY[Ü˜\\ˆÜ™\‹ÌËXÛÛ[[ˆÛÝ\˜ÙHX\[™ËØÝ[Y[YšXÙKÝ›Û[YKÂ\››Ý™\‹Ü\˜Ù[YÙH[š]È[™ÛÛ\]K][š]™\œÙHÛÙHÜ™\ˆ™Y›Ü™HÙ[XÝ[™ÂH™\]Y\ÝY\Ý[™Ë‚‚•HÝ\œ™[Y^H™\ÜÛœÙH\È›ÈÝX›HØœÙ\˜][Ûˆ[Y\Ý[\[™\È™]Z[™Y˜\È˜]È]šY[˜ÙHÛ›KˆH›Ü›X[^™\ˆ[Z]Â˜RÔÒT‘WÔÖ—ÐWÔÔÕÔUSÕWÔU×ÓÓ“X[™Ü™X]\È›ÈØ[›ÛšXØ[Ý\œ™[\šXÙHÜ‚›Ý\ˆX\šÙ]˜XÝˆ\ÝÈÛÝ™\ˆÚ[žš[‹[Û›H›Ý][™Ë^XÝ\Ý™X[Bœ\˜[Y]\œËÛÛ\]K\™\ÜÛœÙHØÚ[XKÜ˜[šËØÛÙKÝ\H›Ý[™\šY\Ë[˜[Y[œ™\]Y\ÝY›ÝÜË[\HÙ[XÝ[ÛœË˜]Ë[Û›H›Ü›X[^˜][Û‹™\^HY]Y]B[\\š[™È[™Ù™›[™HØXÚH™\^Kˆ›ÈØ[Ý[][Û‹Ø]K\[[™KÓHÜ‚š[œ][ØY\ˆÛÛ˜XÝÚ[™Ù\Ë‚‚ˆÈÈÈ\ÙHËH8 %™ZZš[™ÈK\Ú\™H][ÝH˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHØÝ[Y[YX\Ý[Û™^B˜ÝØÚ×Øš—ØWÜÜÝÙ[X™ZZš[™ÈK\Ú\™H™X[][YH][ÝH[™Ú[[™\‚˜PT’ÑUÔUSÕXÚ]^XÚ]šY]ÏXš—ØWÜÜÝ[™H™ZZš[™ÈK\Ú\™H\Ý[™Â˜ÛÛ^ˆHÐRÔÚ\™HÝØÚËY]B™ØÝ[Y[][Û—JÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+H[™–ÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚ×Ù™X]\™KÜÝØÚ×Ú\ÝÙ[KœJB™Yš[™HH›ËX\™Ý[Y[\Ú‹™X\Ý[Û™^K˜ÛÛKØ\KÜ]ØÛ\ÝÙÙ]”ÓÓˆ[š]™\œÙK™š^YNŒŽHÎŒŒš[\‹ŒØ\ØÙ[™[™ÈÛÜYÙHÚ^™HL[™œ›ÝšY\‹Yš]™[ˆ[\YÙHYÚ[˜][Û‹ˆH›ÝšY\ˆ™\Ù\™\ÈH^XÝŒŒËYšY[Ü˜\\ˆÜ™\‹ÌËXÛÛ[[ˆÛÝ\˜ÙHX\[™ËØÝ[Y[YšXÙKÝ›Û[YKÂ\››Ý™\‹Ü\˜Ù[YÙH[š]È[™ÛÛ\]K][š]™\œÙHÛÙHÜ™\ˆ™Y›Ü™HÙ[XÝ[™ÂH™\]Y\ÝY\Ý[™Ë‚‚•HÝ\œ™[Y^H™\ÜÛœÙH\È›ÈÝX›HØœÙ\˜][Ûˆ[Y\Ý[\[™\È™]Z[™Y˜\È˜]È]šY[˜ÙHÛ›KˆH›Ü›X[^™\ˆ[Z]Â˜RÔÒT‘WÐ’—ÐWÔÔÕÔUSÕWÔU×ÓÓ“X[™Ü™X]\È›ÈØ[›ÛšXØ[Ý\œ™[\šXÙHÜ‚›Ý\ˆX\šÙ]˜XÝˆ\ÝÈÛÝ™\ˆ™ZZš[™Ë[Û›H›Ý][™Ë^XÝ\Ý™X[Bœ\˜[Y]\œËÛÛ\]K\™\ÜÛœÙHØÚ[XKÜ˜[šËØÛÙKÝ\H›Ý[™\šY\Ë[˜[Y[œ™\]Y\ÝY›ÝÜË[\HÙ[XÝ[ÛœË˜]Ë[Û›H›Ü›X[^˜][Û‹™\^HY]Y]B[\\š[™È[™Ù™›[™HØXÚH™\^Kˆ›ÈØ[Ý[][Û‹Ø]K\[[™KÓHÜ‚š[œ][ØY\ˆÛÛ˜XÝÚ[™Ù\Ë‚‚ˆÈÈÈ\ÙHËˆ8 %K\Ú\™H™]Ë\ÝØÚÈ][ÝH˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHØÝ[Y[YX\Ý[Û™^B˜ÝØÚ×Û™]×ØWÜÜÝÙ[XK\Ú\™H™]Ë\ÝØÚÈ™X[][YH][ÝH[™Ú[[™\‚˜PT’ÑUÔUSÕXÚ]^XÚ]šY]Ï[™]×ØWÜÜÝ[™[ˆK\Ú\™H\Ý[™ÈÛÛ^‚•HÐRÔÚ\™HÝØÚËY]B™ØÝ[Y[][Û—JÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+H[™–ÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚ×Ù™X]\™KÜÝØÚ×Ú\ÝÙ[KœJB™Yš[™HH›ËX\™Ý[Y[\Ú‹™X\Ý[Û™^K˜ÛÛKØ\KÜ]ØÛ\ÝÙÙ]”ÓÓˆ[š]™\œÙK™š^YNŒŽŽNŒHŽŽš[\‹šYYŒ˜ŒØ\ØÙ[™[™ÈÛÜYÙHÚ^™B˜L[™›ÝšY\‹Yš]™[ˆ[\YÙHYÚ[˜][Û‹ˆH›ÝšY\ˆ™\Ù\™\ÈB™^XÝYšY[Ü˜\\ˆÜ™\‹[˜ÛY[™È9."¹n ¹¥éy§'ØHÌËXÛÛ[[ˆÛÝ\˜ÙB›X\[™Ë\Ý[™ËY]H›Ý[™ËØÝ[Y[YšXÙKÝ›Û[YKÝ\››Ý™\‹Ü\˜Ù[YÙB[š]È[™ÛÛ\]K][š]™\œÙHÛÙHÜ™\ˆ™Y›Ü™HÙ[XÝ[™ÈH™\]Y\ÝY\Ý[™Ë‚‚•HÝ\œ™[Y^H™]Ë\ÝØÚÈ][ÝH\È›ÈÝX›HØœÙ\˜][Ûˆ[Y\Ý[\[™\Âœ™]Z[™Y\È˜]È]šY[˜ÙHÛ›KˆH›Ü›X[^™\ˆ[Z]Â˜RÔÒT‘WÓ‘U×ÐWÔÔÕÔUSÕWÔU×ÓÓ“X[™Ü™X]\È›ÈØ[›ÛšXØ[Ý\œ™[\šXÙHÜ‚›Ý\ˆX\šÙ]˜XÝˆ\ÝÈÛÝ™\ˆK\Ú\™K[Û›H›Ý][™Ë^XÝ\Ý™X[H\˜[Y]\œË˜ÛÛ\]K\™\ÜÛœÙHØÚ[XKÜ˜[šËØÛÙKÙ]KÝ\H›Ý[™\šY\Ë[˜[Y[œ™\]Y\ÝYœ›ÝÜË[\HÙ[XÝ[ÛœË˜]Ë[Û›H›Ü›X[^˜][Û‹™\^HY]Y]H[\\š[™È[™›Ù™›[™HØXÚH™\^Kˆ›ÈØ[Ý[][Û‹Ø]K\[[™KÓHÜˆ[œ][ØY\‚˜ÛÛ˜XÝÚ[™Ù\Ë‚‚ˆÈÈÈ\ÙHËÈ8 %Ü›ÝÝ[\œš\ÙHX\šÙ]][ÝH˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHØÝ[Y[YX\Ý[Û™^B˜ÝØÚ×ØÞWØWÜÜÝÙ[XÚ[žš[ˆÜ›ÝÝ[\œš\ÙHX\šÙ]™X[][YH][ÝH[™Ú[[™\ˆPT’ÑUÔUSÕXÚ]^XÚ]šY]ÏXÞWØWÜÜÝ[™HÚ[žš[ˆÜ›ÝÝ‘[\œš\ÙHX\šÙ]\Ý[™ÈÛÛ^ˆHÐRÔÚ\™HÝØÚËY]B™ØÝ[Y[][Û—JÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+H[™–ÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚ×Ù™X]\™KÜÝØÚ×Ú\ÝÙ[KœJB™Yš[™HH›ËX\™Ý[Y[Ëœ\Ú‹™X\Ý[Û™^K˜ÛÛKØ\KÜ]ØÛ\ÝÙÙ]”ÓÓˆ[š]™\œÙK™š^YNŒŽš[\‹šYYŒL˜ŒØ\ØÙ[™[™ÈÛÜYÙHÚ^™HL[™œ›ÝšY\‹Yš]™[ˆ[\YÙHYÚ[˜][Û‹ˆH›ÝšY\ˆ™\Ù\™\ÈH^XÝŒŒËYšY[Ü˜\\ˆÜ™\‹ÌËXÛÛ[[ˆÛÝ\˜ÙHX\[™ËØÝ[Y[YœšXÙKÝ›Û[YKÝ\››Ý™\‹Ü\˜Ù[YÙH[š]È[™ÛÛ\]K][š]™\œÙHÛÙHÜ™\ˆ™Y›Ü™BœÙ[XÝ[™ÈH™\]Y\ÝY\Ý[™Ë‚‚•HÝ\œ™[Y^H][ÝH\È›ÈÝX›HØœÙ\˜][Ûˆ[Y\Ý[\[™\È™]Z[™Y\Âœ˜]È]šY[˜ÙHÛ›KˆH›Ü›X[^™\ˆ[Z]Â˜RÔÒT‘WÐÖWÐWÔÔÕÔUSÕWÔU×ÓÓ“X[™Ü™X]\È›ÈØ[›ÛšXØ[Ý\œ™[\šXÙHÜ‚›Ý\ˆX\šÙ]˜XÝˆ\ÝÈÛÝ™\ˆÜ›ÝÝ[\œš\ÙHX\šÙ][Û›H›Ý][™Ë^XÝ\Ý™X[H\˜[Y]\œËÛÛ\]K\™\ÜÛœÙHØÚ[XKÜ˜[šËØÛÙKÝ\H›Ý[™\šY\Ëš[˜[Y[œ™\]Y\ÝY›ÝÜË[\HÙ[XÝ[ÛœË˜]Ë[Û›H›Ü›X[^˜][Û‹™\^B›Y]Y]H[\\š[™È[™Ù™›[™HØXÚH™\^Kˆ›ÈØ[Ý[][Û‹Ø]K\[[™KÓHÜˆ[œ][ØY\ˆÛÛ˜XÝÚ[™Ù\Ë‚‚ˆÈÈÈ\ÙHË8 %ÕTˆX\šÙ]][ÝH˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHØÝ[Y[YX\Ý[Û™^B˜ÝØÚ×ÚØ×ØWÜÜÝÙ[XÚ[™ÚZHÕTˆX\šÙ]™X[][YH][ÝH[™Ú[[™\‚˜PT’ÑUÔUSÕXÚ]^XÚ]šY]ÏZØ×ØWÜÜÝ[™HÚ[™ÚZHÕTˆX\šÙ]\Ý[™Â˜ÛÛ^ˆHÐRÔÚ\™HÝØÚËY]B™ØÝ[Y[][Û—JÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+H[™–ÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚ×Ù™X]\™KÜÝØÚ×Ú\ÝÙ[KœJB™Yš[™HH›ËX\™Ý[Y[Ëœ\Ú‹™X\Ý[Û™^K˜ÛÛKØ\KÜ]ØÛ\ÝÙÙ]”ÓÓˆ[š]™\œÙK™š^YNŒHŒŒØš[\‹šYYŒL˜ŒØ\ØÙ[™[™ÈÛÜYÙHÚ^™HL[™œ›ÝšY\‹Yš]™[ˆ[\YÙHYÚ[˜][Û‹ˆH›ÝšY\ˆ™\Ù\™\ÈH^XÝŒŒËYšY[Ü˜\\ˆÜ™\‹ÌËXÛÛ[[ˆÛÝ\˜ÙHX\[™ËØÝ[Y[YœšXÙKÝ›Û[YKÝ\››Ý™\‹Ü\˜Ù[YÙH[š]È[™ÛÛ\]K][š]™\œÙHÛÙHÜ™\ˆ™Y›Ü™BœÙ[XÝ[™ÈH™\]Y\ÝY\Ý[™Ë‚‚•HÝ\œ™[Y^H][ÝH\È›ÈÝX›HØœÙ\˜][Ûˆ[Y\Ý[\[™\È™]Z[™Y\Âœ˜]È]šY[˜ÙHÛ›KˆH›Ü›X[^™\ˆ[Z]Â˜RÔÒT‘WÒÐ×ÐWÔÔÕÔUSÕWÔU×ÓÓ“X[™Ü™X]\È›ÈØ[›ÛšXØ[Ý\œ™[\šXÙHÜ‚›Ý\ˆX\šÙ]˜XÝˆ\ÝÈÛÝ™\ˆÕTˆX\šÙ][Û›H›Ý][™Ë^XÝ\Ý™X[Bœ\˜[Y]\œËÛÛ\]K\™\ÜÛœÙHØÚ[XKÜ˜[šËØÛÙKÝ\H›Ý[™\šY\Ë[˜[Y[œ™\]Y\ÝY›ÝÜË[\HÙ[XÝ[ÛœË˜]Ë[Û›H›Ü›X[^˜][Û‹™\^HY]Y]B[\\š[™È[™Ù™›[™HØXÚH™\^Kˆ›ÈØ[Ý[][Û‹Ø]K\[[™KÓHÜ‚š[œ][ØY\ˆÛÛ˜XÝÚ[™Ù\Ë‚‚ˆÈÈÈ\ÙHËH8 %‹\Ú\™H][ÝH˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHØÝ[Y[YX\Ý[Û™^B˜ÝØÚ×ÞšØ—ÜÜÝÙ[X‹\Ú\™H™X[][YH][ÝH[™Ú[[™\ˆPT’ÑUÔUSÕXÚ]™^XÚ]šY]ÏX—ÜÜÝ[™Ú[™ÚZHLÜˆÚ[žš[ˆŒ\Ý[™ÈÛÛ^‚•HÐRÔÚ\™HÝØÚËY]HØÝ[Y[][Û—JÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B˜[™ÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚ×Ù™X]\™KÜÝØÚ×Ú\ÝÙ[KœJB™Yš[™HH›ËX\™Ý[Y[Žœ\Ú‹™X\Ý[Û™^K˜ÛÛKØ\KÜ]ØÛ\ÝÙÙ]”ÓÓˆ[š]™\œÙK™š^YNŒËNŒHŒØš[\‹šYYŒL˜ŒØ\ØÙ[™[™ÈÛÜYÙHÚ^™HL˜[™›ÝšY\‹Yš]™[ˆ[\YÙHYÚ[˜][Û‹ˆH›ÝšY\ˆ™\Ù\™\ÈH^XÝŒŒËYšY[Ü˜\\ˆÜ™\‹ÌËXÛÛ[[ˆÛÝ\˜ÙHX\[™ËØÝ[Y[YÝËÐÓ–KÜ\˜Ù[YÙB[š]È[™ÛÛ\]K][š]™\œÙHÛÙHÜ™\ˆ™Y›Ü™HÙ[XÝ[™ÈH™\]Y\ÝY\Ý[™ÎÂH‹\Ú\™HÝ\œ™[˜ÞH™[XZ[œÈ[™ØÝ[Y[Y‚‚•HÝ\œ™[Y^H][ÝH\È›ÈÝX›HØœÙ\˜][Ûˆ[Y\Ý[\[™\È™]Z[™Y\Âœ˜]È]šY[˜ÙHÛ›KˆH›Ü›X[^™\ˆ[Z]Â˜RÔÒT‘WÐ—ÔÔÕÔUSÕWÔU×ÓÓ“X[™Ü™X]\È›ÈØ[›ÛšXØ[Ý\œ™[\šXÙHÜˆÝ\‚›X\šÙ]˜XÝˆ\ÝÈÛÝ™\ˆ‹\Ú\™H›Ý][™È›Üˆ›ÝXZ[›[™^Ú[™Ù\Ë^XÝ\Ý™X[H\˜[Y]\œËÛÛ\]K\™\ÜÛœÙHØÚ[XKÜ˜[šËØÛÙKÝ\H›Ý[™\šY\Ëš[˜[Y[œ™\]Y\ÝY›ÝÜË[\HÙ[XÝ[ÛœË˜]Ë[Û›H›Ü›X[^˜][Û‹™\^B›Y]Y]H[\\š[™È[™Ù™›[™HØXÚH™\^Kˆ›ÈØ[Ý[][Û‹Ø]K\[[™KÓHÜˆ[œ][ØY\ˆÛÛ˜XÝÚ[™Ù\Ë‚‚ˆÈÈÈ\ÙHËˆ8 %Ú[˜H‹\Ú\™H][ÝH˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHØÝ[Y[YÚ[˜B–ØÝØÚ×ÞšØ—ÜÜÝJÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B‹\Ú\™H™X[][YH][ÝH[™Ú[[™\ˆPT’ÑUÔUSÕXÚ]^XÚ]˜šY]ÏX—ÜÚ[˜WÜÜÝ[™Ú[™ÚZHLÜˆÚ[žš[ˆŒ\Ý[™ÈÛÛ^ˆB–ÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚËÜÝØÚ×ÞšØ—ÜÚ[˜KœJB™Yš[™\ÈHX\šÙ]ÐÙ[\‹™Ù]S›ÙTÝØÚÐÛÝ[YÙKXÛÝ[™\]Y\Ý›ÛÝÙYžB˜X\šÙ]ÐÙ[\‹™Ù]S›ÙQ]X”ÓÓˆYÙ\ÈÙˆ›ÝÜÈÚ]š^Y›ÙOZ×Ø˜™[\HÞ[X›ÛÜ×Ü—ØO\YÙX[™\ØÙ[™[™ÈÞ[X›ÛÜ™\‹ˆH›ÝšY\‚œ™\Ù\™\ÈH^XÝLËYšY[Ü˜\\ˆÜ™\‹ŒËXÛÛ[[ˆÛÝ\˜ÙHX\[™Ë™ØÝ[Y[Y\˜Ù[YÙKÜÚ\™KÐÓ–H[š]È[™ÝÙ\‹\™Yš^YÛÝ\˜ÙHÞ[X›ÛÈ™Y›Ü™BœÙ[XÝ[™ÈH™\]Y\ÝY\Ý[™Ë‚‚•HÝ\œ™[Y^HÚ[˜H‹\Ú\™H][ÝH\È›ÈÝX›HØœÙ\˜][Ûˆ[Y\Ý[\[™\Âœ™]Z[™Y\È˜]È]šY[˜ÙHÛ›KˆH›Ü›X[^™\ˆ[Z]Â˜RÔÒT‘WÐ—ÔÒSWÔÔÕÔUSÕWÔU×ÓÓ“X[™Ü™X]\È›ÈØ[›ÛšXØ[Ý\œ™[\šXÙHÜ‚›Ý\ˆX\šÙ]˜XÝˆ™\X]Y\Ý™X[HØ[ÈX^H™H[\Ü˜\š[HTX›ØÚÙYÛÂ][Z]][Ûˆ\È™XÛÜ™Y\È›Ý™[˜[˜ÙH˜]\ˆ[ˆY[ˆžH™]žHÙÚXË‚•\ÝÈÛÝ™\ˆ›ÝXZ[›[™^Ú[™Ù\Ë^XÝ\Ý™X[H\˜[Y]\œË˜ÛÛ\]K\™\ÜÛœÙHšY[ÛÜ™\‹ØÛÙKÝ\H›Ý[™\šY\Ë[˜[Y[œ™\]Y\ÝY›ÝÜË™[\HÙ[XÝ[Û‹˜]Ë[Û›H›Ü›X[^˜][Ûˆ[™Ù™›[™HØXÚH™\^Kˆ›Â˜Ø[Ý[][Û‹Ø]K\[[™KÓHÜˆ[œ][ØY\ˆÛÛ˜XÝÚ[™Ù\Ë‚‚ˆÈÈÈ\ÙHËÈ8 %Ú[˜H‹\Ú\™HZ[KZ\ÝÜžH˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHØÝ[Y[YÚ[˜B–ØÝØÚ×ÞšØ—ÙZ[XJÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B‹\Ú\™HZ[KZ\ÝÜžH[™Ú[[™\ˆPT’ÑUÒTÕÔ–XÚ]^XÚ]˜šY]ÏX—ÙZ[XÚ[™ÚZHLÜˆÚ[žš[ˆŒ\Ý[™ÈÛÛ^[˜Û\Ú]™B˜Ý\Ù]XØ[™Ù]X[™Y\Ý˜[Y\È	ÉØYœXœXYœKY˜XÝÜ˜Ü‚˜œKY˜XÝÜ˜ˆHÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚËÜÝØÚ×ÞšØ—ÜÚ[˜KœJB™™]Ú\ÈÚ[˜IÜÈ[˜Üž\YR˜]˜TØÜš\[\ÝÜžK[ˆÝ]Ý[™[™Ë\Ú\™B˜]^[X\žH™\ÜÛœÙH[™Ü[Û˜[YœKÚœH˜XÝÜˆ\ÝÜžKˆH›ÝšY\ˆ™\Ù\™\ÂH^XÝ™YÝ[\ˆšY[È]XÜ[˜YÚÝØÛÜÙX›Û[YX˜Ý]Ý[™[™×ÜÚ\™X\››Ý™\˜ÜˆH^XÝÛËYšY[˜XÝÜˆ™\ÜÛœÙK[Û™ÂÚ]H™\]Y\ÝY˜[™ÙKÝÙ\‹\™Yš^YÞ[X›ÛY\ÝY[[ÙKÛÝ\˜ÙHT“Ë™XÛÙ\‹Ý˜[œÙ›Ü›HÝ\È[™˜XÝÜ‹\Ù\šY\È[\Û˜\ÚÝØÛÜH[ˆ™\^B›Y]Y]K‚‚•H‹\Ú\™HZ[KZ\ÝÜžH™\ÜÛœÙH™[XZ[œÈ˜]È]šY[˜ÙHÛ›H™XØ]\ÙHB™ØÝ[Y[Y™\ÜÛœÙHÙ\È›Ý\ÝX›\ÚHÚ[™ÚZKÔÚ[žš[ˆ‹\Ú\™HšXÙB˜Ý\œ™[˜ÞHÜˆHØ[›ÛšXØ[Y\ÝY[Ý˜Y[™ËXØ[[™\ˆ˜\Ú\ËˆH›Ü›X[^™\‚™[Z]ÈRÔÒT‘WÐ—ÑRSWÒTÕÔ–WÔU×ÓÓ“X[™Ü™X]\È›ÈØ[›ÛšXØ[Z[KZ\ÝÜžKœ™]\›‹˜[X][ÛˆÜˆXØÛÝ[[™È˜XÝˆ\ÝÈÛÝ™\ˆ›Ý][™ËY˜][Ë^XÝœ™YÝ[\‹Ù˜XÝÜˆØÚ[X\Ë[˜[Y›ÝÜË˜]Ë[Û›H›Ü›X[^˜][Û‹™\^HY]Y]B[\\š[™ËÝ][Ù‹\˜[™ÙH™\^H[™Ù™›[™HØXÚH™\^Kˆ›ÈØ[Ý[][Û‹Ø]Kœ\[[™KÓHÜˆ[œ][ØY\ˆÛÛ˜XÝÚ[™Ù\Ë‚‚ˆÈÈÈ\ÙHË8 %Ú[˜H‹\Ú\™HZ[]KZ\ÝÜžH˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHØÝ[Y[YÚ[˜B–ØÝØÚ×ÞšØ—ÛZ[]XJÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B‹\Ú\™HZ[]KZ\ÝÜžH[™Ú[[™\ˆPT’ÑUÒTÕÔ–XÚ]^XÚ]˜šY]ÏX—ÛZ[]XÚ[™ÚZHLÜˆÚ[žš[ˆŒ\Ý[™ÈÛÛ^\š[ÙÂ˜XXMXÌÜˆŒ[™Y\ÝY[[Ù\È	ÉØYœXÜˆœXˆB–ÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚËÜÝØÚ×ÞšØ—ÜÚ[˜KœJBœ™\]Y\ÝÈHÚ[˜H”ÓÓ”Ë[[™H[™Ú[Ú]HX\šÙ]\™Yš^YÞ[X›Û˜ØØ[X\]X[ÈH™\]Y\ÝY\š[Ù[™š^Y][[LNMÌˆH›ÝšY\‚œ™\Ù\™\ÈH^XÝÚ^YšY[^XÜ[˜YÚÝØÛÜÙX›Û[YXœ™\ÜÛœÙH[™™XÛÜ™ÈHÞ[X›Û[\˜[Y\ÝY[™XÙ[]˜Y[™ËY^BœØÛÜKÛÝ\˜ÙH\˜[Y]\œË”ÓÓ”XÛÙ\ˆ[™Y\ÝY[˜[œÙ›Ü›H[ˆ™\^B›Y]Y]K‚‚•H‹\Ú\™HZ[]KZ\ÝÜžH™\ÜÛœÙH™[XZ[œÈ˜]È]šY[˜ÙHÛ›H™XØ]\ÙH]\ÈBœ™XÙ[Z[]HÚ[™ÝÈÚ][™ØÝ[Y[YšXÙKÝ›Û[YH[š]È[™Ù\È›Ý™\ÝX›\ÚHØ[›ÛšXØ[Z[KZ\ÝÜžKÝ\œ™[˜ÞHÜˆ˜[X][Ûˆ[œ]ËˆB››Ü›X[^™\ˆ[Z]ÈRÔÒT‘WÐ—ÓRS•UWÒTÕÔ–WÔU×ÓÓ“X[™Ü™X]\È›ÈØ[›ÛšXØ[™˜XÝˆ\ÝÈÛÝ™\ˆ›ÝXZ[›[™^Ú[™Ù\ËY˜][Ë\˜[Y]\ˆ[™›ÝÂ˜[Y][Û‹[\HÝ]]˜]Ë[Û›H›Ü›X[^˜][Û‹™\^HY]Y]H[\\š[™Â˜[™Ù™›[™HØXÚH™\^Kˆ›ÈØ[Ý[][Û‹Ø]K\[[™KÓHÜˆ[œ][ØY\‚˜ÛÛ˜XÝÚ[™Ù\Ë‚‚ˆÈÈÈ\ÙHËH8 %Ú[˜H™^[™]Ë\ÝØÚÈ˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHØÝ[Y[YÚ[˜B–ØÝØÚ×ÞšØWÛ™]ØJÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B›™^[™]Ë\ÝØÚÈ[™Ú[[™\ˆPT’ÑUÐPÕU’UXÚ]^XÚ]˜šY]Ï\Ú[˜WÛ™]×ÜÝØÚØ[™Ú[™ÚZHÜˆÚ[žš[ˆK\Ú\™H\Ý[™ÈÛÛ^ˆB–ÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚËÜÝØÚ×ÞšØWÜÜXÚX[œJB\Ù\ÈX\šÙ]ÐÙ[\‹™Ù]S›ÙTÝØÚÐÛÝ[Ú]›ÙO[™]×ÜÝØÚØ[ˆYÚ[˜]\Â˜X\šÙ]ÐÙ[\‹™Ù]S›ÙQ]X[ˆ\ØÙ[™[™ÈÞ[X›ÛÜ™\ˆÚ]YÙHÚ^™H‚•H›ÝšY\ˆ™\Ù\™\ÈH^XÝ[‹YšY[Þ[X›ÛÛÙX˜[YXšXÙK›Û[YK[[Ý[X\šÙ]XØ\[™\››Ý™\‹\˜][ÈÝ]][™š[\œÈHÛÛ\]B˜[Y]Y[š]™\œÙHžHH™\]Y\ÝY\Ý[™Ë‚‚•HÚ[˜H™^[™]Ë\ÝØÚÈ™\ÜÛœÙH™[XZ[œÈ˜]È]šY[˜ÙHÛ›H™XØ]\ÙH]\ÈB›]\Ý]˜Y[™ËY^H][ÝH[š]™\œÙHÚ]Ý]HÝX›HØœÙ\˜][Ûˆ]HÜˆB™š[[™ËX˜XÚÙY˜[X][Û‹Ý[š]˜\Ú\ËˆH›Ü›X[^™\ˆ[Z]Â˜RÔÒT‘WÔÒSWÓ‘U×ÔÕÐÒ×ÔU×ÓÓ“X[™Ü™X]\È›ÈØ[›ÛšXØ[˜XÝˆ\ÝÈÛÝ™\‚™^XÝ›Ý][™ËYÚ[˜][ÛˆY]Y]K[][š]™\œÙHšY[ÛÜ™\‹ÚY[]KÝ\B˜[Y][Û‹[˜[Y[œ™\]Y\ÝY›ÝÜË[\HÙ[XÝ[Û‹˜]Ë[Û›H›Ü›X[^˜][Û‹œ™\^HY]Y]H[\\š[™È[™Ù™›[™HØXÚH™\^Kˆ›ÈØ[Ý[][Û‹Ø]Kœ\[[™KÓHÜˆ[œ][ØY\ˆÛÛ˜XÝÚ[™Ù\Ë‚‚ˆÈÈÈ\ÙHËL8 %X\Ý[Û™^HÛÛ\[žKY[˜[ZXÜÈ˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHØÝ[Y[YX\Ý[Û™^B–ØÝØÚ×ÙÜÜ›ÙÜÙÙ[XJÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B˜ÛÛ\[žKY[˜[ZXÜÈ[™Ú[[™\ˆPT’ÑUÐPÕU’UXÚ]^XÚ]˜šY]ÏXÛÛ\[žWÙ[˜[ZXÜØ[™H™\]Z\™Y]OVVVVSSQˆHÛÙ™šXÚX[š[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚËÜÝØÚ×ÙÜÜ›Ù[KœJBœ]Y\šY\ÈH”ÓÔ‘ÓÔÐS™\ÜÚ]H]Hš[\‹\ØÙ[™[™ÈÙXÝ\š]KXÛÙBœÛÜ[™HL\›ÝÈYÙK[ˆ™]\›œÈH^XÝÚ^šY[È9n£ùcíØ9.èùè X9ë 9éì˜9.¢ù.í¹ìnùg¢Ø9amù/dù.¢úhnX[™9.©9¦$ù¥éXY\ˆ›Ü[™ÈH[\›˜[ÑPÕPÓÑX˜ÛÛ[[‹ˆH›ÝšY\ˆ˜[Y]\ÈHÛÛ\]H™\]Y\ÝYY]H[š]™\œÙH™Y›Ü™B™š[\š[™È]ÈH™\]Y\ÝYK\Ú\™H\Ý[™È[™™XÛÜ™ÈH^XÝ\Ý™X[B™š[\‹Ü˜\\ˆšY[Ü™\ˆ[™™\^HØÛÜK‚‚•HÛÛ\[žKY[˜[ZXÜÈ™\ÜÛœÙH™[XZ[œÈ˜]È]šY[˜ÙHÛ›H™XØ]\ÙH]™[X™[È[™™\ØÜš\[ÛœÈÈ›Ý\ÝX›\Úš[[™ÈÛÛ[ËXØÛÝ[[™È\š[ÙËÛÝ™\›˜[˜ÙB˜ÛÛ˜Û\Ú[ÛœÈÜˆHØ[›ÛšXØ[X\šÙ]˜XÝˆH›Ü›X[^™\ˆ[Z]Â˜RÔÒT‘WÐÓÓTS–WÑSSRPÔ×ÔU×ÓÓ“X[™Ü™X]\È›ÈØ[›ÛšXØ[˜XÝˆ\ÝÈÛÝ™\‚™]KÝšY]È›Ý][™Ë^XÝØÚ[XH[™šY[Ü™\‹[][š]™\œÙH˜[Y][Û‹™\XØ]H\Ý[™È]™[Ë[\HÙ[XÝ[Û‹˜]Ë[Û›H›Ü›X[^˜][Û‹™\^B›Y]Y]H[\\š[™È[™Ù™›[™HØXÚH™\^Kˆ›ÈØ[Ý[][Û‹Ø]K\[[™KÓHÜˆ[œ][ØY\ˆÛÛ˜XÝÚ[™Ù\Ë‚‚ˆÈÈÈ\ÙHËLH8 %Û™ÚX\Ú[ˆ™]Ë\ÝØÚËYš\œÝY^H˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHØÝ[Y[YÛ™ÚX\Ú[‚–ØÝØÚ×ÞÜÜ—ÝØJÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B›™]Ë\ÝØÚËYš\œÝY^H[™Ú[[™\ˆPT’ÑUÐPÕU’UXÚ]^XÚ]˜šY]Ï[™]×ÜÝØÚ×Ùš\œÝÙ^XˆHÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚ×Ù™X]\™KÜÝØÚ×Ø›Ø\™Ú[™\ÝžWÝËœJB™\ØÛÝ™\œÈHYÙHÛÝ[œ›ÛHHS™\ÜÛœÙK™Yœ™\Ú\ÈHËšœØ˜[™˜^[‹]˜XY\œÈ›ÜˆXXÚYÙK\œÙ\ÈXXÚX›HÚ][™\Ëœ™XYÚ[[™œ™]\›œÈH^XÝÙ[™KYšY[™\ÜÛœÙH9n£ùcíØ: ¨yéj9.èùè X: ¨yéj9ë 9éì9."¹n ¹¥éy§'Ø˜9cäz(c9.íØ9§ 9¥¬9.íØš\œÝY^HÒËÜ™]\›ˆ[™9¦+ùd)¹è-9cäXˆHY\\ˆ™XÛÜ™ÂHSYÚ[˜][Û‹Ø]][XØ][ÛˆÛÛ˜XÝÝ]]˜[œÙ›Ü›X][ÛœË[œÛÝ\˜ÙHÜ™\‹ÛÙKÙ]HÜ™\ˆ[™›ÝšY\‹\ÚYHÙ[XÝ[ÛˆØÛÜK‚‚•H™\ÜÛœÙH™[XZ[œÈ˜]È]šY[˜ÙHÛ›H™XØ]\ÙH›ÝšY\‹]˜[œÙ›Ü›YY\ÝÜšXØ[œšXÙ\Ë™]\›œÈ[™\ÜÝYK\Ý]\ÈX™[ÈÈ›Ý\ÝX›\ÚHØ[›ÛšXØ[\Ý[™Ëœ™]\›‹˜[X][ÛˆÜˆXØÛÝ[[™È˜XÝˆH›Ü›X[^™\ˆ[Z]Â˜RÔÒT‘WÓ‘U×ÔÕÐÒ×Ñ’T”ÕÑVWÔU×ÓÓ“X[™Ü™X]\È›ÈØ[›ÛšXØ[˜XÝˆ\ÝÈÛÝ™\‚™^XÚ]›Ý][™Ë^XÝšY[ÛÜ™\ˆ[™ÛÝ\˜ÙHY]Y]KÛÛ\]K][š]™\œÙB˜[Y][Û‹[\HÙ[XÝ[Û‹˜]Ë[Û›H›Ü›X[^˜][Û‹™\^HY]Y]H[\\š[™Â˜[™Ù™›[™HØXÚH™\^Kˆ›ÈØ[Ý[][Û‹Ø]K\[[™KÓHÜˆ[œ][ØY\‚˜ÛÛ˜XÝÚ[™Ù\Ë‚‚ˆÈÈÈ\ÙHËLˆ8 %Û™ÚX\Ú[ˆTËX™[™Yš]˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHØÝ[Y[YÛ™ÚX\Ú[‚–ØÝØÚ×Ú\×Ø™[™Yš]ÝØJÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B’TËX™[™Yš][™Ú[[™\ˆPT’ÑUÐPÕU’UXÚ]^XÚ]šY]ÏZ\×Ø™[™Yš]‚•HÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚ×Ù™X]\™KÜÝØÚ×Ø›Ø\™Ú[™\ÝžWÝËœJB™\ØÛÝ™\œÈHSYÙHÛÝ[™Yœ™\Ú\ÈHËšœØ˜[™^[‹]˜XY\œÂ™›ÜˆXXÚYÙH[™\œÙ\ÈH[X›HÚ][™\Ëœ™XYÚ[[ˆ™]\›œÂH^XÝ[ˆšY[È9n£ùcíØ: ¨yéj9.èùè X: ¨yéj9ë 9éì9¥-¹ææ9.íØ9­ª:-ã9naX9n ¹`/˜9càº ¨yk­¹¥l9¢¥z-a9 .úh§X9¢¥z-a9ch9n ¹`/9«å[™9càº ¨ykîz,hXˆHY\\ˆ™XÛÜ™ÈBÙYZÛHÛ˜\ÚÝSYÚ[˜][Û‹Ø]][XØ][ÛˆÛÛ˜XÝ›ÝšY\ˆ˜[œÙ›Ü›\Ë™[ÛÝ\˜ÙHY[]HÜ™\ˆ[™›ÝšY\‹\ÚYHÙ[XÝ[ÛˆØÛÜK‚‚•H™\ÜÛœÙH™[XZ[œÈ˜]È]šY[˜ÙHÛ›H™XØ]\ÙH›ÝšY\‹YYš[™Y[™\ÝYHÛÝ[Ëš[™\ÝY[[[Ý[È[™X\šÙ]]˜[YH˜][ÜÈÈ›Ý\ÝX›\Ú\ÜÝY\ˆ™]™[YK˜Ø\Ú›ÝËÝÛ™\œÚ\˜[X][ÛˆÜˆHØ[›ÛšXØ[XØÛÝ[[™È˜XÝˆH›Ü›X[^™\‚™[Z]ÈRÔÒT‘WÒT×Ð‘S‘Q’UÔU×ÓÓ“X[™Ü™X]\È›ÈØ[›ÛšXØ[˜XÝˆ\ÝÈÛÝ™\‚™^XÚ]›Ý][™Ë^XÝšY[ÛÜ™\ˆ[™S\ÛÝ\˜ÙHY]Y]KÛÛ\]K][š]™\œÙB˜[Y][Û‹[\HÙ[XÝ[Û‹˜]Ë[Û›H›Ü›X[^˜][Û‹™\^HY]Y]H[\\š[™Â˜[™Ù™›[™HØXÚH™\^Kˆ›ÈØ[Ý[][Û‹Ø]K\[[™KÓHÜˆ[œ][ØY\‚˜ÛÛ˜XÝÚ[™Ù\Ë‚‚ˆÈÈÈ\ÙHËLÈ8 %X\Ý[Û™^HÛË[™]X[™Y[\ÝY\ÝØÚÈ˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHØÝ[Y[YX\Ý[Û™^B–ØÝØÚ×ÞšØWÜÝÜÙ[XJÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+BÛË[™]X[™Y[\ÝY\ÝØÚÈ[™Ú[[™\ˆPT’ÑUÐPÕU’UXÚ]^XÚ]˜šY]Ï\ÝÜÜÝØÚØˆHÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚËÜÝØÚ×ÞšØWÜÜXÚX[œJB\Ù\ÈHœ\Ú‹™X\Ý[Û™^K˜ÛÛX”ÓÓˆ[™Ú[Ú]œÏ[NŒÎŒØYÙHÚ^™HL˜[™ŒØ\ØÙ[™[™ÈÛÜ[™È›ÝYÚ™]ÚÜYÚ[˜]YÙ]X[ˆ™]\›œÈB™^XÝÙ]™[Y[ˆšY[È9n£ùcíØ9.èùè X9d#yéì9§ 9¥¬9.íØ9­ª:-ã9naX9­ª:-ã:h§X˜9¢$9.©:aãØ9¢$9.©:h§X9£+ùnaX9§ :jæ9§ 9/c˜9.â¹o 9¦*9¥-˜:aãù«å9£h¹¢bùã¡Ø˜9n ¹æâ9ã¡Ëybª9  X[™9n ¹aà9ã¡ØˆHY\\ˆ™XÛÜ™ÈHš^Y]Y\žK›ÝšY\‹Yš]™[‚œYÚ[˜][Û‹ÌËXÛÛ[[ˆÜ˜\\ˆX\[™Ë[Y\šXÈ˜[œÙ›Ü›X][ÛœËÛÝ\˜ÙHY[]B›Ü™\ˆ[™›ÝšY\‹\ÚYHÙ[XÝ[ÛˆØÛÜK‚‚•H™\ÜÛœÙH™[XZ[œÈ˜]È]šY[˜ÙHÛ›H™XØ]\ÙHÝ\œ™[][ÝH˜[Y\È[™œ›ÝšY\‹YYš[™YÛË[™]Ù[\ÝYY[X™\œÚ\È›Ý\ÝX›\ÚH]Y\Ý[™Ë˜Ø[›ÛšXØ[šXÙK˜[X][ÛˆÜˆXØÛÝ[[™È˜XÝˆH›Ü›X[^™\ˆ[Z]Â˜RÔÒT‘WÔÕÔÔÕÐÒ×ÔU×ÓÓ“X[™Ü™X]\È›ÈØ[›ÛšXØ[˜XÝˆ\ÝÈÛÝ™\ˆ^XÚ]œ›Ý][™Ë^XÝšY[ÛÜ™\ˆ[™”ÓÓ‹\ÛÝ\˜ÙHY]Y]KÛÛ\]K][š]™\œÙB˜[Y][Û‹[\HÙ[XÝ[Û‹˜]Ë[Û›H›Ü›X[^˜][Û‹™\^HY]Y]H[\\š[™Â˜[™Ù™›[™HØXÚH™\^Kˆ›ÈØ[Ý[][Û‹Ø]K\[[™KÓHÜˆ[œ][ØY\‚˜ÛÛ˜XÝÚ[™Ù\Ë‚‚ˆÈÈÈ\ÙHËM8 %Ú[˜HÕTˆX\šÙ]][ÝH˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHØÝ[Y[YÚ[˜B–ØÝØÚ×ÞšÚØØ—ÜÜÝJÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+Bœ™X[[YH][ÝH[™Ú[[™\ˆPT’ÑUÔUSÕXÚ]^XÚ]˜šY]ÏZØØ—ÜÚ[˜WÜÜÝˆHÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚËÜÝØÚ×ÞšÚØØ—ÜÚ[˜KœJB™\ØÛÝ™\œÈH›ÙOZØØ˜[š]™\œÙHÚ^™KYÚ[˜]\ÈH”ÓÓˆ™\ÜÛœÙH[‚˜\ØÙ[™[™ÈÞ[X›ÛÜ™\ˆÚ]YÙHÚ^™H[™™]\›œÈH^XÝš[™]Y[‚™šY[È9.èùè X9d#yéì][ÝKÝ˜[X][Ûˆ˜[Y\Ë9¥í¹à®X9­`z`&¹n ¹`/9 .ùn ¹`/[™˜9£h¹¢bùã¡ØY\ˆ›Ü[™ÈH[\›˜[ÙXÛÛ™ÛÛ[[‹ˆHY\\ˆ™\Ù\™\ÈB›ÝÙ\‹\™Yš^YÚ[™ÚZHÞ[X›ÛË[Y\šXÈÛÛ™\œÚ[Û‹›ÝšY\ˆØœÙ\˜][Ûˆ[YKÜ˜\\ˆX\[™Ë[][š]™\œÙHÜ™\ˆ[™›ÝšY\‹\ÚYHÙ[XÝ[ÛˆØÛÜH[‚œ™\^HY]Y]H™Y›Ü™Hš[\š[™ÈÈH™\]Y\ÝYŽÍŽ^\Ý[™Ë‚‚•H™\ÜÛœÙH™[XZ[œÈ˜]È]šY[˜ÙHÛ›Nˆ™X[[YH][ÝH[™˜[X][ÛˆšY[Ë™]™[ˆÚ]H›ÝšY\‰ÜÈØœÙ\˜][Û‹][YHÝš[™ËÈ›Ý\ÝX›\ÚB˜Ø[›ÛšXØ[Ý\œ™[\šXÙH[œ]ˆH›Ü›X[^™\ˆ[Z]Â˜RÔÒT‘WÒÐÐ—ÔÒSWÔÔÕÔUSÕWÔU×ÓÓ“X[™Ü™X]\È›ÈØ[›ÛšXØ[˜XÝˆ\ÝÂ˜ÛÝ™\ˆ^XÚ]›Ý][™Ë^XÝØÚ[XH[™šY[Ü™\‹YÚ[˜][ÛˆY]Y]K˜ÛÛ\]K][š]™\œÙH˜[Y][Û‹[˜[Y[œ™\]Y\ÝY›ÝÜË[\HÙ[XÝ[Û‹œ˜]Ë[Û›H›Ü›X[^˜][Û‹™\^HY]Y]H[\\š[™È[™Ù™›[™HØXÚH™\^Kˆ›Â˜Ø[Ý[][Û‹Ø]K\[[™KÓHÜˆ[œ][ØY\ˆÛÛ˜XÝÚ[™Ù\Ë‚‚ˆÈÈÈ\ÙHËMH8 %Ú[˜HÕTˆX\šÙ]Z[KZ\ÝÜžH˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHØÝ[Y[YÚ[˜B–ØÝØÚ×ÞšÚØØ—ÙZ[XJÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B™Z[KZ\ÝÜžH[™Ú[[™\ˆPT’ÑUÒTÕÔ–XÚ]^XÚ]˜šY]ÏZØØ—ÙZ[XˆHÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚËÜÝØÚ×ÞšÚØØ—ÜÚ[˜KœJBœ™\]Y\ÝÈÛ™HÚ[™ÚZHŽÍŽ^ÕTˆX\šÙ]Þ[X›Û™]\›œÈH[š\ÝÜžHœ›ÛHÚ[˜IÜÈ”ÓÓ”Ë[[™HÙ\šXÙKY\™Ù\ÈHÝ]Ý[™[™Ë\Ú\™H\ÝÜžB˜[™Ü[Û˜[H\Y\ÈYœKÚœH˜XÝÜœËˆHY\\ˆ™\Ù\™\ÈH^XÝ[‚œ™YÝ[\ˆšY[È]XÜ[˜YÚÝØÛÜÙX›Û[YXY\—Ý›Û[YX˜Y\—Ø[[Ý[Ý]Ý[™[™×ÜÚ\™X[™\››Ý™\˜ÜˆH^XÝÛËYšY[™˜XÝÜˆ™\ÜÛœÙH›ÜˆYœKY˜XÝÜ˜[™œKY˜XÝÜ˜ˆ]™XÛÜ™ÈH[Z\ÝÜžBœØÛÜKš]™HØÝ[Y[YY\ÝY[[Ù\ËÛÝ\˜ÙHT“ËÜ˜\\ˆXÛÙ\œËœ›ÝšY\ˆ˜[œÙ›Ü›X][ÛœÈ[™ÛÛœÙ\˜]]™H[š]È[ˆ™\^HY]Y]K‚‚•H™\ÜÛœÙH™[XZ[œÈ˜]È]šY[˜ÙHÛ›Nˆ›ÝšY\‹Y\š]™YÝ]Ý[™[™Ë\Ú\™K˜Y\‹ZÝ\œË\››Ý™\ˆ[™Y\ÝY\šXÙH˜[Y\È\™H›Ý™XÛÛ˜Ú[YÈB˜Ø[›ÛšXØ[Z[KZ\ÝÜžHÛÛ˜XÝÜˆš[[™ËX˜XÚÙYX\šÙ]˜XÝËˆH›Ü›X[^™\‚™[Z]ÈRÔÒT‘WÒÐÐ—ÑRSWÒTÕÔ–WÔU×ÓÓ“X[™Ü™X]\È›ÈØ[›ÛšXØ[˜XÝ‚•\ÝÈÛÝ™\ˆ›Ý][™ËY˜][ËY\ÝY[Ù˜XÝÜˆØÚ[X\Ë[˜[Y›ÝÜËœ˜]Ë[Û›H›Ü›X[^˜][Û‹™\^HY]Y]H[\\š[™È[™Ù™›[™HØXÚH™\^Kˆ›Â˜Ø[Ý[][Û‹Ø]K\[[™KÓHÜˆ[œ][ØY\ˆÛÛ˜XÝÚ[™Ù\Ë‚‚ˆÈÈÈ\ÙHËMˆ8 %Ú[˜H[™^Z[KZ\ÝÜžH˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHØÝ[Y[YÚ[˜B–ØÝØÚ×ÞšÚ[™^ÙZ[XJÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÚ[™^Ú[™^š[
+Bš[™^Z[KZ\ÝÜžH[™Ú[[™\ˆPT’ÑUÒTÕÔ–XÚ]^XÚ]˜šY]ÏZ[™^ÙZ[XˆHÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÚ[™^Ú[™^ÜÝØÚ×ÞšœJBœ™\]Y\ÝÈÛ™HÚ[™ÚZHÜˆÚ[žš[ˆÎN^[™^Þ[X›Ûœ›ÛHÚ[˜IÜÂ™[˜Üž\Y˜]˜TØÜš\Ë[[™H\ÝÜžH[™Ú[Ú]š^YLŒŒÌ—Í[‚™XÛÙ\ÈH™\ÜÛœÙHÚ]×Úœ×ÙXÛÙX[™WÛZ[šWÜ˜XÙ\˜ˆHY\\‚œ™\Ù\™\ÈH^XÝÚ^šY[È]XÜ[˜YÚÝØÛÜÙX›Û[YX™[Z\ÝÜžHØÛÜKÝÙ\‹\™Yš^YÞ[X›ÛÛÝ\˜ÙHT“š^YÙ[˜[ZXÈ\˜[Y]\œË™XÛÙ\ˆÝ\ËÝšXÝ]HÜ™\ˆ[™ÛÛœÙ\˜]]™H[š]Y]Y]H[ˆ™\^B›Y]Y]K‚‚•HÚ[˜H[™^Z[KZ\ÝÜžH™\ÜÛœÙH™[XZ[œÈ˜]È]šY[˜ÙHÛ›Nˆ[™^[]™[“ÒÕˆ\È›È\Ý[™ËÙ[]HXØÛÝ[[™ÈØÛÜH[™Ù\È›Ý\ÝX›\ÚB˜Ø[›ÛšXØ[Z[KZ\ÝÜžK™]\›‹˜[X][ÛˆÜˆXØÛÝ[[™È[œ]ËˆH›Ü›X[^™\‚™[Z]ÈRÔÒT‘WÒS‘VÑRSWÒTÕÔ–WÔU×ÓÓ“X[™Ü™X]\È›ÈØ[›ÛšXØ[˜XÝ‚•\ÝÈÛÝ™\ˆÚ[™ÚZH[™Ú[žš[ˆ›Ý][™Ë^XÝØÚ[XKÛÜ™\ˆ[™[Y\šXËÙ]B˜›Ý[™\šY\Ë[œÝ\ÜY\Ý[™ËÜ\˜[Y]\ˆ™\]Y\ÝË[\HÝ]]˜]Ë[Û›B››Ü›X[^˜][Û‹™\^HY]Y]H[\\š[™È[™Ù™›[™HØXÚH™\^Kˆ›Â˜Ø[Ý[][Û‹Ø]K\[[™KÓHÜˆ[œ][ØY\ˆÛÛ˜XÝÚ[™Ù\Ë‚‚ˆÈÈÈ\ÙHËMÈ8 %[˜Ù[[™^Z[KZ\ÝÜžH˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHØÝ[Y[Y[˜Ù[–ØÝØÚ×ÞšÚ[™^ÙZ[WÝJÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÚ[™^Ú[™^š[
+Bš[™^Z[KZ\ÝÜžH[™Ú[[™\ˆPT’ÑUÒTÕÔ–XÚ]^XÚ]˜šY]Ï][˜Ù[Ú[™^ÙZ[XˆHÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÚ[™^Ú[™^ÜÝØÚ×ÞšœJBœ™\]Y\ÝÈHÚ[™ÚZHÜˆÚ[žš[ˆÎN^[™^Þ[X›ÛÚ]Ü[Û˜[˜Ý\Ù]X[™[™Ù]X™]Ú\È[˜Ù[	ÜÈYœHÙ\šY\È[ˆYX\ˆ\][ÛœË\Ù\È[ˆX\›Y\ÝY]HÛÚÝ\›Üˆ[ˆ[\HÝ\›Ý[™[™™]\›œÈH^XÝÚ^™šY[È]XÜ[˜ÛÜÙXYÚÝØ[™[[Ý[ˆHY\\ˆ™\Ù\™\ÂH[˜Û\Ú]™H˜[™ÙK[Ø^\ËYœ›ÛXY\ÝY[ÙKØÝ[Y[YÝ[[Ý[[š]œÛÝ\˜ÙKØ]^[X\žHT“Ëš^YÙ[˜[ZXÈ\˜[Y]\œËXÛÙ\‹Ý˜[œÙ›Ü›X][ÛˆÝ\ËœÝšXÝ]HÜ™\ˆ[™™\^H›ÝÈÛÝ[È[ˆY]Y]K‚‚•H[˜Ù[[™^Z[KZ\ÝÜžH™\ÜÛœÙH™[XZ[œÈ˜]È]šY[˜ÙHÛ›Nˆ]È[™^“ÒÈ[™Ý[[Ý[Ù\šY\È]™H›È\Ý[™ËÙ[]HXØÛÝ[[™ÈØÛÜH[™È›Ý™\ÝX›\ÚHØ[›ÛšXØ[Z[KZ\ÝÜžK™]\›‹˜[X][ÛˆÜˆXØÛÝ[[™È[œ]Ë‚•H›Ü›X[^™\ˆ[Z]ÈRÔÒT‘WÕSÑS•ÒS‘VÑRSWÒTÕÔ–WÔU×ÓÓ“X[™Ü™X]\Â››ÈØ[›ÛšXØ[˜XÝˆ\ÝÈÛÝ™\ˆ^XÚ]ÙY˜][˜[™Ù\ËÚ[™ÚZH[™Ú[žš[‚š[™^›Ý][™Ë^XÝØÚ[XKÛÜ™\ˆ[™[Y\šXËÙ]H›Ý[™\šY\Ë[œÝ\ÜY›\Ý[™ËÜ\˜[Y]\ˆ™\]Y\ÝË[\HÝ]]˜]Ë[Û›H›Ü›X[^˜][Û‹™\^B›Y]Y]H[\\š[™È[™Ù™›[™HØXÚH™\^Kˆ›ÈØ[Ý[][Û‹Ø]K\[[™KÓHÜˆ[œ][ØY\ˆÛÛ˜XÝÚ[™Ù\Ë‚‚ˆÈÈÈ\ÙHËN8 %X\Ý[Û™^H[™^Z[KZ\ÝÜžH˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHØÝ[Y[YX\Ý[Û™^B–ØÝØÚ×ÞšÚ[™^ÙZ[WÙ[XJÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÚ[™^Ú[™^š[
+Bš[™^Z[KZ\ÝÜžH[™Ú[[™\ˆPT’ÑUÒTÕÔ–XÚ]^XÚ]˜šY]ÏZ[™^ÙZ[WÙ[XˆHÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÚ[™^Ú[™^ÜÝØÚ×ÞšœJBœ™\]Y\ÝÈHÚ[™ÚZHÚ[žš[ˆÎN^Üˆ™ZZš[™ÈN^[™^Þ[X›Û›X\È]ÈX\šÙ]™Yš^È[ˆX\Ý[Û™^HÙXÚY™\]Y\ÝÈZ[HË[[™\ÈÚ]˜œ]L›ÜÈH›ÝšY\‰ÜÈ[\›˜[ZYÚÛÛ[[ˆ[™™]\›œÈH^XÝœÙ]™[ˆšY[È]XÜ[˜ÛÜÙXYÚÝØ›Û[YX[™[[Ý[ˆB˜Y\\ˆ™\Ù\™\ÈH[˜Û\Ú]™H˜[™ÙK[˜Y\ÝY[ÙKÛÝ\˜ÙHT“™š^YÙ[˜[ZXÈ\˜[Y]\œËÜ˜\\ˆÛÛ[[‹Ù›ÜÝ\ËÝšXÝ]HÜ™\ˆ[™œ™\^H›ÝÈÛÝ[È[ˆY]Y]K‚‚•HX\Ý[Û™^H[™^Z[KZ\ÝÜžH™\ÜÛœÙH™[XZ[œÈ˜]È]šY[˜ÙHÛ›Nˆ]Â[˜Y\ÝY[™^ÒÕ‹Ø[[Ý[Ù\šY\È]™H›È\Ý[™ËÙ[]HXØÛÝ[[™ÈØÛÜB˜[™È›Ý\ÝX›\ÚHØ[›ÛšXØ[Z[KZ\ÝÜžK™]\›‹˜[X][ÛˆÜ‚˜XØÛÝ[[™È[œ]ËˆH›Ü›X[^™\ˆ[Z]ÈRÔÒT‘WÒS‘VÑRSWÑSWÔU×ÓÓ“X[™˜Ü™X]\È›ÈØ[›ÛšXØ[˜XÝˆ\ÝÈÛÝ™\ˆY˜][Ù^XÚ]˜[™Ù\ËÚ[™ÚZK”Ú[žš[ˆ[™™ZZš[™È›Ý][™ËÙXÚYX\[™Ë^XÝØÚ[XKÛÜ™\ˆ[™[Y\šXËÙ]B˜›Ý[™\šY\Ë[œÝ\ÜY\Ý[™ËÜ\˜[Y]\ˆ™\]Y\ÝË[\HÝ]]˜]Ë[Û›B››Ü›X[^˜][Û‹™\^HY]Y]H[\\š[™È[™Ù™›[™HØXÚH™\^Kˆ›Â˜Ø[Ý[][Û‹Ø]K\[[™KÓHÜˆ[œ][ØY\ˆÛÛ˜XÝÚ[™Ù\Ë‚‚ˆÈÈÈ\ÙHËNH8 %Ù[™\šXÈX\Ý[Û™^H[™^Z\ÝÜžH˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHØÝ[Y[YÙ[™\šXÈX\Ý[Û™^B–Ø[™^ÞšØWÚ\ÝJÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÚ[™^Ú[™^š[
+Bš[™^Z\ÝÜžH[™Ú[[™\ˆPT’ÑUÒTÕÔ–XÚ]^XÚ]˜šY]ÏZ[™^ÞšØWÚ\ÝZ[XØÙYZÛXØ[ÛX\š[ÙÈ[™Y˜][›Ý[™Â˜NMÌLX›ÝYÚŒŒŒŒLXˆHÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÚ[™^Ú[™^ÞšÙ[KœJBœ™\ÛÛ™\ÈH˜]È[™^ÛÙH›ÝYÚHX\Ý[Û™^H[™^XÛÙHX\Ú]X\šÙ]™˜[˜XÚÜË™\]Y\ÝÈ[˜Y\ÝYË[[™\ÈÚ]\š[Ù\ÜXÚYšXÈÛ˜[Y\Ë™™]Ú\ÈH[™\ÜÛœÙKš[\œÈ]žHH™\]Y\ÝY˜[™ÙH[™™]\›œÈB™^XÝ[]™[ˆšY[È9¥éy§'Ø9o 9ææ9¥-¹ææ9§ :jæ9§ 9/c˜9¢$9.©:aãØ9¢$9.©:h§X˜9£+ùnaX9­ª:-ã9naX9­ª:-ã:h§X[™9£h¹¢bùã¡ØˆHY\\ˆ™\Ù\™\ÈH\š[Ùœ˜[™ÙKX\Ù˜[˜XÚÈ™\ÛÛ][Û‹ÛÝ\˜ÙKØ]^[X\žHT“Ëš^YÙ[˜[ZXÂœ\˜[Y]\œËÜ˜\\ˆš[\š[™È[™˜[œÙ›Ü›X][ÛˆÝ\ËÝšXÝ]HÜ™\ˆ[™œ™\^H›ÝÈÛÝ[È[ˆY]Y]K‚‚•HÙ[™\šXÈ[™^Z\ÝÜžH™\ÜÛœÙH™[XZ[œÈ˜]È]šY[˜ÙHÛ›Nˆ]È[˜Y\ÝY›][K\\š[ÙÒÕ‹\››Ý™\ˆ[™›ÝšY\‹Y\š]™YÚ[™ÙHšY[È]™H›Â›\Ý[™ËÙ[]HXØÛÝ[[™ÈØÛÜH[™È›Ý\ÝX›\ÚHØ[›ÛšXØ[™Z[KZ\ÝÜžK™]\›‹˜[X][ÛˆÜˆXØÛÝ[[™È[œ]ËˆH›Ü›X[^™\ˆ[Z]Â˜RÔÒT‘WÒS‘VÖ’ÐWÒTÕÔU×ÓÓ“X[™Ü™X]\È›ÈØ[›ÛšXØ[˜XÝˆ\ÝÈÛÝ™\‚™Y˜][Ù^XÚ]\š[ÙÈ[™˜[™Ù\ËÚ[™ÚZKÔÚ[žš[‹Ð™ZZš[™È›Ý][™Ë^XÝœØÚ[XKÛÜ™\ˆ[™[Y\šXËÙ]H›Ý[™\šY\Ë[œÝ\ÜY\Ý[™ËÜ\˜[Y]\‚œ™\]Y\ÝË[\HÝ]]˜]Ë[Û›H›Ü›X[^˜][Û‹™\^HY]Y]H[\\š[™È[™›Ù™›[™HØXÚH™\^Kˆ›ÈØ[Ý[][Û‹Ø]K\[[™KÓHÜˆ[œ][ØY\‚˜ÛÛ˜XÝÚ[™Ù\Ë‚‚ˆÈÈÈ\ÙHËŒ8 %X\Ý[Û™^H[™^Z[]KZ\ÝÜžH˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHØÝ[Y[YX\Ý[Û™^H[™^Z[]KZ\ÝÜžB–Ø[™^ÞšØWÚ\ÝÛZ[—Ù[XJÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÚ[™^Ú[™^š[
+B™[™Ú[[™\ˆPT’ÑUÒTÕÔ–XÚ]^XÚ]˜šY]ÏZ[™^ÞšØWÚ\ÝÛZ[—Ù[X\š[ÙÈXXMXÌ[™Œ[™™Y˜][]][Y\ÈNMÎKLKLHNŒÌŽŒ›ÝYÚŒŒŒ‹LKLHNŒÌŽŒˆB–ÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÚ[™^Ú[™^ÞšÙ[KœJB\Ù\ÈH™[™È[™Ú[›ÜˆÛ™K[Z[]H›ÝÜÈ[™HË[[™H[™Ú[›ÜˆÝ\‚œ\š[ÙË™\ÛÛ™\ÈH˜]È[™^ÛÙH›ÝYÚHX\Ý[Û™^H[™^XÛÙHX\Ú]›X\šÙ]˜[˜XÚÜË\Ù\È›ÈY\ÝY[›ÜˆÛ™K[Z[]H]H[™œ›ÛY\ÝY[™›ÜˆÝ\ˆ\š[ÙË\Y\ÈH[˜Û\Ú]™H]][YHš[\ˆ[™™]\›œÈBœ\š[Ù\ÜXÚYšXÈZYÚHÜˆ[]™[‹YšY[Ý]]Ü™\‹ˆHY\\ˆ™\Ù\™\ÈBœ˜[™ÙKY\ÝY[[ÙKX\Ù[™Ú[T“Ëš^YÙ[˜[ZXÈ\˜[Y]\œËÜ˜\\‚™š[\š[™È[™˜[œÙ›Ü›X][ÛˆÝ\ËÝšXÝ[Y\Ý[\Ü™\ˆ[™™\^H›ÝÂ˜ÛÝ[È[ˆY]Y]K‚‚•H[™^Z[]KZ\ÝÜžH™\ÜÛœÙH™[XZ[œÈ˜]È]šY[˜ÙHÛ›Nˆ]È™XÙ[š[˜Y^H˜\œË›ÝšY\ˆY\ÝY[[ÙH[™[Z]Y\ÝÜžHÚ[™ÝÈ]™H›Â›\Ý[™ËÙ[]HXØÛÝ[[™ÈØÛÜH[™È›Ý\ÝX›\ÚHØ[›ÛšXØ[™Z[KZ\ÝÜžK™]\›‹˜[X][ÛˆÜˆXØÛÝ[[™È[œ]ËˆH›Ü›X[^™\ˆ[Z]Â˜RÔÒT‘WÒS‘VÖ’ÐWÒTÕÓRS—ÑSWÔU×ÓÓ“X[™Ü™X]\È›ÈØ[›ÛšXØ[˜XÝˆ\ÝÂ˜ÛÝ™\ˆÛ™K[Z[]H[™][K\\š[ÙØÚ[X\ËY˜][Ù^XÚ]]][YH˜[™Ù\Ë”Ú[™ÚZKÔÚ[žš[‹Ð™ZZš[™È›Ý][™Ë^XÝØÚ[XKÛÜ™\ˆ[™[Y\šXËÝ[Y\Ý[\˜›Ý[™\šY\Ë[œÝ\ÜY\Ý[™ËÜ\˜[Y]\ˆ™\]Y\ÝË[\HÝ]]˜]Ë[Û›B››Ü›X[^˜][Û‹™\^HY]Y]H[\\š[™È[™Ù™›[™HØXÚH™\^Kˆ›Â˜Ø[Ý[][Û‹Ø]K\[[™KÓHÜˆ[œ][ØY\ˆÛÛ˜XÝÚ[™Ù\Ë‚‚ˆÈÈÈ\ÙHËŒH8 %X\Ý[Û™^H[™^ÜÝ˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHØÝ[Y[YX\Ý[Û™^B–ØÝØÚ×ÞšÚ[™^ÜÜÝÙ[XJÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÚ[™^Ú[™^š[
+Bœ™X[][YH[™^][š]™\œÙH[™Ú[[™\ˆPT’ÑUÔUSÕXÚ]^XÚ]˜šY]ÏZ[™^ÜÜÝ[™Hš]™HØÝ[Y[YÞ[X›ÛÙ[XÝÜœÎˆ9¬ª¹­ìzaãz) y£!ù¥l˜9."º+àyìîùb%ù£!ù¥l9­ìz+àyìîùb%ù£!ù¥l9£!ù¥l9¢$9.ïX[™9.+z+àyìîùb%ù£!ù¥lˆB–ÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÚ[™^Ú[™^ÜÝØÚ×ÞšœJB\Ù\ÈHÜXÚX[ÌËœ\Ú˜™\]Y\Ý›Üˆ[\Ü[[™XÙ\È[™Hœ\Ú˜œ™\]Y\Ý›ÜˆHÝ\ˆØ]YÛÜšY\ËÚ]Ø]YÛÜžHš[\œËYÙHÚ^™HL[™H^XÝ›Ý\Y[‹YšY[Ü˜\\ˆÜ™\‹ˆHY\\ˆ™\Ù\™\ÈHÛÛ\]Bš[™^[š]™\œÙKÙ[XÝÜ‹ÛÝ\˜ÙKÝ\Ý™X[HT“Ëš^YÙ[˜[ZXÈ\˜[Y]\œË™šY[X\[™ÜËØÝ[Y[Y\˜Ù[YÙH[š]È[™™\^H›ÝÈÛÝ[Ë‚‚•H[™^ÜÝ™\ÜÛœÙH™[XZ[œÈ˜]È]šY[˜ÙHÛ›Nˆ]ÈÝ\œ™[Y^H[™^œšXÙ\ËÚ[™Ù\Ë›Û[YH[™[[Ý[ÛÛ^]™H›ÈÝX›H\Ý[™Â›ØœÙ\˜][Ûˆ[Y\Ý[\Üˆ\ÜÝY\ˆXØÛÝ[[™ÈØÛÜH[™È›Ý\ÝX›\ÚB˜Ø[›ÛšXØ[Ý\œ™[\šXÙH[œ]ˆH›Ü›X[^™\ˆ[Z]Â˜RÔÒT‘WÒS‘VÔÔÕÔUSÕWÔU×ÓÓ“X[™Ü™X]\È›ÈØ[›ÛšXØ[˜XÝˆ\ÝÈÛÝ™\‚˜[Ù[XÝÜœË^XÝØÚ[XKÛÜ™\ˆ[™[Y\šXËÜ˜[šÈ›Ý[™\šY\Ë[œÝ\ÜY›\Ý[™ËÜ\˜[Y]\ˆ™\]Y\ÝË[\HÝ]]˜]Ë[Û›H›Ü›X[^˜][Û‹™\^B›Y]Y]H[\\š[™È[™Ù™›[™HØXÚH™\^Kˆ›ÈØ[Ý[][Û‹Ø]K\[[™KÓHÜˆ[œ][ØY\ˆÛÛ˜XÝÚ[™Ù\Ë‚‚ˆÈÈÈ\ÙHËŒˆ8 %Ú[˜H[™^ÜÝ˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHØÝ[Y[YÚ[˜B–ØÝØÚ×ÞšÚ[™^ÜÜÝÜÚ[˜XJÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÚ[™^Ú[™^š[
+Bœ™X[][YH[[™^][š]™\œÙH[™Ú[[™\ˆPT’ÑUÔUSÕXÚ]^XÚ]˜šY]ÏZ[™^ÜÜÝÜÚ[˜X[™K\Ú\™H\Ý[™ÈÛÛ^ˆB–ÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÚ[™^Ú[™^ÜÝØÚ×ÞšœJBœ™\]Y\ÝÈH×ÜØ›ÙK\ØÛÝ™\œÈH›ÝšY\‹\™\ÜYYÙHÛÝ[[‚™™]Ú\È\›ÝÈYÙ\ÈÛÜYžHÞ[X›ÛˆHY\\ˆ™\Ù\™\ÈH^XÝ[]™[‚™ØÝ[Y[YÝ]]šY[ËØÝ[Y[Y\˜Ù[ÛÝËÐÓ–H[š]ËÛÝ\˜ÙH[™\Ý™X[HT“Ëš^YÙ[˜[ZXÈ\˜[Y]\œËÜ˜\\ˆšY[X\[™È[™™\^H›ÝÂ˜ÛÝ[Ë‚‚•HÚ[˜H[™^ÜÝ™\ÜÛœÙH™[XZ[œÈ˜]È]šY[˜ÙHÛ›Nˆ]ÈÝ\œ™[[™^œšXÙ\ËÚ[™Ù\Ë›Û[YH[™\››Ý™\ˆ\™HHX\šÙ]]ÚYHÛ˜\ÚÝÚ]Ý]BœÝX›H\Ý[™Ë[]™[ØœÙ\˜][Ûˆ[Y\Ý[\[™È›Ý\ÝX›\ÚHØ[›ÛšXØ[˜Ý\œ™[\šXÙH[œ]ˆH›Ü›X[^™\ˆ[Z]Â˜RÔÒT‘WÒS‘VÔÔÕÔÒSWÔU×ÓÓ“X[™Ü™X]\È›ÈØ[›ÛšXØ[˜XÝˆ\ÝÈÛÝ™\‚™™]Ú[™Y]Y]K™\]Y\Ý˜[Y][Û‹X[›Ü›YY›ÝÜË[\HÝ]]œ˜]Ë[Û›H›Ü›X[^˜][Û‹™\^HY]Y]KÜ^[ØY[\\š[™È[™Ù™›[™HØXÚBœ™\^Kˆ›ÈØ[Ý[][Û‹Ø]K\[[™KÓHÜˆ[œ][ØY\ˆÛÛ˜XÝÚ[™Ù\Ë‚‚ˆÈÈÈ\ÙHËŒÈ8 %Ú[˜HÛ™ÈÛÛ™ËZ[™^ÜÝ˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈH™^ØÝ[Y[YÚ[˜B–ØÝØÚ×Ú×Ú[™^ÜÜÝÜÚ[˜XJÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÚ[™^Ú[™^š[
+Bœ™X[][YHÛ™ÈÛÛ™ËZ[™^[š]™\œÙH[™\ˆPT’ÑUÔUSÕXÚ]^XÚ]˜šY]ÏZ×Ú[™^ÜÜÝÜÚ[˜X[™\Ú\™H\Ý[™ÈÛÛ^ˆB–ÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÚ[™^Ú[™^ÜÝØÚ×ÚËœJBœ™\]Y\ÝÈÚ[˜IÜÈš^YKœÚ[˜ZœË˜Û˜Þ[X›Û\Ý[ˆÛ™H][ÝY]^™\ÜÛœÙKœÙ[XÝÈH^XÝš[™HØÝ[Y[YÝ]]šY[È[™ÛÛ™\ÈHÙ]™[ˆ[Y\šXÂ™šY[ËˆHY\\ˆ™\Ù\™\ÈHÛÝ\˜ÙHYÙKš^Y›˜Ø\Ý\˜[Y]\œËœÜÚ][Û˜[šY[X\[™Ë›ÜY›ÝšY\ˆÛÛ[[œËØÝ[Y[Y\˜Ù[YÙH[š]˜[™™\^H›ÝÈÛÝ[Ë‚‚•HÚ[˜HÛ™ÈÛÛ™ËZ[™^ÜÝ™\ÜÛœÙH™[XZ[œÈ˜]È]šY[˜ÙHÛ›Nˆ]ÈÝ\œ™[š[™^šXÙ\È[™Ú[™Ù\È\™HHX\šÙ]]ÚYHÛ˜\ÚÝÚ]Ý]HÝX›B›\Ý[™Ë[]™[ØœÙ\˜][Ûˆ[Y\Ý[\Üˆ\ÜÝY\ˆXØÛÝ[[™ÈØÛÜH[™È›Ý™\ÝX›\ÚHØ[›ÛšXØ[Ý\œ™[\šXÙH[œ]ˆH›Ü›X[^™\ˆ[Z]Â˜RÔÒT‘WÒ×ÒS‘VÔÔÕÔÒSWÔU×ÓÓ“X[™Ü™X]\È›ÈØ[›ÛšXØ[˜XÝˆ\ÝÈÛÝ™\‚™™]Ú[™Y]Y]K\Ú\™K[Û›H™\]Y\Ý˜[Y][Û‹X[›Ü›YY›ÝÜË[\B›Ý]]˜]Ë[Û›H›Ü›X[^˜][Û‹™\^HY]Y]KÜ^[ØY[\\š[™È[™Ù™›[™B˜ØXÚH™\^Kˆ›ÈØ[Ý[][Û‹Ø]K\[[™KÓHÜˆ[œ][ØY\ˆÛÛ˜XÝ˜Ú[™Ù\Ë‚‚ˆÈÈÈ\ÙHË8 %X\Ý[Û™^HÛ™ÈÛÛ™ËZ[™^ÜÝ˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈH™^ØÝ[Y[YX\Ý[Û™^B–ØÝØÚ×Ú×Ú[™^ÜÜÝÙ[XJÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÚ[™^Ú[™^š[
+Bœ™X[][YHÛ™ÈÛÛ™ËZ[™^[š]™\œÙH[™\ˆPT’ÑUÔUSÕXÚ]^XÚ]˜šY]ÏZ×Ú[™^ÜÜÝÙ[X[™\Ú\™H\Ý[™ÈÛÛ^ˆB–ÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÚ[™^Ú[™^ÜÝØÚ×ÚËœJB\Ù\ÈHMKœ\Ú˜X\Ý[Û™^HÛ\ÝÙÙ]”ÓÓˆ[™Ú[Ú]š^Y˜NŒLNŒLKNŒÌXš[\œËŒØ\ØÙ[™[™ÈÜ™\š[™È[™›ÝšY\‹Yš]™[‚œYÙ\ÈÙˆL›ÝÜËˆHY\\ˆ™\Ù\™\ÈH^XÝ\Y[ˆØÝ[Y[YÝ]]™šY[Ë[\›˜[X\šÙ][X™\‹ÛÝ\˜ÙKÝ\Ý™X[HT“Ëš^Y\˜[Y]\œËÜ˜\\ˆX\[™ËØÝ[Y[Y\˜Ù[YÙKÒÑ[š]È[™™\^H›ÝÈÛÝ[Ë‚‚•HX\Ý[Û™^HÛ™ÈÛÛ™ËZ[™^ÜÝ™\ÜÛœÙH™[XZ[œÈ˜]È]šY[˜ÙHÛ›Nˆ]Â˜Ý\œ™[[™^šXÙ\ËÚ[™Ù\Ë›Û[YH[™\››Ý™\ˆ\™HHX\šÙ]]ÚYHÛ˜\ÚÝÚ]Ý]HÝX›H\Ý[™Ë[]™[ØœÙ\˜][Ûˆ[Y\Ý[\Üˆ\ÜÝY\ˆXØÛÝ[[™ÂœØÛÜH[™È›Ý\ÝX›\ÚHØ[›ÛšXØ[Ý\œ™[\šXÙH[œ]ˆH›Ü›X[^™\‚™[Z]ÈRÔÒT‘WÒ×ÒS‘VÔÔÕÑSWÔU×ÓÓ“X[™Ü™X]\È›ÈØ[›ÛšXØ[˜XÝˆ\ÝÂ˜ÛÝ™\ˆ\Ú\™K[Û›H™\]Y\Ý˜[Y][Û‹X[›Ü›YY›ÝÜË[\HÝ]]˜]Ë[Û›B››Ü›X[^˜][Û‹™\^HY]Y]KÜ^[ØY[\\š[™È[™Ù™›[™HØXÚH™\^Kˆ›Â˜Ø[Ý[][Û‹Ø]K\[[™KÓHÜˆ[œ][ØY\ˆÛÛ˜XÝÚ[™Ù\Ë‚‚ˆÈÈÈ\ÙHËH8 %Ú[˜HÛ™ÈÛÛ™ËZ[™^Z[KZ\ÝÜžH˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈH™^ØÝ[Y[YÚ[˜B–ØÝØÚ×Ú×Ú[™^ÙZ[WÜÚ[˜XJÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÚ[™^Ú[™^š[
+B’Û™ÈÛÛ™ËZ[™^\ÝÜžH[™Ú[[™\ˆPT’ÑUÒTÕÔ–XˆB–ÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÚ[™^Ú[™^ÜÝØÚ×ÚËœJB˜XØÙ\È[ˆ[™^Þ[X›ÛY˜][[™ÈÈÑTÌL™\]Y\ÝÈH[˜Üž\Y˜ÛÌ—ÚÛšœØ^[ØYÚ]š^YLŒŒ×ÍWÌX[™XÛÙ\È]Ú]˜×Úœ×ÙXÛÙX[™WÛZ[šWÜ˜XÙ\˜ˆHY\\ˆ^ÜÙ\È^XÚ]˜šY]ÏZ×Ú[™^ÙZ[WÜÚ[˜X[™[™^ÜÞ[X›Û\˜[Y]\œË™\]Z\™\È\Ú\™B›\Ý[™ÈÛÛ^›Ü›X[^™\ÈHÞ[X›ÛÈ\\˜Ø\ÙH[™™\Ù\™\ÈH^XÝ˜]XÜ[˜ÛÜÙXYÚÝØ›Û[YXšY[Ü™\ˆÚ]ÝšXÝ]\Ë›[Y\šXËÛ[˜[Y\È[™™\^HY[]HY]Y]K‚‚•HÚ[˜HÛ™ÈÛÛ™ËZ[™^Z[KZ\ÝÜžH™\ÜÛœÙH™[XZ[œÈ˜]È]šY[˜ÙHÛ›N‚š[™^[]™[ÒÕˆ\È›Ý[ˆ\Ú\™H\Ý[™È\ÝÜžH[™Ù\È›Ý\ÝX›\ÚB˜Ø[›ÛšXØ[Z[KZ\ÝÜžK™]\›‹˜[X][ÛˆÜˆXØÛÝ[[™È[œ]ËˆH›Ü›X[^™\‚™[Z]ÈRÔÒT‘WÒ×ÒS‘VÑRSWÔÒSWÔU×ÓÓ“X[™Ü™X]\È›ÈØ[›ÛšXØ[˜XÝ‚‘›ØÝ\ÙY\ÝÈÛÝ™\ˆ›Ý][™ËÝšXÝ™\]Y\Ý[™™\ÜÛœÙH˜[Y][Û‹[\B›Ý]]˜]Ë[Û›H›Ü›X[^˜][Û‹™\^HY]Y]KÜ^[ØY[\\š[™È[™Ù™›[™B˜ØXÚH™\^Kˆ›ÈØ[Ý[][Û‹Ø]K\[[™KÓHÜˆ[œ][ØY\ˆÛÛ˜XÝ˜Ú[™Ù\Ë‚‚ˆÈÈÈ\ÙHËˆ8 %X\Ý[Û™^HÛ™ÈÛÛ™ËZ[™^Z[KZ\ÝÜžH˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈH™^ØÝ[Y[YX\Ý[Û™^B–ØÝØÚ×Ú×Ú[™^ÙZ[WÙ[XJÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÚ[™^Ú[™^š[
+B’Û™ÈÛÛ™ËZ[™^\ÝÜžH[™Ú[[™\ˆPT’ÑUÒTÕÔ–XˆB–ÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÚ[™^Ú[™^ÜÝØÚ×ÚËœJB˜XØÙ\È[ˆ[™^Þ[X›ÛY˜][[™ÈÈÕPÑŒ“™\ÛÛ™\È]ÈX\Ý[Û™^HX\šÙ]˜ÛÙH›ÝYÚHÛ™ÈÛÛ™ËZ[™^ÜÝ[š]™\œÙHÚ]HÐRØL˜[˜XÚË˜[™™\]Y\ÝÈH[\Úš\Ø”ÓÓˆË[[™H™\ÜÛœÙHÚ]š^YÛLLX˜œ]LX]LL[™LŒL\ØØØOLXšY[Ù[XÝÜœË][™˜›Ü˜ÙXÝ\˜[Y]\œËˆHY\\ˆ^ÜÙ\È^XÚ]šY]ÏZ×Ú[™^ÙZ[WÙ[X[™˜[™^ÜÞ[X›Û\˜[Y]\œË™\]Z\™\È\Ú\™H\Ý[™ÈÛÛ^›Ü›X[^™\ÈBœÞ[X›ÛÈ\\˜Ø\ÙH[™™\Ù\™\ÈH^XÝ]XÜ[˜YÚÝØ˜]\ÝšY[Ü™\ˆÚ]ÝšXÝ]\Ë[Y\šXËÛ[˜[Y\È[™™\^HY[]B›Y]Y]KˆH›ÝšY\‹\™\ÜYœ]LX\˜[Y]\ˆ™[XZ[œÈY]Y]BŠ›ÝšY\—Ü™\ÜYÙœ]ÌX
+H˜]\ˆ[ˆ[ˆ[™™\œ™YØ[›ÛšXØ[Y\ÝY[‚‚•HX\Ý[Û™^HÛ™ÈÛÛ™ËZ[™^Z[KZ\ÝÜžH™\ÜÛœÙH™[XZ[œÈ˜]È]šY[˜ÙHÛ›N‚š]È›ÝšY\‹\™\ÛÛ™Y[™^ÒÈÙ\šY\È\È›Ý[ˆ\Ú\™H\Ý[™È\ÝÜžH[™™Ù\È›Ý\ÝX›\ÚHØ[›ÛšXØ[Z[KZ\ÝÜžK™]\›‹˜[X][ÛˆÜˆXØÛÝ[[™Âš[œ]ËˆH›Ü›X[^™\ˆ[Z]ÈRÔÒT‘WÒ×ÒS‘VÑRSWÑSWÔU×ÓÓ“X[™Ü™X]\È›Â˜Ø[›ÛšXØ[˜XÝˆ›ØÝ\ÙY\ÝÈÛÝ™\ˆ›Ý][™ËÝšXÝ™\]Y\Ý[™™\ÜÛœÙB˜[Y][Û‹š[š]KÛ[˜[Y\Ë[\HÝ]]˜]Ë[Û›H›Ü›X[^˜][Û‹™\^B›Y]Y]KÜ^[ØY[\\š[™È[™Ù™›[™HØXÚH™\^Kˆ›ÈØ[Ý[][Û‹Ø]Kœ\[[™KÓHÜˆ[œ][ØY\ˆÛÛ˜XÝÚ[™Ù\Ë‚‚ˆÈÈÈ\ÙHËÈ8 %Ú[˜HTËZ[™^Z[KZ\ÝÜžH˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈH™^ØÝ[Y[YÚ[˜B–Ø[™^Ý\×ÜÝØÚ×ÜÚ[˜XJÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÚ[™^Ú[™^š[
+B•TËZ[™^\ÝÜžH[™Ú[[™\ˆPT’ÑUÒTÕÔ–XˆB–ÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÚ[™^Ú[™^ÜÝØÚ×Ý\×ÜÚ[˜KœJBœÝ\ÜÈ’S–’VPØ‘’X[™“‘™\]Y\ÝÈH[˜Üž\Y˜Ý]XÙ]KÝ\ËÞÜÞ[X›ÛX^[ØY[™XÛÙ\È]Ú]šÚœ×ÙXÛÙX[™˜WÛZ[šWÜ˜XÙ\˜ˆHY\\ˆ^ÜÙ\È^XÚ]šY]Ï]\×Ú[™^ÜÚ[˜X[™˜[™^ÜÞ[X›Û\˜[Y]\œËXØÙ\ÈKHÜˆ\Ú\™H\Ý[™ÈÛÛ^Û›H›Ü‚œ›Ý™[˜[˜ÙK[™™\Ù\™\ÈH^XÝ]XÜ[˜YÚÝØÛÜÙX˜›Û[YX[[Ý[šY[Ü™\ˆÚ]ÝšXÝ]\Ë[Y\šXËÛ[˜[Y\È[™™\^BšY[]HY]Y]K‚‚•HÚ[˜HTËZ[™^Z[KZ\ÝÜžH™\ÜÛœÙH™[XZ[œÈ˜]È]šY[˜ÙHÛ›Nˆ]ÈÛØ˜[š[™^ÒÕ‹Ø[[Ý[Ù\šY\È\È›È\Ý[™ËÙ[]HXØÛÝ[[™ÈØÛÜH[™Ù\È›Ý™\ÝX›\ÚHØ[›ÛšXØ[Z[KZ\ÝÜžK™]\›‹˜[X][ÛˆÜˆXØÛÝ[[™È[œ]Ë‚•H›Ü›X[^™\ˆ[Z]ÈRÔÒT‘WÕT×ÒS‘VÔÒSWÔU×ÓÓ“X[™Ü™X]\È›ÈØ[›ÛšXØ[™˜XÝˆ›ØÝ\ÙY\ÝÈÛÝ™\ˆKÒ›Ý][™ËÝšXÝ™\]Y\Ý[™™\ÜÛœÙH˜[Y][Û‹™š[š]KÛ[˜[Y\Ë[\HÝ]]˜]Ë[Û›H›Ü›X[^˜][Û‹™\^HY]Y]KÜ^[ØY[\\š[™È[™Ù™›[™HØXÚH™\^Kˆ›ÈØ[Ý[][Û‹Ø]K\[[™KÓHÜ‚š[œ][ØY\ˆÛÛ˜XÝÚ[™Ù\Ë‚‚ˆÈÈÈ\ÙHËŽ8 %X\Ý[Û™^HÛØ˜[Z[™^ÜÝ˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈH™^ØÝ[Y[YX\Ý[Û™^B–Ø[™^ÙÛØ˜[ÜÜÝÙ[XJÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÚ[™^Ú[™^š[
+B™ÛØ˜[Z[™^™X[][YH[™Ú[[™\ˆPT’ÑUÔUSÕXˆB–ÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÚ[™^Ú[™^ÙÛØ˜[Ù[KœJB\Ù\ÈH›ËX\™Ý[Y[™\]Y\ÝÈX\Ý[Û™^IÜÈ”ÓÓˆÛ\ÝÙÙ][™Ú[Ú]B™š^YÛØ˜[Z[™^š[\‹ŒØÛÜÙ[XÝÜˆ[™Œ\›ÝÈYÙHÚ^™KˆHY\\‚™^ÜÙ\È^XÚ]šY]ÏYÛØ˜[Ú[™^ÜÜÝXØÙ\ÈKHÜˆ\Ú\™H\Ý[™ÈÛÛ^›Û›H\È›Ý™[˜[˜ÙK[™™\Ù\™\ÈHÛÛ\]HÙ[™KYšY[Ý]][ˆB™ØÝ[Y[YÜ™\Žˆ9n£ùcíØ9.èùè X9d#yéì9§ 9¥¬9.íØ9­ª:-ã:h§X9­ª:-ã9naX9o 9ææ9.íØ˜9§ :jæ9.íØ9§ 9/c¹.íØ9¦*9¥-¹.íØ9£+ùnaX9§ 9¥¬:(c9 áy¥íºeí‚‚”›ÝšY\ˆ˜[Y][Ûˆ\ÈÝšXÝˆÜ˜\\ˆ˜[šÈ˜[Y\È]\Ý™\Ù]œ›ÛHÛ™H[‚œÛÝ\˜ÙHÜ™\ŽÈÛÙ\È]\Ý™H›Û‹Y[\H[™[š\]YNÈ˜[Y\È]\Ý™H›Û‹Y[\NÂ[Y\Ý[\È]\Ý™H˜[YVVVKSSKQ“SN”ÔØ˜[Y\ÈÜˆ[È[™]™\žB›[Y\šXÈšY[]\Ý™Hš[š]HÜˆ[ˆ™\^HY]Y]H™XÛÜ™ÈH^XÝ\Ý™X[HT“š^Y\˜[Y]\œËÙš[\‹›È]^[X\žHÛÚÝ\”ÓÓˆXÛÙ\‹œÜÚ][Û˜[ÛÝ\˜ÙHX\[™Ë›ÜYšY[Ë[Y\šXÈ]š\Ú[Û‹XžKLL˜[œÙ›Ü›K•[š^\ÙXÛÛ™Ë]ËP\ÚXKÔÚ[™ÚZH[Y\Ý[\ÛÛ™\œÚ[Û‹ÛÝ\˜ÙH›ÝÈY[]KÝ[YB›Ü™\ˆ[™ÛÛ\]K][š]™\œÙKÛ›Ë[\Ý[™ËYš[\ˆØÛÜKˆH›Ü›X[^™\ˆ[Z]Â˜RÔÒT‘WÑÓÐSÒS‘VÔÔÕÔU×ÓÓ“X™]Z[œÈH™\ÜÛœÙH\È]šY[˜ÙH[™˜Ü™X]\È›ÈØ[›ÛšXØ[Ý\œ™[\šXÙH˜XÝ™XØ]\ÙHHÛØ˜[[™^Û˜\ÚÝ\È›Â›\Ý[™ËÙ[]HXØÛÝ[[™ÈØÛÜK‚‚‘›ØÝ\ÙY\ÝÈÛÝ™\ˆKÒ›Ý][™ËÝšXÝ\˜[Y]\ˆ™Z™XÝ[Û‹^XÝØÚ[XKÛÜ™\‹œ˜[šËØÛÙKÝ[Y\Ý[\Û[Y\šXÈ›Ý[™\šY\Ë[Ë[\HÝ]]˜]Ë[Û›B››Ü›X[^˜][Û‹™\^HY]Y]KÜ^[ØY[\\š[™È[™Ù™›[™HØXÚH™\^Kˆ›Â˜Ø[Ý[][Û‹Ø]K\[[™KÓHÜˆ[œ][ØY\ˆÛÛ˜XÝÚ[™Ù\Ë‚‚ˆÈÈÈ\ÙHËŽH8 %X\Ý[Û™^HÛØ˜[Z[™^Z[KZ\ÝÜžH˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈH™^ØÝ[Y[YX\Ý[Û™^B–Ø[™^ÙÛØ˜[Ú\ÝÙ[XJÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÚ[™^Ú[™^š[
+B™ÛØ˜[Z[™^\ÝÜšXØ[[™Ú[[™\ˆPT’ÑUÒTÕÔ–XˆB–ÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÚ[™^Ú[™^ÙÛØ˜[Ù[KœJB˜XØÙ\ÈHØÝ[Y[YÛØ˜[Z[™^˜[YK™\ÛÛ™\È]ÈÛÙH[™X\šÙ]›ÝYÚB›ØØ[[™^ÙÛØ˜[Ù[WÜÞ[X›ÛÛX\[™™\]Y\ÝÈHÛÛ\]HZ[H\ÝÜžHœ›ÛB‘X\Ý[Û™^IÜÈ”ÓÓˆÝØÚËÚÛ[™KÙÙ][™Ú[Ú][˜[ZXÈÙXÚY\Èš^Y˜ÛLLXœ]LX]ML[™LŒL\ØØØOLXšY[Ù[XÝÜœË˜][™›Ü˜ÙXÝ\˜[Y]\œËˆHY\\ˆ^ÜÙ\È^XÚ]˜šY]ÏYÛØ˜[Ú[™^Ú\Ý[™[™^ÜÞ[X›ÛXØÙ\ÈKHÜˆ\Ú\™H\Ý[™Â˜ÛÛ^Û›H\È›Ý™[˜[˜ÙK[™™\Ù\™\ÈH^XÝZYÚYšY[Ý]]Ü™\Ž‚˜9¥éy§'Ø9.èùè X9d#yéì9.â¹o 9§ 9¥¬9.íØ9§ :jæ9§ 9/c˜9£+ùnaX‚‚”›ÝšY\ˆ˜[Y][Ûˆ\ÈÝšXÝˆHÙ[XÝÜˆ]\Ý™HÛ™HÙˆHØÝ[Y[Y™ÛØ˜[Z[™^˜[Y\ÎÈ]\È]\Ý™H˜[YÝšXÝH\ØÙ[™[™È[™[š\]YNÈÛÙ\Â›]\ÝX]ÚH™\ÛÛ™YÞ[X›ÛÈ˜[Y\È]\Ý™HÝX›H›Û‹Y[\HÝš[™ÜÎÈ[™›[Y\šXÈ˜[Y\È]\Ý™Hš[š]H[X™\œÈÜˆ[ˆ™\^HY]Y]H™XÛÜ™ÈB\Ý™X[HT“[˜[ZXËÙš^Y\˜[Y]\œËØØ[Þ[X›Û[X\™\ÛÛ][Û‹Ú^Y[‚œÛÝ\˜ÙHÛÛ[[œËÜÚ][Û˜[X\[™ËZYÚ›ÜYXÙZÛ\œË]KÛ[Y\šXÂ˜ÛÛ™\œÚ[ÛœË[Z\ÝÜžKÛ›ËY]KYš[\š[™ÈØÛÜH[™›ÝÈY[]HÜ™\‹ˆB››Ü›X[^™\ˆ[Z]ÈRÔÒT‘WÑÓÐSÒS‘VÒTÕÔ–WÔU×ÓÓ“X™]Z[œÈH™\ÜÛœÙB˜\È]šY[˜ÙH[™Ü™X]\È›ÈØ[›ÛšXØ[Z[KZ\ÝÜžK™]\›‹˜[X][ÛˆÜ‚˜XØÛÝ[[™È˜XÝ™XØ]\ÙHHÛØ˜[Z[™^Ù\šY\È\È›È\Ý[™ËÙ[]HXØÛÝ[[™ÂœØÛÜK‚‚‘›ØÝ\ÙY\ÝÈÛÝ™\ˆKÒ›Ý][™ËÝšXÝ\˜[Y]\ˆ™Z™XÝ[Û‹^XÝØÚ[XKÛÜ™\‹œÞ[X›ÛØÛÙKÙ]HY[]Kš[š]KÛ[˜[Y\Ë[\HÝ]]˜]Ë[Û›B››Ü›X[^˜][Û‹™\^HY]Y]KÜ^[ØY[\\š[™È[™Ù™›[™HØXÚH™\^Kˆ›Â˜Ø[Ý[][Û‹Ø]K\[[™KÓHÜˆ[œ][ØY\ˆÛÛ˜XÝÚ[™Ù\Ë‚‚ˆÈÈÈ\ÙHËÌ8 %Ú[˜HÛØ˜[Z[™^Z[KZ\ÝÜžH˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈH™^ØÝ[Y[YÚ[˜B–Ø[™^ÙÛØ˜[Ú\ÝÜÚ[˜XJÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÚ[™^Ú[™^š[
+B™ÛØ˜[Z[™^\ÝÜšXØ[[™Ú[[™\ˆPT’ÑUÒTÕÔ–XˆB–ÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÚ[™^Ú[™^ÙÛØ˜[ÜÚ[˜KœJB›X\ÈÛ™HØÝ[Y[YÛØ˜[Z[™^˜[YHÈ]ÈÚ[˜HÛÙH[™™\]Y\ÝÈH”ÓÓ‚˜ÚK™š[˜[˜ÙKœÚ[˜K˜ÛÛK˜Û‹ÚKÙZ[X[™Ú[Ú]Þ[X›Û[™š^Y[OLLœ\˜[Y]\œËˆHY\\ˆ^ÜÙ\È^XÚ]šY]ÏYÛØ˜[Ú[™^Ú\ÝÜÚ[˜X[™˜[™^ÜÞ[X›ÛXØÙ\ÈKHÜˆ\Ú\™H\Ý[™ÈÛÛ^Û›H\È›Ý™[˜[˜ÙK[™œ™\Ù\™\ÈH^XÝÚ^YšY[Ý]]Ü™\Žˆ]XÜ[˜YÚÝØ˜ÛÜÙX›Û[YX‚‚”›ÝšY\ˆ˜[Y][Ûˆ\ÈÝšXÝˆHÙ[XÝÜˆ]\Ý™HÛ™HÙˆHØÝ[Y[Y”Ú[˜HÛØ˜[Z[™^˜[Y\ÎÈ]\È]\Ý™H˜[YÝšXÝH\ØÙ[™[™È[™[š\]YNÂ›[Y\šXÈ˜[Y\È]\Ý™Hš[š]H[X™\œÈÜˆ[È[™™\ÜÛœÙ\ÈÝ™\ˆB™ØÝ[Y[Y™XÙ[L\›ÝÈ[Z]\™H™Z™XÝYˆ™\^HY]Y]H™XÛÜ™ÈB\Ý™X[HT“Ü˜\\ˆÞ[X›Û[™X\Y[™^ÛÙKš^Y[OLLÛÝ\˜ÙB™šY[™[˜[YHœ›ÛHÛËÚÛØËÝ˜]KÛ[Y\šXÈÛÛ™\œÚ[ÛœË™XÙ[]Ú[™ÝÂ˜›Ý[™\žH[™›ÝÈY[]HÜ™\‹ˆH›Ü›X[^™\ˆ[Z]Â˜RÔÒT‘WÑÓÐSÒS‘VÔÒSWÔU×ÓÓ“X™]Z[œÈH™\ÜÛœÙH\È]šY[˜ÙH[™˜Ü™X]\È›ÈØ[›ÛšXØ[Z[KZ\ÝÜžK™]\›‹˜[X][ÛˆÜˆXØÛÝ[[™È˜XÝ˜™XØ]\ÙHHÛØ˜[Z[™^Ù\šY\È\È›È\Ý[™ËÙ[]HXØÛÝ[[™ÈØÛÜK‚‚‘›ØÝ\ÙY\ÝÈÛÝ™\ˆKÒ›Ý][™ËØÝ[Y[YÞ[X›ÛX\[™ËÝšXÝ™\]Y\Ý[™œ™\ÜÛœÙH˜[Y][Û‹^XÝØÚ[XKÛÜ™\‹š[š]KÛ[˜[Y\ËHØÝ[Y[Yœ›ÝÈ[Z][\HÝ]]˜]Ë[Û›H›Ü›X[^˜][Û‹™\^HY]Y]KÜ^[ØY[\\š[™È[™Ù™›[™HØXÚH™\^Kˆ›ÈØ[Ý[][Û‹Ø]K\[[™KÓHÜ‚š[œ][ØY\ˆÛÛ˜XÝÚ[™Ù\Ë‚‚ˆÈÈÈ\ÙHËÌH8 %Ú[˜H[™^]\ÝXÛÛœÝ]Y[˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈH™^ØÝ[Y[YÚ[˜H[™^[™Ú[–Ø[™^ÜÝØÚ×ØÛÛœØJÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÚ[™^Ú[™^š[
+H[™\‚˜PT’ÑUÐPÕU’UXˆHÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÚ[™^Ú[™^ØÛÛœËœJBœÙ[XÝÈH™\]Y\ÝY[™^ÛÙKXÛÙ\ÈÐŒŒÌLˆS\œÙ\ÈH›ÝšY\‰ÜÂœYÙHÛÝ[[™™\]Y\ÝÈXXÚÛÛ\Û™[YÙKˆHY\\ˆ^ÜÙ\È^XÚ]˜šY]ÏZ[™^ÜÝØÚ×ØÛÛœØXØÙ\ÈÛ›HÚ[™ÚZHÜˆÚ[žš[ˆÎN^š[™^\Ú\YK\Ú\™H\Ý[™ÈÛÛ^\š]™\ÈÞ[X›Ûœ›ÛHH\Ý[™ÈÛÙB˜[™™\Ù\™\ÈH^XÝ™YKYšY[Ý]]Ü™\Žˆ9dàyéãy.èùè X9dàyéãyd#yéì˜9î¬ùaiy¥éy§'Ø‚‚”›ÝšY\ˆ˜[Y][Ûˆ\ÈÝšXÝˆÛÛœÝ]Y[ÛÙ\È]\Ý™HÚ^YYÚ]Ýš[™ÜË›˜[Y\È]\Ý™H›Û‹Y[\HÝš[™ÜË[™[˜Û\Ú[Ûˆ]\È]\Ý™H˜[Y]\ÈÜ‚›[ˆHRÔÚ\™HØÝ[Y[][ÛˆØ\›œÈ]ÛÝ\˜ÙH›ÝÜÈX^H™H\XØ]YÜ‚›Z\ÜÚ[™ËÛÈ\XØ]H›ÝÜÈ\™H™\Ù\™YZ\ÜÚ[™ÈY[X™\œÚ\›ÝÜÈ\™H›Ýš[\]Y[™ÜÚ][Û˜[›ÝÈY[]H\È™XÛÜ™Y[ˆ™\^HY]Y]KˆB›Y]Y]H[ÛÈ™XÛÜ™ÈHÛÈSYÙHT“›Ü›\ËYÙXØ[™^Y\˜[Y]\œË‘ÐŒŒÌL‹Ð™X]]Y[ÛÝ\Ü™XYZ[XÛÙ[™Ëš\œÝ]™YKXÛÛ[[ˆÙ[XÝ[Û‹ž™\›ËYš[[™ËÙ]HÛÛ™\œÚ[Ûˆ[™›ÝšY\‹\™\ÜYYÙKXÛÝ[YÚ[˜][Û‹‚‚•H›Ü›X[^™\ˆ[Z]ÈRÔÒT‘WÒS‘VÔÕÐÒ×ÐÓÓ”×ÔU×ÓÓ“X™]Z[œÈH™\ÜÛœÙB˜\È]šY[˜ÙH[™Ü™X]\È›ÈØ[›ÛšXØ[][ÝK™]\›‹ÛÝ™\›˜[˜ÙK˜[X][ÛˆÜ‚˜XØÛÝ[[™È˜XÝ™XØ]\ÙH[™^Y[X™\œÚ\\È›È\Ý[™ËÙ[]HXØÛÝ[[™ÂœØÛÜKˆ›ØÝ\ÙY\ÝÈÛÝ™\ˆ[™^›Ý][™ËÝšXÝ\˜[Y]\ˆ™Z™XÝ[Û‹^XÝœØÚ[XKÛÜ™\‹Ý\H˜[Y][Û‹[X›H]\ËØÝ[Y[Y\XØ]Bœ™\Ù\˜][Û‹[\HÝ]]˜]Ë[Û›H›Ü›X[^˜][Û‹™\^HY]Y]KÜ^[ØY[\\š[™È[™Ù™›[™HØXÚH™\^Kˆ›ÈØ[Ý[][Û‹Ø]K\[[™KÓHÜ‚š[œ][ØY\ˆÛÛ˜XÝÚ[™Ù\Ë‚‚ˆÈÈÈ\ÙHËÌˆ8 %Ú[˜H\Ú\™HZ[KZ\ÝÜžH˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈH™^ØÝ[Y[YRÔÚ\™HÝØÚÈ[™Ú[–ØÝØÚ×Ú×ÙZ[XJÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+H[™\‚˜PT’ÑUÒTÕÔ–XˆHÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚËÜÝØÚ×Ú×ÜÚ[˜KœJBœ™\]Y\ÝÈHÚ[™ÛH\Ú\™HÞ[X›Ûœ›ÛHÚ[˜IÜÈ[˜Üž\Y˜]˜TØÜš\Ë[[™B™[™Ú[[™Ý\ÜÈY\Ý˜[Y\È	ÉØYœXœXYœKY˜XÝÜ˜[™˜œKY˜XÝÜ˜ˆHY\\ˆ^ÜÙ\È[ˆ^XÚ]šY]ÏZ×ÙZ[XXØÙ\ÈÛ›B’\Ú\™H\Ý[™ÜË\ÜÙ\ÈHÚ^YYÚ]Þ[X›ÛÚ]Ý]Y\\ˆ]B˜\™Ý[Y[Ë[™™\Ù\™\ÈH^XÝ™YÝ[\ˆÚ^YšY[]XÜ[˜YÚ˜ÝØÛÜÙX›Û[YXÜ™\ˆÜˆHØÝ[Y[Y˜XÝÜˆ™\ÜÛœÙHÜ™\Ž‚˜]XYœWÙ˜XÝÜ˜Üˆ]XœWÙ˜XÝÜ˜Ø\Ú‚‚”›ÝšY\ˆ˜[Y][Ûˆ\ÈÝšXÝˆ™\]Y\Ý\˜[Y]\œÈ\™H[Z]YÈšY]Ø[™˜Y\ÝÈ™YÝ[\ˆ]\È]\Ý™H˜[Y[š\]YH[™ÝšXÝH\ØÙ[™[™ÎÈ˜XÝÜ‚™]\È]\Ý™H˜[Y[š\]YH[™ÝšXÝH\ØÙ[™[™ÎÈ[™[Y\šXÈ˜[Y\È]\Ý˜™Hš[š]H[X™\œÈÜˆ[ˆ™\^HY]Y]H™XÛÜ™ÈHË[[™HT“Ü[Û˜[œYœKÚœH˜XÝÜˆT“\Ý[™ÈÞ[X›ÛY\ÝY[[ÙK^XÝšY[Ü™\‹œ›ÝËZY[]HÜ™\‹XÛÙ\‹Ý˜[œÙ›Ü›X][ÛˆÝ\Ë[Z\ÝÜžHØÛÜH[™[™ØÝ[Y[Y[Y\šXÈ[š]ËˆH^\Ý[™È›Ë]šY]ÈÝØÚ×Ú×ÙZ[XÛÛ\]Xš[]Bœ›Ý]H\È[˜Ú[™ÙY‚‚•H›Ü›X[^™\ˆ[Z]ÈRÔÒT‘WÒ×ÑRSWÒTÕÔ–WÔU×ÓÓ“X™]Z[œÈH™\ÜÛœÙB˜\È]šY[˜ÙH[™Ü™X]\È›ÈØ[›ÛšXØ[Z[KZ\ÝÜžK™]\›‹˜[X][ÛˆÜ‚˜XØÛÝ[[™È˜XÝ™XØ]\ÙH›ÝšY\‹[ÝÛ™Y\Ú\™HšXÙKØY\ÝY[Ù[X[XÜË˜Y[™ËXØ[[™\ˆ™Z]š[Üˆ[™[Y\šXÈ[š]È\™H›Ý™XÛÛ˜Ú[YÈB˜Ø[›ÛšXØ[ÛÛ˜XÝˆ›ØÝ\ÙY\ÝÈÛÝ™\ˆ\Ú\™H›Ý][™ËY\ÝY[Ù˜XÝÜ‚œÚ\\ËÝšXÝ™\]Y\Ý[™™\ÜÛœÙH˜[Y][Û‹[\HÝ]]˜]Ë[Û›B››Ü›X[^˜][Û‹™\^HY]Y]KÜ^[ØY[\\š[™È[™Ù™›[™HØXÚH™\^Kˆ›Â˜Ø[Ý[][Û‹Ø]K\[[™KÓHÜˆ[œ][ØY\ˆÛÛ˜XÝÚ[™Ù\Ë‚‚ˆÈÈÈ\ÙHËÌÈ8 %[˜Ù[JÒZ[KZ\ÝÜžH˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈH™^ØÝ[Y[YRÔÚ\™HÝØÚÈ[™Ú[–ØÝØÚ×ÞšØZÙZ[XJÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+H[™\‚˜PT’ÑUÒTÕÔ–XˆHÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚËÜÝØÚ×ÞšØZÝœJBœ™\]Y\ÝÈ[ˆ\Ú\™HÛÙHœ›ÛH[˜Ù[	ÜÈYX\‹\\][Û™YË[[™H[™Ú[È[™œÝ\ÜÈÝ\ÞYX\˜[™ÞYX\˜[™Y\Ý˜[Y\È	ÉØYœX[™œX‚•HY\\ˆ^ÜÙ\È[ˆ^XÚ]šY]ÏXZÙZ[XXØÙ\È\Ú\™H\Ý[™ÜÈÛ›Kœ\ÜÙ\ÈHØÝ[Y[YÞ[X›ÛÞYX\‹ØY\ÝY[\™Ý[Y[È[™™\Ù\™\ÈH^XÝœÚ^YšY[9¥éy§'Ø9o 9ææ9¥-¹ææ9§ :jæ9§ 9/c˜9¢$9.©:aãØÜ™\‹‚‚”›ÝšY\ˆ˜[Y][Ûˆ\ÈÝšXÝˆYX\ˆ\˜[Y]\œÈ\™H›Ý\‹YYÚ]Ýš[™ÜÈÚ]B››Û‹Z[™\Y˜[™ÙNÈ™YÝ[\ˆ]\È]\Ý™H˜[Y[š\]YKÝšXÝH\ØÙ[™[™È[™Ú][ˆH™\]Y\ÝY[‹[Ü[ˆYX\ˆ˜[™ÙNÈ[™[Y\šXÈ˜[Y\È]\Ý™Hš[š]B›[X™\œÈÜˆ[ˆ™\^HY]Y]H™XÛÜ™ÈH[˜Ù[Ë[[™HT“YX\‹\\][Û‚œØÛÜKY\ÝY[[ÙK^[ØYZÙ^HX\[™ËXÛÙ\‹Ü›Ú™XÝ[ÛˆÝ\È[™[™ØÝ[Y[Y[Y\šXÈ[š]ËˆH^\Ý[™È›Ë]šY]ÈÝØÚ×ÞšØZÙZ[X˜ÛÛ\]Xš[]H˜[˜XÚÈ™[XZ[œÈ[˜Ú[™ÙY‚‚•H›Ü›X[^™\ˆ[Z]ÈRÔÒT‘WÐRÑRSWÒTÕÔ–WÔU×ÓÓ“X™]Z[œÈH™\ÜÛœÙB˜\È]šY[˜ÙH[™Ü™X]\È›ÈØ[›ÛšXØ[Z[KZ\ÝÜžK™]\›‹˜[X][ÛˆÜ‚˜XØÛÝ[[™È˜XÝ™XØ]\ÙH›ÝšY\‹[ÝÛ™YJÒšXÙ\ËY\ÝY[™Z]š[Ü‹˜Y[™ËXØ[[™\ˆÙ[X[XÜÈ[™[Y\šXÈ[š]È\™H›Ý™XÛÛ˜Ú[YÈHØ[›ÛšXØ[˜ÛÛ˜XÝˆ›ØÝ\ÙY\ÝÈÛÝ™\ˆ\Ú\™H›Ý][™ËØÝ[Y[YY˜][È[™˜Y\ÝY[ËÝšXÝ™\]Y\ÝÜ™\ÜÛœÙH˜[Y][Û‹[X›H˜[Y\Ë[\HÝ]]œ˜]Ë[Û›H›Ü›X[^˜][Û‹™\^HY]Y]KÜ^[ØY[\\š[™È[™Ù™›[™HØXÚBœ™\^Kˆ›ÈØ[Ý[][Û‹Ø]K\[[™KÓHÜˆ[œ][ØY\ˆÛÛ˜XÝÚ[™Ù\Ë‚‚ˆÈÈÈ\ÙHËÍ8 %Ú[˜HK\Ú\™HZ[KZ\ÝÜžH˜]ÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈH™^ØÝ[Y[YRÔÚ\™HÝØÚÈ[™Ú[–ØÝØÚ×ÞšØWÙZ[XJÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+H[™\‚˜PT’ÑUÒTÕÔ–XˆHÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚËÜÝØÚ×ÞšØWÜÚ[˜KœJBœ™\]Y\ÝÈ[ˆK\Ú\™HÞ[X›Ûœ›ÛHÚ[˜IÜÈ[˜Üž\Y˜]˜TØÜš\Ë[[™H[™Ú[[™œÝ\ÜÈ›Ü›X[^™YÝ\Ù]X[™Ù]X[™Y\Ý˜[Y\È	ÉØYœX˜œXYœKY˜XÝÜ˜[™œKY˜XÝÜ˜ˆHY\\ˆ^ÜÙ\È[ˆ^XÚ]˜šY]Ï\Ú[˜WØWÙZ[XXØÙ\ÈK\Ú\™H\Ý[™ÜÈÛ›K\ÜÙ\ÈHÝÙ\‹\™Yš^YœÞ[X›Û[™[˜Û\Ú]™H]H›Ý[™Ë[™™\Ù\™\ÈH^XÝ™YÝ[\ˆš[™KYšY[˜]XÜ[˜YÚÝØÛÜÙX›Û[YX[[Ý[˜Ý]Ý[™[™×ÜÚ\™X\››Ý™\˜Ü™\ˆÜˆH^XÝYœKÚœH˜XÝÜˆÜ™\‹‚‚”›ÝšY\ˆ˜[Y][Ûˆ\ÈÝšXÝˆ™YÝ[\ˆ]\È]\Ý™H˜[Y[š\]YKÝšXÝB˜\ØÙ[™[™È[™Ú][ˆH™\]Y\ÝY[˜Û\Ú]™H˜[™ÙNÈ˜XÝÜˆ]\È]\Ý™B˜[Y[š\]YH[™ÝšXÝH\ØÙ[™[™ÎÈ[™[Y\šXÈ˜[Y\È]\Ý™Hš[š]B›[X™\œÈÜˆ[ˆ™\^HY]Y]H™XÛÜ™ÈÚ[˜IÜÈË[[™K[[Ý[[™Ü[Û˜[™˜XÝÜˆT“ËÞ[X›ÛÙ]KØY\ÝY[š[™[™ËXÛÙ\‹Ý˜[œÙ›Ü›X][ÛˆÝ\Ë™\š]™YÝ]Ý[™[™Ë\Ú\™KÝ\››Ý™\ˆÜ\˜][ÛœË^XÝšY[Ü™\‹›ÝÈY[]B›Ü™\ˆ[™ÛÛœÙ\˜]]™H[™ØÝ[Y[Y[Y\šXÈ[š]ËˆH^\Ý[™È›Ë]šY]Â˜ÝØÚ×ÞšØWÚ\ÝØÝØÚ×ÞšØWÙZ[XÛÛ\]Xš[]H˜[˜XÚÈ™[XZ[œÈ[˜Ú[™ÙY‚‚•H›Ü›X[^™\ˆ[Z]ÈRÔÒT‘WÔÒSWÐWÑRSWÒTÕÔ–WÔU×ÓÓ“X™]Z[œÈBœ™\ÜÛœÙH\È]šY[˜ÙH[™Ü™X]\È›ÈØ[›ÛšXØ[Z[KZ\ÝÜžK™]\›‹˜[X][Û‚›ÜˆXØÛÝ[[™È˜XÝ™XØ]\ÙH›ÝšY\‹[ÝÛ™YšXÙ\ËY\ÝY[Ù˜XÝÜˆ™Z]š[Ü‹™\š]™YÚ\™KÝ\››Ý™\ˆÙ[X[XÜË˜Y[™ËXØ[[™\ˆ™Z]š[Üˆ[™[Y\šXÈ[š]Â˜\™H›Ý™XÛÛ˜Ú[YÈHØ[›ÛšXØ[ÛÛ˜XÝˆ›ØÝ\ÙY\ÝÈÛÝ™\ˆK\Ú\™Bœ›Ý][™ËØÝ[Y[YY˜][È[™Y\ÝY[Ù˜XÝÜˆÚ\\ËÝšXÝ™\]Y\Ý[™œ™\ÜÛœÙH˜[Y][Û‹[X›H˜[Y\Ë[\HÝ]]˜]Ë[Û›H›Ü›X[^˜][Û‹œ™\^HY]Y]KÜ^[ØY[\\š[™È[™Ù™›[™HØXÚH™\^Kˆ›ÈØ[Ý[][Û‹™Ø]K\[[™KÓHÜˆ[œ][ØY\ˆÛÛ˜XÝÚ[™Ù\Ë‚‚ˆÈÈÈ\ÙHËÍH8 %X\Ý[Û™^HK\Ú\™H\ÝÜšXØ[XÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈH™^ØÝ[Y[YRÔÚ\™HÝØÚÈ[™Ú[–ØÝØÚ×ÞšØWÚ\ÝJÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+H[™\‚˜PT’ÑUÒTÕÔ–XˆHÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚ×Ù™X]\™KÜÝØÚ×Ú\ÝÙ[KœJBœ™\]Y\ÝÈHÚ^YYÚ]K\Ú\™HÞ[X›Ûœ›ÛHX\Ý[Û™^IÜÈË[[™H”ÓÓˆ[™Ú[[™œÝ\ÜÈ\š[Ù˜[Y\ÈZ[XÙYZÛX[™[ÛX[˜Û\Ú]™B˜Ý\Ù]XØ[™Ù]X›Ý[™Ë[™Y\Ý˜[Y\È	ÉØYœX[™œXˆB˜Y\\ˆYÈ^XÚ]šY]ÏYX\Ý[Û™^WØWÚ\Ý›Ý][™ËX\ÈÒÔÖ‹Ð’ˆX\šÙ]˜ÛÙ\ÈÈHØÝ[Y[YX\Ý[Û™^HÙXÚYÚ\K[™™\Ù\™\ÈH^XÝÙ[™KYšY[9¥éy§'Ø: ¨yéj9.èùè XÒÕ‹[[Ý[[\]YKÚ[™ÙK\\˜Ù[˜Ú[™ÙKX[[Ý[[™\››Ý™\ˆÜ™\‹‚‚”›ÝšY\ˆ˜[Y][Ûˆ\ÈÝšXÝˆ™\]Y\Ý\˜[Y]\œÈ\™H[Z]YÈB™ØÝ[Y[YšY]Ë\š[Ù]\È[™Y\ÝY[È]™\žH™\ÜÛœÙH›ÝÈ]\Ý]™BH^XÝšY[Ù]ÛÜ™\‹H™\]Y\ÝYÚ^YYÚ]ÛÙKH˜[Y[š\]YBœÝšXÝH\ØÙ[™[™È]HÚ][ˆH[˜Û\Ú]™H˜[™ÙK[™š[š]H[Y\šXÈ˜[Y\Â›Üˆ[ˆ™\^HY]Y]H™XÛÜ™ÈHX\Ý[Û™^HT“š^YÙ[˜[ZXÈ\˜[Y]\œËœ\š[ÙØY\ÝY[ÛX\šÙ]ÛÙ\ËÜ˜\\ˆ›Ú™XÝ[Û‹šY[\\ËÛÜ™\‹™ØÝ[Y[YÝËÐÓ–KÜ\˜Ù[[š]È[™›ÝÈY[]HÜ™\‹ˆH^\Ý[™È›Ë]šY]Â˜ÝØÚ×ÞšØWÚ\ÝØÝØÚ×ÞšØWÙZ[XÛÛ\]Xš[]H˜[˜XÚÈ™[XZ[œÈ[˜Ú[™ÙY‚‚•H›Ü›X[^™\ˆX\È^\Ý[™È\ÝÜšXØ[ÒÕ‹Ý\››Ý™\‹ØÚ[™ÙK\\˜Ù[^[œÚ[Û‚™˜XÝÈ›Üˆ[™YH\š[ÙËˆ9£+ùnaX9­ª:-ã:h§X[™9£h¹¢bùã¡Ø™[XZ[ˆ˜]È›ÝšY\‚™]šY[˜ÙH™XØ]\ÙH^H]™H›ÈØ[›ÛšXØ[[X\Ù\È[ˆHÝ\œ™[›Ü›X[^™Y˜ÛÛ˜XÝÈ\ÈÝ[™\™Z\ÝÜžHÛXÙH\™Y›Ü™HYÈ›È˜]Ë[Û›H›YËˆ›ØÝ\ÙY\ÝÈÛÝ™\ˆ›Ý][™ËY˜][Ë^Ú[™ÙK\ÜXÚYšXÈX\šÙ]ÛÙ\ËÝšXÝ™\]Y\Ý˜[™™\ÜÛœÙH˜[Y][Û‹[X›KÙ[\HÝ]]Ø[›ÛšXØ[X\[™Ë™\^B›Y]Y]KÜ^[ØY[\\š[™È[™Ù™›[™HØXÚH™\^Kˆ›ÈØ[Ý[][Û‹Ø]Kœ\[[™KÓHÜˆ[œ][ØY\ˆÛÛ˜XÝÚ[™Ù\Ë‚‚ˆÈÈÈ\ÙHËÍˆ8 %X\Ý[Û™^H\Ú\™H\ÝÜšXØ[XÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈH™^ØÝ[Y[YRÔÚ\™HÝØÚÈ[™Ú[–ØÝØÚ×Ú×Ú\ÝJÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+H[™\‚˜PT’ÑUÒTÕÔ–XˆHÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚ×Ù™X]\™KÜÝØÚ×Ú\ÝÙ[KœJBœ™\]Y\ÝÈ[ˆ[œ™Yš^Yš]™KYYÚ]\Ú\™HÞ[X›Ûœ›ÛHX\Ý[Û™^IÜÈË[[™H”ÓÓ‚™[™Ú[[™Ý\ÜÈ\š[Ù˜[Y\ÈZ[XÙYZÛX[™[ÛX[˜Û\Ú]™B˜Ý\Ù]XØ[™Ù]X›Ý[™Ë[™Y\Ý˜[Y\È	ÉØYœX[™œXˆB˜Y\\ˆYÈ^XÚ]šY]ÏYX\Ý[Û™^WÚ×Ú\Ý›Ý][™Ë™\ÝšXÝÈ]È\Ú\™B›\Ý[™ÜËÙ[™ÈÙXÚYLLM‹Þ[X›Û˜[™™\Ù\™\ÈH^XÝ[]™[‹YšY[˜9¥éy§'ØÒÕ‹[[Ý[[\]YKÚ[™ÙK\\˜Ù[Ú[™ÙKX[[Ý[[™\››Ý™\‚›Ü™\‹‚‚”›ÝšY\ˆ˜[Y][Ûˆ\ÈÝšXÝˆ™\]Y\Ý\˜[Y]\œÈ\™H[Z]YÈB™ØÝ[Y[YšY]Ë\š[Ù]\È[™Y\ÝY[È]™\žH™\ÜÛœÙH›ÝÈ]\Ý]™BH^XÝšY[Ù]ÛÜ™\‹H˜[Y[š\]YHÝšXÝH\ØÙ[™[™È]HÚ][ˆBš[˜Û\Ú]™H˜[™ÙK[™š[š]H[Y\šXÈ˜[Y\ÈÜˆ[ˆ™\^HY]Y]H™XÛÜ™ÂH[Z\ÝÜžH\Ý™X[H™\ÜÛœÙKš^Y[™LŒLØ]LLÜ˜\\‚š[˜Û\Ú]™H]HÛXÚ[™Ë[˜[ZXÈ\š[ÙØY\ÝY[ÜÙXÚY˜[Y\ËšY[\\Ë™ØÝ[Y[YÑÜÚ\™H[š]È[™›ÝÈY[]HÜ™\‹ˆH^\Ý[™È›Ë]šY]Â’\Ú\™H\ÝÜžHÛÛ\]Xš[]H˜[˜XÚÈ™[XZ[œÈ[˜Ú[™ÙY‚‚•H›Ü›X[^™\ˆ[Z]ÈRÔÒT‘WÑPTÕSÓ‘VWÒ×ÒTÕÔU×ÓÓ“X[™Ü™X]\È›Â˜Ø[›ÛšXØ[Z[KZ\ÝÜžK™]\›‹˜[X][ÛˆÜˆXØÛÝ[[™È˜XÝ™XØ]\ÙBœ›ÝšY\‹[ÝÛ™YšXÙ\ËY\ÝY[Ý˜Y[™ËXØ[[™\ˆÙ[X[XÜÈ[™ÑÜÚ\™B[š]È\™H›Ý™XÛÛ˜Ú[YÈHØ[›ÛšXØ[ÛÛ˜XÝˆ›ØÝ\ÙY\ÝÈÛÝ™\‚’\Ú\™H›Ý][™ËY˜][ËÝšXÝ™\]Y\Ý[™™\ÜÛœÙH˜[Y][Û‹›[X›KÙ[\HÝ]]˜]Ë[Û›H›Ü›X[^˜][Û‹™\^HY]Y]KÜ^[ØY[\\š[™È[™Ù™›[™HØXÚH™\^Kˆ›ÈØ[Ý[][Û‹Ø]K\[[™KÓHÜ‚š[œ][ØY\ˆÛÛ˜XÝÚ[™Ù\Ë‚‚ˆÈÈÈ\ÙHËÍÈ8 %Ú[˜H\Ú\™H™X[[YH][ÝHXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈH™^ØÝ[Y[YRÔÚ\™HÝØÚÈ[™Ú[–ØÝØÚ×Ú×ÜÜÝJÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+K˜\ÙYÛ‚HÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚËÜÝØÚ×Ú×ÜÚ[˜KœJK[™\ˆPT’ÑUÔUSÕXÚ]^XÚ]šY]ÏZ×ÜÜÝÜÚ[˜XˆH[™Ú[\È›Â\Ù\ˆ\˜[Y]\œË™\ÜÈHMK[Z[]KY[^YY[\Ú\™H[š]™\œÙH[™œ™]\›œÈH^XÝÚ^Y[‹YšY[9¥éy§'ù¥íºeí9.èùè X˜[YKÝ\KšXÙKØÚ[™ÙK“ÒË›Û[YKÝ\››Ý™\ˆ[™šYØ\ÚÈÜ™\‹ˆHY\\ˆš[\œÈÛ›HY\‚œÝšXÝH˜[Y][™È]™\žHš]™KYYÚ]ÛÙK[Y\Ý[\^šY[[Y\šXËÛ[˜[YH[™Ù™šXÚX[šY[Ü™\‹‚‚”™\^HY]Y]Hœ™Y^™\ÈHÚ[˜H”ÓÓˆÛÝ\˜ÙK›ÙO\X™Ù×ÚØš^YYÙHÚ^™BŒYÙ\Èx $ÎNH[[[\KËXÛÛ[[ˆÜ˜\\ˆX\[™ËÙ›ÜYÜÚ][ÛœË›[Y\šXÈ˜[œÙ›Ü›X][ÛœË›ÝÈØœÙ\˜][Û‹][YHÜ™\ˆ[™Ù[XÝY›ÝÈÜ™\‹‚“[Y\šXÈ[š]È™[XZ[ˆ[™ØÝ[Y[YˆH›Ü›X[^™\ˆ[Z]Â˜RÔÒT‘WÒ×ÔÒSWÔÔÕÔUSÕWÔU×ÓÓ“X[™Ü™X]\È›ÈØ[›ÛšXØ[Ý\œ™[\šXÙKœ™]\›‹˜[X][ÛˆÜˆXØÛÝ[[™È˜XÝÈH^\Ý[™È›Ë]šY]È\Ú\™H][ÝB˜ÛÛ\]Xš[]H˜[˜XÚÈ™[XZ[œÈ[˜Ú[™ÙYˆ›ØÝ\ÙY\ÝÈÛÝ™\ˆ›Ý][™ËÝšXÝ˜Y™\œØ\šX[™\ÜÛœÙH˜[Y][Û‹[\HÙ[XÝ[Û‹˜]Ë[Û›H›Ü›X[^˜][Û‹œ™\^HY]Y]KÜ^[ØY[\\š[™È[™Ù™›[™HØXÚH™\^Kˆ›ÈØ[Ý[][Û‹™Ø]K\[[™KÓHÜˆ[œ][ØY\ˆÛÛ˜XÝÚ[™Ù\Ë‚‚ˆÈÈÈ\ÙHËÎ8 %X\Ý[Û™^H\Ú\™H™X[[YH][ÝHXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•HX\[™È™]šY]È›ÝÈÛÝ™\œÈHØÝ[Y[YX\Ý[Û™^H\Ú\™H™X[[YH][ÝB™[™Ú[ØÝØÚ×Ú×ÜÜÝÙ[XJÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+K˜˜\ÙYÛˆHÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚ×Ù™X]\™KÜÝØÚ×Ú\ÝÙ[KœJK[™\ˆPT’ÑUÔUSÕXÚ]^XÚ]šY]ÏZ×ÜÜÝÙ[XˆH›ËX\™Ý[Y[Ü˜\\‚™™]Ú\ÈH[š]™KYYÚ]\Ú\™H[š]™\œÙHÚ]HMK[Z[]H[^H[™™]\›œÂH^XÝÙ[™KYšY[9n£ùcíØ9.èùè X9d#yéì]\ÝØÚ[™ÙKÒË›Û[YH[™\››Ý™\ˆÜ™\‹ˆHY\\ˆÝšXÝH˜[Y]\ÈH[›ÝšY\ˆ™\ÜÛœÙKš[˜ÛY[™ÈÜ˜\\ˆÙ\]Y[˜ÙH™\Ù][š\]YHš]™KYYÚ]ÛÙ\Ë^[™š[š]B›[Y\šXËÛ[˜[Y\Ë™Y›Ü™Hš[\š[™ÈH™\]Y\ÝY\Ú\™H\Ý[™Ë‚‚”™\^HY]Y]Hœ™Y^™\ÈHÌ‹œ\Ú‹™X\Ý[Û™^K˜ÛÛX”ÓÓˆT“š^YX\Ý[Û™^Bœ]Y\žK›ÝšY\‹Yš]™[ˆYÚ[˜][ÛˆžH˜Ú]YÙHÚ^™HLŒØ\ØÙ[™[™ÂœÛÜ›ÛÝÙYžHÜ˜\\ˆÙ\]Y[˜ÙH™\Ù]ÛÝ\˜ÙKXÛÛ[[ˆ›Ú™XÝ[Û‹Ù›ÜYš[™XÙ\Ë[Y\šXÈ˜[œÙ›Ü›X][ÛœËØÝ[Y[YÑÜÚ\™K\˜Ù[Ú\™\È[™’Ñ[š]Ë[™[ÜÙ[XÝYY[]HÜ™\‹ˆH›Ü›X[^™\ˆ[Z]Â˜RÔÒT‘WÒ×ÔÔÕÑSWÔUSÕWÔU×ÓÓ“X[™Ü™X]\È›ÈØ[›ÛšXØ[Ý\œ™[\šXÙKœ™]\›‹˜[X][ÛˆÜˆXØÛÝ[[™È˜XÝ™XØ]\ÙHH[^YYÝ\œ™[Y^HÛ˜\ÚÝš\È›ÈÝX›HØœÙ\˜][Ûˆ[Y\Ý[\ˆH^\Ý[™È›Ë]šY]È\Ú\™H][ÝB˜ÛÛ\]Xš[]H˜[˜XÚÈ™[XZ[œÈ[˜Ú[™ÙYˆ›ØÝ\ÙY\ÝÈÛÝ™\ˆ\Ú\™K[Û›Bœ›Ý][™Ë^XÝØÚ[XKÛÜ™\ˆ[™Y™\œØ\šX[™\ÜÛœÙH˜[Y][Ûˆ[˜ÛY[™Âš[˜[Y[œ™\]Y\ÝY›ÝÜË[\HÙ[XÝ[Û‹˜]Ë[Û›H›Ü›X[^˜][Û‹™\^B›Y]Y]KÜ^[ØY[\\š[™È[™Ù™›[™HØXÚH™\^Kˆ›ÈØ[Ý[][Û‹Ø]Kœ\[[™KÓHÜˆ[œ][ØY\ˆÛÛ˜XÝÚ[™Ù\Ë‚‚ˆÈÈÈ\ÙHËÎH8 %X\Ý[Û™^H\Ú\™H™X[[YHÝ\˜[šËY]Z[XÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•H™^ØÝ[Y[Y[™[ÜžH][HY\ˆHX\Ý[Û™^H\Ú\™H™X[[YH][ÝBš\ÈÝØÚ×Ú×ÚÝÜ˜[š×Ù]Z[Ü™X[[YWÙ[XÙ[XÝY›ÝYÚH›ÝšY\‚˜Ø\Xš[]HX›HÚ]^XÚ]PT’ÑUÐPÕU’UXšY]ÏZ×ÚÝÜ˜[š×Ù]Z[Ü™X[[YX‚•HÐRÔÚ\™HÝØÚËY]HØÝ[Y[][Û—JÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B˜[™ÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚËÜÝØÚ×Ú×ÚÝÜ˜[š×Ù[KœJB™ØÝ[Y[HÞ[X›Û\ØÛÜY\Ú\™H[™Ú[]\ÜÙ\ÈH[œ™Yš^Yš]™KYYÚ]˜ÛÙHÈX\Ý[Û™^IÜÈÙ]Ý\œ™[Õ\Ó\Ý”ÓÓˆÔÕ\ÈßÛÙO˜Ú]š^Y˜\YÛØ˜[Y[™X\šÙ]\OLØ\˜[Y]\œËˆHY\\ˆ™\Ù\™\ÂH^XÝÛËYšY[9¥íºeíØ9£¤¹d#XÜ˜\\ˆÜ™\ˆ[™ÝšXÝH˜[Y]\È]™\žB[Y\Ý[\[™ÜÚ]]™H[YÙ\ˆ˜[šÈ[ˆÝšXÝH\ØÙ[™[™È[YHÜ™\‹‚‚•HÛÝ\˜ÙHT’K\Ý™X[HÔÕT“Ü\˜[Y]\œËš^Y[™[˜[ZXÈÙXÝ\š]BšY[]KÜ˜\\ˆXÛÙ\‹Ü™[˜[YHX\[™Ë\Ý[™ÈØÛÜK›ÝÈÛÝ[È[™›ØœÙ\˜][Û‹][YH›Ý[™È\™H™XÛÜ™Y[ˆ›Ý™[˜[˜ÙHY]Y]KˆH™\ÜÛœÙH\Âœ˜]Ë[Û›H[™H›Ü›X[^™\ˆ[Z]Â˜RÔÒT‘WÒ×ÒÕÔS’×ÑURSÔ‘PSSQWÔU×ÓÓ“XÈ[˜Y^HÜ[\š]H˜[šÈÙ\Â››ÝÜ™X]HHØ[›ÛšXØ[X\šÙ]™]\›‹˜[X][Û‹ÛÝ™\›˜[˜ÙHÜˆXØÛÝ[[™Â™˜XÝˆ›ØÝ\ÙY\ÝÈÛÝ™\ˆ\Ú\™K[Û›H›Ý][™Ë[œÝ\ÜY\˜[Y]\œË›Z\ÜÚ[™ËÙ^˜KÜ™[Ü™\™YšY[ËX[›Ü›YYÙ\XØ]KÙ\ØÙ[™[™È[Y\Ý[\Ëš[˜[Y˜[šÜË˜]Ë[Û›H›Ü›X[^˜][Û‹™\^HY]Y]KÜ^[ØY[\\š[™È[™›Ù™›[™HØXÚH™\^Kˆ›ÈØ[Ý[][Û‹Ø]K\[[™KÓHÜˆ[œ][ØY\‚˜ÛÛ˜XÝÚ[™Ù\Ë‚‚ˆÈÈÈ\ÙHËŽ8 %K\Ú\™HX\Ý[Û™^HÝZÙ^]ÛÜ™XÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•H™^ØÝ[Y[YX]][š[\[Y[YRÔÚ\™H[™[ÜžH][HY\ˆ\ÙHËÎBš\ÈHK\Ú\™HÝØÚ×ÚÝÚÙ^]ÛÜ™Ù[X[™Ú[ˆB–ÐRÔÚ\™HÝØÚËY]HØÝ[Y[][Û—JÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B˜[™ÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚËÜÝØÚ×ÚÝÜ˜[š×Ù[KœJB™ØÝ[Y[][™\ˆPT’ÑUÐPÕU’UXÚ]^XÚ]šY]ÏZÝÚÙ^]ÛÜ™ˆB˜Y\\ˆ›Ý]\ÈÛ›HK\Ú\™H\Ý[™ÜÈ[™\ÜÙ\ÈHX\šÙ]\™Yš^YÞ[X›ÛŠÖŒX[ˆHØÝ[Y[Y^[\JHÈHÜ˜\\‰ÜÈX\Ý[Û™^H”ÓÓˆÔÕ‚‚•HÜ˜\\ˆÛÛ˜XÝ\Èœ›Þ™[ˆ\Èš^Y\YX\YX[™˜ÛØ˜[YMÎ™MÌŒKMÌËMÍXKNLØ˜‹LÎ[˜[ZXÈÜ˜ÔÙXÝ\š]PÛÙX[™B˜Ù]ÝÝØÚÔ˜[šÓ\ÝT“ˆ]^˜XÝÈ]X›ÜÈH\Ý™X[H›YØ˜ÛÛ[[ˆ[™™\Ù\™\ÈH^XÝÝ]]Ü™\ˆ9¥íºeí: ¨yéj9.èùè X9© ¹oíyd#yéì˜9© ¹oíy.èùè X9àëyn©˜ˆÝšXÝ›ÝšY\ˆ˜[Y][Ûˆ™\]Z\™\È^XÝšY[ËÛÜ™\‹˜[Y[Y\Ý[\ÈÚ\™YžH[›ÝÜËX\šÙ]\™Yš^YY[]HX]Ú[™ÈBœ™\]Y\Ý›Û‹Y[\HÛÛ˜Ù\X™[ËØÛÙ\Ë[š\]YHÛÛ˜Ù\ÛÙ\È[™››Û‹[™YØ]]™H[YÙ\ˆX]˜[Y\Ëˆ[\HÞ[X›Û\ØÛÜYÛ˜\ÚÝÈ\™H™]Z[™Y˜\È˜[Y[\H˜]È™\ÜÛœÙ\Ë‚‚”›Ý™[˜[˜ÙHY]Y]H™XÛÜ™ÈHÛÝ\˜ÙHT’K\Ý[™ËÝšY]ÈØÛÜK\Ý™X[Bœ™\]Y\ÝÛÛ˜XÝÜ˜\\ˆÛÝ\˜ÙHÜ™\‹Ù›ÜÜ™[˜[YHX\[™ËÛÛœÙ\˜]]™B›[Y\šXË][š]™X]Y[
+9àëyn©˜\È[™ØÝ[Y[Y
+KÛÛ˜Ù\XÛÙHÜ™\‹›ØœÙ\˜][Ûˆ[Y\Ý[\[™›ÝÈÛÝ[Ëˆ›Ü›X[^˜][Ûˆ\È^XÚ]H˜]Ë[Û›BÚ]RÔÒT‘WÒÕÒÑVUÓÔ‘ÔU×ÓÓ“XÈ›ÝšY\‹YYš[™YÛÛ˜Ù\X™[ËÛÙ\È[™šX]È›Ý™XÛÛYHØ[›ÛšXØ[X\šÙ]™]\›‹˜[X][Û‹ÛÝ™\›˜[˜ÙHÜ‚˜XØÛÝ[[™È˜XÝËˆ›ØÝ\ÙY\ÝÈÛÝ™\ˆ›Ý][™Ë[œÝ\ÜY\˜[Y]\œË˜Y™\œØ\šX[›ÝšY\ˆ›ÝÜË[\H™\ÜÛœÙ\Ë˜]Ë[Û›H›Ü›X[^˜][Û‹™\^B›Y]Y]KÜ^[ØY[\\š[™È[™Ù™›[™HØXÚH™\^Kˆ›ÈØ[Ý[][Û‹Ø]Kœ\[[™KÓHÜˆ[œ][ØY\ˆÛÛ˜XÝÚ[™Ù\Ë‚‚ˆÈÈÈ\ÙHËŽH8 %K\Ú\™HX\Ý[Û™^H™[]Y\ÝØÚÈÝ\˜[šÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•H™^ØÝ[Y[YX]][š[\[Y[YRÔÚ\™H[™[ÜžH][HY\ˆ\ÙHËŽš\ÈHK\Ú\™HÝØÚ×ÚÝÜ˜[š×Ü™[]WÙ[X[™Ú[ˆB–ÐRÔÚ\™HÝØÚËY]HØÝ[Y[][Û—JÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B˜[™ÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚËÜÝØÚ×ÚÝÜ˜[š×Ù[KœJB™ØÝ[Y[][™\ˆPT’ÑUÐPÕU’UXÚ]^XÚ]šY]ÏZÝÜ˜[š×Ü™[]XˆB˜Y\\ˆ›Ý]\ÈÛ›HK\Ú\™H\Ý[™ÜÈ[™\ÜÙ\ÈHX\šÙ]\™Yš^YÞ[X›ÛÂHÜ˜\\‰ÜÈX\Ý[Û™^H”ÓÓˆÔÕ‚‚•HÜ˜\\ˆÛÛ˜XÝ\Èœ›Þ™[ˆ\Èš^Y\YX\YX[™˜ÛØ˜[YMÎ™MÌŒKMÌËMÍXKNLØ˜‹LÎ[˜[ZXÈÜ˜ÔÙXÝ\š]PÛÙX[™B˜Ù]›ÛÝÔÝØÚÔ˜[šÓ\ÝT“ˆ]™XÙZ]™\ÈÙ]™[ˆÜÚ][Û˜[ÛÛ[[œË›ÜÂœÜÚ][ÛœÈKÈ[™‹[™™\Ù\™\ÈH^XÝÝ]]Ü™\ˆ9¥íºeí: ¨yéj9.èùè X˜9æî9alú ¨yéj9.èùè X9­ª:-ã9naXÈHš[˜[šY[\ÈÝš\YÙˆ	X[™ÛÛ™\YÂ˜H[Y\šXÈ\˜Ù[˜[YKˆÝšXÝ›ÝšY\ˆ˜[Y][Ûˆ™\]Z\™\È^XÝšY[ËÛÜ™\‹˜H˜[YÚ\™Y[Y\Ý[\X\šÙ]\™Yš^Y™\]Y\ÝY[™™[]YK\Ú\™BšY[]Y\Ë[™š[š]H[Y\šXË[Ü‹[[\˜Ù[YÙHÚ[™Ù\Ëˆ[\HÞ[X›Û\ØÛÜYœÛ˜\ÚÝÈ\™H™]Z[™Y\È˜[Y[\H˜]È™\ÜÛœÙ\Ë‚‚”›Ý™[˜[˜ÙHY]Y]H™XÛÜ™ÈHÛÝ\˜ÙHT’K\Ý[™ËÝšY]ÈØÛÜK\Ý™X[HÔÕ˜ÛÛ˜XÝÙ]™[‹XÛÛ[[ˆÜ˜\\ˆÜ™\‹ÜÚ][Û˜[Ý]]X\[™È[™›ÜYœÜÚ][ÛœË\˜Ù[YÙHÛÛ™\œÚ[Û‹™[]YXÛÙHÜ™\‹ØœÙ\˜][Ûˆ[Y\Ý[\[™œ›ÝÈÛÝ[Ëˆ›Ü›X[^˜][Ûˆ\È^XÚ]H˜]Ë[Û›HÚ]˜RÔÒT‘WÒÕÔS’×Ô‘SUWÔU×ÓÓ“XÈ›ÝšY\‹YYš[™Y™[]Y\ÝØÚÈ[šÜÈ[™œ\˜Ù[YÙHÚ[™Ù\ÈÈ›Ý™XÛÛYHØ[›ÛšXØ[X\šÙ]™]\›‹˜[X][Û‹™ÛÝ™\›˜[˜ÙHÜˆXØÛÝ[[™È˜XÝËˆ›ØÝ\ÙY\ÝÈÛÝ™\ˆ›Ý][™Ë[œÝ\ÜYœ\˜[Y]\œËY™\œØ\šX[›ÝšY\ˆ›ÝÜË[\H™\ÜÛœÙ\Ë˜]Ë[Û›H›Ü›X[^˜][Û‹œ™\^HY]Y]KÜ^[ØY[\\š[™È[™Ù™›[™HØXÚH™\^Kˆ›ÈØ[Ý[][Û‹™Ø]K\[[™KÓHÜˆ[œ][ØY\ˆÛÛ˜XÝÚ[™Ù\Ë‚‚ˆÈÈÈ\ÙHËŽˆ8 %\Ú\™HX\Ý[Û™^HX\šÙ]]ÚYHÝ\˜[šÈXÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•H™^ØÝ[Y[YX]][š[\[Y[YRÔÚ\™H[™[ÜžH][HY\ˆ\ÙHËŽBš\ÈÝØÚ×Ú×ÚÝÜ˜[š×Ù[XHX\šÙ]]ÚYH\Ú\™HÜ[\š]H˜[šÚ[™È[™Ú[‚•HÐRÔÚ\™HÝØÚËY]HØÝ[Y[][Û—JÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+B˜[™ÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚËÜÝØÚ×Ú×ÚÝÜ˜[š×Ù[KœJB™ØÝ[Y[][™\ˆPT’ÑUÐPÕU’UXÚ]^XÚ]šY]ÏZ×ÚÝÜ˜[šØˆB˜Y\\ˆ›Ý]\ÈÛ›H\Ú\™H\Ý[™ÜËØ[ÈHÙ™šXÚX[›ËX\™Ý[Y[Ü˜\\ˆ[™™š[\œÈH[™\ÜÛœÙHÈH™\]Y\ÝYš]™KYYÚ]\Ú\™HÛÙHY\‚˜[Y][Û‹‚‚•HÜ˜\\ˆÛÛ˜XÝ\Èœ›Þ™[ˆ\ÈH”ÓÓˆÔÕÂ˜Î‹ËÙ[X\]K™X\Ý[Û™^K˜ÛÛKÜÝØÚÜ˜[šËÙÙ][Ý\œ’Õ\Ó\ÝÚ]š^Y˜\YX\YXÛØ˜[YMÎ™MÌŒKMÌËMÍXKNLØ˜‹LÎX\šÙ]\OLØ˜YÙS›ÏLX[™YÙTÚ^™OLLˆ][ˆ\™›Ü›\ÈH”ÓÓˆÑUÂ˜Î‹ËÜ\Ú‹™X\Ý[Û™^K˜ÛÛKØ\KÜ]Ý[\Ý›œÙÙ]Ú]š^Y˜]YŒMØØ˜Ø˜ÙL˜N™LŽ˜XŽÍÙŒYNX›L˜[L˜[™˜šY[ÏYŒMŒËŒL‹Œ˜\ÈÙXÚYØ\š]™Y\ÈLM‹ÛÙO˜œ›ÛHHš\œÝœ™\ÜÛœÙKˆHY\\ˆ™\Ù\™\È^XÝH9odùbcy£¤¹d#X9.èùè X: ¨yéj9d#yéì9§ 9¥¬9.íØ˜9­ª:-ã9naX[ˆ]Ü™\‹˜[Y]\ÈHÛÛ\]HÜLL[š]™\œÙK[š\]YB™š]™KYYÚ]ÛÙ\ËÝšXÝH\ØÙ[™[™È˜[šÜË›Û‹Y[\H˜[Y\È[™š[š]B›[Y\šXË[Ü‹[[][ÝH˜[Y\Ë[™XØÙ\È[ˆ[\HÙ[XÝY™\Ý[Ú[ˆBœ™\]Y\ÝYÛÙH\ÈXœÙ[‚‚”›Ý™[˜[˜ÙKÜ™\^HY]Y]H™XÛÜ™È›Ý\Ý™X[HØ[È[™Z\ˆš^YÙ[˜[ZXÂœ\˜[Y]\œË\š]™YÙXÚYËÛÝ\˜ÙHšY[Ü™\‹Ü˜\\ˆX\[™ÜÈ[™˜[œÙ›Ü›X][ÛœË[][š]™\œÙH[™Ù[XÝYY[]KÜ˜[šÈÜ™\‹ØÝ[Y[Y[š]È[™›ÝÈÛÝ[Ëˆ›Ü›X[^˜][Ûˆ\È^XÚ]H˜]Ë[Û›HÚ]˜RÔÒT‘WÒ×ÒÕÔS’×ÔU×ÓÓ“XÈ›ÝšY\‹YYš[™YÜ[\š]H[™][ÝHÛÛ^Â››Ý™XÛÛYHØ[›ÛšXØ[X\šÙ]™]\›‹˜[X][Û‹ÛÝ™\›˜[˜ÙHÜˆXØÛÝ[[™È˜XÝË‚‘›ØÝ\ÙY\ÝÈÛÝ™\ˆ›Ý][™Ë[œÝ\ÜY\˜[Y]\œË^XÝØÚ[XKÛÜ™\‹™[][š]™\œÙHY™\œØ\šX[˜[Y][Ûˆ[˜ÛY[™È[œ™\]Y\ÝY›ÝÜË˜]Ë[Û›B››Ü›X[^˜][Û‹™\^HY]Y]KÜ^[ØY[\\š[™È[™Ù™›[™HØXÚH™\^Kˆ›Â˜Ø[Ý[][Û‹Ø]K\[[™KÓHÜˆ[œ][ØY\ˆÛÛ˜XÝÚ[™Ù\Ë‚‚ˆÈÈÈ\ÙHËŽÈ8 %K\Ú\™HX\Ý[Û™^H™X[[YHÝ\˜[šËY]Z[XÜ]Z\Ú][ÛˆÛÛ˜XÝ
+ÓÓTUJB‚•H™^ØÝ[Y[YX]][š[\[Y[YRÔÚ\™H[™[ÜžH][HY\ˆ\ÙHËŽ‚š\ÈÝØÚ×ÚÝÜ˜[š×Ù]Z[Ü™X[[YWÙ[XHÞ[X›Û\ØÛÜYK\Ú\™H™X[[YBœÜ[\š]K\˜[šÈ\ÝÜžH[™Ú[ˆHÐRÔÚ\™HÝØÚËY]B™ØÝ[Y[][Û—JÎ‹ËØZÜÚ\™K˜ZÙ˜[Z[Kž^‹Ù]KÜÝØÚËÜÝØÚËš[
+H[™–ÛÙ™šXÚX[[\[Y[][Û—JÎ‹ËÙÚ]X‹˜ÛÛKØZÙ˜[Z[KØZÜÚ\™KØ›Ø‹ÛXZ[‹ØZÜÚ\™KÜÝØÚËÜÝØÚ×ÚÝÜ˜[š×Ù[KœJB™ØÝ[Y[][™\ˆPT’ÑUÐPÕU’UXÚ]^XÚ]˜šY]ÏZÝÜ˜[š×Ù]Z[Ü™X[[YXˆHY\\ˆ›Ý]\ÈÛ›HK\Ú\™H\Ý[™ÜÈ[™œ\ÜÙ\ÈHX\šÙ]\™Yš^YÛÙHÈHÙ™šXÚX[Ü˜\\‹‚‚•HÜ˜\\ˆÛÛ˜XÝ\Èœ›Þ™[ˆ\ÈH”ÓÓˆÔÕÂ˜Î‹ËÙ[X\]K™X\Ý[Û™^K˜ÛÛKÜÝØÚÜ˜[šËÙÙ]Ý\œ™[\ÝÚ]š^Y˜\YX\YXÛØ˜[YMÎ™MÌŒKMÌËMÍXKNLØ˜‹LÎ[\HX\šÙ]\X[™™[˜[ZXÈÜ˜ÔÙXÝ\š]PÛÙXˆ]™\Ù\™\È^XÝH9¥íºeí9£¤¹d#X˜[Y]\ÈB™^XÝšY[Ü™\‹[Y\Ý[\Þ[^ÝšXÝH\ØÙ[™[™È[Y\Ý[\È[™œÜÚ]]™H[YÙ\ˆ˜[šÜË[™XØÙ\È[ˆ[\HÞ[X›Û\ØÛÜY™\ÜÛœÙK‚”›Ý™[˜[˜ÙKÜ™\^HY]Y]H™XÛÜ™ÈHš^YÙ[˜[ZXÈ\˜[Y]\œËÜÚ][Û˜[›X\[™ËØœÙ\˜][Û‹][YH›Ý[™È[™›ÝÈÛÝ[Ë‚‚“›Ü›X[^˜][Ûˆ\È^XÚ]H˜]Ë[Û›HÚ]˜RÔÒT‘WÒÕÔS’×ÑURSÔ‘PSSQWÔU×ÓÓ“XÈ[˜Y^HÜ[\š]H˜[šÈÙ\È›Ý˜™XÛÛYHHØ[›ÛšXØ[X\šÙ]™]\›‹˜[X][Û‹ÛÝ™\›˜[˜ÙHÜˆXØÛÝ[[™È˜XÝ‚‘›ØÝ\ÙY\ÝÈÛÝ™\ˆ›Ý][™Ë[œÝ\ÜY\˜[Y]\œË^XÝ\ØÚ[XHY™\œØ\šX[œ™\ÜÛœÙ\Ë[\HÛ˜\ÚÝË˜]Ë[Û›H›Ü›X[^˜][Û‹™\^HY]Y]KÜ^[ØY[\\š[™È[™Ù™›[™HØXÚH™\^Kˆ›ÈØ[Ý[][Û‹Ø]K\[[™KÓHÜ‚š[œ][ØY\ˆÛÛ˜XÝÚ[™Ù\Ë‚‚ˆÈÈÈ\ÙHËŽ8 %Ù™šXÚX[KÒš[[™È\ØÛÝ™\žHY]Y]HÛÛ˜XÝ
+ÓÓTUJB‚•Hš\œÝÜ[]™[\ÙHÈš[[™ËÙ]šY[˜ÙH[]™\˜X›H\ÈHÛX[\Ý˜›Ý[™Yš[[™ËY\ØÛÝ™\žHÛÛ˜XÝˆH™]È›ÝšY\‹[™]]˜[˜’SS‘×ÑTÐÓÕ‘T–XØ]YÛÜžHXØÙ\ÈÛ™HØ[›ÛšXØ[KÒ\Ý[™ËÛ™H^XÚ]œÛÝ\˜ÙKÜ[Û˜[X›XØ][Û‹Y]H›Ý[™Ë[ˆÜ[Û˜[ÛÝ\˜ÙHØÝ[Y[]\B›X™[HX^[][HÙˆL›ÝÜÈ[™[ˆÜ[Û˜[\×ÛÙ˜Ý]Ù™‹ˆÛÝ\˜ÙHÛY[Â˜[™H™]šY]˜[ÛØÚÈ\™H[š™XÝYÈ\ÈÙY\ÈHÛÛ˜XÝ]\›Z[š\ÝXÂ˜[™]›ÚYÈY[™È[ˆ[œÝX›H\Ý™X[H˜[œÜÜ[œÚYHH[™Ú[™K‚‚•HÛÝ\˜ÙHX]š^\È^XÚ]ˆK\Ú\™H\Ý[™ÜÈX^H\ÙHÓ’S‘“ËZ\ˆX]Ú[™Â”ÔÑKÔÖ”ÑKÐ”ÑH^Ú[™ÙKÜˆ[ˆ\ÜÝY\‰ÜÈÈ[››Ý[˜Ù[Y[ÛÝ\˜ÙKˆ\Ú\™B›\Ý[™ÜÈX^H\ÙHÑV™]ÜË[ˆ\ÜÝY\‰ÜÈÈ™\ÜÛÝ\˜ÙHÜˆ[ˆ\ÜÝY\‰ÜÈÂ˜[››Ý[˜Ù[Y[ÛÝ\˜ÙKˆÜ›ÜÜË[X\šÙ][™Ü›Û™ËY^Ú[™ÙH™\]Y\ÝÈ\™H™Z™XÝYÂ›Ù™šXÚX[ÛÛXÝ[Û‹ÙØÝ[Y[T“È]\Ý™[XZ[ˆÛˆHXÛ\™YÙ™šXÚX[ÜÝ‚•HÛY[™]\›œÈY]Y]HÛ›H
+]XÛÝ\˜ÙHØÝ[Y[\KX›XØ][Û‚™]KT“Ü[Û˜[ÛÝ\˜ÙHØÝ[Y[Q™\Ü\\š[ÙX™[[™\ÜÝY\ˆ˜[YJK‚•H›ÝšY\ˆÙ\È›ÝÝÛ›ØY\œÙHÜˆÛ\ÜÚYžHHØÝ[Y[‚‚˜š[[™Ô™XÛÜ™\ÜÚYÛœÈH]\›Z[š\ÝXÈš[[™ËO^˜Qœ›ÛHX\šÙ]›\Ý[™ËÛÝ\˜ÙH[™ÛÝ\˜ÙHØÝ[Y[Q˜[[™È˜XÚÈÈØ[›ÛšXØ[T“ˆ™\Ý[Â˜\™HÛÜYžHX›XØ][Ûˆ]H\ØÙ[™[™È[™š[[™ÈQ\ØÙ[™[™ÎÈ\XØ]B’QËÕT“ËÝ][Ù‹\˜[™ÙH›ÝÜË[šÛ›Ü™Yš[\œËX[›Ü›YYY]Y]H[™›Ý™\‹[[Z]™\ÜÛœÙ\È˜Z[ÛÜÙYˆHØÚ[XH\Â˜ØÚ[X\ËÙš[[™ËY\ØÛÝ™\žKœØÚ[XKšœÛÛ˜ˆH^\Ý[™È˜]Ë\™XÛÜ™ØXÚHÝÜ™\ÂHØ[›ÛšXØ[Y]Y]H^[ØY\ÈÛÝ\˜ÙHT’K]Y\žKQËÜ™\š[™ËÛÝ[Â˜[™ÝÛ›ØYÜ\™›Ü›YYY˜[ÙXÈÙ™›[™H™\^H™]™\ˆØ[ÈHÛÝ\˜ÙHÛY[[™˜\œÙWÙš[[™×Ù\ØÛÝ™\žWÜ™XÛÜ™™]˜[Y]\È^[ØYÜ›Ý™[˜[˜ÙH[YÜš]K‚‚‘š^\™\È[™Y™\œØ\šX[\ÝÈÛÝ™\ˆ]™\žHKÒÛÝ\˜ÙH›Ý[™\žKÙ™šXÚX[T“˜ÛÛœÝ˜Z[Ë]KÛ[Z]Ùš[\ˆ˜[Y][Û‹]\›Z[š\ÝXÈQË”ÓÓˆØÚ[XK[\\™Y™\^HY]Y]KÜ^[ØY[™Ù™›[™HØXÚH™\^Kˆ›ÈØÝ[Y[™ÝÛ›ØY^˜XÝ[Û‹]šY[˜ÙHÝÜ™KY\ÝY[ÛÜšÙ›ÝËHÜˆÓHÚ[™ÙBš\È[˜ÛYYˆHÝXœÙ\]Y[š[[™ÈÛÛ\Û™[È[™Ü[]™[ÛÜÝ\™H\™B™ØÝ[Y[Y[ˆHÛÛ\]YÙXÝ[ÛœÈ™[ÝË‚‚ˆÈÈÈ\ÙHËŽH8 %Ù™šXÚX[š[[™ÈØÝ[Y[ÝÛ›ØY[™ØXÚH
+ÓÓTUJB‚•HØÝ[Y[Xž]H[]™\˜X›HÛÛœÝ[Y\ÈÛ™H˜[Y]Yš[[™Ô™XÛÜ™œ›ÛH\ÙBŒËŽ[™ÝÜÈ™Y›Ü™H\œÚ[™Ëˆš[[™ÑØÝ[Y[ÝÛ›ØY\˜Ù[XÝÈ[ˆ[š™XÝY˜š[[™ÑØÝ[Y[ÛÝ\˜ÙPÛY[žHÛÝ\˜ÙK™]˜[Y]\ÈHKÒÙ™šXÚX[T“˜›Ý[™\žH
+[˜ÛY[™È[ˆÜ[Û˜[™Y\™XÝÙš[˜[T“
+K[™›Ü˜Ù\È›Û‹Y[\Hž]\Â˜[™HLZPˆ[Z]ÛÛ\]\ÈÒKLMˆ[™ž]HÚ^™K[™™XÛÜ™ÈYYXH\K•UÈ™]šY]˜[[YH[™˜[œÜÜY]Y]Hœ›ÛH[ˆ[š™XÝYÛØÚËØÛY[ˆB˜ÛÛ\]Hš[[™È›Ý™[˜[˜ÙK[˜ÛY[™Èš[[™×ÚYÛÝ\˜ÙKYØÝ[Y[Q[™T“œ™[XZ[œÈ]XÚYÈH™]\›™Yš[[™ÑØÝ[Y[‚‚˜š[\Þ\Ý[Qš[[™ÑØÝ[Y[ØXÚXÜš]\ÈH”ÓÓˆX[šY™\Ý[™HÙ\\˜]B˜ÛÛ[XY™\ÜÙYš[˜\žH›Øˆ[™\ˆHš[[™ËÜÛÝ\˜ÙK\ØÛÜY]ˆHX[šY™\Ýš\ÈYš[™YžHØÚ[X\ËÙš[[™ËYØÝ[Y[œØÚ[XKšœÛÛ˜È™\^HÚXÚÜÈš[[™ÂšY[]KÛÝ\˜ÙKÙš[˜[T“ØÛÜKYYXH\KÚ^™K›Øˆ˜[Z[™È[™Bœ™XÛÛ\]YÒKLM‹ˆH›Øˆ\ÈœÞ[˜ÙY[™]ÛZXØ[H™\XÙY™Y›Ü™HB›X[šY™\Ý\È]ÛZXØ[HX›\ÚYÛÈHX[šY™\Ý™\XÙ[Y[˜Z[\™HX]™\ÈBœ™]š[Ý\È˜[YÛ˜\ÚÝ\ØX›NÈ›È[\XÚ]ÛX[\[]\È[ˆÜœ[™Y™]Â˜›Ø‹ˆ™]ÚÙš[[™×ÙØÝ[Y[ÝÚ]ØØXÚXÝ\ÜÈ^XÚ]Ù™›[™H™\^H[™›Ü[Û˜[Ý[H˜[˜XÚÈÚ]U‘XÐPÒWÔ‘TVX[™˜ÕSWÐÐPÒWÔ‘TVX[Ù\Ë‚‚‘š^\™\È[™›ØÝ\ÙYY™\œØ\šX[\ÝÈÛÝ™\ˆKÒ›Ý™[˜[˜ÙK]]]YÙ™šXÚX[•T“ËÝ][Ù‹\ØÛÜH™Y\™XÝË[˜[YYYXKÙ[\KÛÝ™\œÚ^™H™\ÜÛœÙ\Ë\Ú[™œÚ^™HZ\ÛX]ÚX[šY™\ÝØ›ØˆÛÜœ\[Û‹Ù™›[™H™\^K^XÚ]›ÝšY\‚™˜Z[\™H˜[˜XÚËØÚ[XH˜[Y][Ûˆ[™]ÛZXÈ™\XÙ[Y[™XÛÝ™\žKˆ\ÂœÛXÙHÙ\È›Ý\œÙHØÝ[Y[Ë^˜XÝ™\ÜËÜ™X]HÛÝ\˜ÙKÑ]šY[˜ÙKÑ˜XÝ›Øš™XÝË›ÜÜÙHY\ÝY[ËYH™Z]š[ÜˆÜˆÚ\™HHœ›ØYÓK‚‚ˆÈÈÈ\ÙHËŽˆ8 %›Ý[™Y[›X[Ú[\š[H™\Ü^^˜XÝ[Ûˆ
+ÓÓTUJB‚•H^˜XÝ[Ûˆ[]™\˜X›HÛÛœÝ[Y\ÈÛ™H™\šYšYYš[[™ÑØÝ[Y[œ›ÛH\ÙBŒËŽH[™[Z]ÈÛ›H[ˆÜ™\™Y[[]]X›HÙ\]Y[˜ÙHÙˆ^›ØÚÜËˆ\œÙ\‚š[\[Y[][ÛœÈ\™H[š™XÝY\ˆYYXH\KÛÈHÛÜ™HXÚØYÙHYÈ›È‚›ÜˆS\œÙ\ˆ\[™[˜ÞH[™\™›Ü›\È›È™]ÛÜšÈXØÙ\ÜËˆHÝ\ÜYYYXB\\È\™H\XØ][Û‹Ü˜^Ú[[™\XØ][Û‹Þ[
+Þ[È‚œ\œÙ\œÈ]\Ý™]\›ˆYÙK[ØØ]Y›ØÚÜÈ[™S\œÙ\œÈ]\Ý™]\›‚œÙXÝ[Û‹[ØØ]Y›ØÚÜËˆ]™\žH\œÙ\ˆ›ØÚÈÝ\Y\ÈHÛÛYÝ[Ý\ÈÙ\]Y[˜ÙK›ØØ][Ûˆ[™›Û‹Y[\H^[™ˆYÙHØØ][ÛœÈ]\Ý™H›Û‹YXÜ™X\Ú[™Ë‚‚•H™\Ý[\È›Ý[™Y]‹›ØÚÜËLÚ\˜XÝ\œÈ\ˆ›ØÚÈ[™KÝ[Ú\˜XÝ\œËˆ]ÝÜ™\ÈHÒKLMˆ›ÜˆXXÚ^›ØÚÈ[™ÙY\ÂHÛÛ\]Hš[[™Ô™XÛÜ™
+[˜ÛY[™Èš[[™×ÚYÛÝ\˜ÙKYØÝ[Y[Q[™B›Ü\]YHÛÝ\˜ÙH™\ÜÜ\š[Ù
+H[Û™ÜÚYHH^XÝ˜]ÈÛÛ[ÜÚLM˜ž]BœÚ^™KYYXH\H[™\œÙ\ˆ™\œÚ[Û‹ˆH^˜XÝÜˆ™]™\ˆ[™™\œÈ[›X[Ú[\š[B˜Û\ÜÚYšXØ][Ûˆœ›ÛHH]HÜˆ^[™™]™\ˆ\›œÈ^˜XÝY^[ÈB›[Y\šXÈ˜[YKÛÝ\˜ÙXØ]šY[˜ÙXØ˜XÝY\ÝY[H[œ]ÜˆÓH™\Ý[‚‚˜ØÚ[X\ËÙš[[™ËY^˜XÝ[Û‹œØÚ[XKšœÛÛ˜Yš[™\ÈHÙ\šX[^™Y™\Ý[‚˜š[[™Ô™\Ü^˜XÝÜ‹˜[Y]X™]˜[Y]\ÈÙ\šX[^™YÝ]]YØZ[œÝBœØ[YHØXÚYØÝ[Y[[™\œÙ\ˆY[]NÈ[ˆÙ™›[™HØÝ[Y[™\^H\™Y›Ü™Bœ™[XZ[œÈ]\›Z[š\ÝXÈ[™Ù\È›ÝØ[HÝÛ›ØY\‹ˆZ\ÜÚ[™È\œÙ\ˆÝ\Ü[œÝ\ÜYYYXKX[›Ü›YY\œÙ\ˆÝ]]\ÚÜ›Ý™[˜[˜ÙHZ\ÛX]Ú˜Y›ØØ][ÛˆÜ™\ˆ[™›Ý[™š[Û][ÛœÈ˜Z[ÛÜÙYˆÞ[]XÈ\œÙ\‹[™]]˜[™š^\™\È[™Y™\œØ\šX[\ÝÈÛÝ™\ˆKÒ™\Ü›Ý™[˜[˜ÙKYÙKÜÙXÝ[Û‚›ØØ][ÛœËÜ™\š[™Ë›ØÚËÝ^\Ú\Ë[œÝ\ÜYYYXH[™ØXÚH™\^K‚‚ˆÈÈÈ\ÙHËŽÈ8 %]\›Z[š\ÝXÈš[[™È]šY[˜ÙHÝÜ™H
+ÓÓTUJB‚•H]šY[˜ÙK\ÝÜ™H[]™\˜X›HÛÛœÝ[Y\ÈH˜[Y]Y˜š[[™Ñ^˜XÝ[Û”™\Ý[
+Üˆ]ÈÙ\šX[^™Y\]Z]˜[[
+H[™HØ[\‹\Ý\YY˜]šY[˜ÙXÝ][Y[ˆš[[™Ñ]šY[˜ÙTÝÜ™Xš[™ÈH][HÈÛ™H^XÝ™^˜XÝY›ØÚË™\Ù\™\ÈHÛÛ\]Hš[[™ÈY[]KÙ™šXÚX[ÛÝ\˜ÙKœÛÝ\˜ÙKYØÝ[Y[Q™\Ü\š[ÙØÝ[Y[[™›ØÚÈ\Ú\Ë\œÙ\ˆ[™™^˜XÝ[ÛˆY[]K[™ÝX›HYÙKÜÙXÝ[Ûˆ\È›ØÚÎÙ\]Y[˜ÙO˜ØØ]Ü‹‚•HY]]™H]šY[˜ÙT›Ý™[˜[˜ÙXÛÛ˜XÝÙY\ÈÜÙHšY[È^XÚ]Ú[Bœ™[XZ[š[™ÈÛÛ\]X›HÚ]^\Ý[™ÈÝXÝ\™Y]šY[˜ÙK‚‚”™XÛÜ™È\™H]\›Z[š\ÝXÈ”ÓÓˆ[™[Ü\È[™\ˆHØØ[š[\Þ\Ý[H›ÛÝ‚•Üš]\È\™H\[™[Û›H[™Y[\Ý[›ÜˆY[XØ[ÛÛ[ÈÛÛ™›XÝ[™Âœ™]\ÙHÙˆH]\›Z[š\ÝXÈ]šY[˜ÙHQ\È™Z™XÝYˆ™XYËÛÚÝ\[™^XÚ]œ™\^H\™HÙ™›[™K[Û›H[™™\šYžHH[™[ÜH\Ú]šY[˜ÙH›Ý™[˜[˜ÙH[™H™\]Y\ÝY^˜XÝ[Û‹ˆ[ˆÜ[Û˜[^XÝš[[™ÑØÝ[Y[[ÝÜÈHÝÜ™BÈ™XÛÛ\]HHØÝ[Y[YÙ\Ý]H›Ý[™\žKˆ›È[Y\šXÈ˜XÝ^˜XÝ[Û‹˜XØÛÝ[[™È[\œ™]][Û‹Y\ÝY[›ÜÜØ[HØ[ÜˆÓHÚ\š[™È\Âš[˜ÛYYˆHÛÛ˜XÝ\ÈYš[™YžB˜ØÚ[X\ËÙš[[™ËY]šY[˜ÙKœØÚ[XKšœÛÛ˜È›ØÝ\ÙYš^\™\È[™Y™\œØ\šX[\ÝÂ˜ÛÝ™\ˆKÒ›Ý™[˜[˜ÙK˜Y™Y™\™[˜Ù\Ë[\\™Y\Ú\ËÛÛ™›XÝÈ[™™\^K‚‚ˆÈÈÈ\ÙHËŽ8 %]\›Z[š\ÝXÈY\ÝY[›ÜÜØ[ÛÜšÙ›ÝÈ
+ÓÓTUJB‚•HY\ÝY[ÛÜšÙ›ÝÈ™]\Ù\ÈH^\Ý[™ÈY\ÝY[ÛÛ˜XÝ[™XØÙ\Â›Û›H^XÚ]Ø[\‹\Ý\YY“ÔÔÑQ˜[Y\Ë™X\ÛÛœË\\È[™\™Ù]™šY[Ëˆ™Y›Ü™HH›ÜÜØ[\È\œÚ\ÝY]™\žHÛÝ\˜ÙWÙ]šY[˜ÙWÚYØ™Y™\™[˜ÙB›]\Ý™\ÛÛ™H›ÝYÚH›Ü›X[^™Y[œ]^XÚ]]šY[˜ÙH[™^ÜˆHØØ[”\ÙHËŽÈš[[™ËY]šY[˜ÙHÝÜ™NÈ\XØ]KZ\ÜÚ[™ÈÜˆÛÛ™›XÝ[™È]šY[˜ÙBœ™XÛÜ™È\™H™Z™XÝYˆH]\›Z[š\ÝXÂ˜Y\ÝY[\›ÜÜØ[O^˜Qš[™ÈH[[]]X›H›ÜÜØ[^[ØY[™›Ü[Û˜[›Ü›X[^™YZ[œ]ØÛÜHÈH]šY[˜ÙH™Y™\™[˜Ù\Ë‚‚˜Y\ÝY[›ÜÜØ[ÛÜšÙ›ÝØ\œÚ\ÝÈ[ˆ[YÜš]KXÚXÚÙY”ÓÓˆ[™[ÜHÚ]™]šY[˜ÙHYÙ\ÝËÜ[Û˜[š[[™Ë\ÝÜ™H™XÛÜ™YÙ\ÝÈ[™˜[œÚ][Ûˆ\ÝÜžK‚•Üš]\È\™H]ÛZXÈ[™Y[\Ý[È™\^H[™ÛÚÝ\\™HÙ™›[™K[Û›H[™™\šYžHH[™[ÜH\Ú[™›Ý™[˜[˜ÙKˆHÛ›H\›Z[˜[˜[œÚ][ÛœÈ\™B˜“ÔÔÑQOˆPÐÑTQÜˆ“ÔÔÑQOˆ‘R‘PÕQˆXØÙ\[˜ÙH™\]Z\™\È[‚™^XÚ]SPS˜Üˆ•SWÑS‘ÒS‘X\›Ý™\ŽÈXX^H™H™XÛÜ™Y\ÈH›ÜÜÙ\‚˜]Ø[››Ý\›Ý™Kˆ›È˜[œÚ][Ûˆ]]]\È›Ü›X[^™Y˜XÝË\Y\ÈH›ÜÜÙY˜[YK[™™\œÈXØÛÝ[[™È™X]Y[Ø[È[ˆHÜˆÚ\™\ÈHÓKˆHÛÛ˜XÝš\ÈØÚ[X\ËØY\ÝY[]ÛÜšÙ›ÝËœØÚ[XKšœÛÛ˜ÈY™\œØ\šX[š^\™\ËÝ\ÝÈÛÝ™\‚™]šY[˜ÙH™Y™\™[˜ÙH˜Z[\™\ËKÒš[[™È]šY[˜ÙKY™XÞXÛHXÝÜœËÛÛ™›XÝËœØÛÜK[\\š[™È[™™\^K‚‚ˆÈÈÈ]\™HÝXÝ\™Y\›ÝšY\ˆ[]™\˜X›\Â‚˜^œÜ˜ËÝ\WÝ˜[YWÙ[™Ú[™KÂˆY\ÝY[ËœHÈ\ÙHËŽ]\›Z[š\ÝXÈY\ÝY[›ÜÜØ[Âˆ›ÝšY\œËÂˆ˜\ÙKœBˆ[Ù[ËœBˆ\œ›ÜœËœBˆØXÚKœBˆ›Ü›X[^˜][Û‹œBˆZÜÚ\™KœHÈ\ÙH‹ŒˆX\šÙ]
+È\ÙH‹Œø $ÌËŽÈÝXÝ\™YÛXÙ\Âˆš[[™ÜËœHÈ\ÙHËŽY]Y]K[Û›HÙ™šXÚX[š[[™È\ØÛÝ™\žBˆš[[™×ÙØÝ[Y[ËœHÈ\ÙHËŽHž]H™]šY]˜[[™ÛÛ[ØXÚBˆš[[™×Ù^˜XÝ[Û‹œHÈ\ÙHËŽˆ›Ý[™Y[›X[Ú[\š[H™\Ü^›ØÚÜÂˆ]šY[˜ÙWÜÝÜ™KœHÈ\ÙHËŽÈ]\›Z[š\ÝXÈš[[™È]šY[˜ÙHÝÜ™Bˆ\Ú\™KœHÈ]\™HÜ[Û˜[Y\\‚ˆ˜[ÜÝØÚËœHÈ]\™HÜ[Û˜[Y\\‚˜‚”›ÝšY\ˆÝ]]]\ÝX\[È›Ü›X[^™Y˜XÝ™XÛÜ™È›ÝYÚHœ›Þ™[‚››Ü›X[^˜][Ûˆ›Ý[™\žNÈ›ÝšY\‹\ÜXÚYšXÈšY[˜[Y\È]\Ý›ÝXZÈ[Â˜Ø[Ý[][Ûˆ[Ù[\Ë‚‚ˆÈÈÈ^]Üš]\šXB‚‹H›ÝšY\‹X˜XÚÙY™\\˜][ÛˆXØÙ\ÈØ[›ÛšXØ[KÒ\Ý[™ÈY[]H[™[‚ˆ^XÚ]\×ÛÙ˜]NÂ‹Hœ›Þ™[ˆK\Ú\™H[™\Ú\™HXØÙ\[˜ÙH›ÝÜÈÛÝ™\ˆXÜ]Z\Ú][Û‹˜]ËXØXÚBˆ™\^K›Ü›X[^˜][Û‹ØÚ[XH˜[Y][Ûˆ[™Ù™›[™HÛÛ\[žP[˜[\Ú\ØÂ‹H[\ÜY˜XÝÈ™]Z[ˆÛÝ\˜ÙH]šY[˜ÙK[š]ËØÝ\œ™[˜ÞH[™\š[ÙY]Y]KˆÚ[H[œ™\ÛÛ™Y›ÝšY\ˆÛXÙ\È™[XZ[ˆZ\ÜÚ[™ËÜ˜]Ë[Û›NÂ‹H›ÝšY\ˆ˜Z[\™H[™Ù™›[™H™\^HÈ›ÝÛÜœ\ÜˆÚ[[H™\XÙHBˆš[Üˆ˜[YØXÚH[žNÂ‹H™H[˜[^™X™[XZ[œÈ[ˆÙ™›[™K[Û›HÛÛœÝ[Y\ˆÙˆ›Ü›X[^™Y[œ]‚‚‹KKB‚ˆÈÈ\ÙHÈ8 %Ù™šXÚX[š[[™È[™]šY[˜ÙH^Y\ˆ
+ÓÓTUJB‚‘ÛØ[ˆÛÛ™\ØÜ™Y[š[™È™\Ý[È[È]Y]X›HY\[˜[\Ú\Ë‚‚ˆÈÈÈÛÝ\˜Ù\Â‚˜^HÚ\™\ÈOˆÓ’S‘“ÈÈ^Ú[™ÙHš[[™ÜÈÈÛÛ\[žH[››Ý[˜Ù[Y[Â’Ú\™\ÈOˆÑV™]ÜÈÈÛÛ\[žH™\ÜÈ[™[››Ý[˜Ù[Y[Â˜‚ˆÈÈÈ[]™\˜X›\Â‚‹Hš[[™È\ØÛÝ™\žNÂ‹HØÝ[Y[ÝÛ›ØYØØXÚNÂ‹HY]Y]H[™š[[™ÈQÎÂ‹H[›X[Ú[\š[H™\Ü^˜XÝ[ÛŽÂ‹H]šY[˜ÙHÝÜ™NÂ‹HY\ÝY[›ÜÜØ[ÛÜšÙ›ÝË‚‹HXØÙ\YXY\ÝY[X]\šX[^˜][Ûˆ[ÈH™]ÈY™™XÝ]™H[œ]Û˜\ÚÝÂ‹H]\›Z[š\ÝXÈXÚ\Ú[Ûˆ8¡¤ˆØ]H8¡¤ˆY]šXÈ8¡¤ˆY\ÝY[8¡¤ˆ˜XÝ8¡¤ˆ]šY[˜ÙH8¡¤‚ˆš[[™È˜XÙH›Ú™XÝ[Û‹‚‚“HØ[ˆ\ÜÚ\ÝÚ]‚‚‹HØØ][™È™\ÝšXÝYØ\ÚÂ‹HX\ÙKÚ[\™\ÝÛ\ÜÚYšXØ][ÛŽÂ‹HXÜ]Z\Ú][Ûˆ]Z[ÎÂ‹H^[Ý]ÛXÞNÂ‹HÛÝ™\›˜[˜ÙHš\ÚÜÎÂ‹HÝ\ÝÛY\ˆÛÛ˜Ù[˜][ÛŽÂ‹H\Ú[™\ÜË\]X[]H]šY[˜ÙK‚‚“HØ[››Ý\™XÝHÝ™\Üš]H[™Ú[™KXÛÛ\]Y˜[Y\Ë‚‚ˆÈÈÈ^]Üš]\šXB‚Hš[˜[TÔËÕÐUÒÑRS™\Ý[Ø[ˆ™H˜XÙYœ›ÛHXÚ\Ú[ÛˆOˆØ]HOˆY]šXÂ‹OˆY\ÝY[Oˆ˜XÝOˆÛÝ\˜ÙHš[[™ËˆH^XÚ]XØÙ\[˜ÙH›Ý[™\žH\Âœ™\Ù\™YˆSPS‹Ô•SWÑS‘ÒS‘HX^H\›Ý™KHX^HÛ›H›ÜÜÙK[™B™]\›Z[š\ÝXÈ[™Ú[™H™[XZ[œÈHÛÛHÝÛ™\ˆÙˆ›Ü›][\ËØ]\È[™˜[X][Û‹‚‚ˆÈÈÈ\ÙH‹ÌÈÛÜÝ\™H[YÜ˜][Ûˆ
+ÓÓTUJB‚•H™\XØ[XØÙ\[˜ÙH]\È›ÝÈœ›Þ™[ˆ[‚˜\ÝËÝ\ÝÜ\ÙWÌ—Ì×ØÛÜÝ\™KœX‚‚˜^”\ÙHŽˆKÒ\Ý[™È
+È\×ÛÙ‚ˆ8¡¤ˆ[š™XÝY›ÝšY\ˆ8¡¤ˆ˜]ÈØXÚKÜ™\^H8¡¤ˆ›Ü›X[^˜][Û‚ˆ8¡¤ˆØÚ[XK]˜[Y›Ü›X[^™YÛÛ\[žR[œ]8¡¤ˆÙ™›[™H[˜[\Ú\Â‚”\ÙHÎˆÙ™šXÚX[š[[™È\ØÛÝ™\žH8¡¤ˆØÝ[Y[ØXÚH8¡¤ˆ^˜XÝ[Û‚ˆ8¡¤ˆš[[™È]šY[˜ÙH8¡¤ˆY\ÝY[›ÜÜØ[8¡¤ˆSPSˆXØÙ\[˜ÙBˆ8¡¤ˆY™™XÝ]™H[œ]8¡¤ˆ]\›Z[š\ÝXÈ[˜[\Ú\È8¡¤ˆXÚ\Ú[Ûˆ˜XÙB˜‚•HX›XÈ›Ý[™\šY\È\™H™H™\\™X›Üˆ›ÝšY\‹X˜XÚÙY™\\˜][Ûˆ[™˜™H[˜[^™HKZ[œ]‹‹˜›ÜˆHÙ™›[™HØ[Ý[][Ûˆ\[[™KˆHY™™XÝ]™Bš[œ]Z[\ˆ\È^XÚ][™Y]]™Nˆ]™]™\ˆ]]]\ÈÛÝ\˜ÙH˜XÝË™Z™XÝÂœÝ[KØÛÛ™›XÝ[™ËÝ[œÝ\ÜY\XØ][ÛœË[™™]Z[œÈY\ÝY[[™XYÙHÛ‚HY™™XÝ]™H˜XÝˆY][Û˜[›ÝšY\ˆÛÝ™\˜YÙH[™Ø]Ú\ÝÙ]™[›[Ûš]Üš[™È™[XZ[ˆÙ\\˜]HÛÜšÎÈH\ÙH™\ÙX\˜Ú[™\ÙHH˜XÚÝ\Ý[™Â˜›Ý[™\šY\È\™HØÝ[Y[Y™[ÝË‚‚‹KKB‚ˆÈÈ\ÙH8 %YÙ[X\ÜÚ\ÝY]šY[˜ÙH[˜[\Ú\È[™\Ú[™\ÜÈ]X[]B‚”Ý]\ÎˆÓÓTUKˆÙYHHXÝ]™KYÛØ[ÛÜÝ\™H™XÛÜ™[‚–ØØÜËÙÛØ[ËÜ\ÙKMXYÙ[XËX[˜[\Ú\Ë›YJÛØ[ËÜ\ÙKMXYÙ[XËX[˜[\Ú\Ë›Y
+K‚‚”\ÙHYÈH™]\ØX›K[Ù[[™]]˜[™\ÙX\˜Ú^Y\ˆÛˆÜÙˆHÛÛ\]Y”\ÙHx $ÌÈ]\›Z[š\ÝXÈ›Ý[™][Û‹ˆ]Ù\È›Ý[Ý™HÑË™]Ø\Ú›ÝYÚ”™]\›‹\™Ø]\Ë˜[X][Û‹š[˜[Ý]HÜˆY\ÝY[\›Ý˜[[ÈH[Ù[‚‚•H™]šY]ØX›HÝX‹[Z[\ÝÛ™\È\™N‚‚ŒKˆ\Y™\ÙX\˜ÚÛÛ˜XÝÈ[™”ÓÓˆØÚ[X\È›Üˆ]Y\Ý[ÛœËXÚÙ]Ëš[™[™ÜËˆ[œË[Y[œÚ[Ûˆ™\Ý[ËÙ\ÜÚ[ÛœÈ[™™\ÜÎÂŒ‹ˆ[š™XÝY[˜[\ÝÛY[\È]\›Z[š\ÝXÈØÜš\YÛY[ÎÂŒËˆ]\›Z[š\ÝXÈ›Ý[™Y]šY[˜ÙHXÚÙ]ÈÚ]\×ÛÙ˜[™›Ü˜Ù[Y[[™BˆÛÛ\]HŒH[X[™\˜Xš[]H™\XØ[ÛXÙNÂˆŒx $ÐŒ]X[]H[˜[\Ý8¡¤ˆÚÙ\XÈ8¡¤ˆYYXØ]ÜˆÛÜšÙ›ÝÈÚ]]\›Z[š\ÝXÂˆ]šY[˜ÙH™\ÛÛ][Û‹ØÛÜ™HØ\ËÛÛ™šY[˜ÙKÛÝ™\˜YÙH[™Ø]H˜[Y][ÛŽÂKˆš[[™ËX˜XÚÙY“ÔÔÑQY\ÝY[È›Ý]Y›ÝYÚH^\Ý[™È\ÙHÂˆÛÜšÙ›ÝÈ[™^XÚ]SPS‹Ô•SWÑS‘ÒS‘HXØÙ\[˜ÙNÂ‹ˆ[[]]X›H”ÓÓˆÛÜšÜÜXÙK™\Ý[XX›H™\ÙX\˜ÚÜ˜Ú\Ý˜][Û‹]\›Z[š\ÝXÂˆXÚ\Ú[Ûˆ˜XÙH[™›Û‹[]]][™È[X[‹\™XYX›H™\ÜÛÛ\ÜÚ][ÛŽÂËˆœ›Þ™[ˆY™\œØ\šX[XØÙ\[˜ÙHÛÝ™\˜YÙK[˜ÛY[™È[ˆK\Ú\™H›ÝšY\‹ØØXÚBˆ™\^H8¡¤ˆš[[™È8¡¤ˆ™\ÙX\˜Ú8¡¤ˆXØÙ\YXY\ÝY[8¡¤ˆ[˜[\Ú\È8¡¤ˆ™\Ü›ÝË‚‚‘^\›˜[[[Y\ÈÝXÚ\ÈÚ]ÔÛÙ^[™\›Y\ÈÛÛœÝ[YHHØ[YHÛÛ˜XÝÎÂ››È™[™Ü‹\ÜXÚYšXÈÚÚ[Üˆ]™K[[Ù[ÑÈ\È™\]Z\™YžHHÛÜ™HXÚØYÙK‚˜™H[˜[^™X™[XZ[œÈÙ™›[™H[™[Ù[Z[™\[™[ˆœ›ØY›ÝšY\ˆ[™Ú[™^[œÚ[Ûˆ\È›Ý\Ùˆ\ÈZ[\ÝÛ™K‚‚‹KKB‚ˆÈÈ\ÙHH8 %˜XÚÝ\Ý[™È[™Ø[Xœ˜][Ûˆ
+ÓÓTUJB‚•HÚ[Z[‹][YH]KÚYÛ˜[Y]˜[X][Û‹Ü›Û[Ë\™\^H[™˜Ø[Xœ˜][Û‹\›ÜÜØ[›Ý[™\žH\ÈÛÛ\]Kˆ]ÛÛœÝ[Y\Èœ›Þ™[ˆ\Y˜XÝÈ[™›X]™\ÈH]\›Z[š\ÝXÈ[™Ú[™H[™ÝšXÝ]ŒX[˜Ú[™ÙYˆÈ›Ý™X]BœÞ[]XÈœ›Þ™[ˆš^\™\È\È]šY[˜ÙH]H›ÙXÝ[ÛˆØ[™Y]H›Ùš[H\Âœ™XYK‚‚”™\]Z\™[Y[Î‚‚‹HÝ\š]›ÜœÚ\XšX\ËX]Ø\™H[š]™\œÙHÚ\™HÜÜÚX›NÂ‹Hš[[™ÈX›XØ][Ûˆ]HÈÚ[Z[‹][YH]˜Z[Xš[]NÂ‹H›È]\™Hš[˜[˜ÚX[]HXZØYÙNÂ‹H]šY[™ËÛÜœÜ˜]HXÝ[ÛœÈ[™[\Ý[™ÜÎÂ‹H˜[œØXÝ[ÛˆÛÜÝÈ[™\]ZY]H\ÜÝ[\[ÛœÎÂ‹HKÒ\Ý[™Ë\ÜXÚYšXÈšXÙ\ÎÂ‹H^XÚ]™[˜ÚX\šÈÙ]‚‚“Y]šXÜÎ‚‚˜^ÐQÔ‚›X^˜]ÙÝÛ‚›Û][]B”Ú\œHÈÛÜ[›Â\››Ý™\‚š]˜]B™˜XÝÜˆ^ÜÝ\™BœÙXÝÜˆÛÛ˜Ù[˜][Û‚™˜Z[\™K[[ÙH]šX][Û‚˜‚•™\ÚÛÚ[™Ù\È™\]Z\™HH™]È™\œÚ[Û™Y›Ùš[H˜]\ˆ[ˆÚ[[H™]Üš][™ÈÝšXÝ]ŒX‚‚•HX›XÈÛÛ˜XÝËUÙ[X[XÜËÙ\\˜]HÜ›Û[Ë\ÛXÞK]ŒXYXÚ[šXÜË˜Ø[Xœ˜][ÛˆÛÝ]ÝX\™[™™[XZ[š[™ÈØ\È\™H™XÛÜ™Y[‚–ØØÜËÙÛØ[ËÜ\ÙKMKX˜XÚÝ\Ý[™ËXØ[Xœ˜][Û‹›YJÛØ[ËÜ\ÙKMKX˜XÚÝ\Ý[™ËXØ[Xœ˜][Û‹›Y
+B˜[™ØØÜËØ\˜Ú]XÝ\™KØ˜XÚÝ\Ý[™ËX[™XØ[Xœ˜][Û‹›YJ\˜Ú]XÝ\™KØ˜XÚÝ\Ý[™ËX[™XØ[Xœ˜][Û‹›Y
+K‚‚ˆÈÈ\ÙHTˆ8 %›ÙXÝ[Ûˆ\ÝÜšXØ[]\Ù][™™\ÙX\˜Ú\˜Ú]™H™XY[™\ÜÈ
+PÕU‘HÈT•PS
+B‚”\ÙHTˆ^[™ÈHÛÛ\]Y\ÙHH[YÜ˜][Ûˆ›Ý[™\žHÚ]HXÛ\™Y˜›Ý[™YKÒ›ÙXÝ[Ûˆ\™Ù]ØÛÜKÛÝ\˜ÙH[™ÛÝ™\˜YÙH™YÚ\ÝžK˜ÛÛ[XY™\ÜÙYœ›Þ™[ˆÚ\™Ë\Ý[™Ë[Y™XÞXÛH[™\›Z[˜[[Ý]ÛÛYB˜ÛÛ˜XÝË™\^XX›HX\šÙ]ØXÝ[Û‹Ñ–Ø™[˜ÚX\šÈ™XÛÛ˜Ú[X][Û‹[™BœÚ[Z[‹][YK]˜[Yœ›Þ™[ˆ™\ÙX\˜Ú\˜Ú]™Kˆ]\È›ÝHÛZ[H]HÚÛBKÒX\šÙ]\È›ÙXÝ[Û‹\™XYNˆ]ÛZ[H™\]Z\™\ÈÛÝ\˜ÙKXÙ[œÚ[™È[™˜ÛÝ™\˜YÙH]šY[˜ÙH›ÜˆH˜[YY\™Ù][š]™\œÙH[™]H˜[™ÙK‚‚•HXÝ]™HÛÜšÈXÚØYÙH[™^]Üš]\šXH\™H™XÛÜ™Y[‚–ØØÜËÙÛØ[ËÜ\ÙKM\‹\›ÙXÝ[Û‹Z\ÝÜšXØ[XÛÜœ\Ë›YJÛØ[ËÜ\ÙKM\‹\›ÙXÝ[Û‹Z\ÝÜšXØ[XÛÜœ\Ë›Y
+K‚”\ÙHH™[XZ[œÈÓÓTUH]]ÈÜšYÚ[˜[Þ[]XËÚ[YÜ˜][Ûˆ›Ý[™\žNÈ\Â›Z[\ÝÛ™H\ÈY]]™H[™]\Ý›Ý™]Üš]HÝšXÝ]ŒXÜˆØ[Xœ˜][ÛˆÙ[X[XÜË‚‚ˆÈÈÈÝ\œ™[Ý]\È[™™^ÝYÙB‚•HÛÝ\˜ÙKX]Ø\™HÛÛ˜XÝËÛÛ[XY™\ÜÙYœ›Þ™[ˆÚ\™ËÙ™›[™B˜ÛÛ\[\‹ÛÝ™\˜YÙKÜ™XÛÛ˜Ú[X][Ûˆ™\ÜÈ[™Ú[Z[‹][YH™\ÙX\˜Ú\˜Ú]™B˜[Y]Üˆ\™H[\[Y[YˆH›ÙXÝ[ÛˆXÜ]Z\Ú][Ûˆ›Ý[™\žH\È›ÝY]š[\[Y[YÛÈHÚXÚÙYZ[ˆš^\™H\È›ÝH›ÙXÝ[ÛˆKÒÛZ[H[™\Â›Z[\ÝÛ™H™[XZ[œÈPÕU‘HÈT•PS‚‚•H™^ÝYÙH\È
+Š”\ÙHT‹PH8 %›ÙXÝ[ÛˆÛÝ\˜ÙHXÜ]Z\Ú][Ûˆ[™ÛÛ\[\‚š[™Ù\Ý[ÛŠŠ‹ÜXÚYšYY[‚–ØØÜËÙÛØ[ËÜ\ÙKM\‹XK\›ÙXÝ[Û‹\ÛÝ\˜ÙKXXÜ]Z\Ú][Û‹›YJÛØ[ËÜ\ÙKM\‹XK\›ÙXÝ[Û‹\ÛÝ\˜ÙKXXÜ]Z\Ú][Û‹›Y
+K‚•H›Ú™XÝ˜]\ˆ[ˆH\Ù\‹]\ÝXÜ]Z\™HÙ[XÝYš\ÝÜšXØ[ÛÝ\˜Ù\È›ÝYÚ^XÚ]ÜZ[ˆY\\œË\œÚ\Ý˜]È™\ÜÛœÙ\È[™›XÙ[œÙ\ËØXØÙ\ÜÈÜ˜[Ë[™ÛÛ\[H[H[ÈH^\Ý[™ÈÚ\™ËˆHš\œÝœØÛÜH\È\ÝÜšXØ[]H™YYY›Üˆ™\^NˆY[X™\œÚ\[™\Ý[™ÈY™XÞXÛKœšXÙ\ËÛÜœÜ˜]HXÝ[ÛœË™[˜ÚX\šË–š[[™ÜÈ[™œ›Þ™[ˆ™\ÙX\˜Ú‚”™X[][YH][Ý\È\™H›ÝH\ÙHTˆ™\™\]Z\Ú]NÈ^H™[Û™ÈÈ\ÙH‰ÜÂØ]Ú\ÝÙ]™[[[Ûš]Üš[™È›Ý[™\žK‚‚”\ÙHT‹PH\È\œÛÛ˜[Yš\œÝˆÙ™šXÚX[X›XÈ[™ØÝ[Y[Y\œÛÛ˜[XXØÛÝ[œÛÝ\˜Ù\È\™HHY˜][È[œÝ]][Û˜[X\šÙ]Y]HÛÛ˜XÝÈ\™HÜ[Û˜[[™›X^H›Ý™HH™\™\]Z\Ú]H›ÜˆHZ[š[][H]ˆHš\œÝ^]Ø]\È\™H[‚™^XÚ]HXÜ]Z\™YØØ[˜]ÈÛÜœ\ËH˜[YY›Ý[™YKÒ\™Ù]ÛÝ\˜ÙK\ÜXÚYšXÂ˜ÛÝ™\˜YÙH[™XØÙ\ÜÈ]šY[˜ÙK›ÈÝ\œ™[XÛÛœÝ]Y[ÝXœÝ]][Û‹Û™\Ý›\Ý[™ËÛY™XÞXÛH[™\›Z[˜[[™[™Ë[™\[™[Ø[\Y™XÛÛ˜Ú[X][Û‹˜[™]\›Z[š\ÝXÈÙ™›[™H™\^KˆH^\Ý[™È[K\™\]Z\™K\›ÙXÝ[Û˜˜ÛZ[H™[XZ[œÈÝšXÝ\ˆ[™]\Ý›Ý™HÙXZÙ[™YY\™[HÈÛÜÙHHXÜ]Z\Ú][Û‚›Z[\ÝÛ™KˆÜ™Y[X[È™[XZ[ˆÝ]ÚYHÚ][™Ü™[˜\žHÒH™[XZ[œÂ›™]ÛÜšËÛ[Ù[[™\[™[‚‚Y\ˆHØØ[XÜ]Z\Ú][Û‹ØÛÛ\[\ˆ]\ÈÝX›K[ˆÜ[Û˜[ÝÜ˜YÙHÛÜšÂœXÚØYÙHX^HYHš]˜]HÛÝY›\™HŒˆZ\œ›ÜˆÜˆ[ˆÝÛ™\‹U”È˜XÚÝ\Ü[›™\‹‚ÛÝY›\™HHÜˆÝ\X˜\ÙHX^H]\ˆÛ\Ú›Ø\™Y]Y]NÈ^H\™H›ÝB˜Ø[›ÛšXØ[˜]È\ÝÜšXØ[ÝÜ™Kˆ™[[ÝHÝÜ˜YÙH]\Ý™\ÜXÝ\‹X\Y˜XÝ˜ÐÐSÓÓ“XÜš]˜]KÜ™Y\ÝšX]X›HÛXÞH[™]\Ý™]™\ˆ™XÛÛYH[ˆ[\XÚ]›™]ÛÜšÈ˜[˜XÚÈ›ÜˆÙ™›[™H™\^K‚‚‹KKB‚ˆÈÈ\ÙHˆ8 %Ø]Ú\Ý[™]™[Yš]™[ˆ™KX[˜[\Ú\Â‚ˆÈÈÈØ]Ú\ÝÝ]B‚”\œÚ\Ý‚‚˜^˜ÛÛ\[žB›\Ý[™Â›\ÝØ[˜[\Ú\×ØÛÛ[Z]Ý™\œÚ[Û‚›\ÝÙš[[™×ÜÙY[‚›\ÝÙ]™[ØÝ\œÛÜ‚›\ÝÜ™\Ý[›Ü[—Ü]Y\Ý[ÛœÂ˜‚ˆÈÈÈ]™[[Ûš]Ü‚‚‘]XÝ]™[ÈÝXÚ\Î‚‚‹H[›X[Ú[\š[H™\ÜÎÂ‹HX\›š[™ÜÈØ\›š[™ÜÎÂ‹H]šY[™Ú[™Ù\ÎÂ‹H^X˜XÚÜÈÈ\ÜÝX[˜ÙNÂ‹HXÜ]Z\Ú][ÛœÈÈ\ÜÜØ[ÎÂ‹H]Y][Ü[š[ÛˆÚ[™Ù\ÎÂ‹H™YÝ[]ÜžH[˜[Y\ÎÂ‹HX]\šX[]YØ][ÛŽÂ‹HÛÛ›Û[™Ë\Ú\™ZÛ\ˆ]™[Ë‚‚“X\]™[ÈÎ‚‚˜^““×Ô‘PSSTÒTÂ”T•PSÔ‘PSSTÒTÂ‘•SÔ‘PSSTÒTÂ•T‘ÑS•ÓPS•PSÔ‘U’QUÂ˜‚ˆÈÈÈ[[YHÜ[ÛœÂ‚‹HÚ]XˆXÝ[ÛœÈ›Üˆ]\›Z[š\ÝXÈØÚY[Y›ØœÎÂ‹H\›Y\ÈÜ›Ûˆ›ÜˆÙ[‹ZÜÝY[˜][™YÓH
+ÈYÙ[ÛÜšÙ›ÝÜÎÂ‹HÚ]ÔØÚY[Y›Üˆ\Ù\‹Y˜XÚ[™È[Ûš]Üš[™ËÜ™\ÙX\˜Ú[\ÈÚ\™HÝ\ÜY‚‚ˆÈÈÈ\œÛÛ˜[ÙXˆ\Ú›Ø\™‚H]\ˆ™XY[Û›H\œÛÛ˜[\Ú›Ø\™X^H™H\ÞYYÛˆÛÝY›\™HÛÜšÙ\œË‚’]X^H\ÙHŒˆ›Üˆ\›Z]Y[[]]X›H\Y˜XÝÈ[™H›Üˆ\š]™Y[™^\È[™œ[ˆÝ]\ËˆXÜ]Z\Ú][Ûˆ›Ü›X[H[œÈØØ[HÜˆÛˆHÝÛ™\‰ÜÈ”ÎÈHYÙBœ™\]Y\Ý]\Ý›ÝØÜ˜\H\Ý™X[HÛÝ\˜Ù\Ë[›ÚÙHH[Ù[^ÜÙH™\ÝšXÝY˜]Â™]KÜˆ™Z[\[Y[]\›Z[š\ÝXÈ[™\ÝY[Ø[Ý[][ÛœË‚‚‹KKB‚ˆÈÈ\ÙHÈ8 %ÛÛ›ÛY]›Û][Û‚‚•HÞ\Ý[HX^H[\›Ý™H›ØÙY\™\Ë]X^H›Ý]]Û›Û[Ý\ÛH]]]HH[™\ÝY[[HÛÜ™K‚‚ˆÈÈÈ]]ÛX]XØ[HX\›˜X›B‚‹HÛÝ\˜ÙHX\[™ÜÎÂ‹HØÝ[Y[[ØØ]Üˆ]\š\ÝXÜÎÂ‹HÛÛ\[žK\ÜXÚYšXÈXØÛÝ[[™È]Z\šÜÎÂ‹HÛ›ÝÛˆ^[Ý]ÛXÚY\ÎÂ‹HØ]Ú\ÝÝ]NÂ‹H^˜XÝ[Ûˆ]\š\ÝXÜÎÂ‹HYÙ[ÛÜšÙ›ÝÈÚÚ[Ë‚‚ˆÈÈÈ›ÝXÝYÛÜ™B‚‹H›Ü›][\ÎÂ‹H\™YØ]HÙ[X[XÜÎÂ‹H[H›Ùš[\ÎÂ‹HØÚ[X\ÎÂ‹H˜[X][ÛˆYš[š][ÛœË‚‚ÛÜ™HÚ[™Ù\È™\]Z\™N‚‚˜^œ›ÜÜØ[Oˆ]˜[X][ÛˆOˆ\ÝÈOˆÚ[Z[‹][YH˜[Y][Û‹Ø˜XÚÝ\ÝOˆˆOˆ[X[ˆ\›Ý˜[˜‚•\È\ÈH›Ú™XÝ	ÜÈYš[š][ÛˆÙˆØY™H8 'Ù[‹Y]›Û][Û‹¸ 'B‚‹KKB‚ˆÈÝ\œ™[Z[\ÝÛ™B‚”\ÙHH\ÈÓÓTUH]HXZ›Üˆ[YÜ˜][Ûˆ›Ý[™\žKˆH™\ÜÚ]ÜžH›ÝÈ\ÂH™\^XX›H\ÙHˆ›ÝšY\‹ØØXÚH™\\˜][Ûˆ]H\ÙHÂ™š[[™ËÙ]šY[˜ÙH[™XØÙ\YXY\ÝY[][™H\ÙH›Ý[™Y™\ÙX\˜Úœ]\ØÜšX™Y[‚–ØØÜËÙÛØ[ËÜ\ÙKMXYÙ[XËX[˜[\Ú\Ë›YJÛØ[ËÜ\ÙKMXYÙ[XËX[˜[\Ú\Ë›Y
+N‚\Y[Ù[[™]]˜[[˜[\ÝÛÛ˜XÝË\œÚ\ÝYXÚÙ]ËÜ[œË[ZYÚ\Ú[™\ÜÈ]X[]H›Û\Ë™\ÜÛÛ\ÜÚ][Ûˆ[™œ›Þ™[ˆK\Ú\™HXØÙ\[˜ÙB˜ÛÝ™\˜YÙKˆ][ÛÈ\ÈH\ÙHHœ›Þ™[ˆX[šY™\ÝÚYÛ˜[Ü™]\›ˆ]˜[X]Ü‹›Û™Ë[Û›HÜ›Û[ÈÛXÞH™\^K™[˜ÚX\šËØ]šX][ÛˆY]šXÜÈ[™˜Ú›Û›ÛÙÚXØ[Ø[Xœ˜][Ûˆ›ÜÜØ[›Ý[™\žK‚‚”\ÙHH]\›Z[š\ÝXÈÙ[X[XÜÈ™[XZ[ˆœ›Þ™[‹ˆÚ[™Ù\ÈÈ›Ü›][\Ë\™YØ]BœÙ[X[XÜËØÚ[X\ÈÜˆÝšXÝ]ŒX™\ÚÛÈ™\]Z\™HHÙ\\˜][H™]šY]ÙY™\œÚ[Û™YÚ[™ÙKˆØ]Ú\ÝÙ]™[[Ûš]Üš[™È[™Y][Û˜[›ÝšY\ˆÛÝ™\˜YÙBœ™[XZ[ˆÙ\\˜]HÛÜšË‚‚•HÛ™È[™Ú[›Ý\È™[ÝÈ\™H\ÝÜšXØ[[\[Y[][Ûˆ™XÛÜ™Ëˆ]\™Bœ›ÝšY\ˆØ]YÛÜšY\ÈX^HÝ[™HYYÛ™H]H[YK]^H\™H›Ý\Ù‚HÛÛ\]Y\ÙH‹ÌÈÛÜÝ\™HÜš]\šXK‚‚”\ÙH‹ŽMÛÛ\]\ÈH™^ØÝ[Y[YÝXÝ\™YY]H›Ý[™\žHžHY[™ÂHK\Ú\™HÝØÚ×ÜÞœÙWÜÝ[[X\žXÚ[žš[ˆÝØÚÈ^Ú[™ÙHX\šÙ]\Ý[[X\žHšY]Ë‚’]È™\]Y\ÝYY]HÙXÝ\š]KXØ]YÛÜžH›ÝÜÈ\™H˜[Y]Y\È˜]Ë[Û›H]šY[˜ÙNÂ™ØÝ[Y[Y]X[]KÝ˜[œØXÝ[Û‹X[[Ý[[š]È[™[™ØÝ[Y[YX\šÙ]]˜[YB[š]È™[XZ[ˆ^XÚ]™\^HY]Y]K[™›È\Ý[™Ë[]™[ÜˆØ[›ÛšXØ[X\šÙ]™˜XÝ\È[™™\œ™Y‚”\ÙH‹ŽMHYÈHØÝ[Y[YK\Ú\™HÝØÚ×ÜÞœÙWØ\™XWÜÝ[[X\žXÚ[žš[ˆÝØÚÂ‘^Ú[™ÙH™YÚ[Û‹\˜[šÙY[ÛHšY]Ëˆ]È˜\ÙH[™ŒH^[™YÛÝ\˜ÙHšY[˜\šX[È\™H˜[Y]YÚ]ÝšXÝ˜[šËÜ™YÚ[Û‹ÛÜ™\ˆÚXÚÜÎÈÓ–H[™\˜Ù[YÙB[š]È™[XZ[ˆ^XÚ]™\^HY]Y]K[™›È\Ý[™Ë[]™[ÜˆØ[›ÛšXØ[X\šÙ]™˜XÝ\È[™™\œ™Y‚”\ÙH‹ŽMˆYÈHØÝ[Y[YK\Ú\™HÝØÚ×ÜÞœÙWÜÙXÝÜ—ÜÝ[[X\žXÚ[žš[‚”ÝØÚÈ^Ú[™ÙH[™\ÝžK]˜Y[™ÈšY]Ëˆ]È^XÚ]9odù§"Ø9odùnmÙ[XÝÜˆ[™›[ÛHÛÝ\˜ÙK\Ú\Yš[™KYšY[™\ÜÛœÙH\™H˜[Y]YÚ]ÝšXÝ™šY[Ú[™\ÝžKÛÜ™\‹Ý\HÚXÚÜÎÈÓ–KÚ\™K˜[œØXÝ[Ûˆ[™\˜Ù[YÙH[š]Âœ™[XZ[ˆ^XÚ]™\^HY]Y]K[™›È\Ý[™Ë[]™[ÜˆØ[›ÛšXØ[X\šÙ]˜XÝš\È[™™\œ™Y‚”\ÙH‹ŽMÈYÈHØÝ[Y[YK\Ú\™HX\Ý[Û™^B˜ÝØÚ×Ø›Ø\™Ú[™\ÝžWÛ˜[YWÙ[XÝ\œ™[[™\ÝžKX›Ø\™Û˜\ÚÝˆ]È^XÚ]˜[™\ÝžWØ›Ø\™šY]È[™ÛÝ\˜ÙK\Ú\YL‹YšY[˜[šÙY›Ø\™™\ÜÛœÙH\™B˜[Y]YÚ]ÝšXÝšY[ÛÜ™\‹ÚY[]KÝ\HÚXÚÜÎÈ\˜Ù[YÙH[š]È[™[™ØÝ[Y[YšXÙKÛX\šÙ]]˜[YH[š]È™[XZ[ˆ^XÚ]™\^HY]Y]K[™›Â›\Ý[™Ë[]™[ÜˆØ[›ÛšXØ[X\šÙ]˜XÝ\È[™™\œ™Y‚”\ÙH‹ŽNYÈHØÝ[Y[YK\Ú\™HX\Ý[Û™^HÝØÚ×ÙÙØÙ×Ù[X™^XÝ]]™KÜÚ\™ZÛ\‹XÚ[™ÙHšY]Ëˆ]È^XÚ]^XÝ]]™WÜÚ\™WØÚ[™Ù\ØšY]Â˜[™9aj:`êØ: ¨y.'9h§¹£ XØ: ¨y.'9aãù£ X\™XÝ[ÛˆÙ[XÝÜˆ\™H˜[Y]YYØZ[œÝBŒM‹YšY[[][š]™\œÙH™\ÜÛœÙH™Y›Ü™H›ÝšY\ˆš[\š[™ÎÈØÝ[Y[Y9.!ú ¨KÉB[š]ËH[™ØÝ[Y[Y]\Ý\šXÙH[š]]™[Y]H›Ý[™È[™™\^H›ÝÂ˜ÛÝ[È™[XZ[ˆ^XÚ]Y]Y]K[™›È\Ý[™Ë[]™[Ú\™K[][Û‹Ø\Ú™ÛÝ™\›˜[˜ÙHÜˆÚ\™ZÛ\‹\™]\›ˆ˜XÝ\È[™™\œ™Y‚”\ÙH‹ŽNHYÈHØÝ[Y[YK\Ú\™HX\Ý[Û™^B˜ÝØÚ×ÚÛÛX[˜YÙ[Y[Ü\œÛÛ—Ù[XX[˜YÙ[Y[\\œÛÛˆšY]È[™\‚˜S”ÒQT—ÔÒT‘WÐÒS‘ÑTØˆ]È^XÚ]X[˜YÙ[Y[Ü\œÛÛ˜šY]È\ÜÙ\ÈBœÚ^YYÚ]Þ[X›Û[™^XÝ]]™H˜[YHÈHÞ[X›ÛÜ\œÛÛ‹\ØÛÜY[™Ú[[™˜[Y]\ÈH^XÝM‹YšY[™\ÜÛœÙKY[]K]\Ë[Y\šXÈ˜[™Ù\È[™œ™\^HØÛÜKˆ[Y\šXÈ[š]È™[XZ[ˆ›ÝÙØÝ[Y[Y[™H˜]Ë[Û›B››Ü›X[^™\ˆ›YÈÜ™X]\È›È\Ý[™Ë[]™[Ú\™K[][Û‹Ø\ÚÛÝ™\›˜[˜ÙHÜ‚œÚ\™ZÛ\‹\™]\›ˆ˜XÝ‚”\ÙHËŒYÈHØÝ[Y[YK\Ú\™HX\Ý[Û™^B˜ÝØÚ×Û—Ú™Û[]—Ù[X[œÝ]][Û‹YZ[H˜YÛÛ‹UYÙ\ˆšY]È[™\‚˜PT’ÑUÐPÕU’UXˆ]È^XÚ][œÝ]][Û—ÙZ[XšY]È[™[˜Û\Ú]™H]Bœ˜[™ÙH\™H˜[Y]YYØZ[œÝHM‹YšY[[][š]™\œÙH™\ÜÛœÙH™Y›Ü™H›ÝšY\‚™š[\š[™ÎÈØÝ[Y[YÓ–Kù.¯ùa`È[Û™]\žH[š]Ë[™ØÝ[Y[Y][ÝKØÛÝ[Ü˜][Â[š]Ë^XÝ›ÝÈY[]KÙ]KÜÙ\]Y[˜ÙHÚXÚÜÈ[™™\^HØÛÜH™[XZ[ˆ^XÚ]›Y]Y]KˆH˜]Ë[Û›H›Ü›X[^™\ˆ›YÈÜ™X]\È›È\ÜÝY\ˆØ\ÚY›ÝËœÚ\™ZÛ\‹\™]\›‹ÛÝ™\›˜[˜ÙK˜[X][ÛˆÜˆØ[›ÛšXØ[X\šÙ]˜XÝ‚”\ÙHËŒHYÈHØÝ[Y[YK\Ú\™HX\Ý[Û™^B˜ÝØÚ×Ú™ÙWÝ—Ù[X[œÝ]][Û˜[\™\ÙX\˜ÚÝ]\ÝXÜÈšY]È[™\‚˜PT’ÑUÐPÕU’UXˆ]È^XÚ][œÝ]][Û—Ü™\ÙX\˜ÚšY]È[™Ý\˜]OVVVVSSQÝ]Ù™ˆ\™H˜[Y]YYØZ[œÝHLKYšY[[][š]™\œÙBœ™\ÜÛœÙH™Y›Ü™H›ÝšY\ˆš[\š[™ÎÈHÙ™šXÚX[ÝšXÝ[››Ý[˜Ù[Y[Y]B˜›Ý[™\žKÛÈ]HšY[Ë[YÙ\ˆ[œÝ]][ÛˆÛÝ[ËØÝ[Y[Y\˜Ù[YÙB[š][™ØÝ[Y[YšXÙKØÛÝ[[š]Ë^XÝ›ÝÈY[]KÜÙ\]Y[˜ÙHÚXÚÜÈ[™œ™\^HØÛÜH™[XZ[ˆ^XÚ]Y]Y]KˆH˜]Ë[Û›H›Ü›X[^™\ˆ›YÈÜ™X]\È›Âš\ÜÝY\ˆØ\ÚY›ÝËÚ\™ZÛ\‹\™]\›‹ÛÝ™\›˜[˜ÙK˜[X][ÛˆÜˆØ[›ÛšXØ[X\šÙ]™˜XÝ‚”\ÙHËŒˆYÈHØÝ[Y[YK\Ú\™HX\Ý[Û™^B˜ÝØÚ×Ú™ÙWÙ]Z[Ù[X[œÝ]][Û˜[\™\ÙX\˜Ú]Z[šY]È[™\‚˜PT’ÑUÐPÕU’UXˆ]È^XÚ][œÝ]][Û—Ü™\ÙX\˜ÚÙ]Z[šY]È[™Ý\˜]OVVVVSSQÝ]Ù™ˆ\™H˜[Y]YYØZ[œÝHLËYšY[[][š]™\œÙBœ™\ÜÛœÙH™Y›Ü™H›ÝšY\ˆš[\š[™ÎÈHÙ™šXÚX[ÝšXÝ™\ÙX\˜ÚY]B˜›Ý[™\žKÛÈ]HšY[Ë[œÝ]][Û‹Ü™XÙ\[ÛˆY[]HÛÛ^ØÝ[Y[Yœ\˜Ù[YÙH[š][™ØÝ[Y[YšXÙH[š]^XÝÙ\]Y[˜ÙHÚXÚÜÈ[™™\^BœØÛÜH™[XZ[ˆ^XÚ]Y]Y]KˆH˜]Ë[Û›H›Ü›X[^™\ˆ›YÈÜ™X]\È›È\ÜÝY\‚˜Ø\ÚY›ÝËÚ\™ZÛ\‹\™]\›‹ÛÝ™\›˜[˜ÙK˜[X][ÛˆÜˆØ[›ÛšXØ[X\šÙ]˜XÝ‚”\ÙHËŒÈYÈHØÝ[Y[YK\Ú\™HX\Ý[Û™^B˜ÝØÚ×ÙÜžWÜYÙWÜ˜][×Ù]Z[Ù[X[\Ü[\Ú\™ZÛ\ˆYÙKY]Z[šY]Â[™\ˆÕÓ‘T”ÒTÔQÑXˆ]È^XÚ]X\šÙ]ÜYÙWÙ]Z[šY]È[™››ËX\™Ý[Y[[][š]™\œÙH™\ÜÛœÙH\™H˜[Y]YYØZ[œÝH^XÝMKYšY[œÛÝ\˜ÙHÜ™\ˆ™Y›Ü™H›ÝšY\ˆš[\š[™ÎÈL\›ÝÈ[\YÙHYÚ[˜][Û‹™\ØÙ[™[™È[››Ý[˜Ù[Y[Ü™\š[™ËÚ\™\ËÜ\˜Ù[ÐÓ–K\\‹\Ú\™H[š]Ë^XÚ]›[Xš[]KYÙKY]H›Ý[™\šY\Ë\XØ]HY[]H[™™\^HY]Y]Bœ™[XZ[ˆ^XÚ]ˆH˜]Ë[Û›H›Ü›X[^™\ˆ›YÈÜ™X]\È›ÈØ[›ÛšXØ[Ú\™K˜Ø\ÚXY\]Z]˜[[ÜˆÛÝ™\›˜[˜ÙH˜XÝ‚”\ÙHËŒYÈHØÝ[Y[YK\Ú\™HX\Ý[Û™^B˜ÝØÚ×ÙÜžWÙ\ÝšX]WÜÝ]\ÝXÜ×ØÛÛ\[žWÙ[XYÙKZ[œÝ]][Û‚˜ÛÛ\[žKY\ÝšX][ÛˆšY]È[™\ˆÕÓ‘T”ÒTÔQÑXˆ]È^XÚ]˜ÛÛ\[žWÙ\ÝšX][Û˜šY]È[™›ËX\™Ý[Y[”ÑÑ–WÖ–R‘×ÔÕSX™\ÜÛœÙH\™B˜[Y]Y\ÈHÛÛ\]HZYÚYšY[[œÝ]][Û‹\˜[šÙYÛ˜\ÚÝ™Y›Ü™Bœ™][[Û‹Ú]Û™KX˜\ÙYÙ\]Y[˜ÙK[š\]YH[œÝ]][ÛˆY[]K›Û‹Z[˜Ü™X\Ú[™Â˜ÛÛ\[žKXÛÝ[Ü™\š[™ËÚ\™\ËÜ\˜Ù[[š]Ë[˜Ú[™ÙYÛÝ\˜ÙH[Y\šXÈØØ[KœÚ[™ÛK\YÙH™\ÜÙš[\‹ÜÛÜY]Y]H[™›È\Ý[™Èš[\š[™ËˆH˜]Ë[Û›B››Ü›X[^™\ˆ›YÈÜ™X]\È›ÈØ[›ÛšXØ[Ú\™KØ\ÚXY\]Z]˜[[ÜˆÛÝ™\›˜[˜ÙB™˜XÝ[™X]™\ÈÛÝ™\›˜[˜ÙWÜš\Ú×Û]™[Üš]XØ[HZ\ÜÚ[™Ë‚”\ÙHËŒHYÈHØÝ[Y[YK\Ú\™HX\Ý[Û™^B˜ÝØÚ×ÙÜžWÙ\ÝšX]WÜÝ]\ÝXÜ×Ø˜[š×Ù[XYÙKZ[œÝ]][Ûˆ˜[šËY\ÝšX][Û‚šY]È[™\ˆÕÓ‘T”ÒTÔQÑXˆ]È^XÚ]˜[š×Ù\ÝšX][Û˜šY]È[™››ËX\™Ý[Y[”ÑÑ–WÖ–R‘×ÔÕSX™\ÜÛœÙH\™H˜[Y]Y\ÈHÛÛ\]HZYÚYšY[š[œÝ]][Û‹\˜[šÙYÛ˜\ÚÝ™Y›Ü™H™][[Û‹Ú]Û™KX˜\ÙYÙ\]Y[˜ÙK[š\]YBš[œÝ]][ÛˆY[]K›Û‹Z[˜Ü™X\Ú[™ÈÛÛ\[žKXÛÝ[Ü™\š[™ËÚ\™\ËÜ\˜Ù[[š]Ë[˜Ú[™ÙYÛÝ\˜ÙH[Y\šXÈØØ[KÚ[™ÛK\YÙH™\ÜÙš[\‹ÜÛÜY]Y]B˜[™›È\Ý[™Èš[\š[™ËˆH]™H›Ø™HØœÙ\™Y:díº(c8¡hXØ:+àyb.8¡hX™\ÜX™[ÂÚ[HHØÝ[Y[Y:díº(cÜ˜\\ˆš[\ˆ™]\›™Y›È›ÝÜÎÈ\ÈÛÛ˜XÝ\Âœ™XÛÜ™YÚ]Ý]Ú[[HY\™Ú[™ÈHÝY™š^YX™[ËˆH˜]Ë[Û›H›Ü›X[^™\‚™›YÈÜ™X]\È›ÈØ[›ÛšXØ[Ú\™KØ\ÚXY\]Z]˜[[ÜˆÛÝ™\›˜[˜ÙH˜XÝ[™›X]™\ÈÛÝ™\›˜[˜ÙWÜš\Ú×Û]™[Üš]XØ[HZ\ÜÚ[™Ë‚”\ÙHËŒˆYÈHØÝ[Y[YK\Ú\™HX\Ý[Û™^B˜ÝØÚ×ÙÜžWÚ[™\ÝžWÙ]WÙ[XÝÛ™\œÚ\\YÙH[™\ÝžKY]HšY]È[™\‚˜ÕÓ‘T”ÒTÔQÑXˆ]È^XÚ][™\ÝžWÙ]XšY]È[™›ËX\™Ý[Y[˜”ÐÔÑ×ÒS‘TÕ–WÔÕUTÕPÔØ™\ÜÛœÙH\™H˜[Y]Y\ÈHÛÛ\]Bš[™\ÝžK\˜[šÙYÛ˜\ÚÝ™Y›Ü™H™][[Û‹Ú]Û™KX˜\ÙYÙ\]Y[˜ÙK[š\]YBš[™\ÝžHY[]K›Û‹Z[˜Ü™X\Ú[™È]™\˜YÙHYÙH˜][Ë™\]Z\™Y›ÝÈ]\Ë™ØÝ[Y[Y\˜Ù[ÜÚ\™\ËÐÓ–H[š]Ëš^Y™\ÜÜYÙKÜÛÜY]Y]H[™›Â›\Ý[™Èš[\š[™ËˆH]™H›Ø™HØœÙ\™Y[™\ÝžHX™[ÈÚ]H8¡hXÝY™š^ÂHY\\ˆ™\Ù\™\È›ÝšY\ˆ^ˆH˜]Ë[Û›H›Ü›X[^™\ˆ›YÈÜ™X]\È›Â˜Ø[›ÛšXØ[Ú\™KØ\ÚXY\]Z]˜[[ÜˆÛÝ™\›˜[˜ÙH˜XÝ[™X]™\Â˜ÛÝ™\›˜[˜ÙWÜš\Ú×Û]™[Üš]XØ[HZ\ÜÚ[™Ë‚”\ÙHËŒÈYÈHØÝ[Y[YK\Ú\™HX\Ý[Û™^B˜ÝØÚ×ÜÞWÚWÙ[XÛÛÙÚ[Z[™\ÝžHšY]È[™\ˆÓÓÑÒSÒSTRT“QS•Ú]™^XÚ]šY]ÏZ[™\ÝžWÙ]X[™™\]Z\™Y]OVVVVSSQˆ]Â˜”ÑÓÓÑÒSÒS‘TÕUTÕPÔØ™\ÜÛœÙH\ÈHX\šÙ]]ÚYK]KYš[\™YL\›ÝË\YÙYÛ˜\ÚÝÜ™\™YžH\ØÙ[™[™ÈÕSTÒTURUWÔUSØ[™œ™]\›š[™ÈÚ^^XÝ[™\ÝžHYÙÜ™YØ]HšY[ËˆHY\\ˆ˜[Y]\È[š\]YBš[™\ÝžHY[]K˜][ÈÜ™\š[™Ëš[š]H˜[Y\Ë[YÙ\‹Û›Û‹[™YØ]]™HÛÛ\[žB˜ÛÝ[È[™H™\]Y\Ý\\š[Ùš[™[™ËÚ[H™\Ù\š[™ÈÚYÛ™Y™]\›Ùš]˜YÙÜ™YØ]\Ë^XÝÛÝ\˜ÙHÜ™\‹Ó–H[[Ý[ÛÛ^[™[™ØÝ[Y[Y˜ÛÝ[Ü˜][È[š]ËˆH›Ü›X[^™\ˆ[Z]Â˜RÔÒT‘WÑÓÓÑÒSÒS‘TÕ–WÑUWÔU×ÓÓ“XX]™\ÈÛÛÙÚ[[™[\Z\›Y[˜Üš]XØ[HZ\ÜÚ[™È[™Ü™X]\È›ÈØ[›ÛšXØ[XØÛÝ[[™Ë›Ùš]˜][ÈÜ‚\Ú[™\ÜÈ]X[]H˜XÝÈš[X\žKYš[[™È\ÜÝY\ˆØÛÜH[™™XÛÛ˜Ú[X][Ûˆ™[XZ[‚[œ™\ÛÛ™Y‚”\ÙHËŒYÈHØÝ[Y[YK\Ú\™HX\Ý[Û™^B˜ÝØÚ×ØXØÛÝ[ÜÝ]\ÝXÜ×Ù[XÝØÚËXXØÛÝ[\Ý]\ÝXÜÈšY]È[™\‚˜PT’ÑUÐPÕU’UXˆ]È^XÚ]XØÛÝ[ÜÝ]\ÝXÜØšY]È[™›ËX\™Ý[Y[˜”ÔÕÐÒ×ÓÔS—ÑUX™\ÜÛœÙH\™H˜[Y]Y\ÈHÛÛ\]H[ÛH\ÝÜžBÚ]LH^XÝšY[ËÝšXÝ\ØÙ[™[™ÈVVVKSSX]\Ë[X›HÚ[™ÙB™šY[Ë›Û‹[™YØ]]™HXØÛÝ[ÛX\šÙ]XØ\Ú[™^XÛÜÙHYÙÜ™YØ]\È[™^XÚ]œÛÝ\˜ÙKÙ›ÜÜÛÜÝ[š]Y]Y]KˆH˜]Ë[Û›H›Ü›X[^™\ˆ›YÈÜ™X]\È›Â˜Ø[›ÛšXØ[XØÛÝ[[™ËÚ\™ZÛ\‹\™]\›‹ÛÝ™\›˜[˜ÙKX\šÙ]Üˆ˜[X][Û‚™˜XÝ™XØ]\ÙHH\ÝÜžH\ÈX\šÙ]]ÚYH[™\È›È\Ý[™ËÙ[]HXØÛÝ[[™ÂœØÛÜK‚”\ÙHËŒHYÈHØÝ[Y[YK\Ú\™HYÝB˜ÝØÚ×ÛX\šÙ]ØXÝ]š]WÛYÝXX\šÙ]XXÝ]š]HšY]È[™\ˆPT’ÑUÐPÕU’UXÚ]™^XÚ]šY]Ï[X\šÙ]ØXÝ]š]WÛYÝX[™›È\Ý™X[H\™Ý[Y[Ëˆ]ÈSX˜XÚÙY˜Ý\œ™[Ú[™ÚZKÔÚ[žš[ˆÛ˜\ÚÝ\È˜[Y]Y\È^XÝHLˆÜ™\™Y˜][XØ˜[YX›ÝÜÈÛÝ™\š[™Èš\ÙKÙ˜[[Z]]\ÙÝÛ‹›]ÜÝ\Ü[™YXÝ]š]B˜[™Ý]\ÝXËY]HY]šXÜËˆ[Y\šXÈÛÝ[È™[XZ[ˆš[š]H›Û‹[™YØ]]™H˜]Â˜[Y\Ë9­.ú-àùn©˜™[XZ[œÈ›ÝšY\ˆ^[™9îçú+¨y¥éy§'Ø\ÈHÝšXÝ˜VVVKSSKQ“SN”ÔØ™\ÜÛœÙH[Y\Ý[\ˆH˜]Ë[Û›H›Ü›X[^™\ˆ›YÈÜ™X]\Â››ÈØ[›ÛšXØ[X\šÙ]™]\›‹ÛÝ™\›˜[˜ÙK˜[X][ÛˆÜˆXØÛÝ[[™È˜XÝ™XØ]\ÙBHÛ˜\ÚÝ\ÈX\šÙ]]ÚYH[™\È›È\Ý[™ËÙ[]HXØÛÝ[[™ÈØÛÜKˆ›Â˜Ø[Ý[][Û‹Ø]K\[[™KÓHÜˆ[œ][ØY\ˆÛÛ˜XÝÚ[™Ù\Ë‚”\ÙHËŒLYÈHØÝ[Y[YK\Ú\™HYÝB˜ÝØÚ×ØWØÛÛ™Ù\Ý[Û—ÛØX\šÙ]XÛÛ™Ù\Ý[Ûˆ\ÝÜžH[™\ˆPT’ÑUÐPÕU’UXÚ]™^XÚ]šY]ÏXÛÛ™Ù\Ý[Û˜[™›È\Ù\‹\Ý\YY\Ý™X[H\™Ý[Y[Ëˆ]ÂÚÙ[‹X˜XÚÙY”ÓÓˆ™\ÜÛœÙH\È˜[Y]Y\ÈH›Û‹Y[\KÝšXÝH\ØÙ[™[™Â›]\ÝY›Ý\‹^YX\ˆ\ÝÜžHÚ]^XÝ]XÛÜÙX[™ÛÛ™Ù\Ý[Û˜šY[Ë™š[š]H›Û‹[™YØ]]™H˜[Y\È[™›È[™™\œ™Y[š]ËˆH˜]Ë[Û›H›Ü›X[^™\ˆ›YÂ˜Ü™X]\È›ÈØ[›ÛšXØ[X\šÙ]™]\›‹ÛÝ™\›˜[˜ÙK˜[X][ÛˆÜˆXØÛÝ[[™È˜XÝ˜™XØ]\ÙH›ÝšY\‹YYš[™YÛÛ™Ù\Ý[Ûˆ\ÝÜžH\È›È\Ý[™ËÙ[]HXØÛÝ[[™ÂœØÛÜKˆ›ÈØ[Ý[][Û‹Ø]K\[[™KÓHÜˆ[œ][ØY\ˆÛÛ˜XÝÚ[™Ù\Ë‚”\ÙHËŒLHYÈHØÝ[Y[YK\Ú\™HYÝB˜ÝØÚ×ÙXœ×ÛØ\]Z]KX›Û™\Ü™XY\ÝÜžH[™\ˆPT’ÑUÐPÕU’UXÚ]™^XÚ]šY]ÏY\]Z]WØ›Û™ÜÜ™XY[™›È\Ù\‹\Ý\YY\™Ý[Y[Ëˆ]ÂÚÙ[‹X˜XÚÙY”ÓÓˆ™\ÜÛœÙH\È˜[Y]Y\ÈH›Û‹Y[\KÝšXÝH\ØÙ[™[™Âš\ÝÜžHÚ]^XÝ9¥éy§'Ø9¬ª¹­ìLÌ9£!ù¥l: ¨y`.¹b*ymë˜[™: ¨y`.¹b*ymë¹gaùî¯ØšY[Ë™š[š]H[Y\šXÈ˜[Y\ËH›Û‹[™YØ]]™H[™^Ù\šY\È[™ÚYÛ™YÜ™XY˜[Y\Ë‚•H˜]Ë[Û›H›Ü›X[^™\ˆ›YÈÜ™X]\È›ÈØ[›ÛšXØ[X\šÙ]™]\›‹˜[X][Û‹™ÛÝ™\›˜[˜ÙHÜˆXØÛÝ[[™È˜XÝ™XØ]\ÙH\È[™^ÜÜ™XYÛÛ^\È›Â›\Ý[™ËÙ[]HXØÛÝ[[™ÈØÛÜKˆ›ÈØ[Ý[][Û‹Ø]K\[[™KÓHÜ‚š[œ][ØY\ˆÛÛ˜XÝÚ[™Ù\Ë‚”\ÙHËŒLˆYÈHØÝ[Y[YK\Ú\™HYÝB˜ÝØÚ×ØY™™]Ú[™^ÛØY™™]Z[™^\ÝÜžH[™\ˆPT’ÑUÐPÕU’UXÚ]™^XÚ]šY]ÏXY™™]Ú[™^[™›È\Ù\‹\Ý\YY\™Ý[Y[Ëˆ]ÈÚÙ[‹X˜XÚÙY’”ÓÓˆ™\ÜÛœÙH\È˜[Y]Y\ÈH›Û‹Y[\KÝšXÝH\ØÙ[™[™È[Z\ÝÜžBœÙ\šY\ÈÚ]H›Ý\ˆØÝ[Y[Y9¥éy§'Ø9¥-¹ææ9.íØ9 .ùn ¹`/[™ÑšY[Ë™š[š]H›Û‹[™YØ]]™H˜\ÙH˜[Y\È[™Ü[Û˜[˜[YY\˜Ù[[H^[œÚ[ÛœËˆBœ˜]Ë[Û›H›Ü›X[^™\ˆ›YÈÜ™X]\È›ÈØ[›ÛšXØ[X\šÙ]™]\›‹˜[X][Û‹™ÛÝ™\›˜[˜ÙHÜˆXØÛÝ[[™È˜XÝ™XØ]\ÙHH[™^ÛX\šÙ]XØ\][^˜][Û‹ÑÑ˜ÛÛ^\È›È\Ý[™ËÙ[]HXØÛÝ[[™ÈØÛÜKˆ›ÈØ[Ý[][Û‹Ø]K\[[™KÓHÜˆ[œ][ØY\ˆÛÛ˜XÝÚ[™Ù\Ë‚‚”\ÙHËŒLÈYÈHØÝ[Y[YK\Ú\™HYÝB˜ÝØÚ×ØWÝWÛ\˜H\ÝÜžH[™\ˆPT’ÑUÐPÕU’UXÚ]^XÚ]˜šY]Ï]WÛ\˜[™›È\Ù\‹\Ý\YY\™Ý[Y[Ëˆ]ÈÚÙ[‹X˜XÚÙY”ÓÓˆ™\ÜÛœÙH\Â˜[Y]Y\ÈH›Û‹Y[\KÝšXÝH\ØÙ[™[™È[Z\ÝÜžHÙ\šY\ÈÚ]H[ŒMYšY[]KÕKÓT‹Ü\˜Ù[[KÚ[™^ØÚ[XKš[š]H[Y\šXÈ˜[Y\È[™B››Û‹[™YØ]]™H[™^XÛÜÙHšY[ˆH˜]Ë[Û›H›Ü›X[^™\ˆ›YÈÜ™X]\È›Â˜Ø[›ÛšXØ[X\šÙ]™]\›‹˜[X][Û‹ÛÝ™\›˜[˜ÙHÜˆXØÛÝ[[™È˜XÝ™XØ]\ÙHB›X\šÙ]]ÚYHHÛÛ^\È›È\Ý[™ËÙ[]HXØÛÝ[[™ÈØÛÜKˆ›ÈØ[Ý[][Û‹™Ø]K\[[™KÓHÜˆ[œ][ØY\ˆÛÛ˜XÝÚ[™Ù\Ë‚”\ÙHËŒMYÈHØÝ[Y[YK\Ú\™HYÝB˜ÝØÚ×ØWØ[Ü˜ˆ\ÝÜžH[™\ˆPT’ÑUÐPÕU’UXÚ]^XÚ]˜šY]ÏX[Ü˜[™›È\Ù\‹\Ý\YY\™Ý[Y[Ëˆ]ÈÚÙ[‹X˜XÚÙY”ÓÓˆ™\ÜÛœÙH\Â˜[Y]Y\ÈH›Û‹Y[\KÝšXÝH\ØÙ[™[™È[Z\ÝÜžHÙ\šY\ÈÚ]H[™ZYÚYšY[]KÔ‹Ü\˜Ù[[KÚ[™^ØÚ[XNÈHÜ˜\\‹Y›ÜY˜ÙZYÚ[™Ð]™\˜YÙT˜šY[š[š]H[Y\šXÈ˜[Y\È[™›Û‹[™YØ]]™H[™^XÛÜÙB˜›Ý[™\žH\™H™XÛÜ™Y^XÚ]KˆH˜]Ë[Û›H›Ü›X[^™\ˆ›YÈÜ™X]\È›Â˜Ø[›ÛšXØ[X\šÙ]™]\›‹˜[X][Û‹ÛÝ™\›˜[˜ÙHÜˆXØÛÝ[[™È˜XÝ™XØ]\ÙHB›X\šÙ]]ÚYHˆÛÛ^\È›È\Ý[™ËÙ[]HXØÛÝ[[™ÈØÛÜKˆ›ÈØ[Ý[][Û‹™Ø]K\[[™KÓHÜˆ[œ][ØY\ˆÛÛ˜XÝÚ[™Ù\Ë‚”\ÙHËŒMHYÈHØÝ[Y[YK\Ú\™HYÝHÝØÚ×ÛX\šÙ]ÜWÛØX\šÙ]TBš\ÝÜžH[™\ˆPT’ÑUÐPÕU’UXÚ]^XÚ]šY]Ï[X\šÙ]ÜX[™H™\]Z\™Y˜›Ø\™Þ[X›ÛˆHÝ[™\™X›Ø\™[™9éäyb&ùâbšY[˜\šX[ËÞ[X›Û\ÜXÚYšXÂT\ËÙš^YQËÝšXÝ[Z\ÝÜžHØÚ[XH[™ÚYÛ™YTH˜]Ë[Û›H›Ý[™\žH\™Bœ™XÛÜ™YÈ›ÈØ[›ÛšXØ[X\šÙ]™]\›‹˜[X][Û‹ÛÝ™\›˜[˜ÙHÜˆXØÛÝ[[™Â™˜XÝ\ÈÜ™X]Y[™›ÈØ[Ý[][Û‹Ø]K\[[™KÓHÜˆ[œ][ØY\‚˜ÛÛ˜XÝÚ[™Ù\Ë‚”\ÙHËŒMˆYÈHØÝ[Y[YK\Ú\™HYÝHÝØÚ×ÛX\šÙ]Ü—ÛØX\šÙ]T‚š\ÝÜžH[™\ˆPT’ÑUÐPÕU’UXÚ]^XÚ]šY]Ï[X\šÙ]Ü˜[™H™\]Z\™Y˜›Ø\™Þ[X›Ûˆ]Èš]™KYšY[ØÚ[XKÞ[X›Û\ÜXÚYšXÈÛÝ\˜ÙHYÙ\È[™š^Y˜[™^ÛÙX˜[Y\ËÝšXÝ[Z\ÝÜžH˜[Y][Ûˆ[™ÚYÛ™YTˆ˜]Ë[Û›B˜›Ý[™\žH\™H™XÛÜ™YÈ›ÈØ[›ÛšXØ[X\šÙ]™]\›‹˜[X][Û‹ÛÝ™\›˜[˜ÙHÜ‚˜XØÛÝ[[™È˜XÝ\ÈÜ™X]Y[™›ÈØ[Ý[][Û‹Ø]K\[[™KÓHÜ‚š[œ][ØY\ˆÛÛ˜XÝÚ[™Ù\Ë‚”\ÙHËŒMÈYÈHØÝ[Y[YK\Ú\™HYÝHÝØÚ×Ú[™^ÜWÛØ[™^TBš\ÝÜžH[™\ˆPT’ÑUÐPÕU’UXÚ]^XÚ]šY]ÏZ[™^ÜX[™H™\]Z\™Yš[™^Þ[X›Ûˆ]ÈZYÚYšY[ØÚ[XKÙ™šXÚX[š^Y[™^XÛÙHX\[™ËœÝšXÝ[Z\ÝÜžH˜[Y][Ûˆ[™ÚYÛ™YTH˜]Ë[Û›H›Ý[™\žH\™H™XÛÜ™YÂ››ÈØ[›ÛšXØ[X\šÙ]™]\›‹˜[X][Û‹ÛÝ™\›˜[˜ÙHÜˆXØÛÝ[[™È˜XÝ\Â˜Ü™X]Y[™›ÈØ[Ý[][Û‹Ø]K\[[™KÓHÜˆ[œ][ØY\ˆÛÛ˜XÝ˜Ú[™Ù\Ë‚”\ÙHËŒNYÈHØÝ[Y[YK\Ú\™HYÝHÝØÚ×Ú[™^Ü—ÛØ[™^T‚š\ÝÜžH[™\ˆPT’ÑUÐPÕU’UXÚ]^XÚ]šY]ÏZ[™^Ü˜[™H™\]Z\™Yš[™^Þ[X›Ûˆ]Èš]™KYšY[ØÚ[XKÙ™šXÚX[š^Y[™^XÛÙHX\[™ËÝšXÝ˜[Z\ÝÜžH˜[Y][Ûˆ[™ÚYÛ™YTˆ˜]Ë[Û›H›Ý[™\žH\™H™XÛÜ™YÈB™ØÝ[Y[YÞL\˜ÛÝ\˜ÙHYÙH[™XÝX[žL]K[\˜ÔÔ‘ˆ˜[œÜÜYÙBœ™[XZ[ˆ\Ý[˜Ý›Ý™[˜[˜ÙHY]Y]K[™›ÈØ[Ý[][Û‹Ø]K\[[™KÓHÜ‚š[œ][ØY\ˆÛÛ˜XÝÚ[™Ù\Ë‚”\ÙHËŒNHYÈHØÝ[Y[YK\Ú\™H˜ZYHÝØÚ×ÞšÝ˜[X][Û—Ø˜ZYX˜[X][Û‹Z\ÝÜžH[™Ú[[™\ˆPT’ÑUÐPÕU’UXÚ]^XÚ]˜šY]Ï]˜[X][Û—Ø˜ZYXH\š]™YÚ^YYÚ]\Ý[™ÈÞ[X›Ûš]™H[™XØ]Ü‚˜ÚÚXÙ\È[™š]™H\š[ÙÚÚXÙ\Ëˆ]È^XÝ]XØ˜[YXØÚ[XKÙ™šXÚX[™š^YÙ[˜[ZXÈ”ÓÓˆ\˜[Y]\œË\Ý[™Ë\ØÛÜY]H›Ý[™È[™ÝšXÝ\ÝÜžB˜[Y][Ûˆ\™H™XÛÜ™YÈH›Ü›X[^™\ˆ[Z]Â˜RÔÒT‘WÐRQWÕSPUSÓ—ÔU×ÓÓ“X[™Ü™X]\È›ÈØ[›ÛšXØ[˜[X][Û‹X\šÙ]œ™]\›‹ÛÝ™\›˜[˜ÙHÜˆXØÛÝ[[™È˜XÝ[™›ÈØ[Ý[][Û‹Ø]K\[[™KÓB›Üˆ[œ][ØY\ˆÛÛ˜XÝÚ[™Ù\Ë‚”\ÙHËŒŒYÈHØÝ[Y[Y\Ú\™H˜ZYHÝØÚ×Ú×Ý˜[X][Û—Ø˜ZYX˜[X][Û‹Z\ÝÜžH[™Ú[[™\ˆPT’ÑUÐPÕU’UXÚ]^XÚ]˜šY]Ï]˜[X][Û—Ø˜ZYWÚØH\š]™Yš]™KYYÚ]\Ý[™ÈÞ[X›Ûš]™H[™XØ]Ü‚˜ÚÚXÙ\È[™™YH\š[ÙÚÚXÙ\Ëˆ]È^XÝ]XØ˜[YXØÚ[XKÙ™šXÚX[™š^YÙ[˜[ZXÈ”ÓÓˆ\˜[Y]\œÈ[˜ÛY[™ÈX\šÙ]ZØ\Ý[™Ë\ØÛÜY]H›Ý[™Â˜[™ÝšXÝ\ÝÜžH˜[Y][Ûˆ\™H™XÛÜ™YÈH›Ü›X[^™\ˆ[Z]Â˜RÔÒT‘WÒ×ÐRQWÕSPUSÓ—ÔU×ÓÓ“X[™Ü™X]\È›ÈØ[›ÛšXØ[˜[X][Û‹›X\šÙ]™]\›‹ÛÝ™\›˜[˜ÙHÜˆXØÛÝ[[™È˜XÝ[™›ÈØ[Ý[][Û‹Ø]Kœ\[[™KÓHÜˆ[œ][ØY\ˆÛÛ˜XÝÚ[™Ù\Ë‚”\ÙHËŒŒHYÈHØÝ[Y[YK\Ú\™HX\Ý[Û™^B˜ÝØÚ×ÞšÝ˜[X][Û—ØÛÛ\\š\ÛÛ—Ù[X˜[X][Û‹XÛÛ\\š\ÛÛˆ[™Ú[[™\‚˜PT’ÑUÐPÕU’UXÚ]^XÚ]šY]Ï]˜[X][Û—ØÛÛ\\š\ÛÛ˜[™[‚™^Ú[™ÙK\™Yš^YÚ^YYÚ]\Ý[™ÈÞ[X›Ûˆ]ÈÝ\œ™[ŒYšY[\™Ù]š[™\ÝžK\Ý[[X\žH[™˜[šÙY\Y\ˆÝ]]^XÝX\Ý[Û™^H”ÓÓˆ™\ÜÙš[\‹ÂœÛÜ\˜[Y]\œË[X›KÜÚYÛ™Y[Y\šXÈ›Ý[™\žH[™™\^HY]Y]H\™Bœ™XÛÜ™YÈH›Ü›X[^™\ˆ[Z]Â˜RÔÒT‘WÕSPUSÓ—ÐÓÓTT’TÓÓ—ÔU×ÓÓ“X[™Ü™X]\È›ÈØ[›ÛšXØ[˜[X][Û‹›X\šÙ]™]\›‹ÛÝ™\›˜[˜ÙHÜˆXØÛÝ[[™È˜XÝ[™›ÈØ[Ý[][Û‹Ø]Kœ\[[™KÓHÜˆ[œ][ØY\ˆÛÛ˜XÝÚ[™Ù\Ë‚”\ÙHËŒŒˆYÈHØÝ[Y[Y\Ú\™HX\Ý[Û™^B˜ÝØÚ×Ú×Ý˜[X][Û—ØÛÛ\\š\ÛÛ—Ù[X˜[X][Û‹XÛÛ\\š\ÛÛˆ[™Ú[[™\‚˜PT’ÑUÐPÕU’UXÚ]^XÚ]šY]Ï]˜[X][Û—ØÛÛ\\š\ÛÛ—ÚØ[™[‚[œ™Yš^Yš]™KYYÚ]\Ý[™ÈÞ[X›Ûˆ]ÈÝ\œ™[NYšY[Ú[™ÛK[\Ý[™Â›Ý]]^XÚ]”ÓÓˆ™\ÜØÛÛ[[œËÙš[\‹ØÛY[\˜[Y]\œË[X›KÜÚYÛ™Y›][\\ËÜÚ]]™H[YÙ\ˆ˜[šÜÈ[™™\^HY]Y]H\™H™XÛÜ™YÈB››Ü›X[^™\ˆ[Z]ÈRÔÒT‘WÒ×ÕSPUSÓ—ÐÓÓTT’TÓÓ—ÔU×ÓÓ“X[™Ü™X]\È›Â˜Ø[›ÛšXØ[˜[X][Û‹X\šÙ]™]\›‹ÛÝ™\›˜[˜ÙHÜˆXØÛÝ[[™È˜XÝ[™›Â˜Ø[Ý[][Û‹Ø]K\[[™KÓHÜˆ[œ][ØY\ˆÛÛ˜XÝÚ[™Ù\Ë‚”\ÙHËŒŒÈYÈHØÝ[Y[YK\Ú\™HX\Ý[Û™^B˜ÝØÚ×ÞšÙÜ›ÝÝØÛÛ\\š\ÛÛ—Ù[XÜ›ÝÝXÛÛ\\š\ÛÛˆ[™Ú[[™\‚˜PT’ÑUÐPÕU’UXÚ]^XÚ]šY]ÏYÜ›ÝÝØÛÛ\\š\ÛÛ˜[™[‚™^Ú[™ÙK\™Yš^YÚ^YYÚ]\Ý[™ÈÞ[X›Ûˆ]ÈÝ\œ™[ŒKYšY[š[™\ÝžKX]™\˜YÙKÚ[™\ÝžK[YYX[‹ÜY\‹Ý\™Ù]Ý]]^XÚ]”ÓÓˆ™\Ü™š[\‹ÛÜÛY[[™™\œÚ[Ûˆ\˜[Y]\œË[X›KÜÚYÛ™YÜ›ÝÝ˜[Y\Ëœ˜[šÈÜ™\š[™È[™™\^HY]Y]H\™H™XÛÜ™YÈH›Ü›X[^™\ˆ[Z]Â˜RÔÒT‘WÑÔ“ÕÕÐÓÓTT’TÓÓ—ÔU×ÓÓ“X[™Ü™X]\È›ÈØ[›ÛšXØ[Ü›ÝÝ˜[X][Û‹›X\šÙ]™]\›‹ÛÝ™\›˜[˜ÙHÜˆXØÛÝ[[™È˜XÝ[™›ÈØ[Ý[][Û‹Ø]Kœ\[[™KÓHÜˆ[œ][ØY\ˆÛÛ˜XÝÚ[™Ù\Ë‚”\ÙHËŒYÈHØÝ[Y[Y\Ú\™HX\Ý[Û™^B˜ÝØÚ×Ú×ÙÜ›ÝÝØÛÛ\\š\ÛÛ—Ù[XÜ›ÝÝXÛÛ\\š\ÛÛˆ[™Ú[[™\‚˜PT’ÑUÐPÕU’UXÚ]^XÚ]šY]ÏYÜ›ÝÝØÛÛ\\š\ÛÛ—ÚØ[™[ˆ[œ™Yš^Y™š]™KYYÚ]\Ý[™ÈÞ[X›Ûˆ]ÈÝ\œ™[LYšY[Ú[™ÛK[\Ý[™ÈÝ]]^XÚ]’”ÓÓˆ™\ÜØÛÛ[[œËÙš[\‹ÜYÙKØÛY[Ý™\œÚ[Ûˆ\˜[Y]\œË[X›KÜÚYÛ™Y™Ü›ÝÝY]šXÜËÜÚ]]™H[YÙ\ˆ˜[šÜÈ[™™\^HY]Y]H\™H™XÛÜ™YÈB››Ü›X[^™\ˆ[Z]ÈRÔÒT‘WÒ×ÑÔ“ÕÕÐÓÓTT’TÓÓ—ÔU×ÓÓ“X[™Ü™X]\È›Â˜Ø[›ÛšXØ[Ü›ÝÝ˜[X][Û‹X\šÙ]™]\›‹ÛÝ™\›˜[˜ÙHÜˆXØÛÝ[[™È˜XÝ[™››ÈØ[Ý[][Û‹Ø]K\[[™KÓHÜˆ[œ][ØY\ˆÛÛ˜XÝÚ[™Ù\Ë‚”\ÙHËŒHYÈHØÝ[Y[YK\Ú\™HX\Ý[Û™^B˜ÝØÚ×ÞšÙ\ÛØÛÛ\\š\ÛÛ—Ù[XTÛXÛÛ\\š\ÛÛˆ[™Ú[[™\‚˜PT’ÑUÐPÕU’UXÚ]^XÚ]šY]ÏY\ÛØÛÛ\\š\ÛÛ˜[™[‚™^Ú[™ÙK\™Yš^YÚ^YYÚ]\Ý[™ÈÞ[X›Ûˆ]ÈÝ\œ™[NKYšY[š[™\ÝžK\Ý[[X\žKÜ˜[šÙYXÛÛ\\š\ÛÛˆÝ]]^XÚ]”ÓÓˆ™\ÜØÛÛ[[œËÙš[\‹ÂœÛÜÜYÙKÜÛÝ\˜ÙKØÛY[Ý™\œÚ[Ûˆ\˜[Y]\œË[X›KÜÚYÛ™YTÛY]šXÜËœÜÚ]]™H[YÙ\ˆ˜[šÈ[™[™È[™™\^HY]Y]H\™H™XÛÜ™YÈH›Ü›X[^™\‚™[Z]ÈRÔÒT‘WÑTÓ•ÐÓÓTT’TÓÓ—ÔU×ÓÓ“X[™Ü™X]\È›ÈØ[›ÛšXØ[œ›Ùš]Xš[]KÜ›ÝÝ˜[X][Û‹X\šÙ]™]\›‹ÛÝ™\›˜[˜ÙHÜˆXØÛÝ[[™È˜XÝ˜[™›ÈØ[Ý[][Û‹Ø]K\[[™KÓHÜˆ[œ][ØY\ˆÛÛ˜XÝÚ[™Ù\Ë‚”\ÙH‹ÍHÛÛ\]\ÈH™^ØÝ[Y[YÝXÝ\™YY]H›Ý[™\žHžHY[™ÂHK\Ú\™HÝØÚ×ÙÜžWÜ›Ùš[WÙ[XX\šÙ]]ÚYH\ÝÜšXØ[ÝÛ™\œÚ\\YÙBšY]Ëˆ]È›ËX\™Ý[Y[ZYÚYšY[™\ÜÛœÙH\È˜[Y]Y\È[ˆ\ØÙ[™[™È˜]Â™]HÙ\šY\Ë™\Ù\™\ÈHÛÝ\˜ÙH\˜Ù[]ËYœ˜XÝ[Ûˆ˜][ÈØØ[[™È[™Ù\Â››ÝÛZ[H\Ý[™Ë[]™[›ÝÜÈÜˆ˜XÝËˆHZ[\ÝÛ™HÛÛ[Y\ÈÈÙY\œÚ\™KXÚ[™ÙK™\\˜Ú\ÙH[™šYÚËZ\ÜÝYH\š[ÙÝ]\Ë[š][™™XÛÛ›ÛZXË\ØÛÜH]Y\Ý[ÛœÈ[œ™\ÛÛ™Y[™ÙY\ÈÝÛ™\œÚ\\YÙHÛ\‹™ÛÝ™\›˜[˜ÙH[™XÛÛ›ÛZXË\ØÛÜH]Y\Ý[ÛœÈ[œ™\ÛÛ™Yˆ\ÙH‹ÍˆYÈB™ØÝ[Y[YK\Ú\™HÝØÚ×ÜÞWÜ›Ùš[WÙ[XÛÛÙÚ[X\šÙ]\›Ùš[HšY]È[™\‚˜ÓÓÑÒSÒSTRT“QS•ˆ]È›ËX\™Ý[Y[ZYÚYšY[\ÝÜžH\ÈÝšXÝHÜ™\™Y˜žH9¢©ydb¹§'Ø™XÛÜ™ÈÓ–KÜ›ÝšY\‹\˜][ÈÛÛ^[™™[XZ[œÈ˜]Ë[Û›H™XØ]\ÙB˜YÙÜ™YØ]H[›X[Ú[\š[H˜[Y\ÈÈ›Ý\ÝX›\Ú\Ý[™ÈXØÛÝ[[™ÈØÛÜNÂ˜ÛÛÙÚ[[™[\Z\›Y[™[XZ[ˆÜš]XØ[HZ\ÜÚ[™È[™[™Èš[X\žKYš[[™Âœ™XÛÛ˜Ú[X][Û‹ˆHZ[\ÝÛ™HÙY\È\Ú\™HÛÛÙÚ[ÛÝ™\˜YÙH[™\ÜÝY\‹[]™[˜XØÛÝ[[™È[\œ™]][Ûˆ[œ™\ÛÛ™Yˆ\ÙH‹ÍÈYÈH™^ØÝ[Y[YK\Ú\™HÝØÚ×ÜÞWÞ\WÙ[XÛÛÙÚ[Z[\Z\›Y[›Ü™XØ\ÝšY]È[™\‚˜ÓÓÑÒSÒSTRT“QS•Ú]^XÚ]šY]ÏZ[\Z\›Y[Ù›Ü™XØ\Ý[™H™\]Z\™Y˜]OVVVVSSQˆ]È^XÝMYšY[]KYš[\™Y[š]™\œÙH\È˜[Y]Y™Y›Ü™B›\Ý[™ÈÙ[XÝ[Û‹Ú]ÜÚ]]™H\ØÙ[™[™ÈÙ\]Y[˜ÙK[X›H]\ËÛ[X™\œË^ÚXÚÜËØÝ[Y[YÓ–KÜ\˜Ù[[š]È[™™\]Y\Ý\\š[ÙÜ›ÝšY\‹Yš[\‚œ™\^HY]Y]KˆB››Ü›X[^™\ˆ[Z]ÈRÔÒT‘WÑÓÓÑÒSÑ“Ô‘PÐTÕÔU×ÓÓ“XX]™\ÈÛÛÙÚ[[™˜[\Z\›Y[Üš]XØ[HZ\ÜÚ[™È[™Ü™X]\È›ÈØ[›ÛšXØ[›Ü™XØ\Ý›Ùš]˜XØÛÝ[[™ÈÜˆ˜][È˜XÝ[™[™Èš[X\žKYš[[™ÈØÛÜH[™™XÛÛ˜Ú[X][Û‹ˆBœÚ\™HÛÛÙÚ[ÛÝ™\˜YÙH™[XZ[œÈ[œ™\ÛÛ™YˆHK\Ú\™B”Ú[˜HÝØÚ×Ú[˜Y^WÜÚ[˜X™\ÜÛœÙH\ÈH™\]Y\ÝYY]K\Ý[™Ë\ØÛÜY\™ÙKB›Ü™\ˆÛ˜\ÚÝÚÜÙH^XÝÞ[X›ÛØ˜[YXØXÚÝ[YXØšXÙXØ›Û[YXÂ˜™]—ÜšXÙXØÚ[™ØÚ[XH\È˜[Y]YÚ]›Û‹YXÜ™X\Ú[™È[YHÜ™\ˆ[™˜XØØXÚ[™ÛÙ\Ëˆ™XØ]\ÙHH›ÝÜÈ\™H[YK[Û›H]™[ˆÝYÚH™\]Y\Ý™]H\È^XÚ]H›Ü›X[^™\ˆ[Z]ÈRÔÒT‘WÔÒSWÒS•QVWÔU×ÓÓ“XX]™\Â˜X\šÙ]Ú\ÝÜžXÜš]XØ[HZ\ÜÚ[™È[™Ü™X]\È›ÈØ[›ÛšXØ[Z[KZ\ÝÜžK›\]ZY]KÜ™\‹Y›ÝÈÜˆ˜[X][Ûˆ˜XÝÈH™\]Y\ÝY]K\š]™YÞ[X›Û[š]È[™ØœÙ\™Y[YH›Ý[™È™[XZ[ˆ\ÙˆH™\^HØÛÜKˆHK\Ú\™B‘X\Ý[Û™^HÝØÚ×ÜÞWÙ[XÛÛÙÚ[Y]Z[™\ÜÛœÙH\ÈH\Ý[˜Ý™\]Y\ÝYY]K›X\šÙ]]ÚYH[š]™\œÙHÚÜÙH^XÝ[‹YšY[ØÚ[XKÜÚ]]™H\ØÙ[™[™ÈÙ\]Y[˜ÙK›\Ý[™ÈY[]K[X›H[››Ý[˜Ù[Y[]K[Y\šXËÛ[šY[È[™^™šY[È\™H˜[Y]Y™Y›Ü™H›ÝšY\ˆš[\š[™ËˆÚ]^XÚ]˜šY]ÏYÛÛÙÚ[Ù]Z[H›Ü›X[^™\ˆ[Z]Â˜RÔÒT‘WÑÓÓÑÒSÑURSÔU×ÓÓ“XX]™\ÈÛÛÙÚ[[™[\Z\›Y[˜Üš]XØ[HZ\ÜÚ[™È[™Ü™X]\È›ÈØ[›ÛšXØ[XØÛÝ[[™Ë›Ùš]˜][ÈÜ‚\Ú[™\ÜÈ]X[]H˜XÝÈÓ–KÜ›ÝšY\‹\˜][È[š]È[™™\]Y\Ý\\š[ÙÜ›ÝšY\‹B™š[\ˆØÛÜH™[XZ[ˆ™\^HY]Y]H[™[™Èš[X\žKYš[[™È™XÛÛ˜Ú[X][Û‹ˆBK\Ú\™B•[˜Ù[Z[KZ\ÝÜžH™\ÜÛœÙH\ÈH]Y\Ù\šY\È^Ù\[Ûˆ[[Û™ÈH™XÙ[›X\šÙ]Z\ÝÜžHÛXÙ\Îˆ]X\ÈH^\Ý[™ÈZ[KZ\ÝÜžH^[œÚ[Ûˆ˜XÝËœ™\Ù\™\È›Û[YH\ÈÚ\™\Ø[™[[Ý[\ÈÓ–X[™™]Z[œÈ]ÈX\šÙ]Bœ™Yš^YÞ[X›Û]H˜[™ÙKY\ÝY[[™˜]È\››Ý™\ˆ˜][È\È™\^XX›Bœ›ÝšY\ˆÛÛ^ˆHK\Ú\™B•[˜Ù[]\Ý]˜Y[™ËY^HXÚÈ™\ÜÛœÙH™[XZ[œÈ˜]Ë[Û›H™XØ]\ÙH]Â[YK[Û›H˜YH›ÝÜÈ]™H›È˜Y[™È]H[™È›Ý\ÝX›\ÚØ[›ÛšXØ[Z[Bš\ÝÜžK\]ZY]HÜˆ˜[X][Ûˆ˜XÝÎÈšY]Ï][˜Ù[ÝXÚØH\š]™Y›X\šÙ]\™Yš^YÞ[X›Û™XÛÙÛš^™Y[[Ý[XÛÛ[[ˆ˜\šX[[™[YHÜ™\š[™Âœ™[XZ[ˆ\Ùˆ]È™\^XX›HXÜ]Z\Ú][Ûˆ›Ý[™\žKˆHK\Ú\™B”Ú[˜HZ[]KZ\ÝÜžH™\ÜÛœÙH™[XZ[œÈ˜]Ë[Û›H™XØ]\ÙH]È™XÙ[›ÝšY\‚Ú[™ÝËZ[]H[\˜[[™Y\ÝY[[ÙHÈ›Ý\ÝX›\ÚØ[›ÛšXØ[Z[Bš\ÝÜžHÜˆH˜[X][Ûˆ[œ]ÈšY]Ï\Ú[˜WÛZ[]XHX\šÙ]\™Yš^YÞ[X›Ûš[\˜[[™Y\ÝY[™[XZ[ˆ\Ùˆ]È™\^XX›HXÜ]Z\Ú][Ûˆ›Ý[™\žK‚•HK\Ú\™HX\šÙ]\\XÚ\][Û‹Y\Ú\™H™\ÜÛœÙH™[XZ[œÈ˜]Ë[Û›H™XØ]\ÙH]Âœ›ÝšY\‹YYš[™Y\XÚ\][ÛˆØÛÜ™\ËØÚ[™ÙHšY[È[™]\ÝÌ]˜Y[™ËY^BÚ[™ÝÈÈ›Ý\ÝX›\ÚHØ[›ÛšXØ[X\šÙ]Y]šXË\ÜÝY\ˆØ\Ú›ÝËœÚ\™ZÛ\ˆ™]\›‹ÛÝ™\›˜[˜ÙHÜˆ˜[X][Ûˆ˜XÝÈšY]Ï\\XÚ\][Û—Ù\Ú\™XH[œ™Yš^YÞ[X›Û^XÝšY[Ù]›ÝÈ[Z][™ØœÙ\™Y]H›Ý[™Âœ™[XZ[ˆ\Ùˆ]È™\^XX›HXÜ]Z\Ú][Ûˆ›Ý[™\žK‚•HK\Ú\™HX\Ý[Û™^H[˜Y^K]˜YH™\ÜÛœÙH™[XZ[œÈ˜]Ë[Û›H™XØ]\ÙH]Â›]\Ý]˜Y[™ËY^H9¥íºeí9¢$9.©9.íØ9¢bù¥l[™9.l9ce¹ææ9 )ú-*›ÝÜÈ]™H›È˜Y[™Â™]H[™È›Ý\ÝX›\ÚØ[›ÛšXØ[Z[H\ÝÜžK\]ZY]KÜ™\ˆ›ÝÈÜ‚˜[X][Ûˆ˜XÝÎÈšY]ÏZ[˜Y^WÝ˜Y\ØH[œ™Yš^YÞ[X›Û^XÝšY[Ù][YHÜ™\š[™È[™ØœÙ\™Y[YH›Ý[™È™[XZ[ˆ\Ùˆ]È™\^XX›B˜XÜ]Z\Ú][Ûˆ›Ý[™\žK‚•H\Ú\™H[˜Y^KZ\ÝÜžH™\ÜÛœÙH™[XZ[œÈ˜]Ë[Û›H™XØ]\ÙH]È™XÙ[›Z[]KX˜\ˆÚ[™ÝË\š[Ù\ÜXÚYšXÈØÚ[XKY\ÝY[[ÙH[™ÑX\šÙ]˜ÛÛ^È›Ý\ÝX›\ÚØ[›ÛšXØ[Z[H\ÝÜžHÜˆH˜[X][Ûˆ[œ]Â˜šY]ÏZ×Ú[˜Y^XH[œ™Yš^Y\Ú\™HÞ[X›Û]][YH˜[™ÙK[\˜[˜Y\ÝY[[™Ú\™\ØØÑÜ\—ÜÚ\™XØÑ[š]È™[XZ[ˆ\Ùˆ]È™\^XX›B˜XÜ]Z\Ú][Ûˆ›Ý[™\žK‚•HK\Ú\™HÚ\Y\ÝšX][Ûˆ™\ÜÛœÙH™[XZ[œÈ˜]Ë[Û›H™XØ]\ÙH]Âœ›ÝšY\‹YYš[™Y™[™Yš]ÛÜÝ[™ÛÛ˜Ù[˜][ÛˆšY[È\ØÜšX™HH›Û[™Â›]\ÝNL]˜Y[™ËY^HÚ[™ÝÈ˜]\ˆ[ˆHØ[›ÛšXØ[Z[KZ\ÝÜžHÛÛ˜XÝÂ˜šY]ÏXÚ\Ù\ÝšX][Û˜H[œ™Yš^YK\Ú\™HÞ[X›ÛY\ÝY[[ÙK^XÝ™šY[Ù]L\›ÝÈ[Z][™ØœÙ\™Y]H›Ý[™È™[XZ[ˆ\Ùˆ]È™\^XX›B˜XÜ]Z\Ú][Ûˆ›Ý[™\žK‚•HJÒX\Ý[Û™^H][ÝKXÛÛ\\š\ÛÛˆ™\ÜÛœÙH™[XZ[œÈ˜]Ë[Û›H™XØ]\ÙH]ÂŒMK[Z[]KY[^YYÜ›ÜÜË[X\šÙ]šXÙ\ËÚ[™Ù\Ë˜][È[™™[Z][H]™H›ÂœÝX›HØœÙ\˜][Ûˆ[Y\Ý[\[™È›Ý\ÝX›\ÚØ[›ÛšXØ[Ý\œ™[šXÙK–˜ÛÛ\\š\ÛÛ‹˜[X][ÛˆÜˆØ[Ý[][Ûˆ˜XÝËˆH^XÚ]˜šY]ÏXZØÛÛ\\š\ÛÛ˜›ËX\™Ý[Y[[™Ú[^XÝ[‹YšY[™\ÜÛœÙK™š]™KKÜÚ^YYÚ]ÛÙHY[]Y\ËÚYK\ÜXÚYšXÈš[\š[™Ë[š]È[™œ™]šY]˜[[Û›HÛ˜\ÚÝ™[XZ[ˆ\Ùˆ]È™\^XX›HXÜ]Z\Ú][Ûˆ›Ý[™\žK‚•HK\Ú\™H]šY[™Y\ÝšX][Ûˆ]Z[™\ÜÛœÙH™[XZ[œÈ˜]Ë[Û›H™XØ]\ÙH]Âš\ÝÜšXØ[™\Ü\š[ÙË]™[]\Ë\ÝšX][Ûˆ˜][ÜË\‹\Ú\™Bš[™XØ]ÜœÈ[™Ú\™KXÛÝ[ÛÛ^È›Ý\ÝX›\ÚÙ]YÜ™[˜\žH]šY[™˜Ø\ÚÜˆHØ[›ÛšXØ[^[Ý][›ÛZ[˜]Ü‹ˆH^XÚ]šY]ÏY]™[Ù]Z[[œ™Yš^YÞ[X›Û^XÝNKYšY[™\ÜÛœÙK\ØÙ[™[™È™\Ü\\š[ÙÜ™\š[™Ëœ›ÝËY]Hš[™[™È[™Þ[X›Û\ØÛÜY\ÝÜšXØ[Y]Z[Û˜\ÚÝ™[XZ[ˆ\Ù‚š]È™\^XX›HXÜ]Z\Ú][Ûˆ›Ý[™\žK‚•HK\Ú\™HÓ’S‘“ÈTË\Ý[[X\žH™\ÜÛœÙH™[XZ[œÈ˜]Ë[Û›H™XØ]\ÙH]ÈÙ™™\š[™Â™]\Ë›ØÙYYË™Y\Ë]X[]Y\È[™[™\Üš]\ˆÛÛ^È›Ý\ÝX›\ÚBœÙ]Y\ÜÝX[˜ÙKXØ\Ú\š[Ù[][ÛˆÜˆHØ[›ÛšXØ[Ú\™H˜XÝˆH^XÚ]˜šY]ÏZ\×ÜÝ[[X\žX[œ™Yš^YÞ[X›Û^XÝMKYšY[™\ÜÛœÙKÞ[X›Û\ØÛÜYš\ÝÜšXØ[ØÛÜH[™›ÝËY]Hš[™[™È™[XZ[ˆ\Ùˆ]È™\^XX›HXÜ]Z\Ú][Û‚˜›Ý[™\žK‚•HK\Ú\™HX\Ý[Û™^H™]Ë\ÝØÚËX›Ø\™™\ÜÛœÙH™[XZ[œÈ˜]Ë[Û›H™XØ]\ÙH]Â˜Ý\œ™[]˜Y[™ËY^H][ÝH[š]™\œÙHÙ\È›Ý\ÝX›\ÚH]Y\Ý[™Ë™]\›‹˜[X][Û‹ÛÝ™\›˜[˜ÙHÜˆØ[›ÛšXØ[X\šÙ]˜XÝˆH^XÚ]˜šY]Ï[™]×ÜÝØÚØ›ËX\™Ý[Y[\Ý™X[H™\]Y\Ý^XÝMËYšY[™\ÜÛœÙKœÚ^YYÚ]ÛÙH˜[Y][Û‹›ÝšY\ˆš[\š[™Ë[š\]YHÙ\]Y[˜ÙH˜[Y][Ûˆ[™œ™]šY]˜[[Û›H]Hš[™[™È™[XZ[ˆ\Ùˆ]È™\^XX›HXÜ]Z\Ú][Ûˆ›Ý[™\žK‚•HK\Ú\™HX\Ý[Û™^H[™]šYX[[›ÝXÙH™\ÜÛœÙH™[XZ[œÈ˜]Ë[Û›H™XØ]\ÙH]Â˜[››Ý[˜Ù[Y[]KÝ\KÙ]KÛ[šÈY]Y]HÙ\È›Ý\ÝX›\Úš[[™ÈÛÛ[Ë˜[ˆXØÛÝ[[™ÈÜ[š[ÛˆÜˆHÛÝ™\›˜[˜ÙK\š\ÚÈYÛY[ˆH^XÚ]˜šY]ÏZ[™]šYX[Û›ÝXÙXÙXÝ\š]XØØ]YÛÜžKÙ]KX›Ý[™™\]Y\ÝX\[™Ë^XÝœÚ^YšY[™\ÜÛœÙKÚ^YYÚ]ÛÙH˜[Y][Û‹\Ý™X[H\Ý[™ÈØÛÜKš[˜Û\Ú]™H]K\˜[™ÙHÚXÚÜÈ[™Þ[X›Û\ØÛÜY\ÝÜžKÜ˜[™ÙH™\^HY]Y]Bœ™[XZ[ˆ\Ùˆ]È™\^XX›HXÜ]Z\Ú][Ûˆ›Ý[™\žK‚•HK\Ú\™HX\Ý[Û™^HX\šÙ]Y›ØÝ\È™\ÜÛœÙH™[XZ[œÈ˜]Ë[Û›H™XØ]\ÙH]Âœ›ÝšY\‹YYš[™Y\Ù\‹X][[ÛˆØÛÜ™\È[™™XÙ[˜Y[™ËY^HÚ[™ÝÈÈ›Ý™\ÝX›\ÚHØ[›ÛšXØ[X\šÙ]Y]šXË\ÜÝY\ˆØ\Ú›ÝËÚ\™ZÛ\ˆ™]\›‹™ÛÝ™\›˜[˜ÙHÜˆ˜[X][Ûˆ˜XÝˆH^XÚ]šY]ÏY›ØÝ\Ø[œ™Yš^YÞ[X›Û™^XÝÛËYšY[™\ÜÛœÙKÝšXÝ]HÜ™\š[™ËÙ™šXÚX[Ì\›ÝÈ[Z][™œÞ[X›Û\ØÛÜYØœÙ\™YY]H™\^HY]Y]H™[XZ[ˆ\Ùˆ]ÈXÜ]Z\Ú][Û‚˜›Ý[™\žK‚•HK\Ú\™HX\Ý[Û™^H[œÝ]][Û‹\\XÚ\][Ûˆ™\ÜÛœÙH™[XZ[œÈ˜]Ë[Û›B˜™XØ]\ÙH]È›ÝšY\‹YYš[™Y\˜Ù[YÙ\È[™\ÝÜšXØ[˜Y[™ËY^HÙ\šY\ÈÂ››Ý\ÝX›\ÚHØ[›ÛšXØ[X\šÙ]Y]šXË\ÜÝY\ˆØ\Ú›ÝËÚ\™ZÛ\ˆ™]\›‹™ÛÝ™\›˜[˜ÙHÜˆ˜[X][Ûˆ˜XÝˆH^XÚ]˜šY]ÏZ[œÝ]][Û—Ü\XÚ\][Û˜[œ™Yš^YÞ[X›Û^XÝÛËYšY[™\ÜÛœÙKœÝšXÝ]HÜ™\š[™Ë\˜Ù[[š][™Þ[X›Û\ØÛÜYØœÙ\™YY]H™\^B›Y]Y]H™[XZ[ˆ\Ùˆ]ÈXÜ]Z\Ú][Ûˆ›Ý[™\žK‚•HK\Ú\™HX\Ý[Û™^H]\ÝÝØÚËZÝ\˜[šÈ™\ÜÛœÙH™[XZ[œÈ˜]Ë[Û›H™XØ]\ÙBš]ÈÞ[X›Û\ØÛÜYÜ[\š]H˜[šÈ[™›ÝšY\ˆ[Z[™ÈÈ›Ý\ÝX›\ÚB˜Ø[›ÛšXØ[X\šÙ]Y]šXË\ÜÝY\ˆØ\Ú›ÝËÚ\™ZÛ\ˆ™]\›‹ÛÝ™\›˜[˜ÙHÜ‚˜[X][Ûˆ˜XÝˆH^XÚ]šY]ÏZÝÜ˜[š×Û]\ÝX\šÙ]\™Yš^YÞ[X›Û™^XÝ[‹\›ÝÈ][XØ˜[YX™\ÜÛœÙKØ[Õ[YX›ÝÈ[Y\Ý[\[™™\^B›Y]Y]H™[XZ[ˆ\Ùˆ]ÈXÜ]Z\Ú][Ûˆ›Ý[™\žK‚•HK\Ú\™HY\Z]H[™]šYX[\ÜÝ™\ÜÛœÙH\Ù\ÈH^\Ý[™ÈØ[›ÛšXØ[][ÝB˜ÛÛ˜XÝ˜\œ›ÝÛNˆšY]Ï^Y\Z]WÜÜÝH\š]™YX\šÙ]\™Yš^YÞ[X›Û™^XÝ][XØ˜[YX›ÝÈÚ\K9.èùè XY[]K9ã¬9.íØšXÙH][K9¥íºeí[Y\Ý[\[™™\^HY]Y]H™[XZ[ˆ\Ùˆ]ÈXÜ]Z\Ú][Ûˆ›Ý[™\žNÈ[›Ý\ˆY\Z]HšY[È™[XZ[ˆ˜]È]šY[˜ÙK‚•HK\Ú\™HY\Z]HÛÛ\[žK\›Ùš[H™\ÜÛœÙH™[XZ[œÈ˜]Ë[Û›H™XØ]\ÙH]Â™\ØÜš\]™K™YÚ\Ý˜][Û‹\œÛÛ›™[ÛÛ›Û[™›ÝšY\‹\ÜXÚYšXÈ]B™šY[ÈÈ›Ý\ÝX›\ÚØ[›ÛšXØ[ÛÛ\[žHÜˆ\Ý[™È˜XÝËˆH^XÚ]˜šY]Ï^Y\Z]WØ˜\ÚX×Ú[™›Ø\š]™YX\šÙ]\™Yš^YÞ[X›Û^XÝ][XØ˜[YXœ›ÝÈÚ\KØÝ[Y[Y][H[ÝÛ\Ý™\]Z\™Y›Ùš[HY[YšY\œËØØ[\ˆ[™™š[š]H[Y\šXÈ˜[YH[\Ë[™Þ[X›Û\ØÛÜYÛÛ\[žK\›Ùš[H™\^HY]Y]Bœ™[XZ[ˆ\Ùˆ]ÈXÜ]Z\Ú][Ûˆ›Ý[™\žK‚•HK\Ú\™HÓ’S‘“ÈÛÛ\[žK\›Ùš[H™\ÜÛœÙH™[XZ[œÈ˜]Ë[Û›H™XØ]\ÙH]Â™\ØÜš\]™K™YÚ\Ý˜][Û‹ÛÛXÝ[™›ÝšY\‹\ÜXÚYšXÈ]HšY[ÈÈ›Ý™\ÝX›\ÚØ[›ÛšXØ[ÛÛ\[žHÜˆ\Ý[™È˜XÝËˆH^XÚ]˜šY]ÏXÛš[™›×Ü›Ùš[X[œ™Yš^YÚ^YYÚ]Þ[X›Û^XÝ‹YšY[›ÝÈÚ\KK\Ú\™HÛÙHY[]KØØ[\‹Û[[™˜[Y]K[Ü‹[[[\Ë[™Þ[X›Û\ØÛÜY˜ÛÛ\[žK\›Ùš[H™\^HY]Y]H™[XZ[ˆ\Ùˆ]ÈXÜ]Z\Ú][Ûˆ›Ý[™\žK‚•HK\Ú\™HÛ™ÚX\Ú[ˆXZ[‹X\Ú[™\ÜËZ[›ÙXÝ[Ûˆ™\ÜÛœÙH™[XZ[œÈ˜]Ë[Û›B˜™XØ]\ÙH]È\Ú[™\ÜË›ÙXÝ[™Ü\˜][™Ë\ØÛÜH\ØÜš\[ÛœÈÈ›Ý\ÝX›\Ú˜Ø[›ÛšXØ[™]™[YKÛÜ™KX\Ú[™\ÜÈÜˆ\Ú[™\ÜÈ]X[]H˜XÝËˆH^XÚ]˜šY]ÏX\Ú[™\Ü×Ú[›Ø[œ™Yš^YÚ^YYÚ]Þ[X›Û^XÝš]™KYšY[›ÝÈÚ\KK\Ú\™HÛÙHY[]KÝš[™ËÛ[[\È[™Þ[X›Û\ØÛÜYÝ\œ™[Û˜\ÚÝœ™\^HY]Y]H™[XZ[ˆ\Ùˆ]ÈXÜ]Z\Ú][Ûˆ›Ý[™\žK‚‚™]šY[™Y\ÝšX][ÛˆÛ˜\ÚÝ™[XZ[œÈ˜]Ë[Û›H™XØ]\ÙH]È˜][ÜËÝ]\È[™›][\H]\ÈÈ›Ý\ÝX›\ÚÙ]YÜ™[˜\žHØ\ÚÜˆHØ[›ÛšXØ[^[Ý]™[›ÛZ[˜]Ü‹ˆ\ÙHˆ\ÈÛÛ\]H]HÜ]™[È]\™HØÝ[Y[Y˜Ø]YÛÜšY\È]\Ý™H™]šY]ÙY™Y›Ü™HZ\ˆšY[ÈØ[ˆ[\ˆHØ[›ÛšXØ[˜ÛÛ˜XÝˆHK\Ú\™B™X\›š[™ÜËY›Ü™XØ\ÝÛ˜\ÚÝ™[XZ[œÈ˜]Ë[Û›H™XØ]\ÙH›Ü™XØ\Ý˜[™Ù\Ë›Ü™XØ\Ý\H[™[››Ý[˜Ù[Y[]\ÈÈ›Ý\ÝX›\Ú™\ÜY\™[ÜˆÛÛœÛÛY]Yœ›Ùš]›ÜˆH™\]Y\ÝY\š[Ùˆš[[™ËY\š]™YÛ\ÜÚYšXØ][ÛœÈ™[XZ[ˆB”\ÙHÈÛÛ˜Ù\›‹ˆHK\Ú\™H\™›Ü›X[˜ÙK\™\ÜÛ˜\ÚÝ™[XZ[œÈ˜]Ë[Û›B˜™XØ]\ÙH]ÈXY[™H™]›Ùš]\È›ÈYZ]Y\™[ØÛÛœÛÛY]Y˜\Ú\È[™š]ÈÜ\˜][™ÈØ\Ú›ÝÈ\È\ˆÚ\™H˜]\ˆ[ˆHØ[›ÛšXØ[™\ÜYÑ“ÂÝ[ˆHK\Ú\™HX\›š[™ÜË\]ZXÚË\™\ÜÛ˜\ÚÝ™[XZ[œÈ˜]Ë[Û›H™XØ]\ÙH]ÂšXY[™H›Ùš][™™]™[YHÛÛ\\š\ÛÛœË\‹\Ú\™H[™XØ]ÜœÈ[™[››Ý[˜Ù[Y[™]HÈ›Ý\ÝX›\ÚHØ[›ÛšXØ[[]K[š][]Y\Ú\™HÜˆš[[™Âœ\š[ÙÙ[X[XÜË‚‚•HK\Ú\™HÜ][‹\Ú\™ZÛ\ˆ™\Ü\\š[Ù›ÝÜÈ™[XZ[ˆ˜]Ë[Û›H™XØ]\ÙBšÛ\ˆ˜[šË]X[]Y\Ë˜][ÜÈ[™™\ÜY]HÛÛ^È›Ý\ÝX›\Ú˜™[™YšXÚX[ÛÛ›ÛHØ[›ÛšXØ[ÛÛ˜Ù[˜][ÛˆY]šXÈÜˆHÛÛ\[žK[]™[™[]Y\Ú\™HÙ\šY\ËˆH^XÚ]šY]Ï]ÜÌL[™]X\\‹Y[™]X™[XZ[‚œ\ÙˆH™\^XX›HXÜ]Z\Ú][Ûˆ›Ý[™\žK‚‚•HK\Ú\™HÜ][‹]˜YX›K\Ú\™ZÛ\ˆ™\Ü\\š[Ù›ÝÜÈ™[XZ[ˆ˜]Ë[Û›B˜™XØ]\ÙHÛ\ˆ˜[šË]X[]Y\Ë›Ø]\Ú\™H˜][ÜÈ[™™\ÜY]HÛÛ^Â››Ý\ÝX›\Ú™[™YšXÚX[ÛÛ›ÛHØ[›ÛšXØ[ÛÛ˜Ù[˜][ÛˆY]šXÈÜˆB˜ÛÛ\[žK[]™[[]Y\Ú\™HÙ\šY\ËˆH^XÚ]šY]ÏYœ™YWÝÜÌL[™œ]X\\‹Y[™]X™[XZ[ˆ\ÙˆH™\^XX›HXÜ]Z\Ú][Ûˆ›Ý[™\žK‚‚•HK\Ú\™HÜ][‹]˜YX›K\Ú\™ZÛ\ˆ]Z[[š]™\œÙH™[XZ[œÈ˜]Ë[Û›B˜™XØ]\ÙH]È™\Ü\\š[ÙÛ\ˆ›ÝÜË]X[]Y\ËÚ[™ÙHšY[Ë™›Ø][X\šÙ]˜[Y\È[™[››Ý[˜Ù[Y[]\ÈÈ›Ý\ÝX›\Ú™[™YšXÚX[ÛÛ›Û˜HØ[›ÛšXØ[ÛÛ˜Ù[˜][ÛˆY]šXËHÛÛ\[žK[]™[[]Y\Ú\™HÙ\šY\ÈÜˆB™š[[™ËX˜XÚÙYÛÝ™\›˜[˜ÙHÛÛ˜Û\Ú[Û‹ˆH^XÚ]˜šY]ÏYœ™YWÚÛ[™×Ù]Z[[™]X\\‹Y[™]X™[XZ[ˆ\ÙˆH™\^XX›B˜XÜ]Z\Ú][Ûˆ›Ý[™\žK‚‚•HK\Ú\™H˜YÛÛ‹UYÙ\ˆÝØÚË\Ý]\ÝXÈ™\ÜÛœÙH™[XZ[œÈ˜]Ë[Û›H™XØ]\ÙH]Âœ\‹[\Ý[™ÈXÝ]š]HÛÝ[Ë[[Ý[YÙÜ™YØ]\Ë™XÙ[\Ý[™È]H[™˜Z[[™È™]\›œÈ\™HH›ÝšY\‹]Ú[™ÝÈÝ[[X\žH˜]\ˆ[ˆ\ÜÝY\ˆXØÛÝ[[™ËœÚ\™ZÛ\‹\™]\›‹ÛÝ™\›˜[˜ÙHÜˆØ[›ÛšXØ[X\šÙ]˜XÝËˆH^XÚ]˜šY]Ï\ÝØÚ×ÜÝ]\ÝXØ[™\š[Ù™[XZ[ˆ\ÙˆH™\^XX›HXÜ]Z\Ú][Û‚˜›Ý[™\žK‚‚•HK\Ú\™H˜YÛÛ‹UYÙ\ˆ[œÝ]][Û‹\Ý]\ÝXÈ™\ÜÛœÙH™[XZ[œÈ˜]Ë[Û›B˜™XØ]\ÙH]È\‹[\Ý[™È[œÝ]][Û‹\ÙX]ÛÝ[Ë[[Ý[YÙÜ™YØ]\È[™˜Z[[™È™]\›œÈ\™HH›ÝšY\‹]Ú[™ÝÈÝ[[X\žH˜]\ˆ[ˆ\ÜÝY\ˆXØÛÝ[[™ËœÚ\™ZÛ\‹\™]\›‹ÛÝ™\›˜[˜ÙHÜˆØ[›ÛšXØ[X\šÙ]˜XÝËˆH^XÚ]˜šY]ÏZ[œÝ]][Û—ÜÝ]\ÝXØ[™\š[Ù™[XZ[ˆ\ÙˆH™\^XX›B˜XÜ]Z\Ú][Ûˆ›Ý[™\žK‚‚•HK\Ú\™Hš]™K[]™[šYX\ÚÈ™\ÜÛœÙH™[XZ[œÈ˜]Ë[Û›H™XØ]\ÙH]ÈÜ™\‹X›ÛÚÂ›]™[È[™[˜Y^H][ÝHÛÛ^]™H›ÈÝX›HØœÙ\˜][Ûˆ[Y\Ý[\[™Â››Ý\ÝX›\ÚHØ[›ÛšXØ[Ý\œ™[\šXÙK\]ZY]HÜˆ˜[X][Ûˆ[œ]ËˆB™^XÚ]šY]ÏXšYØ\ÚØ[™\š]™Y\Ý[™ÈÞ[X›Û™[XZ[ˆ\ÙˆBœ™\^XX›HXÜ]Z\Ú][Ûˆ›Ý[™\žK‚‚•HK\Ú\™HÝØÚ×ÞšØWÚ\ÝÛZ[—Ù[X™\ÜÛœÙH\È™]Z[™Y[™\‚˜RÔÒT‘WÒS•QVWÒTÕÔ–WÔU×ÓÓ“X™XØ]\ÙH]È\š[Ù\ÜXÚYšXÈZ[]H˜\œË˜Y\ÝY[[ÙH[™™XÙ[Y]H[Z]][ÛˆÈ›Ý\ÝX›\ÚØ[›ÛšXØ[Z[Bš\ÝÜžHÜˆ˜[X][Ûˆ[œ]ËˆH^XÚ]šY]ÏZ[˜Y^X]][YH˜[™ÙKš[\˜[Y\ÝY[[™\Ý[™ÈÞ[X›Û™[XZ[ˆ\ÙˆH™\^XX›B˜XÜ]Z\Ú][Ûˆ›Ý[™\žK‚‚•HK\Ú\™H\Ú[™\ÜËXÛÛ\ÜÚ][ÛˆÛ˜\ÚÝ™[XZ[œÈ˜]Ë[Û›H™XØ]\ÙH]Â›Ý™\›\[™È›ÙXÝ[™\ÝžH[™Ù[ÙÜ˜\XÈ›ÝÜÈÈ›Ý\ÝX›\ÚHØ[›ÛšXØ[œ™]™[YHÜˆÛÜ™K\™]™[YHÙ\šY\ÎÈYÙÜ™YØ][Û‹[š][]H[™Û\ÜÚYšXØ][Û‚œÙ[X[XÜÈ™[XZ[ˆ[œ™\ÛÛ™Yˆš[[™ËY\š]™Y\Ú[™\ÜË\]X[]HYÛY[È™[XZ[‚˜H]\‹\\ÙHÛÛ˜Ù\›‹‚‚•HK\Ú\™Hš[˜[˜ÚX[XXœÝ˜XÝX]š^™[XZ[œÈ˜]Ë[Û›H™XØ]\ÙH]È[[Ý[œ\‹\Ú\™H[™˜][È›ÝÜÈ\ÙHHÚYH\ÝÜšXØ[™\Ù[][ÛˆÚ]Ý][‚˜YZ]YØ[›ÛšXØ[[]K[š]\š[ÙÜˆ[]Y\Ú\™H˜\Ú\Ëˆš[[™ËY\š]™YœÝ][Y[˜XÝÈ[™[˜[]XØ[Û\ÜÚYšXØ][ÛœÈ™[XZ[ˆÝ]ÚYH\ÈÛXÙK‚•HK\Ú\™Hš[˜[˜ÚX[Z[™XØ]Üˆ™\ÜÛœÙH™[XZ[œÈ˜]Ë[Û›H™XØ]\ÙH]È™\ÜY˜[[Ý[Ë\‹\Ú\™H˜[Y\È[™›ÝšY\ˆ˜][ÜÈÈ›Ý\ÝX›\ÚHØ[›ÛšXØ[™[]K[š]Ú[Z[‹][YH˜\Ú\ÈÜˆØ[Ý[][ÛˆY]ÙÛÙÞKˆš[[™ËY\š]™YœÝ][Y[˜XÝÈ[™[˜[]XØ[Û\ÜÚYšXØ][ÛœÈ™[XZ[ˆÝ]ÚYH\ÈÛXÙK‚•HØÝ[Y[YÔÑH[œÚY\‹\Ú\™KXÚ[™ÙH™\ÜÛœÙH\È[ÛÈ˜]Ë[Û›H™XØ]\ÙBšÛ\ˆ›Û\ËÛ[™ÜË˜[œØXÝ[ÛˆšXÙ\È[™]™[]\ÈÈ›Ý\ÝX›\ÚB˜ÛÛ\[žK[]™[[]Y\Ú\™HÙ\šY\ÈÜˆHÛÝ™\›˜[˜ÙK\š\ÚÈYÛY[ˆHØÝ[Y[Y”Ö”ÑH[œÚY\‹\Ú\™KXÚ[™ÙH™\ÜÛœÙH\È™]Z[™Y[™\ˆHØ[YH˜]Ë[Û›B˜›Ý[™\žNˆ]ÈÚ[™ÙH]X[]Y\ËšXÙ\Ë[š]È[™]™[]\ÈÈ›Ý\ÝX›\Ú˜HÛÛ\[žK[]™[[]Y\Ú\™HÙ\šY\ÈÜˆHÛÝ™\›˜[˜ÙK\š\ÚÈYÛY[‚•HØÝ[Y[Y”ÑH[œÚY\‹\Ú\™KXÚ[™ÙH™\ÜÛœÙH\È™]Z[™Y[™\ˆHØ[YBœ˜]Ë[Û›H›Ý[™\žNˆ]ÈÛ[™È]X[]Y\ËšXÙ\È[™]™[]\ÈÈ›Ý™\ÝX›\ÚHÛÛ\[žK[]™[[]Y\Ú\™HÙ\šY\ÈÜˆHÛÝ™\›˜[˜ÙK\š\ÚÈYÛY[‚•H\Ú\™Hš[˜[˜ÚX[Z[™XØ]Üˆ™\ÜÛœÙH\È™]Z[™Y[™\ˆHØ[YH˜]Ë[Û›B˜›Ý[™\žNˆ]È[[Ý[Ë\‹\Ú\™H˜[Y\Ë›ÝšY\ˆ˜][ÜÈ[™Ý\œ™[˜ÞHX™[Â››Ý\ÝX›\ÚHØ[›ÛšXØ[Ý][Y[[]K[š]Ú[Z[‹][YH˜\Ú\ÈÜ‚˜Ø[Ý[][ÛˆY]ÙÛÙÞKˆH\Ú\™H]\ÝZ[™XØ]Üˆ™\ÜÛœÙH\È™]Z[™Y[™\ˆHÙ\\˜]H˜]Ë[Û›HÛ˜\ÚÝ›Ý[™\žH™XØ]\ÙH]ÈZ^Y\‹\Ú\™K˜Ø\][]šY[™XY[™Hš[˜[˜ÚX[[™˜[X][ÛˆšY[ÈÈ›Ý\ÝX›\ÚB˜Ø[›ÛšXØ[\š[Ù[]K[š]Üˆ[]Y\Ú\™H˜\Ú\Ëˆ\Ú\™H[œÚY\‹\Ú\™B˜ÛÝ™\˜YÙH™[XZ[œÈ[œ™\ÛÛ™YˆHK\Ú\™H\ØÛÜÝ\™K[›ÝXÙH™\ÜÛœÙH\È™]Z[™Y[™\ˆHÙ\\˜]H˜]Ë[Û›H\ØÛÝ™\žH›Ý[™\žH™XØ]\ÙH]È\Ý[™ËX›Ý[™]K[Y\Ý[\[™[šÈÈ›Ý\ÝX›\Úš[[™ÈÛÛ[Ë[ˆXØÛÝ[[™ÈÜ[š[ÛˆÜˆB™ÛÝ™\›˜[˜ÙK\š\ÚÈYÛY[È[šÙYYØÝ[Y[™]šY]˜[[™\œÚ[™È™[XZ[ˆ\ÙHÂÛÜšËˆHÝ\œ™[RÔÚ\™HØÝ[Y[][Ûˆ\È›ÈÙ[™\˜[\Ú\™B™\ØÛÜÝ\™K[›ÝXÙH[™Ú[ÈHÙ\\˜][HÙ[XÝY\Ú\™H]šY[™Y]™[™]Z[™\ÜÛœÙH\È™]Z[™Y[™\ˆRÔÒT‘WÒ×ÑU’QS‘ÑURSÔU×ÓÓ“X[™™Ù\È›Ý™\XÙH\ÙHÈ\ØÛÜÝ\™H™]šY]˜[Üˆ\œÚ[™Ë‚•HØÝ[Y[YK\Ú\™Hš\ÚË]Ø\›š[™ËX›Ø\™™\ÜÛœÙH\È™]Z[™Y[™\‚˜RÔÒT‘WÔ’TÒ×ÕÐT“’S‘×ÔÕUT×ÔU×ÓÓ“X™XØ]\ÙH]ÈÝ\œ™[]˜Y[™ËY^B[š]™\œÙHY[X™\œÚ\Ù\È›Ý\ÝX›\Ú]YÝ]\È\ÝÜžHÜˆ[ˆ^XÚ]˜ÜXÚX[Ý™X]Y[Q˜[ÙX™\Ý[›Üˆ\Ý[™ÜÈXœÙ[œ›ÛHH™\ÜÛœÙK‚•HØÝ[Y[YK\Ú\™HXZ[‹\Ú\™ZÛ\ˆ™\ÜÛœÙH\È™]Z[™Y[™\‚˜RÔÒT‘WÓPRS—ÔÒT‘RÓT”×ÔU×ÓÓ“X™XØ]\ÙH]È\ÝÜšXØ[Û\ˆ˜[Y\Ëœ]X[]Y\Ë˜][ÜÈ[™Ú\™KXÛ\ÜÈX™[ÈÈ›Ý\ÝX›\Ú™[™YšXÚX[ÛÛ›Û˜HÛÛ\[žK[]™[[]Y\Ú\™HÙ\šY\ÈÜˆHš[[™ËX˜XÚÙYÛÝ™\›˜[˜ÙHÛÛ˜Û\Ú[Û‹‚•HØÝ[Y[YK\Ú\™H˜Y[™Ë\Ý\Ü[œÚ[Ûˆ™\ÜÛœÙH\È™]Z[™Y[™\‚˜RÔÒT‘WÕQS‘×ÔÕTÔS”ÒSÓ”×ÔU×ÓÓ“X™XØ]\ÙH]È™\]Y\ÝYY]HÝ\Ü[œÚ[Û‚™]™[Ë]\È[™™X\ÛÛœÈÈ›Ý\ÝX›\ÚHÛÛ\]HÜXÚX[]™X]Y[Ý]\Â›ÜˆHš[[™ËX˜XÚÙYÛÝ™\›˜[˜ÙHÛÛ˜Û\Ú[Û‹‚•HØÝ[Y[YK\Ú\™H™\ÝšXÝY\Ú\™K\™[X\ÙH™\ÜÛœÙH\È™]Z[™Y[™\‚˜RÔÒT‘WÔ‘TÕ’PÕQÔÒT‘WÔ‘SPTÑT×ÔU×ÓÓ“X™XØ]\ÙH]È™[X\ÙH]\Ëœ]X[]Y\ËX\šÙ]˜[Y\È[™ØÚË]\\\ÈÈ›Ý\ÝX›\ÚØ[›ÛšXØ[™[]YYXÛÛ›ÛZXË\Ú\™H™X]Y[ÜˆHÚ\™KXÛÝ[]™[ˆ\Ú\™HÛÝ™\˜YÙH[™™š[[™ËX˜XÚÙY™[X\ÙH[\œ™]][Ûˆ™[XZ[ˆ[œ™\ÛÛ™Y‚•HØÝ[Y[YK\Ú\™HÛÛÙÚ[Z[\Z\›Y[™\ÜÛœÙH\È™]Z[™Y[™\‚˜RÔÒT‘WÑÓÓÑÒSÒSTRT“QS•ÔU×ÓÓ“X™XØ]\ÙH]ÈÛÛÙÚ[[™[\Z\›Y[˜[[Ý[Ë˜][ÜË›Ùš][™[››Ý[˜Ù[Y[]\ÈÈ›Ý\ÝX›\ÚHØ[›ÛšXØ[˜XØÛÝ[[™È[]K™\Ü\\š[ÙØÛÜHÜˆHš[[™ËX˜XÚÙY™XÛÛ˜Ú[X][Û‹ˆ\Ú\™B˜ÛÝ™\˜YÙH[™š[[™ËX˜XÚÙY[\Z\›Y[[\œ™]][Ûˆ™[XZ[ˆ[œ™\ÛÛ™Y‚•HØÝ[Y[YK\Ú\™HÛÛÙÚ[Z[\Z\›Y[›Ü™XØ\Ý™\ÜÛœÙH\È™]Z[™Y[™\‚˜RÔÒT‘WÑÓÓÑÒSÑ“Ô‘PÐTÕÔU×ÓÓ“X™XØ]\ÙH]È^XÝY\›Ùš]˜[™Ù\Ë˜Ú[™ÙK\˜]H›Ý[™Ëš[Ü‹^YX\ˆ›Ùš]ÛÛÙÚ[ÛÛ^[™[››Ý[˜Ù[Y[]Bœ™[XZ[ˆ›ÝšY\ˆ]šY[˜ÙH˜]\ˆ[ˆš[[™ËX˜XÚÙYØ[›ÛšXØ[›Ü™XØ\Ý›Ùš]™ÛÛÙÚ[Üˆ[\Z\›Y[˜XÝËˆH™\]Y\Ý	ÜÈ‘TÔ•ÑUXš[\ˆ\È™\Ù\™Y˜\È™\^HY]Y]KÚ[H9§ 9¥¬9eaº*¢y¢©ydb¹§'Ø™[XZ[œÈHÙ\\˜]H›ÝšY\ˆšY[Â’\Ú\™HÛÝ™\˜YÙH[™š[X\žKYš[[™È™XÛÛ˜Ú[X][Ûˆ™[XZ[ˆ[œ™\ÛÛ™Y‚•HØÝ[Y[YÚ[˜HKÒTÑË\˜][™È™\ÜÛœÙH\È™]Z[™Y[™\‚˜RÔÒT‘WÑTÑ×ÔUS‘Ô×ÔU×ÓÓ“X™XØ]\ÙHYÙ[˜ÞK\ÜXÚYšXÈØØ[\Ë˜][™È˜[Y\Ëœ›ÝšY\ˆ]X\\ˆX™[È[™X\šÙ\œÈÈ›Ý\ÝX›\ÚHÛÛ\\˜X›HTÑÈØÛÜ™K™ÛÝ™\›˜[˜ÙK\š\ÚÈ]™[Üˆ\Ú[™\ÜÈ]X[]HYÛY[ˆH›ÝšY\ˆ˜[Y]\È[™™š[\œÈHZ^Y[š]™\œÙHžH^XÚ]ÛÙH\ÈÛ˜ØØX\šÙ]Ú[Bœ™]Z[š[™È[X]Ú[™ÈYÙ[˜ÞKÜ]X\\ˆ›ÝÜÎÈ›ÈØ[›ÛšXØ[TÑËÛÝ™\›˜[˜ÙK™š[˜[˜ÚX[Üˆ˜[X][Ûˆ˜XÝ\ÈYZ]Y‚‚•HØÝ[Y[YÔÑKÖ”ÑH[™”ÑHX\™Ú[‹Y]Z[™\ÜÛœÙ\È\™H™]Z[™Y[™\‚˜RÔÒT‘WÓPT‘ÒS—ÕQS‘×ÔU×ÓÓ“X™XØ]\ÙHZ\ˆÙXÝ\š]K[]™[[™\ÝÜ‚™š[˜[˜Ú[™È˜[[˜Ù\Ë]X[]Y\È[™˜[œØXÝ[Ûˆ›ÝÜÈÈ›Ý\ÝX›\Ú\ÜÝY\‚™š[˜[˜ÚX[XØ\Ú]™\˜YÙHÜˆHØ[›ÛšXØ[X\™Ú[ˆ˜XÝÈš[˜[˜ÚX[ÙXœ™[XZ[œÈÜš]XØ[HZ\ÜÚ[™ËˆHÔÑH™\ÜÛœÙHØ\œšY\È]È^XÝØœÙ\˜][Û‚™]H[ˆXXÚ›ÝËÚ[HHØÝ[Y[YÖ”ÑH[™”ÑH™\ÜÛœÙ\Èš[™H^XÝœ™\]Y\Ý]HÛ›H›ÝYÚH™\]Y\Ý[™™\ÜÛœÙHY]Y]NÈ›Û™H\È[ˆ\ÜÝY\‚˜XØÛÝ[[™È\š[Ù‚‚•HØÝ[Y[YKÒÝØÚ×ÚÙÝÚ[™]šYX[Ù[X™\ÜÛœÙH\È™]Z[™Y[™\‚˜RÔÒT‘WÒÑÕÒS‘U’QPSÒÓS‘Ô×ÔU×ÓÓ“X™XØ]\ÙH]ÈÞ[X›Û\ØÛÜY››ÜKÜÛÝ]›Ý[™[™\ÝÜˆÛ[™ÜË]X[]Y\ËX\šÙ]˜[Y\Ë˜][ÜÈ[™™]YÚ[™Ù\ÈÈ›Ý\ÝX›\Ú™[™YšXÚX[ÛÛ›ÛÛÝ™\›˜[˜ÙHÙ]™\š]KœÚ\™ZÛ\ˆÛÛ˜Ù[˜][Û‹\ÜÝY\ˆÛÜœÜ˜]KXXÝ[ÛˆØ\ÚÜˆHÛÛ\[žK[]™[™[]Y\Ú\™HÙ\šY\Ëˆ]ÈÙ™šXÚX[[\[Y[][Ûˆ™[[Ý™\È›ÝË[]™[ÙXÝ\š]BšY[]Hœ›ÛHHX›\ÚYÝ]]ÛÈH^XÚ]™\]Y\ÝØÛÜH\È™]Z[™YÚ]Ý][™[[™ÈH›ÝË[]™[\Ý[™ÈÛÙKˆÛÝ™\›˜[˜ÙWÜš\Ú×Û]™[™[XZ[œÂ˜Üš]XØ[HZ\ÜÚ[™È[™›ÈÝÛ™\œÚ\Ú\™K^X˜XÚË\ÜÝX[˜ÙK™]\›ˆÜ‚˜[X][Ûˆ˜XÝ\È[Z]Y‚‚•HØÝ[Y[YK\Ú\™HÝØÚ×ÚÛØÛÛ›ÛØÛš[™›Ø™\ÜÛœÙH\È™]Z[™Y[™\‚˜RÔÒT‘WÐÓÓ•“ÓÒÓS‘Ô×ÔU×ÓÓ“X™XØ]\ÙH]ÈÛÛ›Û\ˆ˜[Y\ËÛ[™Âœ]X[]Y\Ë˜][ÜË›ÝšY\ˆÛÛ›ÛØ]YÛÜšY\È[™Ú[™ÙH]\ÈÈ›ÝžB[\Ù[™\È\ÝX›\Úš[[™ËX˜XÚÙYYØ[ÛÛ›ÛÛÝ™\›˜[˜ÙHÙ]™\š]K˜Ø[›ÛšXØ[ÝÛ™\œÚ\ØÛÛ˜Ù[˜][ÛˆÜˆHÛÛ\[žK[]™[[]Y\Ú\™HÙ\šY\Ë‚˜ÛÝ™\›˜[˜ÙWÜš\Ú×Û]™[™[XZ[œÈÜš]XØ[HZ\ÜÚ[™È[™›ÈØ[›ÛšXØ[˜XÝ\Â™[Z]YÈH^XÚ]šY]ÏXÛÛ›ÛØÚ[™Ù\Ø[™ÛÛ›Û\ØÛÜHÙ[XÝÜˆ™[XZ[‚œ\ÙˆH™\^XX›HXÜ]Z\Ú][Ûˆ›Ý[™\žK‚‚•HØÝ[Y[YK\Ú\™H^\›˜[YÝX\˜[YH™\ÜÛœÙH\È™]Z[™Y[™\‚˜RÔÒT‘WÑVT“SÑÕPTS•QT×ÔU×ÓÓ“X™XØ]\ÙH]È]K\˜[™ÙHYÙÜ™YØ]Kœ\™[Y\]Z]H[›ÛZ[˜]Üˆ[™X›\ÚY˜][ÈÈ›Ý\ÝX›\ÚHÙ]Yœ]X\ÚKYX[[Ý[YØ[ÝX\˜[YHÝ]\ËØ[›ÛšXØ[\š[ÙÙ[]HØÛÜHÜˆB™ÛÝ™\›˜[˜ÙHYÛY[ˆ]X]™\ÈX]\šX[Ü]X\ÚWÙX˜XZ›Ü—Ú[YØ[ÙÝX\˜[YX[™ÛÝ™\›˜[˜ÙWÜš\Ú×Û]™[Üš]XØ[HZ\ÜÚ[™ÎÈ\Ú\™B˜ÛÝ™\˜YÙH[™š[[™ËX˜XÚÙY™]šY]È™[XZ[ˆ[œ™\ÛÛ™Y‚‚•HØÝ[Y[YK\Ú\™H[™]šYX[ÝÛ™\œÚ\\YÙH]Z[™\ÜÛœÙH\È™]Z[™Y[™\ˆRÔÒT‘WÒS‘U’QPSÔQÑWÑURSÔU×ÓÓ“X™XØ]\ÙH]ÈÛ\‹š[œÝ]][Û‹]X[]K˜][ËšXÙKÝ]\È[™]™[Y]HšY[ÈÈ›Ý™\ÝX›\ÚH[H[]YÚ\™HÛÝ[Ù]YYÙYØ\ÚÙXY\]Z]˜[[˜[[Ý[™[™YšXÚX[ÛÛ›ÛÜˆHÛÝ™\›˜[˜ÙHYÛY[ˆ]X]™\Â˜ÛÝ™\›˜[˜ÙWÜš\Ú×Û]™[Üš]XØ[HZ\ÜÚ[™ÎÈ\Ú\™HÛÝ™\˜YÙH[™š[[™ËX˜XÚÙYœYÙH[\œ™]][Ûˆ™[XZ[ˆ[œ™\ÛÛ™Y‚‚•HØÝ[Y[YK\Ú\™HÛÛ\[žK[]YØ][Ûˆ™\ÜÛœÙH\È™]Z[™Y[™\‚˜RÔÒT‘WÓUQÐUSÓ—ÔU×ÓÓ“X™XØ]\ÙH]È]K\˜[™ÙH]ÜÝZ]ÛÝ[[[Ý[[™˜YÙÜ™YØ]H[\˜[È›Ý\ÝX›\ÚHØ[›ÛšXØ[]™[ÜÝ][Y[\š[ÙYØ[œÝ]\ËXØÛÝ[[™ÈØÛÜKX]\šX[]X\ÚKYX[[Ý[ÜˆÛÝ™\›˜[˜ÙHYÛY[‚’]X]™\ÈX]\šX[Ü]X\ÚWÙX[™ÛÝ™\›˜[˜ÙWÜš\Ú×Û]™[Üš]XØ[HZ\ÜÚ[™ÎÂ’\Ú\™HÛÝ™\˜YÙH[™š[[™ËX˜XÚÙY]YØ][Ûˆ™]šY]È™[XZ[ˆ[œ™\ÛÛ™Y‚‚•HØÝ[Y[YK\Ú\™HÓ’S‘“È\]Z]K[[ÜØYÙH™\ÜÛœÙH\È™]Z[™Y[™\‚˜RÔÒT‘WÑTURUWÓSÔ•ÐQÑWÔU×ÓÓ“X™XØ]\ÙH]È]Y\žH]K[››Ý[˜Ù[Y[]\ËœYÛÜ‹ÜYÙYK]X[]Y\Ë˜][ÜÈ[™]™[\ØÜš\[ÛœÈÈ›Ý\ÝX›\ÚB˜Ø[›ÛšXØ[YÙH\š[Ù[H[]YÚ\™HÛÝ[Ù]YYÙY˜Ø\ÚÙXY\]Z]˜[[[[Ý[™[™YšXÚX[ÛÛ›ÛÜˆHÛÝ™\›˜[˜ÙHYÛY[ˆ]›X]™\ÈÛÝ™\›˜[˜ÙWÜš\Ú×Û]™[Üš]XØ[HZ\ÜÚ[™ÎÈ\Ú\™HÛÝ™\˜YÙH[™™š[[™ËX˜XÚÙYYÙH[\œ™]][Ûˆ™[XZ[ˆ[œ™\ÛÛ™Y‚

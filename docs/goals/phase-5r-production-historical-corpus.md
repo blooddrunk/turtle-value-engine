@@ -33,7 +33,13 @@ ingestion**. It must make the project responsible for obtaining data through
 explicitly selected sources and caching it, while keeping credentials and
 restricted content outside Git. The owner should choose a source/access
 policy, not manually assemble bars or research records. The stage is planned
-as follows:
+in the executable task package
+[`phase-5r-a-production-source-acquisition.md`](phase-5r-a-production-source-acquisition.md).
+Its default path is personal-first: official public sources and documented
+personal-account APIs, with institutional providers optional rather than
+mandatory. Private personal-use artifacts may remain local and
+`RESTRICTED_INTERNAL`; repository redistribution rights are a separate claim.
+The stage is planned as follows:
 
 1. **Source decision and scope**: select a bounded A/H target and date range;
    classify each required source category as official/public, licensed
@@ -219,11 +225,12 @@ implement an opt-in acquisition and raw-cache path that can obtain an
 authoritative or clearly documented licensed A/H historical source corpus and
 compile it into the existing production manifest. The compiler therefore
 reports `production_eligible=false` and `--require-production` fails closed.
-The smallest decision needed for the next stage is a bounded source/access
-choice (or an explicitly narrower target), after which the project should
-acquire and compile the data itself. A manual data handoff may be used as a
-temporary test input, but it is not the intended production solution. Phase
-5R remains `ACTIVE / PARTIAL` until the acquisition path and its evidence
+The next step is not a commercial-license purchase or a manual data handoff.
+It is the personal-first acquisition task package: qualify actual account/API
+capabilities, implement the raw-byte acquisition boundary, and let the project
+acquire and compile a bounded target itself. If a source cannot support an
+honest claim, the target is narrowed or the exact category remains blocked.
+Phase 5R remains `ACTIVE / PARTIAL` until the acquisition path and its evidence
 exist; the Phase 6 goal file is intentionally not created yet.
 
 ### Source-access review — 2026-09-15
@@ -249,10 +256,12 @@ rights:
 
 Accordingly no downloaded market, index or filing content was promoted into a
 production fixture, and no source was marked `OPEN_REDISTRIBUTABLE` from these
-pages alone. The smallest closure decision is either (a) supply a bounded
-licensed cache plus its permission/redistribution evidence, or (b) explicitly
-narrow the target and accept an internal-only source scope. Until then the
-checked-in corpus remains an acceptance fixture.
+pages alone. This does not make an institutional data contract mandatory:
+private, documented personal use is a distinct storage and licensing scope.
+The next closure step is to qualify personal/public source access, acquire a
+bounded corpus automatically into a private local store, and retain its terms
+and access evidence. Until then the checked-in corpus remains an acceptance
+fixture.
 
 The source triage is therefore:
 

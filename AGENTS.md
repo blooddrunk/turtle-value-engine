@@ -137,6 +137,11 @@ market data. Phase 5R primarily needs historical data; real-time/event-driven
 acquisition belongs to Phase 6. The next implementation stage must add the
 selected source adapters, credential boundary, raw provenance and deterministic
 compiler ingestion while keeping ordinary CI offline and model-independent.
+The executable next-stage package is
+`docs/goals/phase-5r-a-production-source-acquisition.md`. Its minimum path is
+personal-first: official public and documented personal-account sources, local
+private content-addressed storage, and no mandatory institutional data contract.
+Commercial adapters and remote object storage are optional extensions.
 
 ## 5. Working with company data
 
