@@ -1274,9 +1274,21 @@ class RawBlobStore:
         partial = quarantine / f"{name}.part"
         digest = hashlib.sha256()
         length = 0
+        descriptor = -1
         try:
-            with partial.open("wb") as handle:
-                partial.chmod(0o600)
+            flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+            no_follow = getattr(os, "O_NOFOLLOW", 0)
+            if no_follow:
+                flags |= no_follow
+            elif partial.is_symlink():
+                raise RawBlobError("quarantine partial path is not a regular file")
+            try:
+                descriptor = os.open(partial, flags, 0o600)
+            except OSError as exc:
+                raise RawBlobError("quarantine partial path is not a regular file") from exc
+            with os.fdopen(descriptor, "wb") as handle:
+                descriptor = -1
+                os.fchmod(handle.fileno(), 0o600)
                 for chunk in chunks:
                     if not isinstance(chunk, bytes):
                         raise TypeError("raw stream chunks must be bytes")
@@ -1290,7 +1302,17 @@ class RawBlobStore:
                 raise RawBlobError(f"raw blob length mismatch: {length} != {expected_length}")
             if expected_sha256 is not None and actual != expected_sha256:
                 raise RawBlobError(f"raw blob checksum mismatch: {actual} != {expected_sha256}")
-            body = partial.read_bytes()
+            read_flags = os.O_RDONLY | no_follow
+            if not no_follow and partial.is_symlink():
+                raise RawBlobError("quarantine partial path is not a regular file")
+            try:
+                read_descriptor = os.open(partial, read_flags)
+            except OSError as exc:
+                raise RawBlobError("quarantine partial path is not a regular file") from exc
+            with os.fdopen(read_descriptor, "rb") as handle:
+                body = handle.read()
+            if len(body) != length or hashlib.sha256(body).hexdigest() != actual:
+                raise RawBlobError("quarantine partial changed during verification")
             self._write_immutable(self.path_for(actual), body)
             partial.unlink(missing_ok=True)
             return actual
@@ -1298,6 +1320,12 @@ class RawBlobStore:
             # The .part remains quarantined and can be inspected/deleted by the
             # operator; it is never reachable through the content-addressed path.
             raise
+        finally:
+            if descriptor >= 0:
+                try:
+                    os.close(descriptor)
+                except OSError:
+                    pass
 
     def read(self, sha256: str, *, expected_length: int | None = None) -> bytes:
         path = self.path_for(sha256)

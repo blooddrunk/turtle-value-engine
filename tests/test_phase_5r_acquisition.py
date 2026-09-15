@@ -284,6 +284,22 @@ def test_raw_blob_store_keeps_failed_stream_in_quarantine(tmp_path: Path):
         store.put(b"wrong", expected_sha256=digest)
 
 
+def test_raw_blob_store_rejects_symlinked_quarantine_partial(tmp_path: Path):
+    store = RawBlobStore(tmp_path / "raw")
+    quarantine = tmp_path / "raw" / "quarantine"
+    quarantine.mkdir(parents=True, exist_ok=True)
+    target = tmp_path / "outside.part"
+    target.write_bytes(b"untouched")
+    try:
+        (quarantine / "unsafe.part").symlink_to(target)
+    except OSError:
+        pytest.skip("symlink creation is unavailable on this platform")
+
+    with pytest.raises(RawBlobError, match="quarantine partial path"):
+        store.put_stream([b"must not overwrite"], quarantine_id="unsafe")
+    assert target.read_bytes() == b"untouched"
+
+
 def test_empty_event_result_is_not_complete_coverage():
     report = build_coverage_report(
         target=_target(),
