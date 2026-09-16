@@ -1,363 +1,367 @@
-# Phase 5R-A Next — Local Research Usability and Low-Cost Source Expansion
+# Phase 5R-A Next — Personal Research Data Acquisition and Deployment-Neutral Access
 
 Status: **PROPOSED / NEXT**  
-Baseline: `main@a3533a36fd27935ca1b5a4178b90c3fd0a924fa1`  
 Date: 2026-09-16
 
 ## 1. Objective
 
-Turn the already acquired private A-share slice into an explicitly supported
-**LOCAL_ONLY / EXPERIMENTAL research surface**, without weakening any existing
-Phase 5R production or investment contract, then expand the historical source
-portfolio using personal/local/free paths in small, probe-driven milestones.
+`turtle-value-engine` is a **personal research project**. The next Phase 5R-A
+work should optimize for reliable, reproducible, inexpensive or free data that
+the project owner can actually obtain and use. It must not make institutional
+market-data procurement, redistribution rights, or a public data-service claim
+a prerequisite for useful research.
 
-This package is intentionally personal-research-first. It must not require:
+The system is also **deployment-neutral**. The engine may be invoked by a local
+CLI, Codex, ChatGPT, Hermes or another agent; derived research results may later
+be exposed through an API or a Web UI hosted on Cloudflare Workers or another
+platform. None of those deployment choices should downgrade or invalidate a
+research dataset.
 
-- an institutional market-data contract;
-- manual CSV/Parquet assembly by the owner;
-- a live model for replay, validation, or ordinary CI;
-- any API key in Git, prompts, receipts, logs, fixtures, or documentation;
-- a scraping workaround when a documented/local API is unavailable.
+The existing A6 audit and `--require-production` remain available as an
+optional strict claim/audit layer. They must not become the default gate for
+personal research, agent execution, or a private Web UI.
 
-The existing A6 audit, `--require-production`, `strict-v1`, deterministic CDC,
-Net Cash, Through Return, hard-gate and valuation math remain unchanged.
+The following remain unchanged:
 
-## 2. Current facts and interpretation
+- `rules/strict-v1.yaml`;
+- deterministic CDC, Net Cash and Through Return math;
+- deterministic hard gates and valuation;
+- point-in-time rules;
+- ordinary CI remains offline and model-independent;
+- no hidden network calls from deterministic analysis.
 
-The repository has already completed an owner-authorized A-only Hithink
-probe/acquire and a deterministic offline replay:
+## 2. Correct interpretation of `LOCAL_ONLY` and `PRODUCTION_ELIGIBLE`
 
-- target: `SH600000`, `FIXED_RESEARCH_UNIVERSE`, 2020-01-01 through 2022-01-02;
-- one `MARKET_BAR` shard with 486 daily rows covering 2020-01-02 through
+The repository currently contains terms such as `StoragePolicy.LOCAL_ONLY` and
+`PRODUCTION_ELIGIBLE`. They must not be interpreted as product deployment
+modes.
+
+`LOCAL_ONLY` means only that a raw/source artifact is currently stored in a
+local/private store and is not automatically mirrored elsewhere. It does **not**
+mean:
+
+- the engine can only run on one computer;
+- Hermes cannot use the data;
+- a Skill cannot use the engine;
+- the results cannot be served by an API;
+- a private Web UI cannot be deployed to Cloudflare Workers;
+- normalized/derived artifacts cannot later be mirrored to R2, a VPS, S3-like
+  storage or another private backend.
+
+Likewise, `PRODUCTION_ELIGIBLE` is a strict Phase 5R historical-corpus claim. It
+is useful when the owner explicitly asks for that audit, but it is not the
+project's definition of "usable".
+
+A dataset may therefore be technically useful and reproducible for personal
+research while:
+
+```text
+research_usable = true
+production_eligible = false
+```
+
+That is a normal state, not an error.
+
+## 3. Deployment model
+
+Keep four concerns separate:
+
+```text
+DATA ACQUISITION
+public API / local gateway / authenticated personal session /
+open-source wrapper / exchange or issuer download / other reliable adapter
+        |
+        v
+RAW + NORMALIZED ARTIFACTS
+content-addressed bytes + manifests + provenance
+        |
+        v
+DETERMINISTIC ENGINE
+replay / analysis / backtest / calibration
+        |
+        +--------------------+
+        |                    |
+        v                    v
+AGENT / SKILL            WEB / API
+Hermes/Codex/etc.        Cloudflare Worker or other UI
+```
+
+Acquisition may run on the machine or VPS that can reach the source. The
+artifact store may initially be local and later gain a remote backend/mirror.
+The deterministic engine must consume the same frozen artifacts regardless of
+where they are stored.
+
+A future Cloudflare deployment should normally serve **derived/frozen data and
+analysis results**, or call a backend API. It does not require every upstream
+market-data source to be callable directly from a Worker. For example, a local
+FQGate acquisition process can persist/freeze data first and a later sync step
+can publish eligible normalized artifacts/results to a remote store.
+
+## 4. Data-source policy for this personal project
+
+Source selection is driven primarily by:
+
+1. can the owner actually access it;
+2. observed historical coverage;
+3. data quality and stability;
+4. deterministic repeatability/caching;
+5. ability to identify source/provenance and detect changes;
+6. cost and operational complexity.
+
+Do not reject a useful personal-research source merely because it cannot satisfy
+a public redistribution or institutional procurement standard.
+
+Acquisition implementations may use any technically sound method that is
+available to the owner, including documented APIs, local gateways, public
+endpoints, open-source wrappers, authenticated personal sessions, exchange or
+issuer downloads, and deterministic HTML/JSON extraction when necessary. Do
+not bypass authentication or technical access controls. Preserve exact/raw
+responses or equivalent source evidence whenever practical so changed upstream
+behavior can be detected.
+
+The owner must not be required to manually assemble price, filing, lifecycle or
+corporate-action CSV files.
+
+## 5. Current baseline
+
+The repository already has a useful acquisition/replay foundation:
+
+- owner-authorized A-only Hithink probe/acquire completed;
+- `SH600000`, 2020-01-01 through 2022-01-02 target;
+- one `MARKET_BAR` shard containing 486 daily rows for 2020-01-02 through
   2021-12-31;
-- exact raw bytes live in the private local CAS;
-- repeated offline compilation produces stable manifest/shard identities;
-- ordinary CI remains offline and model-independent.
+- exact raw bytes persisted in a private content-addressed store;
+- repeated offline compilation produces stable identities;
+- ordinary CI remains offline/model-free.
 
-The A6 `historical accept` failure records blockers for the **complete A/H
-acceptance claim**. It does not revoke the usefulness of the already compiled
-A-only price shard for bounded local research.
+The A6 `historical accept` blockers describe the larger full A/H acceptance
+claim. They do not make the existing A-share historical data unusable.
 
-The current contracts already distinguish acquisition readiness,
-`PERSONAL_RESEARCH_READY`, and `PRODUCTION_ELIGIBLE`. Do **not** reinterpret or
-weaken those levels. In particular, the current Phase 5R-A goal defines
-`PERSONAL_RESEARCH_READY` around a named private A/H corpus, so an A-only price
-slice should not be promoted into that state merely to make the UI look green.
+## 6. Recommended source stack
 
-Likewise, `StoragePolicy.LOCAL_ONLY` is a storage policy, not a readiness level.
-Do not overload it.
+### 6.1 Hithink — keep as the current A-share bulk source
 
-## 3. Data-source decision
+The successful owner probe already proved that the current adapter can acquire
+and compile the A-share daily-k dump. Keep it as the primary bulk A-price path
+unless another source proves materially better.
 
-### 3.1 Recommended source stack
+Do not require this one provider to solve every category.
 
-| Priority | Source | Intended role | What is already verified | What must remain probe-driven |
-| --- | --- | --- | --- | --- |
-| 0 | Existing Hithink adapter | Primary bulk A-share historical bars | The owner's A-only daily-k dump was reachable, decoded as Parquet, and replayed deterministically; the observed dump spans 2016-09-19 through 2026-09-15 | Do not infer H-share, lifecycle, delisted retention, action completeness, or any other category from the successful A-price probe |
-| 1 | FQGate / `tonghuasun-agent` | First local candidate for incremental A/H historical prices and independent price checks | Public local API/SDK exposes `/v1/market/history/klines` with `market`, `code`, `start_date`, `end_date`, `adjust`, and `interval`; the same public client exposes an `hk` market group | Actual H historical K-line support, history span, delisted retention, throttling, and corporate-action completeness must be observed by a live local probe |
-| 2 | Futu OpenD | Second personal-account H-share price candidate if FQGate H history is insufficient | Official API documents historical K-lines with start/end, paging and HK symbols such as `HK.00700`; OpenD is a local gateway | Actual quote entitlement and historical quota are account-specific; only add an adapter after a local probe is needed |
-| 3 | AKShare / Eastmoney-backed interfaces | Zero-key experimental fallback and sampled reconciliation | AKShare exposes A- and H-share historical interfaces, including `stock_zh_a_hist` and `stock_hk_hist` | Endpoint stability, historical terminal coverage and category completeness are not assumed; do not elevate a successful call into a production claim |
-| 4 | BaoStock | Free A-share calendar/lifecycle/basic-data supplement and reconciliation | Public APIs expose unadjusted daily K-lines, trade dates, and stock basic fields including IPO/out dates/status | A-only; historical delisted completeness and exact lifecycle semantics still require observed tests before stronger claims |
+### 6.2 FQGate / `tonghuasun-agent` — next implementation priority
 
-### 3.2 FQGate integration decision
+FQGate is especially attractive for this project because its useful integration
+surface is a **local HTTP market-data gateway**, not the AI plugin itself.
 
-FQGate is directly useful, but the repository should **not** import or embed the
-whole AI-agent/plugin project. The stable integration boundary is its local
-HTTP API.
-
-Recommended adapter shape:
+The public Python SDK exposes:
 
 ```text
-FQGate local process / logged-in market session
-        -> 127.0.0.1:17281 public HTTP API
-        -> tve HistoricalSourceAdapter
-        -> exact JSON response bytes in RawBlobStore
-        -> offline decoder
-        -> MARKET_BAR shard
+POST /v1/market/history/klines
 ```
 
-For the first adapter:
-
-- use the documented/public local API only;
-- keep `--network=allow` mandatory even though the endpoint is localhost;
-- use no credential reference when the local gateway needs none;
-- preserve the exact HTTP response bytes in the existing raw CAS;
-- support only unadjusted daily bars (`adjust=""`, daily interval) initially;
-- map only fields whose meaning is verified by the public FQGate client/UI
-  implementation (time/open/high/low/close/volume/amount, plus optional
-  turnover when present);
-- probe A and H independently;
-- obtain the actual H market identifier/shape from the running OpenAPI/search
-  surface rather than inventing it in code or a committed plan;
-- if H history is unavailable or shorter than requested, persist the observed
-  limitation and stop. Do not substitute a current quote, current constituent
-  list, or another hidden source.
-
-This reuses FQGate's strongest property for this project: a stable local gateway
-with a normal historical K-line endpoint, while preserving turtle-value-engine's
-raw-CAS/offline-compiler architecture.
-
-### 3.3 Futu, AKShare and BaoStock roles
-
-Do not implement all candidate sources in one PR.
-
-- **Futu OpenD** is the first fallback to evaluate only if the FQGate H probe is
-  insufficient. It is attractive because H-share historical K-lines are
-  explicitly documented, but its market-data permissions and historical quota
-  are account-dependent.
-- **AKShare** is ideal for zero-key local experiments and an independent sampled
-  price comparison. It should initially be an experimental/reconciliation
-  source rather than a source that silently upgrades A6.
-- **BaoStock** is more valuable for the next A-share lifecycle/calendar slice
-  than as another primary price source: `query_trade_dates`, `query_stock_basic`
-  and unadjusted historical bars can close practical local-research gaps at zero
-  manual-data cost.
-
-Existing `AKShareProvider` used by `tve prepare` must not be conflated with the
-Phase 5R historical acquisition/CAS boundary. Reuse concepts or library calls
-only through an explicit historical adapter.
-
-## 4. Minimal mergeable milestone — M1 Local Research Usability
-
-### 4.1 Why this is first
-
-The current private A-price shard is already deterministic and useful, but the
-operator-facing states are dominated by whole-corpus and production semantics.
-At the same time, `HistoricalDatasetCompiler.validation_summary()` checks
-whole-dataset invariants such as lifecycle presence even when
-`require_production=False`. Therefore `HistoricalValidationSummary.valid` must
-not be repurposed as a synonym for "can I inspect and research the price shard
-I actually have?".
-
-Add a separate, additive local-research contract instead of weakening the
-existing compiler or readiness ladder.
-
-### 4.2 Contract
-
-Add `LocalResearchUsabilityReportV1` (exact naming may follow repository style)
-with deterministic content identity and at least:
+with parameters including:
 
 ```text
-contract
-report_id / content_sha256
-dataset_id / dataset_content_sha256
-usage_class = LOCAL_ONLY_EXPERIMENTAL
-usable: bool
-markets / listing_ids / start_date / end_date
-available_artifact_kinds
-row_counts_by_kind
-verified_capabilities
-limitations
-errors
+market
+code
+count
+start_date
+end_date
+adjust
+interval
 ```
 
-`verified_capabilities` must be derived from the artifacts actually present,
-not requested aspirational categories. For the current A-only market-bar slice,
-a successful report may expose capabilities such as:
+The public client also exposes an `hk` market group, and the UI implementation
+contains explicit K-line field mappings for time/open/high/low/close/volume and
+amount.
+
+Integrate FQGate through its HTTP boundary rather than importing the whole
+`tonghuasun-agent` project:
 
 ```text
-SHARD_REPLAY
-PRICE_SERIES_RESEARCH
+FQGate
+  -> local HTTP response
+  -> HistoricalSourceAdapter
+  -> RawBlobStore / receipt
+  -> offline decoder
+  -> MARKET_BAR shard
 ```
 
-It must **not** imply any of:
+Probe A and H independently. Do not invent H history, delisted coverage or
+action coverage that has not been observed.
 
-```text
-PRODUCTION_ELIGIBLE
-PERSONAL_RESEARCH_READY
-SURVIVORSHIP_FREE_BACKTEST
-TOTAL_RETURN_BACKTEST
-COMPLETE_AH_CORPUS
-```
+### 6.3 AKShare / Eastmoney-backed paths — zero-key research and reconciliation
 
-### 4.3 Local usability semantics
+AKShare already exposes A- and H-share historical interfaces and the repository
+already uses AKShare elsewhere. For Phase 5R, route it through the historical
+acquisition/CAS boundary rather than bypassing provenance.
 
-The local report is a technical/research usability status over the artifacts
-that actually exist. It is orthogonal to A6 source/coverage acceptance.
+Good uses:
 
-For each present shard/category it must fail closed on integrity defects such
-as:
+- zero-key fallback historical prices;
+- sampled cross-source reconciliation;
+- filling a bounded research slice when a primary gateway is unavailable.
 
-- missing or corrupt content-addressed shard;
-- schema/row decode failure;
-- duplicate canonical row identity within a shard;
-- row outside declared shard listing/date scope;
-- row/source identity or hash mismatch;
-- invalid manifest content hash.
+Do not require it to prove the full Phase 5R production claim before it can be
+used for personal research.
 
-Missing *other* categories (for example H share, lifecycle, benchmark, FX,
-filings or corporate actions) are limitations on the supported research scope,
-not reasons to claim that an intact A-only price shard cannot be replayed or
-studied.
+### 6.4 BaoStock — A-share calendar/lifecycle supplement
 
-This command is not a backdoor Phase 5 compiler. It must not fabricate
-lifecycle, sessions, actions, terminal economics, benchmark returns, FX or
-Business Quality artifacts.
+BaoStock is a useful free complement for:
 
-### 4.4 CLI
+- trading calendars;
+- listing/basic information such as IPO/out dates and status;
+- sampled unadjusted daily bars for comparison.
 
-Add an offline-only command, preferably:
+Its first role should be closing practical A-share research gaps rather than
+replacing the working Hithink price path.
 
-```bash
-tve historical research-status \
-  --manifest <historical-manifest.json> \
-  --store <artifact-store> \
-  [--output <local-research-status.json>]
-```
+### 6.5 Futu OpenD — H-share fallback
 
-Properties:
+If FQGate's observed H historical capability is insufficient, evaluate Futu
+OpenD next. It has an explicit H-share historical K-line API and a local gateway
+model. Account-specific entitlements/quotas are runtime facts to probe, not a
+reason to block the project in advance.
 
-- no provider or transport construction;
-- no model construction;
-- no network fallback;
-- deterministic output for the same manifest/store;
-- success means only that the declared local research capabilities are intact.
+## 7. Revised milestone order
 
-Do not change the meaning or exit behavior of:
+The previous version of this plan put a separate `LOCAL_ONLY_EXPERIMENTAL`
+status milestone first. That is no longer the recommended priority.
 
-```text
-tve historical accept
-tve dataset validate --require-production
-tve dataset freeze --require-production
-tve backtest --require-production
-tve calibrate --require-production
-```
+The highest-value next merge is **data acquisition**, not a new label.
 
-### 4.5 M1 affected files
+### M1 — FQGate historical MARKET_BAR adapter and capability probe
+
+Goal: integrate the smallest useful FQGate historical source path into the
+existing raw-CAS/offline-compiler architecture.
+
+Scope:
+
+- support the local FQGate HTTP endpoint;
+- add POST request support to the acquisition transport if the current
+  abstraction only supports GET;
+- preserve exact response bytes in `RawBlobStore` before decoding;
+- first support unadjusted daily bars only (`adjust=""`, day interval);
+- decode only verified fields;
+- use fake/local transport fixtures in ordinary CI;
+- keep live access opt-in and outside ordinary CI;
+- provide probe plans/examples for one A listing and one H listing without
+  inventing unobserved market identifiers or coverage;
+- persist observed date span/schema/capability/limitations.
+
+M1 does **not** need to make A6 or `--require-production` pass.
 
 Expected implementation surface:
 
-- `src/turtle_value_engine/historical/research_status.py` — new local usability
-  model + deterministic inspection logic;
-- `src/turtle_value_engine/historical/__init__.py` — public export;
-- `src/turtle_value_engine/__init__.py` — export only if consistent with current
-  package convention;
-- `src/turtle_value_engine/cli.py` — add `historical research-status` only;
-- `schemas/historical-local-research-status.schema.json` — generated/checked
-  additive schema;
-- `tests/test_phase_5r_local_research.py` — focused offline acceptance tests;
-- `docs/operations/phase-5r-a-acquisition.md` — document the distinction between
-  local research status and A6 after implementation;
-- `docs/status/phase-5r-a-2026-09-16.md` — append the implemented milestone result
-  after verification, not before.
+- `src/turtle_value_engine/historical/acquisition.py` or a small adapter module;
+- optional dedicated `src/turtle_value_engine/historical/fqgate.py` if that
+  keeps provider logic cleaner;
+- `src/turtle_value_engine/cli.py` only where needed for existing probe/acquire
+  plumbing;
+- acquisition schema only if POST/local-adapter metadata cannot be represented
+  additively today;
+- focused tests with fake FQGate JSON responses;
+- one redacted/example acquisition plan if useful;
+- Phase 5R-A operations/status docs after implementation.
 
-Explicitly **not affected**:
+Acceptance:
 
-- `rules/strict-v1.yaml`;
-- deterministic calculation/gate/valuation modules;
-- existing A6 acceptance semantics;
-- Phase 5 portfolio policy/calibration math.
+1. ordinary CI is fully offline;
+2. a frozen fake FQGate response compiles deterministically into `MARKET_BAR`;
+3. repeated compile produces the same identities;
+4. unadjusted daily OHLCV mapping is covered by tests;
+5. unsupported/malformed field shapes fail closed;
+6. no H-share capability is claimed unless actually observed;
+7. A6 and `--require-production` semantics are unchanged;
+8. `strict-v1` and deterministic investment math are unchanged.
 
-### 4.6 M1 tests and acceptance
+### M2 — Real source probe and H-share source selection
 
-Add frozen offline tests proving at least:
+Run/record real owner-side probes using the implemented adapter.
 
-1. an A-only price shard with intact hashes can report
-   `LOCAL_ONLY_EXPERIMENTAL` + `PRICE_SERIES_RESEARCH` even when it is not
-   production eligible;
-2. the same fixture still fails the existing production requirement when
-   `--require-production` is requested;
-3. a corrupt/missing shard makes local research status unusable;
-4. rows outside listing/date scope or with mismatched source identity/hash fail;
-5. missing H/lifecycle/FX/benchmark/filing categories are surfaced as
-   limitations, not silently fabricated;
-6. repeated status generation is byte/hash deterministic;
-7. ordinary tests instantiate no provider, network transport or model.
+Decision tree:
 
-Minimum verification:
-
-```bash
-python -m ruff check .
-python -m pytest
+```text
+FQGate H history sufficient?
+  YES -> use FQGate for the bounded H research path
+  NO  -> probe Futu OpenD
+            |
+            +-- sufficient -> use Futu
+            +-- insufficient -> use AKShare/Eastmoney as research fallback
 ```
 
-If a compact synthetic fixture is needed, keep it small and Git-safe. Do not
-commit private Hithink bytes or the owner's private reports.
+A failed source probe narrows that source's role; it does not block unrelated
+research.
 
-## 5. Follow-on milestones
+### M3 — A-share lifecycle/calendar automation
 
-### M2 — FQGate local historical adapter + probe
+Implement the smallest BaoStock or equivalent automated adapter for trade dates
+and listing lifecycle/basic fields. Do not ask the owner to prepare tables.
 
-Goal: add the smallest source adapter for unadjusted daily `MARKET_BAR` rows.
+### M4 — Cross-source reconciliation
 
-Implementation constraints:
+Compare selected canonical observations against an independent available source
+on deterministic samples. Reconciliation improves confidence but is not a
+prerequisite for every local/agent research run.
 
-- direct local HTTP integration; no dependency on the AI plugin runtime;
-- exact raw response bytes enter `RawBlobStore` before decoding;
-- add POST support to the acquisition transport only if the existing abstraction
-  cannot express it, without changing retry/network defaults;
-- fake-transport fixtures in ordinary CI;
-- a committed redacted plan template may describe A/H probe intent, but must not
-  claim the H market code/coverage until observed;
-- live probe remains explicit and local/operator-run.
+### M5 — Deployment-neutral artifact backend
 
-Completion result is one of two valid states:
+After the data pipeline is useful, introduce an artifact-store abstraction or
+mirror strategy so the same normalized/frozen data can live in:
 
-1. A/H historical K-lines are observed and their actual ranges/shapes are
-   recorded; or
-2. H remains explicitly unqualified, with a precise observed limitation.
+- local filesystem/CAS;
+- private VPS/object storage;
+- S3-compatible storage such as Cloudflare R2.
 
-Neither outcome weakens A6.
+Do not change content identities when moving an artifact between backends.
 
-### M3 — Select one H-share fallback only if M2 needs it
+This milestone enables clean agent/API/Web usage without coupling the engine to
+a specific cloud provider.
 
-If FQGate cannot provide the required H historical slice, evaluate Futu OpenD
-next. If the local account cannot provide the needed history, retain that result
-and use AKShare/Eastmoney only for LOCAL_ONLY/EXPERIMENTAL price research and
-sample reconciliation.
+### M6 — Agent/API/Web surface
 
-Do not add multiple H adapters merely because they exist.
+Expose stable research/analysis interfaces suitable for Hermes/Skill/API use and
+then a Web UI. A Cloudflare Worker UI may read prepared data/results from R2/D1
+or call an engine/backend service. UI deployment must not change investment
+math or historical replay semantics.
 
-### M4 — A-share lifecycle/calendar slice
+## 8. What is no longer a prerequisite
 
-Add a BaoStock-based experimental adapter for the smallest useful set:
+The following are **not** prerequisites for continuing useful personal research
+or for building an agent/Web UI:
 
-- trade calendar;
-- listing basic information including IPO/out date/status;
-- optional unadjusted daily bars for sampled reconciliation.
+- full A/H `PRODUCTION_ELIGIBLE` status;
+- redistribution rights for every source;
+- institutional/commercial data contracts;
+- complete survivorship-free market-wide history;
+- complete H-share lifecycle reconstruction;
+- every corporate action across both markets;
+- full historical Business Quality archive.
 
-This milestone should improve local A research and terminal-case discovery. It
-must not label a current stock list as historical universe membership.
+Those may be added when they become useful to a specific research/backtest
+claim. Missing data must remain explicit, but incompleteness should narrow the
+claim rather than disable the entire system.
 
-### M5 — Sampled cross-source reconciliation
+## 9. Storage and Cloudflare direction
 
-Use a source independent from the canonical price source for deterministic
-sample comparisons. AKShare/Eastmoney, FQGate, Futu or BaoStock may fill this
-role depending on the category and the probes that actually pass.
+Remote storage is a deployment choice, not a data-quality classification.
 
-Reconciliation is evidence about sampled values. It is not a substitute for
-historical universe/lifecycle coverage.
+A practical future shape is:
 
-## 6. Deferred work
+```text
+acquisition node (PC/VPS)
+  -> immutable raw/normalized artifacts
+  -> optional R2/VPS mirror
+  -> engine/API/Hermes
+  -> Worker Web UI + D1/R2 metadata/results
+```
 
-Do not pull these into M1/M2 merely to make the complete A/H audit green:
+For the initial source milestones, local CAS remains the simplest authoritative
+store. Add remote mirroring only after acquisition is stable; do not make it a
+prerequisite for M1.
 
-- full H-share lifecycle and delisted universe reconstruction;
-- survivorship-free historical membership;
-- complete corporate-action semantics and total-return backtests;
-- benchmark/FX coverage for all portfolios;
-- complete A/H filing archive and frozen historical Business Quality;
-- remote object-store mirroring;
-- Phase 6 event monitoring.
+## 10. Recommended next Codex goal
 
-They remain legitimate later milestones, but are not prerequisites for bounded
-local price research.
-
-## 7. External source evidence reviewed for this plan
-
-- FQGate / tonghuasun-agent: `https://github.com/zhuyifang/tonghuasun-agent`
-- Futu historical K-lines: `https://openapi.futunn.com/futu-api-doc/quote/request-history-kline.html`
-- Futu quote authority/quota: `https://openapi.futunn.com/futu-api-doc/en/intro/authority.html`
-- AKShare: `https://akshare.akfamily.xyz/`
-- BaoStock: `https://github.com/zxygithub/baostock`
-
-These links identify candidate capabilities only. Runtime capability is accepted
-only from actual probe results; this plan deliberately does not invent coverage
-that was not observed.
-
-## 8. Recommended next Codex goal
-
-Implement **M1 only** first. Do not implement FQGate or another live source in
-the same change. M1 is intentionally small enough to merge independently and
-makes the existing private A-only replay a first-class, honest research surface
-without changing any production or investment semantics.
+Implement **M1 — FQGate historical MARKET_BAR adapter and capability probe**.
+Do not spend the next implementation cycle creating a new product-level
+`LOCAL_ONLY` readiness gate. Preserve existing strict audit modes, but optimize
+the implementation for reliable personal research data first.
