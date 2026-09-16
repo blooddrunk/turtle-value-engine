@@ -1,0 +1,90 @@
+{
+  "contract": "historical_acquisition_plan_v1",
+  "plan_id": "phase-5r-a-hithink-a-probe",
+  "plan_version": "1",
+  "created_at": "2026-09-16T00:00:00Z",
+  "target": {
+    "contract": "historical_target_scope_v1",
+    "target_id": "private-a-probe-target",
+    "target_name": "Bounded A-share probe target",
+    "universe_id": "private-a-probe-universe",
+    "markets": ["A"],
+    "listing_ids": ["SH600000"],
+    "start_date": "2020-01-01",
+    "end_date": "2022-01-02",
+    "membership_claim": "FIXED_RESEARCH_UNIVERSE",
+    "coverage_claim": "PARTIAL",
+    "required_source_kinds": ["PRICES"],
+    "calendar_ids": {
+      "SH600000": "A:SSE"
+    },
+    "listing_markets": {
+      "SH600000": "A"
+    },
+    "licensing_scope": "private local research only; no redistribution"
+  },
+  "sources": [
+    {
+      "contract": "historical_source_spec_v1",
+      "source_id": "hithink-a-prices",
+      "source_kind": "PRICES",
+      "adapter_id": "hithink-market-dumps",
+      "provider_id": "hithink-financial-api",
+      "source_name": "HiThink A-share market dumps",
+      "source_uri": "https://fuyao.aicubes.cn/api/dump/market-dumps",
+      "authority": "DOCUMENTED_PROVIDER",
+      "license_status": "UNKNOWN",
+      "licensing_constraints": "Terms and personal-use scope must be verified; keep all raw data local and private until then.",
+      "license_evidence_uri": null,
+      "license_evidence_sha256": null,
+      "access_grant_reference": null,
+      "historical_capable": false,
+      "is_current_snapshot": false,
+      "coverage_start": "2020-01-01",
+      "coverage_end": "2022-01-02",
+      "coverage_listing_ids": ["SH600000"],
+      "source_version": "market-dumps-v1"
+    }
+  ],
+  "requests": [
+    {
+      "contract": "historical_acquisition_request_v1",
+      "request_id": "hithink-a-daily-k",
+      "source_id": "hithink-a-prices",
+      "adapter_id": "hithink-market-dumps",
+      "source_kind": "PRICES",
+      "artifact_kind": "MARKET_BAR",
+      "schema_version": "market-bar-v1",
+      "listing_ids": ["SH600000"],
+      "start_date": "2020-01-01",
+      "end_date": "2022-01-02",
+      "parameters": {
+        "dump_type": "daily-k"
+      },
+      "credential_ref": {
+        "contract": "credential_reference_v1",
+        "reference_id": "hithink-api-key",
+        "kind": "ENVIRONMENT",
+        "name": "TVE_HITHINK_API_KEY",
+        "required": true
+      },
+      "coverage_evidence_basis": "TRADING_SESSIONS"
+    }
+  ],
+  "credential_references": [
+    {
+      "contract": "credential_reference_v1",
+      "reference_id": "hithink-api-key",
+      "kind": "ENVIRONMENT",
+      "name": "TVE_HITHINK_API_KEY",
+      "required": true
+    }
+  ],
+  "network_default": "deny",
+  "storage_policy": "LOCAL_ONLY",
+  "notes": [
+    "This is an A-share probe configuration, not a market-wide or A/H production claim.",
+    "Do not put the API key, signed URLs, or downloaded raw data in this repository.",
+    "Do not set historical_capable to true before a real probe proves the requested span."
+  ]
+}
