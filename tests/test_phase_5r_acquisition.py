@@ -50,6 +50,7 @@ from turtle_value_engine.historical import (
     HistoricalSourceSpecV1,
     HistoricalTargetScope,
     HithinkAdjustmentFactorParquetDecoder,
+    HithinkDailyKParquetDecoder,
     HithinkMarketDumpAdapter,
     MappingCredentialResolver,
     NetworkDisabledError,
@@ -1106,6 +1107,55 @@ def test_empty_decoder_mapping_is_not_replaced_by_defaults(tmp_path: Path):
         compiler._decoder(receipt)
 
 
+def test_compiler_uses_a_decoder_scope_hook_before_generic_row_processing(tmp_path: Path):
+    body = b"provider-payload"
+    plan = _plan(adapter_id="http-json")
+    raw_store = RawBlobStore(tmp_path / "raw")
+    acquired = HistoricalAcquisitionService(
+        {"http-json": ConfiguredHttpSourceAdapter()},
+        transport=FakeTransport(
+            [
+                NetworkResponse(
+                    200,
+                    {"Content-Type": "application/octet-stream"},
+                    body,
+                    "https://source.example.test/history",
+                )
+            ]
+        ),
+    ).acquire(plan, raw_store=raw_store, network_allowed=True)
+
+    class ScopeAwareDecoder:
+        def decode(self, _receipt, _raw_bytes):
+            raise AssertionError("the generic decoder path must not be used")
+
+        def decode_scoped(self, _receipt, _raw_bytes, request):
+            assert request.listing_ids == ["A1"]
+            return [
+                MarketBar(
+                    bar_id="A1:2020-01-02",
+                    listing_id="A1",
+                    market="A",
+                    trading_date=date(2020, 1, 2),
+                    close=10.0,
+                    currency="CNY",
+                    source_hash=HASH,
+                )
+            ]
+
+    compiler = HistoricalIngestionCompiler(
+        raw_store=raw_store,
+        artifact_store=HistoricalArtifactStore(tmp_path / "artifacts"),
+        decoders={
+            ("http-json", ShardArtifactKind.MARKET_BAR, "market-bar-v1"): ScopeAwareDecoder()
+        },
+    )
+
+    manifest = compiler.compile(acquired.batch)
+
+    assert manifest.shards[0].row_count == 1
+
+
 def test_private_acquisition_and_offline_compile_are_replayable(tmp_path: Path):
     body = _market_bar_body()
     transport = FakeTransport(
@@ -2107,6 +2157,103 @@ def test_hithink_probe_rejects_missing_declared_sessions(monkeypatch):
         "HISTORICAL_CAPABILITY_UNVERIFIED: expected Hithink sessions are missing: "
         "SH600000"
     ]
+
+
+def test_hithink_daily_decoder_streams_batches_and_filters_request_scope(monkeypatch):
+    required = HithinkMarketDumpAdapter._DAILY_K_COLUMNS
+
+    def row(listing: str, observation_date: date) -> dict[str, object]:
+        return {
+            "thscode": listing,
+            "currency": "CNY",
+            "interval": "1d",
+            "adjusted": "none",
+            "date_ms": int(
+                datetime(
+                    observation_date.year,
+                    observation_date.month,
+                    observation_date.day,
+                    tzinfo=UTC,
+                ).timestamp()
+                * 1000
+            ),
+            "open_price": 10.0,
+            "high_price": 11.0,
+            "low_price": 9.0,
+            "close_price": 10.5,
+            "volume": 100.0,
+            "turnover": 1_050.0,
+        }
+
+    class FakeBatch:
+        def __init__(self, rows):
+            self.rows = rows
+
+        def to_pydict(self):
+            return {
+                column: [item[column] for item in self.rows]
+                for column in sorted(required)
+            }
+
+    class FakeParquetFile:
+        schema_arrow = SimpleNamespace(names=sorted(required))
+
+        def __init__(self, body):
+            assert body == b"fake-parquet"
+
+        def iter_batches(self, *, columns, batch_size):
+            assert columns == sorted(required)
+            assert batch_size == HithinkDailyKParquetDecoder._BATCH_SIZE
+            return iter(
+                (
+                    FakeBatch(
+                        [
+                            row("600000.SH", date(2020, 1, 2)),
+                            row("600001.SH", date(2020, 1, 2)),
+                        ]
+                    ),
+                    FakeBatch([row("600000.SH", date(2019, 12, 31))]),
+                )
+            )
+
+    fake_parquet = ModuleType("pyarrow.parquet")
+    fake_parquet.ParquetFile = FakeParquetFile
+    fake_parquet.read_table = lambda *_args, **_kwargs: pytest.fail(
+        "the decoder must not materialize the complete Parquet table"
+    )
+    fake_pyarrow = ModuleType("pyarrow")
+    fake_pyarrow.BufferReader = lambda value: value
+    fake_pyarrow.py_buffer = lambda value: value
+    fake_pyarrow.parquet = fake_parquet
+    monkeypatch.setitem(sys.modules, "pyarrow", fake_pyarrow)
+    monkeypatch.setitem(sys.modules, "pyarrow.parquet", fake_parquet)
+
+    request = _request(adapter_id="hithink-market-dumps").model_copy(
+        update={
+            "listing_ids": ["SH600000"],
+            "start_date": date(2020, 1, 1),
+            "end_date": date(2020, 1, 31),
+        }
+    )
+    body = b"fake-parquet"
+    receipt = RawArtifactReceiptV1.build(
+        batch_id="batch",
+        request=request,
+        adapter_version="1",
+        body=body,
+        retrieval_started_at=datetime(2026, 1, 1, tzinfo=UTC),
+        retrieval_finished_at=datetime(2026, 1, 1, 0, 0, 1, tzinfo=UTC),
+        source_uri="https://source.example.test/history",
+        http_status=200,
+        content_type="application/octet-stream",
+        response_headers={"content-length": str(len(body))},
+    )
+
+    rows = list(HithinkDailyKParquetDecoder().decode_scoped(receipt, body, request))
+
+    assert len(rows) == 1
+    assert rows[0].listing_id == "SH600000"
+    assert rows[0].trading_date == date(2020, 1, 2)
 
 
 @pytest.mark.parametrize("value", [True, float("nan"), float("inf")])

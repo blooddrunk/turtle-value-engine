@@ -2613,6 +2613,18 @@ class HistoricalRawDecoder(Protocol):
         """Raise on unsupported schema or ambiguous semantics."""
 
 
+class ScopedHistoricalRawDecoder(Protocol):
+    """Optional decoder boundary for filtering a full-market artifact early."""
+
+    def decode_scoped(
+        self,
+        receipt: RawArtifactReceiptV1,
+        raw_bytes: bytes,
+        request: HistoricalAcquisitionRequestV1,
+    ) -> Iterable[BaseModel]:
+        """Decode only rows that can enter the declared acquisition request."""
+
+
 class CanonicalJsonDecoder:
     """Offline decoder accepting only already-canonical contract rows."""
 
@@ -2642,88 +2654,171 @@ class CanonicalJsonDecoder:
 class HithinkDailyKParquetDecoder:
     """Optional pyarrow decoder for documented unadjusted daily-k dumps."""
 
+    _BATCH_SIZE = 16_384
+
     def __init__(self, schema_version: str = "market-bar-v1") -> None:
         self.schema_version = schema_version
 
-    def decode(self, receipt: RawArtifactReceiptV1, raw_bytes: bytes) -> list[BaseModel]:
+    def _validate_receipt(self, receipt: RawArtifactReceiptV1) -> None:
         if receipt.artifact_kind is not ShardArtifactKind.MARKET_BAR:
             raise HistoricalIngestionError("Hithink daily-k decoder requires MARKET_BAR")
         if receipt.schema_version != self.schema_version:
             raise HistoricalIngestionError("Hithink daily-k schema version is unrecognized")
-        try:
-            import io
 
-            import pyarrow.parquet as parquet  # type: ignore[import-not-found]
-        except ImportError as exc:
-            raise HistoricalIngestionError(
-                "Hithink Parquet decoding requires the optional parquet dependency"
-            ) from exc
-        try:
-            rows = parquet.read_table(io.BytesIO(raw_bytes)).to_pylist()
-        except Exception as exc:
-            raise HistoricalIngestionError("Hithink daily-k Parquet schema is invalid") from exc
-        zone = ZoneInfo("Asia/Shanghai")
-        result: list[BaseModel] = []
-        required = {
-            "thscode",
-            "currency",
-            "interval",
-            "adjusted",
-            "date_ms",
+    @staticmethod
+    def _numeric_values(row: Mapping[str, object]) -> dict[str, float]:
+        result: dict[str, float] = {}
+        for field_name in (
             "open_price",
             "high_price",
             "low_price",
             "close_price",
             "volume",
             "turnover",
-        }
-        for row in rows:
-            if set(row) != required:
-                raise HistoricalIngestionError("Hithink daily-k columns changed")
-            if row["interval"] != "1d" or row["adjusted"] != "none":
+        ):
+            value = row[field_name]
+            if isinstance(value, bool):
                 raise HistoricalIngestionError(
-                    "Hithink adjusted/non-daily data cannot become canonical unadjusted bars"
+                    "Hithink daily-k row failed canonical validation"
                 )
-            if row["currency"] != "CNY":
-                raise HistoricalIngestionError(
-                    "Hithink daily-k currency is not the documented CNY value"
-                )
-            listing_id = _canonical_hithink_a_listing(row["thscode"])
-            if isinstance(row["date_ms"], bool):
-                raise HistoricalIngestionError("Hithink daily-k date_ms is invalid")
             try:
-                milliseconds = float(row["date_ms"])
-            except (TypeError, ValueError) as exc:
-                raise HistoricalIngestionError("Hithink daily-k date_ms is invalid") from exc
-            if not math.isfinite(milliseconds):
-                raise HistoricalIngestionError("Hithink daily-k date_ms is invalid")
-            try:
-                trading_datetime = datetime.fromtimestamp(milliseconds / 1000, tz=zone)
-            except (OSError, ValueError, OverflowError) as exc:
-                raise HistoricalIngestionError("Hithink daily-k date_ms is invalid") from exc
-            try:
-                result.append(
-                    MarketBar(
-                        bar_id=f"{listing_id}:{trading_datetime.date().isoformat()}",
-                        listing_id=listing_id,
-                        market="A",
-                        trading_date=trading_datetime.date(),
-                        timestamp=trading_datetime,
-                        open=float(row["open_price"]),
-                        high=float(row["high_price"]),
-                        low=float(row["low_price"]),
-                        close=float(row["close_price"]),
-                        volume=float(row["volume"]),
-                        amount=float(row["turnover"]),
-                        currency=str(row["currency"]),
-                        source_hash=receipt.sha256,
-                    )
-                )
-            except (TypeError, ValueError) as exc:
+                number = float(value)
+            except (TypeError, ValueError, OverflowError) as exc:
                 raise HistoricalIngestionError(
                     "Hithink daily-k row failed canonical validation"
                 ) from exc
+            if not math.isfinite(number):
+                raise HistoricalIngestionError(
+                    "Hithink daily-k row failed canonical validation"
+                )
+            if field_name in {"volume", "turnover"} and number < 0:
+                raise HistoricalIngestionError(
+                    "Hithink daily-k row failed canonical validation"
+                )
+            if field_name == "close_price" and number <= 0:
+                raise HistoricalIngestionError(
+                    "Hithink daily-k row failed canonical validation"
+                )
+            result[field_name] = number
         return result
+
+    def decode(self, receipt: RawArtifactReceiptV1, raw_bytes: bytes) -> Iterable[BaseModel]:
+        self._validate_receipt(receipt)
+        return self._iter_rows(receipt, raw_bytes)
+
+    def decode_scoped(
+        self,
+        receipt: RawArtifactReceiptV1,
+        raw_bytes: bytes,
+        request: HistoricalAcquisitionRequestV1,
+    ) -> Iterable[BaseModel]:
+        self._validate_receipt(receipt)
+        return self._iter_rows(receipt, raw_bytes, request=request)
+
+    def _iter_rows(
+        self,
+        receipt: RawArtifactReceiptV1,
+        raw_bytes: bytes,
+        *,
+        request: HistoricalAcquisitionRequestV1 | None = None,
+    ) -> Iterable[BaseModel]:
+        try:
+            import pyarrow as arrow  # type: ignore[import-not-found]
+            import pyarrow.parquet as parquet  # type: ignore[import-not-found]
+        except ImportError as exc:
+            raise HistoricalIngestionError(
+                "Hithink Parquet decoding requires the optional parquet dependency"
+            ) from exc
+        required = HithinkMarketDumpAdapter._DAILY_K_COLUMNS
+        try:
+            # BufferReader over py_buffer avoids making another full-size
+            # Python bytes copy before Parquet's row-group reader starts.
+            parquet_file = parquet.ParquetFile(
+                arrow.BufferReader(arrow.py_buffer(raw_bytes))
+            )
+            column_names = list(parquet_file.schema_arrow.names)
+        except Exception as exc:
+            raise HistoricalIngestionError("Hithink daily-k Parquet schema is invalid") from exc
+        if len(column_names) != len(required) or set(column_names) != required:
+            raise HistoricalIngestionError("Hithink daily-k columns changed")
+
+        zone = ZoneInfo("Asia/Shanghai")
+        requested_listings = set(request.listing_ids) if request is not None else None
+        columns = sorted(required)
+        try:
+            batches = parquet_file.iter_batches(
+                columns=columns,
+                batch_size=self._BATCH_SIZE,
+            )
+            for record_batch in batches:
+                values = record_batch.to_pydict()
+                if set(values) != required:
+                    raise HistoricalIngestionError("Hithink daily-k columns changed")
+                row_count = len(values[columns[0]])
+                if any(len(values[column]) != row_count for column in columns[1:]):
+                    raise HistoricalIngestionError("Hithink daily-k batch columns are misaligned")
+                for index in range(row_count):
+                    row = {column: values[column][index] for column in columns}
+                    if row["interval"] != "1d" or row["adjusted"] != "none":
+                        raise HistoricalIngestionError(
+                            "Hithink adjusted/non-daily data cannot become canonical "
+                            "unadjusted bars"
+                        )
+                    if row["currency"] != "CNY":
+                        raise HistoricalIngestionError(
+                            "Hithink daily-k currency is not the documented CNY value"
+                        )
+                    listing_id = _canonical_hithink_a_listing(row["thscode"])
+                    if isinstance(row["date_ms"], bool):
+                        raise HistoricalIngestionError("Hithink daily-k date_ms is invalid")
+                    try:
+                        milliseconds = float(row["date_ms"])
+                    except (TypeError, ValueError) as exc:
+                        raise HistoricalIngestionError(
+                            "Hithink daily-k date_ms is invalid"
+                        ) from exc
+                    if not math.isfinite(milliseconds):
+                        raise HistoricalIngestionError("Hithink daily-k date_ms is invalid")
+                    try:
+                        trading_datetime = datetime.fromtimestamp(milliseconds / 1000, tz=zone)
+                    except (OSError, ValueError, OverflowError) as exc:
+                        raise HistoricalIngestionError(
+                            "Hithink daily-k date_ms is invalid"
+                        ) from exc
+                    trading_date = trading_datetime.date()
+                    numeric_values = self._numeric_values(row)
+                    if (
+                        requested_listings is not None
+                        and (
+                            listing_id not in requested_listings
+                            or not request.start_date <= trading_date <= request.end_date
+                        )
+                    ):
+                        continue
+                    try:
+                        yield MarketBar(
+                            bar_id=f"{listing_id}:{trading_date.isoformat()}",
+                            listing_id=listing_id,
+                            market="A",
+                            trading_date=trading_date,
+                            timestamp=trading_datetime,
+                            open=numeric_values["open_price"],
+                            high=numeric_values["high_price"],
+                            low=numeric_values["low_price"],
+                            close=numeric_values["close_price"],
+                            volume=numeric_values["volume"],
+                            amount=numeric_values["turnover"],
+                            currency=str(row["currency"]),
+                            source_hash=receipt.sha256,
+                        )
+                    except (TypeError, ValueError) as exc:
+                        raise HistoricalIngestionError(
+                            "Hithink daily-k row failed canonical validation"
+                        ) from exc
+        except HistoricalIngestionError:
+            raise
+        except Exception as exc:
+            raise HistoricalIngestionError("Hithink daily-k Parquet rows are invalid") from exc
 
 
 def _canonical_hithink_a_listing(value: object) -> str:
@@ -3723,7 +3818,13 @@ class HistoricalIngestionCompiler:
             if receipt.artifact_role != "DATA":
                 continue
             request = requests[receipt.request_id]
-            rows = self._decoder(receipt).decode(receipt, body)
+            decoder = self._decoder(receipt)
+            decode_scoped = getattr(decoder, "decode_scoped", None)
+            rows = (
+                decode_scoped(receipt, body, request)
+                if callable(decode_scoped)
+                else decoder.decode(receipt, body)
+            )
             source_hash = batch.source_aggregate_hash(receipt.source_id)
             for raw_row in rows:
                 if receipt.artifact_kind is None:
