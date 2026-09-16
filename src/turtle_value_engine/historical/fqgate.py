@@ -43,11 +43,11 @@ from .acquisition import (
     HistoricalSourceSchemaError,
     NetworkResponse,
     NetworkTransport,
+    NetworkTransportError,
     ProbeStatus,
     RawArtifactReceiptV1,
     RawDownload,
     SourceProbeReportV1,
-    _http_error_blocker,
     _safe_uri,
     _utc_now,
 )
@@ -68,6 +68,21 @@ _FQGATE_ALLOWED_DATA_KEYS = frozenset(
 )
 _FQGATE_FIELD_KEYS = frozenset({"1", "7", "8", "9", "11", "13", "19"})
 _FQGATE_LOCAL_ZONE = ZoneInfo("Asia/Shanghai")
+_FQGATE_PROVIDER_ERROR_CODE_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,63}")
+
+FQGATE_LOCAL_GATEWAY_UNREACHABLE = "FQGATE_LOCAL_GATEWAY_UNREACHABLE"
+FQGATE_H_ROUTE_UNVERIFIED = "FQGATE_H_ROUTE_UNVERIFIED"
+# These two prefixes are reserved for independently established provider
+# semantics; this repository currently has no such evidence and emits neither.
+FQGATE_H_ROUTE_REJECTED = "FQGATE_H_ROUTE_REJECTED"
+FQGATE_HTTP_504_UNCLASSIFIED = "FQGATE_HTTP_504_UNCLASSIFIED"
+FQGATE_UPSTREAM_TIMEOUT_CONFIRMED = "FQGATE_UPSTREAM_TIMEOUT_CONFIRMED"
+FQGATE_ENTITLEMENT_DENIED = "FQGATE_ENTITLEMENT_DENIED"
+FQGATE_PROVIDER_ERROR_CODE = "FQGATE_PROVIDER_ERROR_CODE"
+FQGATE_PROVIDER_ERROR_UNCLASSIFIED = "FQGATE_PROVIDER_ERROR_UNCLASSIFIED"
+HISTORICAL_NO_ROWS = "HISTORICAL_NO_ROWS"
+HISTORICAL_COVERAGE_INSUFFICIENT = "HISTORICAL_COVERAGE_INSUFFICIENT"
+SOURCE_SCHEMA_UNSUPPORTED = "SOURCE_SCHEMA_UNSUPPORTED"
 
 
 class _FQGateShapeError(ValueError):
@@ -98,6 +113,115 @@ class _FQGateObservation:
 
 def _shape_error(message: str) -> _FQGateShapeError:
     return _FQGateShapeError("FQGate response shape is unsupported: " + message)
+
+
+def _safe_provider_error_code(raw_bytes: bytes) -> str | None:
+    """Extract only a bounded scalar error code from a provider response.
+
+    FQGate's public client forwards the top-level ``code`` value (with an
+    ``api_error`` fallback) from an HTTP error body, but does not define a
+    closed set of meanings for those codes.
+    Keep the code as a diagnostic only; never retain the accompanying message
+    or details, which may contain arbitrary provider or session information.
+    """
+
+    try:
+        payload = json.loads(raw_bytes.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, Mapping):
+        return None
+    raw_code = payload.get("code")
+    if raw_code is None:
+        raw_code = payload.get("api_error")
+    if isinstance(raw_code, bool) or not isinstance(raw_code, (int, str)):
+        return None
+    code = str(raw_code).strip()
+    if isinstance(raw_code, int):
+        return code if code and len(code) <= 64 else None
+    if not code or not (
+        _FQGATE_PROVIDER_ERROR_CODE_PATTERN.fullmatch(code)
+        or (code.startswith("-") and code[1:].isdigit() and len(code) <= 64)
+    ):
+        return None
+    return code
+
+
+def _structured_error_code(raw_bytes: bytes) -> str | None:
+    """Return a non-success top-level provider code when one is explicit."""
+
+    try:
+        payload = json.loads(raw_bytes.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, Mapping) or not (
+        "code" in payload or "api_error" in payload
+    ):
+        return None
+    if type(payload.get("code")) is int and payload.get("code") == 0:
+        return None
+    return _safe_provider_error_code(raw_bytes)
+
+
+def _provider_error_code_blocker(raw_bytes: bytes) -> str | None:
+    code = _safe_provider_error_code(raw_bytes)
+    return f"{FQGATE_PROVIDER_ERROR_CODE}: {code}" if code is not None else None
+
+
+def _http_error_blockers(response: NetworkResponse) -> list[str]:
+    """Classify only the HTTP facts that are independently observable."""
+
+    if response.status_code in {401, 403}:
+        blockers = [f"{FQGATE_ENTITLEMENT_DENIED}: HTTP {response.status_code}"]
+    elif response.status_code == 504:
+        # A gateway status alone does not identify the failing upstream.  In
+        # particular, do not turn the current H 504 into an upstream-timeout
+        # claim merely because 504 is commonly used for that purpose.
+        blockers = [f"{FQGATE_HTTP_504_UNCLASSIFIED}: HTTP 504"]
+    else:
+        blockers = [f"FQGATE_HTTP_ERROR_UNCLASSIFIED: HTTP {response.status_code}"]
+    provider_code = _provider_error_code_blocker(response.body)
+    if provider_code is not None:
+        blockers.append(provider_code)
+        blockers.append(
+            f"{FQGATE_PROVIDER_ERROR_UNCLASSIFIED}: provider code semantics are not established"
+        )
+    return blockers
+
+
+def _provider_error_blockers(raw_bytes: bytes) -> list[str] | None:
+    """Classify an explicit error envelope without assigning unproven meaning."""
+
+    code = _structured_error_code(raw_bytes)
+    if code is None:
+        return None
+    return [
+        f"{FQGATE_PROVIDER_ERROR_CODE}: {code}",
+        f"{FQGATE_PROVIDER_ERROR_UNCLASSIFIED}: provider code semantics are not established",
+    ]
+
+
+def _h_route_is_unverified(request: HistoricalAcquisitionRequestV1) -> bool:
+    """Detect only an absent/template H route; never derive a replacement route."""
+
+    parameters = request.parameters
+    if parameters.get("canonical_market") != Market.H.value:
+        return False
+    for key in ("market", "code"):
+        value = parameters.get(key)
+        if not isinstance(value, str) or not value.strip():
+            return True
+        stripped = value.strip()
+        if stripped.startswith("<") and stripped.endswith(">"):
+            return True
+    return False
+
+
+def _schema_blocker(exc: Exception) -> str:
+    """Keep local parser diagnostics bounded and free of response text."""
+
+    detail = str(exc).strip().replace("\n", " ")[:256]
+    return f"{SOURCE_SCHEMA_UNSUPPORTED}: {detail}" if detail else SOURCE_SCHEMA_UNSUPPORTED
 
 
 def _unwrap_field(value: object, *, field_id: str) -> object:
@@ -370,6 +494,8 @@ def _payload_for_request(
 def _observations(
     raw_bytes: bytes,
     details: _FQGateRequestDetails,
+    *,
+    allow_empty: bool = False,
 ) -> list[_FQGateObservation]:
     try:
         records = _parse_envelope(raw_bytes)
@@ -413,7 +539,7 @@ def _observations(
             )
     except _FQGateShapeError as exc:
         raise HistoricalIngestionError(str(exc)) from exc
-    if not observations:
+    if not observations and not allow_empty:
         raise HistoricalIngestionError("FQGate response contains no daily K-line records")
     return observations
 
@@ -571,9 +697,14 @@ class FQGateMarketHistoryAdapter:
         credentials: CredentialResolver,
     ) -> list[RawDownload]:
         del credentials
-        response, details = self._request(request, transport=transport)
+        try:
+            response, details = self._request(request, transport=transport)
+        except (NetworkTransportError, TimeoutError, OSError) as exc:
+            raise AcquisitionError(
+                f"{FQGATE_LOCAL_GATEWAY_UNREACHABLE}: FQGate local HTTP connection failed"
+            ) from exc
         if not 200 <= response.status_code <= 299:
-            raise AcquisitionError(_http_error_blocker(response.status_code))
+            raise AcquisitionError("; ".join(_http_error_blockers(response)))
         return [self._raw_download(request, response, details)]
 
     def probe(
@@ -589,7 +720,7 @@ class FQGateMarketHistoryAdapter:
         started = _utc_now(clock)
         try:
             response, details = self._request(request, transport=transport)
-        except (HistoricalSourceSchemaError, AcquisitionError) as exc:
+        except (NetworkTransportError, TimeoutError, OSError):
             finished = _utc_now(clock)
             return SourceProbeReportV1.build(
                 report_id=f"probe-{request.request_id}",
@@ -602,7 +733,49 @@ class FQGateMarketHistoryAdapter:
                 status=ProbeStatus.FAILED,
                 started_at=started,
                 finished_at=finished,
-                blockers=[str(exc)],
+                blockers=[
+                    f"{FQGATE_LOCAL_GATEWAY_UNREACHABLE}: FQGate local HTTP connection failed"
+                ],
+            )
+        except HistoricalSourceSchemaError as exc:
+            finished = _utc_now(clock)
+            if _h_route_is_unverified(request):
+                status = ProbeStatus.BLOCKED
+                blockers = [
+                    f"{FQGATE_H_ROUTE_UNVERIFIED}: an explicit H market/code pair was not supplied"
+                ]
+            else:
+                status = ProbeStatus.FAILED
+                blockers = [_schema_blocker(exc)]
+            return SourceProbeReportV1.build(
+                report_id=f"probe-{request.request_id}",
+                plan_id=plan_id,
+                request_id=request.request_id,
+                source_id=request.source_id,
+                adapter_id=self.adapter_id,
+                adapter_version=self.adapter_version,
+                source_kind=request.source_kind,
+                status=status,
+                started_at=started,
+                finished_at=finished,
+                blockers=blockers,
+            )
+        except AcquisitionError:
+            finished = _utc_now(clock)
+            return SourceProbeReportV1.build(
+                report_id=f"probe-{request.request_id}",
+                plan_id=plan_id,
+                request_id=request.request_id,
+                source_id=request.source_id,
+                adapter_id=self.adapter_id,
+                adapter_version=self.adapter_version,
+                source_kind=request.source_kind,
+                status=ProbeStatus.FAILED,
+                started_at=started,
+                finished_at=finished,
+                blockers=[
+                    f"{FQGATE_LOCAL_GATEWAY_UNREACHABLE}: FQGate local HTTP request failed"
+                ],
             )
 
         common = {
@@ -614,6 +787,7 @@ class FQGateMarketHistoryAdapter:
         }
         if not 200 <= response.status_code <= 299:
             finished = _utc_now(clock)
+            blockers = _http_error_blockers(response)
             return SourceProbeReportV1.build(
                 report_id=f"probe-{request.request_id}",
                 plan_id=plan_id,
@@ -630,12 +804,31 @@ class FQGateMarketHistoryAdapter:
                     if response.status_code in {401, 403}
                     else AccountEntitlement.UNKNOWN
                 ),
-                blockers=[_http_error_blocker(response.status_code)],
+                blockers=blockers,
+                **common,
+            )
+
+        provider_error_blockers = _provider_error_blockers(response.body)
+        if provider_error_blockers is not None:
+            finished = _utc_now(clock)
+            return SourceProbeReportV1.build(
+                report_id=f"probe-{request.request_id}",
+                plan_id=plan_id,
+                request_id=request.request_id,
+                source_id=request.source_id,
+                adapter_id=self.adapter_id,
+                adapter_version=self.adapter_version,
+                source_kind=request.source_kind,
+                status=ProbeStatus.FAILED,
+                started_at=started,
+                finished_at=finished,
+                account_entitlement=AccountEntitlement.UNKNOWN,
+                blockers=provider_error_blockers,
                 **common,
             )
 
         try:
-            observations = _observations(response.body, details)
+            observations = _observations(response.body, details, allow_empty=True)
         except (HistoricalIngestionError, HistoricalSourceSchemaError) as exc:
             finished = _utc_now(clock)
             return SourceProbeReportV1.build(
@@ -650,23 +843,40 @@ class FQGateMarketHistoryAdapter:
                 started_at=started,
                 finished_at=finished,
                 account_entitlement=AccountEntitlement.CONFIRMED,
-                blockers=[str(exc)],
+                blockers=[_schema_blocker(exc)],
                 **common,
             )
 
         finished = _utc_now(clock)
+        if not observations:
+            return SourceProbeReportV1.build(
+                report_id=f"probe-{request.request_id}",
+                plan_id=plan_id,
+                request_id=request.request_id,
+                source_id=request.source_id,
+                adapter_id=self.adapter_id,
+                adapter_version=self.adapter_version,
+                source_kind=request.source_kind,
+                status=ProbeStatus.FAILED,
+                started_at=started,
+                finished_at=finished,
+                account_entitlement=AccountEntitlement.UNKNOWN,
+                blockers=[
+                    f"{HISTORICAL_NO_ROWS}: FQGate returned no usable daily observations"
+                ],
+                **common,
+            )
+
         observed_dates = {item.trading_date for item in observations}
         observed_start = min(observed_dates) if observed_dates else None
         observed_end = max(observed_dates) if observed_dates else None
         blockers: list[str] = []
         if observed_start is None or observed_end is None:
-            blockers.append(
-                "HISTORICAL_CAPABILITY_UNVERIFIED: FQGate returned no daily observations"
-            )
+            blockers.append(f"{HISTORICAL_NO_ROWS}: FQGate returned no usable daily observations")
         else:
             if observed_start > request.start_date or observed_end < request.end_date:
                 blockers.append(
-                    "HISTORICAL_CAPABILITY_UNVERIFIED: FQGate response does not cover the "
+                    f"{HISTORICAL_COVERAGE_INSUFFICIENT}: FQGate response does not cover the "
                     "requested date range"
                 )
             for listing_id, expected_sessions in (
@@ -674,7 +884,7 @@ class FQGateMarketHistoryAdapter:
             ).items():
                 if set(expected_sessions) - observed_dates:
                     blockers.append(
-                        "HISTORICAL_CAPABILITY_UNVERIFIED: expected FQGate sessions are "
+                        f"{HISTORICAL_COVERAGE_INSUFFICIENT}: expected FQGate sessions are "
                         "missing: "
                         + listing_id
                     )

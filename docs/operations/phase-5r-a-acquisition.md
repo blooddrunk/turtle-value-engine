@@ -98,6 +98,32 @@ H 历史能力、覆盖范围、退市保留或 corporate-action 能力。FQGate
 参考实现：[FQGate Python client](https://github.com/zhuyifang/tonghuasun-agent/blob/main/sdk/python/src/fqgate_client/client.py)
 和[公开 UI 的 K 线字段映射](https://github.com/zhuyifang/tonghuasun-agent/blob/main/AI-plugins/ui-apps/src/adapters/local-api/FqgateCandleService.ts)。
 
+### M2-A FQGate 失败诊断
+
+FQGate probe 仍只写入既有 `SourceProbeReportV1.blockers` 字段，并使用稳定前缀区分
+可观察事实。诊断边界如下：
+
+- 本机 transport 连接失败写为 `FQGATE_LOCAL_GATEWAY_UNREACHABLE`；它只说明本机
+  网关路径不可达，不说明 H 路由、账户权限或历史覆盖。
+- HTTP `401/403` 写为 `FQGATE_ENTITLEMENT_DENIED`。HTTP `504` 在没有独立证据
+  证明上游原因时写为 `FQGATE_HTTP_504_UNCLASSIFIED`，不会仅凭状态码写成
+  `FQGATE_UPSTREAM_TIMEOUT_CONFIRMED`。
+- 非成功响应或成功 envelope 中的结构化 `code`/`api_error` 只保留经过长度和字符
+  限制的标量值，写为 `FQGATE_PROVIDER_ERROR_CODE`，并同时保留
+  `FQGATE_PROVIDER_ERROR_UNCLASSIFIED`；不会把 `message`、`details` 或完整响应正文
+  放入 blocker、异常或日志。当前公开 client/UI 资料没有建立 timeout 或 route
+  rejection code 的闭集语义，因此不会发明 `FQGATE_H_ROUTE_REJECTED` 或
+  `FQGATE_UPSTREAM_TIMEOUT_CONFIRMED` 的映射。
+- H request 缺少实际 `market` 或 `code`，或仍是模板值时写为
+  `FQGATE_H_ROUTE_UNVERIFIED`，并在触碰网络前阻断；适配器不会推导替代 ID。
+- 合法 `200` 响应无可用行写为 `HISTORICAL_NO_ROWS`；有行但日期/声明 session 不
+  完整写为 `HISTORICAL_COVERAGE_INSUFFICIENT`，而不是 route failure。响应形状
+  无法安全解码时写为 `SOURCE_SCHEMA_UNSUPPORTED`。
+
+这些诊断不改变 FQGate 的 retry policy、A-share 成功路径、raw CAS、receipt、离线
+compile/replay 或 H-share readiness。失败 probe 仍不会产生 H 历史能力声明；只有
+实际观察到的成功行、日期和 listing identity 才能进入相应证据字段。
+
 ## 3. Probe、获取与编译
 
 ```bash

@@ -11,6 +11,7 @@ import pytest
 
 from turtle_value_engine.backtest import MarketBar
 from turtle_value_engine.historical import (
+    AcquisitionError,
     FQGateMarketHistoryAdapter,
     HistoricalAcquisitionPlanV1,
     HistoricalAcquisitionRequestV1,
@@ -24,6 +25,7 @@ from turtle_value_engine.historical import (
     LicenseStatus,
     NetworkDisabledError,
     NetworkResponse,
+    NetworkTransportError,
     RawBlobStore,
     ShardArtifactKind,
 )
@@ -60,6 +62,25 @@ class FakeFQGateTransport:
         )
 
 
+class RaisingFQGateTransport:
+    def __init__(self, error: Exception) -> None:
+        self.error = error
+        self.calls = 0
+
+    def request(
+        self,
+        method: str,
+        url: str,
+        *,
+        headers=None,
+        body: bytes | None = None,
+        timeout_seconds: float = 30.0,
+    ) -> NetworkResponse:
+        del method, url, headers, body, timeout_seconds
+        self.calls += 1
+        raise self.error
+
+
 def _field(value: object) -> dict[str, object]:
     kind = "string" if isinstance(value, str) else "integer" if isinstance(value, int) else "float"
     return {"type": kind, "value": value}
@@ -78,6 +99,14 @@ def _response_body(
             "message": "操作成功",
             "data": data,
         },
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).encode("utf-8")
+
+
+def _error_body(code: object, *, message: str = "provider secret must not leak") -> bytes:
+    return json.dumps(
+        {"code": code, "message": message},
         ensure_ascii=False,
         separators=(",", ":"),
     ).encode("utf-8")
@@ -407,6 +436,218 @@ def test_fqgate_rejects_adjusted_or_non_daily_requests_before_network(tmp_path: 
     assert transport.calls == []
 
 
+@pytest.mark.parametrize("status_code", [401, 403])
+def test_fqgate_probe_classifies_http_entitlement_denial(status_code: int):
+    report = _service(
+        FakeFQGateTransport(
+            [_error_body("permission_denied")],
+            status_code=status_code,
+        )
+    ).probe(_plan(market="H", listing_id="H1"), network_allowed=True)
+
+    probe = report.probe_reports[0]
+    assert probe.status == "FAILED"
+    assert probe.account_entitlement == "DENIED"
+    assert any(
+        item.startswith(f"FQGATE_ENTITLEMENT_DENIED: HTTP {status_code}")
+        for item in probe.blockers
+    )
+    assert not any("provider secret" in item for item in probe.blockers)
+
+
+def test_fqgate_probe_keeps_opaque_504_unclassified():
+    report = _service(
+        FakeFQGateTransport([b"gateway body: provider secret"], status_code=504)
+    ).probe(_plan(market="H", listing_id="H1"), network_allowed=True)
+
+    probe = report.probe_reports[0]
+    assert probe.status == "FAILED"
+    assert probe.account_entitlement == "UNKNOWN"
+    assert "FQGATE_HTTP_504_UNCLASSIFIED: HTTP 504" in probe.blockers
+    assert not any("FQGATE_UPSTREAM_TIMEOUT_CONFIRMED" in item for item in probe.blockers)
+    assert not any("provider secret" in item for item in probe.blockers)
+
+
+def test_fqgate_probe_keeps_unproven_structured_codes_unclassified():
+    report = _service(
+        FakeFQGateTransport(
+            [_error_body("upstream_timeout")],
+            status_code=504,
+        )
+    ).probe(_plan(market="H", listing_id="H1"), network_allowed=True)
+
+    blockers = report.probe_reports[0].blockers
+    assert "FQGATE_HTTP_504_UNCLASSIFIED: HTTP 504" in blockers
+    assert "FQGATE_PROVIDER_ERROR_CODE: upstream_timeout" in blockers
+    assert any(item.startswith("FQGATE_PROVIDER_ERROR_UNCLASSIFIED:") for item in blockers)
+    assert not any("FQGATE_UPSTREAM_TIMEOUT_CONFIRMED" in item for item in blockers)
+    assert not any("provider secret" in item for item in blockers)
+
+    route_report = _service(
+        FakeFQGateTransport([_error_body("market_not_found")], status_code=400)
+    ).probe(_plan(market="H", listing_id="H1"), network_allowed=True)
+    route_blockers = route_report.probe_reports[0].blockers
+    assert "FQGATE_PROVIDER_ERROR_CODE: market_not_found" in route_blockers
+    assert any(item.startswith("FQGATE_PROVIDER_ERROR_UNCLASSIFIED:") for item in route_blockers)
+    assert not any("FQGATE_H_ROUTE_REJECTED" in item for item in route_blockers)
+
+
+def test_fqgate_probe_classifies_structured_2xx_error_without_message_leak():
+    report = _service(FakeFQGateTransport([_error_body(-17)])).probe(
+        _plan(market="H", listing_id="H1"),
+        network_allowed=True,
+    )
+
+    probe = report.probe_reports[0]
+    assert probe.status == "FAILED"
+    assert "FQGATE_PROVIDER_ERROR_CODE: -17" in probe.blockers
+    assert any(item.startswith("FQGATE_PROVIDER_ERROR_UNCLASSIFIED:") for item in probe.blockers)
+    assert not any("provider secret" in item for item in probe.blockers)
+
+
+def test_fqgate_acquire_does_not_include_http_body_in_error(tmp_path: Path):
+    with pytest.raises(AcquisitionError) as error:
+        _service(
+            FakeFQGateTransport(
+                [_error_body("route_rejected")],
+                status_code=400,
+            )
+        ).acquire(
+            _plan(market="H", listing_id="H1"),
+            raw_store=RawBlobStore(tmp_path / "raw"),
+            network_allowed=True,
+        )
+
+    assert "FQGATE_HTTP_ERROR_UNCLASSIFIED: HTTP 400" in str(error.value)
+    assert "FQGATE_PROVIDER_ERROR_CODE: route_rejected" in str(error.value)
+    assert "provider secret" not in str(error.value)
+
+
+def test_fqgate_probe_classifies_local_gateway_unreachable_without_error_leak(
+    tmp_path: Path,
+):
+    transport = RaisingFQGateTransport(NetworkTransportError("local secret"))
+    report = _service(transport).probe(_plan(), network_allowed=True)
+
+    probe = report.probe_reports[0]
+    assert probe.status == "FAILED"
+    assert probe.blockers == [
+        "FQGATE_LOCAL_GATEWAY_UNREACHABLE: FQGate local HTTP connection failed"
+    ]
+    assert "local secret" not in str(report)
+    assert transport.calls == 1
+
+    with pytest.raises(AcquisitionError, match="FQGATE_LOCAL_GATEWAY_UNREACHABLE") as error:
+        _service(RaisingFQGateTransport(NetworkTransportError("local secret"))).acquire(
+            _plan(),
+            raw_store=RawBlobStore(tmp_path / "raw"),
+            network_allowed=True,
+        )
+    assert "local secret" not in str(error.value)
+
+
+def test_fqgate_h_probe_requires_an_explicit_route_without_inference():
+    transport = FakeFQGateTransport([])
+    report = _service(transport).probe(
+        _plan(
+            market="H",
+            listing_id="H1",
+            body_parameters={"market": "", "code": ""},
+        ),
+        network_allowed=True,
+    )
+
+    probe = report.probe_reports[0]
+    assert probe.status == "BLOCKED"
+    assert probe.blockers == [
+        "FQGATE_H_ROUTE_UNVERIFIED: an explicit H market/code pair was not supplied"
+    ]
+    assert probe.historical_capable is False
+    assert transport.calls == []
+
+
+def test_fqgate_probe_marks_valid_partial_history_as_coverage_insufficient():
+    partial_body = _response_body(
+        records=[
+            [
+                {
+                    "1": _field("20260908"),
+                    "7": _field(10.0),
+                    "8": _field(10.8),
+                    "9": _field(9.8),
+                    "11": _field(10.5),
+                }
+            ]
+        ]
+    )
+    report = _service(FakeFQGateTransport([partial_body])).probe(_plan(), network_allowed=True)
+
+    probe = report.probe_reports[0]
+    assert probe.status == "PASS"
+    assert probe.historical_capable is False
+    assert any(
+        item.startswith("HISTORICAL_COVERAGE_INSUFFICIENT:") for item in probe.blockers
+    )
+
+
+def test_fqgate_probe_marks_missing_expected_session_as_coverage_insufficient():
+    body = _response_body(
+        records=[
+            [
+                {
+                    "1": _field("20260908"),
+                    "7": _field(10.0),
+                    "8": _field(10.8),
+                    "9": _field(9.8),
+                    "11": _field(10.5),
+                },
+                {
+                    "1": _field("20260910"),
+                    "7": _field(10.5),
+                    "8": _field(11.0),
+                    "9": _field(10.2),
+                    "11": _field(10.8),
+                },
+            ]
+        ]
+    )
+    plan = _plan()
+    request = plan.requests[0].model_copy(
+        update={
+            "expected_sessions_by_listing": {
+                "A1": [date(2026, 9, 8), date(2026, 9, 9), date(2026, 9, 10)]
+            }
+        }
+    )
+    plan = plan.model_copy(update={"requests": [request]})
+    report = _service(FakeFQGateTransport([body])).probe(plan, network_allowed=True)
+
+    probe = report.probe_reports[0]
+    assert probe.status == "PASS"
+    assert probe.historical_capable is False
+    assert any(
+        item.startswith("HISTORICAL_COVERAGE_INSUFFICIENT:") for item in probe.blockers
+    )
+
+
+def test_fqgate_probe_classifies_unsupported_success_schema_without_body_leak():
+    body = json.dumps(
+        {
+            "code": 0,
+            "message": "ok",
+            "data": {"records": [], "unexpected": "provider secret"},
+        },
+        separators=(",", ":"),
+    ).encode("utf-8")
+    report = _service(FakeFQGateTransport([body])).probe(_plan(), network_allowed=True)
+
+    probe = report.probe_reports[0]
+    assert probe.status == "FAILED"
+    assert probe.account_entitlement == "CONFIRMED"
+    assert any(item.startswith("SOURCE_SCHEMA_UNSUPPORTED:") for item in probe.blockers)
+    assert not any("provider secret" in item for item in probe.blockers)
+
+
 def test_fqgate_h_probe_does_not_claim_h_capability_without_observed_success():
     empty_body = _response_body(records=[])
     report = _service(FakeFQGateTransport([empty_body])).probe(
@@ -419,7 +660,8 @@ def test_fqgate_h_probe_does_not_claim_h_capability_without_observed_success():
     assert probe.observed_listing_ids == []
     assert report.personal_research_ready is False
     assert report.production_eligible is False
-    assert any("HISTORICAL_CAPABILITY_UNVERIFIED" in item for item in report.blockers)
+    assert any(item.startswith("HISTORICAL_NO_ROWS:") for item in probe.blockers)
+    assert probe.historical_capable is False
 
 
 def test_default_registry_contains_fqgate_without_affecting_hithink_path():
