@@ -67,6 +67,7 @@ from .compiler import (
 from .contracts import *  # noqa: F403
 from .contracts import __all__ as _CONTRACT_EXPORTS
 from .coverage import build_coverage_report
+from .fqgate import FQGateDailyKDecoder, FQGateMarketHistoryAdapter
 from .reconciliation import reconcile_observations
 from .store import (
     HistoricalArtifactError,
@@ -86,6 +87,8 @@ __all__ = [
     "AcquisitionResult",
     "CanonicalJsonDecoder",
     "ConfiguredHttpSourceAdapter",
+    "FQGateDailyKDecoder",
+    "FQGateMarketHistoryAdapter",
     "CoverageEvidenceStatus",
     "CredentialKind",
     "CredentialReferenceV1",

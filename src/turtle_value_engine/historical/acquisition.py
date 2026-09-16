@@ -1205,6 +1205,7 @@ class NetworkTransport(Protocol):
         url: str,
         *,
         headers: Mapping[str, str] | None = None,
+        body: bytes | None = None,
         timeout_seconds: float = 30.0,
     ) -> NetworkResponse:
         """Execute one request; retry policy belongs to the wrapper."""
@@ -1219,9 +1220,15 @@ class UrllibNetworkTransport:
         url: str,
         *,
         headers: Mapping[str, str] | None = None,
+        body: bytes | None = None,
         timeout_seconds: float = 30.0,
     ) -> NetworkResponse:
-        request = UrlRequest(url, method=method.upper(), headers=dict(headers or {}))
+        request = UrlRequest(
+            url,
+            data=body,
+            method=method.upper(),
+            headers=dict(headers or {}),
+        )
         try:
             with urlopen(request, timeout=timeout_seconds) as response:  # noqa: S310
                 body = response.read()
@@ -1347,6 +1354,7 @@ class ResilientNetworkTransport:
         url: str,
         *,
         headers: Mapping[str, str] | None = None,
+        body: bytes | None = None,
         timeout_seconds: float = 30.0,
     ) -> NetworkResponse:
         parsed = urlparse(url)
@@ -1359,12 +1367,15 @@ class ResilientNetworkTransport:
             for attempt in range(self.max_attempts):
                 self._pace(state)
                 try:
-                    response = self.inner.request(
-                        method,
-                        url,
-                        headers=headers,
-                        timeout_seconds=timeout_seconds,
-                    )
+                    request_kwargs: dict[str, object] = {
+                        "headers": headers,
+                        "timeout_seconds": timeout_seconds,
+                    }
+                    # Keep backwards compatibility with injected GET-only fake
+                    # transports while allowing adapters to send exact POST bytes.
+                    if body is not None:
+                        request_kwargs["body"] = body
+                    response = self.inner.request(method, url, **request_kwargs)
                 except (NetworkTransportError, TimeoutError, OSError) as exc:
                     if attempt + 1 >= self.max_attempts:
                         raise NetworkTransportError(
@@ -1640,6 +1651,7 @@ class HistoricalSourceAdapter(Protocol):
 
     adapter_id: str
     adapter_version: str
+    requires_live_credential: bool
 
     def probe(
         self,
@@ -1699,6 +1711,7 @@ class ConfiguredHttpSourceAdapter:
 
     adapter_id = "http-json"
     adapter_version = "1"
+    requires_live_credential = True
 
     def _url(self, request: HistoricalAcquisitionRequestV1) -> str:
         raw = request.parameters.get("source_uri") or request.parameters.get("url")
@@ -1832,6 +1845,7 @@ class HithinkMarketDumpAdapter:
 
     adapter_id = "hithink-market-dumps"
     adapter_version = "1"
+    requires_live_credential = True
     provider_id = "hithink-financial-api"
     source_name = "HiThink Financial-API Market Dumps"
     base_uri = "https://fuyao.aicubes.cn/api/dump/market-dumps"
@@ -2226,6 +2240,7 @@ class OfficialFilingDocumentAdapter:
 
     adapter_id = "official-filing-documents"
     adapter_version = "filing-document-receipt-v1"
+    requires_live_credential = True
 
     def __init__(
         self,
@@ -3045,7 +3060,12 @@ class HistoricalAcquisitionService:
                 "built-in live transport requires EnvironmentCredentialResolver"
             )
         environment_references: dict[str, CredentialReferenceV1] = {}
+        credential_required = False
         for request in plan.requests:
+            adapter = self._adapter(request)
+            if not getattr(adapter, "requires_live_credential", True):
+                continue
+            credential_required = True
             reference = request.credential_ref
             if reference is None:
                 continue
@@ -3055,6 +3075,8 @@ class HistoricalAcquisitionService:
                     + request.request_id
                 )
             environment_references[reference.reference_id] = reference
+        if not credential_required:
+            return
         if not environment_references:
             raise NetworkDisabledError(
                 "live network requires a non-empty ENVIRONMENT credential reference "
@@ -3364,9 +3386,12 @@ class HistoricalAcquisitionService:
 
 
 def default_source_adapters() -> dict[str, HistoricalSourceAdapter]:
+    from .fqgate import FQGateMarketHistoryAdapter
+
     return {
         "http-json": ConfiguredHttpSourceAdapter(),
         "hithink-market-dumps": HithinkMarketDumpAdapter(),
+        "fqgate-local-market-history": FQGateMarketHistoryAdapter(),
     }
 
 
@@ -3375,7 +3400,12 @@ def default_decoders(
     include_optional_parquet: bool = True,
     include_hithink_adjustments: bool = False,
 ) -> dict[tuple[str, ShardArtifactKind, str], HistoricalRawDecoder]:
+    from .fqgate import FQGateDailyKDecoder
+
     decoders: dict[tuple[str, ShardArtifactKind, str], HistoricalRawDecoder] = {}
+    decoders[("fqgate-local-market-history", ShardArtifactKind.MARKET_BAR, "market-bar-v1")] = (
+        FQGateDailyKDecoder()
+    )
     if include_optional_parquet:
         decoders[("hithink-market-dumps", ShardArtifactKind.MARKET_BAR, "market-bar-v1")] = (
             HithinkDailyKParquetDecoder()

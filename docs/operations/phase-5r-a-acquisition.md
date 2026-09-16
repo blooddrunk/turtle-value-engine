@@ -49,6 +49,55 @@ corporate action 完整性或合法自动访问时，系统输出
 历史 filing index；若要宣称 category `COMPLETE`，仍必须提供显式 source-scope
 coverage evidence。
 
+### FQGate 本机历史日 K（M1）
+
+M1 增加了一个只通过本机 HTTP 边界工作的 FQGate 适配器：
+
+```text
+POST http://127.0.0.1:17281/v1/market/history/klines
+```
+
+请求计划使用 `adapter_id: "fqgate-local-market-history"`，并且每个 request
+只声明一个 listing。`parameters` 必须显式保留实际运行环境中的路由和身份：
+
+```json
+{
+  "source_uri": "http://127.0.0.1:17281/v1/market/history/klines",
+  "market": "USHA",
+  "code": "600519",
+  "canonical_market": "A",
+  "currency": "CNY"
+}
+```
+
+M1 使用 `start_date`/`end_date` 日期范围查询，因此 plan 不要再加 `count`；FQGate
+接口不允许数量模式和日期范围同时提交。这里的 A-share `USHA`/字段含义来自公开
+FQGate client/UI 实现；适配器只接受
+`adjust: ""` 和 `interval: "day"`，并将公开实现中的字段 `1/7/8/9/11/13/19`
+分别映射为时间、开、高、低、收、量、额。响应原始字节先进入 raw CAS，之后
+才由离线 compiler 验证 `code=0 -> data -> records` 形状并生成
+`MARKET_BAR`。缺少必需 OHLC/时间字段、未知 envelope、非法数字或 schema 漂移
+都会 fail closed；量和额缺失时保留为 `null`，不会补零。
+
+H-share 计划必须由操作者填写实际 probe 观察到的值，不能把公开 client 的
+`hk` market group 当成历史 endpoint 的已证实 market identifier：
+
+```json
+{
+  "market": "<owner-observed-fqgate-h-market>",
+  "code": "<owner-observed-fqgate-h-code>",
+  "canonical_market": "H",
+  "currency": "HKD"
+}
+```
+
+上述 H 片段是模板，不是能力声明；没有实际成功 probe 时，readiness 不会声称
+H 历史能力、覆盖范围、退市保留或 corporate-action 能力。FQGate 使用正在运行
+的本机会话，不需要在 plan 中放 API key 或 credential reference。
+
+参考实现：[FQGate Python client](https://github.com/zhuyifang/tonghuasun-agent/blob/main/sdk/python/src/fqgate_client/client.py)
+和[公开 UI 的 K 线字段映射](https://github.com/zhuyifang/tonghuasun-agent/blob/main/AI-plugins/ui-apps/src/adapters/local-api/FqgateCandleService.ts)。
+
 ## 3. Probe、获取与编译
 
 ```bash
