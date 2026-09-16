@@ -132,10 +132,12 @@ or calibration commands.
 Current Phase 5R status is `ACTIVE / PARTIAL`: the offline replay and
 validation boundary plus the Phase 5R-A project-owned opt-in acquisition,
 credential, raw provenance and deterministic compiler foundation are
-implemented. A real private A/H corpus has not been accepted, so H-share
-capability, historical membership, terminal economics, source terms and full
-category coverage remain fail-closed blockers. This is not a requirement for
-the user to manually assemble market data. Phase 5R primarily needs historical
+implemented. An owner-authorized A-only Hithink probe/acquire and offline
+replay have completed, but a real private A/H corpus has not been accepted,
+so H-share capability, historical membership, terminal economics, source terms
+and full category coverage remain fail-closed blockers. This is not a
+requirement for the user to manually assemble market data. Phase 5R primarily
+needs historical
 data; real-time/event-driven acquisition belongs to Phase 6. Ordinary CI
 remains offline and model-independent.
 

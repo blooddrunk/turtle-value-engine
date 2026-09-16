@@ -17,7 +17,7 @@ redistributed, published, or used to provide a public data service.
 This goal is additive. It must not change `strict-v1`, deterministic investment
 math, Phase 5 signal/portfolio semantics, or point-in-time rules.
 
-## Implementation status — 2026-09-15
+## Implementation status — 2026-09-16
 
 A0–A5 and A7 are implemented. The repository now has category-union production
 coverage evaluation, additive coverage evidence bases, typed acquisition plans
@@ -27,11 +27,20 @@ batches, the documented Hithink A-share dump adapter, an injected bridge to the
 existing official filing downloader, and an offline raw-to-shard compiler.
 Deterministic fake-transport tests cover the new boundaries.
 
-The goal remains `ACTIVE / PARTIAL`: no credential was read from chat or the
-local environment and no live probe was run, so A6's minimum real private A/H
-acceptance is not claimed. The precise unresolved source, membership, terminal
-economics and authorization blockers are recorded in
-`docs/operations/phase-5r-a-acquisition.md` and in readiness reports.
+The goal remains `ACTIVE / PARTIAL`: no credential was read from chat, and an
+owner-authorized live probe/acquisition has now completed for a bounded A-only
+Hithink daily-k plan. The resulting raw batch compiles offline and replays with
+stable hashes, but it is not the minimum real private A/H acceptance. The
+precise unresolved source, membership, terminal economics, category coverage
+and authorization blockers are recorded in
+`docs/operations/phase-5r-a-acquisition.md`,
+`docs/status/phase-5r-a-2026-09-16.md` and the private readiness reports.
+
+The local private replay path is usable independently of the A6 claim gate:
+`tve historical compile` and replay do not require a key, network or model
+after the raw batch exists. Unknown terms or access evidence remain visible in
+the A6 audit so the project does not make a false complete/redistributable
+claim; they are not a request for the owner to manually assemble data.
 
 The repository now also exposes `tve historical accept`, a pure offline A6
 audit over a persisted batch, probe report, raw CAS, compiled manifest and

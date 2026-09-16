@@ -15,7 +15,7 @@ additive: it introduces source, coverage, shard, compiler and research-archive
 contracts without changing `strict-v1`, deterministic investment semantics,
 or the Phase 5 signal/portfolio/calibration rules.
 
-## Current project status and next stage — 2026-09-15
+## Current project status and next stage — 2026-09-16
 
 The repository has completed the Phase 5R replay and validation boundary and
 now has the Phase 5R-A acquisition/compiler foundation. This is still not a
@@ -220,17 +220,17 @@ fabricated terminal value, 1 frozen archive reference, and a 2-row
 independent-reference reconciliation that passes its fixture tolerance. These
 are replay/contract metrics, not market-wide coverage metrics.
 
-The remaining production blocker is precise: no real private A/H acquisition
-acceptance has been run, so source entitlement, H-share capability, historical
-membership, terminal economics and complete category coverage remain
-unverified. The compiler therefore reports `production_eligible=false` and
-`--require-production` fails closed. The next step is not a commercial-license
-purchase or a manual data handoff: it is an explicit owner-side probe using
-configured environment/keyring credentials, followed by local acquisition and
-offline compilation. If a source cannot support an honest claim, the target is
-narrowed or the exact category remains blocked. Phase 5R remains
-`ACTIVE / PARTIAL` until the acquisition path and its evidence exist; the
-Phase 6 goal file is intentionally not created yet.
+An owner-authorized A-only Hithink acquisition has now been run successfully.
+The resulting private raw batch compiles offline and passes deterministic replay,
+but it is intentionally only a bounded price slice rather than a real private
+A/H acceptance. Source entitlement for that A endpoint is technically observed;
+H-share capability, historical membership, terminal economics, complete category
+coverage and the independent acceptance evidence remain unverified. The
+compiler therefore reports `production_eligible=false` and
+`--require-production` fails closed. This does not prevent local private replay
+or research on the bounded slice. The exact run and its private A6 audit are
+recorded in `docs/status/phase-5r-a-2026-09-16.md`; the Phase 6 goal file is
+intentionally not created yet.
 
 The offline `tve historical accept` audit is now available for the next step:
 it replays a persisted batch and records exact A6 blockers without provider,

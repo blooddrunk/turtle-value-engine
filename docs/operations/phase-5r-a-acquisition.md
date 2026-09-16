@@ -125,9 +125,14 @@ quarantine 路径，按来源条款要求清理本地、备份和临时 `.part` 
 
 ## 5. 当前 blocker 记录
 
-本仓库没有读取或复用任何账户 key，也没有执行 live probe，因此尚未声称
-`PERSONAL_RESEARCH_READY` 或 `PRODUCTION_ELIGIBLE`。没有真实 probe 结果时，
-下列事项保持 fail closed：
+本轮 owner-authorized probe/acquire 已完成，但只覆盖一个 A-share 价格切片；
+没有读取或复用聊天中的 key，也没有把任何 key 写入仓库或报告。当前本地
+`compile`、shard replay 和数据研究可以继续离线运行；`historical accept` 的
+blocker 只限制完整 A/H、完整类别和生产级覆盖声明，不是本地 replay 的使用前置
+条件。
+
+当前仍未声称 `PERSONAL_RESEARCH_READY` 或 `PRODUCTION_ELIGIBLE`。下列事项在
+对应的完整声明上保持 fail closed：
 
 - `H_SOURCE_UNQUALIFIED`：缺少已确认的个人可用 H 股历史价格/生命周期/行动
   来源及自动访问条款。
@@ -146,4 +151,6 @@ quarantine 路径，按来源条款要求清理本地、备份和临时 `.part` 
 - `CURRENT_SNAPSHOT_UNUSABLE`：当前快照不能替代历史来源。
 
 这些 blocker 不能通过要求机构商业订阅、手工整理数据、使用当前成分股或
-放宽既有 `--require-production` 校验来解决。
+放宽既有 `--require-production` 校验来解决；它们也不应被解释为个人继续进行
+本地实验和回放前必须完成的用户待办。实际本轮结果与下一步入口见
+`docs/status/phase-5r-a-2026-09-16.md`。

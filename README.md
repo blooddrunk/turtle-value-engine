@@ -350,7 +350,10 @@ tve historical accept --batch .tve-private/batch.json \
 `historical accept` 是离线 A6 审计；它会在未证明 A/H 能力、来源覆盖、授权或
 终止经济时 fail closed，并把精确 blocker 写入报告。
 H 股来源、历史 membership、退市经济和授权未核实前不会自动升级为生产级
-历史覆盖，也不会要求机构商业源或手工整理 CSV。
+历史覆盖，也不会要求机构商业源或手工整理 CSV。当前 A-only owner probe/acquire
+及离线 replay 已成功；这些 blocker 只限制完整 A/H/生产级声明，不影响已经存在
+的本地私有实验回放。完整状态见
+[`docs/status/phase-5r-a-2026-09-16.md`](docs/status/phase-5r-a-2026-09-16.md)。
 
 # 当前还不能做什么？
 
@@ -532,7 +535,7 @@ Production historical corpus / research archive
         ⏳（边界已实现；权威来源、许可与完整 A/H 覆盖待补）
 
 Phase 5R-A acquisition/compiler
-        ⚠️（A0–A5/A7 已实现；真实私有 A/H acceptance 待 live probe）
+        ⚠️（A0–A5/A7 已实现；A-only 私有 probe/replay 已完成；完整 A/H acceptance 仍待补齐）
 
 Watchlist / event-driven monitoring
         ⏳

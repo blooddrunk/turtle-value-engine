@@ -5058,9 +5058,11 @@ The source-aware contracts, content-addressed frozen shards, offline
 compiler, coverage/reconciliation reports and point-in-time research archive
 validator are implemented. Phase 5R-A now adds the project-owned opt-in
 acquisition contracts, local raw-byte CAS/receipts, source probes, bounded
-retry transport and deterministic raw-to-shard compiler. The checked-in
-fixture is still not a production A/H claim and this milestone remains
-`ACTIVE / PARTIAL` until a real private acceptance passes.
+retry transport and deterministic raw-to-shard compiler. An owner-authorized
+A-only Hithink probe/acquire has completed and its local raw batch compiles and
+replays with stable hashes. The checked-in fixture and this private A-only
+slice are still not a production A/H claim, so this milestone remains
+`ACTIVE / PARTIAL` until the declared real private A/H acceptance passes.
 
 The next stage is **Phase 5R-A — Production source acquisition and compiler
 ingestion**, specified in
@@ -5085,6 +5087,13 @@ milestone. Credentials remain outside Git and ordinary CI remains
 network/model independent. The offline `tve historical accept` command now
 audits a persisted batch/probe report/manifest/CAS and writes exact A6 blockers;
 it never performs provider, network, credential or model access.
+
+The local private compile/replay path is available even when A6 evidence is
+incomplete. A6 blockers remain claim-level evidence for full A/H, complete
+category coverage and production eligibility; they are not a user requirement
+to purchase an institutional source or manually assemble a dataset. The exact
+owner-run result is recorded in
+[`docs/status/phase-5r-a-2026-09-16.md`](status/phase-5r-a-2026-09-16.md).
 
 After the local acquisition/compiler path is stable, an optional storage work
 package may add a private Cloudflare R2 mirror or an owner-VPS backup/runner.
