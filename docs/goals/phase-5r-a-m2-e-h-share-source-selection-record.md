@@ -144,7 +144,8 @@ python -m ruff check .
 python -m pytest
 ```
 
-The CI result is recorded in the dated status after the branch verification completes.
+The authoritative execution result is the CI/check attached to the final M2-E commit/PR;
+no test outcome is inferred from documentation text.
 
 ## 9. Next handoff
 
