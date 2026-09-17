@@ -31,6 +31,7 @@ Read and follow, in source-of-truth order:
 - `rules/strict-v1.yaml`
 - `schemas/`
 - `docs/architecture/`
+- `docs/goals/phase-5r-a-m2-c-futu-opend-h-share.md`
 - `docs/goals/phase-5r-a-m2-h-share-history-source-selection.md`
 - `docs/goals/phase-5r-a-m2-t-fqgate-endpoint-transport.md`
 - `docs/status/phase-5r-a-2026-09-17.md`
@@ -38,6 +39,10 @@ Read and follow, in source-of-truth order:
 - `src/turtle_value_engine/historical/acquisition.py`
 - existing provider adapters and compiler/replay paths
 - relevant historical CLI and tests
+
+The dedicated M2-C goal is the executable refinement of the parent M2 source-selection
+plan. If a lower-priority handoff detail conflicts with it, follow the dedicated goal and
+preserve frozen specs/contracts.
 
 ## Objective
 
@@ -280,8 +285,10 @@ In this case:
 
 Update at least:
 
-- `docs/goals/phase-5r-a-m2-h-share-history-source-selection.md` with the M2-C execution
+- `docs/goals/phase-5r-a-m2-c-futu-opend-h-share.md` with the actual M2-C execution
   record/outcome;
+- `docs/goals/phase-5r-a-m2-h-share-history-source-selection.md` with a concise M2-C
+  parent-plan status/result where appropriate;
 - `docs/status/phase-5r-a-2026-09-17.md` or a newer dated status page;
 - `docs/operations/phase-5r-a-acquisition.md` with the implemented Futu provider boundary
   and owner live workflow where appropriate;
