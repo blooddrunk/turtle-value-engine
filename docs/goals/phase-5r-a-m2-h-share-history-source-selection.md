@@ -1,6 +1,6 @@
 # Phase 5R-A M2 — H-share Historical Source Selection and FQGate Failure Diagnosis
 
-Status: **PROPOSED / NEXT**  
+Status: **ACTIVE / M2-C NEXT (M2-B EVIDENCE-SUPPORTED FQGATE FAILURE)**
 Date: 2026-09-16  
 Baseline: `41fa843cce854f70ae6fb02c3d0e0012814f3a47`
 
@@ -445,8 +445,47 @@ No new network tests. Reuse M2-A plus existing compiler/replay tests.
   the existing evidence basis permits it;
 - actions, lifecycle, delistings and historical membership remain unqualified.
 
-If these criteria are not met, record the exact failure and proceed to M2-C without
-weakening any gate.
+If these criteria are not met, record the exact result without weakening any gate. An
+evidence-supported provider/path failure may proceed to M2-C; an owner-runtime or runner
+limitation remains `BLOCKED_ON_OWNER_LIVE_PROBE` and does not advance the source decision.
+
+### M2-B execution record — 2026-09-17
+
+Outcome: **evidence-supported FQGate selection failure; M2-C is next**.
+
+The exact owner-observed candidate `UHKM/HK0700` (canonical listing `HK00700`) was
+placed in two private, deployment-neutral `fqgate-market-history` plans using
+`LOCAL_DIRECT` and the supported `fqgate-envelope-v1` contract. The candidate was not
+generalized into an H-share mapping. An earlier runner-only attempt was recorded as
+`BLOCKED_ON_OWNER_LIVE_PROBE`; after the owner started the local FQGate instance, the
+following fresh probes reached the historical endpoint:
+
+- recent window `2026-09-08` through `2026-09-11`: private report
+  `.tve-private/live/fqgate-h-recent-20260908-11-owner-retry.json`, report SHA-256
+  `99ee47ec0d973f63863cd7f3f63000a398ef7f702ccb8b5d204a6ce32677bdd7`, HTTP 504,
+  response SHA-256
+  `e98df2e1a8417e3ab8c6df70644ea656ec6a51d911e714661b638e429dbff068`;
+- older window `2025-09-08` through `2025-09-11`: private report
+  `.tve-private/live/fqgate-h-older-20250908-11-owner-retry.json`, report SHA-256
+  `3295f8c6408c843aedb366070e48690faa61f03ffabcb3a728e82232a16e9388`, HTTP 504,
+  response SHA-256
+  `9e329f0bfc59c57c3d71c86ef485f784e0b4833adde70400fa27e6bb8b54f0f4`.
+
+Both reports recorded `network_used=true`, `historical_capable=false`, no observed
+listing rows, and the conservative blockers
+`FQGATE_HTTP_504_UNCLASSIFIED: HTTP 504`, `FQGATE_PROVIDER_ERROR_CODE: 4003` and
+`FQGATE_PROVIDER_ERROR_UNCLASSIFIED: provider code semantics are not established`.
+This is direct evidence that the exact live FQGate history requests did not provide a
+supported H daily-bar result in either bounded window, so FQGate cannot earn the M2-B
+role. It does not establish whether the cause is H route rejection, upstream timeout,
+entitlement, provider outage or another provider condition; code `4003` is deliberately
+not mapped to any of those causes.
+
+Because neither live probe succeeded, no bounded acquisition, raw CAS batch, compile or
+`--verify-replay` was run. This is correct under the M2-B success gate. FQGate was not
+selected, and the existing H readiness state remains `H_SOURCE_UNQUALIFIED`. M2-B is
+closed with an evidence-supported failure; do not weaken any gate or implement M2-C in
+this record. The next package is the separate Futu OpenD candidate.
 
 ### M2-C — Futu OpenD H MARKET_BAR candidate
 
@@ -641,6 +680,9 @@ These are planning/status labels, not new investment-engine states and do not be
 
 ```text
 M2-A: Diagnose FQGate
+  |
+  +-- executing environment cannot reach owner-local FQGate
+  |      -> BLOCKED_ON_OWNER_LIVE_PROBE; keep M2-C gated and obtain owner-side evidence
   |
   +-- exact observed H route + history works in bounded recent/older windows
   |      -> M2-B select FQGate
