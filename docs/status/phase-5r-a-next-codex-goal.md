@@ -1,4 +1,4 @@
-# Codex Goal — Phase 5R-A M2-T FQGate Deployment-Neutral Endpoint Transport
+# Codex Goal — Phase 5R-A M2-B Bounded H-share FQGate Selection Probe
 
 Work in repository `blooddrunk/turtle-value-engine` on current `main`.
 
@@ -9,114 +9,132 @@ Read and follow, in source-of-truth order:
 - `rules/strict-v1.yaml`
 - `schemas/`
 - `docs/architecture/`
-- `docs/goals/phase-5r-a-m2-t-fqgate-endpoint-transport.md`
 - `docs/goals/phase-5r-a-m2-h-share-history-source-selection.md`
+- `docs/goals/phase-5r-a-m2-t-fqgate-endpoint-transport.md`
 - `docs/status/phase-5r-a-2026-09-17.md`
 - `docs/operations/phase-5r-a-acquisition.md`
 - `src/turtle_value_engine/historical/fqgate.py`
 - `src/turtle_value_engine/historical/acquisition.py`
-- `tests/test_fqgate_historical.py`
-- `tests/test_phase_5r_acquisition.py`
+- relevant compiler/replay tests and CLI code
 
-Cross-repository context to verify before relying on any remote contract:
+Current baseline facts:
 
-- `blooddrunk/fqgate-remote-bridge`
-- its `docs/architecture.md`, `docs/security.md`, `docs/roadmap.md`
+- `main` includes M2-T at `2ee554daba24d988de38d348137b7a0a31c56e69`.
+- M2-A diagnostic hardening is complete.
+- M2-T deployment-neutral FQGate transport is complete at the Turtle-side contract boundary.
+- Full-suite M2-T verification recorded: `6212 passed, 2 skipped`; ruff passed.
+- FQGate A-share bounded history previously succeeded for `USHA/600000` and `USZA/000001`.
+- Owner-observed H candidate `UHKM/HK0700` has not yet produced successful historical rows.
+- H source state remains `H_SOURCE_UNQUALIFIED`.
+- `blooddrunk/fqgate-remote-bridge` has closed its own Phase 3 local upgrade/OpenAPI milestone, but Tunnel/human Access is planned for its Phase 4 and machine-authenticated read-only remote HTTP API for its Phase 5. Therefore `REMOTE_BRIDGE_LIVE_UNPROVEN` remains correct. Do not wait for remote bridge work; use `LOCAL_DIRECT` for M2-B unless the repository contains newer proven contracts when you run.
 
-Current facts:
+Implement **only M2-B**. This goal is primarily an evidence-gathering and source-selection gate, not a provider-expansion task.
 
-- Phase 5R-A M2-A is complete on main at baseline
-  `9316355ca17cdb0b952834bf5b17040a23b46d35`.
-- Current FQGate adapter is local-only by semantics: adapter id
-  `fqgate-local-market-history`, loopback-oriented diagnostics, no `credential_ref`, and
-  401/403 currently mean FQGate entitlement denial.
-- `fqgate-remote-bridge` Phase 2 is complete, but Cloudflare Tunnel is Phase 3 and stable
-  machine-authenticated read-only remote API is Phase 4. Do not fabricate a remote route,
-  auth contract or live success if those are not yet present on that repo's main branch.
-- The goal is to make Turtle's FQGate acquisition topology deployment-neutral without
-  moving Tunnel/Access/FQGate lifecycle into Turtle.
+## Objective
 
-Implement only M2-T. Do not start M2-B source selection in the same goal except for any
-bounded compatibility smoke test strictly needed by M2-T.
+Determine whether FQGate can earn a bounded H-share `MARKET_BAR` source role using the exact H identity observed from the owner's actual FQGate environment.
 
-Required behavior:
+Use the existing owner-observed candidate `UHKM/HK0700` only as a candidate to probe. Do not generalize it into a universal H market mapping and do not invent or substitute another identifier unless it is independently observed from the running owner environment and recorded as such.
 
-1. Preserve legacy compatibility.
-   - Existing `fqgate-local-market-history` plans/receipts/batches remain readable and
-     replayable.
-   - Do not silently rename the persisted adapter identity in place.
-   - Prefer adding a new deployment-neutral adapter identity, e.g. `fqgate-market-history`,
-     while explicitly supporting the legacy decoder path.
+## Required execution path
 
-2. Add explicit endpoint topology semantics.
-   - Support a new explicit `LOCAL_DIRECT` mode and a `REMOTE_BRIDGE` mode through request
-     parameters or another additive representation that does not break existing V1 hashes.
-   - `LOCAL_DIRECT` may use plain HTTP only for loopback hosts and must preserve current
-     successful canonical MARKET_BAR behavior.
-   - `REMOTE_BRIDGE` must require explicit HTTPS endpoint configuration, no userinfo,
-     credential query parameters, fragments or automatic local/remote fallback.
-   - Do not derive or auto-discover an arbitrary bridge path.
+1. Inspect the current implementation/docs and confirm no contract drift since M2-T.
+2. Keep ordinary CI fully offline.
+3. For live evidence, use `LOCAL_DIRECT` against the owner's running FQGate only with explicit `--network=allow` and private plans/artifacts under `.tve-private`.
+4. Probe the exact observed H identity in **two non-overlapping bounded windows**:
+   - one recent window;
+   - one older historical window at least one year earlier.
+5. Classify every result conservatively using the completed M2-A/M2-T diagnostics. Do not reinterpret generic timeout/HTTP failures as a more specific provider cause without evidence.
+6. If and only if both windows succeed with a supported success envelope and unadjusted daily rows, perform one bounded acquisition followed by offline compile and `--verify-replay`.
+7. Persist only redacted capability conclusions/status in Git. Private live plans, raw bytes, receipts and reports stay under `.tve-private` and must not be committed.
 
-3. Reuse the existing acquisition credential boundary.
-   - Do not create a second secret store.
-   - If the current remote bridge main branch has no frozen machine-auth contract, implement
-     only the safe credential seam/fake-transport behavior and leave live remote auth
-     explicitly unqualified.
-   - If one secret/header is sufficient, reuse existing `credential_ref` + resolver/header
-     mechanisms.
-   - If multiple independent secret values are genuinely required by the now-frozen bridge
-     contract, design an additive/versioned representation with explicit legacy compatibility;
-     do not put resolved secrets in plan parameters, URIs, logs, receipts, probe reports or Git.
-   - Missing required remote credential must fail before any network request.
+Suggested command shapes (adapt exact private file names as needed):
 
-4. Split diagnostics by trust layer.
-   - Keep `FQGATE_LOCAL_GATEWAY_UNREACHABLE` for LOCAL_DIRECT local connection failures.
-   - Introduce conservative remote diagnostics equivalent to:
-     `FQGATE_REMOTE_ENDPOINT_UNREACHABLE`,
-     `FQGATE_REMOTE_AUTH_DENIED`,
-     `FQGATE_REMOTE_HTTP_ERROR_UNCLASSIFIED`.
-   - Only add bridge-specific codes such as `FQGATE_BRIDGE_UNAVAILABLE` or
-     `FQGATE_BRIDGE_UPSTREAM_UNAVAILABLE` when the bridge repository has a stable documented
-     error contract proving those meanings.
-   - REMOTE_BRIDGE 401/403 must not automatically set FQGate account entitlement to DENIED.
-   - Generic remote 5xx must not be relabeled as an FQGate provider error.
-   - Once a response is proven to be the supported provider envelope, retain the completed
-     M2-A conservative provider-code and schema rules.
+```bash
+tve historical source probe \
+  --plan .tve-private/plans/fqgate-h-recent.json \
+  --network=allow \
+  --output .tve-private/live/fqgate-h-recent.json
 
-5. Preserve acquisition/replay semantics.
-   - Exact response bytes still enter raw CAS before offline decode.
-   - Compile/replay remains offline.
-   - Do not alter `strict-v1`, CDC, Net Cash, Through Return, hard gates, valuation, A6,
-     PIT or coverage semantics.
-   - Do not manufacture identical raw/shard hashes between local and remote paths; each
-     frozen batch only needs deterministic self-replay.
+tve historical source probe \
+  --plan .tve-private/plans/fqgate-h-older.json \
+  --network=allow \
+  --output .tve-private/live/fqgate-h-older.json
+```
 
-6. Harden authenticated remote HTTP behavior.
-   - Ensure credentials cannot be forwarded to an untrusted redirect target.
-   - Prefer rejecting redirects for authenticated REMOTE_BRIDGE requests unless safe
-     same-origin handling is explicitly implemented and tested.
-   - Do not weaken the generic network layer for the sake of FQGate if a provider-specific
-     wrapper can enforce the rule safely.
+If both probes succeed:
 
-Tests must cover at least:
+```bash
+tve historical acquire \
+  --plan .tve-private/plans/fqgate-h-selected.json \
+  --network=allow \
+  --raw-store .tve-private/raw \
+  --batch-output .tve-private/batches/fqgate-h.json \
+  --report-output .tve-private/live/fqgate-h-readiness.json
 
-- legacy local adapter success and replay;
-- new LOCAL_DIRECT success;
-- fake REMOTE_BRIDGE success using a supported response contract;
-- REMOTE_BRIDGE rejects HTTP/non-explicit endpoint configuration;
-- required remote credential missing -> fail before transport;
-- auth material exists only on the outbound request, not persisted/logged;
-- remote 401/403 -> remote auth/access diagnostic, not FQGate entitlement denial;
-- remote DNS/TLS/transport failure -> remote endpoint unreachable;
-- local transport failure remains local gateway unreachable;
-- unknown remote 5xx remains layer-unclassified without bridge proof;
-- supported provider error envelope retains M2-A semantics;
-- unsupported remote/provider schema fails closed;
-- credentialed redirect cannot leak auth cross-origin;
-- old receipts/batches remain decodable;
-- repeated offline compile/replay is deterministic for frozen local and remote fake batches.
+tve historical compile \
+  --batch .tve-private/batches/fqgate-h.json \
+  --raw-store .tve-private/raw \
+  --store .tve-private/artifacts \
+  --output .tve-private/manifests/fqgate-h.json \
+  --verify-replay
+```
 
-Run at minimum:
+## Decision rules
+
+### A. Select FQGate only when all of these are true
+
+- exact H market/code was observed rather than inferred;
+- both recent and older bounded history probes succeed;
+- returned data is supported, unadjusted daily history;
+- bounded acquisition preserves raw CAS/receipt/provenance;
+- offline compile + `--verify-replay` is deterministic;
+- any coverage conclusion is limited to what the observed evidence actually proves;
+- lifecycle, historical membership, delistings, terminal economics and corporate actions remain separately unqualified.
+
+When these criteria are met:
+
+- mark M2-B complete and FQGate selected for the bounded H `MARKET_BAR` role;
+- update the M2 source-selection goal/status with the evidence boundary;
+- advance to M2-E selection record / the next historical milestone appropriate to the repository roadmap;
+- do **not** implement M2-C or M2-D merely for redundancy in the same goal.
+
+### B. Advance to M2-C only on evidence-supported FQGate failure
+
+If the owner's live FQGate environment is available and the required exact probes are actually executed, but FQGate still fails to earn the bounded H role because of an evidence-supported route/provider/schema/no-row/coverage outcome, then:
+
+- record the exact blocker and observed scope;
+- keep H capability fail-closed;
+- update the handoff so M2-C (Futu OpenD candidate) becomes next;
+- do not weaken acceptance criteria or silently switch providers during M2-B.
+
+### C. Do not treat runner/environment limitations as provider failure
+
+If Codex cannot access the owner's local FQGate, no valid FQGate login/session is available, localhost is outside the execution environment, or another environment limitation prevents a real live probe:
+
+- do **not** mark FQGate unqualified based on that limitation;
+- do **not** advance to M2-C solely because the Codex runner lacks owner-local access;
+- record M2-B as `BLOCKED_ON_OWNER_LIVE_PROBE` (or equivalent wording in docs, no new public schema required);
+- provide exact commands/private-plan guidance for the owner to run locally;
+- keep the next source decision pending actual live evidence.
+
+A historical old timeout, fake transport success, remote-bridge roadmap state, runtime API docs, or absence of CI network access is not M2-B source-selection evidence.
+
+## Code-change policy
+
+M2-B may be documentation/live-evidence only. Do not change code unless the live probe exposes a genuine bug in the already-approved acquisition/decoder/replay boundary.
+
+If a code fix is needed:
+
+- keep it minimal and additive;
+- preserve legacy adapter/receipt/batch compatibility;
+- do not change `strict-v1`, CDC, Net Cash, Through Return, hard gates, valuation, A6, PIT or coverage semantics;
+- add offline regression tests for the bug;
+- rerun the full suite.
+
+## Verification
+
+At minimum, rerun the relevant offline regression suite after any code or contract-document change:
 
 ```bash
 python -m pytest tests/test_fqgate_historical.py -q
@@ -125,31 +143,29 @@ python -m ruff check .
 python -m pytest
 ```
 
-Current full-suite baseline is `6191 passed, 2 skipped`; do not regress it except for an
-intentional documented test replacement. Normally the test count should increase.
+Do not regress below the current `6212 passed, 2 skipped` baseline except for an explicitly documented intentional replacement.
 
-Documentation updates required before declaring completion:
+## Documentation requirements
 
-- update `docs/operations/phase-5r-a-acquisition.md` so FQGate is described as endpoint-
-  neutral rather than intrinsically local-only, while still showing loopback as the current
-  default/legacy path;
-- update `docs/status/phase-5r-a-2026-09-17.md` with exact implemented state, verification
-  results and any `REMOTE_BRIDGE_LIVE_UNPROVEN` blocker;
-- update `docs/goals/phase-5r-a-m2-t-fqgate-endpoint-transport.md` if implementation proves
-  a contract detail must change;
-- if relevant, update `AGENTS.md` only for stable repository-wide behavior, not detailed
-  implementation history.
+Before completion, update as applicable:
 
-Do not:
+- `docs/status/phase-5r-a-2026-09-17.md` (or a new dated successor if material new live evidence is obtained);
+- `docs/goals/phase-5r-a-m2-h-share-history-source-selection.md` with M2-B result and next gate;
+- `docs/status/phase-5r-a-next-codex-goal.md` so it points to the true next package rather than this completed one;
+- `docs/operations/phase-5r-a-acquisition.md` only if a real operational contract changed.
 
-- implement cloudflared/Tunnel provisioning in Turtle;
-- expose FQGate directly to the Internet;
-- create a catch-all proxy or runtime API-doc scraping/discovery path;
-- add trading/state-changing financial operations;
-- remove Futu/AKShare fallback plans;
-- contact live Cloudflare/FQGate in ordinary CI;
-- claim H history from the existence of a Tunnel.
+Do not commit `.tve-private` artifacts, credentials, raw provider responses, session material or secrets.
 
-If the remote bridge machine API is not yet implemented upstream, finish Turtle's local/fake
-remote abstraction and tests, record `REMOTE_BRIDGE_LIVE_UNPROVEN`, and stop. That is a valid
-M2-T completion state. Then the next goal returns to M2-B, which may still use LOCAL_DIRECT.
+## Non-goals
+
+Do not in this goal:
+
+- implement Futu OpenD (M2-C) unless M2-B is actually completed with an evidence-supported FQGate failure and the repo's written next-handoff is being prepared; even then, stop before implementation and hand off M2-C separately;
+- implement AKShare/Eastmoney (M2-D);
+- reconstruct H historical membership/lifecycle/delistings/actions;
+- add Cloudflare storage, Web UI, Phase 6 event monitoring, trading or state-changing financial operations;
+- implement Tunnel/Access in Turtle;
+- claim remote FQGate live support while remote-bridge lacks the frozen machine API contract;
+- infer H capability from catalog presence, docs, a single successful recent window, or row count alone.
+
+The correct result of this goal may be one of three outcomes: **FQGate selected**, **FQGate evidence-supported failure -> M2-C next**, or **BLOCKED_ON_OWNER_LIVE_PROBE**. Preserve that distinction exactly.
