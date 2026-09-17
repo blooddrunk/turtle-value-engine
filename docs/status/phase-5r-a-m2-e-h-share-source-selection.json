@@ -1,0 +1,100 @@
+{
+  "record_kind": "PHASE_5R_A_M2_E_H_SHARE_SOURCE_SELECTION",
+  "record_version": 1,
+  "recorded_date": "2026-09-17",
+  "source_selection_state": "H_PRICE_SOURCE_SELECTED_FUTU",
+  "planning_status_only": true,
+  "investment_engine_state": false,
+  "role": "primary bounded personal-research H daily unadjusted MARKET_BAR source",
+  "scope": {
+    "market": "H",
+    "canonical_artifact_kind": "MARKET_BAR",
+    "frequency": "daily",
+    "price_basis": "unadjusted",
+    "complete_h_historical_corpus_claim": false
+  },
+  "provider": {
+    "name": "Futu OpenD",
+    "adapter_id": "futu-opend-market-history",
+    "runtime_identity": "HK.00001",
+    "opend_version": "10.11.7108",
+    "opend_host": "127.0.0.1",
+    "opend_port": 11111,
+    "sdk_name": "futu-api",
+    "sdk_version": "10.10.7008",
+    "representation": "futu-opend-sdk-export-v1",
+    "representation_is_raw_opend_wire_bytes": false
+  },
+  "verified_windows": [
+    {
+      "start_date": "2026-09-15",
+      "end_date": "2026-09-17",
+      "result": "PASS",
+      "rows": 3,
+      "runtime_identity": "HK.00001",
+      "provider_kline_type": "K_DAY",
+      "provider_adjustment": "AuType.NONE",
+      "private_probe_path": ".tve-private/live/futu-h-recent-20260915-17.json",
+      "response_sha256": "ee75f454b86aaf98e71b1bedff4443e743a97d7d67b1ca52d2da817e33d94be2"
+    },
+    {
+      "start_date": "2025-09-15",
+      "end_date": "2025-09-17",
+      "result": "PASS",
+      "rows": 3,
+      "runtime_identity": "HK.00001",
+      "provider_kline_type": "K_DAY",
+      "provider_adjustment": "AuType.NONE",
+      "private_probe_path": ".tve-private/live/futu-h-older-20250915-17.json",
+      "response_sha256": "02d2aff0e038a4344fdf87249707a9c8635f79408bb5390fec492078b1f1549d"
+    }
+  ],
+  "quota_and_permission": {
+    "history_quota_preflight_used": 0,
+    "history_quota_preflight_remaining": 100,
+    "history_quota_after_bounded_acquire_remaining": 99,
+    "permission_observation": "BOUNDED_OWNER_RUNTIME_HISTORY_REQUESTS_SUCCEEDED",
+    "formal_account_wide_entitlement_claim": false
+  },
+  "bounded_acquire_replay": {
+    "acquired_window_start": "2026-09-15",
+    "acquired_window_end": "2026-09-17",
+    "provider_envelope_sha256": "ee75f454b86aaf98e71b1bedff4443e743a97d7d67b1ca52d2da817e33d94be2",
+    "batch_id": "batch-d1ef177190b7cd1f25870315fb15af7b",
+    "dataset_id": "dataset-b27e7ffc96bf7de78055d5bd3774b897",
+    "manifest_sha256": "e1aac2fd22350d0898bb718a68febb558a4ba35638cf504a1e038f15787a341b",
+    "market_bar_shard_sha256": "6b4708a74530f5de9bba0fc2dcfe98337976c92a6565cb9feaa5b537e2bc3a62",
+    "canonical_market_bar_rows": 3,
+    "compile_verify_replay": "PASS",
+    "replay_identity_match": true
+  },
+  "reconciliation": {
+    "performed": false,
+    "reason": "No second independent successful H source exists; M2-D remains gated and no provider was added merely for comparison."
+  },
+  "private_evidence": {
+    "root": ".tve-private/",
+    "committed_to_git": false,
+    "policy": "Private plans, probe reports, provider envelopes, raw CAS, batches and manifests remain outside Git."
+  },
+  "limitations": [
+    "NO_COMPLETE_H_HISTORICAL_CORPUS_CLAIM",
+    "HISTORICAL_MEMBERSHIP_UNVERIFIED",
+    "HISTORICAL_LIFECYCLE_UNVERIFIED",
+    "DELISTING_UNVERIFIED",
+    "TERMINAL_ECONOMICS_UNVERIFIED",
+    "CORPORATE_ACTIONS_UNVERIFIED",
+    "BENCHMARK_FX_UNVERIFIED",
+    "FILINGS_UNVERIFIED",
+    "COMPLETE_COVERAGE_UNVERIFIED",
+    "SOURCE_TERMS_AND_REDISTRIBUTION_UNVERIFIED"
+  ],
+  "unchanged_boundaries": [
+    "rules/strict-v1.yaml",
+    "A6 acceptance semantics",
+    "point-in-time semantics",
+    "historical coverage semantics",
+    "deterministic investment calculations and gates",
+    "existing provider compatibility"
+  ]
+}
