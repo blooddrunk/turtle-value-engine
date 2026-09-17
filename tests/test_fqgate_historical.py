@@ -11,7 +11,15 @@ import pytest
 
 from turtle_value_engine.backtest import MarketBar
 from turtle_value_engine.historical import (
+    FQGATE_ENTITLEMENT_DENIED,
+    FQGATE_REMOTE_AUTH_DENIED,
+    FQGATE_REMOTE_ENDPOINT_UNREACHABLE,
+    FQGATE_REMOTE_HTTP_ERROR_UNCLASSIFIED,
     AcquisitionError,
+    CredentialReferenceV1,
+    CredentialUnavailableError,
+    FQGateDeploymentNeutralMarketHistoryAdapter,
+    FQGateEndpointKind,
     FQGateMarketHistoryAdapter,
     HistoricalAcquisitionPlanV1,
     HistoricalAcquisitionRequestV1,
@@ -23,6 +31,7 @@ from turtle_value_engine.historical import (
     HistoricalSourceSpecV1,
     HistoricalTargetScope,
     LicenseStatus,
+    MappingCredentialResolver,
     NetworkDisabledError,
     NetworkResponse,
     NetworkTransportError,
@@ -31,6 +40,9 @@ from turtle_value_engine.historical import (
 )
 
 SOURCE_URI = "http://127.0.0.1:17281/v1/market/history/klines"
+REMOTE_URI = "https://bridge.example.test/api/v1/market-history"
+REMOTE_ADAPTER_ID = FQGateDeploymentNeutralMarketHistoryAdapter.adapter_id
+REMOTE_CREDENTIAL = "bridge-secret-for-test-only"
 
 
 class FakeFQGateTransport:
@@ -225,6 +237,66 @@ def _service(transport: FakeFQGateTransport) -> HistoricalAcquisitionService:
     return HistoricalAcquisitionService(
         adapters={FQGateMarketHistoryAdapter.adapter_id: FQGateMarketHistoryAdapter()},
         transport=transport,
+        clock=lambda: datetime(2026, 9, 16, tzinfo=UTC),
+    )
+
+
+def _deployment_neutral_plan(
+    *,
+    endpoint_kind: str = FQGateEndpointKind.REMOTE_BRIDGE.value,
+    source_uri: str = REMOTE_URI,
+    response_contract: str | None = "fqgate-envelope-v1",
+    credential_ref: CredentialReferenceV1 | None = None,
+    body_parameters: dict[str, object] | None = None,
+) -> HistoricalAcquisitionPlanV1:
+    plan = _plan()
+    parameters = dict(plan.requests[0].parameters)
+    parameters.update(
+        {
+            "endpoint_kind": endpoint_kind,
+            "source_uri": source_uri,
+        }
+    )
+    if response_contract is None:
+        parameters.pop("response_contract", None)
+    else:
+        parameters["response_contract"] = response_contract
+    parameters.update(body_parameters or {})
+    source = plan.sources[0].model_copy(
+        update={
+            "adapter_id": REMOTE_ADAPTER_ID,
+            "source_uri": source_uri,
+            "source_name": "FQGate deployment-neutral historical K-lines",
+        }
+    )
+    request = plan.requests[0].model_copy(
+        update={
+            "adapter_id": REMOTE_ADAPTER_ID,
+            "parameters": parameters,
+            "credential_ref": credential_ref,
+        }
+    )
+    credential_references = [credential_ref] if credential_ref is not None else []
+    return plan.model_copy(
+        update={
+            "sources": [source],
+            "requests": [request],
+            "credential_references": credential_references,
+        }
+    )
+
+
+def _deployment_neutral_service(
+    transport: object,
+    *,
+    credentials: MappingCredentialResolver | None = None,
+) -> HistoricalAcquisitionService:
+    return HistoricalAcquisitionService(
+        adapters={
+            REMOTE_ADAPTER_ID: FQGateDeploymentNeutralMarketHistoryAdapter(),
+        },
+        transport=transport,
+        credentials=credentials,
         clock=lambda: datetime(2026, 9, 16, tzinfo=UTC),
     )
 
@@ -685,3 +757,289 @@ def test_fqgate_live_boundary_requires_opt_in_but_not_provider_credentials():
     with pytest.raises(NetworkDisabledError, match="network is denied"):
         service._require_network_authorization(plan, network_allowed=False)
     service._require_network_authorization(plan, network_allowed=True)
+
+
+def test_deployment_neutral_local_direct_preserves_canonical_market_bar_fields(tmp_path: Path):
+    plan = _deployment_neutral_plan(
+        endpoint_kind=FQGateEndpointKind.LOCAL_DIRECT.value,
+        source_uri=SOURCE_URI,
+    )
+    transport = FakeFQGateTransport([_daily_body()])
+    result = _deployment_neutral_service(transport).acquire(
+        plan,
+        raw_store=RawBlobStore(tmp_path / "raw"),
+        network_allowed=True,
+    )
+    assert transport.calls[0][1] == SOURCE_URI
+    artifact_store = HistoricalArtifactStore(tmp_path / "artifacts")
+    manifest = HistoricalIngestionCompiler(
+        raw_store=RawBlobStore(tmp_path / "raw"),
+        artifact_store=artifact_store,
+    ).compile(result.batch)
+    rows = artifact_store.read_shard(manifest.shards[0], model_type=MarketBar)
+    assert [(row.trading_date, row.open, row.close, row.market.value) for row in rows] == [
+        (date(2026, 9, 8), 10.0, 10.5, "A"),
+        (date(2026, 9, 9), 10.5, 10.8, "A"),
+        (date(2026, 9, 10), 10.8, 11.0, "A"),
+    ]
+    assert result.batch.receipts[0].artifact_metadata["endpoint_kind"] == "LOCAL_DIRECT"
+
+
+def test_deployment_neutral_local_direct_rejects_non_loopback_host():
+    plan = _deployment_neutral_plan(
+        endpoint_kind=FQGateEndpointKind.LOCAL_DIRECT.value,
+        source_uri="http://fqgate.internal:17281/v1/market/history/klines",
+    )
+    transport = FakeFQGateTransport([])
+    report = _deployment_neutral_service(transport).probe(plan, network_allowed=True)
+
+    assert report.probe_reports[0].status == "FAILED"
+    assert any(
+        item.startswith("SOURCE_SCHEMA_UNSUPPORTED:")
+        for item in report.probe_reports[0].blockers
+    )
+    assert transport.calls == []
+
+
+def test_legacy_fqgate_explicit_host_remains_replay_compatible(tmp_path: Path):
+    legacy_uri = "http://fqgate.internal:17281/v1/market/history/klines"
+    plan = _plan(body_parameters={"source_uri": legacy_uri})
+    transport = FakeFQGateTransport([_daily_body()])
+    result = _service(transport).acquire(
+        plan,
+        raw_store=RawBlobStore(tmp_path / "raw"),
+        network_allowed=True,
+    )
+
+    assert transport.calls[0][1] == legacy_uri
+    manifest = HistoricalIngestionCompiler(
+        raw_store=RawBlobStore(tmp_path / "raw"),
+        artifact_store=HistoricalArtifactStore(tmp_path / "artifacts"),
+    ).compile(result.batch)
+    assert len(manifest.shards) == 1
+
+
+def test_remote_bridge_fake_success_uses_credential_only_on_outbound_request_and_replays(
+    tmp_path: Path,
+):
+    credential = CredentialReferenceV1(
+        reference_id="remote-auth",
+        kind="INJECTED",
+    )
+    plan = _deployment_neutral_plan(credential_ref=credential)
+    transport = FakeFQGateTransport([_daily_body()])
+    result = _deployment_neutral_service(
+        transport,
+        credentials=MappingCredentialResolver({"remote-auth": REMOTE_CREDENTIAL}),
+    ).acquire(
+        plan,
+        raw_store=RawBlobStore(tmp_path / "raw"),
+        network_allowed=True,
+    )
+
+    headers = transport.calls[0][2]
+    assert headers["Authorization"] == REMOTE_CREDENTIAL
+    serialized_batch = result.batch.model_dump_json()
+    serialized_receipt = result.batch.receipts[0].model_dump_json()
+    assert REMOTE_CREDENTIAL not in serialized_batch
+    assert REMOTE_CREDENTIAL not in serialized_receipt
+    assert result.batch.receipts[0].source_uri == REMOTE_URI
+
+    artifact_store = HistoricalArtifactStore(tmp_path / "artifacts")
+    compiler = HistoricalIngestionCompiler(
+        raw_store=RawBlobStore(tmp_path / "raw"),
+        artifact_store=artifact_store,
+    )
+    first = compiler.compile(result.batch)
+    second = compiler.compile(result.batch)
+    assert first.content_sha256 == second.content_sha256
+    assert [item.shard_id for item in first.shards] == [item.shard_id for item in second.shards]
+
+
+def test_remote_bridge_can_use_explicit_header_and_scheme_without_persisting_secret(
+    tmp_path: Path,
+):
+    credential = CredentialReferenceV1(reference_id="remote-auth", kind="INJECTED")
+    plan = _deployment_neutral_plan(
+        credential_ref=credential,
+        body_parameters={
+            "credential_header": "CF-Access-Client-Secret",
+            "credential_scheme": "Token",
+        },
+    )
+    transport = FakeFQGateTransport([_daily_body()])
+    result = _deployment_neutral_service(
+        transport,
+        credentials=MappingCredentialResolver({"remote-auth": REMOTE_CREDENTIAL}),
+    ).acquire(
+        plan,
+        raw_store=RawBlobStore(tmp_path / "raw"),
+        network_allowed=True,
+    )
+    assert transport.calls[0][2]["CF-Access-Client-Secret"] == (
+        "Token " + REMOTE_CREDENTIAL
+    )
+    assert REMOTE_CREDENTIAL not in result.batch.model_dump_json()
+
+
+def test_remote_bridge_missing_required_credential_blocks_before_transport(tmp_path: Path):
+    credential = CredentialReferenceV1(reference_id="remote-auth", kind="INJECTED")
+    plan = _deployment_neutral_plan(credential_ref=credential)
+    transport = FakeFQGateTransport([_daily_body()])
+    service = _deployment_neutral_service(
+        transport,
+        credentials=MappingCredentialResolver({}),
+    )
+    report = service.probe(plan, network_allowed=True)
+    probe = report.probe_reports[0]
+    assert probe.status == "BLOCKED"
+    assert probe.account_entitlement == "UNKNOWN"
+    assert probe.blockers == [
+        "CREDENTIAL_UNAVAILABLE: required credential is unavailable: remote-auth"
+    ]
+    assert transport.calls == []
+    with pytest.raises(CredentialUnavailableError, match="remote-auth"):
+        service.acquire(
+            plan,
+            raw_store=RawBlobStore(tmp_path / "raw"),
+            network_allowed=True,
+        )
+    assert transport.calls == []
+
+
+@pytest.mark.parametrize(
+    ("source_uri", "endpoint_kind", "response_contract"),
+    [
+        ("http://bridge.example.test/api/v1/market-history", "REMOTE_BRIDGE", "fqgate-envelope-v1"),
+        ("https://bridge.example.test", "REMOTE_BRIDGE", "fqgate-envelope-v1"),
+        (REMOTE_URI, "REMOTE_BRIDGE", "unsupported-envelope-v9"),
+        (REMOTE_URI, "", "fqgate-envelope-v1"),
+        (
+            "https://user:pass@bridge.example.test/api/v1/market-history",
+            "REMOTE_BRIDGE",
+            "fqgate-envelope-v1",
+        ),
+        (REMOTE_URI + "?token=secret", "REMOTE_BRIDGE", "fqgate-envelope-v1"),
+        (REMOTE_URI + "#fragment", "REMOTE_BRIDGE", "fqgate-envelope-v1"),
+    ],
+)
+def test_remote_bridge_requires_explicit_https_endpoint_and_supported_contract(
+    source_uri: str,
+    endpoint_kind: str,
+    response_contract: str,
+):
+    plan = _deployment_neutral_plan(
+        source_uri=source_uri,
+        endpoint_kind=endpoint_kind,
+        response_contract=response_contract,
+    )
+    transport = FakeFQGateTransport([])
+    report = _deployment_neutral_service(transport).probe(plan, network_allowed=True)
+    probe = report.probe_reports[0]
+    assert probe.status == "FAILED"
+    assert any(item.startswith("SOURCE_SCHEMA_UNSUPPORTED:") for item in probe.blockers)
+    assert transport.calls == []
+
+
+@pytest.mark.parametrize("status_code", [401, 403])
+def test_remote_bridge_auth_denial_is_not_fqgate_entitlement_denial(status_code: int):
+    credential = CredentialReferenceV1(reference_id="remote-auth", kind="INJECTED")
+    report = _deployment_neutral_service(
+        FakeFQGateTransport([_error_body("access_denied")], status_code=status_code),
+        credentials=MappingCredentialResolver({"remote-auth": REMOTE_CREDENTIAL}),
+    ).probe(_deployment_neutral_plan(credential_ref=credential), network_allowed=True)
+    probe = report.probe_reports[0]
+    assert probe.status == "FAILED"
+    assert probe.account_entitlement == "UNKNOWN"
+    assert any(item.startswith(f"{FQGATE_REMOTE_AUTH_DENIED}:") for item in probe.blockers)
+    assert not any(item.startswith(f"{FQGATE_ENTITLEMENT_DENIED}:") for item in probe.blockers)
+
+
+def test_remote_bridge_transport_failure_is_not_local_gateway_failure():
+    credential = CredentialReferenceV1(reference_id="remote-auth", kind="INJECTED")
+    report = _deployment_neutral_service(
+        RaisingFQGateTransport(NetworkTransportError("remote transport secret")),
+        credentials=MappingCredentialResolver({"remote-auth": REMOTE_CREDENTIAL}),
+    ).probe(_deployment_neutral_plan(credential_ref=credential), network_allowed=True)
+    probe = report.probe_reports[0]
+    assert probe.blockers == [
+        f"{FQGATE_REMOTE_ENDPOINT_UNREACHABLE}: FQGate remote endpoint connection failed"
+    ]
+    assert not any("LOCAL_GATEWAY" in item for item in probe.blockers)
+    assert "remote transport secret" not in str(report)
+
+
+def test_remote_bridge_unknown_5xx_stays_layer_unclassified():
+    credential = CredentialReferenceV1(reference_id="remote-auth", kind="INJECTED")
+    report = _deployment_neutral_service(
+        FakeFQGateTransport([_error_body("upstream_timeout")], status_code=502),
+        credentials=MappingCredentialResolver({"remote-auth": REMOTE_CREDENTIAL}),
+    ).probe(_deployment_neutral_plan(credential_ref=credential), network_allowed=True)
+    probe = report.probe_reports[0]
+    assert probe.blockers == [f"{FQGATE_REMOTE_HTTP_ERROR_UNCLASSIFIED}: HTTP 502"]
+    assert probe.account_entitlement == "UNKNOWN"
+
+
+def test_remote_supported_provider_error_envelope_keeps_m2a_conservative_semantics():
+    credential = CredentialReferenceV1(reference_id="remote-auth", kind="INJECTED")
+    report = _deployment_neutral_service(
+        FakeFQGateTransport([_error_body(-17)]),
+        credentials=MappingCredentialResolver({"remote-auth": REMOTE_CREDENTIAL}),
+    ).probe(_deployment_neutral_plan(credential_ref=credential), network_allowed=True)
+    probe = report.probe_reports[0]
+    assert probe.status == "FAILED"
+    assert "FQGATE_PROVIDER_ERROR_CODE: -17" in probe.blockers
+    assert any(item.startswith("FQGATE_PROVIDER_ERROR_UNCLASSIFIED:") for item in probe.blockers)
+    assert probe.account_entitlement == "UNKNOWN"
+
+
+def test_remote_unsupported_schema_fails_closed_without_body_leak():
+    credential = CredentialReferenceV1(reference_id="remote-auth", kind="INJECTED")
+    body = json.dumps(
+        {
+            "code": 0,
+            "message": "ok",
+            "data": {"records": [], "unexpected": "remote provider secret"},
+        },
+        separators=(",", ":"),
+    ).encode()
+    report = _deployment_neutral_service(
+        FakeFQGateTransport([body]),
+        credentials=MappingCredentialResolver({"remote-auth": REMOTE_CREDENTIAL}),
+    ).probe(_deployment_neutral_plan(credential_ref=credential), network_allowed=True)
+    probe = report.probe_reports[0]
+    assert probe.status == "FAILED"
+    assert any(item.startswith("SOURCE_SCHEMA_UNSUPPORTED:") for item in probe.blockers)
+    assert "remote provider secret" not in str(report)
+
+
+def test_remote_redirected_response_is_rejected_without_persisting_auth_material():
+    credential = CredentialReferenceV1(reference_id="remote-auth", kind="INJECTED")
+
+    class RedirectedResponseTransport(FakeFQGateTransport):
+        def request(self, method, url, *, headers=None, body=None, timeout_seconds=30.0):
+            del timeout_seconds
+            self.calls.append((method, url, dict(headers or {}), body))
+            return NetworkResponse(
+                status_code=200,
+                headers={"content-type": "application/json"},
+                body=_daily_body(),
+                url="https://evil.example.test/exfiltrated",
+            )
+
+    transport = RedirectedResponseTransport([])
+    report = _deployment_neutral_service(
+        transport,
+        credentials=MappingCredentialResolver({"remote-auth": REMOTE_CREDENTIAL}),
+    ).probe(_deployment_neutral_plan(credential_ref=credential), network_allowed=True)
+    assert report.probe_reports[0].blockers == [
+        f"{FQGATE_REMOTE_ENDPOINT_UNREACHABLE}: FQGate remote endpoint connection failed"
+    ]
+    assert REMOTE_CREDENTIAL not in str(report)
+    assert transport.calls[0][2]["Authorization"] == REMOTE_CREDENTIAL
+
+
+def test_default_urllib_transport_rejects_redirects_by_default():
+    from turtle_value_engine.historical import UrllibNetworkTransport
+
+    assert UrllibNetworkTransport().allow_redirects is False

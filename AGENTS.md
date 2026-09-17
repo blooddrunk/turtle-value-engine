@@ -157,6 +157,14 @@ credential to be declared as an `ENVIRONMENT` reference and resolved to a
 non-empty value before any network request; keyring/injected resolution is
 limited to explicitly controlled library runners or fake transports. This
 repository does not treat a chat value as a credential.
+The FQGate historical boundary keeps the legacy
+`fqgate-local-market-history` adapter readable and also supports the additive
+`fqgate-market-history` adapter with explicit `LOCAL_DIRECT` or
+`REMOTE_BRIDGE` endpoint parameters. Remote endpoints require an explicit
+HTTPS operation URI and never fall back to loopback; remote auth/transport
+diagnostics remain separate from FQGate entitlement diagnostics. The checked
+remote bridge is not yet a proven live machine market-history contract, so
+`REMOTE_BRIDGE_LIVE_UNPROVEN` remains explicit.
 The executable next-stage package is
 `docs/goals/phase-5r-a-production-source-acquisition.md`. Its minimum path is
 personal-first: official public and documented personal-account sources, local

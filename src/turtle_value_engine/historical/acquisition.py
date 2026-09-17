@@ -27,8 +27,8 @@ from pathlib import Path
 from typing import Any, Literal, Protocol, TypeAlias
 from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qsl, urlparse, urlunparse
+from urllib.request import HTTPRedirectHandler, build_opener, urlopen
 from urllib.request import Request as UrlRequest
-from urllib.request import urlopen
 from zoneinfo import ZoneInfo
 
 from pydantic import (
@@ -1211,8 +1211,26 @@ class NetworkTransport(Protocol):
         """Execute one request; retry policy belongs to the wrapper."""
 
 
+class _RejectRedirectHandler(HTTPRedirectHandler):
+    """Reject redirects before urllib can replay an authenticated request."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[no-untyped-def]
+        raise HTTPError(req.full_url, code, "redirects are not allowed", headers, fp)
+
+
 class UrllibNetworkTransport:
-    """Small standard-library HTTP transport with no implicit retry."""
+    """Small standard-library HTTP transport with no implicit retry.
+
+    Redirects are rejected by default.  This is deliberately a fail-closed
+    default for source adapters that may attach credentials to a request.  A
+    caller that explicitly opts into generic redirect behavior can still pass
+    ``allow_redirects=True``; the FQGate remote adapter also verifies the
+    returned URL before accepting a response.
+    """
+
+    def __init__(self, *, allow_redirects: bool = False) -> None:
+        self.allow_redirects = allow_redirects
+        self._opener = None if allow_redirects else build_opener(_RejectRedirectHandler)
 
     def request(
         self,
@@ -1230,7 +1248,8 @@ class UrllibNetworkTransport:
             headers=dict(headers or {}),
         )
         try:
-            with urlopen(request, timeout=timeout_seconds) as response:  # noqa: S310
+            opener = urlopen if self.allow_redirects else self._opener.open  # type: ignore[union-attr]
+            with opener(request, timeout=timeout_seconds) as response:  # noqa: S310
                 body = response.read()
                 return NetworkResponse(
                     status_code=int(response.status),
@@ -3063,7 +3082,16 @@ class HistoricalAcquisitionService:
         credential_required = False
         for request in plan.requests:
             adapter = self._adapter(request)
-            if not getattr(adapter, "requires_live_credential", True):
+            request_credential_requirement = getattr(
+                adapter,
+                "requires_live_credential_for",
+                None,
+            )
+            if callable(request_credential_requirement):
+                requires_credential = bool(request_credential_requirement(request))
+            else:
+                requires_credential = bool(getattr(adapter, "requires_live_credential", True))
+            if not requires_credential:
                 continue
             credential_required = True
             reference = request.credential_ref
@@ -3386,12 +3414,16 @@ class HistoricalAcquisitionService:
 
 
 def default_source_adapters() -> dict[str, HistoricalSourceAdapter]:
-    from .fqgate import FQGateMarketHistoryAdapter
+    from .fqgate import (
+        FQGateDeploymentNeutralMarketHistoryAdapter,
+        FQGateMarketHistoryAdapter,
+    )
 
     return {
         "http-json": ConfiguredHttpSourceAdapter(),
         "hithink-market-dumps": HithinkMarketDumpAdapter(),
         "fqgate-local-market-history": FQGateMarketHistoryAdapter(),
+        "fqgate-market-history": FQGateDeploymentNeutralMarketHistoryAdapter(),
     }
 
 
@@ -3403,9 +3435,9 @@ def default_decoders(
     from .fqgate import FQGateDailyKDecoder
 
     decoders: dict[tuple[str, ShardArtifactKind, str], HistoricalRawDecoder] = {}
-    decoders[("fqgate-local-market-history", ShardArtifactKind.MARKET_BAR, "market-bar-v1")] = (
-        FQGateDailyKDecoder()
-    )
+    fqgate_decoder = FQGateDailyKDecoder()
+    for adapter_id in ("fqgate-local-market-history", "fqgate-market-history"):
+        decoders[(adapter_id, ShardArtifactKind.MARKET_BAR, "market-bar-v1")] = fqgate_decoder
     if include_optional_parquet:
         decoders[("hithink-market-dumps", ShardArtifactKind.MARKET_BAR, "market-bar-v1")] = (
             HithinkDailyKParquetDecoder()

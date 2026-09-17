@@ -353,7 +353,7 @@ H 股来源、历史 membership、退市经济和授权未核实前不会自动�
 历史覆盖，也不会要求机构商业源或手工整理 CSV。当前 A-only owner probe/acquire
 及离线 replay 已成功；这些 blocker 只限制完整 A/H/生产级声明，不影响已经存在
 的本地私有实验回放。完整状态见
-[`docs/status/phase-5r-a-2026-09-16.md`](docs/status/phase-5r-a-2026-09-16.md)。
+[`docs/status/phase-5r-a-2026-09-17.md`](docs/status/phase-5r-a-2026-09-17.md)。
 
 # 当前还不能做什么？
 

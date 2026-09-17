@@ -49,16 +49,18 @@ corporate action 完整性或合法自动访问时，系统输出
 历史 filing index；若要宣称 category `COMPLETE`，仍必须提供显式 source-scope
 coverage evidence。
 
-### FQGate 本机历史日 K（M1）
+### FQGate 历史日 K：deployment-neutral endpoint（M1/M2-T）
 
-M1 增加了一个只通过本机 HTTP 边界工作的 FQGate 适配器：
+M1 的 legacy 路径仍然通过本机 HTTP 边界访问 FQGate：
 
 ```text
 POST http://127.0.0.1:17281/v1/market/history/klines
 ```
 
-请求计划使用 `adapter_id: "fqgate-local-market-history"`，并且每个 request
-只声明一个 listing。`parameters` 必须显式保留实际运行环境中的路由和身份：
+旧计划继续使用 `adapter_id: "fqgate-local-market-history"`，并且每个 request
+只声明一个 listing。旧参数没有 `endpoint_kind` 时按 legacy `LOCAL_DIRECT` 解码，
+不会被静默改写；现有 receipt/batch 可以继续离线读取和 replay。`parameters` 必须
+显式保留实际运行环境中的路由和身份：
 
 ```json
 {
@@ -92,22 +94,75 @@ H-share 计划必须由操作者填写实际 probe 观察到的值，不能把�
 ```
 
 上述 H 片段是模板，不是能力声明；没有实际成功 probe 时，readiness 不会声称
-H 历史能力、覆盖范围、退市保留或 corporate-action 能力。FQGate 使用正在运行
-的本机会话，不需要在 plan 中放 API key 或 credential reference。
+H 历史能力、覆盖范围、退市保留或 corporate-action 能力。legacy `LOCAL_DIRECT`
+使用正在运行的本机会话，不需要在 plan 中放 API key 或 credential reference。
+
+M2-T 为新请求增加 deployment-neutral 的 `adapter_id: "fqgate-market-history"`。
+新请求必须显式写 `endpoint_kind`，并使用已支持的
+`response_contract: "fqgate-envelope-v1"`：
+
+```json
+{
+  "endpoint_kind": "LOCAL_DIRECT",
+  "source_uri": "http://127.0.0.1:17281/v1/market/history/klines",
+  "response_contract": "fqgate-envelope-v1",
+  "market": "USHA",
+  "code": "600519",
+  "canonical_market": "A",
+  "currency": "CNY"
+}
+```
+
+新增 `fqgate-market-history` 的 `LOCAL_DIRECT` 保持 loopback FQGate 路径；明文 HTTP
+只允许 loopback host，不能把远程 host 当成本地路径。旧的
+`fqgate-local-market-history` 计划继续按 v1 解析和回放，保留其原先接受的显式
+HTTP(S) endpoint 形状，不会被新 adapter identity 取代。`REMOTE_BRIDGE` 则必须把完整的
+machine endpoint 和 bridge-owned operation path 写进显式 HTTPS `source_uri`，例如：
+
+```json
+{
+  "endpoint_kind": "REMOTE_BRIDGE",
+  "source_uri": "https://<explicit-machine-endpoint>/<bridge-owned-operation-path>",
+  "response_contract": "fqgate-envelope-v1",
+  "market": "<owner-observed-market>",
+  "code": "<owner-observed-code>",
+  "canonical_market": "A",
+  "currency": "CNY"
+}
+```
+
+上例的 hostname/path 只是配置形状，不是当前 bridge route 证据。REMOTE_BRIDGE
+拒绝 HTTP、userinfo、query、fragment 和空/根路径；不会推导 hostname/path、动态
+发现 API docs、在 local/remote 间 fallback，也不会在 Turtle 内实现 Tunnel、Access
+policy 或 FQGate lifecycle。
+
+如果已冻结的 remote endpoint contract 要求 machine authentication，使用已有的
+`credential_ref`、resolver 和可配置 header/scheme；resolved secret 只存在于该次
+outbound request，不会进入 parameters、source URI、receipt、probe report、日志或
+Git。内置 CLI 仍只接受声明的 `ENVIRONMENT` reference 并在触网前解析；fake/受控
+runner 才可使用 `INJECTED`/其他 resolver。缺少 required credential 会在 transport
+之前 fail closed。内置 HTTP transport 默认拒绝 redirect，FQGate adapter 也会拒绝
+返回 URL 改变的响应，避免 authenticated remote request 跨 origin 泄漏。
 
 参考实现：[FQGate Python client](https://github.com/zhuyifang/tonghuasun-agent/blob/main/sdk/python/src/fqgate_client/client.py)
 和[公开 UI 的 K 线字段映射](https://github.com/zhuyifang/tonghuasun-agent/blob/main/AI-plugins/ui-apps/src/adapters/local-api/FqgateCandleService.ts)。
 
-### M2-A FQGate 失败诊断
+### M2-A/M2-T FQGate 失败诊断
 
 FQGate probe 仍只写入既有 `SourceProbeReportV1.blockers` 字段，并使用稳定前缀区分
 可观察事实。诊断边界如下：
 
-- 本机 transport 连接失败写为 `FQGATE_LOCAL_GATEWAY_UNREACHABLE`；它只说明本机
-  网关路径不可达，不说明 H 路由、账户权限或历史覆盖。
-- HTTP `401/403` 写为 `FQGATE_ENTITLEMENT_DENIED`。HTTP `504` 在没有独立证据
-  证明上游原因时写为 `FQGATE_HTTP_504_UNCLASSIFIED`，不会仅凭状态码写成
-  `FQGATE_UPSTREAM_TIMEOUT_CONFIRMED`。
+- `LOCAL_DIRECT` transport 连接失败写为 `FQGATE_LOCAL_GATEWAY_UNREACHABLE`；它只
+  说明本机网关路径不可达，不说明 H 路由、账户权限或历史覆盖。
+- `REMOTE_BRIDGE` DNS/TLS/Tunnel/连接路径失败写为
+  `FQGATE_REMOTE_ENDPOINT_UNREACHABLE`；它不是本机 gateway failure。
+- `REMOTE_BRIDGE` HTTP `401/403` 写为 `FQGATE_REMOTE_AUTH_DENIED`，且
+  `account_entitlement` 保持 `UNKNOWN`，不自动写成 FQGate entitlement denial。
+  未证明响应来源层的 remote HTTP failure（包括 5xx）写为
+  `FQGATE_REMOTE_HTTP_ERROR_UNCLASSIFIED`，不会重标为 FQGate/provider failure。
+- 仅 `LOCAL_DIRECT` 保留 M2-A 的 HTTP `401/403` -> `FQGATE_ENTITLEMENT_DENIED`。
+  HTTP `504` 在没有独立证据证明上游原因时写为 `FQGATE_HTTP_504_UNCLASSIFIED`，
+  不会仅凭状态码写成 `FQGATE_UPSTREAM_TIMEOUT_CONFIRMED`。
 - 非成功响应或成功 envelope 中的结构化 `code`/`api_error` 只保留经过长度和字符
   限制的标量值，写为 `FQGATE_PROVIDER_ERROR_CODE`，并同时保留
   `FQGATE_PROVIDER_ERROR_UNCLASSIFIED`；不会把 `message`、`details` 或完整响应正文
@@ -121,8 +176,11 @@ FQGate probe 仍只写入既有 `SourceProbeReportV1.blockers` 字段，并使�
   无法安全解码时写为 `SOURCE_SCHEMA_UNSUPPORTED`。
 
 这些诊断不改变 FQGate 的 retry policy、A-share 成功路径、raw CAS、receipt、离线
-compile/replay 或 H-share readiness。失败 probe 仍不会产生 H 历史能力声明；只有
-实际观察到的成功行、日期和 listing identity 才能进入相应证据字段。
+compile/replay、PIT/A6 或 H-share readiness。失败 probe 仍不会产生 H 历史能力声明；
+只有实际观察到的成功行、日期和 listing identity 才能进入相应证据字段。当前
+`fqgate-remote-bridge` 尚未发布 Phase 3/4 的 stable remote market-history route、
+error contract 或 machine-auth contract，因此 remote live 状态明确为
+`REMOTE_BRIDGE_LIVE_UNPROVEN`；fake transport 成功不升级该结论。
 
 ## 3. Probe、获取与编译
 
@@ -228,4 +286,18 @@ blocker 只限制完整 A/H、完整类别和生产级覆盖声明，不是本�
 这些 blocker 不能通过要求机构商业订阅、手工整理数据、使用当前成分股或
 放宽既有 `--require-production` 校验来解决；它们也不应被解释为个人继续进行
 本地实验和回放前必须完成的用户待办。实际本轮结果与下一步入口见
-`docs/status/phase-5r-a-2026-09-16.md`。
+`docs/status/phase-5r-a-2026-09-17.md`。
+
+## 6. M2-T 验证记录（2026-09-17）
+
+```text
+python3 -m pytest tests/test_fqgate_historical.py -q -> 44 passed
+python3 -m pytest tests/test_phase_5r_acquisition.py -q -> 60 passed
+python3 -m ruff check . -> PASS
+python3 -m pytest -> 6212 passed, 2 skipped
+```
+
+相对 M2-A 的 `6191 passed, 2 skipped`，新增 21 个离线 endpoint/auth/diagnostic/
+compatibility 测试。`fqgate-remote-bridge` `main=ce30a4f` 仍未提供 Phase 3/4 的
+live machine market-history contract，故 `REMOTE_BRIDGE_LIVE_UNPROVEN` 仍是明确
+blocker；本记录不启动 M2-B。

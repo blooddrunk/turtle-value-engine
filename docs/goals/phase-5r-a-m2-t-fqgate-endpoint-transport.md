@@ -1,6 +1,6 @@
 # Phase 5R-A M2-T — FQGate Deployment-Neutral Endpoint Transport
 
-Status: **PROPOSED / NEXT — insert before M2-B**  
+Status: **COMPLETE at the Turtle-side contract boundary — 2026-09-17**
 Date: 2026-09-17  
 Baseline: `9316355ca17cdb0b952834bf5b17040a23b46d35`  
 Cross-repository dependency: `blooddrunk/fqgate-remote-bridge`
@@ -9,6 +9,12 @@ Cross-repository dependency: `blooddrunk/fqgate-remote-bridge`
 
 M2-A is complete. Before resuming the existing M2-B bounded H-share selection probe,
 insert one transport-portability package: **M2-T**.
+
+The implementation is complete at the Turtle-side local/fake-remote code and contract
+boundary. The live remote proof remains explicitly deferred as
+`REMOTE_BRIDGE_LIVE_UNPROVEN` because the checked `fqgate-remote-bridge` `main`
+(`ce30a4f`) is still at the completed Phase 2 local bridge boundary and does not publish
+the Phase 3/4 machine-authenticated read-only market-history contract.
 
 The FQGate source must no longer be modeled as intrinsically tied to
 `127.0.0.1:17281`. The provider is FQGate; the deployment topology is a separate concern.
@@ -302,6 +308,44 @@ python -m pytest
 
 The full baseline must not regress below the current M2-A baseline except for an intentional,
 documented test replacement; normally the count should increase from `6191 passed, 2 skipped`.
+
+### 9.1 Implemented closure record — 2026-09-17
+
+The Turtle-side implementation uses the following additive boundary:
+
+- `fqgate-local-market-history` remains the v1 legacy local adapter and decoder path;
+- `fqgate-market-history` is the v2 deployment-neutral adapter identity;
+- new requests carry an explicit `endpoint_kind` (`LOCAL_DIRECT` or `REMOTE_BRIDGE`);
+- `LOCAL_DIRECT` is restricted to the loopback FQGate history operation, while
+  `REMOTE_BRIDGE` requires an explicit HTTPS operation URI and the supported
+  `fqgate-envelope-v1` response contract;
+- the legacy v1 parser keeps accepting the explicit HTTP(S) endpoint shape it already
+  accepted for old plans/receipts, so compatibility replay is not retroactively narrowed;
+  the loopback restriction applies to the new explicit `LOCAL_DIRECT` mode;
+- remote credentials, when the endpoint contract requires them, use the existing
+  `credential_ref`/resolver/header seam and are never included in persisted artifacts;
+- remote HTTP/transport failures use remote-layer diagnostics, and remote 401/403 retain
+  entitlement `UNKNOWN`; no bridge-specific code is mapped because the bridge contract is
+  not yet published;
+- the built-in HTTP transport rejects redirects by default, and the FQGate adapter rejects
+  any response whose URL differs from the requested endpoint;
+- `SourceProbeReportV1`, raw CAS, receipt/batch identity rules, offline compiler/replay,
+  PIT/A6 and `strict-v1` semantics are unchanged. The legacy raw metadata path is kept
+  byte-for-byte compatible for old request identities.
+
+The checked `fqgate-remote-bridge` `main` is `ce30a4f`: Phase 2 is complete, while Phase 3
+Tunnel and Phase 4 Access/machine-authenticated read-only market-history work are not yet
+implemented. No live remote route, authentication header, H capability or live success is
+claimed. The next goal is M2-B, which may continue through `LOCAL_DIRECT`.
+
+Verification on 2026-09-17:
+
+```text
+python3 -m pytest tests/test_fqgate_historical.py -q -> 44 passed
+python3 -m pytest tests/test_phase_5r_acquisition.py -q -> 60 passed
+python3 -m ruff check . -> PASS
+python3 -m pytest -> 6212 passed, 2 skipped
+```
 
 ## 10. Non-goals
 
