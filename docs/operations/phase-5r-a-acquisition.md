@@ -39,8 +39,9 @@ session 是否全部出现；中间缺失也保持 fail closed。HTTP 200 或签
 可用历史数据证据。缺少可选的 `historical`
 依赖或 schema 不可识别时保持 fail closed，签名 URL 不写入 receipt/CAS。
 
-H 股没有默认的免费权威来源。H 股来源必须先 probe；未确认历史范围、退市、
-corporate action 完整性或合法自动访问时，系统输出
+H 股没有默认的免费权威完整来源。H 股来源必须先 probe；Futu 本轮仅在 bounded
+unadjusted daily `MARKET_BAR` 个人研究角色上完成选择。未确认历史范围、退市、
+corporate action 完整性或合法自动访问时，较宽声明仍输出
 `H_SOURCE_UNQUALIFIED`，不会改用机构源、当前快照或 scraping workaround。
 官方 filing 适配器可接入现有的 discovery/cache 回调，按 listing、日期和文件类型
 自动选择记录；`filing_ids` 仅是已冻结回放/测试的兼容输入，不是生产获取时要求操作者
@@ -182,6 +183,109 @@ compile/replay、PIT/A6 或 H-share readiness。失败 probe 仍不会产生 H �
 error contract 或 machine-auth contract，因此 remote live 状态明确为
 `REMOTE_BRIDGE_LIVE_UNPROVEN`；fake transport 成功不升级该结论。
 
+### M2-C Futu OpenD：bounded H 日线（C1/C2 完成；`FUTU_SELECTED`）
+
+Futu adapter 的 identity 是 `futu-opend-market-history`，canonical schema 是
+`market-bar-v1`，provider representation 是
+`futu-opend-sdk-export-v1`。它只在现有 historical acquisition boundary 中调用
+本机 OpenD；Futu Python SDK 通过 lazy/injected factory 接入，普通 import、offline
+compiler 和 deterministic analysis 不需要安装 SDK。SDK/DataFrame 结果会先冻结为
+完整、可 hash 的 provider envelope 写入 raw CAS，再由 offline decoder 投影为
+`MARKET_BAR`；这个 envelope 不是 raw OpenD wire bytes。
+
+SDK 是可选 extra，固定在当前已验证版本 `futu-api==10.10.7008`；在 VPS 或新机器上应先创建独立 virtualenv，
+再执行：
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install --upgrade pip
+.venv/bin/python -m pip install -e '.[futu]'
+```
+
+OpenD 本体不放进 Git 或 Python environment。建议安装到版本化用户目录，例如
+`~/.local/opt/futu-opend/<version>/`，运行状态和日志放到
+`~/.local/state/futu-opend/<version>/`；只监听 `127.0.0.1`。首次启动必须由 owner
+交互登录并完成协议确认；之后可在不把密码放进 plan、环境变量或命令行的前提下使用
+OpenD 的 remembered-login 机制。Hermes 只负责启动、健康检查和只读采集，不负责
+接收或保存登录密码。
+
+每个 request 必须显式提供以下非秘密参数；`futu_code` 必须是 owner OpenD 实际接受或
+返回的 H identity，不能从 FQGate 的 `market`/`code` 推导，也不能把下面的示例值当作
+owner 证据：
+
+```json
+{
+  "source_uri": "https://openapi.futunn.com/futu-api-doc/en/quote/request-history-kline.html",
+  "futu_code": "<owner-runtime-accepted-futu-code>",
+  "canonical_market": "H",
+  "currency": "HKD",
+  "kline_type": "K_DAY",
+  "adjustment": "NONE",
+  "timezone": "Asia/Shanghai",
+  "max_count": 1000,
+  "max_pages": 1024,
+  "opend_host": "127.0.0.1",
+  "opend_port": 11111
+}
+```
+
+不要在 Futu request 中放 `credential_ref`、brokerage password、login material 或
+session secret；OpenD 的登录状态由 owner 运行时管理。即使 request 不需要 provider
+credential，CLI live operation 仍必须显式使用 `--network=allow`。适配器会在实际
+history call 前调用 `get_history_kl_quota(get_detail=True)`（若 runtime 支持），把
+quota 状态限制为可审计的 bounded diagnostic；page key 只保存类型/长度/hash identity，
+不会把 opaque token 原文写入 CAS。
+
+M2-C2 已通过 genuine owner runtime 完成。OpenD 版本为 `10.11.7108`，监听
+`127.0.0.1:11111`，SDK 为 `10.10.7008`；`get_stock_basicinfo(Market.H,
+SecurityType.STOCK)` 返回 3,790 条港股股票记录，实际返回的 H identity 是
+`HK.00001`。历史 K 线 quota 预检为 `used=0, remaining=100`。两份私有 plan 使用同一
+runtime identity 和明确的 canonical `listing_id`，窗口不重叠且相隔至少一年：
+
+```bash
+# 以下 plan、report、raw CAS、batch 和 manifest 只能放在 .tve-private。
+# recent: 2026-09-15..2026-09-17, HK.00001
+# older:  2025-09-15..2025-09-17, HK.00001
+
+python3 -m turtle_value_engine historical source probe \
+  --plan .tve-private/plans/futu-h-recent-20260915-17.json \
+  --network=allow \
+  --output .tve-private/live/futu-h-recent-20260915-17.json
+
+python3 -m turtle_value_engine historical source probe \
+  --plan .tve-private/plans/futu-h-older-20250915-17.json \
+  --network=allow \
+  --output .tve-private/live/futu-h-older-20250915-17.json
+```
+
+两份 probe 都是 `PASS`，各返回 3 条 usable rows，schema、identity/date coverage 均成立，
+且报告明确记录 `K_DAY`、`adjustment=NONE`。只有在这两份 owner evidence 成功后，才执行
+一次 bounded acquire -> private CAS/provider envelope -> compile -> `--verify-replay`：
+
+```bash
+python3 -m turtle_value_engine historical acquire \
+  --plan .tve-private/plans/futu-h-recent-20260915-17.json \
+  --network=allow \
+  --raw-store .tve-private/raw/futu-h-recent-20260915-17 \
+  --batch-output .tve-private/batches/futu-h-recent-20260915-17.json \
+  --report-output .tve-private/live/futu-h-recent-20260915-17-readiness.json
+
+python3 -m turtle_value_engine historical compile \
+  --batch .tve-private/batches/futu-h-recent-20260915-17.json \
+  --raw-store .tve-private/raw/futu-h-recent-20260915-17 \
+  --store .tve-private/artifacts/futu-h-recent-20260915-17 \
+  --output .tve-private/manifests/futu-h-recent-20260915-17.json \
+  --verify-replay
+```
+
+本次 acquire 的 provider envelope 是明确的 `futu-opend-sdk-export-v1`（不是 raw
+OpenD wire bytes），包含 3 条 canonicalizable rows，raw envelope SHA-256 为
+`ee75f454b86aaf98e71b1bedff4443e743a97d7d67b1ca52d2da817e33d94be2`，batch 为
+`batch-d1ef177190b7cd1f25870315fb15af7b`，离线 compile/`--verify-replay` 成功。
+`H_PRICE_SOURCE_SELECTED_FUTU` 只覆盖 bounded H unadjusted daily `MARKET_BAR`；
+membership、lifecycle、terminal、corporate actions、完整覆盖和 source terms 仍然
+fail closed。M2-D 不因这些更宽 blocker 启动，也没有在 M2-C 中实现。
+
 ## 3. Probe、获取与编译
 
 ```bash
@@ -258,8 +362,9 @@ quarantine 路径，按来源条款要求清理本地、备份和临时 `.part` 
 
 ## 5. 当前 blocker 记录
 
-本轮 owner-authorized probe/acquire 已完成，但只覆盖一个 A-share 价格切片；
-没有读取或复用聊天中的 key，也没有把任何 key 写入仓库或报告。当前本地
+本轮既保留既有 owner-authorized A-share 价格切片，也完成了 Futu owner-authorized
+H bounded probe/acquire；没有读取或复用聊天中的 key，也没有把任何 key 写入仓库或报告。
+当前本地
 `compile`、shard replay 和数据研究可以继续离线运行；`historical accept` 的
 blocker 只限制完整 A/H、完整类别和生产级覆盖声明，不是本地 replay 的使用前置
 条件。
@@ -267,8 +372,9 @@ blocker 只限制完整 A/H、完整类别和生产级覆盖声明，不是本�
 当前仍未声称 `PERSONAL_RESEARCH_READY` 或 `PRODUCTION_ELIGIBLE`。下列事项在
 对应的完整声明上保持 fail closed：
 
-- `H_SOURCE_UNQUALIFIED`：缺少已确认的个人可用 H 股历史价格/生命周期/行动
-  来源及自动访问条款。
+- `H_SOURCE_UNQUALIFIED`：Futu 已被选择为 bounded H 未复权日线 `MARKET_BAR` 来源，
+  但完整 H membership/lifecycle/action/terminal、市场范围 coverage 及自动访问条款
+  仍未证明。
 - `HISTORICAL_MEMBERSHIP_UNVERIFIED`：没有有效日期的 A/H membership 与 code
   change/lifecycle 证据。
 - `TERMINAL_COVERAGE_UNVERIFIED`：不能证明退市、收购取消、转板和长期停牌的
@@ -280,7 +386,8 @@ blocker 只限制完整 A/H、完整类别和生产级覆盖声明，不是本�
 - `SOURCE_LICENSE_PROHIBITED`：来源明确禁止当前存储/研究路径。
 - `ACCESS_GRANT_UNVERIFIED`：受限来源缺少非秘密个人访问授权引用。
 - `SOURCE_AUTHORITY_UNVERIFIED`：来源 authority 仍是未知或仅为测试 fixture。
-- `HISTORICAL_CAPABILITY_UNVERIFIED`：来源尚未证明提供历史数据，而非当前快照。
+- `HISTORICAL_CAPABILITY_UNVERIFIED`：Futu 仅对本次 bounded PRICES 证明历史能力，
+  其他来源类别或更宽范围仍未证明提供历史数据，而非当前快照。
 - `CURRENT_SNAPSHOT_UNUSABLE`：当前快照不能替代历史来源。
 
 这些 blocker 不能通过要求机构商业订阅、手工整理数据、使用当前成分股或
@@ -301,3 +408,17 @@ python3 -m pytest -> 6212 passed, 2 skipped
 compatibility 测试。`fqgate-remote-bridge` `main=ce30a4f` 仍未提供 Phase 3/4 的
 live machine market-history contract，故 `REMOTE_BRIDGE_LIVE_UNPROVEN` 仍是明确
 blocker；本记录不启动 M2-B。
+
+## 7. M2-C 验证记录（2026-09-17）
+
+```text
+python3 -m pytest tests/test_futu_opend_historical.py -q -> 18 passed
+python3 -m pytest tests/test_phase_5r_acquisition.py -q -> 60 passed
+python3 -m ruff check . -> PASS
+python3 -m pytest -> 6230 passed, 2 skipped
+```
+
+M2-C2 结果为 `FUTU_SELECTED`：真实 owner OpenD 返回/接受 `HK.00001`，两个窗口
+`2026-09-15..17` 与 `2025-09-15..17` 均为 PASS，且后续 bounded acquire、private
+CAS/provider envelope、offline compile 与 `--verify-replay` 均成功。M2-D 没有实现；
+完整 H membership/lifecycle/action/terminal/coverage/source-terms 仍保持 fail closed。

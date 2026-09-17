@@ -25,6 +25,9 @@ akshare = [
 historical = [
   "pyarrow>=15,<23",
 ]
+futu = [
+  "futu-api==10.10.7008",
+]
 
 [project.scripts]
 tve = "turtle_value_engine.cli:main"

@@ -1,6 +1,6 @@
 # Phase 5R-A M2-C — Futu OpenD Bounded H-share `MARKET_BAR` Candidate
 
-Status: **PROPOSED / NEXT**  
+Status: **COMPLETE / FUTU_SELECTED**
 Date: 2026-09-17  
 Parent goal: `docs/goals/phase-5r-a-m2-h-share-history-source-selection.md`  
 Trigger: M2-B closed with evidence-supported FQGate selection failure at
@@ -314,3 +314,60 @@ M2-C must not:
 - make Futu a mandatory deterministic-engine dependency.
 
 Stop after the actual M2-C outcome is recorded and the next handoff is prepared.
+
+## 11. M2-C execution record — 2026-09-17
+
+Outcome: **`FUTU_SELECTED`**.
+
+M2-C1 is complete. The implementation adds the optional/lazy Futu SDK boundary in
+`src/turtle_value_engine/historical/futu_opend.py`, registers the adapter and decoder at
+the networked acquisition boundary, explicitly sends daily `K_DAY` plus unadjusted
+`AuType.NONE`, checks history quota when the client exposes it, bounds pagination and
+date ranges, closes the OpenD context, and freezes the decoded SDK result as the
+non-wire `futu-opend-sdk-export-v1` provider envelope before offline `MARKET_BAR`
+compilation. Required listing identity, date/time, OHLC, volume, turnover, duplicate-date,
+schema and secret-boundary checks fail closed. The fake-client suite covers the required
+diagnostics and deterministic replay paths.
+
+M2-C2 used the genuine owner OpenD runtime at `127.0.0.1:11111`. OpenD reached Ready
+after the owner completed the API questionnaire/agreement flow. The installed SDK was
+`futu-api 10.10.7008`; the runtime returned 3,790 Hong Kong stock rows from
+`get_stock_basicinfo`, including the exact accepted/returned H identity `HK.00001`.
+The quota check returned `used=0`, `remaining=100` before the bounded probe. The two
+non-overlapping live windows both returned three usable daily rows with matching identity,
+explicit `K_DAY` and explicit unadjusted `AuType.NONE`:
+
+```text
+recent: 2026-09-15..2026-09-17 -> PASS, HK.00001, 3 rows
+older:  2025-09-15..2025-09-17 -> PASS, HK.00001, 3 rows
+```
+
+The private evidence is intentionally outside Git:
+
+```text
+.tve-private/live/futu-h-recent-20260915-17.json
+  response_sha256=ee75f454b86aaf98e71b1bedff4443e743a97d7d67b1ca52d2da817e33d94be2
+.tve-private/live/futu-h-older-20250915-17.json
+  response_sha256=02d2aff0e038a4344fdf87249707a9c8635f79408bb5390fec492078b1f1549d
+.tve-private/batches/futu-h-recent-20260915-17.json
+  batch_id=batch-d1ef177190b7cd1f25870315fb15af7b
+.tve-private/raw/futu-h-recent-20260915-17/
+  provider envelope sha256=ee75f454b86aaf98e71b1bedff4443e743a97d7d67b1ca52d2da817e33d94be2
+  representation=futu-opend-sdk-export-v1, rows=3, quota_remaining=99
+.tve-private/manifests/futu-h-recent-20260915-17.json
+  dataset_id=dataset-b27e7ffc96bf7de78055d5bd3774b897
+  manifest_sha256=e1aac2fd22350d0898bb718a68febb558a4ba35638cf504a1e038f15787a341b
+  MARKET_BAR shard_sha256=6b4708a74530f5de9bba0fc2dcfe98337976c92a6565cb9feaa5b537e2bc3a62
+```
+
+The bounded acquire froze the complete decoded SDK export in private raw CAS; offline
+compile with `--verify-replay` exited successfully and produced three canonical
+`MARKET_BAR` rows. The resulting readiness report remains `NOT_READY` for the broader
+dataset because this goal does not provide membership, lifecycle, terminal, corporate
+action, benchmark/FX, filing or source-terms completeness. That fail-closed result is
+expected and does not negate the bounded price-source selection.
+
+Futu is selected only for the bounded H daily unadjusted `MARKET_BAR` personal-research
+role. The broader `H_SOURCE_UNQUALIFIED`/coverage blockers remain for claims outside this
+role. M2-D is not implemented or started. The next handoff is **M2-E selection record /
+the next repository-defined historical milestone**.

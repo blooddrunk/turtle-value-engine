@@ -3418,12 +3418,14 @@ def default_source_adapters() -> dict[str, HistoricalSourceAdapter]:
         FQGateDeploymentNeutralMarketHistoryAdapter,
         FQGateMarketHistoryAdapter,
     )
+    from .futu_opend import FutuOpenDMarketHistoryAdapter
 
     return {
         "http-json": ConfiguredHttpSourceAdapter(),
         "hithink-market-dumps": HithinkMarketDumpAdapter(),
         "fqgate-local-market-history": FQGateMarketHistoryAdapter(),
         "fqgate-market-history": FQGateDeploymentNeutralMarketHistoryAdapter(),
+        "futu-opend-market-history": FutuOpenDMarketHistoryAdapter(),
     }
 
 
@@ -3433,11 +3435,15 @@ def default_decoders(
     include_hithink_adjustments: bool = False,
 ) -> dict[tuple[str, ShardArtifactKind, str], HistoricalRawDecoder]:
     from .fqgate import FQGateDailyKDecoder
+    from .futu_opend import FutuOpenDDailyKDecoder
 
     decoders: dict[tuple[str, ShardArtifactKind, str], HistoricalRawDecoder] = {}
     fqgate_decoder = FQGateDailyKDecoder()
     for adapter_id in ("fqgate-local-market-history", "fqgate-market-history"):
         decoders[(adapter_id, ShardArtifactKind.MARKET_BAR, "market-bar-v1")] = fqgate_decoder
+    decoders[
+        ("futu-opend-market-history", ShardArtifactKind.MARKET_BAR, "market-bar-v1")
+    ] = FutuOpenDDailyKDecoder()
     if include_optional_parquet:
         decoders[("hithink-market-dumps", ShardArtifactKind.MARKET_BAR, "market-bar-v1")] = (
             HithinkDailyKParquetDecoder()

@@ -1,7 +1,7 @@
 # Phase 5R-A M2 — H-share Historical Source Selection and FQGate Failure Diagnosis
 
-Status: **ACTIVE / M2-C NEXT (M2-B EVIDENCE-SUPPORTED FQGATE FAILURE)**
-Date: 2026-09-16  
+Status: **ACTIVE / M2-C COMPLETE; FUTU_SELECTED; M2-E NEXT**
+Date: 2026-09-17
 Baseline: `41fa843cce854f70ae6fb02c3d0e0012814f3a47`
 
 ## 1. Decision and recommended order
@@ -760,3 +760,49 @@ Start at M2-A, keep each merge independently reviewable, and stop provider expan
 soon as one H `MARKET_BAR` path earns the bounded personal-research role. If live access
 is unavailable in the Codex runtime, complete the deterministic/fake-client implementation
 and leave the live capability state explicitly unqualified; never invent a live success.
+
+## 14. M2-C execution result — 2026-09-17
+
+M2-C1 completed with an optional/lazy Futu OpenD SDK boundary, explicit daily and
+unadjusted requests, bounded quota-aware pagination, deterministic
+`futu-opend-sdk-export-v1` provider envelopes in the existing raw CAS path, conservative
+diagnostics, canonical `MARKET_BAR` compilation and offline fake-client/replay tests.
+The full repository verification is recorded below with `ruff` passing.
+
+M2-C2 outcome: **`FUTU_SELECTED`**. The genuine owner OpenD runtime reached Ready on
+`127.0.0.1:11111`; `futu-api 10.10.7008` connected successfully; the runtime returned
+the exact H identity `HK.00001` in its Hong Kong stock list; and the preflight history
+quota was `used=0`, `remaining=100`. Two non-overlapping, bounded, daily unadjusted
+windows succeeded for that same runtime identity:
+
+```text
+2026-09-15..2026-09-17 -> PASS, HK.00001, 3 rows
+2025-09-15..2025-09-17 -> PASS, HK.00001, 3 rows
+```
+
+Only after those two passes, the bounded recent plan ran through acquire -> private CAS
+provider envelope -> offline compile -> `--verify-replay`. It persisted three canonical
+`MARKET_BAR` rows. The private evidence records the SDK export hash
+`ee75f454b86aaf98e71b1bedff4443e743a97d7d67b1ca52d2da817e33d94be2`, batch
+`batch-d1ef177190b7cd1f25870315fb15af7b`, dataset
+`dataset-b27e7ffc96bf7de78055d5bd3774b897`, and successful replay-equivalent manifest/
+shard identities. The provider envelope is explicitly a decoded SDK export, not raw
+OpenD wire bytes.
+
+This selects Futu for the bounded H unadjusted daily `MARKET_BAR` personal-research
+role. It does not establish historical membership, lifecycle, terminal economics,
+corporate actions, complete source terms, or a market-wide H corpus; those broader
+coverage blockers remain fail-closed. `H_SOURCE_UNQUALIFIED` therefore remains only for
+claims outside the selected bounded role. M2-D is gated and was not implemented.
+
+Verification completed after the live evidence:
+
+```text
+python3 -m pytest tests/test_futu_opend_historical.py -q -> 18 passed
+python3 -m pytest tests/test_phase_5r_acquisition.py -q -> 60 passed
+python3 -m ruff check . -> PASS
+python3 -m pytest -> 6230 passed, 2 skipped
+```
+
+The next handoff is **M2-E selection record / the next repository-defined historical
+milestone**, not M2-D.
