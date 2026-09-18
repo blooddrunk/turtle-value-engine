@@ -5101,19 +5101,24 @@ private raw-CAS/offline-compiler path, but its live probe, terms, historical
 membership, PIT code-change and complete terminal-economics evidence remain
 open; it does not expand H-share claims.
 
-The storage track has now started. M5-A is complete at `84029b4`: it freezes
-the deployment-neutral mirror manifest, `ArtifactObjectStore`, exact-byte
-filesystem reference backend and verified push/restore workflow while keeping
-the local `HistoricalArtifactStore` authoritative.
+The storage track is now complete through M5-B. M5-A at `84029b4`
+freezes the deployment-neutral mirror manifest, `ArtifactObjectStore`,
+exact-byte filesystem reference backend and verified push/restore workflow.
+M5-B at `1580670` adds the optional/lazy S3-compatible backend for private
+Cloudflare R2 / MinIO / S3-style storage with explicit network opt-in,
+credential references, immutable conditional writes and exact-byte SHA-256
+verification. Remote storage remains an explicit artifact operation, never an
+implicit fallback for offline replay, and raw provider CAS is not remotely
+mirrored by default. M5-C remains optional and is opened only for a concrete
+additional artifact class/policy need.
 
-The active next package is M5-B:
-[`docs/goals/phase-5r-a-m5-b-s3-compatible-artifact-backend.md`](goals/phase-5r-a-m5-b-s3-compatible-artifact-backend.md).
-It adds one explicit S3-compatible backend for private Cloudflare R2 / MinIO /
-S3-style storage with network opt-in, credential references, immutable writes
-and exact-byte SHA-256 verification. Remote storage must never become an
-implicit network fallback for offline replay, and raw provider CAS is not
-remotely mirrored by default. Cloudflare D1 or Supabase may later hold
-Dashboard metadata; they are not the canonical raw historical store.
+The active next product-facing package is
+[`M6-A — Read-only Research Surface Contract`](goals/phase-5r-a-m6-a-read-only-research-surface.md).
+It freezes one deterministic, schema-backed projection of already validated
+analysis/research/historical status artifacts for Hermes, Skills, APIs and a
+later personal Web Dashboard. M6-A is local/offline first: no HTTP server,
+Worker/D1 application, remote publishing, monitoring scheduler or second
+implementation of investment calculations is part of the milestone.
 
 ---
 
