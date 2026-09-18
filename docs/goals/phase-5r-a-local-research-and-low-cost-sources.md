@@ -1,6 +1,6 @@
 # Phase 5R-A Next — Personal Research Data Acquisition and Deployment-Neutral Access
 
-Status: **ACTIVE / M4 CLOSED PARTIAL; M5-A ACTIVE NEXT; A6 PENDING**
+Status: **ACTIVE / M4 CLOSED PARTIAL; M5-A COMPLETE; M5-B ACTIVE NEXT; A6 PENDING**
 Date: 2026-09-18
 
 ## 1. Objective
@@ -331,17 +331,11 @@ and `H_PRICE_SOURCE_SELECTED_FUTU` remains unchanged.
 
 ### M5 — Deployment-neutral artifact backend
 
-M5 is now the active next milestone. Its executable package is
-`docs/goals/phase-5r-a-m5-deployment-neutral-artifact-backend.md`.
+M5-A is complete at `84029b4`: the local `HistoricalArtifactStore` remains authoritative and the backend-neutral mirror/restore contract plus offline filesystem reference backend are frozen and verified.
 
-Start with M5-A: keep the current local `HistoricalArtifactStore` authoritative
-and add a backend-neutral, explicit mirror/restore contract plus a filesystem
-reference backend. The first merge must prove byte-for-byte content identity,
-explicit inventory, verified restore and no hidden network fallback.
-
-Only after that contract is frozen should M5-B add a real S3-compatible backend
-for private Cloudflare R2 / MinIO / S3-style storage. Raw provider CAS is not
-remotely mirrored by default.
+The active next package is M5-B:
+`docs/goals/phase-5r-a-m5-b-s3-compatible-artifact-backend.md`.
+It adds one real S3-compatible backend for private Cloudflare R2 / MinIO / S3-style storage while preserving explicit network opt-in, secret references, exact-byte verification and no hidden remote fallback. Raw provider CAS is not remotely mirrored by default.
 
 ### M6 — Agent/API/Web surface
 
@@ -387,11 +381,7 @@ prerequisite for M1.
 
 ## 10. Recommended next Codex goal
 
-Implement **M5-A — deployment-neutral artifact mirror contract** from
-`docs/goals/phase-5r-a-m5-deployment-neutral-artifact-backend.md`.
+Implement **M5-B — S3-compatible / Cloudflare R2 artifact backend** from
+`docs/goals/phase-5r-a-m5-b-s3-compatible-artifact-backend.md`.
 
-Keep the existing local content-addressed store as the deterministic authority;
-add explicit byte-preserving mirror/verify/restore behavior and an offline
-filesystem reference backend first. Do not start M5-B/R2 until that contract is
-green. M4-D/M4-E remain optional, M2-D remains gated, and no remote backend may
-become an implicit dependency of analysis/replay.
+Reuse the frozen M5-A `ArtifactObjectStore` and mirror manifest unchanged; add one explicit networked backend with optional dependency loading, runtime credential references, immutable put-if-absent semantics and exact-byte verification. Do not use ETag as the historical artifact SHA-256 identity. M4-D/M4-E remain optional, M2-D remains gated, and no remote backend may become an implicit dependency of analysis/replay.
