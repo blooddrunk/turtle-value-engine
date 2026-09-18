@@ -1,6 +1,6 @@
 # Phase 5R-A M4 — Cross-source Reconciliation for Fixed A-share Private Research
 
-Status: **ACTIVE / PARTIAL**
+Status: **CLOSED / PARTIAL**
 Date: 2026-09-18
 Baseline: `a0469f4`
 Parent goals:
@@ -8,19 +8,18 @@ Parent goals:
 - `docs/goals/phase-5r-a-production-source-acquisition.md`
 - `docs/goals/phase-5r-production-historical-corpus.md`
 
-Implementation state: M4-A and M4-B remain implemented and the M4-C
-artifact-backed deterministic closure is now implemented. The new library/CLI
-path reads frozen canonical and independent `MARKET_BAR` shards under the
-persisted sample specification, verifies source/adapter/provider/upstream
-identity and A/CNY/UNADJUSTED semantics, preserves union missingness, and
-persists the existing `HistoricalReconciliationReport`. The legacy generic
+Implementation state: M4-A and M4-B are implemented and M4-C is closed,
+including the artifact-backed deterministic path and a minimum owner-authorized
+BaoStock/Hithink fixed-A price sample with a 2/2 PASS. The new library/CLI path
+reads frozen canonical and independent `MARKET_BAR` shards under the persisted
+sample specification, verifies source/adapter/provider/upstream identity and
+A/CNY/UNADJUSTED semantics, preserves union missingness, and persists the
+existing `HistoricalReconciliationReport`. The legacy generic
 `tve dataset reconcile` JSON-value path remains unchanged and is not M4
-closure evidence. Deterministic tests cover the two-source replay path,
-identity/scope/semantic guards, exact tolerance boundaries, report persistence
-and replay hashes. A minimum owner-authorized BaoStock price sample has also
-been acquired, replayed and reconciled against the frozen Hithink sample; the
-recorded state is fixed-A sampled price reconciliation PASS. M4-D/M4-E remain
-later optional work and M2-D remains out of scope.
+closure evidence. M4-D/M4-E were deliberately deferred as optional future
+research-quality extensions. Therefore, under the closure definitions in
+section 9, the **price reconciliation report is PASS while overall M4 closes as
+`M4_FIXED_A_RECONCILIATION_PARTIAL`**. M2-D remains out of scope.
 
 ## 1. Objective
 
@@ -391,6 +390,14 @@ M4 may close as one of:
 
 These are engineering/research-readiness states only. None makes the full Phase 5R/A6
 production claim pass by itself.
+
+Current closure at `f17ce3c0`:
+
+- M4-C fixed-A sampled price report: **PASS** (owner-authorized, replayable, 2/2);
+- overall M4: **`M4_FIXED_A_RECONCILIATION_PARTIAL`**, because M4-D corporate-action
+  and M4-E lifecycle cross-checks are intentionally deferred rather than implemented;
+- this partial closure is sufficient to continue to M5. M4-D/M4-E are not current
+  blockers and may be reopened later only for a research/backtest claim that needs them.
 
 ## 10. Expected remaining blockers after M4
 
