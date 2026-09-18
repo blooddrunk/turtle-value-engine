@@ -2,7 +2,7 @@
 
 Work in repository `blooddrunk/turtle-value-engine` on current `main`.
 
-Status: **ACTIVE / M6-A NEXT; M5-A/B COMPLETE; A6 PENDING**
+Status: **M6-A COMPLETE; M5-A/B COMPLETE; A6 PENDING**
 
 ## Current audited state — 2026-09-18
 
@@ -175,3 +175,17 @@ thin offline CLI exists; and the full suite remains green.
 Stop after M6-A closure. Do not automatically start M6-B, M5-C, Worker/UI or
 Phase 6 monitoring in the same goal. Update the roadmap/status docs with the
 actual next decision point.
+
+## M6-A closure
+
+M6-A is now closed. The versioned ResearchSurfaceSnapshotV1 contract,
+checked-in JSON Schema, explicit allowlisted projection API and offline
+surface build/validate CLI are implemented. The surface copies validated
+deterministic values, keeps trace/report and historical identity conflicts
+fail-closed, and exposes missing/partial/blocked/not-evaluated states without
+promoting them. It does not copy credentials, signed URLs, raw provider
+payloads or restricted filing/source bytes.
+
+The next Codex goal must be selected from a concrete deployment requirement:
+M6-B read-only API, M5-C remote artifact policy, or M6-C Worker/Dashboard.
+Phase 6 monitoring remains out of scope until explicitly opened.

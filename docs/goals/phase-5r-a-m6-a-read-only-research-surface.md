@@ -1,8 +1,8 @@
 # Phase 5R-A M6-A — Read-only Research Surface Contract
 
-Status: **ACTIVE / NEXT**
+Status: **CLOSED / COMPLETE**
 Date: 2026-09-18
-Audited baseline: `1580670` (M5-B complete on `main`)
+Audited baseline: d6f035d (M5-B plus M6-A planning handoff on main)
 
 Parent context:
 - `AGENTS.md`
@@ -324,3 +324,25 @@ After M6-A closes, choose the next package based on a concrete deployment need:
 - **Phase 6 monitoring**: later watchlist/event-driven orchestration.
 
 Do not implement those follow-ons inside M6-A.
+
+## 14. Closure record — 2026-09-18
+
+M6-A is complete. The repository now provides:
+
+- ResearchSurfaceSnapshotV1 and typed nested projection contracts;
+- checked-in schemas/research-surface-snapshot.schema.json;
+- explicit, allowlisted projection/build/validation APIs under
+  turtle_value_engine.surface;
+- identity and as_of compatibility checks for analysis, trace/report and
+  historical status artifacts;
+- explicit NOT_AVAILABLE, PARTIAL, BLOCKED and NOT_EVALUATED state projection;
+- identity-only source references with no raw provider, filing or credential
+  payload copying;
+- offline tve surface build and tve surface validate commands;
+- deterministic focused tests for schema, identity, leakage and CLI behavior.
+
+The implementation did not change strict-v1, PIT/A6 semantics, historical
+acquisition, M4/M5 behavior or deterministic investment math. The next package
+is a deployment decision: M6-B read-only API adapter, M5-C only for a concrete
+remote artifact need, or M6-C personal Worker/Dashboard. None is started by
+this goal.

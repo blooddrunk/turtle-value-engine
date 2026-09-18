@@ -65,6 +65,10 @@ from turtle_value_engine.preparation import (
     PreparationError,
 )
 from turtle_value_engine.providers import AKShareProvider, FilesystemRawResponseCache
+from turtle_value_engine.surface import (
+    build_research_surface_snapshot,
+    load_research_surface_snapshot,
+)
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -229,6 +233,31 @@ def _build_parser() -> argparse.ArgumentParser:
     mirror_pull.add_argument("--remote-config", type=Path, default=None)
     mirror_pull.add_argument("--network", choices=("deny", "allow"), default="deny")
     mirror_pull.add_argument("--output", type=Path, default=None)
+
+    surface_parser = subparsers.add_parser(
+        "surface",
+        help="build or validate an offline read-only research surface",
+    )
+    surface_commands = surface_parser.add_subparsers(
+        dest="surface_command", required=True
+    )
+    surface_build = surface_commands.add_parser(
+        "build",
+        help="project explicit frozen analysis/research artifacts",
+    )
+    surface_build.add_argument("--analysis", required=True, type=Path)
+    surface_build.add_argument("--trace", type=Path, default=None)
+    surface_build.add_argument("--report", type=Path, default=None)
+    surface_build.add_argument("--historical-manifest", type=Path, default=None)
+    surface_build.add_argument("--acceptance", type=Path, default=None)
+    surface_build.add_argument("--readiness", type=Path, default=None)
+    surface_build.add_argument("--validation", type=Path, default=None)
+    surface_build.add_argument("--output", required=True, type=Path)
+    surface_validate = surface_commands.add_parser(
+        "validate",
+        help="validate one persisted research surface snapshot",
+    )
+    surface_validate.add_argument("--input", required=True, type=Path)
 
     historical_parser = subparsers.add_parser(
         "historical",
@@ -600,6 +629,34 @@ def _run_artifacts(args: argparse.Namespace) -> object:
     raise ValueError(f"unsupported mirror command: {args.mirror_command}")
 
 
+def _run_surface(args: argparse.Namespace) -> object:
+    if args.surface_command == "build":
+        snapshot = build_research_surface_snapshot(
+            _read_json(args.analysis),
+            decision_trace=None if args.trace is None else _read_json(args.trace),
+            research_report=None if args.report is None else _read_json(args.report),
+            historical_manifest=(
+                None
+                if args.historical_manifest is None
+                else _read_json(args.historical_manifest)
+            ),
+            historical_acceptance=(
+                None if args.acceptance is None else _read_json(args.acceptance)
+            ),
+            historical_readiness=(
+                None if args.readiness is None else _read_json(args.readiness)
+            ),
+            historical_validation=(
+                None if args.validation is None else _read_json(args.validation)
+            ),
+        )
+        _atomic_write(args.output, snapshot.canonical_bytes())
+        return snapshot
+    if args.surface_command == "validate":
+        return load_research_surface_snapshot(args.input)
+    raise ValueError(f"unsupported surface command: {args.surface_command}")
+
+
 def _run_backtest_command(args: argparse.Namespace) -> object:
     historical_manifest, store = _load_historical_manifest_and_store(args)
     manifest = compile_backtest_manifest(
@@ -748,6 +805,8 @@ def main(argv: list[str] | None = None) -> int:
             result = _run_dataset(args)
         elif args.command == "artifacts":
             result = _run_artifacts(args)
+        elif args.command == "surface":
+            result = _run_surface(args)
         elif args.command == "backtest":
             result = _run_backtest_command(args)
         elif args.command == "calibrate":

@@ -5112,13 +5112,20 @@ implicit fallback for offline replay, and raw provider CAS is not remotely
 mirrored by default. M5-C remains optional and is opened only for a concrete
 additional artifact class/policy need.
 
-The active next product-facing package is
+The completed product-facing package is
 [`M6-A — Read-only Research Surface Contract`](goals/phase-5r-a-m6-a-read-only-research-surface.md).
 It freezes one deterministic, schema-backed projection of already validated
 analysis/research/historical status artifacts for Hermes, Skills, APIs and a
-later personal Web Dashboard. M6-A is local/offline first: no HTTP server,
-Worker/D1 application, remote publishing, monitoring scheduler or second
-implementation of investment calculations is part of the milestone.
+later personal Web Dashboard. The implementation is local/offline first:
+ResearchSurfaceSnapshotV1, its checked-in schema, explicit projection API and
+tve surface build|validate CLI are complete. No HTTP server, Worker/D1
+application, remote publishing, monitoring scheduler or second implementation
+of investment calculations was introduced.
+
+The next package is intentionally not selected by M6-A. Choose M6-B
+(read-only API adapter), M5-C (only when a concrete remote artifact class
+requires mirroring), or M6-C (personal Worker/Dashboard) from a concrete
+deployment need. Phase 6 monitoring remains separate.
 
 ---
 
