@@ -5101,12 +5101,19 @@ private raw-CAS/offline-compiler path, but its live probe, terms, historical
 membership, PIT code-change and complete terminal-economics evidence remain
 open; it does not expand H-share claims.
 
-After the local acquisition/compiler path is stable, an optional storage work
-package may add a private Cloudflare R2 mirror or an owner-VPS backup/runner.
-Cloudflare D1 or Supabase may later hold Dashboard metadata; they are not the
-canonical raw historical store. Remote storage must respect per-artifact
-`LOCAL_ONLY`/private/redistributable policy and must never become an implicit
-network fallback for offline replay.
+The storage track has now started. M5-A is complete at `84029b4`: it freezes
+the deployment-neutral mirror manifest, `ArtifactObjectStore`, exact-byte
+filesystem reference backend and verified push/restore workflow while keeping
+the local `HistoricalArtifactStore` authoritative.
+
+The active next package is M5-B:
+[`docs/goals/phase-5r-a-m5-b-s3-compatible-artifact-backend.md`](goals/phase-5r-a-m5-b-s3-compatible-artifact-backend.md).
+It adds one explicit S3-compatible backend for private Cloudflare R2 / MinIO /
+S3-style storage with network opt-in, credential references, immutable writes
+and exact-byte SHA-256 verification. Remote storage must never become an
+implicit network fallback for offline replay, and raw provider CAS is not
+remotely mirrored by default. Cloudflare D1 or Supabase may later hold
+Dashboard metadata; they are not the canonical raw historical store.
 
 ---
 
