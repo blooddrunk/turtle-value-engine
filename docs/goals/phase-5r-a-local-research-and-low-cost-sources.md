@@ -1,6 +1,6 @@
 # Phase 5R-A Next — Personal Research Data Acquisition and Deployment-Neutral Access
 
-Status: **ACTIVE / M4 CLOSED PARTIAL; M5-A COMPLETE; M5-B ACTIVE NEXT; A6 PENDING**
+Status: **ACTIVE / M4 CLOSED PARTIAL; M5-A/B COMPLETE; M6-A ACTIVE NEXT; A6 PENDING**
 Date: 2026-09-18
 
 ## 1. Objective
@@ -333,16 +333,14 @@ and `H_PRICE_SOURCE_SELECTED_FUTU` remains unchanged.
 
 M5-A is complete at `84029b4`: the local `HistoricalArtifactStore` remains authoritative and the backend-neutral mirror/restore contract plus offline filesystem reference backend are frozen and verified.
 
-The active next package is M5-B:
-`docs/goals/phase-5r-a-m5-b-s3-compatible-artifact-backend.md`.
-It adds one real S3-compatible backend for private Cloudflare R2 / MinIO / S3-style storage while preserving explicit network opt-in, secret references, exact-byte verification and no hidden remote fallback. Raw provider CAS is not remotely mirrored by default.
+M5-B is complete at `1580670`: one real optional/lazy S3-compatible backend now supports Cloudflare R2 / MinIO / S3-style storage with explicit network opt-in, credential references, immutable conditional writes and exact-byte SHA-256 verification. Raw provider CAS is still not remotely mirrored by default. M5-C remains an optional claim/artifact-class expansion and is not the next default milestone.
 
 ### M6 — Agent/API/Web surface
 
-Expose stable research/analysis interfaces suitable for Hermes/Skill/API use and
-then a Web UI. A Cloudflare Worker UI may read prepared data/results from R2/D1
-or call an engine/backend service. UI deployment must not change investment
-math or historical replay semantics.
+The active next package is M6-A:
+`docs/goals/phase-5r-a-m6-a-read-only-research-surface.md`.
+
+M6-A freezes a versioned, schema-backed, offline read-only research snapshot over existing validated artifacts so Hermes/Skill/API/Web consumers can use one stable derived contract without reimplementing investment math. HTTP serving, authentication, Cloudflare Worker/D1 code, remote publishing and Phase 6 watchlist/event monitoring remain later packages.
 
 ## 8. What is no longer a prerequisite
 
@@ -381,7 +379,7 @@ prerequisite for M1.
 
 ## 10. Recommended next Codex goal
 
-Implement **M5-B — S3-compatible / Cloudflare R2 artifact backend** from
-`docs/goals/phase-5r-a-m5-b-s3-compatible-artifact-backend.md`.
+Implement **M6-A — Read-only Research Surface Contract** from
+`docs/goals/phase-5r-a-m6-a-read-only-research-surface.md`.
 
-Reuse the frozen M5-A `ArtifactObjectStore` and mirror manifest unchanged; add one explicit networked backend with optional dependency loading, runtime credential references, immutable put-if-absent semantics and exact-byte verification. Do not use ETag as the historical artifact SHA-256 identity. M4-D/M4-E remain optional, M2-D remains gated, and no remote backend may become an implicit dependency of analysis/replay.
+Freeze one deterministic, schema-backed projection of already validated Turtle artifacts for Hermes/Skill/API/Web consumption. Reuse existing CompanyAnalysis, trace/report, historical/readiness/acceptance contracts; project values rather than recomputing them; preserve partial/missing/A6-blocked states; remain offline/model-free. Do not start HTTP serving, Worker/D1 UI, M5-C, event monitoring, M4-D/M4-E or M2-D in the same goal.
