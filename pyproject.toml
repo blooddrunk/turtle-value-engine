@@ -31,6 +31,9 @@ futu = [
 baostock = [
   "baostock>=0.8,<1",
 ]
+s3 = [
+  "boto3>=1.34,<2",
+]
 
 [project.scripts]
 tve = "turtle_value_engine.cli:main"

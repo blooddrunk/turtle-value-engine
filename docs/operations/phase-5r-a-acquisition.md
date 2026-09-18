@@ -479,8 +479,47 @@ tve artifacts mirror pull +  --mirror-manifest .tve-private/mirrors/historical.j
 
 pull 会先验证全部声明对象，再写入新的 local CAS；随后通过既有
 HistoricalDatasetManifest + HistoricalArtifactStore validator 检查恢复结果。
-该 filesystem path 不创建 provider、transport 或网络依赖。M5-B 的
-S3-compatible/R2 backend 仍是后续显式扩展，不属于本阶段。
+该 filesystem path 不创建 provider、transport 或网络依赖。
+
+### M5-B S3-compatible / Cloudflare R2 mirror（显式网络）
+
+M5-B 使用同一个冻结的 `historical_artifact_mirror_manifest_v1`，不改变
+HistoricalArtifactStore、shard hash 或 PIT/A6 语义。远程 runtime config 只保存
+endpoint、bucket、region、addressing style、key prefix 和 credential references；
+不得写入 access key、secret、session token 或 signed URL。CLI 不接受 secret flags。
+默认 endpoint 必须为 HTTPS；只有显式允许的 loopback/local MinIO 测试 endpoint 才可用
+HTTP。
+
+`plan` 不接受/创建 remote backend，始终完全离线。`push`、`verify`、`pull` 选择
+S3 backend 时必须同时提供 `--remote-config` 和 `--network=allow`：
+
+~~~bash
+tve artifacts mirror push \
+  --mirror-manifest .tve-private/mirrors/historical.json \
+  --manifest .tve-private/manifests/historical.json \
+  --store .tve-private/artifacts \
+  --backend s3 --remote-config .tve-private/config/s3.json --network=allow
+
+tve artifacts mirror verify \
+  --mirror-manifest .tve-private/mirrors/historical.json \
+  --backend s3 --remote-config .tve-private/config/s3.json --network=allow
+
+tve artifacts mirror pull \
+  --mirror-manifest .tve-private/mirrors/historical.json \
+  --backend s3 --remote-config .tve-private/config/s3.json --network=allow \
+  --target .tve-private/restored-artifacts
+~~~
+
+S3 adapter 会在第一次 remote operation 前检查 network allow 和 credential resolver；
+缺少凭据时不会创建/调用 client。对象 key 在 bucket 内按配置 prefix 加上 M5-A
+logical key 映射，不递归 list，也不执行 delete。缺失对象、权限/auth、transport/config
+错误保持不同的 fail-closed 诊断；`put` 使用 conditional create，已存在相同 bytes
+幂等，冲突 bytes 不覆盖，竞争中的 409/412 winner 会重新下载并按 bytes 比较。
+adapter 可保存非秘密 `tve-sha256` metadata，但 ETag 不作为历史 artifact identity；
+verify/pull 始终按 mirror manifest SHA-256 对实际下载 bytes 做最终校验。
+
+真实 R2/MinIO smoke 只在 owner 已授权且运行环境已有凭据时执行；没有云凭据不是
+M5-B 实现 blocker。不要把凭据粘贴到聊天、命令行或状态文档中。
 
 ## 4. 条款、凭据、备份与删除
 

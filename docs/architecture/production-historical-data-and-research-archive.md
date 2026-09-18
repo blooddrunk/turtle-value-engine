@@ -230,6 +230,50 @@ length, SHA-256 and its own content SHA-256. Push, verify and pull/restore are
 separate offline operations; restore verifies the whole declared package before
 writing and then reuses the existing historical validator/compiler path.
 
+### S3-compatible artifact mirror (M5-B)
+
+M5-B adds `S3CompatibleArtifactObjectStore` as an explicit transport adapter beside
+the authoritative local CAS. Cloudflare R2 is the primary operator target; the same
+runtime configuration supports MinIO and ordinary S3-style endpoints. The adapter
+accepts only endpoint, bucket, region, addressing style, a deterministic key prefix
+and non-secret credential references. Resolved credentials remain in the runtime
+resolver/client path and never enter mirror manifests, object keys, CLI flags, logs or
+result artifacts. Non-loopback endpoints require HTTPS; HTTP is restricted to an
+explicitly configured loopback/local test endpoint.
+
+Remote access is denied unless `push`, `verify` or `pull` explicitly receives
+`--network=allow`. `plan` remains backend-neutral and fully offline. The optional S3
+SDK is imported lazily, and ordinary tests inject a fake S3-compatible client. The
+adapter uses `If-None-Match: *` for conditional creation, reads and compares the
+winner after a conditional-write race, and never unconditionally overwrites an
+existing key. It may persist `tve-sha256` object metadata, but ETag is transport
+metadata only; mirror verification always hashes the downloaded bytes against the
+M5-A manifest SHA-256.
+
+S3/R2 mirror commands therefore retain the frozen manifest and local restore contract:
+
+~~~bash
+tve artifacts mirror push \
+  --mirror-manifest <mirror-manifest.json> \
+  --manifest <historical-manifest.json> \
+  --store <artifact-store> \
+  --backend s3 --remote-config <s3-runtime-config.json> --network=allow
+
+tve artifacts mirror verify \
+  --mirror-manifest <mirror-manifest.json> \
+  --backend s3 --remote-config <s3-runtime-config.json> --network=allow
+
+tve artifacts mirror pull \
+  --mirror-manifest <mirror-manifest.json> \
+  --backend s3 --remote-config <s3-runtime-config.json> --network=allow \
+  --target <restored-artifact-store>
+~~~
+
+S3 missing, immutable-content conflict, permission/authentication and transport
+failures are normalized separately. `pull` downloads and verifies the complete
+declared package before restoring into a local `HistoricalArtifactStore`; deterministic
+validation and replay never acquire a remote fallback.
+
 ## Listing lifecycle and replay semantics
 
 The source-aware lifecycle keeps A and H listings distinct while linking them
@@ -290,11 +334,19 @@ Networked acquisition is intentionally outside these commands. The compact
 fixture's `--require-production` check fails until a user supplies an
 authoritative, licensed source corpus and complete coverage evidence.
 
-M5-A mirror operations are also explicit and filesystem-only:
+M5-A filesystem mirror operations remain explicit and offline-only:
 
 ~~~bash
-tve artifacts mirror plan +  --manifest <historical-manifest.json> +  --store <artifact-store> +  --output <mirror-manifest.json>
-tve artifacts mirror push +  --mirror-manifest <mirror-manifest.json> +  --manifest <historical-manifest.json> +  --store <artifact-store> +  --destination <mirror-root>
-tve artifacts mirror verify +  --mirror-manifest <mirror-manifest.json> +  --destination <mirror-root>
-tve artifacts mirror pull +  --mirror-manifest <mirror-manifest.json> +  --source <mirror-root> +  --target <restored-artifact-store>
+tve artifacts mirror plan \
+  --manifest <historical-manifest.json> \
+  --store <artifact-store> --output <mirror-manifest.json>
+tve artifacts mirror push \
+  --mirror-manifest <mirror-manifest.json> \
+  --manifest <historical-manifest.json> \
+  --store <artifact-store> --destination <mirror-root>
+tve artifacts mirror verify \
+  --mirror-manifest <mirror-manifest.json> --destination <mirror-root>
+tve artifacts mirror pull \
+  --mirror-manifest <mirror-manifest.json> \
+  --source <mirror-root> --target <restored-artifact-store>
 ~~~

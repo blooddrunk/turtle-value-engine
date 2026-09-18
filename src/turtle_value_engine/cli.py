@@ -39,6 +39,7 @@ from turtle_value_engine.historical import (
     HistoricalResearchArchiveError,
     RawAcquisitionBatchManifestV1,
     RawBlobStore,
+    S3CompatibleArtifactObjectStore,
     build_historical_artifact_mirror_manifest,
     build_readiness_report,
     compile_backtest_manifest,
@@ -199,25 +200,34 @@ def _build_parser() -> argparse.ArgumentParser:
     mirror_plan.add_argument("--output", type=Path, default=None)
     mirror_push = mirror_commands.add_parser(
         "push",
-        help="push declared objects to a filesystem backend",
+        help="push declared objects to the selected artifact backend",
     )
     mirror_push.add_argument("--mirror-manifest", required=True, type=Path)
     mirror_push.add_argument("--manifest", required=True, type=Path)
     mirror_push.add_argument("--store", required=True, type=Path)
-    mirror_push.add_argument("--destination", required=True, type=Path)
+    mirror_push.add_argument("--destination", type=Path, default=None)
+    mirror_push.add_argument("--backend", choices=("filesystem", "s3"), default="filesystem")
+    mirror_push.add_argument("--remote-config", type=Path, default=None)
+    mirror_push.add_argument("--network", choices=("deny", "allow"), default="deny")
     mirror_push.add_argument("--output", type=Path, default=None)
     mirror_verify = mirror_commands.add_parser(
-        "verify", help="verify every declared object in a filesystem backend"
+        "verify", help="verify every declared object in the selected artifact backend"
     )
     mirror_verify.add_argument("--mirror-manifest", required=True, type=Path)
-    mirror_verify.add_argument("--destination", required=True, type=Path)
+    mirror_verify.add_argument("--destination", type=Path, default=None)
+    mirror_verify.add_argument("--backend", choices=("filesystem", "s3"), default="filesystem")
+    mirror_verify.add_argument("--remote-config", type=Path, default=None)
+    mirror_verify.add_argument("--network", choices=("deny", "allow"), default="deny")
     mirror_verify.add_argument("--output", type=Path, default=None)
     mirror_pull = mirror_commands.add_parser(
-        "pull", help="restore and validate a declared mirror into a local CAS root"
+        "pull", help="restore and validate a declared mirror from the selected backend"
     )
     mirror_pull.add_argument("--mirror-manifest", required=True, type=Path)
-    mirror_pull.add_argument("--source", required=True, type=Path)
+    mirror_pull.add_argument("--source", type=Path, default=None)
     mirror_pull.add_argument("--target", required=True, type=Path)
+    mirror_pull.add_argument("--backend", choices=("filesystem", "s3"), default="filesystem")
+    mirror_pull.add_argument("--remote-config", type=Path, default=None)
+    mirror_pull.add_argument("--network", choices=("deny", "allow"), default="deny")
     mirror_pull.add_argument("--output", type=Path, default=None)
 
     historical_parser = subparsers.add_parser(
@@ -509,6 +519,26 @@ def _load_mirror_manifest(path: Path) -> HistoricalArtifactMirrorManifest:
     return HistoricalArtifactMirrorManifest.model_validate(_read_json(path))
 
 
+def _artifact_mirror_backend(args: argparse.Namespace, *, argument: str):
+    backend = getattr(args, "backend", "filesystem")
+    if backend == "filesystem":
+        root = getattr(args, argument, None)
+        if root is None:
+            raise ValueError(f"filesystem mirror backend requires --{argument}")
+        if getattr(args, "remote_config", None) is not None:
+            raise ValueError("--remote-config is only valid with --backend s3")
+        return FilesystemArtifactObjectStore(root)
+    if backend != "s3":
+        raise ValueError(f"unsupported artifact mirror backend: {backend}")
+    config_path = getattr(args, "remote_config", None)
+    if config_path is None:
+        raise ValueError("S3 mirror backend requires --remote-config")
+    return S3CompatibleArtifactObjectStore(
+        _read_json(config_path),
+        network_allowed=getattr(args, "network", "deny") == "allow",
+    )
+
+
 def _run_artifacts(args: argparse.Namespace) -> object:
     if args.artifacts_command != "mirror":
         raise ValueError(f"unsupported artifacts command: {args.artifacts_command}")
@@ -531,7 +561,7 @@ def _run_artifacts(args: argparse.Namespace) -> object:
             mirror_manifest,
             source_manifest,
             HistoricalArtifactStore(args.store),
-            FilesystemArtifactObjectStore(args.destination),
+            _artifact_mirror_backend(args, argument="destination"),
         )
         result = {
             "mirror_id": mirror_manifest.mirror_id,
@@ -543,7 +573,7 @@ def _run_artifacts(args: argparse.Namespace) -> object:
     if args.mirror_command == "verify":
         keys = verify_historical_artifact_mirror(
             mirror_manifest,
-            FilesystemArtifactObjectStore(args.destination),
+            _artifact_mirror_backend(args, argument="destination"),
         )
         result = {
             "mirror_id": mirror_manifest.mirror_id,
@@ -555,7 +585,7 @@ def _run_artifacts(args: argparse.Namespace) -> object:
     if args.mirror_command == "pull":
         restored = pull_historical_artifact_mirror(
             mirror_manifest,
-            FilesystemArtifactObjectStore(args.source),
+            _artifact_mirror_backend(args, argument="source"),
             args.target,
         )
         result = {

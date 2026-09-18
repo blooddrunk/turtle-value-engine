@@ -2,7 +2,7 @@
 
 Work in repository `blooddrunk/turtle-value-engine` on current `main`.
 
-Status: **ACTIVE / M5-B NEXT; M5-A COMPLETE; A6 PENDING**
+Status: **CLOSED / M5-B COMPLETE; M5-A COMPLETE; A6 PENDING**
 
 ## Current audited state — 2026-09-18
 
@@ -171,3 +171,31 @@ verified and pulled through one real S3-compatible backend contract while exact
 bytes/SHA-256 identities, explicit network opt-in, secret discipline and
 offline deterministic replay remain intact; ordinary CI remains network- and
 credential-free; filesystem behavior remains backward compatible.
+
+## Completion record — 2026-09-18
+
+M5-B implementation is complete on top of synchronized `main` at `79a64ae`.
+The optional/lazy S3-compatible backend, runtime-only non-secret configuration,
+credential resolver boundary, explicit network gate, conditional immutable
+writes, 409/412 race handling, sanitized error mapping, SHA-256 metadata and
+ETag separation are implemented. The additive CLI supports `--backend s3`
+for `push|verify|pull`; `plan`, filesystem defaults, frozen M5-A manifests and
+local restore validation remain unchanged.
+
+Exact verification from this working tree:
+
+~~~text
+python -m ruff check .: unavailable (shell has no python executable)
+python -m pytest: unavailable (shell has no python executable)
+python3 -m ruff check .: PASS
+python3 -m pytest tests/test_historical_artifact_mirror.py -q: 10 passed
+python3 -m pytest tests/test_historical_artifact_s3_mirror.py -q: 11 passed
+python3 -m pytest tests/test_m4_reconciliation.py -q: 19 passed
+python3 -m pytest: 6276 passed, 2 skipped
+~~~
+
+The two skips are the existing opt-in live AKShare tests. No real R2/MinIO
+smoke was run because no owner-authorized cloud credential was supplied; this
+is not an M5-B implementation blocker. Next work remains outside this goal:
+M5-C policy/artifact-class expansion, A6 corpus evidence, or a separately
+authorized later product milestone.

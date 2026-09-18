@@ -1,8 +1,8 @@
 # Phase 5R-A M5-B — S3-compatible / Cloudflare R2 Artifact Backend
 
-Status: **ACTIVE / NEXT**
+Status: **CLOSED / COMPLETE**
 Date: 2026-09-18
-Baseline: `84029b4` (M5-A complete on main)
+Baseline: `79a64ae` (synchronized main; M5-A complete)
 Parent goal:
 - `docs/goals/phase-5r-a-m5-deployment-neutral-artifact-backend.md`
 
@@ -282,3 +282,25 @@ After M5-B closes, M5-C remains optional policy/artifact-class expansion. The
 repository can then explicitly choose between proceeding to M6 Agent/API/Web
 surface work or adding M5-C only when a concrete research artifact requires
 remote mirroring.
+
+## 10. Closure record — 2026-09-18
+
+M5-B is implemented at the documented boundary. The new
+`S3CompatibleArtifactObjectStore` is an optional/lazy boto3-backed adapter with
+injected-client support for offline tests. It validates endpoint/bucket/prefix
+configuration, uses the existing credential-reference/resolver discipline,
+requires explicit network allow before client use, and supports HTTPS R2/S3
+endpoints plus explicitly configured loopback HTTP test endpoints.
+
+The adapter preserves M5-A immutable `put_if_absent` behavior with
+`If-None-Match: *`, 409/412 conditional-race winner verification, exact-byte
+comparison, and sanitized missing/permission/transport/config errors. It
+stores/reads explicit `tve-sha256` metadata when available, never treats ETag
+as SHA-256, and leaves mirror manifests unchanged. CLI `push|verify|pull`
+accept `--backend s3 --remote-config ... --network=allow`; filesystem syntax
+and `plan` remain backward-compatible and offline. Pull still restores through
+the existing local `HistoricalArtifactStore` validation path.
+
+The ordinary test suite uses only an injected fake S3 client and no credentials
+or network. No live R2/MinIO smoke was run; absent owner-authorized cloud
+credentials is not a blocker.
