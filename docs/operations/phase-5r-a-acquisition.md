@@ -458,6 +458,30 @@ corporate actions、limitations 和独立 reconciliation。缺少 probe、授权
 来源覆盖或任何证明时，报告保留精确 blocker；它不会把失败状态升级为
 `PERSONAL_RESEARCH_READY`。
 
+### M5-A 冻结历史数据镜像（离线、filesystem-only）
+
+M5-A 的本地 HistoricalArtifactStore 仍是 authoritative CAS。镜像层只接受显式
+HistoricalDatasetManifest 和它列出的 shards，生成
+historical_artifact_mirror_manifest_v1；不会递归扫描 artifact root，也不会镜像
+RawBlobStore provider bytes、research sidecar 或凭据。filesystem backend 会保留
+原始 bytes，拒绝绝对路径、路径逃逸和 symlink traversal；同 bytes 重复写入幂等，
+冲突、缺失和 hash/长度不一致 fail closed。
+
+~~~bash
+tve artifacts mirror plan +  --manifest .tve-private/manifests/historical.json +  --store .tve-private/artifacts +  --output .tve-private/mirrors/historical.json
+
+tve artifacts mirror push +  --mirror-manifest .tve-private/mirrors/historical.json +  --manifest .tve-private/manifests/historical.json +  --store .tve-private/artifacts +  --destination .tve-private/mirror
+
+tve artifacts mirror verify +  --mirror-manifest .tve-private/mirrors/historical.json +  --destination .tve-private/mirror
+
+tve artifacts mirror pull +  --mirror-manifest .tve-private/mirrors/historical.json +  --source .tve-private/mirror +  --target .tve-private/restored-artifacts
+~~~
+
+pull 会先验证全部声明对象，再写入新的 local CAS；随后通过既有
+HistoricalDatasetManifest + HistoricalArtifactStore validator 检查恢复结果。
+该 filesystem path 不创建 provider、transport 或网络依赖。M5-B 的
+S3-compatible/R2 backend 仍是后续显式扩展，不属于本阶段。
+
 ## 4. 条款、凭据、备份与删除
 
 在来源选择时把官方条款/个人账户授权页面的稳定 URI 与其内容 SHA-256 写入

@@ -26,8 +26,10 @@ from turtle_value_engine.config import ProfileLoadError, load_profile
 from turtle_value_engine.historical import (
     AcquisitionError,
     AcquisitionReadinessReportV1,
+    FilesystemArtifactObjectStore,
     HistoricalAcquisitionPlanV1,
     HistoricalAcquisitionService,
+    HistoricalArtifactMirrorManifest,
     HistoricalArtifactStore,
     HistoricalDatasetCompiler,
     HistoricalDatasetManifest,
@@ -37,13 +39,17 @@ from turtle_value_engine.historical import (
     HistoricalResearchArchiveError,
     RawAcquisitionBatchManifestV1,
     RawBlobStore,
+    build_historical_artifact_mirror_manifest,
     build_readiness_report,
     compile_backtest_manifest,
     freeze_decision_snapshots,
+    pull_historical_artifact_mirror,
+    push_historical_artifact_mirror,
     reconcile_observations,
     reconcile_sampled_market_bars_from_artifacts,
     validate_historical_dataset,
     validate_private_acceptance,
+    verify_historical_artifact_mirror,
 )
 from turtle_value_engine.input_loader import NormalizedInputLoadError, parse_normalized_input
 from turtle_value_engine.models import CDCInput, Company
@@ -172,6 +178,47 @@ def _build_parser() -> argparse.ArgumentParser:
     dataset_reconcile_artifacts.add_argument("--report-store", type=Path, default=None)
     dataset_reconcile_artifacts.add_argument("--report-id", default=None)
     dataset_reconcile_artifacts.add_argument("--output", type=Path, default=None)
+
+    artifacts_parser = subparsers.add_parser(
+        "artifacts",
+        help="move explicitly declared frozen artifacts between offline backends",
+    )
+    artifacts_commands = artifacts_parser.add_subparsers(
+        dest="artifacts_command", required=True
+    )
+    artifacts_mirror = artifacts_commands.add_parser(
+        "mirror",
+        help="plan, push, verify or pull a declared historical dataset mirror",
+    )
+    mirror_commands = artifacts_mirror.add_subparsers(
+        dest="mirror_command", required=True
+    )
+    mirror_plan = mirror_commands.add_parser("plan", help="build a mirror manifest offline")
+    mirror_plan.add_argument("--manifest", required=True, type=Path)
+    mirror_plan.add_argument("--store", required=True, type=Path)
+    mirror_plan.add_argument("--output", type=Path, default=None)
+    mirror_push = mirror_commands.add_parser(
+        "push",
+        help="push declared objects to a filesystem backend",
+    )
+    mirror_push.add_argument("--mirror-manifest", required=True, type=Path)
+    mirror_push.add_argument("--manifest", required=True, type=Path)
+    mirror_push.add_argument("--store", required=True, type=Path)
+    mirror_push.add_argument("--destination", required=True, type=Path)
+    mirror_push.add_argument("--output", type=Path, default=None)
+    mirror_verify = mirror_commands.add_parser(
+        "verify", help="verify every declared object in a filesystem backend"
+    )
+    mirror_verify.add_argument("--mirror-manifest", required=True, type=Path)
+    mirror_verify.add_argument("--destination", required=True, type=Path)
+    mirror_verify.add_argument("--output", type=Path, default=None)
+    mirror_pull = mirror_commands.add_parser(
+        "pull", help="restore and validate a declared mirror into a local CAS root"
+    )
+    mirror_pull.add_argument("--mirror-manifest", required=True, type=Path)
+    mirror_pull.add_argument("--source", required=True, type=Path)
+    mirror_pull.add_argument("--target", required=True, type=Path)
+    mirror_pull.add_argument("--output", type=Path, default=None)
 
     historical_parser = subparsers.add_parser(
         "historical",
@@ -458,6 +505,71 @@ def _run_dataset(args: argparse.Namespace) -> object:
     raise ValueError(f"unsupported dataset command: {args.dataset_command}")
 
 
+def _load_mirror_manifest(path: Path) -> HistoricalArtifactMirrorManifest:
+    return HistoricalArtifactMirrorManifest.model_validate(_read_json(path))
+
+
+def _run_artifacts(args: argparse.Namespace) -> object:
+    if args.artifacts_command != "mirror":
+        raise ValueError(f"unsupported artifacts command: {args.artifacts_command}")
+    mirror_manifest = (
+        _load_mirror_manifest(args.mirror_manifest)
+        if args.mirror_command != "plan"
+        else None
+    )
+    if args.mirror_command == "plan":
+        manifest = HistoricalDatasetManifest.model_validate(_read_json(args.manifest))
+        mirror_manifest = build_historical_artifact_mirror_manifest(
+            manifest,
+            HistoricalArtifactStore(args.store),
+        )
+        _write_optional(args.output, mirror_manifest)
+        return mirror_manifest
+    if args.mirror_command == "push":
+        source_manifest = HistoricalDatasetManifest.model_validate(_read_json(args.manifest))
+        keys = push_historical_artifact_mirror(
+            mirror_manifest,
+            source_manifest,
+            HistoricalArtifactStore(args.store),
+            FilesystemArtifactObjectStore(args.destination),
+        )
+        result = {
+            "mirror_id": mirror_manifest.mirror_id,
+            "verified": True,
+            "object_keys": list(keys),
+        }
+        _write_optional(args.output, result)
+        return result
+    if args.mirror_command == "verify":
+        keys = verify_historical_artifact_mirror(
+            mirror_manifest,
+            FilesystemArtifactObjectStore(args.destination),
+        )
+        result = {
+            "mirror_id": mirror_manifest.mirror_id,
+            "verified": True,
+            "object_keys": list(keys),
+        }
+        _write_optional(args.output, result)
+        return result
+    if args.mirror_command == "pull":
+        restored = pull_historical_artifact_mirror(
+            mirror_manifest,
+            FilesystemArtifactObjectStore(args.source),
+            args.target,
+        )
+        result = {
+            "mirror_id": mirror_manifest.mirror_id,
+            "dataset_id": restored.manifest.dataset_id,
+            "target": str(args.target),
+            "validated": restored.validation.valid,
+            "validation": restored.validation,
+        }
+        _write_optional(args.output, result)
+        return result
+    raise ValueError(f"unsupported mirror command: {args.mirror_command}")
+
+
 def _run_backtest_command(args: argparse.Namespace) -> object:
     historical_manifest, store = _load_historical_manifest_and_store(args)
     manifest = compile_backtest_manifest(
@@ -604,6 +716,8 @@ def main(argv: list[str] | None = None) -> int:
             result = _run_prepare(args)
         elif args.command == "dataset":
             result = _run_dataset(args)
+        elif args.command == "artifacts":
+            result = _run_artifacts(args)
         elif args.command == "backtest":
             result = _run_backtest_command(args)
         elif args.command == "calibrate":

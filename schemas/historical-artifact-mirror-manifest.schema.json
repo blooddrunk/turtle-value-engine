@@ -1,0 +1,122 @@
+{
+  "$defs": {
+    "HistoricalArtifactMirrorObject": {
+      "additionalProperties": false,
+      "description": "One exact-byte object declared by a historical artifact mirror.",
+      "properties": {
+        "artifact_id": {
+          "minLength": 1,
+          "title": "Artifact Id",
+          "type": "string"
+        },
+        "artifact_role": {
+          "$ref": "#/$defs/HistoricalArtifactMirrorRole"
+        },
+        "artifact_type": {
+          "minLength": 1,
+          "title": "Artifact Type",
+          "type": "string"
+        },
+        "byte_length": {
+          "minimum": 0,
+          "title": "Byte Length",
+          "type": "integer"
+        },
+        "content_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Content Sha256",
+          "type": "string"
+        },
+        "contract": {
+          "const": "historical_artifact_mirror_object_v1",
+          "default": "historical_artifact_mirror_object_v1",
+          "title": "Contract",
+          "type": "string"
+        },
+        "object_key": {
+          "minLength": 1,
+          "title": "Object Key",
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "artifact_role",
+        "artifact_type",
+        "object_key",
+        "content_sha256",
+        "byte_length"
+      ],
+      "title": "HistoricalArtifactMirrorObject",
+      "type": "object"
+    },
+    "HistoricalArtifactMirrorRole": {
+      "description": "The explicit artifact classes supported by the first mirror package.",
+      "enum": [
+        "DATASET_MANIFEST",
+        "DATASET_SHARD"
+      ],
+      "title": "HistoricalArtifactMirrorRole",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Versioned inventory for one explicitly declared frozen dataset package.",
+  "properties": {
+    "content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Content Sha256",
+      "type": "string"
+    },
+    "contract": {
+      "const": "historical_artifact_mirror_manifest_v1",
+      "default": "historical_artifact_mirror_manifest_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "mirror_id": {
+      "minLength": 1,
+      "title": "Mirror Id",
+      "type": "string"
+    },
+    "objects": {
+      "items": {
+        "$ref": "#/$defs/HistoricalArtifactMirrorObject"
+      },
+      "minItems": 2,
+      "title": "Objects",
+      "type": "array"
+    },
+    "source_dataset_id": {
+      "minLength": 1,
+      "title": "Source Dataset Id",
+      "type": "string"
+    },
+    "source_dataset_version": {
+      "minLength": 1,
+      "title": "Source Dataset Version",
+      "type": "string"
+    },
+    "source_manifest_object_key": {
+      "minLength": 1,
+      "title": "Source Manifest Object Key",
+      "type": "string"
+    },
+    "source_manifest_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Source Manifest Sha256",
+      "type": "string"
+    }
+  },
+  "required": [
+    "mirror_id",
+    "source_dataset_id",
+    "source_dataset_version",
+    "source_manifest_sha256",
+    "source_manifest_object_key",
+    "objects",
+    "content_sha256"
+  ],
+  "title": "HistoricalArtifactMirrorManifest",
+  "type": "object"
+}

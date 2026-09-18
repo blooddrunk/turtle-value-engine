@@ -14,6 +14,7 @@ import re
 from collections.abc import Mapping
 from datetime import date, datetime
 from enum import StrEnum
+from pathlib import PureWindowsPath
 from typing import Literal, Self
 from urllib.parse import parse_qsl, urlsplit, urlunsplit
 
@@ -42,6 +43,7 @@ _MEDIA_TYPE_PATTERN = re.compile(r"^[a-z0-9!#$&^_.+\-]+/[a-z0-9!#$&^_.+\-]+$")
 HISTORICAL_CONTRACT_VERSION = "historical-v1"
 HISTORICAL_SHARD_CONTRACT_VERSION = "historical-shard-v1"
 HISTORICAL_ARCHIVE_CONTRACT_VERSION = "historical-research-archive-v1"
+HISTORICAL_ARTIFACT_MIRROR_CONTRACT_VERSION = "historical-artifact-mirror-v1"
 
 
 def _hash_model(model: BaseModel, *excluded: str) -> str:
@@ -809,6 +811,142 @@ class HistoricalShardReference(BaseModel):
         return self
 
 
+def _validate_mirror_object_key(value: str) -> str:
+    """Validate a portable, store-relative mirror object key."""
+
+    if not isinstance(value, str) or not value:
+        raise ValueError("mirror object key must be a non-empty string")
+    if "\\" in value or "\x00" in value:
+        raise ValueError("mirror object key must use portable POSIX separators")
+    if PureWindowsPath(value).is_absolute() or PureWindowsPath(value).drive:
+        raise ValueError("mirror object key must be relative")
+    parts = value.split("/")
+    if any(part in {"", ".", ".."} for part in parts):
+        raise ValueError("mirror object key must not contain empty, dot or parent components")
+    return value
+
+
+class HistoricalArtifactMirrorRole(StrEnum):
+    """The explicit artifact classes supported by the first mirror package."""
+
+    DATASET_MANIFEST = "DATASET_MANIFEST"
+    DATASET_SHARD = "DATASET_SHARD"
+
+
+class HistoricalArtifactMirrorObject(BaseModel):
+    """One exact-byte object declared by a historical artifact mirror."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    contract: Literal["historical_artifact_mirror_object_v1"] = (
+        "historical_artifact_mirror_object_v1"
+    )
+    artifact_id: StrictStr = Field(min_length=1)
+    artifact_role: HistoricalArtifactMirrorRole
+    artifact_type: StrictStr = Field(min_length=1)
+    object_key: StrictStr = Field(min_length=1)
+    content_sha256: StrictStr = Field(pattern=_HASH_PATTERN)
+    byte_length: StrictInt = Field(ge=0)
+
+    @field_validator("object_key")
+    @classmethod
+    def validate_object_key(cls, value: str) -> str:
+        return _validate_mirror_object_key(value)
+
+
+class HistoricalArtifactMirrorManifest(BaseModel):
+    """Versioned inventory for one explicitly declared frozen dataset package."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    contract: Literal["historical_artifact_mirror_manifest_v1"] = (
+        "historical_artifact_mirror_manifest_v1"
+    )
+    mirror_id: StrictStr = Field(min_length=1)
+    source_dataset_id: StrictStr = Field(min_length=1)
+    source_dataset_version: StrictStr = Field(min_length=1)
+    source_manifest_sha256: StrictStr = Field(pattern=_HASH_PATTERN)
+    source_manifest_object_key: StrictStr = Field(min_length=1)
+    objects: list[HistoricalArtifactMirrorObject] = Field(min_length=2)
+    content_sha256: StrictStr = Field(pattern=_HASH_PATTERN)
+
+    @field_validator("source_manifest_object_key")
+    @classmethod
+    def validate_manifest_object_key(cls, value: str) -> str:
+        return _validate_mirror_object_key(value)
+
+    @model_validator(mode="after")
+    def validate_mirror_manifest(self) -> Self:
+        _unique([item.object_key for item in self.objects], "mirror object keys")
+        _unique([item.artifact_id for item in self.objects], "mirror artifact IDs")
+        manifest_objects = [
+            item
+            for item in self.objects
+            if item.artifact_role is HistoricalArtifactMirrorRole.DATASET_MANIFEST
+        ]
+        if len(manifest_objects) != 1:
+            raise ValueError("mirror manifest must contain exactly one dataset manifest object")
+        manifest_object = manifest_objects[0]
+        if manifest_object.object_key != self.source_manifest_object_key:
+            raise ValueError("source_manifest_object_key does not match its declared object")
+        if manifest_object.artifact_id != self.source_dataset_id:
+            raise ValueError("dataset manifest object artifact_id must match source_dataset_id")
+        if manifest_object.artifact_type != "historical_dataset_manifest_v1":
+            raise ValueError("dataset manifest object has an unsupported artifact_type")
+        if not any(
+            item.artifact_role is HistoricalArtifactMirrorRole.DATASET_SHARD
+            for item in self.objects
+        ):
+            raise ValueError("mirror manifest must contain at least one dataset shard")
+        if self.content_sha256 != _hash_model(self, "content_sha256"):
+            raise ValueError("historical artifact mirror content_sha256 does not match content")
+        return self
+
+    @classmethod
+    def build(
+        cls,
+        *,
+        source_dataset_id: str,
+        source_dataset_version: str,
+        source_manifest_sha256: str,
+        source_manifest_object_key: str,
+        objects: list[HistoricalArtifactMirrorObject],
+    ) -> HistoricalArtifactMirrorManifest:
+        """Build a mirror inventory and derive both deterministic identities."""
+
+        identity_payload = {
+            "source_dataset_id": source_dataset_id,
+            "source_dataset_version": source_dataset_version,
+            "source_manifest_sha256": source_manifest_sha256,
+            "source_manifest_object_key": source_manifest_object_key,
+            "objects": [item.model_dump(mode="json", warnings=False) for item in objects],
+        }
+        mirror_id = "historical-mirror-" + hashlib.sha256(
+            canonical_json_bytes(identity_payload)
+        ).hexdigest()[:32]
+        candidate = cls.model_construct(
+            contract="historical_artifact_mirror_manifest_v1",
+            mirror_id=mirror_id,
+            source_dataset_id=source_dataset_id,
+            source_dataset_version=source_dataset_version,
+            source_manifest_sha256=source_manifest_sha256,
+            source_manifest_object_key=source_manifest_object_key,
+            objects=objects,
+            content_sha256="0" * 64,
+        )
+        candidate_payload = candidate.model_dump(mode="json", warnings=False)
+        candidate_payload["content_sha256"] = hashlib.sha256(
+            canonical_json_bytes(
+                {
+                    key: value
+                    for key, value in candidate_payload.items()
+                    if key != "content_sha256"
+                }
+            )
+        ).hexdigest()
+        return cls.model_validate(candidate_payload)
+
+
 class HistoricalFilingLocator(BaseModel):
     """Stable locator retained with every archived research artifact."""
 
@@ -1348,6 +1486,9 @@ __all__ = [
     "CoverageClaim",
     "CoverageEvidenceBasis",
     "HistoricalAvailabilityRecord",
+    "HistoricalArtifactMirrorManifest",
+    "HistoricalArtifactMirrorObject",
+    "HistoricalArtifactMirrorRole",
     "HistoricalCodeChange",
     "HistoricalCoverageRecord",
     "HistoricalCoverageReport",
@@ -1370,6 +1511,7 @@ __all__ = [
     "HistoricalTerminalOutcome",
     "HistoricalTradingSession",
     "HISTORICAL_ARCHIVE_CONTRACT_VERSION",
+    "HISTORICAL_ARTIFACT_MIRROR_CONTRACT_VERSION",
     "HISTORICAL_CONTRACT_VERSION",
     "HISTORICAL_SHARD_CONTRACT_VERSION",
     "LicenseStatus",

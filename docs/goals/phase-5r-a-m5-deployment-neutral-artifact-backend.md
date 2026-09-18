@@ -1,8 +1,8 @@
 # Phase 5R-A M5 — Deployment-neutral Artifact Mirror
 
-Status: **ACTIVE**
+Status: **CLOSED / COMPLETE**
 Date: 2026-09-18
-Baseline: `f17ce3c0`
+Baseline: `58d3edc` (synchronized main)
 Parent goals:
 - `docs/goals/phase-5r-a-local-research-and-low-cost-sources.md`
 - `docs/goals/phase-5r-production-historical-corpus.md`
@@ -253,7 +253,16 @@ reports and possibly raw acquisition CAS. Raw provider bytes require a separate
 storage-policy/terms decision and must never become remotely mirrored by
 default.
 
-## 10. Out of scope
+## 10. Closure record
+
+M5-A is implemented at the documented boundary. The local
+HistoricalArtifactStore remains authoritative; the new mirror package contains
+only the canonical dataset manifest and explicitly referenced JSONL shards.
+The filesystem backend is offline-only, byte-preserving, immutable/idempotent
+for identical writes, and fail-closed for conflicts, missing/corrupt objects,
+path escapes and symlink traversal. M5-B remains the next optional package.
+
+## 11. Out of scope
 
 M5-A does not implement:
 

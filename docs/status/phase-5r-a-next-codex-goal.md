@@ -2,6 +2,8 @@
 
 Work in repository `blooddrunk/turtle-value-engine` on current `main`.
 
+Status: **CLOSED / M5-A COMPLETE; M5-B OPTIONAL NEXT; A6 PENDING**
+
 ## Current audited state — 2026-09-18
 
 Read and follow `AGENTS.md` and its source-of-truth order before editing. Read at least:
@@ -207,3 +209,14 @@ offline; no unreferenced/raw provider artifacts are mirrored; and the current lo
 After M5-A is green, the next optional implementation package is M5-B: one real
 S3-compatible backend for private Cloudflare R2 / MinIO / S3-style storage, using the frozen
 M5-A protocol and explicit network/credential boundaries.
+
+## Closure record
+
+M5-A completed on the synchronized main baseline. The implementation freezes
+the backend-neutral mirror protocol and the filesystem reference backend while
+keeping deterministic replay offline and the local HistoricalArtifactStore
+authoritative. Final verification was python3 -m ruff check . PASS and
+python3 -m pytest at 6265 passed, 2 skipped in 17.26s; the focused mirror
+and M4 suites passed with 10 and 19 tests respectively. The requested next
+package is the optional real S3-compatible/R2 backend, with explicit
+network/credential boundaries.

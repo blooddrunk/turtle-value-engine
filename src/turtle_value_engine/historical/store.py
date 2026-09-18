@@ -142,22 +142,8 @@ class HistoricalArtifactStore:
     ) -> list[dict[str, object]] | list[ModelT]:
         """Read and verify a shard; never fetch a missing shard."""
 
+        serialized = self.read_shard_bytes(reference)
         path = self.path_for(reference)
-        self._check_directory(path.parent)
-        if path.is_symlink() or not path.is_file():
-            raise HistoricalArtifactError(f"historical shard is missing: {path}")
-        try:
-            serialized = path.read_bytes()
-        except OSError as exc:
-            raise HistoricalArtifactError(f"cannot read historical shard {path}: {exc}") from exc
-        actual_hash = hashlib.sha256(serialized).hexdigest()
-        if actual_hash != reference.content_sha256:
-            raise HistoricalArtifactError(
-                f"historical shard hash mismatch: {reference.shard_id} "
-                f"{actual_hash} != {reference.content_sha256}"
-            )
-        if not serialized and reference.row_count != 0:
-            raise HistoricalArtifactError(f"empty shard has non-zero row count: {path}")
         raw_rows: list[dict[str, object]] = []
         try:
             for line_number, line in enumerate(serialized.splitlines(), start=1):
@@ -181,6 +167,31 @@ class HistoricalArtifactStore:
             raise HistoricalArtifactError(
                 f"historical shard schema validation failed for {reference.shard_id}: {exc}"
             ) from exc
+
+    def read_shard_bytes(self, reference: HistoricalShardReference) -> bytes:
+        """Read the exact persisted shard bytes after content verification.
+
+        Mirror transport uses this method so moving a shard never requires
+        parsing and reserializing its JSONL representation.
+        """
+
+        path = self.path_for(reference)
+        self._check_directory(path.parent)
+        if path.is_symlink() or not path.is_file():
+            raise HistoricalArtifactError(f"historical shard is missing: {path}")
+        try:
+            serialized = path.read_bytes()
+        except OSError as exc:
+            raise HistoricalArtifactError(f"cannot read historical shard {path}: {exc}") from exc
+        actual_hash = hashlib.sha256(serialized).hexdigest()
+        if actual_hash != reference.content_sha256:
+            raise HistoricalArtifactError(
+                f"historical shard hash mismatch: {reference.shard_id} "
+                f"{actual_hash} != {reference.content_sha256}"
+            )
+        if not serialized and reference.row_count != 0:
+            raise HistoricalArtifactError(f"empty shard has non-zero row count: {path}")
+        return serialized
 
     def read_json_artifact(self, relative_path: str, expected_sha256: str) -> object:
         """Read an archived JSON artifact and verify its persisted bytes."""

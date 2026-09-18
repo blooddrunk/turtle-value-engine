@@ -202,6 +202,34 @@ The local artifact store creates its root and shard directories as private
 `0700` directories and rejects symlinked roots or directory components; a
 missing or redirected artifact is an error rather than a network fallback.
 
+## Deployment-neutral artifact mirror (M5-A)
+
+The local HistoricalArtifactStore remains the authoritative deterministic CAS.
+M5-A adds a narrower transport boundary beside it:
+
+~~~text
+HistoricalDatasetManifest + explicitly referenced shards
+        -> historical_artifact_mirror_manifest_v1
+        -> ArtifactObjectStore
+        -> verified local restore
+        -> HistoricalDatasetManifest + HistoricalArtifactStore
+~~~
+
+The backend-neutral ArtifactObjectStore can put exact bytes at an explicit key
+if absent, read exact bytes and inspect length/hash metadata. The reference
+FilesystemArtifactObjectStore is offline-only and rejects absolute, path-escape
+and symlink-traversing keys. Same-byte writes are idempotent; conflicting bytes,
+missing objects and integrity mismatches fail closed.
+
+The M5-A inventory is intentionally explicit: one canonical serialized dataset
+manifest at manifest.json plus every JSONL shard listed by that manifest at its
+content-addressed sha256/... path. It does not recursively scan a store root
+and does not include RawBlobStore bytes or research sidecars. The manifest
+records source dataset/manifest identity, object role and type, exact byte
+length, SHA-256 and its own content SHA-256. Push, verify and pull/restore are
+separate offline operations; restore verifies the whole declared package before
+writing and then reuses the existing historical validator/compiler path.
+
 ## Listing lifecycle and replay semantics
 
 The source-aware lifecycle keeps A and H listings distinct while linking them
@@ -261,3 +289,12 @@ tve calibrate --manifest <historical-manifest.json> --store <store> \
 Networked acquisition is intentionally outside these commands. The compact
 fixture's `--require-production` check fails until a user supplies an
 authoritative, licensed source corpus and complete coverage evidence.
+
+M5-A mirror operations are also explicit and filesystem-only:
+
+~~~bash
+tve artifacts mirror plan +  --manifest <historical-manifest.json> +  --store <artifact-store> +  --output <mirror-manifest.json>
+tve artifacts mirror push +  --mirror-manifest <mirror-manifest.json> +  --manifest <historical-manifest.json> +  --store <artifact-store> +  --destination <mirror-root>
+tve artifacts mirror verify +  --mirror-manifest <mirror-manifest.json> +  --destination <mirror-root>
+tve artifacts mirror pull +  --mirror-manifest <mirror-manifest.json> +  --source <mirror-root> +  --target <restored-artifact-store>
+~~~
