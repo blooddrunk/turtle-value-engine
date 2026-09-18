@@ -1,127 +1,130 @@
-# Codex Goal — Phase 5R-A M4 Cross-source Reconciliation
+# Codex Goal — Phase 5R-A M4-C Artifact-backed Reconciliation Closure
 
 Work in repository `blooddrunk/turtle-value-engine` on current `main`.
 
-## Current execution state — 2026-09-18
+## Baseline and audited state
 
-M3 BaoStock A-share lifecycle/calendar acquisition is complete at the bounded
-personal-research slice:
+Use the current `main` descended from baseline `a0469f4`.
 
-- owner-authorized live probe passed;
-- decoded SDK exports were frozen into private raw CAS;
-- offline compile/replay produced typed `LISTING_LIFECYCLE` and
-  `TRADING_SESSION` shards;
-- ordinary CI and deterministic analysis remain offline.
-
-M2-E remains frozen exactly as:
-
-```text
-H_PRICE_SOURCE_SELECTED_FUTU
-```
-
-Futu remains only the selected bounded personal-research H daily unadjusted
-`MARKET_BAR` source. M2-D remains gated and must not be implemented merely to
-manufacture a comparison. M4 must not enlarge H-share coverage.
-
-The executable M4 plan is:
+Read and follow `AGENTS.md` and the source-of-truth order before editing. Also read:
 
 - `docs/goals/phase-5r-a-m4-cross-source-reconciliation.md`
-
-The M3 live/replay record and remaining broader blockers are:
-
 - `docs/status/phase-5r-a-2026-09-18.md`
-
-## Objective
-
-Implement the smallest coherent M4 vertical slice for a **fixed private
-A-share research set**, preserving source independence, deterministic replay and
-explicit missingness.
-
-Start with M4-A/B/C from the dedicated goal:
-
-1. source/upstream independence guard plus deterministic sample specification;
-2. an additive BaoStock sampled A-share unadjusted daily price-reference
-   adapter/decoder, without changing the existing M3 lifecycle adapter identity;
-3. sampled close-price reconciliation using the existing
-   `HistoricalReconciliationReport` / `reconcile_observations` contract.
-
-Do not start by broadening the H-share path or by replacing Hithink as the
-canonical bounded A-share price source.
-
-## Mandatory source-of-truth reading
-
-Before changing behavior, read and follow `AGENTS.md` and its source-of-truth
-order, especially:
-
-- `docs/spec/`
-- `rules/strict-v1.yaml`
-- `schemas/`
 - `docs/architecture/production-historical-data-and-research-archive.md`
-- `docs/goals/phase-5r-production-historical-corpus.md`
-- `docs/goals/phase-5r-a-production-source-acquisition.md`
-- `docs/goals/phase-5r-a-local-research-and-low-cost-sources.md`
-- `docs/goals/phase-5r-a-m4-cross-source-reconciliation.md`
 - `docs/operations/phase-5r-a-acquisition.md`
-- `docs/status/phase-5r-a-2026-09-18.md`
+- `docs/goals/phase-5r-a-local-research-and-low-cost-sources.md`
+- `docs/goals/phase-5r-a-production-source-acquisition.md`
 
-If a lower-priority document conflicts with a frozen contract, preserve the
-higher-priority contract and prefer an additive/versioned design.
+Audited state:
 
-## Frozen boundaries
+- M4-A source/upstream qualification and persisted sample-spec contract are implemented.
+- M4-B BaoStock sampled A-share daily unadjusted price-reference acquisition/decoder is implemented.
+- M4-C comparator core is implemented, including PASS/FAIL/PARTIAL/MISSING, union missingness,
+  basis/CNY/scope/independence checks and deterministic report hashing.
+- M4-C is **not yet fully closed** because there is no dedicated artifact-backed execution path
+  that loads the two frozen MARKET_BAR sources from manifest/store artifacts under the persisted
+  sample spec and writes the reconciliation report.
+- The legacy generic `tve dataset reconcile` JSON-value path must not be treated as M4 closure
+  because it does not enforce the M4 sample/provider/upstream/provenance boundary.
 
-- keep `H_PRICE_SOURCE_SELECTED_FUTU` byte-for-byte/conceptually unchanged;
-- do not implement M2-D;
-- do not expand any H-share coverage claim;
-- do not change `strict-v1`, deterministic investment calculations, PIT rules,
-  A6 semantics or `--require-production`;
-- keep ordinary CI offline/model-free;
-- keep private provider bytes, credentials and restricted artifacts outside Git;
-- do not silently repair missing data or overwrite canonical observations from
-  reconciliation results.
+## Current mandatory goal — smallest executable package
 
-## First implementation acceptance
+Close only the missing M4-C artifact-backed path.
 
-The first M4 merge should, at minimum, prove:
+1. Add the smallest library boundary that:
+   - accepts a persisted `HistoricalReconciliationSampleSpec`;
+   - reads canonical and independent `MARKET_BAR` rows from frozen
+     `HistoricalDatasetManifest` + `HistoricalArtifactStore` inputs (or an equally explicit
+     pair of frozen manifest/store references);
+   - selects only the sample's listing/date scope;
+   - verifies that source IDs and provider/upstream identities match the declared sample;
+   - requires A-share / CNY / UNADJUSTED semantics;
+   - calls the existing sampled reconciliation core without mutating either source artifact;
+   - returns/persists the existing `HistoricalReconciliationReport`.
 
-1. different source IDs are insufficient for independence when provider/upstream
-   identity is the same or unresolved;
-2. a frozen fake BaoStock A-share daily unadjusted price response can travel
-   through acquire -> private-CAS-compatible envelope -> offline compile/replay
-   deterministically;
-3. malformed schemas, adjusted mode, H identities, duplicate/conflicting natural
-   keys and out-of-scope rows fail closed;
-4. deterministic sampled close-price reconciliation can produce PASS, FAIL and
-   PARTIAL/MISSING outcomes;
-5. missing or extra sessions are retained as explicit missing counterparts and
-   are not removed by intersecting source dates;
-6. repeated reconciliation over identical frozen inputs produces the same
-   content identity;
-7. existing Phase 5R fixtures, M2-E state and M3 lifecycle/calendar tests remain
-   compatible.
+2. Add the thinnest CLI wrapper only if it materially improves reproducible owner execution.
+   Prefer an additive M4-specific command/arguments over weakening the legacy generic
+   `dataset reconcile` contract. Do not silently change old CLI semantics.
 
-Only after this bounded price path is proven should M4-D/E add corporate-action
-reference auditing and official-exchange lifecycle cross-checking as described
-in the dedicated M4 goal. Do not force event/lifecycle semantics through the
-scalar price-reconciliation contract; use an additive typed/versioned sidecar
-when required to preserve old hashed v1 artifacts.
+3. Add deterministic tests proving:
+   - two frozen artifact stores/manifests -> M4 report end to end;
+   - source/provider/upstream mismatch fails closed;
+   - sample listing/date scope is enforced;
+   - adjusted or non-CNY rows fail closed;
+   - extra/missing sessions remain explicit MISSING/PARTIAL;
+   - exact tolerance-boundary equality passes and just-outside fails;
+   - repeated execution over identical frozen inputs produces identical report content hash;
+   - old Phase 5R/M2/M3 fixtures and CLI behavior remain compatible.
 
-## Live evidence rule
+4. Update only documentation whose factual state changes:
+   - M4 goal;
+   - architecture if a public library/CLI boundary is added;
+   - acquisition runbook with exact offline reconciliation command if one exists;
+   - dated status and this handoff.
 
-Live work is optional and owner-authorized only. If the runtime can access the
-candidate independent source after deterministic tests pass, run the smallest
-bounded A-share probe/acquire/replay and then reconcile offline. If live access
-is unavailable or source independence cannot be proven, retain an explicit M4
-blocker instead of fabricating a PASS or selecting a correlated source.
+## Owner-live rule
+
+Do **not** require live network access for ordinary tests or for this code package to merge.
+
+After the deterministic artifact-backed path is green, perform the smallest owner-authorized
+live M4 BaoStock price sequence **only if the current runtime has access to the owner's private
+environment and corresponding frozen Hithink sample**:
+
+1. use the existing SH600000 Hithink sample window where possible (2020-01-01..2022-01-02;
+   preferably the smallest overlapping subset);
+2. create a private BaoStock M4 price plan using `baostock-a-share-price-reference`;
+3. `historical source probe --network=allow`;
+4. bounded `historical acquire --network=allow` into private raw CAS;
+5. `historical compile --verify-replay`;
+6. run the new offline artifact-backed reconciliation against the frozen Hithink source;
+7. record only non-secret hashes, listing/date/count/status/tolerance/source identities and blockers.
+
+If the runtime does not have the private Hithink artifact, owner BaoStock SDK environment, or
+private CAS, stop at deterministic closure and record that **live evidence is pending**, not a
+code blocker and not a failed source.
+
+## Explicitly not current work
+
+### Later optional M4-D
+Corporate-action/reference-event audit. Do not start it in this goal.
+
+### Later optional M4-E
+Official-exchange lifecycle cross-check. Do not start it in this goal.
+
+### Explicitly forbidden M2-D
+Do not implement the AKShare/Eastmoney H fallback. Do not reopen H source selection, expand
+H-share coverage, or modify `H_PRICE_SOURCE_SELECTED_FUTU`.
+
+Also do not change `strict-v1`, deterministic investment math, PIT/A6 semantics,
+`--require-production`, Phase 6 monitoring, R2/object-store work, Web UI/API, Tunnel/Access,
+or any trading/financial-state functionality.
 
 ## Verification
 
-Before declaring a code package complete:
+Run at minimum:
 
 ```bash
 python -m ruff check .
+python -m pytest tests/test_m4_reconciliation.py -q
 python -m pytest
 ```
 
-Update architecture/operations/status documentation only after the corresponding
-behavior is executable and observed. Do not add implementation history to
-`AGENTS.md` or the root README.
+Add focused commands for any new M4 artifact-backed test module/CLI test.
+
+## Acceptance
+
+This goal is complete when:
+
+- M4-A and M4-B remain backward-compatible;
+- the M4-C report can be generated solely from persisted sample spec + frozen artifact inputs;
+- provider/upstream independence and price semantics cannot be bypassed by the execution path;
+- missing sessions are preserved;
+- reconciliation is deterministic and persisted/replayable;
+- ordinary CI remains offline;
+- no M4-D/M4-E/M2-D scope is pulled in;
+- docs distinguish deterministic closure from owner-live evidence.
+
+Do not claim `M4_FIXED_A_RECONCILIATION_PASS` until an owner-live independent BaoStock
+price sample has actually been acquired/replayed and reconciled against the corresponding
+frozen Hithink sample. Until then, use a precise state such as deterministic M4-C closed /
+owner-live M4 evidence pending.
