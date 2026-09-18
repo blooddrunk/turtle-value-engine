@@ -1,138 +1,209 @@
-# Codex Goal — Phase 5R-A M4-C Artifact-backed Reconciliation Closure
+# Codex Goal — Phase 5R-A M5-A Deployment-neutral Artifact Mirror
 
 Work in repository `blooddrunk/turtle-value-engine` on current `main`.
 
-## Deterministic package status
+## Current audited state — 2026-09-18
 
-Use the current `main` descended from baseline `a0469f4`. The deterministic
-M4-C package below is now closed; this document remains as the implementation
-handoff and owner-live follow-up record.
+Read and follow `AGENTS.md` and its source-of-truth order before editing. Read at least:
 
-Read and follow `AGENTS.md` and the source-of-truth order before editing. Also read:
-
+- `docs/goals/phase-5r-a-m5-deployment-neutral-artifact-backend.md`
 - `docs/goals/phase-5r-a-m4-cross-source-reconciliation.md`
-- `docs/status/phase-5r-a-2026-09-18.md`
-- `docs/architecture/production-historical-data-and-research-archive.md`
-- `docs/operations/phase-5r-a-acquisition.md`
 - `docs/goals/phase-5r-a-local-research-and-low-cost-sources.md`
-- `docs/goals/phase-5r-a-production-source-acquisition.md`
+- `docs/architecture/production-historical-data-and-research-archive.md`
+- `docs/status/phase-5r-a-2026-09-18.md`
 
-Audited state:
+M4-A/B/C are implemented. M4-C has:
 
-- M4-A source/upstream qualification and persisted sample-spec contract are implemented.
-- M4-B BaoStock sampled A-share daily unadjusted price-reference acquisition/decoder is implemented.
-- M4-C comparator core is implemented, including PASS/FAIL/PARTIAL/MISSING, union missingness,
-  basis/CNY/scope/independence checks and deterministic report hashing.
-- M4-C deterministic closure is complete: the dedicated
-  `reconcile_sampled_market_bars_from_artifacts` path loads both frozen
-  `MARKET_BAR` sources from explicit manifest/store pairs under the persisted
-  sample spec and can freeze the existing reconciliation report.
-- The legacy generic `tve dataset reconcile` JSON-value path must not be treated as M4 closure
-  because it does not enforce the M4 sample/provider/upstream/provenance boundary.
+- artifact-backed two-source reconciliation;
+- persisted sample/provider/upstream guards;
+- additive `tve dataset reconcile-artifacts`;
+- owner-authorized `SH600000` BaoStock/Hithink price evidence with 2/2 comparisons PASS;
+- deterministic replay with the same report hash.
 
-## Completed deterministic package — smallest executable scope
+The price report is PASS, while overall M4 is closed as
+`M4_FIXED_A_RECONCILIATION_PARTIAL` because M4-D corporate-action and M4-E lifecycle
+cross-checks were deliberately deferred as optional extensions. Do not reopen them in this goal.
 
-The former goal closed only the missing M4-C artifact-backed path; no live
-provider or later M4 work was required for the deterministic package.
+There is one verification debt from the M4-C commit: focused tests were recorded, but there is
+no recorded post-change full `python -m pytest` result and GitHub has no attached CI status.
 
-1. The library boundary:
-   - accepts a persisted `HistoricalReconciliationSampleSpec`;
-   - reads canonical and independent `MARKET_BAR` rows from frozen
-     `HistoricalDatasetManifest` + `HistoricalArtifactStore` inputs (or an equally explicit
-     pair of frozen manifest/store references);
-   - selects only the sample's listing/date scope;
-   - verifies that source IDs and provider/upstream identities match the declared sample;
-   - requires A-share / CNY / UNADJUSTED semantics;
-   - calls the existing sampled reconciliation core without mutating either source artifact;
-   - returns/persists the existing `HistoricalReconciliationReport`.
+## Preflight — mandatory before M5 edits
 
-2. The thinnest additive CLI wrapper is available as
-   `tve dataset reconcile-artifacts`; the legacy generic `dataset reconcile`
-   behavior is unchanged.
-
-3. Deterministic tests prove:
-   - two frozen artifact stores/manifests -> M4 report end to end;
-   - source/provider/upstream mismatch fails closed;
-   - sample listing/date scope is enforced;
-   - adjusted or non-CNY rows fail closed;
-   - extra/missing sessions remain explicit MISSING/PARTIAL;
-   - exact tolerance-boundary equality passes and just-outside fails;
-   - repeated execution over identical frozen inputs produces identical report content hash;
-   - old Phase 5R/M2/M3 fixtures and CLI behavior remain compatible.
-
-4. Documentation records the deterministic closure and the owner-live price
-   evidence:
-   - M4 goal;
-   - architecture if a public library/CLI boundary is added;
-   - acquisition runbook with exact offline reconciliation command if one exists;
-   - dated status and this handoff.
-
-## Owner-live rule
-
-Do **not** require live network access for ordinary tests or for this code package to merge.
-
-After the deterministic artifact-backed path is green, perform the smallest owner-authorized
-live M4 BaoStock price sequence **only if the current runtime has access to the owner's private
-environment and corresponding frozen Hithink sample**:
-
-1. use the existing SH600000 Hithink sample window where possible (2020-01-01..2022-01-02;
-   preferably the smallest overlapping subset);
-2. create a private BaoStock M4 price plan using `baostock-a-share-price-reference`;
-3. `historical source probe --network=allow`;
-4. bounded `historical acquire --network=allow` into private raw CAS;
-5. `historical compile --verify-replay`;
-6. run the new offline artifact-backed reconciliation against the frozen Hithink source;
-7. record only non-secret hashes, listing/date/count/status/tolerance/source identities and blockers.
-
-If the runtime does not have the private Hithink artifact, owner BaoStock SDK environment, or
-private CAS, stop at deterministic closure and record that **live evidence is pending**, not a
-code blocker and not a failed source.
-
-## Explicitly not current work
-
-### Later optional M4-D
-Corporate-action/reference-event audit. Do not start it in this goal.
-
-### Later optional M4-E
-Official-exchange lifecycle cross-check. Do not start it in this goal.
-
-### Explicitly forbidden M2-D
-Do not implement the AKShare/Eastmoney H fallback. Do not reopen H source selection, expand
-H-share coverage, or modify `H_PRICE_SOURCE_SELECTED_FUTU`.
-
-Also do not change `strict-v1`, deterministic investment math, PIT/A6 semantics,
-`--require-production`, Phase 6 monitoring, R2/object-store work, Web UI/API, Tunnel/Access,
-or any trading/financial-state functionality.
-
-## Verification
-
-Run at minimum:
+Run:
 
 ```bash
 python -m ruff check .
+python -m pytest
+```
+
+If the full suite is not green, fix the M4-C regression first and record the exact result. Do not
+start M5 implementation on a red baseline.
+
+## Objective
+
+Implement only **M5-A** from
+`docs/goals/phase-5r-a-m5-deployment-neutral-artifact-backend.md`:
+
+> Add a backend-neutral, explicit, byte-preserving mirror / verify / restore boundary for a
+> frozen `HistoricalDatasetManifest` package, with a filesystem reference backend, while
+> keeping the existing local `HistoricalArtifactStore` authoritative and all deterministic
+> analysis/replay offline.
+
+This is a mirror layer, not a cloud-storage rewrite.
+
+## Required implementation
+
+### 1. Backend-neutral immutable object protocol
+
+Add a small provider-neutral protocol/interface for artifact transport. It should support the
+minimum operations needed to:
+
+- put exact bytes at a deterministic explicit key if absent;
+- get exact bytes by key;
+- inspect/verify object size/hash metadata where available;
+- fail closed on conflicting content.
+
+Do not couple the protocol to Cloudflare, boto3, AWS or one vendor.
+
+### 2. Typed deterministic mirror manifest
+
+Add a versioned mirror manifest contract/schema such as
+`historical_artifact_mirror_manifest_v1`.
+
+At minimum retain:
+
+- source dataset/manifest identity;
+- deterministic object key / relative path;
+- artifact role/type;
+- SHA-256;
+- byte length;
+- mirror-manifest content SHA-256.
+
+Build the inventory only from the explicitly supplied `HistoricalDatasetManifest` and its
+referenced shards. Do **not** recursively upload everything under the source store root.
+
+For M5-A, the package only needs:
+
+- canonical serialized dataset manifest;
+- all shards referenced by that manifest.
+
+Do not include `RawBlobStore` provider data in M5-A.
+
+### 3. Filesystem reference backend
+
+Implement an offline filesystem backend that exercises the exact same object protocol.
+
+It must:
+
+- reject absolute/path-escape keys;
+- reject symlink traversal;
+- preserve exact bytes;
+- allow idempotent same-byte writes;
+- reject conflicting destination bytes;
+- fail on missing/corrupt objects.
+
+### 4. Explicit mirror workflow
+
+Provide library functions for:
+
+1. build/freeze mirror manifest;
+2. push only declared objects;
+3. verify destination;
+4. pull/restore only declared objects;
+5. validate the restored dataset through the existing
+   `HistoricalDatasetManifest` + `HistoricalArtifactStore` boundary.
+
+The restored dataset must retain the same shard hashes and deterministic validation/replay
+semantics.
+
+A thin additive CLI is encouraged if it stays small and future-compatible, for example:
+
+```text
+tve artifacts mirror plan
+tve artifacts mirror push
+tve artifacts mirror verify
+tve artifacts mirror pull
+```
+
+For M5-A, support only the real filesystem backend. Do not add placeholder R2/S3 flags.
+
+## Preferred file scope
+
+Keep the change approximately within:
+
+```text
+src/turtle_value_engine/historical/store.py
+src/turtle_value_engine/historical/mirror.py
+src/turtle_value_engine/historical/contracts.py
+src/turtle_value_engine/historical/__init__.py
+src/turtle_value_engine/__init__.py
+src/turtle_value_engine/cli.py
+schemas/historical-artifact-mirror-manifest.schema.json
+tests/test_historical_artifact_mirror.py
+docs/architecture/production-historical-data-and-research-archive.md
+docs/operations/phase-5r-a-acquisition.md   # only if CLI exists
+docs/status/phase-5r-a-2026-09-18.md or a dated successor
+docs/status/phase-5r-a-next-codex-goal.md
+```
+
+Do not refactor provider adapters or investment calculation code.
+
+## Deterministic tests
+
+At minimum prove:
+
+1. mirror manifest is built from one explicit frozen dataset;
+2. inventory includes the manifest + exactly referenced shards, not unrelated store files;
+3. push preserves exact SHA-256 bytes;
+4. repeat push is idempotent;
+5. conflicting destination bytes fail closed;
+6. missing destination object fails verification;
+7. corrupt destination object fails verification;
+8. absolute/path traversal/symlink paths fail closed;
+9. restore verifies all objects before accepting the local bundle;
+10. restored shard hashes equal source shard hashes;
+11. restored dataset validates/replays through existing offline boundaries;
+12. tampered mirror manifest fails validation;
+13. filesystem mirror uses no network;
+14. M4 reconciliation and all previous Phase 5R tests remain compatible.
+
+## Verification
+
+After implementation run at minimum:
+
+```bash
+python -m ruff check .
+python -m pytest tests/test_historical_artifact_mirror.py -q
 python -m pytest tests/test_m4_reconciliation.py -q
 python -m pytest
 ```
 
-Add focused commands for any new M4 artifact-backed test module/CLI test.
+Record the full-suite result in the status document.
+
+## Explicitly not current work
+
+Do not implement:
+
+- M5-B S3 / Cloudflare R2 backend;
+- remote credentials or live object-store smoke tests;
+- raw `RawBlobStore` mirroring;
+- M4-D;
+- M4-E;
+- M2-D;
+- Phase 6 monitoring;
+- Web UI/API/Worker productization;
+- any change to `strict-v1`, PIT/A6 semantics or deterministic investment math.
+
+Keep `H_PRICE_SOURCE_SELECTED_FUTU` unchanged.
 
 ## Acceptance
 
-The deterministic acceptance is complete:
+M5-A is complete when a declared frozen historical dataset can be mirrored to a second
+filesystem backend and restored byte-for-byte through the backend-neutral contract, with the
+same shard identities and successful existing offline validation/replay; ordinary CI remains
+offline; no unreferenced/raw provider artifacts are mirrored; and the current local
+`HistoricalArtifactStore` remains backward compatible.
 
-- M4-A and M4-B remain backward-compatible;
-- the M4-C report can be generated solely from persisted sample spec + frozen artifact inputs;
-- provider/upstream independence and price semantics cannot be bypassed by the execution path;
-- missing sessions are preserved;
-- reconciliation is deterministic and persisted/replayable;
-- ordinary CI remains offline;
-- no M4-D/M4-E/M2-D scope is pulled in;
-- docs distinguish deterministic closure from owner-live evidence.
-
-The owner-authorized independent BaoStock sample has now been acquired, replayed and
-reconciled against the corresponding frozen Hithink sample for `SH600000` on
-2020-01-02..2020-01-03: 2/2 comparisons PASS at absolute tolerance `0.02` and relative
-tolerance `0.001`, with report content hash
-`f0fc94fd2d9fd051bbcd5269440f4cc6d49f5ea8e01d903945c2be7db1c2300a`. This supports the
-fixed-A sampled price reconciliation state only; it does not close M4-D/M4-E or the broader
-Phase 5R/A6 production claim.
+After M5-A is green, the next optional implementation package is M5-B: one real
+S3-compatible backend for private Cloudflare R2 / MinIO / S3-style storage, using the frozen
+M5-A protocol and explicit network/credential boundaries.
