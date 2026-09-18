@@ -1,0 +1,168 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Deterministic, bounded M4 sampled price-reconciliation specification.",
+  "properties": {
+    "contract": {
+      "const": "historical_reconciliation_sample_spec_v1",
+      "default": "historical_reconciliation_sample_spec_v1",
+      "type": "string"
+    },
+    "sample_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "target_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "listing_ids": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "type": "array",
+      "uniqueItems": true
+    },
+    "start_date": {
+      "format": "date",
+      "type": "string"
+    },
+    "end_date": {
+      "format": "date",
+      "type": "string"
+    },
+    "canonical_source_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "canonical_adapter_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "canonical_provider_id": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "canonical_upstream_id": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "independent_source_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "independent_adapter_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "independent_provider_id": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "independent_upstream_id": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "currency": {
+      "const": "CNY",
+      "type": "string"
+    },
+    "canonical_price_basis": {
+      "enum": [
+        "UNADJUSTED",
+        "ADJUSTED"
+      ],
+      "type": "string"
+    },
+    "independent_price_basis": {
+      "enum": [
+        "UNADJUSTED",
+        "ADJUSTED"
+      ],
+      "type": "string"
+    },
+    "compared_field": {
+      "const": "close",
+      "default": "close",
+      "type": "string"
+    },
+    "return_semantics": {
+      "enum": [
+        "PRICE_RETURN",
+        "TOTAL_RETURN"
+      ],
+      "default": "PRICE_RETURN",
+      "type": "string"
+    },
+    "absolute_tolerance": {
+      "minimum": 0,
+      "type": "number"
+    },
+    "relative_tolerance": {
+      "minimum": 0,
+      "type": "number"
+    },
+    "selection_rationale": {
+      "maxLength": 2000,
+      "minLength": 1,
+      "type": "string"
+    },
+    "content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    }
+  },
+  "required": [
+    "sample_id",
+    "target_id",
+    "listing_ids",
+    "start_date",
+    "end_date",
+    "canonical_source_id",
+    "canonical_adapter_id",
+    "independent_source_id",
+    "independent_adapter_id",
+    "currency",
+    "canonical_price_basis",
+    "independent_price_basis",
+    "absolute_tolerance",
+    "relative_tolerance",
+    "selection_rationale",
+    "content_sha256"
+  ],
+  "title": "HistoricalReconciliationSampleSpec",
+  "type": "object"
+}

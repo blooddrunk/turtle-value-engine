@@ -97,6 +97,27 @@ source is a bounded research supplement: a current/basic response does not
 prove point-in-time membership, code history, complete delisted retention,
 terminal economics, source terms or any A/H economic-company mapping.
 
+M4 adds an additive BaoStock sampled A-share price-reference adapter with the
+identity `baostock-a-share-price-reference`. It calls the documented
+`query_history_k_data_plus` operation only with an explicitly declared daily
+frequency (`frequency="d"`) and raw/unadjusted mode (`adjustflag="3"`). The
+complete decoded SDK export is frozen as a private
+`baostock-sdk-price-export-v1` envelope before the offline decoder emits
+`MARKET_BAR` rows. The decoder rejects schema drift, adjusted rows, H-share or
+out-of-scope identities, malformed numeric values and duplicate natural keys.
+This adapter is a sampled reference only; Hithink remains the bounded
+canonical A-share price source and BaoStock is not promoted to bulk coverage.
+
+M4 sample specifications are persisted as the additive
+`historical_reconciliation_sample_spec_v1` contract. They carry the fixed
+listing/date scope, source and adapter IDs, provider/upstream identities,
+CNY/unit and price-basis declarations, comparison field, tolerances and
+selection rationale. `assert_reconciliation_source_independence` requires
+resolved, distinct provider/upstream identities; different source or adapter
+IDs alone cannot qualify a source. An unresolved aggregation wrapper, such as
+AKShare without its actual upstream identity, remains blocked by
+`RECONCILIATION_SOURCE_INDEPENDENCE_UNPROVEN`.
+
 The official filing probe reports `FILING_SCOPE_LIMITED` as a warning when it
 confirms only the requested document sample. This keeps the required
 per-market filing sample usable without turning it into a claim of complete
@@ -189,8 +210,13 @@ Benchmark identity and price-return/total-return semantics are explicit, and
 FX observations remain listing/currency-specific.
 
 `reconcile_observations` persists canonical-versus-independent comparisons,
-tolerances, missing rows and pass/fail status. A report cannot use the same
-source on both sides and cannot combine adjusted prices with explicit actions.
+tolerances, missing rows and pass/fail status. The M4 sampled close-price
+path validates the same A-share identity, calendar date, CNY unit and
+unadjusted basis, then passes the union of both source key sets to the
+existing v1 report. An extra or missing session therefore remains an explicit
+`MISSING` comparison and makes the report `PARTIAL`; reconciliation never
+mutates either source shard. A report cannot use the same source on both sides
+or combine adjusted prices with explicit actions.
 
 ## Historical research archive
 

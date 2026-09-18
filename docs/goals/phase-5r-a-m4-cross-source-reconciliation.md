@@ -1,12 +1,18 @@
 # Phase 5R-A M4 — Cross-source Reconciliation for Fixed A-share Private Research
 
-Status: **NEXT / PLANNED**  
-Date: 2026-09-18  
-Baseline: `448d26b27c113d99cbbdc7119533e2f72c42daf1`  
+Status: **ACTIVE / PARTIAL**
+Date: 2026-09-18
+Baseline: `51aef71`
 Parent goals:
 - `docs/goals/phase-5r-a-local-research-and-low-cost-sources.md`
 - `docs/goals/phase-5r-a-production-source-acquisition.md`
 - `docs/goals/phase-5r-production-historical-corpus.md`
+
+Implementation state: M4-A/B/C deterministic code and frozen-fake acceptance
+tests are green. The additive BaoStock sampled price-reference path and the
+provider/upstream independence guard are replayable offline. No owner-live M4
+price probe/acquisition has been recorded in Git, so this document does not
+claim an observed independent-source PASS. M4-D/M4-E remain unimplemented.
 
 ## 1. Objective
 

@@ -96,6 +96,47 @@ official plan 中；这只用于追溯，不要求项目先证明“免费开放
 membership、价格、行为、benchmark、FX、filing、H 或完整终止经济资料，
 `dataset validate`/`historical accept` 继续按设计 fail closed。
 
+### BaoStock A 股采样价格参考（M4-A/B/C）
+
+M4 的价格参考使用一个新增、采样用途的 adapter identity：
+`baostock-a-share-price-reference`。它不改变 M3 的
+`baostock-a-share-lifecycle` request，也不取代 Hithink 的 bounded canonical
+A 股价格来源。request 必须显式声明每日、未复权和 CNY：
+
+```json
+{
+  "source_kind": "PRICES",
+  "artifact_kind": "MARKET_BAR",
+  "schema_version": "market-bar-v1",
+  "listing_ids": ["SH600000"],
+  "start_date": "2020-01-01",
+  "end_date": "2020-01-03",
+  "parameters": {
+    "source_uri": "https://www.baostock.com",
+    "frequency": "d",
+    "adjustflag": "3",
+    "price_basis": "UNADJUSTED",
+    "currency": "CNY"
+  }
+}
+```
+
+SDK 返回的完整 decoded export 先作为
+`baostock-sdk-price-export-v1` envelope 写入私有 raw CAS，再由离线
+`BaoStockAsharePriceReferenceDecoder` 生成 canonical `MARKET_BAR`。字段漂移、
+复权模式、H 股 identity、越界日期、非法数字和重复 natural key 都会
+fail closed。缺少某个日期不会被补成停牌或零价，后续 reconciliation 会保留
+该日期的 `MISSING` counterpart。
+
+采样比较使用 `HistoricalReconciliationSampleSpec` 和
+`reconcile_sampled_market_bars`。sample 必须保存固定 listing/date 范围、两边
+source/adapter/provider/upstream identity、CNY、price basis、`close` 字段、
+绝对/相对 tolerance 和选择理由。不同 `source_id`/`adapter_id` 不能替代
+provider/upstream 独立性；未解析的 upstream（包括没有实际上游标识的
+AKShare wrapper）会输出稳定 blocker
+`RECONCILIATION_SOURCE_INDEPENDENCE_UNPROVEN`。M4-A/B/C 的 ordinary CI 只使用
+冻结 fake SDK export，不要求 live BaoStock 访问。
+
 官方 filing 适配器可接入现有的 discovery/cache 回调，按 listing、日期和文件类型
 自动选择记录；`filing_ids` 仅是已冻结回放/测试的兼容输入，不是生产获取时要求操作者
 手工整理的清单。它会把本次请求只覆盖所选官方文件的事实记录为

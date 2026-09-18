@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Provider/upstream identity used to qualify independent reconciliation evidence.",
+  "properties": {
+    "contract": {
+      "const": "historical_reconciliation_source_identity_v1",
+      "default": "historical_reconciliation_source_identity_v1",
+      "type": "string"
+    },
+    "source_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "adapter_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "provider_id": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "upstream_id": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    }
+  },
+  "required": [
+    "source_id",
+    "adapter_id"
+  ],
+  "title": "ReconciliationSourceIdentity",
+  "type": "object"
+}

@@ -223,6 +223,168 @@ class ReconciliationStatus(StrEnum):
     MISSING = "MISSING"
 
 
+RECONCILIATION_SOURCE_INDEPENDENCE_UNPROVEN = (
+    "RECONCILIATION_SOURCE_INDEPENDENCE_UNPROVEN"
+)
+
+
+class ReconciliationSourceIdentity(BaseModel):
+    """Provider/upstream identity used to qualify a reconciliation source.
+
+    ``source_id`` and ``adapter_id`` identify persisted transport artifacts;
+    they are deliberately not used as proof that two observations are
+    independent.  ``upstream_id`` is optional so a bounded specification can
+    persist an unresolved source and fail closed at the qualification step.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    contract: Literal["historical_reconciliation_source_identity_v1"] = (
+        "historical_reconciliation_source_identity_v1"
+    )
+    source_id: StrictStr = Field(min_length=1)
+    adapter_id: StrictStr = Field(min_length=1)
+    provider_id: StrictStr | None = Field(default=None, min_length=1)
+    upstream_id: StrictStr | None = Field(default=None, min_length=1)
+
+
+class HistoricalReconciliationSampleSpec(BaseModel):
+    """A deterministic, persisted sample definition for M4 reconciliation."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    contract: Literal["historical_reconciliation_sample_spec_v1"] = (
+        "historical_reconciliation_sample_spec_v1"
+    )
+    sample_id: StrictStr = Field(min_length=1)
+    target_id: StrictStr = Field(min_length=1)
+    listing_ids: list[StrictStr] = Field(min_length=1)
+    start_date: date
+    end_date: date
+    canonical_source_id: StrictStr = Field(min_length=1)
+    canonical_adapter_id: StrictStr = Field(min_length=1)
+    canonical_provider_id: StrictStr | None = Field(default=None, min_length=1)
+    canonical_upstream_id: StrictStr | None = Field(default=None, min_length=1)
+    independent_source_id: StrictStr = Field(min_length=1)
+    independent_adapter_id: StrictStr = Field(min_length=1)
+    independent_provider_id: StrictStr | None = Field(default=None, min_length=1)
+    independent_upstream_id: StrictStr | None = Field(default=None, min_length=1)
+    currency: StrictStr = Field(min_length=3, max_length=3)
+    canonical_price_basis: PriceBasis
+    independent_price_basis: PriceBasis
+    compared_field: Literal["close"] = "close"
+    return_semantics: Literal["PRICE_RETURN", "TOTAL_RETURN"] = "PRICE_RETURN"
+    absolute_tolerance: StrictFloat = Field(ge=0)
+    relative_tolerance: StrictFloat = Field(ge=0)
+    selection_rationale: StrictStr = Field(min_length=1, max_length=2_000)
+    content_sha256: StrictStr = Field(pattern=_HASH_PATTERN)
+
+    @field_validator("listing_ids")
+    @classmethod
+    def validate_listing_ids(cls, value: list[str]) -> list[str]:
+        return _unique(value, "reconciliation sample listing_ids")
+
+    @field_validator("currency")
+    @classmethod
+    def validate_currency(cls, value: str) -> str:
+        if value != "CNY":
+            raise ValueError("M4 sampled price reconciliation requires CNY")
+        return value
+
+    @model_validator(mode="after")
+    def validate_sample(self) -> Self:
+        if self.end_date < self.start_date:
+            raise ValueError("reconciliation sample end_date must not precede start_date")
+        if self.canonical_source_id == self.independent_source_id:
+            raise ValueError("reconciliation sample requires distinct source IDs")
+        if self.content_sha256 != _hash_model(self, "content_sha256"):
+            raise ValueError("reconciliation sample content_sha256 does not match content")
+        return self
+
+    @property
+    def canonical_source(self) -> ReconciliationSourceIdentity:
+        return ReconciliationSourceIdentity(
+            source_id=self.canonical_source_id,
+            adapter_id=self.canonical_adapter_id,
+            provider_id=self.canonical_provider_id,
+            upstream_id=self.canonical_upstream_id,
+        )
+
+    @property
+    def independent_source(self) -> ReconciliationSourceIdentity:
+        return ReconciliationSourceIdentity(
+            source_id=self.independent_source_id,
+            adapter_id=self.independent_adapter_id,
+            provider_id=self.independent_provider_id,
+            upstream_id=self.independent_upstream_id,
+        )
+
+    @classmethod
+    def build(
+        cls,
+        *,
+        sample_id: str,
+        target_id: str,
+        listing_ids: list[str],
+        start_date: date,
+        end_date: date,
+        canonical_source_id: str,
+        canonical_adapter_id: str,
+        canonical_provider_id: str | None,
+        canonical_upstream_id: str | None,
+        independent_source_id: str,
+        independent_adapter_id: str,
+        independent_provider_id: str | None,
+        independent_upstream_id: str | None,
+        currency: str,
+        canonical_price_basis: PriceBasis,
+        independent_price_basis: PriceBasis,
+        absolute_tolerance: float,
+        relative_tolerance: float,
+        selection_rationale: str,
+        compared_field: Literal["close"] = "close",
+        return_semantics: Literal["PRICE_RETURN", "TOTAL_RETURN"] = "PRICE_RETURN",
+    ) -> HistoricalReconciliationSampleSpec:
+        candidate = cls.model_construct(
+            contract="historical_reconciliation_sample_spec_v1",
+            sample_id=sample_id,
+            target_id=target_id,
+            listing_ids=listing_ids,
+            start_date=start_date,
+            end_date=end_date,
+            canonical_source_id=canonical_source_id,
+            canonical_adapter_id=canonical_adapter_id,
+            canonical_provider_id=canonical_provider_id,
+            canonical_upstream_id=canonical_upstream_id,
+            independent_source_id=independent_source_id,
+            independent_adapter_id=independent_adapter_id,
+            independent_provider_id=independent_provider_id,
+            independent_upstream_id=independent_upstream_id,
+            currency=currency,
+            canonical_price_basis=canonical_price_basis,
+            independent_price_basis=independent_price_basis,
+            compared_field=compared_field,
+            return_semantics=return_semantics,
+            absolute_tolerance=absolute_tolerance,
+            relative_tolerance=relative_tolerance,
+            selection_rationale=selection_rationale,
+            content_sha256="0" * 64,
+        )
+        payload = candidate.model_dump(mode="json", warnings=False)
+        payload["content_sha256"] = hashlib.sha256(
+            canonical_json_bytes(
+                {key: value for key, value in payload.items() if key != "content_sha256"}
+            )
+        ).hexdigest()
+        return cls.model_validate(payload)
+
+
+# Short descriptive aliases keep the additive contract discoverable for
+# callers without introducing another wire version.
+HistoricalReconciliationSample = HistoricalReconciliationSampleSpec
+ReconciliationSampleSpec = HistoricalReconciliationSampleSpec
+
+
 class HistoricalAvailabilityRecord(BaseModel):
     """Availability evidence tied to exactly one persisted artifact."""
 
@@ -1193,6 +1355,8 @@ __all__ = [
     "HistoricalListingLifecycle",
     "HistoricalMembershipInterval",
     "HistoricalReconciliationReport",
+    "HistoricalReconciliationSample",
+    "HistoricalReconciliationSampleSpec",
     "HistoricalResearchArchiveManifest",
     "HistoricalResearchArtifactReference",
     "HistoricalShardReference",
@@ -1207,7 +1371,10 @@ __all__ = [
     "LicenseStatus",
     "ProductionHistoricalDatasetManifest",
     "ReconciliationComparison",
+    "ReconciliationSampleSpec",
+    "ReconciliationSourceIdentity",
     "ReconciliationStatus",
+    "RECONCILIATION_SOURCE_INDEPENDENCE_UNPROVEN",
     "filing_document_artifact_id",
     "ReviewStatus",
     "ShardArtifactKind",

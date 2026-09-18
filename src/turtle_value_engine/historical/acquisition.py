@@ -3438,6 +3438,7 @@ class HistoricalAcquisitionService:
 
 def default_source_adapters() -> dict[str, HistoricalSourceAdapter]:
     from .baostock import BaoStockAshareLifecycleAdapter
+    from .baostock_price import BaoStockAsharePriceReferenceAdapter
     from .fqgate import (
         FQGateDeploymentNeutralMarketHistoryAdapter,
         FQGateMarketHistoryAdapter,
@@ -3447,6 +3448,7 @@ def default_source_adapters() -> dict[str, HistoricalSourceAdapter]:
     return {
         "http-json": ConfiguredHttpSourceAdapter(),
         "baostock-a-share-lifecycle": BaoStockAshareLifecycleAdapter(),
+        "baostock-a-share-price-reference": BaoStockAsharePriceReferenceAdapter(),
         "hithink-market-dumps": HithinkMarketDumpAdapter(),
         "fqgate-local-market-history": FQGateMarketHistoryAdapter(),
         "fqgate-market-history": FQGateDeploymentNeutralMarketHistoryAdapter(),
@@ -3463,6 +3465,7 @@ def default_decoders(
         BaoStockAshareLifecycleDecoder,
         BaoStockTradingSessionDecoder,
     )
+    from .baostock_price import BaoStockAsharePriceReferenceDecoder
     from .fqgate import FQGateDailyKDecoder
     from .futu_opend import FutuOpenDDailyKDecoder
 
@@ -3482,6 +3485,13 @@ def default_decoders(
             "historical-trading-session-v1",
         )
     ] = BaoStockTradingSessionDecoder()
+    decoders[
+        (
+            "baostock-a-share-price-reference",
+            ShardArtifactKind.MARKET_BAR,
+            "market-bar-v1",
+        )
+    ] = BaoStockAsharePriceReferenceDecoder()
     fqgate_decoder = FQGateDailyKDecoder()
     for adapter_id in ("fqgate-local-market-history", "fqgate-market-history"):
         decoders[(adapter_id, ShardArtifactKind.MARKET_BAR, "market-bar-v1")] = fqgate_decoder
