@@ -1,103 +1,127 @@
-# Codex Goal — Phase 5R-A M3 A-share Lifecycle/Calendar Automation
+# Codex Goal — Phase 5R-A M4 Cross-source Reconciliation
 
-Work in repository `blooddrunk/turtle-value-engine` on current `main` after the M2-E
-closure is merged.
+Work in repository `blooddrunk/turtle-value-engine` on current `main`.
 
 ## Current execution state — 2026-09-18
 
-Phase 5R-A M2 is closed with the machine/auditor-readable source-selection state:
+M3 BaoStock A-share lifecycle/calendar acquisition is complete at the bounded
+personal-research slice:
+
+- owner-authorized live probe passed;
+- decoded SDK exports were frozen into private raw CAS;
+- offline compile/replay produced typed `LISTING_LIFECYCLE` and
+  `TRADING_SESSION` shards;
+- ordinary CI and deterministic analysis remain offline.
+
+M2-E remains frozen exactly as:
 
 ```text
 H_PRICE_SOURCE_SELECTED_FUTU
 ```
 
-Futu OpenD is selected only as the **primary bounded personal-research H daily unadjusted
-`MARKET_BAR` source**. The closure record is:
+Futu remains only the selected bounded personal-research H daily unadjusted
+`MARKET_BAR` source. M2-D remains gated and must not be implemented merely to
+manufacture a comparison. M4 must not enlarge H-share coverage.
 
-- `docs/goals/phase-5r-a-m2-e-h-share-source-selection-record.md`
-- `docs/status/phase-5r-a-m2-e-h-share-source-selection.json`
+The executable M4 plan is:
 
-M2-D AKShare/Eastmoney was not implemented. The bounded Futu result does not establish a
-complete H historical corpus, historical membership, lifecycle, delisting/terminal
-economics, corporate actions, benchmark/FX, filings, complete coverage or a public
-redistribution claim. Those wider claims remain fail-closed.
+- `docs/goals/phase-5r-a-m4-cross-source-reconciliation.md`
 
-M3's owner-authorized bounded live slice is complete: BaoStock `0.9.3` / SDK runtime
-`00.9.30` passed lifecycle and SSE calendar probes for `SH600000`, acquired two private
-raw-CAS envelopes, and compiled/replayed typed lifecycle and trading-session shards offline.
-The private run records source provenance and the owner's non-public-use scope; a free/open
-license is not a prerequisite for this private research path. This does not establish
-historical membership, complete terminal economics or any H-share coverage.
+The M3 live/replay record and remaining broader blockers are:
 
-The private evidence remains under `.tve-private` and is not committed. The detailed M3
-run, hashes and remaining blockers are recorded in
-`docs/status/phase-5r-a-2026-09-18.md`.
-
-## Frozen M2-E decision
-
-The previous M2-E record remains unchanged and is not reopened:
-
-```text
-H_PRICE_SOURCE_SELECTED_FUTU
-role = primary bounded personal-research H daily unadjusted MARKET_BAR source
-```
+- `docs/status/phase-5r-a-2026-09-18.md`
 
 ## Objective
 
-Implement the repository-defined **M3 A-share lifecycle/calendar automation** without
-changing investment math, weakening A6/PIT semantics, or turning a bounded A-share source
-into a complete historical-corpus claim.
+Implement the smallest coherent M4 vertical slice for a **fixed private
+A-share research set**, preserving source independence, deterministic replay and
+explicit missingness.
 
-The implementation must use the existing opt-in acquisition -> raw CAS -> offline compiler
-boundary. It must not implement M2-D or enlarge any H-share coverage declaration.
+Start with M4-A/B/C from the dedicated goal:
 
-## Required work
+1. source/upstream independence guard plus deterministic sample specification;
+2. an additive BaoStock sampled A-share unadjusted daily price-reference
+   adapter/decoder, without changing the existing M3 lifecycle adapter identity;
+3. sampled close-price reconciliation using the existing
+   `HistoricalReconciliationReport` / `reconcile_observations` contract.
 
-1. Read the source-of-truth documents in `AGENTS.md`, `docs/spec/`,
-   `rules/strict-v1.yaml`, `schemas/`, `docs/architecture/`, the M2 parent goal and the
-   M2-C goal before changing behavior.
-2. Add the smallest lazy/injected BaoStock (or equivalent) adapter for:
-   - `query_trade_dates` -> explicit `TRADING_SESSION` rows;
-   - `query_stock_basic` -> typed A-share listing lifecycle/basic fields.
-3. Freeze the decoded SDK result as a complete, redacted, hashable provider envelope before
-   offline decoding. Reject unsupported fields, dates, listing identity, status and terminal
-   shapes rather than silently coercing them.
-4. Let explicit trading-session rows supply expected price sessions when a price request did
-   not manually provide them. Preserve missing bars as missing; do not infer suspension.
-5. Add deterministic fake-client coverage for acquire -> CAS -> compile/replay, lifecycle
-   and calendar validation, malformed responses, and H-share rejection.
-6. Keep `.tve-private` artifacts local and keep ordinary imports, CI and deterministic
-   analysis offline. Run the full repository verification after any code change.
+Do not start by broadening the H-share path or by replacing Hithink as the
+canonical bounded A-share price source.
 
-## Acceptance
+## Mandatory source-of-truth reading
 
-- The prior bounded selection state remains exactly `H_PRICE_SOURCE_SELECTED_FUTU`; no
-  M2-D adapter or H-share coverage expansion is added.
-- A canonical A-share request can acquire and freeze BaoStock lifecycle and trade-date
-  responses through the existing raw CAS boundary, with no SDK import during ordinary
-  offline use.
-- Offline replay emits typed `LISTING_LIFECYCLE` and `TRADING_SESSION` shards with source
-  hashes, deterministic IDs, bounded dates and explicit calendar identity.
-- A price coverage report can derive expected trading sessions from frozen calendar rows;
-  missing price rows remain `PARTIAL`/missing and are never changed into zeros or inferred
-  suspension.
-- Unsupported provider schema, H-share IDs, inconsistent status/outDate, missing terminal
-  fields, and calendar/listing mismatches fail closed.
-- Existing old manifests/batches, `strict-v1`, A6/PIT validation, deterministic investment
-  math and existing provider compatibility remain intact. BaoStock does not prove historical
-  membership, complete delisted retention, terminal economics, a broad source-authority or
-  redistribution claim, or H-share data.
-- M4 reconciliation, Phase 6, Tunnel/Access, Web UI and trading/state-changing operations
-  remain unimplemented.
+Before changing behavior, read and follow `AGENTS.md` and its source-of-truth
+order, especially:
 
-## Verification guardrails
+- `docs/spec/`
+- `rules/strict-v1.yaml`
+- `schemas/`
+- `docs/architecture/production-historical-data-and-research-archive.md`
+- `docs/goals/phase-5r-production-historical-corpus.md`
+- `docs/goals/phase-5r-a-production-source-acquisition.md`
+- `docs/goals/phase-5r-a-local-research-and-low-cost-sources.md`
+- `docs/goals/phase-5r-a-m4-cross-source-reconciliation.md`
+- `docs/operations/phase-5r-a-acquisition.md`
+- `docs/status/phase-5r-a-2026-09-18.md`
+
+If a lower-priority document conflicts with a frozen contract, preserve the
+higher-priority contract and prefer an additive/versioned design.
+
+## Frozen boundaries
+
+- keep `H_PRICE_SOURCE_SELECTED_FUTU` byte-for-byte/conceptually unchanged;
+- do not implement M2-D;
+- do not expand any H-share coverage claim;
+- do not change `strict-v1`, deterministic investment calculations, PIT rules,
+  A6 semantics or `--require-production`;
+- keep ordinary CI offline/model-free;
+- keep private provider bytes, credentials and restricted artifacts outside Git;
+- do not silently repair missing data or overwrite canonical observations from
+  reconciliation results.
+
+## First implementation acceptance
+
+The first M4 merge should, at minimum, prove:
+
+1. different source IDs are insufficient for independence when provider/upstream
+   identity is the same or unresolved;
+2. a frozen fake BaoStock A-share daily unadjusted price response can travel
+   through acquire -> private-CAS-compatible envelope -> offline compile/replay
+   deterministically;
+3. malformed schemas, adjusted mode, H identities, duplicate/conflicting natural
+   keys and out-of-scope rows fail closed;
+4. deterministic sampled close-price reconciliation can produce PASS, FAIL and
+   PARTIAL/MISSING outcomes;
+5. missing or extra sessions are retained as explicit missing counterparts and
+   are not removed by intersecting source dates;
+6. repeated reconciliation over identical frozen inputs produces the same
+   content identity;
+7. existing Phase 5R fixtures, M2-E state and M3 lifecycle/calendar tests remain
+   compatible.
+
+Only after this bounded price path is proven should M4-D/E add corporate-action
+reference auditing and official-exchange lifecycle cross-checking as described
+in the dedicated M4 goal. Do not force event/lifecycle semantics through the
+scalar price-reconciliation contract; use an additive typed/versioned sidecar
+when required to preserve old hashed v1 artifacts.
+
+## Live evidence rule
+
+Live work is optional and owner-authorized only. If the runtime can access the
+candidate independent source after deterministic tests pass, run the smallest
+bounded A-share probe/acquire/replay and then reconcile offline. If live access
+is unavailable or source independence cannot be proven, retain an explicit M4
+blocker instead of fabricating a PASS or selecting a correlated source.
+
+## Verification
+
+Before declaring a code package complete:
 
 ```bash
 python -m ruff check .
 python -m pytest
 ```
 
-This document defined the M3 implementation boundary after M2-E. The code and bounded
-live/replay slice are now complete; the next implementation handoff is M4 reconciliation.
-Do not reopen M2-C/M2-E, implement M2-D, or treat a BaoStock current/basic response as
-historical membership or complete lifecycle coverage.
+Update architecture/operations/status documentation only after the corresponding
+behavior is executable and observed. Do not add implementation history to
+`AGENTS.md` or the root README.
