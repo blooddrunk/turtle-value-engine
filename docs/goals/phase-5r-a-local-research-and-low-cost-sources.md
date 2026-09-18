@@ -1,6 +1,6 @@
 # Phase 5R-A Next — Personal Research Data Acquisition and Deployment-Neutral Access
 
-Status: **ACTIVE / M3 LIVE PROBE PASS; BOUNDED REPLAY PASS; A6 PENDING**
+Status: **ACTIVE / M4 CLOSED PARTIAL; M5-A ACTIVE NEXT; A6 PENDING**
 Date: 2026-09-18
 
 ## 1. Objective
