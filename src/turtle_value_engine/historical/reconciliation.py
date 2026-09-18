@@ -11,17 +11,26 @@ from turtle_value_engine.backtest.contracts import PriceBasis
 
 from .contracts import (
     RECONCILIATION_SOURCE_INDEPENDENCE_UNPROVEN,
+    HistoricalDatasetManifest,
     HistoricalReconciliationReport,
     HistoricalReconciliationSampleSpec,
+    HistoricalSourceDescriptor,
+    HistoricalSourceKind,
     ReconciliationComparison,
     ReconciliationSourceIdentity,
+    ShardArtifactKind,
 )
+from .store import HistoricalArtifactStore
 
 
 class ReconciliationSourceIndependenceError(ValueError):
     """Raised when a second source cannot be proven independent."""
 
     blocker = RECONCILIATION_SOURCE_INDEPENDENCE_UNPROVEN
+
+
+class HistoricalArtifactReconciliationError(ValueError):
+    """Raised when frozen manifest/store inputs cannot satisfy the M4 boundary."""
 
 
 _UNRESOLVED_IDENTITIES = frozenset(
@@ -352,6 +361,193 @@ def reconcile_sampled_market_bars(
     )
 
 
+def _manifest_source_for_sample(
+    manifest: HistoricalDatasetManifest,
+    sample: HistoricalReconciliationSampleSpec,
+    *,
+    canonical: bool,
+) -> HistoricalSourceDescriptor:
+    """Validate one frozen manifest's target and declared source identity."""
+
+    side = "canonical" if canonical else "independent"
+    source_id = sample.canonical_source_id if canonical else sample.independent_source_id
+    adapter_id = sample.canonical_adapter_id if canonical else sample.independent_adapter_id
+    provider_id = sample.canonical_provider_id if canonical else sample.independent_provider_id
+    upstream_id = sample.canonical_upstream_id if canonical else sample.independent_upstream_id
+
+    if manifest.target.target_id != sample.target_id:
+        raise HistoricalArtifactReconciliationError(
+            f"{side} manifest target does not match reconciliation sample"
+        )
+    if not set(sample.listing_ids).issubset(manifest.target.listing_ids):
+        raise HistoricalArtifactReconciliationError(
+            f"{side} manifest target does not cover sampled listings"
+        )
+    if (
+        sample.start_date < manifest.target.start_date
+        or sample.end_date > manifest.target.end_date
+    ):
+        raise HistoricalArtifactReconciliationError(
+            f"{side} manifest target does not cover sampled dates"
+        )
+    if any(
+        manifest.target.listing_markets.get(listing_id) is not None
+        and manifest.target.listing_markets[listing_id].value != "A"
+        for listing_id in sample.listing_ids
+    ):
+        raise HistoricalArtifactReconciliationError(
+            f"{side} manifest target contains a non-A sampled listing"
+        )
+
+    descriptors = [
+        descriptor
+        for descriptor in manifest.source_descriptors
+        if descriptor.source_id == source_id
+    ]
+    if len(descriptors) != 1:
+        raise HistoricalArtifactReconciliationError(
+            f"{side} manifest must contain exactly one declared source {source_id!r}"
+        )
+    descriptor = descriptors[0]
+    if descriptor.source_kind is not HistoricalSourceKind.PRICES:
+        raise HistoricalArtifactReconciliationError(
+            f"{side} source is not declared as PRICES"
+        )
+    if not set(sample.listing_ids).issubset(descriptor.coverage_listing_ids):
+        raise HistoricalArtifactReconciliationError(
+            f"{side} source descriptor does not cover sampled listings"
+        )
+    if (
+        sample.start_date < descriptor.coverage_start
+        or sample.end_date > descriptor.coverage_end
+    ):
+        raise HistoricalArtifactReconciliationError(
+            f"{side} source descriptor does not cover sampled dates"
+        )
+    if descriptor.adapter_id != adapter_id:
+        raise HistoricalArtifactReconciliationError(
+            f"{side} source adapter identity does not match sample"
+        )
+    if descriptor.provider_id != provider_id:
+        raise HistoricalArtifactReconciliationError(
+            f"{side} source provider identity does not match sample"
+        )
+    if descriptor.upstream_id != upstream_id:
+        raise HistoricalArtifactReconciliationError(
+            f"{side} source upstream identity does not match sample"
+        )
+    if provider_id is None or upstream_id is None:
+        raise ReconciliationSourceIndependenceError(
+            f"{RECONCILIATION_SOURCE_INDEPENDENCE_UNPROVEN}: "
+            f"{side} sample identity is unresolved"
+        )
+    return descriptor
+
+
+def _sampled_bars_from_manifest(
+    manifest: HistoricalDatasetManifest,
+    store: HistoricalArtifactStore,
+    *,
+    source_id: str,
+    sample: HistoricalReconciliationSampleSpec,
+) -> list[MarketBar]:
+    """Read and scope only MARKET_BAR rows belonging to one frozen source."""
+
+    source_shards = [
+        shard
+        for shard in manifest.shards
+        if shard.source_artifact_id == source_id
+        and shard.artifact_kind is ShardArtifactKind.MARKET_BAR
+    ]
+    if not source_shards:
+        raise HistoricalArtifactReconciliationError(
+            f"manifest has no MARKET_BAR shard for source {source_id!r}"
+        )
+    if any(shard.schema_version != "market-bar-v1" for shard in source_shards):
+        raise HistoricalArtifactReconciliationError(
+            f"source {source_id!r} has an unsupported MARKET_BAR schema"
+        )
+
+    allowed_listings = set(sample.listing_ids)
+    scoped: list[MarketBar] = []
+    for shard in source_shards:
+        rows = store.read_shard(shard, model_type=MarketBar)
+        scoped.extend(
+            row
+            for row in rows
+            if row.listing_id in allowed_listings
+            and sample.start_date <= row.trading_date <= sample.end_date
+        )
+    return scoped
+
+
+def reconcile_sampled_market_bars_from_artifacts(
+    *,
+    sample: HistoricalReconciliationSampleSpec,
+    canonical_manifest: HistoricalDatasetManifest,
+    canonical_store: HistoricalArtifactStore,
+    independent_manifest: HistoricalDatasetManifest,
+    independent_store: HistoricalArtifactStore,
+    report_store: HistoricalArtifactStore | None = None,
+    report_id: str | None = None,
+) -> HistoricalReconciliationReport:
+    """Reconcile two frozen ``MARKET_BAR`` sources under a persisted M4 spec.
+
+    The two manifest/store pairs are read-only inputs.  Rows outside the
+    persisted listing/date sample are ignored before the existing sampled
+    comparator validates A/CNY/UNADJUSTED semantics and computes the v1 report.
+    When ``report_store`` is supplied, the unchanged report contract is also
+    frozen as a content-addressed JSON artifact.
+    """
+
+    if sample.currency != "CNY":
+        raise HistoricalArtifactReconciliationError(
+            "M4 artifact-backed reconciliation requires CNY"
+        )
+    if (
+        sample.canonical_price_basis is not PriceBasis.UNADJUSTED
+        or sample.independent_price_basis is not PriceBasis.UNADJUSTED
+    ):
+        raise HistoricalArtifactReconciliationError(
+            "M4 artifact-backed reconciliation requires unadjusted prices"
+        )
+
+    canonical_descriptor = _manifest_source_for_sample(
+        canonical_manifest,
+        sample,
+        canonical=True,
+    )
+    independent_descriptor = _manifest_source_for_sample(
+        independent_manifest,
+        sample,
+        canonical=False,
+    )
+    assert_reconciliation_source_independence(
+        canonical_descriptor,
+        independent_descriptor,
+    )
+
+    report = reconcile_sampled_market_bars(
+        sample=sample,
+        canonical_bars=_sampled_bars_from_manifest(
+            canonical_manifest,
+            canonical_store,
+            source_id=sample.canonical_source_id,
+            sample=sample,
+        ),
+        independent_bars=_sampled_bars_from_manifest(
+            independent_manifest,
+            independent_store,
+            source_id=sample.independent_source_id,
+            sample=sample,
+        ),
+        report_id=report_id,
+    )
+    if report_store is not None:
+        report_store.freeze_json_artifact(report)
+    return report
+
+
 # Compatibility-friendly descriptive names for callers implementing the M4
 # fixed-price path.
 reconcile_price_bars = reconcile_sampled_market_bars
@@ -360,6 +556,7 @@ reconcile_sampled_price_closes = reconcile_sampled_market_bars
 
 __all__ = [
     "RECONCILIATION_SOURCE_INDEPENDENCE_UNPROVEN",
+    "HistoricalArtifactReconciliationError",
     "ReconciliationSourceIndependenceError",
     "assert_reconciliation_source_independence",
     "reconcile_observations",
@@ -367,5 +564,6 @@ __all__ = [
     "reconcile_sampled_market_bars",
     "reconcile_sampled_price_closes",
     "reconcile_sampled_prices",
+    "reconcile_sampled_market_bars_from_artifacts",
     "validate_reconciliation_source_independence",
 ]

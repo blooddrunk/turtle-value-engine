@@ -465,6 +465,20 @@
           "title": "Provider Id",
           "type": "string"
         },
+        "upstream_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Actual provider/upstream identity; required for M4 independence.",
+          "title": "Upstream Id"
+        },
         "source_name": {
           "minLength": 1,
           "title": "Source Name",

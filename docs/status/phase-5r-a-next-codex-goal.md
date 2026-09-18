@@ -2,9 +2,11 @@
 
 Work in repository `blooddrunk/turtle-value-engine` on current `main`.
 
-## Baseline and audited state
+## Deterministic package status
 
-Use the current `main` descended from baseline `a0469f4`.
+Use the current `main` descended from baseline `a0469f4`. The deterministic
+M4-C package below is now closed; this document remains as the implementation
+handoff and owner-live follow-up record.
 
 Read and follow `AGENTS.md` and the source-of-truth order before editing. Also read:
 
@@ -21,17 +23,19 @@ Audited state:
 - M4-B BaoStock sampled A-share daily unadjusted price-reference acquisition/decoder is implemented.
 - M4-C comparator core is implemented, including PASS/FAIL/PARTIAL/MISSING, union missingness,
   basis/CNY/scope/independence checks and deterministic report hashing.
-- M4-C is **not yet fully closed** because there is no dedicated artifact-backed execution path
-  that loads the two frozen MARKET_BAR sources from manifest/store artifacts under the persisted
-  sample spec and writes the reconciliation report.
+- M4-C deterministic closure is complete: the dedicated
+  `reconcile_sampled_market_bars_from_artifacts` path loads both frozen
+  `MARKET_BAR` sources from explicit manifest/store pairs under the persisted
+  sample spec and can freeze the existing reconciliation report.
 - The legacy generic `tve dataset reconcile` JSON-value path must not be treated as M4 closure
   because it does not enforce the M4 sample/provider/upstream/provenance boundary.
 
-## Current mandatory goal — smallest executable package
+## Completed deterministic package — smallest executable scope
 
-Close only the missing M4-C artifact-backed path.
+The former goal closed only the missing M4-C artifact-backed path; no live
+provider or later M4 work was required for the deterministic package.
 
-1. Add the smallest library boundary that:
+1. The library boundary:
    - accepts a persisted `HistoricalReconciliationSampleSpec`;
    - reads canonical and independent `MARKET_BAR` rows from frozen
      `HistoricalDatasetManifest` + `HistoricalArtifactStore` inputs (or an equally explicit
@@ -42,11 +46,11 @@ Close only the missing M4-C artifact-backed path.
    - calls the existing sampled reconciliation core without mutating either source artifact;
    - returns/persists the existing `HistoricalReconciliationReport`.
 
-2. Add the thinnest CLI wrapper only if it materially improves reproducible owner execution.
-   Prefer an additive M4-specific command/arguments over weakening the legacy generic
-   `dataset reconcile` contract. Do not silently change old CLI semantics.
+2. The thinnest additive CLI wrapper is available as
+   `tve dataset reconcile-artifacts`; the legacy generic `dataset reconcile`
+   behavior is unchanged.
 
-3. Add deterministic tests proving:
+3. Deterministic tests prove:
    - two frozen artifact stores/manifests -> M4 report end to end;
    - source/provider/upstream mismatch fails closed;
    - sample listing/date scope is enforced;
@@ -56,7 +60,8 @@ Close only the missing M4-C artifact-backed path.
    - repeated execution over identical frozen inputs produces identical report content hash;
    - old Phase 5R/M2/M3 fixtures and CLI behavior remain compatible.
 
-4. Update only documentation whose factual state changes:
+4. Documentation records the deterministic closure and the owner-live price
+   evidence:
    - M4 goal;
    - architecture if a public library/CLI boundary is added;
    - acquisition runbook with exact offline reconciliation command if one exists;
@@ -113,7 +118,7 @@ Add focused commands for any new M4 artifact-backed test module/CLI test.
 
 ## Acceptance
 
-This goal is complete when:
+The deterministic acceptance is complete:
 
 - M4-A and M4-B remain backward-compatible;
 - the M4-C report can be generated solely from persisted sample spec + frozen artifact inputs;
@@ -124,7 +129,10 @@ This goal is complete when:
 - no M4-D/M4-E/M2-D scope is pulled in;
 - docs distinguish deterministic closure from owner-live evidence.
 
-Do not claim `M4_FIXED_A_RECONCILIATION_PASS` until an owner-live independent BaoStock
-price sample has actually been acquired/replayed and reconciled against the corresponding
-frozen Hithink sample. Until then, use a precise state such as deterministic M4-C closed /
-owner-live M4 evidence pending.
+The owner-authorized independent BaoStock sample has now been acquired, replayed and
+reconciled against the corresponding frozen Hithink sample for `SH600000` on
+2020-01-02..2020-01-03: 2/2 comparisons PASS at absolute tolerance `0.02` and relative
+tolerance `0.001`, with report content hash
+`f0fc94fd2d9fd051bbcd5269440f4cc6d49f5ea8e01d903945c2be7db1c2300a`. This supports the
+fixed-A sampled price reconciliation state only; it does not close M4-D/M4-E or the broader
+Phase 5R/A6 production claim.

@@ -118,6 +118,16 @@ IDs alone cannot qualify a source. An unresolved aggregation wrapper, such as
 AKShare without its actual upstream identity, remains blocked by
 `RECONCILIATION_SOURCE_INDEPENDENCE_UNPROVEN`.
 
+M4-qualified compiled source descriptors also persist the additive `adapter_id`
+and `upstream_id` identity fields; older manifests and plans without those
+optional fields remain readable, but cannot satisfy the M4 artifact-backed
+independence guard.
+The offline `reconcile_sampled_market_bars_from_artifacts` boundary reads two
+explicit manifest/store pairs, selects only the persisted sample scope, checks
+those identities and A/CNY/UNADJUSTED semantics, then reuses the existing v1
+`HistoricalReconciliationReport`. It can freeze that unchanged report into a
+content-addressed JSON artifact without modifying either input shard.
+
 The official filing probe reports `FILING_SCOPE_LIMITED` as a warning when it
 confirms only the requested document sample. This keeps the required
 per-market filing sample usable without turning it into a claim of complete

@@ -8,17 +8,19 @@ Parent goals:
 - `docs/goals/phase-5r-a-production-source-acquisition.md`
 - `docs/goals/phase-5r-production-historical-corpus.md`
 
-Implementation state: at baseline `a0469f4`, M4-A and M4-B deterministic code
-are implemented, and the M4-C sampled comparator core is implemented. The
-remaining M4-C acceptance gap is an artifact-backed execution/persistence path
-that reads frozen canonical and independent `MARKET_BAR` shards under the
-persisted sample specification. The legacy generic `tve dataset reconcile`
-JSON-value path does not satisfy that M4 boundary because it does not enforce
-the persisted provider/upstream identity, CNY/unadjusted basis and frozen
-artifact provenance. Frozen-fake tests cover the core comparator, but not this
-artifact-backed two-source closure or an exact tolerance-boundary case. No
-owner-live M4 price probe/acquisition has been recorded in Git. M4-D/M4-E are
-later optional work after price reconciliation; M2-D remains out of scope.
+Implementation state: M4-A and M4-B remain implemented and the M4-C
+artifact-backed deterministic closure is now implemented. The new library/CLI
+path reads frozen canonical and independent `MARKET_BAR` shards under the
+persisted sample specification, verifies source/adapter/provider/upstream
+identity and A/CNY/UNADJUSTED semantics, preserves union missingness, and
+persists the existing `HistoricalReconciliationReport`. The legacy generic
+`tve dataset reconcile` JSON-value path remains unchanged and is not M4
+closure evidence. Deterministic tests cover the two-source replay path,
+identity/scope/semantic guards, exact tolerance boundaries, report persistence
+and replay hashes. A minimum owner-authorized BaoStock price sample has also
+been acquired, replayed and reconciled against the frozen Hithink sample; the
+recorded state is fixed-A sampled price reconciliation PASS. M4-D/M4-E remain
+later optional work and M2-D remains out of scope.
 
 ## 1. Objective
 
@@ -273,10 +275,21 @@ Acceptance:
 4. Add deterministic CLI/library tests for PASS, FAIL, PARTIAL/MISSING, tolerance boundary,
    source independence and replay identity.
 
+The artifact-backed entry point is
+`reconcile_sampled_market_bars_from_artifacts`. It accepts two explicit
+`HistoricalDatasetManifest`/`HistoricalArtifactStore` pairs and an existing
+`HistoricalReconciliationSampleSpec`; an optional report store freezes the
+unchanged v1 report as a content-addressed JSON artifact. M4-qualified compiled
+source descriptors persist additive adapter/upstream identities; legacy
+manifests and plans without those fields remain readable but fail closed for
+this M4 path.
+
 Acceptance:
 - repeated reconciliation over identical frozen inputs produces the same content hash;
 - missing rows cannot be silently dropped by intersecting the sources;
-- report outcome never mutates Hithink or BaoStock rows.
+- report outcome never mutates Hithink or BaoStock rows;
+- the persisted sample's listing/date, source/provider/upstream and A/CNY/UNADJUSTED
+  boundaries cannot be bypassed.
 
 ### M4-D — Corporate-action/reference-event audit
 

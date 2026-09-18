@@ -436,6 +436,10 @@ class HistoricalSourceDescriptor(BaseModel):
     )
     source_id: StrictStr = Field(min_length=1)
     source_kind: HistoricalSourceKind
+    # Additive identity fields.  Older manifests omitted these fields and remain
+    # readable; M4 artifact-backed reconciliation requires them to be resolved.
+    adapter_id: StrictStr | None = Field(default=None, min_length=1)
+    upstream_id: StrictStr | None = Field(default=None, min_length=1)
     provider_id: StrictStr = Field(min_length=1)
     source_name: StrictStr = Field(min_length=1)
     authority: SourceAuthority

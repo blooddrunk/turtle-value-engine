@@ -169,11 +169,13 @@ from .futu_opend import (
     LazyFutuOpenDClientFactory,
 )
 from .reconciliation import (
+    HistoricalArtifactReconciliationError,
     ReconciliationSourceIndependenceError,
     assert_reconciliation_source_independence,
     reconcile_observations,
     reconcile_price_bars,
     reconcile_sampled_market_bars,
+    reconcile_sampled_market_bars_from_artifacts,
     reconcile_sampled_price_closes,
     reconcile_sampled_prices,
     validate_reconciliation_source_independence,
@@ -188,6 +190,7 @@ from .store import (
 __all__ = [
     *_CONTRACT_EXPORTS,
     "HistoricalArtifactError",
+    "HistoricalArtifactReconciliationError",
     "BAOSTOCK_ADAPTER_ID",
     "BAOSTOCK_ADAPTER_VERSION",
     "BAOSTOCK_A_SHARE_ONLY",
@@ -346,6 +349,7 @@ __all__ = [
     "assert_reconciliation_source_independence",
     "reconcile_price_bars",
     "reconcile_sampled_market_bars",
+    "reconcile_sampled_market_bars_from_artifacts",
     "reconcile_sampled_price_closes",
     "reconcile_sampled_prices",
     "validate_reconciliation_source_independence",

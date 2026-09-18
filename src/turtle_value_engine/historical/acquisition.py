@@ -359,6 +359,9 @@ class HistoricalSourceSpecV1(BaseModel):
     source_kind: HistoricalSourceKind
     adapter_id: StrictStr = Field(min_length=1)
     provider_id: StrictStr = Field(min_length=1)
+    # The provider and the actual upstream are separate identities.  This is
+    # optional for legacy plans, but M4 independence checks require it.
+    upstream_id: StrictStr | None = Field(default=None, min_length=1)
     source_name: StrictStr = Field(min_length=1)
     source_uri: StrictStr | None = Field(default=None, min_length=1)
     authority: SourceAuthority = SourceAuthority.UNKNOWN
@@ -4075,37 +4078,42 @@ class HistoricalIngestionCompiler:
                 retrieved_by_source[receipt.source_id] = receipt.retrieval_finished_at
         for source_id in sorted({item.source_id for item in batch.receipts}):
             source = source_by_id[source_id]
-            source_descriptors.append(
-                {
-                    "source_id": source.source_id,
-                    "source_kind": source.source_kind,
-                    "provider_id": source.provider_id,
-                    "source_name": source.source_name,
-                    "query_parameters": {
-                        "plan_id": plan.plan_id,
-                        "request_ids": sorted(
-                            item.request_id
-                            for item in batch.receipts
-                            if item.source_id == source_id
-                        ),
-                    },
-                    "retrieved_at": retrieved_by_source[source_id],
-                    "source_version": source.source_version,
-                    "coverage_start": source.coverage_start,
-                    "coverage_end": source.coverage_end,
-                    "coverage_listing_ids": source.coverage_listing_ids,
-                    "content_sha256": batch.source_aggregate_hash(source_id),
-                    "source_uri": source.source_uri,
-                    "authority": source.authority,
-                    "license_status": source.license_status,
-                    "licensing_constraints": source.licensing_constraints,
-                    "license_evidence_uri": source.license_evidence_uri,
-                    "license_evidence_sha256": source.license_evidence_sha256,
-                    "access_grant_reference": source.access_grant_reference,
-                    "historical_capable": source.historical_capable,
-                    "is_current_snapshot": source.is_current_snapshot,
-                }
-            )
+            descriptor = {
+                "source_id": source.source_id,
+                "source_kind": source.source_kind,
+                "provider_id": source.provider_id,
+                "source_name": source.source_name,
+                "query_parameters": {
+                    "plan_id": plan.plan_id,
+                    "request_ids": sorted(
+                        item.request_id
+                        for item in batch.receipts
+                        if item.source_id == source_id
+                    ),
+                },
+                "retrieved_at": retrieved_by_source[source_id],
+                "source_version": source.source_version,
+                "coverage_start": source.coverage_start,
+                "coverage_end": source.coverage_end,
+                "coverage_listing_ids": source.coverage_listing_ids,
+                "content_sha256": batch.source_aggregate_hash(source_id),
+                "source_uri": source.source_uri,
+                "authority": source.authority,
+                "license_status": source.license_status,
+                "licensing_constraints": source.licensing_constraints,
+                "license_evidence_uri": source.license_evidence_uri,
+                "license_evidence_sha256": source.license_evidence_sha256,
+                "access_grant_reference": source.access_grant_reference,
+                "historical_capable": source.historical_capable,
+                "is_current_snapshot": source.is_current_snapshot,
+            }
+            # Keep legacy compiled manifests byte-compatible when the source
+            # plan did not declare an actual upstream.  M4-qualified plans
+            # persist both technical and upstream identity together.
+            if source.upstream_id is not None:
+                descriptor["adapter_id"] = source.adapter_id
+                descriptor["upstream_id"] = source.upstream_id
+            source_descriptors.append(descriptor)
 
         from .contracts import HistoricalSourceDescriptor
 

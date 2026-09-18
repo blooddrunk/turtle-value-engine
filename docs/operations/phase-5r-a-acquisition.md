@@ -137,6 +137,28 @@ AKShare wrapper）会输出稳定 blocker
 `RECONCILIATION_SOURCE_INDEPENDENCE_UNPROVEN`。M4-A/B/C 的 ordinary CI 只使用
 冻结 fake SDK export，不要求 live BaoStock 访问。
 
+M4-C 的 artifact-backed 回放只读两个已冻结的 manifest/store；它不调用 provider、
+网络或模型，也不改写输入 shard。使用持久化 sample spec、canonical Hithink manifest
+和 independent BaoStock manifest 时，执行命令为：
+
+```bash
+tve dataset reconcile-artifacts \
+  --sample .tve-private/m4/sample.json \
+  --canonical-manifest .tve-private/m4/hithink-manifest.json \
+  --canonical-store .tve-private/m4/hithink-artifacts \
+  --independent-manifest .tve-private/m4/baostock-manifest.json \
+  --independent-store .tve-private/m4/baostock-artifacts \
+  --report-store .tve-private/m4/reports \
+  --output .tve-private/m4/reconciliation-report.json
+```
+
+该命令强制 sample 声明的 listing/date、source/adapter/provider/upstream identity、
+A-share/CNY/UNADJUSTED 语义；超出范围的行被忽略，范围内额外或缺失的 session 保留为
+`MISSING` 并使报告为 `PARTIAL`。`--report-store` 会保存现有
+`HistoricalReconciliationReport` 的 content-addressed JSON；`--output` 是同一报告的
+可读副本。旧的 `tve dataset reconcile` 任意 JSON-value 接口保持原语义，不承担 M4
+边界。
+
 官方 filing 适配器可接入现有的 discovery/cache 回调，按 listing、日期和文件类型
 自动选择记录；`filing_ids` 仅是已冻结回放/测试的兼容输入，不是生产获取时要求操作者
 手工整理的清单。它会把本次请求只覆盖所选官方文件的事实记录为

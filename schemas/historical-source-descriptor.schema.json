@@ -59,6 +59,34 @@
     "source_kind": {
       "$ref": "#/$defs/HistoricalSourceKind"
     },
+    "adapter_id": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Technical adapter identity; omitted by legacy manifests.",
+      "title": "Adapter Id"
+    },
+    "upstream_id": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Actual provider/upstream identity; required for M4 independence.",
+      "title": "Upstream Id"
+    },
     "provider_id": {
       "minLength": 1,
       "title": "Provider Id",

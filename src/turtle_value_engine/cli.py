@@ -33,6 +33,7 @@ from turtle_value_engine.historical import (
     HistoricalDatasetManifest,
     HistoricalDatasetValidationError,
     HistoricalIngestionCompiler,
+    HistoricalReconciliationSampleSpec,
     HistoricalResearchArchiveError,
     RawAcquisitionBatchManifestV1,
     RawBlobStore,
@@ -40,6 +41,7 @@ from turtle_value_engine.historical import (
     compile_backtest_manifest,
     freeze_decision_snapshots,
     reconcile_observations,
+    reconcile_sampled_market_bars_from_artifacts,
     validate_historical_dataset,
     validate_private_acceptance,
 )
@@ -156,6 +158,20 @@ def _build_parser() -> argparse.ArgumentParser:
     dataset_reconcile.add_argument("--relative-tolerance", required=True, type=float)
     dataset_reconcile.add_argument("--report-id", default="reconciliation")
     dataset_reconcile.add_argument("--output", type=Path, default=None)
+    dataset_reconcile_artifacts = dataset_commands.add_parser(
+        "reconcile-artifacts",
+        help="reconcile two frozen A-share MARKET_BAR manifests under an M4 sample",
+    )
+    dataset_reconcile_artifacts.add_argument("--sample", required=True, type=Path)
+    dataset_reconcile_artifacts.add_argument("--canonical-manifest", required=True, type=Path)
+    dataset_reconcile_artifacts.add_argument("--canonical-store", required=True, type=Path)
+    dataset_reconcile_artifacts.add_argument(
+        "--independent-manifest", required=True, type=Path
+    )
+    dataset_reconcile_artifacts.add_argument("--independent-store", required=True, type=Path)
+    dataset_reconcile_artifacts.add_argument("--report-store", type=Path, default=None)
+    dataset_reconcile_artifacts.add_argument("--report-id", default=None)
+    dataset_reconcile_artifacts.add_argument("--output", type=Path, default=None)
 
     historical_parser = subparsers.add_parser(
         "historical",
@@ -411,6 +427,30 @@ def _run_dataset(args: argparse.Namespace) -> object:
             independent_values=to_values(independent_rows),
             absolute_tolerance=args.absolute_tolerance,
             relative_tolerance=args.relative_tolerance,
+            report_id=args.report_id,
+        )
+        _write_optional(args.output, report)
+        return report
+    if args.dataset_command == "reconcile-artifacts":
+        if args.output is None and args.report_store is None:
+            raise ValueError("reconcile-artifacts requires --output or --report-store")
+        sample = HistoricalReconciliationSampleSpec.model_validate(_read_json(args.sample))
+        canonical_manifest = HistoricalDatasetManifest.model_validate(
+            _read_json(args.canonical_manifest)
+        )
+        independent_manifest = HistoricalDatasetManifest.model_validate(
+            _read_json(args.independent_manifest)
+        )
+        report_store = (
+            HistoricalArtifactStore(args.report_store) if args.report_store is not None else None
+        )
+        report = reconcile_sampled_market_bars_from_artifacts(
+            sample=sample,
+            canonical_manifest=canonical_manifest,
+            canonical_store=HistoricalArtifactStore(args.canonical_store),
+            independent_manifest=independent_manifest,
+            independent_store=HistoricalArtifactStore(args.independent_store),
+            report_store=report_store,
             report_id=args.report_id,
         )
         _write_optional(args.output, report)
