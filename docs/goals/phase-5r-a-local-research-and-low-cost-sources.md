@@ -317,9 +317,16 @@ private run and A6 blockers are recorded in
 
 ### M4 — Cross-source reconciliation
 
-Compare selected canonical observations against an independent available source
-on deterministic samples. Reconciliation improves confidence but is not a
-prerequisite for every local/agent research run.
+The executable M4 package is
+`docs/goals/phase-5r-a-m4-cross-source-reconciliation.md`.
+
+For the fixed private A-share research set, compare selected canonical
+observations against a genuinely independent source on deterministic samples.
+Independence is evaluated at the provider/upstream level, not merely by
+different adapter/source IDs. Start with sampled unadjusted close-price
+reconciliation, then add corporate-action/reference-event and lifecycle
+cross-checks only where semantics are explicit. Reconciliation improves
+confidence but is not a prerequisite for every local/agent research run.
 
 ### M5 — Deployment-neutral artifact backend
 
