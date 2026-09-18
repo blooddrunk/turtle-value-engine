@@ -2,17 +2,23 @@
 
 Status: **ACTIVE / PARTIAL**
 Date: 2026-09-18
-Baseline: `51aef71`
+Baseline: `a0469f4`
 Parent goals:
 - `docs/goals/phase-5r-a-local-research-and-low-cost-sources.md`
 - `docs/goals/phase-5r-a-production-source-acquisition.md`
 - `docs/goals/phase-5r-production-historical-corpus.md`
 
-Implementation state: M4-A/B/C deterministic code and frozen-fake acceptance
-tests are green. The additive BaoStock sampled price-reference path and the
-provider/upstream independence guard are replayable offline. No owner-live M4
-price probe/acquisition has been recorded in Git, so this document does not
-claim an observed independent-source PASS. M4-D/M4-E remain unimplemented.
+Implementation state: at baseline `a0469f4`, M4-A and M4-B deterministic code
+are implemented, and the M4-C sampled comparator core is implemented. The
+remaining M4-C acceptance gap is an artifact-backed execution/persistence path
+that reads frozen canonical and independent `MARKET_BAR` shards under the
+persisted sample specification. The legacy generic `tve dataset reconcile`
+JSON-value path does not satisfy that M4 boundary because it does not enforce
+the persisted provider/upstream identity, CNY/unadjusted basis and frozen
+artifact provenance. Frozen-fake tests cover the core comparator, but not this
+artifact-backed two-source closure or an exact tolerance-boundary case. No
+owner-live M4 price probe/acquisition has been recorded in Git. M4-D/M4-E are
+later optional work after price reconciliation; M2-D remains out of scope.
 
 ## 1. Objective
 
