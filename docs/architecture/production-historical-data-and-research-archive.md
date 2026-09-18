@@ -82,6 +82,21 @@ the local retrieval-finished timestamp is the conservative availability bound,
 not an inferred source-publication timestamp. See the Chinese-first operator
 [runbook](../operations/phase-5r-a-acquisition.md).
 
+The M3 A-share lifecycle/calendar supplement is a lazy/injected BaoStock
+adapter. `query_stock_basic` is frozen as a source-aware
+`historical-listing-lifecycle-v1` row, while `query_trade_dates` is frozen as
+explicit `historical-trading-session-v1` observations, including non-trading
+days. Both use the existing `LISTING_LIFECYCLE` source category so the fixed
+nine-category source registry remains readable; `TRADING_SESSION` is the shard
+artifact kind. The adapter accepts only exact A-share provider codes, validates
+the full requested calendar span and status/terminal shape, and records the
+decoded SDK result as a `baostock-sdk-export-v1` envelope before offline
+decoding. Calendar observations may supply expected price sessions, but a
+missing bar remains missing and is never inferred to be a suspension. The
+source is a bounded research supplement: a current/basic response does not
+prove point-in-time membership, code history, complete delisted retention,
+terminal economics, source terms or any A/H economic-company mapping.
+
 The official filing probe reports `FILING_SCOPE_LIMITED` as a warning when it
 confirms only the requested document sample. This keeps the required
 per-market filing sample usable without turning it into a claim of complete
@@ -103,10 +118,13 @@ model.
 identity, authority, query parameters, retrieval time, version, source content
 hash, coverage dates/listing scope and licensing constraints. The categories
 cover universe membership, listing lifecycle/delistings, prices, corporate
-actions, benchmarks, FX, filings and research archives. A production source
-must additionally retain a license-evidence URI and hash; a
-`RESTRICTED_INTERNAL` source must carry an access-grant reference. A prose
-license label alone cannot make a production claim eligible.
+actions, benchmarks, FX, filings and research archives. For the private
+research path, source provenance and the owner's access scope are recorded for
+replay/auditability; private use is not contingent on finding a free/open
+license. The stricter `PRODUCTION_ELIGIBLE` claim must additionally retain a
+license-evidence URI and hash; a `RESTRICTED_INTERNAL` source must carry an
+access-grant reference. A prose license label alone cannot make that broader
+production claim eligible.
 
 `HistoricalTargetScope` names the universe, A/H listing IDs, inclusive date
 range, membership claim, required source categories and licensing scope. A

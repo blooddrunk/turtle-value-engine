@@ -39,6 +39,7 @@ from .contracts import (
     HistoricalSourceKind,
     HistoricalTargetScope,
     HistoricalTerminalOutcome,
+    HistoricalTradingSession,
     ShardArtifactKind,
 )
 from .store import HistoricalArtifactError, HistoricalArtifactStore
@@ -70,6 +71,7 @@ class HistoricalValidationSummary(BaseModel):
 
 _MODEL_BY_KIND: dict[ShardArtifactKind, type[BaseModel]] = {
     ShardArtifactKind.LISTING_LIFECYCLE: HistoricalListingLifecycle,
+    ShardArtifactKind.TRADING_SESSION: HistoricalTradingSession,
     ShardArtifactKind.UNIVERSE_MEMBERSHIP: HistoricalMembershipInterval,
     ShardArtifactKind.AVAILABILITY: HistoricalAvailabilityRecord,
     ShardArtifactKind.MARKET_BAR: MarketBar,
@@ -85,6 +87,7 @@ _SOURCE_KIND_BY_SHARD: dict[ShardArtifactKind, set[HistoricalSourceKind]] = {
         HistoricalSourceKind.LISTING_LIFECYCLE,
         HistoricalSourceKind.DELISTINGS,
     },
+    ShardArtifactKind.TRADING_SESSION: {HistoricalSourceKind.LISTING_LIFECYCLE},
     ShardArtifactKind.UNIVERSE_MEMBERSHIP: {HistoricalSourceKind.UNIVERSE_MEMBERSHIP},
     ShardArtifactKind.AVAILABILITY: set(HistoricalSourceKind),
     ShardArtifactKind.MARKET_BAR: {HistoricalSourceKind.PRICES},
@@ -103,6 +106,7 @@ _SOURCE_KIND_BY_SHARD: dict[ShardArtifactKind, set[HistoricalSourceKind]] = {
 def _row_id(kind: ShardArtifactKind, row: BaseModel) -> str:
     field_by_kind = {
         ShardArtifactKind.LISTING_LIFECYCLE: "listing_id",
+        ShardArtifactKind.TRADING_SESSION: "session_id",
         ShardArtifactKind.UNIVERSE_MEMBERSHIP: "membership_id",
         ShardArtifactKind.AVAILABILITY: "artifact_id",
         ShardArtifactKind.MARKET_BAR: "bar_id",
@@ -123,6 +127,7 @@ def _row_listing(row: BaseModel) -> str | None:
 def _row_date(kind: ShardArtifactKind, row: BaseModel) -> date | None:
     field_by_kind = {
         ShardArtifactKind.LISTING_LIFECYCLE: "listing_date",
+        ShardArtifactKind.TRADING_SESSION: "session_date",
         ShardArtifactKind.UNIVERSE_MEMBERSHIP: "valid_from",
         ShardArtifactKind.AVAILABILITY: None,
         ShardArtifactKind.MARKET_BAR: "trading_date",
@@ -356,6 +361,17 @@ class HistoricalDatasetCompiler:
             observed_dates[(HistoricalSourceKind.CORPORATE_ACTIONS, action.listing_id)].add(
                 action.effective_date
             )
+        calendar_dates_by_listing: dict[str, set[date]] = defaultdict(set)
+        for session in rows_by_kind[ShardArtifactKind.TRADING_SESSION]:
+            if session.is_trading_day:
+                calendar_dates_by_listing[session.listing_id].add(session.session_date)
+        for bar in rows_by_kind[ShardArtifactKind.MARKET_BAR]:
+            calendar_dates = calendar_dates_by_listing.get(bar.listing_id)
+            if calendar_dates is not None and bar.trading_date not in calendar_dates:
+                errors.append(
+                    "market bar lies on a non-trading or unreported calendar date: "
+                    + bar.bar_id
+                )
         for report in manifest.coverage_reports:
             for record in report.records:
                 if record.source_kind not in {
@@ -408,6 +424,35 @@ class HistoricalDatasetCompiler:
                         "code change source category is not lifecycle/delisting: "
                         + listing_id
                     )
+
+        session_ids: set[str] = set()
+        for session in rows_by_kind[ShardArtifactKind.TRADING_SESSION]:
+            if session.session_id in session_ids:
+                errors.append(
+                    "trading session rows contain duplicate session IDs: "
+                    + session.session_id
+                )
+            session_ids.add(session.session_id)
+            lifecycle = lifecycles.get(session.listing_id)
+            if lifecycle is None:
+                errors.append("trading session references unknown listing: " + session.session_id)
+                continue
+            expected_calendar = manifest.target.calendar_ids.get(session.listing_id)
+            if expected_calendar is not None and session.calendar_id != expected_calendar:
+                errors.append(
+                    "trading session calendar does not match target scope: "
+                    + session.session_id
+                )
+            if session.calendar_id != lifecycle.trading_calendar:
+                errors.append(
+                    "trading session calendar does not match listing lifecycle: "
+                    + session.session_id
+                )
+            if session.timezone != lifecycle.timezone:
+                errors.append(
+                    "trading session timezone does not match listing lifecycle: "
+                    + session.session_id
+                )
 
         availability = {
             item.artifact_id: item for item in rows_by_kind[ShardArtifactKind.AVAILABILITY]

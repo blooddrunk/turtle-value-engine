@@ -1,6 +1,6 @@
 # Phase 5R-A — Personal-First Production Source Acquisition and Compiler Ingestion
 
-Status: **ACTIVE / PARTIAL**
+Status: **ACTIVE / PARTIAL; M3 LIVE/REPLAY SLICE COMPLETE; A6 PENDING**
 
 ## Objective
 
@@ -54,6 +54,19 @@ Keyring/injected resolution remains an explicit library boundary for controlled
 runners and deterministic fake-transport tests; it is not a default CLI live
 authorization.
 
+As of 2026-09-18, A3's smallest lifecycle/calendar supplement is implemented
+with a lazy/injected BaoStock adapter and has passed one owner-authorized
+bounded live probe plus private acquire/replay. It freezes the SDK's decoded
+`query_stock_basic` and `query_trade_dates` results as a
+`baostock-sdk-export-v1` raw envelope, then compiles them offline into typed
+`LISTING_LIFECYCLE` and `TRADING_SESSION` shards. This is a code/contract
+and bounded replay closure, not full source acceptance: current/basic responses
+do not prove PIT membership or complete terminal economics, and the adapter does
+not enlarge H-share coverage or provide an A/H economic-company mapping. The
+private run records owner authorization and source provenance for auditability;
+free/open licensing is not a prerequisite for this private research path. See
+`docs/status/phase-5r-a-2026-09-18.md` for the exact private run.
+
 ## Decisions frozen for this task package
 
 1. **Personal-first access**: official public sources and documented
@@ -91,7 +104,7 @@ Phase 5R-A is deliberately split into claims that can be earned independently:
 | Milestone | Claim | Required evidence |
 | --- | --- | --- |
 | `ACQUISITION_READY` | The project can fetch and replay exact raw source bytes. | Explicit network opt-in, credential isolation, immutable raw blobs, receipts, retry/rate-limit behavior, offline replay tests. |
-| `PERSONAL_RESEARCH_READY` | A named private A/H corpus is usable for its declared categories and dates. | Automatic acquisition, source terms/access evidence, category-specific coverage, deterministic compilation, real private acceptance, explicit limitations. |
+| `PERSONAL_RESEARCH_READY` | A named private A/H corpus is usable for its declared categories and dates. | Automatic acquisition, source provenance and access-scope record, category-specific coverage, deterministic compilation, real private acceptance, explicit limitations. A free/open license is not required for this private claim. |
 | `PRODUCTION_ELIGIBLE` | The existing full Phase 5R production claim passes. | All existing `--require-production` obligations, historical membership, all required categories, terminal economics, PIT research, and independent reconciliation. |
 
 The first implementation cycle must close `ACQUISITION_READY` and a bounded

@@ -1,7 +1,7 @@
 # Phase 5R-A Next — Personal Research Data Acquisition and Deployment-Neutral Access
 
-Status: **PROPOSED / NEXT**  
-Date: 2026-09-16
+Status: **ACTIVE / M3 LIVE PROBE PASS; BOUNDED REPLAY PASS; A6 PENDING**
+Date: 2026-09-18
 
 ## 1. Objective
 
@@ -294,8 +294,26 @@ research.
 
 ### M3 — A-share lifecycle/calendar automation
 
-Implement the smallest BaoStock or equivalent automated adapter for trade dates
-and listing lifecycle/basic fields. Do not ask the owner to prepare tables.
+The smallest BaoStock adapter is implemented behind the existing opt-in
+acquisition -> private raw CAS -> offline compiler boundary. An owner-authorized
+live run on 2026-09-18 installed `baostock 0.9.3`, passed both the
+`query_stock_basic` and `query_trade_dates` probes for `SH600000`, acquired two
+decoded SDK envelopes, and compiled/replayed one lifecycle shard plus one
+calendar shard offline. It freezes `query_trade_dates` as explicit
+`TRADING_SESSION` rows and maps `query_stock_basic` to the source-aware A-share
+lifecycle contract. Provider schema, dates, status/terminal shapes, A/H
+identities and calendar/lifecycle mismatches fail closed. Calendar rows can
+derive expected price sessions, but missing price rows remain missing and are
+never treated as suspension.
+
+This closes the M3 code plus bounded live/replay slice only. The run does not
+establish historical membership, PIT code changes, complete delisted retention,
+terminal economics or any A/H company mapping. The private run records owner
+authorization and source provenance for auditability; free/open licensing is not
+a prerequisite for this private research path. M2-E
+`H_PRICE_SOURCE_SELECTED_FUTU` remains frozen; M2-D is still gated. The exact
+private run and A6 blockers are recorded in
+`docs/status/phase-5r-a-2026-09-18.md`.
 
 ### M4 — Cross-source reconciliation
 
@@ -361,7 +379,8 @@ prerequisite for M1.
 
 ## 10. Recommended next Codex goal
 
-Implement **M1 — FQGate historical MARKET_BAR adapter and capability probe**.
-Do not spend the next implementation cycle creating a new product-level
-`LOCAL_ONLY` readiness gate. Preserve existing strict audit modes, but optimize
-the implementation for reliable personal research data first.
+Implement **M4 — Cross-source reconciliation** for deterministic samples from
+the selected bounded sources once an independent sample source is available.
+Keep BaoStock lifecycle/calendar automation as a source-aware supplement, not
+as proof of historical membership or complete A/H coverage. Do not reopen M2-E
+or implement the gated M2-D fallback.

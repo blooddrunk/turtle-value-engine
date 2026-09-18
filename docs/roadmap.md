@@ -5093,7 +5093,13 @@ incomplete. A6 blockers remain claim-level evidence for full A/H, complete
 category coverage and production eligibility; they are not a user requirement
 to purchase an institutional source or manually assemble a dataset. The exact
 owner-run result is recorded in
-[`docs/status/phase-5r-a-2026-09-16.md`](status/phase-5r-a-2026-09-16.md).
+[`docs/status/phase-5r-a-2026-09-18.md`](status/phase-5r-a-2026-09-18.md).
+
+The current Phase 5R-A M3 code boundary also provides a lazy/injected BaoStock
+A-share lifecycle and trading-calendar adapter. It is replayable through the
+private raw-CAS/offline-compiler path, but its live probe, terms, historical
+membership, PIT code-change and complete terminal-economics evidence remain
+open; it does not expand H-share claims.
 
 After the local acquisition/compiler path is stable, an optional storage work
 package may add a private Cloudflare R2 mirror or an owner-VPS backup/runner.

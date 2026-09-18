@@ -1,6 +1,6 @@
 # Phase 5R-A M2 — H-share Historical Source Selection and FQGate Failure Diagnosis
 
-Status: **ACTIVE / M2-C COMPLETE; FUTU_SELECTED; M2-E NEXT**
+Status: **COMPLETE / M2-E COMPLETE; FUTU_SELECTED; M2-D GATED**
 Date: 2026-09-17
 Baseline: `41fa843cce854f70ae6fb02c3d0e0012814f3a47`
 
@@ -804,5 +804,4 @@ python3 -m ruff check . -> PASS
 python3 -m pytest -> 6230 passed, 2 skipped
 ```
 
-The next handoff is **M2-E selection record / the next repository-defined historical
-milestone**, not M2-D.
+The next handoff is **M3 A-share lifecycle/calendar automation**, not M2-D.

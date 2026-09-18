@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://turtle-value-engine.local/schemas/historical-trading-session.schema.json",
+  "additionalProperties": false,
+  "description": "One explicit exchange-calendar observation for one target listing.",
+  "properties": {
+    "contract": {
+      "const": "historical_trading_session_v1",
+      "default": "historical_trading_session_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "session_id": {
+      "minLength": 1,
+      "title": "Session Id",
+      "type": "string"
+    },
+    "listing_id": {
+      "minLength": 1,
+      "title": "Listing Id",
+      "type": "string"
+    },
+    "calendar_id": {
+      "minLength": 1,
+      "title": "Calendar Id",
+      "type": "string"
+    },
+    "session_date": {
+      "format": "date",
+      "title": "Session Date",
+      "type": "string"
+    },
+    "is_trading_day": {
+      "title": "Is Trading Day",
+      "type": "boolean"
+    },
+    "timezone": {
+      "minLength": 1,
+      "title": "Timezone",
+      "type": "string"
+    },
+    "source_artifact_id": {
+      "minLength": 1,
+      "title": "Source Artifact Id",
+      "type": "string"
+    },
+    "source_hash": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Source Hash",
+      "type": "string"
+    }
+  },
+  "required": [
+    "session_id",
+    "listing_id",
+    "calendar_id",
+    "session_date",
+    "is_trading_day",
+    "timezone",
+    "source_artifact_id",
+    "source_hash"
+  ],
+  "title": "HistoricalTradingSession",
+  "type": "object"
+}

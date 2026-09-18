@@ -1117,6 +1117,7 @@
     "ShardArtifactKind": {
       "enum": [
         "LISTING_LIFECYCLE",
+        "TRADING_SESSION",
         "UNIVERSE_MEMBERSHIP",
         "AVAILABILITY",
         "MARKET_BAR",

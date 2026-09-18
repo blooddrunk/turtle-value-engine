@@ -43,6 +43,59 @@ H 股没有默认的免费权威完整来源。H 股来源必须先 probe；Futu
 unadjusted daily `MARKET_BAR` 个人研究角色上完成选择。未确认历史范围、退市、
 corporate action 完整性或合法自动访问时，较宽声明仍输出
 `H_SOURCE_UNQUALIFIED`，不会改用机构源、当前快照或 scraping workaround。
+
+### BaoStock A 股生命周期/交易日（M3）
+
+M3 的最小 adapter identity 是
+`baostock-a-share-lifecycle`，可处理两种 DATA request：
+
+```json
+{
+  "source_kind": "LISTING_LIFECYCLE",
+  "artifact_kind": "LISTING_LIFECYCLE",
+  "schema_version": "historical-listing-lifecycle-v1",
+  "listing_ids": ["SH600000"],
+  "start_date": "2020-01-01",
+  "end_date": "2020-01-03",
+  "parameters": {
+    "calendar_id": "SSE",
+    "timezone": "Asia/Shanghai",
+    "currency": "CNY"
+  }
+}
+```
+
+交易日 request 只把 `artifact_kind` 改为 `TRADING_SESSION`，并把
+`schema_version` 改为 `historical-trading-session-v1`。两者都保留
+`source_kind: "LISTING_LIFECYCLE"`，因为 `TRADING_SESSION` 是新增 shard
+artifact kind，不新增 source category。adapter 将 `query_stock_basic` 的
+完整 SDK export 映射为 A 股 listing lifecycle，将 `query_trade_dates` 的
+每个日期（含非交易日）映射为带 `calendar_id`、timezone、source hash 的
+session row；缺少日期、额外/改变字段、非法 status/outDate、H 股 ID 或
+calendar/lifecycle 不一致都会 fail closed。
+
+BaoStock 使用 SDK decoded result，因此 raw CAS 中冻结的是完整、无凭据的
+`baostock-sdk-export-v1` provider envelope，而不是声称为 wire bytes。只有
+`tve historical source probe`/`acquire` 带 `--network=allow` 时才会创建 SDK
+session；`compile`、replay 和 `historical accept` 不会 import/call SDK。
+calendar row 可以为没有手工 expected sessions 的价格 request 派生预期交易
+日；缺少价格仍是 missing/`PARTIAL`，不能推断为停牌，也不补零。
+
+当前 adapter 只支持 A 股。`query_stock_basic` 是当前/basic source evidence，
+不证明 PIT historical membership、code-change、完整退市保留、terminal
+economics、source terms 或 A/H company mapping；因此 M3 不扩大任何 H-share
+coverage 声明。
+
+2026-09-18 owner-authorized smoke run 已实际验证这条路径：`baostock 0.9.3` 成功
+登录，`SH600000` 的 `query_stock_basic` 与 `2024-01-01..2024-01-05` 的
+`query_trade_dates` 均返回可解码结果；两个 raw envelope 已进入私有 CAS，随后
+完全离线 `compile --verify-replay` 生成 1 条 lifecycle row 和 5 条 calendar rows。
+本次使用的官方来源 URI、owner 的非公开使用声明和 provenance hash 已记录在私有
+official plan 中；这只用于追溯，不要求项目先证明“免费开放许可”，也不妨碍未来把
+私有 eligible artifacts 镜像到 private R2。因为该 smoke plan 没有
+membership、价格、行为、benchmark、FX、filing、H 或完整终止经济资料，
+`dataset validate`/`historical accept` 继续按设计 fail closed。
+
 官方 filing 适配器可接入现有的 discovery/cache 回调，按 listing、日期和文件类型
 自动选择记录；`filing_ids` 仅是已冻结回放/测试的兼容输入，不是生产获取时要求操作者
 手工整理的清单。它会把本次请求只覆盖所选官方文件的事实记录为

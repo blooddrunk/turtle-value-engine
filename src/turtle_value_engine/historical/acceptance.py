@@ -39,6 +39,7 @@ from .contracts import (
     HistoricalMembershipInterval,
     HistoricalSourceKind,
     HistoricalTerminalOutcome,
+    HistoricalTradingSession,
     ShardArtifactKind,
     SourceAuthority,
 )
@@ -91,6 +92,7 @@ _COVERAGE_BASES: dict[HistoricalSourceKind, set[CoverageEvidenceBasis]] = {
 }
 _ROW_TYPES: dict[ShardArtifactKind, tuple[type[BaseModel], ...]] = {
     ShardArtifactKind.LISTING_LIFECYCLE: (HistoricalListingLifecycle, ListingLifecycle),
+    ShardArtifactKind.TRADING_SESSION: (HistoricalTradingSession,),
     ShardArtifactKind.UNIVERSE_MEMBERSHIP: (HistoricalMembershipInterval, UniverseMembership),
     ShardArtifactKind.MARKET_BAR: (MarketBar,),
     ShardArtifactKind.CORPORATE_ACTION: (CorporateAction,),
@@ -350,6 +352,12 @@ def validate_private_acceptance(
         ShardArtifactKind.LISTING_LIFECYCLE,
         artifact_issues,
     )
+    calendar_rows = _read_rows(
+        manifest,
+        artifact_store,
+        ShardArtifactKind.TRADING_SESSION,
+        artifact_issues,
+    )
     market_rows = _read_rows(
         manifest,
         artifact_store,
@@ -389,6 +397,13 @@ def validate_private_acceptance(
     record_check("A6_ARTIFACT_READS", artifact_issues)
 
     calendar_issues: list[str] = []
+    calendar_automation_declared = any(
+        shard.artifact_kind is ShardArtifactKind.TRADING_SESSION
+        for shard in manifest.shards
+    ) or any(
+        request.artifact_kind is ShardArtifactKind.TRADING_SESSION
+        for request in plan.requests
+    )
     missing_calendars = sorted(set(target.listing_ids) - set(target.calendar_ids))
     calendar_issues.extend(
         "A6_CALENDAR_UNVERIFIED: " + listing_id for listing_id in missing_calendars
@@ -405,6 +420,18 @@ def validate_private_acceptance(
             calendar_issues.append("A6_LIFECYCLE_MISSING: " + listing_id)
         elif expected_calendar is not None and lifecycle.trading_calendar != expected_calendar:
             calendar_issues.append("A6_CALENDAR_MISMATCH: " + listing_id)
+        sessions = [
+            row
+            for row in calendar_rows
+            if row.listing_id == listing_id
+            and target.start_date <= row.session_date <= target.end_date
+        ]
+        if calendar_automation_declared and not sessions:
+            calendar_issues.append("A6_TRADING_CALENDAR_ROWS_MISSING: " + listing_id)
+        elif calendar_automation_declared and expected_calendar is not None and any(
+            row.calendar_id != expected_calendar for row in sessions
+        ):
+            calendar_issues.append("A6_TRADING_CALENDAR_MISMATCH: " + listing_id)
     price_requests = [
         request
         for request in plan.requests
@@ -416,6 +443,11 @@ def validate_private_acceptance(
             and listing_id in request.expected_sessions_by_listing
             and request.expected_sessions_by_listing[listing_id]
             for request in price_requests
+        ) and not any(
+            row.listing_id == listing_id
+            and row.is_trading_day
+            and target.start_date <= row.session_date <= target.end_date
+            for row in calendar_rows
         ):
             calendar_issues.append("A6_EXPECTED_TRADING_SESSIONS_MISSING: " + listing_id)
     record_check("A6_CALENDARS_MISSINGNESS_AND_LIFECYCLE", calendar_issues)

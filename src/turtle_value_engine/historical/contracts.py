@@ -186,6 +186,7 @@ class ShardFormat(StrEnum):
 
 class ShardArtifactKind(StrEnum):
     LISTING_LIFECYCLE = "LISTING_LIFECYCLE"
+    TRADING_SESSION = "TRADING_SESSION"
     UNIVERSE_MEMBERSHIP = "UNIVERSE_MEMBERSHIP"
     AVAILABILITY = "AVAILABILITY"
     MARKET_BAR = "MARKET_BAR"
@@ -424,6 +425,31 @@ class HistoricalListingLifecycle(BaseModel):
         return value >= self.listing_date and (
             self.terminal_date is None or value <= self.terminal_date
         )
+
+
+class HistoricalTradingSession(BaseModel):
+    """One explicit exchange-calendar observation for one target listing."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    contract: Literal["historical_trading_session_v1"] = (
+        "historical_trading_session_v1"
+    )
+    session_id: StrictStr = Field(min_length=1)
+    listing_id: StrictStr = Field(min_length=1)
+    calendar_id: StrictStr = Field(min_length=1)
+    session_date: date
+    is_trading_day: StrictBool
+    timezone: StrictStr = Field(min_length=1)
+    source_artifact_id: StrictStr = Field(min_length=1)
+    source_hash: StrictStr = Field(pattern=_HASH_PATTERN)
+
+    @model_validator(mode="after")
+    def validate_session(self) -> Self:
+        expected_id = f"{self.listing_id}:{self.calendar_id}:{self.session_date.isoformat()}"
+        if self.session_id != expected_id:
+            raise ValueError("session_id does not match listing/calendar/date identity")
+        return self
 
 
 class HistoricalMembershipInterval(BaseModel):
@@ -1174,6 +1200,7 @@ __all__ = [
     "HistoricalSourceKind",
     "HistoricalTargetScope",
     "HistoricalTerminalOutcome",
+    "HistoricalTradingSession",
     "HISTORICAL_ARCHIVE_CONTRACT_VERSION",
     "HISTORICAL_CONTRACT_VERSION",
     "HISTORICAL_SHARD_CONTRACT_VERSION",

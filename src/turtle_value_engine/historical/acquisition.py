@@ -72,8 +72,10 @@ from .contracts import (
     HistoricalCoverageReport,
     HistoricalDatasetManifest,
     HistoricalFilingDocumentRecord,
+    HistoricalListingLifecycle,
     HistoricalSourceKind,
     HistoricalTargetScope,
+    HistoricalTradingSession,
     LicenseStatus,
     ShardArtifactKind,
     SourceAuthority,
@@ -116,6 +118,7 @@ _MAX_DOWNLOADS_PER_REQUEST = 10_000
 _UNSET = object()
 _MODEL_BY_KIND: dict[ShardArtifactKind, type[BaseModel]] = {
     ShardArtifactKind.LISTING_LIFECYCLE: ListingLifecycle,
+    ShardArtifactKind.TRADING_SESSION: HistoricalTradingSession,
     ShardArtifactKind.UNIVERSE_MEMBERSHIP: UniverseMembership,
     ShardArtifactKind.AVAILABILITY: HistoricalAvailability,
     ShardArtifactKind.MARKET_BAR: MarketBar,
@@ -433,6 +436,12 @@ class HistoricalAcquisitionRequestV1(BaseModel):
     def validate_request(self) -> HistoricalAcquisitionRequestV1:
         if self.end_date < self.start_date:
             raise ValueError("request end_date must not precede start_date")
+        if self.artifact_kind is ShardArtifactKind.TRADING_SESSION and (
+            self.source_kind is not HistoricalSourceKind.LISTING_LIFECYCLE
+        ):
+            raise ValueError(
+                "TRADING_SESSION requests must use the LISTING_LIFECYCLE source category"
+            )
         if (
             self.artifact_kind is ShardArtifactKind.FILING_DOCUMENT
             and self.source_kind is not HistoricalSourceKind.FILINGS
@@ -2659,13 +2668,27 @@ class ScopedHistoricalRawDecoder(Protocol):
         """Decode only rows that can enter the declared acquisition request."""
 
 
+def _model_for_schema(
+    artifact_kind: ShardArtifactKind,
+    schema_version: str,
+) -> type[BaseModel]:
+    """Select the historical source model without breaking legacy v1 rows."""
+
+    if (
+        artifact_kind is ShardArtifactKind.LISTING_LIFECYCLE
+        and schema_version == "historical-listing-lifecycle-v1"
+    ):
+        return HistoricalListingLifecycle
+    return _MODEL_BY_KIND[artifact_kind]
+
+
 class CanonicalJsonDecoder:
     """Offline decoder accepting only already-canonical contract rows."""
 
     def __init__(self, artifact_kind: ShardArtifactKind, schema_version: str) -> None:
         self.artifact_kind = artifact_kind
         self.schema_version = schema_version
-        self.model_type = _MODEL_BY_KIND[artifact_kind]
+        self.model_type = _model_for_schema(artifact_kind, schema_version)
 
     def decode(self, receipt: RawArtifactReceiptV1, raw_bytes: bytes) -> list[BaseModel]:
         if receipt.artifact_kind is not self.artifact_kind:
@@ -3414,6 +3437,7 @@ class HistoricalAcquisitionService:
 
 
 def default_source_adapters() -> dict[str, HistoricalSourceAdapter]:
+    from .baostock import BaoStockAshareLifecycleAdapter
     from .fqgate import (
         FQGateDeploymentNeutralMarketHistoryAdapter,
         FQGateMarketHistoryAdapter,
@@ -3422,6 +3446,7 @@ def default_source_adapters() -> dict[str, HistoricalSourceAdapter]:
 
     return {
         "http-json": ConfiguredHttpSourceAdapter(),
+        "baostock-a-share-lifecycle": BaoStockAshareLifecycleAdapter(),
         "hithink-market-dumps": HithinkMarketDumpAdapter(),
         "fqgate-local-market-history": FQGateMarketHistoryAdapter(),
         "fqgate-market-history": FQGateDeploymentNeutralMarketHistoryAdapter(),
@@ -3434,10 +3459,29 @@ def default_decoders(
     include_optional_parquet: bool = True,
     include_hithink_adjustments: bool = False,
 ) -> dict[tuple[str, ShardArtifactKind, str], HistoricalRawDecoder]:
+    from .baostock import (
+        BaoStockAshareLifecycleDecoder,
+        BaoStockTradingSessionDecoder,
+    )
     from .fqgate import FQGateDailyKDecoder
     from .futu_opend import FutuOpenDDailyKDecoder
 
     decoders: dict[tuple[str, ShardArtifactKind, str], HistoricalRawDecoder] = {}
+    baostock_lifecycle_decoder = BaoStockAshareLifecycleDecoder()
+    decoders[
+        (
+            "baostock-a-share-lifecycle",
+            ShardArtifactKind.LISTING_LIFECYCLE,
+            "historical-listing-lifecycle-v1",
+        )
+    ] = baostock_lifecycle_decoder
+    decoders[
+        (
+            "baostock-a-share-lifecycle",
+            ShardArtifactKind.TRADING_SESSION,
+            "historical-trading-session-v1",
+        )
+    ] = BaoStockTradingSessionDecoder()
     fqgate_decoder = FQGateDailyKDecoder()
     for adapter_id in ("fqgate-local-market-history", "fqgate-market-history"):
         decoders[(adapter_id, ShardArtifactKind.MARKET_BAR, "market-bar-v1")] = fqgate_decoder
@@ -3472,6 +3516,7 @@ def _source_for_request(
 def _row_id(kind: ShardArtifactKind, row: BaseModel) -> str:
     fields = {
         ShardArtifactKind.LISTING_LIFECYCLE: "listing_id",
+        ShardArtifactKind.TRADING_SESSION: "session_id",
         ShardArtifactKind.UNIVERSE_MEMBERSHIP: "membership_id",
         ShardArtifactKind.AVAILABILITY: "artifact_id",
         ShardArtifactKind.MARKET_BAR: "bar_id",
@@ -3485,6 +3530,8 @@ def _row_id(kind: ShardArtifactKind, row: BaseModel) -> str:
 
 
 def _natural_key(kind: ShardArtifactKind, row: BaseModel) -> tuple[object, ...]:
+    if kind is ShardArtifactKind.TRADING_SESSION:
+        return (row.listing_id, row.calendar_id, row.session_date)
     if kind is ShardArtifactKind.MARKET_BAR:
         return (row.listing_id, row.trading_date)
     if kind is ShardArtifactKind.CORPORATE_ACTION:
@@ -3515,6 +3562,7 @@ def _semantic_payload(row: BaseModel) -> bytes:
         "action_id",
         "observation_id",
         "membership_id",
+        "session_id",
         "artifact_id",
     ):
         payload.pop(identifier, None)
@@ -3525,6 +3573,8 @@ def _sort_key(kind: ShardArtifactKind, row: BaseModel) -> tuple[str, ...]:
     values: list[object]
     if kind is ShardArtifactKind.LISTING_LIFECYCLE:
         values = [row.listing_id, row.listing_date]
+    elif kind is ShardArtifactKind.TRADING_SESSION:
+        values = [row.listing_id, row.calendar_id, row.session_date, row.session_id]
     elif kind is ShardArtifactKind.UNIVERSE_MEMBERSHIP:
         values = [row.universe_id, row.listing_id, row.valid_from, row.valid_to or date.max]
     elif kind is ShardArtifactKind.AVAILABILITY:
@@ -3552,6 +3602,7 @@ def _row_listing(row: BaseModel) -> str | None:
 def _row_date(kind: ShardArtifactKind, row: BaseModel) -> date | None:
     field_by_kind = {
         ShardArtifactKind.LISTING_LIFECYCLE: "listing_date",
+        ShardArtifactKind.TRADING_SESSION: "session_date",
         ShardArtifactKind.UNIVERSE_MEMBERSHIP: "valid_from",
         ShardArtifactKind.AVAILABILITY: None,
         ShardArtifactKind.MARKET_BAR: "trading_date",
@@ -3605,8 +3656,11 @@ def _row_in_request(
         # Keep an interval that overlaps the requested window, including a
         # lifecycle that began before it.  A lifecycle beginning after the
         # request end is future data and must not enter the compiled corpus.
+        terminal_date = getattr(row, "terminal_date", None)
+        if terminal_date is None:
+            terminal_date = getattr(row, "delisting_date", None)
         return row.listing_date <= request.end_date and (
-            row.delisting_date is None or row.delisting_date >= request.start_date
+            terminal_date is None or terminal_date >= request.start_date
         )
     if kind is ShardArtifactKind.UNIVERSE_MEMBERSHIP:
         # Membership intervals use the same overlap rule.  This preserves
@@ -3897,7 +3951,10 @@ class HistoricalIngestionCompiler:
             for raw_row in rows:
                 if receipt.artifact_kind is None:
                     raise HistoricalIngestionError("data receipt has no artifact kind")
-                model_type = _MODEL_BY_KIND[receipt.artifact_kind]
+                model_type = _model_for_schema(
+                    receipt.artifact_kind,
+                    receipt.schema_version or "",
+                )
                 try:
                     row = (
                         raw_row
@@ -4125,6 +4182,48 @@ class HistoricalIngestionCompiler:
         for source in plan.sources:
             if any(receipt.source_id == source.source_id for receipt in batch.receipts):
                 source_ids_by_kind[source.source_kind].append(source.source_id)
+        # A calendar response is stored as a separate shard, but it is scoped
+        # to the lifecycle source category so the fixed nine-category source
+        # contract remains readable.  Use only trading-day rows to derive
+        # price expectations, and intersect them with the listing interval;
+        # weekends and dates before IPO are not price sessions.
+        calendar_sessions_by_listing: dict[str, set[date]] = defaultdict(set)
+        lifecycle_by_listing: dict[str, BaseModel] = {}
+        for artifact_kind, row in rows_by_source_kind.get(
+            HistoricalSourceKind.LISTING_LIFECYCLE,
+            (),
+        ):
+            if artifact_kind is ShardArtifactKind.TRADING_SESSION:
+                if getattr(row, "is_trading_day", False):
+                    listing_id = _row_listing(row)
+                    row_date = _row_date(artifact_kind, row)
+                    if listing_id is not None and row_date is not None:
+                        calendar_sessions_by_listing[listing_id].add(row_date)
+            elif artifact_kind is ShardArtifactKind.LISTING_LIFECYCLE:
+                listing_id = _row_listing(row)
+                if listing_id is not None:
+                    lifecycle_by_listing[listing_id] = row
+
+        derived_price_sessions: dict[str, list[date]] = {}
+        for listing_id, values in calendar_sessions_by_listing.items():
+            lifecycle = lifecycle_by_listing.get(listing_id)
+            terminal_date = getattr(lifecycle, "terminal_date", None)
+            if terminal_date is None:
+                terminal_date = getattr(lifecycle, "delisting_date", None)
+            eligible = {
+                value
+                for value in values
+                if plan.target.start_date <= value <= plan.target.end_date
+                and (
+                    lifecycle is None
+                    or (
+                        lifecycle.listing_date <= value
+                        and (terminal_date is None or value <= terminal_date)
+                    )
+                )
+            }
+            if eligible:
+                derived_price_sessions[listing_id] = sorted(eligible)
         required = set(plan.target.required_source_kinds) | set(source_ids_by_kind)
         required |= set(HistoricalSourceKind)
         reports: list[HistoricalCoverageReport] = []
@@ -4138,8 +4237,18 @@ class HistoricalIngestionCompiler:
                     for listing_id, values in request.expected_sessions_by_listing.items():
                         expected.setdefault(listing_id, []).extend(values)
                 basis = basis or request.coverage_evidence_basis
+            if source_kind is HistoricalSourceKind.PRICES and requests:
+                for listing_id, sessions in derived_price_sessions.items():
+                    expected.setdefault(listing_id, sessions)
             kind_rows = rows_by_source_kind.get(source_kind, ())
             for artifact_kind, row in kind_rows:
+                if (
+                    source_kind is HistoricalSourceKind.LISTING_LIFECYCLE
+                    and artifact_kind is ShardArtifactKind.TRADING_SESSION
+                ):
+                    # Calendar rows are consumed above for price expectations;
+                    # they are not lifecycle observations themselves.
+                    continue
                 listing_id = _row_listing(row)
                 row_date = _row_date(artifact_kind, row)
                 if (

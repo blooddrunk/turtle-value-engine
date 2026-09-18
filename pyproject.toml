@@ -28,6 +28,9 @@ historical = [
 futu = [
   "futu-api==10.10.7008",
 ]
+baostock = [
+  "baostock>=0.8,<1",
+]
 
 [project.scripts]
 tve = "turtle_value_engine.cli:main"

@@ -369,5 +369,5 @@ expected and does not negate the bounded price-source selection.
 
 Futu is selected only for the bounded H daily unadjusted `MARKET_BAR` personal-research
 role. The broader `H_SOURCE_UNQUALIFIED`/coverage blockers remain for claims outside this
-role. M2-D is not implemented or started. The next handoff is **M2-E selection record /
-the next repository-defined historical milestone**.
+role. M2-D is not implemented or started. The next handoff is **M3 A-share
+lifecycle/calendar automation**.
