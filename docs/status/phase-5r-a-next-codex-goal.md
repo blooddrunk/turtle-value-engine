@@ -1,173 +1,145 @@
-# Codex Goal — Phase 5R-A M5-A Deployment-neutral Artifact Mirror
+# Codex Goal — Phase 5R-A M5-B S3-compatible Artifact Backend
 
 Work in repository `blooddrunk/turtle-value-engine` on current `main`.
 
-Status: **CLOSED / M5-A COMPLETE; M5-B OPTIONAL NEXT; A6 PENDING**
+Status: **ACTIVE / M5-B NEXT; M5-A COMPLETE; A6 PENDING**
 
 ## Current audited state — 2026-09-18
 
 Read and follow `AGENTS.md` and its source-of-truth order before editing. Read at least:
 
+- `docs/goals/phase-5r-a-m5-b-s3-compatible-artifact-backend.md`
 - `docs/goals/phase-5r-a-m5-deployment-neutral-artifact-backend.md`
-- `docs/goals/phase-5r-a-m4-cross-source-reconciliation.md`
 - `docs/goals/phase-5r-a-local-research-and-low-cost-sources.md`
 - `docs/architecture/production-historical-data-and-research-archive.md`
+- `docs/operations/phase-5r-a-acquisition.md`
 - `docs/status/phase-5r-a-2026-09-18.md`
 
-M4-A/B/C are implemented. M4-C has:
+M5-A is complete on main at `84029b4`. It freezes:
 
-- artifact-backed two-source reconciliation;
-- persisted sample/provider/upstream guards;
-- additive `tve dataset reconcile-artifacts`;
-- owner-authorized `SH600000` BaoStock/Hithink price evidence with 2/2 comparisons PASS;
-- deterministic replay with the same report hash.
+- the backend-neutral `ArtifactObjectStore` protocol;
+- `HistoricalArtifactMirrorManifest`;
+- exact manifest + referenced-shard inventory;
+- offline `FilesystemArtifactObjectStore`;
+- explicit build / push / verify / pull;
+- restored validation through the existing local historical store;
+- fail-closed corruption/conflict/path behavior.
 
-The price report is PASS, while overall M4 is closed as
-`M4_FIXED_A_RECONCILIATION_PARTIAL` because M4-D corporate-action and M4-E lifecycle
-cross-checks were deliberately deferred as optional extensions. Do not reopen them in this goal.
+Recorded M5-A verification: `python3 -m ruff check .` PASS; focused mirror tests
+10 passed; M4 tests 19 passed; full suite 6265 passed / 2 skipped. GitHub has no
+attached CI status for `84029b4`, so run a fresh full baseline before editing.
 
-There is one verification debt from the M4-C commit: focused tests were recorded, but there is
-no recorded post-change full `python -m pytest` result and GitHub has no attached CI status.
+M4-D/M4-E remain optional and are not current blockers. M2-D remains gated.
+Keep `H_PRICE_SOURCE_SELECTED_FUTU` unchanged.
 
-## Preflight — mandatory before M5 edits
+## Preflight
 
-Run:
+Before editing:
 
 ```bash
 python -m ruff check .
 python -m pytest
 ```
 
-If the full suite is not green, fix the M4-C regression first and record the exact result. Do not
-start M5 implementation on a red baseline.
+If only `python3` exists, use the equivalent `python3 -m ...` commands.
+Do not build M5-B on a red baseline.
 
 ## Objective
 
-Implement only **M5-A** from
-`docs/goals/phase-5r-a-m5-deployment-neutral-artifact-backend.md`:
+Implement **M5-B — S3-compatible / Cloudflare R2 artifact backend** exactly as
+specified in:
 
-> Add a backend-neutral, explicit, byte-preserving mirror / verify / restore boundary for a
-> frozen `HistoricalDatasetManifest` package, with a filesystem reference backend, while
-> keeping the existing local `HistoricalArtifactStore` authoritative and all deterministic
-> analysis/replay offline.
+`docs/goals/phase-5r-a-m5-b-s3-compatible-artifact-backend.md`
 
-This is a mirror layer, not a cloud-storage rewrite.
+Add one real S3-compatible implementation of the existing M5-A
+`ArtifactObjectStore` contract. Cloudflare R2 is the primary operator target,
+while the same adapter should remain usable with MinIO / ordinary S3-compatible
+endpoints.
+
+This is an optional network transport layer. The local
+`HistoricalArtifactStore` remains authoritative and deterministic replay must
+remain offline.
 
 ## Required implementation
 
-### 1. Backend-neutral immutable object protocol
-
-Add a small provider-neutral protocol/interface for artifact transport. It should support the
-minimum operations needed to:
-
-- put exact bytes at a deterministic explicit key if absent;
-- get exact bytes by key;
-- inspect/verify object size/hash metadata where available;
-- fail closed on conflicting content.
-
-Do not couple the protocol to Cloudflare, boto3, AWS or one vendor.
-
-### 2. Typed deterministic mirror manifest
-
-Add a versioned mirror manifest contract/schema such as
-`historical_artifact_mirror_manifest_v1`.
-
-At minimum retain:
-
-- source dataset/manifest identity;
-- deterministic object key / relative path;
-- artifact role/type;
-- SHA-256;
-- byte length;
-- mirror-manifest content SHA-256.
-
-Build the inventory only from the explicitly supplied `HistoricalDatasetManifest` and its
-referenced shards. Do **not** recursively upload everything under the source store root.
-
-For M5-A, the package only needs:
-
-- canonical serialized dataset manifest;
-- all shards referenced by that manifest.
-
-Do not include `RawBlobStore` provider data in M5-A.
-
-### 3. Filesystem reference backend
-
-Implement an offline filesystem backend that exercises the exact same object protocol.
-
-It must:
-
-- reject absolute/path-escape keys;
-- reject symlink traversal;
-- preserve exact bytes;
-- allow idempotent same-byte writes;
-- reject conflicting destination bytes;
-- fail on missing/corrupt objects.
-
-### 4. Explicit mirror workflow
-
-Provide library functions for:
-
-1. build/freeze mirror manifest;
-2. push only declared objects;
-3. verify destination;
-4. pull/restore only declared objects;
-5. validate the restored dataset through the existing
-   `HistoricalDatasetManifest` + `HistoricalArtifactStore` boundary.
-
-The restored dataset must retain the same shard hashes and deterministic validation/replay
-semantics.
-
-A thin additive CLI is encouraged if it stays small and future-compatible, for example:
-
-```text
-tve artifacts mirror plan
-tve artifacts mirror push
-tve artifacts mirror verify
-tve artifacts mirror pull
-```
-
-For M5-A, support only the real filesystem backend. Do not add placeholder R2/S3 flags.
-
-## Preferred file scope
-
-Keep the change approximately within:
-
-```text
-src/turtle_value_engine/historical/store.py
-src/turtle_value_engine/historical/mirror.py
-src/turtle_value_engine/historical/contracts.py
-src/turtle_value_engine/historical/__init__.py
-src/turtle_value_engine/__init__.py
-src/turtle_value_engine/cli.py
-schemas/historical-artifact-mirror-manifest.schema.json
-tests/test_historical_artifact_mirror.py
-docs/architecture/production-historical-data-and-research-archive.md
-docs/operations/phase-5r-a-acquisition.md   # only if CLI exists
-docs/status/phase-5r-a-2026-09-18.md or a dated successor
-docs/status/phase-5r-a-next-codex-goal.md
-```
-
-Do not refactor provider adapters or investment calculation code.
+1. Add a narrowly scoped `S3CompatibleArtifactObjectStore` or equivalent.
+2. Reuse the frozen M5-A mirror manifest unchanged.
+3. Prefer an optional/lazy S3 SDK dependency, not a mandatory core dependency.
+4. Accept runtime endpoint/bucket/region/prefix configuration without secrets in
+   manifests or persisted result artifacts.
+5. Reuse existing credential-reference / resolver discipline where practical.
+6. Require explicit network opt-in before any remote client call.
+7. Preserve immutable `put_if_absent` semantics:
+   - identical existing bytes => idempotent success;
+   - different existing bytes => conflict;
+   - missing object => conditional create when supported;
+   - concurrent conditional-create race => verify winner and accept only if identical.
+8. Persist/read an explicit non-secret SHA-256 object metadata field when
+   available.
+9. **Do not use S3/R2 ETag as the historical artifact SHA-256 identity.**
+10. Normalize missing/conflict/auth/transport/config errors without leaking
+    credentials.
+11. Extend `tve artifacts mirror push|verify|pull` with explicit remote-backend
+    selection while preserving the current filesystem syntax and offline
+    default.
+12. Keep `plan` backend-neutral/offline and pull results restored into a local
+    verified `HistoricalArtifactStore`.
 
 ## Deterministic tests
 
-At minimum prove:
+Use injected/fake S3 clients in ordinary CI; no real network or cloud credentials.
 
-1. mirror manifest is built from one explicit frozen dataset;
-2. inventory includes the manifest + exactly referenced shards, not unrelated store files;
-3. push preserves exact SHA-256 bytes;
-4. repeat push is idempotent;
-5. conflicting destination bytes fail closed;
-6. missing destination object fails verification;
-7. corrupt destination object fails verification;
-8. absolute/path traversal/symlink paths fail closed;
-9. restore verifies all objects before accepting the local bundle;
-10. restored shard hashes equal source shard hashes;
-11. restored dataset validates/replays through existing offline boundaries;
-12. tampered mirror manifest fails validation;
-13. filesystem mirror uses no network;
-14. M4 reconciliation and all previous Phase 5R tests remain compatible.
+At minimum cover all cases in the M5-B goal, especially:
+
+- network denied before client use;
+- credential missing before client use;
+- secret redaction;
+- deterministic prefix/key mapping;
+- identical/different existing objects;
+- conditional-write race;
+- missing vs permission failure;
+- SHA metadata handling;
+- ETag never treated as SHA-256;
+- fake-S3 push -> verify -> pull exact restore;
+- no list/delete requirement;
+- unchanged M5-A filesystem behavior.
+
+## Preferred scope
+
+Keep changes close to:
+
+```text
+pyproject.toml
+src/turtle_value_engine/historical/mirror.py
+src/turtle_value_engine/historical/s3_store.py
+src/turtle_value_engine/historical/acquisition.py
+src/turtle_value_engine/historical/__init__.py
+src/turtle_value_engine/__init__.py
+src/turtle_value_engine/cli.py
+tests/test_historical_artifact_s3_mirror.py
+tests/test_historical_artifact_mirror.py
+docs/architecture/production-historical-data-and-research-archive.md
+docs/operations/phase-5r-a-acquisition.md
+docs/status/phase-5r-a-2026-09-18.md
+docs/status/phase-5r-a-next-codex-goal.md
+```
+
+Do not refactor provider adapters, M4 reconciliation or deterministic investment
+math merely to add the object-store backend.
+
+## Explicitly not current work
+
+Do not implement:
+
+- raw `RawBlobStore` remote mirroring;
+- M5-C broader artifact classes;
+- M4-D;
+- M4-E;
+- M2-D;
+- Phase 6 watchlist/event monitoring;
+- M6/Web UI/API/Worker productization;
+- trading/orders/transfers;
+- changes to `strict-v1`, PIT/A6 semantics or investment math.
 
 ## Verification
 
@@ -176,47 +148,26 @@ After implementation run at minimum:
 ```bash
 python -m ruff check .
 python -m pytest tests/test_historical_artifact_mirror.py -q
+python -m pytest tests/test_historical_artifact_s3_mirror.py -q
 python -m pytest tests/test_m4_reconciliation.py -q
 python -m pytest
 ```
 
-Record the full-suite result in the status document.
+Record exact results in the status document.
 
-## Explicitly not current work
+## Live smoke
 
-Do not implement:
+A real private R2 / MinIO / S3 smoke is optional and owner-authorized only.
+Do not request or paste credentials into chat. If credentials are already
+available in the execution environment, a bounded smoke may push, verify and
+pull one compact/private mirror package and record only non-secret evidence.
 
-- M5-B S3 / Cloudflare R2 backend;
-- remote credentials or live object-store smoke tests;
-- raw `RawBlobStore` mirroring;
-- M4-D;
-- M4-E;
-- M2-D;
-- Phase 6 monitoring;
-- Web UI/API/Worker productization;
-- any change to `strict-v1`, PIT/A6 semantics or deterministic investment math.
-
-Keep `H_PRICE_SOURCE_SELECTED_FUTU` unchanged.
+Absence of live credentials is not an M5-B implementation blocker.
 
 ## Acceptance
 
-M5-A is complete when a declared frozen historical dataset can be mirrored to a second
-filesystem backend and restored byte-for-byte through the backend-neutral contract, with the
-same shard identities and successful existing offline validation/replay; ordinary CI remains
-offline; no unreferenced/raw provider artifacts are mirrored; and the current local
-`HistoricalArtifactStore` remains backward compatible.
-
-After M5-A is green, the next optional implementation package is M5-B: one real
-S3-compatible backend for private Cloudflare R2 / MinIO / S3-style storage, using the frozen
-M5-A protocol and explicit network/credential boundaries.
-
-## Closure record
-
-M5-A completed on the synchronized main baseline. The implementation freezes
-the backend-neutral mirror protocol and the filesystem reference backend while
-keeping deterministic replay offline and the local HistoricalArtifactStore
-authoritative. Final verification was python3 -m ruff check . PASS and
-python3 -m pytest at 6265 passed, 2 skipped in 17.26s; the focused mirror
-and M4 suites passed with 10 and 19 tests respectively. The requested next
-package is the optional real S3-compatible/R2 backend, with explicit
-network/credential boundaries.
+M5-B is complete when the existing frozen M5-A mirror package can be pushed,
+verified and pulled through one real S3-compatible backend contract while exact
+bytes/SHA-256 identities, explicit network opt-in, secret discipline and
+offline deterministic replay remain intact; ordinary CI remains network- and
+credential-free; filesystem behavior remains backward compatible.
