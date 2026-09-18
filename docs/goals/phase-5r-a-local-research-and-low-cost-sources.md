@@ -320,27 +320,28 @@ private run and A6 blockers are recorded in
 The executable M4 package is
 `docs/goals/phase-5r-a-m4-cross-source-reconciliation.md`.
 
-For the fixed private A-share research set, compare selected canonical
-observations against a genuinely independent source on deterministic samples.
-Independence is evaluated at the provider/upstream level, not merely by
-different adapter/source IDs. Start with sampled unadjusted close-price
-reconciliation, then add corporate-action/reference-event and lifecycle
-cross-checks only where semantics are explicit. Reconciliation improves
-confidence but is not a prerequisite for every local/agent research run.
+M4-A/B/C are complete. The fixed `SH600000` private A-share price sample has
+an owner-authorized BaoStock/Hithink artifact-backed reconciliation with 2/2
+comparisons PASS and deterministic replay. Under the dedicated M4 closure
+definitions, overall M4 is closed as
+`M4_FIXED_A_RECONCILIATION_PARTIAL`: M4-D corporate-action/reference-event
+and M4-E official-exchange lifecycle checks are intentionally deferred as
+optional claim-specific extensions, not current blockers. M2-D remains gated
+and `H_PRICE_SOURCE_SELECTED_FUTU` remains unchanged.
 
 ### M5 — Deployment-neutral artifact backend
 
-After the data pipeline is useful, introduce an artifact-store abstraction or
-mirror strategy so the same normalized/frozen data can live in:
+M5 is now the active next milestone. Its executable package is
+`docs/goals/phase-5r-a-m5-deployment-neutral-artifact-backend.md`.
 
-- local filesystem/CAS;
-- private VPS/object storage;
-- S3-compatible storage such as Cloudflare R2.
+Start with M5-A: keep the current local `HistoricalArtifactStore` authoritative
+and add a backend-neutral, explicit mirror/restore contract plus a filesystem
+reference backend. The first merge must prove byte-for-byte content identity,
+explicit inventory, verified restore and no hidden network fallback.
 
-Do not change content identities when moving an artifact between backends.
-
-This milestone enables clean agent/API/Web usage without coupling the engine to
-a specific cloud provider.
+Only after that contract is frozen should M5-B add a real S3-compatible backend
+for private Cloudflare R2 / MinIO / S3-style storage. Raw provider CAS is not
+remotely mirrored by default.
 
 ### M6 — Agent/API/Web surface
 
@@ -386,8 +387,11 @@ prerequisite for M1.
 
 ## 10. Recommended next Codex goal
 
-Implement **M4 — Cross-source reconciliation** for deterministic samples from
-the selected bounded sources once an independent sample source is available.
-Keep BaoStock lifecycle/calendar automation as a source-aware supplement, not
-as proof of historical membership or complete A/H coverage. Do not reopen M2-E
-or implement the gated M2-D fallback.
+Implement **M5-A — deployment-neutral artifact mirror contract** from
+`docs/goals/phase-5r-a-m5-deployment-neutral-artifact-backend.md`.
+
+Keep the existing local content-addressed store as the deterministic authority;
+add explicit byte-preserving mirror/verify/restore behavior and an offline
+filesystem reference backend first. Do not start M5-B/R2 until that contract is
+green. M4-D/M4-E remain optional, M2-D remains gated, and no remote backend may
+become an implicit dependency of analysis/replay.
