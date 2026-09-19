@@ -386,10 +386,22 @@ For the initial source milestones, local CAS remains the simplest authoritative
 store. Add remote mirroring only after acquisition is stable; do not make it a
 prerequisite for M1.
 
-## 10. M6-B closure / next package boundary
+## 10. M6-B closure / selected next package
 
 M6-B is closed with exact verification recorded in
-`docs/status/phase-5r-a-2026-09-19.md`. No next package is started
-automatically. M5-C remains optional for a concrete remote artifact-class need;
-M6-C Worker/Dashboard, authentication/deployment integration and Phase 6
-monitoring remain later packages. M4-D/M4-E and M2-D remain gated.
+`docs/status/phase-5r-a-2026-09-19.md`.
+
+The selected next package is **M6-C1 — Personal Dashboard Foundation**:
+`docs/goals/phase-5r-a-m6-c1-personal-dashboard-foundation.md`.
+
+M6-C1 is local/preview-first and must be fully acceptance-tested without a
+Cloudflare account or owner browser work. It adds a typed read-only React/Vite
+Dashboard over the existing M6-B API, a bounded same-origin Worker proxy,
+deterministic OpenAPI-generated client types and a real automated cross-stack
+smoke. It does not add live Cloudflare deployment, authentication, D1/R2,
+monitoring, acquisition or investment recomputation.
+
+Live Cloudflare deployment/authentication is deferred to M6-C2 after C1 closes.
+M5-C remains optional and is opened only if a concrete surface-artifact remote
+distribution need appears. Phase 6 monitoring remains later. M4-D/M4-E and M2-D
+remain gated.

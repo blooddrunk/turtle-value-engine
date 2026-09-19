@@ -1,74 +1,88 @@
-# Codex Goal — Phase 5R-A M6-B Read-only API Adapter
+# Phase 5R-A Next Codex Goal — M6-C1 Personal Dashboard Foundation
+
+Status: **M6-A/B COMPLETE; M6-C1 ACTIVE NEXT; M5-A/B COMPLETE; A6 PENDING**
+Date: 2026-09-19
+Baseline: `dda3a0d`
 
 Work in repository `blooddrunk/turtle-value-engine` on current `main`.
 
-Status: **M6-A COMPLETE; M6-B COMPLETE; M5-A/B COMPLETE; A6 PENDING**
-
 Read and follow `AGENTS.md` and the source-of-truth order. Read at least:
 
+- `docs/goals/phase-5r-a-m6-c1-personal-dashboard-foundation.md`
 - `docs/goals/phase-5r-a-m6-b-read-only-api-adapter.md`
 - `docs/goals/phase-5r-a-m6-a-read-only-research-surface.md`
 - `docs/architecture/agent-api-web-surface.md`
 - `docs/architecture/runtime-and-automation.md`
-- `docs/goals/phase-5r-a-local-research-and-low-cost-sources.md`
 - `docs/status/phase-5r-a-2026-09-19.md`
-- `docs/roadmap.md`
+- `docs/goals/phase-5r-a-local-research-and-low-cost-sources.md`
 
-The completed M6-B package implemented exactly this boundary: a
-framework-neutral registry/service over explicit, validated
-`ResearchSurfaceSnapshotV1` inputs, a thin optional ASGI/FastAPI adapter and
-the `tve surface serve` entry point. It does not read raw stores, recursively
-discover workspace files, call providers or models, recompute investment
-semantics, or add mutation endpoints.
+Implement **M6-C1 only**.
 
-The default server must bind to `127.0.0.1`. If non-loopback binding is
-supported, require an explicit opt-in; do not silently expose `0.0.0.0`.
-M5-C, Worker/D1/UI, authentication-provider integration, Phase 6 monitoring,
-M4-D/M4-E and M2-D are out of scope.
+Build a local/preview-first personal read-only Dashboard under
+`apps/dashboard` using React 19 + TypeScript + Vite, the official Cloudflare
+Vite/Workers Static Assets path, TanStack Router and TanStack Query. Consume only
+the existing M6-B read-only API through a same-origin Worker allowlist proxy.
+Do not read raw stores or repository files from the browser/Worker, do not
+recompute investment semantics and do not add write endpoints.
 
-## Verification is a completion gate
+Generate Dashboard API types from a deterministic checked-in OpenAPI export of
+the real M6-B FastAPI app. Do not hand-maintain a second API model. Preserve
+`PARTIAL`, `BLOCKED`, `NOT_AVAILABLE`, `NOT_EVALUATED`, nulls, blockers,
+warnings and limitations exactly; do not turn missing/blocked state into green
+UI.
 
-Before editing, automatically run:
+The minimum UI is a responsive surfaces overview/list plus a detail view showing
+identity, company/listing/as-of/profile, decision/valuation, CDC/Net Cash/Through
+Return, all hard-gate states/blockers, data quality, Business Quality status,
+historical/A6 readiness/acceptance/validation status and source artifact
+identities/hashes. Keep the first version read-only.
+
+Verification is part of the implementation, not owner homework. Before editing,
+run the Python baseline and record exact results:
 
 ```bash
 python3 -m ruff check .
 python3 -m pytest
+node --version
+pnpm --version
 ```
 
-After implementation, automatically run at minimum:
+Automatically bootstrap/install declared Dashboard dependencies when the
+environment permits it. After implementation run all required gates from the
+M6-C1 goal, including:
 
 ```bash
 python3 -m ruff check .
 python3 -m pytest tests/test_research_surface.py -q
 python3 -m pytest tests/test_surface_api.py -q
 python3 -m pytest
+pnpm --dir apps/dashboard lint
+pnpm --dir apps/dashboard typecheck
+pnpm --dir apps/dashboard test --run
+pnpm --dir apps/dashboard build
+python3 scripts/export_surface_openapi.py --check
 ```
 
-Add an automated **real loopback socket smoke test** that starts the actual
-server, waits for `/healthz`, fetches one known surface, verifies its
-`surface_id`/hash, verifies an unknown ID is 404, verifies a mutation request
-is rejected, and shuts the server down cleanly. Run it yourself; do not ask the
-owner to perform browser/curl checks that can be automated.
+Also implement and run the required **real cross-stack smoke**: start the actual
+`tve surface serve` process on loopback, start the actual local
+Cloudflare/Vite preview, fetch the Dashboard root, then exercise same-origin
+health/list/known-detail/unknown-ID/mutation-rejection paths and shut both
+processes down cleanly. Mock-only tests are not sufficient.
 
-If dependencies are missing, use the repository-declared extras and install
-them automatically when the environment permits. If the environment prevents a
-required command, package install, process spawn or loopback bind, record the
-exact command/error and the exact unverified acceptance item. In that case do
-not claim M6-B fully closed; mark verification
-`BLOCKED_BY_EXECUTION_ENVIRONMENT` and provide the exact manual fallback
-commands. Never summarize this as merely “evidence incomplete”.
+Do not ask the owner to deploy to Cloudflare, click a browser, create D1/R2,
+configure Access/OIDC or manually run checks that Codex can run. Live Cloudflare
+deployment/authentication is **M6-C2**, not C1.
 
-Update the dated status document with exact commands, exit results and
-pass/skip counts, and update roadmap/goal status only after the automated
-acceptance gates pass. Stop after M6-B; do not automatically start M5-C, M6-C
-or Phase 6.
+If package installation, loopback/process spawning or the local Workers runtime
+is genuinely forbidden by the execution environment, do not write vague
+"evidence incomplete" prose and do not close the milestone. Record the exact
+failing command/error, the gates that did pass, the single unverified acceptance
+item and the exact owner-machine fallback sequence; mark the state
+`BLOCKED_BY_EXECUTION_ENVIRONMENT`.
 
-## Closure — 2026-09-19
+Update the dated status document with exact commands, exit codes, versions,
+pass/skip counts and smoke evidence. Update goal/roadmap status only after all
+required automated acceptance gates pass.
 
-The requested M6-B implementation and all automated acceptance gates passed.
-The exact commands, exit codes, pass/skip counts, optional dependency setup and
-loopback smoke evidence are recorded in
-`docs/status/phase-5r-a-2026-09-19.md`.
-
-No M5-C, M6-C Worker/Dashboard, authentication/deployment integration or Phase
-6 work was started.
+Stop after M6-C1. Do not start M6-C2, M5-C, Phase 6, M4-D/M4-E or M2-D in the
+same goal.
