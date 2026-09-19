@@ -2,7 +2,8 @@
 
 Status: **COMPLETE**
 Date: 2026-09-19
-Audited baseline: `2edc30a` (M6-B complete on synchronized `main`)
+Audited baseline: `e77fa74` (M6-C1 recovery handoff); published result:
+`5774b29`
 
 Parent context:
 - `AGENTS.md`
@@ -427,3 +428,8 @@ start M6-C2 or change deterministic investment semantics.
 
 Exact verification evidence is recorded in
 `docs/status/phase-5r-a-2026-09-19.md`.
+
+The implementation was recovered from the uncommitted workspace into
+`d0d791f`, synchronized with the remote recovery handoff, and published to
+`main` at `5774b29`. The final remote `main` SHA was verified before this
+closure record was updated.

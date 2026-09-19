@@ -179,7 +179,9 @@ OpenAPI client contract, bounded same-origin Cloudflare Worker proxy and real
 cross-stack smoke over `tve surface serve`. It remains read-only and does not
 read raw stores or recompute investment semantics. M6-C2 deployment,
 authentication and non-loopback origin security, plus Phase 6 watchlist/event
-monitoring, remain later packages.
+monitoring, remain later packages. The verified implementation is published on
+`main` at `5774b29`; exact gate and publication evidence is recorded in
+`docs/status/phase-5r-a-2026-09-19.md`.
 
 ## 5. Working with company data
 

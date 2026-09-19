@@ -5137,8 +5137,9 @@ The completed local/preview package is
 It adds a typed React/Vite list/detail Dashboard and a bounded same-origin
 Cloudflare Worker proxy over the M6-B read contract. Generated API types,
 responsive semantic-state rendering, deterministic DOM tests and a real
-Python-API-to-Vite-preview smoke are complete. It introduces no mutation
-endpoint and does not recompute investment semantics.
+Python-API-to-Vite-preview smoke are complete and published on `main` at
+`5774b29`. It introduces no mutation endpoint and does not recompute
+investment semantics.
 
 M5-C remains optional for a concrete remote artifact-class need. M6-C2
 Cloudflare deployment, authentication/non-loopback origin integration and

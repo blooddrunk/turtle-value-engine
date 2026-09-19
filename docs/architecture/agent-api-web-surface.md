@@ -1,6 +1,6 @@
 # Agent/API/Web Read-only Surface
 
-Status: **M6-A frozen / M6-B complete / M6-C1 local preview complete**
+Status: **M6-A frozen / M6-B complete / M6-C1 local preview complete / published at 5774b29**
 
 ## Purpose
 
@@ -183,3 +183,7 @@ starts the real `tve surface serve` process and the built Cloudflare/Vite
 preview, then checks same-origin health/list/detail/404/mutation rejection and
 clean shutdown. Cloudflare deployment, authentication and non-loopback origin
 security remain M6-C2.
+
+The verified C1 implementation is published on `main` at `5774b29`. Exact
+commands, results and remote publication evidence are recorded in
+`docs/status/phase-5r-a-2026-09-19.md`.
