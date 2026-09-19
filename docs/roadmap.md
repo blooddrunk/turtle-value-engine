@@ -5132,9 +5132,17 @@ stable read-only endpoints and real loopback subprocess smoke are complete. It
 does not require M5-C or A6 production eligibility and does not read raw
 provider stores or recompute investment semantics.
 
-M5-C remains optional for a concrete remote artifact-class need. M6-C
-Worker/Dashboard, authentication/deployment integration and Phase 6
-watchlist/event monitoring remain later packages and were not started by M6-B.
+The completed local/preview package is
+[`M6-C1 — Personal Dashboard Foundation`](goals/phase-5r-a-m6-c1-personal-dashboard-foundation.md).
+It adds a typed React/Vite list/detail Dashboard and a bounded same-origin
+Cloudflare Worker proxy over the M6-B read contract. Generated API types,
+responsive semantic-state rendering, deterministic DOM tests and a real
+Python-API-to-Vite-preview smoke are complete. It introduces no mutation
+endpoint and does not recompute investment semantics.
+
+M5-C remains optional for a concrete remote artifact-class need. M6-C2
+Cloudflare deployment, authentication/non-loopback origin integration and
+Phase 6 watchlist/event monitoring remain later packages.
 
 ---
 
@@ -5185,7 +5193,8 @@ URGENT_MANUAL_REVIEW
 
 ### Personal web dashboard
 
-A later read-only personal Dashboard may be deployed on Cloudflare Workers.
+The completed C1 package provides a local/preview read-only personal Dashboard;
+it may later be deployed on Cloudflare Workers as a separate C2 package.
 It may use R2 for permitted immutable artifacts and D1 for derived indexes and
 run status. Acquisition normally runs locally or on the owner's VPS; a page
 request must not scrape upstream sources, invoke a model, expose restricted raw

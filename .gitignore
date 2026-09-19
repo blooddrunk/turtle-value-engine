@@ -3,6 +3,10 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .ruff_cache/
+.wrangler/
+.dev.vars*
+node_modules/
+dist/
 *.egg-info/
 
 # Private Phase 5R-A acquisition state; committed fixtures live under fixtures/.

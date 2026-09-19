@@ -203,6 +203,7 @@ def create_surface_app(
         response_model=SurfaceListResponse,
         operation_id="listSurfaces",
         tags=["surfaces"],
+        responses={400: {"model": SurfaceErrorResponse}},
     )
     def list_surfaces(
         request: Request,
@@ -224,6 +225,10 @@ def create_surface_app(
         response_model=ResearchSurfaceSnapshotV1,
         operation_id="getSurface",
         tags=["surfaces"],
+        responses={
+            404: {"model": SurfaceErrorResponse},
+            405: {"model": SurfaceErrorResponse},
+        },
     )
     def get_surface(request: Request, surface_id: str) -> Response:
         snapshot = service.get_surface(surface_id)

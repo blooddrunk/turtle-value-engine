@@ -1,8 +1,8 @@
 # Phase 5R-A M6-C1 — Personal Dashboard Foundation
 
-Status: **ACTIVE / NEXT**
+Status: **COMPLETE**
 Date: 2026-09-19
-Audited baseline: `dda3a0d` (M6-B complete on `main`)
+Audited baseline: `2edc30a` (M6-B complete on synchronized `main`)
 
 Parent context:
 - `AGENTS.md`
@@ -417,3 +417,13 @@ M6-C1 is complete only when:
 
 Stop after M6-C1 closure. Do not automatically start M6-C2, M5-C or Phase 6 in
 the same goal.
+
+## 16. Closure record — 2026-09-19
+
+M6-C1 is complete. The implementation adds the scoped React/Vite Dashboard,
+generated API contract, bounded same-origin Worker proxy, deterministic DOM
+tests and the real Python API plus Cloudflare/Vite preview smoke. It does not
+start M6-C2 or change deterministic investment semantics.
+
+Exact verification evidence is recorded in
+`docs/status/phase-5r-a-2026-09-19.md`.

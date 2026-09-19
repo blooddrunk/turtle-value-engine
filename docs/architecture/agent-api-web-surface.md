@@ -1,6 +1,6 @@
 # Agent/API/Web Read-only Surface
 
-Status: **M6-A frozen / M6-B complete**
+Status: **M6-A frozen / M6-B complete / M6-C1 local preview complete**
 
 ## Purpose
 
@@ -148,3 +148,38 @@ fetches health + a known surface, verifies a missing ID and a mutation rejection
 then shuts the server down. External cloud accounts, browsers and manual clicks
 are not M6-B acceptance prerequisites. The dated verification record is in
 `docs/status/phase-5r-a-2026-09-19.md`.
+
+## M6-C1 Dashboard — local/preview complete
+
+M6-C1 adds a human-facing read-only client without changing the M6-A or M6-B
+contracts:
+
+```text
+M6-B /healthz, /v1/surfaces, /v1/surfaces/{surface_id}
+  -> Cloudflare Worker allowlist proxy at same-origin /api/*
+  -> typed React Dashboard list/detail routes
+```
+
+The Dashboard lives under `apps/dashboard` and uses React 19, TypeScript, Vite,
+TanStack Router and TanStack Query. The official Cloudflare Vite plugin builds
+the Worker and Static Assets output. The browser only requests same-origin
+`/api/*` paths; the Worker accepts GET/HEAD for the bounded M6-B read contract,
+forwards only an explicit server-side `SURFACE_API_ORIGIN`, preserves relevant
+ETag/cache headers, and rejects mutation methods before any upstream request.
+It does not read repository files, raw stores or provider data and it never
+recomputes investment values.
+
+The checked-in
+`schemas/research-surface-api-v1.openapi.json` is exported from the real
+FastAPI route and response models using an explicit in-memory fixture. Dashboard
+types are generated into
+`apps/dashboard/src/generated/surface-api.d.ts`; a deterministic drift check
+fails when the generated file is stale.
+
+The C1 surface includes responsive overview/detail views, explicit loading,
+empty and error states, visible keyboard focus, and exact null/PARTIAL/BLOCKED/
+NOT_AVAILABLE/NOT_EVALUATED rendering. It has no mutation UI. Local acceptance
+starts the real `tve surface serve` process and the built Cloudflare/Vite
+preview, then checks same-origin health/list/detail/404/mutation rejection and
+clean shutdown. Cloudflare deployment, authentication and non-loopback origin
+security remain M6-C2.

@@ -173,8 +173,13 @@ optional FastAPI/uvicorn read-only adapter and `tve surface serve` over
 explicitly supplied, already-validated surface snapshots. It does not read
 raw provider stores, recompute investment math, silently discover workspace
 files, or require A6 production eligibility. M5-C remains optional until a
-concrete artifact class needs remote mirroring; M6-C Worker/Dashboard and
-Phase 6 watchlist/event monitoring remain later packages.
+concrete artifact class needs remote mirroring. M6-C1 is now complete at its
+local/preview integration boundary: a typed React/Vite Dashboard, generated
+OpenAPI client contract, bounded same-origin Cloudflare Worker proxy and real
+cross-stack smoke over `tve surface serve`. It remains read-only and does not
+read raw stores or recompute investment semantics. M6-C2 deployment,
+authentication and non-loopback origin security, plus Phase 6 watchlist/event
+monitoring, remain later packages.
 
 ## 5. Working with company data
 

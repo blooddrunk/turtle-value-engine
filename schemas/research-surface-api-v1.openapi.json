@@ -1,0 +1,2843 @@
+{
+  "components": {
+    "schemas": {
+      "BusinessQuality": {
+        "additionalProperties": false,
+        "description": "Structured business-quality assessment.",
+        "properties": {
+          "confidence": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConfidenceLevel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "critical_weaknesses": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Critical Weaknesses",
+            "type": "array"
+          },
+          "dimension_results": {
+            "items": {
+              "$ref": "#/components/schemas/BusinessQualityDimension"
+            },
+            "title": "Dimension Results",
+            "type": "array"
+          },
+          "evidence_coverage": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Coverage"
+          },
+          "flags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Flags",
+            "type": "array"
+          },
+          "grade": {
+            "anyOf": [
+              {
+                "enum": [
+                  "S",
+                  "A",
+                  "B",
+                  "WATCH",
+                  "FAIL"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grade"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "maximum": 40.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "unresolved_questions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Unresolved Questions",
+            "type": "array"
+          }
+        },
+        "title": "BusinessQuality",
+        "type": "object"
+      },
+      "BusinessQualityDimension": {
+        "additionalProperties": false,
+        "description": "One evidence-backed business-quality dimension.",
+        "properties": {
+          "confidence": {
+            "$ref": "#/components/schemas/ConfidenceLevel"
+          },
+          "counter_evidence_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Counter Evidence Ids",
+            "type": "array"
+          },
+          "dimension": {
+            "enum": [
+              "demand_durability",
+              "cyclicality",
+              "pricing_power",
+              "moat",
+              "capital_efficiency",
+              "dependency",
+              "regulatory_risk",
+              "predictability"
+            ],
+            "title": "Dimension",
+            "type": "string"
+          },
+          "reasoning_summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reasoning Summary"
+          },
+          "score": {
+            "maximum": 5.0,
+            "minimum": 0.0,
+            "title": "Score",
+            "type": "integer"
+          },
+          "supporting_evidence_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Supporting Evidence Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "dimension",
+          "score",
+          "supporting_evidence_ids",
+          "counter_evidence_ids",
+          "confidence"
+        ],
+        "title": "BusinessQualityDimension",
+        "type": "object"
+      },
+      "Company": {
+        "additionalProperties": false,
+        "description": "Company identity and accounting context.\n\n``primary_listing`` is the canonical stable issuer/listing identifier;\nadditional listings stay in ``other_listings`` for later price mapping.",
+        "properties": {
+          "accounting_standard": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accounting Standard"
+          },
+          "accounting_standard_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accounting Standard Version"
+          },
+          "country_or_region": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Country Or Region"
+          },
+          "fiscal_year_end": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fiscal Year End"
+          },
+          "industry": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Industry"
+          },
+          "legal_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Legal Name"
+          },
+          "name": {
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "other_listings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Other Listings",
+            "type": "array"
+          },
+          "primary_listing": {
+            "minLength": 1,
+            "title": "Primary Listing",
+            "type": "string"
+          },
+          "reporting_currency": {
+            "maxLength": 3,
+            "minLength": 3,
+            "title": "Reporting Currency",
+            "type": "string"
+          },
+          "sector": {
+            "minLength": 1,
+            "title": "Sector",
+            "type": "string"
+          },
+          "special_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Special Model"
+          }
+        },
+        "required": [
+          "name",
+          "primary_listing",
+          "sector",
+          "reporting_currency"
+        ],
+        "title": "Company",
+        "type": "object"
+      },
+      "ConfidenceLevel": {
+        "description": "Qualitative confidence used by metrics, gates and decisions.",
+        "enum": [
+          "HIGH",
+          "MEDIUM",
+          "LOW"
+        ],
+        "title": "ConfidenceLevel",
+        "type": "string"
+      },
+      "DataQuality": {
+        "additionalProperties": false,
+        "description": "Overall data-quality summary for an analysis.",
+        "properties": {
+          "confidence": {
+            "$ref": "#/components/schemas/ConfidenceLevel"
+          },
+          "critical_missing_fields": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Critical Missing Fields",
+            "type": "array"
+          },
+          "evidence_coverage": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Evidence Coverage",
+            "type": "number"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          }
+        },
+        "required": [
+          "confidence",
+          "evidence_coverage",
+          "critical_missing_fields"
+        ],
+        "title": "DataQuality",
+        "type": "object"
+      },
+      "Decision": {
+        "additionalProperties": false,
+        "description": "Final derived decision; never an independent narrative opinion.",
+        "properties": {
+          "auto_decision_allowed": {
+            "title": "Auto Decision Allowed",
+            "type": "boolean"
+          },
+          "blocking_reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Blocking Reasons",
+            "type": "array"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConfidenceLevel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "state": {
+            "$ref": "#/components/schemas/DecisionState"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "top_counter_evidence_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Top Counter Evidence Ids",
+            "type": "array"
+          },
+          "top_supporting_evidence_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Top Supporting Evidence Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "state",
+          "auto_decision_allowed",
+          "summary",
+          "blocking_reasons"
+        ],
+        "title": "Decision",
+        "type": "object"
+      },
+      "DecisionState": {
+        "description": "States allowed by the CompanyAnalysis decision contract.",
+        "enum": [
+          "PASS",
+          "WATCH",
+          "FAIL",
+          "SPECIAL_REVIEW",
+          "ACCEPTABLE",
+          "TURTLE_ENTRY",
+          "EXTREME_SAFETY",
+          "TOO_EXPENSIVE_FOR_STRICT_MODEL",
+          "NO_NORMAL_VALUATION"
+        ],
+        "title": "DecisionState",
+        "type": "string"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "ResearchSurfaceSnapshotV1": {
+        "additionalProperties": false,
+        "description": "Versioned deterministic read-only projection for agents and APIs.",
+        "properties": {
+          "accepted_adjustment_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Accepted Adjustment Ids",
+            "type": "array"
+          },
+          "analysis": {
+            "$ref": "#/components/schemas/SurfaceAnalysisView"
+          },
+          "analysis_id": {
+            "minLength": 1,
+            "title": "Analysis Id",
+            "type": "string"
+          },
+          "as_of": {
+            "format": "date",
+            "title": "As Of",
+            "type": "string"
+          },
+          "company": {
+            "$ref": "#/components/schemas/Company"
+          },
+          "content_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Content Sha256",
+            "type": "string"
+          },
+          "contract": {
+            "const": "research_surface_snapshot_v1",
+            "default": "research_surface_snapshot_v1",
+            "title": "Contract",
+            "type": "string"
+          },
+          "decision_trace_reference": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SurfaceArtifactReference"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "historical_status": {
+            "$ref": "#/components/schemas/SurfaceHistoricalStatus"
+          },
+          "profile_id": {
+            "minLength": 1,
+            "title": "Profile Id",
+            "type": "string"
+          },
+          "research_report_reference": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SurfaceArtifactReference"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "schema_version": {
+            "const": "1.0.0",
+            "default": "1.0.0",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "source_artifacts": {
+            "items": {
+              "$ref": "#/components/schemas/SurfaceArtifactReference"
+            },
+            "minItems": 1,
+            "title": "Source Artifacts",
+            "type": "array"
+          },
+          "surface_id": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Surface Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "surface_id",
+          "content_sha256",
+          "analysis_id",
+          "as_of",
+          "profile_id",
+          "company",
+          "analysis",
+          "source_artifacts",
+          "historical_status"
+        ],
+        "title": "ResearchSurfaceSnapshotV1",
+        "type": "object"
+      },
+      "SurfaceAcceptanceStatus": {
+        "additionalProperties": false,
+        "description": "Identity and exact blockers from the offline A6 report.",
+        "properties": {
+          "accepted": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accepted"
+          },
+          "blockers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Blockers",
+            "type": "array"
+          },
+          "checks": {
+            "additionalProperties": {
+              "enum": [
+                "PASS",
+                "BLOCKED"
+              ],
+              "type": "string"
+            },
+            "title": "Checks",
+            "type": "object"
+          },
+          "dataset_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dataset Id"
+          },
+          "offline_replay_verified": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Offline Replay Verified"
+          },
+          "plan_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan Id"
+          },
+          "probe_network_used": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Probe Network Used"
+          },
+          "probe_report_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Probe Report Id"
+          },
+          "report_sha256": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Report Sha256"
+          },
+          "status": {
+            "enum": [
+              "NOT_AVAILABLE",
+              "ACCEPTED",
+              "BLOCKED"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "target_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Id"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "SurfaceAcceptanceStatus",
+        "type": "object"
+      },
+      "SurfaceAnalysisView": {
+        "additionalProperties": false,
+        "description": "Safe read model of a ``CompanyAnalysis``.",
+        "properties": {
+          "analysis_id": {
+            "minLength": 1,
+            "title": "Analysis Id",
+            "type": "string"
+          },
+          "as_of": {
+            "format": "date",
+            "title": "As Of",
+            "type": "string"
+          },
+          "business_quality": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BusinessQuality"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "business_quality_status": {
+            "enum": [
+              "VALIDATED",
+              "NOT_EVALUATED"
+            ],
+            "title": "Business Quality Status",
+            "type": "string"
+          },
+          "company": {
+            "$ref": "#/components/schemas/Company"
+          },
+          "data_quality": {
+            "$ref": "#/components/schemas/DataQuality"
+          },
+          "decision": {
+            "$ref": "#/components/schemas/Decision"
+          },
+          "evidence_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence Ids",
+            "type": "array"
+          },
+          "flags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Flags",
+            "type": "array"
+          },
+          "gates": {
+            "$ref": "#/components/schemas/SurfaceGates"
+          },
+          "metrics": {
+            "$ref": "#/components/schemas/SurfaceMetrics"
+          },
+          "profile_id": {
+            "minLength": 1,
+            "title": "Profile Id",
+            "type": "string"
+          },
+          "valuation": {
+            "$ref": "#/components/schemas/ValuationResult"
+          }
+        },
+        "required": [
+          "analysis_id",
+          "as_of",
+          "profile_id",
+          "company",
+          "data_quality",
+          "metrics",
+          "gates",
+          "valuation",
+          "decision",
+          "business_quality_status"
+        ],
+        "title": "SurfaceAnalysisView",
+        "type": "object"
+      },
+      "SurfaceArtifactReference": {
+        "additionalProperties": false,
+        "description": "Safe identity-only reference to one frozen source artifact.",
+        "properties": {
+          "artifact_id": {
+            "minLength": 1,
+            "title": "Artifact Id",
+            "type": "string"
+          },
+          "artifact_type": {
+            "enum": [
+              "COMPANY_ANALYSIS",
+              "DECISION_TRACE",
+              "RESEARCH_REPORT",
+              "HISTORICAL_MANIFEST",
+              "HISTORICAL_ACCEPTANCE",
+              "HISTORICAL_READINESS",
+              "HISTORICAL_VALIDATION"
+            ],
+            "title": "Artifact Type",
+            "type": "string"
+          },
+          "as_of": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "As Of"
+          },
+          "content_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Content Sha256",
+            "type": "string"
+          }
+        },
+        "required": [
+          "artifact_type",
+          "artifact_id",
+          "content_sha256"
+        ],
+        "title": "SurfaceArtifactReference",
+        "type": "object"
+      },
+      "SurfaceCDCMetric": {
+        "additionalProperties": false,
+        "description": "Allowlisted CDC output fields; unknown CDC extras are not published.",
+        "properties": {
+          "adjusted_cfo": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Adjusted Cfo"
+          },
+          "all_in_cdc": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "All In Cdc"
+          },
+          "all_in_cdc_5y": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "All In Cdc 5Y"
+          },
+          "cdc_yield": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cdc Yield"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConfidenceLevel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "core_cdc": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Core Cdc"
+          },
+          "cumulative_core_cdc_5y": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cumulative Core Cdc 5Y"
+          },
+          "economic_gross_capex": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Economic Gross Capex"
+          },
+          "flags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Flags",
+            "type": "array"
+          },
+          "lease_principal_outside_cfo": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lease Principal Outside Cfo"
+          },
+          "normalized_core_cdc": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Normalized Core Cdc"
+          },
+          "normalized_parent_core_cdc": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Normalized Parent Core Cdc"
+          },
+          "parent_core_cdc": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Core Cdc"
+          },
+          "positive_years_5y": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Positive Years 5Y"
+          },
+          "reported_cfo": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reported Cfo"
+          }
+        },
+        "title": "SurfaceCDCMetric",
+        "type": "object"
+      },
+      "SurfaceCoverageRecord": {
+        "additionalProperties": false,
+        "description": "Compact coverage/freshness information already computed upstream.",
+        "properties": {
+          "evidence_basis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Basis"
+          },
+          "expected_session_count": {
+            "minimum": 0.0,
+            "title": "Expected Session Count",
+            "type": "integer"
+          },
+          "listing_id": {
+            "minLength": 1,
+            "title": "Listing Id",
+            "type": "string"
+          },
+          "missing_date_count": {
+            "minimum": 0.0,
+            "title": "Missing Date Count",
+            "type": "integer"
+          },
+          "observed_session_count": {
+            "minimum": 0.0,
+            "title": "Observed Session Count",
+            "type": "integer"
+          },
+          "period_end": {
+            "format": "date",
+            "title": "Period End",
+            "type": "string"
+          },
+          "period_start": {
+            "format": "date",
+            "title": "Period Start",
+            "type": "string"
+          },
+          "source_artifact_ids": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Source Artifact Ids",
+            "type": "array"
+          },
+          "source_kind": {
+            "minLength": 1,
+            "title": "Source Kind",
+            "type": "string"
+          },
+          "status": {
+            "minLength": 1,
+            "title": "Status",
+            "type": "string"
+          },
+          "terminal_outcome": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Terminal Outcome"
+          }
+        },
+        "required": [
+          "source_kind",
+          "listing_id",
+          "period_start",
+          "period_end",
+          "expected_session_count",
+          "observed_session_count",
+          "missing_date_count",
+          "source_artifact_ids",
+          "status"
+        ],
+        "title": "SurfaceCoverageRecord",
+        "type": "object"
+      },
+      "SurfaceErrorDetail": {
+        "additionalProperties": false,
+        "description": "Stable machine-readable error detail.",
+        "properties": {
+          "code": {
+            "minLength": 1,
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "minLength": 1,
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "SurfaceErrorDetail",
+        "type": "object"
+      },
+      "SurfaceErrorResponse": {
+        "additionalProperties": false,
+        "description": "Stable error envelope used by the API adapter.",
+        "properties": {
+          "error": {
+            "$ref": "#/components/schemas/SurfaceErrorDetail"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "title": "SurfaceErrorResponse",
+        "type": "object"
+      },
+      "SurfaceGate": {
+        "additionalProperties": false,
+        "description": "One hard-gate result copied from ``CompanyAnalysis``.",
+        "properties": {
+          "blocking_reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Blocking Reasons",
+            "type": "array"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConfidenceLevel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "rules": {
+            "items": {
+              "$ref": "#/components/schemas/SurfaceGateRule"
+            },
+            "title": "Rules",
+            "type": "array"
+          },
+          "status": {
+            "minLength": 1,
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "SurfaceGate",
+        "type": "object"
+      },
+      "SurfaceGateRule": {
+        "additionalProperties": false,
+        "description": "A compact, safe projection of one deterministic gate rule.",
+        "properties": {
+          "actual": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actual"
+          },
+          "evidence_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence Ids",
+            "type": "array"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "rule_id": {
+            "minLength": 1,
+            "title": "Rule Id",
+            "type": "string"
+          },
+          "status": {
+            "minLength": 1,
+            "title": "Status",
+            "type": "string"
+          },
+          "threshold": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Threshold"
+          }
+        },
+        "required": [
+          "rule_id",
+          "status"
+        ],
+        "title": "SurfaceGateRule",
+        "type": "object"
+      },
+      "SurfaceGates": {
+        "additionalProperties": false,
+        "description": "The six fixed gate names in the deterministic analysis contract.",
+        "properties": {
+          "balance_sheet": {
+            "$ref": "#/components/schemas/SurfaceGate"
+          },
+          "business_quality": {
+            "$ref": "#/components/schemas/SurfaceGate"
+          },
+          "cdc": {
+            "$ref": "#/components/schemas/SurfaceGate"
+          },
+          "governance_data_quality": {
+            "$ref": "#/components/schemas/SurfaceGate"
+          },
+          "through_return": {
+            "$ref": "#/components/schemas/SurfaceGate"
+          },
+          "universe": {
+            "$ref": "#/components/schemas/SurfaceGate"
+          }
+        },
+        "required": [
+          "universe",
+          "balance_sheet",
+          "cdc",
+          "through_return",
+          "business_quality",
+          "governance_data_quality"
+        ],
+        "title": "SurfaceGates",
+        "type": "object"
+      },
+      "SurfaceHealthResponse": {
+        "additionalProperties": false,
+        "description": "Local service health; it deliberately says nothing about upstreams.",
+        "properties": {
+          "contract": {
+            "title": "Contract",
+            "type": "string"
+          },
+          "loaded_snapshot_count": {
+            "minimum": 1.0,
+            "title": "Loaded Snapshot Count",
+            "type": "integer"
+          },
+          "status": {
+            "const": "ok",
+            "title": "Status",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "contract",
+          "version",
+          "loaded_snapshot_count"
+        ],
+        "title": "SurfaceHealthResponse",
+        "type": "object"
+      },
+      "SurfaceHistoricalStatus": {
+        "additionalProperties": false,
+        "description": "Read-only historical/A6 status; absence is explicit, never green.",
+        "properties": {
+          "acceptance": {
+            "$ref": "#/components/schemas/SurfaceAcceptanceStatus"
+          },
+          "availability": {
+            "enum": [
+              "NOT_AVAILABLE",
+              "AVAILABLE"
+            ],
+            "title": "Availability",
+            "type": "string"
+          },
+          "blockers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Blockers",
+            "type": "array"
+          },
+          "claim_state": {
+            "enum": [
+              "NOT_AVAILABLE",
+              "UNKNOWN",
+              "PARTIAL",
+              "BLOCKED",
+              "READY",
+              "PRODUCTION_ELIGIBLE"
+            ],
+            "title": "Claim State",
+            "type": "string"
+          },
+          "coverage": {
+            "items": {
+              "$ref": "#/components/schemas/SurfaceCoverageRecord"
+            },
+            "title": "Coverage",
+            "type": "array"
+          },
+          "dataset_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dataset Id"
+          },
+          "dataset_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dataset Version"
+          },
+          "limitations": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Limitations",
+            "type": "array"
+          },
+          "manifest_sha256": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Manifest Sha256"
+          },
+          "production_eligible": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Production Eligible"
+          },
+          "readiness": {
+            "$ref": "#/components/schemas/SurfaceReadinessStatus"
+          },
+          "source_freshness": {
+            "items": {
+              "$ref": "#/components/schemas/SurfaceSourceFreshness"
+            },
+            "title": "Source Freshness",
+            "type": "array"
+          },
+          "target_scope": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SurfaceTargetScope"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "validation": {
+            "$ref": "#/components/schemas/SurfaceValidationStatus"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "availability",
+          "claim_state",
+          "acceptance",
+          "readiness",
+          "validation"
+        ],
+        "title": "SurfaceHistoricalStatus",
+        "type": "object"
+      },
+      "SurfaceListResponse": {
+        "additionalProperties": false,
+        "description": "Deterministically ordered surface metadata response.",
+        "properties": {
+          "surfaces": {
+            "items": {
+              "$ref": "#/components/schemas/SurfaceMetadata"
+            },
+            "title": "Surfaces",
+            "type": "array"
+          }
+        },
+        "required": [
+          "surfaces"
+        ],
+        "title": "SurfaceListResponse",
+        "type": "object"
+      },
+      "SurfaceMetadata": {
+        "additionalProperties": false,
+        "description": "Safe deterministic metadata returned by the list operation.",
+        "properties": {
+          "analysis_id": {
+            "minLength": 1,
+            "title": "Analysis Id",
+            "type": "string"
+          },
+          "as_of": {
+            "format": "date",
+            "title": "As Of",
+            "type": "string"
+          },
+          "content_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Content Sha256",
+            "type": "string"
+          },
+          "primary_listing": {
+            "minLength": 1,
+            "title": "Primary Listing",
+            "type": "string"
+          },
+          "profile_id": {
+            "minLength": 1,
+            "title": "Profile Id",
+            "type": "string"
+          },
+          "surface_id": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Surface Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "surface_id",
+          "content_sha256",
+          "analysis_id",
+          "primary_listing",
+          "profile_id",
+          "as_of"
+        ],
+        "title": "SurfaceMetadata",
+        "type": "object"
+      },
+      "SurfaceMetrics": {
+        "additionalProperties": false,
+        "description": "Deterministic metrics copied from the validated analysis.",
+        "properties": {
+          "cdc": {
+            "$ref": "#/components/schemas/SurfaceCDCMetric"
+          },
+          "net_cash": {
+            "$ref": "#/components/schemas/SurfaceNetCashMetric"
+          },
+          "through_return": {
+            "$ref": "#/components/schemas/SurfaceThroughReturnMetric"
+          }
+        },
+        "required": [
+          "cdc",
+          "net_cash",
+          "through_return"
+        ],
+        "title": "SurfaceMetrics",
+        "type": "object"
+      },
+      "SurfaceNetCashMetric": {
+        "additionalProperties": false,
+        "description": "Allowlisted Net Cash output fields.",
+        "properties": {
+          "adjusted_ev": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Adjusted Ev"
+          },
+          "book_cash": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Book Cash"
+          },
+          "book_net_cash": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Book Net Cash"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConfidenceLevel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "debt_equivalent": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Debt Equivalent"
+          },
+          "ex_cash_cdc_yield": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ex Cash Cdc Yield"
+          },
+          "financial_debt": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Financial Debt"
+          },
+          "financial_net_cash": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Financial Net Cash"
+          },
+          "flags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Flags",
+            "type": "array"
+          },
+          "interest_coverage": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interest Coverage"
+          },
+          "lease_debt": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lease Debt"
+          },
+          "liquidity_coverage": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Liquidity Coverage"
+          },
+          "net_debt_to_ebitda": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Net Debt To Ebitda"
+          },
+          "obligation_adjusted_net_cash": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Obligation Adjusted Net Cash"
+          },
+          "owner_accessible_cash": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Accessible Cash"
+          },
+          "owner_debt_equivalent": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Debt Equivalent"
+          },
+          "owner_net_cash_ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Net Cash Ratio"
+          },
+          "owner_realizable_net_cash": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Realizable Net Cash"
+          },
+          "source_evidence_ids": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "title": "Source Evidence Ids",
+            "type": "object"
+          },
+          "stress_coverage": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stress Coverage"
+          },
+          "strict_cash": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Strict Cash"
+          },
+          "strict_net_cash": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Strict Net Cash"
+          },
+          "valuation_net_cash": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valuation Net Cash"
+          }
+        },
+        "title": "SurfaceNetCashMetric",
+        "type": "object"
+      },
+      "SurfaceReadinessStatus": {
+        "additionalProperties": false,
+        "description": "Identity and readiness flags from an existing readiness report.",
+        "properties": {
+          "acquisition_ready": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Acquisition Ready"
+          },
+          "batch_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Batch Ids",
+            "type": "array"
+          },
+          "blockers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Blockers",
+            "type": "array"
+          },
+          "compiled_dataset_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Compiled Dataset Id"
+          },
+          "generated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generated At"
+          },
+          "network_used": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Network Used"
+          },
+          "personal_research_ready": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Personal Research Ready"
+          },
+          "plan_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan Id"
+          },
+          "probe_report_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Probe Report Ids",
+            "type": "array"
+          },
+          "production_eligible": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Production Eligible"
+          },
+          "readiness": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Readiness"
+          },
+          "report_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Report Id"
+          },
+          "report_sha256": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Report Sha256"
+          },
+          "status": {
+            "enum": [
+              "NOT_AVAILABLE",
+              "AVAILABLE"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "SurfaceReadinessStatus",
+        "type": "object"
+      },
+      "SurfaceSourceFreshness": {
+        "additionalProperties": false,
+        "description": "Safe source coverage/freshness summary from a historical manifest.",
+        "properties": {
+          "content_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Content Sha256",
+            "type": "string"
+          },
+          "coverage_end": {
+            "format": "date",
+            "title": "Coverage End",
+            "type": "string"
+          },
+          "coverage_listing_count": {
+            "minimum": 0.0,
+            "title": "Coverage Listing Count",
+            "type": "integer"
+          },
+          "coverage_start": {
+            "format": "date",
+            "title": "Coverage Start",
+            "type": "string"
+          },
+          "retrieved_at": {
+            "format": "date-time",
+            "title": "Retrieved At",
+            "type": "string"
+          },
+          "source_id": {
+            "minLength": 1,
+            "title": "Source Id",
+            "type": "string"
+          },
+          "source_kind": {
+            "minLength": 1,
+            "title": "Source Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_id",
+          "source_kind",
+          "coverage_start",
+          "coverage_end",
+          "retrieved_at",
+          "coverage_listing_count",
+          "content_sha256"
+        ],
+        "title": "SurfaceSourceFreshness",
+        "type": "object"
+      },
+      "SurfaceTargetScope": {
+        "additionalProperties": false,
+        "description": "Non-sensitive historical target scope copied from a manifest.",
+        "properties": {
+          "coverage_claim": {
+            "minLength": 1,
+            "title": "Coverage Claim",
+            "type": "string"
+          },
+          "end_date": {
+            "format": "date",
+            "title": "End Date",
+            "type": "string"
+          },
+          "listing_ids": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Listing Ids",
+            "type": "array"
+          },
+          "markets": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Markets",
+            "type": "array"
+          },
+          "membership_claim": {
+            "minLength": 1,
+            "title": "Membership Claim",
+            "type": "string"
+          },
+          "required_source_kinds": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Required Source Kinds",
+            "type": "array"
+          },
+          "start_date": {
+            "format": "date",
+            "title": "Start Date",
+            "type": "string"
+          },
+          "target_id": {
+            "minLength": 1,
+            "title": "Target Id",
+            "type": "string"
+          },
+          "target_name": {
+            "minLength": 1,
+            "title": "Target Name",
+            "type": "string"
+          },
+          "universe_id": {
+            "minLength": 1,
+            "title": "Universe Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_id",
+          "target_name",
+          "universe_id",
+          "markets",
+          "listing_ids",
+          "start_date",
+          "end_date",
+          "membership_claim",
+          "coverage_claim",
+          "required_source_kinds"
+        ],
+        "title": "SurfaceTargetScope",
+        "type": "object"
+      },
+      "SurfaceThroughReturnMetric": {
+        "additionalProperties": false,
+        "description": "Allowlisted Through Return output fields.",
+        "properties": {
+          "buyback_credit_eligible": {
+            "default": false,
+            "title": "Buyback Credit Eligible",
+            "type": "boolean"
+          },
+          "buyback_history_years": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Buyback History Years"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConfidenceLevel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "conservative_payout_ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conservative Payout Ratio"
+          },
+          "distributable_base": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Distributable Base"
+          },
+          "dividend_through_return": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dividend Through Return"
+          },
+          "flags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Flags",
+            "type": "array"
+          },
+          "normalized_net_share_reduction": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Normalized Net Share Reduction"
+          },
+          "normalized_parent_core_cdc": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Normalized Parent Core Cdc"
+          },
+          "normalized_parent_profit": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Normalized Parent Profit"
+          },
+          "payout_policy_floor": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payout Policy Floor"
+          },
+          "policy_confidence": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConfidenceLevel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "source_evidence_ids": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "title": "Source Evidence Ids",
+            "type": "object"
+          },
+          "special_return": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Special Return"
+          },
+          "through_return": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Through Return"
+          },
+          "verified_recurring_buyback_cash": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Verified Recurring Buyback Cash",
+            "type": "number"
+          }
+        },
+        "title": "SurfaceThroughReturnMetric",
+        "type": "object"
+      },
+      "SurfaceValidationStatus": {
+        "additionalProperties": false,
+        "description": "Safe projection of a deterministic historical validation summary.",
+        "properties": {
+          "content_sha256": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Sha256"
+          },
+          "coverage_status": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Coverage Status",
+            "type": "object"
+          },
+          "dataset_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dataset Id"
+          },
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "production_blockers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Production Blockers",
+            "type": "array"
+          },
+          "production_eligible": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Production Eligible"
+          },
+          "shard_rows": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Shard Rows",
+            "type": "object"
+          },
+          "status": {
+            "enum": [
+              "NOT_AVAILABLE",
+              "AVAILABLE"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "valid": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "SurfaceValidationStatus",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      },
+      "ValuationResult": {
+        "additionalProperties": false,
+        "description": "Strict-v1 valuation output matching valuation-result.schema.json.",
+        "properties": {
+          "actual_aggregate_company_market_cap": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actual Aggregate Company Market Cap"
+          },
+          "adjusted_ev": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Adjusted Ev"
+          },
+          "as_of": {
+            "format": "date",
+            "title": "As Of",
+            "type": "string"
+          },
+          "asset_supported_market_cap": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asset Supported Market Cap"
+          },
+          "confidence": {
+            "$ref": "#/components/schemas/ConfidenceLevel"
+          },
+          "current_price": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Price"
+          },
+          "current_valuation_state": {
+            "$ref": "#/components/schemas/ValuationState"
+          },
+          "distributable_base": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Distributable Base"
+          },
+          "ex_cash_cdc_yield": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ex Cash Cdc Yield"
+          },
+          "flags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Flags",
+            "type": "array"
+          },
+          "listing": {
+            "title": "Listing",
+            "type": "string"
+          },
+          "listing_equivalent_market_cap": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Listing Equivalent Market Cap"
+          },
+          "mos_acceptable": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mos Acceptable"
+          },
+          "mos_extreme": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mos Extreme"
+          },
+          "mos_turtle": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mos Turtle"
+          },
+          "normalized_diluted_economic_shares": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Normalized Diluted Economic Shares"
+          },
+          "normalized_parent_core_cdc": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Normalized Parent Core Cdc"
+          },
+          "owner_realizable_net_cash": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Realizable Net Cash"
+          },
+          "recurring_dividend_cash": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recurring Dividend Cash"
+          },
+          "recurring_shareholder_cash": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recurring Shareholder Cash"
+          },
+          "tiers": {
+            "$ref": "#/components/schemas/ValuationTiers"
+          },
+          "valuation_currency": {
+            "maxLength": 3,
+            "minLength": 3,
+            "title": "Valuation Currency",
+            "type": "string"
+          },
+          "valuation_net_cash": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valuation Net Cash"
+          },
+          "verified_recurring_buyback_cash": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Verified Recurring Buyback Cash",
+            "type": "number"
+          }
+        },
+        "required": [
+          "as_of",
+          "valuation_currency",
+          "listing",
+          "normalized_parent_core_cdc",
+          "distributable_base",
+          "recurring_shareholder_cash",
+          "tiers",
+          "current_valuation_state",
+          "confidence"
+        ],
+        "title": "ValuationResult",
+        "type": "object"
+      },
+      "ValuationState": {
+        "description": "States specific to the valuation-result contract.",
+        "enum": [
+          "EXTREME_SAFETY",
+          "TURTLE_ENTRY",
+          "ACCEPTABLE",
+          "WATCH",
+          "TOO_EXPENSIVE_FOR_STRICT_MODEL",
+          "NO_NORMAL_VALUATION",
+          "SPECIAL_REVIEW"
+        ],
+        "title": "ValuationState",
+        "type": "string"
+      },
+      "ValuationTier": {
+        "additionalProperties": false,
+        "description": "One strict-v1 valuation tier.",
+        "properties": {
+          "cdc_hurdle": {
+            "exclusiveMinimum": 0.0,
+            "title": "Cdc Hurdle",
+            "type": "number"
+          },
+          "market_cap": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Market Cap"
+          },
+          "owner_net_cash_ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Net Cash Ratio"
+          },
+          "price": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price"
+          },
+          "return_hurdle": {
+            "exclusiveMinimum": 0.0,
+            "title": "Return Hurdle",
+            "type": "number"
+          },
+          "valuation_net_cash_ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valuation Net Cash Ratio"
+          }
+        },
+        "required": [
+          "cdc_hurdle",
+          "return_hurdle"
+        ],
+        "title": "ValuationTier",
+        "type": "object"
+      },
+      "ValuationTiers": {
+        "additionalProperties": false,
+        "description": "The four fixed tier keys required by valuation-result.schema.json.",
+        "properties": {
+          "acceptable": {
+            "$ref": "#/components/schemas/ValuationTier"
+          },
+          "extreme_safety": {
+            "$ref": "#/components/schemas/ValuationTier"
+          },
+          "observation": {
+            "$ref": "#/components/schemas/ValuationTier"
+          },
+          "turtle_entry": {
+            "$ref": "#/components/schemas/ValuationTier"
+          }
+        },
+        "required": [
+          "observation",
+          "acceptable",
+          "turtle_entry",
+          "extreme_safety"
+        ],
+        "title": "ValuationTiers",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "Read-only access to explicitly supplied ResearchSurfaceSnapshotV1 artifacts.",
+    "title": "Turtle Value Engine Research Surface API",
+    "version": "1.0.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/healthz": {
+      "get": {
+        "operationId": "getHealth",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SurfaceHealthResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Healthz",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/v1/surfaces": {
+      "get": {
+        "operationId": "listSurfaces",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "primary_listing",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Primary Listing"
+            }
+          },
+          {
+            "in": "query",
+            "name": "profile_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Profile Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "as_of",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "As Of"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SurfaceListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SurfaceErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Surfaces",
+        "tags": [
+          "surfaces"
+        ]
+      }
+    },
+    "/v1/surfaces/{surface_id}": {
+      "get": {
+        "operationId": "getSurface",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "surface_id",
+            "required": true,
+            "schema": {
+              "title": "Surface Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchSurfaceSnapshotV1"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SurfaceErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SurfaceErrorResponse"
+                }
+              }
+            },
+            "description": "Method Not Allowed"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Surface",
+        "tags": [
+          "surfaces"
+        ]
+      }
+    }
+  }
+}
