@@ -5122,10 +5122,16 @@ tve surface build|validate CLI are complete. No HTTP server, Worker/D1
 application, remote publishing, monitoring scheduler or second implementation
 of investment calculations was introduced.
 
-The next package is intentionally not selected by M6-A. Choose M6-B
-(read-only API adapter), M5-C (only when a concrete remote artifact class
-requires mirroring), or M6-C (personal Worker/Dashboard) from a concrete
-deployment need. Phase 6 monitoring remains separate.
+The selected next package is
+[`M6-B — Read-only API Adapter`](goals/phase-5r-a-m6-b-read-only-api-adapter.md).
+It exposes only validated `ResearchSurfaceSnapshotV1` artifacts through a
+small application/HTTP boundary with explicit snapshot inputs, loopback-first
+serving and automated black-box verification. It does not require M5-C or A6
+production eligibility and does not read raw provider stores or recompute
+investment semantics.
+
+M5-C remains optional for a concrete remote artifact-class need. M6-C
+Worker/Dashboard and Phase 6 watchlist/event monitoring remain later packages.
 
 ---
 

@@ -1,6 +1,6 @@
 # Agent/API/Web Read-only Surface
 
-Status: **M6-A frozen / offline projection**
+Status: **M6-A frozen / M6-B planned next**
 
 ## Purpose
 
@@ -86,3 +86,40 @@ The additive CLI is local and offline:
 This milestone does not serve HTTP, publish artifacts remotely, add auth,
 create Worker/D1/UI code, schedule refreshes or monitor watchlists. Those are
 separate follow-on packages.
+
+
+## M6-B API adapter direction
+
+M6-B consumes only already validated `ResearchSurfaceSnapshotV1` artifacts.
+The intended boundary is:
+
+```text
+explicit snapshot paths / in-memory validated snapshots
+  -> SurfaceRegistry
+  -> framework-neutral read service
+  -> thin ASGI/FastAPI adapter
+  -> local/private read-only clients
+```
+
+The registry must not recursively scan a workspace, raw CAS, historical store or
+research workspace. Startup validates every configured snapshot and fails closed
+on malformed identities or duplicate/ambiguous registrations.
+
+The initial HTTP surface is deliberately small:
+
+- `GET /healthz`;
+- `GET /v1/surfaces` for deterministic metadata/filtering;
+- `GET /v1/surfaces/{surface_id}` for the complete frozen snapshot;
+- generated OpenAPI for the same read-only contract.
+
+No POST/PUT/PATCH/DELETE endpoint may mutate repository or investment state.
+The server defaults to `127.0.0.1`; CORS is disabled by default. Public
+internet exposure, identity-provider integration and Cloudflare Access belong to
+a later deployment/security package. A non-loopback bind, if supported at all,
+must require an explicit opt-in flag and must never be the default.
+
+M6-B acceptance must be automated: focused API tests, M6-A regression tests,
+full pytest/ruff, and one real loopback socket smoke test that starts the server,
+fetches health + a known surface, verifies a missing ID and a mutation rejection,
+then shuts the server down. External cloud accounts, browsers and manual clicks
+are not M6-B acceptance prerequisites.

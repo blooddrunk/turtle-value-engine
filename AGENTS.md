@@ -165,11 +165,16 @@ HTTPS operation URI and never fall back to loopback; remote auth/transport
 diagnostics remain separate from FQGate entitlement diagnostics. The checked
 remote bridge is not yet a proven live machine market-history contract, so
 `REMOTE_BRIDGE_LIVE_UNPROVEN` remains explicit.
-The executable next-stage package is
-`docs/goals/phase-5r-a-production-source-acquisition.md`. Its minimum path is
-personal-first: official public and documented personal-account sources, local
-private content-addressed storage, and no mandatory institutional data contract.
-Commercial adapters and remote object storage are optional extensions.
+M6-A is complete at `ad864510`: the repository now exposes the frozen
+`ResearchSurfaceSnapshotV1` contract, checked-in schema, explicit projection
+API and offline `tve surface build|validate` CLI. The active implementation
+package is now
+`docs/goals/phase-5r-a-m6-b-read-only-api-adapter.md`: a thin read-only API
+adapter over explicitly supplied, already-validated surface snapshots. It must
+not read raw provider stores, recompute investment math, silently discover
+workspace files, or require A6 production eligibility. M5-C remains optional
+until a concrete artifact class needs remote mirroring; M6-C Worker/Dashboard
+and Phase 6 watchlist/event monitoring remain later packages.
 
 ## 5. Working with company data
 

@@ -1,7 +1,7 @@
 # Phase 5R-A Next — Personal Research Data Acquisition and Deployment-Neutral Access
 
-Status: **ACTIVE / M4 CLOSED PARTIAL; M5-A/B COMPLETE; M6-A ACTIVE NEXT; A6 PENDING**
-Date: 2026-09-18
+Status: **ACTIVE / M4 CLOSED PARTIAL; M5-A/B COMPLETE; M6-A COMPLETE; M6-B ACTIVE NEXT; A6 PENDING**
+Date: 2026-09-19
 
 ## 1. Objective
 
@@ -337,10 +337,17 @@ M5-B is complete at `1580670`: one real optional/lazy S3-compatible backend now 
 
 ### M6 — Agent/API/Web surface
 
-The active next package is M6-A:
+M6-A is complete at `ad864510`:
 `docs/goals/phase-5r-a-m6-a-read-only-research-surface.md`.
 
-M6-A freezes a versioned, schema-backed, offline read-only research snapshot over existing validated artifacts so Hermes/Skill/API/Web consumers can use one stable derived contract without reimplementing investment math. HTTP serving, authentication, Cloudflare Worker/D1 code, remote publishing and Phase 6 watchlist/event monitoring remain later packages.
+The active next package is M6-B:
+`docs/goals/phase-5r-a-m6-b-read-only-api-adapter.md`.
+
+M6-B adds a thin read-only application/API adapter over explicitly supplied,
+already validated `ResearchSurfaceSnapshotV1` artifacts. It does not add a
+second analysis engine, remote artifact publishing, Cloudflare Worker/D1 UI,
+watchlist/event monitoring, or A6 production requirements. M5-C remains
+optional and is not a prerequisite for serving local/private surface snapshots.
 
 ## 8. What is no longer a prerequisite
 
@@ -379,7 +386,13 @@ prerequisite for M1.
 
 ## 10. Recommended next Codex goal
 
-Implement **M6-A — Read-only Research Surface Contract** from
-`docs/goals/phase-5r-a-m6-a-read-only-research-surface.md`.
+Implement **M6-B — Read-only API Adapter** from
+`docs/goals/phase-5r-a-m6-b-read-only-api-adapter.md`.
 
-Freeze one deterministic, schema-backed projection of already validated Turtle artifacts for Hermes/Skill/API/Web consumption. Reuse existing CompanyAnalysis, trace/report, historical/readiness/acceptance contracts; project values rather than recomputing them; preserve partial/missing/A6-blocked states; remain offline/model-free. Do not start HTTP serving, Worker/D1 UI, M5-C, event monitoring, M4-D/M4-E or M2-D in the same goal.
+Serve only explicitly supplied, schema/identity-validated
+`ResearchSurfaceSnapshotV1` artifacts through a narrow read-only API. Keep the
+registry/framework boundary testable, default the real server to loopback,
+reject mutation methods, avoid recursive file discovery and raw-store access,
+and prove the HTTP path automatically with both in-process tests and an actual
+loopback socket smoke test. Do not start M5-C, Worker/D1 UI, Phase 6 monitoring,
+M4-D/M4-E or M2-D in the same goal.
