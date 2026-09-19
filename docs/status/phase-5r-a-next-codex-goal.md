@@ -2,7 +2,7 @@
 
 Work in repository `blooddrunk/turtle-value-engine` on current `main`.
 
-Status: **M6-A COMPLETE; M6-B ACTIVE NEXT; M5-A/B COMPLETE; A6 PENDING**
+Status: **M6-A COMPLETE; M6-B COMPLETE; M5-A/B COMPLETE; A6 PENDING**
 
 Read and follow `AGENTS.md` and the source-of-truth order. Read at least:
 
@@ -14,11 +14,12 @@ Read and follow `AGENTS.md` and the source-of-truth order. Read at least:
 - `docs/status/phase-5r-a-2026-09-19.md`
 - `docs/roadmap.md`
 
-Implement M6-B exactly as the active goal specifies. Build a framework-neutral
-registry/service over explicit, validated `ResearchSurfaceSnapshotV1` inputs,
-then a thin optional ASGI/FastAPI adapter and `tve surface serve` entry point.
-Do not read raw stores, recursively discover workspace files, call providers or
-models, recompute investment semantics, or add mutation endpoints.
+The completed M6-B package implemented exactly this boundary: a
+framework-neutral registry/service over explicit, validated
+`ResearchSurfaceSnapshotV1` inputs, a thin optional ASGI/FastAPI adapter and
+the `tve surface serve` entry point. It does not read raw stores, recursively
+discover workspace files, call providers or models, recompute investment
+semantics, or add mutation endpoints.
 
 The default server must bind to `127.0.0.1`. If non-loopback binding is
 supported, require an explicit opt-in; do not silently expose `0.0.0.0`.
@@ -61,3 +62,13 @@ Update the dated status document with exact commands, exit results and
 pass/skip counts, and update roadmap/goal status only after the automated
 acceptance gates pass. Stop after M6-B; do not automatically start M5-C, M6-C
 or Phase 6.
+
+## Closure — 2026-09-19
+
+The requested M6-B implementation and all automated acceptance gates passed.
+The exact commands, exit codes, pass/skip counts, optional dependency setup and
+loopback smoke evidence are recorded in
+`docs/status/phase-5r-a-2026-09-19.md`.
+
+No M5-C, M6-C Worker/Dashboard, authentication/deployment integration or Phase
+6 work was started.

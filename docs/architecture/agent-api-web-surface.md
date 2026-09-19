@@ -1,6 +1,6 @@
 # Agent/API/Web Read-only Surface
 
-Status: **M6-A frozen / M6-B planned next**
+Status: **M6-A frozen / M6-B complete**
 
 ## Purpose
 
@@ -88,7 +88,7 @@ create Worker/D1/UI code, schedule refreshes or monitor watchlists. Those are
 separate follow-on packages.
 
 
-## M6-B API adapter direction
+## M6-B API adapter — complete
 
 M6-B consumes only already validated `ResearchSurfaceSnapshotV1` artifacts.
 The intended boundary is:
@@ -118,8 +118,33 @@ internet exposure, identity-provider integration and Cloudflare Access belong to
 a later deployment/security package. A non-loopback bind, if supported at all,
 must require an explicit opt-in flag and must never be the default.
 
+The implemented framework-neutral boundary is `SurfaceRegistry` plus
+`SurfaceReadService`. `SurfaceRegistry.from_paths(...)` accepts only the
+explicit paths supplied by the caller, validates each snapshot through the
+M6-A loader, rejects empty or duplicate registrations, and keeps only detached
+validated models in memory. List results are ordered by `as_of` descending and
+then `surface_id`; supported filters are `primary_listing`, `profile_id` and
+`as_of`.
+
+The optional `api` extra provides FastAPI, uvicorn and httpx. The adapter is
+lazy: importing the deterministic package does not require the extra. The
+entry point is:
+
+```bash
+tve surface serve \
+  --snapshot research-surface.json \
+  --host 127.0.0.1 \
+  --port 8787
+```
+
+Unknown surfaces, invalid filters, malformed startup inputs and duplicate
+registrations have stable machine-readable error codes. A snapshot response
+uses its validated `content_sha256` as an ETag and supports `If-None-Match`.
+There are no write routes; unsupported mutation methods remain 405 responses.
+
 M6-B acceptance must be automated: focused API tests, M6-A regression tests,
 full pytest/ruff, and one real loopback socket smoke test that starts the server,
 fetches health + a known surface, verifies a missing ID and a mutation rejection,
 then shuts the server down. External cloud accounts, browsers and manual clicks
-are not M6-B acceptance prerequisites.
+are not M6-B acceptance prerequisites. The dated verification record is in
+`docs/status/phase-5r-a-2026-09-19.md`.

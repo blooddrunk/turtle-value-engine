@@ -1,6 +1,6 @@
 # Phase 5R-A M6-B — Read-only API Adapter
 
-Status: **ACTIVE / NEXT**
+Status: **CLOSED / COMPLETE**
 Date: 2026-09-19
 Audited baseline: `ad864510` (M6-A complete on `main`)
 
@@ -319,3 +319,29 @@ M6-B is complete only when:
 
 Stop after M6-B closure. Do not automatically start M5-C, M6-C or Phase 6 in
 the same goal.
+
+## 15. Closure record — 2026-09-19
+
+M6-B is complete. The repository now provides:
+
+- an explicit-input `SurfaceRegistry` and framework-neutral read service that
+  validates every supplied `ResearchSurfaceSnapshotV1` and rejects empty,
+  malformed, tampered or duplicate registrations;
+- deterministic metadata ordering/filtering and detached read-only snapshot
+  retrieval without raw-store or workspace discovery;
+- an optional, lazy FastAPI/uvicorn adapter with `/healthz`, deterministic
+  `/v1/surfaces` metadata, complete `/v1/surfaces/{surface_id}` payloads,
+  stable error codes and ETag/304 support;
+- `tve surface serve` with repeatable explicit `--snapshot` inputs, a
+  `127.0.0.1` default and explicit `--allow-non-loopback` protection;
+- focused API tests and a real subprocess loopback smoke test covering health,
+  known snapshot identity/hash, unknown IDs, mutation rejection and clean
+  shutdown.
+
+The implementation did not change `strict-v1`, deterministic investment math,
+M6-A projection semantics, provider/model boundaries, A6/PIT semantics or any
+historical/raw-store behavior. M5-C, M6-C Worker/Dashboard and Phase 6 remain
+outside this goal.
+
+Exact verification evidence is recorded in
+`docs/status/phase-5r-a-2026-09-19.md`.

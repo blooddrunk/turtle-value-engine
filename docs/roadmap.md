@@ -5122,16 +5122,19 @@ tve surface build|validate CLI are complete. No HTTP server, Worker/D1
 application, remote publishing, monitoring scheduler or second implementation
 of investment calculations was introduced.
 
-The selected next package is
+The completed follow-on package is
 [`M6-B — Read-only API Adapter`](goals/phase-5r-a-m6-b-read-only-api-adapter.md).
 It exposes only validated `ResearchSurfaceSnapshotV1` artifacts through a
 small application/HTTP boundary with explicit snapshot inputs, loopback-first
-serving and automated black-box verification. It does not require M5-C or A6
-production eligibility and does not read raw provider stores or recompute
-investment semantics.
+serving and automated black-box verification. The framework-neutral registry/
+service, lazy optional FastAPI/uvicorn adapter, `tve surface serve` entry point,
+stable read-only endpoints and real loopback subprocess smoke are complete. It
+does not require M5-C or A6 production eligibility and does not read raw
+provider stores or recompute investment semantics.
 
 M5-C remains optional for a concrete remote artifact-class need. M6-C
-Worker/Dashboard and Phase 6 watchlist/event monitoring remain later packages.
+Worker/Dashboard, authentication/deployment integration and Phase 6
+watchlist/event monitoring remain later packages and were not started by M6-B.
 
 ---
 

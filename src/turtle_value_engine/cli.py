@@ -258,6 +258,24 @@ def _build_parser() -> argparse.ArgumentParser:
         help="validate one persisted research surface snapshot",
     )
     surface_validate.add_argument("--input", required=True, type=Path)
+    surface_serve = surface_commands.add_parser(
+        "serve",
+        help="serve explicitly supplied validated research surfaces over loopback",
+    )
+    surface_serve.add_argument(
+        "--snapshot",
+        action="append",
+        required=True,
+        type=Path,
+        help="explicit ResearchSurfaceSnapshotV1 JSON path; repeat for multiple surfaces",
+    )
+    surface_serve.add_argument("--host", default="127.0.0.1")
+    surface_serve.add_argument("--port", default=8787, type=int)
+    surface_serve.add_argument(
+        "--allow-non-loopback",
+        action="store_true",
+        help="explicitly permit a non-loopback bind address",
+    )
 
     historical_parser = subparsers.add_parser(
         "historical",
@@ -630,6 +648,15 @@ def _run_artifacts(args: argparse.Namespace) -> object:
 
 
 def _run_surface(args: argparse.Namespace) -> object:
+    if args.surface_command == "serve":
+        from turtle_value_engine.surface.api import serve_surface_snapshots
+
+        return serve_surface_snapshots(
+            args.snapshot,
+            host=args.host,
+            port=args.port,
+            allow_non_loopback=args.allow_non_loopback,
+        )
     if args.surface_command == "build":
         snapshot = build_research_surface_snapshot(
             _read_json(args.analysis),

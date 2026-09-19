@@ -1,6 +1,6 @@
 # Phase 5R-A Next — Personal Research Data Acquisition and Deployment-Neutral Access
 
-Status: **ACTIVE / M4 CLOSED PARTIAL; M5-A/B COMPLETE; M6-A COMPLETE; M6-B ACTIVE NEXT; A6 PENDING**
+Status: **ACTIVE / M4 CLOSED PARTIAL; M5-A/B COMPLETE; M6-A/B COMPLETE; A6 PENDING**
 Date: 2026-09-19
 
 ## 1. Objective
@@ -340,11 +340,13 @@ M5-B is complete at `1580670`: one real optional/lazy S3-compatible backend now 
 M6-A is complete at `ad864510`:
 `docs/goals/phase-5r-a-m6-a-read-only-research-surface.md`.
 
-The active next package is M6-B:
+The completed next package is M6-B:
 `docs/goals/phase-5r-a-m6-b-read-only-api-adapter.md`.
 
 M6-B adds a thin read-only application/API adapter over explicitly supplied,
-already validated `ResearchSurfaceSnapshotV1` artifacts. It does not add a
+already validated `ResearchSurfaceSnapshotV1` artifacts. Its registry/service,
+lazy optional FastAPI/uvicorn adapter, deterministic read endpoints, loopback
+default and automated subprocess smoke test are complete. It did not add a
 second analysis engine, remote artifact publishing, Cloudflare Worker/D1 UI,
 watchlist/event monitoring, or A6 production requirements. M5-C remains
 optional and is not a prerequisite for serving local/private surface snapshots.
@@ -384,15 +386,10 @@ For the initial source milestones, local CAS remains the simplest authoritative
 store. Add remote mirroring only after acquisition is stable; do not make it a
 prerequisite for M1.
 
-## 10. Recommended next Codex goal
+## 10. M6-B closure / next package boundary
 
-Implement **M6-B — Read-only API Adapter** from
-`docs/goals/phase-5r-a-m6-b-read-only-api-adapter.md`.
-
-Serve only explicitly supplied, schema/identity-validated
-`ResearchSurfaceSnapshotV1` artifacts through a narrow read-only API. Keep the
-registry/framework boundary testable, default the real server to loopback,
-reject mutation methods, avoid recursive file discovery and raw-store access,
-and prove the HTTP path automatically with both in-process tests and an actual
-loopback socket smoke test. Do not start M5-C, Worker/D1 UI, Phase 6 monitoring,
-M4-D/M4-E or M2-D in the same goal.
+M6-B is closed with exact verification recorded in
+`docs/status/phase-5r-a-2026-09-19.md`. No next package is started
+automatically. M5-C remains optional for a concrete remote artifact-class need;
+M6-C Worker/Dashboard, authentication/deployment integration and Phase 6
+monitoring remain later packages. M4-D/M4-E and M2-D remain gated.

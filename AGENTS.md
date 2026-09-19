@@ -167,14 +167,14 @@ remote bridge is not yet a proven live machine market-history contract, so
 `REMOTE_BRIDGE_LIVE_UNPROVEN` remains explicit.
 M6-A is complete at `ad864510`: the repository now exposes the frozen
 `ResearchSurfaceSnapshotV1` contract, checked-in schema, explicit projection
-API and offline `tve surface build|validate` CLI. The active implementation
-package is now
-`docs/goals/phase-5r-a-m6-b-read-only-api-adapter.md`: a thin read-only API
-adapter over explicitly supplied, already-validated surface snapshots. It must
-not read raw provider stores, recompute investment math, silently discover
-workspace files, or require A6 production eligibility. M5-C remains optional
-until a concrete artifact class needs remote mirroring; M6-C Worker/Dashboard
-and Phase 6 watchlist/event monitoring remain later packages.
+API and offline `tve surface build|validate` CLI. M6-B is now complete at its
+documented integration boundary: a framework-neutral registry/service, lazy
+optional FastAPI/uvicorn read-only adapter and `tve surface serve` over
+explicitly supplied, already-validated surface snapshots. It does not read
+raw provider stores, recompute investment math, silently discover workspace
+files, or require A6 production eligibility. M5-C remains optional until a
+concrete artifact class needs remote mirroring; M6-C Worker/Dashboard and
+Phase 6 watchlist/event monitoring remain later packages.
 
 ## 5. Working with company data
 
