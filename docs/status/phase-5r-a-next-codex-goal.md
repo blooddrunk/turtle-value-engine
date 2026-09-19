@@ -1,7 +1,8 @@
 # Phase 5R-A M6-C1 Closure / Next Boundary — 2026-09-19
 
 Status: **M6-A/B/C1 COMPLETE; M5-A/B COMPLETE; A6 PENDING**
-Published `main`: `5774b297ab2af5595d24507f12c2d207004a4789`
+Implementation published on `main`: `5774b297ab2af5595d24507f12c2d207004a4789`
+Closure documents published afterward in `73d635b`.
 
 The former next goal, **M6-C1 — Personal Dashboard Foundation**, is closed.
 The implementation was recovered from the local uncommitted workspace,
