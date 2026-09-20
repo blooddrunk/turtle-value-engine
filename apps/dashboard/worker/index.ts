@@ -58,7 +58,7 @@ function upstreamOrigin(rawOrigin: string | undefined): URL | null {
 }
 
 function configuredSecret(value: string | undefined): string | undefined {
-  return value && value.trim().length > 0 ? value : undefined;
+  return value && value.trim().length > 0 && value.trim() === value ? value : undefined;
 }
 
 export function resolveUpstreamConfig(
@@ -73,6 +73,12 @@ export function resolveUpstreamConfig(
 
   const accessClientId = configuredSecret(rawClientId);
   const accessClientSecret = configuredSecret(rawClientSecret);
+  if (
+    (rawClientId !== undefined && !accessClientId) ||
+    (rawClientSecret !== undefined && !accessClientSecret)
+  ) {
+    return { error: "UPSTREAM_CONFIGURATION_INVALID" };
+  }
   if ((accessClientId && !accessClientSecret) || (!accessClientId && accessClientSecret)) {
     return { error: "UPSTREAM_CONFIGURATION_INVALID" };
   }

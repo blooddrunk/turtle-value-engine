@@ -83,6 +83,37 @@ describe("M6-C2 Worker upstream security boundary", () => {
     }
   });
 
+  it("rejects empty or surrounding-whitespace credentials before upstream fetch", async () => {
+    for (const origin of ["http://127.0.0.1:8787", "https://surface.example.test"]) {
+      for (const credentials of [
+        { SURFACE_API_ACCESS_CLIENT_ID: "", SURFACE_API_ACCESS_CLIENT_SECRET: "secret" },
+        { SURFACE_API_ACCESS_CLIENT_ID: "client-id", SURFACE_API_ACCESS_CLIENT_SECRET: " " },
+        { SURFACE_API_ACCESS_CLIENT_ID: " client-id", SURFACE_API_ACCESS_CLIENT_SECRET: "secret" },
+        { SURFACE_API_ACCESS_CLIENT_ID: "client-id", SURFACE_API_ACCESS_CLIENT_SECRET: "secret " },
+        { SURFACE_API_ACCESS_CLIENT_ID: " ", SURFACE_API_ACCESS_CLIENT_SECRET: " " },
+      ]) {
+        const upstreamFetch = vi.spyOn(globalThis, "fetch");
+        const response = await proxy(
+          request("/api/healthz"),
+          testEnv({
+            SURFACE_API_ORIGIN: origin,
+            ...credentials,
+          }),
+        );
+
+        expect(response.status).toBe(503);
+        await expect(response.json()).resolves.toEqual({
+          error: {
+            code: "UPSTREAM_CONFIGURATION_INVALID",
+            message: "surface API origin configuration is invalid",
+          },
+        });
+        expect(upstreamFetch).not.toHaveBeenCalled();
+        vi.restoreAllMocks();
+      }
+    }
+  });
+
   it("injects configured credentials and ignores browser credential spoofing", async () => {
     let forwardedHeaders: Headers | undefined;
     const upstreamFetch = vi.spyOn(globalThis, "fetch").mockImplementation(async (_input, init) => {
