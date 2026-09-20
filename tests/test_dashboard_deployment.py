@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -47,6 +48,48 @@ def _valid_inputs(**overrides: object) -> DeploymentInputs:
 
 def test_production_inputs_are_validated_without_resolving_secrets() -> None:
     assert validate_inputs(_valid_inputs()) == []
+
+
+def test_generated_production_config_contains_no_runtime_secrets(
+    monkeypatch, tmp_path: Path
+) -> None:
+    config_path = tmp_path / "wrangler.json"
+    dashboard_dir = tmp_path / "dashboard"
+    dashboard_dir.mkdir()
+    monkeypatch.setattr(dashboard_deploy, "BUILD_CONFIG", config_path)
+    monkeypatch.setattr(dashboard_deploy, "DASHBOARD", dashboard_dir)
+    monkeypatch.setattr(dashboard_deploy.shutil, "which", lambda name: "/usr/bin/pnpm")
+
+    def fake_run(command: list[str], *, cwd: Path, **kwargs: object) -> None:
+        assert command == ["/usr/bin/pnpm", "--dir", str(dashboard_dir), "build"]
+        assert cwd == Path.cwd()
+        config_path.write_text(json.dumps({"assets": {"directory": "./dist/client"}}))
+
+    monkeypatch.setattr(dashboard_deploy, "_run", fake_run)
+    inputs = _valid_inputs()
+    generated = dashboard_deploy.build_production_worker(inputs)
+    payload = json.loads(generated.read_text())
+    serialized = json.dumps(payload)
+
+    assert payload["vars"] == {"SURFACE_API_ORIGIN": inputs.surface_origin}
+    assert payload["workers_dev"] is False
+    assert payload["preview_urls"] is False
+    assert payload["routes"] == [
+        {
+            "pattern": inputs.dashboard_hostname,
+            "custom_domain": True,
+            "enabled": True,
+            "previews_enabled": False,
+        }
+    ]
+    for secret in (
+        inputs.api_token,
+        inputs.surface_access_client_id,
+        inputs.surface_access_client_secret,
+        inputs.dashboard_access_client_id,
+        inputs.dashboard_access_client_secret,
+    ):
+        assert secret not in serialized
 
 
 def test_remote_origin_requires_https_and_exact_origin_shape() -> None:
