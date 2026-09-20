@@ -529,6 +529,18 @@ M6-A/M6-B tests, `14 passed` for Dashboard Vitest, current generated
 OpenAPI/API/Wrangler contracts, a successful source Wrangler strict dry-run,
 and a successful real local cross-stack smoke.
 
+The current fail-closed deployment follow-up is
+`8b930dff8ab289b67a9c02fc7e92de7564462d1f`; GitHub Actions run
+`35489083702` also passed all 18 execution steps. Apply-time checks now fail
+closed on incomplete Cloudflare list pagination, enabled or ambiguous
+workers.dev/preview/custom-domain/zone-route state, path or wildcard Access
+applications, duplicate exact apps, and one Access app covering both the
+Dashboard and origin hostnames. Post-deploy verification reuses the explicit
+subdomain and Access-target checks. Live smoke credential pairs reject
+whitespace-only and surrounding-whitespace values. Latest local results were
+`6306 passed, 2 skipped` for Python and `12 passed` for deployment/live-smoke
+regression tests.
+
 The implementation remains
 `READY_FOR_OWNER_AUTHORIZED_LIVE_ACCEPTANCE`: no owner Cloudflare account,
 token, selected hostnames/zone, origin host and snapshot path, or service

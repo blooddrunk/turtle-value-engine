@@ -3,10 +3,11 @@
 Status: **M6-C2 IMPLEMENTED; READY_FOR_OWNER_AUTHORIZED_LIVE_ACCEPTANCE**
 
 Latest `main` verification commit is
-`7859d7021726e1ea09e80126e3f30e844f735015`; GitHub Actions run
-`35488158752` is green. The follow-up covers POST, PUT, PATCH and DELETE
-mutation rejection in the Worker, M6-B loopback tests, local cross-stack smoke
-and repeatable live smoke.
+`8b930dff8ab289b67a9c02fc7e92de7564462d1f`; GitHub Actions run
+`35489083702` is green. It adds fail-closed pre-mutation Cloudflare list and
+alternate-ingress checks, while retaining POST/PUT/PATCH/DELETE mutation
+rejection in the Worker, M6-B loopback tests, local cross-stack smoke and
+repeatable live smoke.
 
 Current `main` contains the M6-C1 implementation, CI hardening, M6-C2
 Worker/deployment code, templates and tests. The pre-edit baseline was
@@ -52,6 +53,9 @@ The implementation provides:
   pairs before Wrangler deployment.
 - Dashboard zone-level Worker route isolation with fail-closed pagination
   handling before apply/verify.
+- apply-time workers.dev/preview, extra-domain and overlapping Access-target
+  checks now fail closed before any Cloudflare mutation; live credential pairs
+  reject whitespace-only and surrounding-whitespace values.
 
 The selected implementation package is:
 
@@ -114,6 +118,12 @@ The read-only method-coverage follow-up is
 all 18 execution steps passed. All four HTTP mutation methods are rejected
 before upstream fetch in the Worker and are exercised by local and live smoke
 paths.
+
+The current fail-closed deployment follow-up is
+`8b930dff8ab289b67a9c02fc7e92de7564462d1f`; run `35489083702` is green with
+all 18 execution steps passed. The latest local Python suite is
+`6306 passed, 2 skipped`, and the deployment/live-smoke regression tests are
+`12 passed`.
 
 The subsequent secret-redaction follow-up is
 `297d7cf1232823fc3dab1b5758dae8d6907275d2`; run `35486605298` is green with
