@@ -367,22 +367,27 @@ def validate_inputs(
     if inputs.surface_port < 1 or inputs.surface_port > 65535:
         errors.append("TVE_SURFACE_PORT must be between 1 and 65535")
     if require_cloudflare:
-        if not inputs.account_id or not _ACCOUNT_ID.fullmatch(inputs.account_id):
-            errors.append(f"{ACCOUNT_ID} must be a 32-character Cloudflare account ID")
-        if not inputs.api_token or not inputs.api_token.strip():
+        has_api_token = bool(inputs.api_token and inputs.api_token.strip())
+        if not has_api_token:
             errors.append(f"{API_TOKEN} must be supplied through the environment or secret manager")
-        if inputs.tunnel_id and inputs.tunnel_name:
-            errors.append(f"{TUNNEL_ID} and {TUNNEL_NAME} must not both be configured")
-        if not inputs.tunnel_id and not inputs.tunnel_name:
-            errors.append(f"{TUNNEL_ID} or {TUNNEL_NAME} is required")
-        if inputs.tunnel_id and not _UUID.fullmatch(inputs.tunnel_id):
-            errors.append(f"{TUNNEL_ID} must be a UUID")
-        if not inputs.zone_id:
-            errors.append(f"{ZONE_ID} is required to create/check the origin DNS CNAME")
-        if not inputs.dashboard_zone_id or not _ACCOUNT_ID.fullmatch(inputs.dashboard_zone_id):
-            errors.append(
-                f"{DASHBOARD_ZONE_ID} must be a 32-character Cloudflare zone ID"
-            )
+        # Account/zone IDs and the tunnel ID are discovered from the configured
+        # zone after the API token is available. Do not turn that derived state
+        # into owner input errors while the token itself is absent.
+        if has_api_token:
+            if not inputs.account_id or not _ACCOUNT_ID.fullmatch(inputs.account_id):
+                errors.append(f"{ACCOUNT_ID} must be a 32-character Cloudflare account ID")
+            if inputs.tunnel_id and inputs.tunnel_name:
+                errors.append(f"{TUNNEL_ID} and {TUNNEL_NAME} must not both be configured")
+            if not inputs.tunnel_id and not inputs.tunnel_name:
+                errors.append(f"{TUNNEL_ID} or {TUNNEL_NAME} is required")
+            if inputs.tunnel_id and not _UUID.fullmatch(inputs.tunnel_id):
+                errors.append(f"{TUNNEL_ID} must be a UUID")
+            if not inputs.zone_id:
+                errors.append(f"{ZONE_ID} is required to create/check the origin DNS CNAME")
+            if not inputs.dashboard_zone_id or not _ACCOUNT_ID.fullmatch(inputs.dashboard_zone_id):
+                errors.append(
+                    f"{DASHBOARD_ZONE_ID} must be a 32-character Cloudflare zone ID"
+                )
     if require_snapshot:
         if not inputs.snapshot_path:
             errors.append("TVE_SURFACE_SNAPSHOT_PATH is required for the origin process")

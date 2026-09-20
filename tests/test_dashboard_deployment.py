@@ -52,6 +52,22 @@ def test_production_inputs_are_validated_without_resolving_secrets() -> None:
     assert validate_inputs(_valid_inputs()) == []
 
 
+def test_missing_api_token_does_not_turn_discoverable_ids_into_owner_inputs() -> None:
+    errors = validate_inputs(
+        _valid_inputs(
+            account_id=None,
+            api_token=None,
+            tunnel_id=None,
+            tunnel_name="tve-private-dashboard-origin",
+            zone_id=None,
+            dashboard_zone_id=None,
+        )
+    )
+    assert errors == [
+        "CLOUDFLARE_API_TOKEN must be supplied through the environment or secret manager"
+    ]
+
+
 def test_generated_production_config_contains_no_runtime_secrets(
     monkeypatch, tmp_path: Path
 ) -> None:

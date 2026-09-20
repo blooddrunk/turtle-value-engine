@@ -20,6 +20,7 @@ def test_checked_in_project_template_is_valid_and_derives_safe_hostnames() -> No
     assert config.network.default_policy == "deny"
     assert config.resolved_dashboard_hostname() is None
     assert config.resolved_origin_hostname() is None
+    assert config.surface.snapshot_path == ".tve-private/surface/research-surface.json"
     assert config.secret_reference("api_token").env == "CLOUDFLARE_API_TOKEN"
     assert config.safe_summary()["secret_references"]["api_token"] == "CLOUDFLARE_API_TOKEN"
 

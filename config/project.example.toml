@@ -24,7 +24,7 @@ allow_live_cloudflare = false
 
 [surface]
 # Set this to the validated ResearchSurfaceSnapshotV1 to serve.
-snapshot_path = ""
+snapshot_path = ".tve-private/surface/research-surface.json"
 port = 8787
 live_surface_id = ""
 expected_surface_sha256 = ""
