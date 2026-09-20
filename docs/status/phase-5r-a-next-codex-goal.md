@@ -5,8 +5,11 @@ Status: **M6-C2 IMPLEMENTED; READY_FOR_OWNER_AUTHORIZED_LIVE_ACCEPTANCE**
 Current `main` contains the M6-C1 implementation, CI hardening, M6-C2
 Worker/deployment code, templates and tests. The pre-edit baseline was
 `a54f86b60f111e7dca9c5bb6a3cbcb903bfeaabf`; GitHub Actions run `35482336396`
-for that SHA was green and every required job/step succeeded. The exact
-post-implementation checks and current live blockers are recorded in
+for that SHA was green. The implementation commit is
+`41da846ecb3e7b2835933c0c9d9a8bd463eba7f4`, and post-push GitHub Actions run
+`35484472809` for that SHA is also green: the single `test` job and all required
+execution steps succeeded. The exact post-implementation checks and current
+live blockers are recorded in
 `docs/status/phase-5r-a-2026-09-20.md`.
 
 The implementation provides:

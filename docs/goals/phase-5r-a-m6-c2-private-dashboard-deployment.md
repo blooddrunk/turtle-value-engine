@@ -453,6 +453,12 @@ The offline/deployment implementation is complete. It adds:
 - `scripts/dashboard_live_smoke.py` for repeatable authenticated live probes;
 - non-secret production/Tunnel/Access templates under `deploy/dashboard/`.
 
+The implementation was pushed as
+`41da846ecb3e7b2835933c0c9d9a8bd463eba7f4`; GitHub Actions run `35484472809`
+completed successfully for that commit. Its single `test` job passed the
+Python suite, Ruff, frozen Dashboard install, OpenAPI/generated-type checks,
+Dashboard lint/typecheck/tests/build and the real cross-stack smoke.
+
 Local and CI-independent acceptance is recorded in
 `docs/status/phase-5r-a-2026-09-20.md`. Cloudflare account/token, owner
 hostname/identity, Tunnel origin host, explicit snapshot path and live service
