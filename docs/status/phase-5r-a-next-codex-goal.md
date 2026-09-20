@@ -3,13 +3,13 @@
 Status: **M6-C2 IMPLEMENTED; READY_FOR_OWNER_AUTHORIZED_LIVE_ACCEPTANCE**
 
 Latest code verification commit is
-`ce3956e1ceb04aff462228bc7747d5b686236a80`; GitHub Actions run
-`35490794888` is green with all 18 execution steps passed. It adds fail-closed
-rejection of empty, whitespace-only and surrounding-whitespace Worker origin
-credentials, while retaining the production-config secret guard,
-pre-mutation Cloudflare list and alternate-ingress checks,
-POST/PUT/PATCH/DELETE mutation rejection, M6-B loopback tests, local
-cross-stack smoke and repeatable live smoke.
+`cdca47f291d3cbc3bac8f51933c62f7cd0e13408`; GitHub Actions run
+`35491132677` is green with all 19 execution steps passed. It adds a
+production-build client-bundle scanner that rejects runtime secret sentinels,
+while retaining fail-closed malformed-credential handling, the
+production-config secret guard, pre-mutation Cloudflare list and
+alternate-ingress checks, POST/PUT/PATCH/DELETE mutation rejection, M6-B
+loopback tests, local cross-stack smoke and repeatable live smoke.
 
 Current `main` contains the M6-C1 implementation, CI hardening, M6-C2
 Worker/deployment code, templates and tests. The pre-edit baseline was
@@ -155,6 +155,12 @@ whitespace-only and surrounding-whitespace credential values before upstream
 fetch for both loopback and remote HTTPS origins. Dashboard Vitest passed
 (`15 passed`), and the focused M6-A/M6-B/M6-C2 Python tests passed (`32
 passed`).
+
+The client-bundle secret-safety follow-up is
+`cdca47f291d3cbc3bac8f51933c62f7cd0e13408`; run `35491132677` is green with
+all 19 execution steps passed. The build runs with test-only runtime secret
+sentinels and `security:client-bundle` scans all generated client files
+without printing values; the local scan passed over 4 files.
 
 The subsequent secret-redaction follow-up is
 `297d7cf1232823fc3dab1b5758dae8d6907275d2`; run `35486605298` is green with

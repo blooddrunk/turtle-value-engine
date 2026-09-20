@@ -573,6 +573,14 @@ execution steps. The Dashboard Vitest suite passed (`15 passed`), the focused
 M6-A/M6-B/M6-C2 Python tests passed (`32 passed`), and the full local
 deterministic suite passed (`6308 passed, 2 skipped`).
 
+The client-bundle secret-safety follow-up is
+`cdca47f291d3cbc3bac8f51933c62f7cd0e13408`. The production build and CI now
+run with test-only runtime secret sentinels, then scan every generated
+`dist/client` file without printing sentinel values; the scan passed. The
+repeatable command is
+`pnpm --dir apps/dashboard security:client-bundle`. GitHub Actions run
+`35491132677` also passed all 19 execution steps, including this bundle scan.
+
 The implementation remains
 `READY_FOR_OWNER_AUTHORIZED_LIVE_ACCEPTANCE`: no owner Cloudflare account,
 token, selected hostnames/zone, origin host and snapshot path, or service
