@@ -603,7 +603,8 @@ references. Raw credential fields are rejected by the loader. The exact API
 token permission set and the owner-facing three-value setup are recorded in
 `docs/operations/project-runtime-config.md`.
 
-The follow-up code is commit
-`34285f467de4fc6b3c68350814e912f0016228e6`; GitHub Actions run
-`35496490595` passed its `test` job and all 20 execution steps, including the
-new project-config validation step.
+The project-wide configuration implementation is commit
+`34285f467de4fc6b3c68350814e912f0016228e6`. The final documentation closure
+commit is `93c638fd1231e904fab50b3aeb21eab7e6e41874`; GitHub Actions run
+`35496754597` passed its `test` job and all 20 execution steps, including the
+project-config validation step.
