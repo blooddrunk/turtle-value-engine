@@ -17,12 +17,15 @@ The final deployment-helper correction is commit
 for that commit is green, including the full `test` job and all required
 steps.
 
-The current `main` head is
-`3c8e188ac58f05b11a41389d1041181190ca24a1`. Before the final hardening,
+The code-bearing final hardening commit is
+`3c8e188ac58f05b11a41389d1041181190ca24a1`. Before that hardening,
 `ece4610eb61f1c5340ceb0ad3d6b727ad9fd53d1` had green run `35485017083`.
-The current head's GitHub Actions run `35485721496` is green: the `test` job
-completed all 18 execution steps, including source Wrangler deployment-config
-dry-run. The final local deterministic suite is `6301 passed, 2 skipped`;
+Run `35485721496` for the hardening commit is green: the `test` job completed
+all 18 execution steps, including source Wrangler deployment-config dry-run.
+The documentation closure commit
+`aed18ee54795406dfbe77b022f8c706c39d18d8d` also has green run
+`35486022150`, with all 18 execution steps passed. The final local
+deterministic suite is `6301 passed, 2 skipped`;
 Dashboard Vitest is `14 passed`, and deployment-helper regression tests are
 `7 passed`.
 
