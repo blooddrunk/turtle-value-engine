@@ -4,6 +4,7 @@ from scripts.dashboard_deploy import (
     SERVICE_AUTH_DECISION,
     DeploymentInputs,
     _access_policy,
+    _app_has_exact_hostname,
     _tunnel_ingress,
     validate_inputs,
     validate_remote_origin,
@@ -67,3 +68,26 @@ def test_cloudflare_service_auth_uses_non_identity_api_decision() -> None:
         "decision": "non_identity",
         "include": [{"service_token": {"token_id": "token"}}],
     }
+
+
+def test_production_inputs_reject_ambiguous_or_colliding_boundaries() -> None:
+    same_host = _valid_inputs(
+        dashboard_hostname="surface.example.com",
+        tunnel_name="also-set",
+    )
+    errors = validate_inputs(same_host)
+    assert "TVE_DASHBOARD_HOSTNAME and TVE_SURFACE_ORIGIN_HOSTNAME must be different" in errors
+    assert (
+        "TVE_CLOUDFLARE_TUNNEL_ID and TVE_CLOUDFLARE_TUNNEL_NAME must not both be configured"
+        in errors
+    )
+
+    whitespace = _valid_inputs(surface_access_client_id=" ")
+    assert any("SURFACE_API_ACCESS client ID" in error for error in validate_inputs(whitespace))
+
+
+def test_access_app_verifier_requires_the_exact_hostname_not_a_path_subtree() -> None:
+    assert _app_has_exact_hostname({"domain": "dashboard.example.com"}, "dashboard.example.com")
+    assert not _app_has_exact_hostname(
+        {"domain": "dashboard.example.com/admin"}, "dashboard.example.com"
+    )

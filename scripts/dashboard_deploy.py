@@ -83,7 +83,7 @@ class ServiceToken:
 
 def _env(environ: Mapping[str, str], name: str) -> str | None:
     value = environ.get(name)
-    return value if value else None
+    return value if value and value.strip() else None
 
 
 def read_inputs(environ: Mapping[str, str] | None = None) -> DeploymentInputs:
@@ -160,6 +160,10 @@ def _validate_credential_pair(
 ) -> list[str]:
     if bool(client_id) != bool(client_secret):
         return [f"{label} client ID and client secret must be configured together"]
+    if client_id is not None and not client_id.strip():
+        return [f"{label} client ID must not be empty or whitespace"]
+    if client_secret is not None and not client_secret.strip():
+        return [f"{label} client secret must not be empty or whitespace"]
     if client_id is not None and client_id.strip() != client_id:
         return [f"{label} client ID must not contain surrounding whitespace"]
     if client_secret is not None and client_secret.strip() != client_secret:
@@ -180,6 +184,14 @@ def validate_inputs(
     errors.extend(
         validate_hostname(inputs.surface_origin_hostname, "TVE_SURFACE_ORIGIN_HOSTNAME")
     )
+    if (
+        inputs.dashboard_hostname
+        and inputs.surface_origin_hostname
+        and inputs.dashboard_hostname.lower() == inputs.surface_origin_hostname.lower()
+    ):
+        errors.append(
+            "TVE_DASHBOARD_HOSTNAME and TVE_SURFACE_ORIGIN_HOSTNAME must be different"
+        )
     errors.extend(validate_remote_origin(inputs.surface_origin, inputs.surface_origin_hostname))
     errors.extend(
         _validate_credential_pair(
@@ -195,7 +207,11 @@ def validate_inputs(
         errors.append(
             "SURFACE_API_ACCESS_CLIENT_ID and SURFACE_API_ACCESS_CLIENT_SECRET are required"
         )
-    if not inputs.dashboard_identity_email or "@" not in inputs.dashboard_identity_email:
+    if (
+        not inputs.dashboard_identity_email
+        or inputs.dashboard_identity_email.strip() != inputs.dashboard_identity_email
+        or "@" not in inputs.dashboard_identity_email
+    ):
         errors.append("TVE_DASHBOARD_ACCESS_EMAIL must be the owner-selected IdP email")
     if require_live_service_tokens:
         errors.extend(
@@ -215,8 +231,10 @@ def validate_inputs(
     if require_cloudflare:
         if not inputs.account_id or not _ACCOUNT_ID.fullmatch(inputs.account_id):
             errors.append(f"{ACCOUNT_ID} must be a 32-character Cloudflare account ID")
-        if not inputs.api_token:
+        if not inputs.api_token or not inputs.api_token.strip():
             errors.append(f"{API_TOKEN} must be supplied through the environment or secret manager")
+        if inputs.tunnel_id and inputs.tunnel_name:
+            errors.append(f"{TUNNEL_ID} and {TUNNEL_NAME} must not both be configured")
         if not inputs.tunnel_id and not inputs.tunnel_name:
             errors.append(f"{TUNNEL_ID} or {TUNNEL_NAME} is required")
         if inputs.tunnel_id and not _UUID.fullmatch(inputs.tunnel_id):
@@ -358,13 +376,28 @@ def _access_policy(decision: str, include: list[dict[str, Any]]) -> dict[str, An
 
 
 def _app_domain(app: Mapping[str, Any]) -> str | None:
+    targets = _app_targets(app)
+    if targets:
+        return targets[0].split("/", 1)[0].lower()
+    return None
+
+
+def _app_targets(app: Mapping[str, Any]) -> list[str]:
     domain = app.get("domain")
     if isinstance(domain, str):
-        return domain.split("/", 1)[0].lower()
+        return [domain]
     domains = app.get("self_hosted_domains")
-    if isinstance(domains, list) and domains and isinstance(domains[0], str):
-        return domains[0].split("/", 1)[0].lower()
-    return None
+    if isinstance(domains, list):
+        return [target for target in domains if isinstance(target, str)]
+    return []
+
+
+def _app_has_exact_hostname(app: Mapping[str, Any], hostname: str) -> bool:
+    for target in _app_targets(app):
+        host, separator, path = target.partition("/")
+        if host.lower() == hostname.lower() and (not separator or path == ""):
+            return True
+    return False
 
 
 def ensure_access_app(
@@ -575,6 +608,9 @@ def _verify_access_policy(
     *,
     hostname: str,
     required_decisions: set[str],
+    exact_decisions: set[str],
+    expected_service_token_id: str,
+    expected_email: str | None = None,
 ) -> None:
     app_id = app.get("id")
     if not isinstance(app_id, str) or not app_id:
@@ -588,17 +624,59 @@ def _verify_access_policy(
     if not isinstance(policies, list):
         raise DeploymentError(f"Access policies for {hostname} returned an unexpected shape")
     decisions = {
-        str(policy.get("decision"))
+        policy["decision"]
         for policy in policies
-        if isinstance(policy, dict)
+        if isinstance(policy, dict) and isinstance(policy.get("decision"), str)
     }
-    if "bypass" in decisions or not required_decisions.issubset(decisions):
+    if (
+        "bypass" in decisions
+        or not required_decisions.issubset(decisions)
+        or decisions != exact_decisions
+    ):
         raise DeploymentError(
             f"Access application for {hostname} is not fail-closed: decisions={sorted(decisions)}"
         )
+    service_token_ids = {
+        str(rule["service_token"]["token_id"])
+        for policy in policies
+        if isinstance(policy, dict)
+        and policy.get("decision") == SERVICE_AUTH_DECISION
+        and isinstance(policy.get("include"), list)
+        for rule in policy["include"]
+        if isinstance(rule, dict)
+        and isinstance(rule.get("service_token"), dict)
+        and rule["service_token"].get("token_id")
+    }
+    if expected_service_token_id not in service_token_ids:
+        raise DeploymentError(
+            f"Access application for {hostname} does not include the expected service token"
+        )
+    if expected_email is not None:
+        emails = {
+            str(rule["email"]["email"])
+            for policy in policies
+            if isinstance(policy, dict)
+            and policy.get("decision") == "allow"
+            and isinstance(policy.get("include"), list)
+            for rule in policy["include"]
+            if isinstance(rule, dict)
+            and isinstance(rule.get("email"), dict)
+            and rule["email"].get("email")
+        }
+        if expected_email.lower() not in {email.lower() for email in emails}:
+            raise DeploymentError(
+                f"Access application for {hostname} does not include the selected owner identity"
+            )
 
 
-def verify_cloudflare(api: CloudflareAPI, inputs: DeploymentInputs, tunnel_id: str) -> None:
+def verify_cloudflare(
+    api: CloudflareAPI,
+    inputs: DeploymentInputs,
+    tunnel_id: str,
+    *,
+    origin_token_id: str,
+    dashboard_token_id: str,
+) -> None:
     subdomain = _result(
         api.request("GET", api.account_path(f"/workers/scripts/{WORKER_NAME}/subdomain"))
     )
@@ -627,13 +705,17 @@ def verify_cloudflare(api: CloudflareAPI, inputs: DeploymentInputs, tunnel_id: s
     if not isinstance(apps, list):
         raise DeploymentError("Access application response had an unexpected shape")
     dashboard_apps = [
-        app for app in apps if isinstance(app, dict) and _app_domain(app) == expected_domain
+        app
+        for app in apps
+        if isinstance(app, dict) and _app_has_exact_hostname(app, expected_domain)
     ]
     if len(dashboard_apps) != 1:
         raise DeploymentError("the Dashboard hostname has no Access application")
     origin_domain = (inputs.surface_origin_hostname or "").lower()
     origin_apps = [
-        app for app in apps if isinstance(app, dict) and _app_domain(app) == origin_domain
+        app
+        for app in apps
+        if isinstance(app, dict) and _app_has_exact_hostname(app, origin_domain)
     ]
     if len(origin_apps) != 1:
         raise DeploymentError("the M6-B origin hostname has no Access application")
@@ -642,12 +724,17 @@ def verify_cloudflare(api: CloudflareAPI, inputs: DeploymentInputs, tunnel_id: s
         dashboard_apps[0],
         hostname=expected_domain,
         required_decisions={"allow", SERVICE_AUTH_DECISION},
+        exact_decisions={"allow", SERVICE_AUTH_DECISION},
+        expected_service_token_id=dashboard_token_id,
+        expected_email=inputs.dashboard_identity_email,
     )
     _verify_access_policy(
         api,
         origin_apps[0],
         hostname=origin_domain,
         required_decisions={SERVICE_AUTH_DECISION},
+        exact_decisions={SERVICE_AUTH_DECISION},
+        expected_service_token_id=origin_token_id,
     )
 
     tunnel = _result(
@@ -754,7 +841,27 @@ def main(argv: list[str] | None = None) -> int:
             tunnel_id = args.tunnel_id or inputs.tunnel_id
             if tunnel_id is None:
                 raise DeploymentError("--tunnel-id or TVE_CLOUDFLARE_TUNNEL_ID is required")
-            verify_cloudflare(api, inputs, tunnel_id)
+            surface_token = ensure_service_token(
+                api,
+                inputs.surface_access_client_id,
+                inputs.surface_access_client_secret,
+                name="tve-m6-c2-origin",
+                create=False,
+            )
+            dashboard_token = ensure_service_token(
+                api,
+                inputs.dashboard_access_client_id,
+                inputs.dashboard_access_client_secret,
+                name="tve-m6-c2-dashboard-smoke",
+                create=False,
+            )
+            verify_cloudflare(
+                api,
+                inputs,
+                tunnel_id,
+                origin_token_id=surface_token.token_id,
+                dashboard_token_id=dashboard_token.token_id,
+            )
             print(
                 f"M6-C2 Cloudflare resource verification passed for Worker {WORKER_NAME}, "
                 f"Dashboard {inputs.dashboard_hostname}, origin {inputs.surface_origin_hostname}, "
@@ -801,6 +908,7 @@ def main(argv: list[str] | None = None) -> int:
             name="tve-m6-c2-origin",
             create=args.create_origin_service_token,
         )
+        api.redactions = (*api.redactions, surface_token.client_id, surface_token.client_secret)
         if not inputs.surface_access_client_id or not inputs.surface_access_client_secret:
             inputs = replace(
                 inputs,
@@ -814,6 +922,7 @@ def main(argv: list[str] | None = None) -> int:
             name="tve-m6-c2-dashboard-smoke",
             create=False,
         )
+        api.redactions = (*api.redactions, dashboard_token.client_id, dashboard_token.client_secret)
         ensure_access_app(
             api,
             inputs.surface_origin_hostname or "",
@@ -840,7 +949,13 @@ def main(argv: list[str] | None = None) -> int:
         tunnel_id = ensure_tunnel(api, inputs, create=args.create_tunnel)
         dns_record_id = ensure_origin_dns(api, inputs, tunnel_id)
         deploy_worker(config_path, inputs)
-        verify_cloudflare(api, inputs, tunnel_id)
+        verify_cloudflare(
+            api,
+            inputs,
+            tunnel_id,
+            origin_token_id=surface_token.token_id,
+            dashboard_token_id=dashboard_token.token_id,
+        )
         print(
             f"M6-C2 Cloudflare deployment passed resource checks: Worker={WORKER_NAME}, "
             f"Dashboard={inputs.dashboard_hostname}, origin={inputs.surface_origin_hostname}, "

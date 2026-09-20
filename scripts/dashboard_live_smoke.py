@@ -132,6 +132,14 @@ def _assert_pair(client_id_name: str, client_secret_name: str) -> tuple[str, str
 def _assert_origin_service_auth(origin_url: str, origin_headers: Mapping[str, str]) -> None:
     unauthenticated = _request(origin_url + "/healthz")
     _assert_blocked(unauthenticated, "unauthenticated origin /healthz")
+    invalid_credentials = _request(
+        origin_url + "/healthz",
+        headers={
+            "CF-Access-Client-Id": "invalid-m6-c2-client-id",
+            "CF-Access-Client-Secret": "invalid-m6-c2-client-secret",
+        },
+    )
+    _assert_blocked(invalid_credentials, "origin /healthz with invalid service credentials")
     authenticated = _request(origin_url + "/healthz", headers=origin_headers)
     if authenticated.status != 200:
         raise LiveSmokeError(

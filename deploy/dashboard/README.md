@@ -74,8 +74,9 @@ For a local-management Tunnel, validate the checked-in shape on the origin
 host before running it:
 
 ```bash
-cloudflared tunnel ingress validate \
-  --config /etc/cloudflared/tve-surface-config.yml
+cloudflared tunnel \
+  --config /etc/cloudflared/tve-surface-config.yml \
+  ingress validate
 cloudflared tunnel run <tunnel-uuid>
 ```
 

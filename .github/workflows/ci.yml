@@ -62,5 +62,8 @@ jobs:
       - name: Build Dashboard
         run: pnpm --dir apps/dashboard build
 
+      - name: Validate source Wrangler deployment config
+        run: pnpm --dir apps/dashboard exec wrangler deploy --dry-run --config wrangler.jsonc --strict
+
       - name: Run Dashboard cross-stack smoke
         run: python scripts/dashboard_cross_stack_smoke.py
