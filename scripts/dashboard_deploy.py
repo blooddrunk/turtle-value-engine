@@ -573,6 +573,17 @@ def deploy_worker(config_path: Path, inputs: DeploymentInputs) -> None:
     pnpm = shutil.which("pnpm")
     if not pnpm:
         raise DeploymentError("pnpm is required to deploy the Dashboard")
+    runtime_secrets = tuple(
+        value
+        for value in (
+            inputs.api_token,
+            inputs.surface_access_client_id,
+            inputs.surface_access_client_secret,
+            inputs.dashboard_access_client_id,
+            inputs.dashboard_access_client_secret,
+        )
+        if value
+    )
     _run(
         [
             pnpm,
@@ -587,6 +598,7 @@ def deploy_worker(config_path: Path, inputs: DeploymentInputs) -> None:
             "M6-C2 private Dashboard deployment",
         ],
         cwd=DASHBOARD,
+        secrets=runtime_secrets,
     )
     for name, value in (
         (ORIGIN_CLIENT_ID, inputs.surface_access_client_id),

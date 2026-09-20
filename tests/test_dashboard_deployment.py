@@ -1,10 +1,15 @@
 from __future__ import annotations
 
+from pathlib import Path
+from types import SimpleNamespace
+
+import scripts.dashboard_deploy as dashboard_deploy
 from scripts.dashboard_deploy import (
     SERVICE_AUTH_DECISION,
     DeploymentInputs,
     _access_policy,
     _app_has_exact_hostname,
+    _run,
     _tunnel_ingress,
     validate_inputs,
     validate_remote_origin,
@@ -91,3 +96,21 @@ def test_access_app_verifier_requires_the_exact_hostname_not_a_path_subtree() ->
     assert not _app_has_exact_hostname(
         {"domain": "dashboard.example.com/admin"}, "dashboard.example.com"
     )
+
+
+def test_subprocess_output_redacts_runtime_secrets(monkeypatch, capsys) -> None:
+    secret = "runtime-secret-value"
+
+    def fake_run(*args: object, **kwargs: object) -> SimpleNamespace:
+        return SimpleNamespace(
+            returncode=0,
+            stdout=f"stdout {secret}\n",
+            stderr=f"stderr {secret}\n",
+        )
+
+    monkeypatch.setattr(dashboard_deploy.subprocess, "run", fake_run)
+    _run(["fake-command"], cwd=Path.cwd(), secrets=(secret,))
+
+    output = capsys.readouterr().out
+    assert secret not in output
+    assert output.count("<redacted>") == 2
