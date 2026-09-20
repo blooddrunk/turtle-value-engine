@@ -3,13 +3,13 @@
 Status: **M6-C2 IMPLEMENTED; READY_FOR_OWNER_AUTHORIZED_LIVE_ACCEPTANCE**
 
 Latest code verification commit is
-`c93814b3de6c034da77ea526cef1a3bfb1300026`; GitHub Actions run
-`35490033160` is green with all 18 execution steps passed. It adds a
-production-config regression guard proving that runtime API and Access
-service-token values do not enter the generated Wrangler config, while
-retaining fail-closed pre-mutation Cloudflare list and alternate-ingress
-checks, POST/PUT/PATCH/DELETE mutation rejection in the Worker, M6-B loopback
-tests, local cross-stack smoke and repeatable live smoke.
+`ce3956e1ceb04aff462228bc7747d5b686236a80`; GitHub Actions run
+`35490794888` is green with all 18 execution steps passed. It adds fail-closed
+rejection of empty, whitespace-only and surrounding-whitespace Worker origin
+credentials, while retaining the production-config secret guard,
+pre-mutation Cloudflare list and alternate-ingress checks,
+POST/PUT/PATCH/DELETE mutation rejection, M6-B loopback tests, local
+cross-stack smoke and repeatable live smoke.
 
 Current `main` contains the M6-C1 implementation, CI hardening, M6-C2
 Worker/deployment code, templates and tests. The pre-edit baseline was
@@ -147,6 +147,14 @@ variable and no API-token or Access service-token values. The current focused
 deployment tests passed (`12 passed`) and standalone live-smoke validation
 tests passed (`2 passed`); the full local deterministic suite passed
 (`6308 passed, 2 skipped`).
+
+The malformed-origin-credential hardening follow-up is
+`ce3956e1ceb04aff462228bc7747d5b686236a80`; run `35490794888` is green with
+all 18 execution steps passed. Worker security tests now reject empty,
+whitespace-only and surrounding-whitespace credential values before upstream
+fetch for both loopback and remote HTTPS origins. Dashboard Vitest passed
+(`15 passed`), and the focused M6-A/M6-B/M6-C2 Python tests passed (`32
+passed`).
 
 The subsequent secret-redaction follow-up is
 `297d7cf1232823fc3dab1b5758dae8d6907275d2`; run `35486605298` is green with

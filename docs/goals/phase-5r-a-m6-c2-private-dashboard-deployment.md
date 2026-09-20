@@ -564,6 +564,15 @@ passed (`12 passed`) and the standalone live-smoke validation tests passed
 (`2 passed`). The full local deterministic suite passed (`6308 passed, 2
 skipped`).
 
+The malformed-origin-credential hardening follow-up is
+`ce3956e1ceb04aff462228bc7747d5b686236a80`. The Worker now treats empty,
+whitespace-only and surrounding-whitespace origin Access credential values as
+invalid and rejects them before any upstream fetch for both loopback preview
+and remote HTTPS origins. GitHub Actions run `35490794888` also passed all 18
+execution steps. The Dashboard Vitest suite passed (`15 passed`), the focused
+M6-A/M6-B/M6-C2 Python tests passed (`32 passed`), and the full local
+deterministic suite passed (`6308 passed, 2 skipped`).
+
 The implementation remains
 `READY_FOR_OWNER_AUTHORIZED_LIVE_ACCEPTANCE`: no owner Cloudflare account,
 token, selected hostnames/zone, origin host and snapshot path, or service
