@@ -5141,9 +5141,12 @@ Python-API-to-Vite-preview smoke are complete and published on `main` at
 `5774b29`. It introduces no mutation endpoint and does not recompute
 investment semantics.
 
-M5-C remains optional for a concrete remote artifact-class need. M6-C2
-Cloudflare deployment, authentication/non-loopback origin integration and
-Phase 6 watchlist/event monitoring remain later packages.
+M5-C remains optional for a concrete remote artifact-class need. M6-C2 is now
+closed after the owner-accepted private Cloudflare Access/Worker/Tunnel
+deployment and live smoke. The selected follow-on is
+[`M6-C3 — Dashboard UX and Chinese-first Localization`](goals/phase-5r-a-m6-c3-dashboard-ux-localization.md):
+it improves the human presentation of the same frozen read-only contract before
+Phase 6 watchlist/event monitoring begins.
 
 ---
 
@@ -5194,12 +5197,14 @@ URGENT_MANUAL_REVIEW
 
 ### Personal web dashboard
 
-The completed C1 package provides a local/preview read-only personal Dashboard;
-it may later be deployed on Cloudflare Workers as a separate C2 package.
-It may use R2 for permitted immutable artifacts and D1 for derived indexes and
-run status. Acquisition normally runs locally or on the owner's VPS; a page
-request must not scrape upstream sources, invoke a model, expose restricted raw
-data, or reimplement deterministic investment calculations.
+C1 provides the local/preview read-only personal Dashboard and C2 has closed
+the owner-accepted private Cloudflare deployment/authenticated-origin boundary.
+M6-C3 is the selected presentation-only follow-on for Chinese-first copy,
+plain-language semantic states and progressive disclosure of diagnostics.
+Phase 6 may later add derived watchlist/run-status storage where separately
+designed, but a page request must not scrape upstream sources, invoke a model,
+expose restricted raw data, or reimplement deterministic investment
+calculations.
 
 ---
 
