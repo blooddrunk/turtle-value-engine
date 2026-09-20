@@ -14,7 +14,9 @@ from scripts.dashboard_deploy import (
     _app_has_exact_hostname,
     _run,
     _tunnel_ingress,
+    _verify_access_app_targets,
     _verify_no_worker_routes,
+    _verify_pre_mutation_state,
     validate_inputs,
     validate_remote_origin,
 )
@@ -106,6 +108,26 @@ def test_access_app_verifier_requires_the_exact_hostname_not_a_path_subtree() ->
     assert not _app_has_exact_hostname(
         {"domain": "dashboard.example.com/admin"}, "dashboard.example.com"
     )
+    with pytest.raises(DeploymentError, match="path or wildcard"):
+        _verify_access_app_targets(
+            [{"domain": "dashboard.example.com/admin"}],
+            ("dashboard.example.com",),
+        )
+    with pytest.raises(DeploymentError, match="path or wildcard"):
+        _verify_access_app_targets(
+            [{"domain": "*.example.com"}],
+            ("dashboard.example.com",),
+        )
+    with pytest.raises(DeploymentError, match="path or wildcard"):
+        _verify_access_app_targets(
+            [
+                {
+                    "domain": "dashboard.example.com",
+                    "self_hosted_domains": ["dashboard.example.com/admin"],
+                }
+            ],
+            ("dashboard.example.com",),
+        )
 
 
 def test_subprocess_output_redacts_runtime_secrets(monkeypatch, capsys) -> None:
@@ -160,4 +182,104 @@ def test_dashboard_route_verifier_fails_closed_on_legacy_worker_routes() -> None
                 ]
             ),
             "c" * 32,
+        )
+
+
+def test_pre_mutation_state_requires_complete_cloudflare_lists() -> None:
+    expected_paths = [
+        f"/accounts/{'a' * 32}/workers/scripts/tve-personal-dashboard/subdomain",
+        f"/accounts/{'a' * 32}/workers/domains?service=tve-personal-dashboard&per_page=100",
+        f"/accounts/{'a' * 32}/access/apps?per_page=100",
+        f"/accounts/{'a' * 32}/access/service_tokens?per_page=100",
+        f"/accounts/{'a' * 32}/cfd_tunnel?per_page=100",
+        f"/zones/{'c' * 32}/workers/routes?per_page=100",
+    ]
+
+    class FakeAPI:
+        def __init__(self, *, incomplete_path: str | None = None) -> None:
+            self.incomplete_path = incomplete_path
+            self.paths: list[str] = []
+
+        def account_path(self, suffix: str) -> str:
+            return f"/accounts/{'a' * 32}{suffix}"
+
+        def zone_path(self, zone_id: str, suffix: str) -> str:
+            return f"/zones/{zone_id}{suffix}"
+
+        def request(self, method: str, path: str) -> dict[str, object]:
+            assert method == "GET"
+            self.paths.append(path)
+            if path.endswith("/subdomain"):
+                return {"result": {"enabled": False, "previews_enabled": False}}
+            total_count = 2 if path == self.incomplete_path else 0
+            return {"result": [], "result_info": {"total_count": total_count}}
+
+    complete = FakeAPI()
+    _verify_pre_mutation_state(
+        complete,
+        "c" * 32,
+        "dashboard.example.com",
+        "surface.example.com",
+    )
+    assert complete.paths == expected_paths
+
+    incomplete = FakeAPI(incomplete_path=expected_paths[2])
+    with pytest.raises(DeploymentError, match="incomplete"):
+        _verify_pre_mutation_state(
+            incomplete,
+            "c" * 32,
+            "dashboard.example.com",
+            "surface.example.com",
+        )
+    assert incomplete.paths == expected_paths[:3]
+
+
+def test_pre_mutation_state_rejects_alternate_worker_ingress() -> None:
+    class FakeAPI:
+        def __init__(
+            self,
+            *,
+            subdomain: dict[str, bool] | None = None,
+            domains: list[dict[str, str]] | None = None,
+        ) -> None:
+            self.subdomain = subdomain or {"enabled": False, "previews_enabled": False}
+            self.domains = domains or []
+
+        def account_path(self, suffix: str) -> str:
+            return f"/accounts/{'a' * 32}{suffix}"
+
+        def zone_path(self, zone_id: str, suffix: str) -> str:
+            return f"/zones/{zone_id}{suffix}"
+
+        def request(self, method: str, path: str) -> dict[str, object]:
+            assert method == "GET"
+            if path.endswith("/subdomain"):
+                return {"result": self.subdomain}
+            if path.endswith("/workers/domains?service=tve-personal-dashboard&per_page=100"):
+                return {
+                    "result": self.domains,
+                    "result_info": {"total_count": len(self.domains)},
+                }
+            return {"result": [], "result_info": {"total_count": 0}}
+
+    with pytest.raises(DeploymentError, match="workers.dev"):
+        _verify_pre_mutation_state(
+            FakeAPI(subdomain={"enabled": True, "previews_enabled": False}),
+            "c" * 32,
+            "dashboard.example.com",
+            "surface.example.com",
+        )
+    with pytest.raises(DeploymentError, match="explicitly disabled"):
+        _verify_pre_mutation_state(
+            FakeAPI(subdomain={"enabled": False}),
+            "c" * 32,
+            "dashboard.example.com",
+            "surface.example.com",
+        )
+    with pytest.raises(DeploymentError, match="alternate custom domains"):
+        _verify_pre_mutation_state(
+            FakeAPI(domains=[{"hostname": "legacy.example.com"}]),
+            "c" * 32,
+            "dashboard.example.com",
+            "surface.example.com",
         )

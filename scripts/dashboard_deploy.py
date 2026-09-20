@@ -408,21 +408,97 @@ def _app_domain(app: Mapping[str, Any]) -> str | None:
 
 
 def _app_targets(app: Mapping[str, Any]) -> list[str]:
+    targets: list[str] = []
     domain = app.get("domain")
     if isinstance(domain, str):
-        return [domain]
+        targets.append(domain)
     domains = app.get("self_hosted_domains")
     if isinstance(domains, list):
-        return [target for target in domains if isinstance(target, str)]
-    return []
+        targets.extend(target for target in domains if isinstance(target, str))
+    return targets
+
+
+def _target_hostname(target: str) -> str:
+    return target.partition("/")[0].rstrip(".").lower()
+
+
+def _target_covers_hostname(target: str, hostname: str) -> bool:
+    expected = hostname.rstrip(".").lower()
+    target_host = _target_hostname(target)
+    return target_host == expected or (
+        target_host.startswith("*.") and expected.endswith(target_host[1:])
+    )
+
+
+def _target_is_exact_hostname(target: str, hostname: str) -> bool:
+    _, separator, path = target.partition("/")
+    return (
+        _target_hostname(target) == hostname.rstrip(".").lower()
+        and (not separator or path == "")
+    )
 
 
 def _app_has_exact_hostname(app: Mapping[str, Any], hostname: str) -> bool:
-    for target in _app_targets(app):
-        host, separator, path = target.partition("/")
-        if host.lower() == hostname.lower() and (not separator or path == ""):
-            return True
-    return False
+    return any(
+        _target_is_exact_hostname(target, hostname) for target in _app_targets(app)
+    )
+
+
+def _app_covers_hostname(app: Mapping[str, Any], hostname: str) -> bool:
+    return any(_target_covers_hostname(target, hostname) for target in _app_targets(app))
+
+
+def _app_has_non_exact_target(app: Mapping[str, Any], hostname: str) -> bool:
+    return any(
+        _target_covers_hostname(target, hostname)
+        and not _target_is_exact_hostname(target, hostname)
+        for target in _app_targets(app)
+    )
+
+
+def _verify_access_app_targets(
+    apps: list[Any], hostnames: tuple[str, ...]
+) -> None:
+    relevant_hostnames = tuple(hostname for hostname in hostnames if hostname)
+    for app in apps:
+        if not isinstance(app, dict):
+            continue
+        covered = [
+            hostname
+            for hostname in relevant_hostnames
+            if _app_covers_hostname(app, hostname)
+        ]
+        if len(covered) > 1:
+            raise DeploymentError(
+                "one Access application overlaps the Dashboard and M6-B origin hostnames; "
+                "refusing ambiguous policy configuration"
+            )
+    for hostname in relevant_hostnames:
+        matching = [
+            app
+            for app in apps
+            if isinstance(app, dict) and _app_covers_hostname(app, hostname)
+        ]
+        exact = [
+            app
+            for app in matching
+            if _app_has_exact_hostname(app, hostname)
+        ]
+        if len(exact) > 1:
+            raise DeploymentError(
+                f"multiple exact Access applications cover {hostname}; "
+                "refusing ambiguous policy configuration"
+            )
+        if any(_app_has_non_exact_target(app, hostname) for app in matching):
+            raise DeploymentError(
+                f"a path or wildcard Access application overlaps {hostname}; "
+                "refusing ambiguous policy configuration"
+            )
+        if len(matching) != len(exact):
+            raise DeploymentError(
+                f"a path or wildcard Access application overlaps {hostname}; "
+                "refusing ambiguous policy configuration"
+            )
 
 
 def ensure_access_app(
@@ -551,6 +627,10 @@ def _verify_no_worker_routes(api: CloudflareAPI, zone_id: str) -> None:
         api.request("GET", api.zone_path(zone_id, "/workers/routes?per_page=100")),
         "Dashboard Worker route",
     )
+    _check_no_worker_routes(routes)
+
+
+def _check_no_worker_routes(routes: list[Any]) -> None:
     attached = [
         route
         for route in routes
@@ -565,6 +645,68 @@ def _verify_no_worker_routes(api: CloudflareAPI, zone_id: str) -> None:
             "the Dashboard Worker still has zone routes outside its protected custom domain: "
             + details
         )
+
+
+def _check_worker_subdomain_disabled(subdomain: Any) -> None:
+    if not isinstance(subdomain, dict):
+        raise DeploymentError("Worker subdomain response had an unexpected shape")
+    if subdomain.get("enabled") is not False or subdomain.get("previews_enabled") is not False:
+        raise DeploymentError("workers.dev or Worker preview ingress is not explicitly disabled")
+
+
+def _verify_pre_mutation_state(
+    api: CloudflareAPI,
+    dashboard_zone_id: str,
+    dashboard_hostname: str,
+    surface_origin_hostname: str,
+) -> None:
+    """Read every alternate-ingress list completely before any live mutation."""
+
+    subdomain = _result(
+        api.request("GET", api.account_path(f"/workers/scripts/{WORKER_NAME}/subdomain"))
+    )
+    _check_worker_subdomain_disabled(subdomain)
+
+    domains = _complete_list(
+        api.request(
+            "GET",
+            api.account_path(f"/workers/domains?service={WORKER_NAME}&per_page=100"),
+        ),
+        "Worker domain",
+    )
+    actual_domains = {
+        str(domain.get("hostname", "")).rstrip(".").lower()
+        for domain in domains
+        if isinstance(domain, dict)
+    }
+    unexpected_domains = actual_domains - {dashboard_hostname.rstrip(".").lower()}
+    if unexpected_domains:
+        raise DeploymentError(
+            "the Dashboard Worker has alternate custom domains before deployment: "
+            + ", ".join(sorted(unexpected_domains))
+        )
+
+    apps = _complete_list(
+        api.request("GET", api.account_path("/access/apps?per_page=100")),
+        "Access application",
+    )
+    _verify_access_app_targets(apps, (dashboard_hostname, surface_origin_hostname))
+    _complete_list(
+        api.request("GET", api.account_path("/access/service_tokens?per_page=100")),
+        "Cloudflare service-token",
+    )
+    _complete_list(
+        api.request("GET", api.account_path("/cfd_tunnel?per_page=100")),
+        "Cloudflare Tunnel",
+    )
+    routes = _complete_list(
+        api.request(
+            "GET",
+            api.zone_path(dashboard_zone_id, "/workers/routes?per_page=100"),
+        ),
+        "Dashboard Worker route",
+    )
+    _check_no_worker_routes(routes)
 
 
 def _run(
@@ -741,10 +883,7 @@ def verify_cloudflare(
     subdomain = _result(
         api.request("GET", api.account_path(f"/workers/scripts/{WORKER_NAME}/subdomain"))
     )
-    if not isinstance(subdomain, dict):
-        raise DeploymentError("Worker subdomain response had an unexpected shape")
-    if subdomain.get("enabled") is True or subdomain.get("previews_enabled") is True:
-        raise DeploymentError("workers.dev or Worker preview ingress is still enabled")
+    _check_worker_subdomain_disabled(subdomain)
 
     query = urlencode({"service": WORKER_NAME, "per_page": 100})
     domains = _complete_list(
@@ -766,10 +905,12 @@ def verify_cloudflare(
         raise DeploymentError("Dashboard zone ID is required for route bypass verification")
     _verify_no_worker_routes(api, inputs.dashboard_zone_id)
 
+    origin_domain = (inputs.surface_origin_hostname or "").lower()
     apps = _complete_list(
         api.request("GET", api.account_path("/access/apps?per_page=100")),
         "Access application",
     )
+    _verify_access_app_targets(apps, (expected_domain, origin_domain))
     dashboard_apps = [
         app
         for app in apps
@@ -777,7 +918,6 @@ def verify_cloudflare(
     ]
     if len(dashboard_apps) != 1:
         raise DeploymentError("the Dashboard hostname has no Access application")
-    origin_domain = (inputs.surface_origin_hostname or "").lower()
     origin_apps = [
         app
         for app in apps
@@ -961,16 +1101,13 @@ def main(argv: list[str] | None = None) -> int:
             )
 
         # Read checks and Wrangler dry-run happen before any POST/PUT/secret mutation.
-        api.request("GET", api.account_path(f"/workers/scripts/{WORKER_NAME}/subdomain"))
-        api.request("GET", api.account_path("/workers/domains?per_page=100"))
-        api.request("GET", api.account_path("/access/apps?per_page=100"))
-        api.request("GET", api.account_path("/access/service_tokens?per_page=100"))
-        api.request("GET", api.account_path("/cfd_tunnel?per_page=100"))
         if not inputs.dashboard_zone_id:
             raise DeploymentError("Dashboard zone ID is required for route bypass verification")
-        api.request(
-            "GET",
-            api.zone_path(inputs.dashboard_zone_id, "/workers/routes?per_page=100"),
+        _verify_pre_mutation_state(
+            api,
+            inputs.dashboard_zone_id,
+            inputs.dashboard_hostname or "",
+            inputs.surface_origin_hostname or "",
         )
 
         surface_token = ensure_service_token(

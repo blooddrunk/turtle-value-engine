@@ -53,7 +53,7 @@ class _NoRedirect(HTTPRedirectHandler):
 
 def _env(name: str) -> str | None:
     value = os.environ.get(name)
-    return value if value else None
+    return value if value and value.strip() else None
 
 
 def _require(name: str) -> str:
@@ -126,6 +126,10 @@ def _assert_pair(client_id_name: str, client_secret_name: str) -> tuple[str, str
         )
     if not client_id or not client_secret:
         raise LiveSmokeError(f"{client_id_name} and {client_secret_name} are required")
+    if client_id.strip() != client_id or client_secret.strip() != client_secret:
+        raise LiveSmokeError(
+            f"{client_id_name} and {client_secret_name} must not contain surrounding whitespace"
+        )
     return client_id, client_secret
 
 
