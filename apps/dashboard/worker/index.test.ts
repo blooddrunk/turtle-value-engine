@@ -57,24 +57,29 @@ describe("M6-C2 Worker upstream security boundary", () => {
 
   it("rejects half-configured credentials for both local and remote origins", async () => {
     for (const origin of ["http://127.0.0.1:8787", "https://surface.example.test"]) {
-      const upstreamFetch = vi.spyOn(globalThis, "fetch");
-      const response = await proxy(
-        request("/api/healthz"),
-        testEnv({
-          SURFACE_API_ORIGIN: origin,
-          SURFACE_API_ACCESS_CLIENT_ID: "only-client-id",
-        }),
-      );
+      for (const credentials of [
+        { SURFACE_API_ACCESS_CLIENT_ID: "only-client-id" },
+        { SURFACE_API_ACCESS_CLIENT_SECRET: "only-client-secret" },
+      ]) {
+        const upstreamFetch = vi.spyOn(globalThis, "fetch");
+        const response = await proxy(
+          request("/api/healthz"),
+          testEnv({
+            SURFACE_API_ORIGIN: origin,
+            ...credentials,
+          }),
+        );
 
-      expect(response.status).toBe(503);
-      await expect(response.json()).resolves.toEqual({
-        error: {
-          code: "UPSTREAM_CONFIGURATION_INVALID",
-          message: "surface API origin configuration is invalid",
-        },
-      });
-      expect(upstreamFetch).not.toHaveBeenCalled();
-      vi.restoreAllMocks();
+        expect(response.status).toBe(503);
+        await expect(response.json()).resolves.toEqual({
+          error: {
+            code: "UPSTREAM_CONFIGURATION_INVALID",
+            message: "surface API origin configuration is invalid",
+          },
+        });
+        expect(upstreamFetch).not.toHaveBeenCalled();
+        vi.restoreAllMocks();
+      }
     }
   });
 
