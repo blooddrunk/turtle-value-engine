@@ -25,9 +25,9 @@ all 18 execution steps, including source Wrangler deployment-config dry-run.
 The documentation closure commit
 `aed18ee54795406dfbe77b022f8c706c39d18d8d` also has green run
 `35486022150`, with all 18 execution steps passed. The final local
-deterministic suite is `6301 passed, 2 skipped`;
+deterministic suite is `6302 passed, 2 skipped`;
 Dashboard Vitest is `14 passed`, and deployment-helper regression tests are
-`7 passed`.
+`8 passed`.
 
 The implementation provides:
 
@@ -42,6 +42,8 @@ The implementation provides:
 - source Wrangler asset-directory validation in CI;
 - exact-hostname/Access-policy/service-token verification and invalid-origin-
   credential live-smoke coverage.
+- subprocess output redaction covering the API token and both service-token
+  pairs before Wrangler deployment.
 
 The selected implementation package is:
 
@@ -83,3 +85,7 @@ deployment verification against hostname/policy/token drift, rejects invalid
 origin credentials in live smoke, and records the current cloudflared ingress
 validation command. Owner-specific Cloudflare/account/identity/origin inputs
 remain the only reason live acceptance is not claimed.
+
+The subsequent secret-redaction follow-up is
+`297d7cf1232823fc3dab1b5758dae8d6907275d2`; run `35486605298` is green with
+all 18 CI execution steps passed.

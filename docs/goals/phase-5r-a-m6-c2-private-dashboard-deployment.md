@@ -485,8 +485,8 @@ completed successfully. The single `test` job passed all 18 execution steps,
 including Python/Ruff/full
 pytest, frozen pnpm install, OpenAPI and generated-type drift, Dashboard
 lint/typecheck/Vitest/build, source Wrangler dry-run and real local
-cross-stack smoke. The final local results were `6301 passed, 2 skipped` for
-pytest, `14 passed` for Dashboard Vitest and `7 passed` for deployment-helper
+cross-stack smoke. The final local results were `6302 passed, 2 skipped` for
+pytest, `14 passed` for Dashboard Vitest and `8 passed` for deployment-helper
 tests. The checked-in Tunnel example also validated with the official
 temporary cloudflared `2026.9.1` binary and returned `Validating rules... OK`.
 
@@ -494,6 +494,12 @@ The subsequent documentation closure commit
 `aed18ee54795406dfbe77b022f8c706c39d18d8d` was independently verified by
 GitHub Actions run `35486022150`, whose `test` job also passed all 18
 execution steps.
+
+The secret-redaction follow-up is
+`297d7cf1232823fc3dab1b5758dae8d6907275d2`; GitHub Actions run
+`35486605298` also passed all 18 execution steps. It ensures the first
+Wrangler deploy subprocess receives explicit redaction values for the API
+token and both service-token pairs, and adds a stdout/stderr regression test.
 
 The implementation remains
 `READY_FOR_OWNER_AUTHORIZED_LIVE_ACCEPTANCE`: no owner Cloudflare account,
