@@ -98,6 +98,11 @@ The route-pagination regression-test follow-up is
 all 18 CI execution steps passed. The deployment runbook now records the
 additional Workers Routes Read permission.
 
+The complete-list fail-closed follow-up is
+`4c6523c2d8f21e4f44c4aee4304501311a7ab44c`; run `35487651724` is green with
+all 18 CI execution steps passed. All relevant Cloudflare list responses now
+require matching pagination metadata before apply/verify proceeds.
+
 The subsequent secret-redaction follow-up is
 `297d7cf1232823fc3dab1b5758dae8d6907275d2`; run `35486605298` is green with
 all 18 CI execution steps passed.

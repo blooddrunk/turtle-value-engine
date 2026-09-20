@@ -512,6 +512,12 @@ The route-pagination regression-test follow-up is
 `35487290954` also passed all 18 execution steps. The deployment runbook
 records the additional Workers Routes Read permission.
 
+The complete-list fail-closed follow-up is
+`4c6523c2d8f21e4f44c4aee4304501311a7ab44c`; GitHub Actions run
+`35487651724` also passed all 18 execution steps. Service-token, Access-app,
+Worker-domain, DNS-record and Worker-route lists now require matching
+pagination metadata before apply/verify proceeds.
+
 The implementation remains
 `READY_FOR_OWNER_AUTHORIZED_LIVE_ACCEPTANCE`: no owner Cloudflare account,
 token, selected hostnames/zone, origin host and snapshot path, or service
