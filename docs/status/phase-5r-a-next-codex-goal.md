@@ -3,8 +3,8 @@
 Status: **M6-C2 IMPLEMENTED; READY_FOR_OWNER_AUTHORIZED_LIVE_ACCEPTANCE**
 
 Latest `main` verification commit is
-`8b930dff8ab289b67a9c02fc7e92de7564462d1f`; GitHub Actions run
-`35489083702` is green. It adds fail-closed pre-mutation Cloudflare list and
+`3fb2bf7e9706ac9e8e054160a45259d234c1ba7d`; GitHub Actions run
+`35489453533` is green. It adds fail-closed pre-mutation Cloudflare list and
 alternate-ingress checks, while retaining POST/PUT/PATCH/DELETE mutation
 rejection in the Worker, M6-B loopback tests, local cross-stack smoke and
 repeatable live smoke.
@@ -56,6 +56,8 @@ The implementation provides:
 - apply-time workers.dev/preview, extra-domain and overlapping Access-target
   checks now fail closed before any Cloudflare mutation; live credential pairs
   reject whitespace-only and surrounding-whitespace values.
+- Worker tests explicitly cover both client-only and secret-only half-paired
+  origin credentials.
 
 The selected implementation package is:
 
@@ -124,6 +126,10 @@ The current fail-closed deployment follow-up is
 all 18 execution steps passed. The latest local Python suite is
 `6306 passed, 2 skipped`, and the deployment/live-smoke regression tests are
 `12 passed`.
+
+The service-token symmetry follow-up is
+`3fb2bf7e9706ac9e8e054160a45259d234c1ba7d`; run `35489453533` is green with
+all 18 execution steps passed.
 
 The subsequent secret-redaction follow-up is
 `297d7cf1232823fc3dab1b5758dae8d6907275d2`; run `35486605298` is green with

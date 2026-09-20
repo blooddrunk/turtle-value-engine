@@ -541,6 +541,12 @@ whitespace-only and surrounding-whitespace values. Latest local results were
 `6306 passed, 2 skipped` for Python and `12 passed` for deployment/live-smoke
 regression tests.
 
+The service-token symmetry follow-up is
+`3fb2bf7e9706ac9e8e054160a45259d234c1ba7d`; GitHub Actions run
+`35489453533` also passed all 18 execution steps. The Worker security tests
+now explicitly cover both client-only and secret-only half-configured origin
+credential states, and both fail before upstream fetch.
+
 The implementation remains
 `READY_FOR_OWNER_AUTHORIZED_LIVE_ACCEPTANCE`: no owner Cloudflare account,
 token, selected hostnames/zone, origin host and snapshot path, or service
