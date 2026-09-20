@@ -710,3 +710,8 @@ English-only, exposes developer-oriented terminology and errors, contains
 placeholder-like content, and presents many fields as `NOT_AVAILABLE`. These
 are recorded as future Dashboard UX/localization work, not as M6-C2 security
 or deployment blockers. No such redesign was started during closure.
+
+The final closure-documentation commit is
+`4dd935d01c4d899e0aab68ece7d720b54781baa8`; GitHub Actions run
+`35503260175` completed with `success`, including all 20 required execution
+steps.

@@ -235,3 +235,7 @@ issues:
 
 This backlog is recorded only; implementation is not part of the closed M6-C2
 goal. Do not start Phase 6, M4-D/M4-E, M2-D or M5-C/R2 as a side effect.
+
+Final closure commit: `4dd935d01c4d899e0aab68ece7d720b54781baa8`.
+GitHub Actions run `35503260175` is green with all 20 required execution
+steps passed.
