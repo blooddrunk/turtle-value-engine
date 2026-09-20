@@ -140,6 +140,14 @@ def test_dashboard_route_verifier_fails_closed_on_legacy_worker_routes() -> None
             return {"result": self.routes, "result_info": {"total_count": len(self.routes)}}
 
     _verify_no_worker_routes(FakeAPI([]), "c" * 32)
+    class PaginatedAPI(FakeAPI):
+        def request(self, method: str, path: str) -> dict[str, object]:
+            response = super().request(method, path)
+            response["result_info"] = {"total_count": len(self.routes) + 1}
+            return response
+
+    with pytest.raises(DeploymentError, match="paginated"):
+        _verify_no_worker_routes(PaginatedAPI([]), "c" * 32)
     with pytest.raises(DeploymentError, match="zone routes outside"):
         _verify_no_worker_routes(
             FakeAPI(

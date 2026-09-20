@@ -35,8 +35,8 @@ Populate the non-secret values in `production.env.example` through the host's
 environment or secret manager. The following secret names are read only from
 runtime environment references and are never printed or committed:
 
-- `CLOUDFLARE_API_TOKEN` — API token with the minimum Worker, Access, Tunnel
-  and DNS permissions needed by the command;
+- `CLOUDFLARE_API_TOKEN` — API token with the minimum Worker, Access, Tunnel,
+  DNS and Dashboard-zone Worker Routes Read permissions needed by the command;
 - `SURFACE_API_ACCESS_CLIENT_ID` and
   `SURFACE_API_ACCESS_CLIENT_SECRET` — the Worker-to-origin Access service
   token pair;
