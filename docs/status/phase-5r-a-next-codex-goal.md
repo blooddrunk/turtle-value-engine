@@ -2,12 +2,14 @@
 
 Status: **M6-C2 IMPLEMENTED; READY_FOR_OWNER_AUTHORIZED_LIVE_ACCEPTANCE**
 
-Latest `main` verification commit is
-`0ae71121138601b61694f2f2e1b1039a9620fda1`; GitHub Actions run
-`35489756086` is green. It adds fail-closed pre-mutation Cloudflare list and
-alternate-ingress checks, while retaining POST/PUT/PATCH/DELETE mutation
-rejection in the Worker, M6-B loopback tests, local cross-stack smoke and
-repeatable live smoke.
+Latest code verification commit is
+`c93814b3de6c034da77ea526cef1a3bfb1300026`; GitHub Actions run
+`35490033160` is green with all 18 execution steps passed. It adds a
+production-config regression guard proving that runtime API and Access
+service-token values do not enter the generated Wrangler config, while
+retaining fail-closed pre-mutation Cloudflare list and alternate-ingress
+checks, POST/PUT/PATCH/DELETE mutation rejection in the Worker, M6-B loopback
+tests, local cross-stack smoke and repeatable live smoke.
 
 Current `main` contains the M6-C1 implementation, CI hardening, M6-C2
 Worker/deployment code, templates and tests. The pre-edit baseline was
@@ -136,6 +138,15 @@ all 18 execution steps passed.
 The live-smoke hostname-isolation follow-up is
 `0ae71121138601b61694f2f2e1b1039a9620fda1`; run `35489756086` is green with
 all 18 execution steps passed.
+
+The production-config secret-safety follow-up is
+`c93814b3de6c034da77ea526cef1a3bfb1300026`; run `35490033160` is green with
+all 18 execution steps passed. Its focused deployment regression test asserts
+that the generated production config contains only the non-secret origin
+variable and no API-token or Access service-token values. The current focused
+deployment tests passed (`12 passed`) and standalone live-smoke validation
+tests passed (`2 passed`); the full local deterministic suite passed
+(`6308 passed, 2 skipped`).
 
 The subsequent secret-redaction follow-up is
 `297d7cf1232823fc3dab1b5758dae8d6907275d2`; run `35486605298` is green with

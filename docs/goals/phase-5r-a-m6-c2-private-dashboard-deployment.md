@@ -553,6 +553,17 @@ The live-smoke hostname-isolation follow-up is
 rejects Dashboard and origin URLs with the same hostname before any network
 request, matching deployment preflight's collision guard.
 
+The production-config secret-safety follow-up is
+`c93814b3de6c034da77ea526cef1a3bfb1300026`. Its regression test serializes
+the generated production Wrangler configuration and proves that the API token
+and both Access service-token pairs are absent; only the non-secret HTTPS
+origin variable is emitted as a Worker variable, with workers.dev and preview
+URLs disabled and the exact custom-domain route retained. GitHub Actions run
+`35490033160` also passed all 18 execution steps. The focused deployment tests
+passed (`12 passed`) and the standalone live-smoke validation tests passed
+(`2 passed`). The full local deterministic suite passed (`6308 passed, 2
+skipped`).
+
 The implementation remains
 `READY_FOR_OWNER_AUTHORIZED_LIVE_ACCEPTANCE`: no owner Cloudflare account,
 token, selected hostnames/zone, origin host and snapshot path, or service
