@@ -1,241 +1,69 @@
-# Phase 5R-A next Codex goal — M6-C2
+# Phase 5R-A next Codex goal — M6-C3
 
-Status: **M6-C2 CLOSED / OWNER_ACCEPTED; FUTURE DASHBOARD UX IMPROVEMENTS RECORDED**
+Status: **M6-C3 SELECTED / NOT_STARTED**
 
-Project runtime configuration is now consolidated in
-`config/project.example.toml` → `.tve-private/project.toml`. It is shared by
-future phases, contains only non-secret values and secret references, and is
-validated by `tve config validate`. M6-C2 deployment/live smoke read this file;
-the only intended owner facts are the Cloudflare zone name, approved Access
-identity email and explicit validated surface snapshot path, plus one
-environment/secret-manager reference named `CLOUDFLARE_API_TOKEN`.
+Baseline before planning: `8be5d511d432c08424077dbc142a4e86468b215f`.
+GitHub Actions run `35503386115` completed successfully for that baseline.
 
-The project-wide configuration implementation is commit
-`34285f467de4fc6b3c68350814e912f0016228e6`. The latest `main` closure commit
-is `93c638fd1231e904fab50b3aeb21eab7e6e41874`; GitHub Actions run
-`35496754597` is green with all 20 execution steps passed. It includes the
-project-wide typed runtime configuration, safe config CLI, automatic
-Cloudflare account/zone discovery, named Access-token provisioning and
-in-memory live-smoke credential handling while retaining the existing
-fail-closed M6-C2 security checks.
+M6-C2 is closed as `CLOSED / OWNER_ACCEPTED`. Its private Cloudflare
+Access/Worker/Tunnel deployment and automated live smoke are not blockers and
+must not be redesigned by the next package.
 
-Current `main` contains the M6-C1 implementation, CI hardening, M6-C2
-Worker/deployment code, templates and tests. The pre-edit baseline was
-`a54f86b60f111e7dca9c5bb6a3cbcb903bfeaabf`; GitHub Actions run `35482336396`
-for that SHA was green. The implementation commit is
-`41da846ecb3e7b2835933c0c9d9a8bd463eba7f4`, and post-push GitHub Actions run
-`35484472809` for that SHA is also green: the single `test` job and all required
-execution steps succeeded. The exact post-implementation checks and current
-live blockers are recorded in
-`docs/status/phase-5r-a-2026-09-20.md`.
+The selected next package is:
 
-The final deployment-helper correction is commit
-`43bfa8f7e5191266dcec2635fd602d5fd82d9808`; GitHub Actions run `35484921932`
-for that commit is green, including the full `test` job and all required
-steps.
+`docs/goals/phase-5r-a-m6-c3-dashboard-ux-localization.md`
 
-The code-bearing final hardening commit is
-`3c8e188ac58f05b11a41389d1041181190ca24a1`. Before that hardening,
-`ece4610eb61f1c5340ceb0ad3d6b727ad9fd53d1` had green run `35485017083`.
-Run `35485721496` for the hardening commit is green: the `test` job completed
-all 18 execution steps, including source Wrangler deployment-config dry-run.
-The documentation closure commit
-`aed18ee54795406dfbe77b022f8c706c39d18d8d` also has green run
-`35486022150`, with all 18 execution steps passed. The final local
-deterministic suite is `6303 passed, 2 skipped`;
-Dashboard Vitest is `14 passed`, and deployment-helper regression tests are
-`9 passed`.
+## Goal
 
-The implementation provides:
+Turn the technically correct but developer-oriented private Dashboard into a
+Chinese-first owner-facing research UI while preserving the exact
+`ResearchSurfaceSnapshotV1`, M6-B read-only API, M6-C2 security boundary and
+all deterministic investment semantics.
 
-- loopback HTTP preview only and remote HTTPS-only Worker origin validation;
-- paired server-side Access service-token injection with browser-header spoof
-  rejection and secret-safe responses;
-- explicit `workers_dev: false` / `preview_urls: false`, custom-domain
-  production generation and generated Wrangler type checking;
-- deterministic Worker security tests, deployment preflight/dry-run/resource
-  verifier and repeatable live smoke;
-- loopback-only Tunnel ingress and explicit snapshot-path origin commands.
-- source Wrangler asset-directory validation in CI;
-- exact-hostname/Access-policy/service-token verification and invalid-origin-
-  credential live-smoke coverage.
-- subprocess output redaction covering the API token and both service-token
-  pairs before Wrangler deployment.
-- Dashboard zone-level Worker route isolation with fail-closed pagination
-  handling before apply/verify.
-- apply-time workers.dev/preview, extra-domain and overlapping Access-target
-  checks now fail closed before any Cloudflare mutation; live credential pairs
-  reject whitespace-only and surrounding-whitespace values.
-- Worker tests explicitly cover both client-only and secret-only half-paired
-  origin credentials.
-- Standalone live smoke rejects Dashboard/origin hostname collisions before
-  any network request.
+The package should centralize user-facing state/copy presentation, explain
+`SPECIAL_REVIEW`, `NOT_EVALUATED`, `PARTIAL`, `BLOCKED` and unavailable
+values in plain language, distinguish empty/partial/error states, and move
+hashes/API/rule/artifact diagnostics behind progressive disclosure.
 
-The selected implementation package is:
+Do not change the API merely to make the UI easier to implement. Do not infer
+missing units, values or positive states.
 
-`docs/goals/phase-5r-a-m6-c2-private-dashboard-deployment.md`
+## Automation requirement
 
-Core objective: deploy the existing read-only Dashboard privately with
-authenticated human ingress and authenticated Worker-to-M6-B origin transport,
-preferably Cloudflare Access + Worker + Cloudflare Tunnel while keeping
-`tve surface serve` loopback-only.
+Use the permanent owner test environment rooted at `D:\code\research` when
+it is available. Discover the real repository checkout beneath that root
+(`/mnt/d/code/research` under WSL where applicable) and run routine validation
+there rather than delegating it to the owner.
 
-Preserve M6-A/M6-B/C1 semantics. Do not start Phase 6, M5-C/R2, M4-D/M4-E or
-M2-D unless the M6-C2 goal explicitly opens a separately justified boundary.
+Before editing and after implementation, run the complete Python + Dashboard
+regression gates from the goal, including Ruff, full pytest, frozen pnpm
+install, OpenAPI/API/Wrangler type drift checks, lint, typecheck, Vitest,
+production build, client-bundle secret scan and real local cross-stack smoke.
 
-Automation policy is strict:
+For UX verification, prefer available browser automation/headless screenshots.
+Only if the execution environment truly lacks an automatable browser path may
+the owner be asked for the bounded desktop/mobile visual check written verbatim
+in the goal.
 
-- Codex runs all local/CI/deployment/API/Tunnel checks it can run itself.
-- Codex uses CLI/API instead of asking the owner to click through Cloudflare
-  when credentials/permissions allow automation.
-- Secrets come only from environment/secret-manager references and are never
-  requested in chat, committed or printed.
-- If live owner inputs are unavailable after all offline/security work is green,
-  stop at `READY_FOR_OWNER_AUTHORIZED_LIVE_ACCEPTANCE` and list each missing
-  input plus exact pending commands.
-- If the execution environment blocks an otherwise automatable step, use
-  `BLOCKED_BY_EXECUTION_ENVIRONMENT` with exact failing command/error,
-  successful checks, affected acceptance item and exact fallback commands.
-- The only expected manual acceptance is the final owner interactive Access/IdP
-  login sequence described in the goal; it cannot substitute for automated
-  transport/security smoke tests.
+If the existing ignored project config and Cloudflare credential reference are
+available, verify/redeploy the existing private Dashboard and rerun live smoke
+automatically without changing Access/Tunnel policy. If they are not available,
+record the exact skipped live-only step; do not treat missing cloud credentials
+as a local implementation blocker and do not ask for tokens in chat.
 
-No Phase 6 monitoring, M5-C/R2, M4-D/M4-E or M2-D work was started. M5-C/R2
-remains deferred because the persistent authenticated M6-B origin serves the
-existing validated snapshot directly.
+After push, inspect GitHub Actions for the exact pushed commit. Do not claim
+completion while CI is red or in progress.
 
-The final hardening follow-up is pushed as
-`3c8e188ac58f05b11a41389d1041181190ca24a1`; its CI run is
-`35485721496`. It fixes the source Wrangler dry-run configuration, tightens
-deployment verification against hostname/policy/token drift, rejects invalid
-origin credentials in live smoke, and records the current cloudflared ingress
-validation command. At that pre-authorization checkpoint, owner-specific
-Cloudflare/account/identity/origin inputs remained the only reason live
-acceptance was not claimed.
+## Explicitly deferred
 
-The route-isolation follow-up is
-`a68fa3196f496d08782d01cc2ea9bf5823245f25`; run `35487136705` is green with
-all 18 CI execution steps passed. It requires `TVE_DASHBOARD_ZONE_ID` and
-rejects legacy zone routes still attached to the Dashboard Worker.
+- Phase 6 watchlist/event-driven re-analysis;
+- M4-D/M4-E;
+- M2-D;
+- M5-C/R2 absent a separately demonstrated artifact need;
+- any `strict-v1`, A6/PIT/source-selection or investment-semantic change.
 
-The route-pagination regression-test follow-up is
-`65f413c4a62ecd9adc8c531a42f372f7504c62b5`; run `35487290954` is green with
-all 18 CI execution steps passed. The deployment runbook now records the
-additional Workers Routes Read permission.
+A6 remains the separate strict production-claim audit and is not a prerequisite
+for this personal read-only Dashboard UX package.
 
-The complete-list fail-closed follow-up is
-`4c6523c2d8f21e4f44c4aee4304501311a7ab44c`; run `35487651724` is green with
-all 18 CI execution steps passed. All relevant Cloudflare list responses now
-require matching pagination metadata before apply/verify proceeds.
-
-The read-only method-coverage follow-up is
-`7859d7021726e1ea09e80126e3f30e844f735015`; run `35488158752` is green with
-all 18 execution steps passed. All four HTTP mutation methods are rejected
-before upstream fetch in the Worker and are exercised by local and live smoke
-paths.
-
-The current fail-closed deployment follow-up is
-`8b930dff8ab289b67a9c02fc7e92de7564462d1f`; run `35489083702` is green with
-all 18 execution steps passed. The latest local Python suite is
-`6306 passed, 2 skipped`, and the deployment/live-smoke regression tests are
-`12 passed`.
-
-The service-token symmetry follow-up is
-`3fb2bf7e9706ac9e8e054160a45259d234c1ba7d`; run `35489453533` is green with
-all 18 execution steps passed.
-
-The live-smoke hostname-isolation follow-up is
-`0ae71121138601b61694f2f2e1b1039a9620fda1`; run `35489756086` is green with
-all 18 execution steps passed.
-
-The production-config secret-safety follow-up is
-`c93814b3de6c034da77ea526cef1a3bfb1300026`; run `35490033160` is green with
-all 18 execution steps passed. Its focused deployment regression test asserts
-that the generated production config contains only the non-secret origin
-variable and no API-token or Access service-token values. The current focused
-deployment tests passed (`12 passed`) and standalone live-smoke validation
-tests passed (`2 passed`); the full local deterministic suite passed
-(`6308 passed, 2 skipped`).
-
-The malformed-origin-credential hardening follow-up is
-`ce3956e1ceb04aff462228bc7747d5b686236a80`; run `35490794888` is green with
-all 18 execution steps passed. Worker security tests now reject empty,
-whitespace-only and surrounding-whitespace credential values before upstream
-fetch for both loopback and remote HTTPS origins. Dashboard Vitest passed
-(`15 passed`), and the focused M6-A/M6-B/M6-C2 Python tests passed (`32
-passed`).
-
-The client-bundle secret-safety follow-up is
-`cdca47f291d3cbc3bac8f51933c62f7cd0e13408`; run `35491132677` is green with
-all 19 execution steps passed. The build runs with test-only runtime secret
-sentinels and `security:client-bundle` scans all generated client files
-without printing values; the local scan passed over 4 files.
-
-The subsequent secret-redaction follow-up is
-`297d7cf1232823fc3dab1b5758dae8d6907275d2`; run `35486605298` is green with
-all 18 CI execution steps passed.
-
-## Current handoff — automated live acceptance complete
-
-The owner-specific inputs are now present and have been consumed through the
-private runtime references. The actual target is `HK0288` at `as_of=2026-09-20`
-with validated snapshot
-`.tve-private/surface/research-surface.json`, surface/hash
-`1564c885738b010148225e8f2aa84d198ea819fc517c4ffcf21fbc0649053862`, and
-deterministic analysis `analysis-18069e2f1b8f3cb9fb8d9d9c`.
-
-Live deployment succeeded with exit code 0. The private endpoints are:
-
-- Dashboard: `https://tve-private-dashboard.haoqi90.top`
-- authenticated origin: `https://tve-private-surface.haoqi90.top`
-- Worker: `tve-personal-dashboard`
-- Tunnel: `0e19c8cc-1af4-48d9-8af5-d65717b56a6c`
-
-`dashboard_deploy.py verify` succeeded; Access, Tunnel, DNS, Worker route and
-custom-domain checks are green. The repeatable live smoke succeeded for
-unauthenticated blocking, valid/invalid origin credentials, Dashboard -> Worker
--> origin -> M6-B health/list/detail, surface identity/hash, ETag 304, unknown
-404 and POST/PUT/PATCH/DELETE 405. The final local verification is Ruff 0,
-pytest `6320 passed, 2 skipped`, Dashboard Vitest `15 passed`, and all frontend,
-generated-contract, bundle-secret and local cross-stack checks exit 0.
-
-Before owner acceptance, the only pending action was the interactive check
-explicitly defined by M6-C2: incognito access to the Dashboard URL must show
-the Access wall before content; `xieyh@outlook.com` must read the overview and
-one detail; a fresh unauthenticated session must not show the Dashboard. The
-owner result is recorded in the closure section below. Do not start Phase 6 or
-any deferred M4/M5/M2 package after this handoff.
-
-Closure commit: `4365a950c3a5afa28656545e7fbca1ef6253f1f9`.
-GitHub Actions run `35502629180` is green with all 20 required execution
-steps passed.
-
-## M6-C2 closure and future improvement backlog
-
-The owner completed the only manual acceptance required by M6-C2 at
-`https://tve-private-dashboard.haoqi90.top`, including Access login and
-`HK00288` verification. M6-C2 is closed; no deployment or security blocker
-remains.
-
-The next Dashboard-focused work should address the owner-reported usability
-issues:
-
-1. Chinese-first localization and a clear language boundary for user-facing
-   copy.
-2. Plain-language labels and error states instead of developer terminology or
-   raw implementation details.
-3. Intentional empty, partial and unavailable states instead of placeholder-like
-   content.
-4. A user-readable explanation layer for `NOT_AVAILABLE`, `BLOCKED`,
-   `NOT_EVALUATED` and `SPECIAL_REVIEW`, retaining exact provenance behind a
-   detail/diagnostic affordance.
-5. Better overview/detail presentation of company identity, dates, units,
-   currency, source status and provenance.
-6. UI regression/accessibility tests for the new language and state mapping.
-
-This backlog is recorded only; implementation is not part of the closed M6-C2
-goal. Do not start Phase 6, M4-D/M4-E, M2-D or M5-C/R2 as a side effect.
-
-Final closure commit: `4dd935d01c4d899e0aab68ece7d720b54781baa8`.
-GitHub Actions run `35503260175` is green with all 20 required execution
-steps passed.
+Stop after M6-C3 closure and return a precise verification record plus any
+genuine remaining blocker.
