@@ -2,6 +2,12 @@
 
 Status: **M6-C2 IMPLEMENTED; READY_FOR_OWNER_AUTHORIZED_LIVE_ACCEPTANCE**
 
+Latest `main` verification commit is
+`7859d7021726e1ea09e80126e3f30e844f735015`; GitHub Actions run
+`35488158752` is green. The follow-up covers POST, PUT, PATCH and DELETE
+mutation rejection in the Worker, M6-B loopback tests, local cross-stack smoke
+and repeatable live smoke.
+
 Current `main` contains the M6-C1 implementation, CI hardening, M6-C2
 Worker/deployment code, templates and tests. The pre-edit baseline was
 `a54f86b60f111e7dca9c5bb6a3cbcb903bfeaabf`; GitHub Actions run `35482336396`
@@ -102,6 +108,12 @@ The complete-list fail-closed follow-up is
 `4c6523c2d8f21e4f44c4aee4304501311a7ab44c`; run `35487651724` is green with
 all 18 CI execution steps passed. All relevant Cloudflare list responses now
 require matching pagination metadata before apply/verify proceeds.
+
+The read-only method-coverage follow-up is
+`7859d7021726e1ea09e80126e3f30e844f735015`; run `35488158752` is green with
+all 18 execution steps passed. All four HTTP mutation methods are rejected
+before upstream fetch in the Worker and are exercised by local and live smoke
+paths.
 
 The subsequent secret-redaction follow-up is
 `297d7cf1232823fc3dab1b5758dae8d6907275d2`; run `35486605298` is green with

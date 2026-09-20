@@ -518,6 +518,17 @@ The complete-list fail-closed follow-up is
 Worker-domain, DNS-record and Worker-route lists now require matching
 pagination metadata before apply/verify proceeds.
 
+The read-only method-coverage follow-up is
+`7859d7021726e1ea09e80126e3f30e844f735015`; GitHub Actions run
+`35488158752` also passed all 18 execution steps. The Worker security test,
+M6-B loopback tests, local cross-stack smoke and repeatable live smoke now
+exercise POST, PUT, PATCH and DELETE, and require each to return 405 before
+any upstream fetch. Local verification after this commit recorded
+`6303 passed, 2 skipped` for the Python suite, `18 passed` for the focused
+M6-A/M6-B tests, `14 passed` for Dashboard Vitest, current generated
+OpenAPI/API/Wrangler contracts, a successful source Wrangler strict dry-run,
+and a successful real local cross-stack smoke.
+
 The implementation remains
 `READY_FOR_OWNER_AUTHORIZED_LIVE_ACCEPTANCE`: no owner Cloudflare account,
 token, selected hostnames/zone, origin host and snapshot path, or service
