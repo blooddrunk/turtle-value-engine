@@ -3,8 +3,8 @@
 Status: **M6-C2 IMPLEMENTED; READY_FOR_OWNER_AUTHORIZED_LIVE_ACCEPTANCE**
 
 Latest `main` verification commit is
-`3fb2bf7e9706ac9e8e054160a45259d234c1ba7d`; GitHub Actions run
-`35489453533` is green. It adds fail-closed pre-mutation Cloudflare list and
+`0ae71121138601b61694f2f2e1b1039a9620fda1`; GitHub Actions run
+`35489756086` is green. It adds fail-closed pre-mutation Cloudflare list and
 alternate-ingress checks, while retaining POST/PUT/PATCH/DELETE mutation
 rejection in the Worker, M6-B loopback tests, local cross-stack smoke and
 repeatable live smoke.
@@ -58,6 +58,8 @@ The implementation provides:
   reject whitespace-only and surrounding-whitespace values.
 - Worker tests explicitly cover both client-only and secret-only half-paired
   origin credentials.
+- Standalone live smoke rejects Dashboard/origin hostname collisions before
+  any network request.
 
 The selected implementation package is:
 
@@ -129,6 +131,10 @@ all 18 execution steps passed. The latest local Python suite is
 
 The service-token symmetry follow-up is
 `3fb2bf7e9706ac9e8e054160a45259d234c1ba7d`; run `35489453533` is green with
+all 18 execution steps passed.
+
+The live-smoke hostname-isolation follow-up is
+`0ae71121138601b61694f2f2e1b1039a9620fda1`; run `35489756086` is green with
 all 18 execution steps passed.
 
 The subsequent secret-redaction follow-up is

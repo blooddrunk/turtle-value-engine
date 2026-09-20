@@ -547,6 +547,12 @@ The service-token symmetry follow-up is
 now explicitly cover both client-only and secret-only half-configured origin
 credential states, and both fail before upstream fetch.
 
+The live-smoke hostname-isolation follow-up is
+`0ae71121138601b61694f2f2e1b1039a9620fda1`; GitHub Actions run
+`35489756086` also passed all 18 execution steps. Standalone live smoke now
+rejects Dashboard and origin URLs with the same hostname before any network
+request, matching deployment preflight's collision guard.
+
 The implementation remains
 `READY_FOR_OWNER_AUTHORIZED_LIVE_ACCEPTANCE`: no owner Cloudflare account,
 token, selected hostnames/zone, origin host and snapshot path, or service
