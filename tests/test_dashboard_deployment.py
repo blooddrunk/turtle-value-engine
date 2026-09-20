@@ -146,7 +146,7 @@ def test_dashboard_route_verifier_fails_closed_on_legacy_worker_routes() -> None
             response["result_info"] = {"total_count": len(self.routes) + 1}
             return response
 
-    with pytest.raises(DeploymentError, match="paginated"):
+    with pytest.raises(DeploymentError, match="incomplete"):
         _verify_no_worker_routes(PaginatedAPI([]), "c" * 32)
     with pytest.raises(DeploymentError, match="zone routes outside"):
         _verify_no_worker_routes(

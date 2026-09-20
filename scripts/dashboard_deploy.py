@@ -335,10 +335,25 @@ def _result(response: Mapping[str, Any]) -> Any:
     return response.get("result")
 
 
-def _find_service_token(api: CloudflareAPI, client_id: str) -> dict[str, Any] | None:
-    result = _result(api.request("GET", api.account_path("/access/service_tokens?per_page=100")))
+def _complete_list(response: Mapping[str, Any], label: str) -> list[Any]:
+    result = _result(response)
     if not isinstance(result, list):
-        raise DeploymentError("Cloudflare service-token list returned an unexpected shape")
+        raise DeploymentError(f"{label} list returned an unexpected shape")
+    result_info = response.get("result_info")
+    total_count = result_info.get("total_count") if isinstance(result_info, dict) else None
+    if not isinstance(total_count, int) or total_count != len(result):
+        raise DeploymentError(
+            f"{label} list is incomplete or lacks reliable pagination metadata; "
+            "refusing to continue"
+        )
+    return result
+
+
+def _find_service_token(api: CloudflareAPI, client_id: str) -> dict[str, Any] | None:
+    result = _complete_list(
+        api.request("GET", api.account_path("/access/service_tokens?per_page=100")),
+        "Cloudflare service-token",
+    )
     for token in result:
         if isinstance(token, dict) and token.get("client_id") == client_id:
             return token
@@ -418,9 +433,7 @@ def ensure_access_app(
     policies: list[dict[str, Any]],
 ) -> dict[str, Any]:
     response = api.request("GET", api.account_path("/access/apps?per_page=100"))
-    apps = _result(response)
-    if not isinstance(apps, list):
-        raise DeploymentError("Cloudflare Access application list returned an unexpected shape")
+    apps = _complete_list(response, "Cloudflare Access application")
     existing = next(
         (
             app
@@ -499,9 +512,10 @@ def ensure_origin_dns(api: CloudflareAPI, inputs: DeploymentInputs, tunnel_id: s
         raise DeploymentError("zone ID and origin hostname are required for DNS configuration")
     query = urlencode({"type": "CNAME", "name": inputs.surface_origin_hostname, "per_page": 100})
     path = api.zone_path(inputs.zone_id, f"/dns_records?{query}")
-    records = _result(api.request("GET", path))
-    if not isinstance(records, list):
-        raise DeploymentError("Cloudflare DNS record list returned an unexpected shape")
+    records = _complete_list(
+        api.request("GET", path),
+        "Cloudflare DNS record",
+    )
     target = f"{tunnel_id}.cfargotunnel.com"
     valid_records = [record for record in records if isinstance(record, dict)]
     if len(valid_records) > 1:
@@ -533,18 +547,10 @@ def ensure_origin_dns(api: CloudflareAPI, inputs: DeploymentInputs, tunnel_id: s
 
 
 def _verify_no_worker_routes(api: CloudflareAPI, zone_id: str) -> None:
-    response = api.request("GET", api.zone_path(zone_id, "/workers/routes?per_page=100"))
-    routes = _result(response)
-    if not isinstance(routes, list):
-        raise DeploymentError("Dashboard Worker route response had an unexpected shape")
-    result_info = response.get("result_info")
-    if isinstance(result_info, dict):
-        total_count = result_info.get("total_count")
-        if isinstance(total_count, int) and total_count > len(routes):
-            raise DeploymentError(
-                "Dashboard Worker route listing is paginated; refusing incomplete "
-                "bypass verification"
-            )
+    routes = _complete_list(
+        api.request("GET", api.zone_path(zone_id, "/workers/routes?per_page=100")),
+        "Dashboard Worker route",
+    )
     attached = [
         route
         for route in routes
@@ -741,9 +747,10 @@ def verify_cloudflare(
         raise DeploymentError("workers.dev or Worker preview ingress is still enabled")
 
     query = urlencode({"service": WORKER_NAME, "per_page": 100})
-    domains = _result(api.request("GET", api.account_path(f"/workers/domains?{query}")))
-    if not isinstance(domains, list):
-        raise DeploymentError("Worker domain response had an unexpected shape")
+    domains = _complete_list(
+        api.request("GET", api.account_path(f"/workers/domains?{query}")),
+        "Worker domain",
+    )
     actual_domains = {
         str(domain.get("hostname", "")).lower()
         for domain in domains
@@ -759,9 +766,10 @@ def verify_cloudflare(
         raise DeploymentError("Dashboard zone ID is required for route bypass verification")
     _verify_no_worker_routes(api, inputs.dashboard_zone_id)
 
-    apps = _result(api.request("GET", api.account_path("/access/apps?per_page=100")))
-    if not isinstance(apps, list):
-        raise DeploymentError("Access application response had an unexpected shape")
+    apps = _complete_list(
+        api.request("GET", api.account_path("/access/apps?per_page=100")),
+        "Access application",
+    )
     dashboard_apps = [
         app
         for app in apps
