@@ -1,0 +1,437 @@
+# Phase 5R-A M6-C2 — Private Dashboard Deployment and Authenticated Origin
+
+Status: **PLANNED / NOT STARTED**
+Date: 2026-09-20
+Selected after: M6-C1 local/preview Dashboard closure and CI hardening
+
+Parent context:
+- `AGENTS.md`
+- `docs/architecture/agent-api-web-surface.md`
+- `docs/architecture/runtime-and-automation.md`
+- `docs/goals/phase-5r-a-m6-c1-personal-dashboard-foundation.md`
+- `docs/status/phase-5r-a-2026-09-20.md`
+- `docs/status/phase-5r-a-next-codex-goal.md`
+
+## 1. Objective
+
+Turn the completed M6-C1 local/preview Dashboard into a small **private,
+owner-controlled live deployment** without weakening the M6-A/M6-B read-only
+boundary.
+
+The target path is:
+
+```text
+owner browser
+  -> authenticated Cloudflare Access ingress
+  -> M6-C1 Worker + static Dashboard
+  -> same-origin /api/*
+  -> Worker server-side authenticated origin request
+  -> private HTTPS origin
+  -> Cloudflare Tunnel (preferred) or equivalent explicit secure channel
+  -> loopback-only tve surface serve
+  -> explicit validated ResearchSurfaceSnapshotV1 files
+```
+
+The preferred deployment keeps `tve surface serve` bound to `127.0.0.1`.
+A Cloudflare Tunnel on the same host publishes only the M6-B HTTP surface to an
+origin hostname. The Dashboard Worker reaches that origin through HTTPS and
+authenticates with a Cloudflare Access service token held only as Worker
+secrets. The human-facing Dashboard is separately protected by Cloudflare
+Access.
+
+M6-C2 is deployment/security work. It is not Phase 6 monitoring and it is not a
+new analysis engine.
+
+## 2. Why this is the next package
+
+M6-C1 already proved, locally and without cloud dependencies:
+
+- the React/Vite application;
+- generated OpenAPI client typing;
+- the same-origin bounded Worker proxy;
+- M6-B list/detail behavior;
+- negative/partial state rendering;
+- mutation rejection;
+- real Python API + Worker preview cross-stack transport.
+
+The next unresolved boundary is therefore not more UI. It is how to expose the
+existing read-only surface privately over the Internet while preventing:
+
+- unauthenticated Dashboard access;
+- direct unauthenticated origin access;
+- `workers.dev` or preview-hostname authentication bypass;
+- browser-controlled upstream URLs;
+- service-token leakage;
+- accidental public non-loopback M6-B binding;
+- mutation or arbitrary reverse-proxy expansion.
+
+M5-C remains deferred unless this package proves that the selected deployment
+actually requires remote artifact mirroring. With a persistent M6-B origin
+behind Tunnel, M5-C/R2 is not required merely to deploy the Dashboard.
+
+## 3. Frozen boundaries
+
+Preserve all of the following:
+
+1. `strict-v1`, deterministic investment math and rule semantics are unchanged.
+2. `ResearchSurfaceSnapshotV1` remains the authoritative Dashboard payload.
+3. M6-B remains read-only and consumes only explicit validated snapshot inputs.
+4. M6-B must not recursively discover a workspace, raw CAS or historical store.
+5. No page/API request may trigger acquisition, provider access, model calls,
+   analysis, adjustment approval, rule changes, orders, transfers or other
+   state-changing financial operations.
+6. The Worker remains an allowlist proxy for the existing M6-B read contract.
+7. Browser input may never select or override the upstream origin.
+8. Credentials, Access service-token values and Cloudflare API tokens must never
+   be committed, rendered to the browser, logged in plaintext or accepted from a
+   query/body parameter.
+9. Ordinary CI remains independent of a live Cloudflare account and external
+   network services after dependency installation.
+10. A6 production eligibility is not a prerequisite for serving a frozen
+    surface. `PARTIAL`, `BLOCKED`, `NOT_AVAILABLE` and
+    `NOT_EVALUATED` must remain unchanged.
+11. Phase 6 monitoring, M4-D/M4-E and M2-D remain outside this package.
+12. `H_PRICE_SOURCE_SELECTED_FUTU`, PIT/A6 semantics and source-selection
+    contracts remain unchanged.
+
+## 4. Security architecture
+
+### 4.1 Human Dashboard ingress
+
+Protect the entire live Dashboard entry point with Cloudflare Access.
+
+The deployment must not protect only one friendly custom hostname while leaving
+an alternate production/preview/`workers.dev` route publicly reachable. The
+implementation/runbook must either:
+
+- apply Access at the Worker level to every enabled route/domain that can serve
+  the app; or
+- explicitly disable/bind all alternate routes so the documented protected
+  hostname is the only live ingress.
+
+The owner chooses the allowed interactive identity/policy. Codex may automate
+resource creation when credentials and account identifiers are available, but
+it must not invent the owner's email address, identity provider or organization
+policy.
+
+### 4.2 M6-B origin
+
+Preferred topology:
+
+```text
+cloudflared on the M6-B host
+    -> http://127.0.0.1:<surface-port>
+```
+
+The public origin hostname is protected by an Access **service-auth** policy.
+Only the Dashboard Worker service token should be admitted for normal machine
+traffic.
+
+M6-B itself should stay loopback-only. Do not bind `0.0.0.0` just to make the
+Tunnel work.
+
+If the environment cannot use Cloudflare Tunnel, an explicit HTTPS origin may
+be substituted only if the task records the concrete transport, firewall,
+authentication and certificate model and proves equivalent fail-closed
+behavior. Do not silently fall back to plain HTTP on a public network.
+
+### 4.3 Worker-to-origin authentication
+
+Extend the Worker environment with secret-only origin-auth inputs, preferably:
+
+- `SURFACE_API_ACCESS_CLIENT_ID`
+- `SURFACE_API_ACCESS_CLIENT_SECRET`
+
+Requirements:
+
+- both absent is permitted only for loopback/local preview;
+- exactly one configured is a startup/request configuration error;
+- both configured are attached server-side as the Access service-token headers;
+- browser-supplied versions of those headers are ignored and never forwarded;
+- secret values are never returned in errors/responses;
+- remote origins require `https:`;
+- `http:` remains allowed only for loopback local preview;
+- userinfo, path/query fragments and other malformed origin configuration remain
+  rejected.
+
+## 5. Implementation package
+
+Keep changes narrowly around deployment/security:
+
+```text
+apps/dashboard/worker/**
+apps/dashboard/wrangler.jsonc or an equivalent environment-specific deployment config
+apps/dashboard/package.json
+apps/dashboard/src tests only if deployment behavior needs coverage
+scripts/ for deterministic deployment/preflight/live-smoke helpers
+deploy/ or docs/operations/ for origin service/Tunnel examples where useful
+.github/workflows/ci.yml
+docs/architecture/agent-api-web-surface.md
+docs/goals/phase-5r-a-m6-c2-private-dashboard-deployment.md
+docs/status/phase-5r-a-2026-09-20.md
+docs/status/phase-5r-a-next-codex-goal.md
+```
+
+Do not refactor analysis, historical acquisition, M4/M5 storage, filing research
+or deterministic calculations for deployment convenience.
+
+### 5.1 Required code/config work
+
+At minimum:
+
+1. harden Worker upstream-origin validation for local-vs-remote transport;
+2. add fail-closed Access service-token injection for remote origin calls;
+3. add deterministic tests proving browser headers cannot spoof/override origin
+   credentials;
+4. provide non-secret production configuration templates or generators;
+5. add a deployment/preflight command that validates required non-secret
+   configuration before any live mutation;
+6. add an owner-authorized live deployment/smoke command that can use environment
+   credential references without printing secrets;
+7. document how the M6-B process receives an explicit snapshot set and remains
+   loopback-only;
+8. document/provide a concrete Tunnel ingress example mapping only the origin
+   hostname to the M6-B loopback port;
+9. explicitly record whether M5-C is needed. Default decision: **defer M5-C**
+   unless a demonstrated operational need requires mirrored surface artifacts.
+
+## 6. Automated verification — mandatory
+
+**Codex must execute every check that its environment can execute. Do not ask the
+owner to run routine tests, inspect files, or click through cloud settings that
+can be verified by CLI/API.**
+
+### 6.1 Pre-edit baseline
+
+Run and record exit codes/results:
+
+```bash
+git status --short --branch
+git rev-parse HEAD
+python3 -m ruff check .
+python3 -m pytest
+node --version
+pnpm --version
+pnpm --dir apps/dashboard install --frozen-lockfile
+pnpm --dir apps/dashboard lint
+pnpm --dir apps/dashboard typecheck
+pnpm --dir apps/dashboard test --run
+pnpm --dir apps/dashboard build
+python3 scripts/export_surface_openapi.py --check
+pnpm --dir apps/dashboard api:check
+python3 scripts/dashboard_cross_stack_smoke.py
+```
+
+Before editing, also inspect the latest GitHub Actions result for the baseline
+commit. A red required CI run is a blocker to claiming a clean baseline; fix or
+explain the exact failure before proceeding.
+
+### 6.2 Offline/security tests after implementation
+
+Run at minimum:
+
+```bash
+python3 -m ruff check .
+python3 -m pytest tests/test_research_surface.py -q
+python3 -m pytest tests/test_surface_api.py -q
+python3 -m pytest
+pnpm --dir apps/dashboard lint
+pnpm --dir apps/dashboard typecheck
+pnpm --dir apps/dashboard test --run
+pnpm --dir apps/dashboard build
+python3 scripts/export_surface_openapi.py --check
+pnpm --dir apps/dashboard api:check
+python3 scripts/dashboard_cross_stack_smoke.py
+```
+
+Add deterministic Worker tests proving all of the following:
+
+- local loopback HTTP origin remains valid for C1-style preview;
+- remote plain-HTTP origin is rejected;
+- remote HTTPS origin is accepted;
+- malformed/userinfo/path/query origins are rejected;
+- half-configured service-token credentials fail closed;
+- server-side service-token headers are attached when configured;
+- browser-supplied `CF-Access-Client-Id` /
+  `CF-Access-Client-Secret` cannot override configured values;
+- neither credential appears in response body/headers;
+- unknown API paths remain 404;
+- mutation methods remain rejected before upstream fetch;
+- ETag/If-None-Match behavior remains intact.
+
+### 6.3 CI acceptance
+
+Update CI only when necessary, but M6-C2 cannot close while required CI is red.
+CI must continue to cover the Python suite plus Dashboard lint/typecheck/tests,
+production build, generated-contract drift checks and the local real cross-stack
+smoke.
+
+Do not replace CI evidence with prose such as “tested locally”.
+
+## 7. Owner-authorized live deployment
+
+Live Cloudflare creation/update is allowed only when the owner has deliberately
+provided the required runtime configuration/credentials.
+
+Codex must first implement and pass all non-cloud tests. Then it should detect
+whether the required live inputs are present.
+
+### 7.1 Inputs that may genuinely require the owner
+
+The exact names can follow the implementation, but the live step needs the
+equivalent of:
+
+- Cloudflare account ID;
+- an API token with the minimum permissions needed for the resources Codex will
+  create/update;
+- owner-selected Dashboard hostname/custom domain, or an explicit decision to
+  use a protected Worker hostname;
+- owner-selected origin hostname;
+- the identity/policy that is allowed to access the Dashboard;
+- a host where `tve surface serve` and `cloudflared` can run;
+- the explicit frozen snapshot path(s) to serve.
+
+Secrets must be provided through environment variables, a secret manager, or
+another declared runtime reference. **Do not ask the owner to paste API tokens
+or service-token secrets into chat or commit them to Git.**
+
+### 7.2 What Codex must automate once those inputs exist
+
+Prefer Wrangler/Cloudflare API/CLI and scripts over dashboard clicking. Codex
+should automatically:
+
+1. validate account/token access and required permissions;
+2. build the Dashboard from the exact repository commit;
+3. create/update the Worker deployment;
+4. configure the protected Dashboard hostname/route;
+5. create/update the Tunnel/public-origin mapping when the execution environment
+   has the authority to do so;
+6. create/update the Access applications/policies and service token when API
+   support/permissions permit;
+7. store Worker origin-auth values through the supported secret mechanism;
+8. start or validate the loopback M6-B origin with explicit snapshot paths;
+9. validate Tunnel ingress configuration;
+10. run machine-verifiable live probes;
+11. record resource identifiers/hostnames and non-secret evidence, never secret
+    values.
+
+If the available token cannot create a specific Cloudflare resource, record the
+exact API/CLI command, returned authorization error, missing permission and the
+smallest owner action required. Do not replace this with “Cloudflare setup
+needed”.
+
+## 8. Required live acceptance
+
+M6-C2 is not complete merely because `wrangler deploy` succeeds.
+
+Automated live checks must prove, without exposing secrets:
+
+1. the deployed Dashboard hostname responds through the expected Access boundary;
+2. the live Worker cannot use an unconfigured/invalid origin;
+3. the origin hostname rejects a request without machine authentication;
+4. the same origin accepts a valid service-token request and returns M6-B
+   `/healthz`;
+5. the deployed Worker reaches same-origin `/api/healthz`;
+6. list and one known detail work through the deployed Worker;
+7. the known detail preserves `surface_id` and `content_sha256`;
+8. unknown surface remains 404;
+9. POST/PUT/PATCH/DELETE remain rejected;
+10. no alternate enabled Dashboard route bypasses Access;
+11. no alternate enabled origin route bypasses service authentication.
+
+Use a script such as `scripts/dashboard_live_smoke.py` so the same checks are
+repeatable. It must read credentials from runtime references and redact them
+from command output.
+
+## 9. Exact human-verification boundary
+
+There should be **at most one small interactive browser verification** that
+automation cannot honestly replace: proving the owner's real interactive
+identity-provider login flow.
+
+After all automated live checks pass, the owner may be asked to perform exactly:
+
+1. open the final documented Dashboard URL in a private/incognito browser;
+2. confirm Cloudflare Access appears **before Dashboard content**;
+3. sign in using the owner-approved identity;
+4. confirm the Dashboard overview renders and one known surface detail opens;
+5. sign out or open a fresh private session and confirm Dashboard content is no
+   longer visible without authentication.
+
+Expected result: unauthenticated browser access never sees the Dashboard; the
+approved identity can read it; no write/trading controls exist.
+
+This manual check does **not** replace API/security tests. If it fails, record
+the exact observed URL, HTTP/login behavior and affected acceptance item.
+
+Do not ask the owner to manually verify:
+
+- lint/typecheck/tests/build;
+- OpenAPI/type drift;
+- mutation rejection;
+- origin header injection;
+- Tunnel configuration syntax when `cloudflared` can validate it;
+- Worker deployment existence when Wrangler/API can inspect it;
+- HTTP status codes when the smoke script can test them.
+
+## 10. Blocked-state rules
+
+If owner credentials/account/domain/host access are not available, Codex may
+finish the implementation and automated local security validation, but must use:
+
+`READY_FOR_OWNER_AUTHORIZED_LIVE_ACCEPTANCE`
+
+It must list the exact missing inputs and exact live commands still pending.
+
+If a supplied execution environment prevents an otherwise automatable step, use:
+
+`BLOCKED_BY_EXECUTION_ENVIRONMENT`
+
+and record:
+
+1. exact failing command;
+2. exact error/output;
+3. checks already passed;
+4. the specific acceptance item not proven;
+5. exact fallback command(s) for the owner's machine.
+
+Never use “evidence incomplete”, “manual verification recommended”, “should
+work”, or an unexplained internal term as a substitute for this record.
+
+## 11. Explicitly out of scope
+
+Do not implement in M6-C2:
+
+- Phase 6 watchlist/event polling or scheduled refresh;
+- live acquisition from page/API requests;
+- rule editing or approval UI;
+- analysis/research execution UI;
+- trading, orders, cancellations, transfers or brokerage mutation;
+- D1 as a new application database;
+- R2/M5-C unless a concrete artifact-distribution need is demonstrated and
+  separately scoped;
+- M4-D/M4-E;
+- M2-D;
+- changes to `strict-v1`, A6/PIT, source selection or investment semantics.
+
+## 12. Acceptance
+
+M6-C2 is complete only when:
+
+- all M6-C1 regression gates are green locally and in required CI;
+- Worker remote-origin handling is HTTPS-only and fail-closed;
+- machine origin authentication is server-side and secret-safe;
+- Dashboard ingress is authenticated without an alternate-route bypass;
+- M6-B remains loopback-only in the preferred Tunnel topology;
+- production/live configuration is reproducible and contains no committed
+  secrets;
+- automated live smoke passes the Dashboard -> Worker -> authenticated origin ->
+  M6-B path;
+- unauthenticated origin and Dashboard access are proven blocked;
+- the single owner interactive-login check, if required, has explicit successful
+  evidence;
+- exact commands, exit codes, resource identifiers and remaining limitations are
+  recorded;
+- M5-C remains explicitly deferred unless separately justified.
+
+Stop after M6-C2 closure. Do not automatically start Phase 6 in the same goal.
