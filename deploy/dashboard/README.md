@@ -1,9 +1,38 @@
-# M6-C2 private Dashboard deployment
+# Project runtime configuration and M6-C2 private Dashboard deployment
 
-This directory contains non-secret production templates. The checked-in
-Dashboard Wrangler config explicitly disables `workers.dev` and preview URLs;
-`scripts/dashboard_deploy.py` generates the final custom-domain config from the
-exact built commit and refuses an implicit deployment.
+The project-wide runtime configuration is
+[`config/project.example.toml`](../../config/project.example.toml). Copy it to
+`.tve-private/project.toml` and extend that same file in later phases; do not
+create a phase-specific environment file. It contains only non-secret values
+and names of environment variables/secret-manager references.
+
+Create it with:
+
+```bash
+tve config init
+tve config validate
+```
+
+For this M6-C2 package, the only values normally needed in the file are:
+
+```toml
+[surface]
+snapshot_path = ".tve-private/surface/research-surface.json"
+
+[cloudflare]
+zone_name = "your-domain.example"
+dashboard_access_email = "you@example.com"
+```
+
+The Dashboard hostname (`dashboard.<zone>`), origin hostname
+(`surface.<zone>`), account/zone IDs, Tunnel name and Access application names
+are derived from this configuration. Explicit values remain available when an
+owner has an existing non-default resource. Environment variables override
+the file for CI or a one-off run.
+
+The checked-in Dashboard Wrangler config explicitly disables `workers.dev` and
+preview URLs; `scripts/dashboard_deploy.py` generates the final custom-domain
+config from the exact built commit and refuses an implicit deployment.
 
 The intended topology is:
 
@@ -29,42 +58,60 @@ The process remains bound to `127.0.0.1`. Never change this command to
 `0.0.0.0` for Tunnel connectivity. The example Tunnel ingress maps exactly one
 public hostname to that loopback port and ends with `http_status:404`.
 
-## Owner-authorized inputs
+## One Cloudflare API token
 
-Populate the non-secret values in `production.env.example` through the host's
-environment or secret manager. The following secret names are read only from
-runtime environment references and are never printed or committed:
+Create one custom Cloudflare API token named
+`tve-private-dashboard-deployer` and restrict it to the account and zone that
+contain this project. In the current Cloudflare token editor, select:
 
-- `CLOUDFLARE_API_TOKEN` — API token with the minimum Worker, Access, Tunnel,
-  DNS and Dashboard-zone Worker Routes Read permissions needed by the command;
-- `SURFACE_API_ACCESS_CLIENT_ID` and
-  `SURFACE_API_ACCESS_CLIENT_SECRET` — the Worker-to-origin Access service
-  token pair;
-- `TVE_DASHBOARD_ACCESS_CLIENT_ID` and
-  `TVE_DASHBOARD_ACCESS_CLIENT_SECRET` — a separate service-token pair used by
-  the automated live smoke. The Dashboard Access application also has the
-  owner-selected interactive email policy from `TVE_DASHBOARD_ACCESS_EMAIL`.
+Account permissions:
 
-The account ID, origin-DNS zone ID, Dashboard-hostname zone ID, hostnames,
-Tunnel ID/name, snapshot path and approved interactive identity are
-owner-specific facts. Set `TVE_DASHBOARD_ZONE_ID` to the zone containing the
-Dashboard hostname; it may equal `TVE_CLOUDFLARE_ZONE_ID` when both hostnames
-are in the same zone. The deployment tool validates them before any
-POST/PUT/secret mutation and rejects incomplete route listings or legacy
-Worker routes that could provide an alternate Dashboard ingress. It does not
-infer an email, domain, account, Tunnel, snapshot, or token from chat or
-repository contents.
+- `Access: Apps and Policies` — `Edit` (Cloudflare may display the newer
+  equivalent `Write`);
+- `Access: Service Tokens` — `Edit`/`Write`;
+- `Cloudflare Tunnel` — `Edit`/`Write`;
+- `Workers Scripts` — `Edit`/`Write`.
+
+Zone permissions, restricted to the selected zone:
+
+- `Zone` — `Read`;
+- `DNS` — `Edit`/`Write`;
+- `Workers Routes` — `Edit`/`Write`.
+
+Put the one-time token value in the deployment host's secret manager or
+environment under exactly `CLOUDFLARE_API_TOKEN`. Do not put it in TOML, Git,
+chat, command-line arguments, logs or a browser. Cloudflare shows a token
+secret only once.
+
+The two Access service-token pairs are not Cloudflare API tokens. Once the API
+token is available, Codex creates/names them as follows and uses the returned
+one-time secrets only through the configured secret manager/environment:
+
+- `tve-private-dashboard-origin`: Worker → origin;
+- `tve-private-dashboard-smoke`: automated live smoke → Dashboard.
+
+Their references are already in `[cloudflare.secret_refs]`; no client ID,
+client secret, account ID, zone ID or Tunnel UUID needs to be guessed or
+written into the project file. The API token and all other secret references
+are read only at runtime and are never printed or committed.
+
+The deployment tool resolves account/zone IDs from the configured zone using
+read-only Cloudflare API calls before any POST/PUT/secret mutation. It rejects
+incomplete route listings or legacy Worker routes that could provide an
+alternate Dashboard ingress. It cannot infer the owner's zone name, approved
+interactive email, or which validated snapshot should be served; those are
+the three real project facts in the template.
 
 ## Reproducible commands
 
-Run from the repository root, after the runtime references are loaded:
+Run from the repository root, after the API token reference is loaded:
 
 ```bash
-python3 scripts/dashboard_deploy.py preflight
-python3 scripts/dashboard_deploy.py deploy --dry-run
-python3 scripts/dashboard_deploy.py deploy --apply
-python3 scripts/dashboard_deploy.py verify
-python3 scripts/dashboard_live_smoke.py
+python3 scripts/dashboard_deploy.py preflight --project-config .tve-private/project.toml
+python3 scripts/dashboard_deploy.py deploy --project-config .tve-private/project.toml --dry-run
+python3 scripts/dashboard_deploy.py deploy --project-config .tve-private/project.toml --apply
+python3 scripts/dashboard_deploy.py verify --project-config .tve-private/project.toml
+python3 scripts/dashboard_live_smoke.py --project-config .tve-private/project.toml
 ```
 
 `deploy --apply` creates/updates only the named Dashboard Access application,

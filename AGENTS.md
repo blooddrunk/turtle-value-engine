@@ -187,7 +187,10 @@ origin-host/snapshot inputs are not present in ordinary CI, so final live
 acceptance remains `READY_FOR_OWNER_AUTHORIZED_LIVE_ACCEPTANCE`. Phase 6
 watchlist/event monitoring remains later work. Exact gate, deployment and
 remaining-input evidence is recorded in
-`docs/status/phase-5r-a-2026-09-20.md`.
+`docs/status/phase-5r-a-2026-09-20.md`. Project-wide non-secret runtime
+configuration is defined by `config/project.example.toml` and the ignored
+`.tve-private/project.toml`; later phases extend this typed configuration
+instead of adding phase-local environment files.
 
 ## 5. Working with company data
 

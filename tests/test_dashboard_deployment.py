@@ -18,6 +18,8 @@ from scripts.dashboard_deploy import (
     _verify_access_app_targets,
     _verify_no_worker_routes,
     _verify_pre_mutation_state,
+    resolve_cloudflare_inputs,
+    run_live_smoke,
     validate_inputs,
     validate_remote_origin,
 )
@@ -108,6 +110,84 @@ def test_missing_surface_token_is_only_allowed_for_explicit_create_flow() -> Non
     errors = validate_inputs(inputs, allow_missing_surface_service_token=True)
     assert errors == []
     assert validate_inputs(inputs)
+
+
+def test_missing_dashboard_token_is_only_allowed_for_explicit_create_flow() -> None:
+    inputs = _valid_inputs(
+        dashboard_access_client_id=None, dashboard_access_client_secret=None
+    )
+    assert validate_inputs(inputs, allow_missing_dashboard_service_token=True) == []
+    assert validate_inputs(inputs)
+
+
+def test_live_smoke_uses_snapshot_identity_and_keeps_generated_secrets_out_of_command(
+    monkeypatch, tmp_path: Path
+) -> None:
+    snapshot = tmp_path / "surface.json"
+    snapshot.write_text(
+        json.dumps({"surface_id": "a" * 64, "content_sha256": "b" * 64}),
+        encoding="utf-8",
+    )
+    inputs = _valid_inputs(
+        snapshot_path=str(snapshot),
+        live_surface_id=None,
+        expected_surface_sha256=None,
+    )
+    observed: dict[str, object] = {}
+
+    def fake_run(command: list[str], **kwargs: object) -> None:
+        observed["command"] = command
+        observed["environment"] = kwargs["environment"]
+
+    monkeypatch.setattr(dashboard_deploy, "_run", fake_run)
+    run_live_smoke(inputs, project_config_path=None)
+
+    command = observed["command"]
+    environment = observed["environment"]
+    assert isinstance(command, list)
+    assert all(secret not in command for secret in (inputs.surface_access_client_secret,))
+    assert isinstance(environment, dict)
+    assert environment["TVE_LIVE_SURFACE_ID"] == "a" * 64
+    assert environment["TVE_EXPECTED_SURFACE_SHA256"] == "b" * 64
+    assert environment["SURFACE_API_ACCESS_CLIENT_SECRET"] == inputs.surface_access_client_secret
+    assert "CLOUDFLARE_API_TOKEN" not in environment
+
+
+def test_cloudflare_ids_are_discovered_from_one_configured_zone_without_mutation(monkeypatch):
+    class FakeAPI:
+        def __init__(self, account_id: str, api_token: str, redactions: tuple[str, ...]):
+            assert account_id == ""
+            assert api_token == "api-token"
+            assert redactions == ("api-token",)
+
+        def request(self, method: str, path: str) -> dict[str, object]:
+            assert method == "GET"
+            assert path == "/zones?name=example.com&status=active&per_page=100"
+            return {
+                "success": True,
+                "result": [
+                    {
+                        "id": "b" * 32,
+                        "name": "example.com",
+                        "account": {"id": "a" * 32},
+                    }
+                ],
+                "result_info": {"total_count": 1},
+            }
+
+    monkeypatch.setattr(dashboard_deploy, "CloudflareAPI", FakeAPI)
+    resolved = resolve_cloudflare_inputs(
+        _valid_inputs(
+            account_id=None,
+            api_token="api-token",
+            zone_id=None,
+            dashboard_zone_id=None,
+            zone_name="example.com",
+        )
+    )
+    assert resolved.account_id == "a" * 32
+    assert resolved.zone_id == "b" * 32
+    assert resolved.dashboard_zone_id == "b" * 32
 
 
 def test_tunnel_ingress_is_loopback_only_and_has_terminal_404() -> None:

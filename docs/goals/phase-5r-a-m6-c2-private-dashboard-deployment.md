@@ -587,3 +587,18 @@ token, selected hostnames/zone, origin host and snapshot path, or service
 credentials were available, so no live resource mutation or authenticated
 origin smoke was attempted. The exact missing inputs and commands are in
 `docs/status/phase-5r-a-2026-09-20.md`. No Phase 6 work was started.
+
+## 15. Project-wide configuration follow-up — 2026-09-20
+
+The non-secret runtime/deployment input convention is now project-wide rather
+than M6-C2-specific. `config/project.example.toml` is the checked-in template;
+`.tve-private/project.toml` is the ignored owner copy and is intended to grow
+with later Phase 5R and Phase 6 sections. `tve config init` and
+`tve config validate` provide the reproducible creation/validation boundary.
+
+M6-C2 consumes the typed `ProjectConfig`, derives the default hostnames and
+resource names, discovers Cloudflare account/zone IDs from the configured zone
+with read-only calls, and keeps all credentials in environment/secret-manager
+references. Raw credential fields are rejected by the loader. The exact API
+token permission set and the owner-facing three-value setup are recorded in
+`docs/operations/project-runtime-config.md`.

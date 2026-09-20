@@ -27,6 +27,9 @@ jobs:
       - name: Run Ruff
         run: python -m ruff check .
 
+      - name: Validate project runtime config template
+        run: python -m turtle_value_engine config validate --input config/project.example.toml
+
       - name: Run deterministic test suite
         run: python -m pytest
 

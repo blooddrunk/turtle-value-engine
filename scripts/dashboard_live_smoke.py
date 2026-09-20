@@ -1,9 +1,10 @@
 """Repeatable M6-C2 live Dashboard -> Worker -> authenticated origin smoke.
 
-All credentials are read from environment variables. The script never prints
-request headers, token values, response bodies containing surface data, or
-redirect locations. It deliberately does not follow redirects so an Access
-login redirect is distinguishable from an authenticated Dashboard response.
+All credentials are read from environment variables or the project config's
+secret references. The script never prints request headers, token values,
+response bodies containing surface data, or redirect locations. It deliberately
+does not follow redirects so an Access login redirect is distinguishable from
+an authenticated Dashboard response.
 
 Required environment variables:
 
@@ -28,11 +29,19 @@ import json
 import os
 import re
 import sys
+from argparse import ArgumentParser
 from collections.abc import Mapping
 from dataclasses import dataclass
+from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT / "src") not in sys.path:
+    sys.path.insert(0, str(ROOT / "src"))
+
+from turtle_value_engine.config import ProjectConfigError, discover_project_config  # noqa: E402
 
 
 class LiveSmokeError(RuntimeError):
@@ -51,13 +60,14 @@ class _NoRedirect(HTTPRedirectHandler):
         return None
 
 
-def _env(name: str) -> str | None:
-    value = os.environ.get(name)
+def _env(name: str, environ: Mapping[str, str] | None = None) -> str | None:
+    values = os.environ if environ is None else environ
+    value = values.get(name)
     return value if value and value.strip() else None
 
 
-def _require(name: str) -> str:
-    value = _env(name)
+def _require(name: str, environ: Mapping[str, str] | None = None) -> str:
+    value = _env(name, environ)
     if not value:
         raise LiveSmokeError(f"{name} is required")
     return value
@@ -130,9 +140,13 @@ def _assert_blocked(result: HttpResult, label: str) -> None:
         )
 
 
-def _assert_pair(client_id_name: str, client_secret_name: str) -> tuple[str, str]:
-    client_id = _env(client_id_name)
-    client_secret = _env(client_secret_name)
+def _assert_pair(
+    client_id_name: str,
+    client_secret_name: str,
+    environ: Mapping[str, str] | None = None,
+) -> tuple[str, str]:
+    client_id = _env(client_id_name, environ)
+    client_secret = _env(client_secret_name, environ)
     if bool(client_id) != bool(client_secret):
         raise LiveSmokeError(
             f"{client_id_name} and {client_secret_name} must be configured together"
@@ -236,27 +250,75 @@ def _assert_dashboard_chain(
             )
 
 
-def _csv_urls(name: str) -> list[str]:
-    return [value.strip().rstrip("/") for value in (_env(name) or "").split(",") if value.strip()]
+def _csv_urls(name: str, environ: Mapping[str, str] | None = None) -> list[str]:
+    return [
+        value.strip().rstrip("/")
+        for value in (_env(name, environ) or "").split(",")
+        if value.strip()
+    ]
 
 
-def main() -> int:
+def _config_environment(project_path: str | None = None) -> dict[str, str]:
+    """Overlay safe project defaults without printing or persisting secrets."""
+
+    values = dict(os.environ)
     try:
-        dashboard_url = _validate_https_url(_require("TVE_DASHBOARD_URL"), "TVE_DASHBOARD_URL")
+        config = discover_project_config(project_path, cwd=ROOT)
+    except ProjectConfigError as exc:
+        raise LiveSmokeError(str(exc)) from exc
+    if config is None:
+        return values
+
+    defaults = {
+        "TVE_DASHBOARD_URL": config.resolved_dashboard_url(),
+        "TVE_SURFACE_API_ORIGIN": config.resolved_origin_url(),
+        "TVE_LIVE_SURFACE_ID": config.surface.live_surface_id,
+        "TVE_EXPECTED_SURFACE_SHA256": config.surface.expected_surface_sha256,
+    }
+    for name, value in defaults.items():
+        if value and not _env(name, values):
+            values[name] = value
+    secret_names = {
+        "SURFACE_API_ACCESS_CLIENT_ID": "origin_access_client_id",
+        "SURFACE_API_ACCESS_CLIENT_SECRET": "origin_access_client_secret",
+        "TVE_DASHBOARD_ACCESS_CLIENT_ID": "dashboard_access_client_id",
+        "TVE_DASHBOARD_ACCESS_CLIENT_SECRET": "dashboard_access_client_secret",
+    }
+    for target, reference_name in secret_names.items():
+        if _env(target, values):
+            continue
+        reference = config.secret_reference(reference_name)
+        referenced_value = _env(reference.env, values)
+        if referenced_value:
+            values[target] = referenced_value
+    return values
+
+
+def main(argv: list[str] | None = None) -> int:
+    try:
+        parser = ArgumentParser(description=__doc__)
+        parser.add_argument("--project-config", default=None)
+        args = parser.parse_args(argv)
+        values = _config_environment(args.project_config)
+        dashboard_url = _validate_https_url(
+            _require("TVE_DASHBOARD_URL", values), "TVE_DASHBOARD_URL"
+        )
         origin_url = _validate_https_url(
-            _require("TVE_SURFACE_API_ORIGIN"), "TVE_SURFACE_API_ORIGIN"
+            _require("TVE_SURFACE_API_ORIGIN", values), "TVE_SURFACE_API_ORIGIN"
         )
         _assert_distinct_origins(dashboard_url, origin_url)
         origin_id, origin_secret = _assert_pair(
-            "SURFACE_API_ACCESS_CLIENT_ID", "SURFACE_API_ACCESS_CLIENT_SECRET"
+            "SURFACE_API_ACCESS_CLIENT_ID", "SURFACE_API_ACCESS_CLIENT_SECRET", values
         )
         dashboard_id, dashboard_secret = _assert_pair(
-            "TVE_DASHBOARD_ACCESS_CLIENT_ID", "TVE_DASHBOARD_ACCESS_CLIENT_SECRET"
+            "TVE_DASHBOARD_ACCESS_CLIENT_ID",
+            "TVE_DASHBOARD_ACCESS_CLIENT_SECRET",
+            values,
         )
-        surface_id = _require("TVE_LIVE_SURFACE_ID")
+        surface_id = _require("TVE_LIVE_SURFACE_ID", values)
         if not re.fullmatch(r"[0-9a-f]{64}", surface_id):
             raise LiveSmokeError("TVE_LIVE_SURFACE_ID must be a lowercase 64-character surface ID")
-        expected_hash = _env("TVE_EXPECTED_SURFACE_SHA256")
+        expected_hash = _env("TVE_EXPECTED_SURFACE_SHA256", values)
         if expected_hash and not re.fullmatch(r"[0-9a-f]{64}", expected_hash):
             raise LiveSmokeError(
                 "TVE_EXPECTED_SURFACE_SHA256 must be a lowercase 64-character hash"
@@ -278,10 +340,10 @@ def main() -> int:
             surface_id,
             expected_hash,
         )
-        for alternate in _csv_urls("TVE_ALT_DASHBOARD_URLS"):
+        for alternate in _csv_urls("TVE_ALT_DASHBOARD_URLS", values):
             alternate_url = _validate_https_url(alternate, "TVE_ALT_DASHBOARD_URLS")
             _assert_blocked(_request(alternate_url), alternate)
-        for alternate in _csv_urls("TVE_ALT_ORIGIN_URLS"):
+        for alternate in _csv_urls("TVE_ALT_ORIGIN_URLS", values):
             _assert_blocked(
                 _request(_validate_https_url(alternate, "TVE_ALT_ORIGIN_URLS") + "/healthz"),
                 alternate,

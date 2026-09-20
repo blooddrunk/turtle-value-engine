@@ -22,7 +22,13 @@ from turtle_value_engine.backtest import (
     run_calibration,
 )
 from turtle_value_engine.calculations import CDCCalculationError
-from turtle_value_engine.config import ProfileLoadError, load_profile
+from turtle_value_engine.config import (
+    ProfileLoadError,
+    ProjectConfigError,
+    load_profile,
+    load_project_config,
+    write_project_config_template,
+)
 from turtle_value_engine.historical import (
     AcquisitionError,
     AcquisitionReadinessReportV1,
@@ -277,6 +283,33 @@ def _build_parser() -> argparse.ArgumentParser:
         help="explicitly permit a non-loopback bind address",
     )
 
+    config_parser = subparsers.add_parser(
+        "config",
+        help="create or validate the project-wide non-secret runtime configuration",
+    )
+    config_commands = config_parser.add_subparsers(
+        dest="config_command", required=True
+    )
+    config_init = config_commands.add_parser(
+        "init",
+        help="write config/project.example.toml to a private local path",
+    )
+    config_init.add_argument(
+        "--output", type=Path, default=Path(".tve-private/project.toml")
+    )
+    config_init.add_argument(
+        "--force",
+        action="store_true",
+        help="overwrite the selected path explicitly",
+    )
+    config_validate = config_commands.add_parser(
+        "validate",
+        help="validate one project TOML file and print only a safe summary",
+    )
+    config_validate.add_argument(
+        "--input", type=Path, default=Path(".tve-private/project.toml")
+    )
+
     historical_parser = subparsers.add_parser(
         "historical",
         help="explicitly opt-in to historical source acquisition or compile raw bytes offline",
@@ -437,6 +470,20 @@ def _run_prepare(args: argparse.Namespace) -> object:
 
 def _read_json(path: Path) -> object:
     return json.loads(path.read_text(encoding="utf-8"), parse_constant=_reject_json_number)
+
+
+def _run_config_command(args: argparse.Namespace) -> object:
+    if args.config_command == "init":
+        output = write_project_config_template(args.output, force=args.force)
+        return {
+            "status": "created",
+            "path": str(output),
+            "message": "edit only non-secret values; keep credential values in the environment",
+        }
+    if args.config_command == "validate":
+        config = load_project_config(args.input)
+        return {"status": "valid", **config.safe_summary()}
+    raise ValueError(f"unsupported config command: {args.config_command}")
 
 
 def _reject_json_number(value: str) -> None:
@@ -840,6 +887,8 @@ def main(argv: list[str] | None = None) -> int:
             result = _run_calibration_command(args)
         elif args.command == "historical":
             result = _run_historical_command(args)
+        elif args.command == "config":
+            result = _run_config_command(args)
         else:
             raw_input = args.input.read_bytes()
             profile = load_profile(args.profile, rules_dir=args.rules_dir)
@@ -883,6 +932,7 @@ def main(argv: list[str] | None = None) -> int:
         HistoricalDatasetValidationError,
         HistoricalResearchArchiveError,
         AcquisitionError,
+        ProjectConfigError,
     ) as exc:
         print(f"tve: {exc}", file=sys.stderr)
         return 2

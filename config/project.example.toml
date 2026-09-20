@@ -1,0 +1,70 @@
+# Project-wide turtle-value-engine runtime configuration.
+# Copy this file to .tve-private/project.toml. Keep this file free of secrets.
+# Later phases extend this same file; do not create a phase-specific config.
+schema_version = 1
+
+[project]
+id = "turtle-value-engine"
+environment = "private"
+timezone = "Asia/Taipei"
+
+[profiles]
+default = "strict-v1"
+
+[paths]
+private_root = ".tve-private"
+cache_root = ".tve-cache"
+historical_root = ".tve-private/historical"
+artifact_root = ".tve-private/artifacts"
+reports_root = ".tve-private/reports"
+
+[network]
+default_policy = "deny"
+allow_live_cloudflare = false
+
+[surface]
+# Set this to the validated ResearchSurfaceSnapshotV1 to serve.
+snapshot_path = ""
+port = 8787
+live_surface_id = ""
+expected_surface_sha256 = ""
+
+[cloudflare]
+enabled = true
+# Set only the zone name you own in Cloudflare, for example "example.com".
+zone_name = ""
+# These IDs are discovered automatically from the API token when omitted.
+account_id = ""
+zone_id = ""
+dashboard_zone_id = ""
+dashboard_subdomain = "dashboard"
+origin_subdomain = "surface"
+dashboard_hostname = ""
+origin_hostname = ""
+origin_url = ""
+tunnel_id = ""
+tunnel_name = "tve-private-dashboard-origin"
+# Set the email/identity allowed by the Dashboard Access policy.
+dashboard_access_email = ""
+dashboard_access_app_name = "tve-private-dashboard"
+origin_access_app_name = "tve-private-surface-origin"
+origin_service_token_name = "tve-private-dashboard-origin"
+dashboard_smoke_service_token_name = "tve-private-dashboard-smoke"
+
+[cloudflare.secret_refs]
+# References only: values are resolved from the process environment/secret manager.
+api_token = { env = "CLOUDFLARE_API_TOKEN" }
+origin_access_client_id = { env = "SURFACE_API_ACCESS_CLIENT_ID" }
+origin_access_client_secret = { env = "SURFACE_API_ACCESS_CLIENT_SECRET" }
+dashboard_access_client_id = { env = "TVE_DASHBOARD_ACCESS_CLIENT_ID" }
+dashboard_access_client_secret = { env = "TVE_DASHBOARD_ACCESS_CLIENT_SECRET" }
+tunnel_connector_token = { env = "TVE_CLOUDFLARE_TUNNEL_TOKEN" }
+
+[dashboard]
+worker_name = "tve-personal-dashboard"
+
+# Future provider/storage-specific settings belong under these named sections;
+# they must still contain non-secret values or secret references only.
+[providers]
+[storage]
+[extensions]

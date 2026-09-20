@@ -5,11 +5,11 @@ reads a secret from a repository file and never prints secret values.
 
 Examples:
 
-    python3 scripts/dashboard_deploy.py preflight
-    python3 scripts/dashboard_deploy.py deploy --dry-run
-    python3 scripts/dashboard_deploy.py deploy --apply
-    python3 scripts/dashboard_deploy.py origin --snapshot /srv/tve/research-surface.json
-    python3 scripts/dashboard_deploy.py verify
+    python3 scripts/dashboard_deploy.py preflight --project-config .tve-private/project.toml
+    python3 scripts/dashboard_deploy.py deploy --project-config .tve-private/project.toml --dry-run
+    python3 scripts/dashboard_deploy.py deploy --project-config .tve-private/project.toml --apply
+    python3 scripts/dashboard_deploy.py origin --project-config .tve-private/project.toml
+    python3 scripts/dashboard_deploy.py verify --project-config .tve-private/project.toml
 """
 
 from __future__ import annotations
@@ -51,6 +51,15 @@ _UUID = re.compile(
     r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
 )
 
+if str(ROOT / "src") not in sys.path:
+    sys.path.insert(0, str(ROOT / "src"))
+
+from turtle_value_engine.config import (  # noqa: E402
+    ProjectConfig,
+    ProjectConfigError,
+    discover_project_config,
+)
+
 
 class DeploymentError(RuntimeError):
     """A safe, user-facing deployment/preflight error."""
@@ -74,6 +83,14 @@ class DeploymentInputs:
     dashboard_zone_id: str | None
     snapshot_path: str | None
     surface_port: int
+    zone_name: str | None = None
+    dashboard_access_app_name: str = "tve-private-dashboard"
+    origin_access_app_name: str = "tve-private-surface-origin"
+    origin_service_token_name: str = "tve-private-dashboard-origin"
+    dashboard_smoke_service_token_name: str = "tve-private-dashboard-smoke"
+    worker_name: str = WORKER_NAME
+    live_surface_id: str | None = None
+    expected_surface_sha256: str | None = None
 
 
 @dataclass(frozen=True)
@@ -88,30 +105,144 @@ def _env(environ: Mapping[str, str], name: str) -> str | None:
     return value if value and value.strip() else None
 
 
-def read_inputs(environ: Mapping[str, str] | None = None) -> DeploymentInputs:
+def _configured_secret(
+    values: Mapping[str, str],
+    config: ProjectConfig | None,
+    name: str,
+    legacy_name: str,
+) -> str | None:
+    """Resolve an env-backed secret without ever accepting a config value."""
+
+    legacy = _env(values, legacy_name)
+    if legacy:
+        return legacy
+    if config is None:
+        return None
+    reference = config.secret_reference(name)
+    return _env(values, reference.env)
+
+
+def _configured_value(
+    values: Mapping[str, str], env_name: str, config_value: str | None
+) -> str | None:
+    return _env(values, env_name) or config_value
+
+
+def read_inputs(
+    environ: Mapping[str, str] | None = None,
+    *,
+    project_config: ProjectConfig | None = None,
+    config_path: str | Path | None = None,
+) -> DeploymentInputs:
     values = os.environ if environ is None else environ
+    try:
+        requested_config = config_path or _env(values, "TVE_PROJECT_CONFIG")
+        config = project_config or discover_project_config(requested_config, cwd=ROOT)
+    except ProjectConfigError as exc:
+        raise DeploymentError(str(exc)) from exc
     raw_port = _env(values, "TVE_SURFACE_PORT") or "8787"
+    if _env(values, "TVE_SURFACE_PORT") is None and config is not None:
+        raw_port = str(config.surface.port)
     try:
         surface_port = int(raw_port)
     except ValueError:
         surface_port = -1
+    tunnel_id = _configured_value(
+        values, TUNNEL_ID, config.cloudflare.tunnel_id if config else None
+    )
+    configured_tunnel_name = config.cloudflare.tunnel_name if config else None
+    tunnel_name = _configured_value(values, TUNNEL_NAME, configured_tunnel_name)
+    if tunnel_id and not _env(values, TUNNEL_NAME):
+        tunnel_name = None
+    snapshot = _env(values, "TVE_SURFACE_SNAPSHOT_PATH")
+    if snapshot is None and config is not None:
+        resolved_snapshot = config.resolved_surface_snapshot()
+        snapshot = str(resolved_snapshot) if resolved_snapshot is not None else None
     return DeploymentInputs(
-        account_id=_env(values, ACCOUNT_ID),
-        api_token=_env(values, API_TOKEN),
-        dashboard_hostname=_env(values, "TVE_DASHBOARD_HOSTNAME"),
-        dashboard_identity_email=_env(values, "TVE_DASHBOARD_ACCESS_EMAIL"),
-        dashboard_access_client_id=_env(values, DASHBOARD_CLIENT_ID),
-        dashboard_access_client_secret=_env(values, DASHBOARD_CLIENT_SECRET),
-        surface_origin=_env(values, "TVE_SURFACE_API_ORIGIN"),
-        surface_origin_hostname=_env(values, "TVE_SURFACE_ORIGIN_HOSTNAME"),
-        surface_access_client_id=_env(values, ORIGIN_CLIENT_ID),
-        surface_access_client_secret=_env(values, ORIGIN_CLIENT_SECRET),
-        tunnel_id=_env(values, TUNNEL_ID),
-        tunnel_name=_env(values, TUNNEL_NAME),
-        zone_id=_env(values, ZONE_ID),
-        dashboard_zone_id=_env(values, DASHBOARD_ZONE_ID),
-        snapshot_path=_env(values, "TVE_SURFACE_SNAPSHOT_PATH"),
+        account_id=_configured_value(
+            values, ACCOUNT_ID, config.cloudflare.account_id if config else None
+        ),
+        api_token=_configured_secret(values, config, "api_token", API_TOKEN),
+        dashboard_hostname=_configured_value(
+            values,
+            "TVE_DASHBOARD_HOSTNAME",
+            config.resolved_dashboard_hostname() if config else None,
+        ),
+        dashboard_identity_email=_configured_value(
+            values,
+            "TVE_DASHBOARD_ACCESS_EMAIL",
+            config.cloudflare.dashboard_access_email if config else None,
+        ),
+        dashboard_access_client_id=_configured_secret(
+            values, config, "dashboard_access_client_id", DASHBOARD_CLIENT_ID
+        ),
+        dashboard_access_client_secret=_configured_secret(
+            values, config, "dashboard_access_client_secret", DASHBOARD_CLIENT_SECRET
+        ),
+        surface_origin=_configured_value(
+            values,
+            "TVE_SURFACE_API_ORIGIN",
+            config.resolved_origin_url() if config else None,
+        ),
+        surface_origin_hostname=_configured_value(
+            values,
+            "TVE_SURFACE_ORIGIN_HOSTNAME",
+            config.resolved_origin_hostname() if config else None,
+        ),
+        surface_access_client_id=_configured_secret(
+            values, config, "origin_access_client_id", ORIGIN_CLIENT_ID
+        ),
+        surface_access_client_secret=_configured_secret(
+            values, config, "origin_access_client_secret", ORIGIN_CLIENT_SECRET
+        ),
+        tunnel_id=tunnel_id,
+        tunnel_name=tunnel_name,
+        zone_id=_configured_value(
+            values, ZONE_ID, config.cloudflare.zone_id if config else None
+        ),
+        dashboard_zone_id=_configured_value(
+            values,
+            DASHBOARD_ZONE_ID,
+            (
+                config.cloudflare.dashboard_zone_id
+                if config and config.cloudflare.dashboard_zone_id
+                else config.cloudflare.zone_id if config else None
+            ),
+        ),
+        snapshot_path=snapshot,
         surface_port=surface_port,
+        zone_name=_configured_value(
+            values, "TVE_CLOUDFLARE_ZONE_NAME", config.cloudflare.zone_name if config else None
+        ),
+        dashboard_access_app_name=(
+            config.cloudflare.dashboard_access_app_name
+            if config
+            else "tve-private-dashboard"
+        ),
+        origin_access_app_name=(
+            config.cloudflare.origin_access_app_name
+            if config
+            else "tve-private-surface-origin"
+        ),
+        origin_service_token_name=(
+            config.cloudflare.origin_service_token_name
+            if config
+            else "tve-private-dashboard-origin"
+        ),
+        dashboard_smoke_service_token_name=(
+            config.cloudflare.dashboard_smoke_service_token_name
+            if config
+            else "tve-private-dashboard-smoke"
+        ),
+        worker_name=config.dashboard.worker_name if config else WORKER_NAME,
+        live_surface_id=_configured_value(
+            values, "TVE_LIVE_SURFACE_ID", config.surface.live_surface_id if config else None
+        ),
+        expected_surface_sha256=_configured_value(
+            values,
+            "TVE_EXPECTED_SURFACE_SHA256",
+            config.surface.expected_surface_sha256 if config else None,
+        ),
     )
 
 
@@ -180,6 +311,7 @@ def validate_inputs(
     require_cloudflare: bool = True,
     require_live_service_tokens: bool = True,
     allow_missing_surface_service_token: bool = False,
+    allow_missing_dashboard_service_token: bool = False,
     require_snapshot: bool = False,
 ) -> list[str]:
     errors: list[str] = []
@@ -224,7 +356,10 @@ def validate_inputs(
                 "TVE_DASHBOARD_ACCESS",
             )
         )
-        if not inputs.dashboard_access_client_id or not inputs.dashboard_access_client_secret:
+        if (
+            not allow_missing_dashboard_service_token
+            and (not inputs.dashboard_access_client_id or not inputs.dashboard_access_client_secret)
+        ):
             errors.append(
                 "TVE_DASHBOARD_ACCESS_CLIENT_ID and "
                 "TVE_DASHBOARD_ACCESS_CLIENT_SECRET are required for automated Dashboard live smoke"
@@ -329,6 +464,62 @@ class CloudflareAPI:
 
     def zone_path(self, zone_id: str, suffix: str) -> str:
         return f"/zones/{quote(zone_id, safe='')}{suffix}"
+
+
+def resolve_cloudflare_inputs(inputs: DeploymentInputs) -> DeploymentInputs:
+    """Resolve account/zone IDs from the configured zone when possible.
+
+    IDs are Cloudflare resource facts, not user configuration.  The project
+    config may cache them, but a token plus a zone name is sufficient for the
+    deployment helper to discover them.  This function performs GET requests
+    only and never creates or updates a Cloudflare resource.
+    """
+
+    if not inputs.api_token or not inputs.zone_name:
+        return inputs
+    needs_zone = not inputs.zone_id or not inputs.account_id
+    needs_dashboard_zone = not inputs.dashboard_zone_id
+    if not needs_zone and not needs_dashboard_zone:
+        return inputs
+
+    api = CloudflareAPI(inputs.account_id or "", inputs.api_token, (inputs.api_token,))
+    query = urlencode({"name": inputs.zone_name, "status": "active", "per_page": 100})
+    zones = _complete_list(api.request("GET", f"/zones?{query}"), "Cloudflare zone")
+    matches = [
+        zone
+        for zone in zones
+        if isinstance(zone, dict)
+        and str(zone.get("name", "")).rstrip(".").lower()
+        == inputs.zone_name.rstrip(".").lower()
+    ]
+    if len(matches) != 1:
+        raise DeploymentError(
+            f"Cloudflare zone lookup for {inputs.zone_name} returned {len(matches)} exact matches; "
+            "refusing to guess account or zone IDs"
+        )
+    zone = matches[0]
+    discovered_zone_id = zone.get("id")
+    account = zone.get("account")
+    discovered_account_id = account.get("id") if isinstance(account, dict) else None
+    if not isinstance(discovered_zone_id, str) or not discovered_zone_id:
+        raise DeploymentError("Cloudflare zone lookup did not return a stable zone ID")
+    if not isinstance(discovered_account_id, str) or not discovered_account_id:
+        raise DeploymentError("Cloudflare zone lookup did not return a stable account ID")
+    if inputs.account_id and inputs.account_id.lower() != discovered_account_id.lower():
+        raise DeploymentError(
+            "configured Cloudflare account ID does not match the selected zone; "
+            "refusing to continue"
+        )
+    if inputs.zone_id and inputs.zone_id.lower() != discovered_zone_id.lower():
+        raise DeploymentError(
+            "configured Cloudflare zone ID does not match the selected zone; refusing to continue"
+        )
+    return replace(
+        inputs,
+        account_id=inputs.account_id or discovered_account_id,
+        zone_id=inputs.zone_id or discovered_zone_id,
+        dashboard_zone_id=inputs.dashboard_zone_id or discovered_zone_id,
+    )
 
 
 def _result(response: Mapping[str, Any]) -> Any:
@@ -622,19 +813,21 @@ def ensure_origin_dns(api: CloudflareAPI, inputs: DeploymentInputs, tunnel_id: s
     return str(created["id"])
 
 
-def _verify_no_worker_routes(api: CloudflareAPI, zone_id: str) -> None:
+def _verify_no_worker_routes(
+    api: CloudflareAPI, zone_id: str, worker_name: str = WORKER_NAME
+) -> None:
     routes = _complete_list(
         api.request("GET", api.zone_path(zone_id, "/workers/routes?per_page=100")),
         "Dashboard Worker route",
     )
-    _check_no_worker_routes(routes)
+    _check_no_worker_routes(routes, worker_name)
 
 
-def _check_no_worker_routes(routes: list[Any]) -> None:
+def _check_no_worker_routes(routes: list[Any], worker_name: str = WORKER_NAME) -> None:
     attached = [
         route
         for route in routes
-        if isinstance(route, dict) and route.get("script") == WORKER_NAME
+        if isinstance(route, dict) and route.get("script") == worker_name
     ]
     if attached:
         details = ", ".join(
@@ -659,18 +852,19 @@ def _verify_pre_mutation_state(
     dashboard_zone_id: str,
     dashboard_hostname: str,
     surface_origin_hostname: str,
+    worker_name: str = WORKER_NAME,
 ) -> None:
     """Read every alternate-ingress list completely before any live mutation."""
 
     subdomain = _result(
-        api.request("GET", api.account_path(f"/workers/scripts/{WORKER_NAME}/subdomain"))
+        api.request("GET", api.account_path(f"/workers/scripts/{worker_name}/subdomain"))
     )
     _check_worker_subdomain_disabled(subdomain)
 
     domains = _complete_list(
         api.request(
             "GET",
-            api.account_path(f"/workers/domains?service={WORKER_NAME}&per_page=100"),
+            api.account_path(f"/workers/domains?service={worker_name}&per_page=100"),
         ),
         "Worker domain",
     )
@@ -706,7 +900,7 @@ def _verify_pre_mutation_state(
         ),
         "Dashboard Worker route",
     )
-    _check_no_worker_routes(routes)
+    _check_no_worker_routes(routes, worker_name)
 
 
 def _run(
@@ -715,6 +909,7 @@ def _run(
     cwd: Path,
     input_text: str | None = None,
     secrets: tuple[str, ...] = (),
+    environment: Mapping[str, str] | None = None,
 ) -> None:
     print("$ " + " ".join(command))
     result = subprocess.run(
@@ -724,6 +919,7 @@ def _run(
         capture_output=True,
         text=True,
         check=False,
+        env=None if environment is None else dict(environment),
     )
     output = _redact(result.stdout + result.stderr, secrets)
     if output.strip():
@@ -744,7 +940,7 @@ def build_production_worker(inputs: DeploymentInputs) -> Path:
     except (OSError, json.JSONDecodeError) as error:
         raise DeploymentError(f"generated Wrangler config is unreadable: {error}") from None
     config["account_id"] = inputs.account_id
-    config["name"] = WORKER_NAME
+    config["name"] = inputs.worker_name
     config["workers_dev"] = False
     config["preview_urls"] = False
     config["vars"] = {"SURFACE_API_ORIGIN": inputs.surface_origin}
@@ -881,11 +1077,11 @@ def verify_cloudflare(
     dashboard_token_id: str,
 ) -> None:
     subdomain = _result(
-        api.request("GET", api.account_path(f"/workers/scripts/{WORKER_NAME}/subdomain"))
+        api.request("GET", api.account_path(f"/workers/scripts/{inputs.worker_name}/subdomain"))
     )
     _check_worker_subdomain_disabled(subdomain)
 
-    query = urlencode({"service": WORKER_NAME, "per_page": 100})
+    query = urlencode({"service": inputs.worker_name, "per_page": 100})
     domains = _complete_list(
         api.request("GET", api.account_path(f"/workers/domains?{query}")),
         "Worker domain",
@@ -903,7 +1099,7 @@ def verify_cloudflare(
         )
     if not inputs.dashboard_zone_id:
         raise DeploymentError("Dashboard zone ID is required for route bypass verification")
-    _verify_no_worker_routes(api, inputs.dashboard_zone_id)
+    _verify_no_worker_routes(api, inputs.dashboard_zone_id, inputs.worker_name)
 
     origin_domain = (inputs.surface_origin_hostname or "").lower()
     apps = _complete_list(
@@ -977,18 +1173,108 @@ def run_origin(snapshot: str, port: int) -> int:
     return subprocess.call(command, cwd=ROOT)
 
 
+def _surface_identity(inputs: DeploymentInputs) -> tuple[str, str | None]:
+    """Read the public identity fields from the explicit surface snapshot only."""
+
+    surface_id = inputs.live_surface_id
+    expected_hash = inputs.expected_surface_sha256
+    if inputs.snapshot_path:
+        try:
+            payload = json.loads(Path(inputs.snapshot_path).read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise DeploymentError(
+                f"cannot read explicit surface snapshot identity: {exc}"
+            ) from None
+        if not isinstance(payload, dict):
+            raise DeploymentError("explicit surface snapshot must contain a JSON object")
+        discovered_surface_id = payload.get("surface_id")
+        discovered_hash = payload.get("content_sha256")
+        if surface_id is None and isinstance(discovered_surface_id, str):
+            surface_id = discovered_surface_id
+        if expected_hash is None and isinstance(discovered_hash, str):
+            expected_hash = discovered_hash
+    if not surface_id or not re.fullmatch(r"[0-9a-f]{64}", surface_id):
+        raise DeploymentError(
+            "TVE_LIVE_SURFACE_ID or a lowercase 64-character surface_id in the explicit "
+            "snapshot is required for live smoke"
+        )
+    if expected_hash is not None and not re.fullmatch(r"[0-9a-f]{64}", expected_hash):
+        raise DeploymentError(
+            "TVE_EXPECTED_SURFACE_SHA256 or snapshot content_sha256 must be a lowercase "
+            "64-character hash"
+        )
+    return surface_id, expected_hash
+
+
+def run_live_smoke(
+    inputs: DeploymentInputs,
+    *,
+    project_config_path: str | None,
+) -> None:
+    """Run the standalone live smoke with generated credentials in memory only."""
+
+    surface_id, expected_hash = _surface_identity(inputs)
+    environment = dict(os.environ)
+    environment.pop(API_TOKEN, None)
+    if inputs.dashboard_hostname:
+        environment["TVE_DASHBOARD_URL"] = f"https://{inputs.dashboard_hostname}"
+    if inputs.surface_origin:
+        environment["TVE_SURFACE_API_ORIGIN"] = inputs.surface_origin
+    if inputs.surface_access_client_id:
+        environment[ORIGIN_CLIENT_ID] = inputs.surface_access_client_id
+    if inputs.surface_access_client_secret:
+        environment[ORIGIN_CLIENT_SECRET] = inputs.surface_access_client_secret
+    if inputs.dashboard_access_client_id:
+        environment[DASHBOARD_CLIENT_ID] = inputs.dashboard_access_client_id
+    if inputs.dashboard_access_client_secret:
+        environment[DASHBOARD_CLIENT_SECRET] = inputs.dashboard_access_client_secret
+    environment["TVE_LIVE_SURFACE_ID"] = surface_id
+    if expected_hash:
+        environment["TVE_EXPECTED_SURFACE_SHA256"] = expected_hash
+    command = [sys.executable, str(ROOT / "scripts" / "dashboard_live_smoke.py")]
+    if project_config_path:
+        command.extend(["--project-config", project_config_path])
+    _run(
+        command,
+        cwd=ROOT,
+        environment=environment,
+        secrets=tuple(
+            value
+            for value in (
+                inputs.surface_access_client_id,
+                inputs.surface_access_client_secret,
+                inputs.dashboard_access_client_id,
+                inputs.dashboard_access_client_secret,
+            )
+            if value
+        ),
+    )
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
-    subparsers.add_parser("preflight", help="validate production inputs without mutation")
+    preflight = subparsers.add_parser(
+        "preflight", help="validate production inputs without mutation"
+    )
+    preflight.add_argument("--project-config", default=None)
     deploy = subparsers.add_parser("deploy", help="build and deploy with explicit --apply")
+    deploy.add_argument("--project-config", default=None)
     deploy.add_argument("--apply", action="store_true", help="allow Cloudflare mutations")
     deploy.add_argument("--dry-run", action="store_true", help="run Wrangler validation only")
     deploy.add_argument("--create-tunnel", action="store_true")
     deploy.add_argument("--create-origin-service-token", action="store_true")
+    deploy.add_argument("--create-dashboard-service-token", action="store_true")
+    deploy.add_argument(
+        "--live-smoke",
+        action="store_true",
+        help="run authenticated live smoke using generated service credentials in memory",
+    )
     verify = subparsers.add_parser("verify", help="read and verify live Cloudflare resources")
+    verify.add_argument("--project-config", default=None)
     verify.add_argument("--tunnel-id", help="override TVE_CLOUDFLARE_TUNNEL_ID")
     origin = subparsers.add_parser("origin", help="serve explicit snapshots on loopback")
+    origin.add_argument("--project-config", default=None)
     origin.add_argument("--snapshot", default=None)
     origin.add_argument("--port", type=int, default=None)
     return parser
@@ -996,8 +1282,8 @@ def _parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
-    inputs = read_inputs()
     try:
+        inputs = resolve_cloudflare_inputs(read_inputs(config_path=args.project_config))
         if args.command == "origin":
             snapshot = args.snapshot or inputs.snapshot_path
             port = args.port or inputs.surface_port
@@ -1006,11 +1292,20 @@ def main(argv: list[str] | None = None) -> int:
             return run_origin(snapshot, port)
 
         create_origin_token = getattr(args, "create_origin_service_token", False)
+        create_dashboard_token = getattr(args, "create_dashboard_service_token", False)
+        non_mutating_service_token_check = args.command == "preflight" or (
+            args.command == "deploy" and args.dry_run
+        )
         errors = validate_inputs(
             inputs,
             require_cloudflare=True,
             require_live_service_tokens=True,
-            allow_missing_surface_service_token=create_origin_token,
+            allow_missing_surface_service_token=(
+                create_origin_token or non_mutating_service_token_check
+            ),
+            allow_missing_dashboard_service_token=(
+                create_dashboard_token or non_mutating_service_token_check
+            ),
             require_snapshot=args.command in {"preflight", "deploy"},
         )
         if errors:
@@ -1020,8 +1315,9 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         if args.command == "preflight":
             print(
-                "M6-C2 preflight passed: HTTPS origin, paired credentials, explicit custom domain, "
-                "Cloudflare account, Access identity, Tunnel and DNS inputs are present"
+                "M6-C2 preflight passed: HTTPS origin, explicit custom domain, Cloudflare account, "
+                "Access identity, Tunnel/DNS inputs and explicit snapshot are present; "
+                "service tokens may be supplied or explicitly created during deploy"
             )
             return 0
 
@@ -1051,14 +1347,14 @@ def main(argv: list[str] | None = None) -> int:
                 api,
                 inputs.surface_access_client_id,
                 inputs.surface_access_client_secret,
-                name="tve-m6-c2-origin",
+                name=inputs.origin_service_token_name,
                 create=False,
             )
             dashboard_token = ensure_service_token(
                 api,
                 inputs.dashboard_access_client_id,
                 inputs.dashboard_access_client_secret,
-                name="tve-m6-c2-dashboard-smoke",
+                name=inputs.dashboard_smoke_service_token_name,
                 create=False,
             )
             verify_cloudflare(
@@ -1069,7 +1365,7 @@ def main(argv: list[str] | None = None) -> int:
                 dashboard_token_id=dashboard_token.token_id,
             )
             print(
-                f"M6-C2 Cloudflare resource verification passed for Worker {WORKER_NAME}, "
+                f"M6-C2 Cloudflare resource verification passed for Worker {inputs.worker_name}, "
                 f"Dashboard {inputs.dashboard_hostname}, origin {inputs.surface_origin_hostname}, "
                 f"Tunnel {tunnel_id}"
             )
@@ -1099,6 +1395,11 @@ def main(argv: list[str] | None = None) -> int:
             raise DeploymentError(
                 "deploy requires --apply or --dry-run; refusing implicit mutation"
             )
+        if (create_origin_token or create_dashboard_token) and not args.live_smoke:
+            raise DeploymentError(
+                "one-time generated Access secrets would otherwise be lost; add --live-smoke "
+                "so the authenticated smoke consumes them in memory"
+            )
 
         # Read checks and Wrangler dry-run happen before any POST/PUT/secret mutation.
         if not inputs.dashboard_zone_id:
@@ -1108,13 +1409,14 @@ def main(argv: list[str] | None = None) -> int:
             inputs.dashboard_zone_id,
             inputs.dashboard_hostname or "",
             inputs.surface_origin_hostname or "",
+            inputs.worker_name,
         )
 
         surface_token = ensure_service_token(
             api,
             inputs.surface_access_client_id,
             inputs.surface_access_client_secret,
-            name="tve-m6-c2-origin",
+            name=inputs.origin_service_token_name,
             create=args.create_origin_service_token,
         )
         api.redactions = (*api.redactions, surface_token.client_id, surface_token.client_secret)
@@ -1128,14 +1430,20 @@ def main(argv: list[str] | None = None) -> int:
             api,
             inputs.dashboard_access_client_id,
             inputs.dashboard_access_client_secret,
-            name="tve-m6-c2-dashboard-smoke",
-            create=False,
+            name=inputs.dashboard_smoke_service_token_name,
+            create=create_dashboard_token,
         )
         api.redactions = (*api.redactions, dashboard_token.client_id, dashboard_token.client_secret)
+        if not inputs.dashboard_access_client_id or not inputs.dashboard_access_client_secret:
+            inputs = replace(
+                inputs,
+                dashboard_access_client_id=dashboard_token.client_id,
+                dashboard_access_client_secret=dashboard_token.client_secret,
+            )
         ensure_access_app(
             api,
             inputs.surface_origin_hostname or "",
-            name="TVE M6-C2 M6-B origin",
+            name=inputs.origin_access_app_name,
             policies=[
                 _access_policy(
                     SERVICE_AUTH_DECISION,
@@ -1146,7 +1454,7 @@ def main(argv: list[str] | None = None) -> int:
         ensure_access_app(
             api,
             inputs.dashboard_hostname or "",
-            name="TVE M6-C2 private Dashboard",
+            name=inputs.dashboard_access_app_name,
             policies=[
                 _access_policy(
                     SERVICE_AUTH_DECISION,
@@ -1166,14 +1474,17 @@ def main(argv: list[str] | None = None) -> int:
             dashboard_token_id=dashboard_token.token_id,
         )
         print(
-            f"M6-C2 Cloudflare deployment passed resource checks: Worker={WORKER_NAME}, "
+            f"M6-C2 Cloudflare deployment passed resource checks: Worker={inputs.worker_name}, "
             f"Dashboard={inputs.dashboard_hostname}, origin={inputs.surface_origin_hostname}, "
             f"Tunnel={tunnel_id}, DNS record={dns_record_id}"
         )
         print(
-            "Run scripts/dashboard_live_smoke.py with the two service-token pairs to prove the "
-            "Dashboard -> Worker -> authenticated origin -> M6-B path."
+            "Cloudflare resource verification passed; the Dashboard -> Worker -> authenticated "
+            "origin -> M6-B live smoke follows."
         )
+        if args.live_smoke:
+            run_live_smoke(inputs, project_config_path=args.project_config)
+            print("M6-C2 live smoke passed")
         return 0
     except DeploymentError as error:
         print(f"M6-C2 deployment failed closed: {error}", file=sys.stderr)

@@ -521,3 +521,24 @@ Never optimize merely for higher historical returns without strong safeguards ag
 The key architectural invariant is:
 
 > **Agents collect, interpret and orchestrate. The engine calculates and decides according to versioned rules.**
+
+## 10. Project-wide runtime configuration
+
+Runtime/deployment configuration is separate from `rules/*.yaml` strategy
+profiles. The checked-in template is `config/project.example.toml`; an
+owner-specific copy belongs at `.tve-private/project.toml`, which is ignored by
+Git. `ProjectConfig` is versioned and additive so later historical, storage,
+provider, research-surface and monitoring phases extend the same project file
+instead of introducing unrelated phase-local configuration files.
+
+The file may contain non-secret paths, hostnames, resource names, network
+policy and credential references such as `{ env = "CLOUDFLARE_API_TOKEN" }`.
+It must never contain resolved API tokens, Access client secrets, signed URLs,
+passwords or session material. Secret values are resolved only in process
+memory from the referenced environment/secret manager. `tve config validate`
+prints a safe summary containing references, never values.
+
+The default network policy remains `deny`; each live provider or deployment
+command must retain its existing explicit opt-in. A project configuration does
+not change deterministic analysis semantics, source selection, PIT/A6 rules or
+the loopback-only M6-B binding.

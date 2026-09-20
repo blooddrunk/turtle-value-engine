@@ -2,6 +2,14 @@
 
 Status: **M6-C2 IMPLEMENTED; READY_FOR_OWNER_AUTHORIZED_LIVE_ACCEPTANCE**
 
+Project runtime configuration is now consolidated in
+`config/project.example.toml` → `.tve-private/project.toml`. It is shared by
+future phases, contains only non-secret values and secret references, and is
+validated by `tve config validate`. M6-C2 deployment/live smoke read this file;
+the only intended owner facts are the Cloudflare zone name, approved Access
+identity email and explicit validated surface snapshot path, plus one
+environment/secret-manager reference named `CLOUDFLARE_API_TOKEN`.
+
 Latest code verification commit is
 `cdca47f291d3cbc3bac8f51933c62f7cd0e13408`; GitHub Actions run
 `35491132677` is green with all 19 execution steps passed. It adds a
