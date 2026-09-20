@@ -210,23 +210,25 @@ def main() -> int:
             if unknown_status != 404:
                 raise RuntimeError(f"unknown surface should remain 404, got {unknown_status}")
 
-            mutation_status, mutation_body, _ = _request(
-                base + f"/api/v1/surfaces/{snapshot.surface_id}",
-                method="POST",
-                body=b"{}",
-            )
-            mutation = json.loads(mutation_body)
-            if (
-                mutation_status != 405
-                or mutation["error"]["code"] != "READ_ONLY_METHOD_NOT_ALLOWED"
-            ):
-                raise RuntimeError(
-                    f"Worker mutation boundary failed: {mutation_status} {mutation_body!r}"
+            for method in ("POST", "PUT", "PATCH", "DELETE"):
+                mutation_status, mutation_body, _ = _request(
+                    base + f"/api/v1/surfaces/{snapshot.surface_id}",
+                    method=method,
+                    body=b"{}",
                 )
+                mutation = json.loads(mutation_body)
+                if (
+                    mutation_status != 405
+                    or mutation["error"]["code"] != "READ_ONLY_METHOD_NOT_ALLOWED"
+                ):
+                    raise RuntimeError(
+                        f"Worker {method} mutation boundary failed: "
+                        f"{mutation_status} {mutation_body!r}"
+                    )
 
             print(
                 "M6-C1 cross-stack smoke passed: fixture -> M6-B -> Cloudflare/Vite preview -> "
-                "same-origin health/list/detail/404/mutation"
+                "same-origin health/list/detail/404/mutations"
             )
             return 0
     finally:

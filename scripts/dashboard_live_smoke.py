@@ -207,13 +207,16 @@ def _assert_dashboard_chain(
     unknown = _request(dashboard_url + "/api/v1/surfaces/" + "0" * 64, headers=dashboard_headers)
     if unknown.status != 404:
         raise LiveSmokeError(f"unknown live surface returned HTTP {unknown.status}, expected 404")
-    mutation = _request(
-        detail_url,
-        headers=dashboard_headers,
-        method="POST",
-    )
-    if mutation.status != 405:
-        raise LiveSmokeError(f"live mutation returned HTTP {mutation.status}, expected 405")
+    for method in ("POST", "PUT", "PATCH", "DELETE"):
+        mutation = _request(
+            detail_url,
+            headers=dashboard_headers,
+            method=method,
+        )
+        if mutation.status != 405:
+            raise LiveSmokeError(
+                f"live {method} mutation returned HTTP {mutation.status}, expected 405"
+            )
 
 
 def _csv_urls(name: str) -> list[str]:
@@ -268,7 +271,7 @@ def main() -> int:
         print(
             "M6-C2 live smoke passed: unauthenticated Dashboard/origin blocked; "
             "authenticated Dashboard -> Worker -> origin -> M6-B "
-            "health/list/detail/404/mutation/ETag"
+            "health/list/detail/404/mutations/ETag"
         )
         return 0
     except LiveSmokeError as error:

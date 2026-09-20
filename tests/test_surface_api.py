@@ -174,9 +174,14 @@ def test_mutations_and_path_like_ids_are_rejected_without_file_access():
     snapshot = _snapshot()
     client = _client(create_surface_app(SurfaceRegistry.from_snapshots([snapshot])))
 
-    mutation = client.post(f"/v1/surfaces/{snapshot.surface_id}", json={"state": "PASS"})
-    assert mutation.status_code == 405
-    assert mutation.json()["error"]["code"] == "READ_ONLY_METHOD_NOT_ALLOWED"
+    for method in ("POST", "PUT", "PATCH", "DELETE"):
+        mutation = client.request(
+            method,
+            f"/v1/surfaces/{snapshot.surface_id}",
+            json={"state": "PASS"},
+        )
+        assert mutation.status_code == 405
+        assert mutation.json()["error"]["code"] == "READ_ONLY_METHOD_NOT_ALLOWED"
 
     traversal = client.get("/v1/surfaces/%2E%2E%2Fetc%2Fpasswd")
     assert traversal.status_code == 404
@@ -200,7 +205,7 @@ def _free_loopback_port() -> int:
 def test_real_loopback_socket_smoke_starts_cli_server_and_shuts_down_cleanly(
     tmp_path: Path,
 ):
-    """Black-box acceptance: health, known/unknown IDs, mutation and shutdown."""
+    """Black-box acceptance: health, known/unknown IDs, mutations and shutdown."""
 
     httpx = pytest.importorskip("httpx")
     snapshot = _snapshot()
@@ -258,11 +263,13 @@ def test_real_loopback_socket_smoke_starts_cli_server_and_shuts_down_cleanly(
             unknown = client.get(base_url + "/v1/surfaces/" + "e" * 64)
             assert unknown.status_code == 404
 
-            mutation = client.post(
-                base_url + f"/v1/surfaces/{snapshot.surface_id}",
-                json={"decision": "PASS"},
-            )
-            assert mutation.status_code == 405
+            for method in ("POST", "PUT", "PATCH", "DELETE"):
+                mutation = client.request(
+                    method,
+                    base_url + f"/v1/surfaces/{snapshot.surface_id}",
+                    json={"decision": "PASS"},
+                )
+                assert mutation.status_code == 405
     finally:
         if process.poll() is None:
             process.send_signal(signal.SIGINT)

@@ -152,18 +152,20 @@ describe("M6-C2 Worker upstream security boundary", () => {
   it("rejects mutations and unknown API routes before upstream fetch", async () => {
     const upstreamFetch = vi.spyOn(globalThis, "fetch");
 
-    const mutation = await proxy(
-      request(`/api/v1/surfaces/${"0".repeat(64)}`, { method: "POST", body: "{}" }),
-      testEnv({
-        SURFACE_API_ORIGIN: "https://surface.example.test",
-        SURFACE_API_ACCESS_CLIENT_ID: "server-client-id",
-        SURFACE_API_ACCESS_CLIENT_SECRET: "server-client-secret",
-      }),
-    );
-    expect(mutation.status).toBe(405);
-    await expect(mutation.json()).resolves.toMatchObject({
-      error: { code: "READ_ONLY_METHOD_NOT_ALLOWED" },
-    });
+    for (const method of ["POST", "PUT", "PATCH", "DELETE"] as const) {
+      const mutation = await proxy(
+        request(`/api/v1/surfaces/${"0".repeat(64)}`, { method, body: "{}" }),
+        testEnv({
+          SURFACE_API_ORIGIN: "https://surface.example.test",
+          SURFACE_API_ACCESS_CLIENT_ID: "server-client-id",
+          SURFACE_API_ACCESS_CLIENT_SECRET: "server-client-secret",
+        }),
+      );
+      expect(mutation.status).toBe(405);
+      await expect(mutation.json()).resolves.toMatchObject({
+        error: { code: "READ_ONLY_METHOD_NOT_ALLOWED" },
+      });
+    }
 
     const unknown = await proxy(
       request("/api/v1/not-allowed"),
