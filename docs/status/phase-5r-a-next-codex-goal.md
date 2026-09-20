@@ -12,6 +12,11 @@ execution steps succeeded. The exact post-implementation checks and current
 live blockers are recorded in
 `docs/status/phase-5r-a-2026-09-20.md`.
 
+The final deployment-helper correction is commit
+`43bfa8f7e5191266dcec2635fd602d5fd82d9808`; GitHub Actions run `35484921932`
+for that commit is green, including the full `test` job and all required
+steps.
+
 The implementation provides:
 
 - loopback HTTP preview only and remote HTTPS-only Worker origin validation;

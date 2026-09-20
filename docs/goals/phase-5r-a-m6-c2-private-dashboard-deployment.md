@@ -459,6 +459,10 @@ The implementation was pushed as
 completed successfully for that commit. Its single `test` job passed the
 Python suite, Ruff, frozen Dashboard install, OpenAPI/generated-type checks,
 Dashboard lint/typecheck/tests/build and the real cross-stack smoke.
+The follow-up commit
+`43bfa8f7e5191266dcec2635fd602d5fd82d9808` corrected Cloudflare's Service Auth
+API decision to `non_identity`; run `35484921932` also completed successfully
+with every required CI step green.
 
 Local and CI-independent acceptance is recorded in
 `docs/status/phase-5r-a-2026-09-20.md`. Cloudflare account/token, owner
