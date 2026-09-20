@@ -692,3 +692,7 @@ before Dashboard content, sign in as the configured owner identity, read the
 overview and one detail, then use a fresh unauthenticated session to confirm
 the Dashboard is not visible. No Phase 6, M5-C/R2, M4-D/M4-E or M2-D work was
 started.
+
+The closure commit is `4365a950c3a5afa28656545e7fbca1ef6253f1f9`.
+GitHub Actions run `35502629180` completed with `success`; its single `test`
+job and all 20 required execution steps passed.
