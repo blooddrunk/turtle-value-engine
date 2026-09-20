@@ -43,9 +43,12 @@ def test_project_config_derives_cloudflare_values_without_ids_or_secrets(tmp_pat
     config_path.write_text(configured, encoding="utf-8")
 
     config = load_project_config(config_path)
-    assert config.resolved_dashboard_hostname() == "dashboard.private.example.com"
-    assert config.resolved_origin_hostname() == "surface.private.example.com"
-    assert config.resolved_origin_url() == "https://surface.private.example.com"
+    assert (
+        config.resolved_dashboard_hostname()
+        == "tve-private-dashboard.private.example.com"
+    )
+    assert config.resolved_origin_hostname() == "tve-private-surface.private.example.com"
+    assert config.resolved_origin_url() == "https://tve-private-surface.private.example.com"
     assert config.cloudflare.account_id is None
     assert config.secret_value("api_token", {}) is None
 
@@ -59,9 +62,9 @@ def test_project_config_derives_cloudflare_values_without_ids_or_secrets(tmp_pat
         },
         project_config=config,
     )
-    assert inputs.dashboard_hostname == "dashboard.private.example.com"
-    assert inputs.surface_origin == "https://surface.private.example.com"
-    assert inputs.surface_origin_hostname == "surface.private.example.com"
+    assert inputs.dashboard_hostname == "tve-private-dashboard.private.example.com"
+    assert inputs.surface_origin == "https://tve-private-surface.private.example.com"
+    assert inputs.surface_origin_hostname == "tve-private-surface.private.example.com"
     assert inputs.tunnel_name == "tve-private-dashboard-origin"
     assert inputs.account_id is None
 
@@ -79,15 +82,15 @@ def test_environment_values_override_project_defaults_but_config_cannot_hold_sec
 
     inputs = read_inputs(
         {
-            "TVE_DASHBOARD_HOSTNAME": "dashboard.override.example.com",
-            "TVE_SURFACE_API_ORIGIN": "https://surface.override.example.com",
-            "TVE_SURFACE_ORIGIN_HOSTNAME": "surface.override.example.com",
+            "TVE_DASHBOARD_HOSTNAME": "tve-private-dashboard.override.example.com",
+            "TVE_SURFACE_API_ORIGIN": "https://tve-private-surface.override.example.com",
+            "TVE_SURFACE_ORIGIN_HOSTNAME": "tve-private-surface.override.example.com",
             "TVE_DASHBOARD_ACCESS_EMAIL": "override@example.com",
         },
         project_config=config,
     )
-    assert inputs.dashboard_hostname == "dashboard.override.example.com"
-    assert inputs.surface_origin == "https://surface.override.example.com"
+    assert inputs.dashboard_hostname == "tve-private-dashboard.override.example.com"
+    assert inputs.surface_origin == "https://tve-private-surface.override.example.com"
     assert inputs.dashboard_identity_email == "override@example.com"
 
     with pytest.raises(ProjectConfigError, match="refusing to overwrite"):

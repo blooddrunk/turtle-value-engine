@@ -26,7 +26,7 @@ serve. The repository cannot safely infer any of those three facts.
 
 The following are derived or discovered automatically:
 
-- `dashboard.<zone_name>` and `surface.<zone_name>`;
+- `tve-private-dashboard.<zone_name>` and `tve-private-surface.<zone_name>`;
 - account ID and zone IDs through read-only Cloudflare API lookup;
 - Tunnel and Access application names:
   `tve-private-dashboard-origin`, `tve-private-dashboard` and

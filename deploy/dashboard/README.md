@@ -24,8 +24,8 @@ zone_name = "your-domain.example"
 dashboard_access_email = "you@example.com"
 ```
 
-The Dashboard hostname (`dashboard.<zone>`), origin hostname
-(`surface.<zone>`), account/zone IDs, Tunnel name and Access application names
+The Dashboard hostname (`tve-private-dashboard.<zone>`), origin hostname
+(`tve-private-surface.<zone>`), account/zone IDs, Tunnel name and Access application names
 are derived from this configuration. Explicit values remain available when an
 owner has an existing non-default resource. Environment variables override
 the file for CI or a one-off run.
