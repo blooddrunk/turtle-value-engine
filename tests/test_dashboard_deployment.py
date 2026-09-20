@@ -3,14 +3,18 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 import scripts.dashboard_deploy as dashboard_deploy
 from scripts.dashboard_deploy import (
     SERVICE_AUTH_DECISION,
+    DeploymentError,
     DeploymentInputs,
     _access_policy,
     _app_has_exact_hostname,
     _run,
     _tunnel_ingress,
+    _verify_no_worker_routes,
     validate_inputs,
     validate_remote_origin,
 )
@@ -31,6 +35,7 @@ def _valid_inputs(**overrides: object) -> DeploymentInputs:
         "tunnel_id": "123e4567-e89b-42d3-a456-426614174000",
         "tunnel_name": None,
         "zone_id": "b" * 32,
+        "dashboard_zone_id": "c" * 32,
         "snapshot_path": None,
         "surface_port": 8787,
     }
@@ -90,6 +95,11 @@ def test_production_inputs_reject_ambiguous_or_colliding_boundaries() -> None:
     whitespace = _valid_inputs(surface_access_client_id=" ")
     assert any("SURFACE_API_ACCESS client ID" in error for error in validate_inputs(whitespace))
 
+    missing_dashboard_zone = _valid_inputs(dashboard_zone_id=None)
+    assert any(
+        "TVE_DASHBOARD_ZONE_ID" in error for error in validate_inputs(missing_dashboard_zone)
+    )
+
 
 def test_access_app_verifier_requires_the_exact_hostname_not_a_path_subtree() -> None:
     assert _app_has_exact_hostname({"domain": "dashboard.example.com"}, "dashboard.example.com")
@@ -114,3 +124,32 @@ def test_subprocess_output_redacts_runtime_secrets(monkeypatch, capsys) -> None:
     output = capsys.readouterr().out
     assert secret not in output
     assert output.count("<redacted>") == 2
+
+
+def test_dashboard_route_verifier_fails_closed_on_legacy_worker_routes() -> None:
+    class FakeAPI:
+        def __init__(self, routes: list[dict[str, str]]) -> None:
+            self.routes = routes
+
+        def zone_path(self, zone_id: str, suffix: str) -> str:
+            return f"/zones/{zone_id}{suffix}"
+
+        def request(self, method: str, path: str) -> dict[str, object]:
+            assert method == "GET"
+            assert path == f"/zones/{'c' * 32}/workers/routes?per_page=100"
+            return {"result": self.routes, "result_info": {"total_count": len(self.routes)}}
+
+    _verify_no_worker_routes(FakeAPI([]), "c" * 32)
+    with pytest.raises(DeploymentError, match="zone routes outside"):
+        _verify_no_worker_routes(
+            FakeAPI(
+                [
+                    {
+                        "id": "route-1",
+                        "pattern": "dashboard.example.com/*",
+                        "script": "tve-personal-dashboard",
+                    }
+                ]
+            ),
+            "c" * 32,
+        )

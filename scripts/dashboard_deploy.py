@@ -44,6 +44,7 @@ API_TOKEN = "CLOUDFLARE_API_TOKEN"
 TUNNEL_ID = "TVE_CLOUDFLARE_TUNNEL_ID"
 TUNNEL_NAME = "TVE_CLOUDFLARE_TUNNEL_NAME"
 ZONE_ID = "TVE_CLOUDFLARE_ZONE_ID"
+DASHBOARD_ZONE_ID = "TVE_DASHBOARD_ZONE_ID"
 _HOST_LABEL = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$")
 _ACCOUNT_ID = re.compile(r"^[0-9a-fA-F]{32}$")
 _UUID = re.compile(
@@ -70,6 +71,7 @@ class DeploymentInputs:
     tunnel_id: str | None
     tunnel_name: str | None
     zone_id: str | None
+    dashboard_zone_id: str | None
     snapshot_path: str | None
     surface_port: int
 
@@ -107,6 +109,7 @@ def read_inputs(environ: Mapping[str, str] | None = None) -> DeploymentInputs:
         tunnel_id=_env(values, TUNNEL_ID),
         tunnel_name=_env(values, TUNNEL_NAME),
         zone_id=_env(values, ZONE_ID),
+        dashboard_zone_id=_env(values, DASHBOARD_ZONE_ID),
         snapshot_path=_env(values, "TVE_SURFACE_SNAPSHOT_PATH"),
         surface_port=surface_port,
     )
@@ -241,6 +244,10 @@ def validate_inputs(
             errors.append(f"{TUNNEL_ID} must be a UUID")
         if not inputs.zone_id:
             errors.append(f"{ZONE_ID} is required to create/check the origin DNS CNAME")
+        if not inputs.dashboard_zone_id or not _ACCOUNT_ID.fullmatch(inputs.dashboard_zone_id):
+            errors.append(
+                f"{DASHBOARD_ZONE_ID} must be a 32-character Cloudflare zone ID"
+            )
     if require_snapshot:
         if not inputs.snapshot_path:
             errors.append("TVE_SURFACE_SNAPSHOT_PATH is required for the origin process")
@@ -319,6 +326,9 @@ class CloudflareAPI:
 
     def account_path(self, suffix: str) -> str:
         return f"/accounts/{quote(self.account_id, safe='')}{suffix}"
+
+    def zone_path(self, zone_id: str, suffix: str) -> str:
+        return f"/zones/{quote(zone_id, safe='')}{suffix}"
 
 
 def _result(response: Mapping[str, Any]) -> Any:
@@ -412,7 +422,11 @@ def ensure_access_app(
     if not isinstance(apps, list):
         raise DeploymentError("Cloudflare Access application list returned an unexpected shape")
     existing = next(
-        (app for app in apps if isinstance(app, dict) and _app_domain(app) == hostname.lower()),
+        (
+            app
+            for app in apps
+            if isinstance(app, dict) and _app_has_exact_hostname(app, hostname)
+        ),
         None,
     )
     desired = {
@@ -484,7 +498,7 @@ def ensure_origin_dns(api: CloudflareAPI, inputs: DeploymentInputs, tunnel_id: s
     if not inputs.zone_id or not inputs.surface_origin_hostname:
         raise DeploymentError("zone ID and origin hostname are required for DNS configuration")
     query = urlencode({"type": "CNAME", "name": inputs.surface_origin_hostname, "per_page": 100})
-    path = f"/zones/{quote(inputs.zone_id, safe='')}/dns_records?{query}"
+    path = api.zone_path(inputs.zone_id, f"/dns_records?{query}")
     records = _result(api.request("GET", path))
     if not isinstance(records, list):
         raise DeploymentError("Cloudflare DNS record list returned an unexpected shape")
@@ -516,6 +530,35 @@ def ensure_origin_dns(api: CloudflareAPI, inputs: DeploymentInputs, tunnel_id: s
     if not isinstance(created, dict) or not created.get("id"):
         raise DeploymentError("Cloudflare did not return the created origin DNS record")
     return str(created["id"])
+
+
+def _verify_no_worker_routes(api: CloudflareAPI, zone_id: str) -> None:
+    response = api.request("GET", api.zone_path(zone_id, "/workers/routes?per_page=100"))
+    routes = _result(response)
+    if not isinstance(routes, list):
+        raise DeploymentError("Dashboard Worker route response had an unexpected shape")
+    result_info = response.get("result_info")
+    if isinstance(result_info, dict):
+        total_count = result_info.get("total_count")
+        if isinstance(total_count, int) and total_count > len(routes):
+            raise DeploymentError(
+                "Dashboard Worker route listing is paginated; refusing incomplete "
+                "bypass verification"
+            )
+    attached = [
+        route
+        for route in routes
+        if isinstance(route, dict) and route.get("script") == WORKER_NAME
+    ]
+    if attached:
+        details = ", ".join(
+            f"{route.get('id', '<unknown>')}:{route.get('pattern', '<unknown>')}"
+            for route in attached
+        )
+        raise DeploymentError(
+            "the Dashboard Worker still has zone routes outside its protected custom domain: "
+            + details
+        )
 
 
 def _run(
@@ -712,6 +755,9 @@ def verify_cloudflare(
             "Worker custom-domain set does not exactly match the protected Dashboard hostname: "
             + ", ".join(sorted(actual_domains))
         )
+    if not inputs.dashboard_zone_id:
+        raise DeploymentError("Dashboard zone ID is required for route bypass verification")
+    _verify_no_worker_routes(api, inputs.dashboard_zone_id)
 
     apps = _result(api.request("GET", api.account_path("/access/apps?per_page=100")))
     if not isinstance(apps, list):
@@ -912,6 +958,12 @@ def main(argv: list[str] | None = None) -> int:
         api.request("GET", api.account_path("/access/apps?per_page=100"))
         api.request("GET", api.account_path("/access/service_tokens?per_page=100"))
         api.request("GET", api.account_path("/cfd_tunnel?per_page=100"))
+        if not inputs.dashboard_zone_id:
+            raise DeploymentError("Dashboard zone ID is required for route bypass verification")
+        api.request(
+            "GET",
+            api.zone_path(inputs.dashboard_zone_id, "/workers/routes?per_page=100"),
+        )
 
         surface_token = ensure_service_token(
             api,

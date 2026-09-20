@@ -45,10 +45,15 @@ runtime environment references and are never printed or committed:
   the automated live smoke. The Dashboard Access application also has the
   owner-selected interactive email policy from `TVE_DASHBOARD_ACCESS_EMAIL`.
 
-The account ID, zone ID, hostnames, Tunnel ID/name, snapshot path and approved
-interactive identity are owner-specific facts. The deployment tool validates
-them before any POST/PUT/secret mutation. It does not infer an email, domain,
-account, Tunnel, snapshot, or token from chat or repository contents.
+The account ID, origin-DNS zone ID, Dashboard-hostname zone ID, hostnames,
+Tunnel ID/name, snapshot path and approved interactive identity are
+owner-specific facts. Set `TVE_DASHBOARD_ZONE_ID` to the zone containing the
+Dashboard hostname; it may equal `TVE_CLOUDFLARE_ZONE_ID` when both hostnames
+are in the same zone. The deployment tool validates them before any
+POST/PUT/secret mutation and rejects incomplete route listings or legacy
+Worker routes that could provide an alternate Dashboard ingress. It does not
+infer an email, domain, account, Tunnel, snapshot, or token from chat or
+repository contents.
 
 ## Reproducible commands
 
