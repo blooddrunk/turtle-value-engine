@@ -470,3 +470,28 @@ hostname/identity, Tunnel origin host, explicit snapshot path and live service
 credentials were not present in this execution environment, so the remaining
 state is exactly `READY_FOR_OWNER_AUTHORIZED_LIVE_ACCEPTANCE`. No Phase 6,
 M5-C/R2, M4-D/M4-E or M2-D work was started.
+
+## 14. Final hardening and verification — 2026-09-20
+
+The final implementation audit is pushed at
+`3c8e188ac58f05b11a41389d1041181190ca24a1`. It adds source Wrangler asset
+directory validation to CI, exact-hostname and exact Access policy/service-token
+verification, fail-closed rejection of colliding or ambiguous deployment
+inputs, invalid-origin-credential coverage in the live smoke, and the current
+`cloudflared tunnel --config ... ingress validate` command ordering.
+
+Current-main GitHub Actions run `35485721496` completed successfully. The
+single `test` job passed all 18 execution steps, including Python/Ruff/full
+pytest, frozen pnpm install, OpenAPI and generated-type drift, Dashboard
+lint/typecheck/Vitest/build, source Wrangler dry-run and real local
+cross-stack smoke. The final local results were `6301 passed, 2 skipped` for
+pytest, `14 passed` for Dashboard Vitest and `7 passed` for deployment-helper
+tests. The checked-in Tunnel example also validated with the official
+temporary cloudflared `2026.9.1` binary and returned `Validating rules... OK`.
+
+The implementation remains
+`READY_FOR_OWNER_AUTHORIZED_LIVE_ACCEPTANCE`: no owner Cloudflare account,
+token, selected hostnames/zone, origin host and snapshot path, or service
+credentials were available, so no live resource mutation or authenticated
+origin smoke was attempted. The exact missing inputs and commands are in
+`docs/status/phase-5r-a-2026-09-20.md`. No Phase 6 work was started.

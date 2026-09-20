@@ -17,6 +17,15 @@ The final deployment-helper correction is commit
 for that commit is green, including the full `test` job and all required
 steps.
 
+The current `main` head is
+`3c8e188ac58f05b11a41389d1041181190ca24a1`. Before the final hardening,
+`ece4610eb61f1c5340ceb0ad3d6b727ad9fd53d1` had green run `35485017083`.
+The current head's GitHub Actions run `35485721496` is green: the `test` job
+completed all 18 execution steps, including source Wrangler deployment-config
+dry-run. The final local deterministic suite is `6301 passed, 2 skipped`;
+Dashboard Vitest is `14 passed`, and deployment-helper regression tests are
+`7 passed`.
+
 The implementation provides:
 
 - loopback HTTP preview only and remote HTTPS-only Worker origin validation;
@@ -27,6 +36,9 @@ The implementation provides:
 - deterministic Worker security tests, deployment preflight/dry-run/resource
   verifier and repeatable live smoke;
 - loopback-only Tunnel ingress and explicit snapshot-path origin commands.
+- source Wrangler asset-directory validation in CI;
+- exact-hostname/Access-policy/service-token verification and invalid-origin-
+  credential live-smoke coverage.
 
 The selected implementation package is:
 
@@ -60,3 +72,11 @@ Automation policy is strict:
 No Phase 6 monitoring, M5-C/R2, M4-D/M4-E or M2-D work was started. M5-C/R2
 remains deferred because the persistent authenticated M6-B origin serves the
 existing validated snapshot directly.
+
+The final hardening follow-up is pushed as
+`3c8e188ac58f05b11a41389d1041181190ca24a1`; its CI run is
+`35485721496`. It fixes the source Wrangler dry-run configuration, tightens
+deployment verification against hostname/policy/token drift, rejects invalid
+origin credentials in live smoke, and records the current cloudflared ingress
+validation command. Owner-specific Cloudflare/account/identity/origin inputs
+remain the only reason live acceptance is not claimed.
