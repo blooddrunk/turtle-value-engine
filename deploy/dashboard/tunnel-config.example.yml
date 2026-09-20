@@ -1,0 +1,11 @@
+# Preferred topology: cloudflared and tve surface serve run on the same host.
+# This local-management example contains only the M6-B origin and a terminal
+# 404 rule. A remotely managed tunnel may use the same ingress through the
+# Cloudflare API path in scripts/dashboard_deploy.py.
+tunnel: <tunnel-uuid>
+credentials-file: /etc/cloudflared/<tunnel-uuid>.json
+
+ingress:
+  - hostname: surface.example.com
+    service: http://127.0.0.1:8787
+  - service: http_status:404

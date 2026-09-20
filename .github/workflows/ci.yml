@@ -47,6 +47,9 @@ jobs:
       - name: Check generated Dashboard API types
         run: pnpm --dir apps/dashboard api:check
 
+      - name: Check generated Wrangler types
+        run: pnpm --dir apps/dashboard types:check
+
       - name: Lint Dashboard
         run: pnpm --dir apps/dashboard lint
 

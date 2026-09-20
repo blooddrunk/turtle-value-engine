@@ -1,20 +1,24 @@
 # Phase 5R-A next Codex goal — M6-C2
 
-Status: **WAIT FOR GREEN CI BASELINE, THEN IMPLEMENT M6-C2**
+Status: **M6-C2 IMPLEMENTED; READY_FOR_OWNER_AUTHORIZED_LIVE_ACCEPTANCE**
 
-Current `main` contains the M6-C1 implementation, the CI-hardening change and
-the M6-C2 planning documents. The CI-hardening commit is:
+Current `main` contains the M6-C1 implementation, CI hardening, M6-C2
+Worker/deployment code, templates and tests. The pre-edit baseline was
+`a54f86b60f111e7dca9c5bb6a3cbcb903bfeaabf`; GitHub Actions run `35482336396`
+for that SHA was green and every required job/step succeeded. The exact
+post-implementation checks and current live blockers are recorded in
+`docs/status/phase-5r-a-2026-09-20.md`.
 
-`8446b47c936fdbac041ec34265c4b666661780ac`
+The implementation provides:
 
-Before implementing anything, inspect the latest GitHub Actions run covering
-the current `main` tree and confirm the hardened CI is green.
-
-- If it is green, use current `main` as the M6-C2 baseline.
-- If it is red, inspect the exact failing job/step/log, reproduce/fix the root
-  cause, push the repair, and require the replacement default-branch CI run to
-  pass before M6-C2 implementation begins.
-- Do not describe a red or unexecuted check as “evidence incomplete”.
+- loopback HTTP preview only and remote HTTPS-only Worker origin validation;
+- paired server-side Access service-token injection with browser-header spoof
+  rejection and secret-safe responses;
+- explicit `workers_dev: false` / `preview_urls: false`, custom-domain
+  production generation and generated Wrangler type checking;
+- deterministic Worker security tests, deployment preflight/dry-run/resource
+  verifier and repeatable live smoke;
+- loopback-only Tunnel ingress and explicit snapshot-path origin commands.
 
 The selected implementation package is:
 
@@ -44,3 +48,7 @@ Automation policy is strict:
 - The only expected manual acceptance is the final owner interactive Access/IdP
   login sequence described in the goal; it cannot substitute for automated
   transport/security smoke tests.
+
+No Phase 6 monitoring, M5-C/R2, M4-D/M4-E or M2-D work was started. M5-C/R2
+remains deferred because the persistent authenticated M6-B origin serves the
+existing validated snapshot directly.

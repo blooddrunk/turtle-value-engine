@@ -10,6 +10,7 @@
     "lint": "eslint .",
     "typecheck": "tsc -b",
     "test": "vitest",
+    "types:check": "wrangler types --include-runtime=false --strict-vars=false --check",
     "api:generate": "openapi-typescript ../../schemas/research-surface-api-v1.openapi.json -o src/generated/surface-api.d.ts",
     "api:check": "node scripts/check-generated-api.mjs"
   },

@@ -1,6 +1,6 @@
 # Phase 5R-A M6-C2 — Private Dashboard Deployment and Authenticated Origin
 
-Status: **PLANNED / NOT STARTED**
+Status: **IMPLEMENTED / READY_FOR_OWNER_AUTHORIZED_LIVE_ACCEPTANCE**
 Date: 2026-09-20
 Selected after: M6-C1 local/preview Dashboard closure and CI hardening
 
@@ -435,3 +435,27 @@ M6-C2 is complete only when:
 - M5-C remains explicitly deferred unless separately justified.
 
 Stop after M6-C2 closure. Do not automatically start Phase 6 in the same goal.
+
+## 13. Implementation record — 2026-09-20
+
+The offline/deployment implementation is complete. It adds:
+
+- fail-closed Worker origin validation with loopback HTTP preview only,
+  remote HTTPS-only transport, paired server-side Access service-token
+  headers, browser-header spoof protection, and preserved allowlist/ETag/
+  mutation behavior;
+- explicit `workers_dev: false`, `preview_urls: false`, generated Wrangler
+  production configuration, observability and generated Wrangler types;
+- deterministic Worker security tests under `apps/dashboard/worker/index.test.ts`;
+- `scripts/dashboard_deploy.py` for preflight, Wrangler dry-run, explicit
+  owner-authorized build/deploy, Access/Tunnel/DNS API configuration, secret
+  upload and resource verification;
+- `scripts/dashboard_live_smoke.py` for repeatable authenticated live probes;
+- non-secret production/Tunnel/Access templates under `deploy/dashboard/`.
+
+Local and CI-independent acceptance is recorded in
+`docs/status/phase-5r-a-2026-09-20.md`. Cloudflare account/token, owner
+hostname/identity, Tunnel origin host, explicit snapshot path and live service
+credentials were not present in this execution environment, so the remaining
+state is exactly `READY_FOR_OWNER_AUTHORIZED_LIVE_ACCEPTANCE`. No Phase 6,
+M5-C/R2, M4-D/M4-E or M2-D work was started.

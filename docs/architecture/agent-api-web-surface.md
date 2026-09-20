@@ -187,3 +187,55 @@ security remain M6-C2.
 The verified C1 implementation is published on `main` at `5774b29`. Exact
 commands, results and remote publication evidence are recorded in
 `docs/status/phase-5r-a-2026-09-19.md`.
+
+## M6-C2 private deployment — implemented, live inputs pending
+
+M6-C2 keeps the M6-A/M6-B/C1 read-only boundary and adds deployment security
+around it:
+
+```text
+owner browser
+  -> Cloudflare Access-protected custom Dashboard domain
+  -> Worker static Dashboard + bounded same-origin /api/*
+  -> server-side CF-Access-Client-Id/Secret service token
+  -> HTTPS Access-protected surface domain
+  -> Cloudflare Tunnel
+  -> http://127.0.0.1:<port>
+  -> explicit tve surface serve snapshot paths
+```
+
+`apps/dashboard/worker/index.ts` accepts only the existing M6-B GET/HEAD
+allowlist. It validates the upstream as a bare origin: loopback HTTP is valid
+only for local preview; every remote origin must use HTTPS; userinfo, path,
+query and fragment components fail closed. Remote origins require both
+`SURFACE_API_ACCESS_CLIENT_ID` and `SURFACE_API_ACCESS_CLIENT_SECRET`; a
+half-configured pair is rejected. When present, those headers are constructed
+inside the Worker. Browser-supplied Access credential headers are never copied
+to the upstream request, and only `If-None-Match` is forwarded from the
+browser. Error/response header copying remains an explicit read-only allowlist.
+
+The checked-in Wrangler config sets `workers_dev: false` and
+`preview_urls: false`. The generated production config contains exactly one
+owner-supplied custom domain and the non-secret `SURFACE_API_ORIGIN` variable;
+service-token secrets are uploaded separately by Wrangler from environment
+references. `scripts/dashboard_deploy.py` performs a build, Wrangler dry-run,
+Cloudflare read/permission checks, Access application/Tunnel/DNS configuration,
+secret upload and final resource verification only after an explicit
+`deploy --apply`. It rejects extra Worker domains, enabled workers.dev or
+preview ingress, Access bypass policies and extra Tunnel ingress rules.
+
+`deploy/dashboard/tunnel-config.example.yml` is a concrete loopback-only
+ingress example. `scripts/dashboard_live_smoke.py` is the repeatable live
+probe: it blocks unauthenticated Dashboard and origin requests, authenticates
+the origin and Dashboard with separate service-token pairs, checks health/list/
+known detail, preserves `surface_id` and `content_sha256`, verifies 404,
+mutation 405 and ETag/304 behavior, and can probe declared alternate URLs.
+The origin process never discovers a workspace; it receives explicit snapshot
+paths through `tve surface serve`.
+
+No A6/PIT/source-selection/strict-v1 or investment calculation behavior is
+changed. M5-C/R2 remains deferred because a persistent authenticated M6-B
+origin serves the existing surface directly. Live Cloudflare account,
+hostname, Access identity, Tunnel host and snapshot inputs remain owner facts;
+their absence is recorded as `READY_FOR_OWNER_AUTHORIZED_LIVE_ACCEPTANCE`, not
+as a successful live deployment.

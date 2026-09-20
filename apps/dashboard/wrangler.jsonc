@@ -3,7 +3,19 @@
   "name": "tve-personal-dashboard",
   "compatibility_date": "2026-09-19",
   "main": "./worker/index.ts",
+  // Production deployments must name an explicit custom domain/route. This
+  // prevents Wrangler from silently restoring a public workers.dev ingress.
+  "workers_dev": false,
+  "preview_urls": false,
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 0.1
+  },
+  "vars": {
+    "SURFACE_API_ORIGIN": "http://127.0.0.1:8787"
+  },
   "assets": {
+    "binding": "ASSETS",
     "not_found_handling": "single-page-application",
     "run_worker_first": ["/api/*"]
   }

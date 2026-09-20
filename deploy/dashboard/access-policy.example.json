@@ -1,0 +1,23 @@
+{
+  "dashboard_hostname": "dashboard.example.com",
+  "interactive_policy": {
+    "decision": "allow",
+    "include": [
+      {
+        "email": {
+          "email": "owner@example.com"
+        }
+      }
+    ]
+  },
+  "origin_policy": {
+    "decision": "service_auth",
+    "include": [
+      {
+        "service_token": {
+          "token_id": "<cloudflare-service-token-id>"
+        }
+      }
+    ]
+  }
+}

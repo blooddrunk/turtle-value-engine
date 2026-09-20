@@ -177,11 +177,17 @@ concrete artifact class needs remote mirroring. M6-C1 is now complete at its
 local/preview integration boundary: a typed React/Vite Dashboard, generated
 OpenAPI client contract, bounded same-origin Cloudflare Worker proxy and real
 cross-stack smoke over `tve surface serve`. It remains read-only and does not
-read raw stores or recompute investment semantics. M6-C2 deployment,
-authentication and non-loopback origin security, plus Phase 6 watchlist/event
-monitoring, remain later packages. The verified implementation is published on
-`main` at `5774b29`; exact gate and publication evidence is recorded in
-`docs/status/phase-5r-a-2026-09-19.md`.
+read raw stores or recompute investment semantics. M6-C2 is now implemented at
+its offline/deployment integration boundary: remote origins are HTTPS-only and
+server-authenticated with Worker-held Access service-token secrets, the
+preferred Tunnel ingress remains loopback-only, workers.dev/preview routes are
+disabled in the checked-in Wrangler config, and deterministic deployment/live
+smoke tools are provided. Owner-specific Cloudflare/account/domain/identity/
+origin-host/snapshot inputs are not present in ordinary CI, so final live
+acceptance remains `READY_FOR_OWNER_AUTHORIZED_LIVE_ACCEPTANCE`. Phase 6
+watchlist/event monitoring remains later work. Exact gate, deployment and
+remaining-input evidence is recorded in
+`docs/status/phase-5r-a-2026-09-20.md`.
 
 ## 5. Working with company data
 
