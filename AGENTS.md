@@ -185,9 +185,11 @@ disabled in the checked-in Wrangler config, and deterministic deployment/live
 smoke tools are provided. Owner-specific Cloudflare/account/domain/identity/
 origin-host/snapshot inputs remain intentionally absent from ordinary CI; the
 owner-authorized live deployment and final browser acceptance are recorded as
-`CLOSED / OWNER_ACCEPTED`. Future Dashboard UX/localization work is tracked
-separately and does not change the frozen API or deterministic boundaries.
-Phase 6 watchlist/event monitoring remains later work. Exact gate, deployment
+`CLOSED / OWNER_ACCEPTED`. M6-C3 is now selected as the presentation-only follow-on for Dashboard
+UX/Chinese-first localization. It has not been implemented yet and must not
+change the frozen API, M6-C2 security boundary or deterministic semantics.
+Phase 6 watchlist/event monitoring remains the next major functional phase
+after M6-C3 closes. Exact gate, deployment
 and remaining-input evidence is recorded in
 `docs/status/phase-5r-a-2026-09-20.md`. Project-wide non-secret runtime
 configuration is defined by `config/project.example.toml` and the ignored
