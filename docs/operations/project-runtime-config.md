@@ -63,6 +63,46 @@ guide](https://developers.cloudflare.com/fundamentals/api/get-started/create-tok
 and [permission reference](https://developers.cloudflare.com/fundamentals/api/reference/permissions/)
 are the authoritative UI names.
 
+### Injecting the token without exposing it
+
+The repository reads the token only from the process environment. On the
+current Linux/zsh deployment host, the simplest one-time setup is:
+
+```bash
+cd /home/jelinenaro/research/turtle-value-engine
+umask 077
+read -r -s 'token?Cloudflare API token (input is hidden): '
+printf '\n'
+printf '%s' "$token" > .tve-private/cloudflare.token
+unset token
+chmod 600 .tve-private/cloudflare.token
+```
+
+The ignored `.tve-private/cloudflare.token` file is only a local secret
+handoff file; it is not read by application code and is never committed. When
+running a command, inject it for that process only:
+
+```bash
+export CLOUDFLARE_API_TOKEN="$(<.tve-private/cloudflare.token)"
+```
+
+Do not run `echo "$CLOUDFLARE_API_TOKEN"`, `env`, or a verbose shell trace.
+Verify presence without printing the value:
+
+```bash
+if [[ -n "${CLOUDFLARE_API_TOKEN:-}" ]]; then
+  echo "CLOUDFLARE_API_TOKEN is set (value hidden)"
+else
+  echo "CLOUDFLARE_API_TOKEN is absent"
+fi
+```
+
+An external secret manager is preferred for a persistent host. Its retrieval
+command should populate the same environment variable; the TOML file still
+contains only `{ env = "CLOUDFLARE_API_TOKEN" }`. Do not paste the token into
+chat. Once the variable is available to the Codex execution environment, the
+deployment checks below are run automatically.
+
 The Access client ID/secret pairs used by the Worker and smoke are service
 tokens, not Cloudflare API tokens. With the API token available, the deployment
 helper can create them with the names above and consume newly generated
