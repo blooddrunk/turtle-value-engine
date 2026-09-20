@@ -1,6 +1,6 @@
 # Phase 5R-A M6-C2 — Private Dashboard Deployment and Authenticated Origin
 
-Status: **IMPLEMENTED / READY_FOR_OWNER_INTERACTIVE_ACCESS_ACCEPTANCE**
+Status: **CLOSED / OWNER_ACCEPTED**
 Date: 2026-09-20
 Selected after: M6-C1 local/preview Dashboard closure and CI hardening
 
@@ -686,13 +686,27 @@ generated API type drift, client-bundle secret scan and real local cross-stack
 smoke all exit 0; deployment-helper/live-smoke tests pass; tracked files and
 generated/log output contain none of the private credential values.
 
-The only remaining acceptance item is the goal-defined owner interactive
-check: open the Dashboard URL in an incognito browser, see the Access wall
-before Dashboard content, sign in as the configured owner identity, read the
-overview and one detail, then use a fresh unauthenticated session to confirm
-the Dashboard is not visible. No Phase 6, M5-C/R2, M4-D/M4-E or M2-D work was
-started.
+Before the owner acceptance, the only remaining item was the goal-defined
+interactive check: open the Dashboard URL in an incognito browser, see the
+Access wall before Dashboard content, sign in as the configured owner
+identity, read the overview and one detail, then use a fresh unauthenticated
+session to confirm the Dashboard is not visible. That check is recorded below.
+No Phase 6, M5-C/R2, M4-D/M4-E or M2-D work was started.
 
 The closure commit is `4365a950c3a5afa28656545e7fbca1ef6253f1f9`.
 GitHub Actions run `35502629180` completed with `success`; its single `test`
 job and all 20 required execution steps passed.
+
+## 17. Owner acceptance and closure — 2026-09-20
+
+The owner confirmed the final interactive acceptance at
+`https://tve-private-dashboard.haoqi90.top`: the Cloudflare Access login wall
+appeared before Dashboard content, the approved identity completed login and
+verified the `HK00288` surface, and the unauthenticated-session check passed.
+M6-C2 is therefore closed as `CLOSED / OWNER_ACCEPTED`.
+
+The owner also reported that the current Dashboard is difficult to read: it is
+English-only, exposes developer-oriented terminology and errors, contains
+placeholder-like content, and presents many fields as `NOT_AVAILABLE`. These
+are recorded as future Dashboard UX/localization work, not as M6-C2 security
+or deployment blockers. No such redesign was started during closure.

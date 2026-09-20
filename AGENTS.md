@@ -184,11 +184,11 @@ preferred Tunnel ingress remains loopback-only, workers.dev/preview routes are
 disabled in the checked-in Wrangler config, and deterministic deployment/live
 smoke tools are provided. Owner-specific Cloudflare/account/domain/identity/
 origin-host/snapshot inputs remain intentionally absent from ordinary CI; the
-owner-authorized live deployment is recorded as
-`IMPLEMENTED / READY_FOR_OWNER_INTERACTIVE_ACCESS_ACCEPTANCE`, with only the
-goal-defined interactive Access/IdP browser check remaining. Phase 6
-watchlist/event monitoring remains later work. Exact gate, deployment and
-remaining-input evidence is recorded in
+owner-authorized live deployment and final browser acceptance are recorded as
+`CLOSED / OWNER_ACCEPTED`. Future Dashboard UX/localization work is tracked
+separately and does not change the frozen API or deterministic boundaries.
+Phase 6 watchlist/event monitoring remains later work. Exact gate, deployment
+and remaining-input evidence is recorded in
 `docs/status/phase-5r-a-2026-09-20.md`. Project-wide non-secret runtime
 configuration is defined by `config/project.example.toml` and the ignored
 `.tve-private/project.toml`; later phases extend this typed configuration

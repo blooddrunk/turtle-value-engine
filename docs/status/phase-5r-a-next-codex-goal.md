@@ -1,6 +1,6 @@
 # Phase 5R-A next Codex goal — M6-C2
 
-Status: **M6-C2 IMPLEMENTED; READY_FOR_OWNER_INTERACTIVE_ACCESS_ACCEPTANCE**
+Status: **M6-C2 CLOSED / OWNER_ACCEPTED; FUTURE DASHBOARD UX IMPROVEMENTS RECORDED**
 
 Project runtime configuration is now consolidated in
 `config/project.example.toml` → `.tve-private/project.toml`. It is shared by
@@ -199,12 +199,39 @@ unauthenticated blocking, valid/invalid origin credentials, Dashboard -> Worker
 pytest `6320 passed, 2 skipped`, Dashboard Vitest `15 passed`, and all frontend,
 generated-contract, bundle-secret and local cross-stack checks exit 0.
 
-The only pending action is the owner interactive acceptance explicitly defined
-by M6-C2: incognito access to the Dashboard URL must show the Access wall
-before content; `xieyh@outlook.com` must read the overview and one detail; a
-fresh unauthenticated session must not show the Dashboard. Do not start Phase
-6 or any deferred M4/M5/M2 package after this handoff.
+Before owner acceptance, the only pending action was the interactive check
+explicitly defined by M6-C2: incognito access to the Dashboard URL must show
+the Access wall before content; `xieyh@outlook.com` must read the overview and
+one detail; a fresh unauthenticated session must not show the Dashboard. The
+owner result is recorded in the closure section below. Do not start Phase 6 or
+any deferred M4/M5/M2 package after this handoff.
 
 Closure commit: `4365a950c3a5afa28656545e7fbca1ef6253f1f9`.
 GitHub Actions run `35502629180` is green with all 20 required execution
 steps passed.
+
+## M6-C2 closure and future improvement backlog
+
+The owner completed the only manual acceptance required by M6-C2 at
+`https://tve-private-dashboard.haoqi90.top`, including Access login and
+`HK00288` verification. M6-C2 is closed; no deployment or security blocker
+remains.
+
+The next Dashboard-focused work should address the owner-reported usability
+issues:
+
+1. Chinese-first localization and a clear language boundary for user-facing
+   copy.
+2. Plain-language labels and error states instead of developer terminology or
+   raw implementation details.
+3. Intentional empty, partial and unavailable states instead of placeholder-like
+   content.
+4. A user-readable explanation layer for `NOT_AVAILABLE`, `BLOCKED`,
+   `NOT_EVALUATED` and `SPECIAL_REVIEW`, retaining exact provenance behind a
+   detail/diagnostic affordance.
+5. Better overview/detail presentation of company identity, dates, units,
+   currency, source status and provenance.
+6. UI regression/accessibility tests for the new language and state mapping.
+
+This backlog is recorded only; implementation is not part of the closed M6-C2
+goal. Do not start Phase 6, M4-D/M4-E, M2-D or M5-C/R2 as a side effect.
