@@ -21,11 +21,43 @@ jobs:
           python-version: "3.11"
           cache: pip
 
-      - name: Install development dependencies
-        run: python -m pip install ".[dev]"
+      - name: Install development and API dependencies
+        run: python -m pip install ".[api,dev]"
 
       - name: Run Ruff
         run: python -m ruff check .
 
       - name: Run deterministic test suite
         run: python -m pytest
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Install pnpm
+        run: npm install --global pnpm@11.23.0
+
+      - name: Install Dashboard dependencies
+        run: pnpm --dir apps/dashboard install --frozen-lockfile
+
+      - name: Check generated OpenAPI
+        run: python scripts/export_surface_openapi.py --check
+
+      - name: Check generated Dashboard API types
+        run: pnpm --dir apps/dashboard api:check
+
+      - name: Lint Dashboard
+        run: pnpm --dir apps/dashboard lint
+
+      - name: Typecheck Dashboard
+        run: pnpm --dir apps/dashboard typecheck
+
+      - name: Test Dashboard
+        run: pnpm --dir apps/dashboard test --run
+
+      - name: Build Dashboard
+        run: pnpm --dir apps/dashboard build
+
+      - name: Run Dashboard cross-stack smoke
+        run: python scripts/dashboard_cross_stack_smoke.py
