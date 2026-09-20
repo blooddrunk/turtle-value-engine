@@ -65,6 +65,25 @@ class DeploymentError(RuntimeError):
     """A safe, user-facing deployment/preflight error."""
 
 
+class CloudflareAPIError(DeploymentError):
+    """A Cloudflare API failure retaining non-secret response identity."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        method: str,
+        path: str,
+        status: int | None = None,
+        codes: tuple[str, ...] = (),
+    ) -> None:
+        super().__init__(message)
+        self.method = method
+        self.path = path
+        self.status = status
+        self.codes = codes
+
+
 @dataclass(frozen=True)
 class DeploymentInputs:
     account_id: str | None
@@ -419,6 +438,19 @@ def _messages(payload: Any) -> str:
     return "; ".join(messages) or "Cloudflare API request failed"
 
 
+def _error_codes(payload: Any) -> tuple[str, ...]:
+    if not isinstance(payload, dict):
+        return ()
+    entries = payload.get("errors") or payload.get("messages") or []
+    if not isinstance(entries, list):
+        return ()
+    return tuple(
+        str(entry["code"])
+        for entry in entries
+        if isinstance(entry, dict) and entry.get("code") is not None
+    )
+
+
 class CloudflareAPI:
     def __init__(self, account_id: str, api_token: str, redactions: tuple[str, ...] = ()):
         self.account_id = account_id
@@ -445,9 +477,13 @@ class CloudflareAPI:
                 detail = json.loads(error.read())
             except (OSError, json.JSONDecodeError):
                 detail = None
-            raise DeploymentError(
+            raise CloudflareAPIError(
                 f"Cloudflare API {method} {path} failed with HTTP {error.code}: "
-                f"{_redact(_messages(detail), (self.api_token, *self.redactions))}"
+                f"{_redact(_messages(detail), (self.api_token, *self.redactions))}",
+                method=method,
+                path=path,
+                status=error.code,
+                codes=_error_codes(detail),
             ) from None
         except URLError as error:
             raise DeploymentError(
@@ -458,9 +494,12 @@ class CloudflareAPI:
         except json.JSONDecodeError:
             raise DeploymentError(f"Cloudflare API {method} {path} returned invalid JSON") from None
         if not isinstance(decoded, dict) or decoded.get("success") is not True:
-            raise DeploymentError(
+            raise CloudflareAPIError(
                 f"Cloudflare API {method} {path} failed: "
-                f"{_redact(_messages(decoded), (self.api_token, *self.redactions))}"
+                f"{_redact(_messages(decoded), (self.api_token, *self.redactions))}",
+                method=method,
+                path=path,
+                codes=_error_codes(decoded),
             )
         return decoded
 
@@ -821,10 +860,17 @@ def ensure_origin_dns(api: CloudflareAPI, inputs: DeploymentInputs, tunnel_id: s
 def _verify_no_worker_routes(
     api: CloudflareAPI, zone_id: str, worker_name: str = WORKER_NAME
 ) -> None:
-    routes = _complete_list(
-        api.request("GET", api.zone_path(zone_id, "/workers/routes?per_page=100")),
-        "Dashboard Worker route",
-    )
+    response = api.request("GET", api.zone_path(zone_id, "/workers/routes?per_page=100"))
+    result = _result(response)
+    result_info = response.get("result_info")
+    # Cloudflare's empty Workers Routes response currently omits result_info.
+    # An empty result is a complete safe state; a non-empty response without
+    # pagination metadata remains fail-closed because it cannot prove that all
+    # alternate routes were inspected.
+    if result_info is None and result == []:
+        routes: list[Any] = []
+    else:
+        routes = _complete_list(response, "Dashboard Worker route")
     _check_no_worker_routes(routes, worker_name)
 
 
@@ -852,6 +898,25 @@ def _check_worker_subdomain_disabled(subdomain: Any) -> None:
         raise DeploymentError("workers.dev or Worker preview ingress is not explicitly disabled")
 
 
+def _pre_mutation_worker_subdomain(
+    api: CloudflareAPI, worker_name: str
+) -> Any:
+    """Treat a not-yet-created Worker as a safe empty ingress state.
+
+    Cloudflare returns API error 10007 when the first deployment has no Worker
+    script yet.  That is distinct from a successful response enabling an
+    alternate ingress and must not skip checks for an existing Worker.
+    """
+
+    path = api.account_path(f"/workers/scripts/{worker_name}/subdomain")
+    try:
+        return _result(api.request("GET", path))
+    except CloudflareAPIError as error:
+        if error.status == 404 and "10007" in error.codes:
+            return {"enabled": False, "previews_enabled": False}
+        raise
+
+
 def _verify_pre_mutation_state(
     api: CloudflareAPI,
     dashboard_zone_id: str,
@@ -861,9 +926,7 @@ def _verify_pre_mutation_state(
 ) -> None:
     """Read every alternate-ingress list completely before any live mutation."""
 
-    subdomain = _result(
-        api.request("GET", api.account_path(f"/workers/scripts/{worker_name}/subdomain"))
-    )
+    subdomain = _pre_mutation_worker_subdomain(api, worker_name)
     _check_worker_subdomain_disabled(subdomain)
 
     domains = _complete_list(
@@ -898,14 +961,7 @@ def _verify_pre_mutation_state(
         api.request("GET", api.account_path("/cfd_tunnel?per_page=100")),
         "Cloudflare Tunnel",
     )
-    routes = _complete_list(
-        api.request(
-            "GET",
-            api.zone_path(dashboard_zone_id, "/workers/routes?per_page=100"),
-        ),
-        "Dashboard Worker route",
-    )
-    _check_no_worker_routes(routes, worker_name)
+    _verify_no_worker_routes(api, dashboard_zone_id, worker_name)
 
 
 def _run(

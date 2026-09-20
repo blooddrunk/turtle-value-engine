@@ -1,6 +1,6 @@
 # Phase 5R-A M6-C2 — Private Dashboard Deployment and Authenticated Origin
 
-Status: **IMPLEMENTED / READY_FOR_OWNER_AUTHORIZED_LIVE_ACCEPTANCE**
+Status: **IMPLEMENTED / READY_FOR_OWNER_INTERACTIVE_ACCESS_ACCEPTANCE**
 Date: 2026-09-20
 Selected after: M6-C1 local/preview Dashboard closure and CI hardening
 
@@ -581,7 +581,7 @@ repeatable command is
 `pnpm --dir apps/dashboard security:client-bundle`. GitHub Actions run
 `35491132677` also passed all 19 execution steps, including this bundle scan.
 
-The implementation remains
+At that pre-authorization checkpoint the implementation was
 `READY_FOR_OWNER_AUTHORIZED_LIVE_ACCEPTANCE`: no owner Cloudflare account,
 token, selected hostnames/zone, origin host and snapshot path, or service
 credentials were available, so no live resource mutation or authenticated
@@ -608,3 +608,87 @@ The project-wide configuration implementation is commit
 commit is `93c638fd1231e904fab50b3aeb21eab7e6e41874`; GitHub Actions run
 `35496754597` passed its `test` job and all 20 execution steps, including the
 project-config validation step.
+
+## 16. Owner-authorized live deployment closure — 2026-09-20
+
+The owner-provided project configuration and Cloudflare API token were
+available in the execution environment through ignored private files and
+environment references. The target was the explicitly validated
+`ResearchSurfaceSnapshotV1` for `HK0288` (`as_of=2026-09-20`), served from
+`.tve-private/surface/research-surface.json`. Its `surface_id` and
+`content_sha256` are both
+`1564c885738b010148225e8f2aa84d198ea819fc517c4ffcf21fbc0649053862`, and the
+deterministic analysis identity is `analysis-18069e2f1b8f3cb9fb8d9d9c`.
+The analysis remains `SPECIAL_REVIEW` with low data quality and no automated
+recommendation; M6-C2 did not alter that result.
+
+The current-main baseline was checked before the final edits:
+`origin/main` and local `main` were `6f28fb034612cb9b1101268f6abd2468a3238e74`.
+GitHub Actions run `35500161280` for that SHA completed with `success`; the
+latest required CI job was green.
+
+The owner-authorized deployment command was run with the token and service
+credentials resolved only in the process environment:
+
+```bash
+set -a; source .tve-private/cloudflare-service-tokens.env; set +a
+export CLOUDFLARE_API_TOKEN="$(<.tve-private/cloudflare.token)"
+python3 scripts/dashboard_deploy.py deploy \
+  --project-config .tve-private/project.toml --apply --live-smoke
+```
+
+It completed with exit code 0. `verify` completed with exit code 0, and the
+official `cloudflared 2026.9.1` binary validated the checked-in ingress with
+exit code 0 (`Validating rules... OK`). The non-secret live resources are:
+
+- Cloudflare account `51eaede3a49980ea51dfe61d01cab7f7`, zone
+  `9a7d331c8d376c528f9180dba7b1fc91`;
+- Worker `tve-personal-dashboard`, final deployment version
+  `34f96111-1369-4e76-bf62-b255894a2a87`;
+- Dashboard `https://tve-private-dashboard.haoqi90.top`;
+- authenticated origin `https://tve-private-surface.haoqi90.top`;
+- remotely managed Tunnel
+  `0e19c8cc-1af4-48d9-8af5-d65717b56a6c`, with the exact ingress
+  `tve-private-surface.haoqi90.top -> http://127.0.0.1:8787` and terminal
+  `http_status:404`;
+- origin DNS record `dd049985edcfd6082d518d58adcfb1d6`;
+- Dashboard Access app `715ee443-7eeb-4108-9a35-8ea8f2c15f3d` and origin
+  Access app `f4bedf6f-7a53-4787-a8fa-cc5d7957f152`.
+
+The deployment verifier proved workers.dev and preview ingress disabled, the
+custom-domain set exact, the zone Worker-route set empty, Access targets exact
+and non-overlapping, Dashboard policy decisions exactly service-auth plus the
+configured owner email, origin policy exactly service-auth, and Tunnel ingress
+loopback-only. The live smoke completed with exit code 0 and proved:
+
+- unauthenticated Dashboard and origin requests are blocked;
+- invalid origin credentials are blocked and the valid origin service token
+  reaches `/healthz`;
+- authenticated Dashboard -> Worker -> HTTPS origin -> M6-B health/list/detail
+  works for the known target surface;
+- `surface_id`/`content_sha256` are preserved, ETag revalidation returns 304,
+  an unknown surface returns 404, and POST/PUT/PATCH/DELETE each return 405;
+- no alternate Dashboard or origin URL configured by the smoke bypasses the
+  corresponding authentication boundary.
+
+The first live probe correctly failed with HTTP 403 because Cloudflare's
+Browser Integrity Check rejected Python's default `Python-urllib` signature
+with explicit Error 1010 `browser_signature_banned`. A direct comparison with
+the same valid service token returned 200 using an explicit smoke User-Agent.
+The repeatable smoke now sends `tve-m6-c2-live-smoke/1`; its regression test
+and the full live smoke both pass. This is a deterministic probe transport
+fix, not an Access-policy bypass.
+
+Final local verification after the fix: Ruff exit 0; full pytest exit 0 with
+`6320 passed, 2 skipped`; frozen pnpm install exit 0; Dashboard lint,
+typecheck, Vitest (`15 passed`) and production build all exit 0; OpenAPI drift,
+generated API type drift, client-bundle secret scan and real local cross-stack
+smoke all exit 0; deployment-helper/live-smoke tests pass; tracked files and
+generated/log output contain none of the private credential values.
+
+The only remaining acceptance item is the goal-defined owner interactive
+check: open the Dashboard URL in an incognito browser, see the Access wall
+before Dashboard content, sign in as the configured owner identity, read the
+overview and one detail, then use a fresh unauthenticated session to confirm
+the Dashboard is not visible. No Phase 6, M5-C/R2, M4-D/M4-E or M2-D work was
+started.

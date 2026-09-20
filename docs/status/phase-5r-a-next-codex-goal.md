@@ -1,6 +1,6 @@
 # Phase 5R-A next Codex goal — M6-C2
 
-Status: **M6-C2 IMPLEMENTED; READY_FOR_OWNER_AUTHORIZED_LIVE_ACCEPTANCE**
+Status: **M6-C2 IMPLEMENTED; READY_FOR_OWNER_INTERACTIVE_ACCESS_ACCEPTANCE**
 
 Project runtime configuration is now consolidated in
 `config/project.example.toml` → `.tve-private/project.toml`. It is shared by
@@ -109,8 +109,9 @@ The final hardening follow-up is pushed as
 `35485721496`. It fixes the source Wrangler dry-run configuration, tightens
 deployment verification against hostname/policy/token drift, rejects invalid
 origin credentials in live smoke, and records the current cloudflared ingress
-validation command. Owner-specific Cloudflare/account/identity/origin inputs
-remain the only reason live acceptance is not claimed.
+validation command. At that pre-authorization checkpoint, owner-specific
+Cloudflare/account/identity/origin inputs remained the only reason live
+acceptance was not claimed.
 
 The route-isolation follow-up is
 `a68fa3196f496d08782d01cc2ea9bf5823245f25`; run `35487136705` is green with
@@ -173,3 +174,33 @@ without printing values; the local scan passed over 4 files.
 The subsequent secret-redaction follow-up is
 `297d7cf1232823fc3dab1b5758dae8d6907275d2`; run `35486605298` is green with
 all 18 CI execution steps passed.
+
+## Current handoff — automated live acceptance complete
+
+The owner-specific inputs are now present and have been consumed through the
+private runtime references. The actual target is `HK0288` at `as_of=2026-09-20`
+with validated snapshot
+`.tve-private/surface/research-surface.json`, surface/hash
+`1564c885738b010148225e8f2aa84d198ea819fc517c4ffcf21fbc0649053862`, and
+deterministic analysis `analysis-18069e2f1b8f3cb9fb8d9d9c`.
+
+Live deployment succeeded with exit code 0. The private endpoints are:
+
+- Dashboard: `https://tve-private-dashboard.haoqi90.top`
+- authenticated origin: `https://tve-private-surface.haoqi90.top`
+- Worker: `tve-personal-dashboard`
+- Tunnel: `0e19c8cc-1af4-48d9-8af5-d65717b56a6c`
+
+`dashboard_deploy.py verify` succeeded; Access, Tunnel, DNS, Worker route and
+custom-domain checks are green. The repeatable live smoke succeeded for
+unauthenticated blocking, valid/invalid origin credentials, Dashboard -> Worker
+-> origin -> M6-B health/list/detail, surface identity/hash, ETag 304, unknown
+404 and POST/PUT/PATCH/DELETE 405. The final local verification is Ruff 0,
+pytest `6320 passed, 2 skipped`, Dashboard Vitest `15 passed`, and all frontend,
+generated-contract, bundle-secret and local cross-stack checks exit 0.
+
+The only pending action is the owner interactive acceptance explicitly defined
+by M6-C2: incognito access to the Dashboard URL must show the Access wall
+before content; `xieyh@outlook.com` must read the overview and one detail; a
+fresh unauthenticated session must not show the Dashboard. Do not start Phase
+6 or any deferred M4/M5/M2 package after this handoff.

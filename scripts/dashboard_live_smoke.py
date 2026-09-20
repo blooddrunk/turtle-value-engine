@@ -48,6 +48,9 @@ class LiveSmokeError(RuntimeError):
     """A machine-verifiable live smoke failure."""
 
 
+LIVE_SMOKE_USER_AGENT = "tve-m6-c2-live-smoke/1"
+
+
 @dataclass(frozen=True)
 class HttpResult:
     status: int
@@ -106,7 +109,13 @@ def _request(
     url: str, *, headers: Mapping[str, str] | None = None, method: str = "GET"
 ) -> HttpResult:
     request = Request(
-        url, method=method, headers={"Accept": "application/json", **(headers or {})}
+        url,
+        method=method,
+        headers={
+            "Accept": "application/json",
+            "User-Agent": LIVE_SMOKE_USER_AGENT,
+            **(headers or {}),
+        },
     )
     opener = build_opener(_NoRedirect)
     try:

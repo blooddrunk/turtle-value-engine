@@ -301,6 +301,15 @@ def test_dashboard_route_verifier_fails_closed_on_legacy_worker_routes() -> None
             return {"result": self.routes, "result_info": {"total_count": len(self.routes)}}
 
     _verify_no_worker_routes(FakeAPI([]), "c" * 32)
+
+    class EmptyWithoutPaginationAPI(FakeAPI):
+        def request(self, method: str, path: str) -> dict[str, object]:
+            assert method == "GET"
+            assert path == f"/zones/{'c' * 32}/workers/routes?per_page=100"
+            return {"result": []}
+
+    _verify_no_worker_routes(EmptyWithoutPaginationAPI([]), "c" * 32)
+
     class PaginatedAPI(FakeAPI):
         def request(self, method: str, path: str) -> dict[str, object]:
             response = super().request(method, path)
@@ -371,6 +380,34 @@ def test_pre_mutation_state_requires_complete_cloudflare_lists() -> None:
             "surface.example.com",
         )
     assert incomplete.paths == expected_paths[:3]
+
+
+def test_pre_mutation_state_allows_first_deploy_missing_worker() -> None:
+    class MissingWorkerAPI:
+        def account_path(self, suffix: str) -> str:
+            return f"/accounts/{'a' * 32}{suffix}"
+
+        def zone_path(self, zone_id: str, suffix: str) -> str:
+            return f"/zones/{zone_id}{suffix}"
+
+        def request(self, method: str, path: str) -> dict[str, object]:
+            assert method == "GET"
+            if path.endswith("/subdomain"):
+                raise dashboard_deploy.CloudflareAPIError(
+                    "Worker does not exist",
+                    method=method,
+                    path=path,
+                    status=404,
+                    codes=("10007",),
+                )
+            return {"result": [], "result_info": {"total_count": 0}}
+
+    _verify_pre_mutation_state(
+        MissingWorkerAPI(),
+        "c" * 32,
+        "dashboard.example.com",
+        "surface.example.com",
+    )
 
 
 def test_pre_mutation_state_rejects_alternate_worker_ingress() -> None:
