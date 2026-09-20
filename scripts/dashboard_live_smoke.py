@@ -79,6 +79,19 @@ def _validate_https_url(raw_url: str, name: str) -> str:
     return raw_url.rstrip("/")
 
 
+def _assert_distinct_origins(dashboard_url: str, origin_url: str) -> None:
+    dashboard_hostname = urlsplit(dashboard_url).hostname
+    origin_hostname = urlsplit(origin_url).hostname
+    if (
+        dashboard_hostname
+        and origin_hostname
+        and dashboard_hostname.lower() == origin_hostname.lower()
+    ):
+        raise LiveSmokeError(
+            "TVE_DASHBOARD_URL and TVE_SURFACE_API_ORIGIN must use different hostnames"
+        )
+
+
 def _request(
     url: str, *, headers: Mapping[str, str] | None = None, method: str = "GET"
 ) -> HttpResult:
@@ -233,6 +246,7 @@ def main() -> int:
         origin_url = _validate_https_url(
             _require("TVE_SURFACE_API_ORIGIN"), "TVE_SURFACE_API_ORIGIN"
         )
+        _assert_distinct_origins(dashboard_url, origin_url)
         origin_id, origin_secret = _assert_pair(
             "SURFACE_API_ACCESS_CLIENT_ID", "SURFACE_API_ACCESS_CLIENT_SECRET"
         )
