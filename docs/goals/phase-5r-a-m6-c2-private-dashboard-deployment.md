@@ -485,8 +485,8 @@ completed successfully. The single `test` job passed all 18 execution steps,
 including Python/Ruff/full
 pytest, frozen pnpm install, OpenAPI and generated-type drift, Dashboard
 lint/typecheck/Vitest/build, source Wrangler dry-run and real local
-cross-stack smoke. The final local results were `6302 passed, 2 skipped` for
-pytest, `14 passed` for Dashboard Vitest and `8 passed` for deployment-helper
+cross-stack smoke. The final local results were `6303 passed, 2 skipped` for
+pytest, `14 passed` for Dashboard Vitest and `9 passed` for deployment-helper
 tests. The checked-in Tunnel example also validated with the official
 temporary cloudflared `2026.9.1` binary and returned `Validating rules... OK`.
 
@@ -500,6 +500,17 @@ The secret-redaction follow-up is
 `35486605298` also passed all 18 execution steps. It ensures the first
 Wrangler deploy subprocess receives explicit redaction values for the API
 token and both service-token pairs, and adds a stdout/stderr regression test.
+
+The route-isolation follow-up is
+`a68fa3196f496d08782d01cc2ea9bf5823245f25`; GitHub Actions run
+`35487136705` also passed all 18 execution steps. It requires the Dashboard
+zone ID, checks zone-level Worker routes before apply/verify, and fails closed
+on incomplete pagination or legacy routes attached to the Dashboard Worker.
+
+The route-pagination regression-test follow-up is
+`65f413c4a62ecd9adc8c531a42f372f7504c62b5`; GitHub Actions run
+`35487290954` also passed all 18 execution steps. The deployment runbook
+records the additional Workers Routes Read permission.
 
 The implementation remains
 `READY_FOR_OWNER_AUTHORIZED_LIVE_ACCEPTANCE`: no owner Cloudflare account,

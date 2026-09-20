@@ -25,9 +25,9 @@ all 18 execution steps, including source Wrangler deployment-config dry-run.
 The documentation closure commit
 `aed18ee54795406dfbe77b022f8c706c39d18d8d` also has green run
 `35486022150`, with all 18 execution steps passed. The final local
-deterministic suite is `6302 passed, 2 skipped`;
+deterministic suite is `6303 passed, 2 skipped`;
 Dashboard Vitest is `14 passed`, and deployment-helper regression tests are
-`8 passed`.
+`9 passed`.
 
 The implementation provides:
 
@@ -44,6 +44,8 @@ The implementation provides:
   credential live-smoke coverage.
 - subprocess output redaction covering the API token and both service-token
   pairs before Wrangler deployment.
+- Dashboard zone-level Worker route isolation with fail-closed pagination
+  handling before apply/verify.
 
 The selected implementation package is:
 
@@ -85,6 +87,16 @@ deployment verification against hostname/policy/token drift, rejects invalid
 origin credentials in live smoke, and records the current cloudflared ingress
 validation command. Owner-specific Cloudflare/account/identity/origin inputs
 remain the only reason live acceptance is not claimed.
+
+The route-isolation follow-up is
+`a68fa3196f496d08782d01cc2ea9bf5823245f25`; run `35487136705` is green with
+all 18 CI execution steps passed. It requires `TVE_DASHBOARD_ZONE_ID` and
+rejects legacy zone routes still attached to the Dashboard Worker.
+
+The route-pagination regression-test follow-up is
+`65f413c4a62ecd9adc8c531a42f372f7504c62b5`; run `35487290954` is green with
+all 18 CI execution steps passed. The deployment runbook now records the
+additional Workers Routes Read permission.
 
 The subsequent secret-redaction follow-up is
 `297d7cf1232823fc3dab1b5758dae8d6907275d2`; run `35486605298` is green with
