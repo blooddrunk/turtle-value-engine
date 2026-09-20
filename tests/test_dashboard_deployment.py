@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from scripts.dashboard_deploy import (
+    SERVICE_AUTH_DECISION,
     DeploymentInputs,
+    _access_policy,
     _tunnel_ingress,
     validate_inputs,
     validate_remote_origin,
@@ -57,3 +59,11 @@ def test_tunnel_ingress_is_loopback_only_and_has_terminal_404() -> None:
         {"hostname": "surface.example.com", "service": "http://127.0.0.1:8787"},
         {"service": "http_status:404"},
     ]
+
+
+def test_cloudflare_service_auth_uses_non_identity_api_decision() -> None:
+    assert SERVICE_AUTH_DECISION == "non_identity"
+    assert _access_policy(SERVICE_AUTH_DECISION, [{"service_token": {"token_id": "token"}}]) == {
+        "decision": "non_identity",
+        "include": [{"service_token": {"token_id": "token"}}],
+    }

@@ -11,7 +11,7 @@
     ]
   },
   "origin_policy": {
-    "decision": "service_auth",
+    "decision": "non_identity",
     "include": [
       {
         "service_token": {

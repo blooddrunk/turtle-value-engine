@@ -38,6 +38,7 @@ ORIGIN_CLIENT_ID = "SURFACE_API_ACCESS_CLIENT_ID"
 ORIGIN_CLIENT_SECRET = "SURFACE_API_ACCESS_CLIENT_SECRET"
 DASHBOARD_CLIENT_ID = "TVE_DASHBOARD_ACCESS_CLIENT_ID"
 DASHBOARD_CLIENT_SECRET = "TVE_DASHBOARD_ACCESS_CLIENT_SECRET"
+SERVICE_AUTH_DECISION = "non_identity"
 ACCOUNT_ID = "CLOUDFLARE_ACCOUNT_ID"
 API_TOKEN = "CLOUDFLARE_API_TOKEN"
 TUNNEL_ID = "TVE_CLOUDFLARE_TUNNEL_ID"
@@ -640,13 +641,13 @@ def verify_cloudflare(api: CloudflareAPI, inputs: DeploymentInputs, tunnel_id: s
         api,
         dashboard_apps[0],
         hostname=expected_domain,
-        required_decisions={"allow", "service_auth"},
+        required_decisions={"allow", SERVICE_AUTH_DECISION},
     )
     _verify_access_policy(
         api,
         origin_apps[0],
         hostname=origin_domain,
-        required_decisions={"service_auth"},
+        required_decisions={SERVICE_AUTH_DECISION},
     )
 
     tunnel = _result(
@@ -819,7 +820,7 @@ def main(argv: list[str] | None = None) -> int:
             name="TVE M6-C2 M6-B origin",
             policies=[
                 _access_policy(
-                    "service_auth",
+                    SERVICE_AUTH_DECISION,
                     [{"service_token": {"token_id": surface_token.token_id}}],
                 )
             ],
@@ -830,7 +831,7 @@ def main(argv: list[str] | None = None) -> int:
             name="TVE M6-C2 private Dashboard",
             policies=[
                 _access_policy(
-                    "service_auth",
+                    SERVICE_AUTH_DECISION,
                     [{"service_token": {"token_id": dashboard_token.token_id}}],
                 ),
                 _access_policy("allow", [{"email": {"email": inputs.dashboard_identity_email}}]),

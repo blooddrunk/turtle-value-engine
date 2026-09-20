@@ -449,7 +449,8 @@ The offline/deployment implementation is complete. It adds:
 - deterministic Worker security tests under `apps/dashboard/worker/index.test.ts`;
 - `scripts/dashboard_deploy.py` for preflight, Wrangler dry-run, explicit
   owner-authorized build/deploy, Access/Tunnel/DNS API configuration, secret
-  upload and resource verification;
+  upload and resource verification. Cloudflare's Service Auth policy is sent
+  with the API decision value `non_identity`;
 - `scripts/dashboard_live_smoke.py` for repeatable authenticated live probes;
 - non-secret production/Tunnel/Access templates under `deploy/dashboard/`.
 
