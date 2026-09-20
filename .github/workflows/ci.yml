@@ -60,7 +60,22 @@ jobs:
         run: pnpm --dir apps/dashboard test --run
 
       - name: Build Dashboard
+        env:
+          CLOUDFLARE_API_TOKEN: ci-client-bundle-api-token-sentinel
+          SURFACE_API_ACCESS_CLIENT_ID: ci-client-bundle-origin-id-sentinel
+          SURFACE_API_ACCESS_CLIENT_SECRET: ci-client-bundle-origin-secret-sentinel
+          TVE_DASHBOARD_ACCESS_CLIENT_ID: ci-client-bundle-dashboard-id-sentinel
+          TVE_DASHBOARD_ACCESS_CLIENT_SECRET: ci-client-bundle-dashboard-secret-sentinel
         run: pnpm --dir apps/dashboard build
+
+      - name: Check Dashboard client bundle for runtime secrets
+        env:
+          CLOUDFLARE_API_TOKEN: ci-client-bundle-api-token-sentinel
+          SURFACE_API_ACCESS_CLIENT_ID: ci-client-bundle-origin-id-sentinel
+          SURFACE_API_ACCESS_CLIENT_SECRET: ci-client-bundle-origin-secret-sentinel
+          TVE_DASHBOARD_ACCESS_CLIENT_ID: ci-client-bundle-dashboard-id-sentinel
+          TVE_DASHBOARD_ACCESS_CLIENT_SECRET: ci-client-bundle-dashboard-secret-sentinel
+        run: pnpm --dir apps/dashboard security:client-bundle
 
       - name: Validate source Wrangler deployment config
         run: pnpm --dir apps/dashboard exec wrangler deploy --dry-run --config wrangler.jsonc --strict
