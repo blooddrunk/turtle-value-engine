@@ -11,13 +11,12 @@ identity email and explicit validated surface snapshot path, plus one
 environment/secret-manager reference named `CLOUDFLARE_API_TOKEN`.
 
 Latest code verification commit is
-`cdca47f291d3cbc3bac8f51933c62f7cd0e13408`; GitHub Actions run
-`35491132677` is green with all 19 execution steps passed. It adds a
-production-build client-bundle scanner that rejects runtime secret sentinels,
-while retaining fail-closed malformed-credential handling, the
-production-config secret guard, pre-mutation Cloudflare list and
-alternate-ingress checks, POST/PUT/PATCH/DELETE mutation rejection, M6-B
-loopback tests, local cross-stack smoke and repeatable live smoke.
+`34285f467de4fc6b3c68350814e912f0016228e6`; GitHub Actions run
+`35496490595` is green with all 19 execution steps passed. It adds the
+project-wide typed runtime configuration, safe config CLI, automatic
+Cloudflare account/zone discovery, named Access-token provisioning and
+in-memory live-smoke credential handling while retaining the existing
+fail-closed M6-C2 security checks.
 
 Current `main` contains the M6-C1 implementation, CI hardening, M6-C2
 Worker/deployment code, templates and tests. The pre-edit baseline was

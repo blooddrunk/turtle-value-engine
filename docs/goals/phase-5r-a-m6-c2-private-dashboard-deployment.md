@@ -602,3 +602,8 @@ with read-only calls, and keeps all credentials in environment/secret-manager
 references. Raw credential fields are rejected by the loader. The exact API
 token permission set and the owner-facing three-value setup are recorded in
 `docs/operations/project-runtime-config.md`.
+
+The follow-up code is commit
+`34285f467de4fc6b3c68350814e912f0016228e6`; GitHub Actions run
+`35496490595` passed its `test` job and all 19 execution steps, including the
+new project-config validation step.
