@@ -63,6 +63,12 @@ tunnel_connector_token = { env = "TVE_CLOUDFLARE_TUNNEL_TOKEN" }
 [dashboard]
 worker_name = "tve-personal-dashboard"
 
+[monitoring]
+# Phase 6-A offline watchlist monitoring (no schedule, notification or secret).
+watchlist_path = ".tve-private/monitoring/watchlist.json"
+workspace_root = ".tve-private/monitoring"
+event_impact_policy = "event-impact-v1"
+
 # Future provider/storage-specific settings belong under these named sections;
 # they must still contain non-secret values or secret references only.
 [providers]

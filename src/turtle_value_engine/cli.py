@@ -60,6 +60,14 @@ from turtle_value_engine.historical import (
 )
 from turtle_value_engine.input_loader import NormalizedInputLoadError, parse_normalized_input
 from turtle_value_engine.models import CDCInput, Company
+from turtle_value_engine.monitoring import (
+    MonitoringEventBatchV1,
+    MonitoringWorkspace,
+    WatchlistSpecV1,
+    build_event_batch,
+    run_monitoring,
+)
+from turtle_value_engine.monitoring.canonical import to_utc_datetime
 from turtle_value_engine.pipeline import (
     run_analyze_from_normalized_input,
     run_cdc,
@@ -383,6 +391,30 @@ def _build_parser() -> argparse.ArgumentParser:
     calibrate_parser.add_argument("--base-profile-sha256", required=True)
     calibrate_parser.add_argument("--output", type=Path, default=None)
     calibrate_parser.add_argument("--require-production", action="store_true")
+
+    watch_parser = subparsers.add_parser(
+        "watch",
+        help="offline deterministic watchlist monitoring (Phase 6-A)",
+    )
+    watch_commands = watch_parser.add_subparsers(dest="watch_command", required=True)
+    watch_validate = watch_commands.add_parser(
+        "validate", help="validate a watchlist specification offline"
+    )
+    watch_validate.add_argument("--watchlist", required=True, type=Path)
+    watch_replay = watch_commands.add_parser(
+        "replay",
+        help="plan and atomically commit one monitoring run from frozen events",
+    )
+    watch_replay.add_argument("--watchlist", required=True, type=Path)
+    watch_replay.add_argument("--events", required=True, type=Path)
+    watch_replay.add_argument("--workspace", required=True, type=Path)
+    watch_replay.add_argument("--as-of", required=True, type=_parse_datetime)
+    watch_replay.add_argument("--output", type=Path, default=None)
+    watch_status = watch_commands.add_parser(
+        "status", help="read the committed watchlist monitoring state"
+    )
+    watch_status.add_argument("--workspace", required=True, type=Path)
+    watch_status.add_argument("--watchlist-id", required=True)
     return parser
 
 
@@ -391,6 +423,15 @@ def _parse_date(value: str) -> date:
         return date.fromisoformat(value)
     except ValueError as exc:
         raise argparse.ArgumentTypeError("date must use YYYY-MM-DD") from exc
+
+
+def _parse_datetime(value: str) -> object:
+    try:
+        return to_utc_datetime(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(
+            "as-of must be an ISO-8601 datetime, e.g. 2026-06-01T00:00:00+00:00"
+        ) from exc
 
 
 def _prepare_company(args: argparse.Namespace, listing_id: str) -> Company | None:
@@ -786,6 +827,75 @@ def _load_acquisition_plan(path: Path) -> HistoricalAcquisitionPlanV1:
     return HistoricalAcquisitionPlanV1.model_validate(_read_json(path))
 
 
+def _validation_blocker(exc: ValidationError) -> str:
+    errors = exc.errors()
+    first = errors[0] if errors else {}
+    location = ".".join(str(part) for part in first.get("loc", ()))
+    message = str(first.get("msg", "invalid payload")).removeprefix("Value error, ")
+    return f"{location}: {message}" if location else message
+
+
+def _load_watchlist(path: Path) -> WatchlistSpecV1:
+    payload = _read_json(path)
+    if not isinstance(payload, dict):
+        raise ValueError(f"watchlist file must contain a JSON object: {path}")
+    try:
+        return WatchlistSpecV1.build(**payload)
+    except ValidationError as exc:
+        raise ValueError(
+            f"invalid watchlist {path}: {_validation_blocker(exc)}"
+        ) from exc
+
+
+def _load_event_batch(path: Path) -> MonitoringEventBatchV1:
+    payload = _read_json(path)
+    if isinstance(payload, dict):
+        if payload.get("contract") != "monitoring_event_batch_v1":
+            raise ValueError(
+                f"events file must be a JSON array or a monitoring_event_batch_v1 "
+                f"object: {path}"
+            )
+        try:
+            return MonitoringEventBatchV1.model_validate(payload)
+        except ValidationError as exc:
+            raise ValueError(
+                f"invalid event batch {path}: {_validation_blocker(exc)}"
+            ) from exc
+    if isinstance(payload, list):
+        if not all(isinstance(item, dict) for item in payload):
+            raise ValueError(f"events array entries must be JSON objects: {path}")
+        try:
+            return build_event_batch(payload)
+        except ValidationError as exc:
+            raise ValueError(
+                f"invalid monitoring event in {path}: {_validation_blocker(exc)}"
+            ) from exc
+    raise ValueError(f"events file must be a JSON array or a batch object: {path}")
+
+
+def _run_watch_command(args: argparse.Namespace) -> object:
+    if args.watch_command == "validate":
+        return _load_watchlist(args.watchlist)
+    if args.watch_command == "replay":
+        watchlist = _load_watchlist(args.watchlist)
+        batch = _load_event_batch(args.events)
+        workspace = MonitoringWorkspace(args.workspace)
+        prior_state = workspace.load_current_state(watchlist.watchlist_id)
+        run = run_monitoring(
+            watchlist,
+            batch,
+            prior_state,
+            to_utc_datetime(args.as_of),
+        )
+        workspace.commit_run(run, watchlist=watchlist, batch=batch)
+        _write_optional(args.output, run)
+        return run
+    if args.watch_command == "status":
+        workspace = MonitoringWorkspace(args.workspace)
+        return workspace.status(args.watchlist_id)
+    raise ValueError(f"unsupported watch command: {args.watch_command}")
+
+
 def _run_historical_command(args: argparse.Namespace) -> object:
     if args.historical_command == "source":
         if args.historical_source_command != "probe":
@@ -887,6 +997,8 @@ def main(argv: list[str] | None = None) -> int:
             result = _run_calibration_command(args)
         elif args.command == "historical":
             result = _run_historical_command(args)
+        elif args.command == "watch":
+            result = _run_watch_command(args)
         elif args.command == "config":
             result = _run_config_command(args)
         else:

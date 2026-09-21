@@ -1,0 +1,57 @@
+[
+  {
+    "event_id": "cninfo-600519-2025-annual",
+    "listing_id": "600519.SH",
+    "event_type": "ANNUAL_REPORT",
+    "source_id": "cninfo",
+    "source_event_id": "cninfo:600519:2025-annual",
+    "published_at": "2026-03-28T16:00:00+08:00",
+    "available_at": "2026-03-28T16:00:00+08:00",
+    "title": "2025年年度报告"
+  },
+  {
+    "event_id": "cninfo-600519-2026-penalty",
+    "listing_id": "600519.SH",
+    "event_type": "REGULATORY_PENALTY",
+    "source_id": "cninfo",
+    "source_event_id": "cninfo:600519:2026-penalty",
+    "available_at": "2026-04-02T09:30:00+08:00",
+    "title": "监管处罚公告"
+  },
+  {
+    "event_id": "hkex-00288-2026-interim",
+    "listing_id": "HK00288",
+    "event_type": "INTERIM_REPORT",
+    "source_id": "hkexnews",
+    "source_artifact_id": "hkexnews:00288:2026-interim",
+    "available_at": "2026-04-10T08:00:00Z",
+    "title": "2026 interim report"
+  },
+  {
+    "event_id": "hkex-00288-2026-future-warning",
+    "listing_id": "HK00288",
+    "event_type": "PROFIT_WARNING",
+    "source_id": "hkexnews",
+    "source_event_id": "hkexnews:00288:profit-warning",
+    "available_at": "2026-12-01T08:00:00Z",
+    "title": "future profit warning (deferred until as_of passes)"
+  },
+  {
+    "event_id": "cninfo-000001-2026-annual",
+    "listing_id": "000001.SZ",
+    "event_type": "ANNUAL_REPORT",
+    "source_id": "cninfo",
+    "source_event_id": "cninfo:000001:2026-annual",
+    "available_at": "2026-03-30T08:00:00Z",
+    "title": "event for a disabled watchlist entry"
+  },
+  {
+    "event_id": "hkex-00700-2026-buyback",
+    "listing_id": "00700.HK",
+    "event_type": "BUYBACK",
+    "source_id": "hkexnews",
+    "source_event_id": "hkexnews:00700:buyback",
+    "available_at": "2026-04-01T08:00:00Z",
+    "title": "event for a listing outside the watchlist"
+  }
+]

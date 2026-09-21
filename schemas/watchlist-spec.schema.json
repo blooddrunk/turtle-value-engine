@@ -1,0 +1,119 @@
+{
+  "$defs": {
+    "WatchlistEntryV1": {
+      "additionalProperties": false,
+      "description": "One watched listing; no company facts are inferred here.",
+      "properties": {
+        "listing_id": {
+          "maxLength": 32,
+          "minLength": 1,
+          "title": "Listing Id",
+          "type": "string"
+        },
+        "company_display_name": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Company Display Name"
+        },
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "current_analysis_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Current Analysis Id"
+        },
+        "current_surface_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Current Surface Id"
+        },
+        "open_questions": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Open Questions",
+          "type": "array"
+        }
+      },
+      "required": [
+        "listing_id"
+      ],
+      "title": "WatchlistEntryV1",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Validated watchlist specification with a canonical content hash.",
+  "properties": {
+    "contract": {
+      "const": "watchlist_spec_v1",
+      "default": "watchlist_spec_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0.0",
+      "default": "1.0.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "watchlist_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+      "title": "Watchlist Id",
+      "type": "string"
+    },
+    "profile_id": {
+      "minLength": 1,
+      "title": "Profile Id",
+      "type": "string"
+    },
+    "entries": {
+      "items": {
+        "$ref": "#/$defs/WatchlistEntryV1"
+      },
+      "minItems": 1,
+      "title": "Entries",
+      "type": "array"
+    },
+    "content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Content Sha256",
+      "type": "string"
+    }
+  },
+  "required": [
+    "watchlist_id",
+    "profile_id",
+    "entries",
+    "content_sha256"
+  ],
+  "title": "WatchlistSpecV1",
+  "type": "object"
+}

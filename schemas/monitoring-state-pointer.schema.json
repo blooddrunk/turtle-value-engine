@@ -1,0 +1,46 @@
+{
+  "additionalProperties": false,
+  "description": "Atomic current-state pointer; it moves only after durable artifacts.",
+  "properties": {
+    "contract": {
+      "const": "monitoring_state_pointer_v1",
+      "default": "monitoring_state_pointer_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0.0",
+      "default": "1.0.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "watchlist_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+      "title": "Watchlist Id",
+      "type": "string"
+    },
+    "state_id": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "State Id",
+      "type": "string"
+    },
+    "run_id": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Run Id",
+      "type": "string"
+    },
+    "content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Content Sha256",
+      "type": "string"
+    }
+  },
+  "required": [
+    "watchlist_id",
+    "state_id",
+    "run_id",
+    "content_sha256"
+  ],
+  "title": "MonitoringStatePointerV1",
+  "type": "object"
+}

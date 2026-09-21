@@ -5149,25 +5149,35 @@ is now complete: the read-only Dashboard is Chinese-first through a
 centralized typed presentation layer, semantic states carry plain-language
 labels with raw codes preserved, empty/partial/error states are distinct, and
 technical/audit identifiers sit behind a details affordance. The exact build
-was redeployed through the unchanged M6-C2 security path. Phase 6-A is now
-selected as the next package but implementation has not started; its first
-boundary is offline deterministic watchlist/event state and re-analysis
-planning, not live polling.
+was redeployed through the unchanged M6-C2 security path. Phase 6-A then
+closed the offline deterministic watchlist/event foundation described below;
+live polling remains future Phase 6-B work.
 
 ---
 
 ## Phase 6 — Watchlist and event-driven re-analysis
 
-Status: **Phase 6-A selected on 2026-09-21; implementation not started.**
+Status: **Phase 6-A implemented on 2026-09-21 at its offline integration
+boundary; Phase 6-B not started.**
 
-The selected first package is
-[Phase 6-A — Watchlist State and Deterministic Event Planning Foundation](goals/phase-6-a-watchlist-event-foundation.md).
-It deliberately starts with offline typed watchlist/event/state/cursor contracts,
-a versioned event-impact policy, deterministic re-analysis planning and an
-atomic local workspace. Live provider polling, schedulers, notifications,
-automatic re-analysis execution and remote derived-state storage remain later
-packages. Phase 6-A has no planned manual functional acceptance; duplicate,
-PIT, cursor, atomicity and replay behavior must be proven automatically.
+The first package,
+[Phase 6-A — Watchlist State and Deterministic Event Planning Foundation](goals/phase-6-a-watchlist-event-foundation.md),
+is complete: typed `WatchlistSpecV1`/`MonitoringEventV1`/`WatchlistStateV1`/
+`EventImpactDecisionV1`/`ReanalysisRequestV1`/`ReanalysisPlanV1`/
+`MonitoringRunV1` contracts, the versioned monitoring-only `event-impact-v1`
+policy (isolated from `strict-v1`), point-in-time filtering on the canonical
+event availability boundary, deterministic canonical ordering by
+`(available_at, source_id, event_id, listing_id)`, idempotent duplicate-event
+handling with hard failure on conflicting content for the same event
+identity, source/listing-scoped cursors that advance only through the
+atomically committed next state, an atomic/idempotent hash-verified local
+`MonitoringWorkspace`, offline `tve watch validate|replay|status` CLI, an
+additive non-secret `[monitoring]` ProjectConfig section, and checked-in JSON
+schemas with drift tests. Live provider polling, schedulers, notifications,
+automatic re-analysis execution and remote derived-state storage remain
+Phase 6-B+ work. Phase 6-A carried no planned manual functional acceptance;
+duplicate, PIT, cursor, atomicity, corruption and replay behavior are proven
+by the automated monitoring test suite.
 
 ### Watchlist state
 

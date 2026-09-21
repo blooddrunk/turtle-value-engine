@@ -1,0 +1,149 @@
+{
+  "$defs": {
+    "CanonicalEventType": {
+      "description": "Closed set of canonical monitoring event types.",
+      "enum": [
+        "ANNUAL_REPORT",
+        "INTERIM_REPORT",
+        "EARNINGS_PREANNOUNCEMENT",
+        "DIVIDEND_POLICY_CHANGE",
+        "DIVIDEND_DECLARATION",
+        "BUYBACK",
+        "SHARE_ISSUANCE",
+        "MAJOR_ACQUISITION",
+        "MAJOR_DISPOSAL",
+        "AUDIT_OPINION_CHANGE",
+        "REGULATORY_PENALTY",
+        "CONTROLLING_SHAREHOLDER_EVENT",
+        "MATERIAL_LITIGATION",
+        "PROFIT_WARNING",
+        "TRADING_SUSPENSION",
+        "INFORMATIONAL_DISCLOSURE"
+      ],
+      "title": "CanonicalEventType",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "One canonical monitoring event with auditable source provenance.",
+  "properties": {
+    "contract": {
+      "const": "monitoring_event_v1",
+      "default": "monitoring_event_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0.0",
+      "default": "1.0.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "event_id": {
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Event Id",
+      "type": "string"
+    },
+    "listing_id": {
+      "maxLength": 32,
+      "minLength": 1,
+      "title": "Listing Id",
+      "type": "string"
+    },
+    "event_type": {
+      "$ref": "#/$defs/CanonicalEventType"
+    },
+    "source_id": {
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Source Id",
+      "type": "string"
+    },
+    "source_event_id": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Source Event Id"
+    },
+    "source_artifact_id": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Source Artifact Id"
+    },
+    "published_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Published At"
+    },
+    "available_at": {
+      "format": "date-time",
+      "title": "Available At",
+      "type": "string"
+    },
+    "title": {
+      "anyOf": [
+        {
+          "maxLength": 300,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Title"
+    },
+    "summary": {
+      "anyOf": [
+        {
+          "maxLength": 2000,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Summary"
+    },
+    "content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Content Sha256",
+      "type": "string"
+    }
+  },
+  "required": [
+    "event_id",
+    "listing_id",
+    "event_type",
+    "source_id",
+    "available_at",
+    "content_sha256"
+  ],
+  "title": "MonitoringEventV1",
+  "type": "object"
+}

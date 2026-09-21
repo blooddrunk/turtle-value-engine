@@ -215,6 +215,27 @@ class DashboardSettings(BaseModel):
     worker_name: str = "tve-personal-dashboard"
 
 
+class MonitoringSettings(BaseModel):
+    """Non-secret Phase 6-A watchlist monitoring defaults.
+
+    Phase 6-A is offline-only: there is deliberately no schedule, webhook,
+    notification or provider-credential field here.  ``event_impact_policy``
+    accepts only the versioned monitoring policy shipped with the engine so
+    an unknown policy id fails closed instead of silently changing impact
+    semantics.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    watchlist_path: str | None = None
+    workspace_root: str | None = None
+    event_impact_policy: Literal["event-impact-v1"] = "event-impact-v1"
+
+    _blank_optional = field_validator(
+        "watchlist_path", "workspace_root", mode="before"
+    )(_blank_to_none)
+
+
 class ProjectConfig(BaseModel):
     """Versioned, non-secret configuration shared by all runtime phases."""
 
@@ -228,6 +249,7 @@ class ProjectConfig(BaseModel):
     surface: SurfaceSettings = Field(default_factory=SurfaceSettings)
     cloudflare: CloudflareSettings = Field(default_factory=CloudflareSettings)
     dashboard: DashboardSettings = Field(default_factory=DashboardSettings)
+    monitoring: MonitoringSettings = Field(default_factory=MonitoringSettings)
     providers: dict[str, Any] = Field(default_factory=dict)
     storage: dict[str, Any] = Field(default_factory=dict)
     extensions: dict[str, Any] = Field(default_factory=dict)
@@ -297,6 +319,11 @@ class ProjectConfig(BaseModel):
             "origin_hostname": self.resolved_origin_hostname(),
             "origin_url": self.resolved_origin_url(),
             "tunnel_name": cloudflare.tunnel_name,
+            "monitoring": {
+                "watchlist_path": self.monitoring.watchlist_path,
+                "workspace_root": self.monitoring.workspace_root,
+                "event_impact_policy": self.monitoring.event_impact_policy,
+            },
             "secret_references": {
                 name: self.secret_reference(name).env
                 for name in (
@@ -452,6 +479,12 @@ tunnel_connector_token = { env = "TVE_CLOUDFLARE_TUNNEL_TOKEN" }
 
 [dashboard]
 worker_name = "tve-personal-dashboard"
+
+[monitoring]
+# Phase 6-A offline watchlist monitoring (no schedule, notification or secret).
+watchlist_path = ".tve-private/monitoring/watchlist.json"
+workspace_root = ".tve-private/monitoring"
+event_impact_policy = "event-impact-v1"
 
 # Future provider/storage-specific settings belong under these named sections;
 # they must still contain non-secret values or secret references only.

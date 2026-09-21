@@ -1,0 +1,215 @@
+{
+  "$defs": {
+    "EventCursorV1": {
+      "additionalProperties": false,
+      "description": "Source/listing-scoped high-water mark over processed events.",
+      "properties": {
+        "source_id": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Source Id",
+          "type": "string"
+        },
+        "last_processed_available_at": {
+          "format": "date-time",
+          "title": "Last Processed Available At",
+          "type": "string"
+        },
+        "last_event_id": {
+          "minLength": 1,
+          "title": "Last Event Id",
+          "type": "string"
+        },
+        "advanced_by_run_id": {
+          "minLength": 1,
+          "title": "Advanced By Run Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_id",
+        "last_processed_available_at",
+        "last_event_id",
+        "advanced_by_run_id"
+      ],
+      "title": "EventCursorV1",
+      "type": "object"
+    },
+    "MonitoringStatusEntryV1": {
+      "additionalProperties": false,
+      "description": "Read-only status projection for one watched listing.",
+      "properties": {
+        "listing_id": {
+          "minLength": 1,
+          "title": "Listing Id",
+          "type": "string"
+        },
+        "last_analysis_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Analysis Id"
+        },
+        "last_surface_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Surface Id"
+        },
+        "last_analysis_as_of": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Analysis As Of"
+        },
+        "last_profile_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Profile Id"
+        },
+        "last_deterministic_result": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Deterministic Result"
+        },
+        "last_filing_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Filing Id"
+        },
+        "cursors": {
+          "items": {
+            "$ref": "#/$defs/EventCursorV1"
+          },
+          "title": "Cursors",
+          "type": "array"
+        },
+        "processed_event_count": {
+          "minimum": 0,
+          "title": "Processed Event Count",
+          "type": "integer"
+        },
+        "open_questions": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Open Questions",
+          "type": "array"
+        }
+      },
+      "required": [
+        "listing_id",
+        "processed_event_count"
+      ],
+      "title": "MonitoringStatusEntryV1",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Read-only status projection returned by ``tve watch status``.",
+  "properties": {
+    "contract": {
+      "const": "monitoring_status_v1",
+      "default": "monitoring_status_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0.0",
+      "default": "1.0.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "watchlist_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+      "title": "Watchlist Id",
+      "type": "string"
+    },
+    "availability": {
+      "enum": [
+        "NOT_AVAILABLE",
+        "AVAILABLE"
+      ],
+      "title": "Availability",
+      "type": "string"
+    },
+    "state_id": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "State Id"
+    },
+    "last_committed_run_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Last Committed Run Id"
+    },
+    "entries": {
+      "items": {
+        "$ref": "#/$defs/MonitoringStatusEntryV1"
+      },
+      "title": "Entries",
+      "type": "array"
+    }
+  },
+  "required": [
+    "watchlist_id",
+    "availability"
+  ],
+  "title": "MonitoringStatusV1",
+  "type": "object"
+}

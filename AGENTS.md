@@ -93,6 +93,16 @@ Phase 4 adds these model-neutral research boundaries:
   → deterministic analysis → report;
 - `compose_report` for a non-mutating human-readable projection.
 
+Phase 6-A adds the offline deterministic monitoring-planning boundaries:
+`WatchlistSpecV1`/`MonitoringEventV1`/`MonitoringEventBatchV1`/
+`WatchlistStateV1`/`EventImpactDecisionV1`/`ReanalysisRequestV1`/
+`ReanalysisPlanV1`/`MonitoringRunV1`, the monitoring-only `event-impact-v1`
+policy, `run_monitoring` for deterministic point-in-time planning, and the
+atomic local `MonitoringWorkspace` behind `tve watch validate|replay|status`.
+These boundaries are orchestration state only: they never invoke a provider,
+model, research or analysis runtime, never approve adjustments and never
+change investment semantics.
+
 The Phase 4 goal is implemented and its closure review is recorded in
 `docs/goals/phase-4-agentic-analysis.md`. Phase 5 is implemented at its
 documented integration boundary and its closure review is recorded in
@@ -195,11 +205,24 @@ identifiers are de-emphasized behind a technical/audit details affordance
 without deleting or rewriting any payload value. It did not change the frozen
 surface schema, M6-B API, M6-C2 Access/Worker/Tunnel boundary or deterministic
 investment semantics. The exact M6-C3 build was redeployed through the
-existing M6-C2 path and the machine-verifiable live smoke passed. Phase 6
-watchlist/event monitoring remains the next major functional phase and has
-not been started. Exact gate, deployment
+existing M6-C2 path and the machine-verifiable live smoke passed. Phase 6-A —
+Watchlist State and Deterministic Event Planning Foundation — is now complete
+at its offline integration boundary: typed watchlist/event/state/cursor/
+impact-decision/re-analysis-plan/monitoring-run contracts, the monitoring-only
+versioned `event-impact-v1` policy kept separate from `strict-v1`, point-in-time
+filtering on the canonical event availability boundary, canonical event
+ordering, idempotent duplicate handling with hard failure on conflicting event
+content, source/listing-scoped cursors that advance only through the atomically
+committed next state, an atomic/idempotent hash-verified local
+`MonitoringWorkspace`, offline `tve watch validate|replay|status`, an additive
+non-secret `[monitoring]` ProjectConfig section and checked-in monitoring
+schemas with drift tests. The monitoring package performs no provider, model,
+research, analysis, Cloudflare or brokerage calls, and later Phase 6 packages
+(live acquisition, re-analysis execution, schedulers/notifications) are not
+started. Exact gate, deployment
 and remaining-input evidence is recorded in
-`docs/status/phase-5r-a-2026-09-20.md`. Project-wide non-secret runtime
+`docs/status/phase-5r-a-2026-09-20.md` and
+`docs/status/phase-6-a-2026-09-21.md`. Project-wide non-secret runtime
 configuration is defined by `config/project.example.toml` and the ignored
 `.tve-private/project.toml`; later phases extend this typed configuration
 instead of adding phase-local environment files.

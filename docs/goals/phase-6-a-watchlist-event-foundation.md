@@ -1,8 +1,9 @@
 # Phase 6-A — Watchlist State and Deterministic Event Planning Foundation
 
-Status: **SELECTED / IMPLEMENTATION NOT STARTED**
+Status: **IMPLEMENTED / CLOSED at the offline integration boundary (2026-09-21)**
 Date: 2026-09-21
 Selected after: M6-C3 COMPLETE
+Implementation closure: see `docs/status/phase-6-a-2026-09-21.md`
 
 Parent context:
 - AGENTS.md

@@ -1,0 +1,66 @@
+{
+  "$defs": {
+    "ImpactClass": {
+      "description": "Deterministic follow-up severity for one event or listing group.",
+      "enum": [
+        "NO_REANALYSIS",
+        "PARTIAL_REANALYSIS",
+        "FULL_REANALYSIS",
+        "URGENT_MANUAL_REVIEW"
+      ],
+      "title": "ImpactClass",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Deterministic grouped follow-up request for one listing in one run.",
+  "properties": {
+    "request_id": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Request Id",
+      "type": "string"
+    },
+    "watchlist_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+      "title": "Watchlist Id",
+      "type": "string"
+    },
+    "listing_id": {
+      "minLength": 1,
+      "title": "Listing Id",
+      "type": "string"
+    },
+    "impact": {
+      "$ref": "#/$defs/ImpactClass"
+    },
+    "event_ids": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Event Ids",
+      "type": "array"
+    },
+    "available_through": {
+      "format": "date-time",
+      "title": "Available Through",
+      "type": "string"
+    },
+    "policy_id": {
+      "const": "event-impact-v1",
+      "default": "event-impact-v1",
+      "title": "Policy Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "request_id",
+    "watchlist_id",
+    "listing_id",
+    "impact",
+    "event_ids",
+    "available_through"
+  ],
+  "title": "ReanalysisRequestV1",
+  "type": "object"
+}

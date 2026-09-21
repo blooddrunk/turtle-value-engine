@@ -1,0 +1,8 @@
+{
+  "watchlist_id": "invalid-duplicate",
+  "profile_id": "strict-v1",
+  "entries": [
+    {"listing_id": "600519.SH"},
+    {"listing_id": "600519.SH", "company_display_name": "duplicate listing"}
+  ]
+}

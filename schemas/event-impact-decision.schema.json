@@ -1,0 +1,78 @@
+{
+  "$defs": {
+    "CanonicalEventType": {
+      "description": "Closed set of canonical monitoring event types.",
+      "enum": [
+        "ANNUAL_REPORT",
+        "INTERIM_REPORT",
+        "EARNINGS_PREANNOUNCEMENT",
+        "DIVIDEND_POLICY_CHANGE",
+        "DIVIDEND_DECLARATION",
+        "BUYBACK",
+        "SHARE_ISSUANCE",
+        "MAJOR_ACQUISITION",
+        "MAJOR_DISPOSAL",
+        "AUDIT_OPINION_CHANGE",
+        "REGULATORY_PENALTY",
+        "CONTROLLING_SHAREHOLDER_EVENT",
+        "MATERIAL_LITIGATION",
+        "PROFIT_WARNING",
+        "TRADING_SUSPENSION",
+        "INFORMATIONAL_DISCLOSURE"
+      ],
+      "title": "CanonicalEventType",
+      "type": "string"
+    },
+    "ImpactClass": {
+      "description": "Deterministic follow-up severity for one event or listing group.",
+      "enum": [
+        "NO_REANALYSIS",
+        "PARTIAL_REANALYSIS",
+        "FULL_REANALYSIS",
+        "URGENT_MANUAL_REVIEW"
+      ],
+      "title": "ImpactClass",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Policy decision for one new point-in-time-eligible event.",
+  "properties": {
+    "event_id": {
+      "minLength": 1,
+      "title": "Event Id",
+      "type": "string"
+    },
+    "listing_id": {
+      "minLength": 1,
+      "title": "Listing Id",
+      "type": "string"
+    },
+    "event_type": {
+      "$ref": "#/$defs/CanonicalEventType"
+    },
+    "available_at": {
+      "format": "date-time",
+      "title": "Available At",
+      "type": "string"
+    },
+    "impact": {
+      "$ref": "#/$defs/ImpactClass"
+    },
+    "policy_id": {
+      "const": "event-impact-v1",
+      "default": "event-impact-v1",
+      "title": "Policy Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "event_id",
+    "listing_id",
+    "event_type",
+    "available_at",
+    "impact"
+  ],
+  "title": "EventImpactDecisionV1",
+  "type": "object"
+}

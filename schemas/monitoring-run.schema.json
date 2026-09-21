@@ -1,0 +1,690 @@
+{
+  "$defs": {
+    "CanonicalEventType": {
+      "description": "Closed set of canonical monitoring event types.",
+      "enum": [
+        "ANNUAL_REPORT",
+        "INTERIM_REPORT",
+        "EARNINGS_PREANNOUNCEMENT",
+        "DIVIDEND_POLICY_CHANGE",
+        "DIVIDEND_DECLARATION",
+        "BUYBACK",
+        "SHARE_ISSUANCE",
+        "MAJOR_ACQUISITION",
+        "MAJOR_DISPOSAL",
+        "AUDIT_OPINION_CHANGE",
+        "REGULATORY_PENALTY",
+        "CONTROLLING_SHAREHOLDER_EVENT",
+        "MATERIAL_LITIGATION",
+        "PROFIT_WARNING",
+        "TRADING_SUSPENSION",
+        "INFORMATIONAL_DISCLOSURE"
+      ],
+      "title": "CanonicalEventType",
+      "type": "string"
+    },
+    "DeferredEventRecordV1": {
+      "additionalProperties": false,
+      "description": "Future event withheld until its availability passes the as_of boundary.",
+      "properties": {
+        "event_id": {
+          "minLength": 1,
+          "title": "Event Id",
+          "type": "string"
+        },
+        "listing_id": {
+          "minLength": 1,
+          "title": "Listing Id",
+          "type": "string"
+        },
+        "event_type": {
+          "$ref": "#/$defs/CanonicalEventType"
+        },
+        "available_at": {
+          "format": "date-time",
+          "title": "Available At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "event_id",
+        "listing_id",
+        "event_type",
+        "available_at"
+      ],
+      "title": "DeferredEventRecordV1",
+      "type": "object"
+    },
+    "EventCursorV1": {
+      "additionalProperties": false,
+      "description": "Source/listing-scoped high-water mark over processed events.",
+      "properties": {
+        "source_id": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Source Id",
+          "type": "string"
+        },
+        "last_processed_available_at": {
+          "format": "date-time",
+          "title": "Last Processed Available At",
+          "type": "string"
+        },
+        "last_event_id": {
+          "minLength": 1,
+          "title": "Last Event Id",
+          "type": "string"
+        },
+        "advanced_by_run_id": {
+          "minLength": 1,
+          "title": "Advanced By Run Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_id",
+        "last_processed_available_at",
+        "last_event_id",
+        "advanced_by_run_id"
+      ],
+      "title": "EventCursorV1",
+      "type": "object"
+    },
+    "EventImpactDecisionV1": {
+      "additionalProperties": false,
+      "description": "Policy decision for one new point-in-time-eligible event.",
+      "properties": {
+        "event_id": {
+          "minLength": 1,
+          "title": "Event Id",
+          "type": "string"
+        },
+        "listing_id": {
+          "minLength": 1,
+          "title": "Listing Id",
+          "type": "string"
+        },
+        "event_type": {
+          "$ref": "#/$defs/CanonicalEventType"
+        },
+        "available_at": {
+          "format": "date-time",
+          "title": "Available At",
+          "type": "string"
+        },
+        "impact": {
+          "$ref": "#/$defs/ImpactClass"
+        },
+        "policy_id": {
+          "const": "event-impact-v1",
+          "default": "event-impact-v1",
+          "title": "Policy Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "event_id",
+        "listing_id",
+        "event_type",
+        "available_at",
+        "impact"
+      ],
+      "title": "EventImpactDecisionV1",
+      "type": "object"
+    },
+    "ExcludedEventRecordV1": {
+      "additionalProperties": false,
+      "description": "Event not applied to state because its listing is not actively watched.",
+      "properties": {
+        "event_id": {
+          "minLength": 1,
+          "title": "Event Id",
+          "type": "string"
+        },
+        "listing_id": {
+          "minLength": 1,
+          "title": "Listing Id",
+          "type": "string"
+        },
+        "event_type": {
+          "$ref": "#/$defs/CanonicalEventType"
+        },
+        "available_at": {
+          "format": "date-time",
+          "title": "Available At",
+          "type": "string"
+        },
+        "reason": {
+          "$ref": "#/$defs/ExclusionReason"
+        }
+      },
+      "required": [
+        "event_id",
+        "listing_id",
+        "event_type",
+        "available_at",
+        "reason"
+      ],
+      "title": "ExcludedEventRecordV1",
+      "type": "object"
+    },
+    "ExclusionReason": {
+      "description": "Documented reasons an event is not applied to watchlist state.",
+      "enum": [
+        "OUT_OF_WATCHLIST",
+        "LISTING_DISABLED"
+      ],
+      "title": "ExclusionReason",
+      "type": "string"
+    },
+    "ImpactClass": {
+      "description": "Deterministic follow-up severity for one event or listing group.",
+      "enum": [
+        "NO_REANALYSIS",
+        "PARTIAL_REANALYSIS",
+        "FULL_REANALYSIS",
+        "URGENT_MANUAL_REVIEW"
+      ],
+      "title": "ImpactClass",
+      "type": "string"
+    },
+    "ProcessedEventRecordV1": {
+      "additionalProperties": false,
+      "description": "Retained processed-event identity used for duplicate/conflict checks.",
+      "properties": {
+        "event_id": {
+          "minLength": 1,
+          "title": "Event Id",
+          "type": "string"
+        },
+        "event_type": {
+          "$ref": "#/$defs/CanonicalEventType"
+        },
+        "available_at": {
+          "format": "date-time",
+          "title": "Available At",
+          "type": "string"
+        },
+        "content_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Content Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "event_id",
+        "event_type",
+        "available_at",
+        "content_sha256"
+      ],
+      "title": "ProcessedEventRecordV1",
+      "type": "object"
+    },
+    "ReanalysisPlanV1": {
+      "additionalProperties": false,
+      "description": "Byte-stable grouping of re-analysis requests produced by one run.",
+      "properties": {
+        "contract": {
+          "const": "reanalysis_plan_v1",
+          "default": "reanalysis_plan_v1",
+          "title": "Contract",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "1.0.0",
+          "default": "1.0.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "watchlist_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+          "title": "Watchlist Id",
+          "type": "string"
+        },
+        "run_id": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "requests": {
+          "items": {
+            "$ref": "#/$defs/ReanalysisRequestV1"
+          },
+          "title": "Requests",
+          "type": "array"
+        },
+        "plan_id": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Plan Id",
+          "type": "string"
+        },
+        "content_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Content Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "watchlist_id",
+        "run_id",
+        "plan_id",
+        "content_sha256"
+      ],
+      "title": "ReanalysisPlanV1",
+      "type": "object"
+    },
+    "ReanalysisRequestV1": {
+      "additionalProperties": false,
+      "description": "Deterministic grouped follow-up request for one listing in one run.",
+      "properties": {
+        "request_id": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Request Id",
+          "type": "string"
+        },
+        "watchlist_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+          "title": "Watchlist Id",
+          "type": "string"
+        },
+        "listing_id": {
+          "minLength": 1,
+          "title": "Listing Id",
+          "type": "string"
+        },
+        "impact": {
+          "$ref": "#/$defs/ImpactClass"
+        },
+        "event_ids": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Event Ids",
+          "type": "array"
+        },
+        "available_through": {
+          "format": "date-time",
+          "title": "Available Through",
+          "type": "string"
+        },
+        "policy_id": {
+          "const": "event-impact-v1",
+          "default": "event-impact-v1",
+          "title": "Policy Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "request_id",
+        "watchlist_id",
+        "listing_id",
+        "impact",
+        "event_ids",
+        "available_through"
+      ],
+      "title": "ReanalysisRequestV1",
+      "type": "object"
+    },
+    "SkipReason": {
+      "description": "Documented reasons an in-watchlist event generates no new work.",
+      "enum": [
+        "ALREADY_PROCESSED",
+        "STALE"
+      ],
+      "title": "SkipReason",
+      "type": "string"
+    },
+    "SkippedEventRecordV1": {
+      "additionalProperties": false,
+      "description": "In-watchlist event that generates no new work, with the documented rule.",
+      "properties": {
+        "event_id": {
+          "minLength": 1,
+          "title": "Event Id",
+          "type": "string"
+        },
+        "listing_id": {
+          "minLength": 1,
+          "title": "Listing Id",
+          "type": "string"
+        },
+        "event_type": {
+          "$ref": "#/$defs/CanonicalEventType"
+        },
+        "available_at": {
+          "format": "date-time",
+          "title": "Available At",
+          "type": "string"
+        },
+        "reason": {
+          "$ref": "#/$defs/SkipReason"
+        }
+      },
+      "required": [
+        "event_id",
+        "listing_id",
+        "event_type",
+        "available_at",
+        "reason"
+      ],
+      "title": "SkippedEventRecordV1",
+      "type": "object"
+    },
+    "WatchlistEntryStateV1": {
+      "additionalProperties": false,
+      "description": "Per-listing monitoring state; absent facts stay explicitly absent.",
+      "properties": {
+        "listing_id": {
+          "maxLength": 32,
+          "minLength": 1,
+          "title": "Listing Id",
+          "type": "string"
+        },
+        "last_analysis_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Analysis Id"
+        },
+        "last_surface_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Surface Id"
+        },
+        "last_analysis_as_of": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Analysis As Of"
+        },
+        "last_profile_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Profile Id"
+        },
+        "last_engine_version": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Engine Version"
+        },
+        "last_deterministic_result": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Deterministic Result"
+        },
+        "last_filing_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Filing Id"
+        },
+        "last_source_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Source Id"
+        },
+        "cursors": {
+          "items": {
+            "$ref": "#/$defs/EventCursorV1"
+          },
+          "title": "Cursors",
+          "type": "array"
+        },
+        "processed_events": {
+          "items": {
+            "$ref": "#/$defs/ProcessedEventRecordV1"
+          },
+          "title": "Processed Events",
+          "type": "array"
+        },
+        "open_questions": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Open Questions",
+          "type": "array"
+        }
+      },
+      "required": [
+        "listing_id"
+      ],
+      "title": "WatchlistEntryStateV1",
+      "type": "object"
+    },
+    "WatchlistStateV1": {
+      "additionalProperties": false,
+      "description": "Committed watchlist monitoring state with a canonical identity.",
+      "properties": {
+        "contract": {
+          "const": "watchlist_state_v1",
+          "default": "watchlist_state_v1",
+          "title": "Contract",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "1.0.0",
+          "default": "1.0.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "watchlist_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+          "title": "Watchlist Id",
+          "type": "string"
+        },
+        "last_committed_run_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Committed Run Id"
+        },
+        "entries": {
+          "items": {
+            "$ref": "#/$defs/WatchlistEntryStateV1"
+          },
+          "minItems": 1,
+          "title": "Entries",
+          "type": "array"
+        },
+        "state_id": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "State Id",
+          "type": "string"
+        },
+        "content_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Content Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "watchlist_id",
+        "entries",
+        "state_id",
+        "content_sha256"
+      ],
+      "title": "WatchlistStateV1",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "One deterministic monitoring run over a watchlist and event batch.\n\n``run_id`` is derived from the run's logical inputs (watchlist identity,\nevent batch identity, prior state identity, ``as_of`` and policy id), not\nfrom the run payload, so planning is reproducible before any commit.  The\nrun embeds the exact ``plan`` and ``next_state`` the workspace commits.",
+  "properties": {
+    "contract": {
+      "const": "monitoring_run_v1",
+      "default": "monitoring_run_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0.0",
+      "default": "1.0.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "run_id": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Run Id",
+      "type": "string"
+    },
+    "watchlist_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+      "title": "Watchlist Id",
+      "type": "string"
+    },
+    "watchlist_content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Watchlist Content Sha256",
+      "type": "string"
+    },
+    "event_batch_id": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Event Batch Id",
+      "type": "string"
+    },
+    "prior_state_id": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Prior State Id"
+    },
+    "as_of": {
+      "format": "date-time",
+      "title": "As Of",
+      "type": "string"
+    },
+    "policy_id": {
+      "const": "event-impact-v1",
+      "default": "event-impact-v1",
+      "title": "Policy Id",
+      "type": "string"
+    },
+    "decisions": {
+      "items": {
+        "$ref": "#/$defs/EventImpactDecisionV1"
+      },
+      "title": "Decisions",
+      "type": "array"
+    },
+    "deferred": {
+      "items": {
+        "$ref": "#/$defs/DeferredEventRecordV1"
+      },
+      "title": "Deferred",
+      "type": "array"
+    },
+    "skipped": {
+      "items": {
+        "$ref": "#/$defs/SkippedEventRecordV1"
+      },
+      "title": "Skipped",
+      "type": "array"
+    },
+    "excluded": {
+      "items": {
+        "$ref": "#/$defs/ExcludedEventRecordV1"
+      },
+      "title": "Excluded",
+      "type": "array"
+    },
+    "plan": {
+      "$ref": "#/$defs/ReanalysisPlanV1"
+    },
+    "next_state": {
+      "$ref": "#/$defs/WatchlistStateV1"
+    },
+    "content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Content Sha256",
+      "type": "string"
+    }
+  },
+  "required": [
+    "run_id",
+    "watchlist_id",
+    "watchlist_content_sha256",
+    "event_batch_id",
+    "as_of",
+    "plan",
+    "next_state",
+    "content_sha256"
+  ],
+  "title": "MonitoringRunV1",
+  "type": "object"
+}

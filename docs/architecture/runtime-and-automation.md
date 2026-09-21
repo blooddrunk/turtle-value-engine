@@ -350,6 +350,47 @@ Examples:
 - annual report -> `FULL_REANALYSIS`;
 - audit qualification / major governance event -> `URGENT_MANUAL_REVIEW`.
 
+### Phase 6-A — offline deterministic foundation (implemented)
+
+The first implemented monitoring slice is deliberately offline. It makes a
+watchlist and already-frozen canonical events machine-processable before any
+live polling exists:
+
+```text
+WatchlistSpecV1 + MonitoringEventBatchV1 + prior WatchlistStateV1 + as_of
+  -> deterministic planning (event-impact-v1, canonical ordering, PIT filter)
+  -> MonitoringRunV1 { decisions, deferred, skipped, excluded,
+                       ReanalysisPlanV1, planned next WatchlistStateV1 }
+  -> atomic MonitoringWorkspace commit (run/state/batch artifacts + pointer)
+```
+
+Key contracts live in `turtle_value_engine.monitoring`:
+
+- `event-impact-v1` is a monitoring-only, versioned policy isolated from
+  `rules/strict-v1`; its severity precedence is orchestration state, never an
+  investment PASS/FAIL/WATCH result.
+- Events are canonically ordered by `(available_at, source_id, event_id,
+  listing_id)`; point-in-time eligibility uses the normalized UTC
+  `available_at` against the explicit `as_of` boundary (naive datetimes are
+  interpreted as UTC).
+- The same `(listing_id, event_id)` with identical content is idempotent;
+  with different content it is a hard `EVENT_CONFLICT` failure.
+- Events for out-of-watchlist or disabled listings are recorded with explicit
+  reasons (`OUT_OF_WATCHLIST`, `LISTING_DISABLED`) and never silently applied.
+- Source/listing-scoped cursors advance only inside the committed next state
+  and only to the maximum `available_at` of events processed in that run;
+  deferred (future) and stale (late) events never move them.
+- The local `MonitoringWorkspace` persists canonical JSON with verified
+  content hashes, immutable create-only artifacts, an atomically replaced
+  current-state pointer that moves last, and fail-closed corruption checks.
+
+The offline CLI surface is `tve watch validate`, `tve watch replay` and
+`tve watch status`. The monitoring package imports no provider transport,
+analyst client, research orchestrator, analysis pipeline, Cloudflare or
+brokerage code, and ProjectConfig gains only a non-secret `[monitoring]`
+section. Live provider adapters (Phase 6-B), the re-analysis executor
+(Phase 6-C) and schedulers/notifications (Phase 6-D) are later packages.
+
 ---
 
 ## 6. Scheduler choices
