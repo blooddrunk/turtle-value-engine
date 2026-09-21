@@ -5931,3 +5931,34 @@ canonical pledge period, fully diluted share count, settled pledged
 cash/debt-equivalent amount, beneficial control or a governance judgment. It
 leaves `governance_risk_level` critically missing; H-share coverage and
 filing-backed pledge interpretation remain unresolved.
+
+
+---
+
+## Phase 6-A closure audit and Phase 6-B selection — 2026-09-21
+
+Phase 6-A is verified CLOSED on main. Implementation commit
+`1060358da9f4bd0074ae267b45f7de93b43102a9` and closure commit
+`d28e1f037276cf9f186c29aea88d6482cdc2bd4c` both have successful push CI.
+The next active package is now selected as:
+
+**Phase 6-B — Opt-in Live Event Acquisition and Canonicalization**
+
+Source of truth:
+`docs/goals/phase-6-b-live-event-acquisition.md`
+
+Phase 6-B is networked acquisition only. It must feed the frozen Phase 6-A
+`MonitoringEventV1` / `MonitoringEventBatchV1` contracts through explicit
+network permission, preserve raw/source provenance, remain deterministic after
+acquisition, and never advance committed monitoring cursors merely because a
+fetch succeeded. Re-analysis execution, scheduling, notifications and Dashboard
+monitoring views remain Phase 6-C/6-D or later.
+
+The companion `blooddrunk/fqgate-remote-bridge` is a future consumer-source
+candidate, not a Phase 6-B prerequisite. Its Phase 5 remote-machine boundary is
+closed and exposes one bounded instrument lookup, but no quote/history/event
+operation exists yet. Turtle must therefore freeze a provider-neutral event
+source contract now. A later Bridge adapter may be added only after the Bridge
+publishes a typed, bounded, read-only machine operation with live remote
+acceptance and operation-scoped compatibility evidence. Tunnel, Access,
+FQGate lifecycle and Bridge authorization remain owned by the Bridge repo.

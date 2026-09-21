@@ -1,48 +1,80 @@
-# Phase 6-A next Codex goal — watchlist/event foundation
+# Phase 6-B next Codex goal — opt-in live event acquisition
 
-Status: **PHASE 6-A IMPLEMENTED / CLOSED at the offline integration boundary (2026-09-21)**
+Status: **PHASE 6-B SELECTED / READY FOR IMPLEMENTATION (2026-09-21)**
 
-M6-C3 is verified complete on main. The Phase 6-A selection audit is recorded
-in docs/status/phase-6-a-2026-09-21.md, and the same file now carries the
-implementation closure record.
+Baseline selection commit is the commit that introduced this file revision.
+Phase 6-A is verified CLOSED on main; selection evidence is recorded in
+`docs/status/phase-6-b-selection-2026-09-21.md`.
 
-## Completed package
+## Active package
 
-**Phase 6-A — Watchlist State and Deterministic Event Planning Foundation**
+**Phase 6-B — Opt-in Live Event Acquisition and Canonicalization**
 
 Source of truth:
 
-docs/goals/phase-6-a-watchlist-event-foundation.md
+`docs/goals/phase-6-b-live-event-acquisition.md`
 
-Delivered: deterministic typed watchlist/event/state/cursor/re-analysis-plan
-contracts, `event-impact-v1`, point-in-time filtering on the canonical event
-availability boundary, canonical event ordering, idempotent duplicate and
-hard-conflict event handling, source/listing cursors that advance only through
-committed state, an atomic/idempotent hash-verified local MonitoringWorkspace,
-offline `tve watch validate|replay|status`, an additive non-secret
-`[monitoring]` ProjectConfig section, checked-in schemas with drift tests and
-85 focused deterministic tests alongside the unchanged full regression suite.
+Primary objective: add an explicit network-gated, provider-neutral acquisition
+boundary that maps auditable source records into the frozen Phase 6-A
+`MonitoringEventV1` / `MonitoringEventBatchV1` contracts, then proves that
+those batches replay through the existing monitoring planner/workspace without
+advancing cursors before atomic commit.
 
-## Next selection
+The first source family should reuse the existing official filing/disclosure
+boundary. Do not invent a second scraper architecture. A concrete live source
+must be selected from current evidence and kept narrow; CNINFO is a candidate,
+not a permission to guess an endpoint.
 
-The next package is **not** selected yet. Per the Phase 6 roadmap the natural
-follow-ons are Phase 6-B (opt-in live event acquisition feeding
-MonitoringEventV1) or another audited priority; a separate selection audit on
-main must choose it. Do not start Phase 6-B, 6-C, 6-D or 6-E without that
-audit.
+## Cross-repository FQGate note
 
-## Verification discipline (applies to every future package)
+`blooddrunk/fqgate-remote-bridge` has now closed its Phase 5 remote-machine
+read-only boundary and has real Access/Tunnel acceptance plus a filtered
+machine OpenAPI. Its only implemented market operation is currently bounded
+instrument lookup; quote/history/event operations are not published.
+
+Therefore:
+
+- do not block Phase 6-B waiting for the Bridge;
+- do not hard-code Bridge semantics into the monitoring contracts;
+- keep the provider interface additive so a future Bridge event/history
+  operation can be plugged in;
+- never move Cloudflare/FQGate lifecycle or Bridge authorization ownership into
+  Turtle.
+
+## Verification discipline
+
+Codex must prefer automatic verification.
 
 Before edits:
 
-1. synchronize main with fast-forward only;
-2. record git status, HEAD and remotes;
-3. discover the owner test checkout under D:\code\research (or
-   /mnt/d/code/research under WSL) when available;
-4. prove GitHub Actions is green for the exact baseline commit;
-5. run the existing baseline tests.
+1. synchronize main by fast-forward only;
+2. record `git status --short`, HEAD and remotes;
+3. discover the owner checkout under `D:\\code\\research` or
+   `/mnt/d/code/research`;
+4. verify green GitHub Actions for the exact baseline;
+5. run baseline tests.
 
-Automate every machine-verifiable acceptance case; never close a goal with
-vague "manual verification recommended" or "evidence incomplete" language.
-After push, require green GitHub Actions for the exact closing commit before
-marking any goal complete.
+During implementation automate all deterministic acceptance cases listed in the
+goal, especially network deny-by-default, PIT, source/provenance validation,
+idempotency/conflict behavior, and the rule that acquisition failures or
+successes do not move committed cursors.
+
+When a bounded live source is technically available, Codex must run the live
+probe and the subsequent offline replay itself. Human intervention is allowed
+only for a genuine CAPTCHA/login/consent boundary, and then the handoff must
+provide exact pre-step command, human action, resume command, expected success
+output and remaining boundary.
+
+Before closure run at least:
+
+```bash
+python -m ruff check .
+python -m pytest
+```
+
+plus every generated-contract/Dashboard gate enforced by current CI. After
+push, verify green GitHub Actions for the exact closing commit. Never mark the
+package complete with vague “manual verification recommended” or “evidence
+incomplete” wording.
+
+Do not start Phase 6-C, 6-D or 6-E inside this package.

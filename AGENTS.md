@@ -172,9 +172,15 @@ The FQGate historical boundary keeps the legacy
 `fqgate-market-history` adapter with explicit `LOCAL_DIRECT` or
 `REMOTE_BRIDGE` endpoint parameters. Remote endpoints require an explicit
 HTTPS operation URI and never fall back to loopback; remote auth/transport
-diagnostics remain separate from FQGate entitlement diagnostics. The checked
-remote bridge is not yet a proven live machine market-history contract, so
-`REMOTE_BRIDGE_LIVE_UNPROVEN` remains explicit.
+diagnostics remain separate from FQGate entitlement diagnostics. The companion `blooddrunk/fqgate-remote-bridge` has now closed its Phase 5
+remote-machine read-only boundary with an authenticated, registry-derived
+machine API and one bounded instrument-lookup operation. It still publishes no
+Bridge-owned quote, market-history or monitoring-event operation, so it is not
+yet a live market-history/event provider for this repository and
+`REMOTE_BRIDGE_LIVE_UNPROVEN` remains explicit for that capability. Phase 6-B
+must keep its event-acquisition contract provider-neutral so a later stable
+Bridge operation can be added as an optional, and potentially preferred,
+source without coupling Turtle to Bridge lifecycle or Cloudflare provisioning.
 M6-A is complete at `ad864510`: the repository now exposes the frozen
 `ResearchSurfaceSnapshotV1` contract, checked-in schema, explicit projection
 API and offline `tve surface build|validate` CLI. M6-B is now complete at its
