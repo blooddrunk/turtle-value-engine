@@ -1,6 +1,7 @@
 :root {
   font-family:
-    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
   color: #e8edf2;
   background: #0d141d;
   font-synthesis: none;
@@ -294,16 +295,117 @@ h4 {
   align-items: center;
   gap: 7px;
   width: fit-content;
+  max-width: 100%;
   padding: 6px 9px;
   border: 1px solid var(--line-strong);
   border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.status-label {
+  color: inherit;
+}
+
+.status-raw {
+  color: currentColor;
+  opacity: 0.62;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.status-unknown .status-raw {
+  opacity: 1;
+}
+
+.raw-suffix {
+  color: var(--faint);
   font-family: "SFMono-Regular", Consolas, monospace;
   font-size: 10px;
-  font-weight: 750;
-  letter-spacing: 0.03em;
-  line-height: 1;
-  text-transform: uppercase;
-  white-space: nowrap;
+}
+
+.locale-toggle {
+  min-height: 30px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 11px;
+}
+
+.technical-details {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg-quiet);
+}
+
+.technical-details > summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 11px;
+  padding: 9px 12px;
+  user-select: none;
+}
+
+.technical-details > summary:hover {
+  color: var(--accent);
+}
+
+.technical-details-body {
+  padding: 4px 16px 16px;
+}
+
+.technical-details-body > h4 {
+  margin: 16px 0 8px;
+}
+
+.technical-field-list .field-row,
+.technical-details-body .field-row {
+  grid-template-columns: minmax(110px, 0.6fr) minmax(0, 1.4fr);
+  gap: 12px;
+  padding: 7px 0;
+}
+
+.detail-technical {
+  margin-bottom: 26px;
+}
+
+.detail-technical .technical-details-body {
+  padding-top: 12px;
+}
+
+.footer-contracts > summary {
+  padding: 4px 8px;
+  font-size: 10px;
+}
+
+.footer-contracts .technical-details-body {
+  padding: 2px 8px 10px;
+  max-width: 420px;
+}
+
+.error-technical {
+  max-width: 560px;
+  margin-bottom: 16px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 10px;
+  background: var(--bg-quiet);
+}
+
+.error-technical > summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 11px;
+  padding: 8px 12px;
+}
+
+.error-technical-list {
+  padding: 2px 14px 12px;
 }
 
 .status-dot {
@@ -586,13 +688,11 @@ tbody tr:hover {
 
 .hash-value {
   display: inline-block;
-  max-width: 25ch;
-  overflow: hidden;
+  max-width: 100%;
   color: var(--faint);
   font-size: 10px;
-  text-overflow: ellipsis;
-  vertical-align: bottom;
-  white-space: nowrap;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
 .state-panel {
@@ -840,9 +940,28 @@ tbody tr:hover {
   border: 1px solid var(--line-strong);
   border-radius: 6px;
   color: var(--caution);
-  font-family: "SFMono-Regular", Consolas, monospace;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   font-size: 10px;
   line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.pill-positive {
+  border-color: #2c7565;
+  color: var(--positive);
+}
+
+.pill-caution {
+  color: var(--caution);
+}
+
+.pill-negative {
+  border-color: #86434b;
+  color: var(--negative);
+}
+
+.pill-neutral {
+  color: var(--muted);
 }
 
 .gates-section .section-description {
@@ -1243,14 +1362,51 @@ tbody tr:hover {
     gap: 10px;
   }
 
-  .artifact-row .hash-value {
-    max-width: 100%;
-  }
-
   .site-footer {
     align-items: flex-start;
     flex-direction: column;
     padding-right: 24px;
     padding-left: 24px;
+  }
+
+  .site-nav {
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .status-badge {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .status-raw {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .technical-details-body {
+    padding: 4px 12px 12px;
+  }
+
+  .technical-field-list .field-row,
+  .technical-details-body .field-row {
+    grid-template-columns: 1fr;
+    gap: 3px;
+  }
+
+  .surface-table th,
+  .surface-table td {
+    padding: 12px 8px;
+  }
+
+  .tier-table th,
+  .tier-table td {
+    white-space: normal;
+  }
+
+  .tier-table .raw-suffix {
+    display: block;
   }
 }

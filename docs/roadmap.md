@@ -5143,10 +5143,14 @@ investment semantics.
 
 M5-C remains optional for a concrete remote artifact-class need. M6-C2 is now
 closed after the owner-accepted private Cloudflare Access/Worker/Tunnel
-deployment and live smoke. The selected follow-on is
-[`M6-C3 — Dashboard UX and Chinese-first Localization`](goals/phase-5r-a-m6-c3-dashboard-ux-localization.md):
-it improves the human presentation of the same frozen read-only contract before
-Phase 6 watchlist/event monitoring begins.
+deployment and live smoke. The presentation-only follow-on
+[`M6-C3 — Dashboard UX and Chinese-first Localization`](goals/phase-5r-a-m6-c3-dashboard-ux-localization.md)
+is now complete: the read-only Dashboard is Chinese-first through a
+centralized typed presentation layer, semantic states carry plain-language
+labels with raw codes preserved, empty/partial/error states are distinct, and
+technical/audit identifiers sit behind a details affordance. The exact build
+was redeployed through the unchanged M6-C2 security path. Phase 6
+watchlist/event monitoring has not been started and is selected separately.
 
 ---
 
@@ -5199,8 +5203,9 @@ URGENT_MANUAL_REVIEW
 
 C1 provides the local/preview read-only personal Dashboard and C2 has closed
 the owner-accepted private Cloudflare deployment/authenticated-origin boundary.
-M6-C3 is the selected presentation-only follow-on for Chinese-first copy,
-plain-language semantic states and progressive disclosure of diagnostics.
+M6-C3 closed the presentation-only follow-on: Chinese-first copy, plain-language
+semantic states and progressive disclosure of diagnostics through a centralized
+presentation layer, with the M6-C2 security boundary unchanged.
 Phase 6 may later add derived watchlist/run-status storage where separately
 designed, but a page request must not scrape upstream sources, invoke a model,
 expose restricted raw data, or reimplement deterministic investment

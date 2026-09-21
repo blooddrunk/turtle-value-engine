@@ -8,6 +8,8 @@ import {
 import { QueryClient } from "@tanstack/react-query";
 import type { ReactElement } from "react";
 
+import { TechnicalDetails, useLocaleControls } from "./components";
+import { useCopy } from "./presentation";
 import { OverviewPage } from "./views/overview";
 import { SurfaceDetailPage } from "./views/surface-detail";
 
@@ -28,10 +30,12 @@ function normalizeSearch(value: Record<string, unknown>): OverviewSearch {
 }
 
 function RootLayout(): ReactElement {
+  const copy = useCopy();
+  const { locale, toggleLocale } = useLocaleControls();
   return (
     <>
       <a className="skip-link" href="#main-content">
-        Skip to content
+        {copy.skipToContent}
       </a>
       <header className="site-header">
         <div className="brand-lockup">
@@ -42,22 +46,41 @@ function RootLayout(): ReactElement {
             <Link className="brand-name" to="/">
               Turtle Value Engine
             </Link>
-            <p className="brand-caption">Frozen research surface</p>
+            <p className="brand-caption">{copy.brandCaption}</p>
           </div>
         </div>
-        <nav aria-label="Primary navigation" className="site-nav">
+        <nav aria-label={copy.navAriaLabel} className="site-nav">
           <Link activeProps={{ className: "is-active" }} to="/">
-            Surfaces
+            {copy.navOverview}
           </Link>
-          <span className="read-only-mark">Read-only</span>
+          <span className="read-only-mark">{copy.readOnlyMark}</span>
+          <button
+            aria-label={copy.localeToggleAria}
+            className="button button-quiet locale-toggle"
+            onClick={toggleLocale}
+            type="button"
+          >
+            {locale === "zh-CN" ? "EN" : "中文"}
+          </button>
         </nav>
       </header>
       <main className="app-shell" id="main-content">
         <Outlet />
       </main>
       <footer className="site-footer">
-        <span>Local projection · no writes · no recalculation</span>
-        <span>API contract: research_surface_api_v1</span>
+        <span>{copy.footerNote}</span>
+        <TechnicalDetails className="footer-contracts" summary={copy.footerContractsSummary}>
+          <dl className="field-list">
+            <div className="field-row">
+              <dt>{copy.footerApiContractLabel}</dt>
+              <dd className="mono-value">research_surface_api_v1</dd>
+            </div>
+            <div className="field-row">
+              <dt>{copy.footerSnapshotContractLabel}</dt>
+              <dd className="mono-value">research_surface_snapshot_v1</dd>
+            </div>
+          </dl>
+        </TechnicalDetails>
       </footer>
     </>
   );

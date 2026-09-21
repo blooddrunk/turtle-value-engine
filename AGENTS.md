@@ -185,11 +185,19 @@ disabled in the checked-in Wrangler config, and deterministic deployment/live
 smoke tools are provided. Owner-specific Cloudflare/account/domain/identity/
 origin-host/snapshot inputs remain intentionally absent from ordinary CI; the
 owner-authorized live deployment and final browser acceptance are recorded as
-`CLOSED / OWNER_ACCEPTED`. M6-C3 is now selected as the presentation-only follow-on for Dashboard
-UX/Chinese-first localization. It has not been implemented yet and must not
-change the frozen API, M6-C2 security boundary or deterministic semantics.
-Phase 6 watchlist/event monitoring remains the next major functional phase
-after M6-C3 closes. Exact gate, deployment
+`CLOSED / OWNER_ACCEPTED`. M6-C3 is now complete at its presentation-only
+integration boundary: the read-only Dashboard is Chinese-first through a
+centralized typed presentation/copy layer, semantic states such as
+`SPECIAL_REVIEW`, `NOT_EVALUATED`, `PARTIAL`, `BLOCKED` and `NOT_AVAILABLE`
+carry plain-language labels and explanations with raw codes retained,
+empty/partial/error states are distinct, and API/contract/hash/rule
+identifiers are de-emphasized behind a technical/audit details affordance
+without deleting or rewriting any payload value. It did not change the frozen
+surface schema, M6-B API, M6-C2 Access/Worker/Tunnel boundary or deterministic
+investment semantics. The exact M6-C3 build was redeployed through the
+existing M6-C2 path and the machine-verifiable live smoke passed. Phase 6
+watchlist/event monitoring remains the next major functional phase and has
+not been started. Exact gate, deployment
 and remaining-input evidence is recorded in
 `docs/status/phase-5r-a-2026-09-20.md`. Project-wide non-secret runtime
 configuration is defined by `config/project.example.toml` and the ignored

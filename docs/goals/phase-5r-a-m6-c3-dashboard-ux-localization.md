@@ -1,6 +1,6 @@
 # Phase 5R-A M6-C3 — Dashboard UX and Chinese-first Localization
 
-Status: **SELECTED / NOT_STARTED**
+Status: **COMPLETE**
 Date: 2026-09-20
 Selected after: M6-C2 `CLOSED / OWNER_ACCEPTED`
 
@@ -373,3 +373,62 @@ M6-C3 closes only when:
 - no Phase 6 monitoring, M4-D/M4-E, M2-D or M5-C/R2 work is mixed into the goal.
 
 Stop after M6-C3 closure. Select Phase 6 in a separate audit/planning step.
+
+## 11. Implementation record — 2026-09-20
+
+M6-C3 is complete. The implementation adds:
+
+- `apps/dashboard/src/presentation.ts`: the centralized typed
+  presentation/copy layer — `zh-CN` default locale with an optional
+  client-only English switch persisted in localStorage, the full semantic
+  state table (friendly label + explanation + tone for every known engine,
+  historical, health and UI state, with unknown enums failing safe as an
+  explicit unknown/raw state), stable API/Worker error-code mapping with raw
+  HTTP status/code/message preserved for the technical affordance,
+  conservative value formatters that never turn null, undefined or non-finite
+  values into zero and never infer units/currency/percent, plus centralized
+  gate/metric/dimension/tier label tables;
+- `apps/dashboard/src/presentation.test.ts`: deterministic coverage for the
+  default locale, known-state labels/explanations, negative-state
+  distinguishability, unknown-enum fail-safe, null≠0 formatting, boolean
+  labels, known/unknown API errors with raw diagnostics, structural labels
+  and locale dictionary completeness;
+- `apps/dashboard/src/components.tsx`: `LocaleProvider` (client-only
+  preference), localized `StatusBadge` (friendly label primary, dim raw-code
+  suffix, explanation in the title), `ErrorState` with mapped Chinese copy and
+  raw diagnostics only inside an expandable technical-details block, distinct
+  no-snapshots/no-matches `EmptyState` variants, a reusable
+  `TechnicalDetails` affordance, and compact raw machine-flag pills;
+- `apps/dashboard/src/router.tsx`: Chinese-first navigation/skip-link/footer,
+  the locale toggle, and contracts moved behind a footer technical-details
+  affordance;
+- `apps/dashboard/src/views/overview.tsx` and `surface-detail.tsx`: Chinese
+  primary copy, empty-state distinction driven by active filters, hashes/IDs/
+  contract names moved behind the technical/audit details affordance
+  (overview per-row and a consolidated detail-page block containing exact
+  `analysis_id`, `surface_id`, `content_sha256`, request path, source
+  artifacts and historical dataset identities), friendly state badges
+  everywhere with raw codes retained, and explicit currency/boolean/date
+  display without invented units;
+- `apps/dashboard/src/app.test.tsx`: rewritten UI coverage including
+  Chinese-first default rendering, both empty states, friendly-error/raw-
+  details layering, locale switching, technical-details ID/hash availability,
+  the 404 not-found mapping, filter encoding and the no-mutation-control
+  guarantee;
+- `apps/dashboard/index.html` (`lang="zh-CN"`, Chinese title) and
+  `styles.css` (CJK font stack, dual-layer badge, technical/error details,
+  locale toggle, mobile wrap fixes for the valuation table, hashes and
+  machine-flag pills).
+
+Frozen boundaries held: `ResearchSurfaceSnapshotV1`, the OpenAPI contract,
+generated API types, the M6-B read-only API, the Worker proxy and all M6-C2
+security/deployment configuration are unchanged; no payload value, enum or
+missing field was rewritten; no Phase 6, M4-D/M4-E, M2-D or M5-C/R2 work was
+started.
+
+Exact local verification, real-browser layout verification (desktop
+1440×900 and mobile 390×844 against the private `HK0288` snapshot), the
+unchanged-boundary redeployment and the live smoke are recorded in
+`docs/status/phase-5r-a-2026-09-20.md`. Two genuine mobile overflow defects
+(valuation-tier `nowrap` cells and an unbounded artifact hash) were found by
+the browser pass and fixed before closure.

@@ -1,69 +1,40 @@
-# Phase 5R-A next Codex goal — M6-C3
+# Phase 5R-A next Codex goal — post-M6-C3 audit
 
-Status: **M6-C3 SELECTED / NOT_STARTED**
+Status: **M6-C3 COMPLETE; next package selection pending a separate audit**
 
-Baseline before planning: `8be5d511d432c08424077dbc142a4e86468b215f`.
-GitHub Actions run `35503386115` completed successfully for that baseline.
+M6-C3 (`docs/goals/phase-5r-a-m6-c3-dashboard-ux-localization.md`) is
+complete at its presentation-only integration boundary. The implementation,
+local regression, browser layout verification, unchanged-boundary redeploy
+and live-smoke evidence are recorded in
+`docs/status/phase-5r-a-2026-09-20.md` section 14 and in the goal file's
+implementation record.
 
-M6-C2 is closed as `CLOSED / OWNER_ACCEPTED`. Its private Cloudflare
-Access/Worker/Tunnel deployment and automated live smoke are not blockers and
-must not be redesigned by the next package.
+## What closed with M6-C3
 
-The selected next package is:
+- Chinese-first owner-facing UI through the centralized typed presentation
+  layer (`apps/dashboard/src/presentation.ts`) with an optional client-only
+  English switch;
+- plain-language labels/explanations for `SPECIAL_REVIEW`, `NOT_EVALUATED`,
+  `PARTIAL`, `BLOCKED`, `NOT_AVAILABLE` and every other known state, with raw
+  codes retained and unknown enums failing safe;
+- distinct no-snapshot / no-match / not-evaluated / partial / blocked /
+  API-unavailable / surface-not-found states;
+- hashes, contract names, rule IDs and artifact identities moved behind
+  clearly labeled technical/audit details affordances without deleting or
+  rewriting any payload value;
+- the exact M6-C3 build redeployed through the unchanged M6-C2 Cloudflare
+  path with the machine-verifiable live smoke passing.
 
-`docs/goals/phase-5r-a-m6-c3-dashboard-ux-localization.md`
+## Next package
 
-## Goal
+Phase 6 watchlist/event monitoring is the expected next major functional
+phase, but it must be selected through a separate audit/planning step against
+the then-current `main`, not started implicitly. Still explicitly deferred:
+M4-D/M4-E, M2-D, M5-C/R2 absent a separately demonstrated artifact need, and
+any `strict-v1`, A6/PIT/source-selection or investment-semantic change. A6
+remains the separate strict production-claim audit.
 
-Turn the technically correct but developer-oriented private Dashboard into a
-Chinese-first owner-facing research UI while preserving the exact
-`ResearchSurfaceSnapshotV1`, M6-B read-only API, M6-C2 security boundary and
-all deterministic investment semantics.
-
-The package should centralize user-facing state/copy presentation, explain
-`SPECIAL_REVIEW`, `NOT_EVALUATED`, `PARTIAL`, `BLOCKED` and unavailable
-values in plain language, distinguish empty/partial/error states, and move
-hashes/API/rule/artifact diagnostics behind progressive disclosure.
-
-Do not change the API merely to make the UI easier to implement. Do not infer
-missing units, values or positive states.
-
-## Automation requirement
-
-Use the permanent owner test environment rooted at `D:\code\research` when
-it is available. Discover the real repository checkout beneath that root
-(`/mnt/d/code/research` under WSL where applicable) and run routine validation
-there rather than delegating it to the owner.
-
-Before editing and after implementation, run the complete Python + Dashboard
-regression gates from the goal, including Ruff, full pytest, frozen pnpm
-install, OpenAPI/API/Wrangler type drift checks, lint, typecheck, Vitest,
-production build, client-bundle secret scan and real local cross-stack smoke.
-
-For UX verification, prefer available browser automation/headless screenshots.
-Only if the execution environment truly lacks an automatable browser path may
-the owner be asked for the bounded desktop/mobile visual check written verbatim
-in the goal.
-
-If the existing ignored project config and Cloudflare credential reference are
-available, verify/redeploy the existing private Dashboard and rerun live smoke
-automatically without changing Access/Tunnel policy. If they are not available,
-record the exact skipped live-only step; do not treat missing cloud credentials
-as a local implementation blocker and do not ask for tokens in chat.
-
-After push, inspect GitHub Actions for the exact pushed commit. Do not claim
-completion while CI is red or in progress.
-
-## Explicitly deferred
-
-- Phase 6 watchlist/event-driven re-analysis;
-- M4-D/M4-E;
-- M2-D;
-- M5-C/R2 absent a separately demonstrated artifact need;
-- any `strict-v1`, A6/PIT/source-selection or investment-semantic change.
-
-A6 remains the separate strict production-claim audit and is not a prerequisite
-for this personal read-only Dashboard UX package.
-
-Stop after M6-C3 closure and return a precise verification record plus any
-genuine remaining blocker.
+Before any next implementation: synchronize `main`, require the latest
+GitHub Actions run for that exact baseline to be green, re-read
+`AGENTS.md`, the roadmap and the then-active goal, and keep using the
+permanent owner test environment when available.

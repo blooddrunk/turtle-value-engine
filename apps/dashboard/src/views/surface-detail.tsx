@@ -4,87 +4,30 @@ import type { ReactElement } from "react";
 
 import { fetchSurface, type SurfaceSnapshot } from "../api/client";
 import {
-  displayValue,
   ErrorState,
   FieldList,
-  HashValue,
   LoadingState,
   PillList,
   Section,
   StatusBadge,
   StringList,
+  TechnicalDetails,
 } from "../components";
+import {
+  businessDimensionLabel,
+  formatScalar,
+  gateLabels,
+  metricGroups,
+  statePresentation,
+  tierPresentation,
+  useCopy,
+  useLocale,
+} from "../presentation";
 import type { components } from "../generated/surface-api";
 
 type SurfaceGate = components["schemas"]["SurfaceGate"];
 type SurfaceGates = components["schemas"]["SurfaceGates"];
 type MetricRecord = Record<string, unknown>;
-
-const gateLabels: readonly { key: keyof SurfaceGates; label: string }[] = [
-  { key: "universe", label: "Universe" },
-  { key: "balance_sheet", label: "Balance sheet" },
-  { key: "cdc", label: "CDC" },
-  { key: "through_return", label: "Through Return" },
-  { key: "business_quality", label: "Business Quality" },
-  { key: "governance_data_quality", label: "Governance / data quality" },
-];
-
-const metricGroups = [
-  {
-    title: "CDC",
-    key: "cdc",
-    rows: [
-      ["Reported CFO", "reported_cfo"],
-      ["Adjusted CFO", "adjusted_cfo"],
-      ["Core CDC", "core_cdc"],
-      ["Normalized parent core CDC", "normalized_parent_core_cdc"],
-      ["CDC yield", "cdc_yield"],
-      ["Positive years (5Y)", "positive_years_5y"],
-      ["Cumulative core CDC (5Y)", "cumulative_core_cdc_5y"],
-      ["Metric confidence", "confidence"],
-    ],
-  },
-  {
-    title: "Net Cash",
-    key: "net_cash",
-    rows: [
-      ["Book cash", "book_cash"],
-      ["Strict cash", "strict_cash"],
-      ["Owner accessible cash", "owner_accessible_cash"],
-      ["Financial debt", "financial_debt"],
-      ["Owner realizable net cash", "owner_realizable_net_cash"],
-      ["Owner net cash ratio", "owner_net_cash_ratio"],
-      ["Liquidity coverage", "liquidity_coverage"],
-      ["Stress coverage", "stress_coverage"],
-      ["Metric confidence", "confidence"],
-    ],
-  },
-  {
-    title: "Through Return",
-    key: "through_return",
-    rows: [
-      ["Distributable base", "distributable_base"],
-      ["Dividend Through Return", "dividend_through_return"],
-      ["Normalized net share reduction", "normalized_net_share_reduction"],
-      ["Through Return", "through_return"],
-      ["Verified recurring buyback cash", "verified_recurring_buyback_cash"],
-      ["Buyback credit eligible", "buyback_credit_eligible"],
-      ["Buyback history years", "buyback_history_years"],
-      ["Metric confidence", "confidence"],
-    ],
-  },
-] as const;
-
-const businessDimensionLabels: Record<string, string> = {
-  demand_durability: "Demand durability",
-  cyclicality: "Cyclicality",
-  pricing_power: "Pricing power",
-  moat: "Competitive moat",
-  capital_efficiency: "Capital efficiency",
-  dependency: "Customer / channel / supplier dependency",
-  regulatory_risk: "Regulation / external dependency",
-  predictability: "Predictability / simplicity",
-};
 
 function MetricGroup({
   metric,
@@ -93,39 +36,49 @@ function MetricGroup({
 }: {
   metric: MetricRecord;
   title: string;
-  rows: readonly (readonly [string, string])[];
+  rows: readonly { key: string; label: string }[];
 }): ReactElement {
+  const locale = useLocale();
   return (
     <article className="metric-group">
       <h3>{title}</h3>
       <dl className="metric-list">
-        {rows.map(([label, key]) => (
+        {rows.map(({ label, key }) => (
           <div className="metric-row" key={key}>
             <dt>{label}</dt>
-            <dd>{displayValue(metric[key])}</dd>
+            <dd>{formatScalar(metric[key], locale)}</dd>
           </div>
         ))}
       </dl>
-      <PillList items={Array.isArray(metric.flags) ? metric.flags.filter((item): item is string => typeof item === "string") : undefined} />
+      <PillList
+        items={
+          Array.isArray(metric.flags) ? metric.flags.filter((item): item is string => typeof item === "string") : undefined
+        }
+      />
     </article>
   );
 }
 
 function GateCard({ label, gate }: { label: string; gate: SurfaceGate }): ReactElement {
+  const copy = useCopy();
   return (
     <article className="gate-card">
       <div className="gate-heading">
         <h3>{label}</h3>
         <StatusBadge value={gate.status} />
       </div>
-      {gate.confidence ? <p className="compact-meta">Confidence: {gate.confidence}</p> : null}
+      {gate.confidence ? (
+        <p className="compact-meta">
+          {copy.confidenceLabel}：<StatusBadge value={gate.confidence} />
+        </p>
+      ) : null}
       <div className="gate-blockers">
-        <h4>Blocking reasons</h4>
+        <h4>{copy.gateBlockingReasons}</h4>
         <StringList items={gate.blocking_reasons} />
       </div>
       {gate.rules?.length ? (
         <details className="gate-rules">
-          <summary>{gate.rules.length} deterministic rules</summary>
+          <summary>{copy.gateRulesSummary(gate.rules.length)}</summary>
           <div className="rule-list">
             {gate.rules.map((rule) => (
               <div className="rule-row" key={rule.rule_id}>
@@ -144,62 +97,69 @@ function GateCard({ label, gate }: { label: string; gate: SurfaceGate }): ReactE
 }
 
 function DecisionAndValuation({ surface }: { surface: SurfaceSnapshot }): ReactElement {
+  const copy = useCopy();
+  const locale = useLocale();
   const { decision, valuation } = surface.analysis;
   return (
-    <Section title="Decision and valuation" className="decision-section">
+    <Section title={copy.decisionSection} className="decision-section">
       <div className="decision-grid">
         <div className="decision-callout">
-          <span className="small-label">Deterministic decision</span>
+          <span className="small-label">{copy.deterministicDecision}</span>
           <StatusBadge value={decision.state} />
           <p>{decision.summary}</p>
           <FieldList
             rows={[
-              { label: "Auto decision allowed", value: decision.auto_decision_allowed },
-              { label: "Decision confidence", value: decision.confidence },
-              { label: "Blocking reasons", value: decision.blocking_reasons.length },
+              { label: copy.autoDecisionAllowed, value: decision.auto_decision_allowed },
+              { label: copy.decisionConfidence, value: decision.confidence, state: true },
+              { label: copy.blockingReasonsCount, value: decision.blocking_reasons.length },
             ]}
           />
         </div>
         <div className="valuation-block">
           <div className="subsection-heading">
-            <h3>Valuation state</h3>
+            <h3>{copy.valuationState}</h3>
             <StatusBadge value={valuation.current_valuation_state} />
           </div>
           <FieldList
             rows={[
-              { label: "Listing", value: valuation.listing },
-              { label: "As of", value: valuation.as_of },
-              { label: "Valuation currency", value: valuation.valuation_currency },
-              { label: "Current price", value: valuation.current_price },
-              { label: "Normalized parent core CDC", value: valuation.normalized_parent_core_cdc },
-              { label: "Recurring shareholder cash", value: valuation.recurring_shareholder_cash },
-              { label: "Valuation net cash", value: valuation.valuation_net_cash },
+              { label: copy.listingLabel, value: valuation.listing },
+              { label: copy.asOfLabel, value: valuation.as_of },
+              { label: copy.valuationCurrency, value: valuation.valuation_currency },
+              { label: copy.currentPrice, value: valuation.current_price },
+              { label: copy.normalizedParentCoreCdc, value: valuation.normalized_parent_core_cdc },
+              { label: copy.recurringShareholderCash, value: valuation.recurring_shareholder_cash },
+              { label: copy.valuationNetCash, value: valuation.valuation_net_cash },
             ]}
           />
         </div>
       </div>
       <div className="tier-table-frame">
         <table className="tier-table">
-          <caption>Frozen valuation tiers returned by the engine</caption>
+          <caption>{copy.tiersCaption}</caption>
           <thead>
             <tr>
-              <th scope="col">Tier</th>
-              <th scope="col">CDC hurdle</th>
-              <th scope="col">Return hurdle</th>
-              <th scope="col">Price</th>
-              <th scope="col">Market cap</th>
+              <th scope="col">{copy.tierColumn}</th>
+              <th scope="col">{copy.cdcHurdle}</th>
+              <th scope="col">{copy.returnHurdle}</th>
+              <th scope="col">{copy.priceColumn}</th>
+              <th scope="col">{copy.marketCapColumn}</th>
             </tr>
           </thead>
           <tbody>
-            {Object.entries(valuation.tiers).map(([tier, values]) => (
-              <tr key={tier}>
-                <th scope="row">{tier}</th>
-                <td>{displayValue(values.cdc_hurdle)}</td>
-                <td>{displayValue(values.return_hurdle)}</td>
-                <td>{displayValue(values.price)}</td>
-                <td>{displayValue(values.market_cap)}</td>
-              </tr>
-            ))}
+            {Object.entries(valuation.tiers).map(([tier, values]) => {
+              const presentation = tierPresentation(tier, locale);
+              return (
+                <tr key={tier}>
+                  <th scope="row">
+                    {presentation.label} <span className="raw-suffix">{presentation.raw}</span>
+                  </th>
+                  <td>{formatScalar(values.cdc_hurdle, locale)}</td>
+                  <td>{formatScalar(values.return_hurdle, locale)}</td>
+                  <td>{formatScalar(values.price, locale)}</td>
+                  <td>{formatScalar(values.market_cap, locale)}</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -209,27 +169,29 @@ function DecisionAndValuation({ surface }: { surface: SurfaceSnapshot }): ReactE
 }
 
 function BusinessQuality({ surface }: { surface: SurfaceSnapshot }): ReactElement {
+  const copy = useCopy();
+  const locale = useLocale();
   const view = surface.analysis;
   return (
-    <Section title="Business Quality">
+    <Section title={copy.bqSection}>
       <div className="status-line">
-        <span>Validation state</span>
+        <span>{copy.bqValidationState}</span>
         <StatusBadge value={view.business_quality_status} />
       </div>
       {view.business_quality_status === "NOT_EVALUATED" || !view.business_quality ? (
         <div className="not-evaluated-note">
-          <strong>NOT_EVALUATED</strong>
-          <p>No validated Business Quality assessment is present in this frozen surface.</p>
+          <StatusBadge value="NOT_EVALUATED" />
+          <p>{copy.bqNotEvaluatedBody}</p>
         </div>
       ) : (
         <>
           <div className="quality-summary">
             <FieldList
               rows={[
-                { label: "Score", value: view.business_quality.score },
-                { label: "Grade", value: view.business_quality.grade },
-                { label: "Confidence", value: view.business_quality.confidence },
-                { label: "Evidence coverage", value: view.business_quality.evidence_coverage },
+                { label: copy.bqScore, value: view.business_quality.score },
+                { label: copy.bqGrade, value: view.business_quality.grade },
+                { label: copy.bqConfidence, value: view.business_quality.confidence, state: true },
+                { label: copy.bqEvidenceCoverage, value: view.business_quality.evidence_coverage },
               ]}
             />
           </div>
@@ -237,18 +199,20 @@ function BusinessQuality({ surface }: { surface: SurfaceSnapshot }): ReactElemen
             {view.business_quality.dimension_results?.map((dimension) => (
               <article className="dimension-card" key={dimension.dimension}>
                 <div className="dimension-heading">
-                  <h3>{businessDimensionLabels[dimension.dimension] ?? dimension.dimension}</h3>
+                  <h3>{businessDimensionLabel(dimension.dimension, locale)}</h3>
                   <strong>{dimension.score}/5</strong>
                 </div>
-                <p className="compact-meta">Confidence: {dimension.confidence}</p>
-                <p>{dimension.reasoning_summary ?? "NOT_AVAILABLE"}</p>
+                <p className="compact-meta">
+                  {copy.confidenceLabel}：<StatusBadge value={dimension.confidence} />
+                </p>
+                <p>{dimension.reasoning_summary ?? statePresentation("NOT_AVAILABLE", locale).label}</p>
                 <div className="evidence-columns">
                   <div>
-                    <h4>Supporting evidence</h4>
+                    <h4>{copy.supportingEvidence}</h4>
                     <StringList items={dimension.supporting_evidence_ids} />
                   </div>
                   <div>
-                    <h4>Counter-evidence</h4>
+                    <h4>{copy.counterEvidence}</h4>
                     <StringList items={dimension.counter_evidence_ids} />
                   </div>
                 </div>
@@ -257,11 +221,11 @@ function BusinessQuality({ surface }: { surface: SurfaceSnapshot }): ReactElemen
           </div>
           <div className="two-column-notes">
             <div>
-              <h3>Critical weaknesses</h3>
+              <h3>{copy.criticalWeaknesses}</h3>
               <StringList items={view.business_quality.critical_weaknesses} />
             </div>
             <div>
-              <h3>Unresolved questions</h3>
+              <h3>{copy.unresolvedQuestions}</h3>
               <StringList items={view.business_quality.unresolved_questions} />
             </div>
           </div>
@@ -272,76 +236,67 @@ function BusinessQuality({ surface }: { surface: SurfaceSnapshot }): ReactElemen
 }
 
 function HistoricalStatus({ surface }: { surface: SurfaceSnapshot }): ReactElement {
+  const copy = useCopy();
+  const locale = useLocale();
   const historical = surface.historical_status;
   return (
-    <Section title="Historical availability and readiness">
+    <Section title={copy.historicalSection}>
       <div className="status-grid">
         <div className="status-cell">
-          <span>Availability</span>
+          <span>{copy.availability}</span>
           <StatusBadge value={historical.availability} />
         </div>
         <div className="status-cell">
-          <span>Claim state</span>
+          <span>{copy.claimState}</span>
           <StatusBadge value={historical.claim_state} />
         </div>
         <div className="status-cell">
-          <span>Acceptance</span>
+          <span>{copy.acceptance}</span>
           <StatusBadge value={historical.acceptance.status} />
         </div>
         <div className="status-cell">
-          <span>Readiness</span>
+          <span>{copy.readiness}</span>
           <StatusBadge value={historical.readiness.status} />
         </div>
         <div className="status-cell">
-          <span>Validation</span>
+          <span>{copy.validation}</span>
           <StatusBadge value={historical.validation.status} />
         </div>
         <div className="status-cell">
-          <span>Production eligible</span>
-          <span className="value-text">{displayValue(historical.production_eligible)}</span>
+          <span>{copy.productionEligible}</span>
+          <span className="value-text">{formatScalar(historical.production_eligible, locale)}</span>
         </div>
       </div>
-      <FieldList
-        className="historical-identities"
-        rows={[
-          { label: "Dataset ID", value: historical.dataset_id, mono: true },
-          { label: "Dataset version", value: historical.dataset_version, mono: true },
-          { label: "Manifest hash", value: historical.manifest_sha256, mono: true },
-          { label: "Acceptance report hash", value: historical.acceptance.report_sha256, mono: true },
-          { label: "Readiness report hash", value: historical.readiness.report_sha256, mono: true },
-          { label: "Validation content hash", value: historical.validation.content_sha256, mono: true },
-        ]}
-      />
       <div className="status-notes-grid">
         <div>
-          <h3>Blockers</h3>
+          <h3>{copy.blockers}</h3>
           <StringList items={historical.blockers} />
           <StringList items={historical.acceptance.blockers} />
           <StringList items={historical.readiness.blockers} />
           <StringList items={historical.validation.production_blockers} />
         </div>
         <div>
-          <h3>Warnings</h3>
+          <h3>{copy.warnings}</h3>
           <StringList items={historical.warnings} />
           <StringList items={historical.readiness.warnings} />
           <StringList items={historical.validation.warnings} />
         </div>
         <div>
-          <h3>Limitations</h3>
+          <h3>{copy.limitations}</h3>
           <StringList items={historical.limitations} />
         </div>
       </div>
       {historical.target_scope ? (
         <div className="scope-box">
-          <h3>Target scope</h3>
+          <h3>{copy.targetScope}</h3>
           <FieldList
             rows={[
-              { label: "Target", value: historical.target_scope.target_name },
-              { label: "Universe", value: historical.target_scope.universe_id },
-              { label: "Markets", value: historical.target_scope.markets.join(", ") },
-              { label: "Period", value: `${historical.target_scope.start_date} → ${historical.target_scope.end_date}` },
-              { label: "Membership claim", value: historical.target_scope.membership_claim },
-              { label: "Coverage claim", value: historical.target_scope.coverage_claim },
+              { label: copy.scopeTarget, value: historical.target_scope.target_name },
+              { label: copy.scopeUniverse, value: historical.target_scope.universe_id },
+              { label: copy.scopeMarkets, value: historical.target_scope.markets.join(", ") },
+              { label: copy.scopePeriod, value: `${historical.target_scope.start_date} → ${historical.target_scope.end_date}` },
+              { label: copy.membershipClaim, value: historical.target_scope.membership_claim },
+              { label: copy.coverageClaim, value: historical.target_scope.coverage_claim },
             ]}
           />
         </div>
@@ -350,21 +305,36 @@ function HistoricalStatus({ surface }: { surface: SurfaceSnapshot }): ReactEleme
   );
 }
 
-function SourceArtifacts({ surface }: { surface: SurfaceSnapshot }): ReactElement {
+function TechnicalAuditDetails({ surface }: { surface: SurfaceSnapshot }): ReactElement {
+  const copy = useCopy();
   const references = [
     ...surface.source_artifacts,
     ...(surface.decision_trace_reference ? [surface.decision_trace_reference] : []),
     ...(surface.research_report_reference ? [surface.research_report_reference] : []),
   ];
   const unique = references.filter(
-    (reference, index) => references.findIndex((item) => item.artifact_id === reference.artifact_id) === index,
+    (reference, index) =>
+      references.findIndex((item) => item.artifact_id === reference.artifact_id) === index,
   );
+  const historical = surface.historical_status;
   return (
-    <Section title="Source artifact identities">
-      <p className="section-description">
-        Identity-only references are retained for audit. Local paths, credentials and raw provider
-        payloads are intentionally absent.
-      </p>
+    <TechnicalDetails className="detail-technical" summary={copy.technicalSectionSummary}>
+      <p className="section-description">{copy.technicalIntro}</p>
+      <FieldList
+        rows={[
+          { label: copy.snapshotContractLabel, value: surface.contract, mono: true },
+          { label: copy.schemaVersionLabel, value: surface.schema_version, mono: true },
+          {
+            label: copy.endpointLabel,
+            value: `GET /api/v1/surfaces/${surface.surface_id}`,
+            mono: true,
+          },
+          { label: copy.analysisIdLabel, value: surface.analysis_id, mono: true },
+          { label: copy.surfaceIdLabel, value: surface.surface_id, mono: true },
+          { label: copy.contentHashLabel, value: surface.content_sha256, mono: true },
+        ]}
+      />
+      <h4>{copy.sourceArtifactsLabel}</h4>
       <div className="artifact-list">
         {unique.map((reference) => (
           <div className="artifact-row" key={reference.artifact_id}>
@@ -372,117 +342,131 @@ function SourceArtifacts({ surface }: { surface: SurfaceSnapshot }): ReactElemen
               <strong>{reference.artifact_type}</strong>
               <span>{reference.artifact_id}</span>
             </div>
-            <HashValue value={reference.content_sha256} />
+            <code className="hash-value">{reference.content_sha256}</code>
           </div>
         ))}
       </div>
-    </Section>
+      <h4>{copy.historicalIdentitiesLabel}</h4>
+      <FieldList
+        className="historical-identities"
+        rows={[
+          { label: copy.datasetIdLabel, value: historical.dataset_id, mono: true },
+          { label: copy.datasetVersionLabel, value: historical.dataset_version, mono: true },
+          { label: copy.manifestHashLabel, value: historical.manifest_sha256, mono: true },
+          { label: copy.acceptanceHashLabel, value: historical.acceptance.report_sha256, mono: true },
+          { label: copy.readinessHashLabel, value: historical.readiness.report_sha256, mono: true },
+          { label: copy.validationHashLabel, value: historical.validation.content_sha256, mono: true },
+        ]}
+      />
+    </TechnicalDetails>
   );
 }
 
 export function SurfaceDetailPage(): ReactElement {
+  const copy = useCopy();
+  const locale = useLocale();
   const { surfaceId } = useParams({ from: "/surfaces/$surfaceId" });
   const surface = useQuery({
     queryKey: ["surface", surfaceId],
     queryFn: () => fetchSurface(surfaceId),
   });
 
-  if (surface.isPending) return <LoadingState label="Reading the frozen surface detail" />;
+  if (surface.isPending) return <LoadingState label={copy.loadingDetail} />;
   if (surface.isError || !surface.data) {
     return (
       <div className="page page-detail">
         <Link className="back-link" to="/">
-          ← Back to surfaces
+          {copy.backToList}
         </Link>
-        <ErrorState
-          message={surface.error instanceof Error ? surface.error.message : undefined}
-          onRetry={() => void surface.refetch()}
-          title="This surface could not be opened"
-        />
+        <ErrorState error={surface.error} onRetry={() => void surface.refetch()} />
       </div>
     );
   }
 
   const data = surface.data;
   const view = data.analysis;
+  const gates = gateLabels(locale);
+  const identityRows: { label: string; value: unknown }[] = [
+    { label: copy.listingLabel, value: data.company.primary_listing },
+    { label: copy.asOfLabel, value: data.as_of },
+    { label: copy.profileLabel, value: data.profile_id },
+  ];
+  if (data.company.sector) identityRows.push({ label: copy.sectorLabel, value: data.company.sector });
+  if (data.company.reporting_currency) {
+    identityRows.push({ label: copy.reportingCurrencyLabel, value: data.company.reporting_currency });
+  }
+  if (data.company.other_listings?.length) {
+    identityRows.push({
+      label: copy.otherListingsLabel,
+      value: data.company.other_listings.join("、"),
+    });
+  }
+
   return (
     <div className="page page-detail">
       <Link className="back-link" to="/">
-        ← Back to surfaces
+        {copy.backToList}
       </Link>
       <header className="detail-heading">
         <div>
           <h1>{data.company.name}</h1>
           <p className="lede">
-            {data.company.primary_listing} · snapshot as of {data.as_of} · {data.profile_id}
+            {data.company.primary_listing} · {copy.dataAsOfPrefix} {data.as_of} ·{" "}
+            {copy.profilePrefix} {data.profile_id}
           </p>
         </div>
         <div className="detail-heading-status">
           <StatusBadge value={view.decision.state} />
-          <span className="contract-note">GET /api/v1/surfaces/{data.surface_id.slice(0, 12)}…</span>
         </div>
       </header>
 
-      <section className="identity-band" aria-label="Surface identity">
-        <FieldList
-          rows={[
-            { label: "Listing", value: data.company.primary_listing },
-            { label: "As of", value: data.as_of },
-            { label: "Profile", value: data.profile_id },
-            { label: "Analysis ID", value: data.analysis_id, mono: true },
-            { label: "Surface ID", value: data.surface_id, mono: true },
-            { label: "Content SHA-256", value: data.content_sha256, mono: true },
-          ]}
-        />
+      <section className="identity-band" aria-label={copy.companyNameLabel}>
+        <FieldList rows={identityRows} />
       </section>
 
       <DecisionAndValuation surface={data} />
 
-      <Section title="Deterministic metrics" className="metrics-section">
-        <p className="section-description">
-          Values are displayed as returned. <strong>NOT_AVAILABLE</strong> means the frozen payload
-          contains null or omits the field; it is never replaced with zero.
-        </p>
+      <Section title={copy.metricsSection} className="metrics-section">
+        <p className="section-description">{copy.metricsNote}</p>
         <div className="metric-grid">
-          {metricGroups.map((group) => (
+          {metricGroups(locale).map((group) => (
             <MetricGroup
               key={group.key}
               metric={view.metrics[group.key] as MetricRecord}
               rows={group.rows}
               title={group.title}
-            />
-          ))}
+            />          ))}
         </div>
       </Section>
 
-      <Section title="Hard gates" className="gates-section">
-        <p className="section-description">All six gate results remain visible, including reasons that block progress.</p>
+      <Section title={copy.gatesSection} className="gates-section">
+        <p className="section-description">{copy.gatesNote}</p>
         <div className="gate-grid">
-          {gateLabels.map(({ key, label }) => (
-            <GateCard gate={view.gates[key]} key={key} label={label} />
+          {gates.map(({ key, label }) => (
+            <GateCard gate={view.gates[key as keyof SurfaceGates] as SurfaceGate} key={key} label={label} />
           ))}
         </div>
       </Section>
 
-      <Section title="Data quality">
+      <Section title={copy.dataQualitySection}>
         <div className="status-line">
-          <span>Confidence</span>
+          <span>{copy.confidenceLabel}</span>
           <StatusBadge value={view.data_quality.confidence} />
         </div>
         <FieldList
           rows={[
-            { label: "Evidence coverage", value: view.data_quality.evidence_coverage },
-            { label: "Notes", value: view.data_quality.notes },
+            { label: copy.evidenceCoverage, value: view.data_quality.evidence_coverage },
+            { label: copy.notesLabel, value: view.data_quality.notes },
           ]}
         />
-        <h3>Critical missing fields</h3>
+        <h3>{copy.criticalMissing}</h3>
         <StringList items={view.data_quality.critical_missing_fields} />
         <PillList items={view.flags} />
       </Section>
 
       <BusinessQuality surface={data} />
       <HistoricalStatus surface={data} />
-      <SourceArtifacts surface={data} />
+      <TechnicalAuditDetails surface={data} />
     </div>
   );
 }
