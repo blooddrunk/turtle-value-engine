@@ -68,6 +68,9 @@ worker_name = "tve-personal-dashboard"
 watchlist_path = ".tve-private/monitoring/watchlist.json"
 workspace_root = ".tve-private/monitoring"
 event_impact_policy = "event-impact-v1"
+# Phase 6-B opt-in live acquisition raw cache (non-secret path only; the
+# live command still requires an explicit --network=allow flag).
+acquisition_cache_dir = ".tve-private/monitoring/provider-cache"
 
 # Future provider/storage-specific settings belong under these named sections;
 # they must still contain non-secret values or secret references only.

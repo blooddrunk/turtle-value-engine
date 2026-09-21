@@ -5962,3 +5962,38 @@ source contract now. A later Bridge adapter may be added only after the Bridge
 publishes a typed, bounded, read-only machine operation with live remote
 acceptance and operation-scoped compatibility evidence. Tunnel, Access,
 FQGate lifecycle and Bridge authorization remain owned by the Bridge repo.
+
+---
+
+## Phase 6-B implementation closure — 2026-09-21
+
+**Phase 6-B — Opt-in Live Event Acquisition and Canonicalization** is
+implemented at its live acquisition integration boundary; the closure record
+with exact evidence is `docs/status/phase-6-b-2026-09-21.md`.
+
+What landed:
+
+- `providers/cninfo_disclosure.py`: the first live source client, implementing
+  the frozen Phase 3.84 `FilingDiscoverySourceClient` contract against the
+  public, credential-free CNINFO announcement search (bounded requests,
+  fixed timeout, response byte cap, fail-closed org resolution and truncation
+  rejection).
+- `monitoring_acquisition/`: the provider-neutral, deny-by-default
+  acquisition orchestration plus the deterministic, fail-closed
+  filing-to-event mapping with the conservative end-of-disclosure-day
+  availability policy (`published_at` is never fabricated for date-level
+  evidence).
+- `tve watch acquire-events` with explicit `--network=allow` (default deny)
+  or `--from-cache` offline replay; ordinary CI stays offline and
+  model-independent.
+- Live CNINFO evidence: real FY2025 annual report (600519) and H1-2026
+  interim report (000858) acquired, classified from verified CNINFO document
+  class metadata, replayed byte-identically from the persisted raw cache, and
+  committed through the unchanged Phase 6-A workspace with cursor movement
+  proven to occur only at the atomic monitoring commit.
+
+Explicitly not started: verified high-impact classification rules beyond
+annual/interim (they stay informational by default), BJ/H live sources,
+Phase 6-C re-analysis execution, Phase 6-D scheduling/notifications and
+Phase 6-E owner unattended acceptance. The FQGate Bridge remains a future
+optional source behind the same provider-neutral interface.

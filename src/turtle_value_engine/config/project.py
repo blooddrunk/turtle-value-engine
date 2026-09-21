@@ -216,13 +216,15 @@ class DashboardSettings(BaseModel):
 
 
 class MonitoringSettings(BaseModel):
-    """Non-secret Phase 6-A watchlist monitoring defaults.
+    """Non-secret watchlist monitoring defaults (Phase 6-A/6-B).
 
     Phase 6-A is offline-only: there is deliberately no schedule, webhook,
     notification or provider-credential field here.  ``event_impact_policy``
     accepts only the versioned monitoring policy shipped with the engine so
     an unknown policy id fails closed instead of silently changing impact
-    semantics.
+    semantics.  Phase 6-B adds only a non-secret raw-cache directory for the
+    opt-in live acquisition command; network access itself stays
+    deny-by-default and is never implied by configuration.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -230,10 +232,18 @@ class MonitoringSettings(BaseModel):
     watchlist_path: str | None = None
     workspace_root: str | None = None
     event_impact_policy: Literal["event-impact-v1"] = "event-impact-v1"
+    acquisition_cache_dir: str = ".tve-private/monitoring/provider-cache"
 
     _blank_optional = field_validator(
         "watchlist_path", "workspace_root", mode="before"
     )(_blank_to_none)
+
+    @field_validator("acquisition_cache_dir")
+    @classmethod
+    def _validate_cache_dir(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("acquisition_cache_dir must not be blank")
+        return value
 
 
 class ProjectConfig(BaseModel):
@@ -485,6 +495,9 @@ worker_name = "tve-personal-dashboard"
 watchlist_path = ".tve-private/monitoring/watchlist.json"
 workspace_root = ".tve-private/monitoring"
 event_impact_policy = "event-impact-v1"
+# Phase 6-B opt-in live acquisition raw cache (non-secret path only; the
+# live commands still require an explicit --network=allow flag).
+acquisition_cache_dir = ".tve-private/monitoring/provider-cache"
 
 # Future provider/storage-specific settings belong under these named sections;
 # they must still contain non-secret values or secret references only.

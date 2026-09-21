@@ -47,6 +47,20 @@ the explicit accepted-adjustment materializer and the deterministic decision
 trace helper described below; none of those helpers changes the calculation
 semantics.
 
+Phase 6-B adds the first live client for the Phase 3.84 discovery boundary:
+`providers/cninfo_disclosure.py` implements `FilingDiscoverySourceClient`
+against the public, credential-free CNINFO announcement search with a fixed
+timeout, a response byte cap, two bounded requests per listing, fail-closed
+org resolution and truncation rejection. It fills `document_type` with the
+CNINFO document-class leaf code (source metadata, never a title guess) and
+derives `published_date` from the Beijing calendar date of the announcement
+timestamp. The deterministic filing-to-`MonitoringEventV1` mapping and the
+network-gated acquisition orchestration live in `monitoring_acquisition/`
+(see `docs/architecture/runtime-and-automation.md`); the raw provenance of
+every acquired event is the existing `RawProviderRecord` cache envelope,
+keyed with the CNINFO client version folded into the discovery provider
+version.
+
 ## 2. Responsibilities and boundaries
 
 ### Structured provider adapter

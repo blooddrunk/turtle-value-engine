@@ -394,7 +394,8 @@ def _build_parser() -> argparse.ArgumentParser:
 
     watch_parser = subparsers.add_parser(
         "watch",
-        help="offline deterministic watchlist monitoring (Phase 6-A)",
+        help="deterministic watchlist monitoring (offline by default; live "
+        "acquisition requires explicit network opt-in)",
     )
     watch_commands = watch_parser.add_subparsers(dest="watch_command", required=True)
     watch_validate = watch_commands.add_parser(
@@ -415,6 +416,54 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     watch_status.add_argument("--workspace", required=True, type=Path)
     watch_status.add_argument("--watchlist-id", required=True)
+    watch_acquire = watch_commands.add_parser(
+        "acquire-events",
+        help="acquire official filing events into a canonical batch "
+        "(explicit network opt-in; Phase 6-B)",
+    )
+    watch_acquire.add_argument(
+        "--source", default="CNINFO", choices=("CNINFO",)
+    )
+    watch_acquire.add_argument(
+        "--listing",
+        action="append",
+        default=None,
+        help="canonical listing id, e.g. SH600519; repeatable",
+    )
+    watch_acquire.add_argument(
+        "--watchlist",
+        type=Path,
+        default=None,
+        help="take the enabled listing scope from a watchlist file",
+    )
+    watch_acquire.add_argument(
+        "--from",
+        dest="published_from",
+        type=_parse_date,
+        default=None,
+        help="explicit window start (required unless derived from a committed cursor)",
+    )
+    watch_acquire.add_argument("--to", dest="published_to", required=True, type=_parse_date)
+    watch_acquire.add_argument("--limit", type=_acquire_limit, default=30)
+    watch_acquire.add_argument("--as-of", type=_parse_datetime, default=None)
+    watch_acquire.add_argument("--cache-dir", type=Path, default=None)
+    watch_acquire.add_argument("--output", type=Path, default=None)
+    watch_acquire.add_argument(
+        "--workspace",
+        type=Path,
+        default=None,
+        help="read-only: derive the window start from the committed cursor",
+    )
+    watch_acquire.add_argument("--network", choices=("deny", "allow"), default="deny")
+    watch_acquire.add_argument(
+        "--from-cache",
+        action="store_true",
+        help="offline replay from the persisted raw cache (no network)",
+    )
+    watch_acquire.add_argument("--timeout-seconds", type=_acquire_timeout, default=15.0)
+    watch_acquire.add_argument(
+        "--max-response-bytes", type=_acquire_max_bytes, default=512 * 1024
+    )
     return parser
 
 
@@ -432,6 +481,40 @@ def _parse_datetime(value: str) -> object:
         raise argparse.ArgumentTypeError(
             "as-of must be an ISO-8601 datetime, e.g. 2026-06-01T00:00:00+00:00"
         ) from exc
+
+
+def _acquire_limit(value: str) -> int:
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("limit must be an integer") from exc
+    if not 1 <= parsed <= 30:
+        raise argparse.ArgumentTypeError(
+            "limit must be between 1 and 30 (one bounded CNINFO page)"
+        )
+    return parsed
+
+
+def _acquire_timeout(value: str) -> float:
+    try:
+        parsed = float(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("timeout-seconds must be a number") from exc
+    if not 0 < parsed <= 60:
+        raise argparse.ArgumentTypeError("timeout-seconds must be in (0, 60]")
+    return parsed
+
+
+def _acquire_max_bytes(value: str) -> int:
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("max-response-bytes must be an integer") from exc
+    if not 1024 <= parsed <= 8 * 1024 * 1024:
+        raise argparse.ArgumentTypeError(
+            "max-response-bytes must be between 1 KiB and 8 MiB"
+        )
+    return parsed
 
 
 def _prepare_company(args: argparse.Namespace, listing_id: str) -> Company | None:
@@ -893,7 +976,112 @@ def _run_watch_command(args: argparse.Namespace) -> object:
     if args.watch_command == "status":
         workspace = MonitoringWorkspace(args.workspace)
         return workspace.status(args.watchlist_id)
+    if args.watch_command == "acquire-events":
+        return _run_watch_acquire_events(args)
     raise ValueError(f"unsupported watch command: {args.watch_command}")
+
+
+def _run_watch_acquire_events(args: argparse.Namespace) -> object:
+    from turtle_value_engine.monitoring.canonical import canonical_json_bytes
+    from turtle_value_engine.monitoring_acquisition import (
+        AcquisitionWindow,
+        NetworkDeniedError,
+        acquire_filing_events,
+        derive_window_start_from_state,
+    )
+    from turtle_value_engine.providers.cache import FilesystemRawResponseCache
+    from turtle_value_engine.providers.cninfo_disclosure import (
+        UrllibCninfoHttpTransport,
+        cninfo_disclosure_source_client,
+        cninfo_filing_provider_version,
+    )
+    from turtle_value_engine.providers.filings import (
+        FilingSource,
+        OfficialFilingDiscoveryProvider,
+    )
+
+    if args.network == "allow" and args.from_cache:
+        raise ValueError(
+            "--network=allow and --from-cache are mutually exclusive; choose live "
+            "acquisition or offline replay"
+        )
+    if args.network != "allow" and not args.from_cache:
+        raise NetworkDeniedError(
+            "network is denied; pass --network=allow for an explicit live "
+            "acquisition or --from-cache for offline replay"
+        )
+
+    listings: list[str] = list(args.listing or [])
+    watchlist = None
+    if args.watchlist is not None:
+        watchlist = _load_watchlist(args.watchlist)
+        listings.extend(
+            entry.listing_id for entry in watchlist.entries if entry.enabled
+        )
+    unique: list[str] = []
+    for listing_id in listings:
+        if listing_id not in unique:
+            unique.append(listing_id)
+    if not unique:
+        raise ValueError(
+            "no listing scope: pass --listing at least once or --watchlist with "
+            "enabled entries"
+        )
+
+    published_from = args.published_from
+    if published_from is None and args.workspace is not None and watchlist is not None:
+        state = MonitoringWorkspace(args.workspace).load_current_state(
+            watchlist.watchlist_id
+        )
+        if state is not None:
+            derived = [
+                derive_window_start_from_state(state, listing_id, args.source)
+                for listing_id in unique
+            ]
+            if all(start is not None for start in derived):
+                published_from = min(derived)
+    if published_from is None:
+        raise ValueError(
+            "acquisition window start is required: pass --from explicitly, or pass "
+            "--workspace together with --watchlist when a committed cursor exists"
+        )
+    window = AcquisitionWindow(published_from=published_from, published_to=args.published_to)
+
+    cache_dir = (
+        args.cache_dir
+        if args.cache_dir is not None
+        else Path(".tve-private/monitoring/provider-cache")
+    )
+    transport = UrllibCninfoHttpTransport(
+        timeout_seconds=args.timeout_seconds,
+        max_response_bytes=args.max_response_bytes,
+    )
+    client = cninfo_disclosure_source_client(transport)
+    provider = OfficialFilingDiscoveryProvider(
+        {FilingSource.CNINFO: client},
+        provider_version=cninfo_filing_provider_version(),
+    )
+    outcome = acquire_filing_events(
+        provider=provider,
+        listings=unique,
+        window=window,
+        source_id=args.source,
+        adapter_version=cninfo_filing_provider_version(),
+        cache=FilesystemRawResponseCache(cache_dir),
+        limit=args.limit,
+        as_of=args.as_of,
+        network_allowed=args.network == "allow",
+        offline=args.from_cache,
+    )
+    if args.output is not None:
+        _atomic_write(
+            args.output,
+            canonical_json_bytes(
+                outcome.batch.model_dump(mode="json", warnings=False)
+            )
+            + b"\n",
+        )
+    return outcome.summary
 
 
 def _run_historical_command(args: argparse.Namespace) -> object:

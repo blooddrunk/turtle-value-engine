@@ -103,6 +103,17 @@ These boundaries are orchestration state only: they never invoke a provider,
 model, research or analysis runtime, never approve adjustments and never
 change investment semantics.
 
+Phase 6-B adds the opt-in live event-acquisition boundaries:
+`providers/cninfo_disclosure.py` (bounded credential-free CNINFO
+announcement client behind the frozen `FilingDiscoverySourceClient`
+contract), the `monitoring_acquisition` package (provider-neutral
+deny-by-default orchestration plus the deterministic fail-closed
+filing-to-event mapping with the conservative end-of-disclosure-day
+availability policy) and `tve watch acquire-events --network=allow`
+(or `--from-cache` offline replay). Acquisition writes only raw-cache
+provenance and a canonical `MonitoringEventBatchV1`; it never advances a
+committed cursor and never invokes a model, research or analysis runtime.
+
 The Phase 4 goal is implemented and its closure review is recorded in
 `docs/goals/phase-4-agentic-analysis.md`. Phase 5 is implemented at its
 documented integration boundary and its closure review is recorded in
@@ -212,7 +223,7 @@ without deleting or rewriting any payload value. It did not change the frozen
 surface schema, M6-B API, M6-C2 Access/Worker/Tunnel boundary or deterministic
 investment semantics. The exact M6-C3 build was redeployed through the
 existing M6-C2 path and the machine-verifiable live smoke passed. Phase 6-A —
-Watchlist State and Deterministic Event Planning Foundation — is now complete
+Watchlist State and Deterministic Event Planning Foundation — is complete
 at its offline integration boundary: typed watchlist/event/state/cursor/
 impact-decision/re-analysis-plan/monitoring-run contracts, the monitoring-only
 versioned `event-impact-v1` policy kept separate from `strict-v1`, point-in-time
@@ -223,9 +234,26 @@ committed next state, an atomic/idempotent hash-verified local
 `MonitoringWorkspace`, offline `tve watch validate|replay|status`, an additive
 non-secret `[monitoring]` ProjectConfig section and checked-in monitoring
 schemas with drift tests. The monitoring package performs no provider, model,
-research, analysis, Cloudflare or brokerage calls, and later Phase 6 packages
-(live acquisition, re-analysis execution, schedulers/notifications) are not
-started. Exact gate, deployment
+research, analysis, Cloudflare or brokerage calls. Phase 6-B — Opt-in Live
+Event Acquisition and Canonicalization — is complete at its live acquisition
+integration boundary: `providers/cninfo_disclosure.py` implements the frozen
+`FilingDiscoverySourceClient` contract against the public credential-free
+CNINFO announcement search (bounded requests, fixed timeout, response byte
+cap, fail-closed org resolution and truncation rejection); the
+`monitoring_acquisition` package provides the provider-neutral
+deny-by-default acquisition orchestration and the deterministic fail-closed
+filing-to-`MonitoringEventV1` mapping (only probe-verified CNINFO document
+class codes map to typed events, everything else is
+`INFORMATIONAL_DISCLOSURE`; `published_at` is never fabricated for date-level
+evidence and `available_at` uses the conservative end-of-disclosure-day policy
+on the fixed UTC+8 calendar); `tve watch acquire-events` requires explicit
+`--network=allow` or runs `--from-cache` offline replay, writes raw provenance
+only into the existing raw-cache envelope and never advances a committed
+cursor — cursors move only through the unchanged Phase 6-A atomic commit.
+Live CNINFO evidence (real annual/interim reports, byte-identical offline
+replay, cursor proof) is recorded in `docs/status/phase-6-b-2026-09-21.md`.
+Later Phase 6 packages (re-analysis execution, schedulers/notifications,
+Bridge adapter) are not started. Exact gate, deployment
 and remaining-input evidence is recorded in
 `docs/status/phase-5r-a-2026-09-20.md` and
 `docs/status/phase-6-a-2026-09-21.md`. Project-wide non-secret runtime

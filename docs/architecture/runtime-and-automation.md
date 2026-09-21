@@ -391,6 +391,56 @@ brokerage code, and ProjectConfig gains only a non-secret `[monitoring]`
 section. Live provider adapters (Phase 6-B), the re-analysis executor
 (Phase 6-C) and schedulers/notifications (Phase 6-D) are later packages.
 
+### Phase 6-B — opt-in live event acquisition (implemented)
+
+Phase 6-B connects one bounded live source to the Phase 6-A boundary
+without changing investment semantics:
+
+```text
+committed WatchlistStateV1 (read-only cursor consultation)
+  -> bounded source/listing window (explicit or cursor-derived, <= 366 days)
+  -> tve watch acquire-events --network=allow   (deny by default)
+  -> CNINFO official announcement query (2 bounded POSTs per listing,
+     credential-free, fixed timeout, response byte cap, truncation fail-closed)
+  -> existing filing-discovery provider boundary -> raw cache envelope
+  -> deterministic mapping -> MonitoringEventBatchV1 (canonical artifact)
+  -> existing tve watch replay -> atomic MonitoringWorkspace commit
+  -> source/listing cursors advance only here
+```
+
+Key contracts:
+
+- `providers/cninfo_disclosure.py` implements the frozen
+  `FilingDiscoverySourceClient` contract for the public CNINFO announcement
+  search; it is the only live transport in this phase and carries no
+  credential, cookie or session.
+- `monitoring_acquisition/` (outside the pure `monitoring` package, whose
+  import isolation is frozen by test) provides the provider-neutral
+  orchestration: deny-by-default `network_allowed`, offline `--from-cache`
+  replay from the persisted raw record, listing/window/limit scope bounds,
+  optional explicit `as_of` point-in-time filtering, and canonical batch
+  construction with duplicate/conflict semantics.
+- Classification is fail-closed: only probe-verified CNINFO document-class
+  leaf codes map to typed events (`010301 -> ANNUAL_REPORT`,
+  `010303 -> INTERIM_REPORT`); every other document class becomes
+  `INFORMATIONAL_DISCLOSURE` with an explicit unverified-rule id.  Nothing is
+  inferred from titles.
+- Timestamp honesty: CNINFO stamps scheduled disclosures at Beijing
+  midnight, indistinguishable from date-only normalization, so
+  `published_at` stays `None`; `available_at` is the last microsecond of the
+  publication date on the fixed UTC+08:00 disclosure calendar — the latest
+  instant guaranteed available, never the fetch clock and never a fake
+  midnight UTC instant.
+- Acquisition never writes a `MonitoringWorkspace` and never advances a
+  cursor; repeated acquisition of identical source records reproduces
+  byte-identical canonical batches, and the raw cache key folds in the CNINFO
+  client version so normalization changes can never replay stale shapes.
+
+The FQGate remote bridge remains a future optional source consumed through
+the same provider-neutral interface once it publishes a typed, bounded,
+read-only machine operation with sufficient source timestamps; Turtle owns
+no Bridge Cloudflare/FQGate lifecycle.
+
 ---
 
 ## 6. Scheduler choices

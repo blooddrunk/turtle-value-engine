@@ -1,6 +1,8 @@
 # Phase 6-B next Codex goal — opt-in live event acquisition
 
-Status: **PHASE 6-B SELECTED / READY FOR IMPLEMENTATION (2026-09-21)**
+Status: **PHASE 6-B IMPLEMENTED / CLOSED (2026-09-21) — closure evidence in
+`docs/status/phase-6-b-2026-09-21.md`; the next package requires a fresh
+selection audit**
 
 Baseline selection commit is the commit that introduced this file revision.
 Phase 6-A is verified CLOSED on main; selection evidence is recorded in
