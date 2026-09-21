@@ -6051,3 +6051,48 @@ The non-interactive library/CLI surface is complete for this phase:
 `ReanalysisExecutor`, `tve watch execute-reanalysis` and
 `tve watch reanalysis-status`. Phase 6-D scheduling/notifications/Dashboard
 monitoring views and Phase 6-E unattended acceptance remain unopened.
+
+
+---
+
+## Phase 6-D1 selection — 2026-09-21
+
+Phase 6-C is independently verified CLOSED at the controlled re-analysis
+executor boundary. The implementation commit
+`02d3fab6383a081dc7ee48cd80a11aa328b757ba` has successful push CI run
+`35588244900`; that run completed Ruff, 6537 Python tests (2 skipped),
+generated-contract checks, 44 Dashboard tests, Dashboard build/security
+checks, Wrangler dry-run and the cross-stack smoke. The documentation-only
+follow-up `74337ac4882b6a5bd99ff2eef7a318e7f98cac94` records the closure
+evidence.
+
+The selected next package is:
+
+**Phase 6-D1 — Deterministic Monitoring Cycle and Alert-Outbox Foundation**
+
+Source of truth:
+`docs/goals/phase-6-d1-monitoring-cycle-alert-outbox.md`
+
+Selection audit:
+`docs/status/phase-6-d1-selection-2026-09-21.md`
+
+Phase 6-D is split deliberately:
+
+- D1 composes one synchronous, scheduler-neutral 6-B -> 6-A -> 6-C monitoring
+  cycle and emits a deterministic immutable alert outbox;
+- D2 will later choose the persistent unattended scheduler/runtime and add
+  notification delivery/receipt semantics;
+- D3 will later expose read-only monitoring/cycle/job state through the
+  existing API/Cloudflare/Dashboard stack;
+- Phase 6-E remains the owner live unattended acceptance package.
+
+D1 must fail closed before advancing the Phase 6-A pointer when the current
+committed run still has BLOCKED/FAILED re-analysis work. This preserves the
+Phase 6-C committed-run proof rather than weakening it merely to support a
+scheduler.
+
+No live CNINFO rerun is required for D1 unless D1 modifies the already-closed
+Phase 6-B provider/acquisition/mapping/transport boundary. Ordinary D1
+acceptance must be automatic through fake transport, persisted-cache replay,
+full repository gates and exact-closing-SHA CI. D1 requires no manual
+functional acceptance.
