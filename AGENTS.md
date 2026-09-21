@@ -259,9 +259,17 @@ separate library/store/CLI boundary; exact gate and CI evidence is recorded in
 `docs/status/phase-6-c-2026-09-21.md`. It consumes only committed monitoring
 runs, persists terminal typed jobs and immutable output artifacts separately,
 and does not mutate Phase 6-A state. Phase 6-D1 — Deterministic Monitoring
-Cycle and Alert-Outbox Foundation — is selected next; its source of truth is
-`docs/goals/phase-6-d1-monitoring-cycle-alert-outbox.md`. D1 composes one
-scheduler-neutral cycle only. Phase 6-D2 scheduling/notification delivery,
+Cycle and Alert-Outbox Foundation — is implemented and closed at its separate
+synchronous library/store/CLI boundary; exact automatic verification and CI
+evidence is recorded in
+`docs/status/phase-6-d1-2026-09-21.md`. D1 composes exactly one explicit
+point-in-time cycle through the existing Phase 6-B acquisition, Phase 6-A
+atomic commit and Phase 6-C executor, then persists deterministic terminal
+cycle/result/outbox artifacts and a repairable atomic latest pointer. It
+requires explicit typed execution bindings and blocks advancement when the
+current committed run has unresolved `BLOCKED` or `FAILED` jobs. D1 has no
+scheduler, notification delivery, Dashboard monitoring mutation, Cloudflare
+mutation, or brokerage operation. Phase 6-D2 scheduling/notification delivery,
 Phase 6-D3 Dashboard monitoring views, Phase 6-E unattended acceptance and the
 optional Bridge adapter are not started. Exact gate, deployment
 and remaining-input evidence is recorded in

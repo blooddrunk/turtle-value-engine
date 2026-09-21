@@ -1,0 +1,312 @@
+{
+  "$defs": {
+    "CanonicalEventType": {
+      "description": "Closed set of canonical monitoring event types.",
+      "enum": [
+        "ANNUAL_REPORT",
+        "INTERIM_REPORT",
+        "EARNINGS_PREANNOUNCEMENT",
+        "DIVIDEND_POLICY_CHANGE",
+        "DIVIDEND_DECLARATION",
+        "BUYBACK",
+        "SHARE_ISSUANCE",
+        "MAJOR_ACQUISITION",
+        "MAJOR_DISPOSAL",
+        "AUDIT_OPINION_CHANGE",
+        "REGULATORY_PENALTY",
+        "CONTROLLING_SHAREHOLDER_EVENT",
+        "MATERIAL_LITIGATION",
+        "PROFIT_WARNING",
+        "TRADING_SUSPENSION",
+        "INFORMATIONAL_DISCLOSURE"
+      ],
+      "title": "CanonicalEventType",
+      "type": "string"
+    },
+    "MonitoringEventBatchV1": {
+      "additionalProperties": false,
+      "description": "Canonical, deduplicated, deterministically ordered event batch.",
+      "properties": {
+        "contract": {
+          "const": "monitoring_event_batch_v1",
+          "default": "monitoring_event_batch_v1",
+          "title": "Contract",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "1.0.0",
+          "default": "1.0.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "batch_id": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Batch Id",
+          "type": "string"
+        },
+        "events": {
+          "items": {
+            "$ref": "#/$defs/MonitoringEventV1"
+          },
+          "title": "Events",
+          "type": "array"
+        },
+        "content_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Content Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "batch_id",
+        "content_sha256"
+      ],
+      "title": "MonitoringEventBatchV1",
+      "type": "object"
+    },
+    "MonitoringEventV1": {
+      "additionalProperties": false,
+      "description": "One canonical monitoring event with auditable source provenance.",
+      "properties": {
+        "contract": {
+          "const": "monitoring_event_v1",
+          "default": "monitoring_event_v1",
+          "title": "Contract",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "1.0.0",
+          "default": "1.0.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "event_id": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Event Id",
+          "type": "string"
+        },
+        "listing_id": {
+          "maxLength": 32,
+          "minLength": 1,
+          "title": "Listing Id",
+          "type": "string"
+        },
+        "event_type": {
+          "$ref": "#/$defs/CanonicalEventType"
+        },
+        "source_id": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Source Id",
+          "type": "string"
+        },
+        "source_event_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Event Id"
+        },
+        "source_artifact_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Artifact Id"
+        },
+        "published_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Published At"
+        },
+        "available_at": {
+          "format": "date-time",
+          "title": "Available At",
+          "type": "string"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "maxLength": 300,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Title"
+        },
+        "summary": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Summary"
+        },
+        "content_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Content Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "event_id",
+        "listing_id",
+        "event_type",
+        "source_id",
+        "available_at",
+        "content_sha256"
+      ],
+      "title": "MonitoringEventV1",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Immutable acquisition-stage receipt used for crash/retry recovery.",
+  "properties": {
+    "contract": {
+      "const": "monitoring_cycle_acquisition_v1",
+      "default": "monitoring_cycle_acquisition_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0.0",
+      "default": "1.0.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "cycle_id": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Cycle Id",
+      "type": "string"
+    },
+    "spec_content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Spec Content Sha256",
+      "type": "string"
+    },
+    "watchlist_id": {
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Watchlist Id",
+      "type": "string"
+    },
+    "watchlist_content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Watchlist Content Sha256",
+      "type": "string"
+    },
+    "prior_state_id": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Prior State Id"
+    },
+    "source_id": {
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Source Id",
+      "type": "string"
+    },
+    "adapter_version": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Adapter Version",
+      "type": "string"
+    },
+    "published_from": {
+      "format": "date",
+      "title": "Published From",
+      "type": "string"
+    },
+    "published_to": {
+      "format": "date",
+      "title": "Published To",
+      "type": "string"
+    },
+    "network_allowed": {
+      "title": "Network Allowed",
+      "type": "boolean"
+    },
+    "offline_replay": {
+      "title": "Offline Replay",
+      "type": "boolean"
+    },
+    "retrieval_mode": {
+      "enum": [
+        "LIVE",
+        "CACHE_REPLAY",
+        "INJECTED"
+      ],
+      "title": "Retrieval Mode",
+      "type": "string"
+    },
+    "batch": {
+      "$ref": "#/$defs/MonitoringEventBatchV1"
+    },
+    "acquisition_id": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Acquisition Id",
+      "type": "string"
+    },
+    "content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Content Sha256",
+      "type": "string"
+    }
+  },
+  "required": [
+    "cycle_id",
+    "spec_content_sha256",
+    "watchlist_id",
+    "watchlist_content_sha256",
+    "source_id",
+    "adapter_version",
+    "published_from",
+    "published_to",
+    "network_allowed",
+    "offline_replay",
+    "retrieval_mode",
+    "batch",
+    "acquisition_id",
+    "content_sha256"
+  ],
+  "title": "MonitoringCycleAcquisitionV1",
+  "type": "object"
+}

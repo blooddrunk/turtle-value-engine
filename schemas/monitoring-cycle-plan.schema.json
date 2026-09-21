@@ -1,0 +1,91 @@
+{
+  "additionalProperties": false,
+  "description": "Immutable plan-stage receipt binding D1 to a committed 6-A run.",
+  "properties": {
+    "contract": {
+      "const": "monitoring_cycle_plan_v1",
+      "default": "monitoring_cycle_plan_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0.0",
+      "default": "1.0.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "cycle_id": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Cycle Id",
+      "type": "string"
+    },
+    "spec_content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Spec Content Sha256",
+      "type": "string"
+    },
+    "prior_state_id": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Prior State Id"
+    },
+    "next_state_id": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Next State Id",
+      "type": "string"
+    },
+    "event_batch_id": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Event Batch Id",
+      "type": "string"
+    },
+    "monitoring_run_id": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Monitoring Run Id",
+      "type": "string"
+    },
+    "monitoring_run_content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Monitoring Run Content Sha256",
+      "type": "string"
+    },
+    "request_ids": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 256,
+      "title": "Request Ids",
+      "type": "array"
+    },
+    "plan_id": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Plan Id",
+      "type": "string"
+    },
+    "content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Content Sha256",
+      "type": "string"
+    }
+  },
+  "required": [
+    "cycle_id",
+    "spec_content_sha256",
+    "next_state_id",
+    "event_batch_id",
+    "monitoring_run_id",
+    "monitoring_run_content_sha256",
+    "plan_id",
+    "content_sha256"
+  ],
+  "title": "MonitoringCyclePlanV1",
+  "type": "object"
+}

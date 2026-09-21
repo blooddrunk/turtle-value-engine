@@ -68,6 +68,13 @@ from turtle_value_engine.monitoring import (
     run_monitoring,
 )
 from turtle_value_engine.monitoring.canonical import to_utc_datetime
+from turtle_value_engine.monitoring_cycle import (
+    CninfoCycleAcquisition,
+    MonitoringCycleRunner,
+    MonitoringCycleSpecV1,
+    MonitoringCycleStore,
+    MonitoringExecutionCatalogV1,
+)
 from turtle_value_engine.monitoring_execution import (
     ReanalysisExecutor,
     ReanalysisJobStore,
@@ -498,6 +505,41 @@ def _build_parser() -> argparse.ArgumentParser:
     watch_acquire.add_argument(
         "--max-response-bytes", type=_acquire_max_bytes, default=512 * 1024
     )
+    watch_cycle = watch_commands.add_parser(
+        "cycle",
+        help="run one synchronous Phase 6-D1 monitoring cycle",
+    )
+    watch_cycle.add_argument("--watchlist", required=True, type=Path)
+    watch_cycle.add_argument("--workspace", required=True, type=Path)
+    watch_cycle.add_argument("--job-root", required=True, type=Path)
+    watch_cycle.add_argument("--cycle-root", required=True, type=Path)
+    watch_cycle.add_argument("--as-of", required=True, type=_parse_datetime)
+    watch_cycle.add_argument(
+        "--from", dest="published_from", required=True, type=_parse_date
+    )
+    watch_cycle.add_argument("--to", dest="published_to", required=True, type=_parse_date)
+    watch_cycle.add_argument("--source", choices=("CNINFO",), default="CNINFO")
+    watch_cycle.add_argument("--adapter-version", default=None)
+    watch_cycle.add_argument("--acquisition-policy-id", default="monitoring-acquisition-v1")
+    watch_cycle.add_argument("--limit", type=_acquire_limit, default=30)
+    watch_cycle.add_argument("--network", choices=("deny", "allow"), default="deny")
+    watch_cycle.add_argument(
+        "--from-cache",
+        action="store_true",
+        help="replay Phase 6-B raw cache with sockets unused",
+    )
+    watch_cycle.add_argument("--cache-dir", type=Path, default=Path(".tve-cache"))
+    watch_cycle.add_argument("--execution-catalog", type=Path, default=None)
+    watch_cycle.add_argument("--timeout-seconds", type=_acquire_timeout, default=15.0)
+    watch_cycle.add_argument(
+        "--max-response-bytes", type=_acquire_max_bytes, default=512 * 1024
+    )
+    watch_cycle.add_argument("--output", type=Path, default=None)
+    watch_cycle_status = watch_commands.add_parser(
+        "cycle-status", help="read one terminal Phase 6-D1 cycle and alert outbox"
+    )
+    watch_cycle_status.add_argument("--cycle-root", required=True, type=Path)
+    watch_cycle_status.add_argument("--cycle-id", required=True)
     return parser
 
 
@@ -1024,7 +1066,79 @@ def _run_watch_command(args: argparse.Namespace) -> object:
         }
     if args.watch_command == "acquire-events":
         return _run_watch_acquire_events(args)
+    if args.watch_command == "cycle":
+        return _run_watch_cycle(args)
+    if args.watch_command == "cycle-status":
+        status = MonitoringCycleStore(args.cycle_root).load_status(args.cycle_id)
+        if status is None:
+            raise ValueError("monitoring cycle was not found")
+        return status
     raise ValueError(f"unsupported watch command: {args.watch_command}")
+
+
+def _load_execution_catalog(path: Path | None) -> MonitoringExecutionCatalogV1:
+    if path is None:
+        return MonitoringExecutionCatalogV1.build()
+    payload = _read_json(path)
+    try:
+        return MonitoringExecutionCatalogV1.model_validate(payload)
+    except ValidationError as exc:
+        raise ValueError(f"invalid execution catalog {path}: {_validation_blocker(exc)}") from exc
+
+
+def _run_watch_cycle(args: argparse.Namespace) -> object:
+    from turtle_value_engine.providers.cninfo_disclosure import (
+        cninfo_filing_provider_version,
+    )
+
+    if args.network == "allow" and args.from_cache:
+        raise ValueError("--network allow and --from-cache are mutually exclusive")
+    watchlist = _load_watchlist(args.watchlist)
+    catalog = _load_execution_catalog(args.execution_catalog)
+    workspace = MonitoringWorkspace(args.workspace)
+    job_store = ReanalysisJobStore(args.job_root)
+    cycle_store = MonitoringCycleStore(args.cycle_root)
+    network_allowed = args.network == "allow"
+    spec = MonitoringCycleSpecV1.build(
+        watchlist_id=watchlist.watchlist_id,
+        watchlist_content_sha256=watchlist.content_sha256,
+        as_of=args.as_of,
+        acquisition_policy_id=args.acquisition_policy_id,
+        source_id=args.source,
+        adapter_version=args.adapter_version or cninfo_filing_provider_version(),
+        published_from=args.published_from,
+        published_to=args.published_to,
+        acquisition_limit=args.limit,
+        network_allowed=network_allowed,
+        offline_replay=args.from_cache,
+        monitoring_workspace_root=str(workspace.root),
+        reanalysis_job_root=str(job_store.root),
+        cycle_store_root=str(cycle_store.root),
+        execution_catalog=catalog,
+    )
+    preparation = NormalizedCompanyInputBuilder(
+        AKShareProvider(), FilesystemRawResponseCache(args.cache_dir)
+    )
+    acquisition = CninfoCycleAcquisition(
+        args.cache_dir,
+        timeout_seconds=args.timeout_seconds,
+        max_response_bytes=args.max_response_bytes,
+    )
+    outcome = MonitoringCycleRunner(
+        workspace,
+        job_store,
+        cycle_store,
+        acquisition=acquisition,
+        preparation=preparation,
+        model_allowed=False,
+    ).run(spec, watchlist)
+    result = {
+        "cycle": outcome.result,
+        "alert_batch": outcome.alert_batch,
+        "reused": outcome.reused,
+    }
+    _write_optional(args.output, result)
+    return result
 
 
 def _run_watch_execute_reanalysis(args: argparse.Namespace) -> object:

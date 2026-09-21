@@ -1,6 +1,6 @@
 # Phase 6-D1 — Deterministic Monitoring Cycle and Alert-Outbox Foundation
 
-Status: **SELECTED / NOT IMPLEMENTED**
+Status: **CLOSED / IMPLEMENTED**
 Date: 2026-09-21
 Selected after: Phase 6-C CLOSED
 Selection audit: `docs/status/phase-6-d1-selection-2026-09-21.md`

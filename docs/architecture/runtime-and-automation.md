@@ -476,6 +476,44 @@ provider/model calls, and leaves monitoring cursors and processed-event state
 byte-identical. Scheduling, notification and Dashboard mutation remain Phase
 6-D work.
 
+### Phase 6-D1 — synchronous monitoring cycle and alert outbox (implemented)
+
+Phase 6-D1 adds one scheduler-neutral, synchronous composition boundary. It
+does not add a scheduler or a delivery transport:
+
+```text
+explicit MonitoringCycleSpecV1 (including immutable as_of/PIT and bindings)
+  -> existing Phase 6-B acquisition boundary
+  -> existing Phase 6-A run_monitoring + MonitoringWorkspace.commit_run
+  -> existing Phase 6-C ReanalysisExecutor for every committed request
+  -> deterministic MonitoringAlertBatchV1 outbox
+  -> terminal MonitoringCycleResultV1 + atomic cycle latest pointer
+```
+
+The additive `monitoring_cycle/` package owns only this composition and its
+separate immutable cycle store. `MonitoringExecutionBindingV1` and
+`MonitoringExecutionCatalogV1` carry explicit, non-secret company,
+prepared-input, prior-analysis or injected-resolver context; no company name,
+sector, currency, input, prior analysis or research runtime is inferred. The
+cycle records source/run/job/surface identities and never changes impact
+severity into an investment recommendation or approves an adjustment.
+
+Before a new Phase 6-A commit, D1 verifies every required disposition of the
+current committed run. `SUCCEEDED`, `NO_ACTION` and
+`MANUAL_REVIEW_REQUIRED` are resolved; the manual state still emits an
+attention alert. `BLOCKED` and `FAILED` (including a missing/corrupt required
+disposition) stop the cycle before the Phase 6-A pointer can advance. A
+successful identical retry reuses the terminal cycle/outbox and lower-level
+artifacts. Immutable cycle/result/outbox artifacts are hash-validated and a
+pointer-only crash can be repaired without repeating provider/model work.
+
+The non-interactive surface is `tve watch cycle` and `tve watch cycle-status`.
+It remains offline/test-injectable by default; live acquisition still requires
+the existing explicit `--network=allow` policy, while `--from-cache` replays
+the existing Phase 6-B raw cache. Phase 6-D2 scheduling and notification
+delivery, Phase 6-D3 Dashboard monitoring views and Phase 6-E unattended
+acceptance remain outside this boundary.
+
 ---
 
 ## 6. Scheduler choices

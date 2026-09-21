@@ -1,0 +1,330 @@
+{
+  "$defs": {
+    "CycleFailureCode": {
+      "description": "Stable, secret-free D1 blocker/failure categories.",
+      "enum": [
+        "ACQUISITION_FAILED",
+        "INVALID_ACQUISITION_RESULT",
+        "UNRESOLVED_CURRENT_RUN",
+        "MISSING_EXECUTION_DISPOSITION",
+        "MISSING_EXECUTION_BINDING",
+        "EXECUTION_ATTENTION_REQUIRED",
+        "MONITORING_COMMIT_FAILED",
+        "CYCLE_STORE_FAILED",
+        "CYCLE_CONFLICT",
+        "LOWER_LEVEL_INELIGIBLE"
+      ],
+      "title": "CycleFailureCode",
+      "type": "string"
+    },
+    "CycleStatus": {
+      "description": "Terminal outcomes of one synchronous monitoring cycle.",
+      "enum": [
+        "NO_CHANGE",
+        "ALERTS_EMITTED",
+        "ATTENTION_REQUIRED",
+        "FAILED"
+      ],
+      "title": "CycleStatus",
+      "type": "string"
+    },
+    "ImpactClass": {
+      "description": "Deterministic follow-up severity for one event or listing group.",
+      "enum": [
+        "NO_REANALYSIS",
+        "PARTIAL_REANALYSIS",
+        "FULL_REANALYSIS",
+        "URGENT_MANUAL_REVIEW"
+      ],
+      "title": "ImpactClass",
+      "type": "string"
+    },
+    "MonitoringCycleExecutionDispositionV1": {
+      "additionalProperties": false,
+      "description": "The exact terminal Phase 6-C disposition required by one request.",
+      "properties": {
+        "contract": {
+          "const": "monitoring_cycle_execution_disposition_v1",
+          "default": "monitoring_cycle_execution_disposition_v1",
+          "title": "Contract",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "1.0.0",
+          "default": "1.0.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "request_id": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Request Id",
+          "type": "string"
+        },
+        "listing_id": {
+          "maxLength": 32,
+          "minLength": 1,
+          "title": "Listing Id",
+          "type": "string"
+        },
+        "impact": {
+          "$ref": "#/$defs/ImpactClass"
+        },
+        "job_id": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Job Id",
+          "type": "string"
+        },
+        "job_content_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Job Content Sha256"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ReanalysisJobStatus"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "failure_code": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Failure Code"
+        },
+        "resolution": {
+          "enum": [
+            "RESOLVED",
+            "UNRESOLVED",
+            "MISSING"
+          ],
+          "title": "Resolution",
+          "type": "string"
+        }
+      },
+      "required": [
+        "request_id",
+        "listing_id",
+        "impact",
+        "job_id",
+        "resolution"
+      ],
+      "title": "MonitoringCycleExecutionDispositionV1",
+      "type": "object"
+    },
+    "ReanalysisJobStatus": {
+      "description": "Terminal states persisted by the synchronous Phase 6-C executor.",
+      "enum": [
+        "NO_ACTION",
+        "MANUAL_REVIEW_REQUIRED",
+        "BLOCKED",
+        "FAILED",
+        "SUCCEEDED"
+      ],
+      "title": "ReanalysisJobStatus",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Terminal D1 result, including every lower-level execution disposition.",
+  "properties": {
+    "contract": {
+      "const": "monitoring_cycle_result_v1",
+      "default": "monitoring_cycle_result_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0.0",
+      "default": "1.0.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "cycle_id": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Cycle Id",
+      "type": "string"
+    },
+    "spec_content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Spec Content Sha256",
+      "type": "string"
+    },
+    "watchlist_id": {
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Watchlist Id",
+      "type": "string"
+    },
+    "watchlist_content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Watchlist Content Sha256",
+      "type": "string"
+    },
+    "as_of": {
+      "format": "date-time",
+      "title": "As Of",
+      "type": "string"
+    },
+    "status": {
+      "$ref": "#/$defs/CycleStatus"
+    },
+    "failure_code": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/CycleFailureCode"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "message": {
+      "anyOf": [
+        {
+          "maxLength": 512,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Message"
+    },
+    "prior_state_id": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Prior State Id"
+    },
+    "event_batch_id": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Event Batch Id"
+    },
+    "event_batch_content_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Event Batch Content Sha256"
+    },
+    "monitoring_run_id": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Monitoring Run Id"
+    },
+    "monitoring_run_content_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Monitoring Run Content Sha256"
+    },
+    "next_state_id": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Next State Id"
+    },
+    "alert_batch_id": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Alert Batch Id",
+      "type": "string"
+    },
+    "alert_batch_content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Alert Batch Content Sha256",
+      "type": "string"
+    },
+    "execution": {
+      "items": {
+        "$ref": "#/$defs/MonitoringCycleExecutionDispositionV1"
+      },
+      "maxItems": 256,
+      "title": "Execution",
+      "type": "array"
+    },
+    "content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Content Sha256",
+      "type": "string"
+    }
+  },
+  "required": [
+    "cycle_id",
+    "spec_content_sha256",
+    "watchlist_id",
+    "watchlist_content_sha256",
+    "as_of",
+    "status",
+    "alert_batch_id",
+    "alert_batch_content_sha256",
+    "content_sha256"
+  ],
+  "title": "MonitoringCycleResultV1",
+  "type": "object"
+}

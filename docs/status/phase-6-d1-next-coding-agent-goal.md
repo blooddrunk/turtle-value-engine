@@ -1,6 +1,6 @@
 # Phase 6-D1 coding-agent handoff — Deterministic Monitoring Cycle and Alert Outbox
 
-Status: **SELECTED / NOT IMPLEMENTED**
+Status: **CLOSED / IMPLEMENTED**
 
 Canonical goal:
 `docs/goals/phase-6-d1-monitoring-cycle-alert-outbox.md`

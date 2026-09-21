@@ -1,0 +1,249 @@
+{
+  "$defs": {
+    "Company": {
+      "additionalProperties": false,
+      "description": "Company identity and accounting context.\n\n``primary_listing`` is the canonical stable issuer/listing identifier;\nadditional listings stay in ``other_listings`` for later price mapping.",
+      "properties": {
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "legal_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Legal Name"
+        },
+        "primary_listing": {
+          "minLength": 1,
+          "title": "Primary Listing",
+          "type": "string"
+        },
+        "other_listings": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Other Listings",
+          "type": "array"
+        },
+        "sector": {
+          "minLength": 1,
+          "title": "Sector",
+          "type": "string"
+        },
+        "industry": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Industry"
+        },
+        "country_or_region": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Country Or Region"
+        },
+        "reporting_currency": {
+          "maxLength": 3,
+          "minLength": 3,
+          "title": "Reporting Currency",
+          "type": "string"
+        },
+        "accounting_standard": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Accounting Standard"
+        },
+        "accounting_standard_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Accounting Standard Version"
+        },
+        "fiscal_year_end": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fiscal Year End"
+        },
+        "special_model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Special Model"
+        }
+      },
+      "required": [
+        "name",
+        "primary_listing",
+        "sector",
+        "reporting_currency"
+      ],
+      "title": "Company",
+      "type": "object"
+    },
+    "MonitoringExecutionBindingV1": {
+      "additionalProperties": false,
+      "description": "Explicit non-secret inputs for one listing's re-analysis request.\n\nA binding may point to a prepared input and/or prior analysis artifact, or\ncarry an explicit company context for the existing preparation boundary.\nAn omitted binding is meaningful: D1 treats it as a blocker for PARTIAL or\nFULL execution rather than inventing company facts.",
+      "properties": {
+        "contract": {
+          "const": "monitoring_execution_binding_v1",
+          "default": "monitoring_execution_binding_v1",
+          "title": "Contract",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "1.0.0",
+          "default": "1.0.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "listing_id": {
+          "maxLength": 32,
+          "minLength": 1,
+          "title": "Listing Id",
+          "type": "string"
+        },
+        "company": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Company"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "prepared_input_path": {
+          "anyOf": [
+            {
+              "maxLength": 512,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Prepared Input Path"
+        },
+        "prior_analysis_path": {
+          "anyOf": [
+            {
+              "maxLength": 512,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Prior Analysis Path"
+        },
+        "resolver_key": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Resolver Key"
+        }
+      },
+      "required": [
+        "listing_id"
+      ],
+      "title": "MonitoringExecutionBindingV1",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Canonical collection of explicit per-listing execution bindings.",
+  "properties": {
+    "contract": {
+      "const": "monitoring_execution_catalog_v1",
+      "default": "monitoring_execution_catalog_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0.0",
+      "default": "1.0.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "bindings": {
+      "items": {
+        "$ref": "#/$defs/MonitoringExecutionBindingV1"
+      },
+      "maxItems": 256,
+      "title": "Bindings",
+      "type": "array"
+    },
+    "catalog_id": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Catalog Id",
+      "type": "string"
+    },
+    "content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Content Sha256",
+      "type": "string"
+    }
+  },
+  "required": [
+    "catalog_id",
+    "content_sha256"
+  ],
+  "title": "MonitoringExecutionCatalogV1",
+  "type": "object"
+}

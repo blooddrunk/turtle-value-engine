@@ -1,0 +1,407 @@
+{
+  "$defs": {
+    "Company": {
+      "additionalProperties": false,
+      "description": "Company identity and accounting context.\n\n``primary_listing`` is the canonical stable issuer/listing identifier;\nadditional listings stay in ``other_listings`` for later price mapping.",
+      "properties": {
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "legal_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Legal Name"
+        },
+        "primary_listing": {
+          "minLength": 1,
+          "title": "Primary Listing",
+          "type": "string"
+        },
+        "other_listings": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Other Listings",
+          "type": "array"
+        },
+        "sector": {
+          "minLength": 1,
+          "title": "Sector",
+          "type": "string"
+        },
+        "industry": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Industry"
+        },
+        "country_or_region": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Country Or Region"
+        },
+        "reporting_currency": {
+          "maxLength": 3,
+          "minLength": 3,
+          "title": "Reporting Currency",
+          "type": "string"
+        },
+        "accounting_standard": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Accounting Standard"
+        },
+        "accounting_standard_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Accounting Standard Version"
+        },
+        "fiscal_year_end": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fiscal Year End"
+        },
+        "special_model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Special Model"
+        }
+      },
+      "required": [
+        "name",
+        "primary_listing",
+        "sector",
+        "reporting_currency"
+      ],
+      "title": "Company",
+      "type": "object"
+    },
+    "MonitoringExecutionBindingV1": {
+      "additionalProperties": false,
+      "description": "Explicit non-secret inputs for one listing's re-analysis request.\n\nA binding may point to a prepared input and/or prior analysis artifact, or\ncarry an explicit company context for the existing preparation boundary.\nAn omitted binding is meaningful: D1 treats it as a blocker for PARTIAL or\nFULL execution rather than inventing company facts.",
+      "properties": {
+        "contract": {
+          "const": "monitoring_execution_binding_v1",
+          "default": "monitoring_execution_binding_v1",
+          "title": "Contract",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "1.0.0",
+          "default": "1.0.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "listing_id": {
+          "maxLength": 32,
+          "minLength": 1,
+          "title": "Listing Id",
+          "type": "string"
+        },
+        "company": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Company"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "prepared_input_path": {
+          "anyOf": [
+            {
+              "maxLength": 512,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Prepared Input Path"
+        },
+        "prior_analysis_path": {
+          "anyOf": [
+            {
+              "maxLength": 512,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Prior Analysis Path"
+        },
+        "resolver_key": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Resolver Key"
+        }
+      },
+      "required": [
+        "listing_id"
+      ],
+      "title": "MonitoringExecutionBindingV1",
+      "type": "object"
+    },
+    "MonitoringExecutionCatalogV1": {
+      "additionalProperties": false,
+      "description": "Canonical collection of explicit per-listing execution bindings.",
+      "properties": {
+        "contract": {
+          "const": "monitoring_execution_catalog_v1",
+          "default": "monitoring_execution_catalog_v1",
+          "title": "Contract",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "1.0.0",
+          "default": "1.0.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "bindings": {
+          "items": {
+            "$ref": "#/$defs/MonitoringExecutionBindingV1"
+          },
+          "maxItems": 256,
+          "title": "Bindings",
+          "type": "array"
+        },
+        "catalog_id": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Catalog Id",
+          "type": "string"
+        },
+        "content_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Content Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "catalog_id",
+        "content_sha256"
+      ],
+      "title": "MonitoringExecutionCatalogV1",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Explicit request for exactly one point-in-time monitoring cycle.",
+  "properties": {
+    "contract": {
+      "const": "monitoring_cycle_spec_v1",
+      "default": "monitoring_cycle_spec_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0.0",
+      "default": "1.0.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "cycle_policy_id": {
+      "const": "monitoring-cycle-v1",
+      "default": "monitoring-cycle-v1",
+      "title": "Cycle Policy Id",
+      "type": "string"
+    },
+    "cycle_policy_version": {
+      "const": "1.0.0",
+      "default": "1.0.0",
+      "title": "Cycle Policy Version",
+      "type": "string"
+    },
+    "watchlist_id": {
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Watchlist Id",
+      "type": "string"
+    },
+    "watchlist_content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Watchlist Content Sha256",
+      "type": "string"
+    },
+    "as_of": {
+      "format": "date-time",
+      "title": "As Of",
+      "type": "string"
+    },
+    "acquisition_policy_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Acquisition Policy Id",
+      "type": "string"
+    },
+    "source_id": {
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Source Id",
+      "type": "string"
+    },
+    "adapter_version": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Adapter Version",
+      "type": "string"
+    },
+    "published_from": {
+      "format": "date",
+      "title": "Published From",
+      "type": "string"
+    },
+    "published_to": {
+      "format": "date",
+      "title": "Published To",
+      "type": "string"
+    },
+    "acquisition_limit": {
+      "maximum": 30,
+      "minimum": 1,
+      "title": "Acquisition Limit",
+      "type": "integer"
+    },
+    "network_allowed": {
+      "default": false,
+      "title": "Network Allowed",
+      "type": "boolean"
+    },
+    "offline_replay": {
+      "default": false,
+      "title": "Offline Replay",
+      "type": "boolean"
+    },
+    "event_impact_policy_id": {
+      "const": "event-impact-v1",
+      "default": "event-impact-v1",
+      "title": "Event Impact Policy Id",
+      "type": "string"
+    },
+    "execution_policy_id": {
+      "const": "reanalysis-execution-v1",
+      "default": "reanalysis-execution-v1",
+      "title": "Execution Policy Id",
+      "type": "string"
+    },
+    "execution_policy_version": {
+      "const": "1.0.0",
+      "default": "1.0.0",
+      "title": "Execution Policy Version",
+      "type": "string"
+    },
+    "monitoring_workspace_root": {
+      "maxLength": 512,
+      "minLength": 1,
+      "title": "Monitoring Workspace Root",
+      "type": "string"
+    },
+    "reanalysis_job_root": {
+      "maxLength": 512,
+      "minLength": 1,
+      "title": "Reanalysis Job Root",
+      "type": "string"
+    },
+    "cycle_store_root": {
+      "maxLength": 512,
+      "minLength": 1,
+      "title": "Cycle Store Root",
+      "type": "string"
+    },
+    "execution_catalog": {
+      "$ref": "#/$defs/MonitoringExecutionCatalogV1"
+    },
+    "cycle_id": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Cycle Id",
+      "type": "string"
+    },
+    "content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Content Sha256",
+      "type": "string"
+    }
+  },
+  "required": [
+    "watchlist_id",
+    "watchlist_content_sha256",
+    "as_of",
+    "acquisition_policy_id",
+    "source_id",
+    "adapter_version",
+    "published_from",
+    "published_to",
+    "acquisition_limit",
+    "monitoring_workspace_root",
+    "reanalysis_job_root",
+    "cycle_store_root",
+    "execution_catalog",
+    "cycle_id",
+    "content_sha256"
+  ],
+  "title": "MonitoringCycleSpecV1",
+  "type": "object"
+}

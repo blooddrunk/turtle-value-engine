@@ -1,0 +1,323 @@
+{
+  "$defs": {
+    "AlertKind": {
+      "description": "Factual alert projections; none is an investment recommendation.",
+      "enum": [
+        "MATERIAL_EVENT",
+        "MANUAL_REVIEW_REQUIRED",
+        "REANALYSIS_BLOCKED",
+        "REANALYSIS_FAILED",
+        "REANALYSIS_SUCCEEDED",
+        "CYCLE_FAILED"
+      ],
+      "title": "AlertKind",
+      "type": "string"
+    },
+    "CanonicalEventType": {
+      "description": "Closed set of canonical monitoring event types.",
+      "enum": [
+        "ANNUAL_REPORT",
+        "INTERIM_REPORT",
+        "EARNINGS_PREANNOUNCEMENT",
+        "DIVIDEND_POLICY_CHANGE",
+        "DIVIDEND_DECLARATION",
+        "BUYBACK",
+        "SHARE_ISSUANCE",
+        "MAJOR_ACQUISITION",
+        "MAJOR_DISPOSAL",
+        "AUDIT_OPINION_CHANGE",
+        "REGULATORY_PENALTY",
+        "CONTROLLING_SHAREHOLDER_EVENT",
+        "MATERIAL_LITIGATION",
+        "PROFIT_WARNING",
+        "TRADING_SUSPENSION",
+        "INFORMATIONAL_DISCLOSURE"
+      ],
+      "title": "CanonicalEventType",
+      "type": "string"
+    },
+    "ImpactClass": {
+      "description": "Deterministic follow-up severity for one event or listing group.",
+      "enum": [
+        "NO_REANALYSIS",
+        "PARTIAL_REANALYSIS",
+        "FULL_REANALYSIS",
+        "URGENT_MANUAL_REVIEW"
+      ],
+      "title": "ImpactClass",
+      "type": "string"
+    },
+    "MonitoringAlertV1": {
+      "additionalProperties": false,
+      "description": "One bounded, factual, secret-free immutable outbox item.",
+      "properties": {
+        "contract": {
+          "const": "monitoring_alert_v1",
+          "default": "monitoring_alert_v1",
+          "title": "Contract",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "1.0.0",
+          "default": "1.0.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "alert_id": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Alert Id",
+          "type": "string"
+        },
+        "cycle_id": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Cycle Id",
+          "type": "string"
+        },
+        "watchlist_id": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Watchlist Id",
+          "type": "string"
+        },
+        "monitoring_run_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Monitoring Run Id"
+        },
+        "event_batch_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Event Batch Id"
+        },
+        "kind": {
+          "$ref": "#/$defs/AlertKind"
+        },
+        "listing_id": {
+          "anyOf": [
+            {
+              "maxLength": 32,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Listing Id"
+        },
+        "event_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 256,
+          "title": "Event Ids",
+          "type": "array"
+        },
+        "event_types": {
+          "items": {
+            "$ref": "#/$defs/CanonicalEventType"
+          },
+          "maxItems": 256,
+          "title": "Event Types",
+          "type": "array"
+        },
+        "impact": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ImpactClass"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "available_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Available At"
+        },
+        "job_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Job Id"
+        },
+        "job_status": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ReanalysisJobStatus"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "failure_code": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Failure Code"
+        },
+        "analysis_id": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Analysis Id"
+        },
+        "surface_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Surface Id"
+        },
+        "reason_code": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Reason Code",
+          "type": "string"
+        },
+        "message": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Message",
+          "type": "string"
+        },
+        "content_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Content Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "alert_id",
+        "cycle_id",
+        "watchlist_id",
+        "kind",
+        "reason_code",
+        "message",
+        "content_sha256"
+      ],
+      "title": "MonitoringAlertV1",
+      "type": "object"
+    },
+    "ReanalysisJobStatus": {
+      "description": "Terminal states persisted by the synchronous Phase 6-C executor.",
+      "enum": [
+        "NO_ACTION",
+        "MANUAL_REVIEW_REQUIRED",
+        "BLOCKED",
+        "FAILED",
+        "SUCCEEDED"
+      ],
+      "title": "ReanalysisJobStatus",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Deterministic immutable alert outbox for one cycle.",
+  "properties": {
+    "contract": {
+      "const": "monitoring_alert_batch_v1",
+      "default": "monitoring_alert_batch_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0.0",
+      "default": "1.0.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "cycle_id": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Cycle Id",
+      "type": "string"
+    },
+    "watchlist_id": {
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Watchlist Id",
+      "type": "string"
+    },
+    "alerts": {
+      "items": {
+        "$ref": "#/$defs/MonitoringAlertV1"
+      },
+      "maxItems": 1024,
+      "title": "Alerts",
+      "type": "array"
+    },
+    "alert_batch_id": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Alert Batch Id",
+      "type": "string"
+    },
+    "content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Content Sha256",
+      "type": "string"
+    }
+  },
+  "required": [
+    "cycle_id",
+    "watchlist_id",
+    "alert_batch_id",
+    "content_sha256"
+  ],
+  "title": "MonitoringAlertBatchV1",
+  "type": "object"
+}

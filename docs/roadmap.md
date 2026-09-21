@@ -6096,3 +6096,26 @@ Phase 6-B provider/acquisition/mapping/transport boundary. Ordinary D1
 acceptance must be automatic through fake transport, persisted-cache replay,
 full repository gates and exact-closing-SHA CI. D1 requires no manual
 functional acceptance.
+
+## Phase 6-D1 implementation closure — 2026-09-21
+
+Phase 6-D1 is implemented and closed at the smallest synchronous,
+scheduler-neutral monitoring-cycle boundary. `tve watch cycle` consumes an
+explicit PIT `as_of`, invokes the existing Phase 6-B acquisition boundary,
+passes its canonical batch to the existing Phase 6-A atomic commit, executes
+every committed request through the existing Phase 6-C executor, and writes a
+typed deterministic alert outbox plus terminal cycle result and atomic latest
+pointer. Explicit typed execution bindings prevent guessed company/prepared
+input/prior-analysis context. `BLOCKED`/`FAILED` work in the current committed
+run prevents a later Phase 6-A pointer advance; `MANUAL_REVIEW_REQUIRED` is
+resolved for gating but emits an attention alert.
+
+The automatic D1 matrix covers fake-source composition, deny-by-default and
+socket-blocked cache replay, no-event zero-call behavior, four impact classes,
+missing bindings/runtime, pointer protection, adjustment-boundary preservation,
+schema/hash drift, conflict rejection, immutable/pointer crash recovery,
+idempotency and bounded secret-free CLI/outbox output. No scheduler,
+notification delivery, Dashboard monitoring surface, Cloudflare mutation,
+Bridge adapter, live LLM call or manual functional acceptance is part of D1.
+Exact closing SHA/Actions evidence is recorded in
+`docs/status/phase-6-d1-2026-09-21.md`.

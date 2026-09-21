@@ -1,0 +1,52 @@
+{
+  "additionalProperties": false,
+  "description": "Atomic latest pointer for one deterministic cycle identity.",
+  "properties": {
+    "contract": {
+      "const": "monitoring_cycle_pointer_v1",
+      "default": "monitoring_cycle_pointer_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0.0",
+      "default": "1.0.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "cycle_id": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Cycle Id",
+      "type": "string"
+    },
+    "result_content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Result Content Sha256",
+      "type": "string"
+    },
+    "alert_batch_id": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Alert Batch Id",
+      "type": "string"
+    },
+    "alert_batch_content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Alert Batch Content Sha256",
+      "type": "string"
+    },
+    "content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Content Sha256",
+      "type": "string"
+    }
+  },
+  "required": [
+    "cycle_id",
+    "result_content_sha256",
+    "alert_batch_id",
+    "alert_batch_content_sha256",
+    "content_sha256"
+  ],
+  "title": "MonitoringCyclePointerV1",
+  "type": "object"
+}

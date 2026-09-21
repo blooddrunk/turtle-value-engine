@@ -538,7 +538,7 @@ Phase 5R-A acquisition/compiler
         ⚠️（A0–A5/A7 已实现；A-only 私有 probe/replay 已完成；完整 A/H acceptance 仍待补齐）
 
 Watchlist / event-driven monitoring
-        ⏳
+        ✅（6-D1 单次同步 cycle/outbox；scheduler、通知与 Dashboard 监控待后续阶段）
 ```
 
 项目仍处于快速开发阶段，接口和数据契约可能继续演进。

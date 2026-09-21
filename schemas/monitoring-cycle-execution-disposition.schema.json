@@ -1,0 +1,117 @@
+{
+  "$defs": {
+    "ImpactClass": {
+      "description": "Deterministic follow-up severity for one event or listing group.",
+      "enum": [
+        "NO_REANALYSIS",
+        "PARTIAL_REANALYSIS",
+        "FULL_REANALYSIS",
+        "URGENT_MANUAL_REVIEW"
+      ],
+      "title": "ImpactClass",
+      "type": "string"
+    },
+    "ReanalysisJobStatus": {
+      "description": "Terminal states persisted by the synchronous Phase 6-C executor.",
+      "enum": [
+        "NO_ACTION",
+        "MANUAL_REVIEW_REQUIRED",
+        "BLOCKED",
+        "FAILED",
+        "SUCCEEDED"
+      ],
+      "title": "ReanalysisJobStatus",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "The exact terminal Phase 6-C disposition required by one request.",
+  "properties": {
+    "contract": {
+      "const": "monitoring_cycle_execution_disposition_v1",
+      "default": "monitoring_cycle_execution_disposition_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0.0",
+      "default": "1.0.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "request_id": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Request Id",
+      "type": "string"
+    },
+    "listing_id": {
+      "maxLength": 32,
+      "minLength": 1,
+      "title": "Listing Id",
+      "type": "string"
+    },
+    "impact": {
+      "$ref": "#/$defs/ImpactClass"
+    },
+    "job_id": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Job Id",
+      "type": "string"
+    },
+    "job_content_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Job Content Sha256"
+    },
+    "status": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ReanalysisJobStatus"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "failure_code": {
+      "anyOf": [
+        {
+          "maxLength": 128,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Failure Code"
+    },
+    "resolution": {
+      "enum": [
+        "RESOLVED",
+        "UNRESOLVED",
+        "MISSING"
+      ],
+      "title": "Resolution",
+      "type": "string"
+    }
+  },
+  "required": [
+    "request_id",
+    "listing_id",
+    "impact",
+    "job_id",
+    "resolution"
+  ],
+  "title": "MonitoringCycleExecutionDispositionV1",
+  "type": "object"
+}
