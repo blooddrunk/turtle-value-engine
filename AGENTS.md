@@ -254,8 +254,7 @@ cursor — cursors move only through the unchanged Phase 6-A atomic commit.
 Live CNINFO evidence (real annual/interim reports, byte-identical offline
 replay, cursor proof) is recorded in `docs/status/phase-6-b-2026-09-21.md`.
 This does not change the separate Phase 5R strict A6 `ACTIVE / PARTIAL` state.
-Later Phase 6 packages (re-analysis execution, schedulers/notifications,
-Bridge adapter) are not started. Exact gate, deployment
+Phase 6-C — Controlled Re-analysis Executor — is selected but not yet implemented; its active goal is `docs/goals/phase-6-c-reanalysis-executor.md`. Phase 6-D scheduling/notifications/Dashboard monitoring views, Phase 6-E unattended acceptance and the optional Bridge adapter are not started. Exact gate, deployment
 and remaining-input evidence is recorded in
 `docs/status/phase-5r-a-2026-09-20.md` and
 `docs/status/phase-6-a-2026-09-21.md`. Project-wide non-secret runtime

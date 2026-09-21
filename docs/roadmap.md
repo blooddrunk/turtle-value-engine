@@ -5997,3 +5997,36 @@ annual/interim (they stay informational by default), BJ/H live sources,
 Phase 6-C re-analysis execution, Phase 6-D scheduling/notifications and
 Phase 6-E owner unattended acceptance. The FQGate Bridge remains a future
 optional source behind the same provider-neutral interface.
+
+---
+
+## Phase 6-C selection — 2026-09-21
+
+Phase 6-B is verified CLOSED on main through exact green CI:
+
+- `4d5320d1` hardening -> Actions `35575859074` -> success;
+- `8d75fe680` evidence synchronization -> Actions `35577062233` -> success;
+- `64aa64f17` closure marking -> Actions `35577307808` -> success.
+
+The selected next package is:
+
+**Phase 6-C — Controlled Re-analysis Executor**
+
+Source of truth:
+`docs/goals/phase-6-c-reanalysis-executor.md`
+
+Selection audit:
+`docs/status/phase-6-c-selection-2026-09-21.md`
+
+Phase 6-C consumes only committed `ReanalysisPlanV1` requests, executes the
+permitted preparation/research/analysis slice, and persists restart-safe,
+idempotent job/output artifacts in a separate re-analysis store. Network/model
+capabilities remain independently fail-closed; adjustment approval semantics
+remain unchanged; successful analyses project through the existing
+`ResearchSurfaceSnapshotV1`; Phase 6-A event/cursor state is not rewritten.
+
+Phase 6-D scheduling/notifications/Dashboard monitoring views and Phase 6-E
+unattended owner acceptance remain unopened. Extra CNINFO taxonomy, BJ/H
+sources and a future FQGate Bridge event/history adapter are additive later
+work, not Phase 6-C blockers.
+
