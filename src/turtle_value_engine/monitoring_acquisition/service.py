@@ -58,6 +58,7 @@ from .mapping import FilingEventMapping, map_filing_record_to_event
 
 MAX_WINDOW_DAYS = 366
 MAX_LISTINGS_PER_ACQUISITION = 8
+MAX_LIMIT = 30
 DEFAULT_LIMIT = 30
 
 
@@ -187,12 +188,18 @@ def _validate_listing_scope(listings: Sequence[str]) -> list[str]:
 
 def _filing_source_for(source_id: str) -> FilingSource:
     try:
-        return FilingSource(source_id)
+        source = FilingSource(source_id)
     except (TypeError, ValueError) as exc:
         raise AcquisitionError(
             f"unsupported acquisition source {source_id!r}: the first live slice "
             "supports only the CNINFO official filing source"
         ) from exc
+    if source is not FilingSource.CNINFO:
+        raise AcquisitionError(
+            f"unsupported acquisition source {source_id!r}: the first live slice "
+            "supports only the CNINFO official filing source"
+        )
+    return source
 
 
 def acquire_filing_events(
@@ -231,8 +238,11 @@ def acquire_filing_events(
         raise AcquisitionError("source_id must be a non-empty string")
     if not adapter_version.strip():
         raise AcquisitionError("adapter_version must be a non-empty string")
-    if limit < 1:
-        raise AcquisitionError("limit must be a positive integer")
+    if not 1 <= limit <= MAX_LIMIT:
+        raise AcquisitionError(
+            f"limit must be a positive integer between 1 and {MAX_LIMIT} for the "
+            "bounded first source slice"
+        )
     boundary = None if as_of is None else to_utc_datetime(as_of)
     filing_source = _filing_source_for(source_id)
 
@@ -322,6 +332,7 @@ __all__ = [
     "DEFAULT_LIMIT",
     "EventAcquisitionResult",
     "ListingAcquisitionSummary",
+    "MAX_LIMIT",
     "MAX_LISTINGS_PER_ACQUISITION",
     "MAX_WINDOW_DAYS",
     "NetworkDeniedError",

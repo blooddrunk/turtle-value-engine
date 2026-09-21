@@ -30,6 +30,7 @@ from .mapping import (
 )
 from .service import (
     DEFAULT_LIMIT,
+    MAX_LIMIT,
     MAX_LISTINGS_PER_ACQUISITION,
     MAX_WINDOW_DAYS,
     AcquisitionError,
@@ -52,6 +53,7 @@ __all__ = [
     "FILING_EVENT_CLASSIFICATION",
     "FilingEventMapping",
     "ListingAcquisitionSummary",
+    "MAX_LIMIT",
     "MAX_LISTINGS_PER_ACQUISITION",
     "MAX_WINDOW_DAYS",
     "NetworkDeniedError",

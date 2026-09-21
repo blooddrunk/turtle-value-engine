@@ -280,6 +280,22 @@ class TestOrgResolution:
         with pytest.raises(ProviderResponseError, match="no active A-share org"):
             resolve_cninfo_org(transport, "SH600519")
 
+    def test_rejects_wrong_exchange_plate(self):
+        transport = FakeTransport(
+            org_response=_org_response([_org_row(plate="szse")]),
+            query_response=_query_response([]),
+        )
+        with pytest.raises(ProviderResponseError, match="no active A-share org"):
+            resolve_cninfo_org(transport, "SH600519")
+
+    def test_rejects_unknown_delisted_marker(self):
+        transport = FakeTransport(
+            org_response=_org_response([_org_row(delisted="unknown")]),
+            query_response=_query_response([]),
+        )
+        with pytest.raises(ProviderResponseError, match="invalid CNINFO org lookup row"):
+            resolve_cninfo_org(transport, "SH600519")
+
 
 class TestListingScope:
     @pytest.mark.parametrize("listing_id", ["HK00288", "600519.SH", "SH6005"])
@@ -359,6 +375,19 @@ class TestTruncationAndMalformedResponses:
             ),
         )
         with pytest.raises(ProviderResponseError, match="secCode"):
+            _client(transport).discover(_query())
+
+    def test_org_id_mismatch_fails_closed(self):
+        transport = FakeTransport(
+            org_response=_org_response([_org_row()]),
+            query_response=_query_response(
+                [_announcement(
+                    "1", "标题", "012399", MIDNIGHT_2026_04_17_MS,
+                    org_id="different-org",
+                )]
+            ),
+        )
+        with pytest.raises(ProviderResponseError, match="orgId"):
             _client(transport).discover(_query())
 
     def test_malformed_rows_fail_closed(self):

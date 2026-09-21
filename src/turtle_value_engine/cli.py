@@ -1020,8 +1020,9 @@ def _run_watch_acquire_events(args: argparse.Namespace) -> object:
         )
     unique: list[str] = []
     for listing_id in listings:
-        if listing_id not in unique:
-            unique.append(listing_id)
+        if listing_id in unique:
+            raise ValueError(f"duplicate listing in acquisition scope: {listing_id}")
+        unique.append(listing_id)
     if not unique:
         raise ValueError(
             "no listing scope: pass --listing at least once or --watchlist with "

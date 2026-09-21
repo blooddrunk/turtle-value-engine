@@ -247,6 +247,15 @@ class TestAcquireEvents:
         assert code == 0
         assert source.discover_calls == ["SH600519"]
 
+    def test_duplicate_explicit_listing_scope_fails_closed(self, tmp_path, capsys, monkeypatch):
+        ScriptedSource().install(monkeypatch)
+        code = main(_base_argv(extra=[
+            "--listing", "SH600519", "--network=allow",
+            "--cache-dir", str(tmp_path / "cache"),
+        ]))
+        assert code == 2
+        assert "duplicate listing" in capsys.readouterr().err
+
     def test_watchlist_with_non_provider_listing_form_fails_with_exact_blocker(
         self, tmp_path, capsys, monkeypatch
     ):

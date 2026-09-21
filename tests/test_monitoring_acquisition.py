@@ -25,6 +25,7 @@ from turtle_value_engine.monitoring import (
 )
 from turtle_value_engine.monitoring.canonical import canonical_json_bytes, to_utc_datetime
 from turtle_value_engine.monitoring_acquisition import (
+    MAX_LIMIT,
     MAX_LISTINGS_PER_ACQUISITION,
     MAX_WINDOW_DAYS,
     AcquisitionError,
@@ -385,6 +386,26 @@ class TestScopeAndBounds:
         with pytest.raises(AcquisitionError, match="positive integer"):
             _acquire(FakeDiscoveryClient(), FilesystemRawResponseCache(tmp_path / "c"),
                      limit=0)
+
+    def test_limit_cannot_exceed_source_page_bound(self, tmp_path):
+        with pytest.raises(AcquisitionError, match=f"between 1 and {MAX_LIMIT}"):
+            _acquire(
+                FakeDiscoveryClient(),
+                FilesystemRawResponseCache(tmp_path / "c"),
+                limit=MAX_LIMIT + 1,
+            )
+
+    def test_non_cninfo_source_fails_closed(self, tmp_path):
+        with pytest.raises(AcquisitionError, match="supports only the CNINFO"):
+            acquire_filing_events(
+                provider=_provider(FakeDiscoveryClient()),
+                listings=["SH600519"],
+                window=AcquisitionWindow(date(2026, 4, 10), date(2026, 4, 30)),
+                source_id="SSE",
+                adapter_version=ADAPTER_VERSION,
+                cache=FilesystemRawResponseCache(tmp_path / "c"),
+                network_allowed=True,
+            )
 
     def test_source_failure_becomes_acquisition_error(self, tmp_path):
         from turtle_value_engine.providers.errors import ProviderResponseError

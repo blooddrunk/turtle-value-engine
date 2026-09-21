@@ -188,13 +188,17 @@ class CninfoOrgRecord(BaseModel):
         if isinstance(value, bool):
             return value
         if isinstance(value, str):
-            return value.strip().lower() == "true"
+            normalized = value.strip().lower()
+            if normalized in {"true", "false"}:
+                return normalized == "true"
         raise ValueError("delisted must be a boolean or a 'true'/'false' string")
 
 
 def resolve_cninfo_org(
     transport: CninfoHttpTransport,
     listing_id: str,
+    *,
+    org_search_uri: str = CNINFO_ORG_SEARCH_URI,
 ) -> CninfoOrgRecord:
     """Resolve one A-share listing to its CNINFO org identity, fail-closed.
 
@@ -205,7 +209,7 @@ def resolve_cninfo_org(
     code = _code_for_listing(listing_id)
     payload = _post_json(
         transport,
-        CNINFO_ORG_SEARCH_URI,
+        org_search_uri,
         {"keyWord": code, "maxSecNum": str(_ORG_SEARCH_MAX_RESULTS), "maxListNum": "5"},
     )
     board = payload.get("keyBoardList")
@@ -231,7 +235,9 @@ def resolve_cninfo_org(
     matches = [
         item
         for item in candidates
-        if item.code == code and item.category in {"A股", "AB股"}
+        if item.code == code
+        and item.category in {"A股", "AB股"}
+        and item.plate.strip().lower() == _PLATE_BY_PREFIX[listing_id[:2]]
     ]
     if not matches:
         raise ProviderResponseError(
@@ -303,9 +309,12 @@ class CninfoAnnouncementRecord(BaseModel):
         is the only precision the source actually establishes.
         """
 
-        moment = datetime.fromtimestamp(
-            self.announcement_time_ms / 1000, tz=UTC
-        ).astimezone(_BEIJING_TZ)
+        try:
+            moment = datetime.fromtimestamp(
+                self.announcement_time_ms / 1000, tz=UTC
+            ).astimezone(_BEIJING_TZ)
+        except (OSError, OverflowError, ValueError) as exc:
+            raise ValueError("CNINFO announcementTime is outside the supported date range") from exc
         return moment.date()
 
     def document_url(self) -> str:
@@ -408,6 +417,14 @@ class CninfoAnnouncementSourceClient:
         org_search_uri: str = CNINFO_ORG_SEARCH_URI,
     ) -> None:
         self._transport = transport
+        if source_uri != CNINFO_ANNOUNCEMENT_QUERY_URI:
+            raise ValueError(
+                "CNINFO announcement source URI must be the fixed official query endpoint"
+            )
+        if org_search_uri != CNINFO_ORG_SEARCH_URI:
+            raise ValueError(
+                "CNINFO org-search URI must be the fixed official search endpoint"
+            )
         self._source_uri = source_uri
         self._org_search_uri = org_search_uri
         self._org_cache: dict[str, CninfoOrgRecord] = {}
@@ -426,7 +443,11 @@ class CninfoAnnouncementSourceClient:
         code = _code_for_listing(query.listing_id)
         org = self._org_cache.get(query.listing_id)
         if org is None:
-            org = resolve_cninfo_org(self._transport, query.listing_id)
+            org = resolve_cninfo_org(
+                self._transport,
+                query.listing_id,
+                org_search_uri=self._org_search_uri,
+            )
             self._org_cache[query.listing_id] = org
         if org.code != code:
             raise ProviderResponseError(
@@ -466,7 +487,14 @@ class CninfoAnnouncementSourceClient:
                 raise ProviderResponseError(
                     "CNINFO announcement secCode does not match the requested listing"
                 )
-            published = record.beijing_publication_date()
+            if record.org_id != org.org_id:
+                raise ProviderResponseError(
+                    "CNINFO announcement orgId does not match the resolved listing org"
+                )
+            try:
+                published = record.beijing_publication_date()
+            except ValueError as exc:
+                raise ProviderResponseError(str(exc)) from exc
             url = record.document_url()
             canonical_url = validate_filing_document_url(FilingSource.CNINFO, url)
             descriptors.append(
