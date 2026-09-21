@@ -28,6 +28,21 @@ point-in-time research validation, reconciliation and fail-closed behavior;
 it does not claim production A/H coverage. The current goal therefore remains
 `ACTIVE / PARTIAL`.
 
+### Policy reconciliation — 2026-09-21
+
+The project-owner policy now distinguishes the strict Phase 5R
+`PRODUCTION_ELIGIBLE` / A6 claim from the personal-research execution path.
+The strict Phase 5R goal remains `ACTIVE / PARTIAL` until a real declared A/H
+corpus satisfies the exit criteria below. That strict claim is **not** a
+prerequisite for private replay, the read-only research surface/Dashboard, or
+Phase 6 monitoring packages that consume already validated artifacts.
+
+Phase 6 work therefore must not be cited as evidence that Phase 5R/A6 is
+closed, and Phase 5R/A6 must not be used as a blanket blocker for bounded
+personal-research monitoring. The exact post-Phase-5 maintenance audit is
+recorded in
+`docs/status/post-phase-5-maintenance-audit-2026-09-21.md`.
+
 The next stage is **Phase 5R-A — Production source acquisition and compiler
 ingestion**. It must make the project responsible for obtaining data through
 explicitly selected sources and caching it, while keeping credentials and
@@ -229,8 +244,10 @@ coverage and the independent acceptance evidence remain unverified. The
 compiler therefore reports `production_eligible=false` and
 `--require-production` fails closed. This does not prevent local private replay
 or research on the bounded slice. The exact run and its private A6 audit are
-recorded in `docs/status/phase-5r-a-2026-09-16.md`; the Phase 6 goal file is
-intentionally not created yet.
+recorded in `docs/status/phase-5r-a-2026-09-16.md`; that sentence described the 2026-09-16 checkpoint only. Phase 6-A has since
+closed at its offline monitoring-planning boundary and Phase 6-B is selected
+under the personal-research policy above. Those packages do not satisfy or
+waive the still-pending strict Phase 5R/A6 corpus claim.
 
 The offline `tve historical accept` audit is now available for the next step:
 it replays a persisted batch and records exact A6 blockers without provider,

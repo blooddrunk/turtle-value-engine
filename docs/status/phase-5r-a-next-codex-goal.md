@@ -6,6 +6,11 @@ Baseline selection commit is the commit that introduced this file revision.
 Phase 6-A is verified CLOSED on main; selection evidence is recorded in
 `docs/status/phase-6-b-selection-2026-09-21.md`.
 
+Phase 5R strict A6 / `PRODUCTION_ELIGIBLE` remains `ACTIVE / PARTIAL`.
+This Phase 6-B handoff does not claim otherwise. It is allowed to proceed
+because bounded personal-research monitoring is not gated by that optional
+strict production-corpus claim.
+
 ## Active package
 
 **Phase 6-B — Opt-in Live Event Acquisition and Canonicalization**
