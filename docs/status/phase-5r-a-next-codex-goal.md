@@ -1,40 +1,35 @@
-# Phase 5R-A next Codex goal — post-M6-C3 audit
+# Phase 6-A next Codex goal — watchlist/event foundation
 
-Status: **M6-C3 COMPLETE; next package selection pending a separate audit**
+Status: **SELECTED / IMPLEMENTATION NOT STARTED**
 
-M6-C3 (`docs/goals/phase-5r-a-m6-c3-dashboard-ux-localization.md`) is
-complete at its presentation-only integration boundary. The implementation,
-local regression, browser layout verification, unchanged-boundary redeploy
-and live-smoke evidence are recorded in
-`docs/status/phase-5r-a-2026-09-20.md` section 14 and in the goal file's
-implementation record.
+M6-C3 is verified complete on main. The current baseline audit and next-package decision are recorded in docs/status/phase-6-a-2026-09-21.md.
 
-## What closed with M6-C3
+## Current next package
 
-- Chinese-first owner-facing UI through the centralized typed presentation
-  layer (`apps/dashboard/src/presentation.ts`) with an optional client-only
-  English switch;
-- plain-language labels/explanations for `SPECIAL_REVIEW`, `NOT_EVALUATED`,
-  `PARTIAL`, `BLOCKED`, `NOT_AVAILABLE` and every other known state, with raw
-  codes retained and unknown enums failing safe;
-- distinct no-snapshot / no-match / not-evaluated / partial / blocked /
-  API-unavailable / surface-not-found states;
-- hashes, contract names, rule IDs and artifact identities moved behind
-  clearly labeled technical/audit details affordances without deleting or
-  rewriting any payload value;
-- the exact M6-C3 build redeployed through the unchanged M6-C2 Cloudflare
-  path with the machine-verifiable live smoke passing.
+Implement:
 
-## Next package
+**Phase 6-A — Watchlist State and Deterministic Event Planning Foundation**
 
-Phase 6 watchlist/event monitoring is the expected next major functional
-phase, but it must be selected through a separate audit/planning step against
-the then-current `main`, not started implicitly. Still explicitly deferred:
-M4-D/M4-E, M2-D, M5-C/R2 absent a separately demonstrated artifact need, and
-any `strict-v1`, A6/PIT/source-selection or investment-semantic change. A6
-remains the separate strict production-claim audit.
+Source of truth:
 
-Before any next implementation: synchronize `main`, require the latest
-GitHub Actions run for that exact baseline to be green, re-read
-`AGENTS.md`, the roadmap and the then-active goal, and keep using the
-permanent owner test environment when available.
+docs/goals/phase-6-a-watchlist-event-foundation.md
+
+The package is deliberately offline-first. It must implement deterministic typed watchlist/event/state/cursor/re-analysis-plan contracts, event-impact-v1, an atomic/idempotent local MonitoringWorkspace, ProjectConfig monitoring fields and offline CLI validate/replay/status.
+
+Do **not** start live provider polling, scheduler deployment, notifications, Dashboard mutation/run controls, model calls, automatic adjustment approval, trading, M4-D/M4-E, M2-D or M5-C/R2.
+
+## Verification discipline
+
+Before edits:
+
+1. synchronize main with fast-forward only;
+2. record git status, HEAD and remotes;
+3. discover the owner test checkout under D:\code\research (or /mnt/d/code/research under WSL) when available;
+4. prove GitHub Actions is green for the exact baseline commit;
+5. run the existing baseline tests.
+
+During and after implementation, automate every machine-verifiable case in the goal, especially PIT filtering, duplicate/conflict handling, cursor advancement, atomic workspace rollback, corruption failure, byte-stable replay and proof that no network/model/analysis call occurs.
+
+There is **no planned owner manual acceptance** for Phase 6-A. If a supposedly required manual step appears, record the exact failed automated command and bounded reason instead of closing with vague "evidence incomplete" language.
+
+After push, require green GitHub Actions for the exact implementation/closure commit before marking the goal complete.

@@ -614,7 +614,7 @@ project-config validation step.
 The owner-provided project configuration and Cloudflare API token were
 available in the execution environment through ignored private files and
 environment references. The target was the explicitly validated
-`ResearchSurfaceSnapshotV1` for `HK0288` (`as_of=2026-09-20`), served from
+`ResearchSurfaceSnapshotV1` for `HK00288` (`as_of=2026-09-20`), served from
 `.tve-private/surface/research-surface.json`. Its `surface_id` and
 `content_sha256` are both
 `1564c885738b010148225e8f2aa84d198ea819fc517c4ffcf21fbc0649053862`, and the

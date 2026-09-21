@@ -427,7 +427,7 @@ missing field was rewritten; no Phase 6, M4-D/M4-E, M2-D or M5-C/R2 work was
 started.
 
 Exact local verification, real-browser layout verification (desktop
-1440×900 and mobile 390×844 against the private `HK0288` snapshot), the
+1440×900 and mobile 390×844 against the private `HK00288` snapshot), the
 unchanged-boundary redeployment and the live smoke are recorded in
 `docs/status/phase-5r-a-2026-09-20.md`. Two genuine mobile overflow defects
 (valuation-tier `nowrap` cells and an unbounded artifact hash) were found by
