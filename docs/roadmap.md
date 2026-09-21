@@ -6030,3 +6030,24 @@ unattended owner acceptance remain unopened. Extra CNINFO taxonomy, BJ/H
 sources and a future FQGate Bridge event/history adapter are additive later
 work, not Phase 6-C blockers.
 
+## Phase 6-C implementation closure — 2026-09-21
+
+Phase 6-C is implemented and closed at the controlled executor boundary; exact
+gates and final CI evidence are recorded in
+`docs/status/phase-6-c-2026-09-21.md`.
+
+The implementation adds an additive monitoring commit proof and a separate
+typed `ReanalysisJobStore`. Only committed run requests at the run's immutable
+`as_of` may execute. All four impact classes have explicit terminal behavior;
+network permission, research/model availability and accepted-adjustment
+materialization remain independent fail-closed capabilities. Successful
+PARTIAL/FULL runs persist normalized input, deterministic analysis, trace,
+optional research artifacts and a validated `ResearchSurfaceSnapshotV1`.
+Successful retries reuse persisted artifacts without repeating calls; a crash
+before latest-pointer publication is repaired without repeating work. Phase
+6-A monitoring state remains byte-identical.
+
+The non-interactive library/CLI surface is complete for this phase:
+`ReanalysisExecutor`, `tve watch execute-reanalysis` and
+`tve watch reanalysis-status`. Phase 6-D scheduling/notifications/Dashboard
+monitoring views and Phase 6-E unattended acceptance remain unopened.

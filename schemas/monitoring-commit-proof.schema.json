@@ -1,0 +1,82 @@
+{
+  "additionalProperties": false,
+  "description": "Explicit proof that one monitoring run passed the workspace commit boundary.\n\nA run JSON file is only an immutable candidate artifact.  This additive\nrecord is written after the run, watchlist, event batch and next-state\nartifacts are durable and before the current-state pointer is moved.  The\nexecutor validates every bound identity instead of treating a filename as\nevidence that a run was committed.",
+  "properties": {
+    "commit_id": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Commit Id",
+      "type": "string"
+    },
+    "content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Content Sha256",
+      "type": "string"
+    },
+    "contract": {
+      "const": "monitoring_commit_proof_v1",
+      "default": "monitoring_commit_proof_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "event_batch_content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Event Batch Content Sha256",
+      "type": "string"
+    },
+    "event_batch_id": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Event Batch Id",
+      "type": "string"
+    },
+    "run_content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Run Content Sha256",
+      "type": "string"
+    },
+    "run_id": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Run Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0.0",
+      "default": "1.0.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "state_content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "State Content Sha256",
+      "type": "string"
+    },
+    "state_id": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "State Id",
+      "type": "string"
+    },
+    "watchlist_content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Watchlist Content Sha256",
+      "type": "string"
+    },
+    "watchlist_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+      "title": "Watchlist Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "watchlist_id",
+    "watchlist_content_sha256",
+    "event_batch_id",
+    "event_batch_content_sha256",
+    "run_id",
+    "run_content_sha256",
+    "state_id",
+    "state_content_sha256",
+    "commit_id",
+    "content_sha256"
+  ],
+  "title": "MonitoringCommitProofV1",
+  "type": "object"
+}

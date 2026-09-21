@@ -1,0 +1,46 @@
+{
+  "additionalProperties": false,
+  "description": "Atomic pointer to the latest immutable attempt for one job identity.",
+  "properties": {
+    "attempt_content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Attempt Content Sha256",
+      "type": "string"
+    },
+    "attempt_id": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Attempt Id",
+      "type": "string"
+    },
+    "content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Content Sha256",
+      "type": "string"
+    },
+    "contract": {
+      "const": "reanalysis_job_pointer_v1",
+      "default": "reanalysis_job_pointer_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "job_id": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Job Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0.0",
+      "default": "1.0.0",
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "job_id",
+    "attempt_id",
+    "attempt_content_sha256",
+    "content_sha256"
+  ],
+  "title": "ReanalysisJobPointerV1",
+  "type": "object"
+}

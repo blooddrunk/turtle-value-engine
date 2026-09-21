@@ -42,7 +42,15 @@ _ZERO_HASH = "0" * 64
 _WATCHLIST_ID_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$"
 _SKIP_HASH_CONTEXT_KEY = "skip_derived_hash_validation"
 _DERIVED_ID_FIELDS = frozenset(
-    {"content_sha256", "batch_id", "state_id", "plan_id", "run_id", "request_id"}
+    {
+        "content_sha256",
+        "batch_id",
+        "state_id",
+        "plan_id",
+        "run_id",
+        "request_id",
+        "commit_id",
+    }
 )
 
 FrozenContract = ConfigDict(extra="forbid", frozen=True)
@@ -680,6 +688,58 @@ class MonitoringStatePointerV1(_MonitoringContract):
         )
 
 
+class MonitoringCommitProofV1(_MonitoringContract):
+    """Explicit proof that one monitoring run passed the workspace commit boundary.
+
+    A run JSON file is only an immutable candidate artifact.  This additive
+    record is written after the run, watchlist, event batch and next-state
+    artifacts are durable and before the current-state pointer is moved.  The
+    executor validates every bound identity instead of treating a filename as
+    evidence that a run was committed.
+    """
+
+    contract: Literal["monitoring_commit_proof_v1"] = "monitoring_commit_proof_v1"
+    schema_version: Literal["1.0.0"] = "1.0.0"
+    watchlist_id: StrictStr = Field(pattern=_WATCHLIST_ID_PATTERN)
+    watchlist_content_sha256: StrictStr = Field(pattern=_HASH_PATTERN)
+    event_batch_id: StrictStr = Field(pattern=_HASH_PATTERN)
+    event_batch_content_sha256: StrictStr = Field(pattern=_HASH_PATTERN)
+    run_id: StrictStr = Field(pattern=_HASH_PATTERN)
+    run_content_sha256: StrictStr = Field(pattern=_HASH_PATTERN)
+    state_id: StrictStr = Field(pattern=_HASH_PATTERN)
+    state_content_sha256: StrictStr = Field(pattern=_HASH_PATTERN)
+    commit_id: StrictStr = Field(pattern=_HASH_PATTERN)
+    content_sha256: StrictStr = Field(pattern=_HASH_PATTERN)
+
+    def _identity_payload(self) -> dict[str, object]:
+        return {
+            "domain": "tve-monitoring-commit-proof-v1",
+            "watchlist_id": self.watchlist_id,
+            "watchlist_content_sha256": self.watchlist_content_sha256,
+            "event_batch_id": self.event_batch_id,
+            "event_batch_content_sha256": self.event_batch_content_sha256,
+            "run_id": self.run_id,
+            "run_content_sha256": self.run_content_sha256,
+            "state_id": self.state_id,
+            "state_content_sha256": self.state_content_sha256,
+        }
+
+    @model_validator(mode="after")
+    def _validate_commit_proof(self, info: ValidationInfo) -> Self:
+        if _hash_checks_enabled(info):
+            expected = canonical_sha256(self._identity_payload())
+            if self.commit_id != expected or self.content_sha256 != expected:
+                raise ValueError("monitoring commit proof identity does not match content")
+        return self
+
+    @classmethod
+    def build(cls, **values: object) -> MonitoringCommitProofV1:
+        coerced = cls._coerced(dict(values))
+        identity = canonical_sha256(coerced._identity_payload())
+        payload = coerced.canonical_payload(exclude={"commit_id", "content_sha256"})
+        return cls.model_validate(payload | {"commit_id": identity, "content_sha256": identity})
+
+
 class MonitoringStatusEntryV1(_MonitoringContract):
     """Read-only status projection for one watched listing."""
 
@@ -728,6 +788,7 @@ __all__ = [
     "DeferredEventRecordV1",
     "MonitoringEventBatchV1",
     "MonitoringEventV1",
+    "MonitoringCommitProofV1",
     "MonitoringRunV1",
     "MonitoringStatePointerV1",
     "MonitoringStatusEntryV1",

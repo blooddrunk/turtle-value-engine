@@ -1,6 +1,6 @@
 # Phase 6-C coding-agent handoff — Controlled Re-analysis Executor
 
-Status: **SELECTED / NOT IMPLEMENTED**
+Status: **IMPLEMENTED — SEE `docs/status/phase-6-c-2026-09-21.md`**
 
 Canonical goal:
 `docs/goals/phase-6-c-reanalysis-executor.md`

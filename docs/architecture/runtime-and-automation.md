@@ -388,8 +388,9 @@ The offline CLI surface is `tve watch validate`, `tve watch replay` and
 `tve watch status`. The monitoring package imports no provider transport,
 analyst client, research orchestrator, analysis pipeline, Cloudflare or
 brokerage code, and ProjectConfig gains only a non-secret `[monitoring]`
-section. Live provider adapters (Phase 6-B), the re-analysis executor
-(Phase 6-C) and schedulers/notifications (Phase 6-D) are later packages.
+section. Live provider adapters (Phase 6-B) and the re-analysis executor
+(Phase 6-C) are separate packages; schedulers/notifications remain Phase
+6-D.
 
 ### Phase 6-B — opt-in live event acquisition (implemented)
 
@@ -440,6 +441,40 @@ The FQGate remote bridge remains a future optional source consumed through
 the same provider-neutral interface once it publishes a typed, bounded,
 read-only machine operation with sufficient source timestamps; Turtle owns
 no Bridge Cloudflare/FQGate lifecycle.
+
+### Phase 6-C — controlled re-analysis execution (implemented)
+
+Phase 6-C consumes only a machine-proven committed `MonitoringRunV1`; an
+orphan `run` file or standalone plan is not executable:
+
+```text
+committed MonitoringWorkspace proof + run/plan/watchlist/batch/state
+  -> validated ReanalysisRequestV1 at run.as_of
+  -> separate immutable ReanalysisJobStore
+  -> CACHE_ONLY/LIVE preparation boundary
+  -> PARTIAL deterministic analysis or FULL injected research runtime
+  -> DecisionTrace + ResearchSurfaceSnapshotV1
+  -> terminal job attempt + atomic latest pointer
+```
+
+The additive `MonitoringCommitProofV1` is written before the existing state
+pointer and the executor requires that pointer to reference the proven state;
+therefore a failed pointer write cannot be mistaken for a committed run. The
+execution package never imports into the pure Phase 6-A planner. Its job,
+attempt, pointer, capability and output contracts are typed, hash-verified
+and schema-checked. `NO_REANALYSIS` and `URGENT_MANUAL_REVIEW` persist
+zero-call terminal results; `PARTIAL_REANALYSIS` does not invoke research;
+`FULL_REANALYSIS` is blocked unless model permission and an injected research
+runtime are both available. Live preparation permission, model permission and
+accepted-adjustment materialization are independent boundaries.
+
+`tve watch execute-reanalysis` is non-interactive and supports explicit
+prepared-input/prior-analysis paths; `tve watch reanalysis-status` reads one
+job projection. The store persists no `PENDING` or `RUNNING` state, repairs an
+orphaned latest pointer after a crash, reuses successful jobs without repeating
+provider/model calls, and leaves monitoring cursors and processed-event state
+byte-identical. Scheduling, notification and Dashboard mutation remain Phase
+6-D work.
 
 ---
 

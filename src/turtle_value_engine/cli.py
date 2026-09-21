@@ -59,7 +59,7 @@ from turtle_value_engine.historical import (
     verify_historical_artifact_mirror,
 )
 from turtle_value_engine.input_loader import NormalizedInputLoadError, parse_normalized_input
-from turtle_value_engine.models import CDCInput, Company
+from turtle_value_engine.models import CDCInput, Company, CompanyAnalysis
 from turtle_value_engine.monitoring import (
     MonitoringEventBatchV1,
     MonitoringWorkspace,
@@ -68,6 +68,10 @@ from turtle_value_engine.monitoring import (
     run_monitoring,
 )
 from turtle_value_engine.monitoring.canonical import to_utc_datetime
+from turtle_value_engine.monitoring_execution import (
+    ReanalysisExecutor,
+    ReanalysisJobStore,
+)
 from turtle_value_engine.pipeline import (
     run_analyze_from_normalized_input,
     run_cdc,
@@ -416,6 +420,36 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     watch_status.add_argument("--workspace", required=True, type=Path)
     watch_status.add_argument("--watchlist-id", required=True)
+    watch_execute = watch_commands.add_parser(
+        "execute-reanalysis",
+        help="execute only requests from one committed monitoring run",
+    )
+    watch_execute.add_argument("--workspace", required=True, type=Path)
+    watch_execute.add_argument("--run-id", required=True)
+    watch_execute.add_argument("--job-root", required=True, type=Path)
+    watch_execute.add_argument("--listing", default=None)
+    watch_execute.add_argument("--request-id", default=None)
+    watch_execute.add_argument("--network", choices=("deny", "allow"), default="deny")
+    watch_execute.add_argument("--provider", default="akshare")
+    watch_execute.add_argument("--cache-dir", type=Path, default=Path(".tve-cache"))
+    watch_execute.add_argument("--prepared-input", type=Path, default=None)
+    watch_execute.add_argument("--prior-analysis", type=Path, default=None)
+    watch_execute.add_argument("--research-root", type=Path, default=None)
+    watch_execute.add_argument(
+        "--company-json",
+        type=Path,
+        default=None,
+        help="explicit Company context used when preparation is performed",
+    )
+    watch_execute.add_argument("--name", default=None)
+    watch_execute.add_argument("--sector", default=None)
+    watch_execute.add_argument("--reporting-currency", default=None)
+    watch_status_reanalysis = watch_commands.add_parser(
+        "reanalysis-status",
+        help="read one persisted Phase 6-C re-analysis job",
+    )
+    watch_status_reanalysis.add_argument("--job-root", required=True, type=Path)
+    watch_status_reanalysis.add_argument("--job-id", required=True)
     watch_acquire = watch_commands.add_parser(
         "acquire-events",
         help="acquire official filing events into a canonical batch "
@@ -976,9 +1010,72 @@ def _run_watch_command(args: argparse.Namespace) -> object:
     if args.watch_command == "status":
         workspace = MonitoringWorkspace(args.workspace)
         return workspace.status(args.watchlist_id)
+    if args.watch_command == "execute-reanalysis":
+        return _run_watch_execute_reanalysis(args)
+    if args.watch_command == "reanalysis-status":
+        store = ReanalysisJobStore(args.job_root)
+        attempt = store.load_latest(args.job_id)
+        if attempt is None:
+            raise ValueError("re-analysis job was not found")
+        return {
+            "attempt_id": attempt.attempt_id,
+            "attempt_number": attempt.attempt_number,
+            "job": attempt.job,
+        }
     if args.watch_command == "acquire-events":
         return _run_watch_acquire_events(args)
     raise ValueError(f"unsupported watch command: {args.watch_command}")
+
+
+def _run_watch_execute_reanalysis(args: argparse.Namespace) -> object:
+    if args.provider.lower() != "akshare":
+        raise ValueError("only the implemented akshare provider is available")
+    prepared_input = None
+    if args.prepared_input is not None:
+        prepared_input = parse_normalized_input(
+            args.prepared_input.read_bytes()
+        )
+    prior_analysis = None
+    if args.prior_analysis is not None:
+        prior_analysis = CompanyAnalysis.model_validate(_read_json(args.prior_analysis))
+
+    preparation = None
+    if prepared_input is None:
+        preparation = NormalizedCompanyInputBuilder(
+            AKShareProvider(),
+            FilesystemRawResponseCache(args.cache_dir),
+        )
+    company = None
+    if any(
+        value is not None
+        for value in (args.company_json, args.name, args.sector, args.reporting_currency)
+    ):
+        if args.listing is None:
+            raise ValueError("company context requires --listing")
+        company = _prepare_company(args, args.listing)
+    executor = ReanalysisExecutor(
+        MonitoringWorkspace(args.workspace),
+        ReanalysisJobStore(args.job_root),
+        preparation=preparation,
+        research_root=args.research_root,
+        company=company,
+        provider=args.provider,
+        model_allowed=False,
+    )
+    results = executor.execute(
+        args.run_id,
+        listing_id=args.listing,
+        request_id=args.request_id,
+        network_allowed=args.network == "allow",
+        prepared_input=prepared_input,
+        prior_analysis=prior_analysis,
+        company=company,
+        provider=args.provider,
+    )
+    return {
+        "jobs": [result.job for result in results],
+        "reused_job_ids": [result.job.job_id for result in results if result.reused],
+    }
 
 
 def _run_watch_acquire_events(args: argparse.Namespace) -> object:

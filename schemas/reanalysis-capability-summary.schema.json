@@ -1,0 +1,39 @@
+{
+  "additionalProperties": false,
+  "description": "Non-secret capability facts captured with every execution result.",
+  "properties": {
+    "accepted_adjustments_supplied": {
+      "title": "Accepted Adjustments Supplied",
+      "type": "boolean"
+    },
+    "model_allowed": {
+      "title": "Model Allowed",
+      "type": "boolean"
+    },
+    "network_allowed": {
+      "title": "Network Allowed",
+      "type": "boolean"
+    },
+    "preparation_mode": {
+      "enum": [
+        "CACHE_ONLY",
+        "LIVE"
+      ],
+      "title": "Preparation Mode",
+      "type": "string"
+    },
+    "research_runtime_available": {
+      "title": "Research Runtime Available",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "network_allowed",
+    "preparation_mode",
+    "model_allowed",
+    "research_runtime_available",
+    "accepted_adjustments_supplied"
+  ],
+  "title": "ReanalysisCapabilitySummaryV1",
+  "type": "object"
+}

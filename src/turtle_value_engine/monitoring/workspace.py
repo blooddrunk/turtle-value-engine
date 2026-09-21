@@ -30,6 +30,7 @@ from pydantic import ValidationError
 
 from .canonical import canonical_json_bytes
 from .models import (
+    MonitoringCommitProofV1,
     MonitoringEventBatchV1,
     MonitoringRunV1,
     MonitoringStatePointerV1,
@@ -39,7 +40,7 @@ from .models import (
     WatchlistStateV1,
 )
 
-WriteKind = Literal["artifact", "pointer"]
+WriteKind = Literal["artifact", "commit", "pointer"]
 FailureInjector = Callable[[Path, WriteKind], None]
 
 
@@ -75,6 +76,9 @@ class MonitoringWorkspace:
 
     def state_path(self, state_id: str) -> Path:
         return self.root / "states" / f"{state_id}.json"
+
+    def commit_proof_path(self, run_id: str) -> Path:
+        return self.root / "commits" / f"{run_id}.json"
 
     def pointer_path(self, watchlist_id: str) -> Path:
         return self.root / "states" / f"current-{watchlist_id}.json"
@@ -265,6 +269,21 @@ class MonitoringWorkspace:
             _artifact_bytes(run.next_state),
             "artifact",
         )
+        commit_proof = MonitoringCommitProofV1.build(
+            watchlist_id=watchlist.watchlist_id,
+            watchlist_content_sha256=watchlist.content_sha256,
+            event_batch_id=batch.batch_id,
+            event_batch_content_sha256=batch.content_sha256,
+            run_id=run.run_id,
+            run_content_sha256=run.content_sha256,
+            state_id=run.next_state.state_id,
+            state_content_sha256=run.next_state.content_sha256,
+        )
+        self._commit_bytes(
+            self.commit_proof_path(run.run_id),
+            _artifact_bytes(commit_proof),
+            "commit",
+        )
         pointer = MonitoringStatePointerV1.build(
             watchlist_id=watchlist.watchlist_id,
             state_id=run.next_state.state_id,
@@ -305,6 +324,89 @@ class MonitoringWorkspace:
         if not isinstance(run, MonitoringRunV1):
             raise MonitoringWorkspaceError("run artifact has unexpected type")
         return run
+
+    def load_watchlist_snapshot(
+        self, watchlist_id: str, content_sha256: str
+    ) -> WatchlistSpecV1:
+        """Load one exact persisted watchlist snapshot by its committed hash."""
+
+        path = self.root / "watchlists" / f"{watchlist_id}-{content_sha256[:16]}.json"
+        watchlist = self._read_model(path, WatchlistSpecV1)
+        if not isinstance(watchlist, WatchlistSpecV1):
+            raise MonitoringWorkspaceError("watchlist artifact has unexpected type")
+        if watchlist.watchlist_id != watchlist_id or watchlist.content_sha256 != content_sha256:
+            raise MonitoringWorkspaceError(
+                "persisted watchlist does not match the requested committed identity"
+            )
+        return watchlist
+
+    def load_event_batch(self, batch_id: str) -> MonitoringEventBatchV1:
+        """Load one exact persisted event batch by its committed identity."""
+
+        batch = self._read_model(self.event_batch_path(batch_id), MonitoringEventBatchV1)
+        if not isinstance(batch, MonitoringEventBatchV1):
+            raise MonitoringWorkspaceError("event batch artifact has unexpected type")
+        if batch.batch_id != batch_id:
+            raise MonitoringWorkspaceError("event batch does not match the requested identity")
+        return batch
+
+    def load_state(self, state_id: str) -> WatchlistStateV1:
+        """Load one exact persisted state artifact by identity."""
+
+        state = self._read_model(self.state_path(state_id), WatchlistStateV1)
+        if not isinstance(state, WatchlistStateV1):
+            raise MonitoringWorkspaceError("state artifact has unexpected type")
+        if state.state_id != state_id:
+            raise MonitoringWorkspaceError("state does not match the requested identity")
+        return state
+
+    def load_commit_proof(self, run_id: str) -> MonitoringCommitProofV1:
+        """Load the explicit commit proof; absence is not inferred as committed."""
+
+        proof = self._read_model(self.commit_proof_path(run_id), MonitoringCommitProofV1)
+        if not isinstance(proof, MonitoringCommitProofV1):
+            raise MonitoringWorkspaceError("commit proof artifact has unexpected type")
+        if proof.run_id != run_id:
+            raise MonitoringWorkspaceError("commit proof does not match the requested run")
+        return proof
+
+    def load_committed_run(
+        self, run_id: str
+    ) -> tuple[
+        MonitoringCommitProofV1,
+        WatchlistSpecV1,
+        MonitoringEventBatchV1,
+        MonitoringRunV1,
+        WatchlistStateV1,
+    ]:
+        """Load and cross-check every artifact bound by an explicit commit proof."""
+
+        proof = self.load_commit_proof(run_id)
+        watchlist = self.load_watchlist_snapshot(
+            proof.watchlist_id, proof.watchlist_content_sha256
+        )
+        batch = self.load_event_batch(proof.event_batch_id)
+        run = self.load_run(run_id)
+        state = self.load_state(proof.state_id)
+        pointer_file = self.pointer_path(watchlist.watchlist_id)
+        pointer = self._read_model(pointer_file, MonitoringStatePointerV1)
+        if (
+            proof.watchlist_content_sha256 != watchlist.content_sha256
+            or proof.event_batch_content_sha256 != batch.content_sha256
+            or proof.run_content_sha256 != run.content_sha256
+            or proof.state_content_sha256 != state.content_sha256
+            or run.watchlist_id != watchlist.watchlist_id
+            or run.watchlist_content_sha256 != watchlist.content_sha256
+            or run.event_batch_id != batch.batch_id
+            or run.next_state.state_id != state.state_id
+            or state.watchlist_id != watchlist.watchlist_id
+            or pointer.watchlist_id != watchlist.watchlist_id
+            or pointer.state_id != state.state_id
+        ):
+            raise MonitoringWorkspaceError(
+                "commit proof does not match its persisted monitoring artifacts"
+            )
+        return proof, watchlist, batch, run, state
 
     def status(self, watchlist_id: str) -> MonitoringStatusV1:
         """Project the committed state into the offline status contract."""

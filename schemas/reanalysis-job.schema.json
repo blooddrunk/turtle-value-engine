@@ -1,0 +1,437 @@
+{
+  "$defs": {
+    "CanonicalEventType": {
+      "description": "Closed set of canonical monitoring event types.",
+      "enum": [
+        "ANNUAL_REPORT",
+        "INTERIM_REPORT",
+        "EARNINGS_PREANNOUNCEMENT",
+        "DIVIDEND_POLICY_CHANGE",
+        "DIVIDEND_DECLARATION",
+        "BUYBACK",
+        "SHARE_ISSUANCE",
+        "MAJOR_ACQUISITION",
+        "MAJOR_DISPOSAL",
+        "AUDIT_OPINION_CHANGE",
+        "REGULATORY_PENALTY",
+        "CONTROLLING_SHAREHOLDER_EVENT",
+        "MATERIAL_LITIGATION",
+        "PROFIT_WARNING",
+        "TRADING_SUSPENSION",
+        "INFORMATIONAL_DISCLOSURE"
+      ],
+      "title": "CanonicalEventType",
+      "type": "string"
+    },
+    "ImpactClass": {
+      "description": "Deterministic follow-up severity for one event or listing group.",
+      "enum": [
+        "NO_REANALYSIS",
+        "PARTIAL_REANALYSIS",
+        "FULL_REANALYSIS",
+        "URGENT_MANUAL_REVIEW"
+      ],
+      "title": "ImpactClass",
+      "type": "string"
+    },
+    "ReanalysisCapabilitySummaryV1": {
+      "additionalProperties": false,
+      "description": "Non-secret capability facts captured with every execution result.",
+      "properties": {
+        "accepted_adjustments_supplied": {
+          "title": "Accepted Adjustments Supplied",
+          "type": "boolean"
+        },
+        "model_allowed": {
+          "title": "Model Allowed",
+          "type": "boolean"
+        },
+        "network_allowed": {
+          "title": "Network Allowed",
+          "type": "boolean"
+        },
+        "preparation_mode": {
+          "enum": [
+            "CACHE_ONLY",
+            "LIVE"
+          ],
+          "title": "Preparation Mode",
+          "type": "string"
+        },
+        "research_runtime_available": {
+          "title": "Research Runtime Available",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "network_allowed",
+        "preparation_mode",
+        "model_allowed",
+        "research_runtime_available",
+        "accepted_adjustments_supplied"
+      ],
+      "title": "ReanalysisCapabilitySummaryV1",
+      "type": "object"
+    },
+    "ReanalysisFailureCode": {
+      "description": "Stable non-secret blocker/failure categories.",
+      "enum": [
+        "BLOCKED_RESEARCH_RUNTIME",
+        "PREPARATION_FAILED",
+        "RESEARCH_FAILED",
+        "ANALYSIS_FAILED",
+        "SURFACE_FAILED",
+        "INVALID_PRIOR_ANALYSIS",
+        "JOB_STORE_WRITE_FAILED"
+      ],
+      "title": "ReanalysisFailureCode",
+      "type": "string"
+    },
+    "ReanalysisJobStatus": {
+      "description": "Terminal states persisted by the synchronous Phase 6-C executor.",
+      "enum": [
+        "NO_ACTION",
+        "MANUAL_REVIEW_REQUIRED",
+        "BLOCKED",
+        "FAILED",
+        "SUCCEEDED"
+      ],
+      "title": "ReanalysisJobStatus",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "One durable result for one deterministic source request identity.",
+  "properties": {
+    "analysis_id": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Analysis Id"
+    },
+    "analysis_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Analysis Sha256"
+    },
+    "capabilities": {
+      "$ref": "#/$defs/ReanalysisCapabilitySummaryV1"
+    },
+    "committed_run_proof_id": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Committed Run Proof Id",
+      "type": "string"
+    },
+    "content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Content Sha256",
+      "type": "string"
+    },
+    "contract": {
+      "const": "reanalysis_job_v1",
+      "default": "reanalysis_job_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "event_batch_id": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Event Batch Id",
+      "type": "string"
+    },
+    "event_ids": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 256,
+      "minItems": 1,
+      "title": "Event Ids",
+      "type": "array"
+    },
+    "event_types": {
+      "items": {
+        "$ref": "#/$defs/CanonicalEventType"
+      },
+      "maxItems": 256,
+      "minItems": 1,
+      "title": "Event Types",
+      "type": "array"
+    },
+    "evidence_codes": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 32,
+      "title": "Evidence Codes",
+      "type": "array"
+    },
+    "execution_as_of": {
+      "format": "date-time",
+      "title": "Execution As Of",
+      "type": "string"
+    },
+    "execution_policy_id": {
+      "const": "reanalysis-execution-v1",
+      "default": "reanalysis-execution-v1",
+      "title": "Execution Policy Id",
+      "type": "string"
+    },
+    "execution_policy_version": {
+      "const": "1.0.0",
+      "default": "1.0.0",
+      "title": "Execution Policy Version",
+      "type": "string"
+    },
+    "failure_code": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ReanalysisFailureCode"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "impact": {
+      "$ref": "#/$defs/ImpactClass"
+    },
+    "job_id": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Job Id",
+      "type": "string"
+    },
+    "listing_id": {
+      "maxLength": 32,
+      "minLength": 1,
+      "title": "Listing Id",
+      "type": "string"
+    },
+    "message": {
+      "anyOf": [
+        {
+          "maxLength": 512,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Message"
+    },
+    "normalized_input_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Normalized Input Sha256"
+    },
+    "prior_analysis_id": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Prior Analysis Id"
+    },
+    "prior_analysis_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Prior Analysis Sha256"
+    },
+    "profile_id": {
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Profile Id",
+      "type": "string"
+    },
+    "report_id": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Report Id"
+    },
+    "report_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Report Sha256"
+    },
+    "request_id": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Request Id",
+      "type": "string"
+    },
+    "research_session_id": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Research Session Id"
+    },
+    "research_session_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Research Session Sha256"
+    },
+    "schema_version": {
+      "const": "1.0.0",
+      "default": "1.0.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "source_run_id": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Source Run Id",
+      "type": "string"
+    },
+    "source_watchlist_content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Source Watchlist Content Sha256",
+      "type": "string"
+    },
+    "status": {
+      "$ref": "#/$defs/ReanalysisJobStatus"
+    },
+    "surface_id": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Surface Id"
+    },
+    "surface_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Surface Sha256"
+    },
+    "trace_id": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Trace Id"
+    },
+    "trace_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Trace Sha256"
+    },
+    "watchlist_id": {
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Watchlist Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "job_id",
+    "source_run_id",
+    "request_id",
+    "watchlist_id",
+    "listing_id",
+    "profile_id",
+    "impact",
+    "event_ids",
+    "event_types",
+    "source_watchlist_content_sha256",
+    "event_batch_id",
+    "committed_run_proof_id",
+    "execution_as_of",
+    "capabilities",
+    "status",
+    "content_sha256"
+  ],
+  "title": "ReanalysisJobV1",
+  "type": "object"
+}
