@@ -1,6 +1,6 @@
 # Phase 6-B — Opt-in Live Event Acquisition and Canonicalization
 
-Status: **IMPLEMENTED / CLOSURE PENDING EXACT PUSH CI
+Status: **IMPLEMENTED / CLOSED at the live acquisition integration boundary
 (2026-09-21; see `docs/status/phase-6-b-2026-09-21.md`)**
 Date: 2026-09-21
 Selected after: Phase 6-A CLOSED

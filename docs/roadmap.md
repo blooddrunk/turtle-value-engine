@@ -5968,9 +5968,8 @@ FQGate lifecycle and Bridge authorization remain owned by the Bridge repo.
 ## Phase 6-B implementation closure — 2026-09-21
 
 **Phase 6-B — Opt-in Live Event Acquisition and Canonicalization** is
-implemented at its live acquisition integration boundary; exact closing CI is
-still pending. The evidence record is
-`docs/status/phase-6-b-2026-09-21.md`.
+implemented and CLOSED at its live acquisition integration boundary; exact
+evidence is recorded in `docs/status/phase-6-b-2026-09-21.md`.
 
 What landed:
 

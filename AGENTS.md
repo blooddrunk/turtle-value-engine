@@ -103,8 +103,8 @@ These boundaries are orchestration state only: they never invoke a provider,
 model, research or analysis runtime, never approve adjustments and never
 change investment semantics.
 
-Phase 6-B adds the implemented opt-in live event-acquisition boundaries
-(closure remains contingent on the exact pushed commit's green CI):
+Phase 6-B adds the implemented and CI-verified opt-in live event-acquisition
+boundaries:
 `providers/cninfo_disclosure.py` (bounded credential-free CNINFO
 announcement client behind the frozen `FilingDiscoverySourceClient`
 contract), the `monitoring_acquisition` package (provider-neutral
@@ -236,7 +236,7 @@ committed next state, an atomic/idempotent hash-verified local
 non-secret `[monitoring]` ProjectConfig section and checked-in monitoring
 schemas with drift tests. The monitoring package performs no provider, model,
 research, analysis, Cloudflare or brokerage calls. Phase 6-B — Opt-in Live
-Event Acquisition and Canonicalization — is implemented at its live acquisition
+Event Acquisition and Canonicalization — is complete at its live acquisition
 integration boundary: `providers/cninfo_disclosure.py` implements the frozen
 `FilingDiscoverySourceClient` contract against the public credential-free
 CNINFO announcement search (bounded requests, fixed timeout, response byte
