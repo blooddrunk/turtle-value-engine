@@ -321,7 +321,16 @@ other 4xx/3xx permanent; post-dispatch uncertainty `AMBIGUOUS` and never
 automatically resent unless receiver-enforced idempotency is explicitly
 declared; retry exhaustion terminal; empty outbox a zero-I/O `NOOP`), and
 replays an already-`DELIVERED` identity with zero outbound requests. D2B
-claims no exactly-once semantics for arbitrary HTTP receivers. Webhook
+claims no exactly-once semantics for arbitrary HTTP receivers. A post-closure
+review then selected **Phase 6-D2B-R1 — Dispatch Durability, Single-Flight and
+Timeout Truthfulness Hardening** before D3: the current implementation has an
+uncovered process-death window after possible HTTP dispatch but before the
+immutable attempt is saved, no per-delivery local single-flight lock, no true
+end-to-end monotonic transport deadline, and the read-only delivery-status path
+checks only pointer existence rather than validating the published state.
+Canonical R1 scope and automatic acceptance are in
+`docs/goals/phase-6-d2b-r1-dispatch-hardening.md`; no manual owner acceptance is
+planned for R1. Webhook
 endpoints and bearer tokens are `SecretReference`s under the typed
 `[monitoring.delivery]` ProjectConfig section (disabled by default in the
 checked-in example), resolved only in process memory and proven absent from
