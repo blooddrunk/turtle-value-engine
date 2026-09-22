@@ -557,8 +557,11 @@ no credential ever enters runner artifacts, status output or unit files.
 Reference systemd service/timer templates live under `deploy/monitoring/`
 and are verified by `systemd-analyze verify` in ordinary CI; real owner
 host/cadence/deployment is Phase 6-E. No scheduled GitHub Actions monitoring
-workflow exists. External notification delivery (6-D2B), Dashboard monitoring
-views (6-D3) and owner unattended acceptance (6-E) remain unopened.
+workflow exists. Post-closure audit selected Phase 6-D2A-R1 before D2B to
+tighten lease error classification, lease-slot identity binding and lock-before-
+metadata ordering; these are local deterministic corrections and require no
+owner live environment. External notification delivery (6-D2B), Dashboard
+monitoring views (6-D3) and owner unattended acceptance (6-E) remain unopened.
 
 ---
 

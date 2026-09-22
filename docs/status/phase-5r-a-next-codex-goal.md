@@ -1,30 +1,35 @@
 # Next coding-agent goal
 
-The active package is now **Phase 6-D2A — Persistent Unattended Runner Foundation**.
+The active package is now **Phase 6-D2A-R1 — Lease Classification and
+Slot-Integrity Hardening**.
 
 Canonical handoff:
-`docs/status/phase-6-d2a-next-coding-agent-goal.md`
+`docs/status/phase-6-d2a-r1-next-coding-agent-goal.md`
 
 Canonical implementation goal:
-`docs/goals/phase-6-d2a-persistent-runner-foundation.md`
+`docs/goals/phase-6-d2a-r1-lease-hardening.md`
 
-Selection / D1 audit:
-`docs/status/phase-6-d2a-selection-2026-09-22.md`
+Post-closure review / selection audit:
+`docs/status/phase-6-d2a-r1-review-2026-09-22.md`
 
-Phase 6-D1 is CLOSED at implementation commit
-`e452eadc866035a7a784d7862956a3f24e3985b8`, with successful Actions run
-`35602785093`. Do not reopen or rewrite D1 unless D2A proves a concrete defect.
+Phase 6-D2A's main implementation remains accepted at
+`2fb682f991b70f3f6bb4e3cce8cd2fe3b69a50ac`, with successful exact-SHA
+Actions run `35677839752`. A subsequent code-level audit at main
+`81b2ac2bb07711eab03fc594aabeab4293c99ec2` found a narrow lease correctness
+gap that is fully automatable and must be closed before notification delivery.
 
-D2 is deliberately split again:
+R1 is deliberately small:
 
-- **D2A (active):** persistent single-host unattended runner, durable activation
-  intent/receipt/lease semantics, reference systemd service/timer, no external
-  notification transport;
-- **D2B (future):** external notification delivery + delivery/receipt ledger;
-- **D3 (future):** read-only monitoring views in the existing API/Cloudflare/
-  Dashboard stack;
-- **6-E (future):** owner live unattended deployment/acceptance.
+- truthful `flock` contention vs non-contention OS-error classification;
+- kernel lock before mutable lease metadata validation;
+- lease-record runner-slot identity binding;
+- complete/checked lease-record writes;
+- deterministic regression tests plus the complete existing CI gate;
+- exact closing-SHA Actions verification.
 
-The selected monitoring runtime model is a persistent Linux host. GitHub Actions
-remains CI and exact-SHA verification, not the D2A monitoring scheduler, because
-the current Phase 6 stores are intentionally local and durable.
+No manual owner acceptance is planned.
+
+**Phase 6-D2B remains queued, not active**, until R1 closes. D2B will own
+external notification delivery and its delivery/receipt ledger; D3 remains the
+read-only monitoring Dashboard projection and 6-E remains owner live unattended
+acceptance.

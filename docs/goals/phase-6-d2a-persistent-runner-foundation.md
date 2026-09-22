@@ -1,10 +1,12 @@
 # Phase 6-D2A — Persistent Unattended Runner Foundation
 
-Status: **CLOSED / IMPLEMENTED**
+Status: **IMPLEMENTED / POST-CLOSURE R1 HARDENING REQUIRED BEFORE D2B**
 Date: 2026-09-22
 Selected after: Phase 6-D1 CLOSED
 Selection audit: `docs/status/phase-6-d2a-selection-2026-09-22.md`
 Implementation closure: `docs/status/phase-6-d2a-2026-09-22.md`
+Post-closure review: `docs/status/phase-6-d2a-r1-review-2026-09-22.md`
+Required follow-up: `docs/goals/phase-6-d2a-r1-lease-hardening.md`
 
 Coding-agent handoff:
 `docs/status/phase-6-d2a-next-coding-agent-goal.md`

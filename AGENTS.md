@@ -288,10 +288,16 @@ are one explicit typed non-secret `RunnerConfigV1` JSON file
 (`config/monitoring-runner.example.json`), network stays deny-by-default
 through the existing D1/6-B opt-ins, and reference systemd service/timer
 templates under `deploy/monitoring/` pass `systemd-analyze verify` in ordinary
-CI. No scheduled GitHub Actions monitoring workflow exists. External
-notification delivery/receipts are deferred to Phase 6-D2B; Phase 6-D3
-Dashboard monitoring views, Phase 6-E owner live unattended acceptance and the
-optional Bridge adapter are not started. Exact gate, deployment
+CI. No scheduled GitHub Actions monitoring workflow exists. A post-closure
+review at main `81b2ac2` found a narrow lease-classification hardening gap:
+the flock boundary must distinguish real contention from unrelated OS errors,
+bind a persisted lease record to its runner slot, and make the OS lock the
+authoritative first check before parsing mutable lease metadata. Therefore
+**Phase 6-D2A-R1 — Lease Classification and Slot-Integrity Hardening** is the
+active package before any notification work. External notification
+delivery/receipts remain queued for Phase 6-D2B; Phase 6-D3 Dashboard
+monitoring views, Phase 6-E owner live unattended acceptance and the optional
+Bridge adapter are not started. Exact gate, deployment
 and remaining-input evidence is recorded in
 `docs/status/phase-5r-a-2026-09-20.md` and
 `docs/status/phase-6-a-2026-09-21.md`. Project-wide non-secret runtime

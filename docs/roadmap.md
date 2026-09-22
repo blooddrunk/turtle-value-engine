@@ -5159,8 +5159,8 @@ cycle/outbox boundary (6-D1), and the durable single-host unattended runner
 
 ## Phase 6 — Watchlist and event-driven re-analysis
 
-Status: **Phase 6-A / 6-B / 6-C / 6-D1 / 6-D2A implemented and closed;
-Phase 6-D2B selected next.**
+Status: **Phase 6-A / 6-B / 6-C / 6-D1 / 6-D2A implemented; Phase 6-D2A-R1
+lease hardening selected next before Phase 6-D2B.**
 
 The first package,
 [Phase 6-A — Watchlist State and Deterministic Event Planning Foundation](goals/phase-6-a-watchlist-event-foundation.md),
@@ -5191,11 +5191,17 @@ templates verified in CI. A crash reuses the unfinished activation and its
 frozen PIT instead of deriving a new cycle from a later wall clock; D1
 terminal artifacts repair the runner layer without repeating provider/model
 work; overlapping invocations are excluded by an explicit single-host lease.
-External notification transport and delivery receipts are the separate 6-D2B
-slice; read-only Dashboard monitoring views remain 6-D3 and real owner
-unattended acceptance remains 6-E. Phase 6-A/D1/D2A carried no planned manual
-functional acceptance; PIT, cursor, atomicity, re-analysis, crash recovery,
-outbox and unattended-runner behavior are proven by automated suites.
+The post-closure review recorded in
+`docs/status/phase-6-d2a-r1-review-2026-09-22.md` found one narrow lease
+correctness gap that must be closed before notification delivery: the lease
+layer currently conflates all `flock` OS failures with real contention, does
+not bind a valid persisted lease record back to its runner slot, and parses
+lease metadata before attempting the authoritative OS lock. Phase 6-D2A-R1 is
+therefore the active maintenance slice. It must fix those semantics with
+deterministic regression tests and exact-SHA CI evidence; no manual functional
+acceptance is planned. External notification transport and delivery receipts
+remain the separate 6-D2B slice; read-only Dashboard monitoring views remain
+6-D3 and real owner unattended acceptance remains 6-E.
 
 ### Watchlist state
 
