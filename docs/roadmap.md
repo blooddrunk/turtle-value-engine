@@ -5160,8 +5160,8 @@ cycle/outbox boundary (6-D1), and the durable single-host unattended runner
 ## Phase 6 — Watchlist and event-driven re-analysis
 
 Status: **Phase 6-A / 6-B / 6-C / 6-D1 / 6-D2A / 6-D2A-R1 implemented; Phase
-6-D2B (external notification delivery + delivery/receipt ledger) is the next
-candidate package.**
+6-D2B (external notification delivery + delivery/receipt ledger) is selected /
+active.**
 
 The first package,
 [Phase 6-A — Watchlist State and Deterministic Event Planning Foundation](goals/phase-6-a-watchlist-event-foundation.md),
@@ -5202,9 +5202,11 @@ first and only liveness authority, only real contention errno maps to
 `LEASE_BUSY`, lease records are bound to their slot's `runner_id`, and
 holder-record writes prove full-byte persistence — all proven by nine
 deterministic regression tests with zero-work assertions and the full
-repository gate. External notification transport and delivery receipts
-remain the separate 6-D2B slice; read-only Dashboard monitoring views remain
-6-D3 and real owner unattended acceptance remains 6-E.
+repository gate. External notification transport and delivery receipts are now selected as the
+separate 6-D2B slice (generic HTTP webhook + durable ledger, automatically
+verified; canonical goal:
+`goals/phase-6-d2b-notification-delivery-ledger.md`); read-only Dashboard
+monitoring views remain 6-D3 and real owner unattended acceptance remains 6-E.
 
 ### Watchlist state
 

@@ -512,9 +512,10 @@ It remains offline/test-injectable by default; live acquisition still requires
 the existing explicit `--network=allow` policy, while `--from-cache` replays
 the existing Phase 6-B raw cache. The next selected slice is Phase 6-D2A:
 a durable single-host unattended runner around this unchanged D1 command.
-External notification delivery/receipts are deferred to 6-D2B; Phase 6-D3
+External notification delivery/receipts are now selected as Phase 6-D2B
+(`docs/goals/phase-6-d2b-notification-delivery-ledger.md`); Phase 6-D3
 Dashboard monitoring views and Phase 6-E owner live unattended acceptance
-remain outside D2A.
+remain outside D2A/D2B.
 
 ### Phase 6-D2A — persistent unattended runner foundation (implemented)
 
@@ -566,8 +567,12 @@ to `LEASE_BUSY` while unrelated open/flock failures fail closed as
 `RunnerLeaseError`, `probe()` never reports `FREE`/`LIVE` from unrelated OS
 errors, a decoded lease record must match its slot's `runner_id`, and
 holder-record writes complete a full-byte write loop before fsync may claim
-success. External notification delivery (6-D2B), Dashboard
-monitoring views (6-D3) and owner unattended acceptance (6-E) remain unopened.
+success. Phase 6-D2B external notification delivery is now selected: it adds one generic
+HTTP webhook delivery boundary plus a durable delivery/receipt ledger over the
+validated terminal D2A/D1 outbox, with explicit deny-by-default networking,
+idempotency evidence, retry/permanent/ambiguous failure classification and no
+claim of arbitrary-receiver exactly-once semantics. Dashboard monitoring views
+(6-D3) and owner unattended acceptance (6-E) remain unopened.
 
 ---
 

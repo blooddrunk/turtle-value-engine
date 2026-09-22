@@ -299,10 +299,15 @@ every other open/flock failure fails closed as `RunnerLeaseError`,
 `probe()`/status obey the same truthfulness rules, a decoded lease record is
 bound to its slot's `runner_id` (a foreign canonical record is never
 overwritten), and holder-record writes prove full-byte persistence through a
-complete write loop. External notification
-delivery/receipts remain queued for Phase 6-D2B; Phase 6-D3 Dashboard
-monitoring views, Phase 6-E owner live unattended acceptance and the optional
-Bridge adapter are not started. Exact gate, deployment
+complete write loop. **Phase 6-D2B — External Notification Delivery and
+Delivery/Receipt Ledger** is now the selected active package
+(`docs/goals/phase-6-d2b-notification-delivery-ledger.md`): it must consume only
+a validated terminal D2A/D1 outbox, add one generic HTTP webhook transport,
+persist a durable delivery ledger, remain network-deny-by-default, and prove
+retry/deduplication/ambiguity/secret-hygiene behavior automatically with no
+owner live endpoint required. Phase 6-D3 Dashboard monitoring views, Phase 6-E
+owner live unattended acceptance and the optional Bridge adapter are not
+started. Exact gate, deployment
 and remaining-input evidence is recorded in
 `docs/status/phase-5r-a-2026-09-20.md` and
 `docs/status/phase-6-a-2026-09-21.md`. Project-wide non-secret runtime
