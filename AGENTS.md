@@ -269,21 +269,32 @@ cycle/result/outbox artifacts and a repairable atomic latest pointer. It
 requires explicit typed execution bindings and blocks advancement when the
 current committed run has unresolved `BLOCKED` or `FAILED` jobs. D1 has no
 scheduler, notification delivery, Dashboard monitoring mutation, Cloudflare
-mutation, or brokerage operation. The next selected package is **Phase 6-D2A
-— Persistent Unattended Runner Foundation**: keep D1 unchanged, place the
-unattended wakeup on a persistent Linux host, add a durable single-host runner
-intent/receipt/lease boundary and a reference systemd timer/service, and prove
-overlap/restart/idempotent recovery automatically. GitHub Actions is not the
-selected monitoring scheduler because the current monitoring/job/cycle stores
-are local and durable; choosing Actions now would force an unnecessary remote
-state migration. External notification delivery/receipts are deferred to
-Phase 6-D2B; Phase 6-D3 Dashboard monitoring views, Phase 6-E owner live
-unattended acceptance and the optional Bridge adapter are not started. Exact gate, deployment
+mutation, or brokerage operation. Phase 6-D2A — Persistent Unattended Runner
+Foundation — is implemented and closed at its separate runner library/store/CLI
+boundary; exact automatic verification and CI evidence is recorded in
+`docs/status/phase-6-d2a-2026-09-22.md`. D2A keeps D1 unchanged and adds the
+`monitoring_runner/` package: a durable typed activation intent persisted
+BEFORE entering D1 (freezing the resolved PIT/`as_of` and a full D1 request
+fingerprint), an exclusive flock-backed single-host lease whose losing
+invocation exits `LEASE_BUSY` with zero provider/model/D1 work, and a
+terminal receipt binding the activation to the exact D1 result/outbox
+identities and hashes plus an atomic repairable latest pointer. A crash after
+the intent resumes the same activation and PIT; D1 terminal artifacts repair
+the runner layer without repeating provider/model work; corrupt or ambiguous
+runner state and changed watchlist/config under an unfinished activation fail
+closed. The surface is `tve watch unattended-run` (exit 0 completed /
+3 lease busy / 2 fail-closed) and `tve watch unattended-status`; runner inputs
+are one explicit typed non-secret `RunnerConfigV1` JSON file
+(`config/monitoring-runner.example.json`), network stays deny-by-default
+through the existing D1/6-B opt-ins, and reference systemd service/timer
+templates under `deploy/monitoring/` pass `systemd-analyze verify` in ordinary
+CI. No scheduled GitHub Actions monitoring workflow exists. External
+notification delivery/receipts are deferred to Phase 6-D2B; Phase 6-D3
+Dashboard monitoring views, Phase 6-E owner live unattended acceptance and the
+optional Bridge adapter are not started. Exact gate, deployment
 and remaining-input evidence is recorded in
 `docs/status/phase-5r-a-2026-09-20.md` and
-`docs/status/phase-6-a-2026-09-21.md`. The active D2A goal is
-`docs/goals/phase-6-d2a-persistent-runner-foundation.md` and its coding handoff
-is `docs/status/phase-6-d2a-next-coding-agent-goal.md`. Project-wide non-secret runtime
+`docs/status/phase-6-a-2026-09-21.md`. Project-wide non-secret runtime
 configuration is defined by `config/project.example.toml` and the ignored
 `.tve-private/project.toml`; later phases extend this typed configuration
 instead of adding phase-local environment files.

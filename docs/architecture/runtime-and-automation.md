@@ -516,32 +516,78 @@ External notification delivery/receipts are deferred to 6-D2B; Phase 6-D3
 Dashboard monitoring views and Phase 6-E owner live unattended acceptance
 remain outside D2A.
 
+### Phase 6-D2A — persistent unattended runner foundation (implemented)
+
+D2A wraps the unchanged D1 command in one durable single-host activation
+boundary. It adds no scheduler of its own — an external wakeup (reference:
+a host-native systemd timer) invokes the non-interactive CLI:
+
+```text
+scheduler wake -> tve watch unattended-run --runner-config <path>
+  -> exclusive single-host lease (flock-backed, typed record)
+  -> settle/repair any crashed prior runner state
+  -> resume unfinished activation OR create one new activation intent
+     (intent freezes the resolved PIT as_of + full D1 request fingerprint
+      BEFORE entering D1; persisted immutably first)
+  -> existing Phase 6-D1 boundary (acquisition/commit/execution unchanged;
+     D1 terminal pair repair via the existing MonitoringCycleStore)
+  -> terminal runner receipt binding the exact MonitoringCycleResultV1 and
+     MonitoringAlertBatchV1 identities/hashes + atomic latest pointer
+```
+
+Retry semantics: a crash after the intent but before D1 terminal forces the
+next wake to resume the same activation and the same frozen `as_of` — a later
+wall clock can never manufacture a second cycle identity. If D1 terminal
+artifacts already exist but the runner receipt/pointer does not, the runner
+repairs itself from the D1 store without repeating any provider, model or
+re-analysis work. Overlapping invocations for one runner identity are
+excluded by the lease: the loser exits with classification `LEASE_BUSY`
+(exit code 3) having performed zero D1/provider/model work. A live lease can
+never be stolen; an abandoned lease (holder process gone) is recovered
+explicitly. Corrupt or ambiguous intent/lease/receipt/pointer state, and any
+watchlist/config change under an unfinished activation, fail closed.
+
+The runner package (`monitoring_runner/`) owns only activation, lease,
+receipt and pointer state; it composes the existing Phase 6-B/6-A/6-C/D1
+public boundaries and never reimplements them. Runner configuration is one
+explicit typed non-secret JSON file (`RunnerConfigV1`); acquisition mode
+stays deny-by-default with the same explicit live/cache-replay opt-ins, and
+no credential ever enters runner artifacts, status output or unit files.
+`tve watch unattended-status` reads a bounded secret-free state projection.
+Reference systemd service/timer templates live under `deploy/monitoring/`
+and are verified by `systemd-analyze verify` in ordinary CI; real owner
+host/cadence/deployment is Phase 6-E. No scheduled GitHub Actions monitoring
+workflow exists. External notification delivery (6-D2B), Dashboard monitoring
+views (6-D3) and owner unattended acceptance (6-E) remain unopened.
+
 ---
 
 ## 6. Scheduler choices
 
 ### Current Phase 6 decision
 
-For Phase 6-D2A, select a **persistent Linux host with a host-native systemd
-timer/service** as the first monitoring deployment model. The reason is
+For Phase 6-D2A, a **persistent Linux host with a host-native systemd
+timer/service** is the first monitoring deployment model. The reason is
 storage, not preference: Phase 6-A, 6-C and 6-D1 intentionally keep cursor,
 job and cycle state in durable local stores. A persistent host can reuse those
 stores directly and prove restart/idempotency without inventing a remote state
 layer.
 
 The application runner remains scheduler-neutral. systemd is only the first
-reference wakeup mechanism. Hermes cron may invoke the same CLI later. GitHub
-Actions is deliberately **not** selected for the monitoring runtime at this
-stage because its ephemeral workspace would require a separately designed
-remote durable-state boundary. Actions remains the CI verifier.
+reference wakeup mechanism (see `deploy/monitoring/`). Hermes cron may invoke
+the same CLI later. GitHub Actions is deliberately **not** selected for the
+monitoring runtime because its ephemeral workspace would require a separately
+designed remote durable-state boundary; Actions remains the CI verifier, and
+no scheduled monitoring workflow exists in this repository.
 
-D2A must persist a runner activation intent before entering D1 so a crash or
-service restart reuses the same resolved PIT/as_of and does not manufacture a
-second cycle merely because wall-clock time advanced. A single-host lease must
-prevent overlapping activations; terminal receipts must be repairable from D1
-terminal artifacts without repeating provider/model work.
+D2A persists a runner activation intent before entering D1, so a crash or
+service restart reuses the same resolved PIT/`as_of` and cannot manufacture a
+second cycle merely because wall-clock time advanced. A single-host lease
+prevents overlapping activations (the losing invocation performs zero work);
+terminal receipts are repairable from D1 terminal artifacts without repeating
+provider/model work.
 
-### systemd timer/service (selected D2A reference)
+### systemd timer/service (selected and implemented as the D2A reference)
 
 Good for:
 
@@ -550,7 +596,8 @@ Good for:
 - host restart recovery with `Persistent=true` timer semantics;
 - OS-level logs and service supervision without an agent runtime dependency.
 
-The checked-in unit/timer is a reference template only. The real owner VPS,
+The checked-in unit/timer (`deploy/monitoring/`) is a reference template only.
+It is verified by `systemd-analyze verify` in ordinary CI. The real owner VPS,
 watchlist, cadence, credentials and live network acceptance belong to Phase
 6-E, not D2A CI.
 

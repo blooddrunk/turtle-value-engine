@@ -1,0 +1,12 @@
+[Unit]
+Description=Schedule the turtle-value-engine unattended monitoring cycle
+
+[Timer]
+# Reference cadence only; the real owner cadence is a Phase 6-E input.
+OnCalendar=daily
+Persistent=true
+Unit=turtle-value-monitor.service
+RandomizedDelaySec=10min
+
+[Install]
+WantedBy=timers.target

@@ -1,11 +1,10 @@
 # Phase 6-D2A — Persistent Unattended Runner Foundation
 
-Status: **SELECTED / NOT IMPLEMENTED**
+Status: **CLOSED / IMPLEMENTED**
 Date: 2026-09-22
 Selected after: Phase 6-D1 CLOSED
-
-Selection audit:
-`docs/status/phase-6-d2a-selection-2026-09-22.md`
+Selection audit: `docs/status/phase-6-d2a-selection-2026-09-22.md`
+Implementation closure: `docs/status/phase-6-d2a-2026-09-22.md`
 
 Coding-agent handoff:
 `docs/status/phase-6-d2a-next-coding-agent-goal.md`

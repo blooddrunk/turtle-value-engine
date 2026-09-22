@@ -1,0 +1,19 @@
+[Unit]
+Description=turtle-value-engine unattended monitoring cycle (Phase 6-D2A reference)
+Documentation=file:///srv/turtle-value-engine/docs/goals/phase-6-d2a-persistent-runner-foundation.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Reference template only. Owner host, user, paths and cadence are Phase 6-E
+# deployment inputs. This unit embeds no credential or secret value; the
+# runner configuration file it references contains only non-secret paths and
+# explicit policy flags.
+WorkingDirectory=/srv/turtle-value-engine
+ExecStart=/usr/bin/python3 -m turtle_value_engine watch unattended-run --runner-config /srv/turtle-value-engine/.tve-private/monitoring/runner.json
+TimeoutStartSec=30min
+# Exit code 3 (LEASE_BUSY) means another live invocation owns the runner
+# lease and this invocation intentionally performed no work.
+SuccessExitStatus=3
+Nice=10

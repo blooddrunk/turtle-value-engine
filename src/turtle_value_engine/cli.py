@@ -79,6 +79,14 @@ from turtle_value_engine.monitoring_execution import (
     ReanalysisExecutor,
     ReanalysisJobStore,
 )
+from turtle_value_engine.monitoring_runner import (
+    MonitoringRunnerService,
+    RunnerConfigV1,
+    RunnerLease,
+    RunnerLeaseBusyError,
+    RunnerStore,
+    UnattendedCycleBoundary,
+)
 from turtle_value_engine.pipeline import (
     run_analyze_from_normalized_input,
     run_cdc,
@@ -540,6 +548,19 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     watch_cycle_status.add_argument("--cycle-root", required=True, type=Path)
     watch_cycle_status.add_argument("--cycle-id", required=True)
+    watch_unattended_run = watch_commands.add_parser(
+        "unattended-run",
+        help="run one durable Phase 6-D2A unattended monitoring activation",
+    )
+    watch_unattended_run.add_argument("--runner-config", required=True, type=Path)
+    watch_unattended_run.add_argument("--output", type=Path, default=None)
+    watch_unattended_status = watch_commands.add_parser(
+        "unattended-status",
+        help="read the durable Phase 6-D2A unattended runner state",
+    )
+    watch_unattended_status.add_argument("--runner-root", required=True, type=Path)
+    watch_unattended_status.add_argument("--runner-id", default=None)
+    watch_unattended_status.add_argument("--activation-id", default=None)
     return parser
 
 
@@ -1073,6 +1094,10 @@ def _run_watch_command(args: argparse.Namespace) -> object:
         if status is None:
             raise ValueError("monitoring cycle was not found")
         return status
+    if args.watch_command == "unattended-run":
+        return _run_watch_unattended_run(args)
+    if args.watch_command == "unattended-status":
+        return _run_watch_unattended_status(args)
     raise ValueError(f"unsupported watch command: {args.watch_command}")
 
 
@@ -1139,6 +1164,147 @@ def _run_watch_cycle(args: argparse.Namespace) -> object:
     }
     _write_optional(args.output, result)
     return result
+
+
+class _CliPayloadExit(Exception):
+    """Print a bounded JSON payload and exit with a specific code."""
+
+    def __init__(self, payload: dict, code: int) -> None:
+        super().__init__("classified CLI exit")
+        self.payload = payload
+        self.code = code
+
+
+def _load_runner_config(path: Path) -> RunnerConfigV1:
+    payload = _read_json(path)
+    try:
+        return RunnerConfigV1.model_validate(payload)
+    except ValidationError as exc:
+        raise ValueError(f"invalid runner config {path}: {_validation_blocker(exc)}") from exc
+
+
+def _runner_d1_boundary(config: RunnerConfigV1) -> UnattendedCycleBoundary:
+    """Wire the runner to the unchanged public D1 composition only."""
+
+    workspace = MonitoringWorkspace(config.monitoring_workspace_root)
+    job_store = ReanalysisJobStore(config.reanalysis_job_root)
+    cycle_store = MonitoringCycleStore(config.cycle_store_root)
+    preparation = NormalizedCompanyInputBuilder(
+        AKShareProvider(), FilesystemRawResponseCache(config.cache_dir)
+    )
+    acquisition = CninfoCycleAcquisition(
+        config.cache_dir,
+        timeout_seconds=config.timeout_seconds,
+        max_response_bytes=config.max_response_bytes,
+    )
+
+    class _Boundary:
+        def run_cycle(self, spec, watchlist):
+            return MonitoringCycleRunner(
+                workspace,
+                job_store,
+                cycle_store,
+                acquisition=acquisition,
+                preparation=preparation,
+                model_allowed=False,
+            ).run(spec, watchlist)
+
+    return _Boundary()
+
+
+def _run_watch_unattended_run(args: argparse.Namespace) -> object:
+    from turtle_value_engine.providers.cninfo_disclosure import (
+        cninfo_filing_provider_version,
+    )
+
+    config = _load_runner_config(args.runner_config)
+    adapter_version = config.adapter_version or cninfo_filing_provider_version()
+    watchlist_path = Path(config.watchlist_path)
+    store = RunnerStore(config.runner_root)
+    lease = RunnerLease(
+        config.runner_root, config.runner_id, ttl_seconds=config.lease_ttl_seconds
+    )
+    service = MonitoringRunnerService(
+        config=config,
+        store=store,
+        cycle_store=MonitoringCycleStore(config.cycle_store_root),
+        lease=lease,
+        d1=_runner_d1_boundary(config),
+        watchlist_loader=lambda: _load_watchlist(watchlist_path),
+        adapter_version=adapter_version,
+    )
+    try:
+        outcome = service.run()
+    except RunnerLeaseBusyError as exc:
+        raise _CliPayloadExit(
+            {
+                "classification": "LEASE_BUSY",
+                "runner_id": config.runner_id,
+                "runner_root": config.runner_root,
+                "message": (
+                    "Another live invocation holds this runner lease; no "
+                    "provider, model or D1 work was performed."
+                ),
+                "prior_holder_activation_id": (
+                    None if exc.record is None else exc.record.activation_id
+                ),
+            },
+            3,
+        ) from exc
+    payload = {
+        "classification": outcome.classification.value,
+        "runner_id": config.runner_id,
+        "activation_id": outcome.activation.activation_id,
+        "cycle_id": outcome.activation.spec.cycle_id,
+        "as_of": outcome.activation.spec.as_of.isoformat(),
+        "d1_status": outcome.receipt.d1_status,
+        "d1_failure_code": outcome.receipt.d1_failure_code,
+        "result_content_sha256": outcome.receipt.result_content_sha256,
+        "alert_batch_id": outcome.receipt.alert_batch_id,
+        "alert_batch_content_sha256": outcome.receipt.alert_batch_content_sha256,
+        "reused_terminal": outcome.reused_terminal,
+    }
+    _write_optional(args.output, payload)
+    return payload
+
+
+def _run_watch_unattended_status(args: argparse.Namespace) -> object:
+    store = RunnerStore(args.runner_root)
+    runner_ids = [args.runner_id] if args.runner_id else store.list_runner_ids()
+    runners: list[dict[str, object]] = []
+    for runner_id in runner_ids:
+        lease = RunnerLease(args.runner_root, runner_id)
+        latest = store.load_latest(runner_id)
+        active = store.load_active(runner_id)
+        unfinished = store.list_unfinished_activations(runner_id)
+        runners.append(
+            {
+                "runner_id": runner_id,
+                "lease": lease.probe(),
+                "latest": None if latest is None else latest.model_dump(mode="json"),
+                "active_activation": None if active is None else active.model_dump(mode="json"),
+                "unfinished_activation_ids": [item.activation_id for item in unfinished],
+            }
+        )
+    payload: dict[str, object] = {
+        "runner_root": str(args.runner_root),
+        "runners": runners,
+    }
+    if args.activation_id is not None:
+        intent = store.load_intent(args.activation_id)
+        receipt = store.load_receipt(args.activation_id)
+        payload["activation"] = {
+            "intent": {
+                "activation_id": intent.activation_id,
+                "runner_id": intent.runner_id,
+                "cycle_id": intent.spec.cycle_id,
+                "as_of": intent.spec.as_of.isoformat(),
+                "created_at": intent.created_at.isoformat(),
+                "request_fingerprint": intent.request_fingerprint,
+            },
+            "receipt": None if receipt is None else receipt.model_dump(mode="json"),
+        }
+    return payload
 
 
 def _run_watch_execute_reanalysis(args: argparse.Namespace) -> object:
@@ -1433,6 +1599,9 @@ def main(argv: list[str] | None = None) -> int:
                             }
                         )
                     result = run_cdc(inputs, profile)
+    except _CliPayloadExit as exc:
+        print(json.dumps(_json_payload(exc.payload), ensure_ascii=False, indent=2))
+        return exc.code
     except (
         OSError,
         ProfileLoadError,

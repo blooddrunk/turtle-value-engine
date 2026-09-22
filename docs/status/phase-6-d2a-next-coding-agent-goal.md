@@ -1,12 +1,15 @@
 # Phase 6-D2A coding-agent handoff — Persistent Unattended Runner Foundation
 
-Status: **ACTIVE / NOT IMPLEMENTED**
+Status: **CLOSED / IMPLEMENTED**
 
 Canonical goal:
 `docs/goals/phase-6-d2a-persistent-runner-foundation.md`
 
-Baseline selected by planning audit:
-`976ee2ded6ec677fcea131af86c8a02bf71466b3`
+Implementation closure:
+`docs/status/phase-6-d2a-2026-09-22.md`
+
+Selection audit:
+`docs/status/phase-6-d2a-selection-2026-09-22.md`
 
 ## Goal command prompt
 

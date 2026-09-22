@@ -71,6 +71,9 @@ event_impact_policy = "event-impact-v1"
 # Phase 6-B opt-in live acquisition raw cache (non-secret path only; the
 # live command still requires an explicit --network=allow flag).
 acquisition_cache_dir = ".tve-private/monitoring/provider-cache"
+# Phase 6-D2A unattended runner inputs live in one explicit typed
+# non-secret JSON file instead (config/monitoring-runner.example.json);
+# no schedule, credential or notification value belongs here.
 
 # Future provider/storage-specific settings belong under these named sections;
 # they must still contain non-secret values or secret references only.

@@ -1,0 +1,98 @@
+{
+  "additionalProperties": false,
+  "description": "Terminal receipt binding one activation to exact D1 terminal artifacts.",
+  "properties": {
+    "activation_id": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Activation Id",
+      "type": "string"
+    },
+    "alert_batch_content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Alert Batch Content Sha256",
+      "type": "string"
+    },
+    "alert_batch_id": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Alert Batch Id",
+      "type": "string"
+    },
+    "classification": {
+      "const": "CYCLE_TERMINAL",
+      "default": "CYCLE_TERMINAL",
+      "title": "Classification",
+      "type": "string"
+    },
+    "completed_at": {
+      "format": "date-time",
+      "title": "Completed At",
+      "type": "string"
+    },
+    "content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Content Sha256",
+      "type": "string"
+    },
+    "contract": {
+      "const": "monitoring_runner_receipt_v1",
+      "default": "monitoring_runner_receipt_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "cycle_id": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Cycle Id",
+      "type": "string"
+    },
+    "d1_failure_code": {
+      "anyOf": [
+        {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "D1 Failure Code"
+    },
+    "d1_status": {
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "D1 Status",
+      "type": "string"
+    },
+    "result_content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Result Content Sha256",
+      "type": "string"
+    },
+    "runner_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Runner Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0.0",
+      "default": "1.0.0",
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "runner_id",
+    "activation_id",
+    "cycle_id",
+    "d1_status",
+    "result_content_sha256",
+    "alert_batch_id",
+    "alert_batch_content_sha256",
+    "completed_at",
+    "content_sha256"
+  ],
+  "title": "RunnerReceiptV1",
+  "type": "object"
+}

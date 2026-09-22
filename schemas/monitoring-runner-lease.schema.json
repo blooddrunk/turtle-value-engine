@@ -1,0 +1,73 @@
+{
+  "additionalProperties": false,
+  "description": "Single-host lease record for one runner identity.\n\nLiveness is proven by an OS-level exclusive lock on the lease file, which\nthe host releases when the holding process exits for any reason.  This\nrecord is the durable, machine-readable projection of the current holder;\n``lease_ttl_seconds`` is operational metadata for humans and never\nauthorizes taking a lease from a live holder.",
+  "properties": {
+    "acquired_at": {
+      "format": "date-time",
+      "title": "Acquired At",
+      "type": "string"
+    },
+    "activation_id": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Activation Id"
+    },
+    "content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Content Sha256",
+      "type": "string"
+    },
+    "contract": {
+      "const": "monitoring_runner_lease_v1",
+      "default": "monitoring_runner_lease_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "heartbeat_at": {
+      "format": "date-time",
+      "title": "Heartbeat At",
+      "type": "string"
+    },
+    "holder_token": {
+      "pattern": "^[0-9a-f]{32}$",
+      "title": "Holder Token",
+      "type": "string"
+    },
+    "lease_ttl_seconds": {
+      "maximum": 604800,
+      "minimum": 1,
+      "title": "Lease Ttl Seconds",
+      "type": "integer"
+    },
+    "runner_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Runner Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0.0",
+      "default": "1.0.0",
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "runner_id",
+    "holder_token",
+    "acquired_at",
+    "heartbeat_at",
+    "lease_ttl_seconds",
+    "content_sha256"
+  ],
+  "title": "RunnerLeaseV1",
+  "type": "object"
+}

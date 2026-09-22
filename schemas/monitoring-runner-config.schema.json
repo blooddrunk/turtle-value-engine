@@ -1,0 +1,204 @@
+{
+  "additionalProperties": false,
+  "description": "Explicit, non-secret inputs for one unattended runner deployment.\n\nThis is an input contract, not a persisted runner artifact: it carries\nonly paths, policy flags and bounded operational metadata.  No credential\nvalue or secret reference may appear here.",
+  "properties": {
+    "acquisition_limit": {
+      "default": 30,
+      "maximum": 30,
+      "minimum": 1,
+      "title": "Acquisition Limit",
+      "type": "integer"
+    },
+    "acquisition_policy_id": {
+      "default": "monitoring-acquisition-v1",
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Acquisition Policy Id",
+      "type": "string"
+    },
+    "adapter_version": {
+      "anyOf": [
+        {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Adapter Version"
+    },
+    "as_of": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "As Of"
+    },
+    "cache_dir": {
+      "maxLength": 512,
+      "minLength": 1,
+      "title": "Cache Dir",
+      "type": "string"
+    },
+    "contract": {
+      "const": "monitoring_runner_config_v1",
+      "default": "monitoring_runner_config_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "cycle_store_root": {
+      "maxLength": 512,
+      "minLength": 1,
+      "title": "Cycle Store Root",
+      "type": "string"
+    },
+    "execution_catalog_path": {
+      "anyOf": [
+        {
+          "maxLength": 512,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Execution Catalog Path"
+    },
+    "lease_ttl_seconds": {
+      "default": 900,
+      "maximum": 604800,
+      "minimum": 1,
+      "title": "Lease Ttl Seconds",
+      "type": "integer"
+    },
+    "max_response_bytes": {
+      "default": 524288,
+      "maximum": 8388608,
+      "minimum": 1024,
+      "title": "Max Response Bytes",
+      "type": "integer"
+    },
+    "monitoring_workspace_root": {
+      "maxLength": 512,
+      "minLength": 1,
+      "title": "Monitoring Workspace Root",
+      "type": "string"
+    },
+    "network_allowed": {
+      "default": false,
+      "title": "Network Allowed",
+      "type": "boolean"
+    },
+    "offline_replay": {
+      "default": false,
+      "title": "Offline Replay",
+      "type": "boolean"
+    },
+    "published_from": {
+      "anyOf": [
+        {
+          "format": "date",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Published From"
+    },
+    "published_to": {
+      "anyOf": [
+        {
+          "format": "date",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Published To"
+    },
+    "reanalysis_job_root": {
+      "maxLength": 512,
+      "minLength": 1,
+      "title": "Reanalysis Job Root",
+      "type": "string"
+    },
+    "runner_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Runner Id",
+      "type": "string"
+    },
+    "runner_root": {
+      "maxLength": 512,
+      "minLength": 1,
+      "title": "Runner Root",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0.0",
+      "default": "1.0.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "source_id": {
+      "default": "CNINFO",
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Source Id",
+      "type": "string"
+    },
+    "timeout_seconds": {
+      "default": 15.0,
+      "exclusiveMinimum": 0,
+      "maximum": 60,
+      "title": "Timeout Seconds",
+      "type": "number"
+    },
+    "watchlist_path": {
+      "maxLength": 512,
+      "minLength": 1,
+      "title": "Watchlist Path",
+      "type": "string"
+    },
+    "window_days": {
+      "anyOf": [
+        {
+          "maximum": 366,
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Window Days"
+    }
+  },
+  "required": [
+    "runner_id",
+    "watchlist_path",
+    "monitoring_workspace_root",
+    "reanalysis_job_root",
+    "cycle_store_root",
+    "runner_root",
+    "cache_dir"
+  ],
+  "title": "RunnerConfigV1",
+  "type": "object"
+}

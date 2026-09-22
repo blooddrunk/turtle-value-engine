@@ -5152,16 +5152,15 @@ technical/audit identifiers sit behind a details affordance. The exact build
 was redeployed through the unchanged M6-C2 security path. Phase 6 has since
 closed the offline planning foundation (6-A), opt-in CNINFO live acquisition
 (6-B), controlled re-analysis executor (6-C), and the synchronous deterministic
-cycle/outbox boundary (6-D1). The next selected slice is 6-D2A, which adds a
-durable unattended runner around D1 without yet adding external notification
-delivery.
+cycle/outbox boundary (6-D1), and the durable single-host unattended runner
+(6-D2A). External notification delivery is the separate 6-D2B slice.
 
 ---
 
 ## Phase 6 — Watchlist and event-driven re-analysis
 
-Status: **Phase 6-A / 6-B / 6-C / 6-D1 implemented and closed; Phase 6-D2A
-selected on 2026-09-22 and not yet implemented.**
+Status: **Phase 6-A / 6-B / 6-C / 6-D1 / 6-D2A implemented and closed;
+Phase 6-D2B selected next.**
 
 The first package,
 [Phase 6-A — Watchlist State and Deterministic Event Planning Foundation](goals/phase-6-a-watchlist-event-foundation.md),
@@ -5178,21 +5177,25 @@ atomically committed next state, an atomic/idempotent hash-verified local
 additive non-secret `[monitoring]` ProjectConfig section, and checked-in JSON
 schemas with drift tests. Phase 6-B then added explicit opt-in live CNINFO
 announcement acquisition plus byte-identical cache replay; Phase 6-C added the
-controlled re-analysis executor; Phase 6-D1 now composes one explicit PIT
+controlled re-analysis executor; Phase 6-D1 composes one explicit PIT
 cycle through 6-B -> 6-A -> 6-C and persists terminal cycle/result/outbox
-artifacts with a repairable latest pointer. D1 deliberately has no scheduler
-or delivery transport.
+artifacts with a repairable latest pointer; Phase 6-D2A adds the durable
+single-host unattended runner around that unchanged D1 command.
 
-The next selected package is
-[Phase 6-D2A — Persistent Unattended Runner Foundation](goals/phase-6-d2a-persistent-runner-foundation.md).
-It keeps the existing local persistent stores, uses a persistent Linux host as
-the first deployment model, and adds a durable runner activation/lease/receipt
-boundary plus a reference systemd service/timer. External notification
-transport and delivery receipts are a separate 6-D2B slice; read-only
-Dashboard monitoring views remain 6-D3 and real owner unattended acceptance
-remains 6-E. Phase 6-A/D1 carried no planned manual functional acceptance;
-PIT, cursor, atomicity, re-analysis, crash recovery and outbox behavior are
-proven by automated suites.
+The closed package
+[Phase 6-D2A — Persistent Unattended Runner Foundation](goals/phase-6-d2a-persistent-runner-foundation.md)
+keeps the existing local persistent stores, uses a persistent Linux host with
+a host-native systemd timer as the first deployment model, and adds a durable
+runner activation/lease/receipt boundary plus reference systemd service/timer
+templates verified in CI. A crash reuses the unfinished activation and its
+frozen PIT instead of deriving a new cycle from a later wall clock; D1
+terminal artifacts repair the runner layer without repeating provider/model
+work; overlapping invocations are excluded by an explicit single-host lease.
+External notification transport and delivery receipts are the separate 6-D2B
+slice; read-only Dashboard monitoring views remain 6-D3 and real owner
+unattended acceptance remains 6-E. Phase 6-A/D1/D2A carried no planned manual
+functional acceptance; PIT, cursor, atomicity, re-analysis, crash recovery,
+outbox and unattended-runner behavior are proven by automated suites.
 
 ### Watchlist state
 
@@ -6135,3 +6138,25 @@ notification delivery, Dashboard monitoring surface, Cloudflare mutation,
 Bridge adapter, live LLM call or manual functional acceptance is part of D1.
 Exact closing SHA/Actions evidence is recorded in
 `docs/status/phase-6-d1-2026-09-21.md`.
+
+## Phase 6-D2A implementation closure — 2026-09-22
+
+Phase 6-D2A is implemented and closed at the durable single-host unattended
+runner boundary. `tve watch unattended-run --runner-config <path>` acquires an
+exclusive flock-backed lease for one runner identity, settles any crashed
+prior runner state, resumes the unfinished activation (same frozen
+`as_of`/PIT, never a later wall-clock-derived cycle) or creates exactly one
+new activation intent persisted before entering D1, invokes the unchanged
+Phase 6-D1 boundary, and persists a terminal receipt binding the activation to
+the exact `MonitoringCycleResultV1`/`MonitoringAlertBatchV1` identities and
+hashes plus an atomic repairable latest pointer. If D1 terminal artifacts
+already exist, the runner repairs its receipt/pointer from them without
+repeating any provider, model or re-analysis work. The losing invocation of an
+overlap exits `LEASE_BUSY` (code 3) with zero work. `tve watch
+unattended-status` reads a bounded secret-free projection. Reference systemd
+service/timer templates under `deploy/monitoring/` pass `systemd-analyze
+verify` in ordinary CI; no scheduled GitHub Actions monitoring workflow was
+introduced. External notification delivery (6-D2B), Dashboard monitoring
+views (6-D3) and owner unattended acceptance (6-E) remain unopened. Exact
+closing SHA/Actions evidence is recorded in
+`docs/status/phase-6-d2a-2026-09-22.md`.
