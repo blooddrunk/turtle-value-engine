@@ -269,12 +269,21 @@ cycle/result/outbox artifacts and a repairable atomic latest pointer. It
 requires explicit typed execution bindings and blocks advancement when the
 current committed run has unresolved `BLOCKED` or `FAILED` jobs. D1 has no
 scheduler, notification delivery, Dashboard monitoring mutation, Cloudflare
-mutation, or brokerage operation. Phase 6-D2 scheduling/notification delivery,
-Phase 6-D3 Dashboard monitoring views, Phase 6-E unattended acceptance and the
-optional Bridge adapter are not started. Exact gate, deployment
+mutation, or brokerage operation. The next selected package is **Phase 6-D2A
+— Persistent Unattended Runner Foundation**: keep D1 unchanged, place the
+unattended wakeup on a persistent Linux host, add a durable single-host runner
+intent/receipt/lease boundary and a reference systemd timer/service, and prove
+overlap/restart/idempotent recovery automatically. GitHub Actions is not the
+selected monitoring scheduler because the current monitoring/job/cycle stores
+are local and durable; choosing Actions now would force an unnecessary remote
+state migration. External notification delivery/receipts are deferred to
+Phase 6-D2B; Phase 6-D3 Dashboard monitoring views, Phase 6-E owner live
+unattended acceptance and the optional Bridge adapter are not started. Exact gate, deployment
 and remaining-input evidence is recorded in
 `docs/status/phase-5r-a-2026-09-20.md` and
-`docs/status/phase-6-a-2026-09-21.md`. Project-wide non-secret runtime
+`docs/status/phase-6-a-2026-09-21.md`. The active D2A goal is
+`docs/goals/phase-6-d2a-persistent-runner-foundation.md` and its coding handoff
+is `docs/status/phase-6-d2a-next-coding-agent-goal.md`. Project-wide non-secret runtime
 configuration is defined by `config/project.example.toml` and the ignored
 `.tve-private/project.toml`; later phases extend this typed configuration
 instead of adding phase-local environment files.

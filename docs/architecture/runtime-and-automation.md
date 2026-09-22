@@ -510,13 +510,49 @@ pointer-only crash can be repaired without repeating provider/model work.
 The non-interactive surface is `tve watch cycle` and `tve watch cycle-status`.
 It remains offline/test-injectable by default; live acquisition still requires
 the existing explicit `--network=allow` policy, while `--from-cache` replays
-the existing Phase 6-B raw cache. Phase 6-D2 scheduling and notification
-delivery, Phase 6-D3 Dashboard monitoring views and Phase 6-E unattended
-acceptance remain outside this boundary.
+the existing Phase 6-B raw cache. The next selected slice is Phase 6-D2A:
+a durable single-host unattended runner around this unchanged D1 command.
+External notification delivery/receipts are deferred to 6-D2B; Phase 6-D3
+Dashboard monitoring views and Phase 6-E owner live unattended acceptance
+remain outside D2A.
 
 ---
 
 ## 6. Scheduler choices
+
+### Current Phase 6 decision
+
+For Phase 6-D2A, select a **persistent Linux host with a host-native systemd
+timer/service** as the first monitoring deployment model. The reason is
+storage, not preference: Phase 6-A, 6-C and 6-D1 intentionally keep cursor,
+job and cycle state in durable local stores. A persistent host can reuse those
+stores directly and prove restart/idempotency without inventing a remote state
+layer.
+
+The application runner remains scheduler-neutral. systemd is only the first
+reference wakeup mechanism. Hermes cron may invoke the same CLI later. GitHub
+Actions is deliberately **not** selected for the monitoring runtime at this
+stage because its ephemeral workspace would require a separately designed
+remote durable-state boundary. Actions remains the CI verifier.
+
+D2A must persist a runner activation intent before entering D1 so a crash or
+service restart reuses the same resolved PIT/as_of and does not manufacture a
+second cycle merely because wall-clock time advanced. A single-host lease must
+prevent overlapping activations; terminal receipts must be repairable from D1
+terminal artifacts without repeating provider/model work.
+
+### systemd timer/service (selected D2A reference)
+
+Good for:
+
+- persistent local monitoring/job/cycle stores;
+- direct non-interactive `tve` CLI execution;
+- host restart recovery with `Persistent=true` timer semantics;
+- OS-level logs and service supervision without an agent runtime dependency.
+
+The checked-in unit/timer is a reference template only. The real owner VPS,
+watchlist, cadence, credentials and live network acceptance belong to Phase
+6-E, not D2A CI.
 
 ### ChatGPT Scheduled
 
@@ -543,7 +579,10 @@ Good for:
 
 ### GitHub Actions
 
-Recommended first automation implementation because it can execute the exact repository version under CI and is independent of any particular LLM agent.
+Keep GitHub Actions as the repository CI / exact-SHA verification boundary and
+for stateless scheduled jobs. Do not use it as the Phase 6 monitoring runner
+while monitoring/job/cycle state is local-only; that would either lose state
+between runs or force an unrelated remote-storage design into D2A.
 
 ---
 

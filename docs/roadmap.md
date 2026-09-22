@@ -5149,16 +5149,19 @@ is now complete: the read-only Dashboard is Chinese-first through a
 centralized typed presentation layer, semantic states carry plain-language
 labels with raw codes preserved, empty/partial/error states are distinct, and
 technical/audit identifiers sit behind a details affordance. The exact build
-was redeployed through the unchanged M6-C2 security path. Phase 6-A then
-closed the offline deterministic watchlist/event foundation described below;
-live polling remains future Phase 6-B work.
+was redeployed through the unchanged M6-C2 security path. Phase 6 has since
+closed the offline planning foundation (6-A), opt-in CNINFO live acquisition
+(6-B), controlled re-analysis executor (6-C), and the synchronous deterministic
+cycle/outbox boundary (6-D1). The next selected slice is 6-D2A, which adds a
+durable unattended runner around D1 without yet adding external notification
+delivery.
 
 ---
 
 ## Phase 6 — Watchlist and event-driven re-analysis
 
-Status: **Phase 6-A implemented on 2026-09-21 at its offline integration
-boundary; Phase 6-B not started.**
+Status: **Phase 6-A / 6-B / 6-C / 6-D1 implemented and closed; Phase 6-D2A
+selected on 2026-09-22 and not yet implemented.**
 
 The first package,
 [Phase 6-A — Watchlist State and Deterministic Event Planning Foundation](goals/phase-6-a-watchlist-event-foundation.md),
@@ -5173,11 +5176,23 @@ identity, source/listing-scoped cursors that advance only through the
 atomically committed next state, an atomic/idempotent hash-verified local
 `MonitoringWorkspace`, offline `tve watch validate|replay|status` CLI, an
 additive non-secret `[monitoring]` ProjectConfig section, and checked-in JSON
-schemas with drift tests. Live provider polling, schedulers, notifications,
-automatic re-analysis execution and remote derived-state storage remain
-Phase 6-B+ work. Phase 6-A carried no planned manual functional acceptance;
-duplicate, PIT, cursor, atomicity, corruption and replay behavior are proven
-by the automated monitoring test suite.
+schemas with drift tests. Phase 6-B then added explicit opt-in live CNINFO
+announcement acquisition plus byte-identical cache replay; Phase 6-C added the
+controlled re-analysis executor; Phase 6-D1 now composes one explicit PIT
+cycle through 6-B -> 6-A -> 6-C and persists terminal cycle/result/outbox
+artifacts with a repairable latest pointer. D1 deliberately has no scheduler
+or delivery transport.
+
+The next selected package is
+[Phase 6-D2A — Persistent Unattended Runner Foundation](goals/phase-6-d2a-persistent-runner-foundation.md).
+It keeps the existing local persistent stores, uses a persistent Linux host as
+the first deployment model, and adds a durable runner activation/lease/receipt
+boundary plus a reference systemd service/timer. External notification
+transport and delivery receipts are a separate 6-D2B slice; read-only
+Dashboard monitoring views remain 6-D3 and real owner unattended acceptance
+remains 6-E. Phase 6-A/D1 carried no planned manual functional acceptance;
+PIT, cursor, atomicity, re-analysis, crash recovery and outbox behavior are
+proven by automated suites.
 
 ### Watchlist state
 
@@ -5283,8 +5298,9 @@ chronological calibration proposal boundary.
 
 Phase 1 deterministic semantics remain frozen. Changes to formulas, hard-gate
 semantics, schemas or `strict-v1` thresholds require a separately reviewed,
-versioned change. Watchlist/event monitoring and additional provider coverage
-remain separate work.
+versioned change. Watchlist/event monitoring is implemented through the synchronous D1
+cycle/outbox boundary; D2A is the selected next slice for unattended runner
+state. Additional provider coverage remains separate work.
 
 The long endpoint notes below are historical implementation records. Future
 provider categories may still be added one at a time, but they are not part of
