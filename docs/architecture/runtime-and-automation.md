@@ -559,8 +559,14 @@ and are verified by `systemd-analyze verify` in ordinary CI; real owner
 host/cadence/deployment is Phase 6-E. No scheduled GitHub Actions monitoring
 workflow exists. Post-closure audit selected Phase 6-D2A-R1 before D2B to
 tighten lease error classification, lease-slot identity binding and lock-before-
-metadata ordering; these are local deterministic corrections and require no
-owner live environment. External notification delivery (6-D2B), Dashboard
+metadata ordering; R1 closed those gaps at `2f9aae2`: the non-blocking `flock`
+is tried first and is the only liveness authority (the run path performs no
+pre-lock lease-JSON validation), only the platform's real contention errors map
+to `LEASE_BUSY` while unrelated open/flock failures fail closed as
+`RunnerLeaseError`, `probe()` never reports `FREE`/`LIVE` from unrelated OS
+errors, a decoded lease record must match its slot's `runner_id`, and
+holder-record writes complete a full-byte write loop before fsync may claim
+success. External notification delivery (6-D2B), Dashboard
 monitoring views (6-D3) and owner unattended acceptance (6-E) remain unopened.
 
 ---

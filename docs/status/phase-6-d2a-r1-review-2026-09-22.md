@@ -1,6 +1,12 @@
 # Phase 6-D2A post-closure review / R1 selection — 2026-09-22
 
-Status: **REVIEWED / R1 REQUIRED BEFORE D2B**
+Status: **REVIEWED / CLOSED BY R1**
+
+Resolution: all four findings (F1-F4) were re-confirmed to still exist at the
+advanced baseline `ec17af0` and were fixed by Phase 6-D2A-R1 at
+`2f9aae27afb8cb95c6fed7ee20cdf47d7ad09d1e` (Actions run 35679461520,
+success). Closure evidence:
+`docs/status/phase-6-d2a-r1-2026-09-22.md`.
 
 Audited main head:
 `81b2ac2bb07711eab03fc594aabeab4293c99ec2`

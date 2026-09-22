@@ -1,11 +1,15 @@
 # Phase 6-D2A-R1 — Lease Classification and Slot-Integrity Hardening
 
-Status: **SELECTED / NOT IMPLEMENTED**
+Status: **CLOSED**
 Date: 2026-09-22
 Selected after: Phase 6-D2A post-closure review
+Closed by: `2f9aae27afb8cb95c6fed7ee20cdf47d7ad09d1e` (Actions run 35679461520, success)
 
 Selection audit:
 `docs/status/phase-6-d2a-r1-review-2026-09-22.md`
+
+Closure record:
+`docs/status/phase-6-d2a-r1-2026-09-22.md`
 
 Coding-agent handoff:
 `docs/status/phase-6-d2a-r1-next-coding-agent-goal.md`

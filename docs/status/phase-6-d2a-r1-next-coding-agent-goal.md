@@ -1,6 +1,10 @@
 # Phase 6-D2A-R1 coding-agent handoff — Lease hardening
 
-Status: **ACTIVE / NOT IMPLEMENTED**
+Status: **COMPLETED 2026-09-22**
+
+Implemented and closed by `2f9aae27afb8cb95c6fed7ee20cdf47d7ad09d1e`
+(Actions run 35679461520, success). Closure evidence:
+`docs/status/phase-6-d2a-r1-2026-09-22.md`.
 
 Canonical goal:
 `docs/goals/phase-6-d2a-r1-lease-hardening.md`

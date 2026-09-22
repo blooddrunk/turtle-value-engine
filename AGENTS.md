@@ -289,12 +289,17 @@ are one explicit typed non-secret `RunnerConfigV1` JSON file
 through the existing D1/6-B opt-ins, and reference systemd service/timer
 templates under `deploy/monitoring/` pass `systemd-analyze verify` in ordinary
 CI. No scheduled GitHub Actions monitoring workflow exists. A post-closure
-review at main `81b2ac2` found a narrow lease-classification hardening gap:
-the flock boundary must distinguish real contention from unrelated OS errors,
-bind a persisted lease record to its runner slot, and make the OS lock the
-authoritative first check before parsing mutable lease metadata. Therefore
-**Phase 6-D2A-R1 — Lease Classification and Slot-Integrity Hardening** is the
-active package before any notification work. External notification
+review at main `81b2ac2` found a narrow lease-classification hardening gap;
+**Phase 6-D2A-R1 — Lease Classification and Slot-Integrity Hardening** closed
+it at `2f9aae2` (Actions run 35679461520, success; evidence in
+`docs/status/phase-6-d2a-r1-2026-09-22.md`): the non-blocking `flock` is now
+the first and only liveness authority (no pre-lock lease-JSON validation),
+only real contention errno maps to `RunnerLeaseBusyError`/`LEASE_BUSY` while
+every other open/flock failure fails closed as `RunnerLeaseError`,
+`probe()`/status obey the same truthfulness rules, a decoded lease record is
+bound to its slot's `runner_id` (a foreign canonical record is never
+overwritten), and holder-record writes prove full-byte persistence through a
+complete write loop. External notification
 delivery/receipts remain queued for Phase 6-D2B; Phase 6-D3 Dashboard
 monitoring views, Phase 6-E owner live unattended acceptance and the optional
 Bridge adapter are not started. Exact gate, deployment

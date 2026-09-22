@@ -5159,8 +5159,9 @@ cycle/outbox boundary (6-D1), and the durable single-host unattended runner
 
 ## Phase 6 — Watchlist and event-driven re-analysis
 
-Status: **Phase 6-A / 6-B / 6-C / 6-D1 / 6-D2A implemented; Phase 6-D2A-R1
-lease hardening selected next before Phase 6-D2B.**
+Status: **Phase 6-A / 6-B / 6-C / 6-D1 / 6-D2A / 6-D2A-R1 implemented; Phase
+6-D2B (external notification delivery + delivery/receipt ledger) is the next
+candidate package.**
 
 The first package,
 [Phase 6-A — Watchlist State and Deterministic Event Planning Foundation](goals/phase-6-a-watchlist-event-foundation.md),
@@ -5193,13 +5194,15 @@ terminal artifacts repair the runner layer without repeating provider/model
 work; overlapping invocations are excluded by an explicit single-host lease.
 The post-closure review recorded in
 `docs/status/phase-6-d2a-r1-review-2026-09-22.md` found one narrow lease
-correctness gap that must be closed before notification delivery: the lease
-layer currently conflates all `flock` OS failures with real contention, does
-not bind a valid persisted lease record back to its runner slot, and parses
-lease metadata before attempting the authoritative OS lock. Phase 6-D2A-R1 is
-therefore the active maintenance slice. It must fix those semantics with
-deterministic regression tests and exact-SHA CI evidence; no manual functional
-acceptance is planned. External notification transport and delivery receipts
+correctness gap. The corrective package
+[Phase 6-D2A-R1 — Lease Classification and Slot-Integrity Hardening](goals/phase-6-d2a-r1-lease-hardening.md)
+then closed it at `2f9aae2` (Actions run 35679461520, success; evidence in
+`docs/status/phase-6-d2a-r1-2026-09-22.md`): the non-blocking `flock` is the
+first and only liveness authority, only real contention errno maps to
+`LEASE_BUSY`, lease records are bound to their slot's `runner_id`, and
+holder-record writes prove full-byte persistence — all proven by nine
+deterministic regression tests with zero-work assertions and the full
+repository gate. External notification transport and delivery receipts
 remain the separate 6-D2B slice; read-only Dashboard monitoring views remain
 6-D3 and real owner unattended acceptance remains 6-E.
 
@@ -6166,3 +6169,24 @@ introduced. External notification delivery (6-D2B), Dashboard monitoring
 views (6-D3) and owner unattended acceptance (6-E) remain unopened. Exact
 closing SHA/Actions evidence is recorded in
 `docs/status/phase-6-d2a-2026-09-22.md`.
+
+## Phase 6-D2A-R1 implementation closure — 2026-09-22
+
+The post-closure lease-correctness review selected one bounded corrective
+package, now closed. Phase 6-D2A-R1 makes the non-blocking OS `flock` the
+first and only liveness authority (the pre-lock lease-JSON validation was
+removed), maps only real contention errno (`BlockingIOError`/`EAGAIN`/
+`EWOULDBLOCK`/`EACCES`) to `RunnerLeaseBusyError`/`LEASE_BUSY` while every
+other open/flock failure fails closed as a precise `RunnerLeaseError`, binds
+a decoded prior lease record to its slot's `runner_id` (a foreign canonical
+record is never overwritten), and proves full-byte holder-record persistence
+through a complete write loop; `probe()`/status obey the same truthfulness
+rules. Nine deterministic regression tests prove live-lock precedence over
+corrupt metadata, abandoned-corruption fail-closure, `ENOLCK`/open-error
+truthfulness, slot-identity binding and short-write handling with zero
+provider/model/D1 work, and the entire original D2A matrix stayed green.
+Closing implementation `2f9aae27afb8cb95c6fed7ee20cdf47d7ad09d1e` has GitHub
+Actions run 35679461520 (`success`); exact evidence is recorded in
+`docs/status/phase-6-d2a-r1-2026-09-22.md`. Phase 6-D2B (external
+notification delivery plus delivery/receipt ledger) is now the next candidate
+package.
