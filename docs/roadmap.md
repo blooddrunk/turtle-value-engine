@@ -5160,9 +5160,11 @@ cycle/outbox boundary (6-D1), and the durable single-host unattended runner
 ## Phase 6 — Watchlist and event-driven re-analysis
 
 Status: **Phase 6-A / 6-B / 6-C / 6-D1 / 6-D2A / 6-D2A-R1 / 6-D2B
-implemented; the next candidate package is Phase 6-D3 read-only Dashboard
-monitoring projection, while Phase 6-E remains the bounded real owner
-deployment/notification acceptance step.**
+implemented. Post-closure review selected Phase 6-D2B-R1 dispatch durability /
+single-flight / timeout-status hardening as the active corrective package;
+Phase 6-D3 read-only Dashboard monitoring projection follows only after R1
+closes, while Phase 6-E remains the bounded real owner deployment/notification
+acceptance step.**
 
 The first package,
 [Phase 6-A — Watchlist State and Deterministic Event Planning Foundation](goals/phase-6-a-watchlist-event-foundation.md),
