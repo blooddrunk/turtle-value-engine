@@ -7,12 +7,15 @@ model or network access occurs anywhere in this module.
 
 from __future__ import annotations
 
+import errno
+import fcntl
 import json
 import os
 import shutil
 import socket
 import subprocess
 import sys
+import uuid
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
@@ -338,6 +341,270 @@ def test_abandoned_lease_record_is_recovered(tmp_path):
     assert d1.calls == 1
     record = lease.probe()["record"]
     assert record["activation_id"] == outcome.activation.activation_id
+
+
+# --- Phase 6-D2A-R1: lease classification and slot-integrity regressions ---
+
+
+def _torn_lease_bytes() -> bytes:
+    return b'{"contract":"monitoring_runner_lease_v1","runner_i'
+
+
+def test_live_lock_contention_wins_over_corrupt_lease_record(tmp_path):
+    """A real kernel lock, not mutable lease JSON, decides LEASE_BUSY."""
+
+    _write_watchlist(tmp_path / "watchlist.json", _watchlist())
+    config = _config(tmp_path)
+    acquisition = FakeAcquisition(MonitoringEventBatchV1.build([]))
+    d1 = RealD1(tmp_path, acquisition)
+    service = _service(config, d1)
+    lease = RunnerLease(config.runner_root, RUNNER_ID)
+
+    with lease.held():
+        lease.path.parent.mkdir(parents=True, exist_ok=True)
+        lease.path.write_bytes(_torn_lease_bytes())
+        with pytest.raises(RunnerLeaseBusyError):
+            service.run()
+
+    assert d1.calls == 0
+    assert acquisition.calls == 0
+    assert not (Path(config.runner_root) / "activations").exists()
+
+
+def test_cli_reports_lease_busy_with_exit_code_three_over_corrupt_record(
+    tmp_path, capsys
+):
+    from turtle_value_engine.cli import main
+
+    _write_watchlist(tmp_path / "watchlist.json", _watchlist())
+    config = _config(tmp_path)
+    config_path = tmp_path / "runner.json"
+    config_path.write_text(
+        json.dumps(_config_payload(tmp_path), ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    lease = RunnerLease(config.runner_root, RUNNER_ID)
+    with lease.held():
+        lease.path.parent.mkdir(parents=True, exist_ok=True)
+        lease.path.write_bytes(_torn_lease_bytes())
+        rc = main(["watch", "unattended-run", "--runner-config", str(config_path)])
+    captured = capsys.readouterr()
+    assert rc == 3
+    payload = json.loads(captured.out)
+    assert payload["classification"] == "LEASE_BUSY"
+    assert payload["prior_holder_activation_id"] is None
+    assert not (Path(config.runner_root) / "activations").exists()
+
+
+def test_corrupt_abandoned_record_after_holder_release_fails_closed(tmp_path):
+    """The same torn record is an abandoned conflict once nobody holds the lock."""
+
+    _write_watchlist(tmp_path / "watchlist.json", _watchlist())
+    config = _config(tmp_path)
+    acquisition = FakeAcquisition(MonitoringEventBatchV1.build([]))
+    d1 = RealD1(tmp_path, acquisition)
+    service = _service(config, d1)
+    lease = RunnerLease(config.runner_root, RUNNER_ID)
+
+    with lease.held():
+        lease.path.parent.mkdir(parents=True, exist_ok=True)
+        lease.path.write_bytes(_torn_lease_bytes())
+        with pytest.raises(RunnerLeaseBusyError):
+            service.run()
+
+    assert lease.probe() == {
+        "state": LeaseState.ABANDONED.value,
+        "record": None,
+        "corrupt": True,
+    }
+    with pytest.raises(RunnerLeaseError) as excinfo:
+        service.run()
+    assert not isinstance(excinfo.value, RunnerLeaseBusyError)
+    assert d1.calls == 0
+    assert acquisition.calls == 0
+    assert not (Path(config.runner_root) / "activations").exists()
+
+
+def test_non_contention_flock_error_is_fail_closed_not_busy(tmp_path, monkeypatch):
+    """An injected ENOLCK lock failure must never be classified LEASE_BUSY."""
+
+    _write_watchlist(tmp_path / "watchlist.json", _watchlist())
+    config = _config(tmp_path)
+    acquisition = FakeAcquisition(MonitoringEventBatchV1.build([]))
+    d1 = RealD1(tmp_path, acquisition)
+    service = _service(config, d1)
+
+    def enolck(descriptor, operation):
+        raise OSError(errno.ENOLCK, "no record locks available")
+
+    monkeypatch.setattr(fcntl, "flock", enolck)
+    with pytest.raises(RunnerLeaseError) as excinfo:
+        service.run()
+    assert not isinstance(excinfo.value, RunnerLeaseBusyError)
+    assert "ENOLCK" in str(excinfo.value) or "no record locks available" in str(excinfo.value)
+    assert d1.calls == 0
+    assert acquisition.calls == 0
+    assert not (Path(config.runner_root) / "activations").exists()
+
+    # The read-only status path obeys the same truthfulness rule: an OS lock
+    # failure is a fail-closed error, not evidence of a LIVE holder.
+    lease = RunnerLease(config.runner_root, RUNNER_ID)
+    with pytest.raises(RunnerLeaseError) as probeinfo:
+        lease.probe()
+    assert not isinstance(probeinfo.value, RunnerLeaseBusyError)
+
+
+def test_probe_open_failure_is_fail_closed_not_free(tmp_path, monkeypatch):
+    """An existing slot that cannot be opened is never reported as FREE."""
+
+    lease = RunnerLease(tmp_path / "runner", RUNNER_ID)
+    lease.path.parent.mkdir(parents=True, exist_ok=True)
+    lease.path.write_bytes(_torn_lease_bytes())
+
+    real_open = os.open
+
+    def eio_for_slot(path, flags, mode=0o777, *, dir_fd=None):
+        if Path(path) == lease.path:
+            raise OSError(errno.EIO, os.strerror(errno.EIO), str(path))
+        return real_open(path, flags, mode, dir_fd=dir_fd)
+
+    monkeypatch.setattr(os, "open", eio_for_slot)
+    with pytest.raises(RunnerLeaseError) as probeinfo:
+        lease.probe()
+    assert probeinfo.value.args[0].startswith("cannot open runner lease slot")
+
+    acquisition = FakeAcquisition(MonitoringEventBatchV1.build([]))
+    _write_watchlist(tmp_path / "watchlist.json", _watchlist())
+    d1 = RealD1(tmp_path, acquisition)
+    with pytest.raises(RunnerLeaseError) as runinfo:
+        _service(_config(tmp_path), d1).run()
+    assert not isinstance(runinfo.value, RunnerLeaseBusyError)
+    assert d1.calls == 0
+    assert acquisition.calls == 0
+
+
+def test_foreign_canonical_lease_record_in_slot_fails_closed(tmp_path):
+    """A hash-valid record for runner B in runner A's slot is a conflict."""
+
+    _write_watchlist(tmp_path / "watchlist.json", _watchlist())
+    config = _config(tmp_path)
+    acquisition = FakeAcquisition(MonitoringEventBatchV1.build([]))
+    d1 = RealD1(tmp_path, acquisition)
+    foreign = RunnerLeaseV1.build(
+        runner_id="runner-b",
+        holder_token=uuid.uuid4().hex,
+        activation_id=None,
+        acquired_at=AS_OF,
+        lease_ttl_seconds=900,
+    )
+    lease = RunnerLease(config.runner_root, RUNNER_ID)
+    lease.path.parent.mkdir(parents=True, exist_ok=True)
+    lease.path.write_bytes(foreign.canonical_bytes() + b"\n")
+    probe = lease.probe()
+    assert probe["state"] == LeaseState.ABANDONED.value
+    assert probe["record"]["runner_id"] == "runner-b"
+
+    with pytest.raises(RunnerLeaseError) as excinfo:
+        _service(config, d1).run()
+    assert "runner-b" in str(excinfo.value)
+    assert not isinstance(excinfo.value, RunnerLeaseBusyError)
+
+    assert d1.calls == 0
+    assert acquisition.calls == 0
+    assert not (Path(config.runner_root) / "activations").exists()
+    # The foreign record was not overwritten by the failing invocation.
+    persisted = json.loads(lease.path.read_text(encoding="utf-8"))
+    assert persisted["runner_id"] == "runner-b"
+    assert persisted["content_sha256"] == foreign.content_sha256
+
+
+def _fragmenting_write(chunk: int):
+    """Wrap os.write so lease payloads are written ``chunk`` bytes at a time."""
+
+    real_write = os.write
+
+    def write(fd, data):
+        view = bytes(data)
+        if b"monitoring_runner_lease_v1" in view:
+            return real_write(fd, view[:chunk])
+        return real_write(fd, view)
+
+    return write
+
+
+def test_lease_record_write_completes_over_short_writes(tmp_path, monkeypatch):
+    lease = RunnerLease(tmp_path / "runner", RUNNER_ID)
+    monkeypatch.setattr(os, "write", _fragmenting_write(7))
+    with lease.held() as handle:
+        record = handle.record(None)
+    monkeypatch.undo()
+
+    assert lease.path.read_bytes() == record.canonical_bytes() + b"\n"
+    with lease.held() as revalidated:
+        assert revalidated.acquired_stale_record is True
+        assert revalidated.prior_record == record
+
+
+def test_lease_record_write_zero_progress_and_os_error_fail_explicitly(
+    tmp_path, monkeypatch
+):
+    real_write = os.write
+
+    def zero_progress(fd, data):
+        view = bytes(data)
+        if b"monitoring_runner_lease_v1" in view:
+            return 0
+        return real_write(fd, view)
+
+    lease = RunnerLease(tmp_path / "runner", RUNNER_ID)
+    monkeypatch.setattr(os, "write", zero_progress)
+    with lease.held() as handle:
+        with pytest.raises(RunnerLeaseError) as excinfo:
+            handle.record(None)
+    assert not isinstance(excinfo.value, RunnerLeaseBusyError)
+    assert "no progress" in str(excinfo.value)
+    monkeypatch.undo()
+
+    def eio_after_partial(fd, data):
+        view = bytes(data)
+        if b"monitoring_runner_lease_v1" in view:
+            raise OSError(errno.EIO, "injected partial write failure")
+        return real_write(fd, view)
+
+    monkeypatch.setattr(os, "write", eio_after_partial)
+    with lease.held() as handle:
+        with pytest.raises(RunnerLeaseError) as excinfo:
+            handle.record(None)
+    assert "injected partial write failure" in str(excinfo.value)
+    monkeypatch.undo()
+
+    # No truncated fragment was ever published as a successful record: the
+    # slot either holds the earlier complete record or fails validation.
+    if lease.path.read_bytes().strip():
+        with lease.held() as revalidated:
+            assert revalidated.prior_record is not None
+
+
+def test_service_completes_when_os_write_is_fragmented(tmp_path, monkeypatch):
+    """The runner still publishes a complete canonical record under
+    persistent per-call short writes of the lease payload."""
+
+    _write_watchlist(tmp_path / "watchlist.json", _watchlist())
+    config = _config(tmp_path)
+    acquisition = FakeAcquisition(MonitoringEventBatchV1.build([]))
+    d1 = RealD1(tmp_path, acquisition)
+
+    monkeypatch.setattr(os, "write", _fragmenting_write(5))
+    outcome = _service(config, d1).run()
+    monkeypatch.undo()
+
+    assert outcome.classification is RunnerCompletion.COMPLETED_NEW
+    assert d1.calls == 1
+    lease = RunnerLease(config.runner_root, RUNNER_ID)
+    persisted = json.loads(lease.path.read_text(encoding="utf-8"))
+    assert persisted["runner_id"] == RUNNER_ID
+    assert persisted["activation_id"] == outcome.activation.activation_id
+    with lease.held() as revalidated:
+        assert revalidated.prior_record == RunnerLeaseV1.model_validate(persisted)
 
 
 def test_crash_after_intent_before_d1_terminal_resumes_same_activation_and_pit(tmp_path):

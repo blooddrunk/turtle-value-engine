@@ -7,10 +7,25 @@ record that the next invocation may recover explicitly.  A live holder can
 never be stolen from: while the lock is held, every other invocation fails
 fast with a typed busy classification and performs no provider, model or D1
 work at all.
+
+Classification rules (Phase 6-D2A-R1):
+
+- the non-blocking ``flock`` is tried first and is the only liveness
+  authority; persisted lease JSON is inspected only after this process owns
+  the OS lock;
+- only the platform's real contention errors (``BlockingIOError`` or
+  ``EAGAIN``/``EWOULDBLOCK``/``EACCES``) map to ``RunnerLeaseBusyError``;
+  every other open/lock failure fails closed as ``RunnerLeaseError``;
+- a canonical prior record whose ``runner_id`` differs from this lease slot
+  is a persisted-state conflict and fails closed instead of being
+  overwritten;
+- holder-record writes prove full-byte persistence through a complete
+  write loop before the fsync is allowed to claim success.
 """
 
 from __future__ import annotations
 
+import errno
 import fcntl
 import json
 import os
@@ -30,9 +45,19 @@ from .store import RunnerStore, RunnerStoreError
 
 DefaultClock = Callable[[], datetime]
 
+_LOCK_CONTENTION_ERRNOS = frozenset(
+    code
+    for code in (
+        getattr(errno, "EAGAIN", None),
+        getattr(errno, "EWOULDBLOCK", None),
+        getattr(errno, "EACCES", None),
+    )
+    if code is not None
+)
+
 
 class RunnerLeaseError(ValueError):
-    """Raised when the lease slot is busy or its record is corrupt."""
+    """Raised when the lease slot or its record must fail closed."""
 
 
 class RunnerLeaseBusyError(RunnerLeaseError):
@@ -69,7 +94,7 @@ class LeaseHandle:
         try:
             os.lseek(self._descriptor, 0, os.SEEK_SET)
             os.ftruncate(self._descriptor, 0)
-            os.write(self._descriptor, payload)
+            _write_all_bytes(self._descriptor, payload)
             os.fsync(self._descriptor)
         except OSError as exc:
             raise RunnerLeaseError(f"cannot persist runner lease record: {exc}") from exc
@@ -109,6 +134,45 @@ def _read_all(descriptor: int) -> bytes:
     return b"".join(chunks)
 
 
+def _is_lock_contention(exc: OSError) -> bool:
+    """True only for the platform's real non-blocking lock-contention errors.
+
+    ``BlockingIOError`` (``EAGAIN``/``EWOULDBLOCK``) and an ``EACCES`` flock
+    rejection prove that another live invocation owns the slot.  Any other
+    errno (``ENOLCK``, bad descriptor, filesystem failure, ...) is an
+    unrelated OS failure and must not pose as a liveness classification.
+    """
+
+    return isinstance(exc, BlockingIOError) or exc.errno in _LOCK_CONTENTION_ERRNOS
+
+
+def _try_flock_exclusive(descriptor: int, path: Path) -> bool:
+    """Take the non-blocking exclusive lock, classifying failures truthfully.
+
+    Returns ``True`` when this process owns the lock.  Real contention
+    returns ``False``; every other lock failure raises ``RunnerLeaseError``.
+    """
+
+    try:
+        fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError as exc:
+        if _is_lock_contention(exc):
+            return False
+        raise RunnerLeaseError(f"cannot lock runner lease slot {path}: {exc}") from exc
+    return True
+
+
+def _write_all_bytes(descriptor: int, payload: bytes) -> None:
+    """Write the complete payload or fail; a short write is never success."""
+
+    remaining = memoryview(payload)
+    while remaining:
+        written = os.write(descriptor, remaining)
+        if written <= 0:
+            raise OSError(f"os.write made no progress with {len(remaining)} bytes left")
+        remaining = remaining[written:]
+
+
 class RunnerLease:
     """Factory for exclusive, flock-backed runner leases on one host."""
 
@@ -131,7 +195,12 @@ class RunnerLease:
 
     @contextmanager
     def held(self) -> Iterator[LeaseHandle]:
-        """Acquire the lease exclusively or fail fast with a typed error."""
+        """Acquire the lease exclusively or fail fast with a typed error.
+
+        The kernel lock is the liveness authority and is tried first; the
+        persisted record is read only after this process owns the lock, so a
+        torn or corrupt record can never preempt a real busy classification.
+        """
 
         path = self.path
         try:
@@ -140,14 +209,17 @@ class RunnerLease:
         except OSError as exc:
             raise RunnerLeaseError(f"cannot open runner lease slot {path}: {exc}") from exc
         try:
-            try:
-                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except OSError:
+            if not _try_flock_exclusive(descriptor, path):
                 # A live holder owns the slot; report its record without
                 # touching any provider, model or D1 boundary.
-                prior = _safe_read_record(descriptor)
-                raise RunnerLeaseBusyError(prior) from None
+                raise RunnerLeaseBusyError(_safe_read_record(descriptor))
             prior = _read_record_from_fd(descriptor)
+            if prior is not None and prior.runner_id != self.runner_id:
+                raise RunnerLeaseError(
+                    f"runner lease slot {path} holds a canonical record bound to "
+                    f"runner {prior.runner_id!r}, not this slot's runner "
+                    f"{self.runner_id!r}; refusing to overwrite foreign runner state"
+                )
             handle = LeaseHandle(
                 runner_id=self.runner_id,
                 acquired_stale_record=prior is not None,
@@ -165,19 +237,24 @@ class RunnerLease:
                 pass
 
     def probe(self) -> dict[str, object]:
-        """Classify lease liveness without taking the slot for work."""
+        """Classify lease liveness without taking the slot for work.
+
+        The same truthfulness rules as the run path apply: an existing slot
+        that cannot be opened is never reported as ``FREE``, and a lock
+        failure other than real contention is never reported as ``LIVE``.
+        """
 
         path = self.path
         if not path.exists():
             return {"state": LeaseState.FREE.value, "record": None, "corrupt": False}
         try:
             descriptor = os.open(path, os.O_RDONLY)
-        except OSError:
+        except FileNotFoundError:
             return {"state": LeaseState.FREE.value, "record": None, "corrupt": False}
+        except OSError as exc:
+            raise RunnerLeaseError(f"cannot open runner lease slot {path}: {exc}") from exc
         try:
-            try:
-                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except OSError:
+            if not _try_flock_exclusive(descriptor, path):
                 record = _safe_read_record(descriptor)
                 return {
                     "state": LeaseState.LIVE.value,
@@ -197,28 +274,6 @@ class RunnerLease:
                 "record": None if record is None else _public_record(record),
                 "corrupt": False,
             }
-        finally:
-            try:
-                os.close(descriptor)
-            except OSError:
-                pass
-
-    def validate_record(self) -> None:
-        """Fail closed when the lease record exists but is corrupt.
-
-        Called by the run path before any activation work so a torn or
-        hand-edited lease record cannot be silently overwritten.
-        """
-
-        path = self.path
-        if not path.exists():
-            return
-        try:
-            descriptor = os.open(path, os.O_RDONLY)
-        except OSError as exc:
-            raise RunnerLeaseError(f"cannot open runner lease slot {path}: {exc}") from exc
-        try:
-            _read_record_from_fd(descriptor)
         finally:
             try:
                 os.close(descriptor)

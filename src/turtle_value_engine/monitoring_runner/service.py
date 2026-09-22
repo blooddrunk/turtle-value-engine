@@ -203,7 +203,9 @@ class MonitoringRunnerService:
         self.clock: RunnerClock = clock or (lambda: datetime.now(UTC))
 
     def run(self) -> RunnerRunOutcome:
-        self.lease.validate_record()
+        # The lease lock is acquired first and is the only liveness authority;
+        # any corrupt/foreign abandoned record is validated only after this
+        # process owns the OS lock, inside ``held()``.
         try:
             with self.lease.held() as handle:
                 return self._run_under_lease(handle)
