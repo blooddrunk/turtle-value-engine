@@ -1,0 +1,157 @@
+{
+  "$defs": {
+    "DeliveryFailureCode": {
+      "description": "Safe, secret-free machine-readable failure classifications.",
+      "enum": [
+        "HTTP_RETRYABLE_STATUS",
+        "HTTP_PERMANENT_STATUS",
+        "HTTP_REDIRECT_NOT_FOLLOWED",
+        "CONNECT_FAILED_PRE_DISPATCH",
+        "TIMEOUT_AFTER_DISPATCH",
+        "CONNECTION_LOST_AFTER_DISPATCH",
+        "RESPONSE_BYTES_EXCEEDED",
+        "RETRIES_EXHAUSTED"
+      ],
+      "title": "DeliveryFailureCode",
+      "type": "string"
+    },
+    "DeliveryStatus": {
+      "description": "Latest-state classifications of one delivery ledger entry.",
+      "enum": [
+        "PENDING",
+        "DELIVERED",
+        "RETRYABLE_FAILURE",
+        "AMBIGUOUS",
+        "PERMANENT_FAILURE",
+        "NOOP"
+      ],
+      "title": "DeliveryStatus",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Atomic latest state pointer for one delivery identity.\n\nThe state is fully derived from the immutable intent plus the immutable\nattempt set, so a crash between an attempt write and this pointer's\npublication is repaired deterministically without repeating the request.",
+  "properties": {
+    "contract": {
+      "const": "monitoring_delivery_state_v1",
+      "default": "monitoring_delivery_state_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0.0",
+      "default": "1.0.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "delivery_id": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Delivery Id",
+      "type": "string"
+    },
+    "status": {
+      "$ref": "#/$defs/DeliveryStatus"
+    },
+    "terminal": {
+      "title": "Terminal",
+      "type": "boolean"
+    },
+    "attempt_count": {
+      "maximum": 20,
+      "minimum": 0,
+      "title": "Attempt Count",
+      "type": "integer"
+    },
+    "terminal_attempt_number": {
+      "anyOf": [
+        {
+          "maximum": 20,
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Terminal Attempt Number"
+    },
+    "terminal_attempt_content_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Terminal Attempt Content Sha256"
+    },
+    "last_http_status": {
+      "anyOf": [
+        {
+          "maximum": 599,
+          "minimum": 100,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Last Http Status"
+    },
+    "last_error_code": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/DeliveryFailureCode"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "next_attempt_not_before": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Next Attempt Not Before"
+    },
+    "intent_content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Intent Content Sha256",
+      "type": "string"
+    },
+    "updated_at": {
+      "format": "date-time",
+      "title": "Updated At",
+      "type": "string"
+    },
+    "content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Content Sha256",
+      "type": "string"
+    }
+  },
+  "required": [
+    "delivery_id",
+    "status",
+    "terminal",
+    "attempt_count",
+    "intent_content_sha256",
+    "updated_at",
+    "content_sha256"
+  ],
+  "title": "MonitoringDeliveryStateV1",
+  "type": "object"
+}

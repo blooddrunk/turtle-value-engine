@@ -1,0 +1,154 @@
+{
+  "additionalProperties": false,
+  "description": "Immutable delivery intent persisted before any outbound I/O.\n\nThe intent binds the exact terminal D2A/D1 source identities and hashes,\nthe deterministic delivery identity, the canonical payload hash and the\nbounded retry policy under which attempts are scheduled.  Recovery and\nrepair read it back instead of trusting any mutable state.",
+  "properties": {
+    "contract": {
+      "const": "monitoring_delivery_intent_v1",
+      "default": "monitoring_delivery_intent_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0.0",
+      "default": "1.0.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "delivery_id": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Delivery Id",
+      "type": "string"
+    },
+    "runner_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Runner Id",
+      "type": "string"
+    },
+    "activation_id": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Activation Id",
+      "type": "string"
+    },
+    "cycle_id": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Cycle Id",
+      "type": "string"
+    },
+    "d1_status": {
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "D1 Status",
+      "type": "string"
+    },
+    "result_content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Result Content Sha256",
+      "type": "string"
+    },
+    "alert_batch_id": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Alert Batch Id",
+      "type": "string"
+    },
+    "alert_batch_content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Alert Batch Content Sha256",
+      "type": "string"
+    },
+    "destination_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Destination Id",
+      "type": "string"
+    },
+    "transport": {
+      "const": "webhook-v1",
+      "default": "webhook-v1",
+      "title": "Transport",
+      "type": "string"
+    },
+    "payload_contract": {
+      "const": "monitoring_delivery_webhook_payload_v1",
+      "default": "monitoring_delivery_webhook_payload_v1",
+      "title": "Payload Contract",
+      "type": "string"
+    },
+    "payload_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Payload Sha256",
+      "type": "string"
+    },
+    "payload_bytes": {
+      "maximum": 524288,
+      "minimum": 2,
+      "title": "Payload Bytes",
+      "type": "integer"
+    },
+    "empty_outbox": {
+      "title": "Empty Outbox",
+      "type": "boolean"
+    },
+    "max_attempts": {
+      "maximum": 20,
+      "minimum": 1,
+      "title": "Max Attempts",
+      "type": "integer"
+    },
+    "timeout_seconds": {
+      "exclusiveMinimum": 0,
+      "maximum": 60,
+      "title": "Timeout Seconds",
+      "type": "number"
+    },
+    "backoff_base_seconds": {
+      "maximum": 3600,
+      "minimum": 0,
+      "title": "Backoff Base Seconds",
+      "type": "integer"
+    },
+    "backoff_cap_seconds": {
+      "maximum": 86400,
+      "minimum": 1,
+      "title": "Backoff Cap Seconds",
+      "type": "integer"
+    },
+    "receiver_idempotency_declared": {
+      "title": "Receiver Idempotency Declared",
+      "type": "boolean"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Content Sha256",
+      "type": "string"
+    }
+  },
+  "required": [
+    "delivery_id",
+    "runner_id",
+    "activation_id",
+    "cycle_id",
+    "d1_status",
+    "result_content_sha256",
+    "alert_batch_id",
+    "alert_batch_content_sha256",
+    "destination_id",
+    "payload_sha256",
+    "payload_bytes",
+    "empty_outbox",
+    "max_attempts",
+    "timeout_seconds",
+    "backoff_base_seconds",
+    "backoff_cap_seconds",
+    "receiver_idempotency_declared",
+    "created_at",
+    "content_sha256"
+  ],
+  "title": "MonitoringDeliveryIntentV1",
+  "type": "object"
+}

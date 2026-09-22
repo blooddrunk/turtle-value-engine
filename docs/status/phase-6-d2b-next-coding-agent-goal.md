@@ -1,6 +1,6 @@
 # Phase 6-D2B coding-agent handoff — external notification delivery
 
-Status: **ACTIVE / IMPLEMENT THIS GOAL**
+Status: **IMPLEMENTED / CI_PENDING**
 
 Canonical goal:
 `docs/goals/phase-6-d2b-notification-delivery-ledger.md`
@@ -8,8 +8,14 @@ Canonical goal:
 Selection audit:
 `docs/status/phase-6-d2b-selection-2026-09-22.md`
 
+Implementation record:
+`docs/status/phase-6-d2b-2026-09-22.md`
+
 Baseline at selection:
 `168cd628ae749bd1a10b458625fdd733f22cf11b`
+
+Implementation baseline:
+`5a6fad4f05ce5b452e92a657f99eb64792b8ddf7`
 
 ## Goal
 

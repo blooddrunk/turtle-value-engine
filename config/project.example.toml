@@ -73,7 +73,25 @@ event_impact_policy = "event-impact-v1"
 acquisition_cache_dir = ".tve-private/monitoring/provider-cache"
 # Phase 6-D2A unattended runner inputs live in one explicit typed
 # non-secret JSON file instead (config/monitoring-runner.example.json);
-# no schedule, credential or notification value belongs here.
+# no schedule or credential value belongs here.
+
+[monitoring.delivery]
+# Phase 6-D2B notification delivery policy (non-secret; disabled by default).
+# A live delivery additionally requires `tve watch deliver --network allow`
+# and a resolved endpoint from the referenced environment entry.
+enabled = false
+transport = "webhook-v1"
+destination_id = "owner-primary"
+delivery_root = ".tve-private/monitoring/delivery"
+endpoint_ref = { env = "TVE_MONITORING_WEBHOOK_URL" }
+# Optional bearer token for the webhook receiver (reference only).
+# auth_token_ref = { env = "TVE_MONITORING_WEBHOOK_TOKEN" }
+receiver_idempotency_declared = false
+max_attempts = 5
+timeout_seconds = 10.0
+backoff_base_seconds = 60
+backoff_cap_seconds = 3600
+max_response_bytes = 65536
 
 # Future provider/storage-specific settings belong under these named sections;
 # they must still contain non-secret values or secret references only.

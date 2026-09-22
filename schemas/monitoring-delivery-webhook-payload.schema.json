@@ -1,0 +1,166 @@
+{
+  "$defs": {
+    "MonitoringWebhookAlertV1": {
+      "additionalProperties": false,
+      "description": "One bounded, factual, secret-free alert projection inside the body.",
+      "properties": {
+        "alert_id": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Alert Id",
+          "type": "string"
+        },
+        "kind": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Kind",
+          "type": "string"
+        },
+        "listing_id": {
+          "anyOf": [
+            {
+              "maxLength": 32,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Listing Id"
+        },
+        "impact": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Impact"
+        },
+        "reason_code": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Reason Code",
+          "type": "string"
+        },
+        "message": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Message",
+          "type": "string"
+        }
+      },
+      "required": [
+        "alert_id",
+        "kind",
+        "reason_code",
+        "message"
+      ],
+      "title": "MonitoringWebhookAlertV1",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Canonical bounded JSON request body for the generic webhook transport.\n\nThe body is derived only from the validated alert batch plus non-secret\ndelivery metadata.  It is fully deterministic: no wall-clock timestamp is\nincluded, so the same outbox always produces byte-identical request bytes\nand the same ``payload_sha256``.",
+  "properties": {
+    "contract": {
+      "const": "monitoring_delivery_webhook_payload_v1",
+      "default": "monitoring_delivery_webhook_payload_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0.0",
+      "default": "1.0.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "delivery_id": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Delivery Id",
+      "type": "string"
+    },
+    "destination_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Destination Id",
+      "type": "string"
+    },
+    "runner_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Runner Id",
+      "type": "string"
+    },
+    "activation_id": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Activation Id",
+      "type": "string"
+    },
+    "cycle_id": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Cycle Id",
+      "type": "string"
+    },
+    "watchlist_id": {
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Watchlist Id",
+      "type": "string"
+    },
+    "as_of": {
+      "format": "date-time",
+      "title": "As Of",
+      "type": "string"
+    },
+    "d1_status": {
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "D1 Status",
+      "type": "string"
+    },
+    "alert_batch_id": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Alert Batch Id",
+      "type": "string"
+    },
+    "alert_batch_content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Alert Batch Content Sha256",
+      "type": "string"
+    },
+    "alert_count": {
+      "maximum": 1024,
+      "minimum": 0,
+      "title": "Alert Count",
+      "type": "integer"
+    },
+    "alerts": {
+      "items": {
+        "$ref": "#/$defs/MonitoringWebhookAlertV1"
+      },
+      "maxItems": 1024,
+      "title": "Alerts",
+      "type": "array"
+    }
+  },
+  "required": [
+    "delivery_id",
+    "destination_id",
+    "runner_id",
+    "activation_id",
+    "cycle_id",
+    "watchlist_id",
+    "as_of",
+    "d1_status",
+    "alert_batch_id",
+    "alert_batch_content_sha256",
+    "alert_count"
+  ],
+  "title": "MonitoringWebhookPayloadV1",
+  "type": "object"
+}

@@ -75,6 +75,12 @@ from turtle_value_engine.monitoring_cycle import (
     MonitoringCycleStore,
     MonitoringExecutionCatalogV1,
 )
+from turtle_value_engine.monitoring_delivery import (
+    DeliveryLedgerStore,
+    DeliverySettingsV1,
+    MonitoringDeliveryService,
+    WebhookHttpTransport,
+)
 from turtle_value_engine.monitoring_execution import (
     ReanalysisExecutor,
     ReanalysisJobStore,
@@ -561,6 +567,23 @@ def _build_parser() -> argparse.ArgumentParser:
     watch_unattended_status.add_argument("--runner-root", required=True, type=Path)
     watch_unattended_status.add_argument("--runner-id", default=None)
     watch_unattended_status.add_argument("--activation-id", default=None)
+    watch_deliver = watch_commands.add_parser(
+        "deliver",
+        help="deliver one terminal D2A/D1 alert outbox through the Phase 6-D2B "
+        "notification boundary",
+    )
+    watch_deliver.add_argument("--runner-config", required=True, type=Path)
+    watch_deliver.add_argument("--project-config", required=True, type=Path)
+    watch_deliver.add_argument("--activation-id", default=None)
+    watch_deliver.add_argument("--network", choices=("deny", "allow"), default="deny")
+    watch_deliver.add_argument("--output", type=Path, default=None)
+    watch_delivery_status = watch_commands.add_parser(
+        "delivery-status",
+        help="read the durable Phase 6-D2B delivery ledger state",
+    )
+    watch_delivery_status.add_argument("--delivery-root", required=True, type=Path)
+    watch_delivery_status.add_argument("--delivery-id", default=None)
+    watch_delivery_status.add_argument("--activation-id", default=None)
     return parser
 
 
@@ -1098,6 +1121,10 @@ def _run_watch_command(args: argparse.Namespace) -> object:
         return _run_watch_unattended_run(args)
     if args.watch_command == "unattended-status":
         return _run_watch_unattended_status(args)
+    if args.watch_command == "deliver":
+        return _run_watch_deliver(args)
+    if args.watch_command == "delivery-status":
+        return _run_watch_delivery_status(args)
     raise ValueError(f"unsupported watch command: {args.watch_command}")
 
 
@@ -1304,6 +1331,115 @@ def _run_watch_unattended_status(args: argparse.Namespace) -> object:
             },
             "receipt": None if receipt is None else receipt.model_dump(mode="json"),
         }
+    return payload
+
+
+def _run_watch_delivery_status(args: argparse.Namespace) -> object:
+    from turtle_value_engine.monitoring_delivery import delivery_status_projection
+
+    ledger = DeliveryLedgerStore(args.delivery_root)
+    return delivery_status_projection(
+        ledger,
+        delivery_id=args.delivery_id,
+        activation_id=args.activation_id,
+    )
+
+
+def _run_watch_deliver(args: argparse.Namespace) -> object:
+    from datetime import UTC, datetime
+
+    from turtle_value_engine.monitoring_delivery import (
+        DeliveryDisabledError,
+        DeliveryEndpointUnresolvedError,
+        DeliveryNetworkDeniedError,
+        DeliveryStatus,
+    )
+
+    if args.network != "allow":
+        raise DeliveryNetworkDeniedError(
+            "DELIVERY_NETWORK_DENIED: `tve watch deliver` requires an explicit "
+            "--network allow opt-in; no outbound request was attempted"
+        )
+    runner_config = _load_runner_config(args.runner_config)
+    project_config = load_project_config(args.project_config)
+    delivery = project_config.monitoring.delivery
+    if not delivery.enabled:
+        raise DeliveryDisabledError(
+            "DELIVERY_DISABLED: [monitoring.delivery] is not enabled in the project "
+            "configuration"
+        )
+    settings = DeliverySettingsV1(
+        destination_id=delivery.destination_id,
+        max_attempts=delivery.max_attempts,
+        timeout_seconds=delivery.timeout_seconds,
+        backoff_base_seconds=delivery.backoff_base_seconds,
+        backoff_cap_seconds=delivery.backoff_cap_seconds,
+        max_response_bytes=delivery.max_response_bytes,
+        receiver_idempotency_declared=delivery.receiver_idempotency_declared,
+    )
+    ledger_root = project_config.resolve_path(delivery.delivery_root)
+    ledger = DeliveryLedgerStore(ledger_root)
+    endpoint_ref = delivery.endpoint_ref
+    auth_ref = delivery.auth_token_ref
+
+    def _endpoint_resolver() -> str:
+        if endpoint_ref is None:
+            raise DeliveryEndpointUnresolvedError(
+                "DELIVERY_ENDPOINT_UNRESOLVED: [monitoring.delivery] endpoint_ref is not "
+                "configured; no outbound request was attempted"
+            )
+        raw = os.environ.get(endpoint_ref.env, "")
+        if not raw or not raw.strip():
+            raise DeliveryEndpointUnresolvedError(
+                f"DELIVERY_ENDPOINT_UNRESOLVED: environment reference {endpoint_ref.env} "
+                "resolved to nothing; no outbound request was attempted"
+            )
+        return raw
+
+    def _auth_resolver() -> str | None:
+        if auth_ref is None:
+            return None
+        raw = os.environ.get(auth_ref.env, "")
+        return raw if raw.strip() else None
+
+    service = MonitoringDeliveryService(
+        settings=settings,
+        ledger=ledger,
+        runner_store=RunnerStore(runner_config.runner_root),
+        cycle_store=MonitoringCycleStore(runner_config.cycle_store_root),
+        transport=WebhookHttpTransport(),
+        endpoint_resolver=_endpoint_resolver,
+        auth_resolver=_auth_resolver,
+        clock=lambda: datetime.now(UTC),
+        runner_id=runner_config.runner_id,
+        network_allowed=args.network == "allow",
+        enabled=delivery.enabled,
+    )
+    outcome = service.deliver(args.activation_id)
+    payload = {
+        "classification": outcome.status.value,
+        "delivery_id": outcome.delivery_id,
+        "runner_id": outcome.intent.runner_id,
+        "activation_id": outcome.intent.activation_id,
+        "cycle_id": outcome.intent.cycle_id,
+        "alert_batch_id": outcome.intent.alert_batch_id,
+        "destination_id": outcome.intent.destination_id,
+        "attempt_count": outcome.state.attempt_count,
+        "http_requests": outcome.http_requests,
+        "reused": outcome.reused,
+        "terminal": outcome.state.terminal,
+        "next_attempt_not_before": None
+        if outcome.state.next_attempt_not_before is None
+        else outcome.state.next_attempt_not_before.isoformat(),
+        "last_http_status": outcome.state.last_http_status,
+        "last_error_code": None
+        if outcome.state.last_error_code is None
+        else outcome.state.last_error_code.value,
+        "message": outcome.message,
+    }
+    _write_optional(args.output, payload)
+    if outcome.status not in {DeliveryStatus.DELIVERED, DeliveryStatus.NOOP}:
+        raise _CliPayloadExit(payload, 4)
     return payload
 
 

@@ -1,10 +1,16 @@
 # Phase 6-D2B — External Notification Delivery and Delivery/Receipt Ledger
 
-Status: **SELECTED / NOT YET IMPLEMENTED**
+Status: **IMPLEMENTED / CI_PENDING**
 Date: 2026-09-22
 Selected after: Phase 6-D2A-R1 CLOSED
 Selection audit: `docs/status/phase-6-d2b-selection-2026-09-22.md`
 Coding-agent handoff: `docs/status/phase-6-d2b-next-coding-agent-goal.md`
+Implementation record: `docs/status/phase-6-d2b-2026-09-22.md`
+
+> Implementation status: the delivery package, webhook transport, ledger,
+> CLI, configuration, schemas and the full automatic verification matrix are
+> implemented on `main`. The phase is marked CLOSED only after GitHub Actions
+> succeeds on the exact implementation SHA; see the implementation record.
 
 ## 1. Goal
 

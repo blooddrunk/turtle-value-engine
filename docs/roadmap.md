@@ -5159,9 +5159,10 @@ cycle/outbox boundary (6-D1), and the durable single-host unattended runner
 
 ## Phase 6 — Watchlist and event-driven re-analysis
 
-Status: **Phase 6-A / 6-B / 6-C / 6-D1 / 6-D2A / 6-D2A-R1 implemented; Phase
-6-D2B (external notification delivery + delivery/receipt ledger) is selected /
-active.**
+Status: **Phase 6-A / 6-B / 6-C / 6-D1 / 6-D2A / 6-D2A-R1 / 6-D2B
+implemented; the next candidate package is Phase 6-D3 read-only Dashboard
+monitoring projection, while Phase 6-E remains the bounded real owner
+deployment/notification acceptance step.**
 
 The first package,
 [Phase 6-A — Watchlist State and Deterministic Event Planning Foundation](goals/phase-6-a-watchlist-event-foundation.md),
@@ -5202,11 +5203,21 @@ first and only liveness authority, only real contention errno maps to
 `LEASE_BUSY`, lease records are bound to their slot's `runner_id`, and
 holder-record writes prove full-byte persistence — all proven by nine
 deterministic regression tests with zero-work assertions and the full
-repository gate. External notification transport and delivery receipts are now selected as the
-separate 6-D2B slice (generic HTTP webhook + durable ledger, automatically
-verified; canonical goal:
-`goals/phase-6-d2b-notification-delivery-ledger.md`); read-only Dashboard
-monitoring views remain 6-D3 and real owner unattended acceptance remains 6-E.
+repository gate. The follow-on slice
+[Phase 6-D2B — External Notification Delivery and Delivery/Receipt Ledger](goals/phase-6-d2b-notification-delivery-ledger.md)
+is now implemented at its durable delivery boundary: a provider-neutral
+`monitoring_delivery/` package with a deterministic delivery identity, an
+immutable intent persisted before any outbound I/O, a separate delivery
+ledger store, one generic HTTP webhook transport (canonical bounded JSON
+body, deterministic idempotency key, no redirects, bounded timeout/response,
+secret endpoints/tokens only as in-memory `SecretReference` resolutions),
+explicit DELIVERED/RETRYABLE/AMBIGUOUS/PERMANENT/NOOP classification with
+bounded persisted clock-injectable retries, zero-request replay of an
+already-DELIVERED delivery, deterministic crash repair, and the
+`tve watch deliver` / `tve watch delivery-status` CLI over the validated
+terminal D2A/D1 outbox. Exact SHA/Actions evidence is recorded in
+`docs/status/phase-6-d2b-2026-09-22.md`. Read-only Dashboard monitoring
+views remain 6-D3 and real owner unattended acceptance remains 6-E.
 
 ### Watchlist state
 
@@ -6192,3 +6203,38 @@ Actions run 35679461520 (`success`); exact evidence is recorded in
 `docs/status/phase-6-d2a-r1-2026-09-22.md`. Phase 6-D2B (external
 notification delivery plus delivery/receipt ledger) is now the next candidate
 package.
+
+## Phase 6-D2B implementation record — 2026-09-22
+
+Phase 6-D2B is implemented at its durable external-notification boundary
+(closure pending exact-SHA CI evidence).
+The `monitoring_delivery/` package consumes only a re-validated terminal
+`RunnerReceiptV1` plus the exact `MonitoringCycleResultV1`/
+`MonitoringAlertBatchV1` pair it binds, derives a deterministic delivery
+identity from runner/activation/alert-batch/destination/payload-contract
+inputs, persists an immutable delivery intent before any outbound I/O, and
+performs bounded attempts through one generic HTTP webhook transport
+(canonical bounded JSON body, `Content-Type: application/json`,
+deterministic `Idempotency-Key`/`X-TVE-Delivery-Id`, no redirects, bounded
+timeout and response bytes, response persisted only as a digest). The
+separate `DeliveryLedgerStore` keeps immutable intents/attempts plus an
+atomic latest state derived purely from immutable artifacts, so crashes
+between intent, response and pointer publication repair deterministically
+without repeating requests or rerunning D1/provider/model work. Statuses
+`PENDING`/`DELIVERED`/`RETRYABLE_FAILURE`/`AMBIGUOUS`/`PERMANENT_FAILURE`/
+`NOOP` carry explicit semantics: 2xx delivered, 429/5xx retryable, other
+4xx/3xx permanent, post-dispatch uncertainty `AMBIGUOUS` and never
+automatically resent unless receiver-enforced idempotency is explicitly
+declared, retry exhaustion terminal, empty outbox a zero-I/O `NOOP`, and an
+already-`DELIVERED` identity replayed with zero outbound requests. Webhook
+endpoints and bearer tokens are `SecretReference`s resolved only in process
+memory and proven absent from every persisted artifact, CLI output,
+exception text and safe config summary. The checked-in
+`[monitoring.delivery]` typed configuration stays disabled by default;
+`tve watch deliver` requires the explicit `--network allow` opt-in and an
+HTTPS endpoint on the live path. Forty-three deterministic tests cover the
+schema drift, source-binding, deny/NOOP, loopback success, retry, ambiguity,
+crash-repair, corruption and secret-canary matrix. No owner webhook or
+manual acceptance was required; real owner deployment remains Phase 6-E and
+Dashboard monitoring views remain 6-D3. Exact closing SHA/Actions evidence
+is recorded in `docs/status/phase-6-d2b-2026-09-22.md`.

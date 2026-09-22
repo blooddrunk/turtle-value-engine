@@ -300,12 +300,37 @@ every other open/flock failure fails closed as `RunnerLeaseError`,
 bound to its slot's `runner_id` (a foreign canonical record is never
 overwritten), and holder-record writes prove full-byte persistence through a
 complete write loop. **Phase 6-D2B — External Notification Delivery and
-Delivery/Receipt Ledger** is now the selected active package
-(`docs/goals/phase-6-d2b-notification-delivery-ledger.md`): it must consume only
-a validated terminal D2A/D1 outbox, add one generic HTTP webhook transport,
-persist a durable delivery ledger, remain network-deny-by-default, and prove
-retry/deduplication/ambiguity/secret-hygiene behavior automatically with no
-owner live endpoint required. Phase 6-D3 Dashboard monitoring views, Phase 6-E
+Delivery/Receipt Ledger** is implemented at its durable delivery
+boundary (closure pending exact-SHA CI evidence); exact automatic
+verification evidence is recorded in
+`docs/status/phase-6-d2b-2026-09-22.md`. D2B keeps D1/D2A unchanged and adds
+the `monitoring_delivery/` package: delivery consumes only a re-validated
+terminal `RunnerReceiptV1` plus the exact D1 result/alert-batch pair it binds,
+derives a deterministic `delivery_id` from runner/activation/alert-batch/
+destination/payload-contract inputs, persists an immutable delivery intent
+before any outbound I/O, and performs bounded attempts through one generic
+HTTP webhook transport (canonical bounded JSON body, deterministic
+`Idempotency-Key`, no redirects, bounded timeout/response bytes, response
+persisted only as a digest). Its separate `DeliveryLedgerStore` keeps
+immutable intents/attempts plus an atomic latest state derived purely from
+immutable artifacts (byte-identical crash repair), distinguishes
+`PENDING`/`DELIVERED`/`RETRYABLE_FAILURE`/`AMBIGUOUS`/`PERMANENT_FAILURE`/
+`NOOP` with explicit status semantics (2xx delivered; 429/5xx retryable;
+other 4xx/3xx permanent; post-dispatch uncertainty `AMBIGUOUS` and never
+automatically resent unless receiver-enforced idempotency is explicitly
+declared; retry exhaustion terminal; empty outbox a zero-I/O `NOOP`), and
+replays an already-`DELIVERED` identity with zero outbound requests. D2B
+claims no exactly-once semantics for arbitrary HTTP receivers. Webhook
+endpoints and bearer tokens are `SecretReference`s under the typed
+`[monitoring.delivery]` ProjectConfig section (disabled by default in the
+checked-in example), resolved only in process memory and proven absent from
+every persisted artifact, CLI output, exception text and safe summary.
+`tve watch deliver` requires the explicit `--network allow` opt-in and an
+HTTPS endpoint on the live path (plain-http loopback is a test-only
+injection); `tve watch delivery-status` reads a bounded secret-free ledger
+projection. Delivery failure never reruns D1, a provider, a model or
+re-analysis, and no owner live endpoint or manual acceptance was required
+for closure. Phase 6-D3 Dashboard monitoring views, Phase 6-E
 owner live unattended acceptance and the optional Bridge adapter are not
 started. Exact gate, deployment
 and remaining-input evidence is recorded in

@@ -1,0 +1,75 @@
+{
+  "additionalProperties": false,
+  "description": "Explicit, non-secret policy for one delivery destination.\n\nThis is an input contract, not a persisted ledger artifact: it carries the\nstable destination identity and the bounded retry policy.  Secret\nreferences are resolved only in process memory by the caller; no\ncredential value may ever appear here.",
+  "properties": {
+    "contract": {
+      "const": "monitoring_delivery_settings_v1",
+      "default": "monitoring_delivery_settings_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0.0",
+      "default": "1.0.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "destination_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Destination Id",
+      "type": "string"
+    },
+    "transport": {
+      "const": "webhook-v1",
+      "default": "webhook-v1",
+      "title": "Transport",
+      "type": "string"
+    },
+    "max_attempts": {
+      "default": 5,
+      "maximum": 20,
+      "minimum": 1,
+      "title": "Max Attempts",
+      "type": "integer"
+    },
+    "timeout_seconds": {
+      "default": 10.0,
+      "exclusiveMinimum": 0,
+      "maximum": 60,
+      "title": "Timeout Seconds",
+      "type": "number"
+    },
+    "backoff_base_seconds": {
+      "default": 60,
+      "maximum": 3600,
+      "minimum": 0,
+      "title": "Backoff Base Seconds",
+      "type": "integer"
+    },
+    "backoff_cap_seconds": {
+      "default": 3600,
+      "maximum": 86400,
+      "minimum": 1,
+      "title": "Backoff Cap Seconds",
+      "type": "integer"
+    },
+    "max_response_bytes": {
+      "default": 65536,
+      "maximum": 1048576,
+      "minimum": 1024,
+      "title": "Max Response Bytes",
+      "type": "integer"
+    },
+    "receiver_idempotency_declared": {
+      "default": false,
+      "title": "Receiver Idempotency Declared",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "destination_id"
+  ],
+  "title": "DeliverySettingsV1",
+  "type": "object"
+}

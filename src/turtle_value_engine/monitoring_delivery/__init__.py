@@ -1,0 +1,97 @@
+"""Phase 6-D2B external notification delivery and delivery/receipt ledger.
+
+Provider-neutral durable delivery over the validated terminal D2A/D1 alert
+outbox.  The first and only transport is a generic HTTP webhook.  The
+package imports no provider, research, model, analysis or pipeline code, and
+never mutates Phase 6-A/6-C, D1 or D2A state.
+"""
+
+from .contracts import (
+    ATTEMPT_CLASSIFICATIONS,
+    MAX_WEBHOOK_PAYLOAD_BYTES,
+    MONITORING_DELIVERY_DOMAIN,
+    WEBHOOK_PAYLOAD_CONTRACT,
+    WEBHOOK_TRANSPORT_ID,
+    DeliveryFailureCode,
+    DeliverySettingsV1,
+    DeliveryStatus,
+    MonitoringDeliveryAttemptV1,
+    MonitoringDeliveryIntentV1,
+    MonitoringDeliveryStateV1,
+    MonitoringWebhookAlertV1,
+    MonitoringWebhookPayloadV1,
+    delivery_identity,
+)
+from .service import (
+    AuthResolver,
+    DeliveryClock,
+    DeliveryDisabledError,
+    DeliveryEndpointUnresolvedError,
+    DeliveryLedgerConflictError,
+    DeliveryNetworkDeniedError,
+    DeliveryPayloadError,
+    DeliveryRunOutcome,
+    DeliverySourceError,
+    EndpointResolver,
+    MonitoringDeliveryService,
+    backoff_seconds,
+    build_webhook_payload,
+    delivery_status_projection,
+    derive_delivery_state,
+)
+from .store import (
+    DeliveryLedgerError,
+    DeliveryLedgerStore,
+    DeliveryWriteKind,
+    FailureInjector,
+)
+from .transport import (
+    TransportOutcome,
+    WebhookEndpointError,
+    WebhookHttpTransport,
+    WebhookRequest,
+    WebhookTransport,
+    WebhookTransportError,
+)
+
+__all__ = [
+    "ATTEMPT_CLASSIFICATIONS",
+    "AuthResolver",
+    "DeliveryClock",
+    "DeliveryDisabledError",
+    "DeliveryEndpointUnresolvedError",
+    "DeliveryFailureCode",
+    "DeliveryLedgerConflictError",
+    "DeliveryLedgerError",
+    "DeliveryLedgerStore",
+    "DeliveryNetworkDeniedError",
+    "DeliveryPayloadError",
+    "DeliveryRunOutcome",
+    "DeliverySettingsV1",
+    "DeliverySourceError",
+    "DeliveryStatus",
+    "DeliveryWriteKind",
+    "EndpointResolver",
+    "FailureInjector",
+    "MAX_WEBHOOK_PAYLOAD_BYTES",
+    "MONITORING_DELIVERY_DOMAIN",
+    "MonitoringDeliveryAttemptV1",
+    "MonitoringDeliveryIntentV1",
+    "MonitoringDeliveryService",
+    "MonitoringDeliveryStateV1",
+    "MonitoringWebhookAlertV1",
+    "MonitoringWebhookPayloadV1",
+    "TransportOutcome",
+    "WEBHOOK_PAYLOAD_CONTRACT",
+    "WEBHOOK_TRANSPORT_ID",
+    "WebhookEndpointError",
+    "WebhookHttpTransport",
+    "WebhookRequest",
+    "WebhookTransport",
+    "WebhookTransportError",
+    "backoff_seconds",
+    "build_webhook_payload",
+    "delivery_identity",
+    "delivery_status_projection",
+    "derive_delivery_state",
+]

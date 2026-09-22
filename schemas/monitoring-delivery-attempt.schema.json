@@ -1,0 +1,132 @@
+{
+  "$defs": {
+    "DeliveryFailureCode": {
+      "description": "Safe, secret-free machine-readable failure classifications.",
+      "enum": [
+        "HTTP_RETRYABLE_STATUS",
+        "HTTP_PERMANENT_STATUS",
+        "HTTP_REDIRECT_NOT_FOLLOWED",
+        "CONNECT_FAILED_PRE_DISPATCH",
+        "TIMEOUT_AFTER_DISPATCH",
+        "CONNECTION_LOST_AFTER_DISPATCH",
+        "RESPONSE_BYTES_EXCEEDED",
+        "RETRIES_EXHAUSTED"
+      ],
+      "title": "DeliveryFailureCode",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Immutable record of exactly one outbound HTTP exchange.\n\nThe response body is persisted only as a bounded non-secret digest; raw\nuntrusted response content is never stored.  Error text is a stable\nmachine code so no endpoint URL, token or response content can leak\nthrough diagnostics.",
+  "properties": {
+    "contract": {
+      "const": "monitoring_delivery_attempt_v1",
+      "default": "monitoring_delivery_attempt_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0.0",
+      "default": "1.0.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "delivery_id": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Delivery Id",
+      "type": "string"
+    },
+    "attempt_number": {
+      "maximum": 20,
+      "minimum": 1,
+      "title": "Attempt Number",
+      "type": "integer"
+    },
+    "started_at": {
+      "format": "date-time",
+      "title": "Started At",
+      "type": "string"
+    },
+    "finished_at": {
+      "format": "date-time",
+      "title": "Finished At",
+      "type": "string"
+    },
+    "classification": {
+      "enum": [
+        "DELIVERED",
+        "RETRYABLE_FAILURE",
+        "AMBIGUOUS",
+        "PERMANENT_FAILURE"
+      ],
+      "title": "Classification",
+      "type": "string"
+    },
+    "http_status": {
+      "anyOf": [
+        {
+          "maximum": 599,
+          "minimum": 100,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Http Status"
+    },
+    "response_body_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Response Body Sha256"
+    },
+    "error_code": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/DeliveryFailureCode"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "retry_not_before": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Retry Not Before"
+    },
+    "content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Content Sha256",
+      "type": "string"
+    }
+  },
+  "required": [
+    "delivery_id",
+    "attempt_number",
+    "started_at",
+    "finished_at",
+    "classification",
+    "content_sha256"
+  ],
+  "title": "MonitoringDeliveryAttemptV1",
+  "type": "object"
+}

@@ -402,6 +402,14 @@ class TestProjectConfigMonitoring:
             "watchlist_path": ".tve-private/monitoring/watchlist.json",
             "workspace_root": ".tve-private/monitoring",
             "event_impact_policy": "event-impact-v1",
+            "delivery": {
+                "enabled": False,
+                "transport": "webhook-v1",
+                "destination_id": "owner-primary",
+                "delivery_root": ".tve-private/monitoring/delivery",
+                "endpoint_ref": "TVE_MONITORING_WEBHOOK_URL",
+                "auth_token_ref": None,
+            },
         }
         summary_text = json.dumps(summary)
         for marker in ("CLOUDFLARE_API_TOKEN=", "token-value", "SECRET_VALUE"):

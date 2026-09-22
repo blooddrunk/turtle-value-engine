@@ -567,12 +567,47 @@ to `LEASE_BUSY` while unrelated open/flock failures fail closed as
 `RunnerLeaseError`, `probe()` never reports `FREE`/`LIVE` from unrelated OS
 errors, a decoded lease record must match its slot's `runner_id`, and
 holder-record writes complete a full-byte write loop before fsync may claim
-success. Phase 6-D2B external notification delivery is now selected: it adds one generic
-HTTP webhook delivery boundary plus a durable delivery/receipt ledger over the
-validated terminal D2A/D1 outbox, with explicit deny-by-default networking,
-idempotency evidence, retry/permanent/ambiguous failure classification and no
-claim of arbitrary-receiver exactly-once semantics. Dashboard monitoring views
-(6-D3) and owner unattended acceptance (6-E) remain unopened.
+success.
+
+### Phase 6-D2B — external notification delivery and delivery/receipt ledger (implemented)
+
+D2B adds the missing external side-effect boundary without changing any
+investment or monitoring semantics:
+
+```text
+terminal RunnerReceiptV1 + re-validated D1 MonitoringCycleResultV1/
+MonitoringAlertBatchV1 pair
+  -> deterministic delivery_id (runner + activation + alert batch +
+     destination_id + payload contract version)
+  -> immutable delivery intent persisted BEFORE any outbound I/O
+  -> generic HTTP webhook POST (canonical bounded JSON body,
+     Idempotency-Key = delivery_id, no redirects, bounded timeout/response)
+  -> immutable per-attempt records (response digest only)
+  -> atomic latest state derived purely from immutable artifacts
+```
+
+The `monitoring_delivery/` package owns its own ledger
+(`DeliveryLedgerStore`), separate from the D1 cycle and D2A runner stores. A
+second invocation for an already-`DELIVERED` identity re-validates the whole
+ledger and performs zero outbound requests. Status semantics are explicit
+(`PENDING`/`DELIVERED`/`RETRYABLE_FAILURE`/`AMBIGUOUS`/`PERMANENT_FAILURE`/
+`NOOP`): 2xx → `DELIVERED`, 429/5xx → `RETRYABLE_FAILURE`, other 4xx/3xx →
+`PERMANENT_FAILURE`, pre-dispatch connect failures are retryable, and
+post-dispatch timeout/connection loss is `AMBIGUOUS` — never a false success,
+never falsely called unsent, and never automatically resent unless the
+configuration explicitly declares receiver-enforced idempotency on the
+delivery key. D2B claims no exactly-once semantics for arbitrary HTTP
+receivers. Retry count/backoff is bounded, persisted and clock-injectable;
+an empty outbox is a zero-I/O `NOOP`. Endpoint URL and bearer token are
+`SecretReference`s resolved only in process memory and never appear in any
+persisted artifact, CLI output, exception text or safe config summary. The
+network stays deny-by-default: `tve watch deliver` requires
+`--network allow`, and live configuration requires an HTTPS endpoint
+(plain-http loopback exists only as an explicit test-only injection).
+Delivery failure never re-runs D1, a provider, a model or re-analysis.
+`tve watch delivery-status` reads a bounded secret-free ledger projection.
+Vendor-specific transports (Slack/Telegram/email), Dashboard monitoring
+views (6-D3) and owner live deployment acceptance (6-E) remain unopened.
 
 ---
 

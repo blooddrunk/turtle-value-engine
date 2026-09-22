@@ -15,7 +15,14 @@ import tomllib
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    PrivateAttr,
+    field_validator,
+    model_validator,
+)
 
 _ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _HOST_LABEL = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$")
@@ -215,6 +222,52 @@ class DashboardSettings(BaseModel):
     worker_name: str = "tve-personal-dashboard"
 
 
+class MonitoringDeliverySettings(BaseModel):
+    """Non-secret Phase 6-D2B notification-delivery policy (checked-in safe).
+
+    Only policy facts and secret *references* live here.  The webhook
+    endpoint and bearer token are resolved from their referenced environment
+    entries in process memory at call time and may never be persisted.  The
+    checked-in example stays disabled; live delivery additionally requires
+    the explicit ``--network allow`` CLI opt-in.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    transport: Literal["webhook-v1"] = "webhook-v1"
+    destination_id: str = Field(default="owner-primary", min_length=1, max_length=128)
+    delivery_root: str = ".tve-private/monitoring/delivery"
+    endpoint_ref: SecretReference | None = None
+    auth_token_ref: SecretReference | None = None
+    receiver_idempotency_declared: bool = False
+    max_attempts: int = Field(default=5, ge=1, le=20)
+    timeout_seconds: float = Field(default=10.0, gt=0, le=60)
+    backoff_base_seconds: int = Field(default=60, ge=0, le=3600)
+    backoff_cap_seconds: int = Field(default=3600, ge=1, le=86400)
+    max_response_bytes: int = Field(default=65536, ge=1024, le=1048576)
+
+    @field_validator("delivery_root")
+    @classmethod
+    def _validate_delivery_root(cls, value: str) -> str:
+        if value is None or not value.strip():
+            raise ValueError("delivery_root must not be blank")
+        return value
+
+    @field_validator("destination_id")
+    @classmethod
+    def _validate_destination_id(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("destination_id must not be blank")
+        return value
+
+    @model_validator(mode="after")
+    def _validate_backoff(self) -> MonitoringDeliverySettings:
+        if self.backoff_cap_seconds < self.backoff_base_seconds:
+            raise ValueError("backoff_cap_seconds must not be below backoff_base_seconds")
+        return self
+
+
 class MonitoringSettings(BaseModel):
     """Non-secret watchlist monitoring defaults (Phase 6-A/6-B).
 
@@ -224,7 +277,9 @@ class MonitoringSettings(BaseModel):
     an unknown policy id fails closed instead of silently changing impact
     semantics.  Phase 6-B adds only a non-secret raw-cache directory for the
     opt-in live acquisition command; network access itself stays
-    deny-by-default and is never implied by configuration.
+    deny-by-default and is never implied by configuration.  Phase 6-D2B adds
+    the nested ``delivery`` policy object, which carries only non-secret
+    policy plus secret references and stays disabled by default.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -233,6 +288,7 @@ class MonitoringSettings(BaseModel):
     workspace_root: str | None = None
     event_impact_policy: Literal["event-impact-v1"] = "event-impact-v1"
     acquisition_cache_dir: str = ".tve-private/monitoring/provider-cache"
+    delivery: MonitoringDeliverySettings = Field(default_factory=MonitoringDeliverySettings)
 
     _blank_optional = field_validator(
         "watchlist_path", "workspace_root", mode="before"
@@ -333,6 +389,18 @@ class ProjectConfig(BaseModel):
                 "watchlist_path": self.monitoring.watchlist_path,
                 "workspace_root": self.monitoring.workspace_root,
                 "event_impact_policy": self.monitoring.event_impact_policy,
+                "delivery": {
+                    "enabled": self.monitoring.delivery.enabled,
+                    "transport": self.monitoring.delivery.transport,
+                    "destination_id": self.monitoring.delivery.destination_id,
+                    "delivery_root": self.monitoring.delivery.delivery_root,
+                    "endpoint_ref": None
+                    if self.monitoring.delivery.endpoint_ref is None
+                    else self.monitoring.delivery.endpoint_ref.env,
+                    "auth_token_ref": None
+                    if self.monitoring.delivery.auth_token_ref is None
+                    else self.monitoring.delivery.auth_token_ref.env,
+                },
             },
             "secret_references": {
                 name: self.secret_reference(name).env
@@ -498,6 +566,24 @@ event_impact_policy = "event-impact-v1"
 # Phase 6-B opt-in live acquisition raw cache (non-secret path only; the
 # live commands still require an explicit --network=allow flag).
 acquisition_cache_dir = ".tve-private/monitoring/provider-cache"
+
+[monitoring.delivery]
+# Phase 6-D2B notification delivery policy (non-secret; disabled by default).
+# A live delivery additionally requires `tve watch deliver --network allow`
+# and a resolved endpoint from the referenced environment entry.
+enabled = false
+transport = "webhook-v1"
+destination_id = "owner-primary"
+delivery_root = ".tve-private/monitoring/delivery"
+endpoint_ref = { env = "TVE_MONITORING_WEBHOOK_URL" }
+# Optional bearer token for the webhook receiver (reference only).
+# auth_token_ref = { env = "TVE_MONITORING_WEBHOOK_TOKEN" }
+receiver_idempotency_declared = false
+max_attempts = 5
+timeout_seconds = 10.0
+backoff_base_seconds = 60
+backoff_cap_seconds = 3600
+max_response_bytes = 65536
 
 # Future provider/storage-specific settings belong under these named sections;
 # they must still contain non-secret values or secret references only.
