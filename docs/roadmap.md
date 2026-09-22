@@ -6204,10 +6204,11 @@ Actions run 35679461520 (`success`); exact evidence is recorded in
 notification delivery plus delivery/receipt ledger) is now the next candidate
 package.
 
-## Phase 6-D2B implementation record — 2026-09-22
+## Phase 6-D2B implementation closure — 2026-09-22
 
-Phase 6-D2B is implemented at its durable external-notification boundary
-(closure pending exact-SHA CI evidence).
+Phase 6-D2B is implemented and closed at its durable external-notification
+boundary (`1abb2973e3f26d2db373f60b63da8c62a2bc530c`, Actions run 35694475358,
+`success`).
 The `monitoring_delivery/` package consumes only a re-validated terminal
 `RunnerReceiptV1` plus the exact `MonitoringCycleResultV1`/
 `MonitoringAlertBatchV1` pair it binds, derives a deterministic delivery

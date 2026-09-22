@@ -1,6 +1,6 @@
 # Phase 6-D2B coding-agent handoff — external notification delivery
 
-Status: **IMPLEMENTED / CI_PENDING**
+Status: **IMPLEMENTED / CLOSED**
 
 Canonical goal:
 `docs/goals/phase-6-d2b-notification-delivery-ledger.md`

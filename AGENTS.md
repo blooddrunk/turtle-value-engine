@@ -300,9 +300,10 @@ every other open/flock failure fails closed as `RunnerLeaseError`,
 bound to its slot's `runner_id` (a foreign canonical record is never
 overwritten), and holder-record writes prove full-byte persistence through a
 complete write loop. **Phase 6-D2B — External Notification Delivery and
-Delivery/Receipt Ledger** is implemented at its durable delivery
-boundary (closure pending exact-SHA CI evidence); exact automatic
-verification evidence is recorded in
+Delivery/Receipt Ledger** is implemented and closed at its durable delivery
+boundary (`1abb2973e3f26d2db373f60b63da8c62a2bc530c`, Actions run
+35694475358, `success`); exact automatic verification and CI evidence is
+recorded in
 `docs/status/phase-6-d2b-2026-09-22.md`. D2B keeps D1/D2A unchanged and adds
 the `monitoring_delivery/` package: delivery consumes only a re-validated
 terminal `RunnerReceiptV1` plus the exact D1 result/alert-batch pair it binds,
