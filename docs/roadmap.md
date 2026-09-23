@@ -6275,8 +6275,9 @@ cases total, full suite 6655 passed / 2 skipped) cover both crash windows,
 the idempotent-retry opt-in, a real two-process barrier proof that only one
 process can enter the transport, non-contention lock failures, the shared
 deadline budget across all phases and every pointer-status classification;
-no public Internet, real sleep race or owner input is used. Implementation
-record and exact closing SHA/Actions evidence:
-`docs/status/phase-6-d2b-r1-2026-09-23.md`. Phase 6-D3 read-only Dashboard
-monitoring projection is restored as the next candidate package after R1's
-exact closing-SHA Actions success.
+no public Internet, real sleep race or owner input is used. R1 is closed at
+implementation `6c039266083de015535f3f05dce0cf9aba2f0042` (Actions run
+35805665083, `success`, exact head-SHA match); implementation record and
+exact closing evidence: `docs/status/phase-6-d2b-r1-2026-09-23.md`. Phase
+6-D3 read-only Dashboard monitoring projection is restored as the next
+candidate package.

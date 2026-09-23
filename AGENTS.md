@@ -355,9 +355,11 @@ validates the published latest-state pointer truthfully
 `DELIVERY_POINTER_CONFLICT` on corrupt/non-canonical/foreign/contradictory
 state. Nineteen new deterministic tests (62 delivery cases total; full suite
 6655 passed / 2 skipped) include a real two-process barrier proof that only
-one process can enter the transport; implementation record and exact
-closing-SHA Actions evidence are in
-`docs/status/phase-6-d2b-r1-2026-09-23.md`. Webhook
+one process can enter the transport. R1 is closed at implementation
+`6c039266083de015535f3f05dce0cf9aba2f0042` (Actions run 35805665083,
+`success`, exact head-SHA match; implementation record
+`docs/status/phase-6-d2b-r1-2026-09-23.md`), and Phase 6-D3 read-only
+Dashboard monitoring projection is the next candidate package. Webhook
 endpoints and bearer tokens are `SecretReference`s under the typed
 `[monitoring.delivery]` ProjectConfig section (disabled by default in the
 checked-in example), resolved only in process memory and proven absent from

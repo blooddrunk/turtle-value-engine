@@ -1,6 +1,6 @@
 # Phase 6-D2B-R1 coding-agent handoff — dispatch hardening
 
-Status: **IMPLEMENTED / CI_PENDING**
+Status: **IMPLEMENTED / CLOSED**
 
 Canonical goal:
 `docs/goals/phase-6-d2b-r1-dispatch-hardening.md`

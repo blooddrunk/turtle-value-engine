@@ -1,8 +1,12 @@
 # Phase 6-D2B-R1 — Dispatch Durability, Single-Flight and Timeout Truthfulness Hardening
 
-Status: **IMPLEMENTED / CI_PENDING**
+Status: **CLOSED / IMPLEMENTED**
 Date: 2026-09-22
 Selected after: Phase 6-D2B post-closure review
+
+> Closed at implementation `6c039266083de015535f3f05dce0cf9aba2f0042`
+> (Actions run 35805665083, `success`, exact head SHA match); see the
+> implementation record for the full evidence.
 
 Selection audit:
 `docs/status/phase-6-d2b-r1-review-2026-09-22.md`
