@@ -398,8 +398,12 @@ plus orphan slots consume one shared budget exactly once. R2 is closed at
 implementation `69326c95543c92e28e288edadc781236fced2b65` (Actions run
 35812884688, `success`, exact head-SHA match; full suite 6659 passed /
 2 skipped; implementation and CI-closure record
-`docs/status/phase-6-d2b-r2-2026-09-23.md`), and Phase 6-D3 read-only
-Dashboard monitoring projection is again the next candidate package. Webhook
+`docs/status/phase-6-d2b-r2-2026-09-23.md`). A 2026-09-23 independent
+post-closure review accepts R2 without reopening it and selects **Phase 6-D3 —
+Read-only Monitoring Operations Dashboard Projection**; canonical scope is
+`docs/goals/phase-6-d3-read-only-monitoring-dashboard.md`, the selection audit
+is `docs/status/phase-6-d2b-r2-post-closure-review-2026-09-23.md`, and the
+coding-agent handoff is `docs/status/phase-6-d3-next-coding-agent-goal.md`. Webhook
 endpoints and bearer tokens are `SecretReference`s under the typed
 `[monitoring.delivery]` ProjectConfig section (disabled by default in the
 checked-in example), resolved only in process memory and proven absent from
@@ -409,9 +413,11 @@ HTTPS endpoint on the live path (plain-http loopback is a test-only
 injection); `tve watch delivery-status` reads a bounded secret-free ledger
 projection. Delivery failure never reruns D1, a provider, a model or
 re-analysis, and no owner live endpoint or manual acceptance was required
-for closure. Phase 6-D3 Dashboard monitoring views, Phase 6-E
-owner live unattended acceptance and the optional Bridge adapter are not
-started. Exact gate, deployment
+for closure. Phase 6-D3 is selected but not implemented: it is strictly a versioned,
+secret-free, read-only projection over explicit current-runner state through
+the existing API/Worker/Dashboard stack, with no runtime mutation authority.
+Phase 6-E owner live unattended acceptance and the optional Bridge adapter are
+not started. Exact gate, deployment
 and remaining-input evidence is recorded in
 `docs/status/phase-5r-a-2026-09-20.md` and
 `docs/status/phase-6-a-2026-09-21.md`. Project-wide non-secret runtime

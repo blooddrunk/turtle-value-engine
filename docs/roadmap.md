@@ -5170,10 +5170,15 @@ implementation record
 `status/phase-6-d2b-r2-2026-09-23.md`) closed that defect at implementation
 `69326c9` (Actions run 35812884688, `success`, exact head-SHA match) by
 making the durable dispatch-claim set itself the retry-budget ledger, with a
-new monotonic durable slot persisted before every transport entry. Phase 6-D3
-read-only Dashboard monitoring projection is the next candidate package,
-while Phase 6-E remains the bounded real owner
-deployment/notification acceptance step.**
+new monotonic durable slot persisted before every transport entry. The 2026-09-23 R2 post-closure review accepts that closure and **selects
+Phase 6-D3 — Read-only Monitoring Operations Dashboard Projection**
+([canonical goal](goals/phase-6-d3-read-only-monitoring-dashboard.md),
+selection audit `status/phase-6-d2b-r2-post-closure-review-2026-09-23.md`,
+handoff `status/phase-6-d3-next-coding-agent-goal.md`). D3 is selected / not
+implemented and is limited to a typed, secret-free, bounded read projection of
+existing monitoring/runner/cycle/job/delivery state through the current
+FastAPI -> Worker -> Dashboard stack. Phase 6-E remains the bounded real owner
+deployment/cadence/notification acceptance step.**
 
 The first package,
 [Phase 6-A — Watchlist State and Deterministic Event Planning Foundation](goals/phase-6-a-watchlist-event-foundation.md),

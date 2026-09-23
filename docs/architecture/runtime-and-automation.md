@@ -606,8 +606,50 @@ network stays deny-by-default: `tve watch deliver` requires
 (plain-http loopback exists only as an explicit test-only injection).
 Delivery failure never re-runs D1, a provider, a model or re-analysis.
 `tve watch delivery-status` reads a bounded secret-free ledger projection.
-Vendor-specific transports (Slack/Telegram/email), Dashboard monitoring
-views (6-D3) and owner live deployment acceptance (6-E) remain unopened.
+Vendor-specific transports (Slack/Telegram/email) remain unopened. The
+2026-09-23 R2 post-closure review accepts the delivery boundary and selects
+Phase 6-D3 as the next package; owner live deployment acceptance remains Phase
+6-E.
+
+### Phase 6-D3 — read-only monitoring operations projection (selected)
+
+D3 observes the proven runtime; it does not add runtime authority. The selected
+shape is one versioned, secret-free, bounded projection anchored to explicit
+`RunnerConfigV1` + `ProjectConfig` inputs:
+
+```text
+configured watchlist/workspace status
++ configured runner/lease status
++ active activation, otherwise latest terminal activation
++ that activation's D1 cycle
++ only jobs referenced by that cycle
++ only D2B deliveries for that activation
+  -> MonitoringOperationsProjectionV1
+  -> GET /v1/monitoring/operations
+  -> fixed Worker allowlist route
+  -> Chinese-first read-only /monitoring Dashboard
+```
+
+The request path may validate persisted stores but must not repair or mutate
+them and must never invoke provider acquisition, model/research execution,
+cycle execution or delivery transport. Local roots, endpoint/auth secrets,
+lease holder tokens and raw response/provider content are excluded from the
+projection.
+
+D2B-R2's accounting distinction is part of the UI contract:
+`attempt_count` is the number of persisted attempt outcomes, while
+`dispatch_claim_count` is the number of consumed authorized transport slots;
+`unresolved_claim_numbers` and pointer states
+`CURRENT/MISSING/STALE_REPAIRABLE` remain explicit. A Dashboard must not
+flatten those facts into a misleading generic retry/health count.
+
+D3 software acceptance is deterministic and local-first: store immutability,
+zero provider/model/transport calls, API/Worker read-only enforcement, generated
+OpenAPI/types, Dashboard tests, secret scanning, real loopback cross-stack smoke
+and exact-closing-SHA CI are automated. Browser/layout verification is also
+automated when a browser is available; only a precisely bounded layout-only
+manual fallback is permitted otherwise. Real owner VPS cadence, credentials,
+live acquisition and live notification delivery remain Phase 6-E.
 
 ---
 
