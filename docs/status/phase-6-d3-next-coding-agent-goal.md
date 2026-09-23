@@ -1,6 +1,6 @@
 # Phase 6-D3 coding-agent handoff — read-only monitoring operations Dashboard
 
-Status: **SELECTED / NOT IMPLEMENTED**
+Status: **IMPLEMENTED / CI_PENDING**
 
 Canonical goal:
 `docs/goals/phase-6-d3-read-only-monitoring-dashboard.md`

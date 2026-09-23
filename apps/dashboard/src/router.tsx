@@ -10,6 +10,7 @@ import type { ReactElement } from "react";
 
 import { TechnicalDetails, useLocaleControls } from "./components";
 import { useCopy } from "./presentation";
+import { MonitoringPage } from "./views/monitoring";
 import { OverviewPage } from "./views/overview";
 import { SurfaceDetailPage } from "./views/surface-detail";
 
@@ -52,6 +53,9 @@ function RootLayout(): ReactElement {
         <nav aria-label={copy.navAriaLabel} className="site-nav">
           <Link activeProps={{ className: "is-active" }} to="/">
             {copy.navOverview}
+          </Link>
+          <Link activeProps={{ className: "is-active" }} to="/monitoring">
+            {copy.navMonitoring}
           </Link>
           <span className="read-only-mark">{copy.readOnlyMark}</span>
           <button
@@ -101,7 +105,17 @@ export const surfaceDetailRoute = createRoute({
   component: SurfaceDetailPage,
 });
 
-export const routeTree = rootRoute.addChildren([overviewRoute, surfaceDetailRoute]);
+export const monitoringRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/monitoring",
+  component: MonitoringPage,
+});
+
+export const routeTree = rootRoute.addChildren([
+  overviewRoute,
+  surfaceDetailRoute,
+  monitoringRoute,
+]);
 
 type RouterOptions = Parameters<typeof createRouter>[0];
 

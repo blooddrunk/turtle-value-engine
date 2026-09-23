@@ -218,6 +218,56 @@ describe("M6-C2 Worker upstream security boundary", () => {
     expect(upstreamFetch).not.toHaveBeenCalled();
   });
 
+  it("forwards only the exact monitoring operations route without filters", async () => {
+    const upstreamFetch = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      expect(url).toBe("https://surface.example.test/v1/monitoring/operations");
+      return Response.json({ contract: "monitoring_operations_projection_v1" });
+    });
+    const env = testEnv({
+      SURFACE_API_ORIGIN: "https://surface.example.test",
+      SURFACE_API_ACCESS_CLIENT_ID: "server-client-id",
+      SURFACE_API_ACCESS_CLIENT_SECRET: "server-client-secret",
+    });
+
+    const ok = await proxy(request("/api/v1/monitoring/operations"), env);
+    expect(ok.status).toBe(200);
+    await expect(ok.json()).resolves.toMatchObject({
+      contract: "monitoring_operations_projection_v1",
+    });
+    expect(upstreamFetch).toHaveBeenCalledTimes(1);
+    upstreamFetch.mockClear();
+
+    const withQuery = await proxy(
+      request("/api/v1/monitoring/operations?activation_id=x"),
+      env,
+    );
+    expect(withQuery.status).toBe(400);
+    await expect(withQuery.json()).resolves.toMatchObject({
+      error: { code: "INVALID_QUERY_PARAMETER" },
+    });
+
+    for (const subpath of ["/api/v1/monitoring", "/api/v1/monitoring/operations/", "/api/v1/monitoring/other"]) {
+      const notFound = await proxy(request(subpath), env);
+      expect(notFound.status).toBe(404);
+      await expect(notFound.json()).resolves.toMatchObject({
+        error: { code: "API_ROUTE_NOT_FOUND" },
+      });
+    }
+
+    for (const method of ["POST", "PUT", "PATCH", "DELETE"] as const) {
+      const mutation = await proxy(
+        request("/api/v1/monitoring/operations", { method, body: "{}" }),
+        env,
+      );
+      expect(mutation.status).toBe(405);
+      await expect(mutation.json()).resolves.toMatchObject({
+        error: { code: "READ_ONLY_METHOD_NOT_ALLOWED" },
+      });
+    }
+    expect(upstreamFetch).toHaveBeenCalledTimes(0);
+  });
+
   it("preserves ETag and If-None-Match behavior", async () => {
     let forwardedHeaders: Headers | undefined;
     const upstreamFetch = vi.spyOn(globalThis, "fetch").mockImplementation(async (_input, init) => {

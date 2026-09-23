@@ -190,6 +190,302 @@ const STATE_TABLE: Record<string, StateEntry> = {
     zh: ["错误", "发生错误，请查看说明或重试。"],
     en: ["Error", "An error occurred; see the explanation or retry."],
   },
+  // Phase 6-D3 monitoring operations states.
+  LIVE: {
+    tone: "positive",
+    zh: ["租约有效", "运行器租约在心跳有效期内。"],
+    en: ["Lease live", "The runner lease is within its heartbeat validity window."],
+  },
+  ABANDONED: {
+    tone: "caution",
+    zh: ["租约已过期", "运行器租约超过心跳有效期；原持有者可能已停止，不代表任务已完成。"],
+    en: ["Lease abandoned", "The runner lease exceeded its heartbeat validity; the holder may have stopped. This does not mean the work finished."],
+  },
+  FREE: {
+    tone: "neutral",
+    zh: ["租约空闲", "当前没有运行器持有租约。"],
+    en: ["Lease free", "No runner currently holds the lease."],
+  },
+  ACTIVE: {
+    tone: "caution",
+    zh: ["进行中", "该激活已开始但尚无终结回执；进行中不代表成功。"],
+    en: ["Active", "This activation started but has no terminal receipt yet; in progress is not success."],
+  },
+  LATEST_TERMINAL: {
+    tone: "neutral",
+    zh: ["最近终结", "最近一次已终结的激活。"],
+    en: ["Latest terminal", "The most recent terminal activation."],
+  },
+  NO_CHANGE: {
+    tone: "positive",
+    zh: ["无变化", "本次监控周期没有发现需要处理的变化。"],
+    en: ["No change", "The monitoring cycle found nothing requiring action."],
+  },
+  ALERTS_EMITTED: {
+    tone: "caution",
+    zh: ["已发出提醒", "本次监控周期产生了事实性提醒，请查看提醒与任务。"],
+    en: ["Alerts emitted", "The monitoring cycle emitted factual alerts; review alerts and jobs."],
+  },
+  ATTENTION_REQUIRED: {
+    tone: "negative",
+    zh: ["需要注意", "监控周期存在阻塞、失败或需人工复核的项，需要人工介入。"],
+    en: ["Attention required", "The cycle has blocked, failed or manual-review items; human attention is needed."],
+  },
+  FAILED: {
+    tone: "negative",
+    zh: ["失败", "执行失败；失败不代表任何投资结论。"],
+    en: ["Failed", "Execution failed; a failure is not an investment conclusion."],
+  },
+  MANUAL_REVIEW_REQUIRED: {
+    tone: "negative",
+    zh: ["需人工复核", "按规则必须人工复核，系统不会自动判定通过。"],
+    en: ["Manual review required", "Rules require human review; the system never auto-passes this."],
+  },
+  SUCCEEDED: {
+    tone: "positive",
+    zh: ["已完成", "该执行步骤已按确定性边界完成。"],
+    en: ["Succeeded", "This execution step completed within its deterministic boundary."],
+  },
+  NO_ACTION: {
+    tone: "neutral",
+    zh: ["无需处理", "按确定性规则无需进一步处理。"],
+    en: ["No action", "No further action is required by the deterministic rules."],
+  },
+  PENDING: {
+    tone: "caution",
+    zh: ["待投递", "通知尚未完成投递。"],
+    en: ["Pending", "The notification has not been delivered yet."],
+  },
+  DELIVERED: {
+    tone: "positive",
+    zh: ["已送达", "通知已被接收方确认（2xx）。"],
+    en: ["Delivered", "The receiver acknowledged the notification (2xx)."],
+  },
+  RETRYABLE_FAILURE: {
+    tone: "caution",
+    zh: ["可重试失败", "投递失败但允许按预算重试。"],
+    en: ["Retryable failure", "Delivery failed but may be retried within budget."],
+  },
+  AMBIGUOUS: {
+    tone: "negative",
+    zh: ["结果不确定", "请求可能已发出但结果未知；默认不会自动重发，需要人工判断。"],
+    en: ["Ambiguous", "The request may have been sent but the outcome is unknown; it is not resent automatically by default."],
+  },
+  PERMANENT_FAILURE: {
+    tone: "negative",
+    zh: ["永久失败", "投递失败且不再重试。"],
+    en: ["Permanent failure", "Delivery failed permanently; no further retries."],
+  },
+  NOOP: {
+    tone: "neutral",
+    zh: ["无需投递", "提醒箱为空，本次没有任何外发请求。"],
+    en: ["No-op", "The alert outbox was empty; zero outbound requests were made."],
+  },
+  CURRENT: {
+    tone: "positive",
+    zh: ["指针一致", "已发布指针与账本内容一致。"],
+    en: ["Current", "The published pointer matches the ledger content."],
+  },
+  MISSING: {
+    tone: "caution",
+    zh: ["指针缺失", "尚未发布状态指针；不代表没有历史记录。"],
+    en: ["Missing", "No state pointer is published yet; this does not mean there is no history."],
+  },
+  STALE_REPAIRABLE: {
+    tone: "caution",
+    zh: ["指针过期", "已发布指针落后于账本内容；只读界面不会修复它。"],
+    en: ["Stale (repairable)", "The published pointer lags the ledger; this read-only view never repairs it."],
+  },
+  RESOLVED: {
+    tone: "positive",
+    zh: ["已解决", "该处置已有确定结果。"],
+    en: ["Resolved", "This disposition has a determined outcome."],
+  },
+  UNRESOLVED: {
+    tone: "negative",
+    zh: ["未解决", "该处置没有可用结果，会阻止后续推进。"],
+    en: ["Unresolved", "This disposition has no usable outcome and blocks advancement."],
+  },
+  NO_REANALYSIS: {
+    tone: "neutral",
+    zh: ["无需重分析", "该事件按规则不触发重分析。"],
+    en: ["No re-analysis", "The event does not trigger re-analysis."],
+  },
+  PARTIAL_REANALYSIS: {
+    tone: "caution",
+    zh: ["部分重分析", "该事件触发部分重分析。"],
+    en: ["Partial re-analysis", "The event triggers a partial re-analysis."],
+  },
+  FULL_REANALYSIS: {
+    tone: "caution",
+    zh: ["完整重分析", "该事件触发完整重分析。"],
+    en: ["Full re-analysis", "The event triggers a full re-analysis."],
+  },
+  URGENT_MANUAL_REVIEW: {
+    tone: "negative",
+    zh: ["紧急人工复核", "该事件要求紧急人工复核，绝不自动处理。"],
+    en: ["Urgent manual review", "The event demands urgent human review; never handled automatically."],
+  },
+  ORPHANED_DISPATCH: {
+    tone: "negative",
+    zh: ["外发结果丢失", "一次外发已占用授权槽位但结果未持久化；默认不会自动重发。"],
+    en: ["Orphaned dispatch", "An outbound dispatch consumed an authorized slot but its outcome never persisted; it is not resent by default."],
+  },
+  MATERIAL_EVENT: {
+    tone: "caution",
+    zh: ["重大事件", "监控发现需要关注的事实性事件；不代表任何投资结论。"],
+    en: ["Material event", "A factual event worth attention was observed; it is not an investment conclusion."],
+  },
+  REANALYSIS_BLOCKED: {
+    tone: "negative",
+    zh: ["重分析受阻", "重分析执行被确定性边界阻止，需要人工介入。"],
+    en: ["Re-analysis blocked", "Re-analysis was blocked by a deterministic boundary and needs human attention."],
+  },
+  REANALYSIS_FAILED: {
+    tone: "negative",
+    zh: ["重分析失败", "重分析执行失败；失败不代表任何投资结论。"],
+    en: ["Re-analysis failed", "Re-analysis execution failed; failure is not an investment conclusion."],
+  },
+  REANALYSIS_SUCCEEDED: {
+    tone: "positive",
+    zh: ["重分析完成", "重分析已按确定性边界完成。"],
+    en: ["Re-analysis completed", "Re-analysis completed within the deterministic boundary."],
+  },
+  CYCLE_FAILED: {
+    tone: "negative",
+    zh: ["周期失败", "监控周期执行失败；不代表任何投资结论。"],
+    en: ["Cycle failed", "The monitoring cycle failed; this is not an investment conclusion."],
+  },
+  HTTP_RETRYABLE_STATUS: {
+    tone: "caution",
+    zh: ["可重试的响应状态", "接收方返回可重试状态码，允许按预算重试。"],
+    en: ["Retryable HTTP status", "The receiver returned a retryable status; retries are allowed within budget."],
+  },
+  HTTP_PERMANENT_STATUS: {
+    tone: "negative",
+    zh: ["永久响应状态", "接收方返回不可重试状态码，不再重试。"],
+    en: ["Permanent HTTP status", "The receiver returned a non-retryable status; no further retries."],
+  },
+  HTTP_REDIRECT_NOT_FOLLOWED: {
+    tone: "negative",
+    zh: ["重定向未跟随", "接收方返回重定向；按边界策略绝不跟随。"],
+    en: ["Redirect not followed", "The receiver returned a redirect; it is never followed."],
+  },
+  CONNECT_FAILED_PRE_DISPATCH: {
+    tone: "caution",
+    zh: ["连接失败", "请求字节发出前连接失败，可安全重试。"],
+    en: ["Connect failed", "The connection failed before any request byte was sent; safe to retry."],
+  },
+  TIMEOUT_AFTER_DISPATCH: {
+    tone: "negative",
+    zh: ["发出后超时", "请求可能已发出但响应等待超时；默认不会自动重发。"],
+    en: ["Timeout after dispatch", "The request may have been sent before the wait timed out; not resent by default."],
+  },
+  CONNECTION_LOST_AFTER_DISPATCH: {
+    tone: "negative",
+    zh: ["发出后连接中断", "请求可能已发出但连接中断；默认不会自动重发。"],
+    en: ["Connection lost after dispatch", "The request may have been sent before the connection dropped; not resent by default."],
+  },
+  RESPONSE_BYTES_EXCEEDED: {
+    tone: "negative",
+    zh: ["响应超出限制", "响应体超过允许的最大字节数。"],
+    en: ["Response too large", "The response exceeded the bounded byte limit."],
+  },
+  RETRIES_EXHAUSTED: {
+    tone: "negative",
+    zh: ["重试预算耗尽", "授权外发槽位已全部消耗，不再重试。"],
+    en: ["Retry budget exhausted", "All authorized dispatch slots are consumed; no further retries."],
+  },
+  DEADLINE_EXHAUSTED_PRE_DISPATCH: {
+    tone: "caution",
+    zh: ["发出前期限耗尽", "整体期限在任何请求字节发出前耗尽，可安全重试。"],
+    en: ["Deadline exhausted pre-dispatch", "The overall deadline expired before any request byte was sent; safe to retry."],
+  },
+  ACQUISITION_FAILED: {
+    tone: "negative",
+    zh: ["事件采集失败", "监控事件采集失败。"],
+    en: ["Acquisition failed", "Monitoring event acquisition failed."],
+  },
+  INVALID_ACQUISITION_RESULT: {
+    tone: "negative",
+    zh: ["采集结果无效", "事件采集结果未通过确定性校验。"],
+    en: ["Invalid acquisition result", "The acquisition result failed deterministic validation."],
+  },
+  UNRESOLVED_CURRENT_RUN: {
+    tone: "negative",
+    zh: ["存在未解决项", "当前周期存在未解决的阻塞或失败项，阻止后续推进。"],
+    en: ["Unresolved blockers", "The current run has unresolved blocked or failed jobs that block advancement."],
+  },
+  MISSING_EXECUTION_DISPOSITION: {
+    tone: "negative",
+    zh: ["缺少执行处置", "执行结果缺少对应的处置记录。"],
+    en: ["Missing execution disposition", "The execution outcome has no matching disposition record."],
+  },
+  MISSING_EXECUTION_BINDING: {
+    tone: "negative",
+    zh: ["缺少执行绑定", "该标的没有配置执行绑定，无法执行重分析。"],
+    en: ["Missing execution binding", "No execution binding is configured for this listing; re-analysis cannot run."],
+  },
+  EXECUTION_ATTENTION_REQUIRED: {
+    tone: "negative",
+    zh: ["执行需注意", "执行层存在需要人工注意的项。"],
+    en: ["Execution attention required", "The execution layer contains items that need human attention."],
+  },
+  MONITORING_COMMIT_FAILED: {
+    tone: "negative",
+    zh: ["状态提交失败", "监控状态的原子提交失败。"],
+    en: ["Monitoring commit failed", "The atomic monitoring state commit failed."],
+  },
+  CYCLE_STORE_FAILED: {
+    tone: "negative",
+    zh: ["周期存储失败", "周期工件写入失败。"],
+    en: ["Cycle store failed", "Persisting the cycle artifacts failed."],
+  },
+  CYCLE_CONFLICT: {
+    tone: "negative",
+    zh: ["周期证据冲突", "周期存储证据冲突或损坏。"],
+    en: ["Cycle conflict", "Cycle store evidence is conflicting or corrupt."],
+  },
+  LOWER_LEVEL_INELIGIBLE: {
+    tone: "negative",
+    zh: ["下层不具备条件", "下层边界不具备执行条件。"],
+    en: ["Lower level ineligible", "A lower-level boundary is not eligible to execute."],
+  },
+  BLOCKED_RESEARCH_RUNTIME: {
+    tone: "negative",
+    zh: ["研究运行时受阻", "研究执行被确定性边界阻止（例如未授权模型）。"],
+    en: ["Blocked research runtime", "Research execution was blocked by a deterministic boundary (for example a model was not allowed)."],
+  },
+  PREPARATION_FAILED: {
+    tone: "negative",
+    zh: ["数据准备失败", "重分析的数据准备步骤失败。"],
+    en: ["Preparation failed", "The re-analysis preparation step failed."],
+  },
+  RESEARCH_FAILED: {
+    tone: "negative",
+    zh: ["研究失败", "重分析的研究步骤失败。"],
+    en: ["Research failed", "The re-analysis research step failed."],
+  },
+  ANALYSIS_FAILED: {
+    tone: "negative",
+    zh: ["分析失败", "重分析的确定性分析步骤失败。"],
+    en: ["Analysis failed", "The re-analysis deterministic analysis step failed."],
+  },
+  SURFACE_FAILED: {
+    tone: "negative",
+    zh: ["研究面生成失败", "重分析的研究面生成步骤失败。"],
+    en: ["Surface failed", "The re-analysis surface build step failed."],
+  },
+  INVALID_PRIOR_ANALYSIS: {
+    tone: "negative",
+    zh: ["先前分析无效", "先前分析工件未通过校验。"],
+    en: ["Invalid prior analysis", "The prior analysis artifact failed validation."],
+  },
+  JOB_STORE_WRITE_FAILED: {
+    tone: "negative",
+    zh: ["任务存储写入失败", "重分析任务工件写入失败。"],
+    en: ["Job store write failed", "Persisting the re-analysis job artifacts failed."],
+  },
 };
 
 const UNKNOWN_STATE: Record<Locale, readonly [label: string, explanation: string]> = {
@@ -263,6 +559,22 @@ const API_ERROR_TABLE: Record<string, { zh: [string, string]; en: [string, strin
   REQUEST_FAILED: {
     zh: ["只读 API 当前不可用", "请求未成功返回，请重试。"],
     en: ["Read-only API unavailable", "The request did not complete successfully; please retry."],
+  },
+  MONITORING_OPERATIONS_NOT_FOUND: {
+    zh: ["未配置监控只读视图", "当前服务没有挂载监控运行投影，或请求的路径不存在。"],
+    en: ["Monitoring view not configured", "The service has no monitoring operations projection mounted, or the path does not exist."],
+  },
+  MONITORING_OPERATIONS_SOURCES_INVALID: {
+    zh: ["监控源配置无效", "服务端显式配置的监控源无法读取或校验；请检查运行配置。"],
+    en: ["Monitoring sources invalid", "The explicitly configured monitoring sources cannot be read or validated; check the runtime configuration."],
+  },
+  MONITORING_OPERATIONS_CONFLICT: {
+    zh: ["监控证据不一致", "本地监控存储存在损坏、外来或相互矛盾的证据；只读界面不会掩盖或修复，需要人工核查存储。"],
+    en: ["Monitoring evidence conflict", "Local monitoring stores contain corrupt, foreign or contradictory evidence; the read-only view never hides or repairs it. Inspect the stores manually."],
+  },
+  MONITORING_OPERATIONS_ERROR: {
+    zh: ["监控投影读取失败", "监控运行投影读取失败；原始错误码见技术详情。"],
+    en: ["Monitoring projection failed", "Reading the monitoring operations projection failed; see technical details for the raw code."],
   },
 };
 
@@ -650,6 +962,85 @@ export interface Copy {
   readonly readinessHashLabel: string;
   readonly validationHashLabel: string;
 
+  readonly navMonitoring: string;
+  readonly monitoringTitle: string;
+  readonly monitoringLede: string;
+  readonly loadingMonitoring: string;
+  readonly monitoringOverviewSection: string;
+  readonly monitoringWatchlistAvailability: string;
+  readonly monitoringRunnerId: string;
+  readonly monitoringLeaseState: string;
+  readonly monitoringLeaseCorrupt: string;
+  readonly monitoringLeaseHeartbeat: string;
+  readonly monitoringLeaseTtl: string;
+  readonly monitoringUnfinishedActivations: (count: number) => string;
+  readonly monitoringActivationKind: string;
+  readonly monitoringActivationAsOf: string;
+  readonly monitoringActivationCreatedAt: string;
+  readonly monitoringNoActivationTitle: string;
+  readonly monitoringNoActivationBody: string;
+  readonly monitoringCycleStatus: string;
+  readonly monitoringCycleAsOf: string;
+  readonly monitoringCycleFailureCode: string;
+  readonly monitoringCycleMessage: string;
+  readonly monitoringAlertCount: (count: number) => string;
+  readonly monitoringCyclePointerPublished: string;
+  readonly monitoringNoCycleTitle: string;
+  readonly monitoringNoCycleBody: string;
+  readonly monitoringAlertsHeading: string;
+  readonly monitoringJobsSection: string;
+  readonly monitoringJobsCount: (count: number) => string;
+  readonly monitoringNoJobsTitle: string;
+  readonly monitoringNoJobsBody: string;
+  readonly monitoringJobListing: string;
+  readonly monitoringJobImpact: string;
+  readonly monitoringJobDisposition: string;
+  readonly monitoringJobResolution: string;
+  readonly monitoringJobStatus: string;
+  readonly monitoringJobFailureCode: string;
+  readonly monitoringJobMessage: string;
+  readonly monitoringJobEvidence: string;
+  readonly monitoringDeliveriesSection: string;
+  readonly monitoringDeliveriesCount: (count: number) => string;
+  readonly monitoringDeliveriesNotConfiguredTitle: string;
+  readonly monitoringDeliveriesNotConfiguredBody: string;
+  readonly monitoringNoDeliveriesTitle: string;
+  readonly monitoringNoDeliveriesBody: string;
+  readonly monitoringDeliveryDestination: string;
+  readonly monitoringDeliveryTransport: string;
+  readonly monitoringDeliveryStatus: string;
+  readonly monitoringDeliveryAttemptCount: string;
+  readonly monitoringDeliveryDispatchClaimCount: string;
+  readonly monitoringDeliveryCountsNote: string;
+  readonly monitoringDeliveryUnresolvedSlots: string;
+  readonly monitoringDeliveryLastHttpStatus: string;
+  readonly monitoringDeliveryLastError: string;
+  readonly monitoringDeliveryPointerStatus: string;
+  readonly monitoringDeliveryEmptyOutbox: string;
+  readonly monitoringDeliveryNextRetry: string;
+  readonly monitoringDeliveryAttemptsSummary: string;
+  readonly monitoringAuditSection: string;
+  readonly monitoringAuditWatchlistId: string;
+  readonly monitoringAuditStateId: string;
+  readonly monitoringAuditLastRunId: string;
+  readonly monitoringAuditActivationId: string;
+  readonly monitoringAuditIntentHash: string;
+  readonly monitoringAuditReceiptHash: string;
+  readonly monitoringAuditCycleId: string;
+  readonly monitoringAuditResultHash: string;
+  readonly monitoringAuditAlertBatchId: string;
+  readonly monitoringAuditAlertBatchHash: string;
+  readonly monitoringAuditRunId: string;
+  readonly monitoringAuditEventBatchId: string;
+  readonly monitoringAuditNextStateId: string;
+  readonly monitoringAuditJobId: string;
+  readonly monitoringAuditJobHash: string;
+  readonly monitoringAuditDeliveryId: string;
+  readonly monitoringAuditPayloadHash: string;
+  readonly monitoringAuditPayloadContract: string;
+  readonly monitoringAuditIdempotencyKey: string;
+  readonly monitoringAuditProjectionContract: string;
+
   readonly stringListEmpty: string;
 }
 
@@ -796,6 +1187,90 @@ const ZH_CN: Copy = {
   readinessHashLabel: "就绪报告哈希",
   validationHashLabel: "校验内容哈希",
 
+  navMonitoring: "监控运行",
+  monitoringTitle: "监控运行状态",
+  monitoringLede:
+    "这里是无人值守监控链路的只读投影。所有内容都来自本地持久化工件的只读读取；本界面绝不触发采集、分析、投递或任何修复/写入操作。",
+  loadingMonitoring: "正在读取监控运行投影…",
+  monitoringOverviewSection: "运行概览",
+  monitoringWatchlistAvailability: "监控状态可用性",
+  monitoringRunnerId: "运行器标识",
+  monitoringLeaseState: "租约状态",
+  monitoringLeaseCorrupt: "租约记录损坏",
+  monitoringLeaseHeartbeat: "最近心跳",
+  monitoringLeaseTtl: "租约有效期（秒）",
+  monitoringUnfinishedActivations: (count) => `${count} 个未终结激活`,
+  monitoringActivationKind: "激活类型",
+  monitoringActivationAsOf: "数据时点（as_of）",
+  monitoringActivationCreatedAt: "激活创建时间",
+  monitoringNoActivationTitle: "尚无激活记录",
+  monitoringNoActivationBody:
+    "该运行器尚未持久化任何激活。这不代表异常，只表示还没有运行记录。",
+  monitoringCycleStatus: "周期状态",
+  monitoringCycleAsOf: "周期时点（as_of）",
+  monitoringCycleFailureCode: "失败分类",
+  monitoringCycleMessage: "说明",
+  monitoringAlertCount: (count) => `${count} 条提醒`,
+  monitoringCyclePointerPublished: "周期指针已发布",
+  monitoringNoCycleTitle: "该激活尚无终结周期",
+  monitoringNoCycleBody:
+    "当前激活还没有已提交的监控周期结果；进行中不代表成功或失败。",
+  monitoringAlertsHeading: "事实提醒",
+  monitoringJobsSection: "重分析任务",
+  monitoringJobsCount: (count) => `${count} 个任务`,
+  monitoringNoJobsTitle: "本次周期没有重分析任务",
+  monitoringNoJobsBody: "该监控周期没有产生需要重分析的处置。",
+  monitoringJobListing: "上市代码",
+  monitoringJobImpact: "影响等级",
+  monitoringJobDisposition: "处置状态",
+  monitoringJobResolution: "解决状态",
+  monitoringJobStatus: "执行状态",
+  monitoringJobFailureCode: "失败分类",
+  monitoringJobMessage: "说明",
+  monitoringJobEvidence: "证据代码",
+  monitoringDeliveriesSection: "通知投递",
+  monitoringDeliveriesCount: (count) => `${count} 条投递`,
+  monitoringDeliveriesNotConfiguredTitle: "未配置投递账本",
+  monitoringDeliveriesNotConfiguredBody:
+    "服务端未配置通知投递账本路径；这不代表已关闭通知，只表示本视图无法读取投递状态。",
+  monitoringNoDeliveriesTitle: "该激活没有投递记录",
+  monitoringNoDeliveriesBody: "绑定当前激活的通知投递账本中没有条目。",
+  monitoringDeliveryDestination: "接收方标识",
+  monitoringDeliveryTransport: "传输方式",
+  monitoringDeliveryStatus: "投递状态",
+  monitoringDeliveryAttemptCount: "已持久化投递结果数",
+  monitoringDeliveryDispatchClaimCount: "已消耗外发槽位数",
+  monitoringDeliveryCountsNote:
+    "两个计数语义不同：前者是已持久化的投递结果数，后者是已消耗的授权外发槽位数；外发结果丢失（orphan）后二者合法不一致，未决槽位编号单独列出，绝不把结果数当作总发送次数。",
+  monitoringDeliveryUnresolvedSlots: "未决槽位编号",
+  monitoringDeliveryLastHttpStatus: "最近 HTTP 状态",
+  monitoringDeliveryLastError: "最近错误分类",
+  monitoringDeliveryPointerStatus: "状态指针",
+  monitoringDeliveryEmptyOutbox: "空提醒箱",
+  monitoringDeliveryNextRetry: "下次可重试时间",
+  monitoringDeliveryAttemptsSummary: "投递尝试明细",
+  monitoringAuditSection: "审计详情（原始标识与哈希）",
+  monitoringAuditWatchlistId: "观察清单 ID",
+  monitoringAuditStateId: "当前状态 ID",
+  monitoringAuditLastRunId: "最近提交运行 ID",
+  monitoringAuditActivationId: "激活 ID",
+  monitoringAuditIntentHash: "激活意图哈希",
+  monitoringAuditReceiptHash: "终结回执哈希",
+  monitoringAuditCycleId: "周期 ID",
+  monitoringAuditResultHash: "周期结果哈希",
+  monitoringAuditAlertBatchId: "提醒批次 ID",
+  monitoringAuditAlertBatchHash: "提醒批次哈希",
+  monitoringAuditRunId: "监控运行 ID",
+  monitoringAuditEventBatchId: "事件批次 ID",
+  monitoringAuditNextStateId: "下一状态 ID",
+  monitoringAuditJobId: "任务 ID",
+  monitoringAuditJobHash: "任务内容哈希",
+  monitoringAuditDeliveryId: "投递 ID",
+  monitoringAuditPayloadHash: "载荷哈希",
+  monitoringAuditPayloadContract: "载荷契约",
+  monitoringAuditIdempotencyKey: "幂等键",
+  monitoringAuditProjectionContract: "投影契约",
+
   stringListEmpty: "无记录",
 };
 
@@ -941,6 +1416,91 @@ const EN: Copy = {
   acceptanceHashLabel: "Acceptance report hash",
   readinessHashLabel: "Readiness report hash",
   validationHashLabel: "Validation content hash",
+
+  navMonitoring: "Monitoring",
+  monitoringTitle: "Monitoring operations",
+  monitoringLede:
+    "A read-only projection of the unattended monitoring chain. Everything comes from read-only access to local durable artifacts; this view never triggers acquisition, analysis, delivery or any repair/write operation.",
+  loadingMonitoring: "Reading the monitoring operations projection…",
+  monitoringOverviewSection: "Run overview",
+  monitoringWatchlistAvailability: "Monitoring status availability",
+  monitoringRunnerId: "Runner identity",
+  monitoringLeaseState: "Lease state",
+  monitoringLeaseCorrupt: "Lease record corrupt",
+  monitoringLeaseHeartbeat: "Latest heartbeat",
+  monitoringLeaseTtl: "Lease TTL (seconds)",
+  monitoringUnfinishedActivations: (count) =>
+    `${count} unfinished ${count === 1 ? "activation" : "activations"}`,
+  monitoringActivationKind: "Activation kind",
+  monitoringActivationAsOf: "Data as-of",
+  monitoringActivationCreatedAt: "Activation created at",
+  monitoringNoActivationTitle: "No activation recorded yet",
+  monitoringNoActivationBody:
+    "This runner has not persisted any activation. That is not an error; there is simply no run history yet.",
+  monitoringCycleStatus: "Cycle status",
+  monitoringCycleAsOf: "Cycle as-of",
+  monitoringCycleFailureCode: "Failure classification",
+  monitoringCycleMessage: "Message",
+  monitoringAlertCount: (count) => `${count} ${count === 1 ? "alert" : "alerts"}`,
+  monitoringCyclePointerPublished: "Cycle pointer published",
+  monitoringNoCycleTitle: "No terminal cycle for this activation",
+  monitoringNoCycleBody:
+    "The current activation has no committed monitoring cycle result yet; in progress is neither success nor failure.",
+  monitoringAlertsHeading: "Factual alerts",
+  monitoringJobsSection: "Re-analysis jobs",
+  monitoringJobsCount: (count) => `${count} ${count === 1 ? "job" : "jobs"}`,
+  monitoringNoJobsTitle: "No re-analysis jobs in this cycle",
+  monitoringNoJobsBody: "The monitoring cycle produced no re-analysis dispositions.",
+  monitoringJobListing: "Listing",
+  monitoringJobImpact: "Impact class",
+  monitoringJobDisposition: "Disposition status",
+  monitoringJobResolution: "Resolution",
+  monitoringJobStatus: "Execution status",
+  monitoringJobFailureCode: "Failure classification",
+  monitoringJobMessage: "Message",
+  monitoringJobEvidence: "Evidence codes",
+  monitoringDeliveriesSection: "Notification deliveries",
+  monitoringDeliveriesCount: (count) => `${count} ${count === 1 ? "delivery" : "deliveries"}`,
+  monitoringDeliveriesNotConfiguredTitle: "Delivery ledger not configured",
+  monitoringDeliveriesNotConfiguredBody:
+    "The server is not configured with a delivery ledger root; this does not mean notifications are disabled, only that this view cannot read delivery state.",
+  monitoringNoDeliveriesTitle: "No deliveries for this activation",
+  monitoringNoDeliveriesBody: "The delivery ledger holds no entry bound to the current activation.",
+  monitoringDeliveryDestination: "Destination identity",
+  monitoringDeliveryTransport: "Transport",
+  monitoringDeliveryStatus: "Delivery status",
+  monitoringDeliveryAttemptCount: "Persisted delivery outcomes",
+  monitoringDeliveryDispatchClaimCount: "Consumed dispatch slots",
+  monitoringDeliveryCountsNote:
+    "The two counts have different semantics: the first counts persisted delivery outcomes, the second counts consumed authorized outbound transport slots. After an orphaned dispatch they legitimately differ, and unresolved slot numbers are listed separately; the outcome count is never a total-send or total-retry count.",
+  monitoringDeliveryUnresolvedSlots: "Unresolved slot numbers",
+  monitoringDeliveryLastHttpStatus: "Last HTTP status",
+  monitoringDeliveryLastError: "Last error classification",
+  monitoringDeliveryPointerStatus: "State pointer",
+  monitoringDeliveryEmptyOutbox: "Empty outbox",
+  monitoringDeliveryNextRetry: "Next retry not before",
+  monitoringDeliveryAttemptsSummary: "Delivery attempt details",
+  monitoringAuditSection: "Audit details (raw identities and hashes)",
+  monitoringAuditWatchlistId: "Watchlist ID",
+  monitoringAuditStateId: "Current state ID",
+  monitoringAuditLastRunId: "Last committed run ID",
+  monitoringAuditActivationId: "Activation ID",
+  monitoringAuditIntentHash: "Activation intent hash",
+  monitoringAuditReceiptHash: "Terminal receipt hash",
+  monitoringAuditCycleId: "Cycle ID",
+  monitoringAuditResultHash: "Cycle result hash",
+  monitoringAuditAlertBatchId: "Alert batch ID",
+  monitoringAuditAlertBatchHash: "Alert batch hash",
+  monitoringAuditRunId: "Monitoring run ID",
+  monitoringAuditEventBatchId: "Event batch ID",
+  monitoringAuditNextStateId: "Next state ID",
+  monitoringAuditJobId: "Job ID",
+  monitoringAuditJobHash: "Job content hash",
+  monitoringAuditDeliveryId: "Delivery ID",
+  monitoringAuditPayloadHash: "Payload hash",
+  monitoringAuditPayloadContract: "Payload contract",
+  monitoringAuditIdempotencyKey: "Idempotency key",
+  monitoringAuditProjectionContract: "Projection contract",
 
   stringListEmpty: "None recorded",
 };

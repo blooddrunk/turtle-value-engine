@@ -9,11 +9,17 @@ extra.
 import ipaddress
 from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictStr
 
 from .contracts import ResearchSurfaceSnapshotV1
+
+if TYPE_CHECKING:
+    from turtle_value_engine.monitoring_operations import (
+        MonitoringOperationsReadService,
+        MonitoringOperationsSourcesV1,
+    )
 from .registry import (
     InvalidSurfaceQueryError,
     SurfaceBindError,
@@ -110,6 +116,8 @@ def _validate_bind_host(host: str, *, allow_non_loopback: bool) -> None:
 
 def create_surface_app(
     registry_or_service: SurfaceRegistry | SurfaceReadService,
+    *,
+    monitoring_service: "MonitoringOperationsReadService | None" = None,
 ) -> Any:
     """Create the optional FastAPI app over an already-built read service."""
 
@@ -123,12 +131,25 @@ def create_surface_app(
             "the optional API stack is unavailable; install the 'api' extra"
         ) from exc
 
+    # Imported lazily: the monitoring packages depend on this surface package,
+    # so a module-level import would create an import cycle.
+    from turtle_value_engine.monitoring_operations import (
+        MonitoringOperationsConflictError,
+        MonitoringOperationsError,
+        MonitoringOperationsProjectionV1,
+        MonitoringOperationsReadService,
+    )
+
     if isinstance(registry_or_service, SurfaceRegistry):
         service = SurfaceReadService(registry_or_service)
     elif isinstance(registry_or_service, SurfaceReadService):
         service = registry_or_service
     else:
         raise TypeError("create_surface_app requires a SurfaceRegistry or SurfaceReadService")
+    if monitoring_service is not None and not isinstance(
+        monitoring_service, MonitoringOperationsReadService
+    ):
+        raise TypeError("monitoring_service must be a MonitoringOperationsReadService")
 
     app = FastAPI(
         title="Turtle Value Engine Research Surface API",
@@ -136,6 +157,7 @@ def create_surface_app(
         description="Read-only access to explicitly supplied ResearchSurfaceSnapshotV1 artifacts.",
     )
     app.state.surface_service = service
+    app.state.monitoring_service = monitoring_service
 
     @app.exception_handler(SurfaceRegistryError)
     def handle_surface_error(_request: Request, exc: SurfaceRegistryError) -> JSONResponse:
@@ -144,6 +166,20 @@ def create_surface_app(
         return JSONResponse(
             status_code=status_code,
             content=_error_payload(exc.code, message),
+        )
+
+    @app.exception_handler(MonitoringOperationsError)
+    def handle_monitoring_operations_error(
+        _request: Request, exc: MonitoringOperationsError
+    ) -> JSONResponse:
+        # Conflict means corrupt/foreign/contradictory durable evidence; the
+        # projection service already sanitizes messages so no local path or
+        # secret can reach the payload.
+        status_code = 409 if isinstance(exc, MonitoringOperationsConflictError) else 400
+        return JSONResponse(
+            status_code=status_code,
+            content=_error_payload(exc.code, str(exc)),
+            headers={"Cache-Control": "no-store"},
         )
 
     @app.exception_handler(RequestValidationError)
@@ -178,6 +214,22 @@ def create_surface_app(
             return JSONResponse(
                 status_code=exc.status_code,
                 content=_error_payload(code, message),
+            )
+        if request.url.path.startswith("/v1/monitoring") and exc.status_code in {404, 405}:
+            code = (
+                "MONITORING_OPERATIONS_NOT_FOUND"
+                if exc.status_code == 404
+                else "READ_ONLY_METHOD_NOT_ALLOWED"
+            )
+            message = (
+                "monitoring operations not found"
+                if exc.status_code == 404
+                else "read-only method not allowed"
+            )
+            return JSONResponse(
+                status_code=exc.status_code,
+                content=_error_payload(code, message),
+                headers={"Cache-Control": "no-store"},
             )
         return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
 
@@ -240,6 +292,29 @@ def create_surface_app(
             headers=headers,
         )
 
+    if monitoring_service is not None:
+
+        @app.get(
+            "/v1/monitoring/operations",
+            response_model=MonitoringOperationsProjectionV1,
+            operation_id="getMonitoringOperations",
+            tags=["monitoring"],
+            responses={
+                400: {"model": SurfaceErrorResponse},
+                404: {"model": SurfaceErrorResponse},
+                405: {"model": SurfaceErrorResponse},
+                409: {"model": SurfaceErrorResponse},
+            },
+        )
+        def get_monitoring_operations(request: Request) -> Response:
+            for key in request.query_params.keys():
+                raise InvalidSurfaceQueryError(f"unsupported query parameter: {key}")
+            projection = monitoring_service.operations_projection()
+            return JSONResponse(
+                content=projection.model_dump(mode="json", warnings=False),
+                headers={"Cache-Control": "no-store"},
+            )
+
     return app
 
 
@@ -254,14 +329,22 @@ def serve_surface_snapshots(
     host: str = "127.0.0.1",
     port: int = 8787,
     allow_non_loopback: bool = False,
+    monitoring_sources: "MonitoringOperationsSourcesV1 | None" = None,
 ) -> None:
     """Load explicit snapshots and run the optional uvicorn server."""
 
     _validate_bind_host(host, allow_non_loopback=allow_non_loopback)
     if not isinstance(port, int) or isinstance(port, bool) or not 0 <= port <= 65535:
         raise ValueError("port must be between 0 and 65535")
+    from turtle_value_engine.monitoring_operations import MonitoringOperationsReadService
+
     registry = SurfaceRegistry.from_paths(snapshot_paths)
-    app = create_surface_app(registry)
+    monitoring_service = (
+        None
+        if monitoring_sources is None
+        else MonitoringOperationsReadService(monitoring_sources)
+    )
+    app = create_surface_app(registry, monitoring_service=monitoring_service)
     try:
         import uvicorn
     except ImportError as exc:  # pragma: no cover - exercised in minimal installs

@@ -413,10 +413,33 @@ HTTPS endpoint on the live path (plain-http loopback is a test-only
 injection); `tve watch delivery-status` reads a bounded secret-free ledger
 projection. Delivery failure never reruns D1, a provider, a model or
 re-analysis, and no owner live endpoint or manual acceptance was required
-for closure. Phase 6-D3 is selected but not implemented: it is strictly a versioned,
-secret-free, read-only projection over explicit current-runner state through
-the existing API/Worker/Dashboard stack, with no runtime mutation authority.
-Phase 6-E owner live unattended acceptance and the optional Bridge adapter are
+for closure. **Phase 6-D3 — Read-only Monitoring Operations Dashboard
+Projection** is implemented at its read-only projection boundary
+(implementation and CI-closure record
+`docs/status/phase-6-d3-2026-09-23.md`): the framework-neutral
+`monitoring_operations/` package projects one explicitly configured chain
+(MonitoringWorkspace status, runner/lease read-only state, the active
+activation otherwise the latest terminal one, that activation's D1 cycle,
+only the jobs that cycle references and only the D2B deliveries bound to that
+activation) into the versioned secret-free `MonitoringOperationsProjectionV1`
+with a checked-in drift-checked schema. Sources are exactly one
+`RunnerConfigV1` plus the typed `[monitoring.delivery]` `delivery_root` via
+`tve surface serve --monitoring-runner-config ...`; the request path never
+repairs or mutates any store and never invokes a provider, model, research,
+cycle-execution or delivery-transport path, and local roots, endpoint/auth
+secrets, lease holder tokens and raw response bodies are proven absent from
+the serialized projection. The D2B-R2 accounting distinction is part of the
+UI contract: `attempt_count` (persisted outcomes) and `dispatch_claim_count`
+(consumed authorized outbound slots) are exposed and labelled separately with
+`unresolved_claim_numbers`, `AMBIGUOUS`/`ORPHANED_DISPATCH` and pointer
+states `CURRENT`/`MISSING`/`STALE_REPAIRABLE` kept explicit. The typed read
+model reaches `GET /v1/monitoring/operations` (deterministic OpenAPI), the
+fixed Worker allowlist route `/api/v1/monitoring/operations` and the
+Chinese-first read-only `/monitoring` Dashboard page with zero mutation
+controls; verification is fully automatic (26 new projection/API cases, 54
+Dashboard/Worker tests, extended R2-orphan cross-stack smoke, automated
+1440x900/390x844 browser layout verification). Phase 6-E owner live
+unattended acceptance and the optional Bridge adapter are
 not started. Exact gate, deployment
 and remaining-input evidence is recorded in
 `docs/status/phase-5r-a-2026-09-20.md` and

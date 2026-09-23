@@ -12,7 +12,13 @@ DEFAULT_OUTPUT = ROOT / "schemas" / "research-surface-api-v1.openapi.json"
 
 
 def _build_openapi() -> dict[str, object]:
+    import tempfile
+
     from turtle_value_engine import load_normalized_input
+    from turtle_value_engine.monitoring_operations import (
+        MonitoringOperationsReadService,
+        MonitoringOperationsSourcesV1,
+    )
     from turtle_value_engine.pipeline import run_analyze
     from turtle_value_engine.surface import (
         SurfaceRegistry,
@@ -24,8 +30,25 @@ def _build_openapi() -> dict[str, object]:
         load_normalized_input(ROOT / "fixtures" / "healthy_cash_cow.json")
     )
     snapshot = build_research_surface_snapshot(analysis)
-    app = create_surface_app(SurfaceRegistry.from_snapshots([snapshot]))
-    return app.openapi()
+    # The monitoring route is registered over explicit placeholder sources;
+    # construction alone performs no store I/O, and the paths never enter the
+    # exported document (the response model is the projection contract).
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        sources = MonitoringOperationsSourcesV1(
+            runner_id="openapi-export",
+            watchlist_path=str(tmp_path / "watchlist.json"),
+            monitoring_workspace_root=str(tmp_path / "workspace"),
+            reanalysis_job_root=str(tmp_path / "jobs"),
+            cycle_store_root=str(tmp_path / "cycles"),
+            runner_root=str(tmp_path / "runner"),
+            delivery_root=None,
+        )
+        app = create_surface_app(
+            SurfaceRegistry.from_snapshots([snapshot]),
+            monitoring_service=MonitoringOperationsReadService(sources),
+        )
+        return app.openapi()
 
 
 def _canonical_bytes(document: dict[str, object]) -> bytes:

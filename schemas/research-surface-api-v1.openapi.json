@@ -1,6 +1,19 @@
 {
   "components": {
     "schemas": {
+      "AlertKind": {
+        "description": "Factual alert projections; none is an investment recommendation.",
+        "enum": [
+          "MATERIAL_EVENT",
+          "MANUAL_REVIEW_REQUIRED",
+          "REANALYSIS_BLOCKED",
+          "REANALYSIS_FAILED",
+          "REANALYSIS_SUCCEEDED",
+          "CYCLE_FAILED"
+        ],
+        "title": "AlertKind",
+        "type": "string"
+      },
       "BusinessQuality": {
         "additionalProperties": false,
         "description": "Structured business-quality assessment.",
@@ -154,6 +167,29 @@
         "title": "BusinessQualityDimension",
         "type": "object"
       },
+      "CanonicalEventType": {
+        "description": "Closed set of canonical monitoring event types.",
+        "enum": [
+          "ANNUAL_REPORT",
+          "INTERIM_REPORT",
+          "EARNINGS_PREANNOUNCEMENT",
+          "DIVIDEND_POLICY_CHANGE",
+          "DIVIDEND_DECLARATION",
+          "BUYBACK",
+          "SHARE_ISSUANCE",
+          "MAJOR_ACQUISITION",
+          "MAJOR_DISPOSAL",
+          "AUDIT_OPINION_CHANGE",
+          "REGULATORY_PENALTY",
+          "CONTROLLING_SHAREHOLDER_EVENT",
+          "MATERIAL_LITIGATION",
+          "PROFIT_WARNING",
+          "TRADING_SUSPENSION",
+          "INFORMATIONAL_DISCLOSURE"
+        ],
+        "title": "CanonicalEventType",
+        "type": "string"
+      },
       "Company": {
         "additionalProperties": false,
         "description": "Company identity and accounting context.\n\n``primary_listing`` is the canonical stable issuer/listing identifier;\nadditional listings stay in ``other_listings`` for later price mapping.",
@@ -283,6 +319,17 @@
         "title": "ConfidenceLevel",
         "type": "string"
       },
+      "CycleStatus": {
+        "description": "Terminal outcomes of one synchronous monitoring cycle.",
+        "enum": [
+          "NO_CHANGE",
+          "ALERTS_EMITTED",
+          "ATTENTION_REQUIRED",
+          "FAILED"
+        ],
+        "title": "CycleStatus",
+        "type": "string"
+      },
       "DataQuality": {
         "additionalProperties": false,
         "description": "Overall data-quality summary for an analysis.",
@@ -395,6 +442,71 @@
         "title": "DecisionState",
         "type": "string"
       },
+      "DeliveryFailureCode": {
+        "description": "Safe, secret-free machine-readable failure classifications.",
+        "enum": [
+          "HTTP_RETRYABLE_STATUS",
+          "HTTP_PERMANENT_STATUS",
+          "HTTP_REDIRECT_NOT_FOLLOWED",
+          "CONNECT_FAILED_PRE_DISPATCH",
+          "TIMEOUT_AFTER_DISPATCH",
+          "CONNECTION_LOST_AFTER_DISPATCH",
+          "RESPONSE_BYTES_EXCEEDED",
+          "RETRIES_EXHAUSTED",
+          "ORPHANED_DISPATCH",
+          "DEADLINE_EXHAUSTED_PRE_DISPATCH"
+        ],
+        "title": "DeliveryFailureCode",
+        "type": "string"
+      },
+      "DeliveryStatus": {
+        "description": "Latest-state classifications of one delivery ledger entry.",
+        "enum": [
+          "PENDING",
+          "DELIVERED",
+          "RETRYABLE_FAILURE",
+          "AMBIGUOUS",
+          "PERMANENT_FAILURE",
+          "NOOP"
+        ],
+        "title": "DeliveryStatus",
+        "type": "string"
+      },
+      "EventCursorV1": {
+        "additionalProperties": false,
+        "description": "Source/listing-scoped high-water mark over processed events.",
+        "properties": {
+          "advanced_by_run_id": {
+            "minLength": 1,
+            "title": "Advanced By Run Id",
+            "type": "string"
+          },
+          "last_event_id": {
+            "minLength": 1,
+            "title": "Last Event Id",
+            "type": "string"
+          },
+          "last_processed_available_at": {
+            "format": "date-time",
+            "title": "Last Processed Available At",
+            "type": "string"
+          },
+          "source_id": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Source Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_id",
+          "last_processed_available_at",
+          "last_event_id",
+          "advanced_by_run_id"
+        ],
+        "title": "EventCursorV1",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -407,6 +519,1415 @@
         },
         "title": "HTTPValidationError",
         "type": "object"
+      },
+      "ImpactClass": {
+        "description": "Deterministic follow-up severity for one event or listing group.",
+        "enum": [
+          "NO_REANALYSIS",
+          "PARTIAL_REANALYSIS",
+          "FULL_REANALYSIS",
+          "URGENT_MANUAL_REVIEW"
+        ],
+        "title": "ImpactClass",
+        "type": "string"
+      },
+      "MonitoringAlertV1": {
+        "additionalProperties": false,
+        "description": "One bounded, factual, secret-free immutable outbox item.",
+        "properties": {
+          "alert_id": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Alert Id",
+            "type": "string"
+          },
+          "analysis_id": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Analysis Id"
+          },
+          "available_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Available At"
+          },
+          "content_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Content Sha256",
+            "type": "string"
+          },
+          "contract": {
+            "const": "monitoring_alert_v1",
+            "default": "monitoring_alert_v1",
+            "title": "Contract",
+            "type": "string"
+          },
+          "cycle_id": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Cycle Id",
+            "type": "string"
+          },
+          "event_batch_id": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Batch Id"
+          },
+          "event_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 256,
+            "title": "Event Ids",
+            "type": "array"
+          },
+          "event_types": {
+            "items": {
+              "$ref": "#/components/schemas/CanonicalEventType"
+            },
+            "maxItems": 256,
+            "title": "Event Types",
+            "type": "array"
+          },
+          "failure_code": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Code"
+          },
+          "impact": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImpactClass"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "job_id": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Id"
+          },
+          "job_status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReanalysisJobStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "kind": {
+            "$ref": "#/components/schemas/AlertKind"
+          },
+          "listing_id": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Listing Id"
+          },
+          "message": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Message",
+            "type": "string"
+          },
+          "monitoring_run_id": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Monitoring Run Id"
+          },
+          "reason_code": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Reason Code",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": "1.0.0",
+            "default": "1.0.0",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "surface_id": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Surface Id"
+          },
+          "watchlist_id": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Watchlist Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "alert_id",
+          "cycle_id",
+          "watchlist_id",
+          "kind",
+          "reason_code",
+          "message",
+          "content_sha256"
+        ],
+        "title": "MonitoringAlertV1",
+        "type": "object"
+      },
+      "MonitoringDeliveryStateV1": {
+        "additionalProperties": false,
+        "description": "Atomic latest state pointer for one delivery identity.\n\nThe state is fully derived from the immutable intent plus the immutable\nattempt set, so a crash between an attempt write and this pointer's\npublication is repaired deterministically without repeating the request.",
+        "properties": {
+          "attempt_count": {
+            "maximum": 20.0,
+            "minimum": 0.0,
+            "title": "Attempt Count",
+            "type": "integer"
+          },
+          "content_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Content Sha256",
+            "type": "string"
+          },
+          "contract": {
+            "const": "monitoring_delivery_state_v1",
+            "default": "monitoring_delivery_state_v1",
+            "title": "Contract",
+            "type": "string"
+          },
+          "delivery_id": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Delivery Id",
+            "type": "string"
+          },
+          "intent_content_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Intent Content Sha256",
+            "type": "string"
+          },
+          "last_error_code": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DeliveryFailureCode"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "last_http_status": {
+            "anyOf": [
+              {
+                "maximum": 599.0,
+                "minimum": 100.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Http Status"
+          },
+          "next_attempt_not_before": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Attempt Not Before"
+          },
+          "schema_version": {
+            "const": "1.0.0",
+            "default": "1.0.0",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/DeliveryStatus"
+          },
+          "terminal": {
+            "title": "Terminal",
+            "type": "boolean"
+          },
+          "terminal_attempt_content_sha256": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Terminal Attempt Content Sha256"
+          },
+          "terminal_attempt_number": {
+            "anyOf": [
+              {
+                "maximum": 20.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Terminal Attempt Number"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "delivery_id",
+          "status",
+          "terminal",
+          "attempt_count",
+          "intent_content_sha256",
+          "updated_at",
+          "content_sha256"
+        ],
+        "title": "MonitoringDeliveryStateV1",
+        "type": "object"
+      },
+      "MonitoringOperationsActivationV1": {
+        "additionalProperties": false,
+        "description": "The one projected activation: active when unfinished, else latest terminal.",
+        "properties": {
+          "activation_id": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Activation Id",
+            "type": "string"
+          },
+          "as_of": {
+            "format": "date-time",
+            "title": "As Of",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "cycle_id": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Cycle Id",
+            "type": "string"
+          },
+          "intent_content_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Intent Content Sha256",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "ACTIVE",
+              "LATEST_TERMINAL"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "receipt": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MonitoringOperationsReceiptV1"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "request_fingerprint": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Request Fingerprint",
+            "type": "string"
+          },
+          "runner_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Runner Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "activation_id",
+          "runner_id",
+          "cycle_id",
+          "as_of",
+          "created_at",
+          "request_fingerprint",
+          "intent_content_sha256"
+        ],
+        "title": "MonitoringOperationsActivationV1",
+        "type": "object"
+      },
+      "MonitoringOperationsCycleV1": {
+        "additionalProperties": false,
+        "description": "Terminal D1 cycle facts for the projected activation, when committed.",
+        "properties": {
+          "alert_batch_content_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Alert Batch Content Sha256",
+            "type": "string"
+          },
+          "alert_batch_id": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Alert Batch Id",
+            "type": "string"
+          },
+          "alert_count": {
+            "minimum": 0.0,
+            "title": "Alert Count",
+            "type": "integer"
+          },
+          "alerts": {
+            "items": {
+              "$ref": "#/components/schemas/MonitoringAlertV1"
+            },
+            "maxItems": 1024,
+            "title": "Alerts",
+            "type": "array"
+          },
+          "as_of": {
+            "format": "date-time",
+            "title": "As Of",
+            "type": "string"
+          },
+          "cycle_id": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Cycle Id",
+            "type": "string"
+          },
+          "event_batch_id": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Batch Id"
+          },
+          "failure_code": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Code"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "monitoring_run_id": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Monitoring Run Id"
+          },
+          "next_state_id": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next State Id"
+          },
+          "pointer_published": {
+            "title": "Pointer Published",
+            "type": "boolean"
+          },
+          "result_content_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Result Content Sha256",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/CycleStatus"
+          },
+          "watchlist_id": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Watchlist Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "cycle_id",
+          "status",
+          "as_of",
+          "watchlist_id",
+          "alert_batch_id",
+          "alert_batch_content_sha256",
+          "result_content_sha256",
+          "pointer_published",
+          "alert_count"
+        ],
+        "title": "MonitoringOperationsCycleV1",
+        "type": "object"
+      },
+      "MonitoringOperationsDeliveryAttemptV1": {
+        "additionalProperties": false,
+        "description": "One persisted delivery outcome (slot number may legitimately gap).",
+        "properties": {
+          "attempt_number": {
+            "minimum": 1.0,
+            "title": "Attempt Number",
+            "type": "integer"
+          },
+          "classification": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Classification",
+            "type": "string"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "finished_at": {
+            "format": "date-time",
+            "title": "Finished At",
+            "type": "string"
+          },
+          "http_status": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Http Status"
+          },
+          "response_body_sha256": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Response Body Sha256"
+          },
+          "retry_not_before": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retry Not Before"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "attempt_number",
+          "started_at",
+          "finished_at",
+          "classification"
+        ],
+        "title": "MonitoringOperationsDeliveryAttemptV1",
+        "type": "object"
+      },
+      "MonitoringOperationsDeliveryV1": {
+        "additionalProperties": false,
+        "description": "One D2B delivery bound to the projected activation.\n\n``state.attempt_count`` counts persisted attempt outcomes while\n``dispatch_claim_count`` counts consumed authorized outbound transport\nslots; after an orphaned dispatch the two legitimately differ and the\nunresolved slot numbers stay explicit (6-D2B-R2).",
+        "properties": {
+          "activation_id": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Activation Id",
+            "type": "string"
+          },
+          "alert_batch_id": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Alert Batch Id",
+            "type": "string"
+          },
+          "attempts": {
+            "items": {
+              "$ref": "#/components/schemas/MonitoringOperationsDeliveryAttemptV1"
+            },
+            "maxItems": 64,
+            "title": "Attempts",
+            "type": "array"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "cycle_id": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Cycle Id",
+            "type": "string"
+          },
+          "delivery_id": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Delivery Id",
+            "type": "string"
+          },
+          "destination_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Destination Id",
+            "type": "string"
+          },
+          "dispatch_claim_count": {
+            "minimum": 0.0,
+            "title": "Dispatch Claim Count",
+            "type": "integer"
+          },
+          "empty_outbox": {
+            "title": "Empty Outbox",
+            "type": "boolean"
+          },
+          "payload_contract": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Payload Contract",
+            "type": "string"
+          },
+          "payload_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Payload Sha256",
+            "type": "string"
+          },
+          "pointer_published": {
+            "title": "Pointer Published",
+            "type": "boolean"
+          },
+          "pointer_status": {
+            "enum": [
+              "CURRENT",
+              "MISSING",
+              "STALE_REPAIRABLE"
+            ],
+            "title": "Pointer Status",
+            "type": "string"
+          },
+          "runner_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Runner Id",
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/MonitoringDeliveryStateV1"
+          },
+          "transport": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Transport",
+            "type": "string"
+          },
+          "unresolved_claim_numbers": {
+            "items": {
+              "type": "integer"
+            },
+            "maxItems": 64,
+            "title": "Unresolved Claim Numbers",
+            "type": "array"
+          },
+          "unresolved_dispatch_claim": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MonitoringOperationsUnresolvedClaimV1"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "delivery_id",
+          "runner_id",
+          "activation_id",
+          "cycle_id",
+          "alert_batch_id",
+          "destination_id",
+          "transport",
+          "payload_contract",
+          "payload_sha256",
+          "empty_outbox",
+          "created_at",
+          "state",
+          "pointer_published",
+          "pointer_status",
+          "dispatch_claim_count"
+        ],
+        "title": "MonitoringOperationsDeliveryV1",
+        "type": "object"
+      },
+      "MonitoringOperationsJobDetailV1": {
+        "additionalProperties": false,
+        "description": "Terminal Phase 6-C job facts read from the execution store.",
+        "properties": {
+          "analysis_id": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Analysis Id"
+          },
+          "analysis_sha256": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Analysis Sha256"
+          },
+          "attempt_number": {
+            "minimum": 1.0,
+            "title": "Attempt Number",
+            "type": "integer"
+          },
+          "evidence_codes": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 32,
+            "title": "Evidence Codes",
+            "type": "array"
+          },
+          "failure_code": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Code"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ReanalysisJobStatus"
+          },
+          "surface_id": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Surface Id"
+          },
+          "surface_sha256": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Surface Sha256"
+          }
+        },
+        "required": [
+          "status",
+          "attempt_number"
+        ],
+        "title": "MonitoringOperationsJobDetailV1",
+        "type": "object"
+      },
+      "MonitoringOperationsJobV1": {
+        "additionalProperties": false,
+        "description": "One re-analysis job required by the projected cycle.",
+        "properties": {
+          "disposition_failure_code": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disposition Failure Code"
+          },
+          "disposition_status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReanalysisJobStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "impact": {
+            "$ref": "#/components/schemas/ImpactClass"
+          },
+          "job": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MonitoringOperationsJobDetailV1"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "job_content_sha256": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Content Sha256"
+          },
+          "job_id": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Job Id",
+            "type": "string"
+          },
+          "listing_id": {
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Listing Id",
+            "type": "string"
+          },
+          "request_id": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "resolution": {
+            "enum": [
+              "RESOLVED",
+              "UNRESOLVED",
+              "MISSING"
+            ],
+            "title": "Resolution",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "listing_id",
+          "impact",
+          "job_id",
+          "resolution"
+        ],
+        "title": "MonitoringOperationsJobV1",
+        "type": "object"
+      },
+      "MonitoringOperationsLeaseRecordV1": {
+        "additionalProperties": false,
+        "description": "Secret-free public lease record (holder token and hash excluded).",
+        "properties": {
+          "acquired_at": {
+            "format": "date-time",
+            "title": "Acquired At",
+            "type": "string"
+          },
+          "activation_id": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Activation Id"
+          },
+          "contract": {
+            "const": "monitoring_runner_lease_v1",
+            "default": "monitoring_runner_lease_v1",
+            "title": "Contract",
+            "type": "string"
+          },
+          "heartbeat_at": {
+            "format": "date-time",
+            "title": "Heartbeat At",
+            "type": "string"
+          },
+          "lease_ttl_seconds": {
+            "maximum": 604800.0,
+            "minimum": 1.0,
+            "title": "Lease Ttl Seconds",
+            "type": "integer"
+          },
+          "runner_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Runner Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": "1.0.0",
+            "default": "1.0.0",
+            "title": "Schema Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "runner_id",
+          "acquired_at",
+          "heartbeat_at",
+          "lease_ttl_seconds"
+        ],
+        "title": "MonitoringOperationsLeaseRecordV1",
+        "type": "object"
+      },
+      "MonitoringOperationsProjectionV1": {
+        "additionalProperties": false,
+        "description": "Versioned, secret-free read model over the configured monitoring chain.",
+        "properties": {
+          "activation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MonitoringOperationsActivationV1"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "contract": {
+            "const": "monitoring_operations_projection_v1",
+            "default": "monitoring_operations_projection_v1",
+            "title": "Contract",
+            "type": "string"
+          },
+          "cycle": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MonitoringOperationsCycleV1"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "deliveries": {
+            "items": {
+              "$ref": "#/components/schemas/MonitoringOperationsDeliveryV1"
+            },
+            "maxItems": 64,
+            "title": "Deliveries",
+            "type": "array"
+          },
+          "deliveries_configured": {
+            "title": "Deliveries Configured",
+            "type": "boolean"
+          },
+          "jobs": {
+            "items": {
+              "$ref": "#/components/schemas/MonitoringOperationsJobV1"
+            },
+            "maxItems": 256,
+            "title": "Jobs",
+            "type": "array"
+          },
+          "runner": {
+            "$ref": "#/components/schemas/MonitoringOperationsRunnerV1"
+          },
+          "runner_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Runner Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": "1.0.0",
+            "default": "1.0.0",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "watchlist": {
+            "$ref": "#/components/schemas/MonitoringStatusV1"
+          }
+        },
+        "required": [
+          "runner_id",
+          "watchlist",
+          "runner",
+          "deliveries_configured"
+        ],
+        "title": "MonitoringOperationsProjectionV1",
+        "type": "object"
+      },
+      "MonitoringOperationsReceiptV1": {
+        "additionalProperties": false,
+        "description": "Terminal D2A receipt facts bound to the projected activation.",
+        "properties": {
+          "alert_batch_content_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Alert Batch Content Sha256",
+            "type": "string"
+          },
+          "alert_batch_id": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Alert Batch Id",
+            "type": "string"
+          },
+          "classification": {
+            "const": "CYCLE_TERMINAL",
+            "default": "CYCLE_TERMINAL",
+            "title": "Classification",
+            "type": "string"
+          },
+          "completed_at": {
+            "format": "date-time",
+            "title": "Completed At",
+            "type": "string"
+          },
+          "content_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Content Sha256",
+            "type": "string"
+          },
+          "d1_failure_code": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "D1 Failure Code"
+          },
+          "d1_status": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "D1 Status",
+            "type": "string"
+          },
+          "result_content_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Result Content Sha256",
+            "type": "string"
+          }
+        },
+        "required": [
+          "d1_status",
+          "result_content_sha256",
+          "alert_batch_id",
+          "alert_batch_content_sha256",
+          "completed_at",
+          "content_sha256"
+        ],
+        "title": "MonitoringOperationsReceiptV1",
+        "type": "object"
+      },
+      "MonitoringOperationsRunnerV1": {
+        "additionalProperties": false,
+        "description": "Read-only runner/lease status for the one configured runner identity.",
+        "properties": {
+          "latest_terminal_activation_id": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Terminal Activation Id"
+          },
+          "lease_corrupt": {
+            "title": "Lease Corrupt",
+            "type": "boolean"
+          },
+          "lease_record": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MonitoringOperationsLeaseRecordV1"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lease_state": {
+            "enum": [
+              "LIVE",
+              "ABANDONED",
+              "FREE"
+            ],
+            "title": "Lease State",
+            "type": "string"
+          },
+          "runner_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Runner Id",
+            "type": "string"
+          },
+          "unfinished_activation_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 64,
+            "title": "Unfinished Activation Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "runner_id",
+          "lease_state",
+          "lease_corrupt"
+        ],
+        "title": "MonitoringOperationsRunnerV1",
+        "type": "object"
+      },
+      "MonitoringOperationsUnresolvedClaimV1": {
+        "additionalProperties": false,
+        "description": "The highest durable dispatch slot whose outcome never became durable.",
+        "properties": {
+          "attempt_number": {
+            "minimum": 1.0,
+            "title": "Attempt Number",
+            "type": "integer"
+          },
+          "content_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Content Sha256",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Idempotency Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "attempt_number",
+          "idempotency_key",
+          "content_sha256"
+        ],
+        "title": "MonitoringOperationsUnresolvedClaimV1",
+        "type": "object"
+      },
+      "MonitoringStatusEntryV1": {
+        "additionalProperties": false,
+        "description": "Read-only status projection for one watched listing.",
+        "properties": {
+          "cursors": {
+            "items": {
+              "$ref": "#/components/schemas/EventCursorV1"
+            },
+            "title": "Cursors",
+            "type": "array"
+          },
+          "last_analysis_as_of": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Analysis As Of"
+          },
+          "last_analysis_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Analysis Id"
+          },
+          "last_deterministic_result": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Deterministic Result"
+          },
+          "last_filing_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Filing Id"
+          },
+          "last_profile_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Profile Id"
+          },
+          "last_surface_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Surface Id"
+          },
+          "listing_id": {
+            "minLength": 1,
+            "title": "Listing Id",
+            "type": "string"
+          },
+          "open_questions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Open Questions",
+            "type": "array"
+          },
+          "processed_event_count": {
+            "minimum": 0.0,
+            "title": "Processed Event Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "listing_id",
+          "processed_event_count"
+        ],
+        "title": "MonitoringStatusEntryV1",
+        "type": "object"
+      },
+      "MonitoringStatusV1": {
+        "additionalProperties": false,
+        "description": "Read-only status projection returned by ``tve watch status``.",
+        "properties": {
+          "availability": {
+            "enum": [
+              "NOT_AVAILABLE",
+              "AVAILABLE"
+            ],
+            "title": "Availability",
+            "type": "string"
+          },
+          "contract": {
+            "const": "monitoring_status_v1",
+            "default": "monitoring_status_v1",
+            "title": "Contract",
+            "type": "string"
+          },
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/MonitoringStatusEntryV1"
+            },
+            "title": "Entries",
+            "type": "array"
+          },
+          "last_committed_run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Committed Run Id"
+          },
+          "schema_version": {
+            "const": "1.0.0",
+            "default": "1.0.0",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "state_id": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State Id"
+          },
+          "watchlist_id": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+            "title": "Watchlist Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "watchlist_id",
+          "availability"
+        ],
+        "title": "MonitoringStatusV1",
+        "type": "object"
+      },
+      "ReanalysisJobStatus": {
+        "description": "Terminal states persisted by the synchronous Phase 6-C executor.",
+        "enum": [
+          "NO_ACTION",
+          "MANUAL_REVIEW_REQUIRED",
+          "BLOCKED",
+          "FAILED",
+          "SUCCEEDED"
+        ],
+        "title": "ReanalysisJobStatus",
+        "type": "string"
       },
       "ResearchSurfaceSnapshotV1": {
         "additionalProperties": false,
@@ -2683,6 +4204,67 @@
         "summary": "Healthz",
         "tags": [
           "system"
+        ]
+      }
+    },
+    "/v1/monitoring/operations": {
+      "get": {
+        "operationId": "getMonitoringOperations",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MonitoringOperationsProjectionV1"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SurfaceErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SurfaceErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SurfaceErrorResponse"
+                }
+              }
+            },
+            "description": "Method Not Allowed"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SurfaceErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          }
+        },
+        "summary": "Get Monitoring Operations",
+        "tags": [
+          "monitoring"
         ]
       }
     },

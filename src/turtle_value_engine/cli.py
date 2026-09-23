@@ -315,6 +315,20 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="explicitly permit a non-loopback bind address",
     )
+    surface_serve.add_argument(
+        "--monitoring-runner-config",
+        type=Path,
+        default=None,
+        help="explicit RunnerConfigV1 JSON path enabling the read-only "
+        "monitoring operations endpoint",
+    )
+    surface_serve.add_argument(
+        "--monitoring-project-config",
+        type=Path,
+        default=None,
+        help="explicit project TOML path supplying the delivery ledger root "
+        "for the monitoring endpoint",
+    )
 
     config_parser = subparsers.add_parser(
         "config",
@@ -940,13 +954,33 @@ def _run_artifacts(args: argparse.Namespace) -> object:
 
 def _run_surface(args: argparse.Namespace) -> object:
     if args.surface_command == "serve":
+        from turtle_value_engine.monitoring_operations import sources_from_runner_config
         from turtle_value_engine.surface.api import serve_surface_snapshots
 
+        monitoring_sources = None
+        if args.monitoring_runner_config is not None:
+            runner_config = _load_runner_config(args.monitoring_runner_config)
+            delivery_root = None
+            if args.monitoring_project_config is not None:
+                project_config = load_project_config(args.monitoring_project_config)
+                delivery_root = str(
+                    project_config.resolve_path(
+                        project_config.monitoring.delivery.delivery_root
+                    )
+                )
+            monitoring_sources = sources_from_runner_config(
+                runner_config, delivery_root=delivery_root
+            )
+        elif args.monitoring_project_config is not None:
+            raise ValueError(
+                "--monitoring-project-config requires --monitoring-runner-config"
+            )
         return serve_surface_snapshots(
             args.snapshot,
             host=args.host,
             port=args.port,
             allow_non_loopback=args.allow_non_loopback,
+            monitoring_sources=monitoring_sources,
         )
     if args.surface_command == "build":
         snapshot = build_research_surface_snapshot(

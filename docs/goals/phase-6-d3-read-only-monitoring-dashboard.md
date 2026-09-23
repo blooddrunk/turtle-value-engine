@@ -1,6 +1,8 @@
 # Phase 6-D3 — Read-only Monitoring Operations Dashboard Projection
 
-Status: **SELECTED / NOT IMPLEMENTED**
+Status: **IMPLEMENTED / CI_PENDING**
+Implementation record:
+`docs/status/phase-6-d3-2026-09-23.md`
 Date: 2026-09-23
 Selected after: Phase 6-D2B-R2 post-closure review
 

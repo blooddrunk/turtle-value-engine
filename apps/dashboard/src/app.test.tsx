@@ -7,7 +7,18 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { DashboardApp } from "./app";
 import { buildSurfacesUrl } from "./api/client";
 import { createDashboardRouter } from "./router";
-import { testContentHash, testListResponse, testSnapshot, testSurfaceId } from "./test/fixtures";
+import {
+  testContentHash,
+  testListResponse,
+  testMonitoringActivationId,
+  testMonitoringCycleId,
+  testMonitoringDeliveryId,
+  testMonitoringEmptyProjection,
+  testMonitoringOrphanProjection,
+  testMonitoringProjection,
+  testSnapshot,
+  testSurfaceId,
+} from "./test/fixtures";
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -20,8 +31,8 @@ function renderDashboard(initialPath = "/") {
   const history = createMemoryHistory({ initialEntries: [initialPath] });
   const router = createDashboardRouter({ history });
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  render(<DashboardApp queryClient={queryClient} router={router} />);
-  return { router, queryClient };
+  const rendered = render(<DashboardApp queryClient={queryClient} router={router} />);
+  return { router, queryClient, unmount: rendered.unmount };
 }
 
 function mockOverviewAPI(list = testListResponse): void {
@@ -250,5 +261,176 @@ describe("surface detail", () => {
     ).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /保存|审批|删除|下单|交易/ })).not.toBeInTheDocument();
     expect(screen.queryByText(/POST|PUT|PATCH|DELETE/)).not.toBeInTheDocument();
+  });
+});
+
+function mockMonitoringAPI(body: unknown = testMonitoringProjection, status = 200): void {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const path = new URL(String(input), "http://dashboard.test").pathname;
+      if (path === "/api/v1/monitoring/operations") {
+        return jsonResponse(body, status);
+      }
+      if (path === "/api/healthz") {
+        return jsonResponse({
+          status: "ok",
+          contract: "research_surface_api_v1",
+          version: "1.0.0",
+          loaded_snapshot_count: testListResponse.surfaces.length,
+        });
+      }
+      return jsonResponse(testListResponse);
+    }),
+  );
+}
+
+describe("monitoring operations", () => {
+  it("shows the Chinese-first monitoring page through the main navigation", async () => {
+    const user = userEvent.setup();
+    mockMonitoringAPI();
+    renderDashboard("/");
+
+    await screen.findByRole("heading", { level: 1, name: "研究面总览" });
+    await user.click(screen.getByRole("link", { name: "监控运行" }));
+
+    expect(await screen.findByRole("heading", { level: 2, name: "运行概览" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "监控运行状态" })).toBeInTheDocument();
+    for (const heading of ["运行概览", "重分析任务", "通知投递", "审计详情（原始标识与哈希）"]) {
+      expect(screen.getByRole("heading", { level: 2, name: heading })).toBeInTheDocument();
+    }
+    expect(screen.getAllByText("只读").length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "刷新数据" })).toBeInTheDocument();
+    expect(vi.mocked(fetch)).toHaveBeenCalledWith("/api/v1/monitoring/operations", expect.anything());
+  });
+
+  it("gives every important operational state intentional Chinese copy with raw codes", async () => {
+    mockMonitoringAPI();
+    renderDashboard("/monitoring");
+
+    expect((await screen.findAllByText("可用")).length).toBeGreaterThan(0);
+    for (const label of [
+      "租约已过期",
+      "最近终结",
+      "已发出提醒",
+      "完整重分析",
+      "已完成",
+      "已解决",
+      "已送达",
+      "指针一致",
+      "重分析完成",
+    ]) {
+      expect(screen.getAllByText(label).length, label).toBeGreaterThan(0);
+    }
+    for (const raw of ["AVAILABLE", "ABANDONED", "LATEST_TERMINAL", "ALERTS_EMITTED", "DELIVERED", "CURRENT"]) {
+      expect(screen.getAllByText(raw).length, raw).toBeGreaterThan(0);
+    }
+    expect(screen.queryByText("未知状态")).not.toBeInTheDocument();
+  });
+
+  it("distinguishes empty and not-configured states from error states", async () => {
+    mockMonitoringAPI(testMonitoringEmptyProjection);
+    const { unmount } = renderDashboard("/monitoring");
+
+    expect(await screen.findByText("尚无激活记录")).toBeInTheDocument();
+    expect(screen.getByText("未配置投递账本")).toBeInTheDocument();
+    expect(screen.getByText("本次周期没有重分析任务")).toBeInTheDocument();
+    expect(screen.getAllByText("无可用值").length).toBeGreaterThan(0);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    unmount();
+
+    mockMonitoringAPI(
+      { error: { code: "MONITORING_OPERATIONS_CONFLICT", message: "store evidence failed" } },
+      409,
+    );
+    renderDashboard("/monitoring");
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.querySelector("h2")).toHaveTextContent("监控证据不一致");
+    expect(screen.getByText("MONITORING_OPERATIONS_CONFLICT").closest("details")).not.toBeNull();
+    expect(screen.queryByText("尚无激活记录")).not.toBeInTheDocument();
+    expect(screen.queryByText("未配置投递账本")).not.toBeInTheDocument();
+  });
+
+  it("keeps persisted-outcome count and consumed-slot count as distinct labels and values", async () => {
+    mockMonitoringAPI(testMonitoringOrphanProjection);
+    renderDashboard("/monitoring");
+
+    const outcomeRow = (await screen.findByText("已持久化投递结果数")).closest(".field-row");
+    expect(outcomeRow).toHaveTextContent("0");
+    const slotRow = screen.getByText("已消耗外发槽位数").closest(".field-row");
+    expect(slotRow).toHaveTextContent("1");
+    expect(screen.getByText(/两个计数语义不同/)).toBeInTheDocument();
+    expect(screen.getByText(/绝不把结果数当作总发送次数/)).toBeInTheDocument();
+  });
+
+  it("keeps unresolved slot numbers and the orphaned dispatch visible", async () => {
+    mockMonitoringAPI(testMonitoringOrphanProjection);
+    renderDashboard("/monitoring");
+
+    const unresolvedRow = (await screen.findByText("未决槽位编号")).closest(".field-row");
+    expect(unresolvedRow).toHaveTextContent("1");
+    expect(screen.getAllByText("结果不确定").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("外发结果丢失").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("ORPHANED_DISPATCH").length).toBeGreaterThan(0);
+  });
+
+  it("keeps the delivery pointer status visible", async () => {
+    mockMonitoringAPI(testMonitoringOrphanProjection);
+    renderDashboard("/monitoring");
+
+    const pointerRow = (await screen.findByText("状态指针")).closest(".field-row");
+    expect(pointerRow).toHaveTextContent("指针过期");
+    expect(pointerRow).toHaveTextContent("STALE_REPAIRABLE");
+  });
+
+  it("keeps ids and hashes available inside the audit details section", async () => {
+    mockMonitoringAPI();
+    renderDashboard("/monitoring");
+
+    const audit = (await screen.findByRole("heading", { level: 2, name: "审计详情（原始标识与哈希）" })).closest(
+      "section",
+    );
+    expect(audit).not.toBeNull();
+    expect(audit?.textContent).toContain(testMonitoringActivationId);
+    expect(audit?.textContent).toContain(testMonitoringCycleId);
+    expect(audit?.textContent).toContain(testMonitoringDeliveryId);
+    expect(audit?.textContent).toContain("monitoring_operations_projection_v1");
+    const attemptsSummary = screen.getByText("投递尝试明细");
+    expect(attemptsSummary.closest("details")).not.toBeNull();
+  });
+
+  it("has no mutation controls", async () => {
+    mockMonitoringAPI();
+    renderDashboard("/monitoring");
+
+    await screen.findByRole("heading", { level: 2, name: "运行概览" });
+    expect(
+      screen.queryByRole("button", { name: /save|approve|delete|trade|order|run|retry|resend|repair|acknowledge|dismiss/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /保存|审批|删除|下单|交易|重发|重试|修复|确认|立即运行/ }),
+    ).not.toBeInTheDocument();
+    const allowed = new Set(["刷新数据", "切换界面语言"]);
+    for (const button of screen.getAllByRole("button")) {
+      const name = button.getAttribute("aria-label") ?? button.textContent ?? "";
+      expect(allowed.has(name), `unexpected control: ${name}`).toBe(true);
+    }
+  });
+
+  it("keeps a mobile-safe semantic structure with keyboard-focusable controls", async () => {
+    mockMonitoringAPI();
+    renderDashboard("/monitoring");
+
+    await screen.findByRole("heading", { level: 2, name: "运行概览" });
+    expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
+    expect(screen.getByRole("navigation", { name: "主导航" })).toBeInTheDocument();
+    const refresh = screen.getByRole("button", { name: "刷新数据" });
+    expect(refresh).toHaveAttribute("type", "button");
+    refresh.focus();
+    expect(refresh).toHaveFocus();
+    const table = document.querySelector(".table-frame table");
+    expect(table).not.toBeNull();
+    expect(table?.querySelectorAll("th[scope='col']").length).toBeGreaterThan(0);
   });
 });

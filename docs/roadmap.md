@@ -5160,7 +5160,7 @@ cycle/outbox boundary (6-D1), and the durable single-host unattended runner
 ## Phase 6 — Watchlist and event-driven re-analysis
 
 Status: **Phase 6-A / 6-B / 6-C / 6-D1 / 6-D2A / 6-D2A-R1 / 6-D2B /
-6-D2B-R1 / 6-D2B-R2 implemented and CI-closed. The 2026-09-23 post-R1
+6-D2B-R1 / 6-D2B-R2 / 6-D3 implemented. The 2026-09-23 post-R1
 closure audit found one remaining retry-budget accounting defect for
 idempotent orphaned dispatches: repeated process death after durable dispatch
 evidence but before attempt-outcome persistence could re-enter transport
@@ -5174,10 +5174,12 @@ new monotonic durable slot persisted before every transport entry. The 2026-09-2
 Phase 6-D3 — Read-only Monitoring Operations Dashboard Projection**
 ([canonical goal](goals/phase-6-d3-read-only-monitoring-dashboard.md),
 selection audit `status/phase-6-d2b-r2-post-closure-review-2026-09-23.md`,
-handoff `status/phase-6-d3-next-coding-agent-goal.md`). D3 is selected / not
-implemented and is limited to a typed, secret-free, bounded read projection of
-existing monitoring/runner/cycle/job/delivery state through the current
-FastAPI -> Worker -> Dashboard stack. Phase 6-E remains the bounded real owner
+handoff `status/phase-6-d3-next-coding-agent-goal.md`). D3 is now implemented
+at its read-only projection boundary (implementation record
+`status/phase-6-d3-2026-09-23.md`): a typed, secret-free, bounded read
+projection of existing monitoring/runner/cycle/job/delivery state through the
+current FastAPI -> Worker -> Dashboard stack, with no runtime mutation
+authority. Phase 6-E remains the bounded real owner
 deployment/cadence/notification acceptance step.**
 
 The first package,
@@ -6295,3 +6297,42 @@ implementation `6c039266083de015535f3f05dce0cf9aba2f0042` (Actions run
 exact closing evidence: `docs/status/phase-6-d2b-r1-2026-09-23.md`. Phase
 6-D3 read-only Dashboard monitoring projection is restored as the next
 candidate package.
+
+## Phase 6-D3 implementation closure — 2026-09-23
+
+Phase 6-D3 is implemented at its read-only monitoring operations projection
+boundary: the framework-neutral `monitoring_operations/` package projects one
+explicitly configured chain — `MonitoringWorkspace` status, `RunnerStore`/
+`RunnerLease` read-only state, the active activation (otherwise the latest
+terminal one), that activation's D1 cycle, only the re-analysis jobs that
+cycle references and only the D2B deliveries bound to that activation — into
+the versioned, secret-free `MonitoringOperationsProjectionV1`
+(`schemas/monitoring-operations-projection.schema.json`, drift-checked). The
+projection is anchored to explicit `RunnerConfigV1` + typed
+`[monitoring.delivery]` `delivery_root` sources (`tve surface serve
+--monitoring-runner-config ... [--monitoring-project-config ...]`): no
+recursive scanning, no guessed paths, no remote state, and no provider,
+model, research, cycle-execution, delivery-transport, retry, repair or any
+other mutation path is reachable from the request path — byte/file inventories
+of every source store are proven identical across projection reads. The R2
+accounting distinction is part of the contract: `attempt_count` (persisted
+attempt outcomes) and `dispatch_claim_count` (consumed authorized outbound
+slots) are exposed and labelled separately with `unresolved_claim_numbers`,
+`AMBIGUOUS`/`ORPHANED_DISPATCH` and pointer states
+`CURRENT`/`MISSING`/`STALE_REPAIRABLE` kept explicit end to end. The typed
+read model reaches `GET /v1/monitoring/operations` (deterministic
+drift-checked OpenAPI), the fixed Worker allowlist route
+`/api/v1/monitoring/operations` and the Chinese-first read-only `/monitoring`
+Dashboard page with intentional copy for every important operational state,
+distinct empty/not-configured/error states, audit IDs/hashes behind technical
+details and zero mutation controls. Verification: 26 new projection/API cases
+(monitoring group 334 passed), full suite 6685 passed / 2 skipped, 54
+Dashboard/Worker tests, deterministic OpenAPI/types drift checks, the extended
+real cross-stack smoke driving an R2-orphan fixture through the genuine
+fixture -> API -> Worker preview path (identities, exact statuses, distinct
+outcome/slot counts, unresolved slots, mutation rejection, secret/path
+sentinel scans) and automated browser layout verification at 1440x900 and
+390x844 (no horizontal overflow, expandable audit details, no mutation
+controls). Implementation record and exact closing evidence:
+`docs/status/phase-6-d3-2026-09-23.md`. Phase 6-E owner live unattended
+acceptance remains the next candidate package.

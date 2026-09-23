@@ -21,6 +21,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/monitoring/operations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Monitoring Operations */
+        get: operations["getMonitoringOperations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/surfaces": {
         parameters: {
             query?: never;
@@ -59,6 +76,12 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * AlertKind
+         * @description Factual alert projections; none is an investment recommendation.
+         * @enum {string}
+         */
+        AlertKind: "MATERIAL_EVENT" | "MANUAL_REVIEW_REQUIRED" | "REANALYSIS_BLOCKED" | "REANALYSIS_FAILED" | "REANALYSIS_SUCCEEDED" | "CYCLE_FAILED";
         /**
          * BusinessQuality
          * @description Structured business-quality assessment.
@@ -101,6 +124,12 @@ export interface components {
             supporting_evidence_ids: string[];
         };
         /**
+         * CanonicalEventType
+         * @description Closed set of canonical monitoring event types.
+         * @enum {string}
+         */
+        CanonicalEventType: "ANNUAL_REPORT" | "INTERIM_REPORT" | "EARNINGS_PREANNOUNCEMENT" | "DIVIDEND_POLICY_CHANGE" | "DIVIDEND_DECLARATION" | "BUYBACK" | "SHARE_ISSUANCE" | "MAJOR_ACQUISITION" | "MAJOR_DISPOSAL" | "AUDIT_OPINION_CHANGE" | "REGULATORY_PENALTY" | "CONTROLLING_SHAREHOLDER_EVENT" | "MATERIAL_LITIGATION" | "PROFIT_WARNING" | "TRADING_SUSPENSION" | "INFORMATIONAL_DISCLOSURE";
+        /**
          * Company
          * @description Company identity and accounting context.
          *
@@ -140,6 +169,12 @@ export interface components {
          */
         ConfidenceLevel: "HIGH" | "MEDIUM" | "LOW";
         /**
+         * CycleStatus
+         * @description Terminal outcomes of one synchronous monitoring cycle.
+         * @enum {string}
+         */
+        CycleStatus: "NO_CHANGE" | "ALERTS_EMITTED" | "ATTENTION_REQUIRED" | "FAILED";
+        /**
          * DataQuality
          * @description Overall data-quality summary for an analysis.
          */
@@ -176,11 +211,530 @@ export interface components {
          * @enum {string}
          */
         DecisionState: "PASS" | "WATCH" | "FAIL" | "SPECIAL_REVIEW" | "ACCEPTABLE" | "TURTLE_ENTRY" | "EXTREME_SAFETY" | "TOO_EXPENSIVE_FOR_STRICT_MODEL" | "NO_NORMAL_VALUATION";
+        /**
+         * DeliveryFailureCode
+         * @description Safe, secret-free machine-readable failure classifications.
+         * @enum {string}
+         */
+        DeliveryFailureCode: "HTTP_RETRYABLE_STATUS" | "HTTP_PERMANENT_STATUS" | "HTTP_REDIRECT_NOT_FOLLOWED" | "CONNECT_FAILED_PRE_DISPATCH" | "TIMEOUT_AFTER_DISPATCH" | "CONNECTION_LOST_AFTER_DISPATCH" | "RESPONSE_BYTES_EXCEEDED" | "RETRIES_EXHAUSTED" | "ORPHANED_DISPATCH" | "DEADLINE_EXHAUSTED_PRE_DISPATCH";
+        /**
+         * DeliveryStatus
+         * @description Latest-state classifications of one delivery ledger entry.
+         * @enum {string}
+         */
+        DeliveryStatus: "PENDING" | "DELIVERED" | "RETRYABLE_FAILURE" | "AMBIGUOUS" | "PERMANENT_FAILURE" | "NOOP";
+        /**
+         * EventCursorV1
+         * @description Source/listing-scoped high-water mark over processed events.
+         */
+        EventCursorV1: {
+            /** Advanced By Run Id */
+            advanced_by_run_id: string;
+            /** Last Event Id */
+            last_event_id: string;
+            /**
+             * Last Processed Available At
+             * Format: date-time
+             */
+            last_processed_available_at: string;
+            /** Source Id */
+            source_id: string;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /**
+         * ImpactClass
+         * @description Deterministic follow-up severity for one event or listing group.
+         * @enum {string}
+         */
+        ImpactClass: "NO_REANALYSIS" | "PARTIAL_REANALYSIS" | "FULL_REANALYSIS" | "URGENT_MANUAL_REVIEW";
+        /**
+         * MonitoringAlertV1
+         * @description One bounded, factual, secret-free immutable outbox item.
+         */
+        MonitoringAlertV1: {
+            /** Alert Id */
+            alert_id: string;
+            /** Analysis Id */
+            analysis_id?: string | null;
+            /** Available At */
+            available_at?: string | null;
+            /** Content Sha256 */
+            content_sha256: string;
+            /**
+             * Contract
+             * @default monitoring_alert_v1
+             * @constant
+             */
+            contract: "monitoring_alert_v1";
+            /** Cycle Id */
+            cycle_id: string;
+            /** Event Batch Id */
+            event_batch_id?: string | null;
+            /** Event Ids */
+            event_ids?: string[];
+            /** Event Types */
+            event_types?: components["schemas"]["CanonicalEventType"][];
+            /** Failure Code */
+            failure_code?: string | null;
+            impact?: components["schemas"]["ImpactClass"] | null;
+            /** Job Id */
+            job_id?: string | null;
+            job_status?: components["schemas"]["ReanalysisJobStatus"] | null;
+            kind: components["schemas"]["AlertKind"];
+            /** Listing Id */
+            listing_id?: string | null;
+            /** Message */
+            message: string;
+            /** Monitoring Run Id */
+            monitoring_run_id?: string | null;
+            /** Reason Code */
+            reason_code: string;
+            /**
+             * Schema Version
+             * @default 1.0.0
+             * @constant
+             */
+            schema_version: "1.0.0";
+            /** Surface Id */
+            surface_id?: string | null;
+            /** Watchlist Id */
+            watchlist_id: string;
+        };
+        /**
+         * MonitoringDeliveryStateV1
+         * @description Atomic latest state pointer for one delivery identity.
+         *
+         *     The state is fully derived from the immutable intent plus the immutable
+         *     attempt set, so a crash between an attempt write and this pointer's
+         *     publication is repaired deterministically without repeating the request.
+         */
+        MonitoringDeliveryStateV1: {
+            /** Attempt Count */
+            attempt_count: number;
+            /** Content Sha256 */
+            content_sha256: string;
+            /**
+             * Contract
+             * @default monitoring_delivery_state_v1
+             * @constant
+             */
+            contract: "monitoring_delivery_state_v1";
+            /** Delivery Id */
+            delivery_id: string;
+            /** Intent Content Sha256 */
+            intent_content_sha256: string;
+            last_error_code?: components["schemas"]["DeliveryFailureCode"] | null;
+            /** Last Http Status */
+            last_http_status?: number | null;
+            /** Next Attempt Not Before */
+            next_attempt_not_before?: string | null;
+            /**
+             * Schema Version
+             * @default 1.0.0
+             * @constant
+             */
+            schema_version: "1.0.0";
+            status: components["schemas"]["DeliveryStatus"];
+            /** Terminal */
+            terminal: boolean;
+            /** Terminal Attempt Content Sha256 */
+            terminal_attempt_content_sha256?: string | null;
+            /** Terminal Attempt Number */
+            terminal_attempt_number?: number | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * MonitoringOperationsActivationV1
+         * @description The one projected activation: active when unfinished, else latest terminal.
+         */
+        MonitoringOperationsActivationV1: {
+            /** Activation Id */
+            activation_id: string;
+            /**
+             * As Of
+             * Format: date-time
+             */
+            as_of: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Cycle Id */
+            cycle_id: string;
+            /** Intent Content Sha256 */
+            intent_content_sha256: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "ACTIVE" | "LATEST_TERMINAL";
+            receipt?: components["schemas"]["MonitoringOperationsReceiptV1"] | null;
+            /** Request Fingerprint */
+            request_fingerprint: string;
+            /** Runner Id */
+            runner_id: string;
+        };
+        /**
+         * MonitoringOperationsCycleV1
+         * @description Terminal D1 cycle facts for the projected activation, when committed.
+         */
+        MonitoringOperationsCycleV1: {
+            /** Alert Batch Content Sha256 */
+            alert_batch_content_sha256: string;
+            /** Alert Batch Id */
+            alert_batch_id: string;
+            /** Alert Count */
+            alert_count: number;
+            /** Alerts */
+            alerts?: components["schemas"]["MonitoringAlertV1"][];
+            /**
+             * As Of
+             * Format: date-time
+             */
+            as_of: string;
+            /** Cycle Id */
+            cycle_id: string;
+            /** Event Batch Id */
+            event_batch_id?: string | null;
+            /** Failure Code */
+            failure_code?: string | null;
+            /** Message */
+            message?: string | null;
+            /** Monitoring Run Id */
+            monitoring_run_id?: string | null;
+            /** Next State Id */
+            next_state_id?: string | null;
+            /** Pointer Published */
+            pointer_published: boolean;
+            /** Result Content Sha256 */
+            result_content_sha256: string;
+            status: components["schemas"]["CycleStatus"];
+            /** Watchlist Id */
+            watchlist_id: string;
+        };
+        /**
+         * MonitoringOperationsDeliveryAttemptV1
+         * @description One persisted delivery outcome (slot number may legitimately gap).
+         */
+        MonitoringOperationsDeliveryAttemptV1: {
+            /** Attempt Number */
+            attempt_number: number;
+            /** Classification */
+            classification: string;
+            /** Error Code */
+            error_code?: string | null;
+            /**
+             * Finished At
+             * Format: date-time
+             */
+            finished_at: string;
+            /** Http Status */
+            http_status?: number | null;
+            /** Response Body Sha256 */
+            response_body_sha256?: string | null;
+            /** Retry Not Before */
+            retry_not_before?: string | null;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+        };
+        /**
+         * MonitoringOperationsDeliveryV1
+         * @description One D2B delivery bound to the projected activation.
+         *
+         *     ``state.attempt_count`` counts persisted attempt outcomes while
+         *     ``dispatch_claim_count`` counts consumed authorized outbound transport
+         *     slots; after an orphaned dispatch the two legitimately differ and the
+         *     unresolved slot numbers stay explicit (6-D2B-R2).
+         */
+        MonitoringOperationsDeliveryV1: {
+            /** Activation Id */
+            activation_id: string;
+            /** Alert Batch Id */
+            alert_batch_id: string;
+            /** Attempts */
+            attempts?: components["schemas"]["MonitoringOperationsDeliveryAttemptV1"][];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Cycle Id */
+            cycle_id: string;
+            /** Delivery Id */
+            delivery_id: string;
+            /** Destination Id */
+            destination_id: string;
+            /** Dispatch Claim Count */
+            dispatch_claim_count: number;
+            /** Empty Outbox */
+            empty_outbox: boolean;
+            /** Payload Contract */
+            payload_contract: string;
+            /** Payload Sha256 */
+            payload_sha256: string;
+            /** Pointer Published */
+            pointer_published: boolean;
+            /**
+             * Pointer Status
+             * @enum {string}
+             */
+            pointer_status: "CURRENT" | "MISSING" | "STALE_REPAIRABLE";
+            /** Runner Id */
+            runner_id: string;
+            state: components["schemas"]["MonitoringDeliveryStateV1"];
+            /** Transport */
+            transport: string;
+            /** Unresolved Claim Numbers */
+            unresolved_claim_numbers?: number[];
+            unresolved_dispatch_claim?: components["schemas"]["MonitoringOperationsUnresolvedClaimV1"] | null;
+        };
+        /**
+         * MonitoringOperationsJobDetailV1
+         * @description Terminal Phase 6-C job facts read from the execution store.
+         */
+        MonitoringOperationsJobDetailV1: {
+            /** Analysis Id */
+            analysis_id?: string | null;
+            /** Analysis Sha256 */
+            analysis_sha256?: string | null;
+            /** Attempt Number */
+            attempt_number: number;
+            /** Evidence Codes */
+            evidence_codes?: string[];
+            /** Failure Code */
+            failure_code?: string | null;
+            /** Message */
+            message?: string | null;
+            status: components["schemas"]["ReanalysisJobStatus"];
+            /** Surface Id */
+            surface_id?: string | null;
+            /** Surface Sha256 */
+            surface_sha256?: string | null;
+        };
+        /**
+         * MonitoringOperationsJobV1
+         * @description One re-analysis job required by the projected cycle.
+         */
+        MonitoringOperationsJobV1: {
+            /** Disposition Failure Code */
+            disposition_failure_code?: string | null;
+            disposition_status?: components["schemas"]["ReanalysisJobStatus"] | null;
+            impact: components["schemas"]["ImpactClass"];
+            job?: components["schemas"]["MonitoringOperationsJobDetailV1"] | null;
+            /** Job Content Sha256 */
+            job_content_sha256?: string | null;
+            /** Job Id */
+            job_id: string;
+            /** Listing Id */
+            listing_id: string;
+            /** Request Id */
+            request_id: string;
+            /**
+             * Resolution
+             * @enum {string}
+             */
+            resolution: "RESOLVED" | "UNRESOLVED" | "MISSING";
+        };
+        /**
+         * MonitoringOperationsLeaseRecordV1
+         * @description Secret-free public lease record (holder token and hash excluded).
+         */
+        MonitoringOperationsLeaseRecordV1: {
+            /**
+             * Acquired At
+             * Format: date-time
+             */
+            acquired_at: string;
+            /** Activation Id */
+            activation_id?: string | null;
+            /**
+             * Contract
+             * @default monitoring_runner_lease_v1
+             * @constant
+             */
+            contract: "monitoring_runner_lease_v1";
+            /**
+             * Heartbeat At
+             * Format: date-time
+             */
+            heartbeat_at: string;
+            /** Lease Ttl Seconds */
+            lease_ttl_seconds: number;
+            /** Runner Id */
+            runner_id: string;
+            /**
+             * Schema Version
+             * @default 1.0.0
+             * @constant
+             */
+            schema_version: "1.0.0";
+        };
+        /**
+         * MonitoringOperationsProjectionV1
+         * @description Versioned, secret-free read model over the configured monitoring chain.
+         */
+        MonitoringOperationsProjectionV1: {
+            activation?: components["schemas"]["MonitoringOperationsActivationV1"] | null;
+            /**
+             * Contract
+             * @default monitoring_operations_projection_v1
+             * @constant
+             */
+            contract: "monitoring_operations_projection_v1";
+            cycle?: components["schemas"]["MonitoringOperationsCycleV1"] | null;
+            /** Deliveries */
+            deliveries?: components["schemas"]["MonitoringOperationsDeliveryV1"][];
+            /** Deliveries Configured */
+            deliveries_configured: boolean;
+            /** Jobs */
+            jobs?: components["schemas"]["MonitoringOperationsJobV1"][];
+            runner: components["schemas"]["MonitoringOperationsRunnerV1"];
+            /** Runner Id */
+            runner_id: string;
+            /**
+             * Schema Version
+             * @default 1.0.0
+             * @constant
+             */
+            schema_version: "1.0.0";
+            watchlist: components["schemas"]["MonitoringStatusV1"];
+        };
+        /**
+         * MonitoringOperationsReceiptV1
+         * @description Terminal D2A receipt facts bound to the projected activation.
+         */
+        MonitoringOperationsReceiptV1: {
+            /** Alert Batch Content Sha256 */
+            alert_batch_content_sha256: string;
+            /** Alert Batch Id */
+            alert_batch_id: string;
+            /**
+             * Classification
+             * @default CYCLE_TERMINAL
+             * @constant
+             */
+            classification: "CYCLE_TERMINAL";
+            /**
+             * Completed At
+             * Format: date-time
+             */
+            completed_at: string;
+            /** Content Sha256 */
+            content_sha256: string;
+            /** D1 Failure Code */
+            d1_failure_code?: string | null;
+            /** D1 Status */
+            d1_status: string;
+            /** Result Content Sha256 */
+            result_content_sha256: string;
+        };
+        /**
+         * MonitoringOperationsRunnerV1
+         * @description Read-only runner/lease status for the one configured runner identity.
+         */
+        MonitoringOperationsRunnerV1: {
+            /** Latest Terminal Activation Id */
+            latest_terminal_activation_id?: string | null;
+            /** Lease Corrupt */
+            lease_corrupt: boolean;
+            lease_record?: components["schemas"]["MonitoringOperationsLeaseRecordV1"] | null;
+            /**
+             * Lease State
+             * @enum {string}
+             */
+            lease_state: "LIVE" | "ABANDONED" | "FREE";
+            /** Runner Id */
+            runner_id: string;
+            /** Unfinished Activation Ids */
+            unfinished_activation_ids?: string[];
+        };
+        /**
+         * MonitoringOperationsUnresolvedClaimV1
+         * @description The highest durable dispatch slot whose outcome never became durable.
+         */
+        MonitoringOperationsUnresolvedClaimV1: {
+            /** Attempt Number */
+            attempt_number: number;
+            /** Content Sha256 */
+            content_sha256: string;
+            /** Idempotency Key */
+            idempotency_key: string;
+        };
+        /**
+         * MonitoringStatusEntryV1
+         * @description Read-only status projection for one watched listing.
+         */
+        MonitoringStatusEntryV1: {
+            /** Cursors */
+            cursors?: components["schemas"]["EventCursorV1"][];
+            /** Last Analysis As Of */
+            last_analysis_as_of?: string | null;
+            /** Last Analysis Id */
+            last_analysis_id?: string | null;
+            /** Last Deterministic Result */
+            last_deterministic_result?: string | null;
+            /** Last Filing Id */
+            last_filing_id?: string | null;
+            /** Last Profile Id */
+            last_profile_id?: string | null;
+            /** Last Surface Id */
+            last_surface_id?: string | null;
+            /** Listing Id */
+            listing_id: string;
+            /** Open Questions */
+            open_questions?: string[];
+            /** Processed Event Count */
+            processed_event_count: number;
+        };
+        /**
+         * MonitoringStatusV1
+         * @description Read-only status projection returned by ``tve watch status``.
+         */
+        MonitoringStatusV1: {
+            /**
+             * Availability
+             * @enum {string}
+             */
+            availability: "NOT_AVAILABLE" | "AVAILABLE";
+            /**
+             * Contract
+             * @default monitoring_status_v1
+             * @constant
+             */
+            contract: "monitoring_status_v1";
+            /** Entries */
+            entries?: components["schemas"]["MonitoringStatusEntryV1"][];
+            /** Last Committed Run Id */
+            last_committed_run_id?: string | null;
+            /**
+             * Schema Version
+             * @default 1.0.0
+             * @constant
+             */
+            schema_version: "1.0.0";
+            /** State Id */
+            state_id?: string | null;
+            /** Watchlist Id */
+            watchlist_id: string;
+        };
+        /**
+         * ReanalysisJobStatus
+         * @description Terminal states persisted by the synchronous Phase 6-C executor.
+         * @enum {string}
+         */
+        ReanalysisJobStatus: "NO_ACTION" | "MANUAL_REVIEW_REQUIRED" | "BLOCKED" | "FAILED" | "SUCCEEDED";
         /**
          * ResearchSurfaceSnapshotV1
          * @description Versioned deterministic read-only projection for agents and APIs.
@@ -883,6 +1437,62 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SurfaceHealthResponse"];
+                };
+            };
+        };
+    };
+    getMonitoringOperations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MonitoringOperationsProjectionV1"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SurfaceErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SurfaceErrorResponse"];
+                };
+            };
+            /** @description Method Not Allowed */
+            405: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SurfaceErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SurfaceErrorResponse"];
                 };
             };
         };

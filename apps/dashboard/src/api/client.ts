@@ -5,6 +5,15 @@ export type SurfaceListResponse = components["schemas"]["SurfaceListResponse"];
 export type SurfaceMetadata = components["schemas"]["SurfaceMetadata"];
 export type SurfaceSnapshot = components["schemas"]["ResearchSurfaceSnapshotV1"];
 export type SurfaceErrorResponse = components["schemas"]["SurfaceErrorResponse"];
+export type MonitoringOperationsProjection =
+  components["schemas"]["MonitoringOperationsProjectionV1"];
+export type MonitoringOperationsRunner = components["schemas"]["MonitoringOperationsRunnerV1"];
+export type MonitoringOperationsActivation =
+  components["schemas"]["MonitoringOperationsActivationV1"];
+export type MonitoringOperationsCycle = components["schemas"]["MonitoringOperationsCycleV1"];
+export type MonitoringOperationsJob = components["schemas"]["MonitoringOperationsJobV1"];
+export type MonitoringOperationsDelivery =
+  components["schemas"]["MonitoringOperationsDeliveryV1"];
 
 export interface SurfaceFilters {
   listing?: string;
@@ -63,4 +72,8 @@ export function fetchSurfaces(filters: SurfaceFilters = {}): Promise<SurfaceList
 
 export function fetchSurface(surfaceId: string): Promise<SurfaceSnapshot> {
   return request<SurfaceSnapshot>(`/api/v1/surfaces/${encodeURIComponent(surfaceId)}`);
+}
+
+export function fetchMonitoringOperations(): Promise<MonitoringOperationsProjection> {
+  return request<MonitoringOperationsProjection>("/api/v1/monitoring/operations");
 }

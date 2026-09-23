@@ -120,6 +120,10 @@ function upstreamPath(url: URL): string | Response {
     if (url.search) return errorResponse(400, "INVALID_QUERY_PARAMETER", "surface detail does not accept filters");
     return `/v1/surfaces/${match[1]}`;
   }
+  if (url.pathname === "/api/v1/monitoring/operations") {
+    if (url.search) return errorResponse(400, "INVALID_QUERY_PARAMETER", "monitoring operations does not accept filters");
+    return "/v1/monitoring/operations";
+  }
   return errorResponse(404, "API_ROUTE_NOT_FOUND", "read-only API route not found");
 }
 

@@ -611,7 +611,7 @@ Vendor-specific transports (Slack/Telegram/email) remain unopened. The
 Phase 6-D3 as the next package; owner live deployment acceptance remains Phase
 6-E.
 
-### Phase 6-D3 — read-only monitoring operations projection (selected)
+### Phase 6-D3 — read-only monitoring operations projection (implemented)
 
 D3 observes the proven runtime; it does not add runtime authority. The selected
 shape is one versioned, secret-free, bounded projection anchored to explicit
@@ -650,6 +650,25 @@ and exact-closing-SHA CI are automated. Browser/layout verification is also
 automated when a browser is available; only a precisely bounded layout-only
 manual fallback is permitted otherwise. Real owner VPS cadence, credentials,
 live acquisition and live notification delivery remain Phase 6-E.
+
+D3 is implemented at that boundary (implementation record
+`docs/status/phase-6-d3-2026-09-23.md`): the framework-neutral
+`monitoring_operations/` package owns the projection and read service over
+explicit `RunnerConfigV1` + typed `[monitoring.delivery]` `delivery_root`
+sources, `tve surface serve --monitoring-runner-config ...` binds them, the
+generated `MonitoringOperationsProjectionV1` schema is checked in and
+drift-checked, `GET /v1/monitoring/operations` serves the typed response with
+`Cache-Control: no-store` (405 for every mutation verb, 404 for unknown
+subpaths, 409 fail-closed on contradictory store evidence without local-path
+or secret leakage), the Worker forwards only the fixed
+`/api/v1/monitoring/operations` route, and the Chinese-first `/monitoring`
+Dashboard page renders overview/jobs/deliveries/audit sections with
+intentional copy for every important operational state while keeping raw
+codes, IDs and hashes visible inside technical details. The R2 pair
+`attempt_count` vs `dispatch_claim_count` stays distinct in the UI with
+`unresolved_claim_numbers` and the pointer status shown; the request path
+never repairs, never mutates and never invokes provider, model, research,
+cycle or delivery machinery.
 
 ---
 

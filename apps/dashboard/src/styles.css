@@ -1410,3 +1410,34 @@ tbody tr:hover {
     display: block;
   }
 }
+
+/* Phase 6-D3 monitoring operations page */
+.monitoring-card {
+  margin-top: 16px;
+  padding: 18px 20px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel, #fff);
+}
+
+.monitoring-counts-note {
+  margin-top: 10px;
+  font-size: 12.5px;
+  line-height: 1.7;
+}
+
+.monitoring-alerts {
+  margin-top: 18px;
+}
+
+.monitoring-alerts h3 {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+
+.monitoring-alerts .plain-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
