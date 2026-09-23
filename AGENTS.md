@@ -438,7 +438,9 @@ fixed Worker allowlist route `/api/v1/monitoring/operations` and the
 Chinese-first read-only `/monitoring` Dashboard page with zero mutation
 controls; verification is fully automatic (26 new projection/API cases, 54
 Dashboard/Worker tests, extended R2-orphan cross-stack smoke, automated
-1440x900/390x844 browser layout verification). Phase 6-E owner live
+1440x900/390x844 browser layout verification). D3 is closed at implementation
+`eb5f199437cba1d9747f87da7a6591943cbbacab` (Actions run 35860274042,
+`success`, exact head-SHA match). Phase 6-E owner live
 unattended acceptance and the optional Bridge adapter are
 not started. Exact gate, deployment
 and remaining-input evidence is recorded in

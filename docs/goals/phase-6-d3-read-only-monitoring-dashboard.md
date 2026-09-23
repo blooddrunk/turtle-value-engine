@@ -1,10 +1,14 @@
 # Phase 6-D3 — Read-only Monitoring Operations Dashboard Projection
 
-Status: **IMPLEMENTED / CI_PENDING**
+Status: **CLOSED / IMPLEMENTED**
 Implementation record:
 `docs/status/phase-6-d3-2026-09-23.md`
 Date: 2026-09-23
 Selected after: Phase 6-D2B-R2 post-closure review
+
+> Closed at implementation `eb5f199437cba1d9747f87da7a6591943cbbacab`
+> (Actions run 35860274042, `success`, exact head SHA match); see the
+> implementation record for the full evidence.
 
 Selection audit:
 `docs/status/phase-6-d2b-r2-post-closure-review-2026-09-23.md`
