@@ -1,8 +1,12 @@
 # Phase 6-D2B-R2 — Orphaned Dispatch Retry-Budget Accounting Hardening
 
-Status: **IMPLEMENTED / CI_PENDING**
+Status: **CLOSED / IMPLEMENTED**
 Date: 2026-09-23
 Selected after: Phase 6-D2B-R1 post-closure review
+
+> Closed at implementation `69326c95543c92e28e288edadc781236fced2b65`
+> (Actions run 35812884688, `success`, exact head SHA match); see the
+> implementation record for the full evidence.
 
 Post-closure audit:
 `docs/status/phase-6-d2b-r1-post-closure-review-2026-09-23.md`

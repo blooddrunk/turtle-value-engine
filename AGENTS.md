@@ -394,9 +394,12 @@ truth (66 delivery cases total; full suite 6659 passed / 2 skipped) prove
 the max-attempts-one orphan restart sends zero, the repeated crash loop
 never exceeds `max_attempts` transport entries, every retry takes a new
 durable slot before transport with an unchanged key, and completed attempts
-plus orphan slots consume one shared budget exactly once. R2's exact closing
-CI evidence is recorded in `docs/status/phase-6-d2b-r2-2026-09-23.md`; CI
-closure on the exact implementation SHA was pending at this edit. Webhook
+plus orphan slots consume one shared budget exactly once. R2 is closed at
+implementation `69326c95543c92e28e288edadc781236fced2b65` (Actions run
+35812884688, `success`, exact head-SHA match; full suite 6659 passed /
+2 skipped; implementation and CI-closure record
+`docs/status/phase-6-d2b-r2-2026-09-23.md`), and Phase 6-D3 read-only
+Dashboard monitoring projection is again the next candidate package. Webhook
 endpoints and bearer tokens are `SecretReference`s under the typed
 `[monitoring.delivery]` ProjectConfig section (disabled by default in the
 checked-in example), resolved only in process memory and proven absent from
