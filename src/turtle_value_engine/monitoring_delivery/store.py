@@ -238,11 +238,19 @@ class DeliveryLedgerStore:
         return attempt
 
     def list_attempts(self, delivery_id: str) -> list[MonitoringDeliveryAttemptV1]:
-        """Return the validated attempt set in monotonic order, fail-closed."""
+        """Return the validated attempt set in monotonic order, fail-closed.
+
+        Attempt numbers are dispatch-slot numbers, and a slot whose outcome
+        never persisted (an unresolved orphan consumed by a later retry)
+        leaves a legitimate gap, so contiguity is not required here — every
+        attempt must still be unique and sorted, and the service validates
+        that each attempt has its durable claim slot.
+        """
 
         return self._list_numbered(
             self.attempts_dir(delivery_id),
             lambda path: self.load_attempt(delivery_id, int(path.stem)),
+            contiguous=False,
         )
 
     # -- dispatch claims (6-D2B-R1) -------------------------------------
@@ -267,14 +275,22 @@ class DeliveryLedgerStore:
         return claim
 
     def list_claims(self, delivery_id: str) -> list[MonitoringDispatchClaimV1]:
-        """Return the validated dispatch-claim set in monotonic order, fail-closed."""
+        """Return the validated dispatch-claim set in monotonic order, fail-closed.
+
+        The claim set is the retry-budget ledger: slots are allocated
+        monotonically ``1..N`` with no skip (6-D2B-R2), so a gap or duplicate
+        is contradictory evidence and fails closed.
+        """
 
         return self._list_numbered(
             self.claims_dir(delivery_id),
             lambda path: self.load_claim(delivery_id, int(path.stem)),
+            contiguous=True,
         )
 
-    def _list_numbered(self, directory: Path, loader) -> list:
+    def _list_numbered(
+        self, directory: Path, loader, *, contiguous: bool
+    ) -> list:
         if not directory.exists():
             return []
         records: list = []
@@ -289,7 +305,7 @@ class DeliveryLedgerStore:
             raise DeliveryLedgerError(
                 f"delivery records in {directory.name} must be unique and sorted"
             )
-        if numbers != list(range(1, len(numbers) + 1)):
+        if contiguous and numbers != list(range(1, len(numbers) + 1)):
             raise DeliveryLedgerError(
                 f"delivery records in {directory.name} must be contiguous from one"
             )

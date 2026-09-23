@@ -1,6 +1,6 @@
 # Phase 6-D2B-R2 coding-agent handoff — orphan retry-budget hardening
 
-Status: **SELECTED / ACTIVE**
+Status: **IMPLEMENTED / CI_PENDING**
 
 Canonical goal:
 `docs/goals/phase-6-d2b-r2-orphan-retry-budget-hardening.md`

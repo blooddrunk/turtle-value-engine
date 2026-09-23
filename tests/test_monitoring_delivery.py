@@ -1043,66 +1043,114 @@ def test_orphaned_claim_retries_only_under_declared_receiver_idempotency(tmp_pat
     assert [claim.attempt_number for claim in ledger.list_claims(delivery_id)] == [1, 2]
     claim_two_before = ledger.claim_path(delivery_id, 2).read_bytes()
 
-    # Restart under the explicit receiver-idempotency policy: the orphaned
-    # dispatch is retried with the same deterministic key and monotonic
-    # numbering; re-saving claim 2 is byte-identical.
+    # Restart under the explicit receiver-idempotency policy: the resend is
+    # authorized by a NEW monotonic dispatch-budget slot (claim 3), never by
+    # reusing the orphaned claim 2, and the receiver-facing idempotency key
+    # stays byte-identical (6-D2B-R2).
     transport = FakeTransport([_delivered()])
     outcome = _service(stack, transport, tmp_path=tmp_path, settings=settings).deliver()
     assert outcome.status.value == "DELIVERED"
     assert outcome.http_requests == 1
     assert transport.requests[0].idempotency_key == delivery_id
-    assert crashing.keys == [delivery_id, delivery_id]
-    attempts = ledger.list_attempts(delivery_id)
-    assert [attempt.attempt_number for attempt in attempts] == [1, 2]
-    assert attempts[-1].classification == "DELIVERED"
+    assert crashing.keys + [request.idempotency_key for request in transport.requests] == [
+        delivery_id,
+        delivery_id,
+        delivery_id,
+    ]
+    # Slot 2 was skipped by the retry: its claim stays untouched, its attempt
+    # never exists, and the resend lives in slot 3.
+    claims = ledger.list_claims(delivery_id)
+    assert [claim.attempt_number for claim in claims] == [1, 2, 3]
     assert ledger.claim_path(delivery_id, 2).read_bytes() == claim_two_before
+    assert claims[2].content_sha256 != claims[1].content_sha256
+    assert claims[2].attempt_number == 3
+    attempts = ledger.list_attempts(delivery_id)
+    assert [attempt.attempt_number for attempt in attempts] == [1, 3]
+    assert attempts[-1].classification == "DELIVERED"
 
 
 def test_orphaned_claim_with_exhausted_budget_stays_terminal_ambiguous():
-    """A claim can never buy extra retry budget; derivation stays terminal."""
+    """A durable claim always consumes budget; derivation stays terminal.
 
-    intent = MonitoringDeliveryIntentV1.build(
-        runner_id=RUNNER_ID,
-        activation_id=ACTIVATION_ID,
-        cycle_id="cd" * 32,
-        d1_status="ALERTS_EMITTED",
-        result_content_sha256="ce" * 32,
-        alert_batch_id="cf" * 32,
-        alert_batch_content_sha256="d0" * 32,
-        destination_id="owner-primary",
-        payload_sha256="d1" * 32,
-        payload_bytes=32,
-        empty_outbox=False,
-        max_attempts=1,
-        timeout_seconds=5.0,
-        backoff_base_seconds=0,
-        backoff_cap_seconds=3600,
-        receiver_idempotency_declared=True,
-        created_at=AS_OF,
-    )
-    attempt = MonitoringDeliveryAttemptV1.build(
-        delivery_id=intent.delivery_id,
-        attempt_number=1,
-        started_at=AS_OF,
-        finished_at=AS_OF,
-        classification="RETRYABLE_FAILURE",
-        http_status=503,
-        response_body_sha256=None,
-        error_code="HTTP_RETRYABLE_STATUS",
-        retry_not_before=AS_OF,
-    )
-    claim = MonitoringDispatchClaimV1.build(
-        delivery_id=intent.delivery_id,
-        attempt_number=2,
-        intent_content_sha256=intent.content_sha256,
-        payload_sha256=intent.payload_sha256,
-        idempotency_key=intent.delivery_id,
-    )
-    state = derive_delivery_state(intent, [attempt], orphaned_claim=claim)
+    These are direct derivations of the F5 boundary the R2 post-closure
+    review selected: remaining budget is decided by durable dispatch slots,
+    never by ``len(attempts)`` alone.
+    """
+
+    def _intent(**overrides):
+        values = {
+            "runner_id": RUNNER_ID,
+            "activation_id": ACTIVATION_ID,
+            "cycle_id": "cd" * 32,
+            "d1_status": "ALERTS_EMITTED",
+            "result_content_sha256": "ce" * 32,
+            "alert_batch_id": "cf" * 32,
+            "alert_batch_content_sha256": "d0" * 32,
+            "destination_id": "owner-primary",
+            "payload_sha256": "d1" * 32,
+            "payload_bytes": 32,
+            "empty_outbox": False,
+            "max_attempts": 1,
+            "timeout_seconds": 5.0,
+            "backoff_base_seconds": 0,
+            "backoff_cap_seconds": 3600,
+            "receiver_idempotency_declared": True,
+            "created_at": AS_OF,
+        }
+        values.update(overrides)
+        return MonitoringDeliveryIntentV1.build(**values)
+
+    def _claim(intent, number):
+        return MonitoringDispatchClaimV1.build(
+            delivery_id=intent.delivery_id,
+            attempt_number=number,
+            intent_content_sha256=intent.content_sha256,
+            payload_sha256=intent.payload_sha256,
+            idempotency_key=intent.delivery_id,
+        )
+
+    def _attempt(intent, number):
+        return MonitoringDeliveryAttemptV1.build(
+            delivery_id=intent.delivery_id,
+            attempt_number=number,
+            started_at=AS_OF,
+            finished_at=AS_OF,
+            classification="RETRYABLE_FAILURE",
+            http_status=503,
+            response_body_sha256=None,
+            error_code="HTTP_RETRYABLE_STATUS",
+            retry_not_before=AS_OF,
+        )
+
+    # max_attempts=1 with zero persisted outcomes but one durable dispatch
+    # slot: the orphan consumed the whole budget, so even a receiver-
+    # idempotent policy may not send again (the R1 defect sent twice).
+    max_one = _intent(max_attempts=1)
+    state = derive_delivery_state(max_one, [], claims=[_claim(max_one, 1)])
     assert state.status.value == "AMBIGUOUS"
     assert state.terminal is True
     assert state.last_error_code.value == "ORPHANED_DISPATCH"
     assert state.next_attempt_not_before is None
+
+    # One completed retryable outcome plus a later orphaned slot inside a
+    # max_attempts=3 budget leaves exactly one slot: retry is permitted.
+    max_three = _intent(max_attempts=3)
+    pending = derive_delivery_state(
+        max_three, [_attempt(max_three, 1)], claims=[_claim(max_three, 1), _claim(max_three, 2)]
+    )
+    assert pending.status.value == "PENDING"
+    assert pending.terminal is False
+
+    # A third durable slot consumes the last position: terminal ambiguous.
+    exhausted = derive_delivery_state(
+        max_three,
+        [_attempt(max_three, 1)],
+        claims=[_claim(max_three, n) for n in (1, 2, 3)],
+    )
+    assert exhausted.status.value == "AMBIGUOUS"
+    assert exhausted.terminal is True
+    assert exhausted.last_error_code.value == "ORPHANED_DISPATCH"
+    assert exhausted.next_attempt_not_before is None
 
 
 def test_unresolved_claim_conflicts_fail_closed(tmp_path):
@@ -1126,10 +1174,62 @@ def test_unresolved_claim_conflicts_fail_closed(tmp_path):
             idempotency_key=delivery_id,
         )
 
-    # Two unresolved claims are contradictory.
+    def _attempt(number: int):
+        return MonitoringDeliveryAttemptV1.build(
+            delivery_id=delivery_id,
+            attempt_number=number,
+            started_at=AS_OF,
+            finished_at=AS_OF,
+            classification="RETRYABLE_FAILURE",
+            http_status=503,
+            response_body_sha256=None,
+            error_code="HTTP_RETRYABLE_STATUS",
+            retry_not_before=AS_OF,
+        )
+
+    # Multiple unresolved claims within the budget are the legitimate
+    # repeated-crash state under R2 (each consumed one slot); with the
+    # default non-idempotent policy they stay terminal AMBIGUOUS with zero
+    # resend instead of raising.
     ledger.save_claim(_claim(2))
     ledger.save_claim(_claim(3))
-    with pytest.raises(DeliveryLedgerConflictError, match="multiple unresolved"):
+    bounded = _service(
+        first,
+        FakeTransport([]),
+        tmp_path=tmp_path / "a",
+        settings=_settings(backoff_base_seconds=120),
+    ).deliver()
+    assert bounded.status.value == "AMBIGUOUS"
+    assert bounded.state.last_error_code.value == "ORPHANED_DISPATCH"
+    assert bounded.http_requests == 0
+
+    # More authorized dispatch slots than the configured maximum is
+    # over-budget evidence and fails closed before transport.
+    ledger.save_claim(_claim(4))
+    with pytest.raises(DeliveryLedgerConflictError, match="exceed the configured retry"):
+        _service(
+            first,
+            FakeTransport([]),
+            tmp_path=tmp_path / "a",
+            settings=_settings(backoff_base_seconds=120),
+        ).deliver()
+
+    # A non-monotonic (gapped) claim sequence is impossible budget evidence.
+    ledger.claim_path(delivery_id, 4).unlink()
+    ledger.save_claim(_claim(5))
+    with pytest.raises(DeliveryLedgerConflictError, match="contiguous from one"):
+        _service(
+            first,
+            FakeTransport([]),
+            tmp_path=tmp_path / "a",
+            settings=_settings(backoff_base_seconds=120),
+        ).deliver()
+
+    # An attempt outcome whose durable dispatch slot is missing is bound to
+    # the wrong slot and fails closed before transport.
+    ledger.claim_path(delivery_id, 5).unlink()
+    ledger.save_attempt(_attempt(4))
+    with pytest.raises(DeliveryLedgerConflictError, match="no durable dispatch slot"):
         _service(
             first,
             FakeTransport([]),
@@ -1164,6 +1264,168 @@ def test_unresolved_claim_conflicts_fail_closed(tmp_path):
             tmp_path=tmp_path / "b",
             settings=_settings(backoff_base_seconds=120),
         ).deliver()
+
+
+# --- Phase 6-D2B-R2: orphan retry-budget accounting -------------------------
+
+
+def test_r2_max_attempts_one_orphan_restart_sends_zero(tmp_path):
+    """max_attempts=1 + declared idempotency + orphaned claim 1.
+
+    The R1 defect let a crash between the durable claim and the attempt-outcome
+    save buy a second transport entry.  Under R2 the durable claim consumed
+    the only budget position, so the restart performs zero new transport
+    calls and exposes the truthful terminal exhausted/ambiguous state.
+    """
+
+    stack = _terminal_stack(tmp_path)
+    settings = _settings(max_attempts=1, receiver_idempotency_declared=True)
+    crashing = _CrashAfterDispatchTransport()
+    with pytest.raises(RuntimeError, match="after possible dispatch"):
+        _service(stack, crashing, tmp_path=tmp_path, settings=settings).deliver()
+    ledger = _ledger_for(stack)
+    delivery_id = _delivery_id_for(stack)
+    assert [claim.attempt_number for claim in ledger.list_claims(delivery_id)] == [1]
+    assert ledger.list_attempts(delivery_id) == []
+
+    # A crashing transport proves by construction that no resend happened.
+    guard = _CrashAfterDispatchTransport()
+    outcome = _service(stack, guard, tmp_path=tmp_path, settings=settings).deliver()
+    assert outcome.status.value == "AMBIGUOUS"
+    assert outcome.state.terminal is True
+    assert outcome.state.last_error_code.value == "ORPHANED_DISPATCH"
+    assert outcome.http_requests == 0
+    assert guard.calls == 0
+    # Exactly one transport entry ever happened in this ledger's lifetime.
+    assert crashing.calls == 1
+    assert len(ledger.list_claims(delivery_id)) == 1
+
+
+def test_r2_repeated_crash_after_dispatch_loop_is_bounded(tmp_path):
+    """Repeated crash-after-possible-dispatch never exceeds max_attempts=3."""
+
+    stack = _terminal_stack(tmp_path)
+    settings = _settings(max_attempts=3, receiver_idempotency_declared=True)
+    crashes: list[_CrashAfterDispatchTransport] = []
+    for _ in range(3):
+        crashing = _CrashAfterDispatchTransport()
+        crashes.append(crashing)
+        with pytest.raises(RuntimeError, match="after possible dispatch"):
+            _service(stack, crashing, tmp_path=tmp_path, settings=settings).deliver()
+        assert crashing.calls == 1
+    ledger = _ledger_for(stack)
+    delivery_id = _delivery_id_for(stack)
+    assert [claim.attempt_number for claim in ledger.list_claims(delivery_id)] == [1, 2, 3]
+    assert ledger.list_attempts(delivery_id) == []
+
+    # Every later wake performs zero transport entries and exposes the
+    # truthful terminal exhausted/ambiguous state.
+    for _ in range(2):
+        guard = _CrashAfterDispatchTransport()
+        outcome = _service(stack, guard, tmp_path=tmp_path, settings=settings).deliver()
+        assert outcome.status.value == "AMBIGUOUS"
+        assert outcome.state.terminal is True
+        assert outcome.state.last_error_code.value == "ORPHANED_DISPATCH"
+        assert outcome.http_requests == 0
+        assert guard.calls == 0
+
+    # Hard bound: total outbound transport entries never exceed max_attempts.
+    assert sum(transport.calls for transport in crashes) == 3
+    projection = delivery_status_projection(ledger)
+    entry = projection["deliveries"][0]
+    assert entry["dispatch_claim_count"] == 3
+    assert entry["unresolved_claim_numbers"] == [1, 2, 3]
+    assert entry["state"]["status"] == "AMBIGUOUS"
+    assert entry["unresolved_dispatch_claim"]["attempt_number"] == 3
+
+
+def test_r2_recovery_retry_persists_new_slot_before_transport(tmp_path):
+    """An allowed orphan-recovery retry enters transport only under a NEW slot."""
+
+    stack = _terminal_stack(tmp_path)
+    settings = _settings(max_attempts=3, receiver_idempotency_declared=True)
+    ledger = _ledger_for(stack)
+    delivery_id = _delivery_id_for(stack)
+
+    class SlotAwareCrashTransport:
+        """Records which claim slots are durable when a send starts."""
+
+        def __init__(self) -> None:
+            self.calls = 0
+            self.claims_at_send: list[list[int]] = []
+            self.keys: list[str] = []
+
+        def send(self, *, endpoint, auth_bearer, request):
+            self.calls += 1
+            self.keys.append(request.idempotency_key)
+            self.claims_at_send.append(
+                [claim.attempt_number for claim in ledger.list_claims(delivery_id)]
+            )
+            raise RuntimeError("simulated crash after possible dispatch")
+
+    crashing = SlotAwareCrashTransport()
+    with pytest.raises(RuntimeError):
+        _service(stack, crashing, tmp_path=tmp_path, settings=settings).deliver()
+    assert crashing.claims_at_send == [[1]]
+
+    retrying = SlotAwareCrashTransport()
+    with pytest.raises(RuntimeError):
+        _service(stack, retrying, tmp_path=tmp_path, settings=settings).deliver()
+    # The retry's transport entry was already covered by a NEW monotonic
+    # durable slot 2 persisted before the send; the orphaned slot 1 was never
+    # reused as a budget token, and the receiver key stayed byte-identical.
+    assert retrying.claims_at_send == [[1, 2]]
+    assert crashing.keys == retrying.keys == [delivery_id]
+    assert [claim.attempt_number for claim in ledger.list_claims(delivery_id)] == [1, 2]
+
+
+def test_r2_completed_attempts_and_orphan_slots_share_one_budget(tmp_path):
+    """Completed attempts and orphaned slots consume the same budget exactly once."""
+
+    stack = _terminal_stack(tmp_path)
+    settings = _settings(max_attempts=3, receiver_idempotency_declared=True)
+    ledger = _ledger_for(stack)
+    delivery_id = _delivery_id_for(stack)
+
+    class FirstRetryThenCrashTransport:
+        def __init__(self) -> None:
+            self.calls = 0
+            self.keys: list[str] = []
+
+        def send(self, *, endpoint, auth_bearer, request):
+            self.calls += 1
+            self.keys.append(request.idempotency_key)
+            if self.calls == 1:
+                return _retryable(503)
+            raise RuntimeError("simulated crash on the second dispatch")
+
+    crashing = FirstRetryThenCrashTransport()
+    with pytest.raises(RuntimeError):
+        _service(stack, crashing, tmp_path=tmp_path, settings=settings).deliver()
+    assert [attempt.attempt_number for attempt in ledger.list_attempts(delivery_id)] == [1]
+    assert [claim.attempt_number for claim in ledger.list_claims(delivery_id)] == [1, 2]
+
+    recovery = FakeTransport([_delivered()])
+    outcome = _service(
+        stack, recovery, tmp_path=tmp_path, settings=settings
+    ).deliver()
+    # The completed retryable attempt (slot 1), the orphaned slot 2 and the
+    # successful recovery slot 3 each consumed exactly one of the three
+    # budget positions: no double spending, no skipped position.
+    claims = ledger.list_claims(delivery_id)
+    attempts = ledger.list_attempts(delivery_id)
+    assert [claim.attempt_number for claim in claims] == [1, 2, 3]
+    assert [attempt.attempt_number for attempt in attempts] == [1, 3]
+    assert crashing.calls == 2 and recovery.calls == 1
+    assert outcome.status.value == "DELIVERED"
+    assert outcome.state.terminal is True
+    assert outcome.state.attempt_count == 2
+    assert outcome.state.terminal_attempt_number == 3
+    assert crashing.keys + [r.idempotency_key for r in recovery.requests] == [
+        delivery_id,
+        delivery_id,
+        delivery_id,
+    ]
 
 
 # --- Phase 6-D2B-R1: per-delivery OS single-flight --------------------------

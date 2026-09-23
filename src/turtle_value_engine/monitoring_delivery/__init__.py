@@ -45,7 +45,7 @@ from .service import (
     delivery_status_projection,
     derive_delivery_state,
     published_state_is_behind,
-    unresolved_dispatch_claim,
+    validate_dispatch_evidence,
 )
 from .store import (
     DeliveryLedgerError,
@@ -111,5 +111,5 @@ __all__ = [
     "delivery_status_projection",
     "derive_delivery_state",
     "published_state_is_behind",
-    "unresolved_dispatch_claim",
+    "validate_dispatch_evidence",
 ]

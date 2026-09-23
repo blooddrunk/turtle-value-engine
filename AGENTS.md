@@ -364,9 +364,39 @@ one process can enter the transport. R1 is closed at implementation
 the count of persisted attempt outcomes, so repeated process death after a
 durable dispatch claim but before attempt persistence can re-enter transport
 without consuming `max_attempts`. **Phase 6-D2B-R2 — Orphaned Dispatch
-Retry-Budget Accounting Hardening** is selected before D3; canonical scope is
+Retry-Budget Accounting Hardening** was selected before D3; canonical scope is
 `docs/goals/phase-6-d2b-r2-orphan-retry-budget-hardening.md` and the coding-agent handoff is
-`docs/status/phase-6-d2b-r2-next-coding-agent-goal.md`. Webhook
+`docs/status/phase-6-d2b-r2-next-coding-agent-goal.md`. **R2 is implemented**
+from baseline `3e4e6355cdaafc7e2bb5341c13c9f830a4f8dc58` (baseline Actions
+run 35811279067, `success`): the durable `MonitoringDispatchClaimV1` set
+`1..N` of one `delivery_id` is now itself the retry-budget ledger — every
+claim consumes exactly one `max_attempts` position whether or not its attempt
+outcome ever became durable, so `max_attempts` is a hard upper bound on
+authorized outbound transport entries across the ledger lifetime. Budget
+derivation, retry-exhaustion and AMBIGUOUS-retry terminality all come from
+consumed durable slots (never `len(attempts)` alone); every new transport
+entry allocates and first persists a NEW monotonic slot
+(`len(claims) + 1`, never reusing an orphan claim as a budget token) while
+the receiver `Idempotency-Key` stays the deterministic `delivery_id`; an
+unresolved claim below a later persisted attempt is superseded by that
+outcome but still consumes budget, so the attempt set may legitimately
+contain gaps. The fail-closed `validate_dispatch_evidence` boundary rejects
+over-budget claim counts, claims not bound to this intent/payload and
+attempt outcomes without their durable dispatch slot before any transport
+entry, while claims stay strictly contiguous from one. The default
+non-idempotent policy is unchanged (orphan -> terminal `AMBIGUOUS`, zero
+resend; a legitimate multi-orphan crash loop stays conservatively terminal),
+no persisted contract field changed (the two delivery schemas were
+regenerated with description-only diffs), no mutable retry counter exists,
+and `delivery-status` gained the additive `unresolved_claim_numbers`
+projection. Four new deterministic tests plus three rewritten to the R2
+truth (66 delivery cases total; full suite 6659 passed / 2 skipped) prove
+the max-attempts-one orphan restart sends zero, the repeated crash loop
+never exceeds `max_attempts` transport entries, every retry takes a new
+durable slot before transport with an unchanged key, and completed attempts
+plus orphan slots consume one shared budget exactly once. R2's exact closing
+CI evidence is recorded in `docs/status/phase-6-d2b-r2-2026-09-23.md`; CI
+closure on the exact implementation SHA was pending at this edit. Webhook
 endpoints and bearer tokens are `SecretReference`s under the typed
 `[monitoring.delivery]` ProjectConfig section (disabled by default in the
 checked-in example), resolved only in process memory and proven absent from

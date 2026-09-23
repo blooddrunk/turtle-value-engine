@@ -1,6 +1,6 @@
 # Phase 6-D2B-R2 — Orphaned Dispatch Retry-Budget Accounting Hardening
 
-Status: **SELECTED / ACTIVE**
+Status: **IMPLEMENTED / CI_PENDING**
 Date: 2026-09-23
 Selected after: Phase 6-D2B-R1 post-closure review
 
@@ -9,6 +9,9 @@ Post-closure audit:
 
 Coding-agent handoff:
 `docs/status/phase-6-d2b-r2-next-coding-agent-goal.md`
+
+Implementation record:
+`docs/status/phase-6-d2b-r2-2026-09-23.md`
 
 ## 1. Objective
 

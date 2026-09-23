@@ -5160,13 +5160,18 @@ cycle/outbox boundary (6-D1), and the durable single-host unattended runner
 ## Phase 6 — Watchlist and event-driven re-analysis
 
 Status: **Phase 6-A / 6-B / 6-C / 6-D1 / 6-D2A / 6-D2A-R1 / 6-D2B /
-6-D2B-R1 implemented. A 2026-09-23 post-R1 closure audit found one remaining
-retry-budget accounting defect for idempotent orphaned dispatches: repeated
-process death after durable dispatch evidence but before attempt-outcome
-persistence can re-enter transport without consuming `max_attempts`.
-Phase 6-D2B-R2 orphan retry-budget hardening is therefore the active corrective
-package. Phase 6-D3 read-only Dashboard monitoring projection follows only
-after R2 closes, while Phase 6-E remains the bounded real owner
+6-D2B-R1 / 6-D2B-R2 implemented. The 2026-09-23 post-R1 closure audit found
+one remaining retry-budget accounting defect for idempotent orphaned
+dispatches: repeated process death after durable dispatch evidence but before
+attempt-outcome persistence could re-enter transport without consuming
+`max_attempts`. Phase 6-D2B-R2
+([orphan retry-budget hardening](goals/phase-6-d2b-r2-orphan-retry-budget-hardening.md),
+implementation record
+`status/phase-6-d2b-r2-2026-09-23.md`) closed that defect by making the
+durable dispatch-claim set itself the retry-budget ledger, with a new
+monotonic durable slot persisted before every transport entry. Phase 6-D3
+read-only Dashboard monitoring projection follows only after R2's exact-SHA
+CI closure, while Phase 6-E remains the bounded real owner
 deployment/notification acceptance step.**
 
 The first package,

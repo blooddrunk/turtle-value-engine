@@ -329,10 +329,14 @@ class MonitoringDeliveryIntentV1(_DeliveryContract):
 class MonitoringDeliveryAttemptV1(_DeliveryContract):
     """Immutable record of exactly one outbound HTTP exchange.
 
-    The response body is persisted only as a bounded non-secret digest; raw
-    untrusted response content is never stored.  Error text is a stable
-    machine code so no endpoint URL, token or response content can leak
-    through diagnostics.
+    ``attempt_number`` is the durable dispatch-slot number the exchange was
+    authorized under: slots are allocated monotonically per delivery, and a
+    slot whose outcome never persisted (an orphan consumed by a later
+    receiver-idempotent retry) leaves a legitimate numbering gap in the
+    attempt set (6-D2B-R2).  The response body is persisted only as a bounded
+    non-secret digest; raw untrusted response content is never stored.
+    Error text is a stable machine code so no endpoint URL, token or
+    response content can leak through diagnostics.
     """
 
     contract: Literal["monitoring_delivery_attempt_v1"] = "monitoring_delivery_attempt_v1"
@@ -389,16 +393,21 @@ class MonitoringDeliveryAttemptV1(_DeliveryContract):
 
 
 class MonitoringDispatchClaimV1(_DeliveryContract):
-    """Immutable durable dispatch-start evidence for one attempt (6-D2B-R1).
+    """Immutable durable dispatch-budget slot for one attempt (6-D2B-R1/R2).
 
-    Persisted **before** the transport may write any request byte.  A claim
-    whose attempt artifact does not exist means a prior process may have
-    dispatched request bytes and died before persisting the terminal outcome;
-    recovery must therefore treat that delivery as post-dispatch uncertain
-    (``AMBIGUOUS``) instead of proven-unsent.  The claim content is fully
-    deterministic — no wall-clock field — so re-saving the same claim for a
-    resumed attempt is byte-identical and can never raise a spurious
-    immutable-conflict error.  It carries no endpoint or auth material.
+    Persisted **before** the transport may write any request byte; the claim
+    set ``1..N`` is the retry-budget ledger of its delivery identity, so
+    every claim consumes exactly one ``max_attempts`` position whether or
+    not the matching ``MonitoringDeliveryAttemptV1`` outcome ever became
+    durable (6-D2B-R2).  A claim without its attempt artifact means a prior
+    process may have dispatched request bytes and died before persisting the
+    terminal outcome; recovery must therefore treat that delivery as
+    post-dispatch uncertain (``AMBIGUOUS``) instead of proven-unsent, and a
+    permitted retry allocates a NEW higher slot instead of reusing this
+    claim.  The claim content is fully deterministic — no wall-clock field —
+    so re-saving the same slot is byte-identical and can never raise a
+    spurious immutable-conflict error.  It carries no endpoint or auth
+    material.
     """
 
     contract: Literal["monitoring_delivery_dispatch_claim_v1"] = (

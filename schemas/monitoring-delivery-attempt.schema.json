@@ -19,7 +19,7 @@
     }
   },
   "additionalProperties": false,
-  "description": "Immutable record of exactly one outbound HTTP exchange.\n\nThe response body is persisted only as a bounded non-secret digest; raw\nuntrusted response content is never stored.  Error text is a stable\nmachine code so no endpoint URL, token or response content can leak\nthrough diagnostics.",
+  "description": "Immutable record of exactly one outbound HTTP exchange.\n\n``attempt_number`` is the durable dispatch-slot number the exchange was\nauthorized under: slots are allocated monotonically per delivery, and a\nslot whose outcome never persisted (an orphan consumed by a later\nreceiver-idempotent retry) leaves a legitimate numbering gap in the\nattempt set (6-D2B-R2).  The response body is persisted only as a bounded\nnon-secret digest; raw untrusted response content is never stored.\nError text is a stable machine code so no endpoint URL, token or\nresponse content can leak through diagnostics.",
   "properties": {
     "contract": {
       "const": "monitoring_delivery_attempt_v1",

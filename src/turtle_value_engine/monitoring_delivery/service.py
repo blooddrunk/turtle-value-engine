@@ -157,7 +157,7 @@ def derive_delivery_state(
     intent: MonitoringDeliveryIntentV1,
     attempts: list[MonitoringDeliveryAttemptV1],
     *,
-    orphaned_claim: MonitoringDispatchClaimV1 | None = None,
+    claims: list[MonitoringDispatchClaimV1] | None = None,
 ) -> MonitoringDeliveryStateV1:
     """Derive the latest state purely from immutable artifacts.
 
@@ -165,15 +165,23 @@ def derive_delivery_state(
     normal publication and crash repair produce byte-identical state files
     and a pointer-write crash is always repairable without a new request.
 
-    ``orphaned_claim`` is a durable dispatch claim whose terminal attempt
-    outcome never persisted (Phase 6-D2B-R1).  A prior process may have
-    dispatched request bytes and died, so the delivery is post-dispatch
-    uncertain: terminal ``AMBIGUOUS`` with zero automatic resend unless the
-    intent explicitly declares receiver-enforced idempotency **and** retry
-    budget remains, in which case a bounded retry of the same deterministic
-    key is permitted immediately.
+    Retry budget is accounted from durable dispatch evidence, not from
+    persisted attempt outcomes (Phase 6-D2B-R2): every claim in ``claims``
+    is one consumed dispatch-budget position, because the claim for a slot
+    becomes durable before the transport may write any request byte.  A
+    process death between the claim and the attempt-outcome save therefore
+    still consumes that slot.  Claims above every persisted attempt (``tail``
+    claims without outcomes) mean a prior process may have dispatched request
+    bytes and died, so the delivery is post-dispatch uncertain: terminal
+    ``AMBIGUOUS`` with zero automatic resend unless the intent explicitly
+    declares receiver-enforced idempotency **and** retry budget remains, in
+    which case a bounded retry of the same deterministic key is permitted
+    immediately.  An unresolved claim below a later persisted attempt has
+    been superseded by that outcome and only consumes budget.
     """
 
+    if claims is None:
+        claims = []
     if intent.empty_outbox:
         return MonitoringDeliveryStateV1.build(
             delivery_id=intent.delivery_id,
@@ -184,13 +192,17 @@ def derive_delivery_state(
             updated_at=intent.created_at,
         )
     last = attempts[-1] if attempts else None
-    if orphaned_claim is not None:
+    highest_attempt = attempts[-1].attempt_number if attempts else 0
+    tail_orphans = [claim for claim in claims if claim.attempt_number > highest_attempt]
+    consumed = len(claims)
+    if tail_orphans:
         orphan_updated_at = (
             intent.created_at if last is None else last.finished_at
         )
-        if intent.receiver_idempotency_declared and len(attempts) < intent.max_attempts:
+        if intent.receiver_idempotency_declared and consumed < intent.max_attempts:
             # Retry permitted under the explicit receiver-idempotency policy:
-            # non-terminal, no scheduled wait, the loop performs the attempt.
+            # non-terminal, no scheduled wait, the loop allocates a NEW
+            # monotonic dispatch-budget slot for the resend.
             return MonitoringDeliveryStateV1.build(
                 delivery_id=intent.delivery_id,
                 status=DeliveryStatus.PENDING,
@@ -222,7 +234,7 @@ def derive_delivery_state(
             updated_at=intent.created_at,
         )
     if last.classification == DeliveryStatus.RETRYABLE_FAILURE and (
-        len(attempts) >= intent.max_attempts
+        consumed >= intent.max_attempts
     ):
         return MonitoringDeliveryStateV1.build(
             delivery_id=intent.delivery_id,
@@ -246,10 +258,16 @@ def derive_delivery_state(
     else:
         status = DeliveryStatus.RETRYABLE_FAILURE
     next_not_before = last.retry_not_before
+    # An ``AMBIGUOUS`` outcome is terminal unless an explicit
+    # receiver-idempotent retry is scheduled AND a budget slot still remains
+    # for it; every other non-PENDING status is terminal.
     terminal = status in {
         DeliveryStatus.DELIVERED,
         DeliveryStatus.PERMANENT_FAILURE,
-    } or (status is DeliveryStatus.AMBIGUOUS and next_not_before is None)
+    } or (
+        status is DeliveryStatus.AMBIGUOUS
+        and (next_not_before is None or consumed >= intent.max_attempts)
+    )
     return MonitoringDeliveryStateV1.build(
         delivery_id=intent.delivery_id,
         status=status,
@@ -285,45 +303,51 @@ def published_state_is_behind(
     return not published.terminal
 
 
-def unresolved_dispatch_claim(
+def validate_dispatch_evidence(
     intent: MonitoringDeliveryIntentV1,
     attempts: list[MonitoringDeliveryAttemptV1],
     claims: list[MonitoringDispatchClaimV1],
-) -> MonitoringDispatchClaimV1 | None:
-    """Return the single legitimately orphaned dispatch claim, if any.
+) -> list[MonitoringDispatchClaimV1]:
+    """Validate durable dispatch/attempt evidence and return unresolved claims.
 
-    A claim without its terminal attempt means a prior process may have
-    dispatched request bytes and died.  Zero unresolved claims is the normal
-    state; exactly one unresolved claim for the next monotonic attempt number
-    is the recoverable crash window; anything else (multiple orphans, a
-    non-monotonic number, a claim bound to a different intent/payload) is
-    contradictory and fails closed.
+    Every durable claim is one consumed retry-budget slot for its delivery
+    identity (Phase 6-D2B-R2): the claim set ``1..N`` — not the set of
+    persisted attempt outcomes — is the budget ledger, so ``max_attempts``
+    is a hard upper bound on authorized outbound transport entries across
+    the entire durable ledger lifetime, including dispatches whose process
+    died before the attempt outcome became durable.
+
+    Fail closed **before** any transport entry on impossible evidence:
+    more authorized slots than the configured maximum, a claim not bound to
+    this intent and payload, or an attempt outcome whose durable dispatch
+    slot is missing.  The returned list holds the claims whose terminal
+    attempt outcome never persisted; each of them may already have produced
+    an external side effect.
     """
 
-    attempt_numbers = {attempt.attempt_number for attempt in attempts}
-    unresolved = [claim for claim in claims if claim.attempt_number not in attempt_numbers]
-    if not unresolved:
-        return None
-    if len(unresolved) > 1:
+    if len(claims) > intent.max_attempts:
         raise DeliveryLedgerConflictError(
-            "DELIVERY_LEDGER_CONFLICT: multiple unresolved dispatch claims are "
-            "contradictory"
+            "DELIVERY_LEDGER_CONFLICT: durable dispatch slots exceed the "
+            "configured retry budget"
         )
-    claim = unresolved[0]
-    if claim.attempt_number != len(attempts) + 1:
-        raise DeliveryLedgerConflictError(
-            "DELIVERY_LEDGER_CONFLICT: unresolved dispatch claim is not the next "
-            "monotonic attempt"
-        )
-    if (
-        claim.intent_content_sha256 != intent.content_sha256
-        or claim.payload_sha256 != intent.payload_sha256
-    ):
-        raise DeliveryLedgerConflictError(
-            "DELIVERY_LEDGER_CONFLICT: dispatch claim is not bound to this intent "
-            "and payload"
-        )
-    return claim
+    for claim in claims:
+        if (
+            claim.intent_content_sha256 != intent.content_sha256
+            or claim.payload_sha256 != intent.payload_sha256
+        ):
+            raise DeliveryLedgerConflictError(
+                "DELIVERY_LEDGER_CONFLICT: dispatch claim is not bound to this "
+                "intent and payload"
+            )
+    claim_numbers = {claim.attempt_number for claim in claims}
+    for attempt in attempts:
+        if attempt.attempt_number not in claim_numbers:
+            raise DeliveryLedgerConflictError(
+                "DELIVERY_LEDGER_CONFLICT: attempt outcome has no durable "
+                "dispatch slot"
+            )
+    resolved = {attempt.attempt_number for attempt in attempts}
+    return [claim for claim in claims if claim.attempt_number not in resolved]
 
 
 def _terminal_message(state: MonitoringDeliveryStateV1) -> str:
@@ -336,7 +360,7 @@ def _terminal_message(state: MonitoringDeliveryStateV1) -> str:
             return (
                 "an interrupted dispatch has no terminal outcome; it is conservatively "
                 "AMBIGUOUS and automatic resend is forbidden unless receiver "
-                "idempotency is declared"
+                "idempotency is declared and retry budget remains"
             )
         return (
             "post-dispatch uncertainty recorded as AMBIGUOUS; automatic resend is "
@@ -557,8 +581,10 @@ class MonitoringDeliveryService:
 
         attempts = self.ledger.list_attempts(intent.delivery_id)
         claims = self.ledger.list_claims(intent.delivery_id)
-        orphan = unresolved_dispatch_claim(intent, attempts, claims)
-        state = derive_delivery_state(intent, attempts, orphaned_claim=orphan)
+        # Fail closed on impossible dispatch/attempt evidence before any
+        # transport entry; remaining budget is derived from durable claims.
+        validate_dispatch_evidence(intent, attempts, claims)
+        state = derive_delivery_state(intent, attempts, claims=claims)
         self._validate_or_repair_state(intent, state)
         http_requests = 0
 
@@ -567,12 +593,16 @@ class MonitoringDeliveryService:
                 normalize_utc(self.clock()) < state.next_attempt_not_before
             ):
                 break
-            self._perform_attempt(intent, attempt_number=len(attempts) + 1)
+            # Every new outbound transport entry allocates a NEW monotonic
+            # dispatch-budget slot persisted before the request may be
+            # written; an unresolved orphan claim is never reused as the
+            # budget token for another send (6-D2B-R2).
+            self._perform_attempt(intent, attempt_number=len(claims) + 1)
             http_requests += 1
             attempts = self.ledger.list_attempts(intent.delivery_id)
             claims = self.ledger.list_claims(intent.delivery_id)
-            orphan = unresolved_dispatch_claim(intent, attempts, claims)
-            state = derive_delivery_state(intent, attempts, orphaned_claim=orphan)
+            validate_dispatch_evidence(intent, attempts, claims)
+            state = derive_delivery_state(intent, attempts, claims=claims)
             self.ledger.publish_state(state)
 
         return DeliveryRunOutcome(
@@ -604,6 +634,11 @@ class MonitoringDeliveryService:
     def _perform_attempt(
         self, intent: MonitoringDeliveryIntentV1, *, attempt_number: int
     ) -> MonitoringDeliveryAttemptV1:
+        if attempt_number > intent.max_attempts:
+            raise DeliveryLedgerConflictError(
+                "DELIVERY_LEDGER_CONFLICT: no dispatch-budget slot remains within "
+                "max_attempts; refusing to enter the transport"
+            )
         started_at = normalize_utc(self.clock())
         payload = self._payload_for_intent(intent)
         endpoint = self.endpoint_resolver()
@@ -613,9 +648,12 @@ class MonitoringDeliveryService:
                 "resolved to nothing; no outbound request was attempted"
             )
         auth_bearer = self.auth_resolver()
-        # Durable dispatch-start evidence, persisted before the transport may
-        # write any request byte.  Deterministic content: re-saving the same
-        # claim for a resumed attempt is byte-identical (6-D2B-R1).
+        # Durable dispatch-start evidence for THIS slot, persisted before the
+        # transport may write any request byte.  The slot number is monotonic
+        # within the delivery ledger, so a resend after an unresolved orphan
+        # always takes a NEW claim and never reuses the orphan's budget token
+        # (6-D2B-R1/R2).  Deterministic content: re-saving the same slot is
+        # byte-identical and can never raise a spurious conflict.
         self.ledger.save_claim(
             MonitoringDispatchClaimV1.build(
                 delivery_id=intent.delivery_id,
@@ -743,8 +781,10 @@ def delivery_status_projection(
             continue
         attempts = ledger.list_attempts(candidate)
         claims = ledger.list_claims(candidate)
-        orphan = unresolved_dispatch_claim(intent, attempts, claims)
-        derived = derive_delivery_state(intent, attempts, orphaned_claim=orphan)
+        unresolved = validate_dispatch_evidence(intent, attempts, claims)
+        derived = derive_delivery_state(intent, attempts, claims=claims)
+        highest_attempt = attempts[-1].attempt_number if attempts else 0
+        tail = [claim for claim in unresolved if claim.attempt_number > highest_attempt]
         pointer_status, pointer_published = _classify_published_pointer(
             ledger, candidate, derived
         )
@@ -765,12 +805,13 @@ def delivery_status_projection(
                 "pointer_published": pointer_published,
                 "pointer_status": pointer_status,
                 "dispatch_claim_count": len(claims),
+                "unresolved_claim_numbers": [claim.attempt_number for claim in unresolved],
                 "unresolved_dispatch_claim": None
-                if orphan is None
+                if not tail
                 else {
-                    "attempt_number": orphan.attempt_number,
-                    "idempotency_key": orphan.idempotency_key,
-                    "content_sha256": orphan.content_sha256,
+                    "attempt_number": tail[-1].attempt_number,
+                    "idempotency_key": tail[-1].idempotency_key,
+                    "content_sha256": tail[-1].content_sha256,
                 },
                 "attempts": [
                     {
@@ -813,5 +854,5 @@ __all__ = [
     "delivery_status_projection",
     "derive_delivery_state",
     "published_state_is_behind",
-    "unresolved_dispatch_claim",
+    "validate_dispatch_evidence",
 ]
