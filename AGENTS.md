@@ -358,8 +358,15 @@ state. Nineteen new deterministic tests (62 delivery cases total; full suite
 one process can enter the transport. R1 is closed at implementation
 `6c039266083de015535f3f05dce0cf9aba2f0042` (Actions run 35805665083,
 `success`, exact head-SHA match; implementation record
-`docs/status/phase-6-d2b-r1-2026-09-23.md`), and Phase 6-D3 read-only
-Dashboard monitoring projection is the next candidate package. Webhook
+`docs/status/phase-6-d2b-r1-2026-09-23.md`). A 2026-09-23 post-closure audit
+(`docs/status/phase-6-d2b-r1-post-closure-review-2026-09-23.md`) found one residual retry-budget defect under
+`receiver_idempotency_declared=true`: recovery currently gates a resend from
+the count of persisted attempt outcomes, so repeated process death after a
+durable dispatch claim but before attempt persistence can re-enter transport
+without consuming `max_attempts`. **Phase 6-D2B-R2 — Orphaned Dispatch
+Retry-Budget Accounting Hardening** is selected before D3; canonical scope is
+`docs/goals/phase-6-d2b-r2-orphan-retry-budget-hardening.md` and the coding-agent handoff is
+`docs/status/phase-6-d2b-r2-next-coding-agent-goal.md`. Webhook
 endpoints and bearer tokens are `SecretReference`s under the typed
 `[monitoring.delivery]` ProjectConfig section (disabled by default in the
 checked-in example), resolved only in process memory and proven absent from
