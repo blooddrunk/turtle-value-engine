@@ -330,7 +330,34 @@ end-to-end monotonic transport deadline, and the read-only delivery-status path
 checks only pointer existence rather than validating the published state.
 Canonical R1 scope and automatic acceptance are in
 `docs/goals/phase-6-d2b-r1-dispatch-hardening.md`; no manual owner acceptance is
-planned for R1. Webhook
+planned for R1. **Phase 6-D2B-R1 is implemented** from baseline
+`3545794aa1a192374e5ce90c8fd806bc7b851923` (baseline Actions run 35695543233,
+`success`): the ledger persists the additive immutable canonical hash-validated
+`MonitoringDispatchClaimV1` before any request byte may be written
+(deterministic content, so a resumed attempt re-saves byte-identically); an
+orphaned claim (no terminal attempt) restarts as terminal
+`AMBIGUOUS`/`ORPHANED_DISPATCH` with zero automatic resend by default, and
+only the explicit `receiver_idempotency_declared=true` policy permits a
+bounded retry of the same deterministic delivery key with monotonic attempt
+numbering. Each `delivery_id` is guarded by a non-blocking per-delivery flock
+single-flight lock held across intent persistence, state validation/repair,
+dispatch claim, transport, attempt persistence and latest-state publication;
+only real lock contention maps to the additive CLI `DELIVERY_BUSY` exit 3
+with zero outbound requests, every other open/flock/filesystem error fails
+closed, and the receiver's `Idempotency-Key` is never relied on for local
+concurrency. `timeout_seconds` is now one injectable monotonic overall
+deadline bounding connect/TLS, request/header wait and every bounded body
+read from the same remaining budget; pre-dispatch expiry is honestly
+retryable (`DEADLINE_EXHAUSTED_PRE_DISPATCH`) and post-dispatch expiry,
+including mid-body-read, is `AMBIGUOUS`. `tve watch delivery-status` now
+validates the published latest-state pointer truthfully
+(`CURRENT`/`MISSING`/`STALE_REPAIRABLE`, read-only) and fails closed with
+`DELIVERY_POINTER_CONFLICT` on corrupt/non-canonical/foreign/contradictory
+state. Nineteen new deterministic tests (62 delivery cases total; full suite
+6655 passed / 2 skipped) include a real two-process barrier proof that only
+one process can enter the transport; implementation record and exact
+closing-SHA Actions evidence are in
+`docs/status/phase-6-d2b-r1-2026-09-23.md`. Webhook
 endpoints and bearer tokens are `SecretReference`s under the typed
 `[monitoring.delivery]` ProjectConfig section (disabled by default in the
 checked-in example), resolved only in process memory and proven absent from

@@ -1,6 +1,6 @@
 # Phase 6-D2B-R1 — Dispatch Durability, Single-Flight and Timeout Truthfulness Hardening
 
-Status: **SELECTED / ACTIVE**
+Status: **IMPLEMENTED / CI_PENDING**
 Date: 2026-09-22
 Selected after: Phase 6-D2B post-closure review
 
@@ -9,6 +9,9 @@ Selection audit:
 
 Coding-agent handoff:
 `docs/status/phase-6-d2b-r1-next-coding-agent-goal.md`
+
+Implementation record:
+`docs/status/phase-6-d2b-r1-2026-09-23.md`
 
 ## 1. Objective
 

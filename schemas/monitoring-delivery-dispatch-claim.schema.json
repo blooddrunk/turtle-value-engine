@@ -1,0 +1,59 @@
+{
+  "additionalProperties": false,
+  "description": "Immutable durable dispatch-start evidence for one attempt (6-D2B-R1).\n\nPersisted **before** the transport may write any request byte.  A claim\nwhose attempt artifact does not exist means a prior process may have\ndispatched request bytes and died before persisting the terminal outcome;\nrecovery must therefore treat that delivery as post-dispatch uncertain\n(``AMBIGUOUS``) instead of proven-unsent.  The claim content is fully\ndeterministic — no wall-clock field — so re-saving the same claim for a\nresumed attempt is byte-identical and can never raise a spurious\nimmutable-conflict error.  It carries no endpoint or auth material.",
+  "properties": {
+    "contract": {
+      "const": "monitoring_delivery_dispatch_claim_v1",
+      "default": "monitoring_delivery_dispatch_claim_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0.0",
+      "default": "1.0.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "delivery_id": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Delivery Id",
+      "type": "string"
+    },
+    "attempt_number": {
+      "maximum": 20,
+      "minimum": 1,
+      "title": "Attempt Number",
+      "type": "integer"
+    },
+    "intent_content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Intent Content Sha256",
+      "type": "string"
+    },
+    "payload_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Payload Sha256",
+      "type": "string"
+    },
+    "idempotency_key": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Idempotency Key",
+      "type": "string"
+    },
+    "content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Content Sha256",
+      "type": "string"
+    }
+  },
+  "required": [
+    "delivery_id",
+    "attempt_number",
+    "intent_content_sha256",
+    "payload_sha256",
+    "idempotency_key",
+    "content_sha256"
+  ],
+  "title": "MonitoringDispatchClaimV1",
+  "type": "object"
+}

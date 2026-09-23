@@ -65,6 +65,12 @@ class DeliveryFailureCode(StrEnum):
     CONNECTION_LOST_AFTER_DISPATCH = "CONNECTION_LOST_AFTER_DISPATCH"
     RESPONSE_BYTES_EXCEEDED = "RESPONSE_BYTES_EXCEEDED"
     RETRIES_EXHAUSTED = "RETRIES_EXHAUSTED"
+    # Phase 6-D2B-R1: a durable dispatch claim exists whose terminal attempt
+    # outcome never persisted; the request may or may not have reached the
+    # receiver.  The overall HTTP deadline expiring before any request byte
+    # is the only proven-unsent deadline outcome.
+    ORPHANED_DISPATCH = "ORPHANED_DISPATCH"
+    DEADLINE_EXHAUSTED_PRE_DISPATCH = "DEADLINE_EXHAUSTED_PRE_DISPATCH"
 
 
 ATTEMPT_CLASSIFICATIONS = (
@@ -382,6 +388,54 @@ class MonitoringDeliveryAttemptV1(_DeliveryContract):
         return cls.model_validate(payload | {"content_sha256": canonical_sha256(payload)})
 
 
+class MonitoringDispatchClaimV1(_DeliveryContract):
+    """Immutable durable dispatch-start evidence for one attempt (6-D2B-R1).
+
+    Persisted **before** the transport may write any request byte.  A claim
+    whose attempt artifact does not exist means a prior process may have
+    dispatched request bytes and died before persisting the terminal outcome;
+    recovery must therefore treat that delivery as post-dispatch uncertain
+    (``AMBIGUOUS``) instead of proven-unsent.  The claim content is fully
+    deterministic — no wall-clock field — so re-saving the same claim for a
+    resumed attempt is byte-identical and can never raise a spurious
+    immutable-conflict error.  It carries no endpoint or auth material.
+    """
+
+    contract: Literal["monitoring_delivery_dispatch_claim_v1"] = (
+        "monitoring_delivery_dispatch_claim_v1"
+    )
+    schema_version: Literal["1.0.0"] = "1.0.0"
+
+    _ZERO_FILL_FIELDS: ClassVar[tuple[str, ...]] = ("content_sha256",)
+
+    delivery_id: StrictStr = Field(pattern=_HASH_PATTERN)
+    attempt_number: StrictInt = Field(ge=1, le=20)
+    intent_content_sha256: StrictStr = Field(pattern=_HASH_PATTERN)
+    payload_sha256: StrictStr = Field(pattern=_HASH_PATTERN)
+    idempotency_key: StrictStr = Field(pattern=_HASH_PATTERN)
+    content_sha256: StrictStr = Field(pattern=_HASH_PATTERN)
+
+    @model_validator(mode="after")
+    def _validate_claim(self, info: ValidationInfo) -> Self:
+        if self.idempotency_key != self.delivery_id:
+            raise ValueError("dispatch claim idempotency key must be the delivery identity")
+        if _hash_checks_enabled(info):
+            from turtle_value_engine.monitoring.canonical import canonical_sha256
+
+            expected = canonical_sha256(self.canonical_payload(exclude={"content_sha256"}))
+            if self.content_sha256 != expected:
+                raise ValueError("dispatch claim content_sha256 does not match content")
+        return self
+
+    @classmethod
+    def build(cls, **values: object) -> Self:
+        from turtle_value_engine.monitoring.canonical import canonical_sha256
+
+        coerced = cls._coerced(dict(values))
+        payload = coerced.canonical_payload(exclude={"content_sha256"})
+        return cls.model_validate(payload | {"content_sha256": canonical_sha256(payload)})
+
+
 class MonitoringDeliveryStateV1(_DeliveryContract):
     """Atomic latest state pointer for one delivery identity.
 
@@ -468,6 +522,7 @@ __all__ = [
     "MonitoringDeliveryAttemptV1",
     "MonitoringDeliveryIntentV1",
     "MonitoringDeliveryStateV1",
+    "MonitoringDispatchClaimV1",
     "MonitoringWebhookAlertV1",
     "MonitoringWebhookPayloadV1",
     "WEBHOOK_PAYLOAD_CONTRACT",

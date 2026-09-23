@@ -37,10 +37,12 @@ from .contracts import (
     MonitoringDeliveryAttemptV1,
     MonitoringDeliveryIntentV1,
     MonitoringDeliveryStateV1,
+    MonitoringDispatchClaimV1,
     MonitoringWebhookAlertV1,
     MonitoringWebhookPayloadV1,
     delivery_identity,
 )
+from .locking import DeliveryLockBusyError, DeliveryLockError, delivery_single_flight
 from .store import DeliveryLedgerError, DeliveryLedgerStore
 from .transport import WebhookRequest, WebhookTransport
 
@@ -154,12 +156,22 @@ def backoff_seconds(intent: MonitoringDeliveryIntentV1, attempt_number: int) -> 
 def derive_delivery_state(
     intent: MonitoringDeliveryIntentV1,
     attempts: list[MonitoringDeliveryAttemptV1],
+    *,
+    orphaned_claim: MonitoringDispatchClaimV1 | None = None,
 ) -> MonitoringDeliveryStateV1:
     """Derive the latest state purely from immutable artifacts.
 
     This function is the single source of truth for the published pointer, so
     normal publication and crash repair produce byte-identical state files
     and a pointer-write crash is always repairable without a new request.
+
+    ``orphaned_claim`` is a durable dispatch claim whose terminal attempt
+    outcome never persisted (Phase 6-D2B-R1).  A prior process may have
+    dispatched request bytes and died, so the delivery is post-dispatch
+    uncertain: terminal ``AMBIGUOUS`` with zero automatic resend unless the
+    intent explicitly declares receiver-enforced idempotency **and** retry
+    budget remains, in which case a bounded retry of the same deterministic
+    key is permitted immediately.
     """
 
     if intent.empty_outbox:
@@ -171,6 +183,35 @@ def derive_delivery_state(
             intent_content_sha256=intent.content_sha256,
             updated_at=intent.created_at,
         )
+    last = attempts[-1] if attempts else None
+    if orphaned_claim is not None:
+        orphan_updated_at = (
+            intent.created_at if last is None else last.finished_at
+        )
+        if intent.receiver_idempotency_declared and len(attempts) < intent.max_attempts:
+            # Retry permitted under the explicit receiver-idempotency policy:
+            # non-terminal, no scheduled wait, the loop performs the attempt.
+            return MonitoringDeliveryStateV1.build(
+                delivery_id=intent.delivery_id,
+                status=DeliveryStatus.PENDING,
+                terminal=False,
+                attempt_count=len(attempts),
+                last_http_status=None if last is None else last.http_status,
+                last_error_code=None if last is None else last.error_code,
+                intent_content_sha256=intent.content_sha256,
+                updated_at=orphan_updated_at,
+            )
+        return MonitoringDeliveryStateV1.build(
+            delivery_id=intent.delivery_id,
+            status=DeliveryStatus.AMBIGUOUS,
+            terminal=True,
+            attempt_count=len(attempts),
+            last_http_status=None if last is None else last.http_status,
+            last_error_code=DeliveryFailureCode.ORPHANED_DISPATCH,
+            next_attempt_not_before=None,
+            intent_content_sha256=intent.content_sha256,
+            updated_at=orphan_updated_at,
+        )
     if not attempts:
         return MonitoringDeliveryStateV1.build(
             delivery_id=intent.delivery_id,
@@ -180,7 +221,6 @@ def derive_delivery_state(
             intent_content_sha256=intent.content_sha256,
             updated_at=intent.created_at,
         )
-    last = attempts[-1]
     if last.classification == DeliveryStatus.RETRYABLE_FAILURE and (
         len(attempts) >= intent.max_attempts
     ):
@@ -225,12 +265,79 @@ def derive_delivery_state(
     )
 
 
+def published_state_is_behind(
+    published: MonitoringDeliveryStateV1, derived: MonitoringDeliveryStateV1
+) -> bool:
+    """True when the published pointer is legitimately older than ``derived``.
+
+    A published state is repairable when it binds fewer attempts than the
+    immutable artifacts now hold, or — at equal attempt count — when it is
+    non-terminal and the derivation has advanced (an orphaned dispatch claim
+    turned a non-terminal projection into a terminal ``AMBIGUOUS``, or a
+    pending projection into a concrete one).  A published **terminal** state
+    that differs at equal attempt count is impossible and must fail closed.
+    """
+
+    if published.attempt_count < derived.attempt_count:
+        return True
+    if published.attempt_count > derived.attempt_count:
+        return False
+    return not published.terminal
+
+
+def unresolved_dispatch_claim(
+    intent: MonitoringDeliveryIntentV1,
+    attempts: list[MonitoringDeliveryAttemptV1],
+    claims: list[MonitoringDispatchClaimV1],
+) -> MonitoringDispatchClaimV1 | None:
+    """Return the single legitimately orphaned dispatch claim, if any.
+
+    A claim without its terminal attempt means a prior process may have
+    dispatched request bytes and died.  Zero unresolved claims is the normal
+    state; exactly one unresolved claim for the next monotonic attempt number
+    is the recoverable crash window; anything else (multiple orphans, a
+    non-monotonic number, a claim bound to a different intent/payload) is
+    contradictory and fails closed.
+    """
+
+    attempt_numbers = {attempt.attempt_number for attempt in attempts}
+    unresolved = [claim for claim in claims if claim.attempt_number not in attempt_numbers]
+    if not unresolved:
+        return None
+    if len(unresolved) > 1:
+        raise DeliveryLedgerConflictError(
+            "DELIVERY_LEDGER_CONFLICT: multiple unresolved dispatch claims are "
+            "contradictory"
+        )
+    claim = unresolved[0]
+    if claim.attempt_number != len(attempts) + 1:
+        raise DeliveryLedgerConflictError(
+            "DELIVERY_LEDGER_CONFLICT: unresolved dispatch claim is not the next "
+            "monotonic attempt"
+        )
+    if (
+        claim.intent_content_sha256 != intent.content_sha256
+        or claim.payload_sha256 != intent.payload_sha256
+    ):
+        raise DeliveryLedgerConflictError(
+            "DELIVERY_LEDGER_CONFLICT: dispatch claim is not bound to this intent "
+            "and payload"
+        )
+    return claim
+
+
 def _terminal_message(state: MonitoringDeliveryStateV1) -> str:
     if state.status is DeliveryStatus.DELIVERED:
         return "notification delivered and acknowledged by a 2xx webhook response"
     if state.status is DeliveryStatus.NOOP:
         return "alert outbox was empty; no notification was required or sent"
     if state.status is DeliveryStatus.AMBIGUOUS:
+        if state.last_error_code == DeliveryFailureCode.ORPHANED_DISPATCH:
+            return (
+                "an interrupted dispatch has no terminal outcome; it is conservatively "
+                "AMBIGUOUS and automatic resend is forbidden unless receiver "
+                "idempotency is declared"
+            )
         return (
             "post-dispatch uncertainty recorded as AMBIGUOUS; automatic resend is "
             "forbidden unless receiver idempotency is declared"
@@ -380,35 +487,6 @@ class MonitoringDeliveryService:
             created_at=normalize_utc(created_at),
         )
 
-    def _load_or_create_intent(
-        self,
-        receipt: RunnerReceiptV1,
-        result: MonitoringCycleResultV1,
-        alerts: MonitoringAlertBatchV1,
-    ) -> tuple[MonitoringDeliveryIntentV1, bool]:
-        """Persist the immutable intent before any outbound I/O."""
-
-        payload = build_webhook_payload(
-            settings=self.settings, receipt=receipt, result=result, alerts=alerts
-        )
-        fresh = self._build_intent(
-            receipt=receipt,
-            result=result,
-            alerts=alerts,
-            payload=payload,
-            created_at=self.clock(),
-        )
-        if not self.ledger.intent_exists(fresh.delivery_id):
-            self.ledger.save_intent(fresh)
-            return fresh, True
-        existing = self.ledger.load_intent(fresh.delivery_id)
-        if existing.semantic_payload() != fresh.semantic_payload():
-            raise DeliveryLedgerConflictError(
-                "DELIVERY_LEDGER_CONFLICT: an intent with this delivery identity already "
-                "exists with different content"
-            )
-        return existing, False
-
     # -- state ----------------------------------------------------------
 
     def _validate_or_repair_state(
@@ -422,12 +500,7 @@ class MonitoringDeliveryService:
         if published is None or published == derived:
             self.ledger.publish_state(derived)
             return
-        behind = published.attempt_count < derived.attempt_count or (
-            published.attempt_count == derived.attempt_count
-            and published.status is DeliveryStatus.PENDING
-            and derived.status is not DeliveryStatus.PENDING
-        )
-        if not behind:
+        if not published_state_is_behind(published, derived):
             raise DeliveryLedgerConflictError(
                 "DELIVERY_LEDGER_CONFLICT: published delivery state does not match its "
                 "immutable intent/attempt artifacts"
@@ -459,10 +532,33 @@ class MonitoringDeliveryService:
             )
         receipt = self._load_receipt(activation_id)
         result, alerts = self._load_terminal_pair(receipt)
-        intent, created = self._load_or_create_intent(receipt, result, alerts)
+        payload = build_webhook_payload(
+            settings=self.settings, receipt=receipt, result=result, alerts=alerts
+        )
+        fresh = self._build_intent(
+            receipt=receipt,
+            result=result,
+            alerts=alerts,
+            payload=payload,
+            created_at=self.clock(),
+        )
+        # One OS-level single-flight exclusion per delivery identity, held
+        # across intent persistence, state validation/repair, dispatch claim,
+        # transport, attempt persistence and latest-state publication.
+        with delivery_single_flight(
+            self.ledger.lock_path(fresh.delivery_id), fresh.delivery_id
+        ):
+            return self._deliver_locked(fresh)
+
+    def _deliver_locked(
+        self, fresh: MonitoringDeliveryIntentV1
+    ) -> DeliveryRunOutcome:
+        intent, created = self._persist_or_verify_intent(fresh)
 
         attempts = self.ledger.list_attempts(intent.delivery_id)
-        state = derive_delivery_state(intent, attempts)
+        claims = self.ledger.list_claims(intent.delivery_id)
+        orphan = unresolved_dispatch_claim(intent, attempts, claims)
+        state = derive_delivery_state(intent, attempts, orphaned_claim=orphan)
         self._validate_or_repair_state(intent, state)
         http_requests = 0
 
@@ -474,7 +570,9 @@ class MonitoringDeliveryService:
             self._perform_attempt(intent, attempt_number=len(attempts) + 1)
             http_requests += 1
             attempts = self.ledger.list_attempts(intent.delivery_id)
-            state = derive_delivery_state(intent, attempts)
+            claims = self.ledger.list_claims(intent.delivery_id)
+            orphan = unresolved_dispatch_claim(intent, attempts, claims)
+            state = derive_delivery_state(intent, attempts, orphaned_claim=orphan)
             self.ledger.publish_state(state)
 
         return DeliveryRunOutcome(
@@ -486,6 +584,22 @@ class MonitoringDeliveryService:
             reused=not created and http_requests == 0,
             message=_terminal_message(state),
         )
+
+    def _persist_or_verify_intent(
+        self, fresh: MonitoringDeliveryIntentV1
+    ) -> tuple[MonitoringDeliveryIntentV1, bool]:
+        """Persist the immutable intent before any outbound I/O (under lock)."""
+
+        if not self.ledger.intent_exists(fresh.delivery_id):
+            self.ledger.save_intent(fresh)
+            return fresh, True
+        existing = self.ledger.load_intent(fresh.delivery_id)
+        if existing.semantic_payload() != fresh.semantic_payload():
+            raise DeliveryLedgerConflictError(
+                "DELIVERY_LEDGER_CONFLICT: an intent with this delivery identity already "
+                "exists with different content"
+            )
+        return existing, False
 
     def _perform_attempt(
         self, intent: MonitoringDeliveryIntentV1, *, attempt_number: int
@@ -499,6 +613,18 @@ class MonitoringDeliveryService:
                 "resolved to nothing; no outbound request was attempted"
             )
         auth_bearer = self.auth_resolver()
+        # Durable dispatch-start evidence, persisted before the transport may
+        # write any request byte.  Deterministic content: re-saving the same
+        # claim for a resumed attempt is byte-identical (6-D2B-R1).
+        self.ledger.save_claim(
+            MonitoringDispatchClaimV1.build(
+                delivery_id=intent.delivery_id,
+                attempt_number=attempt_number,
+                intent_content_sha256=intent.content_sha256,
+                payload_sha256=intent.payload_sha256,
+                idempotency_key=intent.delivery_id,
+            )
+        )
         outcome = self.transport.send(
             endpoint=endpoint,
             auth_bearer=auth_bearer,
@@ -553,6 +679,44 @@ class MonitoringDeliveryService:
         return payload
 
 
+def _classify_published_pointer(
+    ledger: DeliveryLedgerStore,
+    delivery_id: str,
+    derived: MonitoringDeliveryStateV1,
+) -> tuple[str, bool]:
+    """Validate the published latest-state pointer truthfully (read-only).
+
+    Returns ``(pointer_status, pointer_published)`` where the status is one
+    of ``MISSING`` (nothing published yet), ``CURRENT`` (canonical and
+    byte-identical to the immutable-artifact derivation) or
+    ``STALE_REPAIRABLE`` (valid but behind the immutable artifacts; only the
+    mutating delivery path may repair it).  A corrupt, non-canonical,
+    foreign-slot or contradictory pointer fails closed instead of being
+    hidden behind a mere path-existence flag.
+    """
+
+    path = ledger.state_path(delivery_id)
+    if path.is_symlink():
+        raise MonitoringDeliveryError(
+            f"DELIVERY_POINTER_CONFLICT: published delivery state is not a regular "
+            f"file: {path}"
+        )
+    if not path.exists():
+        return "MISSING", False
+    try:
+        published = ledger.load_state(delivery_id)
+    except DeliveryLedgerError as exc:
+        raise MonitoringDeliveryError(f"DELIVERY_POINTER_CONFLICT: {exc}") from exc
+    if published == derived:
+        return "CURRENT", True
+    if published_state_is_behind(published, derived):
+        return "STALE_REPAIRABLE", True
+    raise MonitoringDeliveryError(
+        "DELIVERY_POINTER_CONFLICT: published delivery state for "
+        f"{delivery_id} contradicts its immutable intent/attempt artifacts"
+    )
+
+
 def delivery_status_projection(
     ledger: DeliveryLedgerStore,
     *,
@@ -561,9 +725,12 @@ def delivery_status_projection(
 ) -> dict[str, object]:
     """Read a bounded, secret-free ledger projection.
 
-    The projection reports the state derived from immutable artifacts (with a
-    pointer-published flag) instead of trusting the pointer alone, and never
-    resolves or contains any secret endpoint or token material.
+    The projection derives state from the immutable intent, attempts and
+    dispatch claims, then **validates** the published latest-state pointer
+    against that derivation (missing / current / stale-repairable, with
+    corrupt, non-canonical, foreign or contradictory pointers failing
+    closed).  It never resolves or contains secret endpoint or token
+    material and never repairs anything.
     """
 
     ids = [delivery_id] if delivery_id is not None else ledger.list_delivery_ids()
@@ -575,7 +742,12 @@ def delivery_status_projection(
         if activation_id is not None and intent.activation_id != activation_id:
             continue
         attempts = ledger.list_attempts(candidate)
-        derived = derive_delivery_state(intent, attempts)
+        claims = ledger.list_claims(candidate)
+        orphan = unresolved_dispatch_claim(intent, attempts, claims)
+        derived = derive_delivery_state(intent, attempts, orphaned_claim=orphan)
+        pointer_status, pointer_published = _classify_published_pointer(
+            ledger, candidate, derived
+        )
         deliveries.append(
             {
                 "delivery_id": intent.delivery_id,
@@ -590,7 +762,16 @@ def delivery_status_projection(
                 "empty_outbox": intent.empty_outbox,
                 "created_at": intent.created_at.isoformat(),
                 "state": derived.model_dump(mode="json"),
-                "pointer_published": ledger.state_path(candidate).exists(),
+                "pointer_published": pointer_published,
+                "pointer_status": pointer_status,
+                "dispatch_claim_count": len(claims),
+                "unresolved_dispatch_claim": None
+                if orphan is None
+                else {
+                    "attempt_number": orphan.attempt_number,
+                    "idempotency_key": orphan.idempotency_key,
+                    "content_sha256": orphan.content_sha256,
+                },
                 "attempts": [
                     {
                         "attempt_number": attempt.attempt_number,
@@ -619,6 +800,8 @@ __all__ = [
     "DeliveryDisabledError",
     "DeliveryEndpointUnresolvedError",
     "DeliveryLedgerConflictError",
+    "DeliveryLockBusyError",
+    "DeliveryLockError",
     "DeliveryNetworkDeniedError",
     "DeliveryPayloadError",
     "DeliveryRunOutcome",
@@ -629,4 +812,6 @@ __all__ = [
     "build_webhook_payload",
     "delivery_status_projection",
     "derive_delivery_state",
+    "published_state_is_behind",
+    "unresolved_dispatch_claim",
 ]

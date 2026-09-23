@@ -1415,7 +1415,7 @@ def _run_watch_deliver(args: argparse.Namespace) -> object:
         network_allowed=args.network == "allow",
         enabled=delivery.enabled,
     )
-    outcome = service.deliver(args.activation_id)
+    outcome = _deliver_with_busy_exit(service, args.activation_id)
     payload = {
         "classification": outcome.status.value,
         "delivery_id": outcome.delivery_id,
@@ -1441,6 +1441,30 @@ def _run_watch_deliver(args: argparse.Namespace) -> object:
     if outcome.status not in {DeliveryStatus.DELIVERED, DeliveryStatus.NOOP}:
         raise _CliPayloadExit(payload, 4)
     return payload
+
+
+def _deliver_with_busy_exit(service, activation_id: str | None):
+    """Map real single-flight contention to the additive exit-3 busy result.
+
+    Only ``DeliveryLockBusyError`` (the platform's real lock-contention
+    errors) lands here; every other lock/filesystem failure stays a normal
+    fail-closed exit-2 error and is never disguised as busy.
+    """
+
+    from turtle_value_engine.monitoring_delivery import DeliveryLockBusyError
+
+    try:
+        return service.deliver(activation_id)
+    except DeliveryLockBusyError as exc:
+        raise _CliPayloadExit(
+            {
+                "classification": "DELIVERY_BUSY",
+                "delivery_id": exc.delivery_id,
+                "message": "another live invocation is delivering this delivery "
+                "identity; this invocation performed zero outbound requests",
+            },
+            3,
+        ) from exc
 
 
 def _run_watch_execute_reanalysis(args: argparse.Namespace) -> object:

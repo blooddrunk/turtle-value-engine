@@ -27,6 +27,7 @@ from .contracts import (
     MonitoringDeliveryAttemptV1,
     MonitoringDeliveryIntentV1,
     MonitoringDeliveryStateV1,
+    MonitoringDispatchClaimV1,
 )
 
 DeliveryWriteKind = Literal["artifact", "pointer"]
@@ -61,6 +62,17 @@ class DeliveryLedgerStore:
 
     def state_path(self, delivery_id: str) -> Path:
         return self.root / "state" / f"{delivery_id}.json"
+
+    def claims_dir(self, delivery_id: str) -> Path:
+        return self.root / "claims" / delivery_id
+
+    def claim_path(self, delivery_id: str, attempt_number: int) -> Path:
+        return self.claims_dir(delivery_id) / f"{attempt_number:06d}.json"
+
+    def lock_path(self, delivery_id: str) -> Path:
+        """Path of the per-delivery OS single-flight lock slot (6-D2B-R1)."""
+
+        return self.root / "locks" / f"{delivery_id}.lock"
 
     def _inject_failure(self, path: Path, kind: DeliveryWriteKind) -> None:
         if self._failure_injector is not None:
@@ -228,22 +240,60 @@ class DeliveryLedgerStore:
     def list_attempts(self, delivery_id: str) -> list[MonitoringDeliveryAttemptV1]:
         """Return the validated attempt set in monotonic order, fail-closed."""
 
-        directory = self.attempts_dir(delivery_id)
+        return self._list_numbered(
+            self.attempts_dir(delivery_id),
+            lambda path: self.load_attempt(delivery_id, int(path.stem)),
+        )
+
+    # -- dispatch claims (6-D2B-R1) -------------------------------------
+
+    def save_claim(self, claim: MonitoringDispatchClaimV1) -> None:
+        """Persist durable dispatch-start evidence (immutable create-only)."""
+
+        self._commit_bytes(
+            self.claim_path(claim.delivery_id, claim.attempt_number),
+            claim.canonical_bytes() + b"\n",
+            "artifact",
+        )
+
+    def load_claim(
+        self, delivery_id: str, attempt_number: int
+    ) -> MonitoringDispatchClaimV1:
+        claim = self._read_model(
+            self.claim_path(delivery_id, attempt_number), MonitoringDispatchClaimV1
+        )
+        if claim.delivery_id != delivery_id or claim.attempt_number != attempt_number:
+            raise DeliveryLedgerError("delivery dispatch claim does not match its slot")
+        return claim
+
+    def list_claims(self, delivery_id: str) -> list[MonitoringDispatchClaimV1]:
+        """Return the validated dispatch-claim set in monotonic order, fail-closed."""
+
+        return self._list_numbered(
+            self.claims_dir(delivery_id),
+            lambda path: self.load_claim(delivery_id, int(path.stem)),
+        )
+
+    def _list_numbered(self, directory: Path, loader) -> list:
         if not directory.exists():
             return []
-        attempts: list[MonitoringDeliveryAttemptV1] = []
+        records: list = []
         for path in sorted(directory.iterdir()):
             if path.is_symlink() or not path.is_file():
-                raise DeliveryLedgerError(f"delivery attempt is not a regular file: {path}")
+                raise DeliveryLedgerError(f"delivery artifact is not a regular file: {path}")
             if path.suffix != ".json" or path.name.startswith("."):
                 continue
-            attempts.append(self.load_attempt(delivery_id, int(path.stem)))
-        numbers = [attempt.attempt_number for attempt in attempts]
+            records.append(loader(path))
+        numbers = [int(record.attempt_number) for record in records]
         if numbers != sorted(numbers) or len(numbers) != len(set(numbers)):
-            raise DeliveryLedgerError("delivery attempts must be unique and sorted")
+            raise DeliveryLedgerError(
+                f"delivery records in {directory.name} must be unique and sorted"
+            )
         if numbers != list(range(1, len(numbers) + 1)):
-            raise DeliveryLedgerError("delivery attempts must be contiguous from one")
-        return attempts
+            raise DeliveryLedgerError(
+                f"delivery records in {directory.name} must be contiguous from one"
+            )
+        return records
 
     def publish_state(self, state: MonitoringDeliveryStateV1) -> None:
         self._commit_bytes(

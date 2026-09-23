@@ -10,7 +10,9 @@
         "TIMEOUT_AFTER_DISPATCH",
         "CONNECTION_LOST_AFTER_DISPATCH",
         "RESPONSE_BYTES_EXCEEDED",
-        "RETRIES_EXHAUSTED"
+        "RETRIES_EXHAUSTED",
+        "ORPHANED_DISPATCH",
+        "DEADLINE_EXHAUSTED_PRE_DISPATCH"
       ],
       "title": "DeliveryFailureCode",
       "type": "string"

@@ -9,13 +9,17 @@ module.
 
 from __future__ import annotations
 
+import errno
+import fcntl
 import hashlib
 import http.server
 import json
+import os
 import socket
 import subprocess
 import sys
 import threading
+import time
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -41,6 +45,8 @@ from turtle_value_engine.monitoring_delivery import (
     DeliveryLedgerConflictError,
     DeliveryLedgerError,
     DeliveryLedgerStore,
+    DeliveryLockBusyError,
+    DeliveryLockError,
     DeliveryNetworkDeniedError,
     DeliverySettingsV1,
     DeliverySourceError,
@@ -48,6 +54,7 @@ from turtle_value_engine.monitoring_delivery import (
     MonitoringDeliveryIntentV1,
     MonitoringDeliveryService,
     MonitoringDeliveryStateV1,
+    MonitoringDispatchClaimV1,
     MonitoringWebhookPayloadV1,
     TransportOutcome,
     WebhookEndpointError,
@@ -56,6 +63,8 @@ from turtle_value_engine.monitoring_delivery import (
     backoff_seconds,
     build_webhook_payload,
     delivery_identity,
+    delivery_single_flight,
+    delivery_status_projection,
     derive_delivery_state,
 )
 from turtle_value_engine.monitoring_execution import ReanalysisJobStore
@@ -376,6 +385,7 @@ def test_delivery_schema_snapshots_are_stable():
         ("monitoring-delivery-intent.schema.json", MonitoringDeliveryIntentV1),
         ("monitoring-delivery-attempt.schema.json", MonitoringDeliveryAttemptV1),
         ("monitoring-delivery-state.schema.json", MonitoringDeliveryStateV1),
+        ("monitoring-delivery-dispatch-claim.schema.json", MonitoringDispatchClaimV1),
         ("monitoring-delivery-webhook-payload.schema.json", MonitoringWebhookPayloadV1),
     )
     for filename, model in models:
@@ -825,15 +835,20 @@ class _PointerFailAfter:
                 raise RuntimeError("simulated crash before pointer publication")
 
 
-def test_crash_after_intent_before_request_resumes_same_delivery(tmp_path):
+def test_crash_after_intent_before_claim_resumes_same_delivery(tmp_path):
     stack = _terminal_stack(tmp_path)
 
-    class CrashBeforeRequest(FakeTransport):
-        def send(self, **kwargs):
-            raise RuntimeError("simulated crash before the outbound request")
+    class CrashBeforeClaim:
+        """Simulate a crash after the intent write but before the claim."""
 
-    service = _service(stack, CrashBeforeRequest([]), tmp_path=tmp_path)
-    with pytest.raises(RuntimeError, match="crash before the outbound request"):
+        def __call__(self, path: Path, kind: str) -> None:
+            if kind == "artifact" and "claims" in path.parts:
+                raise RuntimeError("simulated crash before the dispatch claim")
+
+    service = _service(
+        stack, FakeTransport([]), tmp_path=tmp_path, failure_injector=CrashBeforeClaim()
+    )
+    with pytest.raises(DeliveryLedgerConflictError, match="delivery ledger write failed"):
         service.deliver()
     ledger = DeliveryLedgerStore(Path(stack.runner_store.root).parent / "delivery")
     delivery_id = delivery_identity(
@@ -844,6 +859,7 @@ def test_crash_after_intent_before_request_resumes_same_delivery(tmp_path):
     )
     intent = ledger.load_intent(delivery_id)
     assert ledger.list_attempts(delivery_id) == []
+    assert ledger.list_claims(delivery_id) == []
     assert derive_delivery_state(intent, []).status.value == "PENDING"
 
     transport = FakeTransport([_delivered()])
@@ -916,6 +932,750 @@ def test_delivery_failures_never_rerun_d1_provider_or_reanalysis(tmp_path):
     assert stack.d1.calls == 1  # setup only; delivery performed zero D1 calls
     assert stack.acquisition.calls == 1
     assert transport.calls == 3
+
+
+# --- Phase 6-D2B-R1: durable dispatch claims -------------------------------
+
+
+class _CrashAfterClaimTransport:
+    """Transport that raises before recording anything (claim is durable)."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def send(self, *, endpoint, auth_bearer, request):
+        self.calls += 1
+        raise RuntimeError("simulated crash after the durable claim, before send")
+
+
+class _CrashAfterDispatchTransport:
+    """Transport that may have written request bytes, then dies."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+        self.keys: list[str] = []
+
+    def send(self, *, endpoint, auth_bearer, request):
+        self.calls += 1
+        self.keys.append(request.idempotency_key)
+        # Request bytes may already have reached the receiver here.
+        raise RuntimeError("simulated crash after possible dispatch, before save")
+
+
+def _ledger_for(stack) -> DeliveryLedgerStore:
+    return DeliveryLedgerStore(Path(stack.runner_store.root).parent / "delivery")
+
+
+def _delivery_id_for(stack) -> str:
+    return delivery_identity(
+        runner_id=RUNNER_ID,
+        activation_id=ACTIVATION_ID,
+        alert_batch_id=stack.alerts.alert_batch_id,
+        destination_id="owner-primary",
+    )
+
+
+def test_crash_after_claim_before_send_is_conservative_ambiguous_zero_resend(tmp_path):
+    stack = _terminal_stack(tmp_path)
+    crashing = _CrashAfterClaimTransport()
+    with pytest.raises(RuntimeError, match="after the durable claim"):
+        _service(stack, crashing, tmp_path=tmp_path).deliver()
+    ledger = _ledger_for(stack)
+    delivery_id = _delivery_id_for(stack)
+    claims = ledger.list_claims(delivery_id)
+    assert [claim.attempt_number for claim in claims] == [1]
+    assert ledger.list_attempts(delivery_id) == []
+
+    # Restart: the orphaned claim is conservatively AMBIGUOUS, zero resend.
+    transport = FakeTransport([_delivered()])
+    outcome = _service(stack, transport, tmp_path=tmp_path).deliver()
+    assert outcome.status.value == "AMBIGUOUS"
+    assert outcome.state.terminal is True
+    assert outcome.state.last_error_code.value == "ORPHANED_DISPATCH"
+    assert outcome.http_requests == 0
+    assert transport.calls == 0
+    # Further wakes still resend nothing by default.
+    again = _service(stack, FakeTransport([]), tmp_path=tmp_path).deliver()
+    assert again.status.value == "AMBIGUOUS"
+    assert again.http_requests == 0
+    assert stack.d1.calls == 1  # setup only; delivery performed zero D1 calls
+
+
+def test_crash_after_possible_dispatch_before_outcome_save_is_ambiguous(tmp_path):
+    stack = _terminal_stack(tmp_path)
+    crashing = _CrashAfterDispatchTransport()
+    with pytest.raises(RuntimeError, match="after possible dispatch"):
+        _service(stack, crashing, tmp_path=tmp_path).deliver()
+    assert crashing.calls == 1
+
+    transport = FakeTransport([_delivered()])
+    outcome = _service(stack, transport, tmp_path=tmp_path).deliver()
+    assert outcome.status.value == "AMBIGUOUS"
+    assert outcome.state.last_error_code.value == "ORPHANED_DISPATCH"
+    assert outcome.http_requests == 0
+    assert transport.calls == 0
+    # Exactly one outbound request ever happened in this ledger's lifetime.
+    assert crashing.calls == 1
+
+
+def test_orphaned_claim_retries_only_under_declared_receiver_idempotency(tmp_path):
+    stack = _terminal_stack(tmp_path)
+    settings = _settings(receiver_idempotency_declared=True)
+
+    class RetryThenCrashTransport:
+        def __init__(self) -> None:
+            self.calls = 0
+            self.keys: list[str] = []
+
+        def send(self, *, endpoint, auth_bearer, request):
+            self.calls += 1
+            self.keys.append(request.idempotency_key)
+            if self.calls == 1:
+                return _retryable(503)
+            raise RuntimeError("simulated crash on the second dispatch")
+
+    crashing = RetryThenCrashTransport()
+    with pytest.raises(RuntimeError):
+        _service(stack, crashing, tmp_path=tmp_path, settings=settings).deliver()
+    ledger = _ledger_for(stack)
+    delivery_id = _delivery_id_for(stack)
+    assert [attempt.attempt_number for attempt in ledger.list_attempts(delivery_id)] == [1]
+    assert [claim.attempt_number for claim in ledger.list_claims(delivery_id)] == [1, 2]
+    claim_two_before = ledger.claim_path(delivery_id, 2).read_bytes()
+
+    # Restart under the explicit receiver-idempotency policy: the orphaned
+    # dispatch is retried with the same deterministic key and monotonic
+    # numbering; re-saving claim 2 is byte-identical.
+    transport = FakeTransport([_delivered()])
+    outcome = _service(stack, transport, tmp_path=tmp_path, settings=settings).deliver()
+    assert outcome.status.value == "DELIVERED"
+    assert outcome.http_requests == 1
+    assert transport.requests[0].idempotency_key == delivery_id
+    assert crashing.keys == [delivery_id, delivery_id]
+    attempts = ledger.list_attempts(delivery_id)
+    assert [attempt.attempt_number for attempt in attempts] == [1, 2]
+    assert attempts[-1].classification == "DELIVERED"
+    assert ledger.claim_path(delivery_id, 2).read_bytes() == claim_two_before
+
+
+def test_orphaned_claim_with_exhausted_budget_stays_terminal_ambiguous():
+    """A claim can never buy extra retry budget; derivation stays terminal."""
+
+    intent = MonitoringDeliveryIntentV1.build(
+        runner_id=RUNNER_ID,
+        activation_id=ACTIVATION_ID,
+        cycle_id="cd" * 32,
+        d1_status="ALERTS_EMITTED",
+        result_content_sha256="ce" * 32,
+        alert_batch_id="cf" * 32,
+        alert_batch_content_sha256="d0" * 32,
+        destination_id="owner-primary",
+        payload_sha256="d1" * 32,
+        payload_bytes=32,
+        empty_outbox=False,
+        max_attempts=1,
+        timeout_seconds=5.0,
+        backoff_base_seconds=0,
+        backoff_cap_seconds=3600,
+        receiver_idempotency_declared=True,
+        created_at=AS_OF,
+    )
+    attempt = MonitoringDeliveryAttemptV1.build(
+        delivery_id=intent.delivery_id,
+        attempt_number=1,
+        started_at=AS_OF,
+        finished_at=AS_OF,
+        classification="RETRYABLE_FAILURE",
+        http_status=503,
+        response_body_sha256=None,
+        error_code="HTTP_RETRYABLE_STATUS",
+        retry_not_before=AS_OF,
+    )
+    claim = MonitoringDispatchClaimV1.build(
+        delivery_id=intent.delivery_id,
+        attempt_number=2,
+        intent_content_sha256=intent.content_sha256,
+        payload_sha256=intent.payload_sha256,
+        idempotency_key=intent.delivery_id,
+    )
+    state = derive_delivery_state(intent, [attempt], orphaned_claim=claim)
+    assert state.status.value == "AMBIGUOUS"
+    assert state.terminal is True
+    assert state.last_error_code.value == "ORPHANED_DISPATCH"
+    assert state.next_attempt_not_before is None
+
+
+def test_unresolved_claim_conflicts_fail_closed(tmp_path):
+    first = _terminal_stack(tmp_path / "a")
+    _service(
+        first,
+        FakeTransport([_retryable(503)]),
+        tmp_path=tmp_path / "a",
+        settings=_settings(backoff_base_seconds=120),
+    ).deliver()
+    ledger = _ledger_for(first)
+    delivery_id = _delivery_id_for(first)
+    intent = ledger.load_intent(delivery_id)
+
+    def _claim(number: int, *, intent_hash: str | None = None):
+        return MonitoringDispatchClaimV1.build(
+            delivery_id=delivery_id,
+            attempt_number=number,
+            intent_content_sha256=intent_hash or intent.content_sha256,
+            payload_sha256=intent.payload_sha256,
+            idempotency_key=delivery_id,
+        )
+
+    # Two unresolved claims are contradictory.
+    ledger.save_claim(_claim(2))
+    ledger.save_claim(_claim(3))
+    with pytest.raises(DeliveryLedgerConflictError, match="multiple unresolved"):
+        _service(
+            first,
+            FakeTransport([]),
+            tmp_path=tmp_path / "a",
+            settings=_settings(backoff_base_seconds=120),
+        ).deliver()
+
+    # A claim bound to a different intent is foreign evidence.
+    second = _terminal_stack(tmp_path / "b")
+    _service(
+        second,
+        FakeTransport([_retryable(503)]),
+        tmp_path=tmp_path / "b",
+        settings=_settings(backoff_base_seconds=120),
+    ).deliver()
+    ledger_b = _ledger_for(second)
+    delivery_b = _delivery_id_for(second)
+    intent_b = ledger_b.load_intent(delivery_b)
+    ledger_b.save_claim(
+        MonitoringDispatchClaimV1.build(
+            delivery_id=delivery_b,
+            attempt_number=2,
+            intent_content_sha256="0" * 64,
+            payload_sha256=intent_b.payload_sha256,
+            idempotency_key=delivery_b,
+        )
+    )
+    with pytest.raises(DeliveryLedgerConflictError, match="not bound to this intent"):
+        _service(
+            second,
+            FakeTransport([]),
+            tmp_path=tmp_path / "b",
+            settings=_settings(backoff_base_seconds=120),
+        ).deliver()
+
+
+# --- Phase 6-D2B-R1: per-delivery OS single-flight --------------------------
+
+
+_SINGLE_FLIGHT_CHILD = r"""
+import json
+import sys
+import time
+from datetime import UTC, datetime
+from pathlib import Path
+
+sys.path.insert(0, sys.argv[2])
+
+from turtle_value_engine.monitoring_delivery import (
+    DeliverySettingsV1,
+    DeliveryLedgerStore,
+    MonitoringDeliveryService,
+    TransportOutcome,
+)
+from turtle_value_engine.monitoring_delivery.contracts import DeliveryStatus
+from turtle_value_engine.monitoring_cycle import MonitoringCycleStore
+from turtle_value_engine.monitoring_runner import RunnerStore
+
+spec = json.loads(sys.argv[1])
+entered = Path(spec["entered"])
+release = Path(spec["release"])
+result = Path(spec["result"])
+
+
+class BlockingTransport:
+    def __init__(self) -> None:
+        self.request_count = 0
+
+    def send(self, *, endpoint, auth_bearer, request):
+        self.request_count += 1
+        entered.write_text("entered", encoding="utf-8")
+        deadline = time.monotonic() + 60.0
+        while not release.exists():
+            if time.monotonic() > deadline:
+                raise RuntimeError("release barrier timeout")
+            time.sleep(0.01)
+        return TransportOutcome(DeliveryStatus.DELIVERED, 200, "cd" * 32, None)
+
+
+service = MonitoringDeliveryService(
+    settings=DeliverySettingsV1(
+        destination_id="owner-primary",
+        max_attempts=3,
+        timeout_seconds=5.0,
+        backoff_base_seconds=0,
+        backoff_cap_seconds=3600,
+        receiver_idempotency_declared=False,
+    ),
+    ledger=DeliveryLedgerStore(spec["delivery_root"]),
+    runner_store=RunnerStore(spec["runner_root"]),
+    cycle_store=MonitoringCycleStore(spec["cycle_store_root"]),
+    transport=BlockingTransport(),
+    endpoint_resolver=lambda: "https://example.invalid/hook",
+    auth_resolver=lambda: None,
+    clock=lambda: datetime(2026, 9, 8, tzinfo=UTC),
+    runner_id=spec["runner_id"],
+    network_allowed=True,
+    enabled=True,
+)
+try:
+    outcome = service.deliver(spec["activation_id"])
+    payload = {
+        "classification": outcome.status.value,
+        "http_requests": outcome.http_requests,
+    }
+except Exception as exc:
+    payload = {"error": type(exc).__name__, "message": str(exc)}
+result.write_text(json.dumps(payload), encoding="utf-8")
+"""
+
+
+def test_two_processes_single_flight_only_one_enters_transport(tmp_path):
+    """Real cross-process proof: a second process cannot enter the transport."""
+
+    stack = _terminal_stack(tmp_path)
+    delivery_root = Path(stack.runner_store.root).parent / "delivery"
+    entered = tmp_path / "child-entered"
+    release = tmp_path / "child-release"
+    result = tmp_path / "child-result.json"
+    spec = {
+        "entered": str(entered),
+        "release": str(release),
+        "result": str(result),
+        "delivery_root": str(delivery_root),
+        "runner_root": str(stack.runner_store.root),
+        "cycle_store_root": str(stack.cycles.root),
+        "runner_id": RUNNER_ID,
+        "activation_id": ACTIVATION_ID,
+    }
+    child = subprocess.Popen(
+        [sys.executable, "-c", _SINGLE_FLIGHT_CHILD, json.dumps(spec), str(ROOT / "src")],
+        cwd=ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        deadline = time.monotonic() + 30.0
+        while not entered.exists() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert entered.exists(), "the child process never entered the transport"
+
+        # While the child holds the OS lock inside the transport, this real
+        # second process must fail fast as busy with zero transport calls.
+        losing = FakeTransport([])
+        with pytest.raises(DeliveryLockBusyError):
+            _service(stack, losing, tmp_path=tmp_path).deliver()
+        assert losing.calls == 0
+
+        release.write_text("1", encoding="utf-8")
+        stdout, stderr = child.communicate(timeout=60)
+        assert child.returncode == 0, f"child failed: {stderr}\n{stdout}"
+        payload = json.loads(result.read_text(encoding="utf-8"))
+        assert payload == {"classification": "DELIVERED", "http_requests": 1}
+
+        # After the winner finished, another wake replays with zero requests.
+        replay = _service(stack, FakeTransport([]), tmp_path=tmp_path).deliver()
+        assert replay.status.value == "DELIVERED"
+        assert replay.http_requests == 0
+    finally:
+        if child.poll() is None:
+            release.write_text("1", encoding="utf-8")
+            child.communicate(timeout=60)
+
+
+def test_real_contention_is_classified_busy_not_fail_closed(tmp_path):
+    stack = _terminal_stack(tmp_path)
+    transport = FakeTransport([_delivered()])
+    service = _service(stack, transport, tmp_path=tmp_path)
+    delivery_id = _delivery_id_for(stack)
+    ledger = _ledger_for(stack)
+    with delivery_single_flight(ledger.lock_path(delivery_id), delivery_id):
+        with pytest.raises(DeliveryLockBusyError):
+            _service(stack, FakeTransport([]), tmp_path=tmp_path).deliver()
+    # After the holder released, the same invocation delivers normally.
+    outcome = service.deliver()
+    assert outcome.status.value == "DELIVERED"
+    assert transport.calls == 1
+
+
+def test_non_contention_lock_failure_fails_closed_not_busy(tmp_path, monkeypatch):
+    stack = _terminal_stack(tmp_path)
+    service = _service(stack, FakeTransport([]), tmp_path=tmp_path)
+
+    def enolck(descriptor, operation):
+        raise OSError(errno.ENOLCK, "no record locks available")
+
+    monkeypatch.setattr(fcntl, "flock", enolck)
+    with pytest.raises(DeliveryLockError) as excinfo:
+        service.deliver()
+    assert type(excinfo.value) is DeliveryLockError  # never disguised as busy
+    assert "ENOLCK" in str(excinfo.value) or "no record locks" in str(excinfo.value)
+    monkeypatch.undo()
+
+    real_open = os.open
+
+    def eio_open(path, flags, *args, **kwargs):
+        if str(path).endswith(".lock"):
+            raise OSError(errno.EIO, "I/O error")
+        return real_open(path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(os, "open", eio_open)
+    with pytest.raises(DeliveryLockError) as excinfo:
+        service.deliver()
+    assert type(excinfo.value) is DeliveryLockError
+    assert "cannot open delivery lock" in str(excinfo.value)
+
+
+def test_cli_deliver_busy_exits_three_with_zero_requests(tmp_path, monkeypatch, capsys):
+    import turtle_value_engine.cli as cli_module
+
+    stack = _terminal_stack(tmp_path)
+    monkeypatch.setenv("TVE_MONITORING_WEBHOOK_URL", "https://hook.invalid/x")
+    runner_config = tmp_path / "runner.json"
+    runner_config.write_text(json.dumps(_runner_config_payload(tmp_path)), encoding="utf-8")
+    project_config = _write_project_config(tmp_path, enabled=True)
+    transport = FakeTransport([])
+    monkeypatch.setattr(cli_module, "WebhookHttpTransport", lambda: transport)
+
+    delivery_root = tmp_path / ".tve-private" / "monitoring" / "delivery"
+    lock_path = delivery_root / "locks" / f"{_delivery_id_for(stack)}.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        rc = cli_module.main(
+            [
+                "watch",
+                "deliver",
+                "--runner-config",
+                str(runner_config),
+                "--project-config",
+                str(project_config),
+                "--network",
+                "allow",
+            ]
+        )
+        captured = capsys.readouterr()
+        payload = json.loads(captured.out)
+        assert rc == 3
+        assert payload["classification"] == "DELIVERY_BUSY"
+        assert transport.calls == 0
+    finally:
+        os.close(descriptor)
+
+
+# --- Phase 6-D2B-R1: one monotonic overall deadline -------------------------
+
+
+class _FakeMonotonic:
+    def __init__(self) -> None:
+        self.now = 0.0
+
+    def __call__(self) -> float:
+        return self.now
+
+    def advance(self, seconds: float) -> None:
+        self.now += seconds
+
+
+class _FakeSock:
+    def __init__(self) -> None:
+        self.timeouts: list[float] = []
+
+    def settimeout(self, value: float) -> None:
+        self.timeouts.append(value)
+
+
+class _FakeResponse:
+    status = 200
+
+    def __init__(self, clock: _FakeMonotonic, read_cost: float, chunks: list[bytes]) -> None:
+        self._clock = clock
+        self._read_cost = read_cost
+        self._chunks = list(chunks)
+        self.reads = 0
+
+    def getheader(self, name):
+        return None
+
+    def read(self, amount):
+        self.reads += 1
+        self._clock.advance(self._read_cost)
+        return self._chunks.pop(0) if self._chunks else b""
+
+
+class _FakeConnection:
+    def __init__(
+        self,
+        sock: _FakeSock,
+        clock: _FakeMonotonic,
+        *,
+        connect_cost: float,
+        request_cost: float,
+        read_cost: float,
+        chunks: list[bytes],
+    ) -> None:
+        self.sock = sock
+        self._clock = clock
+        self._connect_cost = connect_cost
+        self._request_cost = request_cost
+        self._read_cost = read_cost
+        self._chunks = chunks
+        self.connected = False
+        self.closed = False
+        self.requests: list[tuple[object, ...]] = []
+
+    def connect(self):
+        self._clock.advance(self._connect_cost)
+        self.connected = True
+
+    def request(self, method, path, body=None, headers=None):
+        self._clock.advance(self._request_cost)
+        self.requests.append((method, path, body, headers))
+
+    def getresponse(self):
+        return _FakeResponse(self._clock, self._read_cost, self._chunks)
+
+    def close(self):
+        self.closed = True
+
+
+def _fake_transport_with_clock(connection: _FakeConnection, clock: _FakeMonotonic):
+    factory_calls: list[dict] = []
+
+    def factory(**kwargs):
+        factory_calls.append(kwargs)
+        return connection
+
+    transport = WebhookHttpTransport(monotonic_clock=clock, connection_factory=factory)
+    return transport, factory_calls
+
+
+def test_overall_deadline_bounds_connect_request_and_reads_from_one_budget():
+    clock = _FakeMonotonic()
+    sock = _FakeSock()
+    connection = _FakeConnection(
+        sock,
+        clock,
+        connect_cost=3.0,
+        request_cost=4.0,
+        read_cost=2.0,
+        chunks=[b"a", b"b", b"c"],
+    )
+    transport, factory_calls = _fake_transport_with_clock(connection, clock)
+    outcome = transport.send(
+        endpoint="https://example.invalid/hook",
+        auth_bearer=None,
+        request=WebhookRequest(b"{}", "k", 10.0, 1024),
+    )
+    # The connect phase received the full budget; the request/header phase
+    # and each repeated response read received only the *remaining* budget.
+    assert factory_calls[0]["timeout"] == 10.0
+    assert sock.timeouts == [7.0, 3.0, 1.0]
+    assert connection.requests and connection.requests[0][0] == "POST"
+    assert outcome.classification.value == "AMBIGUOUS"
+    assert outcome.error_code.value == "TIMEOUT_AFTER_DISPATCH"
+    assert connection.closed is True
+
+
+def test_deadline_expiry_after_connect_before_request_is_proven_unsent():
+    clock = _FakeMonotonic()
+    sock = _FakeSock()
+    connection = _FakeConnection(
+        sock, clock, connect_cost=20.0, request_cost=0.0, read_cost=0.0, chunks=[b"x"]
+    )
+    transport, factory_calls = _fake_transport_with_clock(connection, clock)
+    outcome = transport.send(
+        endpoint="https://example.invalid/hook",
+        auth_bearer=None,
+        request=WebhookRequest(b"{}", "k", 10.0, 1024),
+    )
+    assert outcome.classification.value == "RETRYABLE_FAILURE"
+    assert outcome.error_code.value == "DEADLINE_EXHAUSTED_PRE_DISPATCH"
+    assert factory_calls[0]["timeout"] == 10.0
+    assert connection.requests == []  # no request byte was ever written
+    assert sock.timeouts == []
+
+
+def test_post_dispatch_deadline_expiry_is_ambiguous():
+    clock = _FakeMonotonic()
+    sock = _FakeSock()
+    connection = _FakeConnection(
+        sock, clock, connect_cost=0.0, request_cost=20.0, read_cost=0.0, chunks=[b"x"]
+    )
+    transport, _ = _fake_transport_with_clock(connection, clock)
+    outcome = transport.send(
+        endpoint="https://example.invalid/hook",
+        auth_bearer=None,
+        request=WebhookRequest(b"{}", "k", 10.0, 1024),
+    )
+    assert connection.requests  # request bytes may have been dispatched
+    assert outcome.classification.value == "AMBIGUOUS"
+    assert outcome.error_code.value == "TIMEOUT_AFTER_DISPATCH"
+
+
+def test_body_read_timeout_after_dispatch_is_ambiguous():
+    clock = _FakeMonotonic()
+    sock = _FakeSock()
+    connection = _FakeConnection(
+        sock, clock, connect_cost=0.0, request_cost=0.0, read_cost=0.0, chunks=[b"x"]
+    )
+    transport, _ = _fake_transport_with_clock(connection, clock)
+    response = connection.getresponse()
+    read_attempts = {"count": 0}
+
+    def timing_out_read(amount):
+        read_attempts["count"] += 1
+        raise TimeoutError("socket timeout during body read")
+
+    response.read = timing_out_read  # type: ignore[method-assign]
+    connection.getresponse = lambda: response  # type: ignore[method-assign]
+    outcome = transport.send(
+        endpoint="https://example.invalid/hook",
+        auth_bearer=None,
+        request=WebhookRequest(b"{}", "k", 10.0, 1024),
+    )
+    assert read_attempts["count"] == 1
+    assert outcome.classification.value == "AMBIGUOUS"
+    assert outcome.error_code.value == "TIMEOUT_AFTER_DISPATCH"
+
+
+# --- Phase 6-D2B-R1: truthful read-only pointer status ----------------------
+
+
+def test_status_pointer_is_current_after_delivered_run(tmp_path):
+    stack = _terminal_stack(tmp_path)
+    transport = FakeTransport([_delivered()])
+    outcome = _service(stack, transport, tmp_path=tmp_path).deliver()
+    projection = delivery_status_projection(_ledger_for(stack))
+    entry = projection["deliveries"][0]
+    assert entry["delivery_id"] == outcome.delivery_id
+    assert entry["pointer_status"] == "CURRENT"
+    assert entry["pointer_published"] is True
+    assert entry["unresolved_dispatch_claim"] is None
+
+
+def test_status_pointer_missing_is_reported_and_not_repaired(tmp_path):
+    stack = _terminal_stack(tmp_path)
+    outcome = _service(stack, FakeTransport([_delivered()]), tmp_path=tmp_path).deliver()
+    ledger = _ledger_for(stack)
+    state_path = ledger.state_path(outcome.delivery_id)
+    state_path.unlink()
+    projection = delivery_status_projection(ledger)
+    entry = projection["deliveries"][0]
+    assert entry["pointer_status"] == "MISSING"
+    assert entry["pointer_published"] is False
+    assert entry["state"]["status"] == "DELIVERED"  # derived from artifacts
+    # The read-only status command did not silently repair anything.
+    assert not state_path.exists()
+
+
+def test_status_pointer_stale_after_attempt_is_repairable(tmp_path):
+    stack = _terminal_stack(tmp_path)
+    injector = _PointerFailAfter(fail_on=2)
+    service = _service(
+        stack, FakeTransport([_delivered()]), tmp_path=tmp_path, failure_injector=injector
+    )
+    with pytest.raises(DeliveryLedgerConflictError, match="delivery ledger write failed"):
+        service.deliver()
+    ledger = _ledger_for(stack)
+    projection = delivery_status_projection(ledger)
+    entry = projection["deliveries"][0]
+    assert entry["pointer_status"] == "STALE_REPAIRABLE"
+    assert entry["pointer_published"] is True
+    assert entry["state"]["status"] == "DELIVERED"
+    # Status stayed read-only: the mutating path still repairs it afterwards.
+    assert ledger.load_state(entry["delivery_id"]).status.value == "PENDING"
+    repaired = _service(stack, FakeTransport([]), tmp_path=tmp_path).deliver()
+    assert repaired.status.value == "DELIVERED"
+    assert delivery_status_projection(ledger)["deliveries"][0]["pointer_status"] == "CURRENT"
+
+
+def test_status_pointer_corrupt_noncanonical_foreign_contradictory_fail_closed(tmp_path):
+    stack = _terminal_stack(tmp_path)
+    outcome = _service(stack, FakeTransport([_delivered()]), tmp_path=tmp_path).deliver()
+    ledger = _ledger_for(stack)
+    delivery_id = outcome.delivery_id
+    state_path = ledger.state_path(delivery_id)
+
+    # Corrupt bytes.
+    original = state_path.read_bytes()
+    state_path.write_bytes(b'{"contract": "monitoring_delivery_state_v1"')
+    with pytest.raises(Exception, match="DELIVERY_POINTER_CONFLICT"):
+        delivery_status_projection(ledger)
+
+    # Valid JSON but non-canonical.
+    payload = json.loads(original.decode("utf-8"))
+    state_path.write_text(json.dumps(payload, indent=4), encoding="utf-8")
+    with pytest.raises(Exception, match="DELIVERY_POINTER_CONFLICT"):
+        delivery_status_projection(ledger)
+
+    # Canonical but foreign delivery identity in this slot.
+    foreign = MonitoringDeliveryStateV1.build(
+        delivery_id="ee" * 32,
+        status="PENDING",
+        terminal=False,
+        attempt_count=0,
+        intent_content_sha256="ef" * 32,
+        updated_at=AS_OF,
+    )
+    state_path.write_bytes(foreign.canonical_bytes() + b"\n")
+    with pytest.raises(Exception, match="DELIVERY_POINTER_CONFLICT"):
+        delivery_status_projection(ledger)
+
+    # Contradictory: terminal published pointer outruns its attempt set.
+    state_path.write_bytes(original)
+    ledger.attempt_path(delivery_id, 1).unlink()
+    with pytest.raises(Exception, match="DELIVERY_POINTER_CONFLICT"):
+        delivery_status_projection(ledger)
+
+
+def test_status_reports_unresolved_dispatch_claim_read_only(tmp_path):
+    stack = _terminal_stack(tmp_path)
+    with pytest.raises(RuntimeError):
+        _service(stack, _CrashAfterClaimTransport(), tmp_path=tmp_path).deliver()
+    ledger = _ledger_for(stack)
+    delivery_id = _delivery_id_for(stack)
+    published_before = ledger.load_state(delivery_id)
+    projection = delivery_status_projection(ledger)
+    entry = projection["deliveries"][0]
+    assert entry["state"]["status"] == "AMBIGUOUS"
+    assert entry["state"]["last_error_code"] == "ORPHANED_DISPATCH"
+    assert entry["unresolved_dispatch_claim"] == {
+        "attempt_number": 1,
+        "idempotency_key": delivery_id,
+        "content_sha256": ledger.load_claim(delivery_id, 1).content_sha256,
+    }
+    assert entry["pointer_status"] == "STALE_REPAIRABLE"
+    # Read-only: the on-disk pointer is untouched by the status projection.
+    assert ledger.load_state(delivery_id) == published_before
+
+
+def test_cli_delivery_status_corrupt_pointer_exits_two(tmp_path, capsys):
+    from turtle_value_engine.cli import main
+
+    stack = _terminal_stack(tmp_path)
+    outcome = _service(stack, FakeTransport([_delivered()]), tmp_path=tmp_path).deliver()
+    delivery_root = Path(stack.runner_store.root).parent / "delivery"
+    (delivery_root / "state" / f"{outcome.delivery_id}.json").write_bytes(b"not json")
+    rc = main(
+        ["watch", "delivery-status", "--delivery-root", str(delivery_root)]
+    )
+    captured = capsys.readouterr()
+    assert rc == 2
+    assert "DELIVERY_POINTER_CONFLICT" in captured.err
 
 
 # --- corrupt / foreign / conflicting ledger -------------------------------

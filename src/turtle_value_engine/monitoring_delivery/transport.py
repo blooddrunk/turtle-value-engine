@@ -22,6 +22,13 @@ Semantics (explicitly not exactly-once for arbitrary receivers):
 Response bodies are capped and persisted only as a SHA-256 digest by the
 caller; raw untrusted response content never leaves this transport's read
 buffer.
+
+Phase 6-D2B-R1: the configured ``timeout_seconds`` is one injectable
+monotonic **overall deadline** for the entire exchange.  Connect/TLS
+establishment, request write / response-header wait and every bounded
+response-body read consume the same remaining budget; expiry after dispatch
+may have started is ``AMBIGUOUS`` and expiry proven before any request byte
+is honestly retryable.
 """
 
 from __future__ import annotations
@@ -29,6 +36,8 @@ from __future__ import annotations
 import hashlib
 import http.client
 import socket
+import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Protocol
 from urllib.parse import urlsplit
@@ -37,6 +46,25 @@ from .contracts import DeliveryFailureCode, DeliveryStatus
 
 _USER_AGENT = "turtle-value-engine monitoring-delivery webhook-v1"
 _LOOPBACK_HOSTS = frozenset({"127.0.0.1", "::1", "localhost"})
+
+MonotonicClock = Callable[[], float]
+ConnectionFactory = Callable[..., object]
+
+
+class _DeadlineExpired(Exception):
+    """The overall monotonic deadline is exhausted (never surfaces raw)."""
+
+    def __init__(self, *, dispatch_started: bool) -> None:
+        super().__init__("overall webhook deadline exhausted")
+        self.dispatch_started = dispatch_started
+
+
+class _BodyReadOutcome(Exception):
+    """A terminal transport outcome raised from the bounded body-read loop."""
+
+    def __init__(self, outcome: TransportOutcome) -> None:
+        super().__init__("webhook response body read produced a terminal outcome")
+        self.outcome = outcome
 
 
 class WebhookEndpointError(ValueError):
@@ -53,7 +81,12 @@ class WebhookTransportError(ValueError):
 
 @dataclass(frozen=True, slots=True)
 class WebhookRequest:
-    """In-memory request material; never persisted or logged."""
+    """In-memory request material; never persisted or logged.
+
+    ``timeout_seconds`` is the **overall** monotonic budget for the whole
+    HTTP exchange (connect/TLS, request write, response-header wait and every
+    bounded response-body read), not a per-socket-operation timeout.
+    """
 
     body: bytes
     idempotency_key: str
@@ -141,16 +174,74 @@ def _classify_status(status: int) -> TransportOutcome:
     )
 
 
+def _default_connection_factory(*, scheme: str, host: str, port: int, timeout: float):
+    if scheme == "https":
+        return http.client.HTTPSConnection(host, port, timeout=timeout)
+    return http.client.HTTPConnection(host, port, timeout=timeout)
+
+
 class WebhookHttpTransport:
     """Real generic HTTP webhook transport over ``http.client``.
 
     ``allow_loopback_http`` is the explicit test-only injection path for
     plain-http loopback receivers; the live CLI path always constructs this
     transport without it, so a live endpoint must be HTTPS.
+
+    ``timeout_seconds`` is enforced as one monotonic **overall deadline**.
+    Every potentially blocking phase — connect/TLS establishment, request
+    write / response-header wait and each bounded response-body read — is
+    bounded by the *remaining* budget from an injectable monotonic clock, so
+    a peer that keeps making progress inside individual socket timeouts can
+    no longer stretch the exchange past the configured budget.  Deadline
+    expiry after dispatch may have started is ``AMBIGUOUS``; expiry proven to
+    precede any request byte is honestly retryable.
     """
 
-    def __init__(self, *, allow_loopback_http: bool = False) -> None:
+    def __init__(
+        self,
+        *,
+        allow_loopback_http: bool = False,
+        monotonic_clock: MonotonicClock | None = None,
+        connection_factory: ConnectionFactory | None = None,
+    ) -> None:
         self.allow_loopback_http = allow_loopback_http
+        self._monotonic_clock: MonotonicClock = monotonic_clock or time.monotonic
+        self._connection_factory: ConnectionFactory = (
+            connection_factory or _default_connection_factory
+        )
+
+    def _remaining(self, deadline: float, *, dispatch_started: bool) -> float:
+        remaining = deadline - self._monotonic_clock()
+        if remaining <= 0:
+            raise _DeadlineExpired(dispatch_started=dispatch_started)
+        return remaining
+
+    def _apply_socket_deadline(
+        self, connection, deadline: float, *, dispatch_started: bool
+    ) -> float:
+        """Bind the next blocking socket phase to the remaining budget."""
+
+        remaining = self._remaining(deadline, dispatch_started=dispatch_started)
+        sock = getattr(connection, "sock", None)
+        if sock is not None:
+            sock.settimeout(remaining)
+        return remaining
+
+    @staticmethod
+    def _deadline_outcome(exc: _DeadlineExpired) -> TransportOutcome:
+        if exc.dispatch_started:
+            return TransportOutcome(
+                DeliveryStatus.AMBIGUOUS,
+                None,
+                None,
+                DeliveryFailureCode.TIMEOUT_AFTER_DISPATCH,
+            )
+        return TransportOutcome(
+            DeliveryStatus.RETRYABLE_FAILURE,
+            None,
+            None,
+            DeliveryFailureCode.DEADLINE_EXHAUSTED_PRE_DISPATCH,
+        )
 
     def send(
         self,
@@ -163,15 +254,8 @@ class WebhookHttpTransport:
             endpoint, allow_loopback_http=self.allow_loopback_http
         )
         default_port = 443 if scheme == "https" else 80
-        connection: http.client.HTTPConnection
-        if scheme == "https":
-            connection = http.client.HTTPSConnection(
-                host, port if port is not None else default_port, timeout=request.timeout_seconds
-            )
-        else:
-            connection = http.client.HTTPConnection(
-                host, port if port is not None else default_port, timeout=request.timeout_seconds
-            )
+        deadline = self._monotonic_clock() + request.timeout_seconds
+        connection = None
         headers = {
             "Content-Type": "application/json",
             "Accept": "application/json",
@@ -184,7 +268,16 @@ class WebhookHttpTransport:
             headers["Authorization"] = f"Bearer {auth_bearer}"
         try:
             try:
+                connect_budget = self._remaining(deadline, dispatch_started=False)
+                connection = self._connection_factory(
+                    scheme=scheme,
+                    host=host,
+                    port=port if port is not None else default_port,
+                    timeout=connect_budget,
+                )
                 connection.connect()
+            except _DeadlineExpired as exc:
+                return self._deadline_outcome(exc)
             except (OSError, socket.gaierror):
                 # Proven to precede any request dispatch: honestly retryable.
                 return TransportOutcome(
@@ -194,8 +287,11 @@ class WebhookHttpTransport:
                     DeliveryFailureCode.CONNECT_FAILED_PRE_DISPATCH,
                 )
             try:
+                self._apply_socket_deadline(connection, deadline, dispatch_started=False)
                 connection.request("POST", path, body=request.body, headers=headers)
                 response = connection.getresponse()
+            except _DeadlineExpired as exc:
+                return self._deadline_outcome(exc)
             except TimeoutError:
                 return TransportOutcome(
                     DeliveryStatus.AMBIGUOUS,
@@ -211,7 +307,12 @@ class WebhookHttpTransport:
                     DeliveryFailureCode.CONNECTION_LOST_AFTER_DISPATCH,
                 )
             status = response.status
-            body_digest, bytes_exceeded = self._read_bounded(response, request)
+            try:
+                body_digest, bytes_exceeded = self._read_bounded(
+                    response, request, connection, deadline
+                )
+            except _BodyReadOutcome as exc:
+                return exc.outcome
             outcome = _classify_status(status)
             if bytes_exceeded:
                 return TransportOutcome(
@@ -224,14 +325,18 @@ class WebhookHttpTransport:
                 outcome.classification, status, body_digest, outcome.error_code
             )
         finally:
-            try:
-                connection.close()
-            except OSError:
-                pass
+            if connection is not None:
+                try:
+                    connection.close()
+                except OSError:
+                    pass
 
-    @staticmethod
     def _read_bounded(
-        response: http.client.HTTPResponse, request: WebhookRequest
+        self,
+        response,
+        request: WebhookRequest,
+        connection,
+        deadline: float,
     ) -> tuple[str | None, bool]:
         cap = request.max_response_bytes
         try:
@@ -248,7 +353,31 @@ class WebhookHttpTransport:
         chunks: list[bytes] = []
         total = 0
         while True:
-            chunk = response.read(min(8192, max(1, cap - total)))
+            try:
+                # Every bounded body read shares the same remaining budget;
+                # the request has already been dispatched by construction.
+                self._apply_socket_deadline(connection, deadline, dispatch_started=True)
+                chunk = response.read(min(8192, max(1, cap - total)))
+            except _DeadlineExpired as exc:
+                raise _BodyReadOutcome(self._deadline_outcome(exc)) from exc
+            except TimeoutError as exc:
+                raise _BodyReadOutcome(
+                    TransportOutcome(
+                        DeliveryStatus.AMBIGUOUS,
+                        None,
+                        None,
+                        DeliveryFailureCode.TIMEOUT_AFTER_DISPATCH,
+                    )
+                ) from exc
+            except OSError as exc:
+                raise _BodyReadOutcome(
+                    TransportOutcome(
+                        DeliveryStatus.AMBIGUOUS,
+                        None,
+                        None,
+                        DeliveryFailureCode.CONNECTION_LOST_AFTER_DISPATCH,
+                    )
+                ) from exc
             if not chunk:
                 break
             total += len(chunk)
@@ -260,6 +389,8 @@ class WebhookHttpTransport:
 
 
 __all__ = [
+    "ConnectionFactory",
+    "MonotonicClock",
     "TransportOutcome",
     "WebhookEndpointError",
     "WebhookHttpTransport",

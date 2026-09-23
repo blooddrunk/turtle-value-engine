@@ -18,9 +18,15 @@ from .contracts import (
     MonitoringDeliveryAttemptV1,
     MonitoringDeliveryIntentV1,
     MonitoringDeliveryStateV1,
+    MonitoringDispatchClaimV1,
     MonitoringWebhookAlertV1,
     MonitoringWebhookPayloadV1,
     delivery_identity,
+)
+from .locking import (
+    DeliveryLockBusyError,
+    DeliveryLockError,
+    delivery_single_flight,
 )
 from .service import (
     AuthResolver,
@@ -38,6 +44,8 @@ from .service import (
     build_webhook_payload,
     delivery_status_projection,
     derive_delivery_state,
+    published_state_is_behind,
+    unresolved_dispatch_claim,
 )
 from .store import (
     DeliveryLedgerError,
@@ -46,6 +54,8 @@ from .store import (
     FailureInjector,
 )
 from .transport import (
+    ConnectionFactory,
+    MonotonicClock,
     TransportOutcome,
     WebhookEndpointError,
     WebhookHttpTransport,
@@ -57,6 +67,7 @@ from .transport import (
 __all__ = [
     "ATTEMPT_CLASSIFICATIONS",
     "AuthResolver",
+    "ConnectionFactory",
     "DeliveryClock",
     "DeliveryDisabledError",
     "DeliveryEndpointUnresolvedError",
@@ -64,6 +75,8 @@ __all__ = [
     "DeliveryLedgerConflictError",
     "DeliveryLedgerError",
     "DeliveryLedgerStore",
+    "DeliveryLockBusyError",
+    "DeliveryLockError",
     "DeliveryNetworkDeniedError",
     "DeliveryPayloadError",
     "DeliveryRunOutcome",
@@ -75,10 +88,12 @@ __all__ = [
     "FailureInjector",
     "MAX_WEBHOOK_PAYLOAD_BYTES",
     "MONITORING_DELIVERY_DOMAIN",
+    "MonotonicClock",
     "MonitoringDeliveryAttemptV1",
     "MonitoringDeliveryIntentV1",
     "MonitoringDeliveryService",
     "MonitoringDeliveryStateV1",
+    "MonitoringDispatchClaimV1",
     "MonitoringWebhookAlertV1",
     "MonitoringWebhookPayloadV1",
     "TransportOutcome",
@@ -92,6 +107,9 @@ __all__ = [
     "backoff_seconds",
     "build_webhook_payload",
     "delivery_identity",
+    "delivery_single_flight",
     "delivery_status_projection",
     "derive_delivery_state",
+    "published_state_is_behind",
+    "unresolved_dispatch_claim",
 ]

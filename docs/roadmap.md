@@ -6241,3 +6241,42 @@ crash-repair, corruption and secret-canary matrix. No owner webhook or
 manual acceptance was required; real owner deployment remains Phase 6-E and
 Dashboard monitoring views remain 6-D3. Exact closing SHA/Actions evidence
 is recorded in `docs/status/phase-6-d2b-2026-09-22.md`.
+
+## Phase 6-D2B-R1 implementation closure — 2026-09-23
+
+Phase 6-D2B-R1 (dispatch durability, single-flight and timeout truthfulness
+hardening) is implemented from baseline `3545794aa1a192374e5ce90c8fd806bc7b851923`
+(clean fast-forward-only `main`, baseline Actions run 35695543233 `success`)
+without touching D1, D2A/R1, Phase 6-A/6-B/6-C, `strict-v1`, valuation, hard
+gates, monitoring cursors or re-analysis semantics. The D2B ledger now
+persists an additive immutable, canonical, hash-validated
+`MonitoringDispatchClaimV1` **before** any request byte may be written
+(deterministic content, so a resumed attempt re-saves byte-identically); an
+orphaned claim — a claim without its terminal attempt — restarts as terminal
+`AMBIGUOUS`/`ORPHANED_DISPATCH` with zero automatic resend under the default
+`receiver_idempotency_declared=false`, and only the explicit
+receiver-idempotency policy permits a bounded retry of the same deterministic
+delivery key with monotonic attempt numbering. Each `delivery_id` is guarded
+by a non-blocking per-delivery `flock` single-flight lock held across intent
+persistence, state validation/repair, dispatch claim, transport, attempt
+persistence and latest-state publication: only real lock contention maps to
+the additive CLI `DELIVERY_BUSY` exit 3 with zero outbound requests, while
+every other open/flock/filesystem error fails closed and never poses as
+busy. The webhook `timeout_seconds` is now one injectable monotonic
+**overall deadline** whose remaining budget bounds connect/TLS, request
+write / response-header wait and every bounded body read; expiry proven
+pre-dispatch is honestly retryable (`DEADLINE_EXHAUSTED_PRE_DISPATCH`) and
+expiry after possible dispatch — including mid-body-read — is `AMBIGUOUS`.
+`tve watch delivery-status` truthfully validates the published latest-state
+pointer (`CURRENT` / `MISSING` / `STALE_REPAIRABLE`, read-only) and fails
+closed with `DELIVERY_POINTER_CONFLICT` on corrupt, non-canonical, foreign
+or contradictory pointers. Nineteen new deterministic tests (62 delivery
+cases total, full suite 6655 passed / 2 skipped) cover both crash windows,
+the idempotent-retry opt-in, a real two-process barrier proof that only one
+process can enter the transport, non-contention lock failures, the shared
+deadline budget across all phases and every pointer-status classification;
+no public Internet, real sleep race or owner input is used. Implementation
+record and exact closing SHA/Actions evidence:
+`docs/status/phase-6-d2b-r1-2026-09-23.md`. Phase 6-D3 read-only Dashboard
+monitoring projection is restored as the next candidate package after R1's
+exact closing-SHA Actions success.
