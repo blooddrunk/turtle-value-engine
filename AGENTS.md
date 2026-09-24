@@ -440,9 +440,7 @@ controls; verification is fully automatic (26 new projection/API cases, 54
 Dashboard/Worker tests, extended R2-orphan cross-stack smoke, automated
 1440x900/390x844 browser layout verification). D3 is closed at implementation
 `eb5f199437cba1d9747f87da7a6591943cbbacab` (Actions run 35860274042,
-`success`, exact head-SHA match). Phase 6-E owner live
-unattended acceptance and the optional Bridge adapter are
-not started. Exact gate, deployment
+`success`, exact head-SHA match). A 2026-09-24 post-closure audit found that the D3 call to `RunnerLease.probe()` can transiently acquire the same exclusive flock used by the real runner and can therefore induce a false `LEASE_BUSY` outcome. **Phase 6-D3-R1 — Non-interfering Lease Observation Hardening** is selected before Phase 6-E; see `docs/status/phase-6-d3-post-closure-review-2026-09-24.md` and `docs/goals/phase-6-d3-r1-noninterfering-lease-observation.md`. Phase 6-E owner live unattended acceptance and the optional Bridge adapter remain not started. Exact gate, deployment
 and remaining-input evidence is recorded in
 `docs/status/phase-5r-a-2026-09-20.md` and
 `docs/status/phase-6-a-2026-09-21.md`. Project-wide non-secret runtime
