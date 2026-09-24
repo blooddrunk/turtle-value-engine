@@ -1,10 +1,15 @@
 # Phase 6-D3-R1 — Non-interfering Lease Observation Hardening
 
-Status: **SELECTED / NOT IMPLEMENTED**
+Status: **CLOSED**
 Date: 2026-09-24
+Selected after: Phase 6-D3 post-closure review
+Closed by: `40a75d89c2863b74a3e44ecfbad4fe432959fc5b` (Actions run 35948785496, success)
 
 Selection audit:
 `docs/status/phase-6-d3-post-closure-review-2026-09-24.md`
+
+Closure record:
+`docs/status/phase-6-d3-r1-2026-09-24.md`
 
 Predecessor:
 `docs/goals/phase-6-d3-read-only-monitoring-dashboard.md`

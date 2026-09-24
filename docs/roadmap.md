@@ -6336,3 +6336,38 @@ sentinel scans) and automated browser layout verification at 1440x900 and
 controls). Implementation record and exact closing evidence:
 `docs/status/phase-6-d3-2026-09-23.md`. Phase 6-E owner live unattended
 acceptance remains the next candidate package.
+
+## Phase 6-D3-R1 implementation closure — 2026-09-24
+
+Phase 6-D3-R1 — Non-interfering Lease Observation Hardening — is closed at
+`40a75d89c2863b74a3e44ecfbad4fe432959fc5b` (Actions run `35948785496`,
+`success`, exact `head_sha` match). The read-only lease observation behind the
+D3 projection/API/Dashboard and `tve watch unattended-status` no longer
+acquires any OS lock: `RunnerLease.probe()` opens the slot read-only, never
+flocks it, and proves liveness passively from the kernel `/proc/locks` table
+(granted `FLOCK` entries bound to the lease file's device/inode, blocked
+requests and foreign lock domains excluded, untrustworthy tables classified
+as capability-unavailable). A D3/status read can therefore never make an
+otherwise uncontended `MonitoringRunnerService.run()` return `LEASE_BUSY`.
+Where passive proof is impossible the probe returns the explicit additive
+conservative `UNKNOWN` lease state instead of fabricating
+`LIVE`/`FREE`/`ABANDONED`; `ABANDONED`/`corrupt` remain proven statements
+(lock-free table plus byte-stable reads). The authoritative D2A-R1
+`held()` path, true-holder fail-fast `LEASE_BUSY`, fail-closed error
+classification and slot/record semantics are unchanged; the monitoring
+projection schema, Surface OpenAPI and generated Dashboard API types were
+regenerated for the additive `UNKNOWN` value with the Dashboard rendering it
+as intentional caution copy (never live, never free, no corruption claim).
+Deterministic proofs (all verified to fail on the pre-R1 probe): a
+flock-forbidding observer under every slot state, a two-process
+observer-paused-mid-probe vs real-runner barrier (runner enters D1 exactly
+once, reaches terminal, observer takes zero locks and converges on the
+post-run record), a real-holder two-process case (competing runner still
+`LEASE_BUSY` with zero work while the observer stays passive and
+kernel-proves `LIVE`), a ten-iteration tightly coordinated observer+runner
+matrix with exactly zero observer-induced busy outcomes, plus lock-table
+parser truthfulness units. Full suite 6695 passed / 2 skipped, monitoring
+glob 344 passed, Dashboard 55 tests, cross-stack smoke and the whole local
+gate green; no manual owner action was used. Implementation and CI-closure
+record: `docs/status/phase-6-d3-r1-2026-09-24.md`. Phase 6-E owner live
+unattended acceptance remains the next candidate package.

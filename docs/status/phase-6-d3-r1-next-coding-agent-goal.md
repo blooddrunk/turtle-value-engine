@@ -1,6 +1,8 @@
 # Phase 6-D3-R1 coding-agent handoff — non-interfering lease observation
 
-Status: **SELECTED / NOT IMPLEMENTED**
+Status: **CLOSED** — implemented at `40a75d89c2863b74a3e44ecfbad4fe432959fc5b`
+(Actions run 35948785496, `success`, exact `head_sha` match); closure record
+`docs/status/phase-6-d3-r1-2026-09-24.md`.
 
 Canonical goal:
 `docs/goals/phase-6-d3-r1-noninterfering-lease-observation.md`

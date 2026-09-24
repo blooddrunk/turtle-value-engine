@@ -650,10 +650,19 @@ and exact-closing-SHA CI are automated. Browser/layout verification is also
 automated when a browser is available; only a precisely bounded layout-only
 manual fallback is permitted otherwise. Real owner VPS cadence, credentials,
 live acquisition and live notification delivery remain Phase 6-E. A 2026-09-24
-post-closure concurrency audit selected Phase 6-D3-R1 first: D3's current
-`RunnerLease.probe()` may transiently take the authoritative exclusive flock
-and induce `LEASE_BUSY` in an otherwise uncontended runner start. R1 must make
-lease observation structurally non-interfering before live acceptance.
+post-closure concurrency audit found that D3's `RunnerLease.probe()` could
+transiently take the authoritative exclusive flock and induce `LEASE_BUSY` in
+an otherwise uncontended runner start; **Phase 6-D3-R1** closed that defect at
+`40a75d8`: lease observation is now structurally non-interfering — the probe
+never flocks, it proves liveness passively from the kernel `/proc/locks`
+table (granted `FLOCK` entries bound to the lease file's device/inode), it
+re-observes on byte-evidence of an in-flight writer, and it returns the
+explicit additive conservative `UNKNOWN` state wherever passive proof is
+impossible instead of fabricating `LIVE`/`FREE`/`ABANDONED`. `held()` and
+every D2A-R1 single-flight/fail-closed semantic is unchanged, and the
+projection contract/schema/OpenAPI/Dashboard types gained only the `UNKNOWN`
+lease state (implementation and CI-closure record
+`docs/status/phase-6-d3-r1-2026-09-24.md`).
 
 D3 is implemented at that boundary (implementation record
 `docs/status/phase-6-d3-2026-09-23.md`): the framework-neutral
