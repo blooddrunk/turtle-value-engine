@@ -58,10 +58,15 @@ from turtle_value_engine.monitoring_runner import (
     RunnerStateConflictError,
     RunnerStore,
 )
+from turtle_value_engine.monitoring_runner import lease as lease_module
 from turtle_value_engine.monitoring_runner.contracts import (
     RunnerActivePointerV1,
     RunnerLeaseV1,
     RunnerReceiptV1,
+)
+from turtle_value_engine.monitoring_runner.lease import (
+    _LockScan,
+    _scan_flock_holder,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -445,12 +450,17 @@ def test_non_contention_flock_error_is_fail_closed_not_busy(tmp_path, monkeypatc
     assert acquisition.calls == 0
     assert not (Path(config.runner_root) / "activations").exists()
 
-    # The read-only status path obeys the same truthfulness rule: an OS lock
-    # failure is a fail-closed error, not evidence of a LIVE holder.
+    # Phase 6-D3-R1 truth: the observation path acquires no OS lock at all,
+    # so an injected flock failure can neither break observation nor be
+    # mistaken for liveness evidence.  The empty existing slot left by the
+    # failed run path must classify truthfully as a proven lock-free slot.
     lease = RunnerLease(config.runner_root, RUNNER_ID)
-    with pytest.raises(RunnerLeaseError) as probeinfo:
-        lease.probe()
-    assert not isinstance(probeinfo.value, RunnerLeaseBusyError)
+    probe = lease.probe()
+    assert probe == {
+        "state": LeaseState.ABANDONED.value,
+        "record": None,
+        "corrupt": False,
+    }
 
 
 def test_probe_open_failure_is_fail_closed_not_free(tmp_path, monkeypatch):
@@ -605,6 +615,280 @@ def test_service_completes_when_os_write_is_fragmented(tmp_path, monkeypatch):
     assert persisted["activation_id"] == outcome.activation.activation_id
     with lease.held() as revalidated:
         assert revalidated.prior_record == RunnerLeaseV1.model_validate(persisted)
+
+
+# --- Phase 6-D3-R1: non-interfering passive lease observation ---------------
+
+
+def _canonical_lease_bytes(record: RunnerLeaseV1) -> bytes:
+    return record.canonical_bytes() + b"\n"
+
+
+def _seed_slot(lease: RunnerLease, payload: bytes | None) -> None:
+    lease.path.parent.mkdir(parents=True, exist_ok=True)
+    if payload is None:
+        lease.path.touch()
+    else:
+        lease.path.write_bytes(payload)
+
+
+def test_probe_acquires_no_os_lock_for_any_slot_state(tmp_path, monkeypatch):
+    """The observation path never flocks, so it can never contend with work."""
+
+    def forbidden(descriptor, operation):
+        raise AssertionError("the lease observation path must not take OS locks")
+
+    monkeypatch.setattr(fcntl, "flock", forbidden)
+    lease = RunnerLease(tmp_path / "runner", RUNNER_ID)
+
+    # Missing slot: FREE without even opening a descriptor.
+    assert lease.probe() == {
+        "state": LeaseState.FREE.value,
+        "record": None,
+        "corrupt": False,
+    }
+
+    canonical = _canonical_lease_bytes(
+        RunnerLeaseV1.build(
+            runner_id=RUNNER_ID,
+            holder_token=uuid.uuid4().hex,
+            activation_id=None,
+            acquired_at=AS_OF,
+            lease_ttl_seconds=900,
+        )
+    )
+    for payload in (b"", canonical, _torn_lease_bytes()):
+        _seed_slot(lease, payload)
+        probe = lease.probe()
+        assert probe["state"] in (
+            LeaseState.ABANDONED.value,
+            LeaseState.UNKNOWN.value,
+        )
+
+
+def test_probe_classifies_real_kernel_holder_live_without_taking_locks(
+    tmp_path, monkeypatch
+):
+    """A genuinely held kernel lock still proves LIVE, passively."""
+
+    lease = RunnerLease(tmp_path / "runner", RUNNER_ID)
+    calls = []
+    real_flock = fcntl.flock
+
+    def counting_flock(descriptor, operation):
+        calls.append(operation)
+        return real_flock(descriptor, operation)
+
+    monkeypatch.setattr(fcntl, "flock", counting_flock)
+    with lease.held() as handle:
+        handle.record(None)
+        probe = lease.probe()
+        # ``held()`` took the lock once; the probe added zero attempts.
+        assert calls == [fcntl.LOCK_EX | fcntl.LOCK_NB]
+
+    assert probe["state"] == LeaseState.LIVE.value
+    assert probe["record"] is not None
+    assert probe["record"]["runner_id"] == RUNNER_ID
+    assert probe["corrupt"] is False
+
+
+def test_probe_reports_unknown_when_passive_capability_is_unavailable(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(
+        lease_module, "_scan_flock_holder", lambda *a, **k: _LockScan.CAPABILITY_UNAVAILABLE
+    )
+    lease = RunnerLease(tmp_path / "runner", RUNNER_ID)
+
+    canonical = _canonical_lease_bytes(
+        RunnerLeaseV1.build(
+            runner_id=RUNNER_ID,
+            holder_token=uuid.uuid4().hex,
+            activation_id=None,
+            acquired_at=AS_OF,
+            lease_ttl_seconds=900,
+        )
+    )
+    _seed_slot(lease, canonical)
+    unknown = lease.probe()
+    assert unknown["state"] == LeaseState.UNKNOWN.value
+    assert unknown["record"]["runner_id"] == RUNNER_ID
+    assert unknown["corrupt"] is False
+
+    # Torn bytes under an unavailable capability claim nothing: no fabricated
+    # corruption verdict, no fabricated liveness.
+    _seed_slot(lease, _torn_lease_bytes())
+    unknown_torn = lease.probe()
+    assert unknown_torn == {
+        "state": LeaseState.UNKNOWN.value,
+        "record": None,
+        "corrupt": False,
+    }
+
+
+def test_probe_abandoned_requires_proven_lock_free_slot_and_stable_bytes(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(
+        lease_module, "_scan_flock_holder", lambda *a, **k: _LockScan.NO_HOLDER
+    )
+    lease = RunnerLease(tmp_path / "runner", RUNNER_ID)
+
+    _seed_slot(lease, b"")
+    assert lease.probe() == {
+        "state": LeaseState.ABANDONED.value,
+        "record": None,
+        "corrupt": False,
+    }
+
+    record = RunnerLeaseV1.build(
+        runner_id=RUNNER_ID,
+        holder_token=uuid.uuid4().hex,
+        activation_id=None,
+        acquired_at=AS_OF,
+        lease_ttl_seconds=900,
+    )
+    _seed_slot(lease, _canonical_lease_bytes(record))
+    probe = lease.probe()
+    assert probe["state"] == LeaseState.ABANDONED.value
+    assert probe["record"] is not None
+    assert probe["corrupt"] is False
+
+    _seed_slot(lease, _torn_lease_bytes())
+    assert lease.probe() == {
+        "state": LeaseState.ABANDONED.value,
+        "record": None,
+        "corrupt": True,
+    }
+
+
+def test_probe_reports_live_only_when_holder_is_passively_visible(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(
+        lease_module, "_scan_flock_holder", lambda *a, **k: _LockScan.HOLDER_VISIBLE
+    )
+    lease = RunnerLease(tmp_path / "runner", RUNNER_ID)
+
+    # Even a torn record cannot hide a kernel-proven live holder, and the
+    # torn snapshot never becomes a corruption verdict.
+    _seed_slot(lease, _torn_lease_bytes())
+    assert lease.probe() == {
+        "state": LeaseState.LIVE.value,
+        "record": None,
+        "corrupt": False,
+    }
+
+
+def test_probe_reobserves_when_bytes_change_under_the_observer(tmp_path, monkeypatch):
+    """A writer active inside the observation window is re-observed, never
+    misclassified from a torn snapshot."""
+
+    monkeypatch.setattr(
+        lease_module, "_scan_flock_holder", lambda *a, **k: _LockScan.NO_HOLDER
+    )
+    lease = RunnerLease(tmp_path / "runner", RUNNER_ID)
+    record = RunnerLeaseV1.build(
+        runner_id=RUNNER_ID,
+        holder_token=uuid.uuid4().hex,
+        activation_id=None,
+        acquired_at=AS_OF,
+        lease_ttl_seconds=900,
+    )
+    stable = _canonical_lease_bytes(record)
+    _seed_slot(lease, b"")
+
+    reads = [b"", stable, stable, stable, stable, stable]
+
+    def scripted_read(descriptor):
+        return reads.pop(0) if reads else stable
+
+    monkeypatch.setattr(lease_module, "_read_raw_bytes", scripted_read)
+    probe = lease.probe()
+    assert probe["state"] == LeaseState.ABANDONED.value
+    assert probe["record"] is not None
+    assert probe["record"]["runner_id"] == RUNNER_ID
+
+    # Permanently changing bytes exhaust the bounded re-observation and
+    # degrade to the conservative UNKNOWN instead of guessing.
+    def churning_read(descriptor):
+        return f'{{"seq": "{uuid.uuid4().hex}"}}'.encode()
+
+    monkeypatch.setattr(lease_module, "_read_raw_bytes", churning_read)
+    churned = lease.probe()
+    assert churned == {
+        "state": LeaseState.UNKNOWN.value,
+        "record": None,
+        "corrupt": False,
+    }
+
+
+def test_flock_scanner_parses_kernel_lock_table_truthfully(tmp_path):
+    device, inode = 0x1F, 199
+    needle = f"{os.major(device):02x}:{os.minor(device):02x}:{inode}"
+    base_line = f"1: FLOCK  ADVISORY  WRITE 4242 {needle} 0 EOF\n"
+
+    def table(content: str) -> Path:
+        path = tmp_path / f"locks-{abs(hash(content))}.txt"
+        path.write_text(content, encoding="utf-8")
+        return path
+
+    assert (
+        _scan_flock_holder(device, inode, table_path=str(table(base_line)))
+        is _LockScan.HOLDER_VISIBLE
+    )
+    # A different inode, POSIX locks and blocked requests prove nothing.
+    assert (
+        _scan_flock_holder(device, inode + 1, table_path=str(table(base_line)))
+        is _LockScan.NO_HOLDER
+    )
+    assert (
+        _scan_flock_holder(
+            device,
+            inode,
+            table_path=str(
+                table(
+                    f"1: POSIX  ADVISORY  READ 7 {needle} 128 128\n"
+                    f"2: -> FLOCK  ADVISORY  WRITE 8 {needle} 0 EOF\n"
+                )
+            ),
+        )
+        is _LockScan.NO_HOLDER
+    )
+    assert (
+        _scan_flock_holder(device, inode, table_path=str(table("")))
+        is _LockScan.NO_HOLDER
+    )
+    # Missing file, unparseable content and truncation are unavailable, never
+    # a fabricated NO_HOLDER.
+    assert (
+        _scan_flock_holder(device, inode, table_path=str(tmp_path / "missing-locks.txt"))
+        is _LockScan.CAPABILITY_UNAVAILABLE
+    )
+    assert (
+        _scan_flock_holder(device, inode, table_path=str(table("garbage line\n")))
+        is _LockScan.CAPABILITY_UNAVAILABLE
+    )
+    huge = table("x" * (lease_module._LOCK_TABLE_READ_LIMIT + 2))
+    assert (
+        _scan_flock_holder(device, inode, table_path=str(huge))
+        is _LockScan.CAPABILITY_UNAVAILABLE
+    )
+    if sys.platform == "linux":  # pragma: no branch - CI/dev hosts are Linux
+        # The real kernel table is readable, parses, and sees a genuine lock
+        # taken on a private file of this very process.
+        fresh = tmp_path / "fresh-slot"
+        fresh.write_bytes(b"")
+        descriptor = os.open(fresh, os.O_RDONLY)
+        try:
+            stat = os.fstat(descriptor)
+            assert _scan_flock_holder(stat.st_dev, stat.st_ino) is _LockScan.NO_HOLDER
+            fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            assert (
+                _scan_flock_holder(stat.st_dev, stat.st_ino) is _LockScan.HOLDER_VISIBLE
+            )
+        finally:
+            os.close(descriptor)
 
 
 def test_crash_after_intent_before_d1_terminal_resumes_same_activation_and_pit(tmp_path):

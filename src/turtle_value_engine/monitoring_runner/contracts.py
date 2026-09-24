@@ -47,11 +47,20 @@ class RunnerCompletion(StrEnum):
 
 
 class LeaseState(StrEnum):
-    """Liveness classification of one runner lease slot."""
+    """Liveness classification of one runner lease slot.
+
+    ``LIVE``/``ABANDONED``/``FREE`` are proven statements about the slot; the
+    exclusive ``flock`` taken by ``RunnerLease.held()`` remains the only
+    authority that may *change* slot ownership.  ``UNKNOWN`` (Phase 6-D3-R1)
+    is the explicit conservative classification returned by the read-only
+    observation path when passive liveness evidence cannot be established
+    without competing for the authoritative work lock.
+    """
 
     LIVE = "LIVE"
     ABANDONED = "ABANDONED"
     FREE = "FREE"
+    UNKNOWN = "UNKNOWN"
 
 
 class _RunnerContract(BaseModel):

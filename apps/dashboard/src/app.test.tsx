@@ -15,6 +15,7 @@ import {
   testMonitoringDeliveryId,
   testMonitoringEmptyProjection,
   testMonitoringOrphanProjection,
+  testMonitoringUnknownLeaseProjection,
   testMonitoringProjection,
   testSnapshot,
   testSurfaceId,
@@ -350,6 +351,23 @@ describe("monitoring operations", () => {
     expect(screen.getByText("MONITORING_OPERATIONS_CONFLICT").closest("details")).not.toBeNull();
     expect(screen.queryByText("尚无激活记录")).not.toBeInTheDocument();
     expect(screen.queryByText("未配置投递账本")).not.toBeInTheDocument();
+  });
+
+  it("renders the conservative UNKNOWN lease state as intentional copy, never as live or free", async () => {
+    mockMonitoringAPI(testMonitoringUnknownLeaseProjection);
+    renderDashboard("/monitoring");
+
+    const leaseRow = (await screen.findByText("租约状态")).closest(".field-row");
+    expect(leaseRow).toHaveTextContent("未知");
+    expect(leaseRow).toHaveTextContent("UNKNOWN");
+    expect(leaseRow).not.toHaveTextContent("租约空闲");
+    expect(leaseRow).not.toHaveTextContent("租约有效");
+    expect(leaseRow?.querySelector(".status-badge")).toHaveAttribute(
+      "title",
+      expect.stringContaining("状态未知"),
+    );
+    // The conservative state makes no corruption claim.
+    expect(screen.queryByText("租约记录损坏")).not.toBeInTheDocument();
   });
 
   it("keeps persisted-outcome count and consumed-slot count as distinct labels and values", async () => {

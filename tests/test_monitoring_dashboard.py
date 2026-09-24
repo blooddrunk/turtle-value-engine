@@ -9,9 +9,12 @@ invoked by the projection itself anywhere in this module.
 
 from __future__ import annotations
 
+import fcntl
 import json
 import subprocess
 import sys
+import threading
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -39,8 +42,12 @@ from tests.test_monitoring_runner import (
     CrashingD1,
     FakeAcquisition,
     RealD1,
+    RunnerCompletion,
+    RunnerLease,
+    RunnerLeaseBusyError,
     _batch,
     _config,
+    _config_payload,
     _watchlist,
     _write_watchlist,
 )
@@ -48,7 +55,7 @@ from tests.test_monitoring_runner import (
     _service as _runner_service,
 )
 from tests.test_surface_api import _snapshot
-from turtle_value_engine.monitoring import MonitoringEventBatchV1
+from turtle_value_engine.monitoring import MonitoringEventBatchV1, WatchlistSpecV1
 from turtle_value_engine.monitoring_cycle import (
     MonitoringCycleStore,
     MonitoringExecutionBindingV1,
@@ -68,6 +75,7 @@ from turtle_value_engine.monitoring_operations import (
     sources_from_runner_config,
 )
 from turtle_value_engine.monitoring_runner import RunnerStore
+from turtle_value_engine.monitoring_runner import lease as lease_module
 from turtle_value_engine.surface import SurfaceRegistry, create_surface_app
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -694,3 +702,324 @@ def test_openapi_export_is_deterministic_and_drift_checked():
         check=False,
     )
     assert result.returncode == 0, result.stderr
+
+
+# --- 9.6 Phase 6-D3-R1: non-interfering observation under real concurrency ---
+
+_BARRIER_DEADLINE_SECONDS = 60.0
+
+
+def _wait_for_marker(path: Path, *, what: str) -> None:
+    deadline = time.monotonic() + _BARRIER_DEADLINE_SECONDS
+    while not path.exists():
+        if time.monotonic() > deadline:
+            raise AssertionError(f"the {what} never signalled {path}")
+        time.sleep(0.01)
+
+
+_D3_OBSERVER_CHILD = r"""
+import fcntl
+import json
+import sys
+import time
+from pathlib import Path
+
+sys.path.insert(0, sys.argv[2])
+
+from turtle_value_engine.monitoring_operations import (
+    build_monitoring_operations_projection,
+    sources_from_runner_config,
+)
+from turtle_value_engine.monitoring_runner import RunnerConfigV1
+from turtle_value_engine.monitoring_runner import lease as lease_module
+
+spec = json.loads(sys.argv[1])
+entered = Path(spec["entered"])
+release = Path(spec["release"])
+result = Path(spec["result"])
+
+
+def forbidden_flock(descriptor, operation):
+    raise AssertionError("D3 observation attempted to take an OS lock")
+
+
+fcntl.flock = forbidden_flock
+
+real_scan = lease_module._scan_flock_holder
+
+
+def pausing_scan(*args, **kwargs):
+    outcome = real_scan(*args, **kwargs)
+    entered.write_text("1", encoding="utf-8")
+    deadline = time.monotonic() + 60.0
+    while not release.exists():
+        if time.monotonic() > deadline:
+            raise RuntimeError("observation release barrier timeout")
+        time.sleep(0.01)
+    return outcome
+
+
+lease_module._scan_flock_holder = pausing_scan
+
+config = RunnerConfigV1.model_validate(
+    json.loads(Path(spec["config"]).read_text(encoding="utf-8"))
+)
+sources = sources_from_runner_config(
+    config, delivery_root=spec.get("delivery_root")
+)
+try:
+    projection = build_monitoring_operations_projection(sources)
+    payload = {
+        "error": None,
+        "lease_state": projection.runner.lease_state,
+        "lease_corrupt": projection.runner.lease_corrupt,
+        "lease_record_activation_id": (
+            None
+            if projection.runner.lease_record is None
+            else projection.runner.lease_record.activation_id
+        ),
+    }
+except BaseException as exc:  # noqa: BLE001 - the failure IS the observation result
+    payload = {"error": f"{type(exc).__name__}: {exc}"}
+result.write_text(json.dumps(payload), encoding="utf-8")
+"""
+
+_REAL_HOLDER_CHILD = r"""
+import json
+import sys
+import time
+from pathlib import Path
+
+sys.path.insert(0, sys.argv[2])
+
+from turtle_value_engine.monitoring_runner import RunnerLease
+
+spec = json.loads(sys.argv[1])
+entered = Path(spec["entered"])
+release = Path(spec["release"])
+
+lease = RunnerLease(spec["runner_root"], spec["runner_id"])
+with lease.held() as handle:
+    handle.record(None)
+    entered.write_text("1", encoding="utf-8")
+    deadline = time.monotonic() + 60.0
+    while not release.exists():
+        if time.monotonic() > deadline:
+            raise RuntimeError("holder release barrier timeout")
+        time.sleep(0.01)
+"""
+
+
+def _spawn_child(script: str, spec: dict) -> subprocess.Popen:
+    return subprocess.Popen(
+        [sys.executable, "-c", script, json.dumps(spec), str(ROOT / "src")],
+        cwd=ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+
+
+def test_d3_observation_paused_mid_probe_cannot_busy_real_runner(tmp_path):
+    """Case 1: no real holder, the D3 read is held inside its critical
+    observation section, and the real runner must still enter D1 exactly
+    once and reach its terminal result (6-D3-R1)."""
+
+    _write_watchlist(tmp_path / "watchlist.json", _watchlist())
+    config = _config(tmp_path)
+    # The lease slot exists with no live holder, so the observation enters
+    # its real critical section instead of exiting early as FREE.
+    lease = RunnerLease(config.runner_root, RUNNER_ID)
+    lease.path.parent.mkdir(parents=True, exist_ok=True)
+    lease.path.touch()
+
+    config_path = tmp_path / "runner-config.json"
+    config_path.write_text(
+        json.dumps(_config_payload(tmp_path), ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    entered = tmp_path / "observer-entered"
+    release = tmp_path / "observer-release"
+    result = tmp_path / "observer-result.json"
+    observer = _spawn_child(
+        _D3_OBSERVER_CHILD,
+        {
+            "entered": str(entered),
+            "release": str(release),
+            "result": str(result),
+            "config": str(config_path),
+            "delivery_root": str(tmp_path / "delivery"),
+        },
+    )
+    try:
+        _wait_for_marker(entered, what="D3 observer")
+
+        # While the observation is provably inside its critical section, the
+        # real unattended runner must run to its terminal result.
+        acquisition = FakeAcquisition(MonitoringEventBatchV1.build([]))
+        d1 = RealD1(tmp_path, acquisition)
+        outcome = _runner_service(config, d1).run()
+
+        assert outcome.classification is RunnerCompletion.COMPLETED_NEW
+        assert d1.calls == 1
+        assert acquisition.calls == 1
+
+        release.write_text("1", encoding="utf-8")
+        stdout, stderr = observer.communicate(timeout=_BARRIER_DEADLINE_SECONDS)
+        assert observer.returncode == 0, f"observer failed: {stderr}\n{stdout}"
+        payload = json.loads(result.read_text(encoding="utf-8"))
+
+        # The observer finished cleanly, took zero OS locks (any attempt
+        # raised inside the child), and converged on the post-run record.
+        assert payload["error"] is None, payload["error"]
+        assert payload["lease_state"] == "ABANDONED"
+        assert payload["lease_corrupt"] is False
+        assert payload["lease_record_activation_id"] == outcome.activation.activation_id
+    finally:
+        if observer.poll() is None:
+            observer.kill()
+            observer.communicate()
+
+
+def test_real_holder_remains_authoritative_while_d3_observes(tmp_path, monkeypatch):
+    """Case 2: a genuine live holder still wins; the D3 read takes no
+    conflicting authority and reports only kernel-proven truth."""
+
+    _write_watchlist(tmp_path / "watchlist.json", _watchlist())
+    config = _config(tmp_path)
+    chain = SimpleNamespace(config=config)
+
+    entered = tmp_path / "holder-entered"
+    release = tmp_path / "holder-release"
+    holder = _spawn_child(
+        _REAL_HOLDER_CHILD,
+        {
+            "entered": str(entered),
+            "release": str(release),
+            "runner_root": config.runner_root,
+            "runner_id": RUNNER_ID,
+        },
+    )
+    try:
+        _wait_for_marker(entered, what="real lease holder")
+
+        # The D3 observation runs while the holder owns the kernel lock.  It
+        # must take no OS lock itself (any flock attempt raises here) and
+        # must prove LIVE from the passive kernel lock table.
+        def forbidden_flock(descriptor, operation):
+            raise AssertionError("D3 observation attempted to take an OS lock")
+
+        monkeypatch.setattr(fcntl, "flock", forbidden_flock)
+        projection = build_monitoring_operations_projection(
+            sources_from_runner_config(chain.config, delivery_root=None)
+        )
+        monkeypatch.undo()
+        assert projection.runner.lease_state == "LIVE"
+        assert projection.runner.lease_record is not None
+        assert projection.runner.lease_record.runner_id == RUNNER_ID
+
+        # A competing real runner still fails fast with zero work.
+        acquisition = FakeAcquisition(MonitoringEventBatchV1.build([]))
+        d1 = RealD1(tmp_path, acquisition)
+        with pytest.raises(RunnerLeaseBusyError):
+            _runner_service(config, d1).run()
+        assert d1.calls == 0
+        assert acquisition.calls == 0
+
+        release.write_text("1", encoding="utf-8")
+        stdout, stderr = holder.communicate(timeout=_BARRIER_DEADLINE_SECONDS)
+        assert holder.returncode == 0, f"holder failed: {stderr}\n{stdout}"
+
+        # After the genuine holder exits, the slot is usable again.
+        outcome = _runner_service(config, d1).run()
+        assert outcome.classification is RunnerCompletion.COMPLETED_NEW
+        assert d1.calls == 1
+    finally:
+        if holder.poll() is None:
+            holder.kill()
+            holder.communicate()
+
+
+def test_bounded_observer_runner_matrix_has_zero_observer_induced_busy(
+    tmp_path, monkeypatch
+):
+    """Case 3: a tightly coordinated repeated observer+runner matrix with no
+    real holder produces exactly zero observer-induced LEASE_BUSY outcomes."""
+
+    _write_watchlist(tmp_path / "watchlist.json", _watchlist())
+    config = _config(tmp_path)
+    lease = RunnerLease(config.runner_root, RUNNER_ID)
+    lease.path.parent.mkdir(parents=True, exist_ok=True)
+    lease.path.touch()
+
+    acquisition = FakeAcquisition(MonitoringEventBatchV1.build([]))
+    d1 = RealD1(tmp_path, acquisition)
+    sources = sources_from_runner_config(config, delivery_root=None)
+
+    real_scan = lease_module._scan_flock_holder
+    real_flock = fcntl.flock
+    observer_thread: list[threading.Thread] = []
+    violations: list[int] = []
+
+    def recording_flock(descriptor, operation):
+        if observer_thread and threading.current_thread() is observer_thread[0]:
+            violations.append(operation)
+        return real_flock(descriptor, operation)
+
+    monkeypatch.setattr(fcntl, "flock", recording_flock)
+
+    iterations = 10
+    for index in range(iterations):
+        # A unique watchlist identity gives every invocation a fresh
+        # activation fingerprint, so each run performs real D1 work.
+        _write_watchlist(
+            tmp_path / "watchlist.json",
+            WatchlistSpecV1.build(
+                watchlist_id=f"phase6d3r1-matrix-{index}",
+                profile_id="strict-v1",
+                entries=[{"listing_id": "SH600001", "company_display_name": "fixture"}],
+            ),
+        )
+        inside = threading.Event()
+        release = threading.Event()
+        box: dict[str, object] = {}
+
+        def pausing_scan(*args, **kwargs):
+            outcome_scan = real_scan(*args, **kwargs)
+            inside.set()
+            if not release.wait(timeout=_BARRIER_DEADLINE_SECONDS):
+                raise RuntimeError("observation release barrier timeout")
+            return outcome_scan
+
+        monkeypatch.setattr(lease_module, "_scan_flock_holder", pausing_scan)
+
+        def observe() -> None:
+            try:
+                box["projection"] = build_monitoring_operations_projection(sources)
+            except BaseException as exc:  # noqa: BLE001 - recorded for the assert
+                box["error"] = f"{type(exc).__name__}: {exc}"
+
+        observer = threading.Thread(target=observe, name=f"d3-observer-{index}")
+        observer_thread[:] = [observer]
+        observer.start()
+        try:
+            assert inside.wait(timeout=_BARRIER_DEADLINE_SECONDS), (
+                "the observer never entered its critical observation section"
+            )
+            outcome = _runner_service(config, d1).run()
+            release.set()
+        finally:
+            observer.join(timeout=_BARRIER_DEADLINE_SECONDS)
+            observer_thread.clear()
+        assert not observer.is_alive()
+        assert "error" not in box, box.get("error")
+        projection = box["projection"]
+        assert projection.runner.lease_state == "ABANDONED"
+        assert projection.runner.lease_record is not None
+        assert projection.runner.lease_record.activation_id == (
+            outcome.activation.activation_id
+        )
+        assert outcome.classification is RunnerCompletion.COMPLETED_NEW
+
+    assert d1.calls == iterations
+    assert violations == []

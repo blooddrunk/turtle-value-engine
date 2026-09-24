@@ -643,6 +643,11 @@ export interface components {
         /**
          * MonitoringOperationsRunnerV1
          * @description Read-only runner/lease status for the one configured runner identity.
+         *
+         *     ``lease_state`` comes from the 6-D3-R1 non-interfering passive probe:
+         *     ``LIVE``/``ABANDONED``/``FREE`` are proven classifications, while
+         *     ``UNKNOWN`` is the explicit conservative state returned when liveness
+         *     cannot be proven without competing for the authoritative work lock.
          */
         MonitoringOperationsRunnerV1: {
             /** Latest Terminal Activation Id */
@@ -654,7 +659,7 @@ export interface components {
              * Lease State
              * @enum {string}
              */
-            lease_state: "LIVE" | "ABANDONED" | "FREE";
+            lease_state: "LIVE" | "ABANDONED" | "FREE" | "UNKNOWN";
             /** Runner Id */
             runner_id: string;
             /** Unfinished Activation Ids */

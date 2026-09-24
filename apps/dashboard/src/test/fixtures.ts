@@ -342,3 +342,11 @@ export const testMonitoringEmptyProjection = {
   deliveries_configured: false,
   deliveries: [],
 } as unknown as MonitoringOperationsProjection;
+
+export const testMonitoringUnknownLeaseProjection = {
+  ...testMonitoringEmptyProjection,
+  runner: {
+    ...testMonitoringEmptyProjection.runner,
+    lease_state: "UNKNOWN",
+  },
+} as unknown as MonitoringOperationsProjection;

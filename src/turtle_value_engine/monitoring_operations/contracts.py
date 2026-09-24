@@ -69,12 +69,18 @@ class MonitoringOperationsLeaseRecordV1(BaseModel):
 
 
 class MonitoringOperationsRunnerV1(BaseModel):
-    """Read-only runner/lease status for the one configured runner identity."""
+    """Read-only runner/lease status for the one configured runner identity.
+
+    ``lease_state`` comes from the 6-D3-R1 non-interfering passive probe:
+    ``LIVE``/``ABANDONED``/``FREE`` are proven classifications, while
+    ``UNKNOWN`` is the explicit conservative state returned when liveness
+    cannot be proven without competing for the authoritative work lock.
+    """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     runner_id: StrictStr = Field(min_length=1, max_length=128)
-    lease_state: Literal["LIVE", "ABANDONED", "FREE"]
+    lease_state: Literal["LIVE", "ABANDONED", "FREE", "UNKNOWN"]
     lease_corrupt: StrictBool
     lease_record: MonitoringOperationsLeaseRecordV1 | None = None
     unfinished_activation_ids: list[StrictStr] = Field(default_factory=list, max_length=64)

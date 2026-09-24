@@ -1658,7 +1658,7 @@
       },
       "MonitoringOperationsRunnerV1": {
         "additionalProperties": false,
-        "description": "Read-only runner/lease status for the one configured runner identity.",
+        "description": "Read-only runner/lease status for the one configured runner identity.\n\n``lease_state`` comes from the 6-D3-R1 non-interfering passive probe:\n``LIVE``/``ABANDONED``/``FREE`` are proven classifications, while\n``UNKNOWN`` is the explicit conservative state returned when liveness\ncannot be proven without competing for the authoritative work lock.",
         "properties": {
           "latest_terminal_activation_id": {
             "anyOf": [
@@ -1690,7 +1690,8 @@
             "enum": [
               "LIVE",
               "ABANDONED",
-              "FREE"
+              "FREE",
+              "UNKNOWN"
             ],
             "title": "Lease State",
             "type": "string"
