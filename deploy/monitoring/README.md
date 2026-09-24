@@ -41,15 +41,37 @@ systemd-analyze verify deploy/monitoring/turtle-value-monitor.service \
 
 This runs in ordinary CI (`.github/workflows/ci.yml`).
 
-## Install (Phase 6-E, owner-operated)
+## Install (Phase 6-E, automated)
 
-Copy both units to `/etc/systemd/system/`, adjust the `WorkingDirectory`,
-`ExecStart` paths and the timer calendar, then:
+Do not hand-edit these reference units. Phase 6-E provides
+`scripts/monitoring_live_acceptance.py`, which renders owner-specific units
+from one explicit non-secret acceptance configuration
+(`config/monitoring-acceptance.example.json` is the checked-in template;
+the real file lives under `.tve-private/`), validates them with
+`systemd-analyze verify`, and installs/enables them when it has enough
+privilege:
 
 ```bash
-sudo systemctl daemon-reload
-sudo systemctl enable --now turtle-value-monitor.timer
+python3 scripts/monitoring_live_acceptance.py --acceptance-config <config> gate
+python3 scripts/monitoring_live_acceptance.py --acceptance-config <config> preflight
+python3 scripts/monitoring_live_acceptance.py --acceptance-config <config> render
+python3 scripts/monitoring_live_acceptance.py --acceptance-config <config> apply     # or the printed owner commands
+python3 scripts/monitoring_live_acceptance.py --acceptance-config <config> verify
+python3 scripts/monitoring_live_acceptance.py --acceptance-config <config> live-smoke --network allow
+python3 scripts/monitoring_live_acceptance.py --acceptance-config <config> disable   # stop the acceptance timer
 ```
+
+`apply` enables the timer without starting it by default so the first
+classification is deterministic; `live-smoke` starts the timer itself when it
+observes the cadence fire (or pass `apply --start-timer` for production
+behaviour).
+
+`scope = "user"` renders/installs user-level units (no root required);
+`scope = "system"` renders system units and, without non-interactive
+privilege, stops at the exact `MANUAL_SUDO_INSTALL_REQUIRED` commands.  The
+helper verifies the effective installed state through `systemctl show`
+(after any owner command) — a successful manual command is never itself
+acceptance evidence.
 
 The lease, activation and receipt state live under the runner root declared
 in the runner config; nothing else on the host is mutated by the runner.

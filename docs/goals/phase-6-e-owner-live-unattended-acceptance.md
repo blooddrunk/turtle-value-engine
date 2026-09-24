@@ -1,6 +1,7 @@
 # Phase 6-E — Owner Live Unattended Acceptance
 
-Status: **SELECTED**
+Status: **ACTIVE** (harness implemented; exact-SHA CI and the bounded live
+acceptance run recorded in `docs/status/phase-6-e-2026-09-24.md`)
 Date: 2026-09-24
 Selected after: Phase 6-D3-R1 closure
 
