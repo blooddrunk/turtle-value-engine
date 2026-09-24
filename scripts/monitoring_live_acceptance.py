@@ -1957,12 +1957,13 @@ def cmd_live_smoke(args: argparse.Namespace, runner: CommandRunner = _default_ru
     }
 
     # Fresh-workspace policy: a consumed acceptance root must be acknowledged.
+    # An acknowledged pre-existing workspace switches the rerun semantics to
+    # "delivery resume": the first invocation is COMPLETED_REUSED, the cursor
+    # assertion becomes no-new-commit stability, and the destructive
+    # crash-injection (already proven in the fresh run) is not repeated.
     existing_receipts = Path(config.acceptance_root) / "runner" / "receipts"
-    if (
-        existing_receipts.is_dir()
-        and any(existing_receipts.iterdir())
-        and not args.allow_existing
-    ):
+    pre_existing = existing_receipts.is_dir() and any(existing_receipts.iterdir())
+    if pre_existing and not args.allow_existing:
         raise AcceptanceError(
             f"acceptance workspace already contains terminal receipts "
             f"({existing_receipts}); archive or remove the acceptance root, "
@@ -2120,21 +2121,25 @@ def cmd_live_smoke(args: argparse.Namespace, runner: CommandRunner = _default_ru
 
     # 6. First unattended run (live acquisition through D1 and atomic commit).
     run1_outcome, run1 = _unattended_run(config, python, config.runner_live_config_path, runner)
-    if run1 is None or run1.get("classification") != "COMPLETED_NEW":
+    accepted_first = {"COMPLETED_REUSED"} if pre_existing else {"COMPLETED_NEW"}
+    if run1 is None or run1.get("classification") not in accepted_first:
         report["runner"] = {
             "run1": {"ok": False, "outcome": _outcome_public(run1_outcome), "payload": run1}
         }
-        _fail(report, "first unattended run did not complete as COMPLETED_NEW")
+        _fail(
+            report,
+            "first unattended run did not complete as "
+            f"{' or '.join(sorted(accepted_first))}",
+        )
         _finish_report(config, report)
         return EXIT_FAIL_CLOSED
     status_after_commit = _watch_status(config, python, runner)
-    cursor_advanced = (
-        status_after_commit is not None
-        and _state_identity(status_after_commit) is not None
-        and status_after_commit != status_after_acquire
+    cursor_advanced = _cursor_commit_assertion(
+        pre_existing, status_before, status_after_acquire, status_after_commit
     )
     report["cursor"].update(
         {
+            "mode": "pre_existing_stability" if pre_existing else "fresh_commit",
             "after_commit": None
             if status_after_commit is None
             else _state_identity(status_after_commit),
@@ -2144,6 +2149,7 @@ def cmd_live_smoke(args: argparse.Namespace, runner: CommandRunner = _default_ru
     report["runner"] = {
         "run1": {
             "ok": True,
+            "workspace_pre_existing": pre_existing,
             "classification": run1["classification"],
             "activation_id": run1["activation_id"],
             "cycle_id": run1["cycle_id"],
@@ -2183,7 +2189,21 @@ def cmd_live_smoke(args: argparse.Namespace, runner: CommandRunner = _default_ru
     }
 
     # 8. Crash/resume proof: kill a real invocation after the durable intent.
-    crash = _crash_resume_proof(config, python, runner)
+    #    A pre-existing workspace is already terminal for both runner
+    #    configs, so the destructive injection cannot fire; it was proven in
+    #    the fresh acceptance run and is not repeated here.
+    if pre_existing:
+        crash: dict[str, object] = {
+            "ok": None,
+            "injected": False,
+            "skipped": True,
+            "reason": (
+                "durable crash/resume was proven in the fresh acceptance run; "
+                "this --allow-existing rerun is a delivery resume"
+            ),
+        }
+    else:
+        crash = _crash_resume_proof(config, python, runner)
     report["runner"]["crash_resume"] = crash
 
     # The delivery/D3 sections target the runner's *latest* terminal
@@ -2274,6 +2294,33 @@ def _state_identity(status: dict[str, object]) -> dict[str, object] | None:
     }
 
 
+def _cursor_commit_assertion(
+    pre_existing: bool,
+    status_before: object,
+    status_after_acquire: object,
+    status_after_commit: object,
+) -> bool:
+    """Decide the cursor proof for this live-smoke mode.
+
+    A fresh workspace proves commit-only-after-cycle: the committed state may
+    only appear (differ) after the D1 cycle, never after acquire-only.  A
+    pre-existing (``--allow-existing``) workspace already proved that in the
+    fresh run, so the rerun instead proves stability: acquire and the reused
+    run must leave the committed state byte-identical (no new commit).
+    """
+
+    if status_after_commit is None:
+        return False
+    if pre_existing:
+        return (
+            status_after_commit == status_after_acquire
+            and status_after_commit == status_before
+        )
+    return _state_identity(status_after_commit) is not None and (
+        status_after_commit != status_after_acquire
+    )
+
+
 def _fail(report: dict[str, object], reason: str) -> None:
     failures = report.setdefault("failures", [])
     failures.append(reason)  # type: ignore[union-attr]
@@ -2295,6 +2342,12 @@ def _collect_failures(report: Mapping[str, object]) -> list[str]:
         value = report.get(section)
         if isinstance(value, Mapping) and value.get("ok") is False:
             failures.append(section)
+    runner_section = report.get("runner")
+    if isinstance(runner_section, Mapping):
+        for sub_section in ("idempotent_rerun", "crash_resume"):
+            value = runner_section.get(sub_section)
+            if isinstance(value, Mapping) and value.get("ok") is False:
+                failures.append("runner")
     cursor = report.get("cursor")
     if isinstance(cursor, Mapping) and (
         cursor.get("committed_only_after_cycle") is False

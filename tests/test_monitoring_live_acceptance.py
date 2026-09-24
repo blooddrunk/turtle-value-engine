@@ -516,3 +516,87 @@ def test_lock_visibility_marker_is_precise() -> None:
     # The unproven-topology marker is a distinct machine-readable constant.
     assert DEPLOYMENT_LOCK_VISIBILITY_UNPROVEN == "DEPLOYMENT_LOCK_VISIBILITY_UNPROVEN"
     assert EXIT_OK == 0 and EXIT_FAIL_CLOSED == 2 and EXIT_MARKER == 5
+
+
+# ---------------------------------------------------------------------------
+# Delivery-resume (--allow-existing) semantics
+# ---------------------------------------------------------------------------
+
+
+def _committed_status(state_id: str = "s1") -> dict[str, object]:
+    return {
+        "watchlist_id": "w",
+        "availability": "AVAILABLE",
+        "state_id": state_id,
+        "last_committed_run_id": "r1",
+        "entries": [],
+    }
+
+
+_NOT_AVAILABLE: dict[str, object] = {"watchlist_id": "w", "availability": "NOT_AVAILABLE"}
+
+
+def test_cursor_assertion_fresh_proves_commit_only_after_cycle() -> None:
+    from scripts.monitoring_live_acceptance import _cursor_commit_assertion
+
+    committed = _committed_status()
+    # Fresh workspace: no state before/acquire, committed state after cycle.
+    assert _cursor_commit_assertion(False, _NOT_AVAILABLE, _NOT_AVAILABLE, committed)
+    # Acquire alone must not produce a committed state.
+    assert not _cursor_commit_assertion(False, _NOT_AVAILABLE, committed, committed)
+    # No committed state at all is a failure.
+    assert not _cursor_commit_assertion(False, _NOT_AVAILABLE, _NOT_AVAILABLE, None)
+
+
+def test_cursor_assertion_pre_existing_proves_stability() -> None:
+    from scripts.monitoring_live_acceptance import _cursor_commit_assertion
+
+    committed = _committed_status()
+    # Delivery resume: the committed state must stay byte-identical.
+    assert _cursor_commit_assertion(True, committed, committed, committed)
+    # A NEW commit during the resume (state changed) is a failure.
+    assert not _cursor_commit_assertion(True, committed, committed, _committed_status("s2"))
+    # A regressed/absent state is a failure.
+    assert not _cursor_commit_assertion(True, committed, committed, None)
+
+
+def test_collect_failures_ignores_skipped_crash_section() -> None:
+    from scripts.monitoring_live_acceptance import _collect_failures
+
+    report: dict[str, object] = {
+        "runner": {
+            "run1": {"ok": True},
+            "crash_resume": {
+                "ok": None,
+                "injected": False,
+                "skipped": True,
+                "reason": "delivery resume",
+            },
+        },
+        "cursor": {
+            "mode": "pre_existing_stability",
+            "committed_only_after_cycle": True,
+            "acquire_did_not_commit": True,
+        },
+    }
+    assert _collect_failures(report) == []
+    report["runner"]["crash_resume"] = {"ok": False, "injected": True}  # type: ignore[index]
+    assert _collect_failures(report) == ["runner"]
+
+
+def test_live_smoke_refuses_consumed_workspace_without_allow_existing(
+    tmp_path: Path,
+) -> None:
+    config = _acceptance_config(acceptance_root=str(tmp_path), require_repo_gate=False)
+    receipts = Path(config.acceptance_root) / "runner" / "receipts"
+    receipts.mkdir(parents=True)
+    (receipts / ("a" * 64)).write_text("{}", encoding="utf-8")
+    args = SimpleNamespace(
+        acceptance_config=_write_config(tmp_path, config),
+        network="allow",
+        skip_gate=True,
+        allow_existing=False,
+        timer_wait_seconds=1,
+    )
+    with pytest.raises(AcceptanceError, match="terminal receipts"):
+        harness.cmd_live_smoke(args)
