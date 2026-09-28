@@ -1,10 +1,11 @@
 # Phase 6-E — Owner Live Unattended Acceptance
 
-Status: **ACTIVE / OWNER-REQUESTED ACCEPTANCE REVISION**
+Status: **CLOSED / OWNER_ACCEPTED**
 (the 2026-09-28 owner direction makes external notifications optional and
-selects Telegram as the first simple preset; implementation and new exact-SHA
-CI/live acceptance evidence remain pending — see
-`docs/status/phase-6-e-2026-09-24.md` for the prior evidence)
+selects Telegram as the first simple preset; implementation
+`8565621777762c601172aee562b2523a37ce02a6`, exact-head Actions run
+`36375649575` succeeded, and the refreshed real-host report completed with
+no failures or manual markers — see `docs/status/phase-6-e-2026-09-24.md`)
 Date: 2026-09-28 (implementation follow-up; acceptance evidence began 2026-09-24)
 Selected after: Phase 6-D3-R1 closure
 
