@@ -1,12 +1,12 @@
 # Phase 6-E — Owner Live Unattended Acceptance
 
 Status: **READY_FOR_OWNER_AUTHORIZED_PHASE_6E**
-(implementation `7a5da1996c53bcd77bbccb3c05ccd14a5e87e50f`, Actions run
-`35955876489` `success` with exact `head_sha`; every machine-verifiable
+(current implementation `2095f187bbb11dd022b249b1c025f72772440267`, Actions
+run `36369283826` `success` with exact `head_sha`; every machine-verifiable
 live-acceptance boundary green on the real host; closure waits only on the
 owner webhook endpoint reference — see
 `docs/status/phase-6-e-2026-09-24.md`)
-Date: 2026-09-24
+Date: 2026-09-28 (implementation follow-up; acceptance evidence began 2026-09-24)
 Selected after: Phase 6-D3-R1 closure
 
 Predecessor closure:

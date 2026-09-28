@@ -448,6 +448,16 @@ configuration is defined by `config/project.example.toml` and the ignored
 `.tve-private/project.toml`; later phases extend this typed configuration
 instead of adding phase-local environment files.
 
+Phase 6-E resume-path hardening is implemented at
+`2095f187bbb11dd022b249b1c025f72772440267` (Actions run `36369283826`,
+`success`, exact `head_sha`). The owner resume command now uses the actual
+private config passed to `--acceptance-config`; when
+`TVE_MONITORING_WEBHOOK_URL` is available, the harness automatically selects
+the owner receiver and a stable destination ID distinct from the local test
+receiver. Do not ask the owner to edit the private acceptance JSON. Phase
+6-E remains `READY_FOR_OWNER_AUTHORIZED_PHASE_6E` until the owner URL
+reference is available and the real delivery resume succeeds.
+
 ## 5. Working with company data
 
 Keep networked preparation and deterministic analysis separate:

@@ -1,6 +1,12 @@
 # Phase 6-E coding-agent handoff — owner live unattended acceptance
 
-Status: **SELECTED**
+Status: **IMPLEMENTED / WAITING_FOR_OWNER_WEBHOOK_REFERENCE**
+
+Latest implementation: `2095f187bbb11dd022b249b1c025f72772440267`, Actions
+run `36369283826` (`success`, exact `head_sha`). The only remaining live
+acceptance input is `TVE_MONITORING_WEBHOOK_URL`; the resume command and owner
+destination selection are automated, so do not ask the owner to edit the
+private acceptance JSON.
 
 Canonical goal:
 `docs/goals/phase-6-e-owner-live-unattended-acceptance.md`
