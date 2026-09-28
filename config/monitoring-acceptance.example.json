@@ -21,6 +21,8 @@
   "delivery_destination_id": "phase6e-acceptance",
   "delivery_endpoint_env": "TVE_MONITORING_WEBHOOK_URL",
   "delivery_auth_env": "TVE_MONITORING_WEBHOOK_TOKEN",
+  "delivery_telegram_bot_token_env": "TVE_MONITORING_TELEGRAM_BOT_TOKEN",
+  "delivery_telegram_chat_id": null,
   "delivery_receiver": "local_https",
   "local_receiver_port": 8871,
   "lease_ttl_seconds": 900,

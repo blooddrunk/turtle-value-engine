@@ -173,12 +173,16 @@ class AcceptanceConfigV1(BaseModel):
     delivery_auth_env: StrictStr | None = Field(
         default="TVE_MONITORING_WEBHOOK_TOKEN", min_length=1, max_length=256
     )
+    delivery_telegram_bot_token_env: StrictStr = Field(
+        default="TVE_MONITORING_TELEGRAM_BOT_TOKEN", min_length=1, max_length=256
+    )
+    delivery_telegram_chat_id: StrictStr | None = None
     # ``owner_env`` delivers to the owner-supplied endpoint reference;
     # ``local_https`` runs a harness-local HTTPS receiver (with a
     # harness-generated certificate trusted only inside the delivery
     # subprocess) when the owner reference is not resolvable.
     delivery_receiver: StrictStr = Field(
-        default="local_https", pattern=r"^(owner_env|local_https)$"
+        default="local_https", pattern=r"^(owner_env|local_https|telegram)$"
     )
     local_receiver_port: StrictInt = Field(default=8871, ge=1024, le=65535)
 
@@ -194,6 +198,17 @@ class AcceptanceConfigV1(BaseModel):
         if value.tzinfo is None:
             raise ValueError("as_of must carry an explicit timezone")
         return value.astimezone(UTC)
+
+    @field_validator(
+        "delivery_endpoint_env",
+        "delivery_auth_env",
+        "delivery_telegram_bot_token_env",
+    )
+    @classmethod
+    def _validate_secret_env_name(cls, value: str | None) -> str | None:
+        if value is not None and not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", value):
+            raise ValueError("delivery secret reference must be an environment variable name")
+        return value
 
     @model_validator(mode="after")
     def _validate_config(self) -> AcceptanceConfigV1:
@@ -212,6 +227,11 @@ class AcceptanceConfigV1(BaseModel):
             raise ValueError("scope=user must not pin a service_user (it runs as the owner)")
         if self.as_of.date() < self.published_to:
             raise ValueError("as_of must not precede the end of the acquisition window")
+        if self.delivery_receiver == "telegram" and (
+            self.delivery_telegram_chat_id is None
+            or not re.fullmatch(r"-?[0-9]+", self.delivery_telegram_chat_id)
+        ):
+            raise ValueError("delivery_receiver=telegram requires a numeric chat ID")
         for name in (
             "python_executable",
             "working_directory",
@@ -368,7 +388,11 @@ def resolvable_secret_values(
 
     environment = os.environ if environ is None else environ
     values: dict[str, str] = {}
-    for name in (config.delivery_endpoint_env, config.delivery_auth_env):
+    for name in (
+        config.delivery_endpoint_env,
+        config.delivery_auth_env,
+        config.delivery_telegram_bot_token_env,
+    ):
         if name is None:
             continue
         raw = environment.get(name, "")
@@ -389,6 +413,8 @@ def _owner_delivery_config(
     """
 
     if not endpoint_available:
+        return config
+    if config.delivery_receiver == "telegram":
         return config
     if config.delivery_receiver == "owner_env" and re.search(
         r"-owner-[0-9a-f]{10}$", config.delivery_destination_id
@@ -655,6 +681,17 @@ def load_gate_artifact(config: AcceptanceConfigV1, *, head_sha: str) -> dict[str
 
 def render_service_unit(config: AcceptanceConfigV1, runner_config_path: Path) -> str:
     user_line = f"User={config.service_user}\n" if config.scope == "system" else ""
+    if config.delivery_receiver in {"owner_env", "telegram"}:
+        run_line = (
+            f"{config.python_executable} -m turtle_value_engine watch unattended-notify "
+            f"--runner-config {runner_config_path} "
+            f"--project-config {config.project_config_path.resolve()} --network allow\n"
+        )
+    else:
+        run_line = (
+            f"{config.python_executable} -m turtle_value_engine watch unattended-run "
+            f"--runner-config {runner_config_path}\n"
+        )
     description = (
         "turtle-value-engine Phase 6-E acceptance monitoring cycle "
         f"({config.runner_id})"
@@ -675,8 +712,7 @@ def render_service_unit(config: AcceptanceConfigV1, runner_config_path: Path) ->
         f"WorkingDirectory={config.working_directory}\n"
         f"{user_line}"
         "ExecStart="
-        f"{config.python_executable} -m turtle_value_engine watch unattended-run "
-        f"--runner-config {runner_config_path}\n"
+        f"{run_line}"
         "TimeoutStartSec=30min\n"
         "# Exit code 3 (LEASE_BUSY) means another live invocation owns the runner\n"
         "# lease and this invocation intentionally performed no work.\n"
@@ -1212,11 +1248,17 @@ def cmd_preflight(args: argparse.Namespace, runner: CommandRunner = _default_run
             endpoint_ref_env = (
                 None if delivery.endpoint_ref is None else delivery.endpoint_ref.env
             )
+            telegram_ref_env = (
+                None
+                if delivery.telegram_bot_token_ref is None
+                else delivery.telegram_bot_token_ref.env
+            )
             log.add(
                 "config.project-delivery",
                 True,
-                f"enabled={delivery.enabled} destination_id={delivery.destination_id} "
-                f"endpoint_ref={endpoint_ref_env}",
+                f"enabled={delivery.enabled} transport={delivery.transport} "
+                f"destination_id={delivery.destination_id} endpoint_ref={endpoint_ref_env} "
+                f"telegram_bot_token_ref={telegram_ref_env}",
             )
         except ProjectConfigError as exc:
             log.add("config.project-delivery", False, str(exc))
@@ -1230,19 +1272,40 @@ def cmd_preflight(args: argparse.Namespace, runner: CommandRunner = _default_run
     # Secret references: presence only, never values.
     secrets = resolvable_secret_values(config)
     endpoint_present = config.delivery_endpoint_env in secrets
-    if endpoint_present:
+    if config.delivery_receiver == "telegram":
+        token_present = config.delivery_telegram_bot_token_env in secrets
+        if token_present:
+            log.add(
+                "secrets.telegram-bot-token",
+                True,
+                f"{config.delivery_telegram_bot_token_env} resolves (value not shown)",
+            )
+        else:
+            log.add_marker(
+                "secrets.telegram-bot-token",
+                MANUAL_SECRET_REFERENCE_REQUIRED,
+                f"{config.delivery_telegram_bot_token_env} is not resolvable; "
+                "Telegram delivery cannot start",
+            )
+    elif endpoint_present:
         log.add(
             "secrets.delivery-endpoint",
             True,
             f"{config.delivery_endpoint_env} resolves (value not shown)",
         )
-    else:
+    elif config.delivery_receiver == "owner_env":
         log.add_marker(
             "secrets.delivery-endpoint",
             MANUAL_SECRET_REFERENCE_REQUIRED,
             f"{config.delivery_endpoint_env} is not resolvable in this environment; "
-            f"live-smoke will use the harness-local HTTPS receiver "
-            f"({config.delivery_receiver}) and record the owner-endpoint remainder",
+            "the requested owner_env receiver cannot be used",
+        )
+    else:
+        log.add(
+            "secrets.delivery-endpoint",
+            True,
+            "external notification is optional; live-smoke will prove delivery "
+            "against the harness-local HTTPS receiver",
         )
     tracked = _tracked_files_without_secrets(runner, secrets)
     log.add(
@@ -1741,10 +1804,9 @@ workspace_root = "{config.workspace_root}"
 
 [monitoring.delivery]
 enabled = true
-transport = "webhook-v1"
+transport = "{'telegram-v1' if config.delivery_receiver == 'telegram' else 'webhook-v1'}"
 destination_id = "{config.delivery_destination_id}"
 delivery_root = "{delivery_root}"
-endpoint_ref = {{ env = "{config.delivery_endpoint_env}" }}
 receiver_idempotency_declared = false
 max_attempts = 5
 timeout_seconds = 10.0
@@ -1752,7 +1814,14 @@ backoff_base_seconds = 60
 backoff_cap_seconds = 3600
 max_response_bytes = 65536
 """
-    if config.delivery_auth_env is not None:
+    if config.delivery_receiver == "telegram":
+        project_toml += (
+            f'telegram_bot_token_ref = {{ env = "{config.delivery_telegram_bot_token_env}" }}\n'
+            f'telegram_chat_id = "{config.delivery_telegram_chat_id}"\n'
+        )
+    else:
+        project_toml += f'endpoint_ref = {{ env = "{config.delivery_endpoint_env}" }}\n'
+    if config.delivery_receiver != "telegram" and config.delivery_auth_env is not None:
         project_toml += f'auth_token_ref = {{ env = "{config.delivery_auth_env}" }}\n'
     _atomic_write(config.project_config_path, project_toml.encode("utf-8"))
     load_project_config(config.project_config_path)  # fail now if invalid
@@ -1857,7 +1926,9 @@ class _LocalReceiver:
         self._runner = runner
         self._journal = journal
         journal.parent.mkdir(parents=True, exist_ok=True)
-        journal.write_text("", encoding="utf-8")
+        # Keep the immutable receiver evidence across --allow-existing runs:
+        # a delivered identity is intentionally not dispatched a second time.
+        journal.touch(exist_ok=True)
         self._process = subprocess.Popen(
             [python, "-c", _LOCAL_RECEIVER_SOURCE, str(cert), str(key), str(port), str(journal)],
             stdout=subprocess.PIPE,
@@ -2549,7 +2620,40 @@ def _delivery_section(
     extra_env: dict[str, str] = {}
     receiver_mode: str
 
-    if owner_endpoint:
+    if config.delivery_receiver == "telegram":
+        receiver_mode = "telegram"
+        if config.delivery_telegram_bot_token_env not in secrets:
+            record_marker(
+                _marker_payload_from_exception(
+                    ManualBoundary(
+                        MANUAL_SECRET_REFERENCE_REQUIRED,
+                        stopped_after=(
+                            "live-smoke delivery step: a terminal alert outbox exists, "
+                            "but the Telegram bot token reference is unresolved"
+                        ),
+                        human_action=(
+                            "create a bot with Telegram @BotFather, send /start to it, "
+                            "and make its token available locally under "
+                            f"{config.delivery_telegram_bot_token_env}"
+                        ),
+                        secret_boundary=(
+                            "the bot token must stay out of Git, chat, committed documents "
+                            "and acceptance artifacts; only its environment reference is saved"
+                        ),
+                        resume_command=_resume_live_smoke_command(acceptance_config_path),
+                        machine_verifiable_success=(
+                            "Telegram sendMessage returns ok=true with the configured chat "
+                            "and exact text; the ledger reports DELIVERED/CURRENT and a repeat "
+                            "uses zero extra dispatch slots"
+                        ),
+                        remaining_unverified=(
+                            "delivery to the owner's Telegram chat and its durable accounting"
+                        ),
+                    )
+                )
+            )
+            return {"ok": False, "skipped": True, "marker": MANUAL_SECRET_REFERENCE_REQUIRED}
+    elif owner_endpoint:
         receiver_mode = "owner_env"
     elif config.delivery_receiver == "local_https":
         receiver_mode = "local_https"
@@ -2669,7 +2773,12 @@ def _delivery_section(
         receipt_match = {
             "requests_total": len(receiver_requests),
             "matching_idempotency_keys": sum(
-                1 for item in receiver_requests if item.get("idempotency_key") == delivery_id
+                1
+                for item in receiver_requests
+                if item.get("idempotency_key") == delivery_id
+                and item.get("delivery_id_header") == delivery_id
+                and item.get("method") == "POST"
+                and item.get("path") == "/hook"
             ),
         }
         receiver.stop()
@@ -2681,43 +2790,22 @@ def _delivery_section(
         and status_second.get("state", {}).get("attempt_count")
         == status_first.get("state", {}).get("attempt_count")
     )
-    if receiver_mode == "local_https":
-        record_marker(
-            _marker_payload_from_exception(
-                ManualBoundary(
-                    MANUAL_SECRET_REFERENCE_REQUIRED,
-                    stopped_after=(
-                        "live-smoke delivery step completed against the harness-local HTTPS "
-                        f"receiver (delivery_id={delivery_id}, state DELIVERED) because the "
-                        f"owner endpoint reference {config.delivery_endpoint_env} was not "
-                        "resolvable in this environment"
-                    ),
-                    human_action=(
-                        "supply the owner webhook endpoint through the approved secret "
-                        f"manager/environment entry {config.delivery_endpoint_env} and rerun "
-                        "the delivery section against it"
-                    ),
-                    secret_boundary=(
-                        f"the {config.delivery_endpoint_env} value (and optional "
-                        f"{config.delivery_auth_env} value) must stay out of Git, committed "
-                        "documents, chat and this report"
-                    ),
-                    resume_command=_resume_live_smoke_command(acceptance_config_path),
-                    machine_verifiable_success=(
-                        "deliver to the owner endpoint returns DELIVERED with pointer CURRENT, "
-                        "and the repeated identity authorizes zero additional dispatch slots"
-                    ),
-                    remaining_unverified=(
-                        "delivery of the acceptance alert outbox to the owner's real "
-                        "destination (the D2B ledger mechanics were proven against the "
-                        "harness-local receiver)"
-                    ),
+    return {
+        "ok": bool(
+            duplicate_free
+            and (
+                receiver_mode != "local_https"
+                or (
+                    receipt_match is not None
+                    and receipt_match["matching_idempotency_keys"] == 1
                 )
             )
-        )
-    return {
-        "ok": bool(duplicate_free),
+        ),
         "receiver_mode": receiver_mode,
+        "external_notification_verified": (
+            receiver_mode in {"owner_env", "telegram"}
+            and first_payload.get("classification") == "DELIVERED"
+        ),
         "delivery_id": delivery_id,
         "state_after_first": status_first.get("state"),
         "pointer_status": status_first.get("pointer_status"),

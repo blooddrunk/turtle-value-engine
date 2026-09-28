@@ -21,8 +21,11 @@
       "type": "string"
     },
     "transport": {
-      "const": "webhook-v1",
       "default": "webhook-v1",
+      "enum": [
+        "webhook-v1",
+        "telegram-v1"
+      ],
       "title": "Transport",
       "type": "string"
     },

@@ -119,6 +119,11 @@ def test_config_requires_timezone_aware_as_of() -> None:
         _acceptance_config(as_of="2026-04-18T00:00:00")
 
 
+def test_telegram_receiver_requires_numeric_chat_id() -> None:
+    with pytest.raises(Exception, match="numeric chat ID"):
+        _acceptance_config(delivery_receiver="telegram")
+
+
 # ---------------------------------------------------------------------------
 # Rendering: deterministic, secret-free, mutation-free
 # ---------------------------------------------------------------------------
@@ -441,6 +446,57 @@ def test_owner_endpoint_automatically_gets_a_fresh_stable_destination(
     _materialize_workspace(owner_config)
     project = load_project_config(owner_config.project_config_path)
     assert project.monitoring.delivery.destination_id == owner_config.delivery_destination_id
+
+
+def test_telegram_acceptance_materializes_only_secret_reference(tmp_path: Path) -> None:
+    from turtle_value_engine.config import load_project_config
+
+    config = _acceptance_config(
+        acceptance_root=str(tmp_path),
+        delivery_receiver="telegram",
+        delivery_telegram_chat_id="123456789",
+    )
+    assert harness._owner_delivery_config(config, endpoint_available=True) is config
+    _materialize_workspace(config)
+    project = load_project_config(config.project_config_path)
+    delivery = project.monitoring.delivery
+    assert delivery.transport == "telegram-v1"
+    assert delivery.endpoint_ref is None
+    assert delivery.auth_token_ref is None
+    assert delivery.telegram_chat_id == "123456789"
+    assert delivery.telegram_bot_token_ref is not None
+    assert delivery.telegram_bot_token_ref.env == config.delivery_telegram_bot_token_env
+    assert "bot123:" not in config.project_config_path.read_text(encoding="utf-8")
+    unit = harness.render_service_unit(config, config.runner_live_config_path)
+    assert "watch unattended-notify" in unit
+    assert "--network allow" in unit
+    assert config.delivery_telegram_bot_token_env not in unit
+
+
+def test_telegram_acceptance_missing_token_records_precise_marker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from scripts.monitoring_live_acceptance import _delivery_section
+
+    config = _acceptance_config(
+        acceptance_root=str(tmp_path),
+        delivery_receiver="telegram",
+        delivery_telegram_chat_id="123456789",
+    )
+    monkeypatch.delenv(config.delivery_telegram_bot_token_env, raising=False)
+    markers: list[dict[str, object]] = []
+    config_path = _write_config(tmp_path, config)
+    section = _delivery_section(
+        config,
+        sys.executable,
+        _fake_runner({}),
+        {"activation_id": "a" * 64},
+        markers.append,
+        acceptance_config_path=config_path,
+    )
+    assert section == {"ok": False, "skipped": True, "marker": MANUAL_SECRET_REFERENCE_REQUIRED}
+    assert markers[0]["marker"] == MANUAL_SECRET_REFERENCE_REQUIRED
+    assert "TVE_MONITORING_TELEGRAM_BOT_TOKEN" in markers[0]["human_action"]
 
 
 def test_owner_destination_derivation_handles_max_length_ids() -> None:

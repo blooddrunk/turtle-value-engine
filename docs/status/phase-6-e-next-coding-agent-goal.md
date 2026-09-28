@@ -1,6 +1,11 @@
 # Phase 6-E coding-agent handoff — owner live unattended acceptance
 
-Status: **IMPLEMENTED / WAITING_FOR_OWNER_WEBHOOK_REFERENCE**
+Status: **SUPERSEDED BY OWNER-REQUESTED ACCEPTANCE REVISION (2026-09-28)**
+
+This handoff records the original Phase 6-E scope. The owner subsequently
+made external notification optional. Follow the current goal and the
+2026-09-28 revision in `docs/status/phase-6-e-2026-09-24.md`; a custom
+Webhook URL is no longer required for closure.
 
 Latest implementation: `2095f187bbb11dd022b249b1c025f72772440267`, Actions
 run `36369283826` (`success`, exact `head_sha`). The only remaining live

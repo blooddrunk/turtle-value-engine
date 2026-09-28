@@ -31,6 +31,9 @@ from turtle_value_engine.monitoring_runner.store import RunnerStore
 
 from .contracts import (
     MAX_WEBHOOK_PAYLOAD_BYTES,
+    TELEGRAM_PAYLOAD_CONTRACT,
+    TELEGRAM_TRANSPORT_ID,
+    WEBHOOK_PAYLOAD_CONTRACT,
     DeliveryFailureCode,
     DeliverySettingsV1,
     DeliveryStatus,
@@ -38,6 +41,7 @@ from .contracts import (
     MonitoringDeliveryIntentV1,
     MonitoringDeliveryStateV1,
     MonitoringDispatchClaimV1,
+    MonitoringTelegramPayloadV1,
     MonitoringWebhookAlertV1,
     MonitoringWebhookPayloadV1,
     delivery_identity,
@@ -95,22 +99,33 @@ class DeliveryRunOutcome:
     message: str
 
 
-def build_webhook_payload(
+def build_delivery_payload(
     *,
     settings: DeliverySettingsV1,
     receipt: RunnerReceiptV1,
     result: MonitoringCycleResultV1,
     alerts: MonitoringAlertBatchV1,
-) -> MonitoringWebhookPayloadV1:
-    """Build the canonical bounded JSON body from validated sources only."""
+) -> MonitoringWebhookPayloadV1 | MonitoringTelegramPayloadV1:
+    """Build the canonical bounded alert envelope for the selected transport."""
 
+    payload_contract = (
+        TELEGRAM_PAYLOAD_CONTRACT
+        if settings.transport == TELEGRAM_TRANSPORT_ID
+        else WEBHOOK_PAYLOAD_CONTRACT
+    )
     delivery_id = delivery_identity(
         runner_id=receipt.runner_id,
         activation_id=receipt.activation_id,
         alert_batch_id=alerts.alert_batch_id,
         destination_id=settings.destination_id,
+        payload_contract=payload_contract,
     )
-    payload = MonitoringWebhookPayloadV1(
+    payload_type = (
+        MonitoringTelegramPayloadV1
+        if settings.transport == TELEGRAM_TRANSPORT_ID
+        else MonitoringWebhookPayloadV1
+    )
+    payload = payload_type(
         delivery_id=delivery_id,
         destination_id=settings.destination_id,
         runner_id=receipt.runner_id,
@@ -139,6 +154,22 @@ def build_webhook_payload(
             "DELIVERY_PAYLOAD_TOO_LARGE: canonical webhook body exceeds the bounded size"
         )
     return payload
+
+
+def build_webhook_payload(
+    *,
+    settings: DeliverySettingsV1,
+    receipt: RunnerReceiptV1,
+    result: MonitoringCycleResultV1,
+    alerts: MonitoringAlertBatchV1,
+) -> MonitoringWebhookPayloadV1:
+    """Preserve the original generic webhook construction boundary."""
+
+    if settings.transport != "webhook-v1":
+        raise DeliveryPayloadError("webhook payload requires webhook-v1 transport")
+    return build_delivery_payload(
+        settings=settings, receipt=receipt, result=result, alerts=alerts
+    )
 
 
 def backoff_seconds(intent: MonitoringDeliveryIntentV1, attempt_number: int) -> int:
@@ -488,7 +519,7 @@ class MonitoringDeliveryService:
         receipt: RunnerReceiptV1,
         result: MonitoringCycleResultV1,
         alerts: MonitoringAlertBatchV1,
-        payload: MonitoringWebhookPayloadV1,
+        payload: MonitoringWebhookPayloadV1 | MonitoringTelegramPayloadV1,
         created_at: datetime,
     ) -> MonitoringDeliveryIntentV1:
         return MonitoringDeliveryIntentV1.build(
@@ -500,6 +531,8 @@ class MonitoringDeliveryService:
             alert_batch_id=alerts.alert_batch_id,
             alert_batch_content_sha256=alerts.content_sha256,
             destination_id=self.settings.destination_id,
+            transport=self.settings.transport,
+            payload_contract=payload.contract,
             payload_sha256=canonical_sha256(payload.canonical_payload()),
             payload_bytes=len(payload.canonical_bytes()),
             empty_outbox=len(alerts.alerts) == 0,
@@ -556,7 +589,7 @@ class MonitoringDeliveryService:
             )
         receipt = self._load_receipt(activation_id)
         result, alerts = self._load_terminal_pair(receipt)
-        payload = build_webhook_payload(
+        payload = build_delivery_payload(
             settings=self.settings, receipt=receipt, result=result, alerts=alerts
         )
         fresh = self._build_intent(
@@ -698,12 +731,12 @@ class MonitoringDeliveryService:
 
     def _payload_for_intent(
         self, intent: MonitoringDeliveryIntentV1
-    ) -> MonitoringWebhookPayloadV1:
+    ) -> MonitoringWebhookPayloadV1 | MonitoringTelegramPayloadV1:
         """Re-validate the source and prove it still matches the intent."""
 
         receipt = self._load_receipt(intent.activation_id)
         result, alerts = self._load_terminal_pair(receipt)
-        payload = build_webhook_payload(
+        payload = build_delivery_payload(
             settings=self.settings, receipt=receipt, result=result, alerts=alerts
         )
         if (

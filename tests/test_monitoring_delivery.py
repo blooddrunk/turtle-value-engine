@@ -461,6 +461,40 @@ def test_specific_activation_id_is_loaded(tmp_path):
         _service(stack, FakeTransport([]), tmp_path=tmp_path).deliver("99" * 32)
 
 
+def test_telegram_uses_same_durable_ledger_with_a_distinct_payload_identity(tmp_path):
+    from turtle_value_engine.monitoring_delivery import MonitoringTelegramPayloadV1
+
+    stack = _terminal_stack(tmp_path)
+    transport = FakeTransport([_delivered()])
+    settings = _settings(transport="telegram-v1", destination_id="owner-telegram")
+    service = _service(
+        stack,
+        transport,
+        tmp_path=tmp_path,
+        settings=settings,
+        endpoint="https://api.telegram.org/bot123:token/sendMessage",
+        auth=None,
+    )
+    first = service.deliver(ACTIVATION_ID)
+    payload = MonitoringTelegramPayloadV1.model_validate_json(transport.requests[0].body)
+    assert first.intent.transport == "telegram-v1"
+    assert first.intent.payload_contract == "monitoring_delivery_telegram_payload_v1"
+    assert payload.delivery_id == first.delivery_id
+    assert len(service.ledger.list_claims(first.delivery_id)) == 1
+    assert first.status.value == "DELIVERED"
+    replay = _service(
+        stack,
+        FakeTransport([]),
+        tmp_path=tmp_path,
+        settings=settings,
+        endpoint="https://api.telegram.org/bot123:token/sendMessage",
+        auth=None,
+    ).deliver(ACTIVATION_ID)
+    assert replay.reused is True
+    assert replay.http_requests == 0
+    assert replay.delivery_id == first.delivery_id
+
+
 # --- deny-by-default and disabled ----------------------------------------
 
 
@@ -2131,6 +2165,10 @@ def test_project_config_safe_summary_shows_reference_names_only(tmp_path, monkey
     source = Path("config/project.example.toml").read_text(encoding="utf-8")
     configured = source.replace("enabled = false\ntransport = \"webhook-v1\"",
                                 "enabled = true\ntransport = \"webhook-v1\"")
+    configured = configured.replace(
+        '# endpoint_ref = { env = "TVE_MONITORING_WEBHOOK_URL" }',
+        'endpoint_ref = { env = "TVE_MONITORING_WEBHOOK_URL" }',
+    )
     path = tmp_path / ".tve-private" / "project.toml"
     path.parent.mkdir()
     path.write_text(configured, encoding="utf-8")
@@ -2182,6 +2220,10 @@ def _write_project_config(tmp_path: Path, *, enabled: bool) -> Path:
         source = source.replace(
             'enabled = false\ntransport = "webhook-v1"',
             'enabled = true\ntransport = "webhook-v1"',
+        )
+        source = source.replace(
+            '# endpoint_ref = { env = "TVE_MONITORING_WEBHOOK_URL" }',
+            'endpoint_ref = { env = "TVE_MONITORING_WEBHOOK_URL" }',
         )
     path = tmp_path / "project.toml"
     path.write_text(source, encoding="utf-8")

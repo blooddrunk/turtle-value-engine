@@ -235,11 +235,13 @@ class MonitoringDeliverySettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool = False
-    transport: Literal["webhook-v1"] = "webhook-v1"
+    transport: Literal["webhook-v1", "telegram-v1"] = "webhook-v1"
     destination_id: str = Field(default="owner-primary", min_length=1, max_length=128)
     delivery_root: str = ".tve-private/monitoring/delivery"
     endpoint_ref: SecretReference | None = None
     auth_token_ref: SecretReference | None = None
+    telegram_bot_token_ref: SecretReference | None = None
+    telegram_chat_id: str | None = None
     receiver_idempotency_declared: bool = False
     max_attempts: int = Field(default=5, ge=1, le=20)
     timeout_seconds: float = Field(default=10.0, gt=0, le=60)
@@ -265,6 +267,21 @@ class MonitoringDeliverySettings(BaseModel):
     def _validate_backoff(self) -> MonitoringDeliverySettings:
         if self.backoff_cap_seconds < self.backoff_base_seconds:
             raise ValueError("backoff_cap_seconds must not be below backoff_base_seconds")
+        if self.transport == "telegram-v1":
+            if self.endpoint_ref is not None or self.auth_token_ref is not None:
+                raise ValueError("telegram-v1 cannot use webhook endpoint/auth references")
+            if self.receiver_idempotency_declared:
+                raise ValueError("Telegram does not provide receiver-enforced idempotency")
+            if self.enabled and (
+                self.telegram_bot_token_ref is None or self.telegram_chat_id is None
+            ):
+                raise ValueError("enabled telegram-v1 requires bot token reference and chat ID")
+            if self.telegram_chat_id is not None and not re.fullmatch(
+                r"-?[0-9]+", self.telegram_chat_id
+            ):
+                raise ValueError("telegram_chat_id must be numeric")
+        elif self.telegram_bot_token_ref is not None or self.telegram_chat_id is not None:
+            raise ValueError("Telegram fields require telegram-v1 transport")
         return self
 
 
@@ -400,6 +417,9 @@ class ProjectConfig(BaseModel):
                     "auth_token_ref": None
                     if self.monitoring.delivery.auth_token_ref is None
                     else self.monitoring.delivery.auth_token_ref.env,
+                    "telegram_bot_token_ref": None
+                    if self.monitoring.delivery.telegram_bot_token_ref is None
+                    else self.monitoring.delivery.telegram_bot_token_ref.env,
                 },
             },
             "secret_references": {
@@ -570,14 +590,20 @@ acquisition_cache_dir = ".tve-private/monitoring/provider-cache"
 [monitoring.delivery]
 # Phase 6-D2B notification delivery policy (non-secret; disabled by default).
 # A live delivery additionally requires `tve watch deliver --network allow`
-# and a resolved endpoint from the referenced environment entry.
+# and a configured destination-specific secret reference.
 enabled = false
 transport = "webhook-v1"
 destination_id = "owner-primary"
 delivery_root = ".tve-private/monitoring/delivery"
-endpoint_ref = { env = "TVE_MONITORING_WEBHOOK_URL" }
+# Advanced generic webhook only; leave unset for the default/off state.
+# endpoint_ref = { env = "TVE_MONITORING_WEBHOOK_URL" }
 # Optional bearer token for the webhook receiver (reference only).
 # auth_token_ref = { env = "TVE_MONITORING_WEBHOOK_TOKEN" }
+# Telegram preset: choose transport = "telegram-v1",
+# and set these two fields. The bot token value stays in the local environment.
+# telegram_bot_token_ref = { env = "TVE_MONITORING_TELEGRAM_BOT_TOKEN" }
+# telegram_chat_id = "123456789"
+# Telegram does not enforce the Idempotency-Key; keep this false.
 receiver_idempotency_declared = false
 max_attempts = 5
 timeout_seconds = 10.0
