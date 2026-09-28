@@ -63,14 +63,20 @@
       "type": "string"
     },
     "transport": {
-      "const": "webhook-v1",
       "default": "webhook-v1",
+      "enum": [
+        "webhook-v1",
+        "telegram-v1"
+      ],
       "title": "Transport",
       "type": "string"
     },
     "payload_contract": {
-      "const": "monitoring_delivery_webhook_payload_v1",
       "default": "monitoring_delivery_webhook_payload_v1",
+      "enum": [
+        "monitoring_delivery_webhook_payload_v1",
+        "monitoring_delivery_telegram_payload_v1"
+      ],
       "title": "Payload Contract",
       "type": "string"
     },

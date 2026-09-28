@@ -407,8 +407,9 @@ class TestProjectConfigMonitoring:
                 "transport": "webhook-v1",
                 "destination_id": "owner-primary",
                 "delivery_root": ".tve-private/monitoring/delivery",
-                "endpoint_ref": "TVE_MONITORING_WEBHOOK_URL",
+                "endpoint_ref": None,
                 "auth_token_ref": None,
+                "telegram_bot_token_ref": None,
             },
         }
         summary_text = json.dumps(summary)

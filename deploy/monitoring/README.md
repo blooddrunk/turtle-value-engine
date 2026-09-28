@@ -66,6 +66,12 @@ classification is deterministic; `live-smoke` starts the timer itself when it
 observes the cadence fire (or pass `apply --start-timer` for production
 behaviour).
 
+An owner Webhook URL is optional for Phase 6-E closure: the harness-local
+HTTPS receiver proves delivery and duplicate suppression with a matching
+machine-readable receipt. For phone alerts, the optional Telegram preset
+constructs the Bot API endpoint and requires only a locally resolved bot token
+and numeric chat ID. See `docs/operations/monitoring-notifications.md`.
+
 `scope = "user"` renders/installs user-level units (no root required);
 `scope = "system"` renders system units and, without non-interactive
 privilege, stops at the exact `MANUAL_SUDO_INSTALL_REQUIRED` commands.  The

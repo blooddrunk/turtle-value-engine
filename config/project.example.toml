@@ -78,14 +78,20 @@ acquisition_cache_dir = ".tve-private/monitoring/provider-cache"
 [monitoring.delivery]
 # Phase 6-D2B notification delivery policy (non-secret; disabled by default).
 # A live delivery additionally requires `tve watch deliver --network allow`
-# and a resolved endpoint from the referenced environment entry.
+# and a configured destination-specific secret reference.
 enabled = false
 transport = "webhook-v1"
 destination_id = "owner-primary"
 delivery_root = ".tve-private/monitoring/delivery"
-endpoint_ref = { env = "TVE_MONITORING_WEBHOOK_URL" }
+# Advanced generic webhook only; leave unset for the default/off state.
+# endpoint_ref = { env = "TVE_MONITORING_WEBHOOK_URL" }
 # Optional bearer token for the webhook receiver (reference only).
 # auth_token_ref = { env = "TVE_MONITORING_WEBHOOK_TOKEN" }
+# Telegram preset: choose transport = "telegram-v1",
+# and set these two fields. The bot token value stays in the local environment.
+# telegram_bot_token_ref = { env = "TVE_MONITORING_TELEGRAM_BOT_TOKEN" }
+# telegram_chat_id = "123456789"
+# Telegram does not enforce the Idempotency-Key; keep this false.
 receiver_idempotency_declared = false
 max_attempts = 5
 timeout_seconds = 10.0

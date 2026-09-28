@@ -3,6 +3,7 @@
 import argparse
 import json
 import os
+import re
 import sys
 import tempfile
 from collections.abc import Mapping
@@ -79,7 +80,12 @@ from turtle_value_engine.monitoring_delivery import (
     DeliveryLedgerStore,
     DeliverySettingsV1,
     MonitoringDeliveryService,
+    TelegramBotTransport,
+    WebhookEndpointError,
     WebhookHttpTransport,
+    discover_telegram_chats,
+    telegram_destination_id,
+    telegram_endpoint_from_token,
 )
 from turtle_value_engine.monitoring_execution import (
     ReanalysisExecutor,
@@ -574,6 +580,14 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     watch_unattended_run.add_argument("--runner-config", required=True, type=Path)
     watch_unattended_run.add_argument("--output", type=Path, default=None)
+    watch_unattended_notify = watch_commands.add_parser(
+        "unattended-notify",
+        help="run one durable activation, then deliver its alerts when notification is enabled",
+    )
+    watch_unattended_notify.add_argument("--runner-config", required=True, type=Path)
+    watch_unattended_notify.add_argument("--project-config", required=True, type=Path)
+    watch_unattended_notify.add_argument("--network", choices=("deny", "allow"), default="deny")
+    watch_unattended_notify.add_argument("--output", type=Path, default=None)
     watch_unattended_status = watch_commands.add_parser(
         "unattended-status",
         help="read the durable Phase 6-D2A unattended runner state",
@@ -591,6 +605,14 @@ def _build_parser() -> argparse.ArgumentParser:
     watch_deliver.add_argument("--activation-id", default=None)
     watch_deliver.add_argument("--network", choices=("deny", "allow"), default="deny")
     watch_deliver.add_argument("--output", type=Path, default=None)
+    watch_telegram_chats = watch_commands.add_parser(
+        "telegram-chats",
+        help="find chats that have messaged your Telegram bot (explicit network opt-in)",
+    )
+    watch_telegram_chats.add_argument("--network", choices=("deny", "allow"), default="deny")
+    watch_telegram_chats.add_argument(
+        "--bot-token-env", default="TVE_MONITORING_TELEGRAM_BOT_TOKEN"
+    )
     watch_delivery_status = watch_commands.add_parser(
         "delivery-status",
         help="read the durable Phase 6-D2B delivery ledger state",
@@ -1153,10 +1175,14 @@ def _run_watch_command(args: argparse.Namespace) -> object:
         return status
     if args.watch_command == "unattended-run":
         return _run_watch_unattended_run(args)
+    if args.watch_command == "unattended-notify":
+        return _run_watch_unattended_notify(args)
     if args.watch_command == "unattended-status":
         return _run_watch_unattended_status(args)
     if args.watch_command == "deliver":
         return _run_watch_deliver(args)
+    if args.watch_command == "telegram-chats":
+        return _run_watch_telegram_chats(args)
     if args.watch_command == "delivery-status":
         return _run_watch_delivery_status(args)
     raise ValueError(f"unsupported watch command: {args.watch_command}")
@@ -1329,6 +1355,39 @@ def _run_watch_unattended_run(args: argparse.Namespace) -> object:
     return payload
 
 
+def _run_watch_unattended_notify(args: argparse.Namespace) -> object:
+    """Compose the existing runner and durable delivery without repeating D1 work."""
+
+    from turtle_value_engine.monitoring_delivery import DeliveryNetworkDeniedError
+
+    project = load_project_config(args.project_config)
+    enabled = project.monitoring.delivery.enabled
+    if enabled and args.network != "allow":
+        raise DeliveryNetworkDeniedError(
+            "DELIVERY_NETWORK_DENIED: enabled unattended notification requires "
+            "--network allow before the runner starts"
+        )
+    runner = _run_watch_unattended_run(
+        argparse.Namespace(runner_config=args.runner_config, output=None)
+    )
+    assert isinstance(runner, dict)
+    if enabled:
+        delivery = _run_watch_deliver(
+            argparse.Namespace(
+                runner_config=args.runner_config,
+                project_config=args.project_config,
+                activation_id=runner["activation_id"],
+                network=args.network,
+                output=None,
+            )
+        )
+    else:
+        delivery = {"classification": "DISABLED", "http_requests": 0}
+    payload = {"runner": runner, "delivery": delivery}
+    _write_optional(args.output, payload)
+    return payload
+
+
 def _run_watch_unattended_status(args: argparse.Namespace) -> object:
     store = RunnerStore(args.runner_root)
     runner_ids = [args.runner_id] if args.runner_id else store.list_runner_ids()
@@ -1402,8 +1461,39 @@ def _run_watch_deliver(args: argparse.Namespace) -> object:
             "DELIVERY_DISABLED: [monitoring.delivery] is not enabled in the project "
             "configuration"
         )
+    endpoint_ref = delivery.endpoint_ref
+    auth_ref = delivery.auth_token_ref
+    destination_id = delivery.destination_id
+    transport = WebhookHttpTransport()
+    telegram_endpoint: str | None = None
+    if delivery.transport == "telegram-v1":
+        token_ref = delivery.telegram_bot_token_ref
+        if token_ref is None or delivery.telegram_chat_id is None:
+            raise DeliveryEndpointUnresolvedError(
+                "DELIVERY_ENDPOINT_UNRESOLVED: Telegram bot token reference or chat ID "
+                "is missing; no outbound request was attempted"
+            )
+        token = os.environ.get(token_ref.env, "")
+        if not token.strip():
+            raise DeliveryEndpointUnresolvedError(
+                f"DELIVERY_ENDPOINT_UNRESOLVED: environment reference {token_ref.env} "
+                "resolved to nothing; no outbound request was attempted"
+            )
+        try:
+            telegram_endpoint = telegram_endpoint_from_token(token)
+            destination_id = telegram_destination_id(
+                delivery.destination_id, token, delivery.telegram_chat_id
+            )
+            transport = TelegramBotTransport(chat_id=delivery.telegram_chat_id)
+        except WebhookEndpointError:
+            raise DeliveryEndpointUnresolvedError(
+                "DELIVERY_ENDPOINT_UNRESOLVED: Telegram bot token or chat ID is invalid; "
+                "no outbound request was attempted"
+            ) from None
+
     settings = DeliverySettingsV1(
-        destination_id=delivery.destination_id,
+        destination_id=destination_id,
+        transport=delivery.transport,
         max_attempts=delivery.max_attempts,
         timeout_seconds=delivery.timeout_seconds,
         backoff_base_seconds=delivery.backoff_base_seconds,
@@ -1413,10 +1503,10 @@ def _run_watch_deliver(args: argparse.Namespace) -> object:
     )
     ledger_root = project_config.resolve_path(delivery.delivery_root)
     ledger = DeliveryLedgerStore(ledger_root)
-    endpoint_ref = delivery.endpoint_ref
-    auth_ref = delivery.auth_token_ref
 
     def _endpoint_resolver() -> str:
+        if telegram_endpoint is not None:
+            return telegram_endpoint
         if endpoint_ref is None:
             raise DeliveryEndpointUnresolvedError(
                 "DELIVERY_ENDPOINT_UNRESOLVED: [monitoring.delivery] endpoint_ref is not "
@@ -1441,7 +1531,7 @@ def _run_watch_deliver(args: argparse.Namespace) -> object:
         ledger=ledger,
         runner_store=RunnerStore(runner_config.runner_root),
         cycle_store=MonitoringCycleStore(runner_config.cycle_store_root),
-        transport=WebhookHttpTransport(),
+        transport=transport,
         endpoint_resolver=_endpoint_resolver,
         auth_resolver=_auth_resolver,
         clock=lambda: datetime.now(UTC),
@@ -1475,6 +1565,37 @@ def _run_watch_deliver(args: argparse.Namespace) -> object:
     if outcome.status not in {DeliveryStatus.DELIVERED, DeliveryStatus.NOOP}:
         raise _CliPayloadExit(payload, 4)
     return payload
+
+
+def _run_watch_telegram_chats(args: argparse.Namespace) -> object:
+    from turtle_value_engine.monitoring_delivery import (
+        DeliveryEndpointUnresolvedError,
+        DeliveryNetworkDeniedError,
+    )
+
+    if args.network != "allow":
+        raise DeliveryNetworkDeniedError(
+            "DELIVERY_NETWORK_DENIED: Telegram chat discovery requires --network allow"
+        )
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", args.bot_token_env):
+        raise DeliveryEndpointUnresolvedError(
+            "DELIVERY_ENDPOINT_UNRESOLVED: invalid bot token environment reference"
+        )
+    token = os.environ.get(args.bot_token_env, "")
+    if not token.strip():
+        raise DeliveryEndpointUnresolvedError(
+            f"DELIVERY_ENDPOINT_UNRESOLVED: {args.bot_token_env} is not set"
+        )
+    chats = discover_telegram_chats(token)
+    return {
+        "chats": chats,
+        "suggested_chat_id": chats[0]["chat_id"] if len(chats) == 1 else None,
+        "next_step": (
+            "在 Telegram 中打开新建的机器人并发送 /start，然后重新运行此命令。"
+            if not chats
+            else "将你自己的 chat_id 填入 telegram_chat_id；机器人令牌只保留在本机环境。"
+        ),
+    }
 
 
 def _deliver_with_busy_exit(service, activation_id: str | None):

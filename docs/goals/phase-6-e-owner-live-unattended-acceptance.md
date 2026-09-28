@@ -1,11 +1,11 @@
 # Phase 6-E — Owner Live Unattended Acceptance
 
-Status: **READY_FOR_OWNER_AUTHORIZED_PHASE_6E**
-(current implementation `2095f187bbb11dd022b249b1c025f72772440267`, Actions
-run `36369283826` `success` with exact `head_sha`; every machine-verifiable
-live-acceptance boundary green on the real host; closure waits only on the
-owner webhook endpoint reference — see
-`docs/status/phase-6-e-2026-09-24.md`)
+Status: **CLOSED / OWNER_ACCEPTED**
+(the 2026-09-28 owner direction makes external notifications optional and
+selects Telegram as the first simple preset; implementation
+`8565621777762c601172aee562b2523a37ce02a6`, exact-head Actions run
+`36375649575` succeeded, and the refreshed real-host report completed with
+no failures or manual markers — see `docs/status/phase-6-e-2026-09-24.md`)
 Date: 2026-09-28 (implementation follow-up; acceptance evidence began 2026-09-24)
 Selected after: Phase 6-D3-R1 closure
 
@@ -33,7 +33,7 @@ bounded real watchlist
   -> Phase 6-C re-analysis boundary
   -> D1 cycle + alert outbox
   -> D2A unattended runner / durable activation + receipt
-  -> D2B/R1/R2 generic webhook delivery ledger
+  -> D2B/R1/R2 delivery ledger (generic webhook or optional Telegram)
   -> D3/R1 read-only operations projection
   -> existing private API / Worker / Dashboard
 ```
@@ -44,15 +44,18 @@ possible:
 1. real bounded event acquisition on the owner-authorized host;
 2. unattended systemd execution at an explicit cadence;
 3. restart/replay/idempotency behavior against the durable runner artifacts;
-4. real generic webhook delivery and durable delivery accounting;
+4. real HTTPS delivery to the harness-local receiver, its exact receipt and
+   durable delivery accounting; an owner-selected external notification is
+   optional and is recorded separately when configured;
 5. read-only monitoring status through the real surface;
 6. no secret leakage, no unexpected mutation and no duplicate work caused by
    status observation;
 7. the exact host topology satisfies the D3-R1 passive-lock observation
    assumptions.
 
-This phase does not authorize trading, investment-rule mutation, source
-expansion or vendor-specific notification adapters.
+This phase authorizes one additive, optional Telegram Bot API notification
+preset at the existing D2B ledger boundary. It does not authorize trading,
+investment-rule mutation, source expansion or other vendor adapters.
 
 ## 2. Automation-first acceptance rule
 
@@ -110,7 +113,7 @@ Preserve all previously closed semantics:
 - `strict-v1`, valuation, hard gates, adjustment approval and all investment
   decision semantics.
 
-Do not add Slack/Telegram/email-specific transports, scheduled GitHub Actions
+Do not add Slack/email-specific transports, scheduled GitHub Actions
 monitoring, Bridge/FQGate source expansion, M4-D/M4-E/M2-D, brokerage/order/
 funds behavior or autonomous rule mutation.
 
@@ -136,8 +139,9 @@ A non-mutating preflight must automatically verify at minimum:
   cadence inputs;
 - runner/project/watchlist configuration parses against the typed contracts;
 - live acquisition is explicitly enabled only for the acceptance config;
-- delivery configuration is enabled only when an endpoint secret reference can
-  be resolved at runtime; secret values are never printed;
+- delivery configuration selects the harness-local HTTPS receiver by default;
+  an owner-selected external receiver requires its secret reference to resolve
+  at runtime; secret values are never printed;
 - all runtime roots are owner-selected private paths and writable by the
   intended service identity;
 - no checked-in file contains resolved owner credentials;
@@ -253,12 +257,31 @@ prove the expected no-duplicate invariant.
 
 ## 7. Real notification acceptance
 
-Use only the existing generic HTTPS webhook boundary.
+Use the existing generic HTTPS webhook boundary or the optional Telegram Bot
+API preset. The harness-local HTTPS
+receiver is a valid Phase 6-E acceptance destination when the owner has not
+enabled an external notification service. It must receive the exact bounded
+payload over a real socket, expose a machine-readable receipt bound to the
+delivery identity, and prove the D2B ledger, retry-budget and duplicate
+suppression behavior. The report must say `external_notification_verified:
+false` in this mode; it must not claim that an alert reached the owner's
+phone or external account.
 
-The owner secret inputs are references such as
+When the owner explicitly selects `owner_env`, the secret inputs are
+references such as
 `TVE_MONITORING_WEBHOOK_URL` and optional
 `TVE_MONITORING_WEBHOOK_TOKEN`; values must stay outside Git, committed
 status documents and command output.
+
+When the owner selects `telegram`, the bot token is a secret reference and the
+numeric chat ID is a non-secret owner input. The adapter must construct the
+fixed Bot API endpoint itself; the owner must never need to supply a custom
+Webhook URL. The delivery identity must distinguish Telegram from the generic
+webhook and bind the bot/chat destination without persisting the token. Only
+`sendMessage` with a matching `ok=true` response, chat ID and exact text can
+count as `DELIVERED`; Telegram does not declare receiver-enforced idempotency.
+Missing Telegram inputs get the precise manual marker, while the local HTTPS
+mode remains a valid Phase 6-E acceptance destination without them.
 
 Automatically:
 
@@ -351,7 +374,9 @@ Phase 6-E is CLOSED only when both are true:
 1. the implementation SHA has a required Actions run whose `head_sha`
    exactly matches and whose conclusion is `success`; and
 2. the owner-authorized live acceptance report proves the bounded real-host
-   chain above.
+   chain above, including delivery to either the harness-local HTTPS receiver
+   or an explicitly configured owner receiver. An external notification
+   account, URL or token is not a closure prerequisite.
 
 The closure record must state, with exact machine-readable evidence where
 available:
@@ -374,8 +399,9 @@ live acceptance.
 
 ## 11. Stop boundary
 
-Stop after Phase 6-E owner live unattended acceptance.
+Stop after Phase 6-E owner live unattended acceptance and the optional
+Telegram notification preset selected by the owner.
 
-Do not start vendor-specific notification adapters, scheduled GitHub Actions
+Do not start other vendor-specific notification adapters, scheduled GitHub Actions
 monitoring, Bridge/FQGate provider expansion, M4-D/M4-E/M2-D, new financial
 data licensing work, brokerage/trading operations or investment-rule changes.

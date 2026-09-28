@@ -104,6 +104,9 @@ class TransportOutcome:
     error_code: DeliveryFailureCode | None
 
 
+ResponseClassifier = Callable[[int, bytes], TransportOutcome]
+
+
 class WebhookTransport(Protocol):
     def send(
         self,
@@ -203,12 +206,14 @@ class WebhookHttpTransport:
         allow_loopback_http: bool = False,
         monotonic_clock: MonotonicClock | None = None,
         connection_factory: ConnectionFactory | None = None,
+        response_classifier: ResponseClassifier | None = None,
     ) -> None:
         self.allow_loopback_http = allow_loopback_http
         self._monotonic_clock: MonotonicClock = monotonic_clock or time.monotonic
         self._connection_factory: ConnectionFactory = (
             connection_factory or _default_connection_factory
         )
+        self._response_classifier = response_classifier
 
     def _remaining(self, deadline: float, *, dispatch_started: bool) -> float:
         remaining = deadline - self._monotonic_clock()
@@ -308,19 +313,36 @@ class WebhookHttpTransport:
                 )
             status = response.status
             try:
-                body_digest, bytes_exceeded = self._read_bounded(
+                body_digest, bytes_exceeded, response_body = self._read_bounded(
                     response, request, connection, deadline
                 )
             except _BodyReadOutcome as exc:
                 return exc.outcome
             outcome = _classify_status(status)
             if bytes_exceeded:
+                if self._response_classifier is not None and 200 <= status < 300:
+                    return TransportOutcome(
+                        DeliveryStatus.AMBIGUOUS,
+                        status,
+                        None,
+                        DeliveryFailureCode.RESPONSE_BYTES_EXCEEDED,
+                    )
                 return TransportOutcome(
                     outcome.classification,
                     status,
                     None,
                     DeliveryFailureCode.RESPONSE_BYTES_EXCEEDED,
                 )
+            if self._response_classifier is not None:
+                try:
+                    outcome = self._response_classifier(status, response_body)
+                except Exception:
+                    outcome = TransportOutcome(
+                        DeliveryStatus.AMBIGUOUS,
+                        status,
+                        None,
+                        DeliveryFailureCode.RESPONSE_UNVERIFIED,
+                    )
             return TransportOutcome(
                 outcome.classification, status, body_digest, outcome.error_code
             )
@@ -337,7 +359,7 @@ class WebhookHttpTransport:
         request: WebhookRequest,
         connection,
         deadline: float,
-    ) -> tuple[str | None, bool]:
+    ) -> tuple[str | None, bool, bytes]:
         cap = request.max_response_bytes
         try:
             declared = response.getheader("Content-Length")
@@ -347,7 +369,7 @@ class WebhookHttpTransport:
             try:
                 if int(declared) > cap:
                     response.close()
-                    return None, True
+                    return None, True, b""
             except ValueError as exc:
                 raise WebhookTransportError("invalid webhook Content-Length") from exc
         chunks: list[bytes] = []
@@ -383,9 +405,10 @@ class WebhookHttpTransport:
             total += len(chunk)
             if total > cap:
                 response.close()
-                return None, True
+                return None, True, b""
             chunks.append(chunk)
-        return hashlib.sha256(b"".join(chunks)).hexdigest(), False
+        body = b"".join(chunks)
+        return hashlib.sha256(body).hexdigest(), False, body
 
 
 __all__ = [

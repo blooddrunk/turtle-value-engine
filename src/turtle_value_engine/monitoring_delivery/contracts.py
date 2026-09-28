@@ -34,8 +34,12 @@ from turtle_value_engine.monitoring.canonical import normalize_utc
 
 MONITORING_DELIVERY_DOMAIN: Literal["monitoring-delivery-v1"] = "monitoring-delivery-v1"
 WEBHOOK_TRANSPORT_ID: Literal["webhook-v1"] = "webhook-v1"
+TELEGRAM_TRANSPORT_ID: Literal["telegram-v1"] = "telegram-v1"
 WEBHOOK_PAYLOAD_CONTRACT: Literal["monitoring_delivery_webhook_payload_v1"] = (
     "monitoring_delivery_webhook_payload_v1"
+)
+TELEGRAM_PAYLOAD_CONTRACT: Literal["monitoring_delivery_telegram_payload_v1"] = (
+    "monitoring_delivery_telegram_payload_v1"
 )
 MAX_WEBHOOK_PAYLOAD_BYTES = 512 * 1024
 _HASH_PATTERN = r"^[0-9a-f]{64}$"
@@ -64,6 +68,8 @@ class DeliveryFailureCode(StrEnum):
     TIMEOUT_AFTER_DISPATCH = "TIMEOUT_AFTER_DISPATCH"
     CONNECTION_LOST_AFTER_DISPATCH = "CONNECTION_LOST_AFTER_DISPATCH"
     RESPONSE_BYTES_EXCEEDED = "RESPONSE_BYTES_EXCEEDED"
+    RESPONSE_UNVERIFIED = "RESPONSE_UNVERIFIED"
+    TELEGRAM_API_REJECTED = "TELEGRAM_API_REJECTED"
     RETRIES_EXHAUSTED = "RETRIES_EXHAUSTED"
     # Phase 6-D2B-R1: a durable dispatch claim exists whose terminal attempt
     # outcome never persisted; the request may or may not have reached the
@@ -137,7 +143,7 @@ class DeliverySettingsV1(BaseModel):
     contract: Literal["monitoring_delivery_settings_v1"] = "monitoring_delivery_settings_v1"
     schema_version: Literal["1.0.0"] = "1.0.0"
     destination_id: StrictStr = Field(min_length=1, max_length=128)
-    transport: Literal["webhook-v1"] = WEBHOOK_TRANSPORT_ID
+    transport: Literal["webhook-v1", "telegram-v1"] = WEBHOOK_TRANSPORT_ID
     max_attempts: StrictInt = Field(default=5, ge=1, le=20)
     timeout_seconds: StrictFloat = Field(default=10.0, gt=0, le=60)
     backoff_base_seconds: StrictInt = Field(default=60, ge=0, le=3600)
@@ -151,6 +157,8 @@ class DeliverySettingsV1(BaseModel):
             raise ValueError("destination_id must not be blank")
         if self.backoff_cap_seconds < self.backoff_base_seconds:
             raise ValueError("backoff_cap_seconds must not be below backoff_base_seconds")
+        if self.transport == TELEGRAM_TRANSPORT_ID and self.receiver_idempotency_declared:
+            raise ValueError("Telegram does not enforce receiver idempotency")
         return self
 
 
@@ -231,6 +239,18 @@ class MonitoringWebhookPayloadV1(_DeliveryContract):
         return self
 
 
+class MonitoringTelegramPayloadV1(MonitoringWebhookPayloadV1):
+    """The same validated alert projection with a distinct Telegram identity.
+
+    The adapter deterministically renders one bounded text message from this
+    envelope.  The recipient and bot credential remain outside the artifact.
+    """
+
+    contract: Literal["monitoring_delivery_telegram_payload_v1"] = (
+        TELEGRAM_PAYLOAD_CONTRACT
+    )
+
+
 class MonitoringDeliveryIntentV1(_DeliveryContract):
     """Immutable delivery intent persisted before any outbound I/O.
 
@@ -254,10 +274,11 @@ class MonitoringDeliveryIntentV1(_DeliveryContract):
     alert_batch_id: StrictStr = Field(pattern=_HASH_PATTERN)
     alert_batch_content_sha256: StrictStr = Field(pattern=_HASH_PATTERN)
     destination_id: StrictStr = Field(min_length=1, max_length=128)
-    transport: Literal["webhook-v1"] = WEBHOOK_TRANSPORT_ID
-    payload_contract: Literal["monitoring_delivery_webhook_payload_v1"] = (
-        WEBHOOK_PAYLOAD_CONTRACT
-    )
+    transport: Literal["webhook-v1", "telegram-v1"] = WEBHOOK_TRANSPORT_ID
+    payload_contract: Literal[
+        "monitoring_delivery_webhook_payload_v1",
+        "monitoring_delivery_telegram_payload_v1",
+    ] = WEBHOOK_PAYLOAD_CONTRACT
     payload_sha256: StrictStr = Field(pattern=_HASH_PATTERN)
     payload_bytes: StrictInt = Field(ge=2, le=MAX_WEBHOOK_PAYLOAD_BYTES)
     empty_outbox: StrictBool
@@ -273,6 +294,15 @@ class MonitoringDeliveryIntentV1(_DeliveryContract):
 
     @model_validator(mode="after")
     def _validate_intent(self, info: ValidationInfo) -> Self:
+        expected_contract = (
+            WEBHOOK_PAYLOAD_CONTRACT
+            if self.transport == WEBHOOK_TRANSPORT_ID
+            else TELEGRAM_PAYLOAD_CONTRACT
+        )
+        if self.payload_contract != expected_contract:
+            raise ValueError("delivery transport and payload contract do not match")
+        if self.transport == TELEGRAM_TRANSPORT_ID and self.receiver_idempotency_declared:
+            raise ValueError("Telegram intent cannot declare receiver idempotency")
         if _hash_checks_enabled(info):
             from turtle_value_engine.monitoring.canonical import canonical_sha256
 
@@ -528,10 +558,13 @@ __all__ = [
     "DeliveryStatus",
     "MAX_WEBHOOK_PAYLOAD_BYTES",
     "MONITORING_DELIVERY_DOMAIN",
+    "TELEGRAM_PAYLOAD_CONTRACT",
+    "TELEGRAM_TRANSPORT_ID",
     "MonitoringDeliveryAttemptV1",
     "MonitoringDeliveryIntentV1",
     "MonitoringDeliveryStateV1",
     "MonitoringDispatchClaimV1",
+    "MonitoringTelegramPayloadV1",
     "MonitoringWebhookAlertV1",
     "MonitoringWebhookPayloadV1",
     "WEBHOOK_PAYLOAD_CONTRACT",

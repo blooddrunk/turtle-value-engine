@@ -455,8 +455,19 @@ private config passed to `--acceptance-config`; when
 `TVE_MONITORING_WEBHOOK_URL` is available, the harness automatically selects
 the owner receiver and a stable destination ID distinct from the local test
 receiver. Do not ask the owner to edit the private acceptance JSON. Phase
-6-E remains `READY_FOR_OWNER_AUTHORIZED_PHASE_6E` until the owner URL
-reference is available and the real delivery resume succeeds.
+6-E was recorded as `READY_FOR_OWNER_AUTHORIZED_PHASE_6E` under that original
+acceptance rule. On 2026-09-28 the owner explicitly changed the rule: the
+already proven harness-local HTTPS receiver is sufficient for Phase 6-E
+delivery acceptance, with `external_notification_verified: false`; an owner
+Webhook URL is no longer required. The current goal and status record govern
+the revised closure. The additive implementation
+`8565621777762c601172aee562b2523a37ce02a6` passed the full local gate
+and exact-head Actions run `36375649575`; refreshed host acceptance returned
+`LIVE_ACCEPTANCE_COMPLETE` with zero failures and markers, so Phase 6-E is
+`CLOSED / OWNER_ACCEPTED` under the revised rule.
+An optional `telegram-v1` preset is additive at the existing delivery ledger;
+its real personal-account delivery is not claimed without a bot token and chat
+ID supplied outside Git/chat.
 
 ## 5. Working with company data
 

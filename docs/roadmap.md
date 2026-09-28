@@ -6371,3 +6371,19 @@ glob 344 passed, Dashboard 55 tests, cross-stack smoke and the whole local
 gate green; no manual owner action was used. Implementation and CI-closure
 record: `docs/status/phase-6-d3-r1-2026-09-24.md`. Phase 6-E owner live
 unattended acceptance remains the next candidate package.
+
+## Phase 6-E owner acceptance closure — 2026-09-28
+
+Phase 6-E is `CLOSED / OWNER_ACCEPTED` under the owner-revised acceptance goal.
+The bounded real-host chain, user-systemd timer fire, replay, durable delivery
+ledger and read-only monitoring API have machine-verifiable evidence. The
+harness-local HTTPS receiver is an accepted delivery destination, so no
+custom Webhook URL or personal notification account is required for closure.
+The refreshed report states `LIVE_ACCEPTANCE_COMPLETE`, zero failures and
+markers, and `external_notification_verified=false`; exact implementation
+`8565621777762c601172aee562b2523a37ce02a6` passed the full local gate
+and exact-head Actions run `36375649575`. Telegram is an optional simple
+notification preset; actual delivery to an owner chat is not claimed until
+configured and observed. The acceptance timer was disabled after the proof.
+Canonical details: `docs/status/phase-6-e-2026-09-24.md` and
+`docs/operations/monitoring-notifications.md`.

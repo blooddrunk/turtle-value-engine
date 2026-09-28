@@ -538,8 +538,12 @@ Phase 5R-A acquisition/compiler
         ⚠️（A0–A5/A7 已实现；A-only 私有 probe/replay 已完成；完整 A/H acceptance 仍待补齐）
 
 Watchlist / event-driven monitoring
-        ✅（6-D1 单次同步 cycle/outbox；scheduler、通知与 Dashboard 监控待后续阶段）
+        ✅（持久化 runner、交付账本与只读监控页已实现；Phase 6-E 本机验收已关闭）
 ```
+
+监控提醒默认关闭。想接收手机提醒可选 Telegram；自定义 Webhook 只是高级
+选项，不是 Phase 6-E 验收的必填项。操作见
+[`docs/operations/monitoring-notifications.md`](docs/operations/monitoring-notifications.md)。
 
 项目仍处于快速开发阶段，接口和数据契约可能继续演进。
 
