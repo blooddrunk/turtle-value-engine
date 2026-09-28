@@ -216,7 +216,7 @@ export interface components {
          * @description Safe, secret-free machine-readable failure classifications.
          * @enum {string}
          */
-        DeliveryFailureCode: "HTTP_RETRYABLE_STATUS" | "HTTP_PERMANENT_STATUS" | "HTTP_REDIRECT_NOT_FOLLOWED" | "CONNECT_FAILED_PRE_DISPATCH" | "TIMEOUT_AFTER_DISPATCH" | "CONNECTION_LOST_AFTER_DISPATCH" | "RESPONSE_BYTES_EXCEEDED" | "RETRIES_EXHAUSTED" | "ORPHANED_DISPATCH" | "DEADLINE_EXHAUSTED_PRE_DISPATCH";
+        DeliveryFailureCode: "HTTP_RETRYABLE_STATUS" | "HTTP_PERMANENT_STATUS" | "HTTP_REDIRECT_NOT_FOLLOWED" | "CONNECT_FAILED_PRE_DISPATCH" | "TIMEOUT_AFTER_DISPATCH" | "CONNECTION_LOST_AFTER_DISPATCH" | "RESPONSE_BYTES_EXCEEDED" | "RESPONSE_UNVERIFIED" | "TELEGRAM_API_REJECTED" | "RETRIES_EXHAUSTED" | "ORPHANED_DISPATCH" | "DEADLINE_EXHAUSTED_PRE_DISPATCH";
         /**
          * DeliveryStatus
          * @description Latest-state classifications of one delivery ledger entry.
