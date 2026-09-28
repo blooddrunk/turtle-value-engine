@@ -45,6 +45,7 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 import time
@@ -374,6 +375,51 @@ def resolvable_secret_values(
         if raw.strip():
             values[name] = raw
     return values
+
+
+def _owner_delivery_config(
+    config: AcceptanceConfigV1, *, endpoint_available: bool
+) -> AcceptanceConfigV1:
+    """Select a distinct stable destination when an owner endpoint is available.
+
+    The default local HTTPS receiver and an owner endpoint must never share a
+    delivery identity: the local proof has already consumed its dispatch slot.
+    Deriving the owner destination from the configured non-secret destination
+    keeps the resume path deterministic without asking the owner to edit JSON.
+    """
+
+    if not endpoint_available:
+        return config
+    if config.delivery_receiver == "owner_env" and re.search(
+        r"-owner-[0-9a-f]{10}$", config.delivery_destination_id
+    ):
+        return config
+    suffix = f"-owner-{hashlib.sha256(config.delivery_destination_id.encode()).hexdigest()[:10]}"
+    prefix = config.delivery_destination_id[: 128 - len(suffix)].rstrip("-._")
+    owner_destination_id = f"{prefix or 'phase6e'}{suffix}"
+    return config.model_copy(
+        update={
+            "delivery_receiver": "owner_env",
+            "delivery_destination_id": owner_destination_id,
+        }
+    )
+
+
+def _resume_live_smoke_command(acceptance_config_path: str | Path) -> str:
+    """Return a directly runnable resume command using the actual input config."""
+
+    return shlex.join(
+        (
+            sys.executable,
+            str(Path(__file__).resolve()),
+            "--acceptance-config",
+            str(Path(acceptance_config_path).expanduser().resolve()),
+            "live-smoke",
+            "--network",
+            "allow",
+            "--allow-existing",
+        )
+    )
 
 
 def scan_bytes_for_secrets(data: bytes, secrets: Mapping[str, str]) -> list[str]:
@@ -1912,6 +1958,8 @@ def _marker_payload_from_exception(exc: ManualBoundary) -> dict[str, object]:
 
 def cmd_live_smoke(args: argparse.Namespace, runner: CommandRunner = _default_runner) -> int:
     config = load_acceptance_config(args.acceptance_config)
+    endpoint_available = config.delivery_endpoint_env in resolvable_secret_values(config)
+    config = _owner_delivery_config(config, endpoint_available=endpoint_available)
     if args.network != "allow":
         raise AcceptanceError(
             "live-smoke requires the explicit --network allow opt-in (Phase 6-B/D2B boundary)"
@@ -2224,7 +2272,12 @@ def cmd_live_smoke(args: argparse.Namespace, runner: CommandRunner = _default_ru
 
     # 9. Delivery through the existing generic HTTPS webhook boundary.
     report["delivery"] = _delivery_section(
-        config, python, runner, terminal_activation, record_marker
+        config,
+        python,
+        runner,
+        terminal_activation,
+        record_marker,
+        acceptance_config_path=args.acceptance_config,
     )
 
     # 10. Read-only D3 operations API on the real surface server.
@@ -2486,6 +2539,8 @@ def _delivery_section(
     runner: CommandRunner,
     terminal_run: dict[str, object],
     record_marker: Callable[[dict[str, object]], None],
+    *,
+    acceptance_config_path: str | Path,
 ) -> dict[str, object]:
     secrets = resolvable_secret_values(config)
     owner_endpoint = secrets.get(config.delivery_endpoint_env)
@@ -2531,11 +2586,7 @@ def _delivery_section(
                         f"{config.delivery_auth_env} value) must stay out of Git, committed "
                         "documents, chat and this report"
                     ),
-                    resume_command=(
-                        f"{Path(sys.argv[0]).name} live-smoke --acceptance-config "
-                        f"{Path(config.acceptance_root) / 'acceptance-config.json'}"
-                        " --network allow --allow-existing"
-                    ),
+                    resume_command=_resume_live_smoke_command(acceptance_config_path),
                     machine_verifiable_success=(
                         "`tve watch deliver ... --network allow` returns classification "
                         "DELIVERED, delivery-status reports pointer CURRENT, and the repeated "
@@ -2651,11 +2702,7 @@ def _delivery_section(
                         f"{config.delivery_auth_env} value) must stay out of Git, committed "
                         "documents, chat and this report"
                     ),
-                    resume_command=(
-                        f"{Path(sys.argv[0]).name} live-smoke --acceptance-config "
-                        f"{Path(config.acceptance_root) / 'acceptance-config.json'}"
-                        " --network allow --allow-existing"
-                    ),
+                    resume_command=_resume_live_smoke_command(acceptance_config_path),
                     machine_verifiable_success=(
                         "deliver to the owner endpoint returns DELIVERED with pointer CURRENT, "
                         "and the repeated identity authorizes zero additional dispatch slots"

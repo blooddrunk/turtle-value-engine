@@ -9,8 +9,10 @@ subprocesses (the same proof the preflight performs on the deployment host).
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+import shlex
 import socket
 import subprocess
 import sys
@@ -411,6 +413,46 @@ def test_materialize_workspace_writes_typed_isolated_inputs(tmp_path: Path) -> N
     assert project.monitoring.delivery.endpoint_ref.env == config.delivery_endpoint_env
 
 
+def test_owner_endpoint_automatically_gets_a_fresh_stable_destination(
+    tmp_path: Path,
+) -> None:
+    from turtle_value_engine.config import load_project_config
+
+    config = _acceptance_config(
+        acceptance_root=str(tmp_path),
+        delivery_receiver="local_https",
+        delivery_destination_id="phase6e-acceptance",
+    )
+    owner_config = harness._owner_delivery_config(config, endpoint_available=True)
+    repeated_owner_config = harness._owner_delivery_config(config, endpoint_available=True)
+    explicitly_selected_owner = config.model_copy(update={"delivery_receiver": "owner_env"})
+    explicit_owner_config = harness._owner_delivery_config(
+        explicitly_selected_owner, endpoint_available=True
+    )
+
+    assert owner_config.delivery_receiver == "owner_env"
+    assert owner_config.delivery_destination_id != config.delivery_destination_id
+    assert owner_config.delivery_destination_id == repeated_owner_config.delivery_destination_id
+    assert explicit_owner_config.delivery_destination_id == owner_config.delivery_destination_id
+    assert harness._owner_delivery_config(config, endpoint_available=False) is config
+    assert config.delivery_receiver == "local_https"
+    assert config.delivery_destination_id == "phase6e-acceptance"
+
+    _materialize_workspace(owner_config)
+    project = load_project_config(owner_config.project_config_path)
+    assert project.monitoring.delivery.destination_id == owner_config.delivery_destination_id
+
+
+def test_owner_destination_derivation_handles_max_length_ids() -> None:
+    config = _acceptance_config(delivery_destination_id="d" * 128)
+    owner_config = harness._owner_delivery_config(config, endpoint_available=True)
+    assert len(owner_config.delivery_destination_id) <= 128
+    assert owner_config.delivery_destination_id != config.delivery_destination_id
+    assert owner_config.delivery_destination_id.endswith(
+        f"-owner-{hashlib.sha256(('d' * 128).encode()).hexdigest()[:10]}"
+    )
+
+
 def test_delivery_section_without_owner_endpoint_records_precise_marker(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -420,8 +462,14 @@ def test_delivery_section_without_owner_endpoint_records_precise_marker(
     monkeypatch.delenv("TVE_MONITORING_WEBHOOK_URL", raising=False)
     monkeypatch.delenv("TVE_MONITORING_WEBHOOK_TOKEN", raising=False)
     markers: list[dict[str, object]] = []
+    config_path = _write_config(tmp_path, config)
     section = _delivery_section(
-        config, sys.executable, _fake_runner({}), {"activation_id": "a" * 64}, markers.append
+        config,
+        sys.executable,
+        _fake_runner({}),
+        {"activation_id": "a" * 64},
+        markers.append,
+        acceptance_config_path=config_path,
     )
     assert section["ok"] is False
     assert section["skipped"] is True
@@ -435,6 +483,11 @@ def test_delivery_section_without_owner_endpoint_records_precise_marker(
         "remaining_unverified",
     ):
         assert markers[0][key]
+    resume_command = shlex.split(str(markers[0]["resume_command"]))
+    config_index = resume_command.index("--acceptance-config") + 1
+    assert Path(resume_command[config_index]) == config_path.resolve()
+    assert Path(resume_command[config_index]).is_file()
+    assert resume_command[-3:] == ["--network", "allow", "--allow-existing"]
 
 
 # ---------------------------------------------------------------------------
