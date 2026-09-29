@@ -5160,22 +5160,36 @@ OWNER_ACCEPTED` at implementation
 `36515225218`, success). The 2026-09-29 post-closure review selected the
 narrow
 [Phase 6-F-R1 — Production Credential Boundary and Manual-Resume Hardening](goals/phase-6-f-r1-production-credential-boundary-hardening.md)
-follow-on before any Phase 7 or provider expansion.
+follow-on before any Phase 7 or provider expansion; R1 is now closed at
+implementation `42304cf86db6fb2d8b177f3d7d13a4b89531103b` (exact-head Actions
+run `36519413717`, success) — the effective secret scan/redaction set now
+covers the private systemd `EnvironmentFile` alongside the process
+environment, the typed private-file contract (in-root containment, symlink
+escape, owner-only permissions) is machine-enforced, and every manual
+boundary emits an exact parser-valid resume command; closure record
+`docs/status/phase-6-f-r1-2026-09-29.md`. The next package remains unselected
+pending a fresh post-R1 review.
 
 ---
 
 ## Phase 6 — Watchlist and event-driven re-analysis
 
 Status: **Phase 6-A / 6-B / 6-C / 6-D1 / 6-D2A / 6-D2A-R1 / 6-D2B /
-6-D2B-R1 / 6-D2B-R2 / 6-D3 / 6-D3-R1 / 6-E / 6-F are closed at their
-declared boundaries. Phase 6-F is `CLOSED / OWNER_ACCEPTED` with final
+6-D2B-R1 / 6-D2B-R2 / 6-D3 / 6-D3-R1 / 6-E / 6-F / 6-F-R1 are closed at
+their declared boundaries. Phase 6-F is `CLOSED / OWNER_ACCEPTED` with final
 implementation `065b53a17bcb4f009a57ef918ffa3d59de135107`, exact-head
 Actions run `36515225218` (`success`) and the production timer intentionally
 left enabled/active on the accepted WSL2 runtime. A post-closure review found
 no Phase 6-F closure reversal, but selected
 [Phase 6-F-R1 — Production Credential Boundary and Manual-Resume Hardening](goals/phase-6-f-r1-production-credential-boundary-hardening.md)
 to harden the dormant notification credential path and exact manual-resume
-instructions before any broader next package.**
+instructions before any broader next package; R1 is closed at implementation
+`42304cf86db6fb2d8b177f3d7d13a4b89531103b` (exact-head Actions run
+`36519413717`, `success`) with the EnvironmentFile-aware effective secret
+scan/redaction set, the machine-enforced private credential-file contract and
+exact parser-valid resume commands — see
+`docs/status/phase-6-f-r1-2026-09-29.md`. The next package is unselected
+pending a fresh post-R1 review.**
 The first package,
 [Phase 6-A — Watchlist State and Deterministic Event Planning Foundation](goals/phase-6-a-watchlist-event-foundation.md),
 is complete: typed `WatchlistSpecV1`/`MonitoringEventV1`/`WatchlistStateV1`/

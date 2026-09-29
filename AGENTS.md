@@ -512,7 +512,31 @@ EnvironmentFile-only secrets must participate in leak scans/redaction, the
 private EnvironmentFile boundary must be machine-enforced, and every manual
 boundary must emit an exact parser-valid resume command using the real config
 path. R1 must not start Phase 7, provider/Bridge expansion, new notification
-vendors, brokerage/trading or investment-rule work.
+vendors, brokerage/trading or investment-rule work. **Phase 6-F-R1 is
+implemented and CLOSED** at implementation
+`42304cf86db6fb2d8b177f3d7d13a4b89531103b` (exact-head Actions run
+`36519413717`, `success`; full suite 6787 passed / 2 skipped; closure record
+`docs/status/phase-6-f-r1-2026-09-29.md`): `scripts/monitoring_production_ops.py`
+now derives the effective scan/redaction set for every secret-checking path
+(preflight tracked files, verify/live-proof journal redaction, D3 payload
+scan, live-proof/recover-proof/report artifact scans and serialized-report
+guards) from both the harness process environment and the private systemd
+`EnvironmentFile`, keeping both values when the sources diverge (values stay
+memory-only; hit reports carry reference names only); the typed credential
+contract is machine-enforced (parse-time in-private-root containment plus
+runtime regular-file/symlink-escape/owner-only-permission checks, never
+auto-chmod, metadata-only reporting, precise `MANUAL_SECRET_REFERENCE_REQUIRED`
+boundary in preflight/render/live-proof delivery); and the Windows-bootstrap,
+linger and missing-secret render boundaries all emit exact
+`_resume_command()`-built commands that round-trip through `_build_parser()`.
+Twelve deterministic regressions prove the defects (15 failures on pre-R1
+main). Non-destructive production checks at the implementation HEAD stayed
+green (gate GREEN, preflight/verify green, report `PRODUCTION_DEPLOYED`);
+no live firing/recovery/delivery was rerun as ceremony and no real secret
+was requested or exposed. The next package selection is pending a fresh
+post-R1 review; no Phase 7, provider expansion, Bridge/FQGate integration,
+new notification vendors, brokerage/trading or investment-rule work was
+started.
 
 ## 5. Working with company data
 

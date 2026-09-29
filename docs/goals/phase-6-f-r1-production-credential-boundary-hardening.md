@@ -1,6 +1,9 @@
 # Phase 6-F-R1 — Production Credential Boundary and Manual-Resume Hardening
 
-Status: **SELECTED / NOT IMPLEMENTED**  
+Status: **CLOSED** (2026-09-29; implementation
+`42304cf86db6fb2d8b177f3d7d13a4b89531103b`, exact-head Actions run
+`36519413717` `success`; closure record
+`docs/status/phase-6-f-r1-2026-09-29.md`)  
 Date: 2026-09-29  
 Selected after: Phase 6-F post-closure review
 
