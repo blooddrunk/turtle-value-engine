@@ -5227,9 +5227,7 @@ pre-start equality gate and closes the remaining Unicode noncharacter/U+FEFF
 parity gap. R3 is closed at implementation
 `4f3fa0df9381649c0929135dd7b9480a43d5ea91` (exact-head Actions run
 `36542078579`, `success`; closure record
-`docs/status/phase-6-f-r3-2026-09-29.md`); the delivery-disabled production
-deployment is unchanged and the next package selection is pending a fresh
-post-R3 review.**
+`docs/status/phase-6-f-r3-2026-09-29.md`); the delivery-disabled production deployment is unchanged. A fresh post-R3 review (`docs/status/phase-6-f-r3-post-closure-review-2026-09-29.md`) accepts R3 and selects [Phase 6-F-R4 — Production Artifact Serialization Parity Hardening](goals/phase-6-f-r4-production-artifact-serialization-hardening.md) before any broader Phase 7/provider/Bridge work. R4 closes the supported-owner-input gap between typed paths/strings and the generated systemd/TOML parser semantics; it is selected but not yet implemented.**
 The first package,
 [Phase 6-A — Watchlist State and Deterministic Event Planning Foundation](goals/phase-6-a-watchlist-event-foundation.md),
 is complete: typed `WatchlistSpecV1`/`MonitoringEventV1`/`WatchlistStateV1`/
@@ -5389,13 +5387,7 @@ chronological calibration proposal boundary.
 
 Phase 1 deterministic semantics remain frozen. Changes to formulas, hard-gate
 semantics, schemas or `strict-v1` thresholds require a separately reviewed,
-versioned change. Watchlist/event monitoring is closed through Phase 6-E
-owner live acceptance; its acceptance timer was deliberately disabled after
-the bounded proof. Phase 6-F is the selected next slice: productionize the
-already-proven single-host runtime without expanding providers or investment
-semantics. Additional provider coverage, Bridge/FQGate integration, M4-D/M4-E
-and M2-D remain separate work unless a later concrete requirement selects
-them.
+versioned change. Watchlist/event monitoring is closed through Phase 6-E owner live acceptance. Phase 6-F persistent owner operations and its R1/R2/R3 credential hardening follow-ons are closed at their declared boundaries. The selected next slice is Phase 6-F-R4: prove semantic round-trip of accepted non-secret owner inputs through generated systemd units and project TOML before any broader controlled-evolution work. Additional provider coverage, Bridge/FQGate integration, M4-D/M4-E and M2-D remain separate work unless a later concrete requirement selects them.
 
 The long endpoint notes below are historical implementation records. Future
 provider categories may still be added one at a time, but they are not part of
