@@ -257,3 +257,23 @@ and exact-head CI closure are complete.
 Do not start Phase 7, FQGate/Bridge integration, provider expansion, new
 notification vendors, trading/brokerage work, investment-rule changes or
 Windows-autostart implementation.
+
+
+## Post-closure review note — 2026-09-29
+
+A fresh review accepts the R2 implementation/CI closure but found a narrower
+runtime credential-drift boundary. systemd reads `EnvironmentFile=` shortly
+before service execution, while R2 proves canonicality at render time; the
+current apply/activate/verify/report path and installed unit do not yet ensure
+that a later file edit is revalidated before `unattended-notify`.
+
+The same review also found that the canonical parser still accepts
+systemd-invalid Unicode noncharacters and `U+FEFF`.
+
+These findings do not reverse R2 or the delivery-disabled Phase 6-F production
+closure. The selected correction is:
+
+`docs/goals/phase-6-f-r3-runtime-credential-drift-hardening.md`
+
+Selection audit:
+`docs/status/phase-6-f-r2-post-closure-review-2026-09-29.md`

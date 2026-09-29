@@ -5176,7 +5176,12 @@ R2 is now closed at implementation
 has one machine-enforced canonical `NAME=VALUE` subset whose every accepted
 value is byte-identical under the harness and systemd, and render proves
 readability/completeness before writing any artifact. The accepted
-monitoring-only Phase 6-F deployment remains unchanged.
+monitoring-only Phase 6-F deployment remains unchanged. A fresh post-R2 review
+then selected
+[Phase 6-F-R3 — Runtime Credential Drift and Service-Effective Gate Hardening](goals/phase-6-f-r3-runtime-credential-drift-hardening.md)
+to make the canonical credential contract hold at lifecycle and service-execution
+time, including inherited-value byte equality and the remaining
+noncharacter/U+FEFF parity gap; R3 is selected / not implemented.
 
 ---
 
@@ -5201,7 +5206,13 @@ exact parser-valid resume commands — see
 to make every accepted credential-file value byte-identical between the harness and systemd and to make render prove readability/reference completeness. R2 is closed at implementation
 `c064cda68a0e31b0dc1b47ed451bd59977e7c931` (exact-head Actions run
 `36533726274`, `success`; closure record
-`docs/status/phase-6-f-r2-2026-09-29.md`).**
+`docs/status/phase-6-f-r2-2026-09-29.md`). A fresh post-R2 review selected
+[Phase 6-F-R3 — Runtime Credential Drift and Service-Effective Gate Hardening](goals/phase-6-f-r3-runtime-credential-drift-hardening.md)
+before any broader Phase 7/provider/Bridge work: systemd reads EnvironmentFile at
+service execution time, so R3 adds lifecycle revalidation plus a delivery-only
+pre-start equality gate and closes the remaining Unicode noncharacter/U+FEFF
+parity gap. R3 is selected / not implemented; the delivery-disabled production
+deployment is unchanged.**
 The first package,
 [Phase 6-A — Watchlist State and Deterministic Event Planning Foundation](goals/phase-6-a-watchlist-event-foundation.md),
 is complete: typed `WatchlistSpecV1`/`MonitoringEventV1`/`WatchlistStateV1`/

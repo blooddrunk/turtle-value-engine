@@ -67,3 +67,19 @@ byte-identically by the harness and systemd.
   credential files;
 - dated R2 closure record with exact-head CI evidence;
 - source-of-truth docs updated only as narrowly required.
+
+
+## Post-closure continuation
+
+R2 remains CLOSED. A fresh review selected the narrow runtime follow-on:
+
+Selected next package:
+`docs/goals/phase-6-f-r3-runtime-credential-drift-hardening.md`
+
+Post-R2 review:
+`docs/status/phase-6-f-r2-post-closure-review-2026-09-29.md`
+
+Coding-agent handoff:
+`docs/status/phase-6-f-r3-next-coding-agent-goal.md`
+
+Do not re-implement R2; continue only with R3.
