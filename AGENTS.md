@@ -533,10 +533,7 @@ Twelve deterministic regressions prove the defects (15 failures on pre-R1
 main). Non-destructive production checks at the implementation HEAD stayed
 green (gate GREEN, preflight/verify green, report `PRODUCTION_DEPLOYED`);
 no live firing/recovery/delivery was rerun as ceremony and no real secret
-was requested or exposed. The next package selection is pending a fresh
-post-R1 review; no Phase 7, provider expansion, Bridge/FQGate integration,
-new notification vendors, brokerage/trading or investment-rule work was
-started.
+was requested or exposed. A fresh post-R1 review (`docs/status/phase-6-f-r1-post-closure-review-2026-09-29.md`) identified a narrower dormant credential-file semantic/render-gating gap and selected **Phase 6-F-R2 — Canonical EnvironmentFile Semantics and Render Gating** (`docs/goals/phase-6-f-r2-environmentfile-semantic-hardening.md`). R2 is selected / not implemented and must close before production delivery is enabled; the accepted monitoring-only Phase 6-F deployment remains unchanged. Do not start Phase 7, provider expansion, Bridge/FQGate integration, new notification vendors, brokerage/trading or investment-rule work as part of R2.
 
 ## 5. Working with company data
 

@@ -1,54 +1,27 @@
 # Phase 6-F-R1 coding-agent handoff — Production Credential Boundary and Manual-Resume Hardening
 
-Status: **SELECTED / NOT IMPLEMENTED**
+Status: **COMPLETED 2026-09-29**
 
-Canonical goal:
-`docs/goals/phase-6-f-r1-production-credential-boundary-hardening.md`
+Implementation:
+`42304cf86db6fb2d8b177f3d7d13a4b89531103b`
 
-Selection audit:
-`docs/status/phase-6-f-r1-selection-2026-09-29.md`
+Exact-head CI:
+GitHub Actions run `36519413717` (`success`).
 
-Predecessor closure:
-`docs/status/phase-6-f-2026-09-29.md`
+Closure:
+`docs/status/phase-6-f-r1-2026-09-29.md`
 
-## Mission
+A fresh post-closure review found a narrower EnvironmentFile semantic/render
+gating defect that does not reverse the accepted delivery-disabled Phase 6-F
+production deployment.
 
-Implement only Phase 6-F-R1.
+Post-closure review:
+`docs/status/phase-6-f-r1-post-closure-review-2026-09-29.md`
 
-The post-closure audit accepted Phase 6-F itself, but found three dormant-path
-hardening defects:
+Selected next package:
+`docs/goals/phase-6-f-r2-environmentfile-semantic-hardening.md`
 
-1. EnvironmentFile-only secret values are not merged into the effective
-   artifact-scan/journal-redaction set;
-2. the documented private EnvironmentFile boundary is not fully enforced
-   (private-root containment/symlink/permissions);
-3. Windows-bootstrap, linger and missing-secret render boundaries do not all
-   emit an exact parser-valid resume command with the real production-config
-   path.
+Coding-agent handoff:
+`docs/status/phase-6-f-r2-next-coding-agent-goal.md`
 
-Fix those defects without changing monitoring, delivery-ledger, provider,
-Dashboard, valuation or investment semantics.
-
-## Execution rules
-
-- Read the canonical goal and source-of-truth docs before editing.
-- Add focused regressions that fail on current main first.
-- Keep all tests offline and host-mutation-free.
-- Never request or print a real secret.
-- Run the complete automatic gate; do not delegate machine-verifiable checks
-  to the owner.
-- If the existing private production config is locally available, rerun only
-  the goal-specified non-destructive production gate/preflight/verify/report.
-- Push the exact implementation SHA and close R1 only after the matching
-  required GitHub Actions run succeeds.
-- Record exact commands/results/test counts in a dated closure document.
-- Do not start any package beyond R1.
-
-## Required deliverables
-
-- hardened `scripts/monitoring_production_ops.py`;
-- focused deterministic regressions in
-  `tests/test_monitoring_production_ops.py`;
-- any narrowly required documentation updates;
-- dated R1 closure record with exact-head CI evidence;
-- next-package handoff left **unselected** pending a fresh post-R1 review.
+Do not re-run or re-implement R1. Continue only with the selected R2 package.

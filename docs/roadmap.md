@@ -5167,8 +5167,9 @@ covers the private systemd `EnvironmentFile` alongside the process
 environment, the typed private-file contract (in-root containment, symlink
 escape, owner-only permissions) is machine-enforced, and every manual
 boundary emits an exact parser-valid resume command; closure record
-`docs/status/phase-6-f-r1-2026-09-29.md`. The next package remains unselected
-pending a fresh post-R1 review.
+`docs/status/phase-6-f-r1-2026-09-29.md`. A fresh post-R1 review identified a narrower dormant credential-parser/render-gating gap and selected
+[Phase 6-F-R2 — Canonical EnvironmentFile Semantics and Render Gating](goals/phase-6-f-r2-environmentfile-semantic-hardening.md).
+R2 must close before production delivery is enabled; the accepted monitoring-only Phase 6-F deployment remains unchanged.
 
 ---
 
@@ -5188,8 +5189,9 @@ instructions before any broader next package; R1 is closed at implementation
 `36519413717`, `success`) with the EnvironmentFile-aware effective secret
 scan/redaction set, the machine-enforced private credential-file contract and
 exact parser-valid resume commands — see
-`docs/status/phase-6-f-r1-2026-09-29.md`. The next package is unselected
-pending a fresh post-R1 review.**
+`docs/status/phase-6-f-r1-2026-09-29.md`. A fresh post-R1 review selected
+[Phase 6-F-R2 — Canonical EnvironmentFile Semantics and Render Gating](goals/phase-6-f-r2-environmentfile-semantic-hardening.md)
+to make every accepted credential-file value byte-identical between the harness and systemd and to make render prove readability/reference completeness. R2 is selected / not implemented; production delivery remains disabled until it closes.**
 The first package,
 [Phase 6-A — Watchlist State and Deterministic Event Planning Foundation](goals/phase-6-a-watchlist-event-foundation.md),
 is complete: typed `WatchlistSpecV1`/`MonitoringEventV1`/`WatchlistStateV1`/
