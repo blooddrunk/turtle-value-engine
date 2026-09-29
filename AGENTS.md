@@ -504,10 +504,15 @@ typed credential source is the private systemd `EnvironmentFile` (path
 rendered in the unit, values never in Git/units/argv/ledgers/reports),
 refused at render time and proven resolvable under the service identity
 after manager refresh. Canonical closure evidence:
-`docs/status/phase-6-f-2026-09-29.md`. The next package selection is
-pending a post-closure review; no Phase 7, provider expansion,
-Bridge/FQGate integration, new notification vendors, brokerage/trading or
-investment-rule work was started.
+`docs/status/phase-6-f-2026-09-29.md`. A 2026-09-29 post-closure audit
+keeps Phase 6-F closed and selects the narrow **Phase 6-F-R1 — Production
+Credential Boundary and Manual-Resume Hardening** follow-on
+(`docs/goals/phase-6-f-r1-production-credential-boundary-hardening.md`):
+EnvironmentFile-only secrets must participate in leak scans/redaction, the
+private EnvironmentFile boundary must be machine-enforced, and every manual
+boundary must emit an exact parser-valid resume command using the real config
+path. R1 must not start Phase 7, provider/Bridge expansion, new notification
+vendors, brokerage/trading or investment-rule work.
 
 ## 5. Working with company data
 

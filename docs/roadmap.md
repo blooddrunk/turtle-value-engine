@@ -5149,35 +5149,33 @@ is now complete: the read-only Dashboard is Chinese-first through a
 centralized typed presentation layer, semantic states carry plain-language
 labels with raw codes preserved, empty/partial/error states are distinct, and
 technical/audit identifiers sit behind a details affordance. The exact build
-was redeployed through the unchanged M6-C2 security path. Phase 6 has since
-closed the deterministic watchlist/event chain through owner live acceptance:
-6-A planning/cursors, 6-B bounded CNINFO acquisition, 6-C controlled
-re-analysis, D1 cycle/outbox, D2A/R1 durable unattended execution,
-D2B/R1/R2 durable delivery accounting, D3/R1 read-only operations projection,
-and 6-E real-host owner acceptance. PR #3 added the optional Telegram preset
-without changing the existing durable delivery ledger. Phase 6-F is selected
-next to turn that accepted real-host chain into an intentionally activated,
-restart-resilient long-lived owner operation.
+was redeployed through the unchanged M6-C2 security path. Phase 6 has since closed the deterministic watchlist/event chain through
+owner live acceptance and persistent owner operation: 6-A planning/cursors,
+6-B bounded CNINFO acquisition, 6-C controlled re-analysis, D1 cycle/outbox,
+D2A/R1 durable unattended execution, D2B/R1/R2 durable delivery accounting,
+D3/R1 read-only operations projection, 6-E real-host owner acceptance and
+6-F restart-resilient production operation. Phase 6-F is `CLOSED /
+OWNER_ACCEPTED` at implementation
+`065b53a17bcb4f009a57ef918ffa3d59de135107` (Actions run
+`36515225218`, success). The 2026-09-29 post-closure review selected the
+narrow
+[Phase 6-F-R1 — Production Credential Boundary and Manual-Resume Hardening](goals/phase-6-f-r1-production-credential-boundary-hardening.md)
+follow-on before any Phase 7 or provider expansion.
 
 ---
 
 ## Phase 6 — Watchlist and event-driven re-analysis
 
 Status: **Phase 6-A / 6-B / 6-C / 6-D1 / 6-D2A / 6-D2A-R1 / 6-D2B /
-6-D2B-R1 / 6-D2B-R2 / 6-D3 / 6-D3-R1 / 6-E are closed at their declared
-boundaries. Phase 6-E is `CLOSED / OWNER_ACCEPTED` under the 2026-09-28
-owner-revised acceptance rule: implementation
-`8565621777762c601172aee562b2523a37ce02a6`, exact-head Actions run
-`36375649575` (`success`), and a real-host
-`LIVE_ACCEPTANCE_COMPLETE` report with zero failures/markers. PR #3
-(merge commit `b0eca4c2f518a7562b6209833f85bf3de553842f`) is merged and adds the
-optional `telegram-v1` notification preset over the unchanged D2B durable
-ledger. The next selected package is
-[Phase 6-F — Persistent Owner Operations Hardening](goals/phase-6-f-persistent-owner-operations.md):
-convert the accepted but deliberately disabled acceptance deployment into an
-explicitly owner-authorized, restart-resilient long-lived runtime with
-machine-verifiable lifecycle evidence.**
-
+6-D2B-R1 / 6-D2B-R2 / 6-D3 / 6-D3-R1 / 6-E / 6-F are closed at their
+declared boundaries. Phase 6-F is `CLOSED / OWNER_ACCEPTED` with final
+implementation `065b53a17bcb4f009a57ef918ffa3d59de135107`, exact-head
+Actions run `36515225218` (`success`) and the production timer intentionally
+left enabled/active on the accepted WSL2 runtime. A post-closure review found
+no Phase 6-F closure reversal, but selected
+[Phase 6-F-R1 — Production Credential Boundary and Manual-Resume Hardening](goals/phase-6-f-r1-production-credential-boundary-hardening.md)
+to harden the dormant notification credential path and exact manual-resume
+instructions before any broader next package.**
 The first package,
 [Phase 6-A — Watchlist State and Deterministic Event Planning Foundation](goals/phase-6-a-watchlist-event-foundation.md),
 is complete: typed `WatchlistSpecV1`/`MonitoringEventV1`/`WatchlistStateV1`/
