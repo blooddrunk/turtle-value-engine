@@ -944,3 +944,13 @@ def test_converge_is_alias_of_apply(tmp_path: Path) -> None:
         ["--production-config", str(tmp_path / "config.json"), "converge"]
     )
     assert args.mode == "converge"
+
+
+def test_d3_forbidden_strings_are_plain_strings(tmp_path: Path) -> None:
+    config = _production_config(tmp_path)
+    forbidden = prodops._d3_forbidden_strings(config)
+    assert all(isinstance(item, str) for item in forbidden)
+    assert str(config.production_root) in forbidden
+    assert "holder_token" in forbidden
+    # The membership check used against payload text must not raise.
+    assert not [item for item in forbidden if item and item in "{}"]

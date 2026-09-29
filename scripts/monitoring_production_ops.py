@@ -1895,6 +1895,17 @@ def _acceptance_roots_immutability(
     }
 
 
+def _d3_forbidden_strings(config: ProductionConfigV1) -> list[str]:
+    """Strings that must never appear in a public D3 payload (paths/tokens)."""
+
+    return [
+        str(config.production_root),
+        str(config.project_config_path),
+        str(config.runner_config_path),
+        "holder_token",
+    ]
+
+
 def _d3_readonly_section(
     config: ProductionConfigV1,
     runner: CommandRunner,
@@ -1969,14 +1980,7 @@ def _d3_readonly_section(
         payload_text = body.decode("utf-8", errors="replace")
         secret_hits = scan_bytes_for_secrets(body, secrets)
         path_leaks = [
-            item
-            for item in (
-                config.production_root,
-                config.project_config_path,
-                config.runner_config_path,
-                "holder_token",
-            )
-            if item and item in payload_text
+            item for item in _d3_forbidden_strings(config) if item and item in payload_text
         ]
         ok = (
             status_code == 200
