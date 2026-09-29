@@ -990,3 +990,28 @@ def test_latest_receipt_reads_durable_receipt_classification(tmp_path: Path) -> 
     assert receipt["classification"] == "CYCLE_TERMINAL"
     assert receipt["d1_status"] == "NO_CHANGE"
     assert receipt["activation_id"] == activation_id
+
+
+def test_activate_after_deactivate_converges_enable_and_start(tmp_path: Path) -> None:
+    config = _production_config(tmp_path)
+    config.systemd_output_dir.mkdir(parents=True, exist_ok=True)
+    (config.systemd_output_dir / "apply-record.json").write_text(
+        json.dumps({"applied": True}), encoding="utf-8"
+    )
+    (tmp_path / "config.json").write_text(
+        config.model_dump_json(indent=2, warnings=False), encoding="utf-8"
+    )
+    args = prodops._build_parser().parse_args(
+        ["--production-config", str(tmp_path / "config.json"), "activate"]
+    )
+    runner = FakeRunner()
+    runner.timer_enabled = False  # simulate state left by deactivate
+    assert prodops.cmd_activate(args, runner=runner) == EXIT_OK
+    record = json.loads(
+        (config.systemd_output_dir / "activation-record.json").read_text(encoding="utf-8")
+    )
+    assert record["activated"] is True
+    assert record["enabled_by_activate"] is True
+    assert record["started_by_activate"] is True
+    assert ("systemctl", "--user", "enable", config.timer_unit_name) in runner.calls
+    assert ("systemctl", "--user", "start", config.timer_unit_name) in runner.calls

@@ -1689,7 +1689,22 @@ def _require_applied(config: ProductionConfigV1) -> dict[str, object]:
 def cmd_activate(args: argparse.Namespace, runner: CommandRunner = _default_runner) -> int:
     config = load_production_config(args.production_config)
     _require_applied(config)
-    state = _systemctl_show(config, config.timer_unit_name, ("ActiveState",), runner)
+    state = _systemctl_show(
+        config, config.timer_unit_name, ("ActiveState", "UnitFileState"), runner
+    )
+    enabled_by_activate = False
+    if state.get("UnitFileState") != "enabled":
+        # A prior deactivation leaves the unit disabled; activation converges
+        # both the enable symlink and the running timer, never only one.
+        enable = run_command(
+            (*systemctl_prefix(config), "enable", config.timer_unit_name), runner=runner
+        )
+        if not enable.ok:
+            print(
+                json.dumps({"activated": False, "enable": _outcome_public(enable)}, indent=2)
+            )
+            return EXIT_FAIL_CLOSED
+        enabled_by_activate = True
     started = False
     if state.get("ActiveState") != "active":
         start = run_command(
@@ -1715,6 +1730,7 @@ def cmd_activate(args: argparse.Namespace, runner: CommandRunner = _default_runn
     record = {
         "activated": bool(activated),
         "started_by_activate": started,
+        "enabled_by_activate": enabled_by_activate,
         "timer_properties": props,
         "activated_at": datetime.now(UTC).isoformat(),
     }
