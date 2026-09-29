@@ -55,9 +55,23 @@ typed local credential source is a systemd ``EnvironmentFile`` under the
 ignored private root whose *path* (never its content) appears in the unit.
 The file must satisfy the canonical subset (one physical ``NAME=VALUE``
 line per referenced secret, no quoting/escaping/continuation/whitespace,
-no unrelated keys) so every accepted value is byte-identical under this
-harness and systemd, and the render step refuses to continue before any
-artifact is written unless the file is readable, complete and canonical.
+no unrelated keys, no systemd-invalid Unicode anywhere in the file) so every
+accepted value is byte-identical under this harness and systemd, and the
+render step refuses to continue before any artifact is written unless the
+file is readable, complete and canonical.
+
+Phase 6-F-R3 keeps that contract continuously true instead of only at
+render time: apply/converge and activate revalidate the *current* private
+credential file before any system mutation, verify and report fail closed
+on current credential drift (safe deactivation never depends on it), and
+every delivery-enabled service unit renders an ``ExecStartPre=`` credential
+gate (``scripts/monitoring_credential_gate.py``) that re-reads the file,
+reuses the one current-credential validation primitive and compares the
+referenced values with the environment systemd actually injected
+byte-for-byte — value-free — before the unchanged ``unattended-notify``
+``ExecStart=`` may run.  No secret value or secret-derived digest or
+fingerprint is ever persisted for drift detection; the private file is
+re-read and compared in memory.
 """
 
 from __future__ import annotations
@@ -73,7 +87,8 @@ import subprocess
 import sys
 import time
 import unicodedata
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -164,9 +179,41 @@ _SECRET_ENV_PATTERN = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 _ENV_FILE_MAX_BYTES = 65536
 _ENV_FILE_VALUE_FORBIDDEN_CHARS = ('"', "'", "\\")
 
+# Phase 6-F-R3 service-execution credential gate.  The dedicated gate CLI is
+# rendered into delivery-enabled units ahead of ``unattended-notify``; it
+# reuses this module's validation primitive and prints status/category/
+# reference names only — never a value.
+CREDENTIAL_GATE_SCRIPT = Path(__file__).resolve().parent / "monitoring_credential_gate.py"
+CREDENTIAL_GATE_OK = "CREDENTIAL_GATE_OK"
+CREDENTIAL_GATE_REJECTED = "CREDENTIAL_GATE_REJECTED"
+
 
 def _contains_control_character(value: str) -> bool:
     return any(unicodedata.category(ch) == "Cc" for ch in value)
+
+
+def _systemd_invalid_unicode(text: str) -> tuple[int, str] | None:
+    """The first systemd-invalid Unicode scalar in a decoded EnvironmentFile.
+
+    systemd's ``EnvironmentFile=`` contract excludes ``U+0000``, ``U+FEFF``,
+    the Unicode noncharacters ``U+FDD0..U+FDEF`` and every code point whose
+    low 16 bits are ``FFFE``/``FFFF`` from the *whole* file, comments
+    included.  Strict UTF-8 decoding (which already rejects non-scalar
+    surrogate encodings) stays in front of this check.  The returned
+    category is deliberately content-free.
+    """
+
+    for index, ch in enumerate(text):
+        code = ord(ch)
+        if code == 0x0000:
+            return index, "U+0000 (NUL)"
+        if code == 0xFEFF:
+            return index, "U+FEFF (byte order mark)"
+        if 0xFDD0 <= code <= 0xFDEF:
+            return index, "Unicode noncharacter U+FDD0..U+FDEF"
+        if (code & 0xFFFF) in (0xFFFE, 0xFFFF):
+            return index, "plane-ending Unicode noncharacter"
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -488,12 +535,26 @@ def render_service_unit(config: ProductionConfigV1, runner_config_path: Path) ->
         else ""
     )
     if config.delivery_enabled:
+        # R3: the runtime credential gate runs before unattended-notify.  It
+        # re-reads the private credential file, reuses the one current-
+        # credential validation primitive and compares the referenced values
+        # with the environment systemd injected byte-for-byte; its argv
+        # carries only non-secret paths and reference names, and any failure
+        # (missing/mismatch/noncanonical/metadata) leaves ExecStart unrun.
+        prestart_lines = (
+            f"ExecStartPre={credential_gate_command(config)}\n"
+            "# The ExecStartPre gate above prints only status/category/\n"
+            "# reference names and never a credential value; systemd executes\n"
+            "# it with the service environment, so a drifted or noncanonical\n"
+            "# private file blocks notification execution entirely.\n"
+        )
         run_line = (
             f"{config.python_executable} -m turtle_value_engine watch unattended-notify "
             f"--runner-config {runner_config_path} "
             f"--project-config {config.project_config_path.resolve()} --network allow\n"
         )
     else:
+        prestart_lines = ""
         run_line = (
             f"{config.python_executable} -m turtle_value_engine watch unattended-run "
             f"--runner-config {runner_config_path}\n"
@@ -520,6 +581,7 @@ def render_service_unit(config: ProductionConfigV1, runner_config_path: Path) ->
         f"WorkingDirectory={config.working_directory}\n"
         f"{user_line}"
         f"{environment_line}"
+        f"{prestart_lines}"
         "ExecStart="
         f"{run_line}"
         "TimeoutStartSec=30min\n"
@@ -997,12 +1059,17 @@ def environment_file_values(
 
     This is the one canonical parser/validator for every production-operations
     credential path (render gating, preflight, effective secret scanning and
-    redaction, D3 payload scans and delivery completeness).  The accepted
-    grammar is a deliberately unambiguous subset of systemd's
-    ``EnvironmentFile=`` semantics so that every accepted value is
-    byte-identical to what the service manager injects:
+    redaction, D3 payload scans, the R3 current-credential primitive and the
+    service pre-start gate).  The accepted grammar is a deliberately
+    unambiguous subset of systemd's ``EnvironmentFile=`` semantics so that
+    every accepted value is byte-identical to what the service manager
+    injects:
 
     - UTF-8 text; blank lines and whole-line ``#``/``;`` comments are ignored;
+    - the *whole decoded file* — comments included — must be free of the
+      Unicode scalars systemd itself rejects (``U+0000``, ``U+FEFF``,
+      ``U+FDD0..U+FDEF`` and every plane-ending ``FFFE``/``FFFF`` code
+      point), so every file called canonical is valid under systemd;
     - every assignment is exactly one physical ``NAME=VALUE`` line starting at
       column 0; ``NAME`` must be one of the currently referenced secret names
       (``_production_secret_reference_names``), each present exactly once;
@@ -1014,23 +1081,34 @@ def environment_file_values(
       byte-for-byte after UTF-8 decoding and line-ending removal (``=``, ``#``,
       ``;``, ``?``, ``&``, ``%`` and other URL punctuation stay literal data).
 
-    Any syntax-level violation (unreadable, non-UTF-8, malformed line,
-    duplicate, unknown key, ``export`` form, empty value) returns
-    ``({}, reason)``: no value from a file whose interpretation is not
-    provably identical under systemd is ever released.  A file whose present
-    lines are all canonical but which is missing a referenced name returns
-    its partial values together with the reason: those bytes are still
-    exactly what systemd would inject for them, so the fail-safe scan and
-    redaction set keeps its Phase 6-F-R1 coverage, while every gating path
-    (preflight/render/live-proof delivery) fails closed on the non-``None``
-    error.  Reasons name only the line number/category of the problem and
-    referenced (public) names — never file content.  Values never leave the
-    caller's process memory except inside absence scans/redaction.
+    Any syntax-level violation (unreadable, non-UTF-8, systemd-invalid
+    Unicode, malformed line, duplicate, unknown key, ``export`` form, empty
+    value) returns ``({}, reason)``: no value from a file whose
+    interpretation is not provably identical under systemd is ever released.
+    A file whose present lines are all canonical but which is missing a
+    referenced name returns its partial values together with the reason:
+    those bytes are still exactly what systemd would inject for them, so the
+    fail-safe scan and redaction set keeps its Phase 6-F-R1 coverage, while
+    every gating path (preflight/render/live-proof delivery, the R3
+    lifecycle drift gates and the pre-start gate) fails closed on the
+    non-``None`` error.  Reasons name only the line number/category of the
+    problem and referenced (public) names — never file content.  Values
+    never leave the caller's process memory except inside absence
+    scans/redaction.
     """
 
     assert config.delivery_environment_file is not None
-    path = Path(config.delivery_environment_file)
-    required = _production_secret_reference_names(config)
+    return _parse_canonical_environment_file(
+        Path(config.delivery_environment_file),
+        _production_secret_reference_names(config),
+    )
+
+
+def _parse_canonical_environment_file(
+    path: Path, required: Sequence[str]
+) -> tuple[dict[str, str], str | None]:
+    """The canonical EnvironmentFile parser core (see ``environment_file_values``)."""
+
     try:
         raw = path.read_bytes()
     except OSError as exc:
@@ -1044,6 +1122,14 @@ def environment_file_values(
         text = raw.decode("utf-8")
     except UnicodeDecodeError:
         return {}, f"{path} is not valid UTF-8"
+    invalid_unicode = _systemd_invalid_unicode(text)
+    if invalid_unicode is not None:
+        offset, category = invalid_unicode
+        lineno = text.count("\n", 0, offset) + 1
+        return {}, (
+            f"line {lineno}: systemd-invalid Unicode in the file ({category}); "
+            "systemd itself would reject this EnvironmentFile"
+        )
     values: dict[str, str] = {}
     for lineno, raw_line in enumerate(text.split("\n"), start=1):
         line = raw_line[:-1] if raw_line.endswith("\r") else raw_line
@@ -1129,8 +1215,16 @@ def validate_delivery_environment_file(
     """
 
     assert config.delivery_environment_file is not None
-    configured = Path(config.delivery_environment_file)
-    private_root = Path(config.production_root)
+    return _validate_environment_file_facts(
+        Path(config.delivery_environment_file), Path(config.production_root)
+    )
+
+
+def _validate_environment_file_facts(
+    configured: Path, private_root: Path
+) -> tuple[dict[str, object], str | None]:
+    """The R1 metadata/path/type/mode boundary core (facts-based)."""
+
     metadata: dict[str, object] = {
         "path": str(configured),
         "private_root": str(private_root),
@@ -1164,6 +1258,220 @@ def validate_delivery_environment_file(
             "harness never changes the file)"
         )
     return metadata, None
+
+
+# ---------------------------------------------------------------------------
+# Phase 6-F-R3: one current-credential validation primitive
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class CurrentCredentialState:
+    """The combined current-credential validation result (secret-free shell).
+
+    ``values`` holds the canonical parsed referenced values **in process
+    memory only**; it must never be persisted, printed or projected.  Every
+    public field and both summary helpers are value-free by construction.
+    """
+
+    environment_file: str
+    production_root: str
+    referenced_names: tuple[str, ...]
+    metadata: dict[str, object] = field(default_factory=dict)
+    metadata_error: str | None = None
+    values: dict[str, str] = field(default_factory=dict)
+    canonical_error: str | None = None
+
+    @property
+    def ok(self) -> bool:
+        return self.metadata_error is None and self.canonical_error is None
+
+    def public_reason(self) -> str:
+        """A value-free reason string for logs, markers and reports."""
+
+        if self.metadata_error is not None:
+            return self.metadata_error
+        if self.canonical_error is not None:
+            return self.canonical_error
+        return (
+            "the current private credential file satisfies the R1 metadata "
+            "boundary, the canonical grammar and referenced-name completeness, "
+            "and carries no systemd-invalid Unicode (values not shown)"
+        )
+
+    def public_summary(self) -> dict[str, object]:
+        """A value-free machine-readable summary for reports."""
+
+        return {
+            "enabled": True,
+            "ok": self.ok,
+            "environment_file": self.environment_file,
+            "referenced_names": list(self.referenced_names),
+            "metadata": self.metadata,
+            "metadata_error": self.metadata_error,
+            "canonical_error": self.canonical_error,
+        }
+
+
+def validate_current_credential(
+    *,
+    environment_file: str | Path,
+    production_root: str | Path,
+    referenced_names: Sequence[str],
+) -> CurrentCredentialState:
+    """The one current-credential validation primitive (R3 goal section 4).
+
+    Combines, against the file as it exists *right now*:
+
+    - the R1 metadata/path/type/mode boundary;
+    - the R2 canonical parsing and referenced-name completeness;
+    - the R3 whole-file systemd-valid Unicode validation.
+
+    Lifecycle checks (render, apply/converge, activate, verify, report,
+    preflight, the live-proof delivery boundary and the recover-proof
+    restart probe) and the service ``ExecStartPre=`` gate must reuse this
+    operation instead of implementing separate parsing rules.  No raw value
+    or digest/HMAC/fingerprint derived from credential content is ever
+    persisted; drift detection always re-reads the private file here.
+    """
+
+    configured = Path(environment_file)
+    root = Path(production_root)
+    metadata, metadata_error = _validate_environment_file_facts(configured, root)
+    values: dict[str, str] = {}
+    canonical_error: str | None = None
+    if metadata_error is None:
+        # Only read content once the metadata boundary (containment, type,
+        # owner-only permissions) is proven; a boundary failure is reported
+        # without probing the file's bytes.
+        values, canonical_error = _parse_canonical_environment_file(
+            configured, tuple(referenced_names)
+        )
+    return CurrentCredentialState(
+        environment_file=str(configured),
+        production_root=str(root),
+        referenced_names=tuple(referenced_names),
+        metadata=metadata,
+        metadata_error=metadata_error,
+        values=values,
+        canonical_error=canonical_error,
+    )
+
+
+def current_credential_state(
+    config: ProductionConfigV1,
+) -> CurrentCredentialState | None:
+    """The current-credential state for one production config (None if disabled)."""
+
+    if not config.delivery_enabled:
+        return None
+    assert config.delivery_environment_file is not None
+    return validate_current_credential(
+        environment_file=config.delivery_environment_file,
+        production_root=config.production_root,
+        referenced_names=_production_secret_reference_names(config),
+    )
+
+
+def _environment_value_bytes(value: str) -> bytes:
+    """Round-trip a process-environment string to its raw bytes.
+
+    ``os.environ`` decodes values with ``surrogateescape``; re-encoding the
+    same way recovers the exact injected bytes, so comparing them with the
+    canonical parser's UTF-8 bytes is a byte-for-byte comparison that also
+    fails closed on invalid-UTF-8 environment content.
+    """
+
+    return value.encode("utf-8", "surrogateescape")
+
+
+def run_credential_gate(
+    *,
+    environment_file: str | Path,
+    production_root: str | Path,
+    referenced_names: Sequence[str],
+    environ: Mapping[str, str] | None = None,
+) -> tuple[int, dict[str, object]]:
+    """The service-execution credential gate (R3 goal section 6).
+
+    Reuses :func:`validate_current_credential` against the current private
+    file, then compares every referenced value with the environment the
+    service manager actually injected (``os.environ`` inside the
+    ``ExecStartPre=`` context, or the injected ``environ`` mapping) byte
+    for byte in memory.  Success requires metadata, canonicality,
+    completeness and byte equality to all hold.  The returned payload
+    carries only status/category/reference names — never a value, a digest
+    or a fingerprint.
+    """
+
+    state = validate_current_credential(
+        environment_file=environment_file,
+        production_root=production_root,
+        referenced_names=referenced_names,
+    )
+    if state.metadata_error is not None:
+        return EXIT_FAIL_CLOSED, {
+            "status": CREDENTIAL_GATE_REJECTED,
+            "category": "METADATA",
+            "reason": state.metadata_error,
+        }
+    if state.canonical_error is not None:
+        return EXIT_FAIL_CLOSED, {
+            "status": CREDENTIAL_GATE_REJECTED,
+            "category": "NONCANONICAL_OR_INCOMPLETE",
+            "reason": state.canonical_error,
+        }
+    environment = os.environ if environ is None else environ
+    for name in state.referenced_names:
+        inherited = environment.get(name)
+        if inherited is None:
+            return EXIT_FAIL_CLOSED, {
+                "status": CREDENTIAL_GATE_REJECTED,
+                "category": "ENV_MISSING",
+                "reference": name,
+                "reason": (
+                    f"the inherited service environment does not define the "
+                    f"referenced secret {name}"
+                ),
+            }
+        if _environment_value_bytes(inherited) != state.values[name].encode("utf-8"):
+            return EXIT_FAIL_CLOSED, {
+                "status": CREDENTIAL_GATE_REJECTED,
+                "category": "ENV_MISMATCH",
+                "reference": name,
+                "reason": (
+                    f"the inherited service environment value for {name} does "
+                    "not byte-match the current canonical credential file"
+                ),
+            }
+    return EXIT_OK, {
+        "status": CREDENTIAL_GATE_OK,
+        "references": list(state.referenced_names),
+        "compared": "metadata+canonical+complete+inherited-byte-equality",
+    }
+
+
+def credential_gate_argv(config: ProductionConfigV1) -> tuple[str, ...]:
+    """The exact non-secret gate argv rendered into the delivery unit."""
+
+    assert config.delivery_environment_file is not None
+    argv: list[str] = [
+        config.python_executable,
+        str(CREDENTIAL_GATE_SCRIPT),
+        "--environment-file",
+        config.delivery_environment_file,
+        "--production-root",
+        config.production_root,
+    ]
+    for name in _production_secret_reference_names(config):
+        argv.extend(("--reference", name))
+    return tuple(argv)
+
+
+def credential_gate_command(config: ProductionConfigV1) -> str:
+    """The unit-serialized gate command (paths and reference names only)."""
+
+    return shlex.join(credential_gate_argv(config))
 
 
 def cmd_preflight(args: argparse.Namespace, runner: CommandRunner = _default_runner) -> int:
@@ -1296,52 +1604,48 @@ def cmd_preflight(args: argparse.Namespace, runner: CommandRunner = _default_run
         )
 
     # Delivery: optional; references and the typed environment file only.
+    credential = current_credential_state(config)
     if config.delivery_enabled:
         env_file = Path(config.delivery_environment_file or "")
-        metadata, boundary_error = validate_delivery_environment_file(config)
-        if boundary_error is not None:
+        assert credential is not None
+        if credential.metadata_error is not None:
             log.add_marker(
                 "delivery.environment-file",
                 MANUAL_SECRET_REFERENCE_REQUIRED,
-                f"{boundary_error}; required: a regular owner-private (0600) "
-                f"file inside {config.production_root} defining "
-                f"{', '.join(_production_secret_reference_names(config))}",
+                f"{credential.metadata_error}; required: a regular owner-private "
+                f"(0600) file inside {config.production_root} defining "
+                f"{', '.join(credential.referenced_names)}",
             )
-        else:
-            log.add(
-                "delivery.environment-file",
-                True,
-                json.dumps(metadata, ensure_ascii=False)
-                + " (content never read into any artifact)",
-            )
-        values, error = environment_file_values(config)
-        missing = [
-            name for name in _production_secret_reference_names(config) if not values.get(name)
-        ]
-        if boundary_error is not None:
             log.add_marker(
                 "delivery.secret-reference",
                 MANUAL_SECRET_REFERENCE_REQUIRED,
                 "credential source not accepted (see delivery.environment-file); "
                 "fix the private-file boundary first",
             )
-        elif error is not None:
+        elif not credential.ok:
+            log.add(
+                "delivery.environment-file",
+                True,
+                json.dumps(credential.metadata, ensure_ascii=False)
+                + " (content never read into any artifact)",
+            )
             log.add_marker(
                 "delivery.secret-reference",
                 MANUAL_SECRET_REFERENCE_REQUIRED,
                 f"the private credential file does not satisfy the canonical "
-                f"EnvironmentFile contract: {error}; fix {env_file} by hand so "
-                "each referenced value is one physical NAME=VALUE line "
-                "(non-empty, no quoting/escaping/continuation/whitespace; "
+                f"EnvironmentFile contract: {credential.canonical_error}; fix "
+                f"{env_file} by hand so each referenced value is one physical "
+                "NAME=VALUE line (non-empty, no quoting/escaping/continuation/"
+                "whitespace, no systemd-invalid Unicode anywhere in the file; "
                 "URL characters like = # ; ? & % stay literal)",
             )
-        elif missing:
-            log.add_marker(
-                "delivery.secret-reference",
-                MANUAL_SECRET_REFERENCE_REQUIRED,
-                f"{env_file} exists but does not define: {', '.join(missing)}",
-            )
         else:
+            log.add(
+                "delivery.environment-file",
+                True,
+                json.dumps(credential.metadata, ensure_ascii=False)
+                + " (content never read into any artifact)",
+            )
             log.add(
                 "delivery.secret-reference",
                 True,
@@ -1474,14 +1778,15 @@ def cmd_render(args: argparse.Namespace, runner: CommandRunner = _default_runner
     config = load_production_config(args.production_config)
 
     if config.delivery_enabled:
-        # R2: prove the whole canonical credential contract through the one
-        # canonical parser BEFORE any unit/config/render-plan artifact byte is
-        # written: metadata boundary, actual readability, canonical syntax
-        # subset and referenced-name completeness in a single place.
-        _metadata, boundary_error = validate_delivery_environment_file(config)
-        _values, credential_error = environment_file_values(config)
-        if boundary_error is not None or credential_error is not None:
-            reason = boundary_error if boundary_error is not None else credential_error
+        # R2/R3: prove the whole canonical credential contract through the one
+        # current-credential validation primitive BEFORE any unit/config/
+        # render-plan artifact byte is written: R1 metadata boundary, actual
+        # readability, R2 canonical syntax subset, referenced-name completeness
+        # and the R3 whole-file systemd-valid Unicode boundary in a single
+        # place.
+        credential = current_credential_state(config)
+        if credential is None or not credential.ok:
+            reason = credential.public_reason() if credential is not None else "unknown"
             raise ManualBoundary(
                 MANUAL_SECRET_REFERENCE_REQUIRED,
                 stopped_after=(
@@ -1497,8 +1802,10 @@ def cmd_render(args: argparse.Namespace, runner: CommandRunner = _default_runner
                     "NAME=VALUE line per name "
                     f"({', '.join(_production_secret_reference_names(config))}), "
                     "value non-empty without quoting, backslash escaping, line "
-                    "continuation or whitespace (URL characters like = # ; ? & % "
-                    "stay literal). This harness never chmods or rewrites the "
+                    "continuation or whitespace, and no systemd-invalid Unicode "
+                    "(U+0000, U+FEFF or noncharacters) anywhere in the file, "
+                    "comments included (URL characters like = # ; ? & % stay "
+                    "literal). This harness never chmods or rewrites the "
                     "owner's credential file. Do not paste any value into chat, "
                     "Git or documents"
                 ),
@@ -1509,14 +1816,22 @@ def cmd_render(args: argparse.Namespace, runner: CommandRunner = _default_runner
                 resume_command=_resume_command(args.production_config, "render"),
                 machine_verifiable_success=(
                     "render exits 0, the unit carries exactly the EnvironmentFile "
-                    "path, and the file is an in-root owner-private regular file "
-                    "whose canonical NAME=VALUE content defines every referenced "
-                    "name exactly once (values never printed)"
+                    "path and the ExecStartPre credential gate ahead of the "
+                    "unchanged unattended-notify ExecStart, and the file is an "
+                    "in-root owner-private regular file whose canonical "
+                    "NAME=VALUE content defines every referenced name exactly "
+                    "once (values never printed)"
                 ),
                 remaining_unverified=(
                     "production notification delivery and post-restart credential "
                     "resolvability for the service identity"
                 ),
+            )
+        if not CREDENTIAL_GATE_SCRIPT.is_file():
+            raise AcceptanceError(
+                "the delivery pre-start credential gate script is missing from "
+                f"this checkout ({CREDENTIAL_GATE_SCRIPT}); the rendered unit "
+                "could not enforce the runtime credential contract"
             )
 
     output_dir = config.systemd_output_dir
@@ -1662,6 +1977,43 @@ def cmd_apply(args: argparse.Namespace, runner: CommandRunner = _default_runner)
                 f"rendered unit {name} does not match the current configuration; rerun render"
             )
 
+    # R3 lifecycle drift gate: systemd reads EnvironmentFile= at service
+    # start, so a file that drifted after render must block *here*, before
+    # any install, daemon-reload, timer-enable or linger mutation.
+    credential = current_credential_state(config)
+    if credential is not None and not credential.ok:
+        raise ManualBoundary(
+            MANUAL_SECRET_REFERENCE_REQUIRED,
+            stopped_after=(
+                "apply: delivery is enabled and the current private credential "
+                "file drifted out of the canonical contract since render "
+                f"({credential.public_reason()}); zero install, daemon-reload, "
+                "timer-enable or linger mutations were performed"
+            ),
+            human_action=(
+                f"fix {config.delivery_environment_file} by hand back to the "
+                "canonical form (one physical NAME=VALUE line per referenced "
+                f"name ({', '.join(credential.referenced_names)}), non-empty, "
+                "no quoting/escaping/continuation/whitespace and no "
+                "systemd-invalid Unicode anywhere in the file), then rerun the "
+                "resume command; never paste values into chat or Git"
+            ),
+            secret_boundary=(
+                "values stay in the ignored private environment file and in "
+                "process memory only"
+            ),
+            resume_command=_resume_command(args.production_config, "apply"),
+            machine_verifiable_success=(
+                f"`{_resume_command(args.production_config, 'verify')}` exits 0 "
+                "with the credential.current-contract check green (the file "
+                "revalidated as canonical, complete and systemd-Unicode-valid; "
+                "values never printed)"
+            ),
+            remaining_unverified=(
+                "notification delivery until the credential is canonical again"
+            ),
+        )
+
     destination = systemd_unit_destination_dir(config)
     if not _systemd_privilege_available(config, runner=runner):
         raise ManualBoundary(
@@ -1802,7 +2154,14 @@ def _effective_state(
     service_props = _systemctl_show(
         config,
         config.service_unit_name,
-        ("ExecStart", "WorkingDirectory", "User", "Result", "ExecMainStatus"),
+        (
+            "ExecStart",
+            "ExecStartPre",
+            "WorkingDirectory",
+            "User",
+            "Result",
+            "ExecMainStatus",
+        ),
         runner,
     )
     return {
@@ -1834,6 +2193,24 @@ def cmd_verify(args: argparse.Namespace, runner: CommandRunner = _default_runner
     )
     exec_start = str(state["service_properties"].get("ExecStart", ""))  # type: ignore[union-attr]
     checks.add("service.effective-execstart", expected_exec in exec_start, exec_start[:400])
+    # R3: a delivery-enabled deployment must carry the runtime credential
+    # gate ahead of the notification ExecStart, and the *current* private
+    # credential file must still satisfy the whole canonical contract —
+    # green historical records cannot substitute for a live revalidation.
+    credential = current_credential_state(config)
+    if credential is not None:
+        checks.add(
+            "credential.current-contract",
+            credential.ok,
+            credential.public_reason(),
+        )
+        expected_gate = credential_gate_command(config)
+        exec_start_pre = str(state["service_properties"].get("ExecStartPre", ""))  # type: ignore[union-attr]
+        checks.add(
+            "service.prestart-gate",
+            expected_gate in exec_start_pre,
+            exec_start_pre[:400] or "ExecStartPre absent from effective service",
+        )
     working_directory = str(
         state["service_properties"].get("WorkingDirectory", "")  # type: ignore[union-attr]
     )
@@ -1965,6 +2342,44 @@ def _require_applied(config: ProductionConfigV1) -> dict[str, object]:
 def cmd_activate(args: argparse.Namespace, runner: CommandRunner = _default_runner) -> int:
     config = load_production_config(args.production_config)
     _require_applied(config)
+    # R3 lifecycle drift gate: revalidate the current credential contract
+    # before any timer enable/start action is authorized.  Deactivation stays
+    # credential-independent by design; activation does not.
+    credential = current_credential_state(config)
+    if credential is not None and not credential.ok:
+        raise ManualBoundary(
+            MANUAL_SECRET_REFERENCE_REQUIRED,
+            stopped_after=(
+                "activate: delivery is enabled and the current private "
+                "credential file drifted out of the canonical contract "
+                f"({credential.public_reason()}); zero timer-enable and zero "
+                "timer-start actions were authorized"
+            ),
+            human_action=(
+                f"fix {config.delivery_environment_file} by hand back to the "
+                "canonical form (one physical NAME=VALUE line per referenced "
+                f"name ({', '.join(credential.referenced_names)}), non-empty, "
+                "no quoting/escaping/continuation/whitespace and no "
+                "systemd-invalid Unicode anywhere in the file), then rerun the "
+                "resume command; never paste values into chat or Git"
+            ),
+            secret_boundary=(
+                "values stay in the ignored private environment file and in "
+                "process memory only"
+            ),
+            resume_command=_resume_command(args.production_config, "activate"),
+            machine_verifiable_success=(
+                "the resumed activate exits 0, `systemctl show` reports the "
+                "timer UnitFileState=enabled and ActiveState=active, and "
+                "`"
+                + _resume_command(args.production_config, "verify")
+                + "` is green including credential.current-contract"
+            ),
+            remaining_unverified=(
+                "scheduled notification delivery until the credential is "
+                "canonical again"
+            ),
+        )
     state = _systemctl_show(
         config, config.timer_unit_name, ("ActiveState", "UnitFileState"), runner
     )
@@ -2423,18 +2838,12 @@ def _delivery_section(
 ) -> dict[str, object]:
     """Optional production delivery proof (enabled configurations only)."""
 
-    _metadata, boundary_error = validate_delivery_environment_file(config)
-    values, error = environment_file_values(config)
-    needed = _production_secret_reference_names(config)
-    if (
-        boundary_error is not None
-        or error is not None
-        or any(not values.get(name) for name in needed)
-    ):
-        missing = [name for name in needed if not values.get(name)]
-        detail = boundary_error or error or (
-            "does not define: " + ", ".join(missing)
-        )
+    credential = current_credential_state(config)
+    if credential is None or not credential.ok:
+        needed = (
+            list(credential.referenced_names) if credential is not None else []
+        ) or _production_secret_reference_names(config)
+        detail = credential.public_reason() if credential is not None else "unknown"
         marker = ManualBoundary(
             MANUAL_SECRET_REFERENCE_REQUIRED,
             stopped_after=(
@@ -2445,7 +2854,8 @@ def _delivery_section(
             human_action=(
                 f"fix {config.delivery_environment_file} by hand: each referenced "
                 f"value ({', '.join(needed)}) on one physical NAME=VALUE line, "
-                "non-empty, without quoting/escaping/continuation/whitespace; "
+                "non-empty, without quoting/escaping/continuation/whitespace and "
+                "without systemd-invalid Unicode anywhere in the file; "
                 "never paste values into chat or Git"
             ),
             secret_boundary=(
@@ -2694,6 +3104,43 @@ def _cycle_store_names(config: ProductionConfigV1) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
+def _credential_resolution_probe(
+    config: ProductionConfigV1, runner: CommandRunner
+) -> dict[str, object]:
+    """Service-context credential proof after a manager refresh (R3 goal 8).
+
+    Runs the *actual* rendered pre-start gate command inside one bounded
+    transient service context carrying the same ``EnvironmentFile=`` the
+    production unit declares.  The gate re-reads the current private file
+    and compares the manager-injected referenced values with the canonical
+    parser's in-memory values byte-for-byte, so this proves equality — not
+    only non-empty presence — while emitting no value.  This probe is extra
+    evidence; the standing runtime guard is the rendered ``ExecStartPre=``
+    gate on every delivery service start.
+    """
+
+    assert config.delivery_environment_file is not None
+    probe = run_command(
+        (
+            "systemd-run",
+            *(("--user",) if config.scope == "user" else ()),
+            "--wait",
+            "--pipe",
+            "--collect",
+            "-p",
+            f"EnvironmentFile={config.delivery_environment_file}",
+            *credential_gate_argv(config),
+        ),
+        runner=runner,
+        timeout=180,
+    )
+    return {
+        "ok": bool(probe.ok and CREDENTIAL_GATE_OK in probe.stdout),
+        "stdout_tail": _bounded(probe.stdout, 200),
+        "returncode": probe.returncode,
+    }
+
+
 def cmd_recover_proof(args: argparse.Namespace, runner: CommandRunner = _default_runner) -> int:
     config = load_production_config(args.production_config)
     _require_applied(config)
@@ -2785,37 +3232,9 @@ def cmd_recover_proof(args: argparse.Namespace, runner: CommandRunner = _default
         report["linger_after_recovery"] = linger_state(user, runner)
 
     if config.delivery_enabled:
-        # The service identity must resolve the typed credential source after
-        # the manager refresh: run one bounded service-context check that
-        # only reports presence, never values.
-        needed = _production_secret_reference_names(config)
-        check_source = (
-            "import os, sys\n"
-            f"missing = [name for name in {needed!r} if not os.environ.get(name)]\n"
-            "print('MISSING:' + ','.join(missing) if missing else 'RESOLVED')\n"
-            "sys.exit(0 if not missing else 3)\n"
+        report["credential_resolution_after_restart"] = _credential_resolution_probe(
+            config, runner
         )
-        probe = run_command(
-            (
-                "systemd-run",
-                *(("--user",) if config.scope == "user" else ()),
-                "--wait",
-                "--pipe",
-                "--collect",
-                "-p",
-                f"EnvironmentFile={config.delivery_environment_file}",
-                config.python_executable,
-                "-c",
-                check_source,
-            ),
-            runner=runner,
-            timeout=120,
-        )
-        report["credential_resolution_after_restart"] = {
-            "ok": probe.ok and "RESOLVED" in probe.stdout,
-            "stdout_tail": _bounded(probe.stdout, 200),
-            "returncode": probe.returncode,
-        }
     else:
         report["credential_resolution_after_restart"] = {
             "ok": True,
@@ -2883,6 +3302,21 @@ def cmd_report(args: argparse.Namespace, runner: CommandRunner = _default_runner
         user = config.service_user or getpass_user()
         linger_facts = {"user": user, "linger": linger_state(user, runner)}
 
+    # R3: the current credential contract is revalidated live, value-free.
+    # Historical green apply/activation/verify records cannot substitute for
+    # it, and an invalid current credential must keep the report away from
+    # PRODUCTION_DEPLOYED even when every record is green.
+    credential = current_credential_state(config)
+    credential_summary: dict[str, object] = (
+        credential.public_summary()
+        if credential is not None
+        else {
+            "enabled": False,
+            "ok": True,
+            "note": "notification disabled (monitoring-only production)",
+        }
+    )
+
     markers: list[dict[str, object]] = []
     if topology["wsl2"] and not topology["windows_host_bootstrap_proven"]:
         markers.append(
@@ -2920,6 +3354,7 @@ def cmd_report(args: argparse.Namespace, runner: CommandRunner = _default_runner
         },
         "desired_effective_units": effective,
         "linger": linger_facts,
+        "credential": credential_summary,
         "records": {
             "apply": _load_record("apply-record.json"),
             "activation": _load_record("activation-record.json"),
@@ -2952,6 +3387,8 @@ def cmd_report(args: argparse.Namespace, runner: CommandRunner = _default_runner
         failures.append("timer-enabled")
     if linger_facts is not None and linger_facts.get("linger") != "yes":
         failures.append("linger")
+    if credential is not None and not credential.ok:
+        failures.append("current-credential")
 
     # Final secret scan across every persisted production artifact.
     scanned: list[str] = []

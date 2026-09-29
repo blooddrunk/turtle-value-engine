@@ -14,8 +14,10 @@ import argparse
 import json
 import os
 import shlex
+import shutil
 import subprocess
 import sys
+import uuid
 from pathlib import Path
 
 import pytest
@@ -157,6 +159,15 @@ class FakeRunner:
                         "ExecStart={ path=/usr/bin/python3 ; argv[]="
                         "/usr/bin/python3 -m help }"
                     )
+            elif name == "ExecStartPre":
+                if self.config is not None and self.config.delivery_enabled:
+                    command = prodops.credential_gate_command(self.config)
+                    lines.append(
+                        f"ExecStartPre={{ path={self.config.python_executable}"
+                        f" ; argv[]={command} }}"
+                    )
+                else:
+                    lines.append("ExecStartPre=")
             elif name == "WorkingDirectory":
                 directory = (
                     str(self.config.working_directory)
@@ -1129,7 +1140,9 @@ def test_verify_redacts_environment_file_only_secret_from_journal(
 
     config, env_file = _delivery_config(tmp_path)
     _write_private_env_file(
-        env_file, "TVE_MONITORING_WEBHOOK_URL=https://envfile-journal.invalid/hook\n"
+        env_file,
+        "TVE_MONITORING_WEBHOOK_URL=https://envfile-journal.invalid/hook\n"
+        "TVE_MONITORING_WEBHOOK_TOKEN=tok-envfile-journal\n",
     )
     prodops._atomic_write(
         destination / config.service_unit_name,
@@ -1788,3 +1801,720 @@ def test_r2_canonical_boundary_resume_command_is_parser_valid(
     with pytest.raises(ManualBoundary) as excinfo:
         prodops.cmd_render(args, runner=FakeRunner())
     _assert_parser_round_trip(excinfo.value.payload["resume_command"], "render", config_path)
+
+
+# ---------------------------------------------------------------------------
+# Phase 6-F-R3: runtime credential drift and service-effective gate hardening
+# ---------------------------------------------------------------------------
+
+# Fake sentinels: these values exist only inside tests and temporary files.
+_R3_URL = "https://hooks.r3.invalid/a=b?c=d&e=f"
+_R3_TOKEN = "tok-r3#p;q?w&%z"
+
+
+def _gate_call(
+    config: ProductionConfigV1, environ: dict[str, str] | None
+) -> tuple[int, dict[str, object]]:
+    """Invoke the one service-execution gate primitive with injected env."""
+
+    gate = getattr(prodops, "run_credential_gate", None)
+    assert gate is not None, "run_credential_gate must exist (R3)"
+    return gate(
+        environment_file=config.delivery_environment_file,
+        production_root=config.production_root,
+        referenced_names=prodops._production_secret_reference_names(config),
+        environ=environ,
+    )
+
+
+def test_r3_ufeff_value_rejected(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """systemd excludes U+FEFF from the whole EnvironmentFile (goal 3)."""
+
+    config, env_file = _delivery_config(tmp_path)
+    _write_private_env_file(
+        env_file, "TVE_MONITORING_WEBHOOK_URL=https://x\ufeffinvalid/hook\n"
+    )
+    monkeypatch.delenv("TVE_MONITORING_WEBHOOK_URL", raising=False)
+    values, error = environment_file_values(config)
+    assert values == {}
+    assert error is not None and "systemd-invalid Unicode" in error
+    assert "U+FEFF" in error
+    assert "invalid/hook" not in error
+    assert prodops.effective_secret_values(config) == {}
+
+
+def test_r3_unicode_noncharacters_rejected(tmp_path: Path) -> None:
+    """U+FDD0..U+FDEF and plane-ending noncharacters are rejected (goal 3)."""
+
+    config, env_file = _delivery_config(tmp_path)
+    for bad in ("\ufdd0", "\ufdef", "\uffff", "\U0001ffff", "\U0010ffff"):
+        _write_private_env_file(env_file, f"TVE_MONITORING_WEBHOOK_TOKEN=tok{bad}r3\n")
+        values, error = environment_file_values(config)
+        assert values == {}
+        assert error is not None and "systemd-invalid Unicode" in error
+        assert "tok" not in error and "r3" not in error
+
+
+def test_r3_unicode_in_comment_rejected_whole_file(tmp_path: Path) -> None:
+    """Validation is whole-file: comments cannot carry systemd-invalid Unicode."""
+
+    config, env_file = _delivery_config(tmp_path)
+    for comment in ("# note \ufeff", "# note \ufdd0", "# note \uffff", "# note \x00"):
+        _write_private_env_file(
+            env_file,
+            f"{comment}\nTVE_MONITORING_WEBHOOK_URL={_R3_URL}\n"
+            f"TVE_MONITORING_WEBHOOK_TOKEN={_R3_TOKEN}\n",
+        )
+        values, error = environment_file_values(config)
+        assert values == {}
+        assert error is not None and "systemd-invalid Unicode" in error
+        assert _R3_URL not in error and _R3_TOKEN not in error
+
+
+def test_r3_valid_multibyte_unicode_stays_canonical(tmp_path: Path) -> None:
+    """Ordinary non-ASCII data is not collateral damage of the parity check."""
+
+    config, env_file = _delivery_config(tmp_path)
+    _write_private_env_file(
+        env_file,
+        "# 生产通知凭证（值不进入任何工件）\n"
+        "TVE_MONITORING_WEBHOOK_URL=https://例证.invalid/hook\n"
+        "TVE_MONITORING_WEBHOOK_TOKEN=令牌-中文-值\n",
+    )
+    values, error = environment_file_values(config)
+    assert error is None
+    assert values == {
+        "TVE_MONITORING_WEBHOOK_URL": "https://例证.invalid/hook",
+        "TVE_MONITORING_WEBHOOK_TOKEN": "令牌-中文-值",
+    }
+
+
+def test_r3_render_then_drift_apply_fails_before_any_mutation(
+    tmp_path: Path, destination: Path
+) -> None:
+    """Post-render drift blocks apply before install/reload/enable (goal 5.1)."""
+
+    config, env_file = _delivery_config(tmp_path)
+    _write_private_env_file(
+        env_file,
+        f"TVE_MONITORING_WEBHOOK_URL={_R3_URL}\nTVE_MONITORING_WEBHOOK_TOKEN={_R3_TOKEN}\n",
+    )
+    config_path = _write_config_file(tmp_path, config)
+    render_args = prodops._build_parser().parse_args(
+        ["--production-config", str(config_path), "render"]
+    )
+    assert prodops.cmd_render(render_args, runner=FakeRunner()) == EXIT_OK
+    # The owner later edits the file into a systemd-valid but non-canonical form.
+    _write_private_env_file(
+        env_file,
+        f'TVE_MONITORING_WEBHOOK_URL="{_R3_URL}"\n'
+        f"TVE_MONITORING_WEBHOOK_TOKEN={_R3_TOKEN}\n",
+    )
+    apply_args = prodops._build_parser().parse_args(
+        ["--production-config", str(config_path), "apply"]
+    )
+    runner = FakeRunner(config=config)
+    with pytest.raises(ManualBoundary) as excinfo:
+        prodops.cmd_apply(apply_args, runner=runner)
+    payload = excinfo.value.payload
+    assert payload["marker"] == "MANUAL_SECRET_REFERENCE_REQUIRED"
+    assert "drifted" in payload["stopped_after"]
+    assert "quote" in payload["stopped_after"]
+    assert _R3_URL not in json.dumps(payload)
+    _assert_parser_round_trip(payload["resume_command"], "apply", config_path)
+    # Zero system mutation: no install, daemon-reload, enable or linger call.
+    assert runner.calls == []
+    assert not destination.exists()
+
+
+def test_r3_drift_after_apply_activate_authorizes_zero_actions(
+    tmp_path: Path, destination: Path
+) -> None:
+    """Post-apply drift blocks activate before any enable/start (goal 5.2)."""
+
+    config, env_file = _delivery_config(tmp_path)
+    _write_private_env_file(
+        env_file,
+        f"TVE_MONITORING_WEBHOOK_URL={_R3_URL}\nTVE_MONITORING_WEBHOOK_TOKEN={_R3_TOKEN}\n",
+    )
+    config_path = _write_config_file(tmp_path, config)
+    render_args = prodops._build_parser().parse_args(
+        ["--production-config", str(config_path), "render"]
+    )
+    assert prodops.cmd_render(render_args, runner=FakeRunner()) == EXIT_OK
+    apply_args = prodops._build_parser().parse_args(
+        ["--production-config", str(config_path), "apply"]
+    )
+    apply_runner = FakeRunner(config=config)
+    assert prodops.cmd_apply(apply_args, runner=apply_runner) == EXIT_OK
+    # The owner later edits the file into a systemd-valid but non-canonical
+    # form (a canonical rotation alone would stay legitimate).
+    _write_private_env_file(
+        env_file,
+        f'TVE_MONITORING_WEBHOOK_URL="https://drifted-r3.invalid/h"\n'
+        f"TVE_MONITORING_WEBHOOK_TOKEN={_R3_TOKEN}\n",
+    )
+    activate_args = prodops._build_parser().parse_args(
+        ["--production-config", str(config_path), "activate"]
+    )
+    activate_runner = FakeRunner(config=config)
+    with pytest.raises(ManualBoundary) as excinfo:
+        prodops.cmd_activate(activate_args, runner=activate_runner)
+    payload = excinfo.value.payload
+    assert payload["marker"] == "MANUAL_SECRET_REFERENCE_REQUIRED"
+    assert "zero" in payload["stopped_after"]
+    assert "drifted-r3.invalid" not in json.dumps(payload)
+    _assert_parser_round_trip(payload["resume_command"], "activate", config_path)
+    # Zero enable and zero start actions were authorized.
+    mutating = [
+        call
+        for call in activate_runner.calls
+        if call[:2] == ("systemctl", "--user") and call[2] in {"enable", "start"}
+    ]
+    assert mutating == []
+    assert not activate_runner.timer_enabled
+    assert not (config.systemd_output_dir / "activation-record.json").exists()
+
+
+def test_r3_verify_non_green_on_current_credential_drift(
+    tmp_path: Path, destination: Path
+) -> None:
+    """Verify adds a live current-credential check (goal 5.3)."""
+
+    config, env_file = _delivery_config(tmp_path)
+    _write_private_env_file(
+        env_file,
+        f"TVE_MONITORING_WEBHOOK_URL={_R3_URL}\nTVE_MONITORING_WEBHOOK_TOKEN={_R3_TOKEN}\n",
+    )
+    prodops._atomic_write(
+        destination / config.service_unit_name,
+        prodops.desired_unit_bytes(config)[config.service_unit_name],
+    )
+    prodops._atomic_write(
+        destination / config.timer_unit_name,
+        prodops.desired_unit_bytes(config)[config.timer_unit_name],
+    )
+    _write_private_env_file(
+        env_file,
+        f"TVE_MONITORING_WEBHOOK_URL={_R3_URL}\n"
+        "TVE_MONITORING_WEBHOOK_TOKEN='tok-drifted'\n",
+    )
+    config_path = _write_config_file(tmp_path, config)
+    args = prodops._build_parser().parse_args(
+        ["--production-config", str(config_path), "verify", "--expect-active"]
+    )
+    runner = FakeRunner(config=config)
+    runner.timer_enabled = True
+    runner.linger_enabled = True
+    runner.add(
+        (config.python_executable, "-m", "turtle_value_engine", "watch", "unattended-status"),
+        json.dumps(
+            {
+                "runners": [
+                    {
+                        "runner_id": config.runner_id,
+                        "latest": {"activation_id": "a" * 64},
+                    }
+                ]
+            }
+        ),
+    )
+    assert prodops.cmd_verify(args, runner=runner) == EXIT_FAIL_CLOSED
+    record_text = (config.systemd_output_dir / "verify-record.json").read_text("utf-8")
+    payload = json.loads(record_text)
+    assert payload["green"] is False
+    by_name = {item["name"]: item for item in payload["checks"]}
+    credential = by_name["credential.current-contract"]
+    assert credential["status"] == "FAIL"
+    assert "quote" in credential["detail"]
+    assert _R3_TOKEN not in record_text and "tok-drifted" not in record_text
+    # The rendered/installed units still carry the pre-start gate.
+    assert by_name["service.prestart-gate"]["status"] == "PASS"
+
+
+def test_r3_report_not_production_deployed_on_current_credential_drift(
+    tmp_path: Path,
+    destination: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Report fails closed on live drift instead of trusting old records (5.4)."""
+
+    config, env_file = _delivery_config(tmp_path)
+    _write_private_env_file(
+        env_file,
+        f"TVE_MONITORING_WEBHOOK_URL={_R3_URL}\nTVE_MONITORING_WEBHOOK_TOKEN={_R3_TOKEN}\n",
+    )
+    prodops._atomic_write(
+        destination / config.service_unit_name,
+        prodops.desired_unit_bytes(config)[config.service_unit_name],
+    )
+    prodops._atomic_write(
+        destination / config.timer_unit_name,
+        prodops.desired_unit_bytes(config)[config.timer_unit_name],
+    )
+    config.systemd_output_dir.mkdir(parents=True, exist_ok=True)
+    for name, payload in (
+        ("apply-record.json", {"applied": True}),
+        ("activation-record.json", {"activated": True}),
+        ("verify-record.json", {"green": True}),
+        ("live-proof-record.json", {"ok": True, "failures": []}),
+        ("recover-proof-record.json", {"ok": True, "failures": []}),
+    ):
+        (config.systemd_output_dir / name).write_text(json.dumps(payload), encoding="utf-8")
+    # Drift after every historical record turned green.
+    _write_private_env_file(
+        env_file,
+        f"TVE_MONITORING_WEBHOOK_URL={_R3_URL}\n"
+        "TVE_MONITORING_WEBHOOK_TOKEN='tok-drifted'\n",
+    )
+    monkeypatch.delenv("TVE_MONITORING_WEBHOOK_URL", raising=False)
+    monkeypatch.delenv("TVE_MONITORING_WEBHOOK_TOKEN", raising=False)
+    monkeypatch.setattr(
+        prodops,
+        "load_gate_artifact",
+        lambda config_, head_sha: {"head_sha": head_sha, "green": True},
+    )
+    monkeypatch.setattr(
+        prodops,
+        "classify_host_topology",
+        lambda runner: {
+            "pid1": "systemd",
+            "wsl2": False,
+            "wsl_conf_systemd_boot": None,
+            "windows_host_bootstrap_proven": True,
+        },
+    )
+    config_path = _write_config_file(tmp_path, config)
+    args = prodops._build_parser().parse_args(
+        ["--production-config", str(config_path), "report"]
+    )
+    runner = FakeRunner(config=config)
+    runner.timer_enabled = True
+    runner.linger_enabled = True
+    assert prodops.cmd_report(args, runner=runner) == EXIT_FAIL_CLOSED
+    report_text = config.report_path.read_text(encoding="utf-8")
+    payload = json.loads(report_text)
+    assert payload["phase_state"] != "PRODUCTION_DEPLOYED"
+    assert "current-credential" in payload["failures"]
+    assert payload["credential"]["ok"] is False
+    assert payload["credential"]["enabled"] is True
+    assert payload["credential"]["referenced_names"] == [
+        "TVE_MONITORING_WEBHOOK_URL",
+        "TVE_MONITORING_WEBHOOK_TOKEN",
+    ]
+    assert _R3_TOKEN not in report_text and "tok-drifted" not in report_text
+
+
+def test_r3_deactivate_safe_with_invalid_then_missing_credential(
+    tmp_path: Path,
+) -> None:
+    """Credential validity is never a prerequisite for safe deactivation (5.5)."""
+
+    config, env_file = _delivery_config(tmp_path)
+    _write_private_env_file(
+        env_file, 'TVE_MONITORING_WEBHOOK_URL="https://broken.invalid/h"\n'
+    )
+    config_path = _write_config_file(tmp_path, config)
+    args = prodops._build_parser().parse_args(
+        ["--production-config", str(config_path), "deactivate"]
+    )
+    runner = FakeRunner(config=config)
+    runner.timer_enabled = True
+    assert prodops.cmd_deactivate(args, runner=runner) == EXIT_OK
+    record = json.loads(
+        (config.systemd_output_dir / "deactivation-record.json").read_text("utf-8")
+    )
+    assert record["deactivated"] is True
+    # And with the credential file gone entirely.
+    env_file.unlink()
+    assert prodops.cmd_deactivate(args, runner=FakeRunner(config=config)) == EXIT_OK
+
+
+def test_r3_delivery_unit_prestart_gate_before_unchanged_execstart(
+    tmp_path: Path, destination: Path
+) -> None:
+    """The rendered delivery unit carries the runtime gate ahead of ExecStart."""
+
+    config, env_file = _delivery_config(tmp_path)
+    _write_private_env_file(
+        env_file,
+        f"TVE_MONITORING_WEBHOOK_URL={_R3_URL}\nTVE_MONITORING_WEBHOOK_TOKEN={_R3_TOKEN}\n",
+    )
+    config_path = _write_config_file(tmp_path, config)
+    args = prodops._build_parser().parse_args(
+        ["--production-config", str(config_path), "render"]
+    )
+    assert prodops.cmd_render(args, runner=FakeRunner()) == EXIT_OK
+    unit_text = (config.systemd_output_dir / config.service_unit_name).read_text("utf-8")
+    pre_index = unit_text.index("ExecStartPre=")
+    start_index = unit_text.index("ExecStart=")
+    assert pre_index < start_index
+    gate_line = unit_text[pre_index : unit_text.index("\n", pre_index)]
+    # Only non-secret facts: executable, script path, environment-file path,
+    # production root and the referenced (public) names.
+    assert gate_line.startswith(f"ExecStartPre={config.python_executable} ")
+    assert str(prodops.CREDENTIAL_GATE_SCRIPT) in gate_line
+    assert "--environment-file" in gate_line and str(env_file) in gate_line
+    assert "--production-root" in gate_line and str(config.production_root) in gate_line
+    assert gate_line.count("--reference") == 2
+    assert "TVE_MONITORING_WEBHOOK_URL" in gate_line
+    assert "TVE_MONITORING_WEBHOOK_TOKEN" in gate_line
+    assert _R3_URL not in unit_text and _R3_TOKEN not in unit_text
+    # The delivery ExecStart itself is unchanged.
+    exec_line = unit_text[start_index : unit_text.index("\n", start_index)]
+    assert "unattended-notify" in exec_line
+    assert str(config.runner_config_path) in exec_line
+    assert "--network allow" in exec_line
+    # The rendered units must satisfy the real systemd unit verifier.
+    if shutil.which("systemd-analyze") is None:
+        pytest.skip("systemd-analyze is not available on this host")
+    verify = prodops._systemd_analyze_verify(
+        (
+            config.systemd_output_dir / config.service_unit_name,
+            config.systemd_output_dir / config.timer_unit_name,
+        ),
+        runner=prodops._default_runner,
+    )
+    assert verify.ok, verify.stderr
+
+
+def test_r3_delivery_disabled_unit_has_no_gate(tmp_path: Path, destination: Path) -> None:
+    """Monitoring-only units stay byte/semantics compatible: no gate (goal 9.14)."""
+
+    config = _production_config(tmp_path)
+    unit = render_service_unit(config, config.runner_config_path)
+    assert "ExecStartPre=" not in unit
+    assert "monitoring_credential_gate" not in unit
+    assert "unattended-run" in unit
+    config_path = _write_config_file(tmp_path, config)
+    args = prodops._build_parser().parse_args(
+        ["--production-config", str(config_path), "render"]
+    )
+    assert prodops.cmd_render(args, runner=FakeRunner()) == EXIT_OK
+    rendered = (config.systemd_output_dir / config.service_unit_name).read_text("utf-8")
+    assert rendered == unit
+
+
+def test_r3_credential_gate_success_matches_inherited_bytes(
+    tmp_path: Path,
+) -> None:
+    """Canonical file + byte-identical inherited values authorize the service."""
+
+    config, env_file = _delivery_config(tmp_path)
+    _write_private_env_file(
+        env_file,
+        f"TVE_MONITORING_WEBHOOK_URL={_R3_URL}\nTVE_MONITORING_WEBHOOK_TOKEN={_R3_TOKEN}\n",
+    )
+    code, payload = _gate_call(
+        config,
+        {"TVE_MONITORING_WEBHOOK_URL": _R3_URL, "TVE_MONITORING_WEBHOOK_TOKEN": _R3_TOKEN},
+    )
+    assert code == EXIT_OK
+    assert payload["status"] == prodops.CREDENTIAL_GATE_OK
+    assert payload["references"] == [
+        "TVE_MONITORING_WEBHOOK_URL",
+        "TVE_MONITORING_WEBHOOK_TOKEN",
+    ]
+    assert _R3_URL not in json.dumps(payload) and _R3_TOKEN not in json.dumps(payload)
+
+
+def test_r3_credential_gate_missing_inherited_reference_fails_leak_free(
+    tmp_path: Path,
+) -> None:
+    config, env_file = _delivery_config(tmp_path)
+    _write_private_env_file(
+        env_file,
+        f"TVE_MONITORING_WEBHOOK_URL={_R3_URL}\nTVE_MONITORING_WEBHOOK_TOKEN={_R3_TOKEN}\n",
+    )
+    code, payload = _gate_call(config, {"TVE_MONITORING_WEBHOOK_TOKEN": _R3_TOKEN})
+    assert code == EXIT_FAIL_CLOSED
+    assert payload["status"] == prodops.CREDENTIAL_GATE_REJECTED
+    assert payload["category"] == "ENV_MISSING"
+    assert payload["reference"] == "TVE_MONITORING_WEBHOOK_URL"
+    assert _R3_URL not in json.dumps(payload)
+
+
+def test_r3_credential_gate_byte_mismatch_fails_without_either_value(
+    tmp_path: Path,
+) -> None:
+    config, env_file = _delivery_config(tmp_path)
+    _write_private_env_file(
+        env_file,
+        f"TVE_MONITORING_WEBHOOK_URL={_R3_URL}\nTVE_MONITORING_WEBHOOK_TOKEN={_R3_TOKEN}\n",
+    )
+    injected = "https://other-owner-edit.invalid/hook"
+    code, payload = _gate_call(
+        config, {"TVE_MONITORING_WEBHOOK_URL": injected, "TVE_MONITORING_WEBHOOK_TOKEN": _R3_TOKEN}
+    )
+    assert code == EXIT_FAIL_CLOSED
+    assert payload["category"] == "ENV_MISMATCH"
+    assert payload["reference"] == "TVE_MONITORING_WEBHOOK_URL"
+    serialized = json.dumps(payload)
+    assert _R3_URL not in serialized and injected not in serialized
+
+
+def test_r3_credential_gate_rejects_systemd_valid_but_noncanonical_drift(
+    tmp_path: Path, destination: Path
+) -> None:
+    """Goal 7 runtime invariant: quoted drift blocks even when values equal."""
+
+    config, env_file = _delivery_config(tmp_path)
+    _write_private_env_file(
+        env_file,
+        f"TVE_MONITORING_WEBHOOK_URL={_R3_URL}\nTVE_MONITORING_WEBHOOK_TOKEN={_R3_TOKEN}\n",
+    )
+    config_path = _write_config_file(tmp_path, config)
+    render_args = prodops._build_parser().parse_args(
+        ["--production-config", str(config_path), "render"]
+    )
+    assert prodops.cmd_render(render_args, runner=FakeRunner()) == EXIT_OK
+    # systemd accepts quoting and would inject the de-quoted bytes; the TVE
+    # canonical parser refuses the file, so the gate must fail closed.
+    _write_private_env_file(
+        env_file,
+        f'TVE_MONITORING_WEBHOOK_URL="{_R3_URL}"\n'
+        f"TVE_MONITORING_WEBHOOK_TOKEN={_R3_TOKEN}\n",
+    )
+    code, payload = _gate_call(
+        config,
+        {"TVE_MONITORING_WEBHOOK_URL": _R3_URL, "TVE_MONITORING_WEBHOOK_TOKEN": _R3_TOKEN},
+    )
+    assert code == EXIT_FAIL_CLOSED
+    assert payload["category"] == "NONCANONICAL_OR_INCOMPLETE"
+    assert "quote" in payload["reason"]
+    assert _R3_URL not in json.dumps(payload)
+    # Structural ordering proof: the failing gate sits ahead of the unchanged
+    # unattended-notify ExecStart inside the rendered unit.
+    unit_text = (config.systemd_output_dir / config.service_unit_name).read_text("utf-8")
+    assert unit_text.index("ExecStartPre=") < unit_text.index("ExecStart=")
+    assert "unattended-notify" in unit_text
+
+
+def test_r3_credential_gate_metadata_boundary_enforced(tmp_path: Path) -> None:
+    config, env_file = _delivery_config(tmp_path)
+    _write_private_env_file(
+        env_file,
+        f"TVE_MONITORING_WEBHOOK_URL={_R3_URL}\nTVE_MONITORING_WEBHOOK_TOKEN={_R3_TOKEN}\n",
+    )
+    os.chmod(env_file, 0o644)
+    code, payload = _gate_call(config, {})
+    assert code == EXIT_FAIL_CLOSED
+    assert payload["category"] == "METADATA"
+    assert "group/world-accessible" in payload["reason"]
+    # A missing file is a metadata failure too, never a value probe.
+    os.chmod(env_file, 0o600)
+    env_file.unlink()
+    code, payload = _gate_call(config, {})
+    assert code == EXIT_FAIL_CLOSED
+    assert payload["category"] == "METADATA"
+    assert "does not exist" in payload["reason"]
+
+
+def test_r3_credential_gate_cli_end_to_end(tmp_path: Path) -> None:
+    """The exact ExecStartPre argv works as a standalone command."""
+
+    config, env_file = _delivery_config(tmp_path)
+    _write_private_env_file(
+        env_file,
+        f"TVE_MONITORING_WEBHOOK_URL={_R3_URL}\nTVE_MONITORING_WEBHOOK_TOKEN={_R3_TOKEN}\n",
+    )
+    argv = list(prodops.credential_gate_argv(config))
+    script = Path(argv[1])
+    assert script.is_file(), f"gate script missing: {script}"
+    base_env = {
+        key: value
+        for key, value in os.environ.items()
+        if key not in {"TVE_MONITORING_WEBHOOK_URL", "TVE_MONITORING_WEBHOOK_TOKEN"}
+    }
+    injected_env = {
+        **base_env,
+        "TVE_MONITORING_WEBHOOK_URL": _R3_URL,
+        "TVE_MONITORING_WEBHOOK_TOKEN": _R3_TOKEN,
+    }
+    good = subprocess.run(
+        argv,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        env=injected_env,
+    )
+    assert good.returncode == 0, good.stderr
+    assert prodops.CREDENTIAL_GATE_OK in good.stdout
+    assert _R3_URL not in good.stdout and _R3_TOKEN not in good.stdout
+    _write_private_env_file(
+        env_file,
+        f'TVE_MONITORING_WEBHOOK_URL="{_R3_URL}"\n'
+        f"TVE_MONITORING_WEBHOOK_TOKEN={_R3_TOKEN}\n",
+    )
+    bad = subprocess.run(
+        argv,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        env=injected_env,
+    )
+    assert bad.returncode == EXIT_FAIL_CLOSED
+    assert prodops.CREDENTIAL_GATE_REJECTED in bad.stdout
+    assert _R3_URL not in bad.stdout and _R3_URL not in bad.stderr
+
+
+def test_r3_recover_proof_probe_requires_byte_equality(tmp_path: Path) -> None:
+    """The restart proof now proves equality, not mere presence (goal 8)."""
+
+    config, env_file = _delivery_config(tmp_path)
+    _write_private_env_file(
+        env_file,
+        "TVE_MONITORING_WEBHOOK_URL=https://probe-r3.invalid/h\n"
+        "TVE_MONITORING_WEBHOOK_TOKEN=tok-probe-r3\n",
+    )
+
+    def make_runner(injected: dict[str, str]) -> FakeRunner:
+        runner = FakeRunner(config=config)
+        runner.injected_environment = injected
+        return runner
+
+    # Extend FakeRunner for the systemd-run probe: simulate the service
+    # context by running the gate in-process against the injected environment.
+
+    original_call = FakeRunner.__call__
+
+    def _call(self, argv, **kwargs):  # type: ignore[no-untyped-def]
+        if argv[:1] == ["systemd-run"]:
+            gate = getattr(prodops, "run_credential_gate", None)
+            assert gate is not None
+            code, payload = gate(
+                environment_file=self.config.delivery_environment_file,
+                production_root=self.config.production_root,
+                referenced_names=prodops._production_secret_reference_names(self.config),
+                environ=getattr(self, "injected_environment", {}),
+            )
+            return subprocess.CompletedProcess(argv, code, json.dumps(payload), "")
+        return original_call(self, argv, **kwargs)
+
+    FakeRunner.__call__ = _call  # type: ignore[method-assign]
+
+    try:
+        matched = prodops._credential_resolution_probe(
+            config,
+            make_runner(
+                {
+                    "TVE_MONITORING_WEBHOOK_URL": "https://probe-r3.invalid/h",
+                    "TVE_MONITORING_WEBHOOK_TOKEN": "tok-probe-r3",
+                }
+            ),
+        )
+        assert matched["ok"] is True
+        # Same references present but one value carries different bytes:
+        # presence-only (pre-R3) reported this green; the upgraded probe
+        # must not.
+        drifted = prodops._credential_resolution_probe(
+            config,
+            make_runner(
+                {
+                    "TVE_MONITORING_WEBHOOK_URL": "https://drifted-r3.invalid/h",
+                    "TVE_MONITORING_WEBHOOK_TOKEN": "tok-probe-r3",
+                }
+            ),
+        )
+        assert drifted["ok"] is False
+        assert "drifted-r3.invalid" not in json.dumps(drifted)
+        missing = prodops._credential_resolution_probe(config, make_runner({}))
+        assert missing["ok"] is False
+    finally:
+        FakeRunner.__call__ = original_call  # type: ignore[method-assign]
+
+
+def test_r3_dual_source_scan_semantics_preserved(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """R1 dual-source scanning stays intact around the R3 parser (goal 9.13)."""
+
+    config, env_file = _delivery_config(tmp_path)
+    _write_private_env_file(env_file, "TVE_MONITORING_WEBHOOK_URL=https://r3-file.invalid/h\n")
+    monkeypatch.setenv("TVE_MONITORING_WEBHOOK_URL", "https://r3-process.invalid/h")
+    assert prodops.effective_secret_values(config) == {
+        "TVE_MONITORING_WEBHOOK_URL": [
+            "https://r3-process.invalid/h",
+            "https://r3-file.invalid/h",
+        ]
+    }
+    # A systemd-invalid-Unicode file contributes no file values (fail-safe),
+    # while the harness-side value keeps full scan/redaction coverage.
+    _write_private_env_file(
+        env_file, "TVE_MONITORING_WEBHOOK_URL=https://broken\ufeff-r3.invalid/h\n"
+    )
+    assert prodops.effective_secret_values(config) == {
+        "TVE_MONITORING_WEBHOOK_URL": ["https://r3-process.invalid/h"]
+    }
+
+
+def _systemd_user_manager_usable() -> bool:
+    """A reachable user manager is required for the transient proof."""
+
+    if shutil.which("systemd-run") is None or shutil.which("systemctl") is None:
+        return False
+    try:
+        outcome = subprocess.run(
+            ["systemctl", "--user", "show-environment"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return outcome.returncode == 0
+
+
+@pytest.mark.skipif(
+    not _systemd_user_manager_usable(),
+    reason="no reachable systemd user manager for the transient pre-start proof",
+)
+def test_r3_transient_systemd_execstartpre_gate_proof(tmp_path: Path) -> None:
+    """Real manager proof: gate failure leaves unattended-notify unexecuted."""
+
+    config, env_file = _delivery_config(tmp_path)
+    canonical = "https://transient-r3.invalid/hook"
+    _write_private_env_file(
+        env_file,
+        f"TVE_MONITORING_WEBHOOK_URL={canonical}\nTVE_MONITORING_WEBHOOK_TOKEN=tok-transient-r3\n",
+    )
+    gate_command = prodops.credential_gate_command(config)
+    sentinel = tmp_path / "notify-executed"
+
+    def run_transient() -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [
+                "systemd-run",
+                "--user",
+                "--wait",
+                "--pipe",
+                "--collect",
+                f"--unit=tve-r3-proof-{uuid.uuid4().hex[:12]}",
+                "-p",
+                f"EnvironmentFile={env_file}",
+                "-p",
+                f"ExecStartPre={gate_command}",
+                "/bin/sh",
+                "-c",
+                f"echo executed > {shlex.quote(str(sentinel))}",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=180,
+        )
+
+    # Healthy path: the gate passes and the (fake) notify command runs.
+    healthy = run_transient()
+    assert healthy.returncode == 0, healthy.stdout + healthy.stderr
+    assert sentinel.is_file()
+    sentinel.unlink()
+    # Goal 7: the owner edits the file into a form systemd still accepts
+    # (quoting) but the TVE canonical parser refuses.
+    _write_private_env_file(
+        env_file,
+        f'TVE_MONITORING_WEBHOOK_URL="{canonical}"\nTVE_MONITORING_WEBHOOK_TOKEN=tok-transient-r3\n',
+    )
+    drifted = run_transient()
+    assert drifted.returncode != 0
+    assert not sentinel.exists(), "unattended-notify must not execute after gate failure"
+    assert canonical not in drifted.stdout and canonical not in drifted.stderr
