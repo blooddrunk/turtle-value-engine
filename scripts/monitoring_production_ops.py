@@ -52,8 +52,12 @@ Every mode is explicit and fail-closed:
 Secret discipline: no credential value is ever accepted, printed or
 persisted by this script.  Notification is optional; when enabled, the only
 typed local credential source is a systemd ``EnvironmentFile`` under the
-ignored private root whose *path* (never its content) appears in the unit,
-and the render step refuses to continue while that file is absent.
+ignored private root whose *path* (never its content) appears in the unit.
+The file must satisfy the canonical subset (one physical ``NAME=VALUE``
+line per referenced secret, no quoting/escaping/continuation/whitespace,
+no unrelated keys) so every accepted value is byte-identical under this
+harness and systemd, and the render step refuses to continue before any
+artifact is written unless the file is readable, complete and canonical.
 """
 
 from __future__ import annotations
@@ -68,6 +72,7 @@ import stat as stat_module
 import subprocess
 import sys
 import time
+import unicodedata
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
@@ -148,6 +153,20 @@ PHASE6E_ROOT_HINT = str(ROOT / ".tve-private" / "monitoring" / "phase6e")
 _LISTING_PATTERN = re.compile(r"^(SH|SZ|BJ)\d{6}$|^(HK)\d{5}$")
 _UNIT_NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 _SECRET_ENV_PATTERN = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+
+# Phase 6-F-R2 canonical private EnvironmentFile contract.  The accepted
+# grammar is a deliberately unambiguous subset of systemd ``EnvironmentFile=``
+# semantics (one physical ``NAME=VALUE`` line per referenced secret name, no
+# quoting/escaping/continuations/whitespace) so every accepted value is
+# byte-identical under the harness reader and the service manager.  Values
+# may legitimately contain ``=``, ``#``, ``;``, ``?``, ``&`` and ``%``: they
+# are data, never inline comments.
+_ENV_FILE_MAX_BYTES = 65536
+_ENV_FILE_VALUE_FORBIDDEN_CHARS = ('"', "'", "\\")
+
+
+def _contains_control_character(value: str) -> bool:
+    return any(unicodedata.category(ch) == "Cc" for ch in value)
 
 
 # ---------------------------------------------------------------------------
@@ -311,6 +330,12 @@ class ProductionConfigV1(BaseModel):
                 )
             if not Path(self.delivery_environment_file).is_absolute():
                 raise ValueError("delivery_environment_file must be an absolute path")
+            if _contains_control_character(self.delivery_environment_file):
+                raise ValueError(
+                    "delivery_environment_file must not contain control characters "
+                    "or newlines (the path is serialized verbatim into the unit's "
+                    "EnvironmentFile= line)"
+                )
             env_file = Path(os.path.normpath(self.delivery_environment_file))
             private_root = Path(os.path.normpath(self.production_root))
             if not env_file.is_relative_to(private_root):
@@ -924,10 +949,12 @@ def effective_secret_values(
     one reference, both are returned so leak scans and redaction cover
     either value instead of silently dropping one.
 
-    Values stay in process memory and are used only inside absence
-    scans/redaction.  An unreadable environment file simply contributes no
-    values here; the precise missing/unreadable/insecure boundary is raised
-    by the gating paths (preflight/render/live-proof delivery), never by
+    File values come only from the canonical parser
+    (``environment_file_values``): a file that is unreadable or outside the
+    canonical subset contributes no values here, because its bytes cannot be
+    proven identical to what systemd would inject.  The precise
+    missing/unreadable/insecure/non-canonical boundary is raised by the
+    gating paths (preflight/render/live-proof delivery), never by
     fabricating a value.
     """
 
@@ -964,31 +991,126 @@ def _effective_secret_scan_map(values: Mapping[str, list[str]]) -> dict[str, str
 
 
 def environment_file_values(
-    config: ProductionConfigV1
+    config: ProductionConfigV1,
 ) -> tuple[dict[str, str], str | None]:
-    """Parse KEY=VALUE lines from the delivery environment file (memory only).
+    """Read the private credential file under the canonical subset (memory only).
 
-    Values never leave this process except inside absence scans/redaction.
-    Returns (values, error) where error explains an unreadable file.
+    This is the one canonical parser/validator for every production-operations
+    credential path (render gating, preflight, effective secret scanning and
+    redaction, D3 payload scans and delivery completeness).  The accepted
+    grammar is a deliberately unambiguous subset of systemd's
+    ``EnvironmentFile=`` semantics so that every accepted value is
+    byte-identical to what the service manager injects:
+
+    - UTF-8 text; blank lines and whole-line ``#``/``;`` comments are ignored;
+    - every assignment is exactly one physical ``NAME=VALUE`` line starting at
+      column 0; ``NAME`` must be one of the currently referenced secret names
+      (``_production_secret_reference_names``), each present exactly once;
+    - duplicates, unknown/unrelated environment keys and ``export NAME=...``
+      forms are rejected, so the file cannot inject unrelated process
+      environment;
+    - ``VALUE`` is non-empty, carries no leading/trailing/embedded whitespace,
+      no control character, no quote and no backslash, and is used
+      byte-for-byte after UTF-8 decoding and line-ending removal (``=``, ``#``,
+      ``;``, ``?``, ``&``, ``%`` and other URL punctuation stay literal data).
+
+    Any syntax-level violation (unreadable, non-UTF-8, malformed line,
+    duplicate, unknown key, ``export`` form, empty value) returns
+    ``({}, reason)``: no value from a file whose interpretation is not
+    provably identical under systemd is ever released.  A file whose present
+    lines are all canonical but which is missing a referenced name returns
+    its partial values together with the reason: those bytes are still
+    exactly what systemd would inject for them, so the fail-safe scan and
+    redaction set keeps its Phase 6-F-R1 coverage, while every gating path
+    (preflight/render/live-proof delivery) fails closed on the non-``None``
+    error.  Reasons name only the line number/category of the problem and
+    referenced (public) names — never file content.  Values never leave the
+    caller's process memory except inside absence scans/redaction.
     """
 
     assert config.delivery_environment_file is not None
     path = Path(config.delivery_environment_file)
-    values: dict[str, str] = {}
+    required = _production_secret_reference_names(config)
     try:
-        text = path.read_text(encoding="utf-8")
+        raw = path.read_bytes()
     except OSError as exc:
-        return {}, f"{type(exc).__name__}: {exc}"
-    for raw_line in text.splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#") or "=" not in line:
+        return {}, f"cannot read {path}: {type(exc).__name__}"
+    if len(raw) > _ENV_FILE_MAX_BYTES:
+        return {}, (
+            f"{path} is larger than the {_ENV_FILE_MAX_BYTES}-byte "
+            "credential-file bound"
+        )
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return {}, f"{path} is not valid UTF-8"
+    values: dict[str, str] = {}
+    for lineno, raw_line in enumerate(text.split("\n"), start=1):
+        line = raw_line[:-1] if raw_line.endswith("\r") else raw_line
+        if not line or not line.strip(" \t"):
             continue
-        key, _, value = line.partition("=")
-        key = key.strip()
-        value = value.strip().strip('"').strip("'")
-        if key:
-            values[key] = value
+        if line[0] in "#;":
+            continue
+        if line.startswith("export") and len(line) > 6 and line[6] in " \t":
+            return {}, (
+                f"line {lineno}: 'export NAME=VALUE' is not the canonical "
+                "EnvironmentFile form"
+            )
+        if line[0] in " \t":
+            return {}, (
+                f"line {lineno}: assignment must start at column 0 (no leading "
+                "whitespace)"
+            )
+        if "=" not in line:
+            return {}, (
+                f"line {lineno}: neither a blank line, a comment nor a "
+                "NAME=VALUE assignment (unsupported syntax)"
+            )
+        name, _, value = line.partition("=")
+        if not name:
+            return {}, f"line {lineno}: missing NAME before '='"
+        if name != name.strip(" \t"):
+            return {}, (
+                f"line {lineno}: whitespace in or around the name of a "
+                "referenced assignment"
+            )
+        if name not in required:
+            return {}, (
+                f"line {lineno}: assigns an environment name that is not one of "
+                f"the referenced secret names ({', '.join(required)}); the "
+                "credential file cannot inject unrelated process environment"
+            )
+        if name in values:
+            return {}, f"line {lineno}: duplicate assignment for referenced name {name}"
+        if not value:
+            return {}, f"line {lineno}: empty value for {name}"
+        violation = _canonical_value_violation(value)
+        if violation is not None:
+            return {}, f"line {lineno}: {violation} for {name}"
+        values[name] = value
+    missing = [name for name in required if name not in values]
+    if missing:
+        # Present canonical lines keep their unambiguous bytes in the
+        # fail-safe scan/redaction set (R1 coverage), but the non-None error
+        # fails every gating path closed.
+        return values, (
+            f"{path} does not define every referenced secret: missing "
+            f"{', '.join(missing)}"
+        )
     return values, None
+
+
+def _canonical_value_violation(value: str) -> str | None:
+    """Categorize why a ``VALUE`` is outside the canonical subset (leak-free)."""
+
+    for ch in value:
+        if ch in _ENV_FILE_VALUE_FORBIDDEN_CHARS:
+            return "quote or backslash in value (quoting/escaping is not canonical)"
+        if ch.isspace():
+            return "whitespace in value"
+        if unicodedata.category(ch) == "Cc":
+            return "control character in value"
+    return None
 
 
 def validate_delivery_environment_file(
@@ -1013,6 +1135,11 @@ def validate_delivery_environment_file(
         "path": str(configured),
         "private_root": str(private_root),
     }
+    if _contains_control_character(str(configured)):
+        return metadata, (
+            "the configured environment file path contains control characters "
+            "or newlines (it is serialized into the unit's EnvironmentFile= line)"
+        )
     if not configured.exists() and not configured.is_symlink():
         return metadata, f"{configured} does not exist"
     try:
@@ -1202,8 +1329,11 @@ def cmd_preflight(args: argparse.Namespace, runner: CommandRunner = _default_run
             log.add_marker(
                 "delivery.secret-reference",
                 MANUAL_SECRET_REFERENCE_REQUIRED,
-                f"cannot read {env_file}: {error}; create the file with the "
-                f"referenced values ({', '.join(_production_secret_reference_names(config))})",
+                f"the private credential file does not satisfy the canonical "
+                f"EnvironmentFile contract: {error}; fix {env_file} by hand so "
+                "each referenced value is one physical NAME=VALUE line "
+                "(non-empty, no quoting/escaping/continuation/whitespace; "
+                "URL characters like = # ; ? & % stay literal)",
             )
         elif missing:
             log.add_marker(
@@ -1216,7 +1346,8 @@ def cmd_preflight(args: argparse.Namespace, runner: CommandRunner = _default_run
                 "delivery.secret-reference",
                 True,
                 "every referenced secret resolves from the typed environment file "
-                "(values not shown)",
+                "in canonical form, byte-identical to the service manager's "
+                "injection (values not shown)",
             )
     else:
         log.add(
@@ -1341,28 +1472,35 @@ def cmd_gate(args: argparse.Namespace, runner: CommandRunner = _default_runner) 
 
 def cmd_render(args: argparse.Namespace, runner: CommandRunner = _default_runner) -> int:
     config = load_production_config(args.production_config)
-    output_dir = config.systemd_output_dir
-    output_dir.mkdir(parents=True, exist_ok=True)
 
     if config.delivery_enabled:
-        metadata, boundary_error = validate_delivery_environment_file(config)
-        if boundary_error is not None:
+        # R2: prove the whole canonical credential contract through the one
+        # canonical parser BEFORE any unit/config/render-plan artifact byte is
+        # written: metadata boundary, actual readability, canonical syntax
+        # subset and referenced-name completeness in a single place.
+        _metadata, boundary_error = validate_delivery_environment_file(config)
+        _values, credential_error = environment_file_values(config)
+        if boundary_error is not None or credential_error is not None:
+            reason = boundary_error if boundary_error is not None else credential_error
             raise ManualBoundary(
                 MANUAL_SECRET_REFERENCE_REQUIRED,
                 stopped_after=(
                     "render: delivery is enabled but the typed local credential "
-                    f"source violates the private-file contract: {boundary_error}; "
-                    "the rendered unit would reference a required "
-                    "EnvironmentFile that cannot load securely"
+                    f"source is not acceptable: {reason}; no unit, runner-config "
+                    "or render-plan artifact was written"
                 ),
                 human_action=(
                     f"fix {config.delivery_environment_file} by hand: a regular "
                     "owner-private file (mode 0600) inside the production private "
-                    f"root {config.production_root} containing the referenced "
-                    "values: "
-                    f"{', '.join(_production_secret_reference_names(config))}. "
-                    "This harness never chmods or rewrites the owner's credential "
-                    "file. Do not paste any value into chat, Git or documents"
+                    f"root {config.production_root} defining each referenced "
+                    "value exactly once in canonical form — one physical "
+                    "NAME=VALUE line per name "
+                    f"({', '.join(_production_secret_reference_names(config))}), "
+                    "value non-empty without quoting, backslash escaping, line "
+                    "continuation or whitespace (URL characters like = # ; ? & % "
+                    "stay literal). This harness never chmods or rewrites the "
+                    "owner's credential file. Do not paste any value into chat, "
+                    "Git or documents"
                 ),
                 secret_boundary=(
                     "the environment file lives only in the ignored private root; "
@@ -1372,14 +1510,17 @@ def cmd_render(args: argparse.Namespace, runner: CommandRunner = _default_runner
                 machine_verifiable_success=(
                     "render exits 0, the unit carries exactly the EnvironmentFile "
                     "path, and the file is an in-root owner-private regular file "
-                    "defining every referenced name (checked without printing "
-                    "values)"
+                    "whose canonical NAME=VALUE content defines every referenced "
+                    "name exactly once (values never printed)"
                 ),
                 remaining_unverified=(
                     "production notification delivery and post-restart credential "
                     "resolvability for the service identity"
                 ),
             )
+
+    output_dir = config.systemd_output_dir
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     runner_config_bytes = desired_runner_config_bytes(config)
     project_config_bytes = desired_project_config_bytes(config)
@@ -2291,17 +2432,21 @@ def _delivery_section(
         or any(not values.get(name) for name in needed)
     ):
         missing = [name for name in needed if not values.get(name)]
+        detail = boundary_error or error or (
+            "does not define: " + ", ".join(missing)
+        )
         marker = ManualBoundary(
             MANUAL_SECRET_REFERENCE_REQUIRED,
             stopped_after=(
                 "live-proof delivery step: delivery is enabled but the typed "
-                "environment file does not satisfy the private credential "
-                "source contract "
-                f"({'missing: ' + ', '.join(missing) if missing else (boundary_error or error)})"
+                "environment file does not satisfy the private canonical "
+                f"credential source contract ({detail})"
             ),
             human_action=(
-                f"fill {config.delivery_environment_file} with the referenced "
-                f"values ({', '.join(needed)}); never paste values into chat or Git"
+                f"fix {config.delivery_environment_file} by hand: each referenced "
+                f"value ({', '.join(needed)}) on one physical NAME=VALUE line, "
+                "non-empty, without quoting/escaping/continuation/whitespace; "
+                "never paste values into chat or Git"
             ),
             secret_boundary=(
                 "values stay in the ignored private environment file and in "

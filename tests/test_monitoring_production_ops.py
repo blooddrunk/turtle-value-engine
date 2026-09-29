@@ -783,8 +783,9 @@ def test_environment_file_values_parses_without_leaking(tmp_path: Path) -> None:
     env_file = tmp_path / "production" / "secrets.env"
     env_file.parent.mkdir(parents=True, exist_ok=True)
     env_file.write_text(
-        "# comment\nTVE_MONITORING_WEBHOOK_URL=https://example.invalid/hook\n"
-        'TVE_MONITORING_WEBHOOK_TOKEN="tok-1"\n',
+        "# comment\n; also a comment\n\n"
+        "TVE_MONITORING_WEBHOOK_URL=https://example.invalid/hook\n"
+        "TVE_MONITORING_WEBHOOK_TOKEN=tok-1\n",
         encoding="utf-8",
     )
     config = _production_config(
@@ -792,8 +793,10 @@ def test_environment_file_values_parses_without_leaking(tmp_path: Path) -> None:
     )
     values, error = environment_file_values(config)
     assert error is None
-    assert values["TVE_MONITORING_WEBHOOK_URL"] == "https://example.invalid/hook"
-    assert values["TVE_MONITORING_WEBHOOK_TOKEN"] == "tok-1"
+    assert values == {
+        "TVE_MONITORING_WEBHOOK_URL": "https://example.invalid/hook",
+        "TVE_MONITORING_WEBHOOK_TOKEN": "tok-1",
+    }
 
 
 def test_delivery_section_missing_secret_records_precise_marker(tmp_path: Path) -> None:
@@ -1355,3 +1358,433 @@ def test_delivery_disabled_effective_values_stay_empty(
     assert prodops.effective_secret_values(config) == {}
     assert prodops._effective_secret_scan_map({}) == {}
     assert prodops.resolvable_secret_values(config) == {}
+
+
+# ---------------------------------------------------------------------------
+# Phase 6-F-R2: canonical EnvironmentFile semantics and render gating
+# ---------------------------------------------------------------------------
+
+# A byte-for-byte sentinel exercising every data character class that must
+# survive the canonical parser verbatim (and be seen by every scan path).
+_R2_URL = "https://hooks.r2.invalid/a=b?c=d&e=f%20g#frag;sec=1"
+_R2_TOKEN = "tok=r2#p;q?w&%z"
+
+
+def _make_preflight_deterministic(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Host-independent green preflight inputs (read-only host facts faked)."""
+
+    monkeypatch.setattr(
+        prodops,
+        "load_gate_artifact",
+        lambda config, head_sha: {"head_sha": head_sha, "green": True},
+    )
+    monkeypatch.setattr(
+        prodops, "probe_lock_visibility", lambda *a, **k: {"proven": True, "steps": []}
+    )
+    monkeypatch.setattr(
+        prodops,
+        "classify_host_topology",
+        lambda runner: {
+            "pid1": "systemd",
+            "wsl2": False,
+            "wsl_conf_systemd_boot": None,
+            "windows_host_bootstrap_proven": True,
+        },
+    )
+
+
+def test_r2_backslash_escape_is_rejected(tmp_path: Path) -> None:
+    """A systemd unquoted backslash escape must never become effective (F1)."""
+
+    config, env_file = _delivery_config(tmp_path)
+    _write_private_env_file(
+        env_file, "TVE_MONITORING_WEBHOOK_URL=https://x.invalid/h\\ook\n"
+    )
+    values, error = environment_file_values(config)
+    assert values == {}
+    assert error is not None and "backslash" in error
+    # The file value must not silently feed the effective scan/redaction set.
+    assert prodops.effective_secret_values(config) == {}
+
+
+def test_r2_backslash_newline_continuation_is_rejected(tmp_path: Path) -> None:
+    """Backslash-newline continuation (systemd joins the lines) is rejected."""
+
+    config, env_file = _delivery_config(tmp_path)
+    _write_private_env_file(
+        env_file,
+        "TVE_MONITORING_WEBHOOK_URL=https://x.invalid/hook\\\n"
+        "TVE_MONITORING_WEBHOOK_TOKEN=tok-1\n",
+    )
+    values, error = environment_file_values(config)
+    assert values == {}
+    assert error is not None and "backslash" in error
+    assert "tok-1" not in (error or "")
+
+
+def test_r2_quoted_and_multiline_values_are_rejected(tmp_path: Path) -> None:
+    """Single/double-quoted and multiline values are rejected, not parsed."""
+
+    config, env_file = _delivery_config(tmp_path)
+    _write_private_env_file(
+        env_file, 'TVE_MONITORING_WEBHOOK_URL="https://quoted.invalid/hook"\n'
+    )
+    values, error = environment_file_values(config)
+    assert values == {}
+    assert error is not None and "quote" in error
+    assert "https://quoted.invalid/hook" not in error
+
+    config, env_file = _delivery_config(tmp_path)
+    _write_private_env_file(
+        env_file, "TVE_MONITORING_WEBHOOK_URL='https://multi.invalid/hook\nsuffix'\n"
+    )
+    values, error = environment_file_values(config)
+    assert values == {}
+    assert error is not None
+    assert "multi.invalid" not in error
+
+
+def test_r2_render_missing_required_reference_stops_at_marker_and_writes_nothing(
+    tmp_path: Path, destination: Path
+) -> None:
+    """Render proves referenced-name completeness before any artifact (F2)."""
+
+    config, env_file = _delivery_config(tmp_path)
+    _write_private_env_file(env_file, "TVE_MONITORING_WEBHOOK_TOKEN=tok-present\n")
+    config_path = _write_config_file(tmp_path, config)
+    args = prodops._build_parser().parse_args(
+        ["--production-config", str(config_path), "render"]
+    )
+    with pytest.raises(ManualBoundary) as excinfo:
+        prodops.cmd_render(args, runner=FakeRunner())
+    payload = excinfo.value.payload
+    assert payload["marker"] == "MANUAL_SECRET_REFERENCE_REQUIRED"
+    assert "TVE_MONITORING_WEBHOOK_URL" in payload["stopped_after"]
+    assert "tok-present" not in payload["stopped_after"]
+    _assert_parser_round_trip(payload["resume_command"], "render", config_path)
+    # The failure must happen before any render artifact is written.
+    assert not config.runner_config_path.exists()
+    assert not config.project_config_path.exists()
+    assert not (config.systemd_output_dir / config.service_unit_name).exists()
+    assert not (config.systemd_output_dir / "render-plan.json").exists()
+
+
+def test_r2_duplicate_reference_is_rejected(tmp_path: Path) -> None:
+    config, env_file = _delivery_config(tmp_path)
+    _write_private_env_file(
+        env_file,
+        "TVE_MONITORING_WEBHOOK_URL=https://dup-1.invalid/hook\n"
+        "TVE_MONITORING_WEBHOOK_URL=https://dup-2.invalid/hook\n",
+    )
+    values, error = environment_file_values(config)
+    assert values == {}
+    assert error is not None and "duplicate" in error
+    assert "dup-1.invalid" not in error and "dup-2.invalid" not in error
+
+
+def test_r2_unknown_environment_key_is_rejected_without_echoing_it(
+    tmp_path: Path,
+) -> None:
+    """Unrelated environment injection through the credential file is refused."""
+
+    config, env_file = _delivery_config(tmp_path)
+    _write_private_env_file(
+        env_file,
+        "TVE_MONITORING_WEBHOOK_URL=https://x.invalid/hook\n"
+        "PATH=/usr/bin:/bin\n",
+    )
+    values, error = environment_file_values(config)
+    assert values == {}
+    assert error is not None and "not one of the referenced secret names" in error
+    # The reason is line/category based; it never echoes the file content.
+    assert "PATH" not in error and "/usr/bin" not in error
+
+
+def test_r2_unreadable_credential_file_fails_closed_in_render_and_preflight(
+    tmp_path: Path,
+    destination: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Metadata-valid but unreadable files stop render/preflight precisely."""
+
+    config, env_file = _delivery_config(tmp_path)
+    _write_private_env_file(
+        env_file, "TVE_MONITORING_WEBHOOK_URL=https://x.invalid/hook\n"
+    )
+    # Simulate an unreadable file deterministically (independent of euid).
+    real_read_bytes = Path.read_bytes
+
+    def _unreadable(self: Path) -> bytes:
+        if self == env_file:
+            raise PermissionError(13, "Permission denied")
+        return real_read_bytes(self)
+
+    monkeypatch.setattr(Path, "read_bytes", _unreadable)
+    metadata, boundary_error = prodops.validate_delivery_environment_file(config)
+    assert boundary_error is None  # the metadata boundary alone still holds
+    values, error = environment_file_values(config)
+    assert values == {}
+    assert error is not None and "cannot read" in error
+    assert "https://x.invalid/hook" not in error
+
+    config_path = _write_config_file(tmp_path, config)
+    args = prodops._build_parser().parse_args(
+        ["--production-config", str(config_path), "render"]
+    )
+    with pytest.raises(ManualBoundary) as excinfo:
+        prodops.cmd_render(args, runner=FakeRunner())
+    payload = excinfo.value.payload
+    assert payload["marker"] == "MANUAL_SECRET_REFERENCE_REQUIRED"
+    assert "cannot read" in payload["stopped_after"]
+    assert "https://x.invalid/hook" not in payload["stopped_after"]
+    assert not config.runner_config_path.exists()
+    assert not (config.systemd_output_dir / config.service_unit_name).exists()
+
+    # Preflight reports the same unreadable boundary as a precise marker.
+    _make_preflight_deterministic(monkeypatch)
+    _write_watchlist(config)
+    preflight_args = prodops._build_parser().parse_args(
+        ["--production-config", str(config_path), "preflight"]
+    )
+    preflight_runner = FakeRunner()
+    preflight_runner.linger_enabled = True
+    assert (
+        prodops.cmd_preflight(preflight_args, runner=preflight_runner)
+        == prodops.EXIT_OK
+    )
+    preflight_payload = json.loads(capsys.readouterr().out)
+    delivery_checks = {
+        item["name"]: item for item in preflight_payload["checks"]
+        if item["name"].startswith("delivery.")
+    }
+    assert (
+        delivery_checks["delivery.secret-reference"]["marker"]
+        == "MANUAL_SECRET_REFERENCE_REQUIRED"
+    )
+    assert (
+        "cannot read" in delivery_checks["delivery.secret-reference"]["detail"]
+    )
+    assert "https://x.invalid/hook" not in json.dumps(preflight_payload)
+
+
+def test_r2_canonical_url_punctuation_is_preserved_and_scanned_byte_for_byte(
+    tmp_path: Path, destination: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`= # ; ? & %` stay literal data in every accepted path (goal 3.7/7.8)."""
+
+    config, env_file = _delivery_config(tmp_path)
+    _write_private_env_file(
+        env_file,
+        "# production notification credentials\n"
+        f"TVE_MONITORING_WEBHOOK_URL={_R2_URL}\n"
+        f"TVE_MONITORING_WEBHOOK_TOKEN={_R2_TOKEN}\n",
+    )
+    monkeypatch.delenv("TVE_MONITORING_WEBHOOK_URL", raising=False)
+    monkeypatch.delenv("TVE_MONITORING_WEBHOOK_TOKEN", raising=False)
+    values, error = environment_file_values(config)
+    assert error is None
+    assert values == {
+        "TVE_MONITORING_WEBHOOK_URL": _R2_URL,
+        "TVE_MONITORING_WEBHOOK_TOKEN": _R2_TOKEN,
+    }
+    effective = prodops.effective_secret_values(config)
+    assert effective == {
+        "TVE_MONITORING_WEBHOOK_URL": [_R2_URL],
+        "TVE_MONITORING_WEBHOOK_TOKEN": [_R2_TOKEN],
+    }
+    secrets = prodops._effective_secret_scan_map(effective)
+    assert prodops.scan_bytes_for_secrets(f"leak {_R2_URL}".encode(), secrets) == [
+        "TVE_MONITORING_WEBHOOK_URL"
+    ]
+    assert prodops.scan_bytes_for_secrets(f"leak {_R2_TOKEN}".encode(), secrets) == [
+        "TVE_MONITORING_WEBHOOK_TOKEN"
+    ]
+    redacted = prodops.redact_text(f"a {_R2_URL} b {_R2_TOKEN} c", secrets)
+    assert _R2_URL not in redacted and _R2_TOKEN not in redacted
+    assert redacted.count("[REDACTED]") == 2
+
+    # Render proceeds and keeps the values out of every artifact.
+    config_path = _write_config_file(tmp_path, config)
+    args = prodops._build_parser().parse_args(
+        ["--production-config", str(config_path), "render"]
+    )
+    assert prodops.cmd_render(args, runner=FakeRunner()) == EXIT_OK
+    unit_text = (config.systemd_output_dir / config.service_unit_name).read_text(
+        encoding="utf-8"
+    )
+    assert f"EnvironmentFile={env_file}" in unit_text
+    assert _R2_URL not in unit_text and _R2_TOKEN not in unit_text
+    plan_text = (config.systemd_output_dir / "render-plan.json").read_text(
+        encoding="utf-8"
+    )
+    assert _R2_URL not in plan_text and _R2_TOKEN not in plan_text
+
+
+def test_r2_dual_source_mismatch_keeps_both_values_with_canonical_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """R1 dual-source semantics stay intact for canonical file values."""
+
+    config, env_file = _delivery_config(tmp_path)
+    _write_private_env_file(env_file, f"TVE_MONITORING_WEBHOOK_URL={_R2_URL}\n")
+    monkeypatch.setenv("TVE_MONITORING_WEBHOOK_URL", "https://process-r2.invalid/h")
+    effective = prodops.effective_secret_values(config)
+    assert effective == {
+        "TVE_MONITORING_WEBHOOK_URL": ["https://process-r2.invalid/h", _R2_URL]
+    }
+    scan_map = prodops._effective_secret_scan_map(effective)
+    assert prodops.scan_bytes_for_secrets(f"x {_R2_URL}".encode(), scan_map) == [
+        "TVE_MONITORING_WEBHOOK_URL~2"
+    ]
+
+
+def test_r2_delivery_disabled_render_stays_compatible(
+    tmp_path: Path, destination: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Monitoring-only production behavior is unchanged by the canonical gate."""
+
+    config = _production_config(tmp_path)
+    _write_watchlist(config)
+    monkeypatch.setenv("TVE_MONITORING_WEBHOOK_URL", "https://ambient.invalid/hook")
+    assert prodops.effective_secret_values(config) == {}
+    config_path = _write_config_file(tmp_path, config)
+    args = prodops._build_parser().parse_args(
+        ["--production-config", str(config_path), "render"]
+    )
+    assert prodops.cmd_render(args, runner=FakeRunner()) == EXIT_OK
+    unit_text = (config.systemd_output_dir / config.service_unit_name).read_text(
+        encoding="utf-8"
+    )
+    assert "EnvironmentFile=" not in unit_text
+
+
+def test_r2_no_render_artifact_on_rejected_credential_syntax(
+    tmp_path: Path, destination: Path
+) -> None:
+    """A syntax violation stops render before any delivery-enabled unit exists."""
+
+    config, env_file = _delivery_config(tmp_path)
+    _write_private_env_file(
+        env_file, 'TVE_MONITORING_WEBHOOK_URL="https://quoted.invalid/hook"\n'
+    )
+    config_path = _write_config_file(tmp_path, config)
+    args = prodops._build_parser().parse_args(
+        ["--production-config", str(config_path), "render"]
+    )
+    with pytest.raises(ManualBoundary) as excinfo:
+        prodops.cmd_render(args, runner=FakeRunner())
+    payload = excinfo.value.payload
+    assert payload["marker"] == "MANUAL_SECRET_REFERENCE_REQUIRED"
+    assert "quote" in payload["stopped_after"]
+    assert "https://quoted.invalid/hook" not in payload["stopped_after"]
+    assert not config.systemd_output_dir.exists() or not any(
+        (config.systemd_output_dir / name).exists()
+        for name in (config.service_unit_name, config.timer_unit_name, "render-plan.json")
+    )
+    assert not config.runner_config_path.exists()
+    assert not config.project_config_path.exists()
+
+
+def test_r2_export_whitespace_and_empty_value_forms_are_rejected(
+    tmp_path: Path,
+) -> None:
+    config, env_file = _delivery_config(tmp_path)
+
+    def _reason(content: str) -> str:
+        _write_private_env_file(env_file, content)
+        values, error = environment_file_values(config)
+        assert values == {}
+        assert error is not None
+        return error
+
+    assert "export" in _reason("export TVE_MONITORING_WEBHOOK_URL=https://x.invalid/h\n")
+    whitespace = _reason("TVE_MONITORING_WEBHOOK_URL =https://x.invalid/h\n")
+    assert "whitespace" in whitespace
+    trailing = _reason("TVE_MONITORING_WEBHOOK_TOKEN=tok-1 \n")
+    assert "whitespace" in trailing
+    embedded = _reason("TVE_MONITORING_WEBHOOK_TOKEN=tok 1\n")
+    assert "whitespace" in embedded
+    empty = _reason("TVE_MONITORING_WEBHOOK_TOKEN=\n")
+    assert "empty" in empty
+    malformed = _reason("TVE_MONITORING_WEBHOOK_TOKEN\n")
+    assert "NAME=VALUE" in malformed
+    for error in (whitespace, trailing, embedded, empty, malformed):
+        assert "https://x.invalid" not in error and "tok" not in error
+
+
+def test_r2_environment_file_path_control_characters_rejected(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(Exception, match="control character"):
+        _production_config(
+            tmp_path,
+            delivery_enabled=True,
+            delivery_environment_file=str(tmp_path / "production" / "sec\nret.env"),
+        )
+    config, _env_file = _delivery_config(tmp_path)
+    bad = config.model_copy(
+        update={"delivery_environment_file": str(tmp_path / "production" / "ba\x01d.env")}
+    )
+    _metadata, error = prodops.validate_delivery_environment_file(bad)
+    assert error is not None and "control characters" in error
+
+
+def test_r2_preflight_reports_canonical_violation_precisely(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    config, env_file = _delivery_config(tmp_path)
+    _write_private_env_file(
+        env_file,
+        "TVE_MONITORING_WEBHOOK_URL=https://healthy.invalid/hook\n"
+        'TVE_MONITORING_WEBHOOK_TOKEN="tok-preflight"\n',
+    )
+    config_path = _write_config_file(tmp_path, config)
+    args = prodops._build_parser().parse_args(
+        ["--production-config", str(config_path), "preflight"]
+    )
+    _make_preflight_deterministic(monkeypatch)
+    _write_watchlist(config)
+    preflight_runner = FakeRunner()
+    preflight_runner.linger_enabled = True
+    assert prodops.cmd_preflight(args, runner=preflight_runner) == prodops.EXIT_OK
+    payload = json.loads(capsys.readouterr().out)
+    checks = {item["name"]: item for item in payload["checks"]}
+    reference = checks["delivery.secret-reference"]
+    assert reference["marker"] == "MANUAL_SECRET_REFERENCE_REQUIRED"
+    assert "quote" in reference["detail"]
+    assert "tok-preflight" not in json.dumps(payload)
+
+
+def test_r2_delivery_section_rejects_non_canonical_file(tmp_path: Path) -> None:
+    config, env_file = _delivery_config(tmp_path)
+    _write_private_env_file(
+        env_file, 'TVE_MONITORING_WEBHOOK_URL="https://section.invalid/hook"\n'
+    )
+    section = prodops._delivery_section(
+        config,
+        FakeRunner(),
+        "activation-id",
+        production_config_path=tmp_path / "config.json",
+    )
+    assert section["ok"] is False
+    marker = section["marker_payload"]
+    assert marker["marker"] == "MANUAL_SECRET_REFERENCE_REQUIRED"
+    assert "quote" in marker["stopped_after"]
+    assert "section.invalid" not in json.dumps(section)
+
+
+def test_r2_canonical_boundary_resume_command_is_parser_valid(
+    tmp_path: Path, destination: Path
+) -> None:
+    config, env_file = _delivery_config(tmp_path)
+    _write_private_env_file(env_file, "TVE_MONITORING_WEBHOOK_TOKEN=tok-only\n")
+    config_path = _write_config_file(tmp_path, config)
+    args = prodops._build_parser().parse_args(
+        ["--production-config", str(config_path), "render"]
+    )
+    with pytest.raises(ManualBoundary) as excinfo:
+        prodops.cmd_render(args, runner=FakeRunner())
+    _assert_parser_round_trip(excinfo.value.payload["resume_command"], "render", config_path)
