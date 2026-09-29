@@ -53,7 +53,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from pydantic import (
     BaseModel,
@@ -95,6 +95,23 @@ REPORT_CONTRACT = "monitoring_live_acceptance_report_v1"
 CONFIG_CONTRACT = "monitoring_live_acceptance_config_v1"
 _LISTING_PATTERN = re.compile(r"^(SH|SZ|BJ)\d{6}$|^(HK)\d{5}$")
 _UNIT_NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
+
+
+class _ScopeConfig(Protocol):
+    """The scope slice shared by acceptance and production deployment configs."""
+
+    @property
+    def scope(self) -> str: ...
+
+
+class _LeaseProbeConfig(Protocol):
+    """The lease-probe slice shared by acceptance and production configs."""
+
+    @property
+    def python_executable(self) -> str: ...
+
+    @property
+    def lease_ttl_seconds(self) -> int: ...
 
 
 class AcceptanceError(RuntimeError):
@@ -738,13 +755,13 @@ def render_timer_unit(config: AcceptanceConfigV1) -> str:
     )
 
 
-def systemd_unit_destination_dir(config: AcceptanceConfigV1) -> Path:
+def systemd_unit_destination_dir(config: _ScopeConfig) -> Path:
     if config.scope == "user":
         return Path.home() / ".config" / "systemd" / "user"
     return Path("/etc/systemd/system")
 
 
-def systemctl_prefix(config: AcceptanceConfigV1) -> tuple[str, ...]:
+def systemctl_prefix(config: _ScopeConfig) -> tuple[str, ...]:
     return ("systemctl", "--user") if config.scope == "user" else ("systemctl",)
 
 
@@ -909,7 +926,7 @@ class CheckLog:
 
 
 def probe_lock_visibility(
-    config: AcceptanceConfigV1,
+    config: _LeaseProbeConfig,
     runner_root: Path,
     *,
     runner: CommandRunner = _default_runner,
@@ -1366,7 +1383,7 @@ def cmd_preflight(args: argparse.Namespace, runner: CommandRunner = _default_run
 
 
 def _systemd_privilege_available(
-    config: AcceptanceConfigV1, runner: CommandRunner = _default_runner
+    config: _ScopeConfig, runner: CommandRunner = _default_runner
 ) -> bool:
     if config.scope == "user":
         return True
@@ -1474,7 +1491,7 @@ def cmd_apply(args: argparse.Namespace, runner: CommandRunner = _default_runner)
 
 
 def _systemctl_show(
-    config: AcceptanceConfigV1, unit: str, properties: Sequence[str], runner: CommandRunner
+    config: _ScopeConfig, unit: str, properties: Sequence[str], runner: CommandRunner
 ) -> dict[str, str]:
     outcome = run_command(
         (

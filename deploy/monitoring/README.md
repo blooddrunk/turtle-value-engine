@@ -81,3 +81,37 @@ acceptance evidence.
 
 The lease, activation and receipt state live under the runner root declared
 in the runner config; nothing else on the host is mutated by the runner.
+
+## Phase 6-F production lifecycle (automated)
+
+Do not hand-edit units for the long-lived production deployment either.
+Phase 6-F provides `scripts/monitoring_production_ops.py`
+(`config/monitoring-production.example.json` is the checked-in template;
+the real file lives under `.tve-private/`). It keeps the Phase 6-E
+acceptance workspace and the production workspace strictly separate and
+never reuses acceptance roots, runner ids or unit names:
+
+```bash
+python3 scripts/monitoring_production_ops.py --production-config <config> gate
+python3 scripts/monitoring_production_ops.py --production-config <config> preflight
+python3 scripts/monitoring_production_ops.py --production-config <config> plan
+python3 scripts/monitoring_production_ops.py --production-config <config> render
+python3 scripts/monitoring_production_ops.py --production-config <config> apply      # alias: converge
+python3 scripts/monitoring_production_ops.py --production-config <config> activate   # explicit start of the timer
+python3 scripts/monitoring_production_ops.py --production-config <config> verify --expect-active
+python3 scripts/monitoring_production_ops.py --production-config <config> live-proof
+python3 scripts/monitoring_production_ops.py --production-config <config> recover-proof
+python3 scripts/monitoring_production_ops.py --production-config <config> report
+python3 scripts/monitoring_production_ops.py --production-config <config> deactivate # safe idempotent rollback
+```
+
+`apply` installs/refreshes the units, daemon-reloads, enables the timer and
+converges user-scope linger, but never starts recurring work; activation is
+the separate explicit `activate` step. `live-proof` performs one bounded
+immediate production firing plus replay/no-duplicate, D3 read-only
+non-interference, acceptance-root immutability and secret scans;
+`recover-proof` exercises daemon-reload/reexec plus timer stop/start and
+durable resume. When notification is enabled, the only typed local
+credential source is a private systemd `EnvironmentFile` (path rendered in
+the unit, values never committed); with delivery disabled a monitoring-only
+production deployment is complete.
