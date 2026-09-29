@@ -1,6 +1,7 @@
 # Phase 6-F-R3 — Runtime Credential Drift and Service-Effective Gate Hardening
 
-Status: **SELECTED / NOT IMPLEMENTED**  
+Status: **CLOSED (2026-09-29; deterministic/CI closure; no manual verification
+planned or required)**  
 Date: 2026-09-29  
 Selected after: Phase 6-F-R2 post-closure review
 
@@ -317,3 +318,25 @@ the full automatic gate is green and exact-head CI closure is recorded.
 Do not start Phase 7, Bridge/FQGate integration, provider expansion, new
 notification vendors, brokerage/trading, investment-rule changes,
 Windows-autostart implementation or a broader secret-management migration.
+
+
+## Closure note — 2026-09-29
+
+Implemented and closed at `4f3fa0df9381649c0929135dd7b9480a43d5ea91`
+(exact-head Actions run `36542078579`, `success`). The whole-file
+systemd-valid Unicode parity (U+0000/U+FEFF/noncharacters/plane-ending
+code points, comments included), the one current-credential validation
+primitive reused by every lifecycle path, the apply/activate drift gates
+before mutation, the live verify/report fail-closed checks, the safe
+credential-independent deactivate, the delivery-only `ExecStartPre=`
+`monitoring_credential_gate.py` gate comparing inherited service
+environment values with the canonical parser byte-for-byte, and the
+upgraded recover-proof byte-equality probe are all implemented and proven
+by twenty deterministic regressions (18 fail on pre-R3 main; 2 preservation
+cases pass), a real transient user-manager proof that a drifted file
+leaves `unattended-notify` unexecuted, the full automatic gate
+(6823 passed / 2 skipped; Dashboard/systemd/cross-stack green) and the
+goal-specified non-destructive production checks. Canonical closure
+evidence: `docs/status/phase-6-f-r3-2026-09-29.md`. The next package
+selection is pending a fresh post-R3 review; the stop boundary was
+respected.

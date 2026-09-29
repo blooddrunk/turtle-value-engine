@@ -1,6 +1,15 @@
 # Phase 6-F-R3 coding-agent handoff — Runtime Credential Drift and Service-Effective Gate Hardening
 
-Status: **SELECTED / NOT IMPLEMENTED**
+Status: **COMPLETED 2026-09-29**
+
+Implementation:
+`4f3fa0df9381649c0929135dd7b9480a43d5ea91`
+
+Exact-head CI:
+GitHub Actions run `36542078579` (`success`).
+
+Closure:
+`docs/status/phase-6-f-r3-2026-09-29.md`
 
 Canonical goal:
 `docs/goals/phase-6-f-r3-runtime-credential-drift-hardening.md`

@@ -5181,14 +5181,27 @@ then selected
 [Phase 6-F-R3 — Runtime Credential Drift and Service-Effective Gate Hardening](goals/phase-6-f-r3-runtime-credential-drift-hardening.md)
 to make the canonical credential contract hold at lifecycle and service-execution
 time, including inherited-value byte equality and the remaining
-noncharacter/U+FEFF parity gap; R3 is selected / not implemented.
+noncharacter/U+FEFF parity gap; R3 is now closed at implementation
+`4f3fa0df9381649c0929135dd7b9480a43d5ea91` (exact-head Actions run
+`36542078579`, success; closure record
+`docs/status/phase-6-f-r3-2026-09-29.md`) — the canonical parser rejects
+systemd-invalid Unicode anywhere in the decoded file, one current-credential
+validation primitive guards apply/activate before mutation and verify/report
+live, deactivation stays credential-independent, and every delivery-enabled
+service unit renders an `ExecStartPre=` credential gate
+(`scripts/monitoring_credential_gate.py`) that compares the manager-injected
+referenced values with the canonical parser's in-memory values byte-for-byte
+before the unchanged `unattended-notify` ExecStart may run, proven by a real
+transient user-manager execution proof. The accepted monitoring-only Phase 6-F
+deployment remains unchanged.
 
 ---
 
 ## Phase 6 — Watchlist and event-driven re-analysis
 
 Status: **Phase 6-A / 6-B / 6-C / 6-D1 / 6-D2A / 6-D2A-R1 / 6-D2B /
-6-D2B-R1 / 6-D2B-R2 / 6-D3 / 6-D3-R1 / 6-E / 6-F / 6-F-R1 / 6-F-R2 are closed
+6-D2B-R1 / 6-D2B-R2 / 6-D3 / 6-D3-R1 / 6-E / 6-F / 6-F-R1 / 6-F-R2 / 6-F-R3
+are closed
 at their declared boundaries. Phase 6-F is `CLOSED / OWNER_ACCEPTED` with final
 implementation `065b53a17bcb4f009a57ef918ffa3d59de135107`, exact-head Actions
 run `36515225218` (`success`) and the production timer intentionally
@@ -5211,8 +5224,12 @@ to make every accepted credential-file value byte-identical between the harness 
 before any broader Phase 7/provider/Bridge work: systemd reads EnvironmentFile at
 service execution time, so R3 adds lifecycle revalidation plus a delivery-only
 pre-start equality gate and closes the remaining Unicode noncharacter/U+FEFF
-parity gap. R3 is selected / not implemented; the delivery-disabled production
-deployment is unchanged.**
+parity gap. R3 is closed at implementation
+`4f3fa0df9381649c0929135dd7b9480a43d5ea91` (exact-head Actions run
+`36542078579`, `success`; closure record
+`docs/status/phase-6-f-r3-2026-09-29.md`); the delivery-disabled production
+deployment is unchanged and the next package selection is pending a fresh
+post-R3 review.**
 The first package,
 [Phase 6-A — Watchlist State and Deterministic Event Planning Foundation](goals/phase-6-a-watchlist-event-foundation.md),
 is complete: typed `WatchlistSpecV1`/`MonitoringEventV1`/`WatchlistStateV1`/
