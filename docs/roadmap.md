@@ -5150,37 +5150,33 @@ centralized typed presentation layer, semantic states carry plain-language
 labels with raw codes preserved, empty/partial/error states are distinct, and
 technical/audit identifiers sit behind a details affordance. The exact build
 was redeployed through the unchanged M6-C2 security path. Phase 6 has since
-closed the offline planning foundation (6-A), opt-in CNINFO live acquisition
-(6-B), controlled re-analysis executor (6-C), and the synchronous deterministic
-cycle/outbox boundary (6-D1), and the durable single-host unattended runner
-(6-D2A). External notification delivery is the separate 6-D2B slice.
+closed the deterministic watchlist/event chain through owner live acceptance:
+6-A planning/cursors, 6-B bounded CNINFO acquisition, 6-C controlled
+re-analysis, D1 cycle/outbox, D2A/R1 durable unattended execution,
+D2B/R1/R2 durable delivery accounting, D3/R1 read-only operations projection,
+and 6-E real-host owner acceptance. PR #3 added the optional Telegram preset
+without changing the existing durable delivery ledger. Phase 6-F is selected
+next to turn that accepted real-host chain into an intentionally activated,
+restart-resilient long-lived owner operation.
 
 ---
 
 ## Phase 6 — Watchlist and event-driven re-analysis
 
 Status: **Phase 6-A / 6-B / 6-C / 6-D1 / 6-D2A / 6-D2A-R1 / 6-D2B /
-6-D2B-R1 / 6-D2B-R2 / 6-D3 implemented. The 2026-09-23 post-R1
-closure audit found one remaining retry-budget accounting defect for
-idempotent orphaned dispatches: repeated process death after durable dispatch
-evidence but before attempt-outcome persistence could re-enter transport
-without consuming `max_attempts`. Phase 6-D2B-R2
-([orphan retry-budget hardening](goals/phase-6-d2b-r2-orphan-retry-budget-hardening.md),
-implementation record
-`status/phase-6-d2b-r2-2026-09-23.md`) closed that defect at implementation
-`69326c9` (Actions run 35812884688, `success`, exact head-SHA match) by
-making the durable dispatch-claim set itself the retry-budget ledger, with a
-new monotonic durable slot persisted before every transport entry. The 2026-09-23 R2 post-closure review accepts that closure and **selects
-Phase 6-D3 — Read-only Monitoring Operations Dashboard Projection**
-([canonical goal](goals/phase-6-d3-read-only-monitoring-dashboard.md),
-selection audit `status/phase-6-d2b-r2-post-closure-review-2026-09-23.md`,
-handoff `status/phase-6-d3-next-coding-agent-goal.md`). D3 is now implemented
-at its read-only projection boundary (implementation record
-`status/phase-6-d3-2026-09-23.md`): a typed, secret-free, bounded read
-projection of existing monitoring/runner/cycle/job/delivery state through the
-current FastAPI -> Worker -> Dashboard stack, with no runtime mutation
-authority. Phase 6-E remains the bounded real owner
-deployment/cadence/notification acceptance step.**
+6-D2B-R1 / 6-D2B-R2 / 6-D3 / 6-D3-R1 / 6-E are closed at their declared
+boundaries. Phase 6-E is `CLOSED / OWNER_ACCEPTED` under the 2026-09-28
+owner-revised acceptance rule: implementation
+`8565621777762c601172aee562b2523a37ce02a6`, exact-head Actions run
+`36375649575` (`success`), and a real-host
+`LIVE_ACCEPTANCE_COMPLETE` report with zero failures/markers. PR #3
+(merge commit `b0eca4c2f518a7562b6209833f85bf3de553842f`) is merged and adds the
+optional `telegram-v1` notification preset over the unchanged D2B durable
+ledger. The next selected package is
+[Phase 6-F — Persistent Owner Operations Hardening](goals/phase-6-f-persistent-owner-operations.md):
+convert the accepted but deliberately disabled acceptance deployment into an
+explicitly owner-authorized, restart-resilient long-lived runtime with
+machine-verifiable lifecycle evidence.**
 
 The first package,
 [Phase 6-A — Watchlist State and Deterministic Event Planning Foundation](goals/phase-6-a-watchlist-event-foundation.md),
@@ -5341,9 +5337,13 @@ chronological calibration proposal boundary.
 
 Phase 1 deterministic semantics remain frozen. Changes to formulas, hard-gate
 semantics, schemas or `strict-v1` thresholds require a separately reviewed,
-versioned change. Watchlist/event monitoring is implemented through the synchronous D1
-cycle/outbox boundary; D2A is the selected next slice for unattended runner
-state. Additional provider coverage remains separate work.
+versioned change. Watchlist/event monitoring is closed through Phase 6-E
+owner live acceptance; its acceptance timer was deliberately disabled after
+the bounded proof. Phase 6-F is the selected next slice: productionize the
+already-proven single-host runtime without expanding providers or investment
+semantics. Additional provider coverage, Bridge/FQGate integration, M4-D/M4-E
+and M2-D remain separate work unless a later concrete requirement selects
+them.
 
 The long endpoint notes below are historical implementation records. Future
 provider categories may still be added one at a time, but they are not part of

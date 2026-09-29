@@ -469,6 +469,17 @@ An optional `telegram-v1` preset is additive at the existing delivery ledger;
 its real personal-account delivery is not claimed without a bot token and chat
 ID supplied outside Git/chat.
 
+The 2026-09-28 post-merge audit accepts the Phase 6-E closure and PR #3 at
+merge commit `b0eca4c2f518a7562b6209833f85bf3de553842f`; it found no
+merge-blocking ledger, compatibility or secret-boundary regression. The next
+selected package is **Phase 6-F — Persistent Owner Operations Hardening**
+(`docs/goals/phase-6-f-persistent-owner-operations.md`; selection record
+`docs/status/phase-6-f-selection-2026-09-28.md`; coding-agent handoff
+`docs/status/phase-6-f-next-coding-agent-goal.md`). It must reuse the closed
+Phase 6 semantics and automation-first acceptance discipline: production
+activation/persistence is the scope, not provider expansion, trading or
+investment-rule mutation.
+
 ## 5. Working with company data
 
 Keep networked preparation and deterministic analysis separate:
