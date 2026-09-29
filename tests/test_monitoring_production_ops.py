@@ -954,3 +954,39 @@ def test_d3_forbidden_strings_are_plain_strings(tmp_path: Path) -> None:
     assert "holder_token" in forbidden
     # The membership check used against payload text must not raise.
     assert not [item for item in forbidden if item and item in "{}"]
+
+
+def test_latest_receipt_reads_durable_receipt_classification(tmp_path: Path) -> None:
+    config = _production_config(tmp_path)
+    receipts = Path(config.runner_root) / "receipts"
+    receipts.mkdir(parents=True, exist_ok=True)
+    activation_id = "a" * 64
+    (receipts / f"{activation_id}.json").write_text(
+        json.dumps(
+            {"classification": "CYCLE_TERMINAL", "d1_status": "NO_CHANGE"}
+        ),
+        encoding="utf-8",
+    )
+    runner = FakeRunner()
+    runner.add(
+        (config.python_executable, "-m", "turtle_value_engine", "watch", "unattended-status"),
+        json.dumps(
+            {
+                "runners": [
+                    {
+                        "runner_id": config.runner_id,
+                        "latest": {
+                            "activation_id": activation_id,
+                            "cycle_id": "c" * 64,
+                            "receipt_content_sha256": "d" * 64,
+                        },
+                    }
+                ]
+            }
+        ),
+    )
+    receipt = prodops._latest_receipt(config, runner)
+    assert receipt is not None
+    assert receipt["classification"] == "CYCLE_TERMINAL"
+    assert receipt["d1_status"] == "NO_CHANGE"
+    assert receipt["activation_id"] == activation_id

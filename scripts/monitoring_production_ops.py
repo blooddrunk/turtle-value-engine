@@ -1805,6 +1805,84 @@ def _unattended_latest(
     return None
 
 
+def _latest_receipt(
+    config: ProductionConfigV1, runner: CommandRunner
+) -> dict[str, object] | None:
+    """Latest durable receipt identity (pointer + persisted receipt content).
+
+    The status pointer carries identity hashes only; the terminality
+    classification and D1 status live in the immutable receipt file.
+    """
+
+    item = _unattended_latest(config, runner)
+    if item is None or item.get("latest") is None:
+        return None
+    pointer = item["latest"]
+    activation_id = pointer.get("activation_id")
+    if not activation_id:
+        return None
+    receipt_path = Path(config.runner_root) / "receipts" / f"{activation_id}.json"
+    try:
+        receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return {
+        "activation_id": activation_id,
+        "cycle_id": pointer.get("cycle_id"),
+        "receipt_content_sha256": pointer.get("receipt_content_sha256"),
+        "classification": receipt.get("classification"),
+        "d1_status": receipt.get("d1_status"),
+    }
+
+
+def _reanalysis_names(config: ProductionConfigV1) -> list[str]:
+    root = Path(config.reanalysis_job_root)
+    if not root.is_dir():
+        return []
+    return sorted(path.relative_to(root).as_posix() for path in root.rglob("*") if path.is_file())
+
+
+def _watch_state_identity(
+    config: ProductionConfigV1, runner: CommandRunner
+) -> dict[str, object] | None:
+    """The committed monitoring-state identity (None while NOT_AVAILABLE)."""
+
+    try:
+        watchlist = WatchlistSpecV1.build(
+            **json.loads(Path(config.watchlist_path).read_text(encoding="utf-8"))
+        )
+    except Exception:
+        return None
+    outcome = run_command(
+        (
+            config.python_executable,
+            "-m",
+            "turtle_value_engine",
+            "watch",
+            "status",
+            "--workspace",
+            config.monitoring_workspace_root,
+            "--watchlist-id",
+            watchlist.watchlist_id,
+        ),
+        runner=runner,
+        cwd=ROOT,
+        timeout=60,
+    )
+    if not outcome.ok:
+        return None
+    try:
+        status = json.loads(outcome.stdout)
+    except json.JSONDecodeError:
+        return None
+    if status.get("availability") != "AVAILABLE":
+        return None
+    return {
+        "state_id": status.get("state_id"),
+        "last_committed_run_id": status.get("last_committed_run_id"),
+    }
+
+
 def _service_wake(
     config: ProductionConfigV1, runner: CommandRunner, *, wait_seconds: float
 ) -> dict[str, object]:
@@ -1911,6 +1989,7 @@ def _d3_readonly_section(
     runner: CommandRunner,
     *,
     monitored_tree_before: tuple[str, int],
+    expected_activation_id: str | None = None,
 ) -> dict[str, object]:
     if config.snapshot_path is None or not Path(config.snapshot_path).is_file():
         return {
@@ -1982,12 +2061,26 @@ def _d3_readonly_section(
         path_leaks = [
             item for item in _d3_forbidden_strings(config) if item and item in payload_text
         ]
+        projected_activation = None
+        activation_matches = True
+        if status_code == 200:
+            try:
+                projected = json.loads(body)
+                activation = projected.get("activation") or {}
+                projected_activation = activation.get("activation_id")
+                activation_matches = (
+                    expected_activation_id is None
+                    or projected_activation == expected_activation_id
+                )
+            except json.JSONDecodeError:
+                activation_matches = False
         ok = (
             status_code == 200
             and all(code == 405 for code in mutations.values())
             and monitored_tree_after == monitored_tree_before
             and not secret_hits
             and not path_leaks
+            and activation_matches
         )
         return {
             "ok": bool(ok),
@@ -1995,6 +2088,8 @@ def _d3_readonly_section(
             "mutation_methods": mutations,
             "mutations_rejected": all(code == 405 for code in mutations.values()),
             "monitored_tree_unchanged": monitored_tree_after == monitored_tree_before,
+            "activation_matches_latest_receipt": bool(activation_matches),
+            "projected_activation_id": projected_activation,
             "secret_scan_hits": secret_hits,
             "path_leaks": path_leaks,
         }
@@ -2140,27 +2235,28 @@ def cmd_live_proof(args: argparse.Namespace, runner: CommandRunner = _default_ru
     monitored_before = content_tree_hash(_monitored_root(config))
     activations_before = _count_activation_files(config)
 
+    # Production wakes resolve a fresh PIT per invocation, so every wake is
+    # legitimately one new durable activation; "no duplicate work" is proven
+    # on the D1/cursor level, not by freezing one activation id.
     wake = _service_wake(config, runner, wait_seconds=args.wake_wait_seconds)
     report["bounded_firing"] = wake
+    first_exactly_one = _count_activation_files(config) == activations_before + 1
     report["first_firing_effects"] = {
         "activation_files_before": activations_before,
         "activation_files_after": _count_activation_files(config),
-        "exactly_one_new_activation": _count_activation_files(config)
-        == activations_before + 1,
+        "exactly_one_new_activation": first_exactly_one,
         "monitored_tree_changed_by_firing": content_tree_hash(_monitored_root(config))
         != monitored_before,
     }
-    latest = _unattended_latest(config, runner)
-    receipt_ok = False
-    receipt_identity: dict[str, object] = {}
-    if latest is not None and latest.get("latest") is not None:
-        latest_receipt = latest["latest"]
-        receipt_identity = {
-            "activation_id": latest_receipt.get("activation_id"),
-            "classification": latest_receipt.get("classification"),
-        }
-        receipt_ok = str(latest_receipt.get("classification", "")).startswith("COMPLETED_")
-    report["runner_receipt"] = {"ok": receipt_ok, **receipt_identity}
+    receipt_first = _latest_receipt(config, runner)
+    receipt_ok = (
+        receipt_first is not None
+        and receipt_first.get("classification") == "CYCLE_TERMINAL"
+        and bool(receipt_first.get("activation_id"))
+        and bool(receipt_first.get("cycle_id"))
+    )
+    receipt_identity: dict[str, object] = receipt_first or {}
+    report["runner_receipt"] = {"ok": bool(receipt_ok), **receipt_identity}
 
     runner_config_sha = _sha256_bytes(config.runner_config_path.read_bytes())
     desired_runner_sha = _sha256_bytes(desired_runner_config_bytes(config))
@@ -2171,40 +2267,49 @@ def cmd_live_proof(args: argparse.Namespace, runner: CommandRunner = _default_ru
     }
 
     activations_after_first = _count_activation_files(config)
-    cycle_names_after_first = _cycle_store_names(config)
+    reanalysis_after_first = _reanalysis_names(config)
+    state_after_first = _watch_state_identity(config, runner)
 
     replay = _service_wake(config, runner, wait_seconds=args.wake_wait_seconds)
-    latest_after_replay = _unattended_latest(config, runner)
-    replay_reused = (
-        latest_after_replay is not None
-        and latest_after_replay.get("latest") is not None
-        and latest_after_replay["latest"].get("activation_id")
-        == receipt_identity.get("activation_id")
-        and str(latest_after_replay["latest"].get("classification", "")).startswith(
-            "COMPLETED_"
-        )
+    receipt_after_replay = _latest_receipt(config, runner)
+    replay_terminal = (
+        receipt_after_replay is not None
+        and receipt_after_replay.get("classification") == "CYCLE_TERMINAL"
+        and receipt_after_replay.get("activation_id") != receipt_identity.get("activation_id")
     )
-    # Duplicate-freeness gates on identity-level facts (activation file count,
-    # cycle-store file set, terminal latest identity); a byte-level tree hash
-    # is recorded as evidence but never gates, because durable pointer/lease
-    # rewrites are allowed to touch bytes without manufacturing work.
+    # A repeated wake must manufacture no duplicate D1 work: exactly one new
+    # activation (this wake), a NO_CHANGE D1 cycle, an unchanged re-analysis
+    # set and a byte-stable committed watch state.
+    no_duplicate_work = (
+        replay_terminal
+        and receipt_after_replay is not None
+        and receipt_after_replay.get("d1_status") == "NO_CHANGE"
+        and _reanalysis_names(config) == reanalysis_after_first
+        and _watch_state_identity(config, runner) == state_after_first
+        and _count_activation_files(config) == activations_after_first + 1
+    )
     report["replay"] = {
-        "ok": bool(
-            replay.get("ok")
-            and replay_reused
-            and _count_activation_files(config) == activations_after_first
-            and _cycle_store_names(config) == cycle_names_after_first
-        ),
-        "classification_still_terminal": bool(replay_reused),
-        "activation_count_unchanged": _count_activation_files(config)
-        == activations_after_first,
-        "cycle_store_unchanged": _cycle_store_names(config) == cycle_names_after_first,
+        "ok": bool(replay.get("ok") and no_duplicate_work),
+        "receipt_after_replay": receipt_after_replay,
+        "exactly_one_new_activation": _count_activation_files(config)
+        == activations_after_first + 1,
+        "d1_status_no_change": None
+        if receipt_after_replay is None
+        else receipt_after_replay.get("d1_status") == "NO_CHANGE",
+        "reanalysis_unchanged": _reanalysis_names(config) == reanalysis_after_first,
+        "committed_state_stable": _watch_state_identity(config, runner) == state_after_first,
+        "committed_state": state_after_first,
         "monitored_tree_sha256_after_replay": content_tree_hash(_monitored_root(config))[0],
     }
 
-    d3 = _d3_readonly_section(config, runner, monitored_tree_before=content_tree_hash(
-        _monitored_root(config)
-    ))
+    d3 = _d3_readonly_section(
+        config,
+        runner,
+        monitored_tree_before=content_tree_hash(_monitored_root(config)),
+        expected_activation_id=None
+        if receipt_after_replay is None
+        else str(receipt_after_replay.get("activation_id")),
+    )
     report["d3_readonly"] = d3
 
     # The lock probe mutates its own probe slot under the runner root, so it
@@ -2300,6 +2405,7 @@ def cmd_recover_proof(args: argparse.Namespace, runner: CommandRunner = _default
     }
     activations_before = _count_activation_files(config)
     cycle_names_before = _cycle_store_names(config)
+    reanalysis_before = _reanalysis_names(config)
 
     # Strongest safe manager refresh: daemon-reload then daemon-reexec.
     reload = run_command((*systemctl_prefix(config), "daemon-reload"), runner=runner)
@@ -2336,20 +2442,24 @@ def cmd_recover_proof(args: argparse.Namespace, runner: CommandRunner = _default
     }
 
     wake = _service_wake(config, runner, wait_seconds=args.wake_wait_seconds)
-    latest = _unattended_latest(config, runner)
+    receipt_after = _latest_receipt(config, runner)
     resumed_terminal = (
-        latest is not None
-        and latest.get("latest") is not None
-        and str(latest["latest"].get("classification", "")).startswith("COMPLETED_")
+        receipt_after is not None
+        and receipt_after.get("classification") == "CYCLE_TERMINAL"
+        and bool(receipt_after.get("activation_id"))
     )
+    # One wake must manufacture exactly one new durable activation and no
+    # duplicate re-analysis work; the manager refresh must not resurrect or
+    # replay anything on its own.
+    exactly_one_new = _count_activation_files(config) == activations_before + 1
+    reanalysis_stable = _reanalysis_names(config) == reanalysis_before
     report["durable_resume"] = {
         "wake": {key: wake.get(key) for key in ("ok", "service_result")},
-        "latest_classification": None
-        if latest is None or latest.get("latest") is None
-        else latest["latest"].get("classification"),
-        "ok": bool(wake.get("ok") and resumed_terminal),
-        "no_duplicate_activation": _count_activation_files(config) == activations_before,
-        "cycle_store_unchanged": _cycle_store_names(config) == cycle_names_before,
+        "receipt_after_recovery": receipt_after,
+        "ok": bool(wake.get("ok") and resumed_terminal and exactly_one_new and reanalysis_stable),
+        "exactly_one_new_activation": exactly_one_new,
+        "reanalysis_unchanged": reanalysis_stable,
+        "cycle_store_names_delta": len(_cycle_store_names(config)) - len(cycle_names_before),
         "monitored_tree_sha256_after": content_tree_hash(_monitored_root(config))[0],
     }
 
