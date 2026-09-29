@@ -86,11 +86,13 @@ import stat as stat_module
 import subprocess
 import sys
 import time
+import tomllib
 import unicodedata
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
+from urllib.parse import quote as _url_quote
 
 from pydantic import (
     BaseModel,
@@ -214,6 +216,265 @@ def _systemd_invalid_unicode(text: str) -> tuple[int, str] | None:
         if (code & 0xFFFF) in (0xFFFE, 0xFFFF):
             return index, "plane-ending Unicode noncharacter"
     return None
+
+
+# ---------------------------------------------------------------------------
+# Phase 6-F-R4 systemd-native / TOML-safe serialization boundary
+#
+# The invariant every helper here serves is exact semantic parity:
+#
+#     typed owner input -> rendered unit/TOML bytes -> systemd manager or
+#     tomllib -> effective value == typed value
+#
+# The grammar facts below were verified against a real systemd 259 user
+# manager during R4 development (load-time busctl argv, runtime argv dumps
+# and EnvironmentFile/WorkingDirectory effective properties):
+#
+# * Exec command lines are tokenized by the systemd.syntax(7) quoting rules:
+#   double or single quotes may wrap a whole item, C-style escapes apply
+#   (``\\``, ``\"``, ``\'``, ``\s``, ...), and an argument solely consisting
+#   of ``;`` is special.  Quoting protects token boundaries only — it does
+#   NOT disable expansion.
+# * ``$`` sequences in Exec lines expand (at execution time) against the
+#   service environment; a literal dollar sign must be written ``$$``.
+# * ``%`` specifiers expand (at load time) in Exec lines and in path/text
+#   directives such as ``EnvironmentFile=``, ``WorkingDirectory=``,
+#   ``Description=`` and ``Documentation=``; a literal percent must be
+#   written ``%%``.
+# * ``EnvironmentFile=`` / ``WorkingDirectory=`` values do NOT support
+#   quoting (quotes become literal path bytes); raw spaces are preserved
+#   and ``$``, ``;``, ``#`` are ordinary data in them.  A backslash is
+#   ordinary data in ``WorkingDirectory=`` but the ``EnvironmentFile=``
+#   exec-time loader treats it as an escape, so it is rejected at parse
+#   time for the credential path (unrepresentable either way).
+# * Control characters cannot appear in Exec command lines or unit
+# *assignment* values at all; they are rejected fail-closed at parse time.
+#
+# shlex.join() is a POSIX-shell serializer and stays reserved for the
+# human-facing resume commands (a separate, explicit boundary).
+# ---------------------------------------------------------------------------
+
+# Characters that force whole-item double quoting in an Exec line (whitespace
+# splits tokens; quotes open quoting modes; ; and # are kept wrapped because
+# a standalone form is parser-special).
+_SYSTEMD_EXEC_WRAP_PATTERN = re.compile(r"""[\s'`;#]""")
+
+# The escape table subset this serializer emits and its mirror parser
+# accepts (systemd.syntax(7) "Supported escapes").
+_SYSTEMD_ESCAPE_TABLE: dict[str, str] = {
+    "\\": "\\",
+    '"': '"',
+    "'": "'",
+    "s": " ",
+    "a": "\a",
+    "b": "\b",
+    "f": "\f",
+    "n": "\n",
+    "r": "\r",
+    "t": "\t",
+    "v": "\v",
+}
+
+
+class SerializationError(AcceptanceError):
+    """A typed owner input cannot be represented in the target grammar."""
+
+
+def _require_unit_line_serializable(field_name: str, value: str) -> None:
+    if _contains_control_character(value):
+        raise SerializationError(
+            f"{field_name} must not contain control characters or newlines: "
+            "systemd unit syntax cannot represent them in assignment values "
+            "or Exec command lines, so the value would be corrupted"
+        )
+
+
+def systemd_exec_argument(value: str) -> str:
+    """One argv element as literal systemd Exec-line data.
+
+    Backslashes are doubled, a double quote is escaped, and every literal
+    ``$``/``%`` is doubled because both expansions stay active inside
+    quotes.  Items containing tokenizer-active characters are wrapped in
+    whole-item double quotes (single-quote data stays literal inside them).
+    Values without any of these characters serialize to themselves, keeping
+    ordinary rendering byte-compatible.
+    """
+
+    _require_unit_line_serializable("exec argument", value)
+    serialized = (
+        value.replace("\\", "\\\\")
+        .replace('"', '\\"')
+        .replace("$", "$$")
+        .replace("%", "%%")
+    )
+    if _SYSTEMD_EXEC_WRAP_PATTERN.search(serialized):
+        serialized = f'"{serialized}"'
+    return serialized
+
+
+def systemd_exec_command(argv: Sequence[str]) -> str:
+    """A full ``ExecStartPre=``/``ExecStart=`` command line from argv."""
+
+    return " ".join(systemd_exec_argument(element) for element in argv)
+
+
+def parse_systemd_exec_command(
+    line: str, environ: Mapping[str, str] | None = None
+) -> list[str]:
+    """The bounded inverse of :func:`systemd_exec_command`.
+
+    Restores the manager-effective argv for any command line produced by
+    the serializer above: systemd.syntax(7) tokenization with whole-item
+    quoting and C-style escapes, load-time ``%%`` collapse, then the
+    execution-time ``$$`` collapse and ``$NAME``/``${NAME}`` expansion
+    against ``environ`` (empty for unset names, matching systemd).  The
+    render boundary uses this mirror to prove parity before writing any
+    unit bytes; the deterministic tests additionally prove it against the
+    real manager.
+    """
+
+    environment = os.environ if environ is None else environ
+    tokens: list[str] = []
+    index, length = 0, len(line)
+    while index < length:
+        while index < length and line[index].isspace():
+            index += 1
+        if index >= length:
+            break
+        parts: list[str] = []
+        while index < length and not line[index].isspace():
+            ch = line[index]
+            if ch == "'":
+                index += 1
+                while index < length and line[index] != "'":
+                    parts.append(line[index])
+                    index += 1
+                index += 1
+            elif ch == '"':
+                index += 1
+                while index < length and line[index] != '"':
+                    if line[index] == "\\" and index + 1 < length:
+                        index += 1
+                        parts.append(_SYSTEMD_ESCAPE_TABLE.get(line[index], "\\" + line[index]))
+                        index += 1
+                    else:
+                        parts.append(line[index])
+                        index += 1
+                index += 1
+            elif ch == "\\" and index + 1 < length:
+                index += 1
+                parts.append(_SYSTEMD_ESCAPE_TABLE.get(line[index], "\\" + line[index]))
+                index += 1
+            else:
+                parts.append(ch)
+                index += 1
+        tokens.append("".join(parts))
+
+    def _expand_percent(token: str) -> str:
+        out: list[str] = []
+        i = 0
+        while i < len(token):
+            ch = token[i]
+            if ch == "%" and i + 1 < len(token) and token[i + 1] == "%":
+                out.append("%")
+                i += 2
+                continue
+            out.append(ch)
+            i += 1
+        return "".join(out)
+
+    def _expand_dollar(token: str) -> str:
+        out: list[str] = []
+        i = 0
+        while i < len(token):
+            ch = token[i]
+            if ch != "$":
+                out.append(ch)
+                i += 1
+                continue
+            if i + 1 < len(token) and token[i + 1] == "$":
+                out.append("$")
+                i += 2
+                continue
+            if i + 1 < len(token) and token[i + 1] == "{":
+                end = token.find("}", i + 2)
+                if end != -1:
+                    out.append(environment.get(token[i + 2 : end], ""))
+                    i = end + 1
+                    continue
+            j = i + 1
+            while j < len(token) and (token[j].isalnum() or token[j] == "_"):
+                j += 1
+            if j > i + 1:
+                out.append(environment.get(token[i + 1 : j], ""))
+                i = j
+                continue
+            out.append(ch)
+            i += 1
+        return "".join(out)
+
+    return [_expand_dollar(_expand_percent(token)) for token in tokens]
+
+
+def systemd_unit_path_value(value: str) -> str:
+    """An ``EnvironmentFile=``/``WorkingDirectory=`` path as literal data.
+
+    These directives do not support quoting (quotes would become literal
+    path bytes) and take the whole rest of the line, so spaces, backslashes,
+    dollars, semicolons and hashes stay raw; only the percent specifier
+    expansion is active and is neutralized by doubling.
+    """
+
+    _require_unit_line_serializable("unit path value", value)
+    return value.replace("%", "%%")
+
+
+def effective_unit_path_value(value: str) -> str:
+    """The manager-effective value of a rendered path directive (``%%`` collapse)."""
+
+    out: list[str] = []
+    i = 0
+    while i < len(value):
+        if value[i] == "%" and i + 1 < len(value) and value[i + 1] == "%":
+            out.append("%")
+            i += 2
+            continue
+        out.append(value[i])
+        i += 1
+    return "".join(out)
+
+
+def systemd_unit_text_value(value: str) -> str:
+    """Owner-derived free text (``Description=``) with percent doubling only."""
+
+    _require_unit_line_serializable("unit text value", value)
+    return value.replace("%", "%%")
+
+
+def toml_basic_string(value: str) -> str:
+    """A TOML basic string that parses back to the exact typed value.
+
+    TOML basic strings escape ``\\"`` and ``\\\\``, the five short control
+    escapes and any other control character as ``\\uXXXX``; everything else
+    (including ordinary and non-BMP Unicode) stays raw UTF-8, which tomllib
+    decodes back byte-exactly.
+    """
+
+    short_escapes = {"\b": "\\b", "\t": "\\t", "\n": "\\n", "\f": "\\f", "\r": "\\r"}
+    parts: list[str] = ['"']
+    for ch in value:
+        if ch == '"':
+            parts.append('\\"')
+        elif ch == "\\":
+            parts.append("\\\\")
+        elif ch in short_escapes:
+            parts.append(short_escapes[ch])
+        elif ord(ch) < 0x20 or ord(ch) == 0x7F:
+            parts.append(f"\\u{ord(ch):04x}")
+        else:
+            parts.append(ch)
+    parts.append('"')
+    return "".join(parts)
 
 
 # ---------------------------------------------------------------------------
@@ -344,6 +605,40 @@ class ProductionConfigV1(BaseModel):
             raise ValueError("scope=system requires an explicit service_user")
         if self.scope == "user" and self.service_user is not None:
             raise ValueError("scope=user must not pin a service_user (it runs as the owner)")
+        # R4: these owner strings are serialized verbatim into systemd unit
+        # Exec command lines and path directives, where control characters
+        # cannot be represented; they are refused fail-closed instead of
+        # being silently corrupted by the unit parser.  (Values that are not
+        # encodable UTF-8 text, such as lone surrogates, are already refused
+        # by the StrictStr field validation itself.)
+        for name in (
+            "python_executable",
+            "working_directory",
+            "production_root",
+            "runner_id",
+            "unit_base_name",
+        ):
+            if _contains_control_character(getattr(self, name)):
+                raise ValueError(
+                    f"{name} must not contain control characters or newlines; systemd "
+                    "unit Exec lines and path directives cannot represent them, so "
+                    "the value would be corrupted by the manager parser"
+                )
+        # R4: the first Exec token is the executable path, where systemd
+        # refuses quote characters and backslashes outright ("Executable
+        # path contains special characters" is a fatal load error, verified
+        # against systemd 259) and a dollar sequence cannot be proven
+        # literal under the real unit parser.  python_executable is the
+        # only owner-controlled argv[0]; every other path is an argument or
+        # path directive where the full serializer applies.
+        forbidden_exe_chars = {"'", '"', "\\", "$"}
+        found = sorted(set(self.python_executable) & forbidden_exe_chars)
+        if found:
+            raise ValueError(
+                "python_executable is serialized as the systemd Exec executable "
+                f"path, which cannot represent {found}; choose an interpreter "
+                "path without quotes, backslashes or dollar characters"
+            )
         for name in (
             "python_executable",
             "working_directory",
@@ -382,6 +677,18 @@ class ProductionConfigV1(BaseModel):
                     "delivery_environment_file must not contain control characters "
                     "or newlines (the path is serialized verbatim into the unit's "
                     "EnvironmentFile= line)"
+                )
+            # R4: a backslash in the EnvironmentFile path cannot be
+            # represented — the manager's exec-time environment-file loader
+            # interprets backslash escapes in the path (verified against
+            # systemd 259: the literal file is never found either raw or
+            # doubled).  Every other supported character (spaces, quotes,
+            # dollar, non-ASCII) round-trips through percent doubling.
+            if "\\" in self.delivery_environment_file:
+                raise ValueError(
+                    "delivery_environment_file must not contain backslashes: the "
+                    "systemd environment-file loader treats them as escapes at "
+                    "execution time, so the typed path cannot be represented"
                 )
             env_file = Path(os.path.normpath(self.delivery_environment_file))
             private_root = Path(os.path.normpath(self.production_root))
@@ -481,7 +788,13 @@ def build_runner_config(config: ProductionConfigV1) -> RunnerConfigV1:
 
 
 def render_project_config(config: ProductionConfigV1) -> str:
-    """The production project TOML (non-secret; secret references only)."""
+    """The production project TOML (non-secret; secret references only).
+
+    Every owner-provided string is emitted through :func:`toml_basic_string`
+    so the generated document parses back into the exact typed values; the
+    round-trip is proven with ``tomllib`` before the text leaves this
+    function (R4 goal section 5).
+    """
 
     text = f"""# Phase 6-F production project configuration (non-secret).
 # Generated by scripts/monitoring_production_ops.py; isolated production ledger.
@@ -493,14 +806,14 @@ environment = "private"
 timezone = "Asia/Taipei"
 
 [monitoring]
-watchlist_path = "{config.watchlist_path}"
-workspace_root = "{config.monitoring_workspace_root}"
+watchlist_path = {toml_basic_string(config.watchlist_path)}
+workspace_root = {toml_basic_string(config.monitoring_workspace_root)}
 
 [monitoring.delivery]
 enabled = {"true" if config.delivery_enabled else "false"}
-transport = "{config.delivery_transport}"
-destination_id = "{config.delivery_destination_id}"
-delivery_root = "{config.delivery_root}"
+transport = {toml_basic_string(config.delivery_transport)}
+destination_id = {toml_basic_string(config.delivery_destination_id)}
+delivery_root = {toml_basic_string(config.delivery_root)}
 receiver_idempotency_declared = false
 max_attempts = 5
 timeout_seconds = 10.0
@@ -511,13 +824,52 @@ max_response_bytes = 65536
     if config.delivery_enabled and config.delivery_transport == "telegram-v1":
         text += (
             "telegram_bot_token_ref = "
-            f'{{ env = "{config.delivery_telegram_bot_token_env}" }}\n'
-            f'telegram_chat_id = "{config.delivery_telegram_chat_id}"\n'
+            f'{{ env = {toml_basic_string(config.delivery_telegram_bot_token_env)} }}\n'
+            f"telegram_chat_id = {toml_basic_string(config.delivery_telegram_chat_id or '')}\n"
         )
     elif config.delivery_enabled:
-        text += f'endpoint_ref = {{ env = "{config.delivery_endpoint_env}" }}\n'
+        text += f"endpoint_ref = {{ env = {toml_basic_string(config.delivery_endpoint_env)} }}\n"
         if config.delivery_auth_env is not None:
-            text += f'auth_token_ref = {{ env = "{config.delivery_auth_env}" }}\n'
+            text += f"auth_token_ref = {{ env = {toml_basic_string(config.delivery_auth_env)} }}\n"
+
+    # Self-check: the generated bytes must parse and every owner-provided
+    # string must survive the round-trip exactly (fail closed, never emit
+    # a document whose parsed values differ from the typed inputs).
+    parsed = tomllib.loads(text)
+    monitoring = parsed["monitoring"]
+    delivery = monitoring.get("delivery", {})
+    expected: dict[tuple[str, str], str] = {
+        ("monitoring", "watchlist_path"): config.watchlist_path,
+        ("monitoring", "workspace_root"): config.monitoring_workspace_root,
+        ("delivery", "transport"): config.delivery_transport,
+        ("delivery", "destination_id"): config.delivery_destination_id,
+        ("delivery", "delivery_root"): config.delivery_root,
+    }
+    sections = {"monitoring": monitoring, "delivery": delivery}
+    for (section_name, key), expected_value in expected.items():
+        actual = sections[section_name].get(key)
+        if actual != expected_value:
+            raise SerializationError(
+                f"generated project TOML does not round-trip {section_name}.{key} "
+                "to the exact typed owner input"
+            )
+    if config.delivery_enabled and config.delivery_transport == "telegram-v1":
+        if delivery.get("telegram_bot_token_ref") != {
+            "env": config.delivery_telegram_bot_token_env
+        } or delivery.get("telegram_chat_id") != config.delivery_telegram_chat_id:
+            raise SerializationError(
+                "generated project TOML does not round-trip the telegram "
+                "delivery reference strings to the exact typed owner input"
+            )
+    elif config.delivery_enabled:
+        if delivery.get("endpoint_ref") != {"env": config.delivery_endpoint_env} or (
+            config.delivery_auth_env is not None
+            and delivery.get("auth_token_ref") != {"env": config.delivery_auth_env}
+        ):
+            raise SerializationError(
+                "generated project TOML does not round-trip the webhook "
+                "delivery reference strings to the exact typed owner input"
+            )
     return text
 
 
@@ -526,14 +878,49 @@ max_response_bytes = 65536
 # ---------------------------------------------------------------------------
 
 
-def render_service_unit(config: ProductionConfigV1, runner_config_path: Path) -> str:
-    """Deterministic production oneshot service unit (no secret values)."""
+def main_exec_argv(config: ProductionConfigV1, runner_config_path: Path) -> tuple[str, ...]:
+    """The one intended main ``ExecStart`` argv for the configured mode.
 
-    environment_line = (
-        f"EnvironmentFile={config.delivery_environment_file}\n"
+    Delivery-enabled units run the unchanged ``unattended-notify`` command;
+    monitoring-only units keep ``unattended-run``.  Both the renderer and
+    the structural manager-effective verification derive their expectation
+    from this single definition (R4 goal section 6).
+    """
+
+    argv: list[str] = [
+        config.python_executable,
+        "-m",
+        "turtle_value_engine",
+        "watch",
+        "unattended-notify" if config.delivery_enabled else "unattended-run",
+        "--runner-config",
+        str(runner_config_path),
+    ]
+    if config.delivery_enabled:
+        argv.extend(
+            ("--project-config", str(config.project_config_path.resolve()), "--network", "allow")
+        )
+    return tuple(argv)
+
+
+def render_service_unit(config: ProductionConfigV1, runner_config_path: Path) -> str:
+    """Deterministic production oneshot service unit (no secret values).
+
+    R4: every Exec command line and execution-critical path directive is
+    serialized through the systemd-native boundary, and the rendered lines
+    are mirror-parsed back before the text is returned so no owner input
+    can leave this function without proven semantic parity.
+    """
+
+    environment_value = (
+        systemd_unit_path_value(config.delivery_environment_file)
         if config.delivery_enabled
-        else ""
+        else None
     )
+    environment_line = (
+        f"EnvironmentFile={environment_value}\n" if environment_value is not None else ""
+    )
+    main_argv = main_exec_argv(config, runner_config_path)
     if config.delivery_enabled:
         # R3: the runtime credential gate runs before unattended-notify.  It
         # re-reads the private credential file, reuses the one current-
@@ -541,34 +928,36 @@ def render_service_unit(config: ProductionConfigV1, runner_config_path: Path) ->
         # with the environment systemd injected byte-for-byte; its argv
         # carries only non-secret paths and reference names, and any failure
         # (missing/mismatch/noncanonical/metadata) leaves ExecStart unrun.
+        gate_argv = credential_gate_argv(config)
         prestart_lines = (
-            f"ExecStartPre={credential_gate_command(config)}\n"
+            f"ExecStartPre={systemd_exec_command(gate_argv)}\n"
             "# The ExecStartPre gate above prints only status/category/\n"
             "# reference names and never a credential value; systemd executes\n"
             "# it with the service environment, so a drifted or noncanonical\n"
             "# private file blocks notification execution entirely.\n"
         )
-        run_line = (
-            f"{config.python_executable} -m turtle_value_engine watch unattended-notify "
-            f"--runner-config {runner_config_path} "
-            f"--project-config {config.project_config_path.resolve()} --network allow\n"
-        )
     else:
+        gate_argv = None
         prestart_lines = ""
-        run_line = (
-            f"{config.python_executable} -m turtle_value_engine watch unattended-run "
-            f"--runner-config {runner_config_path}\n"
-        )
+    run_line = f"ExecStart={systemd_exec_command(main_argv)}\n"
     user_line = f"User={config.service_user}\n" if config.scope == "system" else ""
     description = (
         "turtle-value-engine production monitoring cycle "
-        f"({config.runner_id}, Phase 6-F persistent owner operations)"
+        f"({systemd_unit_text_value(config.runner_id)}, "
+        "Phase 6-F persistent owner operations)"
     )
-    return (
+    # R4: Documentation= is a space-separated URL list — a raw owner path
+    # with spaces would be split into invalid URLs.  URL-encode the path
+    # (ordinary paths stay unchanged) and double the introduced percent
+    # signs so the specifier expansion cannot reinterpret them.
+    documentation_url = (
+        f"file://{_url_quote(config.working_directory, safe='/')}"
+        "/docs/goals/phase-6-f-persistent-owner-operations.md"
+    ).replace("%", "%%")
+    unit_text = (
         "[Unit]\n"
         f"Description={description}\n"
-        "Documentation=file://"
-        f"{config.working_directory}/docs/goals/phase-6-f-persistent-owner-operations.md\n"
+        f"Documentation={documentation_url}\n"
         "After=network-online.target\n"
         "Wants=network-online.target\n"
         "\n"
@@ -578,11 +967,10 @@ def render_service_unit(config: ProductionConfigV1, runner_config_path: Path) ->
         "# owner inputs.  No credential value ever appears in this unit; the\n"
         "# optional EnvironmentFile path is the only credential-related fact and\n"
         "# its content stays in the ignored private root with 0600 permissions.\n"
-        f"WorkingDirectory={config.working_directory}\n"
+        f"WorkingDirectory={systemd_unit_path_value(config.working_directory)}\n"
         f"{user_line}"
         f"{environment_line}"
         f"{prestart_lines}"
-        "ExecStart="
         f"{run_line}"
         "TimeoutStartSec=30min\n"
         "# Exit code 3 (LEASE_BUSY) means another live invocation owns the runner\n"
@@ -590,6 +978,33 @@ def render_service_unit(config: ProductionConfigV1, runner_config_path: Path) ->
         "SuccessExitStatus=3\n"
         "Nice=10\n"
     )
+
+    # Render-boundary parity self-check (R4 goal section 3): mirror-parse
+    # every serialized line and require the effective values to equal the
+    # intended argv/paths exactly before any bytes are handed downstream.
+    if gate_argv is not None and parse_systemd_exec_command(
+        systemd_exec_command(gate_argv)
+    ) != list(gate_argv):
+        raise SerializationError(
+            "rendered ExecStartPre does not round-trip to the intended gate argv"
+        )
+    if parse_systemd_exec_command(systemd_exec_command(main_argv)) != list(main_argv):
+        raise SerializationError(
+            "rendered ExecStart does not round-trip to the intended main argv"
+        )
+    if environment_value is not None and effective_unit_path_value(
+        environment_value
+    ) != str(config.delivery_environment_file):
+        raise SerializationError(
+            "rendered EnvironmentFile does not round-trip to the typed credential path"
+        )
+    if effective_unit_path_value(
+        systemd_unit_path_value(config.working_directory)
+    ) != config.working_directory:
+        raise SerializationError(
+            "rendered WorkingDirectory does not round-trip to the typed path"
+        )
+    return unit_text
 
 
 def render_timer_unit(config: ProductionConfigV1) -> str:
@@ -1469,9 +1884,15 @@ def credential_gate_argv(config: ProductionConfigV1) -> tuple[str, ...]:
 
 
 def credential_gate_command(config: ProductionConfigV1) -> str:
-    """The unit-serialized gate command (paths and reference names only)."""
+    """The unit-serialized gate command (paths and reference names only).
 
-    return shlex.join(credential_gate_argv(config))
+    R4: serialized through the systemd-native Exec-line boundary —
+    ``shlex.join`` is a POSIX-shell serializer and left literal ``$``/``%``
+    sequences to the systemd expansions.  shlex remains in use only for the
+    human-facing shell resume commands.
+    """
+
+    return systemd_exec_command(credential_gate_argv(config))
 
 
 def cmd_preflight(args: argparse.Namespace, runner: CommandRunner = _default_runner) -> int:
@@ -2117,6 +2538,61 @@ def cmd_apply(args: argparse.Namespace, runner: CommandRunner = _default_runner)
 # ---------------------------------------------------------------------------
 
 
+def _dbus_unit_object_path(unit: str) -> str:
+    """The manager D-Bus object path for a unit name.
+
+    systemd's ``bus_path_encode`` escaping: ``[A-Za-z0-9_]`` stay literal,
+    every other character becomes ``_`` plus its two-digit lowercase hex
+    code (unit names here can only contribute ``.`` and ``-``).
+    """
+
+    escaped = "".join(
+        ch if re.fullmatch(r"[A-Za-z0-9_]", ch) else f"_{ord(ch):02x}" for ch in unit
+    )
+    return f"/org/freedesktop/systemd1/unit/{escaped}"
+
+
+def manager_service_exec_property(
+    config: ProductionConfigV1, property_name: str, runner: CommandRunner
+) -> list[list[object]]:
+    """The manager-effective service Exec property rows via D-Bus.
+
+    ``busctl --json=short get-property ... Service ExecStart/ExecStartPre``
+    returns one row per command whose second element is the exact argv
+    array the manager loaded (after load-time percent processing) — the
+    structural representation the R4 verification compares element by
+    element.  A failed query raises :class:`AcceptanceError` so callers
+    fail closed instead of guessing.
+    """
+
+    argv = (
+        "busctl",
+        *(("--user",) if config.scope == "user" else ()),
+        "--json=short",
+        "get-property",
+        "org.freedesktop.systemd1",
+        _dbus_unit_object_path(config.service_unit_name),
+        "org.freedesktop.systemd1.Service",
+        property_name,
+    )
+    outcome = run_command(argv, runner=runner)
+    if not outcome.ok:
+        raise AcceptanceError(
+            f"cannot query manager-effective {property_name} for "
+            f"{config.service_unit_name}: {_bounded(outcome.stderr, 300)}"
+        )
+    try:
+        payload = json.loads(outcome.stdout)
+        data = payload["data"]
+    except (json.JSONDecodeError, KeyError, TypeError) as exc:
+        raise AcceptanceError(
+            f"manager-effective {property_name} payload is not readable: {exc}"
+        ) from exc
+    if not isinstance(data, list):
+        raise AcceptanceError(f"manager-effective {property_name} payload is not a list")
+    return data
+
+
 def _effective_state(
     config: ProductionConfigV1, runner: CommandRunner = _default_runner
 ) -> dict[str, object]:
@@ -2164,6 +2640,17 @@ def _effective_state(
         ),
         runner,
     )
+    # R4: the manager-effective Exec/EnvironmentFile structures come from
+    # the D-Bus property (exact argv arrays), not from the lossy textual
+    # "argv[]=" rendering that cannot represent spaces inside arguments.
+    exec_structures: dict[str, object] = {}
+    for property_name in ("ExecStart", "ExecStartPre", "EnvironmentFiles"):
+        try:
+            exec_structures[property_name] = manager_service_exec_property(
+                config, property_name, runner
+            )
+        except AcceptanceError as exc:
+            exec_structures[property_name] = {"error": str(exc)}
     return {
         "units": units,
         "units_match": units_match,
@@ -2171,6 +2658,7 @@ def _effective_state(
         "timer_enabled": timer_props.get("UnitFileState") == "enabled",
         "timer_active": timer_props.get("ActiveState") == "active",
         "service_properties": service_props,
+        "service_exec_structures": exec_structures,
     }
 
 
@@ -2184,32 +2672,78 @@ def cmd_verify(args: argparse.Namespace, runner: CommandRunner = _default_runner
             bool(unit_state.get("matches_desired")),  # type: ignore[union-attr]
             json.dumps(unit_state, ensure_ascii=False),
         )
-    expected_exec = (
-        f"{config.python_executable} -m turtle_value_engine watch unattended-notify "
-        f"--runner-config {config.runner_config_path.resolve()}"
-        if config.delivery_enabled
-        else f"{config.python_executable} -m turtle_value_engine watch unattended-run "
-        f"--runner-config {config.runner_config_path.resolve()}"
-    )
-    exec_start = str(state["service_properties"].get("ExecStart", ""))  # type: ignore[union-attr]
-    checks.add("service.effective-execstart", expected_exec in exec_start, exec_start[:400])
+    # R4: the ExecStart/ExecStartPre/EnvironmentFile contracts are proven
+    # structurally — the manager-effective D-Bus argv arrays must equal the
+    # intended argv element by element.  A textual substring such as the
+    # expected command inside the lossy "argv[]=" rendering is not proof:
+    # it cannot represent argument boundaries at all.
+    exec_structures: dict[str, object] = state["service_exec_structures"]  # type: ignore[assignment]
+    intended_main = list(main_exec_argv(config, config.runner_config_path.resolve()))
+
+    def _exec_rows(property_name: str) -> list[list[object]]:
+        raw = exec_structures.get(property_name)
+        if not isinstance(raw, list):
+            raise AcceptanceError(str(raw))
+        return raw
+
+    try:
+        exec_start_rows = _exec_rows("ExecStart")
+        manager_main = [row[1] for row in exec_start_rows]
+        checks.add(
+            "service.effective-execstart",
+            manager_main == [intended_main],
+            f"intended={intended_main} effective={manager_main}",
+        )
+    except (AcceptanceError, IndexError, TypeError) as exc:
+        checks.add("service.effective-execstart", False, f"unreadable ExecStart: {exc}")
     # R3: a delivery-enabled deployment must carry the runtime credential
     # gate ahead of the notification ExecStart, and the *current* private
     # credential file must still satisfy the whole canonical contract —
     # green historical records cannot substitute for a live revalidation.
     credential = current_credential_state(config)
+    if config.delivery_enabled:
+        intended_gate = list(credential_gate_argv(config))
+        try:
+            exec_start_pre_rows = _exec_rows("ExecStartPre")
+            manager_gate = [row[1] for row in exec_start_pre_rows]
+            checks.add(
+                "service.prestart-gate",
+                manager_gate == [intended_gate],
+                f"intended={intended_gate} effective={manager_gate}",
+            )
+        except (AcceptanceError, IndexError, TypeError) as exc:
+            checks.add("service.prestart-gate", False, f"unreadable ExecStartPre: {exc}")
+        try:
+            env_rows = _exec_rows("EnvironmentFiles")
+            manager_env_paths = [row[0] for row in env_rows]
+            intended_env = [str(config.delivery_environment_file)]
+            checks.add(
+                "service.effective-environmentfile",
+                manager_env_paths == intended_env,
+                f"intended={intended_env} effective={manager_env_paths}",
+            )
+        except (AcceptanceError, IndexError, TypeError) as exc:
+            checks.add(
+                "service.effective-environmentfile",
+                False,
+                f"unreadable EnvironmentFiles: {exc}",
+            )
+    else:
+        try:
+            exec_start_pre_rows = _exec_rows("ExecStartPre")
+            checks.add(
+                "service.prestart-gate",
+                exec_start_pre_rows == [],
+                f"delivery-disabled unit must load zero pre-start commands: "
+                f"{exec_start_pre_rows}",
+            )
+        except (AcceptanceError, IndexError, TypeError) as exc:
+            checks.add("service.prestart-gate", False, f"unreadable ExecStartPre: {exc}")
     if credential is not None:
         checks.add(
             "credential.current-contract",
             credential.ok,
             credential.public_reason(),
-        )
-        expected_gate = credential_gate_command(config)
-        exec_start_pre = str(state["service_properties"].get("ExecStartPre", ""))  # type: ignore[union-attr]
-        checks.add(
-            "service.prestart-gate",
-            expected_gate in exec_start_pre,
-            exec_start_pre[:400] or "ExecStartPre absent from effective service",
         )
     working_directory = str(
         state["service_properties"].get("WorkingDirectory", "")  # type: ignore[union-attr]

@@ -13,10 +13,12 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shlex
 import shutil
 import subprocess
 import sys
+import tomllib
 import uuid
 from pathlib import Path
 
@@ -108,6 +110,8 @@ class FakeRunner:
             return subprocess.CompletedProcess(argv, 0, "", "")
         if argv[:2] == ["systemctl", "--user"] and argv[2] == "show":
             return subprocess.CompletedProcess(argv, 0, self._show(argv), "")
+        if argv[:1] == ["busctl"] and "get-property" in argv:
+            return subprocess.CompletedProcess(argv, 0, self._busctl(argv), "")
         if argv[:1] == ["systemd-analyze"]:
             return subprocess.CompletedProcess(argv, 0, "", "")
         if argv[:1] == ["journalctl"]:
@@ -178,6 +182,40 @@ class FakeRunner:
             elif name == "User":
                 lines.append("User=")
         return "\n".join(lines) + "\n"
+
+    def _busctl(self, argv: list[str]) -> str:
+        """The D-Bus manager-effective Exec/EnvironmentFile property payload.
+
+        Mirrors ``busctl --json=short get-property ... Service <Prop>``: the
+        ``data`` rows carry the exact manager-effective argv arrays the R4
+        structural verification compares.  ``*_override`` lets a test publish
+        a tampered effective argv while the textual properties stay
+        substring-compatible (the pre-R4 blind spot).
+        """
+
+        if self.config is None:
+            return ""
+        property_name = argv[-1]
+        runner_path = self.config.runner_config_path.resolve()
+        if property_name == "ExecStart":
+            argv_effective = getattr(self, "exec_start_override", None) or list(
+                prodops.main_exec_argv(self.config, runner_path)
+            )
+            rows = [[self.config.python_executable, argv_effective, False, 0, 0, 0, 0, 0, 0, 0]]
+        elif property_name == "ExecStartPre":
+            if not self.config.delivery_enabled:
+                return json.dumps({"type": "a(sasbttttuii)", "data": []})
+            argv_effective = getattr(self, "exec_start_pre_override", None) or list(
+                prodops.credential_gate_argv(self.config)
+            )
+            rows = [[self.config.python_executable, argv_effective, False, 0, 0, 0, 0, 0, 0, 0]]
+        elif property_name == "EnvironmentFiles":
+            if not self.config.delivery_enabled or not self.config.delivery_environment_file:
+                return json.dumps({"type": "a(sb)", "data": []})
+            rows = [[self.config.delivery_environment_file, False]]
+        else:
+            return ""
+        return json.dumps({"type": "a(sasbttttuii)", "data": rows})
 
 
 def _production_config(tmp_path: Path, **overrides: object) -> ProductionConfigV1:
@@ -2518,3 +2556,713 @@ def test_r3_transient_systemd_execstartpre_gate_proof(tmp_path: Path) -> None:
     assert drifted.returncode != 0
     assert not sentinel.exists(), "unattended-notify must not execute after gate failure"
     assert canonical not in drifted.stdout and canonical not in drifted.stderr
+
+
+# ---------------------------------------------------------------------------
+# Phase 6-F-R4 — production artifact serialization parity
+# ---------------------------------------------------------------------------
+
+_R4_URL_VALUE = "https://r4-roundtrip.invalid/hook?a=1#frag"
+_R4_TOKEN_VALUE = "tok-r4-roundtrip"
+
+# The parser-significant owner-input matrix from R4 goal section 7.
+_R4_EDGE_VALUES = [
+    "/opt/tve/pro duction",  # 1 space
+    "/opt/tve/pro'duction",  # 2 single quote
+    '/opt/tve/pro"duction',  # 3 double quote
+    "/opt/tve/pro\\duction",  # 4 backslash
+    "/opt/tve/pro$HOME",  # 5 literal dollar sequence resembling a variable
+    "/opt/tve/${HOME}/x",  # braced variable form as literal data
+    "/opt/tve/pro%n",  # 6 literal valid systemd specifier sequence
+    "/opt/tve/100%",  # trailing literal percent
+    "/opt/tve/a;b",  # 7 semicolon as ordinary argument data
+    "/opt/tve/a#b",  # hash as ordinary argument data
+    "/opt/tve/produktör-茅台",  # 8 ordinary non-ASCII path text
+    "/opt/tve/a 'b\" c\\d$e%f g",  # every parser-significant class at once
+    ";",  # standalone semicolon argument
+    "#",  # standalone hash argument
+]
+
+# A fixed expansion environment for the test-side oracle so divergence does
+# not depend on the test process environment.
+_R4_ORACLE_ENV = {"HOME": "/home/oracle", "MYVAR": "oracle-value"}
+_R4_ORACLE_SPECIFIERS = {"n": "tve-production-test.service", "h": "/home/oracle"}
+
+_R4_ORACLE_ESCAPES = {
+    "\\": "\\",
+    '"': '"',
+    "'": "'",
+    "s": " ",
+    "a": "\a",
+    "b": "\b",
+    "f": "\f",
+    "n": "\n",
+    "r": "\r",
+    "t": "\t",
+    "v": "\v",
+}
+
+
+def _oracle_unescape(ch: str) -> str:
+    return _R4_ORACLE_ESCAPES.get(ch, "\\" + ch)
+
+
+def _oracle_expand_dollar(token: str) -> str:
+    out: list[str] = []
+    i = 0
+    while i < len(token):
+        ch = token[i]
+        if ch != "$":
+            out.append(ch)
+            i += 1
+            continue
+        if i + 1 < len(token) and token[i + 1] == "$":
+            out.append("$")
+            i += 2
+            continue
+        if i + 1 < len(token) and token[i + 1] == "{":
+            end = token.find("}", i + 2)
+            if end != -1:
+                out.append(_R4_ORACLE_ENV.get(token[i + 2 : end], ""))
+                i = end + 1
+                continue
+        j = i + 1
+        while j < len(token) and (token[j].isalnum() or token[j] == "_"):
+            j += 1
+        if j > i + 1:
+            out.append(_R4_ORACLE_ENV.get(token[i + 1 : j], ""))
+            i = j
+            continue
+        out.append(ch)
+        i += 1
+    return "".join(out)
+
+
+def _oracle_expand_percent(token: str) -> str:
+    out: list[str] = []
+    i = 0
+    while i < len(token):
+        ch = token[i]
+        if ch == "%" and i + 1 < len(token):
+            nxt = token[i + 1]
+            if nxt == "%":
+                out.append("%")
+                i += 2
+                continue
+            if nxt in _R4_ORACLE_SPECIFIERS:
+                out.append(_R4_ORACLE_SPECIFIERS[nxt])
+                i += 2
+                continue
+        out.append(ch)
+        i += 1
+    return "".join(out)
+
+
+def _oracle_effective_argv(line: str) -> list[str]:
+    """Test-side oracle for the manager-effective Exec command-line argv.
+
+    Models the systemd.syntax(7) quoting grammar and the systemd.service(5)
+    dollar/specifier expansion validated against a real systemd 259 user
+    manager during R4 development.  It exists to evaluate *rendered bytes*
+    independently of the production serializer, so pre-R4 output can be
+    shown to diverge from the typed input for the right reason.
+    """
+
+    tokens: list[str] = []
+    i, n = 0, len(line)
+    while i < n:
+        while i < n and line[i].isspace():
+            i += 1
+        if i >= n:
+            break
+        buf: list[str] = []
+        while i < n and not line[i].isspace():
+            ch = line[i]
+            if ch == "'":
+                i += 1
+                while i < n and line[i] != "'":
+                    buf.append(line[i])
+                    i += 1
+                i += 1
+            elif ch == '"':
+                i += 1
+                while i < n and line[i] != '"':
+                    if line[i] == "\\" and i + 1 < n:
+                        i += 1
+                        buf.append(_oracle_unescape(line[i]))
+                        i += 1
+                    else:
+                        buf.append(line[i])
+                        i += 1
+                i += 1
+            elif ch == "\\" and i + 1 < n:
+                i += 1
+                buf.append(_oracle_unescape(line[i]))
+                i += 1
+            else:
+                buf.append(ch)
+                i += 1
+        tokens.append("".join(buf))
+    return [
+        _oracle_expand_dollar(_oracle_expand_percent(token)) for token in tokens
+    ]
+
+
+def _oracle_effective_path_value(value: str) -> str:
+    """Path directives take the whole line; only ``%`` is parser-active."""
+
+    return _oracle_expand_percent(value)
+
+
+def _unit_lines(unit_text: str) -> dict[str, str]:
+    lines: dict[str, str] = {}
+    for line in unit_text.splitlines():
+        key, sep, value = line.partition("=")
+        if sep and key in {"ExecStartPre", "ExecStart", "EnvironmentFile", "WorkingDirectory"}:
+            lines.setdefault(key, value)
+    return lines
+
+
+@pytest.mark.parametrize("value", _R4_EDGE_VALUES)
+def test_r4_exec_argument_round_trip(value: str) -> None:
+    """Every parser-significant argv element survives systemd serialization."""
+
+    serialized = prodops.systemd_exec_argument(value)
+    line = f"/bin/echo {serialized}"
+    # The production mirror parser must restore the exact typed value.
+    assert prodops.parse_systemd_exec_command(line) == ["/bin/echo", value]
+    # The independent test-side oracle must agree.
+    assert _oracle_effective_argv(line) == ["/bin/echo", value]
+    # Literal dollar/percent data is always doubled, never left raw: every
+    # maximal run of expansion characters must have even length.
+    runs = re.findall(r"[$%]+", serialized)
+    assert all(len(run) % 2 == 0 for run in runs), serialized
+
+
+def test_r4_gate_command_serializes_systemd_native_not_shlex() -> None:
+    """The ExecStartPre line is systemd-native; shlex diverges on $ data."""
+
+    tricky = "/opt/tve/creds $HOME %n space.env"
+    argv = ("/usr/bin/python3", "/repo/scripts/gate.py", "--environment-file", tricky)
+    command = prodops.systemd_exec_command(argv)
+    assert prodops.parse_systemd_exec_command(command) == list(argv)
+    assert _oracle_effective_argv(command) == list(argv)
+    # shlex.join leaves the dollar sequence raw, which the manager would
+    # expand at execution time: the pre-R4 serializer class, not a cosmetic
+    # difference.
+    shlex_form = shlex.join(argv)
+    assert shlex_form != command
+    assert "$HOME" in shlex_form
+    assert "$HOME" not in command.replace("$$HOME", "")
+
+
+def _r4_hostile_root(tmp_path: Path) -> Path:
+    # Backslash is excluded: it is unrepresentable in the EnvironmentFile
+    # path under delivery and rejected at parse time; the offline matrix
+    # still covers it for every non-env-file Exec argument.
+    root = tmp_path / "pro duction 'q'\"x\"$HOME%n;a#b-茅台"
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def _r4_delivery_config_with_root(tmp_path: Path, root: Path) -> tuple[ProductionConfigV1, Path]:
+    env_file = root / "sec%nrets.env"
+    config = _production_config(
+        tmp_path,
+        delivery_enabled=True,
+        delivery_environment_file=str(env_file),
+        production_root=str(root),
+        working_directory=str(root),
+        watchlist_path=str(root / "watch list.json"),
+        monitoring_workspace_root=str(root / "work space"),
+        delivery_root=str(root / "de livery"),
+        delivery_destination_id='dest "quoted" \\id',
+    )
+    return config, env_file
+
+
+def test_r4_delivery_unit_exec_and_paths_round_trip(
+    tmp_path: Path, destination: Path
+) -> None:
+    """Rendered Exec/path lines restore the exact typed values (goal 7.1-12)."""
+
+    root = _r4_hostile_root(tmp_path)
+    config, env_file = _r4_delivery_config_with_root(tmp_path, root)
+    _write_private_env_file(
+        env_file,
+        f"TVE_MONITORING_WEBHOOK_URL={_R4_URL_VALUE}\n"
+        f"TVE_MONITORING_WEBHOOK_TOKEN={_R4_TOKEN_VALUE}\n",
+    )
+    config_path = _write_config_file(tmp_path, config)
+    args = prodops._build_parser().parse_args(
+        ["--production-config", str(config_path), "render"]
+    )
+    assert prodops.cmd_render(args, runner=FakeRunner()) == EXIT_OK
+    unit_text = (config.systemd_output_dir / config.service_unit_name).read_text("utf-8")
+    lines = _unit_lines(unit_text)
+
+    # 9: the manager-effective gate argv equals credential_gate_argv exactly.
+    gate_line = lines["ExecStartPre"]
+    assert prodops.parse_systemd_exec_command(gate_line) == list(
+        prodops.credential_gate_argv(config)
+    )
+    assert _oracle_effective_argv(gate_line) == list(prodops.credential_gate_argv(config))
+    # 10: the delivery-enabled main argv keeps its exact argument boundaries.
+    exec_line = lines["ExecStart"]
+    expected_main = list(
+        prodops.main_exec_argv(config, config.runner_config_path.resolve())
+    )
+    assert prodops.parse_systemd_exec_command(exec_line) == expected_main
+    assert _oracle_effective_argv(exec_line) == expected_main
+    assert expected_main[4] == "unattended-notify"
+    # R3 ordering is preserved: the gate stays ahead of the notify command.
+    assert unit_text.index("ExecStartPre=") < unit_text.index("ExecStart=")
+    # 12: the EnvironmentFile path survives percent escaping exactly.
+    assert _oracle_effective_path_value(lines["EnvironmentFile"]) == str(env_file)
+    assert _oracle_effective_path_value(lines["WorkingDirectory"]) == str(root)
+    # No secret value ever enters the unit.
+    assert _R4_URL_VALUE not in unit_text and _R4_TOKEN_VALUE not in unit_text
+    # The rendered units must satisfy the real systemd unit verifier.
+    if shutil.which("systemd-analyze") is None:
+        pytest.skip("systemd-analyze is not available on this host")
+    verify = prodops._systemd_analyze_verify(
+        (
+            config.systemd_output_dir / config.service_unit_name,
+            config.systemd_output_dir / config.timer_unit_name,
+        ),
+        runner=prodops._default_runner,
+    )
+    assert verify.ok, verify.stderr
+
+
+def test_r4_delivery_disabled_execstart_exact_argv(tmp_path: Path) -> None:
+    """11: monitoring-only units keep the unattended-run argv exactly."""
+
+    config = _production_config(tmp_path)
+    unit_text = render_service_unit(config, config.runner_config_path.resolve())
+    exec_line = _unit_lines(unit_text)["ExecStart"]
+    expected = list(prodops.main_exec_argv(config, config.runner_config_path.resolve()))
+    assert expected[4] == "unattended-run"
+    assert prodops.parse_systemd_exec_command(exec_line) == expected
+    assert _oracle_effective_argv(exec_line) == expected
+
+    # A parser-significant (but executable-representable) interpreter path
+    # round-trips too; quotes/backslash/dollar are refused at parse time
+    # because systemd cannot represent them in the executable token.
+    tricky_dir = tmp_path / "py thon %n;xe"
+    tricky_dir.mkdir()
+    config = _production_config(tmp_path, python_executable=str(tricky_dir / "python"))
+    unit_text = render_service_unit(config, config.runner_config_path.resolve())
+    exec_line = _unit_lines(unit_text)["ExecStart"]
+    assert prodops.parse_systemd_exec_command(exec_line) == list(
+        prodops.main_exec_argv(config, config.runner_config_path.resolve())
+    )
+    assert _oracle_effective_argv(exec_line) == list(
+        prodops.main_exec_argv(config, config.runner_config_path.resolve())
+    )
+
+
+def test_r4_environment_file_path_parity_across_consumers(tmp_path: Path) -> None:
+    """12: unit directive, gate argv and validator share one exact path."""
+
+    root = tmp_path / "production"
+    root.mkdir()
+    env_file = root / "sec%nrets 'quoted'.env"
+    _write_private_env_file(
+        env_file,
+        f"TVE_MONITORING_WEBHOOK_URL={_R4_URL_VALUE}\n"
+        f"TVE_MONITORING_WEBHOOK_TOKEN={_R4_TOKEN_VALUE}\n",
+    )
+    config = _production_config(
+        tmp_path,
+        delivery_enabled=True,
+        delivery_environment_file=str(env_file),
+    )
+    unit_text = render_service_unit(config, config.runner_config_path.resolve())
+    directive = _unit_lines(unit_text)["EnvironmentFile"]
+    assert _oracle_effective_path_value(directive) == str(env_file)
+    gate_argv = prodops.credential_gate_argv(config)
+    gate_line = prodops.systemd_exec_command(gate_argv)
+    parsed = prodops.parse_systemd_exec_command(gate_line)
+    assert parsed == list(gate_argv)
+    assert parsed[parsed.index("--environment-file") + 1] == str(env_file)
+    # The validation primitive resolves the same typed path successfully.
+    state = prodops.validate_current_credential(
+        environment_file=str(env_file),
+        production_root=config.production_root,
+        referenced_names=prodops._production_secret_reference_names(config),
+    )
+    assert state.ok, state.public_reason()
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("watchlist_path", "/srv/watch 'list'.json"),
+        ("watchlist_path", '/srv/watch "list".json'),
+        ("watchlist_path", "/srv/watch\\list.json"),
+        ("watchlist_path", "/srv/watch$list.json"),
+        ("watchlist_path", "/srv/watch%nlist.json"),
+        ("watchlist_path", "/srv/watch;n#list.json"),
+        ("watchlist_path", "/srv/監視清單.json"),
+        ("monitoring_workspace_root", "/srv/pro duction"),
+        ("delivery_root", "/srv/de livery"),
+        ("delivery_destination_id", 'dest "quoted" \\id'),
+    ],
+)
+def test_r4_project_config_tomllib_round_trip(field: str, value: str) -> None:
+    """13: generated project TOML parses back into the exact typed value."""
+
+    config = _production_config(Path("/tmp/r4-unused"), **{field: value})
+    text = render_project_config(config)
+    parsed = tomllib.loads(text)
+    monitoring = parsed["monitoring"]
+    # delivery_* fields live in the nested [monitoring.delivery] table.
+    table = monitoring["delivery"] if field.startswith("delivery_") else monitoring
+    key = {
+        "watchlist_path": "watchlist_path",
+        "monitoring_workspace_root": "workspace_root",
+        "delivery_root": "delivery_root",
+        "delivery_destination_id": "destination_id",
+    }[field]
+    assert table[key] == value, text
+
+
+def test_r4_project_config_tomllib_round_trip_telegram(tmp_path: Path) -> None:
+    """13b: the telegram chat id and env references round-trip exactly."""
+
+    root = tmp_path / "production"
+    config = _production_config(
+        tmp_path,
+        delivery_enabled=True,
+        delivery_transport="telegram-v1",
+        delivery_environment_file=str(root / "secrets.env"),
+        delivery_telegram_chat_id="-123456",
+        delivery_telegram_bot_token_env="TVE_TELEGRAM_BOT_TOKEN",
+        delivery_destination_id="prod 'primary'",
+    )
+    env_file = root / "secrets.env"
+    root.mkdir(exist_ok=True)
+    _write_private_env_file(env_file, "TVE_TELEGRAM_BOT_TOKEN=tok-r4-telegram\n")
+    text = render_project_config(config)
+    parsed = tomllib.loads(text)
+    delivery = parsed["monitoring"]["delivery"]
+    assert delivery["telegram_chat_id"] == "-123456"
+    assert delivery["destination_id"] == "prod 'primary'"
+    assert delivery["telegram_bot_token_ref"] == {"env": "TVE_TELEGRAM_BOT_TOKEN"}
+
+
+def test_r4_verify_compares_manager_effective_argv_structurally(
+    tmp_path: Path, destination: Path
+) -> None:
+    """Structural argv proof replaces substring presence (goal section 6)."""
+
+    config, env_file = _delivery_config(tmp_path)
+    _write_private_env_file(
+        env_file,
+        f"TVE_MONITORING_WEBHOOK_URL={_R4_URL_VALUE}\n"
+        f"TVE_MONITORING_WEBHOOK_TOKEN={_R4_TOKEN_VALUE}\n",
+    )
+    for name, desired in prodops.desired_unit_bytes(config).items():
+        prodops._atomic_write(destination / name, desired)
+    config_path = _write_config_file(tmp_path, config)
+    args = prodops._build_parser().parse_args(
+        ["--production-config", str(config_path), "verify", "--expect-active"]
+    )
+
+    healthy = FakeRunner(config=config)
+    healthy.timer_enabled = True
+    healthy.linger_enabled = True
+    healthy.add(
+        (config.python_executable, "-m", "turtle_value_engine", "watch", "unattended-status"),
+        json.dumps(
+            {
+                "runners": [
+                    {
+                        "runner_id": config.runner_id,
+                        "latest": {"activation_id": "a" * 64},
+                    }
+                ]
+            }
+        ),
+    )
+    assert prodops.cmd_verify(args, runner=healthy) == EXIT_OK
+    record = json.loads(
+        (config.systemd_output_dir / "verify-record.json").read_text("utf-8")
+    )
+    by_name = {item["name"]: item for item in record["checks"]}
+    assert by_name["service.effective-execstart"]["status"] == "PASS"
+    assert by_name["service.prestart-gate"]["status"] == "PASS"
+    assert by_name["service.effective-environmentfile"]["status"] == "PASS"
+
+    # Tamper only the manager-effective pre-start argv (one --reference
+    # element dropped).  The textual properties still contain the full
+    # expected command, so a substring check stays green; the structural
+    # comparison must fail.
+    tampered = FakeRunner(config=config)
+    tampered.timer_enabled = True
+    tampered.linger_enabled = True
+    tampered.exec_start_pre_override = list(prodops.credential_gate_argv(config))[:-1]
+    tampered.add(
+        (config.python_executable, "-m", "turtle_value_engine", "watch", "unattended-status"),
+        json.dumps(
+            {
+                "runners": [
+                    {
+                        "runner_id": config.runner_id,
+                        "latest": {"activation_id": "a" * 64},
+                    }
+                ]
+            }
+        ),
+    )
+    assert prodops.cmd_verify(args, runner=tampered) == EXIT_FAIL_CLOSED
+    record = json.loads(
+        (config.systemd_output_dir / "verify-record.json").read_text("utf-8")
+    )
+    by_name = {item["name"]: item for item in record["checks"]}
+    assert by_name["service.prestart-gate"]["status"] == "FAIL"
+    # ...and the same structural rule for the main ExecStart argv.
+    tampered_main = FakeRunner(config=config)
+    tampered_main.timer_enabled = True
+    tampered_main.linger_enabled = True
+    tampered_main.exec_start_override = list(
+        prodops.main_exec_argv(config, config.runner_config_path.resolve())
+    ) + ["--extra"]
+    tampered_main.add(
+        (config.python_executable, "-m", "turtle_value_engine", "watch", "unattended-status"),
+        json.dumps(
+            {
+                "runners": [
+                    {
+                        "runner_id": config.runner_id,
+                        "latest": {"activation_id": "a" * 64},
+                    }
+                ]
+            }
+        ),
+    )
+    assert prodops.cmd_verify(args, runner=tampered_main) == EXIT_FAIL_CLOSED
+
+
+def test_r4_ordinary_render_is_byte_compatible(tmp_path: Path) -> None:
+    """14: ordinary inputs keep the exact pre-R4 rendered bytes."""
+
+    root = tmp_path / "production"
+    config = _production_config(tmp_path)
+    runner_config_path = config.runner_config_path.resolve()
+    expected_unit = (
+        "[Unit]\n"
+        "Description=turtle-value-engine production monitoring cycle "
+        f"({config.runner_id}, Phase 6-F persistent owner operations)\n"
+        "Documentation=file://"
+        f"{config.working_directory}/docs/goals/phase-6-f-persistent-owner-operations.md\n"
+        "After=network-online.target\n"
+        "Wants=network-online.target\n"
+        "\n"
+        "[Service]\n"
+        "Type=oneshot\n"
+        "# Rendered by scripts/monitoring_production_ops.py from explicit non-secret\n"
+        "# owner inputs.  No credential value ever appears in this unit; the\n"
+        "# optional EnvironmentFile path is the only credential-related fact and\n"
+        "# its content stays in the ignored private root with 0600 permissions.\n"
+        f"WorkingDirectory={config.working_directory}\n"
+        f"ExecStart={config.python_executable} -m turtle_value_engine watch "
+        f"unattended-run --runner-config {runner_config_path}\n"
+        "TimeoutStartSec=30min\n"
+        "# Exit code 3 (LEASE_BUSY) means another live invocation owns the runner\n"
+        "# lease and this invocation intentionally performed no work.\n"
+        "SuccessExitStatus=3\n"
+        "Nice=10\n"
+    )
+    assert render_service_unit(config, runner_config_path) == expected_unit
+
+    delivery_root = root / "delivery"
+    config = _production_config(
+        tmp_path,
+        delivery_enabled=True,
+        delivery_environment_file=str(root / "secrets.env"),
+    )
+    gate = prodops.credential_gate_command(config)
+    expected_gate = (
+        f"{config.python_executable} {prodops.CREDENTIAL_GATE_SCRIPT} "
+        f"--environment-file {root / 'secrets.env'} "
+        f"--production-root {config.production_root} "
+        "--reference TVE_MONITORING_WEBHOOK_URL "
+        "--reference TVE_MONITORING_WEBHOOK_TOKEN"
+    )
+    assert gate == expected_gate
+
+    expected_project = (
+        "# Phase 6-F production project configuration (non-secret).\n"
+        "# Generated by scripts/monitoring_production_ops.py; isolated production ledger.\n"
+        "schema_version = 1\n"
+        "\n"
+        "[project]\n"
+        'id = "turtle-value-engine"\n'
+        'environment = "private"\n'
+        'timezone = "Asia/Taipei"\n'
+        "\n"
+        "[monitoring]\n"
+        f'watchlist_path = "{config.watchlist_path}"\n'
+        f'workspace_root = "{config.monitoring_workspace_root}"\n'
+        "\n"
+        "[monitoring.delivery]\n"
+        "enabled = true\n"
+        f'transport = "{config.delivery_transport}"\n'
+        f'destination_id = "{config.delivery_destination_id}"\n'
+        f'delivery_root = "{delivery_root}"\n'
+        "receiver_idempotency_declared = false\n"
+        "max_attempts = 5\n"
+        "timeout_seconds = 10.0\n"
+        "backoff_base_seconds = 60\n"
+        "backoff_cap_seconds = 3600\n"
+        "max_response_bytes = 65536\n"
+        'endpoint_ref = { env = "TVE_MONITORING_WEBHOOK_URL" }\n'
+        'auth_token_ref = { env = "TVE_MONITORING_WEBHOOK_TOKEN" }\n'
+    )
+    assert render_project_config(config) == expected_project
+
+
+def test_r4_timer_calendar_expression_stays_verbatim(tmp_path: Path) -> None:
+    """on_calendar is an intentional systemd expression, never escaped."""
+
+    config = _production_config(tmp_path, on_calendar="*-*-* 04,16:00:00")
+    timer_text = render_timer_unit(config)
+    assert "OnCalendar=*-*-* 04,16:00:00\n" in timer_text
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("python_executable", "/usr/bin/pyth\non3"),
+        ("working_directory", "/srv/tve\ttab"),
+        ("production_root", "/srv/pro\x01duction"),
+        ("runner_id", "prod\riction"),
+    ],
+)
+def test_r4_rejects_control_characters_in_unit_fields(field: str, value: str) -> None:
+    """Control characters cannot be represented in unit Exec/path lines."""
+
+    with pytest.raises(Exception, match="control character"):
+        _production_config(Path("/tmp/r4-unused"), **{field: value})
+
+
+def test_r4_rejects_non_utf8_text_everywhere() -> None:
+    """Lone surrogates cannot be serialized into any generated artifact."""
+
+    with pytest.raises(Exception, match="unicode string"):
+        _production_config(Path("/tmp/r4-unused"), watchlist_path="/srv/\ud800x")
+
+
+@pytest.mark.skipif(
+    not _systemd_user_manager_usable(),
+    reason="no reachable systemd user manager for the transient argv/gate proof",
+)
+def test_r4_transient_manager_exact_argv_and_gate_blocking(tmp_path: Path) -> None:
+    """Real manager proof: rendered unit runs the exact argv; gate blocks drift.
+
+    The rendered *delivery* unit is executed with a dumper as the python
+    executable: the manager must (a) read the ``%``-bearing credential file
+    from the exact escaped EnvironmentFile path (otherwise the gate rejects
+    the missing references), (b) run the R3 gate before the main command and
+    (c) launch the main command with byte-exact argument boundaries.  A
+    drifted (quoted) credential file must leave the main command unexecuted.
+    """
+
+    # Backslash is unrepresentable in the EnvironmentFile path (the systemd
+    # exec-time loader treats it as an escape; rejected at parse time), so
+    # the hostile root here keeps space/quote/dollar/percent classes and the
+    # backslash class stays covered by the offline round-trip matrix.
+    root = tmp_path / "pro duction $HOME%n 'q'\"x\""
+    root.mkdir(parents=True)
+    # The interpreter path is the systemd Exec executable, which refuses
+    # quotes/backslashes/dollars outright (proved by the R4 parse-time
+    # rejection); a space-only directory still proves quoted-executable
+    # support at runtime while every other path keeps the full matrix.
+    dumper_dir = tmp_path / "dum per"
+    dumper_dir.mkdir()
+    dumper = dumper_dir / "dumper.py"
+    dumper.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json, subprocess, sys\n"
+        "from pathlib import Path\n"
+        "# Executed as the ExecStartPre gate: delegate to the REAL gate CLI "
+        "under the shebang interpreter so drift is actually enforced.\n"
+        "if len(sys.argv) > 1 and 'monitoring_credential_gate' in sys.argv[1]:\n"
+        "    raised = subprocess.run([sys.executable, *sys.argv[1:]])\n"
+        "    sys.exit(raised.returncode)\n"
+        "Path(__file__).with_name('main-argv.json').write_text("
+        "json.dumps(sys.argv, ensure_ascii=False) + '\\n', encoding='utf-8')\n",
+        encoding="utf-8",
+    )
+    dumper.chmod(0o755)
+    env_file = root / "sec%nrets 'x'.env"
+    canonical = (
+        f"TVE_MONITORING_WEBHOOK_URL={_R4_URL_VALUE}\n"
+        f"TVE_MONITORING_WEBHOOK_TOKEN={_R4_TOKEN_VALUE}\n"
+    )
+    _write_private_env_file(env_file, canonical)
+
+    config = _production_config(
+        tmp_path,
+        delivery_enabled=True,
+        delivery_environment_file=str(env_file),
+        production_root=str(root),
+        working_directory=str(root),
+        python_executable=str(dumper),
+        unit_base_name=f"tve-r4-proof-{uuid.uuid4().hex[:10]}",
+    )
+    config_path = _write_config_file(tmp_path, config)
+    args = prodops._build_parser().parse_args(
+        ["--production-config", str(config_path), "render"]
+    )
+    assert prodops.cmd_render(args, runner=FakeRunner()) == EXIT_OK
+    unit_path = config.systemd_output_dir / config.service_unit_name
+    verify = prodops._systemd_analyze_verify((unit_path,), runner=prodops._default_runner)
+    assert verify.ok, verify.stderr
+
+    link = Path.home() / ".config" / "systemd" / "user" / config.service_unit_name
+    link.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        subprocess.run(
+            ["systemctl", "--user", "link", str(unit_path)],
+            capture_output=True, text=True, timeout=60, check=True,
+        )
+        started = subprocess.run(
+            ["systemctl", "--user", "start", config.service_unit_name],
+            capture_output=True, text=True, timeout=180,
+        )
+        assert started.returncode == 0, started.stdout + started.stderr
+        argv_path = dumper_dir / "main-argv.json"
+        assert argv_path.is_file(), "the dumper main command must have executed"
+        effective = json.loads(argv_path.read_text("utf-8"))
+        assert effective == list(
+            prodops.main_exec_argv(config, config.runner_config_path.resolve())
+        )
+        assert effective[4] == "unattended-notify"
+        argv_path.unlink()
+
+        # Credential drift (systemd-quoted, TVE-noncanonical) must stop the
+        # unit before the main command; the dumper output stays absent.
+        _write_private_env_file(
+            env_file,
+            f'TVE_MONITORING_WEBHOOK_URL="{_R4_URL_VALUE}"\n'
+            f"TVE_MONITORING_WEBHOOK_TOKEN={_R4_TOKEN_VALUE}\n",
+        )
+        drifted = subprocess.run(
+            ["systemctl", "--user", "start", config.service_unit_name],
+            capture_output=True, text=True, timeout=180,
+        )
+        assert drifted.returncode != 0
+        assert not argv_path.exists(), "unattended-notify must not execute after drift"
+        assert _R4_URL_VALUE not in drifted.stdout and _R4_URL_VALUE not in drifted.stderr
+    finally:
+        subprocess.run(
+            ["systemctl", "--user", "stop", config.service_unit_name],
+            capture_output=True, timeout=60,
+        )
+        link.unlink(missing_ok=True)
+        subprocess.run(
+            ["systemctl", "--user", "daemon-reload"], capture_output=True, timeout=60
+        )
