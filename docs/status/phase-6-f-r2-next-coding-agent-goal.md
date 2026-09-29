@@ -1,6 +1,15 @@
 # Phase 6-F-R2 coding-agent handoff — Canonical EnvironmentFile Semantics and Render Gating
 
-Status: **SELECTED / NOT IMPLEMENTED**
+Status: **COMPLETED 2026-09-29**
+
+Implementation:
+`c064cda68a0e31b0dc1b47ed451bd59977e7c931`
+
+Exact-head CI:
+GitHub Actions run `36533726274` (`success`).
+
+Closure:
+`docs/status/phase-6-f-r2-2026-09-29.md`
 
 Canonical goal:
 `docs/goals/phase-6-f-r2-environmentfile-semantic-hardening.md`

@@ -1,6 +1,9 @@
 # Phase 6-F-R2 — Canonical EnvironmentFile Semantics and Render Gating
 
-Status: **SELECTED / NOT IMPLEMENTED**  
+Status: **CLOSED** (2026-09-29; implementation
+`c064cda68a0e31b0dc1b47ed451bd59977e7c931`, exact-head Actions run
+`36533726274` `success`; closure record
+`docs/status/phase-6-f-r2-2026-09-29.md`)  
 Date: 2026-09-29  
 Selected after: Phase 6-F-R1 post-closure review
 

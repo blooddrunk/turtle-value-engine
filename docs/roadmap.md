@@ -5168,18 +5168,25 @@ environment, the typed private-file contract (in-root containment, symlink
 escape, owner-only permissions) is machine-enforced, and every manual
 boundary emits an exact parser-valid resume command; closure record
 `docs/status/phase-6-f-r1-2026-09-29.md`. A fresh post-R1 review identified a narrower dormant credential-parser/render-gating gap and selected
-[Phase 6-F-R2 — Canonical EnvironmentFile Semantics and Render Gating](goals/phase-6-f-r2-environmentfile-semantic-hardening.md).
-R2 must close before production delivery is enabled; the accepted monitoring-only Phase 6-F deployment remains unchanged.
+[Phase 6-F-R2 — Canonical EnvironmentFile Semantics and Render Gating](goals/phase-6-f-r2-environmentfile-semantic-hardening.md);
+R2 is now closed at implementation
+`c064cda68a0e31b0dc1b47ed451bd59977e7c931` (exact-head Actions run
+`36533726274`, success; closure record
+`docs/status/phase-6-f-r2-2026-09-29.md`) — the private credential file now
+has one machine-enforced canonical `NAME=VALUE` subset whose every accepted
+value is byte-identical under the harness and systemd, and render proves
+readability/completeness before writing any artifact. The accepted
+monitoring-only Phase 6-F deployment remains unchanged.
 
 ---
 
 ## Phase 6 — Watchlist and event-driven re-analysis
 
 Status: **Phase 6-A / 6-B / 6-C / 6-D1 / 6-D2A / 6-D2A-R1 / 6-D2B /
-6-D2B-R1 / 6-D2B-R2 / 6-D3 / 6-D3-R1 / 6-E / 6-F / 6-F-R1 are closed at
-their declared boundaries. Phase 6-F is `CLOSED / OWNER_ACCEPTED` with final
-implementation `065b53a17bcb4f009a57ef918ffa3d59de135107`, exact-head
-Actions run `36515225218` (`success`) and the production timer intentionally
+6-D2B-R1 / 6-D2B-R2 / 6-D3 / 6-D3-R1 / 6-E / 6-F / 6-F-R1 / 6-F-R2 are closed
+at their declared boundaries. Phase 6-F is `CLOSED / OWNER_ACCEPTED` with final
+implementation `065b53a17bcb4f009a57ef918ffa3d59de135107`, exact-head Actions
+run `36515225218` (`success`) and the production timer intentionally
 left enabled/active on the accepted WSL2 runtime. A post-closure review found
 no Phase 6-F closure reversal, but selected
 [Phase 6-F-R1 — Production Credential Boundary and Manual-Resume Hardening](goals/phase-6-f-r1-production-credential-boundary-hardening.md)
@@ -5191,7 +5198,10 @@ scan/redaction set, the machine-enforced private credential-file contract and
 exact parser-valid resume commands — see
 `docs/status/phase-6-f-r1-2026-09-29.md`. A fresh post-R1 review selected
 [Phase 6-F-R2 — Canonical EnvironmentFile Semantics and Render Gating](goals/phase-6-f-r2-environmentfile-semantic-hardening.md)
-to make every accepted credential-file value byte-identical between the harness and systemd and to make render prove readability/reference completeness. R2 is selected / not implemented; production delivery remains disabled until it closes.**
+to make every accepted credential-file value byte-identical between the harness and systemd and to make render prove readability/reference completeness. R2 is closed at implementation
+`c064cda68a0e31b0dc1b47ed451bd59977e7c931` (exact-head Actions run
+`36533726274`, `success`; closure record
+`docs/status/phase-6-f-r2-2026-09-29.md`).**
 The first package,
 [Phase 6-A — Watchlist State and Deterministic Event Planning Foundation](goals/phase-6-a-watchlist-event-foundation.md),
 is complete: typed `WatchlistSpecV1`/`MonitoringEventV1`/`WatchlistStateV1`/
