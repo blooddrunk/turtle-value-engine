@@ -1,7 +1,16 @@
 # Phase 6-F — Persistent Owner Operations Hardening
 
-Status: **SELECTED / NOT IMPLEMENTED**  
+Status: **CLOSED / OWNER_ACCEPTED**
+(final implementation `065b53a17bcb4f009a57ef918ffa3d59de135107`, exact-head
+Actions run `36515225218` `success`; the owner-authorized real production
+deployment on the accepted WSL2 host passed automated preflight, plan,
+render, apply/converge (idempotent), explicit activation, bounded firing,
+replay/no-duplicate, D3 read-only observation, restart/recovery and verify,
+with the production timer intentionally left enabled and the persistence
+claim narrowed to the running distro/user manager — see
+`docs/status/phase-6-f-2026-09-29.md`)
 Selected: 2026-09-28  
+Closed: 2026-09-29  
 Predecessor: Phase 6-E `CLOSED / OWNER_ACCEPTED`  
 Predecessor implementation: `8565621777762c601172aee562b2523a37ce02a6`  
 Predecessor CI: Actions run `36375649575` (`success`, exact `head_sha`)  
@@ -302,3 +311,35 @@ proof.
 Do not start Phase 7 controlled-evolution implementation, provider expansion,
 Bridge/FQGate integration, M4-D/M4-E/M2-D, new notification vendors,
 brokerage/trading behavior or investment-rule changes.
+
+## 13. Implementation and closure record
+
+Implemented as `scripts/monitoring_production_ops.py` (typed
+`ProductionConfigV1` with hard acceptance/production separation, modes
+`gate`/`preflight`/`plan`/`render`/`apply`(`converge`)/`activate`/`verify`/
+`live-proof`/`recover-proof`/`deactivate`/`report`), checked-in template
+`config/monitoring-production.example.json`, a `deploy/monitoring/README.md`
+lifecycle section and 39 deterministic tests in
+`tests/test_monitoring_production_ops.py`; the Phase 6-E harness helpers
+were generalized to structural Protocols and reused rather than duplicated.
+Superseded exact-head-green pushes `bb074de3`, `4e68090e` and `0ee74e21`
+each closed a defect the live deployment itself exposed (D3 path-type
+crash, frozen-PIT proof assumptions, activate-after-deactivate leaving the
+timer active-but-disabled).
+
+The real-host production deployment (user-scope units
+`tve-production-monitor.{service,timer}`, runner `production-owner`,
+watchlist `SH600519`+`SZ000858`, rolling 7-day window, daily cadence,
+monitoring-only with delivery disabled) closed at the final SHA with
+`phase_state: PRODUCTION_DEPLOYED` in the secret-free report
+`.tve-private/monitoring/production/production-report.json`: linger was
+enabled automatically (`Linger=yes`), apply converged idempotently without
+ever starting recurring work, the bounded firing and replay proved
+`CYCLE_TERMINAL`/`NO_CHANGE` with no duplicate D1 work, D3 stayed read-only
+and non-interfering, daemon-reload/reexec plus timer stop/start proved
+durable recovery with unchanged configuration identity, the acceptance tree
+stayed byte-unchanged, and the production timer is intentionally left
+enabled and active. The single recorded marker is the non-blocking
+`WINDOWS_HOST_BOOTSTRAP_UNPROVEN` capability boundary narrowing the
+persistence claim to the running WSL distro/user manager. Full evidence:
+`docs/status/phase-6-f-2026-09-29.md`.

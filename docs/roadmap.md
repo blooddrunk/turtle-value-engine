@@ -6387,3 +6387,40 @@ notification preset; actual delivery to an owner chat is not claimed until
 configured and observed. The acceptance timer was disabled after the proof.
 Canonical details: `docs/status/phase-6-e-2026-09-24.md` and
 `docs/operations/monitoring-notifications.md`.
+
+## Phase 6-F persistent owner operations closure — 2026-09-29
+
+Phase 6-F is `CLOSED / OWNER_ACCEPTED`. The proven Phase 6-E single-host
+chain is now an explicitly owner-authorized, restart-resilient long-lived
+production deployment through `scripts/monitoring_production_ops.py`
+(typed `monitoring_production_config_v1` with hard acceptance/production
+separation; modes gate/preflight/plan/render/apply(converge)/activate/
+verify/live-proof/recover-proof/deactivate/report; checked-in template
+`config/monitoring-production.example.json`; 39 deterministic tests).
+Superseded exact-head-green pushes `bb074de3`/`4e68090e`/`0ee74e21` each
+closed a defect the live deployment itself exposed; the final
+implementation `065b53a17bcb4f009a57ef918ffa3d59de135107` has exact-head
+Actions run `36515225218` `success` and a locally rerun GREEN gate bound to
+the same clean HEAD. On the real WSL2 host: linger was enabled
+automatically (`Linger=yes`, no marker), apply converged idempotently and
+never started recurring work, explicit activation converged enable+start,
+the bounded production firing and repeated wake proved a durable
+`CYCLE_TERMINAL` receipt with `d1_status: NO_CHANGE` and no duplicate D1
+work, D3 polling stayed read-only/non-interfering with the production
+lease, `daemon-reload`/`daemon-reexec` plus timer stop/start proved durable
+recovery with unchanged configuration identity, the Phase 6-E acceptance
+tree stayed byte-unchanged, a real-host deactivate/reactivate drill proved
+the safe idempotent rollback, and the production timer
+`tve-production-monitor.timer` is intentionally left enabled and active.
+Delivery is disabled (monitoring-only closure, explicitly permitted); the
+typed `EnvironmentFile` credential path exists with render-time and
+post-restart resolvability proofs should the owner enable notifications
+later. The single recorded marker is the non-blocking
+`WINDOWS_HOST_BOOTSTRAP_UNPROVEN` capability boundary: persistence is
+claimed only while the WSL distro/user manager runs, never Windows-reboot
+autostart. The next package selection is pending a post-closure review;
+the stop boundary (no Phase 7, provider expansion, Bridge/FQGate, more
+notification vendors, brokerage/trading or investment-rule changes) was
+respected. Canonical details:
+`docs/status/phase-6-f-2026-09-29.md` and
+`docs/goals/phase-6-f-persistent-owner-operations.md`.

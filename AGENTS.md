@@ -471,14 +471,43 @@ ID supplied outside Git/chat.
 
 The 2026-09-28 post-merge audit accepts the Phase 6-E closure and PR #3 at
 merge commit `b0eca4c2f518a7562b6209833f85bf3de553842f`; it found no
-merge-blocking ledger, compatibility or secret-boundary regression. The next
-selected package is **Phase 6-F — Persistent Owner Operations Hardening**
-(`docs/goals/phase-6-f-persistent-owner-operations.md`; selection record
-`docs/status/phase-6-f-selection-2026-09-28.md`; coding-agent handoff
-`docs/status/phase-6-f-next-coding-agent-goal.md`). It must reuse the closed
-Phase 6 semantics and automation-first acceptance discipline: production
-activation/persistence is the scope, not provider expansion, trading or
-investment-rule mutation.
+merge-blocking ledger, compatibility or secret-boundary regression. **Phase
+6-F — Persistent Owner Operations Hardening** was then selected
+(`docs/goals/phase-6-f-persistent-owner-operations.md`) and is now
+implemented and `CLOSED / OWNER_ACCEPTED` at final implementation
+`065b53a17bcb4f009a57ef918ffa3d59de135107` (exact-head Actions run
+`36515225218`, `success`; superseded exact-head-green pushes `bb074de3`,
+`4e68090e` and `0ee74e21` each closed a live-deployment-exposed defect).
+`scripts/monitoring_production_ops.py` provides the automation-first
+production lifecycle (non-mutating `preflight`/`plan`, deterministic
+`render`, idempotent `apply`/`converge` that never starts recurring work,
+explicit `activate` converging enable+start, effective-state `verify`,
+bounded `live-proof`, `recover-proof`, safe idempotent `deactivate`,
+secret-free `report`) behind the typed `monitoring_production_config_v1`
+with hard acceptance/production separation (phase6e roots, runner ids and
+unit namespaces are refused at parse time; the live-proof additionally
+proves the acceptance tree byte-unchanged). The real WSL2 host deployment
+(user units `tve-production-monitor.{service,timer}`, runner
+`production-owner`, watchlist `SH600519`+`SZ000858`, rolling 7-day window,
+daily cadence, delivery disabled — a monitoring-only closure is explicitly
+allowed) is intentionally left enabled and active with `Linger=yes`
+enabled automatically; bounded firing/replay proved `CYCLE_TERMINAL` +
+`d1_status: NO_CHANGE` with no duplicate D1 work, D3 polling stayed
+read-only/non-interfering, daemon-reload/reexec plus timer stop/start
+proved durable recovery with unchanged configuration identity, and a
+real-host deactivate/reactivate drill proved the rollback path. The single
+recorded marker is the non-blocking `WINDOWS_HOST_BOOTSTRAP_UNPROVEN`
+capability boundary: persistence is claimed only while the WSL
+distro/user manager runs, never Windows-reboot autostart. If the owner
+later enables Telegram/webhook notifications for production, the only
+typed credential source is the private systemd `EnvironmentFile` (path
+rendered in the unit, values never in Git/units/argv/ledgers/reports),
+refused at render time and proven resolvable under the service identity
+after manager refresh. Canonical closure evidence:
+`docs/status/phase-6-f-2026-09-29.md`. The next package selection is
+pending a post-closure review; no Phase 7, provider expansion,
+Bridge/FQGate integration, new notification vendors, brokerage/trading or
+investment-rule work was started.
 
 ## 5. Working with company data
 
