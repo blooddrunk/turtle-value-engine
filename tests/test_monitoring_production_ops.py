@@ -3176,15 +3176,19 @@ def test_r4_transient_manager_exact_argv_and_gate_blocking(tmp_path: Path) -> No
     # backslash class stays covered by the offline round-trip matrix.
     root = tmp_path / "pro duction $HOME%n 'q'\"x\""
     root.mkdir(parents=True)
+    if any(ch.isspace() for ch in sys.executable):
+        pytest.skip("the test interpreter path cannot be a shebang")
     # The interpreter path is the systemd Exec executable, which refuses
     # quotes/backslashes/dollars outright (proved by the R4 parse-time
     # rejection); a space-only directory still proves quoted-executable
     # support at runtime while every other path keeps the full matrix.
+    # The shebang pins the *test* interpreter so the delegated gate CLI sees
+    # the repository's installed dependencies under any host python layout.
     dumper_dir = tmp_path / "dum per"
     dumper_dir.mkdir()
     dumper = dumper_dir / "dumper.py"
     dumper.write_text(
-        "#!/usr/bin/env python3\n"
+        f"#!{sys.executable}\n"
         "import json, subprocess, sys\n"
         "from pathlib import Path\n"
         "# Executed as the ExecStartPre gate: delegate to the REAL gate CLI "
