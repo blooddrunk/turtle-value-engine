@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -137,9 +139,14 @@ class FakeRunner:
                 lines.append("ExecMainStatus=0")
             elif name == "ExecStart":
                 if self.config is not None:
+                    subcommand = (
+                        "unattended-notify"
+                        if self.config.delivery_enabled
+                        else "unattended-run"
+                    )
                     command = (
                         f"{self.config.python_executable} -m turtle_value_engine watch "
-                        f"unattended-run --runner-config {self.config.runner_config_path}"
+                        f"{subcommand} --runner-config {self.config.runner_config_path}"
                     )
                     lines.append(
                         f"ExecStart={{ path={self.config.python_executable}"
@@ -284,14 +291,18 @@ def test_render_with_delivery_uses_notify_and_environment_file(tmp_path: Path) -
     config = _production_config(
         tmp_path,
         delivery_enabled=True,
-        delivery_environment_file=str(tmp_path / "secrets.env"),
+        delivery_environment_file=str(tmp_path / "production" / "secrets.env"),
     )
     unit = render_service_unit(config, config.runner_config_path)
-    assert f"EnvironmentFile={tmp_path / 'secrets.env'}" in unit
+    assert f"EnvironmentFile={tmp_path / 'production' / 'secrets.env'}" in unit
     assert "unattended-notify" in unit
     assert "unattended-run" not in unit
     # Only the path appears; a value never does.
-    assert "=" not in unit.split(f"EnvironmentFile={tmp_path / 'secrets.env'}")[1].splitlines()[0]
+    assert (
+        "=" not in unit.split(f"EnvironmentFile={tmp_path / 'production' / 'secrets.env'}")
+        [1]
+        .splitlines()[0]
+    )
 
 
 def test_runner_config_uses_rolling_window_and_live_optin(tmp_path: Path) -> None:
@@ -310,7 +321,7 @@ def test_project_config_delivery_disabled_and_enabled(tmp_path: Path) -> None:
         _production_config(
             tmp_path,
             delivery_enabled=True,
-            delivery_environment_file=str(tmp_path / "secrets.env"),
+            delivery_environment_file=str(tmp_path / "production" / "secrets.env"),
         )
     )
     assert "enabled = true" in enabled
@@ -347,7 +358,7 @@ def test_cmd_render_with_delivery_but_missing_env_file_stops_at_marker(
     config = _production_config(
         tmp_path,
         delivery_enabled=True,
-        delivery_environment_file=str(tmp_path / "secrets.env"),
+        delivery_environment_file=str(tmp_path / "production" / "secrets.env"),
     )
     (tmp_path / "config.json").write_text(
         config.model_dump_json(indent=2, warnings=False), encoding="utf-8"
@@ -552,7 +563,12 @@ def test_ensure_linger_already_enabled_is_unchanged(tmp_path: Path) -> None:
     config = _production_config(tmp_path)
     runner = FakeRunner()
     runner.linger_enabled = True
-    result = ensure_linger(config, current_user="jelinenaro", runner=runner)
+    result = ensure_linger(
+        config,
+        current_user="jelinenaro",
+        runner=runner,
+        production_config_path=tmp_path / "config.json",
+    )
     assert result["action"] == "unchanged"
     assert result["state_before"] == "yes"
 
@@ -560,7 +576,12 @@ def test_ensure_linger_already_enabled_is_unchanged(tmp_path: Path) -> None:
 def test_ensure_linger_enables_automatically_and_verifies(tmp_path: Path) -> None:
     config = _production_config(tmp_path)
     runner = FakeRunner()  # starts at Linger=no; enable flips the state
-    result = ensure_linger(config, current_user="jelinenaro", runner=runner)
+    result = ensure_linger(
+        config,
+        current_user="jelinenaro",
+        runner=runner,
+        production_config_path=tmp_path / "config.json",
+    )
     assert result["action"] == "enabled"
     assert result["state_after"] == "yes"
     assert ("loginctl", "enable-linger", "jelinenaro") in runner.calls
@@ -577,7 +598,12 @@ def test_ensure_linger_failure_stops_at_named_boundary(tmp_path: Path) -> None:
         return subprocess.CompletedProcess(argv, 0, "", "")
 
     with pytest.raises(ManualBoundary) as excinfo:
-        ensure_linger(config, current_user="jelinenaro", runner=broken)
+        ensure_linger(
+            config,
+            current_user="jelinenaro",
+            runner=broken,
+            production_config_path=tmp_path / "config.json",
+        )
     payload = excinfo.value.payload
     assert payload["marker"] == MANUAL_ENABLE_LINGER_REQUIRED
     assert "loginctl enable-linger" in payload["human_action"]
@@ -619,7 +645,7 @@ def test_topology_native_linux_needs_no_windows_boundary() -> None:
 
 def test_windows_bootstrap_marker_carries_all_six_items(tmp_path: Path) -> None:
     config = _production_config(tmp_path)
-    payload = prodops.windows_bootstrap_marker_payload(config)
+    payload = prodops.windows_bootstrap_marker_payload(config, tmp_path / "config.json")
     assert payload["marker"] == WINDOWS_HOST_BOOTSTRAP_UNPROVEN
     for key in (
         "stopped_after",
@@ -754,7 +780,8 @@ def test_verify_fails_when_units_diverge(tmp_path: Path, destination: Path) -> N
 
 
 def test_environment_file_values_parses_without_leaking(tmp_path: Path) -> None:
-    env_file = tmp_path / "secrets.env"
+    env_file = tmp_path / "production" / "secrets.env"
+    env_file.parent.mkdir(parents=True, exist_ok=True)
     env_file.write_text(
         "# comment\nTVE_MONITORING_WEBHOOK_URL=https://example.invalid/hook\n"
         'TVE_MONITORING_WEBHOOK_TOKEN="tok-1"\n',
@@ -770,8 +797,10 @@ def test_environment_file_values_parses_without_leaking(tmp_path: Path) -> None:
 
 
 def test_delivery_section_missing_secret_records_precise_marker(tmp_path: Path) -> None:
-    env_file = tmp_path / "secrets.env"
+    env_file = tmp_path / "production" / "secrets.env"
+    env_file.parent.mkdir(parents=True, exist_ok=True)
     env_file.write_text("TVE_MONITORING_WEBHOOK_TOKEN=present\n", encoding="utf-8")
+    os.chmod(env_file, 0o600)
     config = _production_config(
         tmp_path, delivery_enabled=True, delivery_environment_file=str(env_file)
     )
@@ -892,9 +921,10 @@ def test_report_secret_scan_flags_resolved_values(
     config = _production_config(
         tmp_path,
         delivery_enabled=True,
-        delivery_environment_file=str(tmp_path / "secrets.env"),
+        delivery_environment_file=str(tmp_path / "production" / "secrets.env"),
     )
-    (tmp_path / "secrets.env").write_text(
+    (tmp_path / "production" / "secrets.env").parent.mkdir(parents=True, exist_ok=True)
+    (tmp_path / "production" / "secrets.env").write_text(
         "TVE_MONITORING_WEBHOOK_URL=https://secret.invalid/hook\n", encoding="utf-8"
     )
     config.runner_config_path.parent.mkdir(parents=True, exist_ok=True)
@@ -925,7 +955,7 @@ def test_main_maps_manual_boundary_to_marker_exit_code(
     config = _production_config(
         tmp_path,
         delivery_enabled=True,
-        delivery_environment_file=str(tmp_path / "missing.env"),
+        delivery_environment_file=str(tmp_path / "production" / "missing.env"),
     )
     (tmp_path / "config.json").write_text(
         config.model_dump_json(indent=2, warnings=False), encoding="utf-8"
@@ -1015,3 +1045,313 @@ def test_activate_after_deactivate_converges_enable_and_start(tmp_path: Path) ->
     assert record["started_by_activate"] is True
     assert ("systemctl", "--user", "enable", config.timer_unit_name) in runner.calls
     assert ("systemctl", "--user", "start", config.timer_unit_name) in runner.calls
+
+
+# ---------------------------------------------------------------------------
+# Phase 6-F-R1: effective secret sources and the private credential boundary
+# ---------------------------------------------------------------------------
+
+
+def _delivery_config(tmp_path: Path) -> tuple[ProductionConfigV1, Path]:
+    """A delivery-enabled config whose environment file lives in the root."""
+
+    env_file = tmp_path / "production" / "secrets.env"
+    config = _production_config(
+        tmp_path, delivery_enabled=True, delivery_environment_file=str(env_file)
+    )
+    return config, env_file
+
+
+def _write_private_env_file(env_file: Path, content: str) -> None:
+    env_file.parent.mkdir(parents=True, exist_ok=True)
+    env_file.write_text(content, encoding="utf-8")
+    os.chmod(env_file, 0o600)
+
+
+def _write_config_file(tmp_path: Path, config: ProductionConfigV1) -> Path:
+    config_path = tmp_path / "config.json"
+    config_path.write_text(config.model_dump_json(indent=2, warnings=False), encoding="utf-8")
+    return config_path
+
+
+def _assert_parser_round_trip(command: str, expected_mode: str, config_path: Path) -> None:
+    """An emitted resume command must be directly runnable for its mode."""
+
+    tokens = shlex.split(command)
+    assert len(tokens) == 5
+    assert tokens[0] == sys.executable
+    assert tokens[1].endswith("monitoring_production_ops.py")
+    args = prodops._build_parser().parse_args(tokens[2:])
+    assert args.mode == expected_mode
+    assert args.production_config == config_path.expanduser().resolve()
+    assert "<config>" not in command
+    assert str(config_path.expanduser().resolve()) in command
+
+
+def test_report_flags_environment_file_only_secret_leak(
+    tmp_path: Path, destination: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An EnvironmentFile-only value is scanned without any setenv (R1 F1)."""
+
+    config, env_file = _delivery_config(tmp_path)
+    _write_private_env_file(
+        env_file, "TVE_MONITORING_WEBHOOK_URL=https://envfile-only.invalid/hook\n"
+    )
+    # The reference is NOT exported into the harness process environment.
+    monkeypatch.delenv("TVE_MONITORING_WEBHOOK_URL", raising=False)
+    config.runner_config_path.parent.mkdir(parents=True, exist_ok=True)
+    config.runner_config_path.write_text(
+        "contains https://envfile-only.invalid/hook\n", encoding="utf-8"
+    )
+    config_path = _write_config_file(tmp_path, config)
+    args = prodops._build_parser().parse_args(
+        ["--production-config", str(config_path), "report"]
+    )
+    assert prodops.cmd_report(args, runner=FakeRunner()) == EXIT_FAIL_CLOSED
+    report_text = config.report_path.read_text(encoding="utf-8")
+    payload = json.loads(report_text)
+    assert "secret-scan" in payload["failures"]
+    assert payload["secret_scan"]["hits"]
+    assert payload["secret_scan"]["secret_references_checked"] == [
+        "TVE_MONITORING_WEBHOOK_URL"
+    ]
+    # The leak is reported by reference name only; the value stays absent.
+    assert "https://envfile-only.invalid/hook" not in report_text
+
+
+def test_verify_redacts_environment_file_only_secret_from_journal(
+    tmp_path: Path, destination: Path
+) -> None:
+    """A value living only in the EnvironmentFile is redacted from verify."""
+
+    config, env_file = _delivery_config(tmp_path)
+    _write_private_env_file(
+        env_file, "TVE_MONITORING_WEBHOOK_URL=https://envfile-journal.invalid/hook\n"
+    )
+    prodops._atomic_write(
+        destination / config.service_unit_name,
+        prodops.desired_unit_bytes(config)[config.service_unit_name],
+    )
+    prodops._atomic_write(
+        destination / config.timer_unit_name,
+        prodops.desired_unit_bytes(config)[config.timer_unit_name],
+    )
+    config_path = _write_config_file(tmp_path, config)
+    args = prodops._build_parser().parse_args(
+        ["--production-config", str(config_path), "verify"]
+    )
+    runner = FakeRunner(config=config)
+    runner.timer_enabled = True
+    runner.linger_enabled = True
+    runner.add(
+        (config.python_executable, "-m", "turtle_value_engine", "watch", "unattended-status"),
+        json.dumps(
+            {
+                "runners": [
+                    {
+                        "runner_id": config.runner_id,
+                        "latest": {"activation_id": "a" * 64},
+                    }
+                ]
+            }
+        ),
+    )
+    runner.add(
+        ("journalctl", "--user", "-u", config.service_unit_name),
+        "wake with endpoint https://envfile-journal.invalid/hook COMPLETED_NEW\n",
+    )
+    assert prodops.cmd_verify(args, runner=runner) == EXIT_OK
+    record_text = (config.systemd_output_dir / "verify-record.json").read_text(
+        encoding="utf-8"
+    )
+    assert "https://envfile-journal.invalid/hook" not in record_text
+    assert "[REDACTED]" in record_text
+
+
+def test_dual_source_secret_values_are_both_scanned_and_redacted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Process env and EnvironmentFile may differ; both values are covered."""
+
+    config, env_file = _delivery_config(tmp_path)
+    _write_private_env_file(
+        env_file, "TVE_MONITORING_WEBHOOK_URL=https://file-value.invalid/hook\n"
+    )
+    monkeypatch.setenv("TVE_MONITORING_WEBHOOK_URL", "https://process-value.invalid/hook")
+    effective = prodops.effective_secret_values(config)
+    assert effective == {
+        "TVE_MONITORING_WEBHOOK_URL": [
+            "https://process-value.invalid/hook",
+            "https://file-value.invalid/hook",
+        ]
+    }
+    scan_map = prodops._effective_secret_scan_map(effective)
+    assert scan_map["TVE_MONITORING_WEBHOOK_URL"] == "https://process-value.invalid/hook"
+    assert scan_map["TVE_MONITORING_WEBHOOK_URL~2"] == "https://file-value.invalid/hook"
+    assert prodops.scan_bytes_for_secrets(
+        b"leak https://process-value.invalid/hook", scan_map
+    ) == ["TVE_MONITORING_WEBHOOK_URL"]
+    assert prodops.scan_bytes_for_secrets(
+        b"leak https://file-value.invalid/hook", scan_map
+    ) == ["TVE_MONITORING_WEBHOOK_URL~2"]
+    redacted = prodops.redact_text(
+        "a https://file-value.invalid/hook b https://process-value.invalid/hook c",
+        scan_map,
+    )
+    assert "file-value" not in redacted
+    assert "process-value" not in redacted
+    assert redacted.count("[REDACTED]") == 2
+
+
+def test_config_rejects_environment_file_outside_private_root(tmp_path: Path) -> None:
+    with pytest.raises(Exception, match="production private root"):
+        _production_config(
+            tmp_path,
+            delivery_enabled=True,
+            delivery_environment_file=str(tmp_path / "outside" / "secrets.env"),
+        )
+    root = tmp_path / "production"
+    with pytest.raises(Exception, match="production private root"):
+        _production_config(
+            tmp_path,
+            delivery_enabled=True,
+            delivery_environment_file=str(root / ".." / "escape.env"),
+        )
+
+
+def test_environment_file_symlink_escape_is_rejected(
+    tmp_path: Path, destination: Path
+) -> None:
+    config, env_file = _delivery_config(tmp_path)
+    outside = tmp_path / "outside-secret.env"
+    outside.write_text(
+        "TVE_MONITORING_WEBHOOK_URL=https://symlink.invalid/hook\n", encoding="utf-8"
+    )
+    os.chmod(outside, 0o600)
+    env_file.parent.mkdir(parents=True, exist_ok=True)
+    env_file.symlink_to(outside)
+    metadata, error = prodops.validate_delivery_environment_file(config)
+    assert error is not None
+    assert "outside the production private root" in error
+    config_path = _write_config_file(tmp_path, config)
+    args = prodops._build_parser().parse_args(
+        ["--production-config", str(config_path), "render"]
+    )
+    with pytest.raises(ManualBoundary) as excinfo:
+        prodops.cmd_render(args, runner=FakeRunner())
+    payload = excinfo.value.payload
+    assert payload["marker"] == "MANUAL_SECRET_REFERENCE_REQUIRED"
+    assert "outside the production private root" in payload["stopped_after"]
+
+
+def test_environment_file_permissions_boundary(tmp_path: Path) -> None:
+    config, env_file = _delivery_config(tmp_path)
+    env_file.parent.mkdir(parents=True, exist_ok=True)
+    env_file.write_text(
+        "TVE_MONITORING_WEBHOOK_URL=https://perm.invalid/hook\n", encoding="utf-8"
+    )
+    os.chmod(env_file, 0o644)
+    metadata, error = prodops.validate_delivery_environment_file(config)
+    assert error is not None
+    assert "group/world-accessible" in error
+    assert metadata["mode"] == "0644"
+    os.chmod(env_file, 0o600)
+    metadata, error = prodops.validate_delivery_environment_file(config)
+    assert error is None
+    assert metadata["mode"] == "0600"
+
+
+def test_render_refuses_insecure_environment_file_permissions(
+    tmp_path: Path, destination: Path
+) -> None:
+    config, env_file = _delivery_config(tmp_path)
+    env_file.parent.mkdir(parents=True, exist_ok=True)
+    env_file.write_text(
+        "TVE_MONITORING_WEBHOOK_URL=https://perm.invalid/hook\n", encoding="utf-8"
+    )
+    os.chmod(env_file, 0o640)
+    config_path = _write_config_file(tmp_path, config)
+    args = prodops._build_parser().parse_args(
+        ["--production-config", str(config_path), "render"]
+    )
+    with pytest.raises(ManualBoundary) as excinfo:
+        prodops.cmd_render(args, runner=FakeRunner())
+    payload = excinfo.value.payload
+    assert payload["marker"] == "MANUAL_SECRET_REFERENCE_REQUIRED"
+    assert "group/world-accessible" in payload["stopped_after"]
+    assert "never chmods" in payload["human_action"]
+
+
+def test_render_proceeds_with_owner_private_environment_file(
+    tmp_path: Path, destination: Path
+) -> None:
+    config, env_file = _delivery_config(tmp_path)
+    _write_private_env_file(
+        env_file,
+        "TVE_MONITORING_WEBHOOK_URL=https://healthy.invalid/hook\n"
+        "TVE_MONITORING_WEBHOOK_TOKEN=tok-healthy\n",
+    )
+    config_path = _write_config_file(tmp_path, config)
+    args = prodops._build_parser().parse_args(
+        ["--production-config", str(config_path), "render"]
+    )
+    assert prodops.cmd_render(args, runner=FakeRunner()) == EXIT_OK
+    unit_text = (config.systemd_output_dir / config.service_unit_name).read_text(
+        encoding="utf-8"
+    )
+    assert f"EnvironmentFile={env_file}" in unit_text
+    assert "https://healthy.invalid/hook" not in unit_text
+    assert "tok-healthy" not in unit_text
+
+
+def test_windows_bootstrap_resume_command_is_exact_and_parseable(tmp_path: Path) -> None:
+    config = _production_config(tmp_path)
+    config_path = tmp_path / "config.json"
+    payload = prodops.windows_bootstrap_marker_payload(config, config_path)
+    _assert_parser_round_trip(payload["resume_command"], "verify", config_path)
+
+
+def test_linger_boundary_resume_command_is_exact_and_parseable(tmp_path: Path) -> None:
+    config = _production_config(tmp_path)
+    config_path = tmp_path / "config.json"
+
+    def broken(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess:
+        if argv[:2] == ["loginctl", "enable-linger"]:
+            return subprocess.CompletedProcess(argv, 1, "", "denied")
+        if argv[:3] == ["loginctl", "show-user"]:
+            return subprocess.CompletedProcess(argv, 0, "Linger=no\n", "")
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    with pytest.raises(ManualBoundary) as excinfo:
+        ensure_linger(
+            config,
+            current_user="jelinenaro",
+            runner=broken,
+            production_config_path=config_path,
+        )
+    _assert_parser_round_trip(excinfo.value.payload["resume_command"], "apply", config_path)
+
+
+def test_render_secret_boundary_resume_command_is_exact_and_parseable(
+    tmp_path: Path, destination: Path
+) -> None:
+    config, _env_file = _delivery_config(tmp_path)  # environment file missing
+    config_path = _write_config_file(tmp_path, config)
+    args = prodops._build_parser().parse_args(
+        ["--production-config", str(config_path), "render"]
+    )
+    with pytest.raises(ManualBoundary) as excinfo:
+        prodops.cmd_render(args, runner=FakeRunner())
+    _assert_parser_round_trip(excinfo.value.payload["resume_command"], "render", config_path)
+
+
+def test_delivery_disabled_effective_values_stay_empty(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Delivery-disabled behavior stays compatible: no ambient-env scanning."""
+
+    config = _production_config(tmp_path)
+    monkeypatch.setenv("TVE_MONITORING_WEBHOOK_URL", "https://ambient.invalid/hook")
+    assert prodops.effective_secret_values(config) == {}
+    assert prodops._effective_secret_scan_map({}) == {}
+    assert prodops.resolvable_secret_values(config) == {}

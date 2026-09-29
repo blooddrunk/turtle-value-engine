@@ -64,6 +64,7 @@ import os
 import platform
 import re
 import shlex
+import stat as stat_module
 import subprocess
 import sys
 import time
@@ -310,6 +311,15 @@ class ProductionConfigV1(BaseModel):
                 )
             if not Path(self.delivery_environment_file).is_absolute():
                 raise ValueError("delivery_environment_file must be an absolute path")
+            env_file = Path(os.path.normpath(self.delivery_environment_file))
+            private_root = Path(os.path.normpath(self.production_root))
+            if not env_file.is_relative_to(private_root):
+                raise ValueError(
+                    "delivery_environment_file must stay inside the production private "
+                    f"root {self.production_root} (got {self.delivery_environment_file}); "
+                    "the typed credential source cannot live outside the ignored "
+                    "private operations tree"
+                )
             if self.delivery_transport == "telegram-v1":
                 if self.delivery_telegram_chat_id is None or not re.fullmatch(
                     r"-?[0-9]+", self.delivery_telegram_chat_id
@@ -618,7 +628,9 @@ def classify_host_topology(runner: CommandRunner = _default_runner) -> dict[str,
     return facts
 
 
-def windows_bootstrap_marker_payload(config: ProductionConfigV1) -> dict[str, object]:
+def windows_bootstrap_marker_payload(
+    config: ProductionConfigV1, production_config_path: str | Path
+) -> dict[str, object]:
     """The precise WSL capability boundary (six disclosure items)."""
 
     marker = ManualBoundary(
@@ -635,15 +647,13 @@ def windows_bootstrap_marker_payload(config: ProductionConfigV1) -> dict[str, ob
             "wanted; this is a Windows-owner action, not a Linux-side edit"
         ),
         secret_boundary="no secret is involved in the bootstrap registration",
-        resume_command=(
-            _resume_command("<config>", "verify")
-            + " (after the Windows-side registration exists; the topology "
-            "classifier records the interop probe result in every report)"
-        ),
+        resume_command=_resume_command(production_config_path, "verify"),
         machine_verifiable_success=(
             "a future topology probe that can read a Windows-side autostart "
             "registration for this distro through interop flips "
-            "windows_host_bootstrap_proven to true"
+            "windows_host_bootstrap_proven to true; run the resume command after "
+            "the Windows-side registration exists (the topology classifier records "
+            "the interop probe result in every report)"
         ),
         remaining_unverified=(
             "Windows-reboot autostart of the WSL distro itself; everything on the "
@@ -679,6 +689,7 @@ def ensure_linger(
     *,
     current_user: str | None = None,
     runner: CommandRunner = _default_runner,
+    production_config_path: str | Path,
 ) -> dict[str, object]:
     """Verify linger for user scope, enabling it automatically when allowed."""
 
@@ -710,7 +721,7 @@ def ensure_linger(
             "so the user systemd manager keeps running after the last login session"
         ),
         secret_boundary="no secret is involved; this is a systemd user-manager property",
-        resume_command=_resume_command("<config>", "apply"),
+        resume_command=_resume_command(production_config_path, "apply"),
         machine_verifiable_success=(
             f"`loginctl show-user {user} -p Linger` reports Linger=yes and the "
             "resumed apply exits 0"
@@ -901,6 +912,57 @@ def resolvable_secret_values(
     return values
 
 
+def effective_secret_values(
+    config: ProductionConfigV1, environ: Mapping[str, str] | None = None
+) -> dict[str, list[str]]:
+    """Every value currently usable by the production service, by reference.
+
+    The production service resolves a referenced secret from its private
+    systemd ``EnvironmentFile``; an operator harness run may additionally
+    hold a value for the same reference in its own process environment.
+    Both sources are merged in memory: when they carry different values for
+    one reference, both are returned so leak scans and redaction cover
+    either value instead of silently dropping one.
+
+    Values stay in process memory and are used only inside absence
+    scans/redaction.  An unreadable environment file simply contributes no
+    values here; the precise missing/unreadable/insecure boundary is raised
+    by the gating paths (preflight/render/live-proof delivery), never by
+    fabricating a value.
+    """
+
+    names = _production_secret_reference_names(config)
+    environment_values = resolvable_secret_values(config, environ)
+    file_values: dict[str, str] = {}
+    if config.delivery_enabled and config.delivery_environment_file is not None:
+        file_values, _error = environment_file_values(config)
+    collected: dict[str, list[str]] = {}
+    for name in names:
+        candidates: list[str] = []
+        for source_value in (environment_values.get(name, ""), file_values.get(name, "")):
+            if source_value.strip() and source_value not in candidates:
+                candidates.append(source_value)
+        if candidates:
+            collected[name] = candidates
+    return collected
+
+
+def _effective_secret_scan_map(values: Mapping[str, list[str]]) -> dict[str, str]:
+    """Flatten effective values into one name/value scan/redaction map.
+
+    A second distinct value for the same reference gets a derived key
+    (``NAME~2``) so both values are scanned and redacted while hit reports
+    stay value-free; the derived key is scan bookkeeping, not a public
+    reference name.
+    """
+
+    flat: dict[str, str] = {}
+    for name in sorted(values):
+        for index, value in enumerate(values[name]):
+            flat[name if index == 0 else f"{name}~{index + 1}"] = value
+    return flat
+
+
 def environment_file_values(
     config: ProductionConfigV1
 ) -> tuple[dict[str, str], str | None]:
@@ -927,6 +989,54 @@ def environment_file_values(
         if key:
             values[key] = value
     return values, None
+
+
+def validate_delivery_environment_file(
+    config: ProductionConfigV1,
+) -> tuple[dict[str, object], str | None]:
+    """Machine-check the private ``EnvironmentFile`` contract (metadata only).
+
+    When delivery is enabled the configured credential file must be a
+    regular file whose resolved path stays inside the production private
+    root (no symlink/``..`` escape) and whose permissions are owner-only
+    (``0600`` is the documented normal form; any group/world bit is
+    rejected).  Returns ``(metadata, None)`` when the boundary holds and
+    ``(metadata, reason)`` when it is violated.  Only path/permission
+    metadata is reported; content is never read here and the owner's file
+    is never rewritten or chmod'ed by this harness.
+    """
+
+    assert config.delivery_environment_file is not None
+    configured = Path(config.delivery_environment_file)
+    private_root = Path(config.production_root)
+    metadata: dict[str, object] = {
+        "path": str(configured),
+        "private_root": str(private_root),
+    }
+    if not configured.exists() and not configured.is_symlink():
+        return metadata, f"{configured} does not exist"
+    try:
+        resolved = configured.resolve(strict=True)
+        resolved_stat = resolved.stat()
+    except OSError as exc:
+        return metadata, f"cannot resolve {configured}: {type(exc).__name__}"
+    metadata["resolved"] = str(resolved)
+    mode = stat_module.S_IMODE(resolved_stat.st_mode)
+    metadata["mode"] = format(mode, "04o")
+    if not resolved.is_relative_to(private_root.resolve()):
+        return metadata, (
+            f"{configured} resolves to {resolved}, outside the production "
+            f"private root {private_root}"
+        )
+    if not stat_module.S_ISREG(resolved_stat.st_mode):
+        return metadata, f"{resolved} is not a regular file"
+    if mode & 0o077:
+        return metadata, (
+            f"{resolved} is group/world-accessible (mode {format(mode, '04o')}); "
+            "owner-only access is required (chmod 0600 by the owner; this "
+            "harness never changes the file)"
+        )
+    return metadata, None
 
 
 def cmd_preflight(args: argparse.Namespace, runner: CommandRunner = _default_runner) -> int:
@@ -1061,16 +1171,34 @@ def cmd_preflight(args: argparse.Namespace, runner: CommandRunner = _default_run
     # Delivery: optional; references and the typed environment file only.
     if config.delivery_enabled:
         env_file = Path(config.delivery_environment_file or "")
-        log.add(
-            "delivery.environment-file",
-            env_file.is_file(),
-            f"path={env_file} (content never read into any artifact)",
-        )
+        metadata, boundary_error = validate_delivery_environment_file(config)
+        if boundary_error is not None:
+            log.add_marker(
+                "delivery.environment-file",
+                MANUAL_SECRET_REFERENCE_REQUIRED,
+                f"{boundary_error}; required: a regular owner-private (0600) "
+                f"file inside {config.production_root} defining "
+                f"{', '.join(_production_secret_reference_names(config))}",
+            )
+        else:
+            log.add(
+                "delivery.environment-file",
+                True,
+                json.dumps(metadata, ensure_ascii=False)
+                + " (content never read into any artifact)",
+            )
         values, error = environment_file_values(config)
         missing = [
             name for name in _production_secret_reference_names(config) if not values.get(name)
         ]
-        if error is not None:
+        if boundary_error is not None:
+            log.add_marker(
+                "delivery.secret-reference",
+                MANUAL_SECRET_REFERENCE_REQUIRED,
+                "credential source not accepted (see delivery.environment-file); "
+                "fix the private-file boundary first",
+            )
+        elif error is not None:
             log.add_marker(
                 "delivery.secret-reference",
                 MANUAL_SECRET_REFERENCE_REQUIRED,
@@ -1097,8 +1225,10 @@ def cmd_preflight(args: argparse.Namespace, runner: CommandRunner = _default_run
             "notification disabled (monitoring-only production deployment)",
         )
 
-    secrets = resolvable_secret_values(config)
-    tracked = _tracked_files_without_secrets(runner, secrets)
+    effective = effective_secret_values(config)
+    tracked = _tracked_files_without_secrets(
+        runner, _effective_secret_scan_map(effective)
+    )
     log.add(
         "secrets.tracked-files-clean",
         bool(tracked["clean"]),
@@ -1215,33 +1345,35 @@ def cmd_render(args: argparse.Namespace, runner: CommandRunner = _default_runner
     output_dir.mkdir(parents=True, exist_ok=True)
 
     if config.delivery_enabled:
-        env_file = Path(config.delivery_environment_file or "")
-        if not env_file.is_file():
+        metadata, boundary_error = validate_delivery_environment_file(config)
+        if boundary_error is not None:
             raise ManualBoundary(
                 MANUAL_SECRET_REFERENCE_REQUIRED,
                 stopped_after=(
                     "render: delivery is enabled but the typed local credential "
-                    f"source {env_file} does not exist; the rendered unit would "
-                    "reference a required EnvironmentFile that cannot load"
+                    f"source violates the private-file contract: {boundary_error}; "
+                    "the rendered unit would reference a required "
+                    "EnvironmentFile that cannot load securely"
                 ),
                 human_action=(
-                    f"create {env_file} (mode 0600, owner-only) containing the "
-                    f"referenced values: "
+                    f"fix {config.delivery_environment_file} by hand: a regular "
+                    "owner-private file (mode 0600) inside the production private "
+                    f"root {config.production_root} containing the referenced "
+                    "values: "
                     f"{', '.join(_production_secret_reference_names(config))}. "
-                    "Do not paste any value into chat, Git or documents"
+                    "This harness never chmods or rewrites the owner's credential "
+                    "file. Do not paste any value into chat, Git or documents"
                 ),
                 secret_boundary=(
                     "the environment file lives only in the ignored private root; "
                     "its values are never rendered, committed, logged or projected"
                 ),
-                resume_command=(
-                    f"{Path(sys.argv[0]).name} render --production-config "
-                    f"{args.production_config}"
-                ),
+                resume_command=_resume_command(args.production_config, "render"),
                 machine_verifiable_success=(
                     "render exits 0, the unit carries exactly the EnvironmentFile "
-                    "path, and the file defines every referenced name (checked "
-                    "without printing values)"
+                    "path, and the file is an in-root owner-private regular file "
+                    "defining every referenced name (checked without printing "
+                    "values)"
                 ),
                 remaining_unverified=(
                     "production notification delivery and post-restart credential "
@@ -1466,7 +1598,9 @@ def cmd_apply(args: argparse.Namespace, runner: CommandRunner = _default_runner)
     else:
         actions.append({"resource": "timer-enable", "action": "unchanged"})
 
-    linger = ensure_linger(config, runner=runner)
+    linger = ensure_linger(
+        config, runner=runner, production_config_path=args.production_config
+    )
     actions.append({"resource": "linger", "action": linger.get("action", "not-applicable")})
 
     effective = _effective_state(config, runner)
@@ -1651,7 +1785,8 @@ def cmd_verify(args: argparse.Namespace, runner: CommandRunner = _default_runner
     )
     journal = run_command(journal_argv, runner=runner)
     redacted_journal = redact_text(
-        _bounded(journal.stdout, 6000), resolvable_secret_values(config)
+        _bounded(journal.stdout, 6000),
+        _effective_secret_scan_map(effective_secret_values(config)),
     )
     checks.add("service.journal", journal.returncode in (0, 1), redacted_journal)
 
@@ -1952,7 +2087,7 @@ def _service_wake(
     )
     journal = redact_text(
         _bounded(run_command(journal_argv, runner=runner).stdout, 4000),
-        resolvable_secret_values(config),
+        _effective_secret_scan_map(effective_secret_values(config)),
     )
     return {
         "ok": bool(
@@ -2071,9 +2206,11 @@ def _d3_readonly_section(
             for method in ("POST", "PUT", "PATCH", "DELETE")
         }
         monitored_tree_after = content_tree_hash(_monitored_root(config))
-        secrets = resolvable_secret_values(config)
+        effective = effective_secret_values(config)
         payload_text = body.decode("utf-8", errors="replace")
-        secret_hits = scan_bytes_for_secrets(body, secrets)
+        secret_hits = scan_bytes_for_secrets(
+            body, _effective_secret_scan_map(effective)
+        )
         path_leaks = [
             item for item in _d3_forbidden_strings(config) if item and item in payload_text
         ]
@@ -2145,16 +2282,22 @@ def _delivery_section(
 ) -> dict[str, object]:
     """Optional production delivery proof (enabled configurations only)."""
 
+    _metadata, boundary_error = validate_delivery_environment_file(config)
     values, error = environment_file_values(config)
     needed = _production_secret_reference_names(config)
-    if error is not None or any(not values.get(name) for name in needed):
+    if (
+        boundary_error is not None
+        or error is not None
+        or any(not values.get(name) for name in needed)
+    ):
         missing = [name for name in needed if not values.get(name)]
         marker = ManualBoundary(
             MANUAL_SECRET_REFERENCE_REQUIRED,
             stopped_after=(
                 "live-proof delivery step: delivery is enabled but the typed "
-                "environment file does not resolve every referenced secret "
-                f"({'missing: ' + ', '.join(missing) if missing else error})"
+                "environment file does not satisfy the private credential "
+                "source contract "
+                f"({'missing: ' + ', '.join(missing) if missing else (boundary_error or error)})"
             ),
             human_action=(
                 f"fill {config.delivery_environment_file} with the referenced "
@@ -2351,7 +2494,8 @@ def cmd_live_proof(args: argparse.Namespace, runner: CommandRunner = _default_ru
     immutability = _acceptance_roots_immutability(acceptance_before)
     report["acceptance_roots_unchanged"] = immutability
 
-    secrets = resolvable_secret_values(config)
+    effective = effective_secret_values(config)
+    secrets = _effective_secret_scan_map(effective)
     scanned: list[str] = []
     hits: list[str] = []
     for path in sorted(Path(config.production_root).rglob("*")):
@@ -2361,7 +2505,7 @@ def cmd_live_proof(args: argparse.Namespace, runner: CommandRunner = _default_ru
             hits.extend(f"{path.name}:{name}" for name in found)
     report["secret_scan"] = {
         "scanned_files": scanned,
-        "secret_references_checked": sorted(secrets),
+        "secret_references_checked": sorted(effective),
         "hits": hits,
     }
 
@@ -2544,7 +2688,9 @@ def cmd_recover_proof(args: argparse.Namespace, runner: CommandRunner = _default
     report["failures"] = failures
     report["proved_at"] = datetime.now(UTC).isoformat()
     serialized = canonical_json_bytes(report)
-    if scan_bytes_for_secrets(serialized, resolvable_secret_values(config)):
+    if scan_bytes_for_secrets(
+        serialized, _effective_secret_scan_map(effective_secret_values(config))
+    ):
         raise AcceptanceError("recover-proof report would contain secret values; refusing")
     _atomic_write(config.systemd_output_dir / "recover-proof-record.json", serialized + b"\n")
     print(
@@ -2568,7 +2714,8 @@ def cmd_report(args: argparse.Namespace, runner: CommandRunner = _default_runner
     config = load_production_config(args.production_config)
     head_sha = acceptance._git_head(ROOT, runner)
     topology = classify_host_topology(runner)
-    secrets = resolvable_secret_values(config)
+    effective_secrets = effective_secret_values(config)
+    secrets = _effective_secret_scan_map(effective_secrets)
 
     def _load_record(name: str) -> dict[str, object] | None:
         path = config.systemd_output_dir / name
@@ -2593,7 +2740,9 @@ def cmd_report(args: argparse.Namespace, runner: CommandRunner = _default_runner
 
     markers: list[dict[str, object]] = []
     if topology["wsl2"] and not topology["windows_host_bootstrap_proven"]:
-        markers.append(windows_bootstrap_marker_payload(config))
+        markers.append(
+            windows_bootstrap_marker_payload(config, args.production_config)
+        )
 
     report = {
         "contract": REPORT_CONTRACT,
@@ -2669,7 +2818,7 @@ def cmd_report(args: argparse.Namespace, runner: CommandRunner = _default_runner
             hits.extend(f"{path.name}:{name}" for name in found)
     report["secret_scan"] = {
         "scanned_files": scanned,
-        "secret_references_checked": sorted(secrets),
+        "secret_references_checked": sorted(effective_secrets),
         "hits": hits,
     }
     if hits:
