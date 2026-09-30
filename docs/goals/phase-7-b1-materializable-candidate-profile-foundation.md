@@ -1,6 +1,9 @@
 # Phase 7-B1 — Materializable Candidate Profile Semantics and Offline Projection Foundation
 
-Status: **IMPLEMENTED — closure record: `docs/status/phase-7-b1-2026-09-30.md`**
+Status: **CLOSED / AUTOMATIC CI CLOSURE** — implementation
+`ad4f3580894d65e2c15b40723f9faf6583710d11`, Actions run `36685558492`
+(`success`, exact `head_sha`); closure record
+`docs/status/phase-7-b1-2026-09-30.md`
 Date: 2026-09-30
 Selected after: Phase 7-A-R2 post-closure review
 

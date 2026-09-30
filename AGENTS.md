@@ -616,9 +616,12 @@ chain, semantics-before-selection identity coverage, drift/substitution
 rejection, projection fail-closed boundaries, exact diff, byte-identical
 reruns, authority boundaries, replay determinism/isolation/blockers,
 CLI output guards, schema drift parity, socket-guarded execution and
-strict-v1 byte identity. The exact-head CI closure is recorded in
-`docs/status/phase-7-b1-2026-09-30.md`; Phase 7-B2 owns the later
-PR + human-approval + versioned-profile publication boundary.
+strict-v1 byte identity. **Phase 7-B1 is closed** at implementation
+`ad4f3580894d65e2c15b40723f9faf6583710d11` (Actions run `36685558492`,
+`success`, exact `head_sha` match; full suite 7006 passed / 2 skipped;
+Dashboard 55 passed; closure record `docs/status/phase-7-b1-2026-09-30.md`).
+Phase 7-B2 owns the later PR + human-approval + versioned-profile
+publication boundary.
 
 A 2026-09-30 post-R2 review (`docs/status/phase-7-a-r2-post-closure-review-2026-09-30.md`) preserves the R2 closure but finds the next materialization-readiness boundary: current calibration `parameter_overrides` are generic `min_`/`max_`/`equals_` feature filters with no frozen mapping to concrete `RuleProfile` leaves, and the default scorer explicitly does not interpret `strict-v1`. A persisted READY dossier is also audit evidence rather than independent authority; any materialization path must re-resolve the authoritative workspace and re-run/revalidate admission. **Phase 7-B1 — Materializable Candidate Profile Semantics and Offline Projection Foundation** (`docs/goals/phase-7-b1-materializable-candidate-profile-foundation.md`) is selected before any `strict-v2`, rule-profile PR or approval workflow. B1 must freeze parameter semantics before calibration selection, reject legacy unbound proposals as non-materializable, project candidate-only profile bytes deterministically from the exact base profile, and prove candidate semantics through frozen PIT canonical replay (or a narrowly registered adapter with automated equivalence). B2 remains the later PR/human-approval boundary.
 
