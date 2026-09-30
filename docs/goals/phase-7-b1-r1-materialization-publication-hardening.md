@@ -2,6 +2,7 @@
 
 Status: **CLOSED / AUTOMATIC CI CLOSURE**
 Date: 2026-09-30
+Post-closure review: `docs/status/phase-7-b1-r1-post-closure-review-2026-09-30.md` preserves this closure and selects Phase 7-B2-A before the later human/PR B2-B boundary.
 Selected after: Phase 7-B1 post-closure review
 
 Closure record: `docs/status/phase-7-b1-r1-2026-09-30.md`
