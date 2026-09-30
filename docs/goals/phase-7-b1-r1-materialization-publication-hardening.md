@@ -1,8 +1,10 @@
 # Phase 7-B1-R1 — Immutable Materialization Publication and Active-Rule Path Hardening
 
-Status: **SELECTED / NOT IMPLEMENTED**
+Status: **CLOSED / AUTOMATIC CI CLOSURE**
 Date: 2026-09-30
 Selected after: Phase 7-B1 post-closure review
+
+Closure record: `docs/status/phase-7-b1-r1-2026-09-30.md`
 
 Selection audit:
 `docs/status/phase-7-b1-post-closure-review-2026-09-30.md`
