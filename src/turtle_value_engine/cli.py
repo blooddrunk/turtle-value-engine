@@ -47,6 +47,8 @@ from turtle_value_engine.evolution import (
     materialize_candidate_profile,
     resolve_complete_materialization_pair,
 )
+from turtle_value_engine.evolution.profile_release import build_profile_release
+from turtle_value_engine.evolution.release_pair import resolve_complete_profile_release
 from turtle_value_engine.historical import (
     AcquisitionError,
     AcquisitionReadinessReportV1,
@@ -527,6 +529,17 @@ def _build_parser() -> argparse.ArgumentParser:
     evolution_materialize.add_argument("--base-profile", required=True, type=Path)
     evolution_materialize.add_argument("--candidate-output", required=True, type=Path)
     evolution_materialize.add_argument("--materialization-output", required=True, type=Path)
+    evolution_release = evolution_commands.add_parser(
+        "prepare-profile-release",
+        help="build an offline immutable PR-ready release bundle from an authoritative B1 pair",
+    )
+    for option in (
+        "candidate", "materialization", "calibration-workspace", "manifest",
+        "experiment", "holdout", "observations", "base-profile",
+        "release-output", "release-manifest-output",
+    ):
+        evolution_release.add_argument(f"--{option}", required=True, type=Path)
+    evolution_release.add_argument("--target-profile-id", required=True)
 
     watch_parser = subparsers.add_parser(
         "watch",
@@ -1265,6 +1278,8 @@ def _run_evolution_command(args: argparse.Namespace) -> object:
 
     if args.evolution_command == "materialize-candidate":
         return _run_evolution_materialize_command(args)
+    if args.evolution_command == "prepare-profile-release":
+        return _run_evolution_release_command(args)
 
     input_paths = {
         "manifest": args.manifest,
@@ -1629,6 +1644,86 @@ def _run_evolution_materialize_command(args: argparse.Namespace) -> object:
     )
     resolve_complete_materialization_pair(candidate_output, materialization_output)
     return outcome.record
+
+
+def _run_evolution_release_command(args: argparse.Namespace) -> object:
+    """Rebuild the B1 chain from authority before publishing review-only bytes."""
+
+    forbidden = {
+        "candidate": args.candidate,
+        "materialization": args.materialization,
+        **_materialization_output_forbidden_paths(args),
+    }
+    release_output = _guard_materialization_output_path(
+        args.release_output, label="--release-output", forbidden=forbidden
+    )
+    manifest_output = _guard_materialization_output_path(
+        args.release_manifest_output, label="--release-manifest-output", forbidden=forbidden
+    )
+    if release_output == manifest_output:
+        raise ValueError("release and manifest outputs must be distinct")
+    if release_output.name != f"{args.target_profile_id}.yaml":
+        raise ValueError("release output filename must match the target profile id")
+    active_target = Path(__file__).resolve().parents[2] / "rules" / release_output.name
+    if active_target.exists() or active_target.is_symlink():
+        raise ValueError("target profile already exists under active rules")
+
+    pair = resolve_complete_materialization_pair(args.candidate, args.materialization)
+    manifest = BacktestDatasetManifest.model_validate(_read_json(args.manifest))
+    experiment = CalibrationExperiment.model_validate(_read_json(args.experiment))
+    holdout = CalibrationHoldoutResult.model_validate(_read_json(args.holdout))
+    raw_observations = _read_json(args.observations)
+    if not isinstance(raw_observations, list):
+        raise ValueError("--observations must contain a JSON array")
+    observations = [CalibrationObservation.model_validate(item) for item in raw_observations]
+    base_profile_bytes = args.base_profile.read_bytes()
+    anchored = resolve_anchored_calibration_evidence(
+        BacktestWorkspace(args.calibration_workspace), experiment_id=experiment.experiment_id
+    )
+    evaluation = evaluate_controlled_evolution(
+        manifest=manifest,
+        experiment=experiment,
+        holdout=holdout,
+        observations=observations,
+        base_profile_bytes=base_profile_bytes,
+        evidence_binding=anchored.binding,
+        freeze_record=anchored.freeze_record,
+    )
+    outcome = materialize_candidate_profile(
+        manifest=manifest,
+        experiment=experiment,
+        holdout=holdout,
+        observations=observations,
+        base_profile_bytes=base_profile_bytes,
+        evaluation=evaluation,
+        freeze_record=anchored.freeze_record,
+        evidence_binding=anchored.binding,
+    )
+    if (
+        outcome.projected.candidate_bytes != pair.candidate_bytes
+        or outcome.projected.candidate_content_sha256 != pair.record.candidate_content_sha256
+        or outcome.record.materialization_id != pair.record.materialization_id
+        or outcome.record.content_sha256 != pair.record.content_sha256
+    ):
+        raise ValueError("supplied B1 pair differs from fresh authoritative materialization")
+    bundle = build_profile_release(
+        candidate_bytes=outcome.projected.candidate_bytes,
+        candidate=outcome.projected.profile,
+        materialization=outcome.record,
+        base_profile_bytes=base_profile_bytes,
+        target_profile_id=args.target_profile_id,
+    )
+    for path, label in (
+        (release_output, "--release-output"),
+        (manifest_output, "--release-manifest-output"),
+    ):
+        _guard_materialization_output_path(path, label=label, forbidden=forbidden)
+    _commit_materialization_outputs([
+        (release_output, bundle.profile_bytes, "--release-output"),
+        (manifest_output, _export_bytes(bundle.manifest), "--release-manifest-output"),
+    ])
+    resolve_complete_profile_release(release_output, manifest_output)
+    return bundle.manifest
 
 
 def _load_acquisition_plan(path: Path) -> HistoricalAcquisitionPlanV1:

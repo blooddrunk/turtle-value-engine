@@ -1,0 +1,301 @@
+{
+  "$defs": {
+    "CandidateMetadataChangeV1": {
+      "additionalProperties": false,
+      "description": "One candidate-only profile metadata field changed by materialization.",
+      "properties": {
+        "after": {
+          "title": "After",
+          "type": "string"
+        },
+        "before": {
+          "title": "Before",
+          "type": "string"
+        },
+        "contract": {
+          "const": "candidate_metadata_change_v1",
+          "default": "candidate_metadata_change_v1",
+          "title": "Contract",
+          "type": "string"
+        },
+        "field": {
+          "enum": [
+            "id",
+            "name",
+            "status",
+            "description"
+          ],
+          "title": "Field",
+          "type": "string"
+        }
+      },
+      "required": [
+        "field",
+        "before",
+        "after"
+      ],
+      "title": "CandidateMetadataChangeV1",
+      "type": "object"
+    },
+    "CandidateRuleLeafChangeV1": {
+      "additionalProperties": false,
+      "description": "One registered scalar rule leaf changed by materialization.",
+      "properties": {
+        "after": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "boolean"
+            }
+          ],
+          "title": "After"
+        },
+        "before": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "boolean"
+            }
+          ],
+          "title": "Before"
+        },
+        "contract": {
+          "const": "candidate_rule_leaf_change_v1",
+          "default": "candidate_rule_leaf_change_v1",
+          "title": "Contract",
+          "type": "string"
+        },
+        "profile_path": {
+          "minLength": 1,
+          "title": "Profile Path",
+          "type": "string"
+        },
+        "target_key": {
+          "minLength": 1,
+          "title": "Target Key",
+          "type": "string"
+        }
+      },
+      "required": [
+        "target_key",
+        "profile_path",
+        "before",
+        "after"
+      ],
+      "title": "CandidateRuleLeafChangeV1",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Immutable provenance and review state for exact PR-ready profile bytes.",
+  "properties": {
+    "automatic_application_allowed": {
+      "const": false,
+      "default": false,
+      "title": "Automatic Application Allowed",
+      "type": "boolean"
+    },
+    "automatic_merge_allowed": {
+      "const": false,
+      "default": false,
+      "title": "Automatic Merge Allowed",
+      "type": "boolean"
+    },
+    "base_profile_id": {
+      "minLength": 1,
+      "title": "Base Profile Id",
+      "type": "string"
+    },
+    "base_profile_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Base Profile Sha256",
+      "type": "string"
+    },
+    "candidate_content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Candidate Content Sha256",
+      "type": "string"
+    },
+    "candidate_profile_id": {
+      "minLength": 1,
+      "title": "Candidate Profile Id",
+      "type": "string"
+    },
+    "candidate_rule_payload_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Candidate Rule Payload Sha256",
+      "type": "string"
+    },
+    "content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Content Sha256",
+      "type": "string"
+    },
+    "contract": {
+      "const": "versioned_profile_release_candidate_v1",
+      "default": "versioned_profile_release_candidate_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "evaluation_content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Evaluation Content Sha256",
+      "type": "string"
+    },
+    "evaluation_id": {
+      "minLength": 1,
+      "title": "Evaluation Id",
+      "type": "string"
+    },
+    "evidence_binding_id": {
+      "minLength": 1,
+      "title": "Evidence Binding Id",
+      "type": "string"
+    },
+    "evidence_binding_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Evidence Binding Sha256",
+      "type": "string"
+    },
+    "experiment_content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Experiment Content Sha256",
+      "type": "string"
+    },
+    "experiment_id": {
+      "minLength": 1,
+      "title": "Experiment Id",
+      "type": "string"
+    },
+    "freeze_anchor_id": {
+      "minLength": 1,
+      "title": "Freeze Anchor Id",
+      "type": "string"
+    },
+    "freeze_anchor_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Freeze Anchor Sha256",
+      "type": "string"
+    },
+    "intended_target_path": {
+      "minLength": 1,
+      "title": "Intended Target Path",
+      "type": "string"
+    },
+    "metadata_changes": {
+      "items": {
+        "$ref": "#/$defs/CandidateMetadataChangeV1"
+      },
+      "maxItems": 4,
+      "minItems": 1,
+      "title": "Metadata Changes",
+      "type": "array"
+    },
+    "proposal_id": {
+      "minLength": 1,
+      "title": "Proposal Id",
+      "type": "string"
+    },
+    "proposal_payload_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Proposal Payload Sha256",
+      "type": "string"
+    },
+    "release_candidate_id": {
+      "minLength": 1,
+      "title": "Release Candidate Id",
+      "type": "string"
+    },
+    "release_profile_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Release Profile Sha256",
+      "type": "string"
+    },
+    "release_rule_payload_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Release Rule Payload Sha256",
+      "type": "string"
+    },
+    "requires_human_approval": {
+      "const": true,
+      "default": true,
+      "title": "Requires Human Approval",
+      "type": "boolean"
+    },
+    "review_state": {
+      "const": "READY_FOR_HUMAN_PR_REVIEW",
+      "default": "READY_FOR_HUMAN_PR_REVIEW",
+      "title": "Review State",
+      "type": "string"
+    },
+    "rule_changes": {
+      "items": {
+        "$ref": "#/$defs/CandidateRuleLeafChangeV1"
+      },
+      "maxItems": 64,
+      "minItems": 1,
+      "title": "Rule Changes",
+      "type": "array"
+    },
+    "source_materialization_content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Source Materialization Content Sha256",
+      "type": "string"
+    },
+    "source_materialization_id": {
+      "minLength": 1,
+      "title": "Source Materialization Id",
+      "type": "string"
+    },
+    "target_profile_id": {
+      "minLength": 1,
+      "title": "Target Profile Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "release_candidate_id",
+    "source_materialization_id",
+    "source_materialization_content_sha256",
+    "evaluation_id",
+    "evaluation_content_sha256",
+    "freeze_anchor_id",
+    "freeze_anchor_sha256",
+    "evidence_binding_id",
+    "evidence_binding_sha256",
+    "experiment_id",
+    "experiment_content_sha256",
+    "proposal_id",
+    "proposal_payload_sha256",
+    "base_profile_id",
+    "base_profile_sha256",
+    "candidate_profile_id",
+    "candidate_content_sha256",
+    "target_profile_id",
+    "intended_target_path",
+    "release_profile_sha256",
+    "candidate_rule_payload_sha256",
+    "release_rule_payload_sha256",
+    "metadata_changes",
+    "rule_changes",
+    "content_sha256"
+  ],
+  "title": "VersionedProfileReleaseCandidateV1",
+  "type": "object"
+}

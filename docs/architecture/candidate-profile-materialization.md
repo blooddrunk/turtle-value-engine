@@ -185,3 +185,32 @@ non-symlink files, validates the materialization contract and candidate
 `RuleProfile` identity, and compares the hash of the **exact candidate bytes**
 with `candidate_content_sha256`. The two files are not a cross-filesystem
 atomic transaction; a deterministic rerun can safely reuse identical bytes.
+# Phase 7-B2-A release projection
+
+`tve evolution prepare-profile-release` accepts a complete B1 candidate and
+materialization pair as review evidence. It resolves the authoritative R2
+calibration freeze and binding from the supplied workspace, reruns admission,
+and reruns B1 materialization in memory. Candidate bytes, candidate hash,
+materialization ID and materialization content hash must all equal the supplied
+pair before release projection begins. A persisted pair therefore cannot grant
+release authority by itself.
+
+The release projection accepts only the next `strict-vN` lineage. It copies
+every typed rule-bearing field from the reproduced candidate and replaces only
+top-level `profile` metadata: the next ID and deterministic name, with status
+and description restored from the exact base profile. The typed profile must
+round-trip through canonical YAML. Its rule-payload hash must equal the
+candidate's; the complete base-to-release scalar diff must equal the B1
+materialization's registered rule changes.
+
+The `VersionedProfileReleaseCandidateV1` manifest binds the source chain,
+exact release byte hash, rule-payload identities, metadata and rule diffs,
+and the intended `rules/strict-v2.yaml` target. It is review evidence with
+human approval required, and never an approval or application. The CLI uses
+the same B1-R1 two-stage immutable publisher: release bytes first, manifest
+last. Identical writers converge; different bytes never overwrite. Normal
+second-stage failure removes only a release inode proved to belong to that
+invocation and only when no authority manifest exists. Process death may
+leave an orphan release profile; the read-only resolver rejects it until a
+matching final manifest exists. No output is permitted under active `rules/`,
+the calibration workspace or a supplied input path.

@@ -21,6 +21,7 @@ import json
 import os
 import socket
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, date, datetime
 from pathlib import Path
 
@@ -412,9 +413,7 @@ def test_legacy_min_quality_proposal_is_non_materializable(legacy_chain):
     assert raised.value.reason_code == REASON_NO_FROZEN_MATERIALIZATION_SEMANTICS
 
 
-def test_legacy_chain_still_evaluates_ready_but_materializes_nothing(
-    legacy_chain, tmp_path
-):
+def test_legacy_chain_still_evaluates_ready_but_materializes_nothing(legacy_chain, tmp_path):
     # Legacy R2 history remains evaluable: the honest chain is READY.
     assert legacy_chain["evaluation"].admission_state == "READY_FOR_HUMAN_REVIEW"
     with pytest.raises(CandidateMaterializationError):
@@ -555,9 +554,7 @@ def test_semantics_reference_is_part_of_the_experiment_identity():
         split=_split(),
     )
     for space in (with_ref, without_ref):
-        experiment = CalibrationRunner(search_space=space, **runner_inputs).run(
-            _observations()
-        )
+        experiment = CalibrationRunner(search_space=space, **runner_inputs).run(_observations())
         experiment_ids.append(experiment.experiment_id)
     assert experiment_ids[0] != experiment_ids[1]
 
@@ -943,8 +940,11 @@ def test_materialize_cli_requires_authoritative_workspace_argument(tmp_path, cha
 def test_corrupt_workspace_fails_closed_before_candidate_output(tmp_path, chain):
     root = tmp_path / "ws"
     root.mkdir()
-    record_path = chain.root / "workspace" / "calibration-freeze-records" / (
-        chain.experiment.experiment_id + ".json"
+    record_path = (
+        chain.root
+        / "workspace"
+        / "calibration-freeze-records"
+        / (chain.experiment.experiment_id + ".json")
     )
     (root / "calibration-freeze-records").mkdir(parents=True)
     (root / "calibration-freeze-records" / record_path.name).write_text("{corrupt")
@@ -1059,9 +1059,7 @@ def test_replay_rejects_future_and_provenance_mismatched_inputs(tmp_path):
     outcome = chain.materialize()
     # cal-0 (2026-09-08, train scope) references a later-frozen artifact.
     future = [
-        item.model_copy(update={"source_observation_id": "art-8"})
-        if index == 0
-        else item
+        item.model_copy(update={"source_observation_id": "art-8"}) if index == 0 else item
         for index, item in enumerate(chain.observations)
     ]
     with pytest.raises(CandidateReplayError, match="FUTURE_FROZEN_INPUT"):
@@ -1145,9 +1143,7 @@ def test_cli_output_collision_paths_fail_closed(tmp_path, chain):
     inputs_dir = tmp_path / "inputs"
     inputs = chain.dump_inputs(inputs_dir)
     same = tmp_path / "same.yaml"
-    code, _payload, text = _run_cli(
-        _cli_argv(chain, tmp_path, same, same)
-    )
+    code, _payload, text = _run_cli(_cli_argv(chain, tmp_path, same, same))
     assert code == 2 and "distinct paths" in text
     code, _payload, text = _run_cli(
         _cli_argv(chain, tmp_path, inputs["manifest"], tmp_path / "m.json")
@@ -1193,6 +1189,7 @@ def test_publish_race_never_overwrites_foreign_winner(tmp_path, monkeypatch):
         return real_replace(source, destination)
 
     monkeypatch.setattr(cli.os, "replace", competing_replace)
+
     def competing_link(source, destination, **kwargs):
         if Path(destination).name == candidate.name:
             candidate.write_bytes(b"foreign winner\n")
@@ -1221,6 +1218,7 @@ def test_second_publish_failure_rolls_back_owned_candidate(tmp_path, monkeypatch
         return real_replace(source, destination)
 
     monkeypatch.setattr(cli.os, "replace", failing_replace)
+
     def failing_link(source, destination, **kwargs):
         if Path(destination).name == record.name:
             raise OSError("injected materialization publish failure")
@@ -1399,6 +1397,247 @@ def test_parent_redirection_after_guard_fails_before_publication(tmp_path, chain
     assert code == 2 and "redirected" in text
     assert not (BASE_PROFILE_PATH.parent / "candidate.yaml").exists()
     assert not record.exists()
+
+
+def _release_argv(chain, root: Path, candidate: Path, record: Path) -> list[str]:
+    inputs = chain.dump_inputs(root / "inputs")
+    return [
+        "evolution",
+        "prepare-profile-release",
+        "--candidate",
+        str(candidate),
+        "--materialization",
+        str(record),
+        "--calibration-workspace",
+        str(chain.root / "workspace"),
+        "--manifest",
+        str(inputs["manifest"]),
+        "--experiment",
+        str(inputs["experiment"]),
+        "--holdout",
+        str(inputs["holdout"]),
+        "--observations",
+        str(inputs["observations"]),
+        "--base-profile",
+        str(BASE_PROFILE_PATH),
+        "--target-profile-id",
+        "strict-v2",
+        "--release-output",
+        str(root / "release" / "strict-v2.yaml"),
+        "--release-manifest-output",
+        str(root / "release" / "release.json"),
+    ]
+
+
+def test_b2_release_authoritative_replay_and_idempotence(tmp_path, chain):
+    from turtle_value_engine.evolution.profile_release import VersionedProfileReleaseCandidateV1
+    from turtle_value_engine.evolution.release_pair import resolve_complete_profile_release
+
+    candidate = tmp_path / "review" / "candidate.yaml"
+    record = tmp_path / "review" / "materialization.json"
+    assert _run_cli(_cli_argv(chain, tmp_path, candidate, record))[0] == 0
+    argv = _release_argv(chain, tmp_path, candidate, record)
+    assert _run_cli(argv)[0] == 0
+    release = tmp_path / "release" / "strict-v2.yaml"
+    release_manifest = tmp_path / "release" / "release.json"
+    bundle = resolve_complete_profile_release(release, release_manifest)
+    assert bundle.profile.profile.id == "strict-v2"
+    candidate_payload = yaml.safe_load(candidate.read_bytes())
+    release_payload = yaml.safe_load(release.read_bytes())
+    assert {key: value for key, value in candidate_payload.items() if key != "profile"} == {
+        key: value for key, value in release_payload.items() if key != "profile"
+    }
+    base_payload = yaml.safe_load(chain.base_bytes)
+    assert release_payload["profile"]["status"] == base_payload["profile"]["status"]
+    assert release_payload["profile"]["description"] == base_payload["profile"]["description"]
+    assert (
+        bundle.manifest.candidate_rule_payload_sha256 == bundle.manifest.release_rule_payload_sha256
+    )
+    assert bundle.manifest.rule_changes == chain.materialize().record.rule_changes
+    first = (release.read_bytes(), release_manifest.read_bytes())
+    assert _run_cli(argv)[0] == 0
+    assert first == (release.read_bytes(), release_manifest.read_bytes())
+    schema = json.loads(
+        (ROOT / "schemas" / "versioned-profile-release-candidate.schema.json").read_text()
+    )
+    assert schema == VersionedProfileReleaseCandidateV1.model_json_schema()
+    Draft202012Validator(schema).validate(bundle.manifest.model_dump(mode="json"))
+    assert BASE_PROFILE_PATH.read_bytes() == chain.base_bytes
+    assert not (ROOT / "rules" / "strict-v2.yaml").exists()
+
+
+@pytest.mark.parametrize("target", ["strict-v1", "strict-v3", "strict-v0", "other", "../strict-v2"])
+def test_b2_release_refuses_wrong_lineage(tmp_path, chain, target):
+    candidate = tmp_path / "review" / "candidate.yaml"
+    record = tmp_path / "review" / "materialization.json"
+    assert _run_cli(_cli_argv(chain, tmp_path, candidate, record))[0] == 0
+    argv = _release_argv(chain, tmp_path, candidate, record)
+    argv[argv.index("--target-profile-id") + 1] = target
+    assert _run_cli(argv)[0] != 0
+    assert not (tmp_path / "release" / "strict-v2.yaml").exists()
+
+
+def test_b2_release_refuses_foreign_pair_and_orphan(tmp_path, chain):
+    from turtle_value_engine.evolution.profile_release import ProfileReleaseError
+    from turtle_value_engine.evolution.release_pair import resolve_complete_profile_release
+
+    candidate = tmp_path / "review" / "candidate.yaml"
+    record = tmp_path / "review" / "materialization.json"
+    assert _run_cli(_cli_argv(chain, tmp_path, candidate, record))[0] == 0
+    argv = _release_argv(chain, tmp_path, candidate, record)
+    release = tmp_path / "release" / "strict-v2.yaml"
+    release_manifest = tmp_path / "release" / "release.json"
+    assert _run_cli(argv)[0] == 0
+    release_manifest.unlink()
+    with pytest.raises(ProfileReleaseError):
+        resolve_complete_profile_release(release, release_manifest)
+    release_manifest.symlink_to(record)
+    with pytest.raises(ProfileReleaseError):
+        resolve_complete_profile_release(release, release_manifest)
+
+
+def test_b2_release_rejects_self_consistent_foreign_materialization(tmp_path, chain):
+    foreign = _Chain(tmp_path / "foreign", values=[0.02, 0.13])
+    candidate = tmp_path / "foreign-review" / "candidate.yaml"
+    record = tmp_path / "foreign-review" / "materialization.json"
+    assert _run_cli(_cli_argv(foreign, tmp_path / "foreign-input", candidate, record))[0] == 0
+    argv = _release_argv(chain, tmp_path / "attempt", candidate, record)
+    code, _, message = _run_cli(argv)
+    assert code != 0
+    assert "differs from fresh authoritative materialization" in message
+    assert not (tmp_path / "attempt" / "release" / "strict-v2.yaml").exists()
+
+
+@pytest.mark.parametrize(
+    "flag",
+    [
+        "--calibration-workspace",
+        "--manifest",
+        "--experiment",
+        "--holdout",
+        "--observations",
+        "--base-profile",
+    ],
+)
+def test_b2_release_rejects_wrong_authoritative_input(tmp_path, chain, flag):
+    candidate = tmp_path / "review" / "candidate.yaml"
+    record = tmp_path / "review" / "materialization.json"
+    assert _run_cli(_cli_argv(chain, tmp_path, candidate, record))[0] == 0
+    argv = _release_argv(chain, tmp_path, candidate, record)
+    wrong = tmp_path / "wrong.json"
+    wrong.write_text("{}")
+    argv[argv.index(flag) + 1] = str(wrong)
+    assert _run_cli(argv)[0] != 0
+    assert not (tmp_path / "release" / "strict-v2.yaml").exists()
+
+
+def test_b2_release_second_stage_failure_rolls_back_owned_profile(tmp_path, chain, monkeypatch):
+    from turtle_value_engine import cli
+
+    candidate = tmp_path / "review" / "candidate.yaml"
+    record = tmp_path / "review" / "materialization.json"
+    assert _run_cli(_cli_argv(chain, tmp_path, candidate, record))[0] == 0
+    argv = _release_argv(chain, tmp_path, candidate, record)
+    original_link = cli.os.link
+
+    def fail_final_link(source, destination, **kwargs):
+        if destination == "release.json":
+            raise OSError("injected final publication failure")
+        return original_link(source, destination, **kwargs)
+
+    monkeypatch.setattr(cli.os, "link", fail_final_link)
+    assert _run_cli(argv)[0] != 0
+    assert not (tmp_path / "release" / "strict-v2.yaml").exists()
+    assert not (tmp_path / "release" / "release.json").exists()
+
+
+def test_b2_release_no_socket_and_output_collision(tmp_path, chain, monkeypatch):
+    candidate = tmp_path / "review" / "candidate.yaml"
+    record = tmp_path / "review" / "materialization.json"
+    assert _run_cli(_cli_argv(chain, tmp_path, candidate, record))[0] == 0
+    argv = _release_argv(chain, tmp_path, candidate, record)
+
+    def forbidden_socket(*_args, **_kwargs):
+        raise AssertionError("offline B2-A constructed a socket")
+
+    monkeypatch.setattr(socket, "socket", forbidden_socket)
+    assert _run_cli(argv)[0] == 0
+    release = tmp_path / "release" / "strict-v2.yaml"
+    release_manifest = tmp_path / "release" / "release.json"
+    existing = (release.read_bytes(), release_manifest.read_bytes())
+    argv[argv.index("--release-output") + 1] = str(candidate)
+    assert _run_cli(argv)[0] != 0
+    assert existing == (release.read_bytes(), release_manifest.read_bytes())
+
+
+def test_b2_release_refuses_active_rules_and_workspace_outputs(tmp_path, chain):
+    candidate = tmp_path / "review" / "candidate.yaml"
+    record = tmp_path / "review" / "materialization.json"
+    assert _run_cli(_cli_argv(chain, tmp_path, candidate, record))[0] == 0
+    argv = _release_argv(chain, tmp_path, candidate, record)
+    for forbidden in (
+        ROOT / "rules" / "strict-v2.yaml",
+        chain.root / "workspace" / "strict-v2.yaml",
+    ):
+        argv[argv.index("--release-output") + 1] = str(forbidden)
+        assert _run_cli(argv)[0] != 0
+        assert not forbidden.exists()
+
+
+def test_b2_release_concurrent_immutable_publication(tmp_path, chain):
+    from turtle_value_engine import cli
+
+    outcome = chain.materialize()
+    from turtle_value_engine.evolution.profile_release import build_profile_release
+
+    bundle = build_profile_release(
+        candidate_bytes=outcome.projected.candidate_bytes,
+        candidate=outcome.projected.profile,
+        materialization=outcome.record,
+        base_profile_bytes=chain.base_bytes,
+        target_profile_id="strict-v2",
+    )
+    release = tmp_path / "release" / "strict-v2.yaml"
+    record = tmp_path / "release" / "release.json"
+    outputs = [
+        (release, bundle.profile_bytes, "release"),
+        (record, cli._export_bytes(bundle.manifest), "manifest"),
+    ]
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        futures = [pool.submit(cli._commit_materialization_outputs, outputs) for _ in range(2)]
+        for future in futures:
+            future.result()
+    original = (release.read_bytes(), record.read_bytes())
+    with pytest.raises(ValueError, match="different content"):
+        cli._commit_materialization_outputs(
+            [
+                (release, b"foreign profile", "release"),
+                (record, b"foreign manifest", "manifest"),
+            ]
+        )
+    assert original == (release.read_bytes(), record.read_bytes())
+
+
+def test_b2_release_resolver_rejects_tampering(tmp_path, chain):
+    from turtle_value_engine.evolution.profile_release import ProfileReleaseError
+    from turtle_value_engine.evolution.release_pair import resolve_complete_profile_release
+
+    candidate = tmp_path / "review" / "candidate.yaml"
+    record = tmp_path / "review" / "materialization.json"
+    assert _run_cli(_cli_argv(chain, tmp_path, candidate, record))[0] == 0
+    assert _run_cli(_release_argv(chain, tmp_path, candidate, record))[0] == 0
+    release = tmp_path / "release" / "strict-v2.yaml"
+    manifest = tmp_path / "release" / "release.json"
+    original = release.read_bytes()
+    release.write_bytes(original + b"\n")
+    with pytest.raises(ProfileReleaseError):
+        resolve_complete_profile_release(release, manifest)
+    release.write_bytes(original)
+    payload = json.loads(manifest.read_text())
+    payload["candidate_profile_id"] = "foreign"
+    manifest.write_text(json.dumps(payload))
+    with pytest.raises(ProfileReleaseError):
+        resolve_complete_profile_release(release, manifest)
 
 
 def test_cli_wrong_base_profile_bytes_block_admission(tmp_path, chain):

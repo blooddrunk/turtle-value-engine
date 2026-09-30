@@ -1,6 +1,6 @@
 # Phase 7-B2-A — Versioned Profile Release Bundle and PR-Ready Provenance
 
-Status: **SELECTED / NOT IMPLEMENTED**
+Status: **IMPLEMENTED / EXACT-HEAD CI PENDING**
 Date: 2026-09-30
 Selected after: Phase 7-B1-R1 post-closure review
 
@@ -287,3 +287,15 @@ Do not:
   brokerage/trading scope.
 
 Those belong to Phase 7-B2-B or separately selected later work.
+
+## 12. Implementation note
+
+The reviewed B1-R1 baseline ended at the candidate/materialization pair: it
+had no persisted release contract, release CLI, `rules/strict-v2.yaml`, PR-ready
+conversion or automatic approval/application path. B2-A adds the offline
+`prepare-profile-release` command, `VersionedProfileReleaseCandidateV1` and a
+read-only complete-release resolver. The command reuses the B1-R1 immutable
+two-stage publisher and requires a fresh authoritative R2/B1 replay before
+publication. The release profile is a review artifact outside active rules;
+the release manifest is the final authority marker. Exact verification and
+CI closure are recorded separately under `docs/status/`.

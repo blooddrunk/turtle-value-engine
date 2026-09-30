@@ -84,6 +84,13 @@ from .materialize import (
     classify_proposal_materializability,
     materialize_candidate_profile,
 )
+from .profile_release import (
+    ProfileReleaseBundle,
+    ProfileReleaseError,
+    VersionedProfileReleaseCandidateV1,
+    build_profile_release,
+)
+from .release_pair import resolve_complete_profile_release
 from .replay import (
     CandidateProfileReplayV1,
     CandidateReplayError,
@@ -131,9 +138,13 @@ __all__ = [
     "MaterializationOutcome",
     "MaterializationPairError",
     "ProfileMetadataChange",
+    "ProfileReleaseBundle",
+    "ProfileReleaseError",
     "ProjectedCandidate",
     "REASON_NO_FROZEN_MATERIALIZATION_SEMANTICS",
     "RuleLeafChange",
+    "VersionedProfileReleaseCandidateV1",
+    "build_profile_release",
     "classify_proposal_materializability",
     "evaluate_controlled_evolution",
     "frozen_observations_sha256",
@@ -143,4 +154,5 @@ __all__ = [
     "proposal_payload_sha256",
     "replay_candidate_profile",
     "resolve_complete_materialization_pair",
+    "resolve_complete_profile_release",
 ]
