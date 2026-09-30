@@ -1,6 +1,6 @@
 # Phase 7-B2-A — Versioned Profile Release Bundle and PR-Ready Provenance
 
-Status: **IMPLEMENTED / EXACT-HEAD CI PENDING**
+Status: **CLOSED / EXACT-HEAD CI VERIFIED**
 Date: 2026-09-30
 Selected after: Phase 7-B1-R1 post-closure review
 
@@ -298,4 +298,4 @@ read-only complete-release resolver. The command reuses the B1-R1 immutable
 two-stage publisher and requires a fresh authoritative R2/B1 replay before
 publication. The release profile is a review artifact outside active rules;
 the release manifest is the final authority marker. Exact verification and
-CI closure are recorded separately under `docs/status/`.
+CI closure are recorded in `docs/status/phase-7-b2-a-2026-09-30.md`.
