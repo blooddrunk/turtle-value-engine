@@ -17,6 +17,7 @@ from .contracts import (
     BacktestResult,
     BacktestRunSpec,
     BacktestWorkspaceIndex,
+    CalibrationEvidenceBindingV1,
     CalibrationExperiment,
     CalibrationHoldoutResult,
     DecisionSnapshot,
@@ -50,6 +51,7 @@ class BacktestWorkspace:
         "results": BacktestResult,
         "calibration-experiments": CalibrationExperiment,
         "calibration-holdouts": CalibrationHoldoutResult,
+        "calibration-evidence-bindings": CalibrationEvidenceBindingV1,
         "indexes": BacktestWorkspaceIndex,
     }
 
@@ -193,6 +195,16 @@ class BacktestWorkspace:
     def load_calibration_holdout(self, artifact_id: str) -> CalibrationHoldoutResult:
         return self._read("calibration-holdouts", artifact_id)  # type: ignore[return-value]
 
+    def save_calibration_evidence_binding(
+        self, value: CalibrationEvidenceBindingV1
+    ) -> Path:
+        return self._write("calibration-evidence-bindings", value.binding_id, value)
+
+    def load_calibration_evidence_binding(
+        self, artifact_id: str
+    ) -> CalibrationEvidenceBindingV1:
+        return self._read("calibration-evidence-bindings", artifact_id)  # type: ignore[return-value]
+
     def save_index(self, value: BacktestWorkspaceIndex) -> Path:
         return self._write("indexes", value.workspace_id, value)
 
@@ -210,6 +222,7 @@ def _artifact_id(kind: str, model: BaseModel) -> str | None:
         "portfolio-simulations": "simulation_id",
         "results": "run_id",
         "calibration-experiments": "experiment_id",
+        "calibration-evidence-bindings": "binding_id",
         "indexes": "workspace_id",
     }
     if kind == "calibration-holdouts":

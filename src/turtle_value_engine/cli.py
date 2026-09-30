@@ -16,12 +16,14 @@ from turtle_value_engine.backtest import (
     BacktestDatasetManifest,
     BacktestRunSpec,
     BacktestWorkspace,
+    CalibrationEvidenceBindingV1,
     CalibrationExperiment,
     CalibrationHoldoutResult,
     CalibrationObservation,
     CalibrationSearchSpace,
     ChronologicalSplit,
     PortfolioPolicy,
+    build_calibration_evidence_binding,
     run_backtest,
     run_calibration,
 )
@@ -439,6 +441,13 @@ def _build_parser() -> argparse.ArgumentParser:
     calibrate_parser.add_argument("--observations", required=True, type=Path)
     calibrate_parser.add_argument("--base-profile-sha256", required=True)
     calibrate_parser.add_argument("--output", type=Path, default=None)
+    calibrate_parser.add_argument(
+        "--evidence-binding-output",
+        type=Path,
+        default=None,
+        help="additionally persist the calibration-time evidence binding "
+        "of the exact manifest, observations and experiment (Phase 7-A-R1)",
+    )
     calibrate_parser.add_argument("--require-production", action="store_true")
 
     evolution_parser = subparsers.add_parser(
@@ -457,6 +466,13 @@ def _build_parser() -> argparse.ArgumentParser:
     evolution_evaluate.add_argument("--holdout", required=True, type=Path)
     evolution_evaluate.add_argument("--observations", required=True, type=Path)
     evolution_evaluate.add_argument("--base-profile", required=True, type=Path)
+    evolution_evaluate.add_argument(
+        "--evidence-binding",
+        required=True,
+        type=Path,
+        help="prior calibration-time evidence binding (Phase 7-A-R1); "
+        "admission is impossible without it",
+    )
     evolution_evaluate.add_argument("--output", type=Path, default=None)
 
     watch_parser = subparsers.add_parser(
@@ -1101,6 +1117,16 @@ def _run_calibration_command(args: argparse.Namespace) -> object:
         observations=observations,
     )
     _write_optional(args.output, result)
+    if args.evidence_binding_output is not None:
+        # The binding is produced here, at the calibration/freeze boundary,
+        # where the exact compiled manifest, the exact observation rows and
+        # the resulting experiment are simultaneously available.
+        binding = build_calibration_evidence_binding(
+            manifest=manifest,
+            experiment=result,
+            observations=observations,
+        )
+        _write_optional(args.evidence_binding_output, binding)
     return result
 
 
@@ -1113,6 +1139,7 @@ def _run_evolution_command(args: argparse.Namespace) -> object:
         "holdout": args.holdout,
         "observations": args.observations,
         "base-profile": args.base_profile,
+        "evidence-binding": args.evidence_binding,
     }
     if args.output is not None:
         output = args.output.resolve()
@@ -1129,6 +1156,9 @@ def _run_evolution_command(args: argparse.Namespace) -> object:
     if not isinstance(raw_observations, list):
         raise ValueError("--observations must contain a JSON array")
     observations = [CalibrationObservation.model_validate(item) for item in raw_observations]
+    evidence_binding = CalibrationEvidenceBindingV1.model_validate(
+        _read_json(args.evidence_binding)
+    )
     base_profile_bytes = args.base_profile.read_bytes()
     evaluation = evaluate_controlled_evolution(
         manifest=manifest,
@@ -1136,6 +1166,7 @@ def _run_evolution_command(args: argparse.Namespace) -> object:
         holdout=holdout,
         observations=observations,
         base_profile_bytes=base_profile_bytes,
+        evidence_binding=evidence_binding,
     )
     _write_optional(args.output, evaluation)
     if evaluation.admission_state == "BLOCKED":

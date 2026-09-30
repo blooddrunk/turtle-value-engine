@@ -2,6 +2,11 @@
 
 Every test drives the offline evaluation boundary only: no provider, model,
 transport or network client is constructed, and no rule profile is mutated.
+
+Phase 7-A-R1: admission additionally requires a prior calibration-time
+``CalibrationEvidenceBindingV1``; the default helpers below build the honest
+binding for each chain so every pre-existing scenario keeps testing exactly
+its original check.
 """
 
 from __future__ import annotations
@@ -17,6 +22,7 @@ from jsonschema import Draft202012Validator
 
 from turtle_value_engine.backtest import (
     BacktestDatasetManifest,
+    CalibrationEvidenceBindingV1,
     CalibrationExperiment,
     CalibrationHoldoutResult,
     CalibrationObservation,
@@ -27,6 +33,7 @@ from turtle_value_engine.backtest import (
     ListingLifecycle,
     Market,
     UniverseCoverage,
+    build_calibration_evidence_binding,
 )
 from turtle_value_engine.cli import main
 from turtle_value_engine.evolution import (
@@ -40,6 +47,7 @@ from turtle_value_engine.evolution import (
     CHECK_PROPOSAL_STATUS_PROPOSAL_ONLY,
     CHECK_SEARCH_HOLDOUT_ISOLATION,
     CHECK_SELECTED_TRIAL_AGREEMENT,
+    REQUIRED_EVALUATION_CHECK_NAMES,
     ControlledEvolutionEvaluationV1,
     EvolutionEvaluationError,
     evaluate_controlled_evolution,
@@ -180,9 +188,23 @@ def _evaluate(
     *,
     base_profile_bytes: bytes | None = None,
     manifest: BacktestDatasetManifest | None = None,
+    evidence_binding: CalibrationEvidenceBindingV1
+    | None
+    | object = _KEEP,
 ) -> ControlledEvolutionEvaluationV1:
+    effective_manifest = manifest if manifest is not None else _manifest()
+    if evidence_binding is _KEEP:
+        # The honest binding for this chain, produced at the calibration/freeze
+        # boundary from the canonical frozen manifest, the experiment and the
+        # observation rows — never from a manifest substituted at evaluation
+        # time (the builder itself fail-closes across mismatched manifests).
+        evidence_binding = build_calibration_evidence_binding(
+            manifest=_manifest(),
+            experiment=experiment,
+            observations=observations,
+        )
     return evaluate_controlled_evolution(
-        manifest=manifest if manifest is not None else _manifest(),
+        manifest=effective_manifest,
         experiment=experiment,
         holdout=holdout,
         observations=observations,
@@ -191,6 +213,7 @@ def _evaluate(
             if base_profile_bytes is not None
             else BASE_PROFILE_PATH.read_bytes()
         ),
+        evidence_binding=evidence_binding,
     )
 
 
@@ -199,18 +222,33 @@ def canonical_evidence():
     base_bytes = BASE_PROFILE_PATH.read_bytes()
     base_sha = hashlib.sha256(base_bytes).hexdigest()
     experiment, holdout, observations = _canonical_chain(base_profile_sha256=base_sha)
-    return base_bytes, base_sha, experiment, holdout, observations
+    binding = build_calibration_evidence_binding(
+        manifest=_manifest(), experiment=experiment, observations=observations
+    )
+    return base_bytes, base_sha, experiment, holdout, observations, binding
 
 
 def test_valid_canonical_proposal_is_ready_for_human_review(canonical_evidence):
-    base_bytes, base_sha, experiment, holdout, observations = canonical_evidence
+    (
+        base_bytes,
+        base_sha,
+        experiment,
+        holdout,
+        observations,
+        binding,
+    ) = canonical_evidence
 
     evaluation = _evaluate(experiment, holdout, observations)
 
     assert evaluation.admission_state == "READY_FOR_HUMAN_REVIEW"
     assert not _blocked_names(evaluation)
-    assert len(evaluation.checks) == 13
+    assert len(evaluation.checks) == len(REQUIRED_EVALUATION_CHECK_NAMES) == 19
+    assert [check.name for check in evaluation.checks] == list(
+        REQUIRED_EVALUATION_CHECK_NAMES
+    )
     assert evaluation.base_profile_sha256 == base_sha
+    assert evaluation.evidence_binding_id == binding.binding_id
+    assert evaluation.evidence_binding_sha256 == binding.content_sha256
     assert evaluation.requires_human_approval is True
     assert evaluation.automatic_application_allowed is False
     assert evaluation.proposal_payload_sha256 == proposal_payload_sha256(
@@ -220,7 +258,7 @@ def test_valid_canonical_proposal_is_ready_for_human_review(canonical_evidence):
 
 
 def test_base_profile_byte_hash_mismatch_blocks(canonical_evidence):
-    _base_bytes, _base_sha, experiment, holdout, observations = canonical_evidence
+    _base_bytes, _base_sha, experiment, holdout, observations, _binding = canonical_evidence
 
     evaluation = _evaluate(
         experiment,
@@ -234,7 +272,7 @@ def test_base_profile_byte_hash_mismatch_blocks(canonical_evidence):
 
 
 def test_manifest_substitution_blocks(canonical_evidence):
-    _base_bytes, _base_sha, experiment, holdout, observations = canonical_evidence
+    _base_bytes, _base_sha, experiment, holdout, observations, _binding = canonical_evidence
 
     evaluation = _evaluate(
         experiment,
@@ -248,7 +286,7 @@ def test_manifest_substitution_blocks(canonical_evidence):
 
 
 def test_experiment_proposal_substitution_with_same_candidate_blocks(canonical_evidence):
-    _base_bytes, _base_sha, experiment, holdout, observations = canonical_evidence
+    _base_bytes, _base_sha, experiment, holdout, observations, _binding = canonical_evidence
     proposal = experiment.proposal
     foreign = proposal.model_copy(
         update={
@@ -265,7 +303,7 @@ def test_experiment_proposal_substitution_with_same_candidate_blocks(canonical_e
 
 
 def test_selected_trial_parameter_mismatch_blocks(canonical_evidence):
-    _base_bytes, _base_sha, experiment, holdout, observations = canonical_evidence
+    _base_bytes, _base_sha, experiment, holdout, observations, _binding = canonical_evidence
     proposal = experiment.proposal
     tampered = _rebuild_experiment(
         experiment,
@@ -281,7 +319,7 @@ def test_selected_trial_parameter_mismatch_blocks(canonical_evidence):
 
 
 def test_search_trial_holdout_leakage_blocks(canonical_evidence):
-    _base_bytes, _base_sha, experiment, holdout, observations = canonical_evidence
+    _base_bytes, _base_sha, experiment, holdout, observations, _binding = canonical_evidence
     trials = [
         trial.model_copy(
             update={
@@ -304,7 +342,7 @@ def test_search_trial_holdout_leakage_blocks(canonical_evidence):
 
 
 def test_evaluator_independently_catches_corrupt_chronology(canonical_evidence):
-    _base_bytes, _base_sha, experiment, holdout, observations = canonical_evidence
+    _base_bytes, _base_sha, experiment, holdout, observations, _binding = canonical_evidence
     corrupt_split = ChronologicalSplit.model_construct(
         train_start=date(2020, 1, 2),
         train_end=date(2020, 1, 8),
@@ -337,7 +375,7 @@ def test_evaluator_independently_catches_corrupt_chronology(canonical_evidence):
 
 @pytest.mark.parametrize("status", ["HUMAN_APPROVED", "REJECTED"])
 def test_non_proposal_only_status_blocks(canonical_evidence, status):
-    _base_bytes, _base_sha, experiment, holdout, observations = canonical_evidence
+    _base_bytes, _base_sha, experiment, holdout, observations, _binding = canonical_evidence
     tampered = _rebuild_experiment(
         experiment,
         proposal=experiment.proposal.model_copy(update={"status": status}),
@@ -350,7 +388,7 @@ def test_non_proposal_only_status_blocks(canonical_evidence, status):
 
 
 def test_automatic_application_true_rejected_by_existing_model(canonical_evidence):
-    _base_bytes, _base_sha, experiment, _holdout, _observations = canonical_evidence
+    _base_bytes, _base_sha, experiment, _holdout, _observations, _binding = canonical_evidence
 
     with pytest.raises(ValueError, match="automatic application"):
         # model_copy deliberately skips validators; the persisted-contract
@@ -361,7 +399,7 @@ def test_automatic_application_true_rejected_by_existing_model(canonical_evidenc
 
 
 def test_holdout_from_another_experiment_blocks(canonical_evidence):
-    base_bytes, base_sha, experiment, _holdout, observations = canonical_evidence
+    base_bytes, base_sha, experiment, _holdout, observations, _binding = canonical_evidence
     other_experiment, other_holdout, _other_observations = _canonical_chain(
         base_profile_sha256=base_sha, space_id="other-quality-thresholds-v1"
     )
@@ -374,7 +412,7 @@ def test_holdout_from_another_experiment_blocks(canonical_evidence):
 
 
 def test_holdout_for_another_proposal_blocks(canonical_evidence):
-    _base_bytes, _base_sha, experiment, holdout, observations = canonical_evidence
+    _base_bytes, _base_sha, experiment, holdout, observations, _binding = canonical_evidence
     foreign = _rebuild_holdout(holdout, proposal_id="foreign-proposal-id")
 
     evaluation = _evaluate(experiment, foreign, observations)
@@ -384,7 +422,7 @@ def test_holdout_for_another_proposal_blocks(canonical_evidence):
 
 
 def test_holdout_date_range_mismatch_blocks(canonical_evidence):
-    _base_bytes, _base_sha, experiment, holdout, observations = canonical_evidence
+    _base_bytes, _base_sha, experiment, holdout, observations, _binding = canonical_evidence
     shifted = _rebuild_holdout(
         holdout,
         holdout_start=date(2020, 1, 8),
@@ -398,7 +436,7 @@ def test_holdout_date_range_mismatch_blocks(canonical_evidence):
 
 
 def test_frozen_observation_substitution_blocks(canonical_evidence):
-    _base_bytes, _base_sha, experiment, holdout, observations = canonical_evidence
+    _base_bytes, _base_sha, experiment, holdout, observations, _binding = canonical_evidence
     substituted = [
         observation.model_copy(update={"target_return": observation.target_return + 1.0})
         for observation in observations
@@ -411,7 +449,7 @@ def test_frozen_observation_substitution_blocks(canonical_evidence):
 
 
 def test_duplicate_observation_ids_block(canonical_evidence):
-    _base_bytes, _base_sha, experiment, holdout, observations = canonical_evidence
+    _base_bytes, _base_sha, experiment, holdout, observations, _binding = canonical_evidence
     duplicated = [
         observation.model_copy(update={"observation_id": "cal-duplicated"})
         for observation in observations
@@ -446,15 +484,17 @@ def test_unrecorded_custom_scorer_experiment_is_blocked():
 
 
 def test_experiment_without_selected_proposal_raises(canonical_evidence):
-    _base_bytes, _base_sha, experiment, holdout, observations = canonical_evidence
+    _base_bytes, _base_sha, experiment, holdout, observations, _binding = canonical_evidence
     proposalless = _rebuild_experiment(experiment, proposal=None)
 
     with pytest.raises(EvolutionEvaluationError, match="selected proposal"):
-        _evaluate(proposalless, holdout, observations)
+        # A proposal-less experiment can never carry a calibration-time
+        # evidence binding; evaluation must fail closed on its own boundary.
+        _evaluate(proposalless, holdout, observations, evidence_binding=None)
 
 
 def test_tampered_experiment_content_hash_blocks(canonical_evidence):
-    _base_bytes, _base_sha, experiment, holdout, observations = canonical_evidence
+    _base_bytes, _base_sha, experiment, holdout, observations, _binding = canonical_evidence
     # A forged experiment that swapped its identity while keeping another
     # experiment's declared content hash is not the artifact it claims to be.
     forged = CalibrationExperiment.model_construct(
@@ -480,7 +520,7 @@ def test_tampered_experiment_content_hash_blocks(canonical_evidence):
 
 
 def test_deterministic_rerun_produces_byte_identical_dossier(canonical_evidence):
-    _base_bytes, _base_sha, experiment, holdout, observations = canonical_evidence
+    _base_bytes, _base_sha, experiment, holdout, observations, _binding = canonical_evidence
 
     first = _evaluate(experiment, holdout, observations)
     second = _evaluate(experiment, holdout, observations)
@@ -508,7 +548,7 @@ def test_schema_parity_and_instance_validation(canonical_evidence):
     Draft202012Validator.check_schema(checked_in)
     assert checked_in == ControlledEvolutionEvaluationV1.model_json_schema()
 
-    _base_bytes, _base_sha, experiment, holdout, observations = canonical_evidence
+    _base_bytes, _base_sha, experiment, holdout, observations, _binding = canonical_evidence
     evaluation = _evaluate(experiment, holdout, observations)
     Draft202012Validator(checked_in).validate(
         evaluation.model_dump(mode="json", warnings=False)
@@ -516,12 +556,16 @@ def test_schema_parity_and_instance_validation(canonical_evidence):
 
 
 def _write_evidence(tmp_path: Path, experiment, holdout, observations) -> dict[str, Path]:
+    binding = build_calibration_evidence_binding(
+        manifest=_manifest(), experiment=experiment, observations=observations
+    )
     paths = {
         "manifest": tmp_path / "manifest.json",
         "experiment": tmp_path / "experiment.json",
         "holdout": tmp_path / "holdout.json",
         "observations": tmp_path / "observations.json",
         "base_profile": tmp_path / "strict-v1.yaml",
+        "evidence_binding": tmp_path / "evidence-binding.json",
     }
     paths["manifest"].write_text(
         _manifest().model_dump_json(indent=2), encoding="utf-8"
@@ -537,35 +581,43 @@ def _write_evidence(tmp_path: Path, experiment, holdout, observations) -> dict[s
         ),
         encoding="utf-8",
     )
+    paths["evidence_binding"].write_text(
+        binding.model_dump_json(indent=2), encoding="utf-8"
+    )
     paths["base_profile"].write_bytes(BASE_PROFILE_PATH.read_bytes())
     return paths
+
+
+def _evaluate_arguments(paths: dict[str, Path], output: Path | None = None) -> list[str]:
+    arguments = [
+        "evolution",
+        "evaluate",
+        "--manifest",
+        str(paths["manifest"]),
+        "--experiment",
+        str(paths["experiment"]),
+        "--holdout",
+        str(paths["holdout"]),
+        "--observations",
+        str(paths["observations"]),
+        "--base-profile",
+        str(paths["base_profile"]),
+        "--evidence-binding",
+        str(paths["evidence_binding"]),
+    ]
+    if output is not None:
+        arguments.extend(["--output", str(output)])
+    return arguments
 
 
 def test_cli_happy_path_writes_admitted_dossier(
     tmp_path, capsys, canonical_evidence
 ):
-    _base_bytes, _base_sha, experiment, holdout, observations = canonical_evidence
+    _base_bytes, _base_sha, experiment, holdout, observations, _binding = canonical_evidence
     paths = _write_evidence(tmp_path, experiment, holdout, observations)
     output = tmp_path / "evaluation.json"
 
-    exit_code = main(
-        [
-            "evolution",
-            "evaluate",
-            "--manifest",
-            str(paths["manifest"]),
-            "--experiment",
-            str(paths["experiment"]),
-            "--holdout",
-            str(paths["holdout"]),
-            "--observations",
-            str(paths["observations"]),
-            "--base-profile",
-            str(paths["base_profile"]),
-            "--output",
-            str(output),
-        ]
-    )
+    exit_code = main(_evaluate_arguments(paths, output))
 
     assert exit_code == 0
     payload = json.loads(capsys.readouterr().out)
@@ -580,29 +632,12 @@ def test_cli_happy_path_writes_admitted_dossier(
 def test_cli_blocked_dossier_writes_output_and_exits_nonzero(
     tmp_path, capsys, canonical_evidence
 ):
-    _base_bytes, _base_sha, experiment, holdout, observations = canonical_evidence
+    _base_bytes, _base_sha, experiment, holdout, observations, _binding = canonical_evidence
     paths = _write_evidence(tmp_path, experiment, holdout, observations)
     paths["base_profile"].write_bytes(b"tampered")
     output = tmp_path / "evaluation.json"
 
-    exit_code = main(
-        [
-            "evolution",
-            "evaluate",
-            "--manifest",
-            str(paths["manifest"]),
-            "--experiment",
-            str(paths["experiment"]),
-            "--holdout",
-            str(paths["holdout"]),
-            "--observations",
-            str(paths["observations"]),
-            "--base-profile",
-            str(paths["base_profile"]),
-            "--output",
-            str(output),
-        ]
-    )
+    exit_code = main(_evaluate_arguments(paths, output))
 
     assert exit_code == 1
     payload = json.loads(capsys.readouterr().out)
@@ -616,7 +651,7 @@ def test_cli_blocked_dossier_writes_output_and_exits_nonzero(
 def test_cli_evaluation_never_touches_network_or_input_bytes(
     tmp_path, monkeypatch, canonical_evidence
 ):
-    _base_bytes, _base_sha, experiment, holdout, observations = canonical_evidence
+    _base_bytes, _base_sha, experiment, holdout, observations, _binding = canonical_evidence
     paths = _write_evidence(tmp_path, experiment, holdout, observations)
     output = tmp_path / "evaluation.json"
 
@@ -631,24 +666,7 @@ def test_cli_evaluation_never_touches_network_or_input_bytes(
     }
     strict_v1_before = BASE_PROFILE_PATH.read_bytes()
 
-    exit_code = main(
-        [
-            "evolution",
-            "evaluate",
-            "--manifest",
-            str(paths["manifest"]),
-            "--experiment",
-            str(paths["experiment"]),
-            "--holdout",
-            str(paths["holdout"]),
-            "--observations",
-            str(paths["observations"]),
-            "--base-profile",
-            str(paths["base_profile"]),
-            "--output",
-            str(output),
-        ]
-    )
+    exit_code = main(_evaluate_arguments(paths, output))
 
     assert exit_code == 0
     after = {label: path.read_bytes() for label, path in paths.items()}
@@ -660,32 +678,19 @@ def test_cli_evaluation_never_touches_network_or_input_bytes(
 def test_cli_refuses_output_overlapping_supplied_input(
     tmp_path, capsys, canonical_evidence
 ):
-    _base_bytes, _base_sha, experiment, holdout, observations = canonical_evidence
+    _base_bytes, _base_sha, experiment, holdout, observations, _binding = canonical_evidence
     paths = _write_evidence(tmp_path, experiment, holdout, observations)
-    experiment_before = paths["experiment"].read_bytes()
+    binding_before = paths["evidence_binding"].read_bytes()
 
     exit_code = main(
-        [
-            "evolution",
-            "evaluate",
-            "--manifest",
-            str(paths["manifest"]),
-            "--experiment",
-            str(paths["experiment"]),
-            "--holdout",
-            str(paths["holdout"]),
-            "--observations",
-            str(paths["observations"]),
-            "--base-profile",
-            str(paths["base_profile"]),
-            "--output",
-            str(paths["experiment"]),
-        ]
+        _evaluate_arguments(paths, paths["evidence_binding"])
     )
 
     assert exit_code == 2
-    assert "must not overwrite" in capsys.readouterr().err
-    assert paths["experiment"].read_bytes() == experiment_before
+    stderr = capsys.readouterr().err
+    assert "must not overwrite" in stderr
+    assert "evidence-binding" in stderr
+    assert paths["evidence_binding"].read_bytes() == binding_before
 
 
 def test_cli_fails_closed_on_corrupt_split_json(tmp_path, capsys):
@@ -719,12 +724,22 @@ def test_cli_fails_closed_on_corrupt_split_json(tmp_path, capsys):
         "holdout_observation_ids": [],
         "content_sha256": "0" * 64,
     }
+    base_bytes = BASE_PROFILE_PATH.read_bytes()
+    honest_experiment, _honest_holdout, honest_observations = _canonical_chain(
+        base_profile_sha256=hashlib.sha256(base_bytes).hexdigest()
+    )
+    honest_binding = build_calibration_evidence_binding(
+        manifest=_manifest(),
+        experiment=honest_experiment,
+        observations=honest_observations,
+    )
     paths = {
         "experiment": tmp_path / "experiment.json",
         "manifest": tmp_path / "manifest.json",
         "holdout": tmp_path / "holdout.json",
         "observations": tmp_path / "observations.json",
         "base_profile": tmp_path / "strict-v1.yaml",
+        "evidence_binding": tmp_path / "evidence-binding.json",
     }
     paths["experiment"].write_text(json.dumps(experiment_payload), encoding="utf-8")
     paths["manifest"].write_text(
@@ -732,6 +747,9 @@ def test_cli_fails_closed_on_corrupt_split_json(tmp_path, capsys):
     )
     paths["holdout"].write_text("{}", encoding="utf-8")
     paths["observations"].write_text("[]", encoding="utf-8")
+    paths["evidence_binding"].write_text(
+        honest_binding.model_dump_json(indent=2), encoding="utf-8"
+    )
     paths["base_profile"].write_bytes(BASE_PROFILE_PATH.read_bytes())
 
     exit_code = main(
@@ -748,6 +766,8 @@ def test_cli_fails_closed_on_corrupt_split_json(tmp_path, capsys):
             str(paths["observations"]),
             "--base-profile",
             str(paths["base_profile"]),
+            "--evidence-binding",
+            str(paths["evidence_binding"]),
         ]
     )
 

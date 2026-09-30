@@ -2,10 +2,30 @@
   "$defs": {
     "EvaluationCheckV1": {
       "additionalProperties": false,
-      "description": "One machine-readable admission check with a stable name.",
+      "description": "One machine-readable admission check with a stable canonical name.",
       "properties": {
         "name": {
-          "pattern": "^[A-Z][A-Z0-9_]{2,63}$",
+          "enum": [
+            "BASE_PROFILE_BYTES_HASH",
+            "BASE_PROFILE_IDENTITY_AGREEMENT",
+            "EVIDENCE_BINDING_PRESENT",
+            "EVIDENCE_BINDING_MANIFEST_IDENTITY",
+            "EVIDENCE_BINDING_EXPERIMENT_IDENTITY",
+            "EVIDENCE_BINDING_OBSERVATIONS_IDENTITY",
+            "EVIDENCE_BINDING_BASE_PROFILE_IDENTITY",
+            "EVIDENCE_BINDING_PROPOSAL_IDENTITY",
+            "MANIFEST_IDENTITY",
+            "EXPERIMENT_CONTENT_HASH",
+            "PROPOSAL_EMBEDDING",
+            "SELECTED_TRIAL_AGREEMENT",
+            "SEARCH_HOLDOUT_ISOLATION",
+            "CHRONOLOGY_DISJOINT_ORDERED",
+            "PROPOSAL_STATUS_PROPOSAL_ONLY",
+            "HOLDOUT_BINDING",
+            "HOLDOUT_CONTENT_HASH",
+            "CANONICAL_REPRODUCTION",
+            "HOLDOUT_REPRODUCTION"
+          ],
           "title": "Name",
           "type": "string"
         },
@@ -34,7 +54,7 @@
     }
   },
   "additionalProperties": false,
-  "description": "Immutable evaluation/admission dossier for one proposal-only evidence chain.\n\nThe dossier binds the frozen dataset manifest, calibration experiment,\nembedded ``PROPOSAL_ONLY`` proposal, separate holdout result, frozen\nobservations and the exact base-profile bytes into one deterministic\nartifact.  ``admission_state`` is only an evidence-admission decision;\nit is never an investment decision, a performance verdict or an approval.",
+  "description": "Immutable evaluation/admission dossier for one proposal-only evidence chain.\n\nThe dossier binds the frozen dataset manifest, calibration experiment,\nembedded ``PROPOSAL_ONLY`` proposal, separate holdout result, frozen\nobservations, the exact base-profile bytes and the prior\ncalibration-time evidence binding into one deterministic artifact.\n``admission_state`` is only an evidence-admission decision; it is never\nan investment decision, a performance verdict or an approval.",
   "properties": {
     "contract": {
       "const": "controlled_evolution_evaluation_v1",
@@ -127,6 +147,32 @@
       "title": "Observation Count",
       "type": "integer"
     },
+    "evidence_binding_id": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Evidence Binding Id"
+    },
+    "evidence_binding_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Evidence Binding Sha256"
+    },
     "scorer_kind": {
       "const": "BUILT_IN_CANONICAL",
       "default": "BUILT_IN_CANONICAL",
@@ -137,8 +183,8 @@
       "items": {
         "$ref": "#/$defs/EvaluationCheckV1"
       },
-      "maxItems": 256,
-      "minItems": 1,
+      "maxItems": 19,
+      "minItems": 19,
       "title": "Checks",
       "type": "array"
     },

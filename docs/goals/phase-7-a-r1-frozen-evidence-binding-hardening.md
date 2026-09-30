@@ -1,6 +1,6 @@
 # Phase 7-A-R1 — Frozen Evidence Binding and Dossier Integrity Hardening
 
-Status: **SELECTED / NOT IMPLEMENTED**
+Status: **IMPLEMENTED / CI CLOSURE PENDING**
 Date: 2026-09-30
 Selected after: Phase 7-A post-closure review
 

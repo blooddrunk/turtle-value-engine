@@ -13,6 +13,12 @@ from .dataset import (
     validate_decision_artifact,
     validate_manifest,
 )
+from .evidence_binding import (
+    EvidenceBindingError,
+    build_calibration_evidence_binding,
+    canonical_observations_sha256,
+    canonical_proposal_payload_sha256,
+)
 from .metrics import (
     benchmark_daily_returns_for_snapshots,
     benchmark_result,
@@ -48,6 +54,7 @@ __all__ = [
     "CalibrationError",
     "CalibrationRunner",
     "DatasetValidationError",
+    "EvidenceBindingError",
     "HistoricalUniverse",
     "PortfolioSimulationError",
     "PortfolioSimulator",
@@ -60,10 +67,13 @@ __all__ = [
     "benchmark_result",
     "benchmark_daily_returns_for_snapshots",
     "benchmark_results",
+    "build_calibration_evidence_binding",
     "build_dataset_manifest",
     "build_decision_snapshot",
     "build_failure_attribution",
     "calculate_performance_metrics",
+    "canonical_observations_sha256",
+    "canonical_proposal_payload_sha256",
     "decision_snapshot_from_analysis",
     "evaluate_forward_return",
     "evaluate_signals",

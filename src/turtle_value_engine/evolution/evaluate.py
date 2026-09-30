@@ -5,6 +5,14 @@ already-frozen typed inputs: it constructs no provider, model, transport or
 network client, writes nothing, opens no pull request and records no approval.
 Its machine decision is limited to evidence integrity and reproducibility;
 it never compares candidates economically and never selects a "better" rule.
+
+Phase 7-A-R1 adds the frozen-evidence binding boundary:
+``READY_FOR_HUMAN_REVIEW`` is possible only when a prior
+:class:`~turtle_value_engine.backtest.contracts.CalibrationEvidenceBindingV1`
+— produced at the calibration/freeze boundary while the exact manifest,
+observations and resulting experiment were simultaneously available — is
+supplied and matches the supplied evidence exactly.  The evaluator never
+synthesizes the expected evidence identity from its own inputs.
 """
 
 from __future__ import annotations
@@ -19,34 +27,44 @@ from turtle_value_engine.backtest.calibration import (
 )
 from turtle_value_engine.backtest.contracts import (
     BacktestDatasetManifest,
+    CalibrationEvidenceBindingV1,
     CalibrationExperiment,
     CalibrationHoldoutResult,
     CalibrationObservation,
     CalibrationStage,
     CandidateProfileProposal,
 )
-from turtle_value_engine.providers.models import canonical_json_bytes
+from turtle_value_engine.backtest.evidence_binding import (
+    canonical_observations_sha256,
+    canonical_proposal_payload_sha256,
+)
 from turtle_value_engine.providers.normalization import deterministic_id
 
 from .contracts import (
+    CHECK_BASE_PROFILE_BYTES_HASH,
+    CHECK_BASE_PROFILE_IDENTITY_AGREEMENT,
+    CHECK_CANONICAL_REPRODUCTION,
+    CHECK_CHRONOLOGY_DISJOINT_ORDERED,
+    CHECK_EVIDENCE_BINDING_BASE_PROFILE_IDENTITY,
+    CHECK_EVIDENCE_BINDING_EXPERIMENT_IDENTITY,
+    CHECK_EVIDENCE_BINDING_MANIFEST_IDENTITY,
+    CHECK_EVIDENCE_BINDING_OBSERVATIONS_IDENTITY,
+    CHECK_EVIDENCE_BINDING_PRESENT,
+    CHECK_EVIDENCE_BINDING_PROPOSAL_IDENTITY,
+    CHECK_EXPERIMENT_CONTENT_HASH,
+    CHECK_HOLDOUT_BINDING,
+    CHECK_HOLDOUT_CONTENT_HASH,
+    CHECK_HOLDOUT_REPRODUCTION,
+    CHECK_MANIFEST_IDENTITY,
+    CHECK_PROPOSAL_EMBEDDING,
+    CHECK_PROPOSAL_STATUS_PROPOSAL_ONLY,
+    CHECK_SEARCH_HOLDOUT_ISOLATION,
+    CHECK_SELECTED_TRIAL_AGREEMENT,
+    REQUIRED_EVALUATION_CHECK_NAMES,
     ControlledEvolutionEvaluationV1,
     EvaluationCheckV1,
     persisted_content_sha256,
 )
-
-CHECK_BASE_PROFILE_BYTES_HASH = "BASE_PROFILE_BYTES_HASH"
-CHECK_BASE_PROFILE_IDENTITY_AGREEMENT = "BASE_PROFILE_IDENTITY_AGREEMENT"
-CHECK_MANIFEST_IDENTITY = "MANIFEST_IDENTITY"
-CHECK_EXPERIMENT_CONTENT_HASH = "EXPERIMENT_CONTENT_HASH"
-CHECK_PROPOSAL_EMBEDDING = "PROPOSAL_EMBEDDING"
-CHECK_SELECTED_TRIAL_AGREEMENT = "SELECTED_TRIAL_AGREEMENT"
-CHECK_SEARCH_HOLDOUT_ISOLATION = "SEARCH_HOLDOUT_ISOLATION"
-CHECK_CHRONOLOGY_DISJOINT_ORDERED = "CHRONOLOGY_DISJOINT_ORDERED"
-CHECK_PROPOSAL_STATUS_PROPOSAL_ONLY = "PROPOSAL_STATUS_PROPOSAL_ONLY"
-CHECK_HOLDOUT_BINDING = "HOLDOUT_BINDING"
-CHECK_HOLDOUT_CONTENT_HASH = "HOLDOUT_CONTENT_HASH"
-CHECK_CANONICAL_REPRODUCTION = "CANONICAL_REPRODUCTION"
-CHECK_HOLDOUT_REPRODUCTION = "HOLDOUT_REPRODUCTION"
 
 _MAX_DETAIL_LENGTH = 500
 
@@ -58,9 +76,7 @@ class EvolutionEvaluationError(ValueError):
 def proposal_payload_sha256(proposal: CandidateProfileProposal) -> str:
     """Hash the canonical proposal payload without mutating its contract."""
 
-    return hashlib.sha256(
-        canonical_json_bytes(proposal.model_dump(mode="json", warnings=False))
-    ).hexdigest()
+    return canonical_proposal_payload_sha256(proposal)
 
 
 def frozen_observations_sha256(
@@ -68,14 +84,7 @@ def frozen_observations_sha256(
 ) -> str:
     """Bind the frozen observation rows in canonical chronological order."""
 
-    ordered = sorted(
-        observations, key=lambda item: (item.observed_at, item.observation_id)
-    )
-    return hashlib.sha256(
-        canonical_json_bytes(
-            [item.model_dump(mode="json", warnings=False) for item in ordered]
-        )
-    ).hexdigest()
+    return canonical_observations_sha256(observations)
 
 
 def _detail(message: str) -> str:
@@ -85,7 +94,7 @@ def _detail(message: str) -> str:
 
 def _check(name: str, passed: bool, ok_detail: str, blocked_detail: str) -> EvaluationCheckV1:
     return EvaluationCheckV1(
-        name=name,
+        name=name,  # type: ignore[arg-type]
         state="PASS" if passed else "BLOCKED",
         detail=_detail(ok_detail if passed else blocked_detail),
     )
@@ -111,6 +120,12 @@ def _manifest_payload_hash(manifest: BacktestDatasetManifest) -> str:
     return persisted_content_sha256(manifest)
 
 
+def _binding_identity(evidence_binding: CalibrationEvidenceBindingV1 | None) -> tuple:
+    if evidence_binding is None:
+        return (None, None)
+    return (evidence_binding.binding_id, evidence_binding.content_sha256)
+
+
 def evaluate_controlled_evolution(
     *,
     manifest: BacktestDatasetManifest,
@@ -118,6 +133,7 @@ def evaluate_controlled_evolution(
     holdout: CalibrationHoldoutResult,
     observations: Sequence[CalibrationObservation],
     base_profile_bytes: bytes,
+    evidence_binding: CalibrationEvidenceBindingV1 | None = None,
 ) -> ControlledEvolutionEvaluationV1:
     """Evaluate one frozen evidence chain and emit an admission dossier.
 
@@ -128,6 +144,12 @@ def evaluate_controlled_evolution(
     the repository's canonical built-in calibration scorer; an experiment
     produced by an unrecorded custom scorer cannot be proven reproducible and
     is blocked rather than guessed compatible.
+
+    ``evidence_binding`` is the prior calibration-time binding of the exact
+    frozen evidence.  A missing binding fail-closes admission: the dossier is
+    ``BLOCKED`` (never ``READY_FOR_HUMAN_REVIEW``), and every supplied
+    identity — manifest, experiment, observation set and base profile — must
+    equal the binding exactly before admission is possible.
     """
 
     proposal = experiment.proposal
@@ -147,6 +169,7 @@ def evaluate_controlled_evolution(
         (trial for trial in experiment.trials if trial.trial_id == experiment.selected_trial_id),
         None,
     )
+    binding = evidence_binding
 
     checks: list[EvaluationCheckV1] = []
 
@@ -175,6 +198,109 @@ def evaluate_controlled_evolution(
             f"{experiment.base_profile_sha256}, proposal={proposal.base_profile_id}/"
             f"{proposal.base_profile_sha256}, search_space="
             f"{experiment.search_space.base_profile_id})",
+        )
+    )
+
+    checks.append(
+        _check(
+            CHECK_EVIDENCE_BINDING_PRESENT,
+            binding is not None,
+            "prior calibration evidence binding supplied and content-verified",
+            "no prior calibration evidence binding was supplied; admission "
+            "requires the binding frozen at calibration time",
+        )
+    )
+
+    binding_manifest_ok = (
+        binding is not None
+        and binding.manifest_id == experiment.manifest_id
+        and manifest.dataset_id == binding.manifest_id
+        and manifest.content_sha256 == binding.manifest_content_sha256
+    )
+    checks.append(
+        _check(
+            CHECK_EVIDENCE_BINDING_MANIFEST_IDENTITY,
+            binding_manifest_ok,
+            "supplied manifest is exactly the manifest bound at calibration time",
+            "supplied manifest is not the manifest bound at calibration time "
+            f"(binding manifest_id={None if binding is None else binding.manifest_id}, "
+            "binding manifest content="
+            f"{None if binding is None else binding.manifest_content_sha256}, "
+            f"supplied dataset_id={manifest.dataset_id}, supplied content="
+            f"{manifest.content_sha256}, experiment manifest_id={experiment.manifest_id})",
+        )
+    )
+
+    binding_experiment_ok = (
+        binding is not None
+        and binding.experiment_id == experiment.experiment_id
+        and binding.experiment_content_sha256 == experiment.content_sha256
+    )
+    checks.append(
+        _check(
+            CHECK_EVIDENCE_BINDING_EXPERIMENT_IDENTITY,
+            binding_experiment_ok,
+            "supplied experiment is exactly the experiment bound at calibration time",
+            "supplied experiment is not the experiment bound at calibration time "
+            f"(binding experiment_id={None if binding is None else binding.experiment_id}, "
+            f"binding experiment content="
+            f"{None if binding is None else binding.experiment_content_sha256}, "
+            f"supplied experiment_id={experiment.experiment_id}, supplied content="
+            f"{experiment.content_sha256})",
+        )
+    )
+
+    binding_observations_ok = (
+        binding is not None
+        and binding.observations_content_sha256 == observations_sha
+        and binding.observation_count == len(ordered)
+    )
+    checks.append(
+        _check(
+            CHECK_EVIDENCE_BINDING_OBSERVATIONS_IDENTITY,
+            binding_observations_ok,
+            "supplied observation set is exactly the frozen set bound at "
+            "calibration time",
+            "supplied observation set is not the frozen set bound at "
+            "calibration time (binding observations content="
+            f"{None if binding is None else binding.observations_content_sha256}, "
+            f"binding count={None if binding is None else binding.observation_count}, "
+            f"supplied content={observations_sha}, supplied count={len(ordered)})",
+        )
+    )
+
+    binding_base_profile_ok = (
+        binding is not None
+        and binding.base_profile_id == experiment.base_profile_id
+        and binding.base_profile_sha256 == experiment.base_profile_sha256
+    )
+    checks.append(
+        _check(
+            CHECK_EVIDENCE_BINDING_BASE_PROFILE_IDENTITY,
+            binding_base_profile_ok,
+            "supplied base profile is exactly the base profile bound at "
+            "calibration time",
+            "supplied base profile is not the base profile bound at calibration "
+            f"time (binding profile={None if binding is None else binding.base_profile_id}"
+            f"/{None if binding is None else binding.base_profile_sha256}, supplied "
+            f"profile={experiment.base_profile_id}/{experiment.base_profile_sha256})",
+        )
+    )
+
+    binding_proposal_ok = (
+        binding is not None
+        and binding.proposal_id == proposal.proposal_id
+        and binding.proposal_payload_sha256 == proposal_sha
+    )
+    checks.append(
+        _check(
+            CHECK_EVIDENCE_BINDING_PROPOSAL_IDENTITY,
+            binding_proposal_ok,
+            "supplied proposal is exactly the proposal bound at calibration time",
+            "supplied proposal is not the proposal bound at calibration time "
+            f"(binding proposal_id={None if binding is None else binding.proposal_id}, "
+            f"binding payload={None if binding is None else binding.proposal_payload_sha256}, "
+            f"supplied proposal_id={proposal.proposal_id}, supplied payload={proposal_sha})",
         )
     )
 
@@ -403,11 +529,16 @@ def evaluate_controlled_evolution(
         )
     )
 
+    assert [check.name for check in checks] == list(REQUIRED_EVALUATION_CHECK_NAMES), (
+        "evaluator must emit exactly the canonical required check set in order"
+    )
+
     admission_state = (
         "BLOCKED"
         if any(check.state == "BLOCKED" for check in checks)
         else "READY_FOR_HUMAN_REVIEW"
     )
+    binding_id, binding_sha = _binding_identity(binding)
     evaluation_id = deterministic_id(
         "controlled-evolution-evaluation",
         experiment.base_profile_id,
@@ -420,6 +551,8 @@ def evaluate_controlled_evolution(
         proposal_sha,
         holdout.content_sha256,
         observations_sha,
+        binding_id,
+        binding_sha,
     )
     return ControlledEvolutionEvaluationV1.build(
         evaluation_id=evaluation_id,
@@ -436,6 +569,8 @@ def evaluate_controlled_evolution(
         holdout_content_sha256=holdout.content_sha256,
         observations_content_sha256=observations_sha,
         observation_count=len(ordered),
+        evidence_binding_id=binding_id,
+        evidence_binding_sha256=binding_sha,
         checks=checks,
         admission_state=admission_state,
     )
@@ -446,6 +581,12 @@ __all__ = [
     "CHECK_BASE_PROFILE_IDENTITY_AGREEMENT",
     "CHECK_CANONICAL_REPRODUCTION",
     "CHECK_CHRONOLOGY_DISJOINT_ORDERED",
+    "CHECK_EVIDENCE_BINDING_BASE_PROFILE_IDENTITY",
+    "CHECK_EVIDENCE_BINDING_EXPERIMENT_IDENTITY",
+    "CHECK_EVIDENCE_BINDING_MANIFEST_IDENTITY",
+    "CHECK_EVIDENCE_BINDING_OBSERVATIONS_IDENTITY",
+    "CHECK_EVIDENCE_BINDING_PRESENT",
+    "CHECK_EVIDENCE_BINDING_PROPOSAL_IDENTITY",
     "CHECK_EXPERIMENT_CONTENT_HASH",
     "CHECK_HOLDOUT_BINDING",
     "CHECK_HOLDOUT_CONTENT_HASH",

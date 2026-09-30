@@ -1,6 +1,7 @@
 # Coding-agent handoff — Phase 7-A-R1 Frozen Evidence Binding and Dossier Integrity Hardening
 
-Status: **READY**
+Status: **CONSUMED** (implementation delivered; see
+`docs/status/phase-7-a-r1-2026-09-30.md`)
 Date: 2026-09-30
 
 Canonical goal:

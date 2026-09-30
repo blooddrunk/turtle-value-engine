@@ -27,6 +27,7 @@ from pydantic import (
 
 from turtle_value_engine.models import CompanyAnalysis, NormalizedCompanyInput
 from turtle_value_engine.providers.models import canonical_json_bytes
+from turtle_value_engine.providers.normalization import deterministic_id
 
 BACKTEST_CONTRACT_VERSION = "backtest-v1"
 DATASET_CONTRACT_VERSION = "backtest-dataset-v1"
@@ -1584,6 +1585,109 @@ class CalibrationHoldoutResult(BaseModel):
         return self
 
 
+class CalibrationEvidenceBindingV1(BaseModel):
+    """Immutable calibration-time binding of the exact frozen evidence identities.
+
+    The binding is produced at the calibration/freeze boundary, where the exact
+    manifest, the exact observation rows and the resulting experiment are
+    simultaneously available.  It is the prior artifact a controlled-evolution
+    evaluation must prove its supplied evidence against before
+    ``READY_FOR_HUMAN_REVIEW`` is possible; it is never synthesized inside the
+    evaluator from untrusted inputs.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    contract: Literal["calibration_evidence_binding_v1"] = "calibration_evidence_binding_v1"
+    binding_id: StrictStr = Field(min_length=1)
+    manifest_id: StrictStr = Field(min_length=1)
+    manifest_content_sha256: StrictStr = Field(pattern=_HASH_PATTERN)
+    experiment_id: StrictStr = Field(min_length=1)
+    experiment_content_sha256: StrictStr = Field(pattern=_HASH_PATTERN)
+    observations_content_sha256: StrictStr = Field(pattern=_HASH_PATTERN)
+    observation_count: StrictInt = Field(ge=0)
+    base_profile_id: StrictStr = Field(min_length=1)
+    base_profile_sha256: StrictStr = Field(pattern=_HASH_PATTERN)
+    proposal_id: StrictStr = Field(min_length=1)
+    proposal_payload_sha256: StrictStr = Field(pattern=_HASH_PATTERN)
+    content_sha256: StrictStr = Field(pattern=_HASH_PATTERN)
+
+    @model_validator(mode="after")
+    def validate_binding(self) -> Self:
+        expected_binding_id = deterministic_id(
+            "calibration-evidence-binding",
+            self.manifest_id,
+            self.manifest_content_sha256,
+            self.experiment_id,
+            self.experiment_content_sha256,
+            self.observations_content_sha256,
+            self.observation_count,
+            self.base_profile_id,
+            self.base_profile_sha256,
+            self.proposal_id,
+            self.proposal_payload_sha256,
+        )
+        if self.binding_id != expected_binding_id:
+            raise ValueError("binding_id does not match the bound evidence identities")
+        expected = _hash_model(self, "content_sha256")
+        if self.content_sha256 != expected:
+            raise ValueError("calibration evidence binding content_sha256 does not match content")
+        return self
+
+    @classmethod
+    def build(
+        cls,
+        *,
+        manifest_id: str,
+        manifest_content_sha256: str,
+        experiment_id: str,
+        experiment_content_sha256: str,
+        observations_content_sha256: str,
+        observation_count: int,
+        base_profile_id: str,
+        base_profile_sha256: str,
+        proposal_id: str,
+        proposal_payload_sha256: str,
+    ) -> CalibrationEvidenceBindingV1:
+        """Construct a binding with its deterministic id and content hash."""
+
+        binding_id = deterministic_id(
+            "calibration-evidence-binding",
+            manifest_id,
+            manifest_content_sha256,
+            experiment_id,
+            experiment_content_sha256,
+            observations_content_sha256,
+            observation_count,
+            base_profile_id,
+            base_profile_sha256,
+            proposal_id,
+            proposal_payload_sha256,
+        )
+        candidate = cls.model_construct(
+            contract="calibration_evidence_binding_v1",
+            binding_id=binding_id,
+            manifest_id=manifest_id,
+            manifest_content_sha256=manifest_content_sha256,
+            experiment_id=experiment_id,
+            experiment_content_sha256=experiment_content_sha256,
+            observations_content_sha256=observations_content_sha256,
+            observation_count=observation_count,
+            base_profile_id=base_profile_id,
+            base_profile_sha256=base_profile_sha256,
+            proposal_id=proposal_id,
+            proposal_payload_sha256=proposal_payload_sha256,
+            content_sha256="0" * 64,
+        )
+        payload = candidate.model_dump(mode="json", warnings=False)
+        payload["content_sha256"] = hashlib.sha256(
+            canonical_json_bytes(
+                {key: value for key, value in payload.items() if key != "content_sha256"}
+            )
+        ).hexdigest()
+        return cls.model_validate(payload)
+
+
 class BacktestWorkspaceIndex(BaseModel):
     """Optional immutable index for resumable backtest artifacts."""
 
@@ -1625,6 +1729,7 @@ __all__ = [
     "CalibrationHoldoutResult",
     "CalibrationObservation",
     "CALIBRATION_CONTRACT_VERSION",
+    "CalibrationEvidenceBindingV1",
     "CalibrationSearchSpace",
     "CalibrationStage",
     "CalibrationTrial",
