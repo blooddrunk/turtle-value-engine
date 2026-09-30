@@ -8,6 +8,13 @@ Phase 7-A-R1 adds the frozen-evidence binding boundary: admission requires a
 prior calibration-time :class:`CalibrationEvidenceBindingV1`, and the
 persisted dossier carries exactly the canonical required-check set for its
 contract version.
+
+Phase 7-A-R2 adds the authoritative calibration-freeze anchor boundary:
+admission additionally requires the binding to be referenced by the
+:class:`~turtle_value_engine.backtest.contracts.CalibrationFreezeRecordV1`
+committed for this experiment in the authoritative calibration workspace,
+resolved through the workspace loader boundary rather than an arbitrary
+sidecar path.
 """
 
 from .contracts import (
@@ -22,6 +29,9 @@ from .contracts import (
     CHECK_EVIDENCE_BINDING_PRESENT,
     CHECK_EVIDENCE_BINDING_PROPOSAL_IDENTITY,
     CHECK_EXPERIMENT_CONTENT_HASH,
+    CHECK_FREEZE_ANCHOR_BINDING_IDENTITY,
+    CHECK_FREEZE_ANCHOR_EXPERIMENT_IDENTITY,
+    CHECK_FREEZE_ANCHOR_PRESENT,
     CHECK_HOLDOUT_BINDING,
     CHECK_HOLDOUT_CONTENT_HASH,
     CHECK_HOLDOUT_REPRODUCTION,
@@ -55,6 +65,9 @@ __all__ = [
     "CHECK_EVIDENCE_BINDING_PRESENT",
     "CHECK_EVIDENCE_BINDING_PROPOSAL_IDENTITY",
     "CHECK_EXPERIMENT_CONTENT_HASH",
+    "CHECK_FREEZE_ANCHOR_BINDING_IDENTITY",
+    "CHECK_FREEZE_ANCHOR_EXPERIMENT_IDENTITY",
+    "CHECK_FREEZE_ANCHOR_PRESENT",
     "CHECK_HOLDOUT_BINDING",
     "CHECK_HOLDOUT_CONTENT_HASH",
     "CHECK_HOLDOUT_REPRODUCTION",

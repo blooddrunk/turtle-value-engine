@@ -1,4 +1,21 @@
-# Phase 7-A-R2 next coding-agent goal
+# Coding-agent handoff — Phase 7-A-R2 Authoritative Calibration Freeze Anchor and Schema Semantic Parity Hardening
+
+Status: **CONSUMED** (implementation delivered; see
+`docs/status/phase-7-a-r2-2026-09-30.md`)
+Date: 2026-09-30
+
+Canonical goal:
+`docs/goals/phase-7-a-r2-authoritative-freeze-anchor-hardening.md`
+
+Selection audit:
+`docs/status/phase-7-a-r1-post-closure-review-2026-09-30.md`
+
+Pre-R2 baseline:
+`cbcf4cab5f361eb45d5be83a846e74c3b7f085cd`
+
+## Original handoff
+
+The original coding-agent handoff text is preserved verbatim below.
 
 Use this as the implementation handoff for the selected R2 package.
 

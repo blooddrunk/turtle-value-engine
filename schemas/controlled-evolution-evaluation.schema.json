@@ -1,71 +1,20 @@
 {
-  "$defs": {
-    "EvaluationCheckV1": {
-      "additionalProperties": false,
-      "description": "One machine-readable admission check with a stable canonical name.",
-      "properties": {
-        "name": {
-          "enum": [
-            "BASE_PROFILE_BYTES_HASH",
-            "BASE_PROFILE_IDENTITY_AGREEMENT",
-            "EVIDENCE_BINDING_PRESENT",
-            "EVIDENCE_BINDING_MANIFEST_IDENTITY",
-            "EVIDENCE_BINDING_EXPERIMENT_IDENTITY",
-            "EVIDENCE_BINDING_OBSERVATIONS_IDENTITY",
-            "EVIDENCE_BINDING_BASE_PROFILE_IDENTITY",
-            "EVIDENCE_BINDING_PROPOSAL_IDENTITY",
-            "MANIFEST_IDENTITY",
-            "EXPERIMENT_CONTENT_HASH",
-            "PROPOSAL_EMBEDDING",
-            "SELECTED_TRIAL_AGREEMENT",
-            "SEARCH_HOLDOUT_ISOLATION",
-            "CHRONOLOGY_DISJOINT_ORDERED",
-            "PROPOSAL_STATUS_PROPOSAL_ONLY",
-            "HOLDOUT_BINDING",
-            "HOLDOUT_CONTENT_HASH",
-            "CANONICAL_REPRODUCTION",
-            "HOLDOUT_REPRODUCTION"
-          ],
-          "title": "Name",
-          "type": "string"
-        },
-        "state": {
-          "enum": [
-            "PASS",
-            "BLOCKED"
-          ],
-          "title": "State",
-          "type": "string"
-        },
-        "detail": {
-          "maxLength": 2000,
-          "minLength": 1,
-          "title": "Detail",
-          "type": "string"
-        }
-      },
-      "required": [
-        "name",
-        "state",
-        "detail"
-      ],
-      "title": "EvaluationCheckV1",
-      "type": "object"
-    }
-  },
   "additionalProperties": false,
-  "description": "Immutable evaluation/admission dossier for one proposal-only evidence chain.\n\nThe dossier binds the frozen dataset manifest, calibration experiment,\nembedded ``PROPOSAL_ONLY`` proposal, separate holdout result, frozen\nobservations, the exact base-profile bytes and the prior\ncalibration-time evidence binding into one deterministic artifact.\n``admission_state`` is only an evidence-admission decision; it is never\nan investment decision, a performance verdict or an approval.",
+  "description": "Immutable evaluation/admission dossier for one proposal-only evidence chain.\n\nThe dossier binds the frozen dataset manifest, calibration experiment,\nembedded ``PROPOSAL_ONLY`` proposal, separate holdout result, frozen\nobservations, the exact base-profile bytes, the prior calibration-time\nevidence binding and the authoritative calibration-freeze anchor that\nbinding was resolved from into one deterministic artifact.\n``admission_state`` is only an evidence-admission decision; it is never\nan investment decision, a performance verdict or an approval.",
   "properties": {
-    "contract": {
-      "const": "controlled_evolution_evaluation_v1",
-      "default": "controlled_evolution_evaluation_v1",
-      "title": "Contract",
+    "admission_state": {
+      "enum": [
+        "READY_FOR_HUMAN_REVIEW",
+        "BLOCKED"
+      ],
+      "title": "Admission State",
       "type": "string"
     },
-    "evaluation_id": {
-      "minLength": 1,
-      "title": "Evaluation Id",
-      "type": "string"
+    "automatic_application_allowed": {
+      "const": false,
+      "default": false,
+      "title": "Automatic Application Allowed",
+      "type": "boolean"
     },
     "base_profile_id": {
       "minLength": 1,
@@ -77,75 +26,700 @@
       "title": "Base Profile Sha256",
       "type": "string"
     },
-    "dataset_id": {
-      "minLength": 1,
-      "title": "Dataset Id",
-      "type": "string"
-    },
-    "manifest_content_sha256": {
-      "pattern": "^[0-9a-f]{64}$",
-      "title": "Manifest Content Sha256",
-      "type": "string"
-    },
-    "experiment_id": {
-      "minLength": 1,
-      "title": "Experiment Id",
-      "type": "string"
-    },
-    "experiment_content_sha256": {
-      "pattern": "^[0-9a-f]{64}$",
-      "title": "Experiment Content Sha256",
-      "type": "string"
-    },
-    "proposal_id": {
-      "minLength": 1,
-      "title": "Proposal Id",
-      "type": "string"
-    },
-    "proposal_payload_sha256": {
-      "pattern": "^[0-9a-f]{64}$",
-      "title": "Proposal Payload Sha256",
-      "type": "string"
-    },
     "candidate_profile_id": {
       "minLength": 1,
       "title": "Candidate Profile Id",
       "type": "string"
     },
-    "parameter_overrides": {
-      "additionalProperties": {
-        "anyOf": [
-          {
-            "type": "number"
+    "checks": {
+      "items": false,
+      "maxItems": 22,
+      "minItems": 22,
+      "prefixItems": [
+        {
+          "additionalProperties": false,
+          "description": "One machine-readable admission check with a stable canonical name.",
+          "properties": {
+            "detail": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Detail",
+              "type": "string"
+            },
+            "name": {
+              "const": "BASE_PROFILE_BYTES_HASH"
+            },
+            "state": {
+              "enum": [
+                "PASS",
+                "BLOCKED"
+              ],
+              "title": "State",
+              "type": "string"
+            }
           },
-          {
-            "type": "integer"
+          "required": [
+            "name",
+            "state",
+            "detail"
+          ],
+          "title": "EvaluationCheckV1",
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "One machine-readable admission check with a stable canonical name.",
+          "properties": {
+            "detail": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Detail",
+              "type": "string"
+            },
+            "name": {
+              "const": "BASE_PROFILE_IDENTITY_AGREEMENT"
+            },
+            "state": {
+              "enum": [
+                "PASS",
+                "BLOCKED"
+              ],
+              "title": "State",
+              "type": "string"
+            }
           },
-          {
-            "type": "string"
+          "required": [
+            "name",
+            "state",
+            "detail"
+          ],
+          "title": "EvaluationCheckV1",
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "One machine-readable admission check with a stable canonical name.",
+          "properties": {
+            "detail": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Detail",
+              "type": "string"
+            },
+            "name": {
+              "const": "EVIDENCE_BINDING_PRESENT"
+            },
+            "state": {
+              "enum": [
+                "PASS",
+                "BLOCKED"
+              ],
+              "title": "State",
+              "type": "string"
+            }
           },
-          {
-            "type": "boolean"
-          }
-        ]
-      },
-      "title": "Parameter Overrides",
-      "type": "object"
+          "required": [
+            "name",
+            "state",
+            "detail"
+          ],
+          "title": "EvaluationCheckV1",
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "One machine-readable admission check with a stable canonical name.",
+          "properties": {
+            "detail": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Detail",
+              "type": "string"
+            },
+            "name": {
+              "const": "EVIDENCE_BINDING_MANIFEST_IDENTITY"
+            },
+            "state": {
+              "enum": [
+                "PASS",
+                "BLOCKED"
+              ],
+              "title": "State",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "state",
+            "detail"
+          ],
+          "title": "EvaluationCheckV1",
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "One machine-readable admission check with a stable canonical name.",
+          "properties": {
+            "detail": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Detail",
+              "type": "string"
+            },
+            "name": {
+              "const": "EVIDENCE_BINDING_EXPERIMENT_IDENTITY"
+            },
+            "state": {
+              "enum": [
+                "PASS",
+                "BLOCKED"
+              ],
+              "title": "State",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "state",
+            "detail"
+          ],
+          "title": "EvaluationCheckV1",
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "One machine-readable admission check with a stable canonical name.",
+          "properties": {
+            "detail": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Detail",
+              "type": "string"
+            },
+            "name": {
+              "const": "EVIDENCE_BINDING_OBSERVATIONS_IDENTITY"
+            },
+            "state": {
+              "enum": [
+                "PASS",
+                "BLOCKED"
+              ],
+              "title": "State",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "state",
+            "detail"
+          ],
+          "title": "EvaluationCheckV1",
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "One machine-readable admission check with a stable canonical name.",
+          "properties": {
+            "detail": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Detail",
+              "type": "string"
+            },
+            "name": {
+              "const": "EVIDENCE_BINDING_BASE_PROFILE_IDENTITY"
+            },
+            "state": {
+              "enum": [
+                "PASS",
+                "BLOCKED"
+              ],
+              "title": "State",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "state",
+            "detail"
+          ],
+          "title": "EvaluationCheckV1",
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "One machine-readable admission check with a stable canonical name.",
+          "properties": {
+            "detail": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Detail",
+              "type": "string"
+            },
+            "name": {
+              "const": "EVIDENCE_BINDING_PROPOSAL_IDENTITY"
+            },
+            "state": {
+              "enum": [
+                "PASS",
+                "BLOCKED"
+              ],
+              "title": "State",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "state",
+            "detail"
+          ],
+          "title": "EvaluationCheckV1",
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "One machine-readable admission check with a stable canonical name.",
+          "properties": {
+            "detail": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Detail",
+              "type": "string"
+            },
+            "name": {
+              "const": "FREEZE_ANCHOR_PRESENT"
+            },
+            "state": {
+              "enum": [
+                "PASS",
+                "BLOCKED"
+              ],
+              "title": "State",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "state",
+            "detail"
+          ],
+          "title": "EvaluationCheckV1",
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "One machine-readable admission check with a stable canonical name.",
+          "properties": {
+            "detail": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Detail",
+              "type": "string"
+            },
+            "name": {
+              "const": "FREEZE_ANCHOR_EXPERIMENT_IDENTITY"
+            },
+            "state": {
+              "enum": [
+                "PASS",
+                "BLOCKED"
+              ],
+              "title": "State",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "state",
+            "detail"
+          ],
+          "title": "EvaluationCheckV1",
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "One machine-readable admission check with a stable canonical name.",
+          "properties": {
+            "detail": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Detail",
+              "type": "string"
+            },
+            "name": {
+              "const": "FREEZE_ANCHOR_BINDING_IDENTITY"
+            },
+            "state": {
+              "enum": [
+                "PASS",
+                "BLOCKED"
+              ],
+              "title": "State",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "state",
+            "detail"
+          ],
+          "title": "EvaluationCheckV1",
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "One machine-readable admission check with a stable canonical name.",
+          "properties": {
+            "detail": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Detail",
+              "type": "string"
+            },
+            "name": {
+              "const": "MANIFEST_IDENTITY"
+            },
+            "state": {
+              "enum": [
+                "PASS",
+                "BLOCKED"
+              ],
+              "title": "State",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "state",
+            "detail"
+          ],
+          "title": "EvaluationCheckV1",
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "One machine-readable admission check with a stable canonical name.",
+          "properties": {
+            "detail": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Detail",
+              "type": "string"
+            },
+            "name": {
+              "const": "EXPERIMENT_CONTENT_HASH"
+            },
+            "state": {
+              "enum": [
+                "PASS",
+                "BLOCKED"
+              ],
+              "title": "State",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "state",
+            "detail"
+          ],
+          "title": "EvaluationCheckV1",
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "One machine-readable admission check with a stable canonical name.",
+          "properties": {
+            "detail": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Detail",
+              "type": "string"
+            },
+            "name": {
+              "const": "PROPOSAL_EMBEDDING"
+            },
+            "state": {
+              "enum": [
+                "PASS",
+                "BLOCKED"
+              ],
+              "title": "State",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "state",
+            "detail"
+          ],
+          "title": "EvaluationCheckV1",
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "One machine-readable admission check with a stable canonical name.",
+          "properties": {
+            "detail": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Detail",
+              "type": "string"
+            },
+            "name": {
+              "const": "SELECTED_TRIAL_AGREEMENT"
+            },
+            "state": {
+              "enum": [
+                "PASS",
+                "BLOCKED"
+              ],
+              "title": "State",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "state",
+            "detail"
+          ],
+          "title": "EvaluationCheckV1",
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "One machine-readable admission check with a stable canonical name.",
+          "properties": {
+            "detail": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Detail",
+              "type": "string"
+            },
+            "name": {
+              "const": "SEARCH_HOLDOUT_ISOLATION"
+            },
+            "state": {
+              "enum": [
+                "PASS",
+                "BLOCKED"
+              ],
+              "title": "State",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "state",
+            "detail"
+          ],
+          "title": "EvaluationCheckV1",
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "One machine-readable admission check with a stable canonical name.",
+          "properties": {
+            "detail": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Detail",
+              "type": "string"
+            },
+            "name": {
+              "const": "CHRONOLOGY_DISJOINT_ORDERED"
+            },
+            "state": {
+              "enum": [
+                "PASS",
+                "BLOCKED"
+              ],
+              "title": "State",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "state",
+            "detail"
+          ],
+          "title": "EvaluationCheckV1",
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "One machine-readable admission check with a stable canonical name.",
+          "properties": {
+            "detail": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Detail",
+              "type": "string"
+            },
+            "name": {
+              "const": "PROPOSAL_STATUS_PROPOSAL_ONLY"
+            },
+            "state": {
+              "enum": [
+                "PASS",
+                "BLOCKED"
+              ],
+              "title": "State",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "state",
+            "detail"
+          ],
+          "title": "EvaluationCheckV1",
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "One machine-readable admission check with a stable canonical name.",
+          "properties": {
+            "detail": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Detail",
+              "type": "string"
+            },
+            "name": {
+              "const": "HOLDOUT_BINDING"
+            },
+            "state": {
+              "enum": [
+                "PASS",
+                "BLOCKED"
+              ],
+              "title": "State",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "state",
+            "detail"
+          ],
+          "title": "EvaluationCheckV1",
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "One machine-readable admission check with a stable canonical name.",
+          "properties": {
+            "detail": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Detail",
+              "type": "string"
+            },
+            "name": {
+              "const": "HOLDOUT_CONTENT_HASH"
+            },
+            "state": {
+              "enum": [
+                "PASS",
+                "BLOCKED"
+              ],
+              "title": "State",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "state",
+            "detail"
+          ],
+          "title": "EvaluationCheckV1",
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "One machine-readable admission check with a stable canonical name.",
+          "properties": {
+            "detail": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Detail",
+              "type": "string"
+            },
+            "name": {
+              "const": "CANONICAL_REPRODUCTION"
+            },
+            "state": {
+              "enum": [
+                "PASS",
+                "BLOCKED"
+              ],
+              "title": "State",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "state",
+            "detail"
+          ],
+          "title": "EvaluationCheckV1",
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "One machine-readable admission check with a stable canonical name.",
+          "properties": {
+            "detail": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Detail",
+              "type": "string"
+            },
+            "name": {
+              "const": "HOLDOUT_REPRODUCTION"
+            },
+            "state": {
+              "enum": [
+                "PASS",
+                "BLOCKED"
+              ],
+              "title": "State",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "state",
+            "detail"
+          ],
+          "title": "EvaluationCheckV1",
+          "type": "object"
+        }
+      ],
+      "title": "Checks",
+      "type": "array"
     },
-    "holdout_content_sha256": {
+    "content_sha256": {
       "pattern": "^[0-9a-f]{64}$",
-      "title": "Holdout Content Sha256",
+      "title": "Content Sha256",
       "type": "string"
     },
-    "observations_content_sha256": {
-      "pattern": "^[0-9a-f]{64}$",
-      "title": "Observations Content Sha256",
+    "contract": {
+      "const": "controlled_evolution_evaluation_v1",
+      "default": "controlled_evolution_evaluation_v1",
+      "title": "Contract",
       "type": "string"
     },
-    "observation_count": {
-      "minimum": 0,
-      "title": "Observation Count",
-      "type": "integer"
+    "dataset_id": {
+      "minLength": 1,
+      "title": "Dataset Id",
+      "type": "string"
+    },
+    "evaluation_id": {
+      "minLength": 1,
+      "title": "Evaluation Id",
+      "type": "string"
     },
     "evidence_binding_id": {
       "anyOf": [
@@ -173,27 +747,90 @@
       "default": null,
       "title": "Evidence Binding Sha256"
     },
-    "scorer_kind": {
-      "const": "BUILT_IN_CANONICAL",
-      "default": "BUILT_IN_CANONICAL",
-      "title": "Scorer Kind",
+    "experiment_content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Experiment Content Sha256",
       "type": "string"
     },
-    "checks": {
-      "items": {
-        "$ref": "#/$defs/EvaluationCheckV1"
-      },
-      "maxItems": 19,
-      "minItems": 19,
-      "title": "Checks",
-      "type": "array"
+    "experiment_id": {
+      "minLength": 1,
+      "title": "Experiment Id",
+      "type": "string"
     },
-    "admission_state": {
-      "enum": [
-        "READY_FOR_HUMAN_REVIEW",
-        "BLOCKED"
+    "freeze_anchor_id": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
       ],
-      "title": "Admission State",
+      "default": null,
+      "title": "Freeze Anchor Id"
+    },
+    "freeze_anchor_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Freeze Anchor Sha256"
+    },
+    "holdout_content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Holdout Content Sha256",
+      "type": "string"
+    },
+    "manifest_content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Manifest Content Sha256",
+      "type": "string"
+    },
+    "observation_count": {
+      "minimum": 0,
+      "title": "Observation Count",
+      "type": "integer"
+    },
+    "observations_content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Observations Content Sha256",
+      "type": "string"
+    },
+    "parameter_overrides": {
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "type": "number"
+          },
+          {
+            "type": "integer"
+          },
+          {
+            "type": "string"
+          },
+          {
+            "type": "boolean"
+          }
+        ]
+      },
+      "title": "Parameter Overrides",
+      "type": "object"
+    },
+    "proposal_id": {
+      "minLength": 1,
+      "title": "Proposal Id",
+      "type": "string"
+    },
+    "proposal_payload_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Proposal Payload Sha256",
       "type": "string"
     },
     "requires_human_approval": {
@@ -202,15 +839,10 @@
       "title": "Requires Human Approval",
       "type": "boolean"
     },
-    "automatic_application_allowed": {
-      "const": false,
-      "default": false,
-      "title": "Automatic Application Allowed",
-      "type": "boolean"
-    },
-    "content_sha256": {
-      "pattern": "^[0-9a-f]{64}$",
-      "title": "Content Sha256",
+    "scorer_kind": {
+      "const": "BUILT_IN_CANONICAL",
+      "default": "BUILT_IN_CANONICAL",
+      "title": "Scorer Kind",
       "type": "string"
     }
   },

@@ -1,0 +1,52 @@
+{
+  "additionalProperties": false,
+  "description": "Authoritative calibration-freeze anchor for one experiment identity.\n\nThe record is produced only at the calibration/freeze boundary and is\npersisted under ``experiment_id`` (never under the content-derived\n``binding_id``), so one frozen experiment identity can carry exactly one\ncommitted freeze: a later re-freeze with different manifest content,\nobservation provenance, binding identity or experiment content fails\nclosed instead of coexisting.  It binds the exact experiment content and\nthe authoritative evidence-binding identity behind one deterministic\n``freeze_id`` and ``content_sha256``; the anchoring authority of a record\ncomes from the authoritative calibration workspace slot it was committed\nto, never from the record bytes alone.",
+  "properties": {
+    "binding_content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Binding Content Sha256",
+      "type": "string"
+    },
+    "binding_id": {
+      "minLength": 1,
+      "title": "Binding Id",
+      "type": "string"
+    },
+    "content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Content Sha256",
+      "type": "string"
+    },
+    "contract": {
+      "const": "calibration_freeze_record_v1",
+      "default": "calibration_freeze_record_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "experiment_content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Experiment Content Sha256",
+      "type": "string"
+    },
+    "experiment_id": {
+      "minLength": 1,
+      "title": "Experiment Id",
+      "type": "string"
+    },
+    "freeze_id": {
+      "minLength": 1,
+      "title": "Freeze Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "freeze_id",
+    "experiment_id",
+    "experiment_content_sha256",
+    "binding_id",
+    "binding_content_sha256",
+    "content_sha256"
+  ],
+  "title": "CalibrationFreezeRecordV1",
+  "type": "object"
+}

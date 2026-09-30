@@ -1,6 +1,12 @@
 """Point-in-time backtesting and calibration boundaries."""
 
 from .calibration import CalibrationError, CalibrationRunner, run_calibration, split_observations
+from .calibration_freeze import (
+    AnchoredCalibrationEvidence,
+    CalibrationFreezeError,
+    commit_calibration_freeze,
+    resolve_anchored_calibration_evidence,
+)
 from .contracts import *  # noqa: F403
 from .contracts import __all__ as _CONTRACT_EXPORTS
 from .dataset import (
@@ -46,12 +52,14 @@ from .workspace import BacktestArtifactStore, BacktestWorkspace, BacktestWorkspa
 
 __all__ = [
     *_CONTRACT_EXPORTS,
+    "AnchoredCalibrationEvidence",
     "BacktestArtifactStore",
     "BacktestOrchestrationError",
     "BacktestOrchestrator",
     "BacktestWorkspace",
     "BacktestWorkspaceError",
     "CalibrationError",
+    "CalibrationFreezeError",
     "CalibrationRunner",
     "DatasetValidationError",
     "EvidenceBindingError",
@@ -74,10 +82,12 @@ __all__ = [
     "calculate_performance_metrics",
     "canonical_observations_sha256",
     "canonical_proposal_payload_sha256",
+    "commit_calibration_freeze",
     "decision_snapshot_from_analysis",
     "evaluate_forward_return",
     "evaluate_signals",
     "is_available_at",
+    "resolve_anchored_calibration_evidence",
     "run_backtest",
     "run_calibration",
     "sha256_json",

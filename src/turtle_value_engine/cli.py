@@ -24,6 +24,8 @@ from turtle_value_engine.backtest import (
     ChronologicalSplit,
     PortfolioPolicy,
     build_calibration_evidence_binding,
+    commit_calibration_freeze,
+    resolve_anchored_calibration_evidence,
     run_backtest,
     run_calibration,
 )
@@ -445,8 +447,18 @@ def _build_parser() -> argparse.ArgumentParser:
         "--evidence-binding-output",
         type=Path,
         default=None,
-        help="additionally persist the calibration-time evidence binding "
-        "of the exact manifest, observations and experiment (Phase 7-A-R1)",
+        help="additionally export the calibration-time evidence binding "
+        "of the exact manifest, observations and experiment (Phase 7-A-R1); "
+        "an export only — not the authority admitting a later evaluation",
+    )
+    calibrate_parser.add_argument(
+        "--workspace",
+        type=Path,
+        default=None,
+        help="authoritative BacktestWorkspace root: commit the compiled "
+        "manifest, the calibration experiment, the evidence binding and the "
+        "authoritative calibration-freeze record (published last) without "
+        "manual JSON assembly (Phase 7-A-R2)",
     )
     calibrate_parser.add_argument("--require-production", action="store_true")
 
@@ -466,12 +478,23 @@ def _build_parser() -> argparse.ArgumentParser:
     evolution_evaluate.add_argument("--holdout", required=True, type=Path)
     evolution_evaluate.add_argument("--observations", required=True, type=Path)
     evolution_evaluate.add_argument("--base-profile", required=True, type=Path)
-    evolution_evaluate.add_argument(
-        "--evidence-binding",
-        required=True,
+    evolution_anchor_group = evolution_evaluate.add_mutually_exclusive_group(
+        required=True
+    )
+    evolution_anchor_group.add_argument(
+        "--calibration-workspace",
         type=Path,
-        help="prior calibration-time evidence binding (Phase 7-A-R1); "
-        "admission is impossible without it",
+        help="authoritative BacktestWorkspace root: resolve and verify the "
+        "calibration-freeze record and referenced binding for this "
+        "experiment (Phase 7-A-R2); the only path that can reach "
+        "READY_FOR_HUMAN_REVIEW",
+    )
+    evolution_anchor_group.add_argument(
+        "--evidence-binding",
+        type=Path,
+        help="prior calibration-time evidence binding sidecar export "
+        "(Phase 7-A-R1); unanchored compatibility input — it can never "
+        "produce READY_FOR_HUMAN_REVIEW",
     )
     evolution_evaluate.add_argument("--output", type=Path, default=None)
 
@@ -1095,6 +1118,45 @@ def _run_backtest_command(args: argparse.Namespace) -> object:
     return result
 
 
+def _calibration_input_paths(args: argparse.Namespace) -> dict[str, Path]:
+    return {
+        "manifest": args.manifest,
+        "store": args.store,
+        "search-space": args.search_space,
+        "split": args.split,
+        "observations": args.observations,
+    }
+
+
+def _non_destructive_export(
+    path: Path, content: bytes, *, label: str, inputs: dict[str, Path]
+) -> None:
+    """Write one calibration export without overwriting anything frozen.
+
+    An export path that would overwrite a supplied input, another export's
+    destination, or an existing file with different content is rejected
+    before any byte is written; a byte-identical repeat is idempotent.
+    """
+
+    resolved = path.resolve()
+    for input_label, input_path in inputs.items():
+        if resolved == input_path.resolve():
+            raise ValueError(
+                f"{label} must not overwrite a supplied input artifact "
+                f"({input_label}): {input_path}"
+            )
+    if path.exists():
+        if path.is_symlink() or not path.is_file():
+            raise ValueError(f"{label} exists and is not a regular file: {path}")
+        if path.read_bytes() != content:
+            raise ValueError(
+                f"{label} already exists with different content; refusing to "
+                f"overwrite: {path}"
+            )
+        return
+    _atomic_write(path, content)
+
+
 def _run_calibration_command(args: argparse.Namespace) -> object:
     historical_manifest, store = _load_historical_manifest_and_store(args)
     manifest = compile_backtest_manifest(
@@ -1116,18 +1178,56 @@ def _run_calibration_command(args: argparse.Namespace) -> object:
         split=split,
         observations=observations,
     )
-    _write_optional(args.output, result)
+    inputs = _calibration_input_paths(args)
+    if (
+        args.output is not None
+        and args.evidence_binding_output is not None
+        and args.output.resolve() == args.evidence_binding_output.resolve()
+    ):
+        raise ValueError(
+            "--output must not overwrite --evidence-binding-output: "
+            f"{args.output}"
+        )
+    if args.workspace is not None:
+        # The authoritative freeze boundary: prerequisites are committed
+        # first and the experiment-keyed freeze record is published last, so
+        # a conflicting re-freeze for this experiment fails closed with every
+        # pre-existing authoritative byte preserved.
+        commit_calibration_freeze(
+            BacktestWorkspace(args.workspace),
+            manifest=manifest,
+            experiment=result,
+            observations=observations,
+        )
     if args.evidence_binding_output is not None:
         # The binding is produced here, at the calibration/freeze boundary,
         # where the exact compiled manifest, the exact observation rows and
-        # the resulting experiment are simultaneously available.
+        # the resulting experiment are simultaneously available.  The sidecar
+        # file remains a readable/exportable R1 artifact, never the authority
+        # admitting a later evaluation.
         binding = build_calibration_evidence_binding(
             manifest=manifest,
             experiment=result,
             observations=observations,
         )
-        _write_optional(args.evidence_binding_output, binding)
+        _non_destructive_export(
+            args.evidence_binding_output,
+            _export_bytes(binding),
+            label="--evidence-binding-output",
+            inputs=inputs,
+        )
+    if args.output is not None:
+        _non_destructive_export(
+            args.output, _export_bytes(result), label="--output", inputs=inputs
+        )
     return result
+
+
+def _export_bytes(result: object) -> bytes:
+    payload = _json_payload(result)
+    return (
+        json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+    ).encode("utf-8")
 
 
 def _run_evolution_command(args: argparse.Namespace) -> object:
@@ -1140,15 +1240,23 @@ def _run_evolution_command(args: argparse.Namespace) -> object:
         "observations": args.observations,
         "base-profile": args.base_profile,
         "evidence-binding": args.evidence_binding,
+        "calibration-workspace": args.calibration_workspace,
     }
     if args.output is not None:
         output = args.output.resolve()
         for label, path in input_paths.items():
-            if output == path.resolve():
+            if path is not None and output == path.resolve():
                 raise ValueError(
                     "evaluation output must not overwrite a supplied input "
                     f"artifact ({label}): {path}"
                 )
+        if args.calibration_workspace is not None and output.is_relative_to(
+            args.calibration_workspace.resolve()
+        ):
+            raise ValueError(
+                "evaluation output must not be written inside the authoritative "
+                f"calibration workspace: {args.output}"
+            )
     manifest = BacktestDatasetManifest.model_validate(_read_json(args.manifest))
     experiment = CalibrationExperiment.model_validate(_read_json(args.experiment))
     holdout = CalibrationHoldoutResult.model_validate(_read_json(args.holdout))
@@ -1156,9 +1264,22 @@ def _run_evolution_command(args: argparse.Namespace) -> object:
     if not isinstance(raw_observations, list):
         raise ValueError("--observations must contain a JSON array")
     observations = [CalibrationObservation.model_validate(item) for item in raw_observations]
-    evidence_binding = CalibrationEvidenceBindingV1.model_validate(
-        _read_json(args.evidence_binding)
-    )
+    freeze_record = None
+    if args.calibration_workspace is not None:
+        # The authoritative anchor path: the freeze record and the binding it
+        # references are resolved and verified from the calibration workspace
+        # before evaluation; a missing, corrupt or foreign anchor fails
+        # closed without producing any dossier.
+        anchored = resolve_anchored_calibration_evidence(
+            BacktestWorkspace(args.calibration_workspace),
+            experiment_id=experiment.experiment_id,
+        )
+        evidence_binding = anchored.binding
+        freeze_record = anchored.freeze_record
+    else:
+        evidence_binding = CalibrationEvidenceBindingV1.model_validate(
+            _read_json(args.evidence_binding)
+        )
     base_profile_bytes = args.base_profile.read_bytes()
     evaluation = evaluate_controlled_evolution(
         manifest=manifest,
@@ -1167,6 +1288,7 @@ def _run_evolution_command(args: argparse.Namespace) -> object:
         observations=observations,
         base_profile_bytes=base_profile_bytes,
         evidence_binding=evidence_binding,
+        freeze_record=freeze_record,
     )
     _write_optional(args.output, evaluation)
     if evaluation.admission_state == "BLOCKED":

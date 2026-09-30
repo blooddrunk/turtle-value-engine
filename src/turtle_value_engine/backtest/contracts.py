@@ -1688,6 +1688,83 @@ class CalibrationEvidenceBindingV1(BaseModel):
         return cls.model_validate(payload)
 
 
+class CalibrationFreezeRecordV1(BaseModel):
+    """Authoritative calibration-freeze anchor for one experiment identity.
+
+    The record is produced only at the calibration/freeze boundary and is
+    persisted under ``experiment_id`` (never under the content-derived
+    ``binding_id``), so one frozen experiment identity can carry exactly one
+    committed freeze: a later re-freeze with different manifest content,
+    observation provenance, binding identity or experiment content fails
+    closed instead of coexisting.  It binds the exact experiment content and
+    the authoritative evidence-binding identity behind one deterministic
+    ``freeze_id`` and ``content_sha256``; the anchoring authority of a record
+    comes from the authoritative calibration workspace slot it was committed
+    to, never from the record bytes alone.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    contract: Literal["calibration_freeze_record_v1"] = "calibration_freeze_record_v1"
+    freeze_id: StrictStr = Field(min_length=1)
+    experiment_id: StrictStr = Field(min_length=1)
+    experiment_content_sha256: StrictStr = Field(pattern=_HASH_PATTERN)
+    binding_id: StrictStr = Field(min_length=1)
+    binding_content_sha256: StrictStr = Field(pattern=_HASH_PATTERN)
+    content_sha256: StrictStr = Field(pattern=_HASH_PATTERN)
+
+    @model_validator(mode="after")
+    def validate_freeze_record(self) -> Self:
+        expected_freeze_id = deterministic_id(
+            "calibration-freeze-record",
+            self.experiment_id,
+            self.experiment_content_sha256,
+            self.binding_id,
+            self.binding_content_sha256,
+        )
+        if self.freeze_id != expected_freeze_id:
+            raise ValueError("freeze_id does not match the anchored identities")
+        expected = _hash_model(self, "content_sha256")
+        if self.content_sha256 != expected:
+            raise ValueError("calibration freeze record content_sha256 does not match content")
+        return self
+
+    @classmethod
+    def build(
+        cls,
+        *,
+        experiment_id: str,
+        experiment_content_sha256: str,
+        binding_id: str,
+        binding_content_sha256: str,
+    ) -> CalibrationFreezeRecordV1:
+        """Construct a freeze record with its deterministic id and content hash."""
+
+        freeze_id = deterministic_id(
+            "calibration-freeze-record",
+            experiment_id,
+            experiment_content_sha256,
+            binding_id,
+            binding_content_sha256,
+        )
+        candidate = cls.model_construct(
+            contract="calibration_freeze_record_v1",
+            freeze_id=freeze_id,
+            experiment_id=experiment_id,
+            experiment_content_sha256=experiment_content_sha256,
+            binding_id=binding_id,
+            binding_content_sha256=binding_content_sha256,
+            content_sha256="0" * 64,
+        )
+        payload = candidate.model_dump(mode="json", warnings=False)
+        payload["content_sha256"] = hashlib.sha256(
+            canonical_json_bytes(
+                {key: value for key, value in payload.items() if key != "content_sha256"}
+            )
+        ).hexdigest()
+        return cls.model_validate(payload)
+
+
 class BacktestWorkspaceIndex(BaseModel):
     """Optional immutable index for resumable backtest artifacts."""
 
@@ -1730,6 +1807,7 @@ __all__ = [
     "CalibrationObservation",
     "CALIBRATION_CONTRACT_VERSION",
     "CalibrationEvidenceBindingV1",
+    "CalibrationFreezeRecordV1",
     "CalibrationSearchSpace",
     "CalibrationStage",
     "CalibrationTrial",

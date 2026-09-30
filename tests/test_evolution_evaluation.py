@@ -7,6 +7,11 @@ Phase 7-A-R1: admission additionally requires a prior calibration-time
 ``CalibrationEvidenceBindingV1``; the default helpers below build the honest
 binding for each chain so every pre-existing scenario keeps testing exactly
 its original check.
+
+Phase 7-A-R2: admission additionally requires the authoritative
+``CalibrationFreezeRecordV1`` anchoring that binding to this experiment; the
+default helpers below also build the matching honest freeze record so every
+pre-existing scenario keeps testing exactly its original check.
 """
 
 from __future__ import annotations
@@ -22,8 +27,10 @@ from jsonschema import Draft202012Validator
 
 from turtle_value_engine.backtest import (
     BacktestDatasetManifest,
+    BacktestWorkspace,
     CalibrationEvidenceBindingV1,
     CalibrationExperiment,
+    CalibrationFreezeRecordV1,
     CalibrationHoldoutResult,
     CalibrationObservation,
     CalibrationRunner,
@@ -34,6 +41,7 @@ from turtle_value_engine.backtest import (
     Market,
     UniverseCoverage,
     build_calibration_evidence_binding,
+    commit_calibration_freeze,
 )
 from turtle_value_engine.cli import main
 from turtle_value_engine.evolution import (
@@ -193,6 +201,7 @@ def _evaluate(
     | object = _KEEP,
 ) -> ControlledEvolutionEvaluationV1:
     effective_manifest = manifest if manifest is not None else _manifest()
+    freeze_record = None
     if evidence_binding is _KEEP:
         # The honest binding for this chain, produced at the calibration/freeze
         # boundary from the canonical frozen manifest, the experiment and the
@@ -202,6 +211,16 @@ def _evaluate(
             manifest=_manifest(),
             experiment=experiment,
             observations=observations,
+        )
+    if evidence_binding is not None:
+        # The matching authoritative freeze record for the supplied binding
+        # and experiment (pure contract construction; the anchoring authority
+        # of a real workspace slot is covered separately by the R2 suite).
+        freeze_record = CalibrationFreezeRecordV1.build(
+            experiment_id=experiment.experiment_id,
+            experiment_content_sha256=experiment.content_sha256,
+            binding_id=evidence_binding.binding_id,
+            binding_content_sha256=evidence_binding.content_sha256,
         )
     return evaluate_controlled_evolution(
         manifest=effective_manifest,
@@ -214,6 +233,7 @@ def _evaluate(
             else BASE_PROFILE_PATH.read_bytes()
         ),
         evidence_binding=evidence_binding,
+        freeze_record=freeze_record,
     )
 
 
@@ -242,13 +262,15 @@ def test_valid_canonical_proposal_is_ready_for_human_review(canonical_evidence):
 
     assert evaluation.admission_state == "READY_FOR_HUMAN_REVIEW"
     assert not _blocked_names(evaluation)
-    assert len(evaluation.checks) == len(REQUIRED_EVALUATION_CHECK_NAMES) == 19
+    assert len(evaluation.checks) == len(REQUIRED_EVALUATION_CHECK_NAMES) == 22
     assert [check.name for check in evaluation.checks] == list(
         REQUIRED_EVALUATION_CHECK_NAMES
     )
     assert evaluation.base_profile_sha256 == base_sha
     assert evaluation.evidence_binding_id == binding.binding_id
     assert evaluation.evidence_binding_sha256 == binding.content_sha256
+    assert evaluation.freeze_anchor_id is not None
+    assert evaluation.freeze_anchor_sha256 is not None
     assert evaluation.requires_human_approval is True
     assert evaluation.automatic_application_allowed is False
     assert evaluation.proposal_payload_sha256 == proposal_payload_sha256(
@@ -559,6 +581,13 @@ def _write_evidence(tmp_path: Path, experiment, holdout, observations) -> dict[s
     binding = build_calibration_evidence_binding(
         manifest=_manifest(), experiment=experiment, observations=observations
     )
+    workspace = BacktestWorkspace(tmp_path / "calibration-workspace")
+    commit_calibration_freeze(
+        workspace,
+        manifest=_manifest(),
+        experiment=experiment,
+        observations=observations,
+    )
     paths = {
         "manifest": tmp_path / "manifest.json",
         "experiment": tmp_path / "experiment.json",
@@ -566,6 +595,7 @@ def _write_evidence(tmp_path: Path, experiment, holdout, observations) -> dict[s
         "observations": tmp_path / "observations.json",
         "base_profile": tmp_path / "strict-v1.yaml",
         "evidence_binding": tmp_path / "evidence-binding.json",
+        "calibration_workspace": workspace.root,
     }
     paths["manifest"].write_text(
         _manifest().model_dump_json(indent=2), encoding="utf-8"
@@ -602,8 +632,8 @@ def _evaluate_arguments(paths: dict[str, Path], output: Path | None = None) -> l
         str(paths["observations"]),
         "--base-profile",
         str(paths["base_profile"]),
-        "--evidence-binding",
-        str(paths["evidence_binding"]),
+        "--calibration-workspace",
+        str(paths["calibration_workspace"]),
     ]
     if output is not None:
         arguments.extend(["--output", str(output)])
@@ -661,16 +691,25 @@ def test_cli_evaluation_never_touches_network_or_input_bytes(
     monkeypatch.setattr(socket, "socket", no_sockets)
     monkeypatch.setattr(socket, "create_connection", no_sockets)
 
-    before = {
-        label: path.read_bytes() for label, path in paths.items()
-    }
+    def snapshot() -> dict:
+        state = {
+            label: path.read_bytes()
+            for label, path in paths.items()
+            if path.is_file()
+        }
+        state["workspace"] = {
+            item.name: item.read_bytes()
+            for item in sorted(paths["calibration_workspace"].rglob("*.json"))
+        }
+        return state
+
+    before = snapshot()
     strict_v1_before = BASE_PROFILE_PATH.read_bytes()
 
     exit_code = main(_evaluate_arguments(paths, output))
 
     assert exit_code == 0
-    after = {label: path.read_bytes() for label, path in paths.items()}
-    assert before == after
+    assert snapshot() == before
     assert BASE_PROFILE_PATH.read_bytes() == strict_v1_before
     assert output.exists()
 
@@ -680,17 +719,17 @@ def test_cli_refuses_output_overlapping_supplied_input(
 ):
     _base_bytes, _base_sha, experiment, holdout, observations, _binding = canonical_evidence
     paths = _write_evidence(tmp_path, experiment, holdout, observations)
-    binding_before = paths["evidence_binding"].read_bytes()
+    base_profile_before = paths["base_profile"].read_bytes()
 
     exit_code = main(
-        _evaluate_arguments(paths, paths["evidence_binding"])
+        _evaluate_arguments(paths, paths["base_profile"])
     )
 
     assert exit_code == 2
     stderr = capsys.readouterr().err
     assert "must not overwrite" in stderr
-    assert "evidence-binding" in stderr
-    assert paths["evidence_binding"].read_bytes() == binding_before
+    assert "base-profile" in stderr
+    assert paths["base_profile"].read_bytes() == base_profile_before
 
 
 def test_cli_fails_closed_on_corrupt_split_json(tmp_path, capsys):

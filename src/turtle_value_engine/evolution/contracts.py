@@ -27,6 +27,9 @@ CHECK_EVIDENCE_BINDING_EXPERIMENT_IDENTITY = "EVIDENCE_BINDING_EXPERIMENT_IDENTI
 CHECK_EVIDENCE_BINDING_OBSERVATIONS_IDENTITY = "EVIDENCE_BINDING_OBSERVATIONS_IDENTITY"
 CHECK_EVIDENCE_BINDING_BASE_PROFILE_IDENTITY = "EVIDENCE_BINDING_BASE_PROFILE_IDENTITY"
 CHECK_EVIDENCE_BINDING_PROPOSAL_IDENTITY = "EVIDENCE_BINDING_PROPOSAL_IDENTITY"
+CHECK_FREEZE_ANCHOR_PRESENT = "FREEZE_ANCHOR_PRESENT"
+CHECK_FREEZE_ANCHOR_EXPERIMENT_IDENTITY = "FREEZE_ANCHOR_EXPERIMENT_IDENTITY"
+CHECK_FREEZE_ANCHOR_BINDING_IDENTITY = "FREEZE_ANCHOR_BINDING_IDENTITY"
 CHECK_MANIFEST_IDENTITY = "MANIFEST_IDENTITY"
 CHECK_EXPERIMENT_CONTENT_HASH = "EXPERIMENT_CONTENT_HASH"
 CHECK_PROPOSAL_EMBEDDING = "PROPOSAL_EMBEDDING"
@@ -51,6 +54,9 @@ REQUIRED_EVALUATION_CHECK_NAMES: tuple[str, ...] = (
     CHECK_EVIDENCE_BINDING_OBSERVATIONS_IDENTITY,
     CHECK_EVIDENCE_BINDING_BASE_PROFILE_IDENTITY,
     CHECK_EVIDENCE_BINDING_PROPOSAL_IDENTITY,
+    CHECK_FREEZE_ANCHOR_PRESENT,
+    CHECK_FREEZE_ANCHOR_EXPERIMENT_IDENTITY,
+    CHECK_FREEZE_ANCHOR_BINDING_IDENTITY,
     CHECK_MANIFEST_IDENTITY,
     CHECK_EXPERIMENT_CONTENT_HASH,
     CHECK_PROPOSAL_EMBEDDING,
@@ -77,13 +83,41 @@ class EvaluationCheckV1(BaseModel):
     detail: StrictStr = Field(min_length=1, max_length=2_000)
 
 
+def _canonical_check_sequence_json_schema_extra() -> dict[str, object]:
+    """Exact Draft 2020-12 sequence constraint for the canonical check set.
+
+    The constraint is derived at class-definition time from the two canonical
+    sources — the check model and ``REQUIRED_EVALUATION_CHECK_NAMES`` — so the
+    generated checked-in schema cannot drift from the Python contract: each
+    position pins its canonical ``name`` with ``const``, ``items: false``
+    forbids any element beyond the sequence, and the field-level
+    ``minItems``/``maxItems`` pin the exact count.  Schema-only validation
+    therefore rejects reordered checks and count-preserving duplicate/omission
+    exactly like the model validator.  Cryptographic recomputation
+    (``evaluation_id``, ``content_sha256``) is a model/runtime responsibility
+    JSON Schema cannot express.
+    """
+
+    item_schema = EvaluationCheckV1.model_json_schema()
+    prefix_items: list[dict[str, object]] = []
+    for name in REQUIRED_EVALUATION_CHECK_NAMES:
+        position = dict(item_schema)
+        position["properties"] = {
+            **item_schema["properties"],  # type: ignore[arg-type]
+            "name": {"const": name},
+        }
+        prefix_items.append(position)
+    return {"prefixItems": prefix_items, "items": False}
+
+
 class ControlledEvolutionEvaluationV1(BaseModel):
     """Immutable evaluation/admission dossier for one proposal-only evidence chain.
 
     The dossier binds the frozen dataset manifest, calibration experiment,
     embedded ``PROPOSAL_ONLY`` proposal, separate holdout result, frozen
-    observations, the exact base-profile bytes and the prior
-    calibration-time evidence binding into one deterministic artifact.
+    observations, the exact base-profile bytes, the prior calibration-time
+    evidence binding and the authoritative calibration-freeze anchor that
+    binding was resolved from into one deterministic artifact.
     ``admission_state`` is only an evidence-admission decision; it is never
     an investment decision, a performance verdict or an approval.
     """
@@ -111,10 +145,15 @@ class ControlledEvolutionEvaluationV1(BaseModel):
     evidence_binding_sha256: StrictStr | None = Field(
         default=None, pattern=_HASH_PATTERN
     )
+    freeze_anchor_id: StrictStr | None = Field(default=None, min_length=1)
+    freeze_anchor_sha256: StrictStr | None = Field(
+        default=None, pattern=_HASH_PATTERN
+    )
     scorer_kind: Literal["BUILT_IN_CANONICAL"] = "BUILT_IN_CANONICAL"
     checks: list[EvaluationCheckV1] = Field(
         min_length=len(REQUIRED_EVALUATION_CHECK_NAMES),
         max_length=len(REQUIRED_EVALUATION_CHECK_NAMES),
+        json_schema_extra=_canonical_check_sequence_json_schema_extra(),
     )
     admission_state: Literal["READY_FOR_HUMAN_REVIEW", "BLOCKED"]
     requires_human_approval: Literal[True] = True
@@ -133,6 +172,8 @@ class ControlledEvolutionEvaluationV1(BaseModel):
             )
         if (self.evidence_binding_id is None) != (self.evidence_binding_sha256 is None):
             raise ValueError("evidence binding identity fields must be supplied together")
+        if (self.freeze_anchor_id is None) != (self.freeze_anchor_sha256 is None):
+            raise ValueError("freeze anchor identity fields must be supplied together")
         blocked = any(check.state == "BLOCKED" for check in self.checks)
         if self.admission_state == "READY_FOR_HUMAN_REVIEW":
             if blocked:
@@ -140,6 +181,11 @@ class ControlledEvolutionEvaluationV1(BaseModel):
             if self.evidence_binding_id is None or self.evidence_binding_sha256 is None:
                 raise ValueError(
                     "READY_FOR_HUMAN_REVIEW requires a bound calibration evidence binding"
+                )
+            if self.freeze_anchor_id is None or self.freeze_anchor_sha256 is None:
+                raise ValueError(
+                    "READY_FOR_HUMAN_REVIEW requires an authoritative "
+                    "calibration-freeze anchor"
                 )
         if self.admission_state == "BLOCKED" and not blocked:
             raise ValueError("BLOCKED requires at least one BLOCKED check")
@@ -157,6 +203,8 @@ class ControlledEvolutionEvaluationV1(BaseModel):
             self.observations_content_sha256,
             self.evidence_binding_id,
             self.evidence_binding_sha256,
+            self.freeze_anchor_id,
+            self.freeze_anchor_sha256,
         )
         if self.evaluation_id != expected_evaluation_id:
             raise ValueError(
@@ -189,6 +237,8 @@ class ControlledEvolutionEvaluationV1(BaseModel):
         observation_count: int,
         evidence_binding_id: str | None,
         evidence_binding_sha256: str | None,
+        freeze_anchor_id: str | None,
+        freeze_anchor_sha256: str | None,
         checks: list[EvaluationCheckV1],
         admission_state: str,
     ) -> ControlledEvolutionEvaluationV1:
@@ -212,6 +262,8 @@ class ControlledEvolutionEvaluationV1(BaseModel):
             observation_count=observation_count,
             evidence_binding_id=evidence_binding_id,
             evidence_binding_sha256=evidence_binding_sha256,
+            freeze_anchor_id=freeze_anchor_id,
+            freeze_anchor_sha256=freeze_anchor_sha256,
             scorer_kind="BUILT_IN_CANONICAL",
             checks=checks,
             admission_state=admission_state,
@@ -248,6 +300,9 @@ __all__ = [
     "CHECK_EVIDENCE_BINDING_PRESENT",
     "CHECK_EVIDENCE_BINDING_PROPOSAL_IDENTITY",
     "CHECK_EXPERIMENT_CONTENT_HASH",
+    "CHECK_FREEZE_ANCHOR_BINDING_IDENTITY",
+    "CHECK_FREEZE_ANCHOR_EXPERIMENT_IDENTITY",
+    "CHECK_FREEZE_ANCHOR_PRESENT",
     "CHECK_HOLDOUT_BINDING",
     "CHECK_HOLDOUT_CONTENT_HASH",
     "CHECK_HOLDOUT_REPRODUCTION",

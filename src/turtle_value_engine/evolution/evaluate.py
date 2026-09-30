@@ -13,6 +13,16 @@ Phase 7-A-R1 adds the frozen-evidence binding boundary:
 observations and resulting experiment were simultaneously available — is
 supplied and matches the supplied evidence exactly.  The evaluator never
 synthesizes the expected evidence identity from its own inputs.
+
+Phase 7-A-R2 adds the authoritative calibration-freeze anchor boundary: the
+supplied binding must additionally be the binding referenced by a
+:class:`~turtle_value_engine.backtest.contracts.CalibrationFreezeRecordV1`
+that binds this exact experiment.  The evaluator stays pure — it verifies the
+anchor/binding/experiment consistency of the typed inputs it receives; the
+*authority* of the record is established by the workspace loader boundary
+(:func:`turtle_value_engine.backtest.resolve_anchored_calibration_evidence`)
+the evaluation CLI must use before a READY dossier can be produced.  An
+unanchored sidecar binding alone fail-closes admission.
 """
 
 from __future__ import annotations
@@ -29,6 +39,7 @@ from turtle_value_engine.backtest.contracts import (
     BacktestDatasetManifest,
     CalibrationEvidenceBindingV1,
     CalibrationExperiment,
+    CalibrationFreezeRecordV1,
     CalibrationHoldoutResult,
     CalibrationObservation,
     CalibrationStage,
@@ -52,6 +63,9 @@ from .contracts import (
     CHECK_EVIDENCE_BINDING_PRESENT,
     CHECK_EVIDENCE_BINDING_PROPOSAL_IDENTITY,
     CHECK_EXPERIMENT_CONTENT_HASH,
+    CHECK_FREEZE_ANCHOR_BINDING_IDENTITY,
+    CHECK_FREEZE_ANCHOR_EXPERIMENT_IDENTITY,
+    CHECK_FREEZE_ANCHOR_PRESENT,
     CHECK_HOLDOUT_BINDING,
     CHECK_HOLDOUT_CONTENT_HASH,
     CHECK_HOLDOUT_REPRODUCTION,
@@ -126,6 +140,14 @@ def _binding_identity(evidence_binding: CalibrationEvidenceBindingV1 | None) -> 
     return (evidence_binding.binding_id, evidence_binding.content_sha256)
 
 
+def _anchor_identity(
+    freeze_record: CalibrationFreezeRecordV1 | None,
+) -> tuple:
+    if freeze_record is None:
+        return (None, None)
+    return (freeze_record.freeze_id, freeze_record.content_sha256)
+
+
 def evaluate_controlled_evolution(
     *,
     manifest: BacktestDatasetManifest,
@@ -134,6 +156,7 @@ def evaluate_controlled_evolution(
     observations: Sequence[CalibrationObservation],
     base_profile_bytes: bytes,
     evidence_binding: CalibrationEvidenceBindingV1 | None = None,
+    freeze_record: CalibrationFreezeRecordV1 | None = None,
 ) -> ControlledEvolutionEvaluationV1:
     """Evaluate one frozen evidence chain and emit an admission dossier.
 
@@ -150,6 +173,15 @@ def evaluate_controlled_evolution(
     ``BLOCKED`` (never ``READY_FOR_HUMAN_REVIEW``), and every supplied
     identity — manifest, experiment, observation set and base profile — must
     equal the binding exactly before admission is possible.
+
+    ``freeze_record`` is the authoritative calibration-freeze anchor the
+    binding was resolved from.  This function stays pure: it verifies only
+    the internal consistency of the supplied anchor against the supplied
+    experiment and binding.  The authority itself — that the record is the
+    one committed for this ``experiment_id`` in the authoritative calibration
+    workspace — must be established by the caller through the workspace
+    loader boundary; an unanchored sidecar binding alone can therefore never
+    reach ``READY_FOR_HUMAN_REVIEW``.
     """
 
     proposal = experiment.proposal
@@ -301,6 +333,59 @@ def evaluate_controlled_evolution(
             f"(binding proposal_id={None if binding is None else binding.proposal_id}, "
             f"binding payload={None if binding is None else binding.proposal_payload_sha256}, "
             f"supplied proposal_id={proposal.proposal_id}, supplied payload={proposal_sha})",
+        )
+    )
+
+    anchor = freeze_record
+
+    checks.append(
+        _check(
+            CHECK_FREEZE_ANCHOR_PRESENT,
+            anchor is not None,
+            "authoritative calibration-freeze record supplied for this experiment",
+            "no authoritative calibration-freeze record was supplied; an "
+            "unanchored sidecar evidence binding alone cannot admit a chain — "
+            "admission requires the freeze committed in the authoritative "
+            "calibration workspace",
+        )
+    )
+
+    anchor_experiment_ok = (
+        anchor is not None
+        and anchor.experiment_id == experiment.experiment_id
+        and anchor.experiment_content_sha256 == experiment.content_sha256
+    )
+    checks.append(
+        _check(
+            CHECK_FREEZE_ANCHOR_EXPERIMENT_IDENTITY,
+            anchor_experiment_ok,
+            "the calibration-freeze anchor binds exactly this experiment",
+            "the calibration-freeze anchor does not bind this experiment "
+            f"(anchor experiment_id={None if anchor is None else anchor.experiment_id}, "
+            "anchor experiment content="
+            f"{None if anchor is None else anchor.experiment_content_sha256}, "
+            f"supplied experiment_id={experiment.experiment_id}, supplied content="
+            f"{experiment.content_sha256})",
+        )
+    )
+
+    anchor_binding_ok = (
+        anchor is not None
+        and binding is not None
+        and anchor.binding_id == binding.binding_id
+        and anchor.binding_content_sha256 == binding.content_sha256
+    )
+    checks.append(
+        _check(
+            CHECK_FREEZE_ANCHOR_BINDING_IDENTITY,
+            anchor_binding_ok,
+            "the calibration-freeze anchor references exactly the supplied binding",
+            "the calibration-freeze anchor does not reference the supplied "
+            "evidence binding (anchor binding="
+            f"{None if anchor is None else anchor.binding_id}/"
+            f"{None if anchor is None else anchor.binding_content_sha256}, supplied "
+            f"binding={None if binding is None else binding.binding_id}/"
+            f"{None if binding is None else binding.content_sha256})",
         )
     )
 
@@ -539,6 +624,7 @@ def evaluate_controlled_evolution(
         else "READY_FOR_HUMAN_REVIEW"
     )
     binding_id, binding_sha = _binding_identity(binding)
+    anchor_id, anchor_sha = _anchor_identity(freeze_record)
     evaluation_id = deterministic_id(
         "controlled-evolution-evaluation",
         experiment.base_profile_id,
@@ -553,6 +639,8 @@ def evaluate_controlled_evolution(
         observations_sha,
         binding_id,
         binding_sha,
+        anchor_id,
+        anchor_sha,
     )
     return ControlledEvolutionEvaluationV1.build(
         evaluation_id=evaluation_id,
@@ -571,6 +659,8 @@ def evaluate_controlled_evolution(
         observation_count=len(ordered),
         evidence_binding_id=binding_id,
         evidence_binding_sha256=binding_sha,
+        freeze_anchor_id=anchor_id,
+        freeze_anchor_sha256=anchor_sha,
         checks=checks,
         admission_state=admission_state,
     )
@@ -588,6 +678,9 @@ __all__ = [
     "CHECK_EVIDENCE_BINDING_PRESENT",
     "CHECK_EVIDENCE_BINDING_PROPOSAL_IDENTITY",
     "CHECK_EXPERIMENT_CONTENT_HASH",
+    "CHECK_FREEZE_ANCHOR_BINDING_IDENTITY",
+    "CHECK_FREEZE_ANCHOR_EXPERIMENT_IDENTITY",
+    "CHECK_FREEZE_ANCHOR_PRESENT",
     "CHECK_HOLDOUT_BINDING",
     "CHECK_HOLDOUT_CONTENT_HASH",
     "CHECK_HOLDOUT_REPRODUCTION",

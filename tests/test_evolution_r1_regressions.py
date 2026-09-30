@@ -240,10 +240,10 @@ def test_proof_3_dossier_missing_required_checks_must_not_validate(canonical_evi
     ).hexdigest()
 
     # Either layer of the hardened contract rejects the truncation: the
-    # canonical-set field constraint (exactly 19 checks) or the canonical
-    # required-check-set sequence validator.
+    # canonical-set field constraint (the exact canonical check count) or the
+    # canonical required-check-set sequence validator.
     with pytest.raises(
-        ValidationError, match="at least 19 items|canonical required check set"
+        ValidationError, match=r"at least \d+ items|canonical required check set"
     ):
         ControlledEvolutionEvaluationV1.model_validate(payload)
 

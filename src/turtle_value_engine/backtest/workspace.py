@@ -19,6 +19,7 @@ from .contracts import (
     BacktestWorkspaceIndex,
     CalibrationEvidenceBindingV1,
     CalibrationExperiment,
+    CalibrationFreezeRecordV1,
     CalibrationHoldoutResult,
     DecisionSnapshot,
     PortfolioPolicy,
@@ -52,6 +53,10 @@ class BacktestWorkspace:
         "calibration-experiments": CalibrationExperiment,
         "calibration-holdouts": CalibrationHoldoutResult,
         "calibration-evidence-bindings": CalibrationEvidenceBindingV1,
+        # The authoritative freeze slot is keyed by experiment_id, not by the
+        # content-derived binding_id: one frozen experiment identity carries
+        # exactly one committed freeze identity.
+        "calibration-freeze-records": CalibrationFreezeRecordV1,
         "indexes": BacktestWorkspaceIndex,
     }
 
@@ -205,6 +210,16 @@ class BacktestWorkspace:
     ) -> CalibrationEvidenceBindingV1:
         return self._read("calibration-evidence-bindings", artifact_id)  # type: ignore[return-value]
 
+    def save_calibration_freeze_record(
+        self, value: CalibrationFreezeRecordV1
+    ) -> Path:
+        return self._write("calibration-freeze-records", value.experiment_id, value)
+
+    def load_calibration_freeze_record(
+        self, artifact_id: str
+    ) -> CalibrationFreezeRecordV1:
+        return self._read("calibration-freeze-records", artifact_id)  # type: ignore[return-value]
+
     def save_index(self, value: BacktestWorkspaceIndex) -> Path:
         return self._write("indexes", value.workspace_id, value)
 
@@ -223,6 +238,7 @@ def _artifact_id(kind: str, model: BaseModel) -> str | None:
         "results": "run_id",
         "calibration-experiments": "experiment_id",
         "calibration-evidence-bindings": "binding_id",
+        "calibration-freeze-records": "experiment_id",
         "indexes": "workspace_id",
     }
     if kind == "calibration-holdouts":

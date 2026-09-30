@@ -6,6 +6,11 @@ checks (each with its precise blocked reason), the persisted dossier's
 semantic integrity (canonical check set, deterministic ``evaluation_id``,
 binding identity fields), workspace persistence, the additive CLI paths and
 offline/no-network execution.
+
+Phase 7-A-R2: the honest helpers additionally build the matching
+``CalibrationFreezeRecordV1`` for each supplied binding so every binding
+scenario keeps testing exactly its original check; the authoritative-anchor
+behavior itself is covered by ``tests/test_evolution_freeze_anchor.py``.
 """
 
 from __future__ import annotations
@@ -24,6 +29,7 @@ from turtle_value_engine.backtest import (
     BacktestDatasetManifest,
     BacktestWorkspace,
     CalibrationEvidenceBindingV1,
+    CalibrationFreezeRecordV1,
     CalibrationObservation,
     CalibrationRunner,
     CalibrationSearchSpace,
@@ -44,6 +50,9 @@ from turtle_value_engine.evolution import (
     CHECK_EVIDENCE_BINDING_OBSERVATIONS_IDENTITY,
     CHECK_EVIDENCE_BINDING_PRESENT,
     CHECK_EVIDENCE_BINDING_PROPOSAL_IDENTITY,
+    CHECK_FREEZE_ANCHOR_BINDING_IDENTITY,
+    CHECK_FREEZE_ANCHOR_EXPERIMENT_IDENTITY,
+    CHECK_FREEZE_ANCHOR_PRESENT,
     REQUIRED_EVALUATION_CHECK_NAMES,
     ControlledEvolutionEvaluationV1,
     evaluate_controlled_evolution,
@@ -154,6 +163,18 @@ def _evaluate(
     evidence_binding: CalibrationEvidenceBindingV1 | None | object = _HONEST,
 ):
     base_bytes, _sha, experiment, holdout, chain_observations, binding = chain_tuple
+    effective_binding = binding if evidence_binding is _HONEST else evidence_binding
+    freeze_record = None
+    if effective_binding is not None:
+        # The matching freeze record for whichever binding is supplied (the
+        # pure contract construction; workspace anchoring is covered by the
+        # R2 suite), so each binding scenario isolates exactly its own check.
+        freeze_record = CalibrationFreezeRecordV1.build(
+            experiment_id=experiment.experiment_id,
+            experiment_content_sha256=experiment.content_sha256,
+            binding_id=effective_binding.binding_id,
+            binding_content_sha256=effective_binding.content_sha256,
+        )
     return evaluate_controlled_evolution(
         manifest=manifest if manifest is not None else _manifest(),
         experiment=experiment,
@@ -162,9 +183,8 @@ def _evaluate(
         base_profile_bytes=(
             base_profile_bytes if base_profile_bytes is not None else base_bytes
         ),
-        evidence_binding=(
-            binding if evidence_binding is _HONEST else evidence_binding
-        ),
+        evidence_binding=effective_binding,
+        freeze_record=freeze_record,
     )
 
 
@@ -429,6 +449,11 @@ def test_missing_binding_fail_closes_every_binding_check_and_never_ready(chain):
         CHECK_EVIDENCE_BINDING_OBSERVATIONS_IDENTITY,
         CHECK_EVIDENCE_BINDING_BASE_PROFILE_IDENTITY,
         CHECK_EVIDENCE_BINDING_PROPOSAL_IDENTITY,
+        # R2: without a binding there is no anchored freeze either, so the
+        # authoritative-anchor checks fail closed alongside the binding ones.
+        CHECK_FREEZE_ANCHOR_PRESENT,
+        CHECK_FREEZE_ANCHOR_EXPERIMENT_IDENTITY,
+        CHECK_FREEZE_ANCHOR_BINDING_IDENTITY,
     }
 
 
@@ -545,7 +570,7 @@ def test_duplicate_check_is_rejected(chain):
 def test_canonical_required_check_set_matches_evaluator_output(chain):
     evaluation = _evaluate(chain)
 
-    assert len(REQUIRED_EVALUATION_CHECK_NAMES) == 19
+    assert len(REQUIRED_EVALUATION_CHECK_NAMES) == 22
     assert [check.name for check in evaluation.checks] == list(
         REQUIRED_EVALUATION_CHECK_NAMES
     )
@@ -651,6 +676,7 @@ def test_calibrate_cli_produces_evidence_binding_and_full_chain_admits(tmp_path)
     )
     experiment_path = tmp_path / "calibration.json"
     binding_path = tmp_path / "evidence-binding.json"
+    workspace_root = tmp_path / "calibration-workspace"
 
     assert (
         main(
@@ -672,6 +698,8 @@ def test_calibrate_cli_produces_evidence_binding_and_full_chain_admits(tmp_path)
                 str(experiment_path),
                 "--evidence-binding-output",
                 str(binding_path),
+                "--workspace",
+                str(workspace_root),
             ]
         )
         == 0
@@ -692,9 +720,24 @@ def test_calibrate_cli_produces_evidence_binding_and_full_chain_admits(tmp_path)
     assert binding.observations_content_sha256 == canonical_observations_sha256(
         observations
     )
+    # The authoritative workspace freeze committed the same chain: the
+    # experiment, the binding it references and the experiment-keyed freeze
+    # record, published last.
+    workspace = BacktestWorkspace(workspace_root)
+    committed_experiment = workspace.load_calibration_experiment(
+        experiment.experiment_id
+    )
+    committed_binding = workspace.load_calibration_evidence_binding(
+        binding.binding_id
+    )
+    record = workspace.load_calibration_freeze_record(experiment.experiment_id)
+    assert committed_experiment == experiment
+    assert committed_binding == binding
+    assert record.experiment_id == experiment.experiment_id
+    assert record.experiment_content_sha256 == experiment.content_sha256
+    assert record.binding_id == binding.binding_id
+    assert record.binding_content_sha256 == binding.content_sha256
 
-    # Full production chain: the same binding admits the frozen chain through
-    # the offline evaluation CLI.
     historical_manifest = HistoricalDatasetManifest.model_validate(
         json.loads(
             (HISTORICAL_FIXTURE_ROOT / "manifest.json").read_text(encoding="utf-8")
@@ -717,7 +760,10 @@ def test_calibrate_cli_produces_evidence_binding_and_full_chain_admits(tmp_path)
     holdout_path = tmp_path / "holdout.json"
     holdout_path.write_text(holdout.model_dump_json(indent=2), "utf-8")
 
-    output_path = tmp_path / "evaluation.json"
+    # Sidecar-only compatibility path: the exported binding alone can never
+    # produce READY_FOR_HUMAN_REVIEW — the dossier is BLOCKED on the
+    # authoritative-freeze checks (exit 1 records the admission outcome).
+    sidecar_output = tmp_path / "evaluation-sidecar-only.json"
     assert (
         main(
             [
@@ -736,6 +782,41 @@ def test_calibrate_cli_produces_evidence_binding_and_full_chain_admits(tmp_path)
                 "--evidence-binding",
                 str(binding_path),
                 "--output",
+                str(sidecar_output),
+            ]
+        )
+        == 1
+    )
+    sidecar_evaluation = ControlledEvolutionEvaluationV1.model_validate(
+        json.loads(sidecar_output.read_text(encoding="utf-8"))
+    )
+    assert sidecar_evaluation.admission_state == "BLOCKED"
+    assert CHECK_FREEZE_ANCHOR_PRESENT in {
+        check.name for check in sidecar_evaluation.checks if check.state == "BLOCKED"
+    }
+
+    # Full production chain: resolving the authoritative freeze record and
+    # referenced binding from the calibration workspace admits the frozen
+    # chain through the offline evaluation CLI.
+    output_path = tmp_path / "evaluation.json"
+    assert (
+        main(
+            [
+                "evolution",
+                "evaluate",
+                "--manifest",
+                str(manifest_path),
+                "--experiment",
+                str(experiment_path),
+                "--holdout",
+                str(holdout_path),
+                "--observations",
+                str(observations_path),
+                "--base-profile",
+                str(BASE_PROFILE_PATH),
+                "--calibration-workspace",
+                str(workspace_root),
+                "--output",
                 str(output_path),
             ]
         )
@@ -746,6 +827,8 @@ def test_calibrate_cli_produces_evidence_binding_and_full_chain_admits(tmp_path)
     )
     assert evaluation.admission_state == "READY_FOR_HUMAN_REVIEW"
     assert evaluation.evidence_binding_id == binding.binding_id
+    assert evaluation.freeze_anchor_id == record.freeze_id
+    assert evaluation.freeze_anchor_sha256 == record.content_sha256
 
 
 # --------------------------------------------------------------------------
