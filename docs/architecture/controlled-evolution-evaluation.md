@@ -9,10 +9,11 @@ frozen evidence into an immutable, deterministic, schema-covered
 evaluation/admission dossier.  It creates no rule profile, edits no profile,
 opens no pull request and records no approval.
 
-Phase 7-A-R1 adds the frozen-evidence binding boundary: admission is possible
-only against a prior calibration-time evidence binding, and the persisted
-dossier contract itself enforces the canonical check set and a deterministic
-`evaluation_id`.
+Phase 7-A-R1 adds a deterministic frozen-evidence binding boundary and hardens
+the persisted dossier model. A post-R1 audit found that the binding is still
+self-authenticating rather than uniquely anchored as the one binding committed
+for an `experiment_id` at calibration time. Phase 7-A-R2 is therefore
+required before any Phase 7-B materialization.
 
 ## Runtime boundary
 
@@ -42,13 +43,21 @@ simultaneously available; the evaluator never synthesizes the expected
 evidence identity from its own supplied inputs.
 
 The CLI wrappers are offline.  `tve calibrate --evidence-binding-output`
-persists the binding produced by a normal calibration without manual JSON
-assembly, `BacktestWorkspace.save_calibration_evidence_binding` persists it
-in the immutable backtest artifact store, and `tve evolution evaluate`
-requires the prior binding (`--evidence-binding`), refuses any `--output`
-path that would overwrite a supplied input, writes the dossier atomically
-and prints it.  Repeated execution from byte-identical inputs produces a
-byte-identical dossier; neither contract carries wall-clock fields.
+exports the binding produced by a normal calibration without manual JSON
+assembly, and `BacktestWorkspace.save_calibration_evidence_binding` can
+persist binding artifacts immutably under their content-derived
+`binding_id`. `tve evolution evaluate` currently requires a supplied
+`--evidence-binding`, refuses any `--output` path that would overwrite a
+supplied input, writes the dossier atomically and prints it. Repeated execution
+from byte-identical inputs produces a byte-identical dossier; neither contract
+carries wall-clock fields.
+
+Post-R1 trust-boundary caveat: the arbitrary sidecar binding path is not yet an
+authoritative proof that this is the unique binding frozen for the experiment.
+A caller can rebuild a fresh matching binding over substituted same-id manifest
+content or non-scoring observation provenance. R2 must add an immutable
+experiment-keyed calibration-freeze anchor/workspace resolution path; until
+then an R1 READY dossier is not sufficient authority for Phase 7-B.
 
 ## The calibration evidence binding
 
@@ -99,14 +108,19 @@ schema `schemas/controlled-evolution-evaluation.schema.json`) binds:
 - `requires_human_approval = true` and `automatic_application_allowed = false`;
 - a deterministic `content_sha256`.
 
-The persisted contract itself enforces semantic integrity for its version:
+The Pydantic persisted model enforces semantic integrity for its version:
 the checks must be exactly the canonical required-check set
 (`REQUIRED_EVALUATION_CHECK_NAMES`, nineteen checks) in canonical order — no
-omission, duplicate, unknown substitution or reordering — expressed both in
-the model validator and in the checked-in schema (per-check name enum plus
-exact item count); `evaluation_id` is recomputed from the bound identities
-rather than accepted as arbitrary text; `content_sha256` is recomputed over
-the final persisted payload.
+omission, duplicate, unknown substitution or reordering; `evaluation_id` is
+recomputed from the bound identities rather than accepted as arbitrary text;
+and `content_sha256` is recomputed over the final persisted payload.
+
+The R1 checked-in JSON Schema structurally constrains the check-name enum and
+the exact item count, but it does not yet encode the exact per-position
+sequence/uniqueness. Schema-only validation can therefore accept a reordered
+or count-preserving duplicate/omission dossier that the Pydantic model rejects.
+R2 must close that semantic-parity gap with an exact Draft 2020-12 sequence
+constraint. Cryptographic recomputation remains a model/runtime responsibility.
 
 The dossier reports evidence admission only.  It contains no economic
 performance threshold, no candidate ranking and no investment decision.

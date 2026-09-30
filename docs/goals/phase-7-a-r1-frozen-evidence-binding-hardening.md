@@ -1,6 +1,6 @@
 # Phase 7-A-R1 — Frozen Evidence Binding and Dossier Integrity Hardening
 
-Status: **IMPLEMENTED / CLOSED** (implementation
+Status: **IMPLEMENTED / CLOSED; POST-CLOSURE R2 REQUIRED BEFORE 7-B** (implementation
 `aea01cb8e8aee17b4d7fcbaddbed31d6db3ec776`, exact-head Actions run `36663577065`,
 `success`; closure record `docs/status/phase-7-a-r1-2026-09-30.md`)
 Date: 2026-09-30
@@ -17,6 +17,12 @@ Predecessor closure:
 
 Coding-agent handoff:
 `docs/status/phase-7-a-r1-next-coding-agent-goal.md`
+
+Post-closure review:
+`docs/status/phase-7-a-r1-post-closure-review-2026-09-30.md`
+
+Selected follow-up:
+`docs/goals/phase-7-a-r2-authoritative-freeze-anchor-hardening.md`
 
 ## 1. Objective
 
