@@ -1,7 +1,11 @@
 # Phase 6-F-R4 coding-agent handoff — Production Artifact Serialization Parity Hardening
 
-Status: READY
+Status: COMPLETED / SUPERSEDED
 Date: 2026-09-29
+
+R4 closed at implementation a09b9c101b6f7c7d0800fd844450652fbcfd19dc with exact-head GitHub Actions run 36555555882 = success; canonical closure: docs/status/phase-6-f-r4-2026-09-29.md.
+
+Do not execute this historical R4 handoff again. The active handoff is docs/status/phase-7-a-next-coding-agent-goal.md, selected by docs/status/phase-6-f-r4-post-closure-review-2026-09-30.md.
 
 Canonical goal:
 docs/goals/phase-6-f-r4-production-artifact-serialization-hardening.md

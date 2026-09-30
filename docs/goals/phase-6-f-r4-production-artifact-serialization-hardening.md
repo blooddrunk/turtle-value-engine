@@ -1,6 +1,6 @@
 # Phase 6-F-R4 — Production Artifact Serialization Parity Hardening
 
-Status: SELECTED / NOT IMPLEMENTED
+Status: IMPLEMENTED / CLOSED
 Date: 2026-09-29
 Selected after: Phase 6-F-R3 post-closure review
 
@@ -15,6 +15,14 @@ docs/status/phase-6-f-r3-2026-09-29.md
 
 Coding-agent handoff:
 docs/status/phase-6-f-r4-next-coding-agent-goal.md
+
+Implementation: a09b9c101b6f7c7d0800fd844450652fbcfd19dc
+
+Closure evidence: docs/status/phase-6-f-r4-2026-09-29.md (GitHub Actions run 36555555882, exact implementation head_sha, success).
+
+Post-closure review / next selection: docs/status/phase-6-f-r4-post-closure-review-2026-09-30.md.
+
+The implementation instructions below are retained as the historical contract that R4 satisfied; they are not an active coding handoff.
 
 ## 1. Objective
 
