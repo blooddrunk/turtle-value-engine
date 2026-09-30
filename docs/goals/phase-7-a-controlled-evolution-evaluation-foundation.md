@@ -1,6 +1,8 @@
 # Phase 7-A — Controlled Evolution Evaluation Foundation
 
-Status: **IMPLEMENTED / CI CLOSURE PENDING**
+Status: **CLOSED / AUTOMATIC CI CLOSURE** (implementation
+`04984bc764441a8d258b4c8c71fe31fec122275f`, exact-head Actions run `36658008383`,
+`success`)
 
 Selection audit:
 `docs/status/phase-6-f-r4-post-closure-review-2026-09-30.md`
