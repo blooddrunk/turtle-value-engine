@@ -5,6 +5,7 @@ Status: **CLOSED / AUTOMATIC CI CLOSURE** — implementation
 (`success`, exact `head_sha`); closure record
 `docs/status/phase-7-b1-2026-09-30.md`
 Date: 2026-09-30
+Post-closure review: `docs/status/phase-7-b1-post-closure-review-2026-09-30.md` preserves this closure and selects Phase 7-B1-R1 publication/path hardening before B2.
 Selected after: Phase 7-A-R2 post-closure review
 
 Selection audit:
