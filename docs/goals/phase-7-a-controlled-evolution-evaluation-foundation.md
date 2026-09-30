@@ -1,6 +1,6 @@
 # Phase 7-A — Controlled Evolution Evaluation Foundation
 
-Status: **CLOSED / AUTOMATIC CI CLOSURE** (implementation
+Status: **IMPLEMENTED / CLOSED; POST-CLOSURE R1 REQUIRED BEFORE 7-B** (implementation
 `04984bc764441a8d258b4c8c71fe31fec122275f`, exact-head Actions run `36658008383`,
 `success`)
 
@@ -15,6 +15,12 @@ Implementation record:
 
 Architecture:
 `docs/architecture/controlled-evolution-evaluation.md`
+
+Post-closure review:
+`docs/status/phase-7-a-post-closure-review-2026-09-30.md`
+
+Required corrective follow-up:
+`docs/goals/phase-7-a-r1-frozen-evidence-binding-hardening.md`
 
 ## 1. Objective
 
