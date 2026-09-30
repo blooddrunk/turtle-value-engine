@@ -1,0 +1,192 @@
+{
+  "$defs": {
+    "EvaluationCheckV1": {
+      "additionalProperties": false,
+      "description": "One machine-readable admission check with a stable name.",
+      "properties": {
+        "name": {
+          "pattern": "^[A-Z][A-Z0-9_]{2,63}$",
+          "title": "Name",
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "PASS",
+            "BLOCKED"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "detail": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Detail",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "state",
+        "detail"
+      ],
+      "title": "EvaluationCheckV1",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Immutable evaluation/admission dossier for one proposal-only evidence chain.\n\nThe dossier binds the frozen dataset manifest, calibration experiment,\nembedded ``PROPOSAL_ONLY`` proposal, separate holdout result, frozen\nobservations and the exact base-profile bytes into one deterministic\nartifact.  ``admission_state`` is only an evidence-admission decision;\nit is never an investment decision, a performance verdict or an approval.",
+  "properties": {
+    "contract": {
+      "const": "controlled_evolution_evaluation_v1",
+      "default": "controlled_evolution_evaluation_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "evaluation_id": {
+      "minLength": 1,
+      "title": "Evaluation Id",
+      "type": "string"
+    },
+    "base_profile_id": {
+      "minLength": 1,
+      "title": "Base Profile Id",
+      "type": "string"
+    },
+    "base_profile_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Base Profile Sha256",
+      "type": "string"
+    },
+    "dataset_id": {
+      "minLength": 1,
+      "title": "Dataset Id",
+      "type": "string"
+    },
+    "manifest_content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Manifest Content Sha256",
+      "type": "string"
+    },
+    "experiment_id": {
+      "minLength": 1,
+      "title": "Experiment Id",
+      "type": "string"
+    },
+    "experiment_content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Experiment Content Sha256",
+      "type": "string"
+    },
+    "proposal_id": {
+      "minLength": 1,
+      "title": "Proposal Id",
+      "type": "string"
+    },
+    "proposal_payload_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Proposal Payload Sha256",
+      "type": "string"
+    },
+    "candidate_profile_id": {
+      "minLength": 1,
+      "title": "Candidate Profile Id",
+      "type": "string"
+    },
+    "parameter_overrides": {
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "type": "number"
+          },
+          {
+            "type": "integer"
+          },
+          {
+            "type": "string"
+          },
+          {
+            "type": "boolean"
+          }
+        ]
+      },
+      "title": "Parameter Overrides",
+      "type": "object"
+    },
+    "holdout_content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Holdout Content Sha256",
+      "type": "string"
+    },
+    "observations_content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Observations Content Sha256",
+      "type": "string"
+    },
+    "observation_count": {
+      "minimum": 0,
+      "title": "Observation Count",
+      "type": "integer"
+    },
+    "scorer_kind": {
+      "const": "BUILT_IN_CANONICAL",
+      "default": "BUILT_IN_CANONICAL",
+      "title": "Scorer Kind",
+      "type": "string"
+    },
+    "checks": {
+      "items": {
+        "$ref": "#/$defs/EvaluationCheckV1"
+      },
+      "maxItems": 256,
+      "minItems": 1,
+      "title": "Checks",
+      "type": "array"
+    },
+    "admission_state": {
+      "enum": [
+        "READY_FOR_HUMAN_REVIEW",
+        "BLOCKED"
+      ],
+      "title": "Admission State",
+      "type": "string"
+    },
+    "requires_human_approval": {
+      "const": true,
+      "default": true,
+      "title": "Requires Human Approval",
+      "type": "boolean"
+    },
+    "automatic_application_allowed": {
+      "const": false,
+      "default": false,
+      "title": "Automatic Application Allowed",
+      "type": "boolean"
+    },
+    "content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Content Sha256",
+      "type": "string"
+    }
+  },
+  "required": [
+    "evaluation_id",
+    "base_profile_id",
+    "base_profile_sha256",
+    "dataset_id",
+    "manifest_content_sha256",
+    "experiment_id",
+    "experiment_content_sha256",
+    "proposal_id",
+    "proposal_payload_sha256",
+    "candidate_profile_id",
+    "parameter_overrides",
+    "holdout_content_sha256",
+    "observations_content_sha256",
+    "observation_count",
+    "checks",
+    "admission_state",
+    "content_sha256"
+  ],
+  "title": "ControlledEvolutionEvaluationV1",
+  "type": "object"
+}

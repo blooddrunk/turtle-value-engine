@@ -1,12 +1,18 @@
 # Phase 7-A — Controlled Evolution Evaluation Foundation
 
-Status: **SELECTED / NOT IMPLEMENTED**
+Status: **IMPLEMENTED / CI CLOSURE PENDING**
 
 Selection audit:
 `docs/status/phase-6-f-r4-post-closure-review-2026-09-30.md`
 
 Coding-agent handoff:
 `docs/status/phase-7-a-next-coding-agent-goal.md`
+
+Implementation record:
+`docs/status/phase-7-a-2026-09-30.md`
+
+Architecture:
+`docs/architecture/controlled-evolution-evaluation.md`
 
 ## 1. Objective
 

@@ -114,3 +114,9 @@ fixtures and do not require a network or live model.
 The additive Phase 5R source-aware compiler, content-addressed shard layout,
 historical research archive and bounded production-claim rules are documented
 in [`production-historical-data-and-research-archive.md`](production-historical-data-and-research-archive.md).
+
+The Phase 7-A evaluation/admission boundary that binds one proposal-only
+calibration result, its separate holdout evaluation, frozen observations,
+dataset identity and exact base-profile bytes into one immutable dossier is
+documented in
+[`controlled-evolution-evaluation.md`](controlled-evolution-evaluation.md).

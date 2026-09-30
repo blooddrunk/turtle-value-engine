@@ -1,6 +1,7 @@
 # Coding-agent handoff — Phase 7-A Controlled Evolution Evaluation Foundation
 
-Status: **READY**
+Status: **CONSUMED** (implementation delivered; see
+`docs/status/phase-7-a-2026-09-30.md`)
 
 Date: 2026-09-30
 

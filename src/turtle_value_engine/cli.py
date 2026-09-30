@@ -13,8 +13,11 @@ from pathlib import Path
 from pydantic import BaseModel, ValidationError
 
 from turtle_value_engine.backtest import (
+    BacktestDatasetManifest,
     BacktestRunSpec,
     BacktestWorkspace,
+    CalibrationExperiment,
+    CalibrationHoldoutResult,
     CalibrationObservation,
     CalibrationSearchSpace,
     ChronologicalSplit,
@@ -30,6 +33,7 @@ from turtle_value_engine.config import (
     load_project_config,
     write_project_config_template,
 )
+from turtle_value_engine.evolution import evaluate_controlled_evolution
 from turtle_value_engine.historical import (
     AcquisitionError,
     AcquisitionReadinessReportV1,
@@ -436,6 +440,24 @@ def _build_parser() -> argparse.ArgumentParser:
     calibrate_parser.add_argument("--base-profile-sha256", required=True)
     calibrate_parser.add_argument("--output", type=Path, default=None)
     calibrate_parser.add_argument("--require-production", action="store_true")
+
+    evolution_parser = subparsers.add_parser(
+        "evolution",
+        help="controlled-evolution evaluation (offline evidence admission only)",
+    )
+    evolution_commands = evolution_parser.add_subparsers(
+        dest="evolution_command", required=True
+    )
+    evolution_evaluate = evolution_commands.add_parser(
+        "evaluate",
+        help="build an immutable evaluation/admission dossier from frozen evidence",
+    )
+    evolution_evaluate.add_argument("--manifest", required=True, type=Path)
+    evolution_evaluate.add_argument("--experiment", required=True, type=Path)
+    evolution_evaluate.add_argument("--holdout", required=True, type=Path)
+    evolution_evaluate.add_argument("--observations", required=True, type=Path)
+    evolution_evaluate.add_argument("--base-profile", required=True, type=Path)
+    evolution_evaluate.add_argument("--output", type=Path, default=None)
 
     watch_parser = subparsers.add_parser(
         "watch",
@@ -1080,6 +1102,47 @@ def _run_calibration_command(args: argparse.Namespace) -> object:
     )
     _write_optional(args.output, result)
     return result
+
+
+def _run_evolution_command(args: argparse.Namespace) -> object:
+    """Evaluate one frozen evidence chain offline; never writes a rule/profile."""
+
+    input_paths = {
+        "manifest": args.manifest,
+        "experiment": args.experiment,
+        "holdout": args.holdout,
+        "observations": args.observations,
+        "base-profile": args.base_profile,
+    }
+    if args.output is not None:
+        output = args.output.resolve()
+        for label, path in input_paths.items():
+            if output == path.resolve():
+                raise ValueError(
+                    "evaluation output must not overwrite a supplied input "
+                    f"artifact ({label}): {path}"
+                )
+    manifest = BacktestDatasetManifest.model_validate(_read_json(args.manifest))
+    experiment = CalibrationExperiment.model_validate(_read_json(args.experiment))
+    holdout = CalibrationHoldoutResult.model_validate(_read_json(args.holdout))
+    raw_observations = _read_json(args.observations)
+    if not isinstance(raw_observations, list):
+        raise ValueError("--observations must contain a JSON array")
+    observations = [CalibrationObservation.model_validate(item) for item in raw_observations]
+    base_profile_bytes = args.base_profile.read_bytes()
+    evaluation = evaluate_controlled_evolution(
+        manifest=manifest,
+        experiment=experiment,
+        holdout=holdout,
+        observations=observations,
+        base_profile_bytes=base_profile_bytes,
+    )
+    _write_optional(args.output, evaluation)
+    if evaluation.admission_state == "BLOCKED":
+        # The dossier itself is printed and persisted; exit code 1 classifies
+        # the admission outcome without discarding any evidence.
+        raise _CliPayloadExit(evaluation, 1)
+    return evaluation
 
 
 def _load_acquisition_plan(path: Path) -> HistoricalAcquisitionPlanV1:
@@ -1876,6 +1939,8 @@ def main(argv: list[str] | None = None) -> int:
             result = _run_backtest_command(args)
         elif args.command == "calibrate":
             result = _run_calibration_command(args)
+        elif args.command == "evolution":
+            result = _run_evolution_command(args)
         elif args.command == "historical":
             result = _run_historical_command(args)
         elif args.command == "watch":
