@@ -25,6 +25,16 @@ from .evidence_binding import (
     canonical_observations_sha256,
     canonical_proposal_payload_sha256,
 )
+from .materialization_semantics import (
+    INSTALLED_MATERIALIZATION_SEMANTICS,
+    MaterializableParameterSemanticsSetV1,
+    MaterializableParameterSemanticsV1,
+    MaterializationSemanticsError,
+    MaterializationSemanticsReferenceV1,
+    RegisteredRuleTargetV1,
+    resolve_materialization_semantics,
+    validate_materializable_search_space,
+)
 from .metrics import (
     benchmark_daily_returns_for_snapshots,
     benchmark_result,
@@ -64,6 +74,11 @@ __all__ = [
     "DatasetValidationError",
     "EvidenceBindingError",
     "HistoricalUniverse",
+    "INSTALLED_MATERIALIZATION_SEMANTICS",
+    "MaterializationSemanticsError",
+    "MaterializationSemanticsReferenceV1",
+    "MaterializableParameterSemanticsSetV1",
+    "MaterializableParameterSemanticsV1",
     "PortfolioSimulationError",
     "PortfolioSimulator",
     "ReturnCalculationError",
@@ -87,7 +102,9 @@ __all__ = [
     "evaluate_forward_return",
     "evaluate_signals",
     "is_available_at",
+    "RegisteredRuleTargetV1",
     "resolve_anchored_calibration_evidence",
+    "resolve_materialization_semantics",
     "run_backtest",
     "run_calibration",
     "sha256_json",
@@ -97,4 +114,5 @@ __all__ = [
     "split_observations",
     "validate_decision_artifact",
     "validate_manifest",
+    "validate_materializable_search_space",
 ]

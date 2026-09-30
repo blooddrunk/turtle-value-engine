@@ -541,6 +541,85 @@ A 2026-09-30 post-closure audit keeps the 7-A closure but selects **Phase 7-A-R1
 
 **Phase 7-A-R2 — Authoritative Calibration Freeze Anchor and Schema Semantic Parity Hardening** is implemented from the reviewed R1 baseline `cbcf4cab5f361eb45d5be83a846e74c3b7f085cd` (goal `docs/goals/phase-7-a-r2-authoritative-freeze-anchor-hardening.md`, selection audit `docs/status/phase-7-a-r1-post-closure-review-2026-09-30.md`): the additive immutable `CalibrationFreezeRecordV1` (`calibration_freeze_record_v1`, checked-in drift-parity schema `schemas/calibration-freeze-record.schema.json`) binds the exact experiment id/content and the authoritative binding id/content behind one deterministic `freeze_id`/`content_sha256`, and is persisted by `experiment_id` — never by the content-derived `binding_id` — through the new authoritative `calibration-freeze-records` `BacktestWorkspace` store kind, so one frozen experiment identity carries exactly one committed freeze (first valid freeze commits, byte-identical repeat is idempotent, a conflicting freeze fails closed before any authoritative byte changes). The explicit workspace boundary `backtest/calibration_freeze.py` provides `commit_calibration_freeze` (manifest -> experiment -> binding prerequisites first, anchor published last, so a crash can leave unreferenced prerequisites but never a dangling anchor) and `resolve_anchored_calibration_evidence` (the fail-closed loader: missing/corrupt/foreign anchors and anchors referencing missing, mismatched or foreign bindings raise `CalibrationFreezeError`). Normal calibration persists the whole chain without manual JSON assembly through the additive `tve calibrate --workspace <root>` flag with non-destructive export paths; `tve evolution evaluate` takes exactly one anchor source — `--calibration-workspace` (authoritative, the only path that can reach `READY_FOR_HUMAN_REVIEW`) or the R1 `--evidence-binding` sidecar (compatibility input that can only produce a `BLOCKED` dossier). The pure evaluator gains the `freeze_record` parameter and three additive checks (`FREEZE_ANCHOR_PRESENT`, `FREEZE_ANCHOR_EXPERIMENT_IDENTITY`, `FREEZE_ANCHOR_BINDING_IDENTITY`; canonical set nineteen -> twenty-two), and the dossier records `freeze_anchor_id`/`freeze_anchor_sha256` (required together and for READY) inside a `evaluation_id` derivation that now includes the anchor identity. The generated checked-in evaluation schema encodes the exact canonical check sequence through a Draft 2020-12 `prefixItems` per-position `const` constraint with `items: false` (derived at class-definition time from the check model and `REQUIRED_EVALUATION_CHECK_NAMES`, so schema-only validation rejects reordered, count-preserving duplicate/omission, truncated, unknown-name and extra-item dossiers exactly like the model validator; cryptographic recomputation stays a model/runtime responsibility). Four fail-on-R1 regression proofs were executed on the pristine R1 baseline before implementation (fresh-binding same-id manifest substitution and fresh-binding `source_hash` provenance substitution both reached `READY_FOR_HUMAN_REVIEW`; schema-only validation accepted reordered and count-preserving duplicate/omission check dossiers), and the same committed file passes on the hardened tree; forty-two focused R2 tests plus the updated Phase 7-A/R1 suites are green. **Phase 7-A-R2 is closed** at implementation `3ac7684e6be483cc1a411478826797696c7951cf` (Actions run `36679050588`, `success`, exact `head_sha` match; full suite 6966 passed / 2 skipped; closure record `docs/status/phase-7-a-r2-2026-09-30.md`).
 
+**Phase 7-B1 — Materializable Candidate Profile Semantics and Offline
+Projection Foundation** is implemented from the reviewed R2 baseline
+`adfb843b3f1c1c6f0aa1ed29d2d7c86aa899bb42` (goal
+`docs/goals/phase-7-b1-materializable-candidate-profile-foundation.md`,
+selection audit
+`docs/status/phase-7-a-r2-post-closure-review-2026-09-30.md`, architecture
+`docs/architecture/candidate-profile-materialization.md`): the versioned
+materializable-parameter semantics live in
+`backtest/materialization_semantics.py` as pure data — `RegisteredRuleTargetV1`
+(concrete dotted scalar `RuleProfile` leaf, FLOAT/INT type and an explicit
+range contract mirroring the model's own constraints) plus
+`MaterializableParameterSemanticsV1` (parameter key, scorer operator +
+observation feature, target) behind the immutable
+`MaterializableParameterSemanticsSetV1` (`materializable_parameter_semantics_set_v1`,
+checked-in drift-parity schema) with a deterministic `semantics_id` and
+`content_sha256`. The additive optional
+`CalibrationSearchSpace.materialization_semantics`
+(`MaterializationSemanticsReferenceV1`) freezes a reference to one installed
+set **before any trial is scored** — the search space is part of the
+experiment identity and therefore of the R2 binding/freeze authority — and
+`CalibrationRunner` validates at construction that the reference resolves
+exactly (id, version, content hash) against `INSTALLED_MATERIALIZATION_SEMANTICS`,
+that every search-space parameter is registered and that every candidate
+value satisfies its frozen type/range contract; the identical validation
+runs inside evaluation reproduction, so a post-hoc registry drift fail-closes
+`CANONICAL_REPRODUCTION` before a READY dossier can exist. The installed
+`b1-v1` registry binds four real strict-v1 scalar leaves
+(`min_cdc_yield` -> `cdc.yield_bands.pass`, `min_business_quality_score` ->
+`business_quality.score_bands.pass`, `max_net_debt_to_ebitda` ->
+`net_cash.leverage.max_net_debt_to_ebitda_pass`, `min_through_return_yield`
+-> `through_return.formal_candidate_threshold`); the canonical legacy
+`min_quality` parameter is deliberately unregistered, so every pre-B1
+proposal stays readable/evaluable history but `classify_proposal_materializability`
+classifies it `NON_MATERIALIZABLE` (`NO_FROZEN_MATERIALIZATION_SEMANTICS`) —
+semantics are never inferred from names, features, candidate ids, rationale
+text or score behavior. `evolution/candidate_projection.py` projects
+candidate-only bytes from the exact base-profile bytes (hash verification,
+ordinary YAML -> `RuleProfile` validation, base-id check, registered
+scalar-leaf-only application with structural/arbitrary paths structurally
+unrepresentable, deterministic candidate metadata whose id is the proposal's
+`candidate_profile_id` and never `strict-v2`, full post-mutation validation,
+deterministic sorted-key YAML serialization proven to round-trip, and a
+rule/metadata-separated exact diff). `evolution/replay.py` proves candidate
+semantics by rerunning the unchanged deterministic engine (`run_analyze`)
+over the frozen point-in-time `HistoricalDecisionArtifact.normalized_input`
+rows under base and candidate profiles (profile rebind recorded), scoped
+strictly to the search stage (train+validation; holdout rows never replayed),
+with explicit fail-closed blockers (`MISSING_FROZEN_NORMALIZED_INPUT`,
+`OBSERVATION_PROVENANCE_MISMATCH`, `FUTURE_FROZEN_INPUT`) and no fallback to
+baseline decisions, baseline analyses or generic feature filtering. The
+immutable `CandidateProfileMaterializationV1`
+(`candidate_profile_materialization_v1`, checked-in drift-parity schema
+embedding the replay contract) binds the fresh evaluation id/content hash,
+freeze-anchor, evidence-binding, experiment and proposal identities, exact
+base profile, semantics id/version/content, exact rule/metadata changes,
+candidate content hash and replay identity behind one deterministic
+`materialization_id`, with `requires_human_approval=true` and
+`automatic_application_allowed=false` fixed in the model. The
+`tve evolution materialize-candidate` CLI requires the authoritative
+`--calibration-workspace` (no dossier/sidecar input exists), re-resolves the
+R2 anchored chain, re-runs the full admission and requires a fresh
+`READY_FOR_HUMAN_REVIEW` before any output; outputs are create-only,
+idempotent on byte-identical content, refused on collisions with inputs,
+each other, the authoritative workspace or anything under active `rules/`,
+and every blocker fires before the first write with classified exit codes
+(0 materialized / 1 NON_MATERIALIZABLE or MATERIALIZATION_BLOCKED with a
+machine-readable reason code / 2 invalid input or path). No network socket,
+provider, model or transport is constructed anywhere in the B1 path, and
+`rules/strict-v1.yaml` stays byte-identical. Forty focused B1 tests
+(`tests/test_evolution_materialize.py`) cover the baseline structural
+evidence, legacy rejection with zero output, the registered end-to-end
+chain, semantics-before-selection identity coverage, drift/substitution
+rejection, projection fail-closed boundaries, exact diff, byte-identical
+reruns, authority boundaries, replay determinism/isolation/blockers,
+CLI output guards, schema drift parity, socket-guarded execution and
+strict-v1 byte identity. The exact-head CI closure is recorded in
+`docs/status/phase-7-b1-2026-09-30.md`; Phase 7-B2 owns the later
+PR + human-approval + versioned-profile publication boundary.
+
 A 2026-09-30 post-R2 review (`docs/status/phase-7-a-r2-post-closure-review-2026-09-30.md`) preserves the R2 closure but finds the next materialization-readiness boundary: current calibration `parameter_overrides` are generic `min_`/`max_`/`equals_` feature filters with no frozen mapping to concrete `RuleProfile` leaves, and the default scorer explicitly does not interpret `strict-v1`. A persisted READY dossier is also audit evidence rather than independent authority; any materialization path must re-resolve the authoritative workspace and re-run/revalidate admission. **Phase 7-B1 — Materializable Candidate Profile Semantics and Offline Projection Foundation** (`docs/goals/phase-7-b1-materializable-candidate-profile-foundation.md`) is selected before any `strict-v2`, rule-profile PR or approval workflow. B1 must freeze parameter semantics before calibration selection, reject legacy unbound proposals as non-materializable, project candidate-only profile bytes deterministically from the exact base profile, and prove candidate semantics through frozen PIT canonical replay (or a narrowly registered adapter with automated equivalence). B2 remains the later PR/human-approval boundary.
 
 ## 5. Working with company data

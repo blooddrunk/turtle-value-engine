@@ -1,0 +1,159 @@
+{
+  "$defs": {
+    "MaterializableParameterSemanticsV1": {
+      "additionalProperties": false,
+      "description": "The frozen semantics of one materializable calibration parameter.",
+      "properties": {
+        "contract": {
+          "const": "materializable_parameter_semantics_v1",
+          "default": "materializable_parameter_semantics_v1",
+          "title": "Contract",
+          "type": "string"
+        },
+        "observation_feature": {
+          "minLength": 1,
+          "title": "Observation Feature",
+          "type": "string"
+        },
+        "operator": {
+          "enum": [
+            "MIN_FEATURE_THRESHOLD",
+            "MAX_FEATURE_THRESHOLD",
+            "EQUALS_FEATURE_VALUE"
+          ],
+          "title": "Operator",
+          "type": "string"
+        },
+        "parameter_key": {
+          "minLength": 1,
+          "title": "Parameter Key",
+          "type": "string"
+        },
+        "target": {
+          "$ref": "#/$defs/RegisteredRuleTargetV1"
+        }
+      },
+      "required": [
+        "parameter_key",
+        "operator",
+        "observation_feature",
+        "target"
+      ],
+      "title": "MaterializableParameterSemanticsV1",
+      "type": "object"
+    },
+    "RegisteredRuleTargetV1": {
+      "additionalProperties": false,
+      "description": "One concrete scalar ``RuleProfile`` leaf a parameter may materialize into.\n\n``profile_path`` is the dotted path of YAML-visible field names from the\nprofile root to the scalar leaf (for example ``cdc.yield_bands.pass``).\nStructural targets — lists, objects or paths that do not resolve to a\nscalar leaf — are not representable in this contract and fail closed at\nprojection time.",
+      "properties": {
+        "contract": {
+          "const": "registered_rule_target_v1",
+          "default": "registered_rule_target_v1",
+          "title": "Contract",
+          "type": "string"
+        },
+        "exclusive_maximum": {
+          "default": false,
+          "title": "Exclusive Maximum",
+          "type": "boolean"
+        },
+        "exclusive_minimum": {
+          "default": false,
+          "title": "Exclusive Minimum",
+          "type": "boolean"
+        },
+        "leaf_type": {
+          "enum": [
+            "FLOAT",
+            "INT"
+          ],
+          "title": "Leaf Type",
+          "type": "string"
+        },
+        "maximum": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Maximum"
+        },
+        "minimum": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Minimum"
+        },
+        "profile_path": {
+          "minLength": 3,
+          "title": "Profile Path",
+          "type": "string"
+        },
+        "target_key": {
+          "minLength": 1,
+          "title": "Target Key",
+          "type": "string"
+        }
+      },
+      "required": [
+        "target_key",
+        "profile_path",
+        "leaf_type"
+      ],
+      "title": "RegisteredRuleTargetV1",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "One versioned, installed set of materializable-parameter semantics.\n\nThe set recomputes its deterministic ``semantics_id`` from its version and\nparameter payload, and its ``content_sha256`` over the full persisted\npayload, so any change to a binding, target path, type or range contract\nchanges the identity a search-space reference must match exactly.",
+  "properties": {
+    "content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Content Sha256",
+      "type": "string"
+    },
+    "contract": {
+      "const": "materializable_parameter_semantics_set_v1",
+      "default": "materializable_parameter_semantics_set_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "parameters": {
+      "additionalProperties": {
+        "$ref": "#/$defs/MaterializableParameterSemanticsV1"
+      },
+      "maxProperties": 64,
+      "minProperties": 1,
+      "title": "Parameters",
+      "type": "object"
+    },
+    "semantics_id": {
+      "pattern": "^materializable-parameter-semantics-[0-9a-f]{24}$",
+      "title": "Semantics Id",
+      "type": "string"
+    },
+    "semantics_version": {
+      "minLength": 1,
+      "title": "Semantics Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "semantics_id",
+    "semantics_version",
+    "parameters",
+    "content_sha256"
+  ],
+  "title": "MaterializableParameterSemanticsSetV1",
+  "type": "object"
+}

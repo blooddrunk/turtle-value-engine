@@ -1,21 +1,81 @@
 {
+  "$defs": {
+    "MaterializationSemanticsReferenceV1": {
+      "additionalProperties": false,
+      "description": "The calibration-time reference to one frozen semantics set.\n\nThis is the additive field ``CalibrationSearchSpace.materialization_semantics``.\nBecause the search space is part of the deterministic experiment identity,\na semantics-bearing search space freezes its semantics identity before any\ntrial is scored; the reference resolves only against an installed set.",
+      "properties": {
+        "content_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Content Sha256",
+          "type": "string"
+        },
+        "contract": {
+          "const": "materialization_semantics_reference_v1",
+          "default": "materialization_semantics_reference_v1",
+          "title": "Contract",
+          "type": "string"
+        },
+        "semantics_id": {
+          "pattern": "^materializable-parameter-semantics-[0-9a-f]{24}$",
+          "title": "Semantics Id",
+          "type": "string"
+        },
+        "semantics_version": {
+          "minLength": 1,
+          "title": "Semantics Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "semantics_id",
+        "semantics_version",
+        "content_sha256"
+      ],
+      "title": "MaterializationSemanticsReferenceV1",
+      "type": "object"
+    }
+  },
   "additionalProperties": false,
-  "description": "Explicit finite candidate values; no hidden mutation of strict-v1.",
+  "description": "Explicit finite candidate values; no hidden mutation of strict-v1.\n\n``materialization_semantics`` (Phase 7-B1, additive and optional) freezes\na reference to one installed materializable-parameter semantics set at\ncalibration time — before any trial is scored.  Because the search space\nis part of the deterministic experiment identity (and therefore of the\nauthoritative Phase 7-A-R2 freeze), a semantics-bearing space pins the\nparameter -> rule-leaf meaning of its candidates from the start; a\nlegacy/unbound space without the field stays readable and evaluable but\ncan never be materialized into a candidate rule profile.",
   "properties": {
+    "base_profile_id": {
+      "minLength": 1,
+      "title": "Base Profile Id",
+      "type": "string"
+    },
     "contract": {
       "const": "calibration_search_space_v1",
       "default": "calibration_search_space_v1",
       "title": "Contract",
       "type": "string"
     },
-    "space_id": {
-      "minLength": 1,
-      "title": "Space Id",
-      "type": "string"
+    "materialization_semantics": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/MaterializationSemanticsReferenceV1"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
     },
-    "base_profile_id": {
-      "minLength": 1,
-      "title": "Base Profile Id",
+    "max_trials": {
+      "default": 10000,
+      "exclusiveMinimum": 0,
+      "maximum": 1000000,
+      "title": "Max Trials",
+      "type": "integer"
+    },
+    "objective": {
+      "default": "RISK_ADJUSTED",
+      "enum": [
+        "MEAN_RETURN",
+        "MEDIAN_RETURN",
+        "HIT_RATE",
+        "RISK_ADJUSTED"
+      ],
+      "title": "Objective",
       "type": "string"
     },
     "parameters": {
@@ -43,33 +103,17 @@
       "title": "Parameters",
       "type": "object"
     },
-    "max_trials": {
-      "default": 10000,
-      "exclusiveMinimum": 0,
-      "maximum": 1000000,
-      "title": "Max Trials",
-      "type": "integer"
-    },
-    "objective": {
-      "default": "RISK_ADJUSTED",
-      "enum": [
-        "MEAN_RETURN",
-        "MEDIAN_RETURN",
-        "HIT_RATE",
-        "RISK_ADJUSTED"
-      ],
-      "title": "Objective",
+    "space_id": {
+      "minLength": 1,
+      "title": "Space Id",
       "type": "string"
     }
   },
   "required": [
-    "contract",
     "space_id",
     "base_profile_id",
     "parameters"
   ],
-  "title": "Turtle Value Engine calibration-search-space",
-  "type": "object",
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/blooddrunk/turtle-value-engine/schemas/calibration-search-space.schema.json"
+  "title": "CalibrationSearchSpace",
+  "type": "object"
 }

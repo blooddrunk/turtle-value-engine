@@ -1,0 +1,170 @@
+{
+  "$defs": {
+    "CandidateReplayRowV1": {
+      "additionalProperties": false,
+      "description": "One replayed frozen decision under base and candidate profiles.",
+      "properties": {
+        "artifact_id": {
+          "minLength": 1,
+          "title": "Artifact Id",
+          "type": "string"
+        },
+        "artifact_source_hash": {
+          "minLength": 1,
+          "title": "Artifact Source Hash",
+          "type": "string"
+        },
+        "baseline_analysis_sha256": {
+          "minLength": 1,
+          "title": "Baseline Analysis Sha256",
+          "type": "string"
+        },
+        "baseline_decision_state": {
+          "minLength": 1,
+          "title": "Baseline Decision State",
+          "type": "string"
+        },
+        "candidate_analysis_sha256": {
+          "minLength": 1,
+          "title": "Candidate Analysis Sha256",
+          "type": "string"
+        },
+        "candidate_decision_state": {
+          "minLength": 1,
+          "title": "Candidate Decision State",
+          "type": "string"
+        },
+        "changed": {
+          "title": "Changed",
+          "type": "boolean"
+        },
+        "contract": {
+          "const": "candidate_replay_row_v1",
+          "default": "candidate_replay_row_v1",
+          "title": "Contract",
+          "type": "string"
+        },
+        "observation_id": {
+          "minLength": 1,
+          "title": "Observation Id",
+          "type": "string"
+        },
+        "observed_at": {
+          "format": "date",
+          "title": "Observed At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "observation_id",
+        "observed_at",
+        "artifact_id",
+        "artifact_source_hash",
+        "baseline_decision_state",
+        "candidate_decision_state",
+        "baseline_analysis_sha256",
+        "candidate_analysis_sha256",
+        "changed"
+      ],
+      "title": "CandidateReplayRowV1",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Immutable result of one profile-aware frozen PIT replay.\n\nBinds the exact base/candidate profile identities, the replayed search-\nstage observation scope, one row per replayed frozen decision artifact\nand a deterministic ``replay_id`` recomputed from the bound identities.\nHoldout observations are structurally outside this contract.",
+  "properties": {
+    "base_profile_id": {
+      "minLength": 1,
+      "title": "Base Profile Id",
+      "type": "string"
+    },
+    "base_profile_sha256": {
+      "minLength": 1,
+      "title": "Base Profile Sha256",
+      "type": "string"
+    },
+    "candidate_profile_id": {
+      "minLength": 1,
+      "title": "Candidate Profile Id",
+      "type": "string"
+    },
+    "candidate_profile_sha256": {
+      "minLength": 1,
+      "title": "Candidate Profile Sha256",
+      "type": "string"
+    },
+    "changed_row_count": {
+      "minimum": 0,
+      "title": "Changed Row Count",
+      "type": "integer"
+    },
+    "content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Content Sha256",
+      "type": "string"
+    },
+    "contract": {
+      "const": "candidate_profile_replay_v1",
+      "default": "candidate_profile_replay_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "notes": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Notes",
+      "type": "array"
+    },
+    "profile_rebind_from": {
+      "minLength": 1,
+      "title": "Profile Rebind From",
+      "type": "string"
+    },
+    "profile_rebind_to": {
+      "minLength": 1,
+      "title": "Profile Rebind To",
+      "type": "string"
+    },
+    "replay_id": {
+      "minLength": 1,
+      "title": "Replay Id",
+      "type": "string"
+    },
+    "replay_scope": {
+      "const": "SEARCH_STAGE_TRAIN_VALIDATION",
+      "default": "SEARCH_STAGE_TRAIN_VALIDATION",
+      "title": "Replay Scope",
+      "type": "string"
+    },
+    "replayed_observation_count": {
+      "minimum": 1,
+      "title": "Replayed Observation Count",
+      "type": "integer"
+    },
+    "rows": {
+      "items": {
+        "$ref": "#/$defs/CandidateReplayRowV1"
+      },
+      "maxItems": 100000,
+      "minItems": 1,
+      "title": "Rows",
+      "type": "array"
+    }
+  },
+  "required": [
+    "replay_id",
+    "base_profile_id",
+    "base_profile_sha256",
+    "candidate_profile_id",
+    "candidate_profile_sha256",
+    "profile_rebind_from",
+    "profile_rebind_to",
+    "replayed_observation_count",
+    "changed_row_count",
+    "rows",
+    "content_sha256"
+  ],
+  "title": "CandidateProfileReplayV1",
+  "type": "object"
+}

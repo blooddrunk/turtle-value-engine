@@ -120,3 +120,9 @@ calibration result, its separate holdout evaluation, frozen observations,
 dataset identity and exact base-profile bytes into one immutable dossier is
 documented in
 [`controlled-evolution-evaluation.md`](controlled-evolution-evaluation.md).
+
+The Phase 7-B1 candidate-materialization boundary that freezes
+materializable parameter semantics inside the calibration search space and
+projects one freshly re-admitted proposal into candidate-only `RuleProfile`
+bytes plus a profile-aware frozen point-in-time replay is documented in
+[`candidate-profile-materialization.md`](candidate-profile-materialization.md).

@@ -2,22 +2,46 @@
   "$defs": {
     "CalibrationSearchSpace": {
       "additionalProperties": false,
-      "description": "Explicit finite candidate values; no hidden mutation of strict-v1.",
+      "description": "Explicit finite candidate values; no hidden mutation of strict-v1.\n\n``materialization_semantics`` (Phase 7-B1, additive and optional) freezes\na reference to one installed materializable-parameter semantics set at\ncalibration time — before any trial is scored.  Because the search space\nis part of the deterministic experiment identity (and therefore of the\nauthoritative Phase 7-A-R2 freeze), a semantics-bearing space pins the\nparameter -> rule-leaf meaning of its candidates from the start; a\nlegacy/unbound space without the field stays readable and evaluable but\ncan never be materialized into a candidate rule profile.",
       "properties": {
+        "base_profile_id": {
+          "minLength": 1,
+          "title": "Base Profile Id",
+          "type": "string"
+        },
         "contract": {
           "const": "calibration_search_space_v1",
           "default": "calibration_search_space_v1",
           "title": "Contract",
           "type": "string"
         },
-        "space_id": {
-          "minLength": 1,
-          "title": "Space Id",
-          "type": "string"
+        "materialization_semantics": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MaterializationSemanticsReferenceV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
-        "base_profile_id": {
-          "minLength": 1,
-          "title": "Base Profile Id",
+        "max_trials": {
+          "default": 10000,
+          "exclusiveMinimum": 0,
+          "maximum": 1000000,
+          "title": "Max Trials",
+          "type": "integer"
+        },
+        "objective": {
+          "default": "RISK_ADJUSTED",
+          "enum": [
+            "MEAN_RETURN",
+            "MEDIAN_RETURN",
+            "HIT_RATE",
+            "RISK_ADJUSTED"
+          ],
+          "title": "Objective",
           "type": "string"
         },
         "parameters": {
@@ -45,27 +69,13 @@
           "title": "Parameters",
           "type": "object"
         },
-        "max_trials": {
-          "default": 10000,
-          "exclusiveMinimum": 0,
-          "maximum": 1000000,
-          "title": "Max Trials",
-          "type": "integer"
-        },
-        "objective": {
-          "default": "RISK_ADJUSTED",
-          "enum": [
-            "MEAN_RETURN",
-            "MEDIAN_RETURN",
-            "HIT_RATE",
-            "RISK_ADJUSTED"
-          ],
-          "title": "Objective",
+        "space_id": {
+          "minLength": 1,
+          "title": "Space Id",
           "type": "string"
         }
       },
       "required": [
-        "contract",
         "space_id",
         "base_profile_id",
         "parameters"
@@ -85,15 +95,15 @@
       "additionalProperties": false,
       "description": "One candidate result; search trials never contain holdout outcomes.",
       "properties": {
+        "candidate_profile_id": {
+          "minLength": 1,
+          "title": "Candidate Profile Id",
+          "type": "string"
+        },
         "contract": {
           "const": "calibration_trial_v1",
           "default": "calibration_trial_v1",
           "title": "Contract",
-          "type": "string"
-        },
-        "trial_id": {
-          "minLength": 1,
-          "title": "Trial Id",
           "type": "string"
         },
         "experiment_id": {
@@ -101,10 +111,42 @@
           "title": "Experiment Id",
           "type": "string"
         },
-        "candidate_profile_id": {
-          "minLength": 1,
-          "title": "Candidate Profile Id",
-          "type": "string"
+        "holdout_count": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Holdout Count",
+          "type": "integer"
+        },
+        "holdout_score": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Holdout Score"
+        },
+        "objective_score": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Objective Score"
+        },
+        "observation_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Observation Ids",
+          "type": "array"
         },
         "parameters": {
           "additionalProperties": {
@@ -126,6 +168,11 @@
           "title": "Parameters",
           "type": "object"
         },
+        "stability_penalty": {
+          "default": 0,
+          "title": "Stability Penalty",
+          "type": "number"
+        },
         "stage": {
           "$ref": "#/$defs/CalibrationStage",
           "default": "SEARCH"
@@ -133,17 +180,6 @@
         "train_count": {
           "minimum": 0,
           "title": "Train Count",
-          "type": "integer"
-        },
-        "validation_count": {
-          "minimum": 0,
-          "title": "Validation Count",
-          "type": "integer"
-        },
-        "holdout_count": {
-          "default": 0,
-          "minimum": 0,
-          "title": "Holdout Count",
           "type": "integer"
         },
         "train_score": {
@@ -158,6 +194,16 @@
           "default": null,
           "title": "Train Score"
         },
+        "trial_id": {
+          "minLength": 1,
+          "title": "Trial Id",
+          "type": "string"
+        },
+        "validation_count": {
+          "minimum": 0,
+          "title": "Validation Count",
+          "type": "integer"
+        },
         "validation_score": {
           "anyOf": [
             {
@@ -169,46 +215,9 @@
           ],
           "default": null,
           "title": "Validation Score"
-        },
-        "holdout_score": {
-          "anyOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Holdout Score"
-        },
-        "stability_penalty": {
-          "default": 0,
-          "title": "Stability Penalty",
-          "type": "number"
-        },
-        "objective_score": {
-          "anyOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Objective Score"
-        },
-        "observation_ids": {
-          "items": {
-            "type": "string"
-          },
-          "title": "Observation Ids",
-          "type": "array"
         }
       },
       "required": [
-        "contract",
         "trial_id",
         "experiment_id",
         "candidate_profile_id",
@@ -223,16 +232,10 @@
       "additionalProperties": false,
       "description": "Calibration output that is a proposal, never an automatic rule change.",
       "properties": {
-        "contract": {
-          "const": "candidate_profile_proposal_v1",
-          "default": "candidate_profile_proposal_v1",
-          "title": "Contract",
-          "type": "string"
-        },
-        "proposal_id": {
-          "minLength": 1,
-          "title": "Proposal Id",
-          "type": "string"
+        "automatic_application_allowed": {
+          "default": false,
+          "title": "Automatic Application Allowed",
+          "type": "boolean"
         },
         "base_profile_id": {
           "minLength": 1,
@@ -248,6 +251,24 @@
           "minLength": 1,
           "title": "Candidate Profile Id",
           "type": "string"
+        },
+        "contract": {
+          "const": "candidate_profile_proposal_v1",
+          "default": "candidate_profile_proposal_v1",
+          "title": "Contract",
+          "type": "string"
+        },
+        "holdout_score": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Holdout Score"
         },
         "parameter_overrides": {
           "additionalProperties": {
@@ -269,6 +290,34 @@
           "title": "Parameter Overrides",
           "type": "object"
         },
+        "proposal_id": {
+          "minLength": 1,
+          "title": "Proposal Id",
+          "type": "string"
+        },
+        "rationale": {
+          "maxLength": 8000,
+          "minLength": 1,
+          "title": "Rationale",
+          "type": "string"
+        },
+        "stability_summary": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "title": "Stability Summary",
+          "type": "object"
+        },
+        "status": {
+          "default": "PROPOSAL_ONLY",
+          "enum": [
+            "PROPOSAL_ONLY",
+            "HUMAN_APPROVED",
+            "REJECTED"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
         "train_score": {
           "anyOf": [
             {
@@ -292,50 +341,9 @@
           ],
           "default": null,
           "title": "Validation Score"
-        },
-        "holdout_score": {
-          "anyOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Holdout Score"
-        },
-        "stability_summary": {
-          "additionalProperties": {
-            "type": "number"
-          },
-          "title": "Stability Summary",
-          "type": "object"
-        },
-        "rationale": {
-          "maxLength": 8000,
-          "minLength": 1,
-          "title": "Rationale",
-          "type": "string"
-        },
-        "status": {
-          "default": "PROPOSAL_ONLY",
-          "enum": [
-            "PROPOSAL_ONLY",
-            "HUMAN_APPROVED",
-            "REJECTED"
-          ],
-          "title": "Status",
-          "type": "string"
-        },
-        "automatic_application_allowed": {
-          "default": false,
-          "title": "Automatic Application Allowed",
-          "type": "boolean"
         }
       },
       "required": [
-        "contract",
         "proposal_id",
         "base_profile_id",
         "base_profile_sha256",
@@ -356,24 +364,9 @@
           "title": "Contract",
           "type": "string"
         },
-        "train_start": {
+        "holdout_end": {
           "format": "date",
-          "title": "Train Start",
-          "type": "string"
-        },
-        "train_end": {
-          "format": "date",
-          "title": "Train End",
-          "type": "string"
-        },
-        "validation_start": {
-          "format": "date",
-          "title": "Validation Start",
-          "type": "string"
-        },
-        "validation_end": {
-          "format": "date",
-          "title": "Validation End",
+          "title": "Holdout End",
           "type": "string"
         },
         "holdout_start": {
@@ -381,14 +374,28 @@
           "title": "Holdout Start",
           "type": "string"
         },
-        "holdout_end": {
+        "train_end": {
           "format": "date",
-          "title": "Holdout End",
+          "title": "Train End",
+          "type": "string"
+        },
+        "train_start": {
+          "format": "date",
+          "title": "Train Start",
+          "type": "string"
+        },
+        "validation_end": {
+          "format": "date",
+          "title": "Validation End",
+          "type": "string"
+        },
+        "validation_start": {
+          "format": "date",
+          "title": "Validation Start",
           "type": "string"
         }
       },
       "required": [
-        "contract",
         "train_start",
         "train_end",
         "validation_start",
@@ -398,11 +405,60 @@
       ],
       "title": "ChronologicalSplit",
       "type": "object"
+    },
+    "MaterializationSemanticsReferenceV1": {
+      "additionalProperties": false,
+      "description": "The calibration-time reference to one frozen semantics set.\n\nThis is the additive field ``CalibrationSearchSpace.materialization_semantics``.\nBecause the search space is part of the deterministic experiment identity,\na semantics-bearing search space freezes its semantics identity before any\ntrial is scored; the reference resolves only against an installed set.",
+      "properties": {
+        "content_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Content Sha256",
+          "type": "string"
+        },
+        "contract": {
+          "const": "materialization_semantics_reference_v1",
+          "default": "materialization_semantics_reference_v1",
+          "title": "Contract",
+          "type": "string"
+        },
+        "semantics_id": {
+          "pattern": "^materializable-parameter-semantics-[0-9a-f]{24}$",
+          "title": "Semantics Id",
+          "type": "string"
+        },
+        "semantics_version": {
+          "minLength": 1,
+          "title": "Semantics Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "semantics_id",
+        "semantics_version",
+        "content_sha256"
+      ],
+      "title": "MaterializationSemanticsReferenceV1",
+      "type": "object"
     }
   },
   "additionalProperties": false,
   "description": "Chronologically guarded calibration experiment and candidate proposal.",
   "properties": {
+    "base_profile_id": {
+      "minLength": 1,
+      "title": "Base Profile Id",
+      "type": "string"
+    },
+    "base_profile_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Base Profile Sha256",
+      "type": "string"
+    },
+    "content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Content Sha256",
+      "type": "string"
+    },
     "contract": {
       "const": "calibration_experiment_v1",
       "default": "calibration_experiment_v1",
@@ -414,34 +470,36 @@
       "title": "Experiment Id",
       "type": "string"
     },
+    "holdout_locked": {
+      "default": true,
+      "title": "Holdout Locked",
+      "type": "boolean"
+    },
+    "holdout_observation_ids": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Holdout Observation Ids",
+      "type": "array"
+    },
     "manifest_id": {
       "minLength": 1,
       "title": "Manifest Id",
       "type": "string"
     },
-    "base_profile_id": {
-      "minLength": 1,
-      "title": "Base Profile Id",
-      "type": "string"
-    },
-    "base_profile_sha256": {
-      "pattern": "^[0-9a-f]{64}$",
-      "title": "Base Profile Sha256",
-      "type": "string"
+    "proposal": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/CandidateProfileProposal"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
     },
     "search_space": {
       "$ref": "#/$defs/CalibrationSearchSpace"
-    },
-    "split": {
-      "$ref": "#/$defs/ChronologicalSplit"
-    },
-    "trials": {
-      "items": {
-        "$ref": "#/$defs/CalibrationTrial"
-      },
-      "maxItems": 1000000,
-      "title": "Trials",
-      "type": "array"
     },
     "selected_trial_id": {
       "anyOf": [
@@ -456,37 +514,19 @@
       "default": null,
       "title": "Selected Trial Id"
     },
-    "proposal": {
-      "anyOf": [
-        {
-          "$ref": "#/$defs/CandidateProfileProposal"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null
+    "split": {
+      "$ref": "#/$defs/ChronologicalSplit"
     },
-    "holdout_locked": {
-      "default": true,
-      "title": "Holdout Locked",
-      "type": "boolean"
-    },
-    "holdout_observation_ids": {
+    "trials": {
       "items": {
-        "type": "string"
+        "$ref": "#/$defs/CalibrationTrial"
       },
-      "title": "Holdout Observation Ids",
+      "maxItems": 1000000,
+      "title": "Trials",
       "type": "array"
-    },
-    "content_sha256": {
-      "pattern": "^[0-9a-f]{64}$",
-      "title": "Content Sha256",
-      "type": "string"
     }
   },
   "required": [
-    "contract",
     "experiment_id",
     "manifest_id",
     "base_profile_id",
@@ -495,8 +535,6 @@
     "split",
     "content_sha256"
   ],
-  "title": "Turtle Value Engine calibration-experiment",
-  "type": "object",
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/blooddrunk/turtle-value-engine/schemas/calibration-experiment.schema.json"
+  "title": "CalibrationExperiment",
+  "type": "object"
 }

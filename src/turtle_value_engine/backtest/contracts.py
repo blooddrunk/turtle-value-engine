@@ -29,6 +29,8 @@ from turtle_value_engine.models import CompanyAnalysis, NormalizedCompanyInput
 from turtle_value_engine.providers.models import canonical_json_bytes
 from turtle_value_engine.providers.normalization import deterministic_id
 
+from .materialization_semantics import MaterializationSemanticsReferenceV1
+
 BACKTEST_CONTRACT_VERSION = "backtest-v1"
 DATASET_CONTRACT_VERSION = "backtest-dataset-v1"
 PORTFOLIO_POLICY_CONTRACT_VERSION = "portfolio-policy-v1"
@@ -1334,7 +1336,17 @@ class BacktestResult(BaseModel):
 
 
 class CalibrationSearchSpace(BaseModel):
-    """Explicit finite candidate values; no hidden mutation of strict-v1."""
+    """Explicit finite candidate values; no hidden mutation of strict-v1.
+
+    ``materialization_semantics`` (Phase 7-B1, additive and optional) freezes
+    a reference to one installed materializable-parameter semantics set at
+    calibration time — before any trial is scored.  Because the search space
+    is part of the deterministic experiment identity (and therefore of the
+    authoritative Phase 7-A-R2 freeze), a semantics-bearing space pins the
+    parameter -> rule-leaf meaning of its candidates from the start; a
+    legacy/unbound space without the field stays readable and evaluable but
+    can never be materialized into a candidate rule profile.
+    """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -1346,6 +1358,7 @@ class CalibrationSearchSpace(BaseModel):
     objective: Literal["MEAN_RETURN", "MEDIAN_RETURN", "HIT_RATE", "RISK_ADJUSTED"] = (
         "RISK_ADJUSTED"
     )
+    materialization_semantics: MaterializationSemanticsReferenceV1 | None = None
 
     @model_validator(mode="after")
     def validate_search_space(self) -> Self:

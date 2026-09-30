@@ -1,0 +1,34 @@
+{
+  "additionalProperties": false,
+  "description": "The calibration-time reference to one frozen semantics set.\n\nThis is the additive field ``CalibrationSearchSpace.materialization_semantics``.\nBecause the search space is part of the deterministic experiment identity,\na semantics-bearing search space freezes its semantics identity before any\ntrial is scored; the reference resolves only against an installed set.",
+  "properties": {
+    "content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Content Sha256",
+      "type": "string"
+    },
+    "contract": {
+      "const": "materialization_semantics_reference_v1",
+      "default": "materialization_semantics_reference_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "semantics_id": {
+      "pattern": "^materializable-parameter-semantics-[0-9a-f]{24}$",
+      "title": "Semantics Id",
+      "type": "string"
+    },
+    "semantics_version": {
+      "minLength": 1,
+      "title": "Semantics Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "semantics_id",
+    "semantics_version",
+    "content_sha256"
+  ],
+  "title": "MaterializationSemanticsReferenceV1",
+  "type": "object"
+}

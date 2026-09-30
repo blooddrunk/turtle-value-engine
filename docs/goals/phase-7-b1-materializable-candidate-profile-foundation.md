@@ -1,6 +1,6 @@
 # Phase 7-B1 — Materializable Candidate Profile Semantics and Offline Projection Foundation
 
-Status: **SELECTED / NOT IMPLEMENTED**
+Status: **IMPLEMENTED — closure record: `docs/status/phase-7-b1-2026-09-30.md`**
 Date: 2026-09-30
 Selected after: Phase 7-A-R2 post-closure review
 
@@ -11,7 +11,11 @@ Pre-B1 reviewed baseline:
 `adfb843b3f1c1c6f0aa1ed29d2d7c86aa899bb42`
 
 Coding-agent handoff:
-`docs/status/phase-7-b1-next-coding-agent-goal.md`
+`docs/status/phase-7-b1-next-coding-agent-goal.md` (consumed by this
+implementation)
+
+Architecture:
+`docs/architecture/candidate-profile-materialization.md`
 
 ## 1. Objective
 

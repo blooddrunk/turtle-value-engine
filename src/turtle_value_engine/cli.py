@@ -37,7 +37,13 @@ from turtle_value_engine.config import (
     load_project_config,
     write_project_config_template,
 )
-from turtle_value_engine.evolution import evaluate_controlled_evolution
+from turtle_value_engine.evolution import (
+    CandidateMaterializationError,
+    CandidateProjectionError,
+    CandidateReplayError,
+    evaluate_controlled_evolution,
+    materialize_candidate_profile,
+)
 from turtle_value_engine.historical import (
     AcquisitionError,
     AcquisitionReadinessReportV1,
@@ -497,6 +503,27 @@ def _build_parser() -> argparse.ArgumentParser:
         "produce READY_FOR_HUMAN_REVIEW",
     )
     evolution_evaluate.add_argument("--output", type=Path, default=None)
+    evolution_materialize = evolution_commands.add_parser(
+        "materialize-candidate",
+        help="project one freshly re-admitted proposal into candidate-only "
+        "profile bytes plus an immutable materialization record "
+        "(offline, create-only, never writes rules/)",
+    )
+    evolution_materialize.add_argument(
+        "--calibration-workspace",
+        required=True,
+        type=Path,
+        help="authoritative BacktestWorkspace root; the freeze record and "
+        "referenced binding are resolved from it and the Phase 7-A-R2 "
+        "admission chain is re-run before any candidate output exists",
+    )
+    evolution_materialize.add_argument("--manifest", required=True, type=Path)
+    evolution_materialize.add_argument("--experiment", required=True, type=Path)
+    evolution_materialize.add_argument("--holdout", required=True, type=Path)
+    evolution_materialize.add_argument("--observations", required=True, type=Path)
+    evolution_materialize.add_argument("--base-profile", required=True, type=Path)
+    evolution_materialize.add_argument("--candidate-output", required=True, type=Path)
+    evolution_materialize.add_argument("--materialization-output", required=True, type=Path)
 
     watch_parser = subparsers.add_parser(
         "watch",
@@ -1233,6 +1260,9 @@ def _export_bytes(result: object) -> bytes:
 def _run_evolution_command(args: argparse.Namespace) -> object:
     """Evaluate one frozen evidence chain offline; never writes a rule/profile."""
 
+    if args.evolution_command == "materialize-candidate":
+        return _run_evolution_materialize_command(args)
+
     input_paths = {
         "manifest": args.manifest,
         "experiment": args.experiment,
@@ -1296,6 +1326,216 @@ def _run_evolution_command(args: argparse.Namespace) -> object:
         # the admission outcome without discarding any evidence.
         raise _CliPayloadExit(evaluation, 1)
     return evaluation
+
+
+def _materialization_output_forbidden_paths(
+    args: argparse.Namespace,
+) -> dict[str, Path]:
+    """Every path a materialization output must never overwrite or live under."""
+
+    forbidden: dict[str, Path] = {
+        "manifest": args.manifest,
+        "experiment": args.experiment,
+        "holdout": args.holdout,
+        "observations": args.observations,
+        "base-profile": args.base_profile,
+        "calibration-workspace": args.calibration_workspace,
+    }
+    return forbidden
+
+
+def _guard_materialization_output_path(
+    path: Path, *, label: str, forbidden: dict[str, Path]
+) -> None:
+    """Refuse output paths that collide with inputs, authority or rules/."""
+
+    resolved = path.resolve()
+    for input_label, input_path in forbidden.items():
+        if resolved == input_path.resolve():
+            raise ValueError(
+                f"{label} must not overwrite a supplied input or authority "
+                f"artifact ({input_label}): {input_path}"
+            )
+    workspace_root = forbidden["calibration-workspace"].resolve()
+    if resolved.is_relative_to(workspace_root):
+        raise ValueError(
+            f"{label} must not be written inside the authoritative calibration "
+            f"workspace: {path}"
+        )
+    rules_dirs = {
+        (Path(__file__).resolve().parents[2] / "rules").resolve(),
+        (Path.cwd() / "rules").resolve(),
+    }
+    for rules_dir in rules_dirs:
+        if resolved.is_relative_to(rules_dir):
+            raise ValueError(
+                f"{label} is refused under the active rules/ directory "
+                f"({rules_dir}); Phase 7-B1 never writes candidate bytes into "
+                "active rules"
+            )
+
+
+def _commit_materialization_outputs(
+    outputs: list[tuple[Path, bytes, str]],
+) -> None:
+    """Stage every output, then publish create-only and idempotently.
+
+    All collision checks run before the first byte is published: an occupied
+    path must be a regular file with byte-identical content (an idempotent
+    repeat) and any different content fails closed with no partial candidate
+    artifact left behind.
+    """
+
+    staged: list[tuple[Path, Path, bytes]] = []
+    try:
+        for path, content, _label in outputs:
+            if path.exists():
+                if path.is_symlink() or not path.is_file():
+                    raise ValueError(f"output path exists and is not a regular file: {path}")
+                if path.read_bytes() != content:
+                    raise ValueError(
+                        f"output path already exists with different content; "
+                        f"refusing to overwrite: {path}"
+                    )
+            path.parent.mkdir(parents=True, exist_ok=True)
+            descriptor, temporary_name = tempfile.mkstemp(
+                prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
+            )
+            temporary_path = Path(temporary_name)
+            with os.fdopen(descriptor, "wb") as handle:
+                handle.write(content)
+                handle.flush()
+                os.fsync(handle.fileno())
+            staged.append((temporary_path, path, content))
+        for temporary_path, path, content in staged:
+            # Re-check right before publishing so an occupied path either
+            # stays byte-identical (idempotent repeat) or fails without
+            # mutating anything.
+            if path.exists():
+                if not path.is_file() or path.read_bytes() != content:
+                    raise ValueError(
+                        f"output path was occupied concurrently with different "
+                        f"content: {path}"
+                    )
+                continue
+            os.replace(temporary_path, path)
+    finally:
+        for temporary_path, _path, _content in staged:
+            temporary_path.unlink(missing_ok=True)
+
+
+def _run_evolution_materialize_command(args: argparse.Namespace) -> object:
+    """Materialize one freshly re-admitted proposal; never writes rules/."""
+
+    forbidden = _materialization_output_forbidden_paths(args)
+    candidate_output = args.candidate_output
+    materialization_output = args.materialization_output
+    if candidate_output.resolve() == materialization_output.resolve():
+        raise ValueError(
+            "--candidate-output and --materialization-output must be distinct paths"
+        )
+    _guard_materialization_output_path(
+        candidate_output, label="--candidate-output", forbidden=forbidden
+    )
+    _guard_materialization_output_path(
+        materialization_output, label="--materialization-output", forbidden=forbidden
+    )
+
+    manifest = BacktestDatasetManifest.model_validate(_read_json(args.manifest))
+    experiment = CalibrationExperiment.model_validate(_read_json(args.experiment))
+    holdout = CalibrationHoldoutResult.model_validate(_read_json(args.holdout))
+    raw_observations = _read_json(args.observations)
+    if not isinstance(raw_observations, list):
+        raise ValueError("--observations must contain a JSON array")
+    observations = [CalibrationObservation.model_validate(item) for item in raw_observations]
+    base_profile_bytes = args.base_profile.read_bytes()
+
+    # Authoritative re-admission (Phase 7-A-R2): resolve the anchored chain
+    # from the workspace and re-run the full admission evaluation.  A
+    # persisted dossier is audit evidence only and is never accepted here.
+    anchored = resolve_anchored_calibration_evidence(
+        BacktestWorkspace(args.calibration_workspace),
+        experiment_id=experiment.experiment_id,
+    )
+    evaluation = evaluate_controlled_evolution(
+        manifest=manifest,
+        experiment=experiment,
+        holdout=holdout,
+        observations=observations,
+        base_profile_bytes=base_profile_bytes,
+        evidence_binding=anchored.binding,
+        freeze_record=anchored.freeze_record,
+    )
+    if evaluation.admission_state != "READY_FOR_HUMAN_REVIEW":
+        raise _CliPayloadExit(
+            {
+                "classification": "MATERIALIZATION_BLOCKED",
+                "reason_code": "ADMISSION_NOT_READY",
+                "blocked_checks": [
+                    check.name for check in evaluation.checks if check.state == "BLOCKED"
+                ],
+                "evaluation": evaluation,
+                "message": (
+                    "the re-run admission evaluation is BLOCKED; no candidate "
+                    "output was produced"
+                ),
+            },
+            1,
+        )
+
+    try:
+        outcome = materialize_candidate_profile(
+            manifest=manifest,
+            experiment=experiment,
+            holdout=holdout,
+            observations=observations,
+            base_profile_bytes=base_profile_bytes,
+            evaluation=evaluation,
+            freeze_record=anchored.freeze_record,
+            evidence_binding=anchored.binding,
+        )
+    except CandidateMaterializationError as exc:
+        raise _CliPayloadExit(
+            {
+                "classification": exc.classification,
+                "reason_code": exc.reason_code,
+                "message": str(exc),
+            },
+            1,
+        ) from exc
+    except (CandidateProjectionError, CandidateReplayError) as exc:
+        # Projection and replay blockers (for example
+        # MISSING_FROZEN_NORMALIZED_INPUT) are explicit machine-readable
+        # materialization blockers; no candidate output is produced.
+        raise _CliPayloadExit(
+            {
+                "classification": "MATERIALIZATION_BLOCKED",
+                "reason_code": str(exc).split(":", 1)[0],
+                "message": str(exc),
+            },
+            1,
+        ) from exc
+
+    record_bytes = (
+        json.dumps(
+            outcome.record.model_dump(mode="json", warnings=False),
+            ensure_ascii=False,
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n"
+    ).encode("utf-8")
+    _commit_materialization_outputs(
+        [
+            (candidate_output, outcome.projected.candidate_bytes, "--candidate-output"),
+            (
+                materialization_output,
+                record_bytes,
+                "--materialization-output",
+            ),
+        ]
+    )
+    return outcome.record
 
 
 def _load_acquisition_plan(path: Path) -> HistoricalAcquisitionPlanV1:

@@ -280,3 +280,14 @@ exact-sequence schema parity (canonical, reordered, count-preserving
 duplicate/omission, truncated, unknown-name and extra-item dossiers rejected
 in both the model and schema-only validation); and socket-guarded offline
 execution of the commit, resolve and evaluation paths.
+
+## Relationship to Phase 7-B1 materialization
+
+Phase 7-B1 consumes this admission boundary unchanged and adds the
+candidate-materialization semantics/projection/replay chain on top of it:
+the materialization CLI requires the authoritative `--calibration-workspace`,
+re-resolves the freeze record and binding through the R2 loader and re-runs
+this evaluation immediately before projecting any candidate bytes. A
+persisted READY dossier remains audit evidence only — never a bearer
+authorization token. The full B1 boundary is documented in
+[`candidate-profile-materialization.md`](candidate-profile-materialization.md).

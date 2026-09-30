@@ -1,0 +1,437 @@
+{
+  "$defs": {
+    "CandidateMetadataChangeV1": {
+      "additionalProperties": false,
+      "description": "One candidate-only profile metadata field changed by materialization.",
+      "properties": {
+        "after": {
+          "title": "After",
+          "type": "string"
+        },
+        "before": {
+          "title": "Before",
+          "type": "string"
+        },
+        "contract": {
+          "const": "candidate_metadata_change_v1",
+          "default": "candidate_metadata_change_v1",
+          "title": "Contract",
+          "type": "string"
+        },
+        "field": {
+          "enum": [
+            "id",
+            "name",
+            "status",
+            "description"
+          ],
+          "title": "Field",
+          "type": "string"
+        }
+      },
+      "required": [
+        "field",
+        "before",
+        "after"
+      ],
+      "title": "CandidateMetadataChangeV1",
+      "type": "object"
+    },
+    "CandidateProfileReplayV1": {
+      "additionalProperties": false,
+      "description": "Immutable result of one profile-aware frozen PIT replay.\n\nBinds the exact base/candidate profile identities, the replayed search-\nstage observation scope, one row per replayed frozen decision artifact\nand a deterministic ``replay_id`` recomputed from the bound identities.\nHoldout observations are structurally outside this contract.",
+      "properties": {
+        "base_profile_id": {
+          "minLength": 1,
+          "title": "Base Profile Id",
+          "type": "string"
+        },
+        "base_profile_sha256": {
+          "minLength": 1,
+          "title": "Base Profile Sha256",
+          "type": "string"
+        },
+        "candidate_profile_id": {
+          "minLength": 1,
+          "title": "Candidate Profile Id",
+          "type": "string"
+        },
+        "candidate_profile_sha256": {
+          "minLength": 1,
+          "title": "Candidate Profile Sha256",
+          "type": "string"
+        },
+        "changed_row_count": {
+          "minimum": 0,
+          "title": "Changed Row Count",
+          "type": "integer"
+        },
+        "content_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Content Sha256",
+          "type": "string"
+        },
+        "contract": {
+          "const": "candidate_profile_replay_v1",
+          "default": "candidate_profile_replay_v1",
+          "title": "Contract",
+          "type": "string"
+        },
+        "notes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Notes",
+          "type": "array"
+        },
+        "profile_rebind_from": {
+          "minLength": 1,
+          "title": "Profile Rebind From",
+          "type": "string"
+        },
+        "profile_rebind_to": {
+          "minLength": 1,
+          "title": "Profile Rebind To",
+          "type": "string"
+        },
+        "replay_id": {
+          "minLength": 1,
+          "title": "Replay Id",
+          "type": "string"
+        },
+        "replay_scope": {
+          "const": "SEARCH_STAGE_TRAIN_VALIDATION",
+          "default": "SEARCH_STAGE_TRAIN_VALIDATION",
+          "title": "Replay Scope",
+          "type": "string"
+        },
+        "replayed_observation_count": {
+          "minimum": 1,
+          "title": "Replayed Observation Count",
+          "type": "integer"
+        },
+        "rows": {
+          "items": {
+            "$ref": "#/$defs/CandidateReplayRowV1"
+          },
+          "maxItems": 100000,
+          "minItems": 1,
+          "title": "Rows",
+          "type": "array"
+        }
+      },
+      "required": [
+        "replay_id",
+        "base_profile_id",
+        "base_profile_sha256",
+        "candidate_profile_id",
+        "candidate_profile_sha256",
+        "profile_rebind_from",
+        "profile_rebind_to",
+        "replayed_observation_count",
+        "changed_row_count",
+        "rows",
+        "content_sha256"
+      ],
+      "title": "CandidateProfileReplayV1",
+      "type": "object"
+    },
+    "CandidateReplayRowV1": {
+      "additionalProperties": false,
+      "description": "One replayed frozen decision under base and candidate profiles.",
+      "properties": {
+        "artifact_id": {
+          "minLength": 1,
+          "title": "Artifact Id",
+          "type": "string"
+        },
+        "artifact_source_hash": {
+          "minLength": 1,
+          "title": "Artifact Source Hash",
+          "type": "string"
+        },
+        "baseline_analysis_sha256": {
+          "minLength": 1,
+          "title": "Baseline Analysis Sha256",
+          "type": "string"
+        },
+        "baseline_decision_state": {
+          "minLength": 1,
+          "title": "Baseline Decision State",
+          "type": "string"
+        },
+        "candidate_analysis_sha256": {
+          "minLength": 1,
+          "title": "Candidate Analysis Sha256",
+          "type": "string"
+        },
+        "candidate_decision_state": {
+          "minLength": 1,
+          "title": "Candidate Decision State",
+          "type": "string"
+        },
+        "changed": {
+          "title": "Changed",
+          "type": "boolean"
+        },
+        "contract": {
+          "const": "candidate_replay_row_v1",
+          "default": "candidate_replay_row_v1",
+          "title": "Contract",
+          "type": "string"
+        },
+        "observation_id": {
+          "minLength": 1,
+          "title": "Observation Id",
+          "type": "string"
+        },
+        "observed_at": {
+          "format": "date",
+          "title": "Observed At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "observation_id",
+        "observed_at",
+        "artifact_id",
+        "artifact_source_hash",
+        "baseline_decision_state",
+        "candidate_decision_state",
+        "baseline_analysis_sha256",
+        "candidate_analysis_sha256",
+        "changed"
+      ],
+      "title": "CandidateReplayRowV1",
+      "type": "object"
+    },
+    "CandidateRuleLeafChangeV1": {
+      "additionalProperties": false,
+      "description": "One registered scalar rule leaf changed by materialization.",
+      "properties": {
+        "after": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "boolean"
+            }
+          ],
+          "title": "After"
+        },
+        "before": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "boolean"
+            }
+          ],
+          "title": "Before"
+        },
+        "contract": {
+          "const": "candidate_rule_leaf_change_v1",
+          "default": "candidate_rule_leaf_change_v1",
+          "title": "Contract",
+          "type": "string"
+        },
+        "profile_path": {
+          "minLength": 1,
+          "title": "Profile Path",
+          "type": "string"
+        },
+        "target_key": {
+          "minLength": 1,
+          "title": "Target Key",
+          "type": "string"
+        }
+      },
+      "required": [
+        "target_key",
+        "profile_path",
+        "before",
+        "after"
+      ],
+      "title": "CandidateRuleLeafChangeV1",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Immutable record binding one admitted proposal to candidate bytes.\n\nBinds the fresh controlled-evolution evaluation identity, the\nauthoritative freeze anchor and evidence binding it was re-admitted\nthrough, the experiment/proposal identities, the exact base-profile\nbytes, the frozen parameter-semantics identity, the exact changed rule\nleaves and metadata, the candidate content hash and the profile-aware\nfrozen PIT replay behind one deterministic ``materialization_id`` and\n``content_sha256``.  Materialization is review input only: it requires\nhuman approval and can never authorize automatic application.",
+  "properties": {
+    "automatic_application_allowed": {
+      "const": false,
+      "default": false,
+      "title": "Automatic Application Allowed",
+      "type": "boolean"
+    },
+    "base_profile_id": {
+      "minLength": 1,
+      "title": "Base Profile Id",
+      "type": "string"
+    },
+    "base_profile_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Base Profile Sha256",
+      "type": "string"
+    },
+    "candidate_content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Candidate Content Sha256",
+      "type": "string"
+    },
+    "candidate_profile_id": {
+      "minLength": 1,
+      "title": "Candidate Profile Id",
+      "type": "string"
+    },
+    "content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Content Sha256",
+      "type": "string"
+    },
+    "contract": {
+      "const": "candidate_profile_materialization_v1",
+      "default": "candidate_profile_materialization_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "evaluation_content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Evaluation Content Sha256",
+      "type": "string"
+    },
+    "evaluation_id": {
+      "minLength": 1,
+      "title": "Evaluation Id",
+      "type": "string"
+    },
+    "evidence_binding_id": {
+      "minLength": 1,
+      "title": "Evidence Binding Id",
+      "type": "string"
+    },
+    "evidence_binding_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Evidence Binding Sha256",
+      "type": "string"
+    },
+    "experiment_content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Experiment Content Sha256",
+      "type": "string"
+    },
+    "experiment_id": {
+      "minLength": 1,
+      "title": "Experiment Id",
+      "type": "string"
+    },
+    "freeze_anchor_id": {
+      "minLength": 1,
+      "title": "Freeze Anchor Id",
+      "type": "string"
+    },
+    "freeze_anchor_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Freeze Anchor Sha256",
+      "type": "string"
+    },
+    "materialization_id": {
+      "minLength": 1,
+      "title": "Materialization Id",
+      "type": "string"
+    },
+    "metadata_changes": {
+      "items": {
+        "$ref": "#/$defs/CandidateMetadataChangeV1"
+      },
+      "maxItems": 4,
+      "minItems": 1,
+      "title": "Metadata Changes",
+      "type": "array"
+    },
+    "proposal_id": {
+      "minLength": 1,
+      "title": "Proposal Id",
+      "type": "string"
+    },
+    "proposal_payload_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Proposal Payload Sha256",
+      "type": "string"
+    },
+    "replay": {
+      "$ref": "#/$defs/CandidateProfileReplayV1"
+    },
+    "requires_human_approval": {
+      "const": true,
+      "default": true,
+      "title": "Requires Human Approval",
+      "type": "boolean"
+    },
+    "rule_changes": {
+      "items": {
+        "$ref": "#/$defs/CandidateRuleLeafChangeV1"
+      },
+      "maxItems": 64,
+      "minItems": 1,
+      "title": "Rule Changes",
+      "type": "array"
+    },
+    "semantics_content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Semantics Content Sha256",
+      "type": "string"
+    },
+    "semantics_id": {
+      "minLength": 1,
+      "title": "Semantics Id",
+      "type": "string"
+    },
+    "semantics_version": {
+      "minLength": 1,
+      "title": "Semantics Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "materialization_id",
+    "evaluation_id",
+    "evaluation_content_sha256",
+    "freeze_anchor_id",
+    "freeze_anchor_sha256",
+    "evidence_binding_id",
+    "evidence_binding_sha256",
+    "experiment_id",
+    "experiment_content_sha256",
+    "proposal_id",
+    "proposal_payload_sha256",
+    "base_profile_id",
+    "base_profile_sha256",
+    "semantics_id",
+    "semantics_version",
+    "semantics_content_sha256",
+    "rule_changes",
+    "metadata_changes",
+    "candidate_profile_id",
+    "candidate_content_sha256",
+    "replay",
+    "content_sha256"
+  ],
+  "title": "CandidateProfileMaterializationV1",
+  "type": "object"
+}

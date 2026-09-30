@@ -15,8 +15,25 @@ admission additionally requires the binding to be referenced by the
 committed for this experiment in the authoritative calibration workspace,
 resolved through the workspace loader boundary rather than an arbitrary
 sidecar path.
+
+Phase 7-B1 adds the materializable-candidate boundary: versioned
+parameter semantics frozen inside the calibration search space (never
+inferred from names), deterministic candidate-only ``RuleProfile``
+projection from the exact base-profile bytes, profile-aware frozen PIT
+replay through the unchanged deterministic engine, and the immutable
+``CandidateProfileMaterializationV1`` record binding the re-admitted R2
+evidence, the exact rule diff and the replay result.  Materialization is
+review input only: it requires human approval, is never applied
+automatically and never writes into active ``rules/``.
 """
 
+from .candidate_projection import (
+    CandidateProjectionError,
+    ProfileMetadataChange,
+    ProjectedCandidate,
+    RuleLeafChange,
+    project_candidate_profile,
+)
 from .contracts import (
     CHECK_BASE_PROFILE_BYTES_HASH,
     CHECK_BASE_PROFILE_IDENTITY_AGREEMENT,
@@ -52,6 +69,22 @@ from .evaluate import (
     frozen_observations_sha256,
     proposal_payload_sha256,
 )
+from .materialize import (
+    REASON_NO_FROZEN_MATERIALIZATION_SEMANTICS,
+    CandidateMaterializationError,
+    CandidateMetadataChangeV1,
+    CandidateProfileMaterializationV1,
+    CandidateRuleLeafChangeV1,
+    MaterializationOutcome,
+    classify_proposal_materializability,
+    materialize_candidate_profile,
+)
+from .replay import (
+    CandidateProfileReplayV1,
+    CandidateReplayError,
+    CandidateReplayRowV1,
+    replay_candidate_profile,
+)
 
 __all__ = [
     "CHECK_BASE_PROFILE_BYTES_HASH",
@@ -81,8 +114,25 @@ __all__ = [
     "ControlledEvolutionEvaluationV1",
     "EvaluationCheckV1",
     "EvolutionEvaluationError",
+    "CandidateMaterializationError",
+    "CandidateMetadataChangeV1",
+    "CandidateProfileMaterializationV1",
+    "CandidateProfileReplayV1",
+    "CandidateProjectionError",
+    "CandidateReplayError",
+    "CandidateReplayRowV1",
+    "CandidateRuleLeafChangeV1",
+    "MaterializationOutcome",
+    "ProfileMetadataChange",
+    "ProjectedCandidate",
+    "REASON_NO_FROZEN_MATERIALIZATION_SEMANTICS",
+    "RuleLeafChange",
+    "classify_proposal_materializability",
     "evaluate_controlled_evolution",
     "frozen_observations_sha256",
+    "materialize_candidate_profile",
     "persisted_content_sha256",
+    "project_candidate_profile",
     "proposal_payload_sha256",
+    "replay_candidate_profile",
 ]

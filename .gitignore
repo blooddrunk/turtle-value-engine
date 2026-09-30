@@ -25,3 +25,4 @@ private-historical/
 !fixtures/**/*.tve-batch.json
 !fixtures/**/*.parquet
 !fixtures/**/*.blob
+build/

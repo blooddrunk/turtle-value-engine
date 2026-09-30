@@ -22,6 +22,10 @@ from .contracts import (
     CandidateProfileProposal,
     ChronologicalSplit,
 )
+from .materialization_semantics import (
+    MaterializableParameterSemanticsSetV1,
+    validate_materializable_search_space,
+)
 
 
 class CalibrationError(ValueError):
@@ -169,6 +173,14 @@ class CalibrationRunner:
             raise CalibrationError("search space and runner base profiles do not match")
         if re.fullmatch(r"[0-9a-f]{64}", base_profile_sha256 or "") is None:
             raise CalibrationError("base_profile_sha256 must identify the frozen profile")
+        # Phase 7-B1 freeze-time boundary: when the search space declares
+        # materialization semantics, they must resolve to an installed set and
+        # cover every parameter/value here — before any trial is scored.  The
+        # same validation runs again inside evaluation reproduction, so a
+        # registry that drifted since calibration fail-closes admission.
+        self.materialization_semantics: MaterializableParameterSemanticsSetV1 | None = (
+            validate_materializable_search_space(search_space)
+        )
         self.manifest_id = manifest_id
         self.base_profile_id = base_profile_id
         self.base_profile_sha256 = base_profile_sha256
