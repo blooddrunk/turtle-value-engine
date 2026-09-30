@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import socket
 import subprocess
 from datetime import UTC, date, datetime
@@ -59,11 +60,13 @@ from turtle_value_engine.evolution import (
     CandidateProfileReplayV1,
     CandidateProjectionError,
     CandidateReplayError,
+    MaterializationPairError,
     classify_proposal_materializability,
     evaluate_controlled_evolution,
     materialize_candidate_profile,
     project_candidate_profile,
     replay_candidate_profile,
+    resolve_complete_materialization_pair,
 )
 
 ROOT = Path(__file__).parents[1]
@@ -1176,10 +1179,233 @@ def test_cli_refuses_occupied_output_with_different_bytes(tmp_path, chain):
     assert not materialization.exists()
 
 
+def test_publish_race_never_overwrites_foreign_winner(tmp_path, monkeypatch):
+    from turtle_value_engine import cli
+
+    candidate = tmp_path / "candidate.yaml"
+    record = tmp_path / "materialization.json"
+    real_replace = os.replace
+    real_link = os.link
+
+    def competing_replace(source, destination):
+        if Path(destination) == candidate:
+            candidate.write_bytes(b"foreign winner\n")
+        return real_replace(source, destination)
+
+    monkeypatch.setattr(cli.os, "replace", competing_replace)
+    def competing_link(source, destination, **kwargs):
+        if Path(destination).name == candidate.name:
+            candidate.write_bytes(b"foreign winner\n")
+        return real_link(source, destination, **kwargs)
+
+    monkeypatch.setattr(cli.os, "link", competing_link)
+    with pytest.raises(ValueError, match="different content"):
+        cli._commit_materialization_outputs(
+            [(candidate, b"our candidate\n", "candidate"), (record, b"record\n", "record")]
+        )
+    assert candidate.read_bytes() == b"foreign winner\n"
+    assert not record.exists()
+
+
+def test_second_publish_failure_rolls_back_owned_candidate(tmp_path, monkeypatch):
+    from turtle_value_engine import cli
+
+    candidate = tmp_path / "candidate.yaml"
+    record = tmp_path / "materialization.json"
+    real_replace = os.replace
+    real_link = os.link
+
+    def failing_replace(source, destination):
+        if Path(destination) == record:
+            raise OSError("injected materialization publish failure")
+        return real_replace(source, destination)
+
+    monkeypatch.setattr(cli.os, "replace", failing_replace)
+    def failing_link(source, destination, **kwargs):
+        if Path(destination).name == record.name:
+            raise OSError("injected materialization publish failure")
+        return real_link(source, destination, **kwargs)
+
+    monkeypatch.setattr(cli.os, "link", failing_link)
+    with pytest.raises(OSError, match="injected materialization publish failure"):
+        cli._commit_materialization_outputs(
+            [(candidate, b"candidate\n", "candidate"), (record, b"record\n", "record")]
+        )
+    assert not candidate.exists()
+    assert not record.exists()
+
+
+def test_cli_refuses_external_active_rules_root(tmp_path, chain, monkeypatch):
+    active_rules = tmp_path / "active" / "rules"
+    active_rules.mkdir(parents=True)
+    base = active_rules / "strict-v1.yaml"
+    base.write_bytes(_base_bytes())
+    argv = _cli_argv(
+        chain, tmp_path, active_rules / "candidate.yaml", tmp_path / "materialization.json"
+    )
+    argv[argv.index("--base-profile") + 1] = str(base)
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    code, _payload, text = _run_cli(argv)
+    assert code == 2 and "rules" in text
+    assert not (active_rules / "candidate.yaml").exists()
+
+
+def test_concurrent_identical_publication_converges(tmp_path, monkeypatch):
+    from turtle_value_engine import cli
+
+    candidate = tmp_path / "candidate.yaml"
+    record = tmp_path / "materialization.json"
+    real_link = os.link
+
+    def competing_link(source, destination, **kwargs):
+        target = candidate if Path(destination).name == candidate.name else record
+        target.write_bytes(b"candidate\n" if target == candidate else b"record\n")
+        return real_link(source, destination, **kwargs)
+
+    monkeypatch.setattr(cli.os, "link", competing_link)
+    outputs = [(candidate, b"candidate\n", "candidate"), (record, b"record\n", "record")]
+    cli._commit_materialization_outputs(outputs)
+    assert candidate.read_bytes() == b"candidate\n"
+    assert record.read_bytes() == b"record\n"
+    cli._commit_materialization_outputs(outputs)
+
+
+def test_second_publish_failure_preserves_preexisting_candidate(tmp_path, monkeypatch):
+    from turtle_value_engine import cli
+
+    candidate = tmp_path / "candidate.yaml"
+    record = tmp_path / "materialization.json"
+    candidate.write_bytes(b"candidate\n")
+
+    def failing_link(source, destination, **kwargs):
+        raise OSError("record publish failed")
+
+    monkeypatch.setattr(cli.os, "link", failing_link)
+    with pytest.raises(OSError, match="record publish failed"):
+        cli._commit_materialization_outputs(
+            [(candidate, b"candidate\n", "candidate"), (record, b"record\n", "record")]
+        )
+    assert candidate.read_bytes() == b"candidate\n"
+    assert not record.exists()
+
+
+def test_second_publish_failure_never_deletes_concurrent_replacement(tmp_path, monkeypatch):
+    from turtle_value_engine import cli
+
+    candidate = tmp_path / "candidate.yaml"
+    record = tmp_path / "materialization.json"
+    real_link = os.link
+
+    def competing_link(source, destination, **kwargs):
+        if Path(destination).name == record.name:
+            candidate.unlink()
+            candidate.write_bytes(b"concurrent replacement\n")
+            raise OSError("record publish failed")
+        return real_link(source, destination, **kwargs)
+
+    monkeypatch.setattr(cli.os, "link", competing_link)
+    with pytest.raises(OSError, match="record publish failed"):
+        cli._commit_materialization_outputs(
+            [(candidate, b"candidate\n", "candidate"), (record, b"record\n", "record")]
+        )
+    assert candidate.read_bytes() == b"concurrent replacement\n"
+    assert not record.exists()
+
+
+def test_complete_pair_resolver_rejects_orphan_tamper_and_symlinks(tmp_path, chain):
+    candidate = tmp_path / "candidate.yaml"
+    record = tmp_path / "materialization.json"
+    code, _payload, _text = _run_cli(_cli_argv(chain, tmp_path, candidate, record))
+    assert code == 0
+    pair = resolve_complete_materialization_pair(candidate, record)
+    assert pair.record.candidate_content_sha256 == hashlib.sha256(pair.candidate_bytes).hexdigest()
+    record_bytes = record.read_bytes()
+    record.unlink()
+    with pytest.raises(MaterializationPairError, match="unavailable"):
+        resolve_complete_materialization_pair(candidate, record)
+    record.write_bytes(record_bytes)
+    candidate.write_bytes(candidate.read_bytes() + b"\n")
+    with pytest.raises(MaterializationPairError, match="hash"):
+        resolve_complete_materialization_pair(candidate, record)
+    candidate.unlink()
+    candidate.symlink_to(BASE_PROFILE_PATH)
+    with pytest.raises(MaterializationPairError, match="symlink"):
+        resolve_complete_materialization_pair(candidate, record)
+
+
+def test_final_symlink_nonregular_and_parent_redirection_fail_closed(tmp_path, chain):
+    candidate = tmp_path / "candidate.yaml"
+    record = tmp_path / "materialization.json"
+    candidate.symlink_to(tmp_path / "missing.yaml")
+    code, _payload, text = _run_cli(_cli_argv(chain, tmp_path, candidate, record))
+    assert code == 2 and "symlink" in text
+    candidate.unlink()
+    candidate.mkdir()
+    code, _payload, text = _run_cli(_cli_argv(chain, tmp_path, candidate, record))
+    assert code == 2 and "regular file" in text
+    candidate.rmdir()
+    redirected = tmp_path / "redirected"
+    redirected.symlink_to(chain.root / "workspace", target_is_directory=True)
+    code, _payload, text = _run_cli(
+        _cli_argv(chain, tmp_path, redirected / "candidate.yaml", record)
+    )
+    assert code == 2 and "calibration workspace" in text
+    assert not (chain.root / "workspace" / "candidate.yaml").exists()
+
+
+@pytest.mark.parametrize(
+    "input_flag", ["--manifest", "--experiment", "--holdout", "--observations", "--base-profile"]
+)
+def test_every_supplied_input_path_is_refused_as_output(tmp_path, chain, input_flag):
+    argv = _cli_argv(
+        chain, tmp_path, tmp_path / "candidate.yaml", tmp_path / "materialization.json"
+    )
+    input_path = Path(argv[argv.index(input_flag) + 1])
+    original = input_path.read_bytes()
+    argv[argv.index("--candidate-output") + 1] = str(input_path)
+    code, _payload, text = _run_cli(argv)
+    assert code == 2 and ("must not overwrite" in text or "rules" in text)
+    assert input_path.read_bytes() == original
+    assert not (tmp_path / "materialization.json").exists()
+
+
+def test_materialization_final_symlink_is_refused(tmp_path, chain):
+    candidate = tmp_path / "candidate.yaml"
+    record = tmp_path / "materialization.json"
+    record.symlink_to(tmp_path / "missing-record.json")
+    code, _payload, text = _run_cli(_cli_argv(chain, tmp_path, candidate, record))
+    assert code == 2 and "symlink" in text
+    assert not candidate.exists()
+
+
+def test_parent_redirection_after_guard_fails_before_publication(tmp_path, chain, monkeypatch):
+    from turtle_value_engine import cli
+
+    output_dir = tmp_path / "review"
+    output_dir.mkdir()
+    candidate = output_dir / "candidate.yaml"
+    record = tmp_path / "materialization.json"
+    original_commit = cli._commit_materialization_outputs
+
+    def redirect_then_commit(outputs):
+        output_dir.rename(tmp_path / "review-moved")
+        output_dir.symlink_to(BASE_PROFILE_PATH.parent, target_is_directory=True)
+        return original_commit(outputs)
+
+    monkeypatch.setattr(cli, "_commit_materialization_outputs", redirect_then_commit)
+    code, _payload, text = _run_cli(_cli_argv(chain, tmp_path, candidate, record))
+    assert code == 2 and "redirected" in text
+    assert not (BASE_PROFILE_PATH.parent / "candidate.yaml").exists()
+    assert not record.exists()
+
+
 def test_cli_wrong_base_profile_bytes_block_admission(tmp_path, chain):
     mutated = yaml.safe_load(chain.base_bytes)
     mutated["cdc"]["yield_bands"]["watch"] = 0.07
-    wrong = Path(tmp_path / "wrong-profile.yaml")
+    wrong = Path(tmp_path / "rules" / "wrong-profile.yaml")
+    wrong.parent.mkdir()
     wrong.write_bytes(yaml.safe_dump(mutated).encode("utf-8"))
     inputs = chain.dump_inputs(tmp_path / "inputs")
     candidate = tmp_path / "candidate.yaml"

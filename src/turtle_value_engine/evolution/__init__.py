@@ -69,6 +69,11 @@ from .evaluate import (
     frozen_observations_sha256,
     proposal_payload_sha256,
 )
+from .materialization_pair import (
+    CompleteMaterializationPair,
+    MaterializationPairError,
+    resolve_complete_materialization_pair,
+)
 from .materialize import (
     REASON_NO_FROZEN_MATERIALIZATION_SEMANTICS,
     CandidateMaterializationError,
@@ -117,12 +122,14 @@ __all__ = [
     "CandidateMaterializationError",
     "CandidateMetadataChangeV1",
     "CandidateProfileMaterializationV1",
+    "CompleteMaterializationPair",
     "CandidateProfileReplayV1",
     "CandidateProjectionError",
     "CandidateReplayError",
     "CandidateReplayRowV1",
     "CandidateRuleLeafChangeV1",
     "MaterializationOutcome",
+    "MaterializationPairError",
     "ProfileMetadataChange",
     "ProjectedCandidate",
     "REASON_NO_FROZEN_MATERIALIZATION_SEMANTICS",
@@ -135,4 +142,5 @@ __all__ = [
     "project_candidate_profile",
     "proposal_payload_sha256",
     "replay_candidate_profile",
+    "resolve_complete_materialization_pair",
 ]

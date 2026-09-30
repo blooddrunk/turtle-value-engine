@@ -163,3 +163,25 @@ codes: `0` materialized, `1` classified blocker (`NON_MATERIALIZABLE` /
 `MATERIALIZATION_BLOCKED` with a machine-readable `reason_code`), `2`
 invalid input/path. The command constructs no network socket, invokes no
 provider, model or transport, and never writes a rule, PR or approval state.
+
+## R1 immutable publication and pair admission
+
+The CLI resolves each output against its canonical parent, refuses symlink or
+non-regular finals and derives the active rule root from the supplied
+`--base-profile` directory as well as repository conventions. At publication,
+an opened directory descriptor anchors each output to the validated parent;
+temporary files are written and fsynced through that descriptor, then linked
+into place without replacement. The directory is fsynced after each new final.
+An occupied final is acceptable only when its bytes are identical. A competing
+different writer keeps its file and causes a conflict.
+
+The candidate is published first; the materialization JSON is published last
+and is the authority marker. On a normal second-stage failure, the CLI removes
+only a candidate inode it created and can still identify, and only when no
+materialization record is present. A crash can leave an orphan candidate. That
+orphan is not a committed materialization: downstream consumers must call
+`resolve_complete_materialization_pair`, which requires two regular,
+non-symlink files, validates the materialization contract and candidate
+`RuleProfile` identity, and compares the hash of the **exact candidate bytes**
+with `candidate_content_sha256`. The two files are not a cross-filesystem
+atomic transaction; a deterministic rerun can safely reuse identical bytes.

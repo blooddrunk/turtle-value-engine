@@ -4,6 +4,8 @@ import argparse
 import json
 import os
 import re
+import secrets
+import stat
 import sys
 import tempfile
 from collections.abc import Mapping
@@ -43,6 +45,7 @@ from turtle_value_engine.evolution import (
     CandidateReplayError,
     evaluate_controlled_evolution,
     materialize_candidate_profile,
+    resolve_complete_materialization_pair,
 )
 from turtle_value_engine.historical import (
     AcquisitionError,
@@ -1346,10 +1349,14 @@ def _materialization_output_forbidden_paths(
 
 def _guard_materialization_output_path(
     path: Path, *, label: str, forbidden: dict[str, Path]
-) -> None:
+) -> Path:
     """Refuse output paths that collide with inputs, authority or rules/."""
 
-    resolved = path.resolve()
+    if path.is_symlink():
+        raise ValueError(f"{label} must not be a symlink: {path}")
+    resolved = path.parent.resolve() / path.name
+    if resolved.exists() and not stat.S_ISREG(resolved.lstat().st_mode):
+        raise ValueError(f"{label} exists and is not a regular file: {resolved}")
     for input_label, input_path in forbidden.items():
         if resolved == input_path.resolve():
             raise ValueError(
@@ -1365,6 +1372,7 @@ def _guard_materialization_output_path(
     rules_dirs = {
         (Path(__file__).resolve().parents[2] / "rules").resolve(),
         (Path.cwd() / "rules").resolve(),
+        forbidden["base-profile"].resolve().parent,
     }
     for rules_dir in rules_dirs:
         if resolved.is_relative_to(rules_dir):
@@ -1373,73 +1381,150 @@ def _guard_materialization_output_path(
                 f"({rules_dir}); Phase 7-B1 never writes candidate bytes into "
                 "active rules"
             )
+    return resolved
+
+
+def _open_materialization_directory(path: Path) -> int:
+    if path.resolve() != path:
+        raise ValueError(f"output directory was redirected: {path}")
+    descriptor = os.open(
+        path, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    )
+    try:
+        named = os.stat(path)
+        opened = os.fstat(descriptor)
+        if path.resolve() == path and (named.st_dev, named.st_ino) == (
+            opened.st_dev, opened.st_ino
+        ):
+            return descriptor
+    except Exception:
+        os.close(descriptor)
+        raise
+    os.close(descriptor)
+    raise ValueError(f"output directory changed during publication: {path}")
+
+
+def _matching_materialization_output(directory_fd: int, path: Path, content: bytes) -> bool:
+    try:
+        found = os.stat(path.name, dir_fd=directory_fd, follow_symlinks=False)
+    except FileNotFoundError:
+        return False
+    if not stat.S_ISREG(found.st_mode):
+        raise ValueError(f"output path exists and is not a regular file: {path}")
+    descriptor = os.open(
+        path.name, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0), dir_fd=directory_fd
+    )
+    try:
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            raise ValueError(f"output path exists and is not a regular file: {path}")
+        with os.fdopen(descriptor, "rb", closefd=False) as handle:
+            existing = handle.read(len(content) + 1)
+    finally:
+        os.close(descriptor)
+    if existing != content:
+        raise ValueError(f"output path already exists with different content: {path}")
+    return True
 
 
 def _commit_materialization_outputs(
     outputs: list[tuple[Path, bytes, str]],
 ) -> None:
-    """Stage every output, then publish create-only and idempotently.
+    """Publish candidate first and its authority record last without replacement."""
 
-    All collision checks run before the first byte is published: an occupied
-    path must be a regular file with byte-identical content (an idempotent
-    repeat) and any different content fails closed with no partial candidate
-    artifact left behind.
-    """
-
-    staged: list[tuple[Path, Path, bytes]] = []
+    staged: list[tuple[int, str, Path, bytes]] = []
+    created_candidate: tuple[int, Path, int, int, bytes] | None = None
+    if len(outputs) != 2 or outputs[0][0] == outputs[1][0]:
+        raise ValueError("materialization publication requires two distinct ordered outputs")
     try:
         for path, content, _label in outputs:
-            if path.exists():
-                if path.is_symlink() or not path.is_file():
-                    raise ValueError(f"output path exists and is not a regular file: {path}")
-                if path.read_bytes() != content:
-                    raise ValueError(
-                        f"output path already exists with different content; "
-                        f"refusing to overwrite: {path}"
-                    )
             path.parent.mkdir(parents=True, exist_ok=True)
-            descriptor, temporary_name = tempfile.mkstemp(
-                prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
-            )
-            temporary_path = Path(temporary_name)
+            directory_fd = _open_materialization_directory(path.parent)
+            temporary_name = f".{path.name}.{secrets.token_hex(16)}.tmp"
+            try:
+                _matching_materialization_output(directory_fd, path, content)
+                descriptor = os.open(
+                    temporary_name,
+                    os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+                    0o600,
+                    dir_fd=directory_fd,
+                )
+            except Exception:
+                os.close(directory_fd)
+                raise
+            staged.append((directory_fd, temporary_name, path, content))
             with os.fdopen(descriptor, "wb") as handle:
                 handle.write(content)
                 handle.flush()
                 os.fsync(handle.fileno())
-            staged.append((temporary_path, path, content))
-        for temporary_path, path, content in staged:
-            # Re-check right before publishing so an occupied path either
-            # stays byte-identical (idempotent repeat) or fails without
-            # mutating anything.
-            if path.exists():
-                if not path.is_file() or path.read_bytes() != content:
-                    raise ValueError(
-                        f"output path was occupied concurrently with different "
-                        f"content: {path}"
-                    )
+        for index, (directory_fd, temporary_name, path, content) in enumerate(staged):
+            if _matching_materialization_output(directory_fd, path, content):
                 continue
-            os.replace(temporary_path, path)
+            try:
+                os.link(
+                    temporary_name,
+                    path.name,
+                    src_dir_fd=directory_fd,
+                    dst_dir_fd=directory_fd,
+                    follow_symlinks=False,
+                )
+            except FileExistsError:
+                if not _matching_materialization_output(directory_fd, path, content):
+                    raise ValueError(f"output path vanished during publication: {path}") from None
+                continue
+            if index == 0:
+                # The temporary inode is owned by this invocation.  The
+                # final name could already have been replaced by an outside
+                # actor, so it cannot establish rollback ownership.
+                published = os.stat(
+                    temporary_name, dir_fd=directory_fd, follow_symlinks=False
+                )
+                created_candidate = (
+                    directory_fd, path, published.st_dev, published.st_ino, content
+                )
+            os.fsync(directory_fd)
+    except Exception:
+        if created_candidate is not None:
+            directory_fd, path, device, inode, content = created_candidate
+            record_fd, _, record_path, _ = staged[1]
+            # A pre-existing or concurrently committed authority record must
+            # never lose its prerequisite.  Otherwise remove only our inode.
+            try:
+                os.stat(record_path.name, dir_fd=record_fd, follow_symlinks=False)
+            except FileNotFoundError:
+                try:
+                    current = os.stat(path.name, dir_fd=directory_fd, follow_symlinks=False)
+                    if (current.st_dev, current.st_ino) == (device, inode) and (
+                        stat.S_ISREG(current.st_mode)
+                        and _matching_materialization_output(directory_fd, path, content)
+                    ):
+                        os.unlink(path.name, dir_fd=directory_fd)
+                        os.fsync(directory_fd)
+                except FileNotFoundError:
+                    pass
+        raise
     finally:
-        for temporary_path, _path, _content in staged:
-            temporary_path.unlink(missing_ok=True)
+        for directory_fd, temporary_name, _path, _content in staged:
+            try:
+                os.unlink(temporary_name, dir_fd=directory_fd)
+            except FileNotFoundError:
+                pass
+            os.close(directory_fd)
 
 
 def _run_evolution_materialize_command(args: argparse.Namespace) -> object:
     """Materialize one freshly re-admitted proposal; never writes rules/."""
 
     forbidden = _materialization_output_forbidden_paths(args)
-    candidate_output = args.candidate_output
-    materialization_output = args.materialization_output
-    if candidate_output.resolve() == materialization_output.resolve():
+    candidate_output = _guard_materialization_output_path(
+        args.candidate_output, label="--candidate-output", forbidden=forbidden
+    )
+    materialization_output = _guard_materialization_output_path(
+        args.materialization_output, label="--materialization-output", forbidden=forbidden
+    )
+    if candidate_output == materialization_output:
         raise ValueError(
             "--candidate-output and --materialization-output must be distinct paths"
         )
-    _guard_materialization_output_path(
-        candidate_output, label="--candidate-output", forbidden=forbidden
-    )
-    _guard_materialization_output_path(
-        materialization_output, label="--materialization-output", forbidden=forbidden
-    )
 
     manifest = BacktestDatasetManifest.model_validate(_read_json(args.manifest))
     experiment = CalibrationExperiment.model_validate(_read_json(args.experiment))
@@ -1525,6 +1610,13 @@ def _run_evolution_materialize_command(args: argparse.Namespace) -> object:
         )
         + "\n"
     ).encode("utf-8")
+    # Revalidate the canonical destinations immediately before publication.
+    _guard_materialization_output_path(
+        candidate_output, label="--candidate-output", forbidden=forbidden
+    )
+    _guard_materialization_output_path(
+        materialization_output, label="--materialization-output", forbidden=forbidden
+    )
     _commit_materialization_outputs(
         [
             (candidate_output, outcome.projected.candidate_bytes, "--candidate-output"),
@@ -1535,6 +1627,7 @@ def _run_evolution_materialize_command(args: argparse.Namespace) -> object:
             ),
         ]
     )
+    resolve_complete_materialization_pair(candidate_output, materialization_output)
     return outcome.record
 
 
