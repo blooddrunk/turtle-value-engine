@@ -1,8 +1,10 @@
 # Phase 7-A-R2 — Authoritative Calibration Freeze Anchor and Schema Semantic Parity Hardening
 
-Status: **IMPLEMENTED / CI CLOSURE PENDING**
+Status: **IMPLEMENTED / CLOSED** (2026-09-30)
 Date: 2026-09-30
 Selected after: Phase 7-A-R1 post-closure review
+Closure record:
+`docs/status/phase-7-a-r2-2026-09-30.md`
 
 Selection audit:
 `docs/status/phase-7-a-r1-post-closure-review-2026-09-30.md`
