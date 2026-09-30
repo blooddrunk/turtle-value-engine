@@ -3,6 +3,8 @@
 Status: **CLOSED / EXACT-HEAD CI VERIFIED**
 Date: 2026-09-30
 Selected after: Phase 7-B1-R1 post-closure review
+Post-closure review: `docs/status/phase-7-b2-a-post-closure-review-2026-09-30.md`
+Selected next package: `docs/goals/phase-7-b2-b1-pr-construction-exact-head-ci.md`
 
 Selection audit:
 `docs/status/phase-7-b1-r1-post-closure-review-2026-09-30.md`
