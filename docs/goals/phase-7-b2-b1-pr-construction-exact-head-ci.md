@@ -1,8 +1,13 @@
 # Phase 7-B2-B1 — GitHub PR Construction and Exact-Head CI Gate
 
-Status: **SELECTED / NOT IMPLEMENTED**
-Date: 2026-09-30
+Status: **CLOSED / EXACT-HEAD CI VERIFIED / AWAITING HUMAN APPROVAL (B2-B2)**
+Date: 2026-09-30 (selected) / 2026-10-12 (closed)
 Selected after: Phase 7-B2-A post-closure review
+
+Closure record:
+`docs/status/phase-7-b2-b1-2026-10-12.md` (PR #4, head
+`3203e6efaf4c8ae019dfd305388694003037271a`, Actions run `38195962676`,
+reviewer-access blocker documented as the seven-field intervention packet)
 
 Selection audit:
 `docs/status/phase-7-b2-a-post-closure-review-2026-09-30.md`
