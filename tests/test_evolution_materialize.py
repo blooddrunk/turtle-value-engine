@@ -1399,6 +1399,24 @@ def test_parent_redirection_after_guard_fails_before_publication(tmp_path, chain
     assert not record.exists()
 
 
+def _sandbox_base_profile(root: Path) -> Path:
+    """A rule-root sandbox holding the exact base-profile bytes.
+
+    The release command derives its active-rules root from the supplied
+    ``--base-profile`` (B1-R1 derivation), so success-path coverage must not
+    depend on whether the repository checkout itself already carries a
+    published ``rules/strict-v2.yaml`` (for example on the strict-v2
+    publication branch). The sandboxed copy holds byte-identical base bytes,
+    so every frozen identity bound to the base content hash is unchanged.
+    """
+
+    sandbox = root / "rules"
+    sandbox.mkdir(parents=True, exist_ok=True)
+    base = sandbox / "strict-v1.yaml"
+    base.write_bytes(_base_bytes())
+    return base
+
+
 def _release_argv(chain, root: Path, candidate: Path, record: Path) -> list[str]:
     inputs = chain.dump_inputs(root / "inputs")
     return [
@@ -1419,7 +1437,7 @@ def _release_argv(chain, root: Path, candidate: Path, record: Path) -> list[str]
         "--observations",
         str(inputs["observations"]),
         "--base-profile",
-        str(BASE_PROFILE_PATH),
+        str(_sandbox_base_profile(root)),
         "--target-profile-id",
         "strict-v2",
         "--release-output",
@@ -1433,6 +1451,8 @@ def test_b2_release_authoritative_replay_and_idempotence(tmp_path, chain):
     from turtle_value_engine.evolution.profile_release import VersionedProfileReleaseCandidateV1
     from turtle_value_engine.evolution.release_pair import resolve_complete_profile_release
 
+    active_release = ROOT / "rules" / "strict-v2.yaml"
+    active_release_before = active_release.read_bytes() if active_release.exists() else None
     candidate = tmp_path / "review" / "candidate.yaml"
     record = tmp_path / "review" / "materialization.json"
     assert _run_cli(_cli_argv(chain, tmp_path, candidate, record))[0] == 0
@@ -1463,7 +1483,8 @@ def test_b2_release_authoritative_replay_and_idempotence(tmp_path, chain):
     assert schema == VersionedProfileReleaseCandidateV1.model_json_schema()
     Draft202012Validator(schema).validate(bundle.manifest.model_dump(mode="json"))
     assert BASE_PROFILE_PATH.read_bytes() == chain.base_bytes
-    assert not (ROOT / "rules" / "strict-v2.yaml").exists()
+    active_release_after = active_release.read_bytes() if active_release.exists() else None
+    assert active_release_after == active_release_before
 
 
 @pytest.mark.parametrize("target", ["strict-v1", "strict-v3", "strict-v0", "other", "../strict-v2"])
@@ -1579,9 +1600,29 @@ def test_b2_release_refuses_active_rules_and_workspace_outputs(tmp_path, chain):
         ROOT / "rules" / "strict-v2.yaml",
         chain.root / "workspace" / "strict-v2.yaml",
     ):
+        # The publication tree may legitimately already carry the target
+        # (strict-v2 publication branch); the invariant is that the B2-A
+        # boundary never writes or rewrites it, not that it is absent.
+        before = forbidden.read_bytes() if forbidden.exists() else None
         argv[argv.index("--release-output") + 1] = str(forbidden)
         assert _run_cli(argv)[0] != 0
-        assert not forbidden.exists()
+        assert (forbidden.read_bytes() if forbidden.exists() else None) == before
+
+
+def test_b2_release_fails_closed_when_target_exists_in_base_rule_root(tmp_path, chain):
+    candidate = tmp_path / "review" / "candidate.yaml"
+    record = tmp_path / "review" / "materialization.json"
+    assert _run_cli(_cli_argv(chain, tmp_path, candidate, record))[0] == 0
+    published = tmp_path / "rules" / "strict-v2.yaml"
+    published.parent.mkdir(parents=True, exist_ok=True)
+    published.write_bytes(b"already-published-target\n")
+    argv = _release_argv(chain, tmp_path, candidate, record)
+    code, _payload, text = _run_cli(argv)
+    assert code == 2
+    assert "already exists under active rules" in text
+    assert published.read_bytes() == b"already-published-target\n"
+    assert not (tmp_path / "release" / "strict-v2.yaml").exists()
+    assert not (tmp_path / "release" / "release.json").exists()
 
 
 def test_b2_release_concurrent_immutable_publication(tmp_path, chain):

@@ -1664,7 +1664,11 @@ def _run_evolution_release_command(args: argparse.Namespace) -> object:
         raise ValueError("release and manifest outputs must be distinct")
     if release_output.name != f"{args.target_profile_id}.yaml":
         raise ValueError("release output filename must match the target profile id")
-    active_target = Path(__file__).resolve().parents[2] / "rules" / release_output.name
+    # The active-rules root is the supplied base profile's rule tree (the
+    # same B1-R1 derivation as the output guards), so a repository checkout
+    # that already carries the published target never gets overwritten or
+    # reinterpreted while research/release runs sandbox their base profile.
+    active_target = args.base_profile.resolve().parent / release_output.name
     if active_target.exists() or active_target.is_symlink():
         raise ValueError("target profile already exists under active rules")
 
