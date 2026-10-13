@@ -1,9 +1,14 @@
 # Phase 7-C2 — Owner Policy Decision Records and Read-only Activation Plans
 
-Status: **IMPLEMENTED / CLOSED** (offline implementation boundary; no real
-owner acceptance and no activation occurred or was required — see
-`docs/status/phase-7-c2-2026-10-13.md` for the closure record)
+Status: **IMPLEMENTED / CLOSED**
 Date: 2026-10-13
+Closed at: implementation `26cd2b47ba5f9bc8989698742c9bc78721d99d9c`
+(Actions run `38360550883`, `success`, exact `head_sha` match; full suite
+7145 passed / 2 skipped; closure record
+`docs/status/phase-7-c2-2026-10-13.md`)
+Offline implementation boundary only: no real owner acceptance occurred or
+was required, and nothing was activated — implemented ≠ owner-accepted ≠
+activated.
 Selected by the post-C1 review on 2026-10-13. This is an implementation
 package, not an instruction to accept or activate strict-v2.
 
