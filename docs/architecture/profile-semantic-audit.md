@@ -112,7 +112,7 @@ exception marks the matching findings `covered_by_policy_exception=true`
 and moves the classification to `READY_FOR_POLICY_DECISION`; the exception
 never changes engine behavior, never covers arbitrary band disorder (the
 coverage predicate requires the exact gate-above-band pattern:
-`pass > s`, `s >= a`, `watch >= fail_below`), and **no exception is
+`pass > s`, `s >= a >= watch >= fail_below > 0`), and **no exception is
 checked in for strict-v2** — declaring one is the owner's policy decision.
 
 ## Approval-claim detection

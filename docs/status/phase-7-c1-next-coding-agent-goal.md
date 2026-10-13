@@ -1,7 +1,9 @@
 # Phase 7-C1 → next coding-agent handoff — 2026-10-13
 
-Status: **READY** (Phase 7-C1 closed at its audit boundary; see
-`docs/status/phase-7-c1-2026-10-13.md`)
+Status: **SELECTED BY POST-C1 REVIEW**. Implement the authoritative package
+`docs/goals/phase-7-c2-owner-policy-decision-and-activation-plan.md` after the
+C1-R1 narrow-exception repair. C2 builds decision records and read-only plans;
+actual activation is deferred. See `docs/status/phase-7-c1-review-2026-10-13.md`.
 
 This document hands the next coding agent everything needed to proceed
 after Phase 7-C1 without re-deriving state.
@@ -24,7 +26,8 @@ after Phase 7-C1 without re-deriving state.
 
 ## Recommended next package: Phase 7-C2 — Owner Policy Decision Recording and Conditional Activation Boundary
 
-Scope (to be selected canonically by the owner or a post-C1 review):
+Scope (selected by this post-C1 review; the goal above controls where this older
+outline is less specific):
 
 1. An offline, typed decision-recording boundary that accepts exactly one
    owner decision for the audited strict-v2 head: either

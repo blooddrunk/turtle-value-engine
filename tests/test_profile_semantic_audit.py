@@ -615,12 +615,17 @@ def test_mismatched_policy_exception_does_not_cover():
     assert audit.activation_readiness == "POLICY_DECISION_REQUIRED"
 
 
-def test_exception_never_covers_arbitrary_band_disorder(tmp_path):
+@pytest.mark.parametrize(
+    ("field", "before", "after"),
+    [("a", 0.10, 0.20), ("watch", 0.06, 0.11), ("watch", 0.06, 0.13),
+     ("watch", 0.06, 0.15)],
+)
+def test_exception_never_covers_arbitrary_band_disorder(tmp_path, field, before, after):
     import yaml as yaml_module
 
     payload = yaml_module.safe_load(TARGET_PROFILE_PATH.read_bytes())
-    # a > s is not the registered gate-above-band anomaly pattern.
-    payload["cdc"]["yield_bands"]["a"] = 0.20
+    # Raising a above s or watch above a is unrelated to the pass exception.
+    payload["cdc"]["yield_bands"][field] = after
     target_path = tmp_path / "strict-v2.yaml"
     target_path.write_text(
         yaml_module.safe_dump(payload, sort_keys=True), encoding="utf-8"
@@ -639,10 +644,10 @@ def test_exception_never_covers_arbitrary_band_disorder(tmp_path):
             },
             {
                 "contract": "candidate_rule_leaf_change_v1",
-                "target_key": "cdc-yield-bands-a",
-                "profile_path": "cdc.yield_bands.a",
-                "before": 0.10,
-                "after": 0.20,
+                "target_key": f"cdc-yield-bands-{field}",
+                "profile_path": f"cdc.yield_bands.{field}",
+                "before": before,
+                "after": after,
             },
         ],
     )

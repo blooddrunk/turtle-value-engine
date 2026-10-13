@@ -918,8 +918,7 @@ def _gate_above_band_anomaly(bands: object) -> bool:
 
     return (
         bands.pass_ > bands.s
-        and bands.s >= bands.a
-        and bands.watch >= bands.fail_below
+        and bands.s >= bands.a >= bands.watch >= bands.fail_below
         and bands.fail_below > 0
     )
 
