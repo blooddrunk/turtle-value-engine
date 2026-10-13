@@ -48,6 +48,11 @@ from turtle_value_engine.evolution import (
     resolve_complete_materialization_pair,
 )
 from turtle_value_engine.evolution.profile_release import build_profile_release
+from turtle_value_engine.evolution.profile_semantic_audit import (
+    PolicyApprovalClaimV1,
+    VersionedPolicyExceptionV1,
+    audit_profile_semantics,
+)
 from turtle_value_engine.evolution.release_pair import resolve_complete_profile_release
 from turtle_value_engine.historical import (
     AcquisitionError,
@@ -540,6 +545,37 @@ def _build_parser() -> argparse.ArgumentParser:
     ):
         evolution_release.add_argument(f"--{option}", required=True, type=Path)
     evolution_release.add_argument("--target-profile-id", required=True)
+    evolution_audit = evolution_commands.add_parser(
+        "audit-profile",
+        help="build a deterministic, read-only semantic-audit and "
+        "activation-readiness dossier for a published versioned profile "
+        "pair (Phase 7-C1)",
+    )
+    evolution_audit.add_argument("--base-profile", required=True, type=Path)
+    evolution_audit.add_argument("--target-profile", required=True, type=Path)
+    evolution_audit.add_argument("--release-manifest", required=True, type=Path)
+    evolution_audit.add_argument(
+        "--boundary-input",
+        type=Path,
+        default=None,
+        help="normalized input JSON used as the boundary-replay template "
+        "(default: fixtures/healthy_cash_cow.json)",
+    )
+    evolution_audit.add_argument(
+        "--policy-exceptions",
+        type=Path,
+        default=None,
+        help="optional versioned policy-exception declarations (single object "
+        "or JSON array)",
+    )
+    evolution_audit.add_argument(
+        "--approval-claim",
+        type=Path,
+        default=None,
+        help="optional policy-approval claim; detection only — never verified, "
+        "never an activation permission",
+    )
+    evolution_audit.add_argument("--output", type=Path, default=None)
 
     watch_parser = subparsers.add_parser(
         "watch",
@@ -1280,6 +1316,8 @@ def _run_evolution_command(args: argparse.Namespace) -> object:
         return _run_evolution_materialize_command(args)
     if args.evolution_command == "prepare-profile-release":
         return _run_evolution_release_command(args)
+    if args.evolution_command == "audit-profile":
+        return _run_evolution_audit_command(args)
 
     input_paths = {
         "manifest": args.manifest,
@@ -1344,6 +1382,73 @@ def _run_evolution_command(args: argparse.Namespace) -> object:
         # the admission outcome without discarding any evidence.
         raise _CliPayloadExit(evaluation, 1)
     return evaluation
+
+
+def _run_evolution_audit_command(args: argparse.Namespace) -> object:
+    """Audit one published profile pair; read-only, never writes rules/."""
+
+    input_paths = {
+        "base-profile": args.base_profile,
+        "target-profile": args.target_profile,
+        "release-manifest": args.release_manifest,
+        "boundary-input": args.boundary_input,
+        "policy-exceptions": args.policy_exceptions,
+        "approval-claim": args.approval_claim,
+    }
+    if args.output is not None:
+        if args.output.is_symlink():
+            raise ValueError(f"--output must not be a symlink: {args.output}")
+        output = args.output.resolve()
+        for label, path in input_paths.items():
+            if path is not None and output == path.resolve():
+                raise ValueError(
+                    "audit output must not overwrite a supplied input artifact "
+                    f"({label}): {path}"
+                )
+        published_dirs = {
+            (Path(__file__).resolve().parents[2] / "rules").resolve(),
+            (Path.cwd() / "rules").resolve(),
+            args.base_profile.resolve().parent,
+            args.target_profile.resolve().parent,
+            args.release_manifest.resolve().parent,
+        }
+        for published_dir in published_dirs:
+            if output.is_relative_to(published_dir):
+                raise ValueError(
+                    "audit output is refused under published artifact directories "
+                    f"({published_dir}); Phase 7-C1 never writes there"
+                )
+    policy_exceptions: list[VersionedPolicyExceptionV1] = []
+    if args.policy_exceptions is not None:
+        raw_exceptions = _read_json(args.policy_exceptions)
+        exception_items = (
+            raw_exceptions if isinstance(raw_exceptions, list) else [raw_exceptions]
+        )
+        policy_exceptions = [
+            VersionedPolicyExceptionV1.model_validate(item) for item in exception_items
+        ]
+    approval_claim = None
+    if args.approval_claim is not None:
+        approval_claim = PolicyApprovalClaimV1.model_validate(
+            _read_json(args.approval_claim)
+        )
+    boundary_input = None
+    if args.boundary_input is not None:
+        boundary_input = parse_normalized_input(args.boundary_input.read_bytes())
+    audit = audit_profile_semantics(
+        base_profile_path=args.base_profile,
+        target_profile_path=args.target_profile,
+        release_manifest_path=args.release_manifest,
+        boundary_input=boundary_input,
+        policy_exceptions=policy_exceptions,
+        approval_claim=approval_claim,
+    )
+    _write_optional(args.output, audit)
+    if audit.activation_readiness != "READY_FOR_POLICY_DECISION":
+        # The dossier itself is printed and persisted; exit code 1 classifies
+        # the readiness outcome without discarding any evidence.
+        raise _CliPayloadExit(audit, 1)
+    return audit
 
 
 def _materialization_output_forbidden_paths(

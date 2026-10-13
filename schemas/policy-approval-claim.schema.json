@@ -1,0 +1,56 @@
+{
+  "additionalProperties": false,
+  "description": "Detection-only record of a claimed human economic-policy decision.\n\nThe audit validates only the claim's shape and its binding to the exact\ntarget profile bytes.  Verifying that a real human made the decision is\noutside the offline audit boundary, so no audit status ever becomes a\nverified approval and no claim can enable activation.",
+  "properties": {
+    "contract": {
+      "const": "policy_approval_claim_v1",
+      "default": "policy_approval_claim_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "target_profile_id": {
+      "minLength": 1,
+      "title": "Target Profile Id",
+      "type": "string"
+    },
+    "target_profile_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Target Profile Sha256",
+      "type": "string"
+    },
+    "decision": {
+      "enum": [
+        "ACCEPTED",
+        "REJECTED"
+      ],
+      "title": "Decision",
+      "type": "string"
+    },
+    "decided_by": {
+      "minLength": 1,
+      "title": "Decided By",
+      "type": "string"
+    },
+    "decided_at": {
+      "minLength": 1,
+      "title": "Decided At",
+      "type": "string"
+    },
+    "rationale": {
+      "maxLength": 4000,
+      "minLength": 1,
+      "title": "Rationale",
+      "type": "string"
+    }
+  },
+  "required": [
+    "target_profile_id",
+    "target_profile_sha256",
+    "decision",
+    "decided_by",
+    "decided_at",
+    "rationale"
+  ],
+  "title": "PolicyApprovalClaimV1",
+  "type": "object"
+}

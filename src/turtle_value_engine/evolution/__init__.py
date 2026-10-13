@@ -90,6 +90,18 @@ from .profile_release import (
     VersionedProfileReleaseCandidateV1,
     build_profile_release,
 )
+from .profile_semantic_audit import (
+    REQUIRED_SEMANTIC_AUDIT_CHECKS,
+    GateBoundaryRowV1,
+    PipelineBoundaryRowV1,
+    PolicyApprovalClaimV1,
+    ProfileSemanticAuditError,
+    ProfileSemanticAuditV1,
+    SemanticAuditCheckV1,
+    SemanticFindingV1,
+    VersionedPolicyExceptionV1,
+    audit_profile_semantics,
+)
 from .release_pair import resolve_complete_profile_release
 from .replay import (
     CandidateProfileReplayV1,
@@ -141,7 +153,17 @@ __all__ = [
     "ProfileReleaseBundle",
     "ProfileReleaseError",
     "ProjectedCandidate",
+    "ProfileSemanticAuditError",
+    "ProfileSemanticAuditV1",
+    "PolicyApprovalClaimV1",
+    "GateBoundaryRowV1",
+    "PipelineBoundaryRowV1",
     "REASON_NO_FROZEN_MATERIALIZATION_SEMANTICS",
+    "REQUIRED_SEMANTIC_AUDIT_CHECKS",
+    "SemanticAuditCheckV1",
+    "SemanticFindingV1",
+    "VersionedPolicyExceptionV1",
+    "audit_profile_semantics",
     "RuleLeafChange",
     "VersionedProfileReleaseCandidateV1",
     "build_profile_release",

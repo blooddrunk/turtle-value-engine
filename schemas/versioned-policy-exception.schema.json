@@ -1,0 +1,65 @@
+{
+  "additionalProperties": false,
+  "description": "One explicit, versioned, human-authored policy-exception declaration.\n\nAn exception never changes engine behavior.  It records that a specific\ncross-field semantic anomaly of one exact profile (bound by id and byte\nhash) is an intended economic policy, so the audit can mark the matching\nfinding as covered instead of uncovered.  Only the narrow registered\ncodes are accepted; the audit never infers coverage from prose.",
+  "properties": {
+    "contract": {
+      "const": "versioned_policy_exception_v1",
+      "default": "versioned_policy_exception_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "exception_id": {
+      "minLength": 1,
+      "title": "Exception Id",
+      "type": "string"
+    },
+    "profile_id": {
+      "minLength": 1,
+      "title": "Profile Id",
+      "type": "string"
+    },
+    "profile_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Profile Sha256",
+      "type": "string"
+    },
+    "rule_path": {
+      "minLength": 1,
+      "title": "Rule Path",
+      "type": "string"
+    },
+    "exception_code": {
+      "const": "CDC_GATE_ABOVE_S_BAND_PERMITTED",
+      "title": "Exception Code",
+      "type": "string"
+    },
+    "rationale": {
+      "maxLength": 4000,
+      "minLength": 20,
+      "title": "Rationale",
+      "type": "string"
+    },
+    "declared_by": {
+      "minLength": 1,
+      "title": "Declared By",
+      "type": "string"
+    },
+    "content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Content Sha256",
+      "type": "string"
+    }
+  },
+  "required": [
+    "exception_id",
+    "profile_id",
+    "profile_sha256",
+    "rule_path",
+    "exception_code",
+    "rationale",
+    "declared_by",
+    "content_sha256"
+  ],
+  "title": "VersionedPolicyExceptionV1",
+  "type": "object"
+}

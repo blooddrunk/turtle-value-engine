@@ -223,7 +223,9 @@ def _build_decision(
     if valuation.current_valuation_state is ValuationState.SPECIAL_REVIEW:
         blocking_reasons.append("Valuation state is withheld pending unresolved prerequisites.")
     elif valuation.current_valuation_state is ValuationState.NO_NORMAL_VALUATION:
-        blocking_reasons.append("The strict-v1 inputs do not support a normal valuation.")
+        blocking_reasons.append(
+            f"The {normalized_input.profile_id} inputs do not support a normal valuation."
+        )
     blocking_reasons = _unique(blocking_reasons)
 
     supporting_ids = _unique(
@@ -249,9 +251,11 @@ def _build_decision(
     elif state is DecisionState.FAIL:
         summary = "A hard gate failed; no normal investment recommendation is issued."
     elif state is DecisionState.NO_NORMAL_VALUATION:
-        summary = "No normal strict-v1 valuation is available for this input."
+        summary = (
+            f"No normal {normalized_input.profile_id} valuation is available for this input."
+        )
     else:
-        summary = f"Deterministic strict-v1 state: {state.value}."
+        summary = f"Deterministic {normalized_input.profile_id} state: {state.value}."
 
     confidence = _worst_confidence(
         [

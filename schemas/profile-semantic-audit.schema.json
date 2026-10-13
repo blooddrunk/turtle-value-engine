@@ -1,0 +1,1121 @@
+{
+  "$defs": {
+    "GateBoundaryRowV1": {
+      "additionalProperties": false,
+      "description": "One exact-yield CDC gate outcome under both audited profiles.",
+      "properties": {
+        "cdc_yield": {
+          "exclusiveMinimum": 0,
+          "title": "Cdc Yield",
+          "type": "number"
+        },
+        "base_gate_status": {
+          "pattern": "^[A-Z][A-Z0-9_]*$",
+          "title": "Base Gate Status",
+          "type": "string"
+        },
+        "target_gate_status": {
+          "pattern": "^[A-Z][A-Z0-9_]*$",
+          "title": "Target Gate Status",
+          "type": "string"
+        },
+        "diverges": {
+          "title": "Diverges",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "cdc_yield",
+        "base_gate_status",
+        "target_gate_status",
+        "diverges"
+      ],
+      "title": "GateBoundaryRowV1",
+      "type": "object"
+    },
+    "PipelineBoundaryRowV1": {
+      "additionalProperties": false,
+      "description": "One end-to-end engine outcome under both audited profiles.",
+      "properties": {
+        "target_cdc_yield": {
+          "exclusiveMinimum": 0,
+          "title": "Target Cdc Yield",
+          "type": "number"
+        },
+        "actual_cdc_yield": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Actual Cdc Yield"
+        },
+        "base_gate_status": {
+          "pattern": "^[A-Z][A-Z0-9_]*$",
+          "title": "Base Gate Status",
+          "type": "string"
+        },
+        "target_gate_status": {
+          "pattern": "^[A-Z][A-Z0-9_]*$",
+          "title": "Target Gate Status",
+          "type": "string"
+        },
+        "base_valuation_state": {
+          "pattern": "^[A-Z][A-Z0-9_]*$",
+          "title": "Base Valuation State",
+          "type": "string"
+        },
+        "target_valuation_state": {
+          "pattern": "^[A-Z][A-Z0-9_]*$",
+          "title": "Target Valuation State",
+          "type": "string"
+        },
+        "base_decision_state": {
+          "pattern": "^[A-Z][A-Z0-9_]*$",
+          "title": "Base Decision State",
+          "type": "string"
+        },
+        "target_decision_state": {
+          "pattern": "^[A-Z][A-Z0-9_]*$",
+          "title": "Target Decision State",
+          "type": "string"
+        },
+        "base_auto_decision_allowed": {
+          "title": "Base Auto Decision Allowed",
+          "type": "boolean"
+        },
+        "target_auto_decision_allowed": {
+          "title": "Target Auto Decision Allowed",
+          "type": "boolean"
+        },
+        "decision_changed": {
+          "title": "Decision Changed",
+          "type": "boolean"
+        },
+        "gate_divergences": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 200,
+          "title": "Gate Divergences",
+          "type": "array"
+        },
+        "withheld_valuation_reasons": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 50,
+          "title": "Withheld Valuation Reasons",
+          "type": "array"
+        }
+      },
+      "required": [
+        "target_cdc_yield",
+        "base_gate_status",
+        "target_gate_status",
+        "base_valuation_state",
+        "target_valuation_state",
+        "base_decision_state",
+        "target_decision_state",
+        "base_auto_decision_allowed",
+        "target_auto_decision_allowed",
+        "decision_changed",
+        "gate_divergences",
+        "withheld_valuation_reasons"
+      ],
+      "title": "PipelineBoundaryRowV1",
+      "type": "object"
+    },
+    "SemanticFindingV1": {
+      "additionalProperties": false,
+      "description": "One semantic-coherence anomaly attributed to one exact profile.",
+      "properties": {
+        "code": {
+          "enum": [
+            "CDC_BAND_ORDER_VIOLATION",
+            "CDC_GATE_TIER_COHERENCE_VIOLATION",
+            "THROUGH_RETURN_BAND_ORDER_VIOLATION",
+            "VALUATION_TIER_ORDER_VIOLATION"
+          ],
+          "title": "Code",
+          "type": "string"
+        },
+        "profile_id": {
+          "minLength": 1,
+          "title": "Profile Id",
+          "type": "string"
+        },
+        "rule_path": {
+          "minLength": 1,
+          "title": "Rule Path",
+          "type": "string"
+        },
+        "covered_by_policy_exception": {
+          "title": "Covered By Policy Exception",
+          "type": "boolean"
+        },
+        "covering_exception_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Covering Exception Id"
+        },
+        "description": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Description",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "profile_id",
+        "rule_path",
+        "covered_by_policy_exception",
+        "description"
+      ],
+      "title": "SemanticFindingV1",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Immutable semantic-audit and activation-readiness dossier.\n\n``activation_readiness`` separates structural invalidity\n(``BLOCKED_FOR_ACTIVATION``) from uncovered semantic policy anomalies\n(``POLICY_DECISION_REQUIRED``) from machine-clean pairs\n(``READY_FOR_POLICY_DECISION``).  The last state still means the human\neconomic-policy decision is outstanding: publication, a green CI run and\nthis audit are never approval to activate a profile.",
+  "properties": {
+    "contract": {
+      "const": "profile_semantic_audit_v1",
+      "default": "profile_semantic_audit_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "audit_id": {
+      "minLength": 1,
+      "title": "Audit Id",
+      "type": "string"
+    },
+    "base_profile_id": {
+      "minLength": 1,
+      "title": "Base Profile Id",
+      "type": "string"
+    },
+    "base_profile_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Base Profile Sha256",
+      "type": "string"
+    },
+    "target_profile_id": {
+      "minLength": 1,
+      "title": "Target Profile Id",
+      "type": "string"
+    },
+    "target_profile_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Target Profile Sha256",
+      "type": "string"
+    },
+    "release_manifest_id": {
+      "minLength": 1,
+      "title": "Release Manifest Id",
+      "type": "string"
+    },
+    "release_manifest_content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Release Manifest Content Sha256",
+      "type": "string"
+    },
+    "boundary_input_analysis_id": {
+      "minLength": 1,
+      "title": "Boundary Input Analysis Id",
+      "type": "string"
+    },
+    "boundary_input_content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Boundary Input Content Sha256",
+      "type": "string"
+    },
+    "gate_boundary_rows": {
+      "items": {
+        "$ref": "#/$defs/GateBoundaryRowV1"
+      },
+      "maxItems": 2000,
+      "minItems": 1,
+      "title": "Gate Boundary Rows",
+      "type": "array"
+    },
+    "pipeline_boundary_rows": {
+      "items": {
+        "$ref": "#/$defs/PipelineBoundaryRowV1"
+      },
+      "maxItems": 2000,
+      "minItems": 1,
+      "title": "Pipeline Boundary Rows",
+      "type": "array"
+    },
+    "gate_divergence_count": {
+      "minimum": 0,
+      "title": "Gate Divergence Count",
+      "type": "integer"
+    },
+    "decision_divergence_count": {
+      "minimum": 0,
+      "title": "Decision Divergence Count",
+      "type": "integer"
+    },
+    "checks": {
+      "items": false,
+      "maxItems": 18,
+      "minItems": 18,
+      "prefixItems": [
+        {
+          "additionalProperties": false,
+          "description": "One machine-readable audit check with a stable name, scope and code.",
+          "properties": {
+            "name": {
+              "const": "BASE_PROFILE_VALID"
+            },
+            "scope": {
+              "const": "base"
+            },
+            "status": {
+              "enum": [
+                "PASS",
+                "FINDING",
+                "BLOCKED"
+              ],
+              "title": "Status",
+              "type": "string"
+            },
+            "code": {
+              "pattern": "^[A-Z][A-Z0-9_]*$",
+              "title": "Code",
+              "type": "string"
+            },
+            "detail": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Detail",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "scope",
+            "status",
+            "code",
+            "detail"
+          ],
+          "title": "SemanticAuditCheckV1",
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "One machine-readable audit check with a stable name, scope and code.",
+          "properties": {
+            "name": {
+              "const": "TARGET_PROFILE_VALID"
+            },
+            "scope": {
+              "const": "target"
+            },
+            "status": {
+              "enum": [
+                "PASS",
+                "FINDING",
+                "BLOCKED"
+              ],
+              "title": "Status",
+              "type": "string"
+            },
+            "code": {
+              "pattern": "^[A-Z][A-Z0-9_]*$",
+              "title": "Code",
+              "type": "string"
+            },
+            "detail": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Detail",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "scope",
+            "status",
+            "code",
+            "detail"
+          ],
+          "title": "SemanticAuditCheckV1",
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "One machine-readable audit check with a stable name, scope and code.",
+          "properties": {
+            "name": {
+              "const": "VERSION_LINEAGE_NEXT"
+            },
+            "scope": {
+              "const": "pair"
+            },
+            "status": {
+              "enum": [
+                "PASS",
+                "FINDING",
+                "BLOCKED"
+              ],
+              "title": "Status",
+              "type": "string"
+            },
+            "code": {
+              "pattern": "^[A-Z][A-Z0-9_]*$",
+              "title": "Code",
+              "type": "string"
+            },
+            "detail": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Detail",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "scope",
+            "status",
+            "code",
+            "detail"
+          ],
+          "title": "SemanticAuditCheckV1",
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "One machine-readable audit check with a stable name, scope and code.",
+          "properties": {
+            "name": {
+              "const": "RELEASE_MANIFEST_VALID"
+            },
+            "scope": {
+              "const": "pair"
+            },
+            "status": {
+              "enum": [
+                "PASS",
+                "FINDING",
+                "BLOCKED"
+              ],
+              "title": "Status",
+              "type": "string"
+            },
+            "code": {
+              "pattern": "^[A-Z][A-Z0-9_]*$",
+              "title": "Code",
+              "type": "string"
+            },
+            "detail": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Detail",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "scope",
+            "status",
+            "code",
+            "detail"
+          ],
+          "title": "SemanticAuditCheckV1",
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "One machine-readable audit check with a stable name, scope and code.",
+          "properties": {
+            "name": {
+              "const": "BASE_PROFILE_BYTES_HASH"
+            },
+            "scope": {
+              "const": "pair"
+            },
+            "status": {
+              "enum": [
+                "PASS",
+                "FINDING",
+                "BLOCKED"
+              ],
+              "title": "Status",
+              "type": "string"
+            },
+            "code": {
+              "pattern": "^[A-Z][A-Z0-9_]*$",
+              "title": "Code",
+              "type": "string"
+            },
+            "detail": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Detail",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "scope",
+            "status",
+            "code",
+            "detail"
+          ],
+          "title": "SemanticAuditCheckV1",
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "One machine-readable audit check with a stable name, scope and code.",
+          "properties": {
+            "name": {
+              "const": "TARGET_PROFILE_BYTES_HASH"
+            },
+            "scope": {
+              "const": "pair"
+            },
+            "status": {
+              "enum": [
+                "PASS",
+                "FINDING",
+                "BLOCKED"
+              ],
+              "title": "Status",
+              "type": "string"
+            },
+            "code": {
+              "pattern": "^[A-Z][A-Z0-9_]*$",
+              "title": "Code",
+              "type": "string"
+            },
+            "detail": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Detail",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "scope",
+            "status",
+            "code",
+            "detail"
+          ],
+          "title": "SemanticAuditCheckV1",
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "One machine-readable audit check with a stable name, scope and code.",
+          "properties": {
+            "name": {
+              "const": "TARGET_PROFILE_IDENTITY"
+            },
+            "scope": {
+              "const": "pair"
+            },
+            "status": {
+              "enum": [
+                "PASS",
+                "FINDING",
+                "BLOCKED"
+              ],
+              "title": "Status",
+              "type": "string"
+            },
+            "code": {
+              "pattern": "^[A-Z][A-Z0-9_]*$",
+              "title": "Code",
+              "type": "string"
+            },
+            "detail": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Detail",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "scope",
+            "status",
+            "code",
+            "detail"
+          ],
+          "title": "SemanticAuditCheckV1",
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "One machine-readable audit check with a stable name, scope and code.",
+          "properties": {
+            "name": {
+              "const": "RULE_CHANGES_REGISTERED"
+            },
+            "scope": {
+              "const": "pair"
+            },
+            "status": {
+              "enum": [
+                "PASS",
+                "FINDING",
+                "BLOCKED"
+              ],
+              "title": "Status",
+              "type": "string"
+            },
+            "code": {
+              "pattern": "^[A-Z][A-Z0-9_]*$",
+              "title": "Code",
+              "type": "string"
+            },
+            "detail": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Detail",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "scope",
+            "status",
+            "code",
+            "detail"
+          ],
+          "title": "SemanticAuditCheckV1",
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "One machine-readable audit check with a stable name, scope and code.",
+          "properties": {
+            "name": {
+              "const": "CDC_BAND_ORDER"
+            },
+            "scope": {
+              "const": "base"
+            },
+            "status": {
+              "enum": [
+                "PASS",
+                "FINDING",
+                "BLOCKED"
+              ],
+              "title": "Status",
+              "type": "string"
+            },
+            "code": {
+              "pattern": "^[A-Z][A-Z0-9_]*$",
+              "title": "Code",
+              "type": "string"
+            },
+            "detail": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Detail",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "scope",
+            "status",
+            "code",
+            "detail"
+          ],
+          "title": "SemanticAuditCheckV1",
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "One machine-readable audit check with a stable name, scope and code.",
+          "properties": {
+            "name": {
+              "const": "CDC_BAND_ORDER"
+            },
+            "scope": {
+              "const": "target"
+            },
+            "status": {
+              "enum": [
+                "PASS",
+                "FINDING",
+                "BLOCKED"
+              ],
+              "title": "Status",
+              "type": "string"
+            },
+            "code": {
+              "pattern": "^[A-Z][A-Z0-9_]*$",
+              "title": "Code",
+              "type": "string"
+            },
+            "detail": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Detail",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "scope",
+            "status",
+            "code",
+            "detail"
+          ],
+          "title": "SemanticAuditCheckV1",
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "One machine-readable audit check with a stable name, scope and code.",
+          "properties": {
+            "name": {
+              "const": "CDC_GATE_TIER_COHERENCE"
+            },
+            "scope": {
+              "const": "base"
+            },
+            "status": {
+              "enum": [
+                "PASS",
+                "FINDING",
+                "BLOCKED"
+              ],
+              "title": "Status",
+              "type": "string"
+            },
+            "code": {
+              "pattern": "^[A-Z][A-Z0-9_]*$",
+              "title": "Code",
+              "type": "string"
+            },
+            "detail": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Detail",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "scope",
+            "status",
+            "code",
+            "detail"
+          ],
+          "title": "SemanticAuditCheckV1",
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "One machine-readable audit check with a stable name, scope and code.",
+          "properties": {
+            "name": {
+              "const": "CDC_GATE_TIER_COHERENCE"
+            },
+            "scope": {
+              "const": "target"
+            },
+            "status": {
+              "enum": [
+                "PASS",
+                "FINDING",
+                "BLOCKED"
+              ],
+              "title": "Status",
+              "type": "string"
+            },
+            "code": {
+              "pattern": "^[A-Z][A-Z0-9_]*$",
+              "title": "Code",
+              "type": "string"
+            },
+            "detail": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Detail",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "scope",
+            "status",
+            "code",
+            "detail"
+          ],
+          "title": "SemanticAuditCheckV1",
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "One machine-readable audit check with a stable name, scope and code.",
+          "properties": {
+            "name": {
+              "const": "THROUGH_RETURN_BAND_ORDER"
+            },
+            "scope": {
+              "const": "base"
+            },
+            "status": {
+              "enum": [
+                "PASS",
+                "FINDING",
+                "BLOCKED"
+              ],
+              "title": "Status",
+              "type": "string"
+            },
+            "code": {
+              "pattern": "^[A-Z][A-Z0-9_]*$",
+              "title": "Code",
+              "type": "string"
+            },
+            "detail": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Detail",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "scope",
+            "status",
+            "code",
+            "detail"
+          ],
+          "title": "SemanticAuditCheckV1",
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "One machine-readable audit check with a stable name, scope and code.",
+          "properties": {
+            "name": {
+              "const": "THROUGH_RETURN_BAND_ORDER"
+            },
+            "scope": {
+              "const": "target"
+            },
+            "status": {
+              "enum": [
+                "PASS",
+                "FINDING",
+                "BLOCKED"
+              ],
+              "title": "Status",
+              "type": "string"
+            },
+            "code": {
+              "pattern": "^[A-Z][A-Z0-9_]*$",
+              "title": "Code",
+              "type": "string"
+            },
+            "detail": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Detail",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "scope",
+            "status",
+            "code",
+            "detail"
+          ],
+          "title": "SemanticAuditCheckV1",
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "One machine-readable audit check with a stable name, scope and code.",
+          "properties": {
+            "name": {
+              "const": "VALUATION_TIER_ORDER"
+            },
+            "scope": {
+              "const": "base"
+            },
+            "status": {
+              "enum": [
+                "PASS",
+                "FINDING",
+                "BLOCKED"
+              ],
+              "title": "Status",
+              "type": "string"
+            },
+            "code": {
+              "pattern": "^[A-Z][A-Z0-9_]*$",
+              "title": "Code",
+              "type": "string"
+            },
+            "detail": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Detail",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "scope",
+            "status",
+            "code",
+            "detail"
+          ],
+          "title": "SemanticAuditCheckV1",
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "One machine-readable audit check with a stable name, scope and code.",
+          "properties": {
+            "name": {
+              "const": "VALUATION_TIER_ORDER"
+            },
+            "scope": {
+              "const": "target"
+            },
+            "status": {
+              "enum": [
+                "PASS",
+                "FINDING",
+                "BLOCKED"
+              ],
+              "title": "Status",
+              "type": "string"
+            },
+            "code": {
+              "pattern": "^[A-Z][A-Z0-9_]*$",
+              "title": "Code",
+              "type": "string"
+            },
+            "detail": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Detail",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "scope",
+            "status",
+            "code",
+            "detail"
+          ],
+          "title": "SemanticAuditCheckV1",
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "One machine-readable audit check with a stable name, scope and code.",
+          "properties": {
+            "name": {
+              "const": "BOUNDARY_REPLAY_REPRODUCIBLE"
+            },
+            "scope": {
+              "const": "pair"
+            },
+            "status": {
+              "enum": [
+                "PASS",
+                "FINDING",
+                "BLOCKED"
+              ],
+              "title": "Status",
+              "type": "string"
+            },
+            "code": {
+              "pattern": "^[A-Z][A-Z0-9_]*$",
+              "title": "Code",
+              "type": "string"
+            },
+            "detail": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Detail",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "scope",
+            "status",
+            "code",
+            "detail"
+          ],
+          "title": "SemanticAuditCheckV1",
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "One machine-readable audit check with a stable name, scope and code.",
+          "properties": {
+            "name": {
+              "const": "POLICY_EXCEPTIONS_VALID"
+            },
+            "scope": {
+              "const": "pair"
+            },
+            "status": {
+              "enum": [
+                "PASS",
+                "FINDING",
+                "BLOCKED"
+              ],
+              "title": "Status",
+              "type": "string"
+            },
+            "code": {
+              "pattern": "^[A-Z][A-Z0-9_]*$",
+              "title": "Code",
+              "type": "string"
+            },
+            "detail": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Detail",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "scope",
+            "status",
+            "code",
+            "detail"
+          ],
+          "title": "SemanticAuditCheckV1",
+          "type": "object"
+        }
+      ],
+      "title": "Checks",
+      "type": "array"
+    },
+    "semantic_findings": {
+      "items": {
+        "$ref": "#/$defs/SemanticFindingV1"
+      },
+      "maxItems": 200,
+      "title": "Semantic Findings",
+      "type": "array"
+    },
+    "policy_exception_ids": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 64,
+      "title": "Policy Exception Ids",
+      "type": "array"
+    },
+    "policy_approval_status": {
+      "enum": [
+        "ABSENT",
+        "UNVERIFIED_ACCEPTANCE_CLAIM",
+        "UNVERIFIED_REJECTION_CLAIM",
+        "MISMATCHED_CLAIM"
+      ],
+      "title": "Policy Approval Status",
+      "type": "string"
+    },
+    "activation_readiness": {
+      "enum": [
+        "BLOCKED_FOR_ACTIVATION",
+        "POLICY_DECISION_REQUIRED",
+        "READY_FOR_POLICY_DECISION"
+      ],
+      "title": "Activation Readiness",
+      "type": "string"
+    },
+    "blocking_checks": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 64,
+      "title": "Blocking Checks",
+      "type": "array"
+    },
+    "policy_decision_reasons": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 64,
+      "title": "Policy Decision Reasons",
+      "type": "array"
+    },
+    "requires_human_policy_approval": {
+      "const": true,
+      "default": true,
+      "title": "Requires Human Policy Approval",
+      "type": "boolean"
+    },
+    "automatic_activation_allowed": {
+      "const": false,
+      "default": false,
+      "title": "Automatic Activation Allowed",
+      "type": "boolean"
+    },
+    "publication_is_not_activation_approval": {
+      "const": true,
+      "default": true,
+      "title": "Publication Is Not Activation Approval",
+      "type": "boolean"
+    },
+    "content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Content Sha256",
+      "type": "string"
+    }
+  },
+  "required": [
+    "audit_id",
+    "base_profile_id",
+    "base_profile_sha256",
+    "target_profile_id",
+    "target_profile_sha256",
+    "release_manifest_id",
+    "release_manifest_content_sha256",
+    "boundary_input_analysis_id",
+    "boundary_input_content_sha256",
+    "gate_boundary_rows",
+    "pipeline_boundary_rows",
+    "gate_divergence_count",
+    "decision_divergence_count",
+    "checks",
+    "semantic_findings",
+    "policy_exception_ids",
+    "policy_approval_status",
+    "activation_readiness",
+    "blocking_checks",
+    "policy_decision_reasons",
+    "content_sha256"
+  ],
+  "title": "ProfileSemanticAuditV1",
+  "type": "object"
+}
