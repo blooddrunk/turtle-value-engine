@@ -56,3 +56,20 @@ all branches automatically. Actual activation is deferred. Owner economic
 acceptance is not required to finish implementation; when requested later the
 goal provides the exact human choice, rationale, submission and verification
 boundary, with automation preparing all evidence first.
+
+## C1-R1 exact-head CI closure
+
+- Repair implementation: `e587f765ce04c47531330e410497f9ec80ce2610`.
+- CI: https://github.com/blooddrunk/turtle-value-engine/actions/runs/38343678534
+  completed successfully for that exact SHA; job `115120100473` and every
+  workflow step succeeded. Logs confirm **7090 passed / 2 opt-in AKShare skips**,
+  Dashboard **55 passed**, plus lint/config/schema checks, systemd unit verify,
+  Dashboard build/secret scan, strict Wrangler dry-run and cross-stack smoke.
+- The local loopback failure was also resolved automatically by removing
+  inherited proxy variables for that test: 1 passed. The two local systemd
+  manager tests remain unavailable in this container; they passed in CI. No
+  owner intervention or altered/skipped CI gate was used.
+- Reviewed published files remain byte-identical to `5edfcfe`; the real audit
+  id/content hash above is unchanged. C1 is accepted after this narrow repair.
+- This closure update changes documentation only; CI evidence above refers
+  explicitly to the tested implementation SHA, not a later documentation SHA.
