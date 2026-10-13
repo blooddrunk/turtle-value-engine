@@ -1,7 +1,10 @@
 # Phase 7-C1 — Versioned Profile Semantic Audit & Activation Readiness
 
-Status: **IMPLEMENTED / CI CLOSURE PENDING**
+Status: **IMPLEMENTED / CLOSED**
 Date: 2026-10-13
+Closed at: implementation `37dda800e42cc401de3c85cf05065fd70dc3d3be`
+(Actions run `38334476461`, `success`, exact `head_sha` match; closure
+record `docs/status/phase-7-c1-2026-10-13.md`)
 Selected from: Issue #5 (`https://github.com/blooddrunk/turtle-value-engine/issues/5`)
 Reviewed baseline: `0e149504b9f0faa7c82fba67e8fdcc932578a8b2` (merged main after PR #4)
 
