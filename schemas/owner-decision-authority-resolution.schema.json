@@ -1,0 +1,168 @@
+{
+  "additionalProperties": false,
+  "description": "Fail-closed resolution of every recorded decision for one exact target.\n\nStale records (binding other than the current target bytes) are reported,\nnever silently discarded or preferred; revoked and superseded records are\nlisted; ambiguity and conflict are terminal states rather than a newest-\nfile-wins selection.",
+  "properties": {
+    "contract": {
+      "const": "owner_decision_authority_resolution_v1",
+      "default": "owner_decision_authority_resolution_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "resolution_id": {
+      "minLength": 1,
+      "title": "Resolution Id",
+      "type": "string"
+    },
+    "target_profile_id": {
+      "minLength": 1,
+      "title": "Target Profile Id",
+      "type": "string"
+    },
+    "target_profile_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Target Profile Sha256",
+      "type": "string"
+    },
+    "supplied_record_count": {
+      "minimum": 0,
+      "title": "Supplied Record Count",
+      "type": "integer"
+    },
+    "stale_record_ids": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 256,
+      "title": "Stale Record Ids",
+      "type": "array"
+    },
+    "revoked_record_ids": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 256,
+      "title": "Revoked Record Ids",
+      "type": "array"
+    },
+    "superseded_record_ids": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 256,
+      "title": "Superseded Record Ids",
+      "type": "array"
+    },
+    "resolved_state": {
+      "enum": [
+        "ACCEPT_VERIFIED",
+        "ACCEPT_UNVERIFIED",
+        "ACCEPT_AUTHORITY_REJECTED",
+        "REJECTED",
+        "NO_DECISION",
+        "AMBIGUOUS",
+        "CONFLICTING"
+      ],
+      "title": "Resolved State",
+      "type": "string"
+    },
+    "active_decision": {
+      "anyOf": [
+        {
+          "enum": [
+            "ACCEPT_WITH_EXCEPTION",
+            "REJECT"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Active Decision"
+    },
+    "active_decision_record_id": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Active Decision Record Id"
+    },
+    "active_decision_record_content_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Active Decision Record Content Sha256"
+    },
+    "active_authority_status": {
+      "anyOf": [
+        {
+          "enum": [
+            "OWNER_AUTHORITY_UNVERIFIED",
+            "OWNER_AUTHORITY_VERIFIED",
+            "OWNER_AUTHORITY_REJECTED"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Active Authority Status"
+    },
+    "active_exception_id": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Active Exception Id"
+    },
+    "blockers": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 64,
+      "title": "Blockers",
+      "type": "array"
+    },
+    "content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Content Sha256",
+      "type": "string"
+    }
+  },
+  "required": [
+    "resolution_id",
+    "target_profile_id",
+    "target_profile_sha256",
+    "supplied_record_count",
+    "stale_record_ids",
+    "revoked_record_ids",
+    "superseded_record_ids",
+    "resolved_state",
+    "blockers",
+    "content_sha256"
+  ],
+  "title": "DecisionAuthorityResolutionV1",
+  "type": "object"
+}

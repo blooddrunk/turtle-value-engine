@@ -1,6 +1,7 @@
 """Command-line interface for the deterministic calculation pipeline."""
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -46,6 +47,17 @@ from turtle_value_engine.evolution import (
     evaluate_controlled_evolution,
     materialize_candidate_profile,
     resolve_complete_materialization_pair,
+)
+from turtle_value_engine.evolution.activation_plan import (
+    build_owner_decision_dossier_markdown,
+    plan_profile_activation,
+)
+from turtle_value_engine.evolution.owner_decision import (
+    OwnerPolicyDecisionInputV1,
+    load_decision_record,
+    load_decision_revocation,
+    record_owner_decision_file,
+    validate_owner_decision,
 )
 from turtle_value_engine.evolution.profile_release import build_profile_release
 from turtle_value_engine.evolution.profile_semantic_audit import (
@@ -576,6 +588,138 @@ def _build_parser() -> argparse.ArgumentParser:
         "never an activation permission",
     )
     evolution_audit.add_argument("--output", type=Path, default=None)
+    evolution_record_decision = evolution_commands.add_parser(
+        "record-decision",
+        help="validate one explicitly supplied owner policy decision against "
+        "freshly re-run evidence and record it immutably (offline; the "
+        "record stays visibly unverified without an authenticated source)",
+    )
+    evolution_record_decision.add_argument("--decision-input", required=True, type=Path)
+    evolution_record_decision.add_argument("--base-profile", required=True, type=Path)
+    evolution_record_decision.add_argument("--target-profile", required=True, type=Path)
+    evolution_record_decision.add_argument("--release-manifest", required=True, type=Path)
+    evolution_record_decision.add_argument(
+        "--boundary-input",
+        type=Path,
+        default=None,
+        help="normalized input JSON used as the boundary-replay template "
+        "(default: fixtures/healthy_cash_cow.json)",
+    )
+    evolution_record_decision.add_argument(
+        "--policy-exception",
+        action="append",
+        type=Path,
+        default=None,
+        help="versioned policy-exception declaration (repeatable; exactly one "
+        "for ACCEPT_WITH_EXCEPTION, none for REJECT)",
+    )
+    evolution_record_decision.add_argument(
+        "--owner-allowlist",
+        type=Path,
+        default=None,
+        help="optional JSON array of allowed owner identity strings; an "
+        "allowlist is not authentication — it only rejects unknown identities",
+    )
+    evolution_record_decision.add_argument(
+        "--record-output",
+        required=True,
+        type=Path,
+        help="create-only destination for the immutable decision record "
+        "(byte-identical reruns are idempotent no-ops)",
+    )
+    evolution_record_decision.add_argument(
+        "--output",
+        type=Path,
+        default=None,
+        help="optional destination for the validation dossier",
+    )
+    evolution_plan_activation = evolution_commands.add_parser(
+        "plan-activation",
+        help="derive one read-only activation/rollback plan from a resolved "
+        "owner decision plus a freshly re-run audit (execution_performed is "
+        "always false)",
+    )
+    evolution_plan_activation.add_argument("--base-profile", required=True, type=Path)
+    evolution_plan_activation.add_argument("--target-profile", required=True, type=Path)
+    evolution_plan_activation.add_argument("--release-manifest", required=True, type=Path)
+    evolution_plan_activation.add_argument(
+        "--boundary-input",
+        type=Path,
+        default=None,
+        help="normalized input JSON used as the boundary-replay template "
+        "(default: fixtures/healthy_cash_cow.json)",
+    )
+    evolution_plan_activation.add_argument(
+        "--decision-record",
+        action="append",
+        required=True,
+        type=Path,
+        help="owner policy-decision record (repeatable; all are resolved "
+        "fail-closed)",
+    )
+    evolution_plan_activation.add_argument(
+        "--revocation",
+        action="append",
+        type=Path,
+        default=None,
+        help="owner policy-decision revocation (repeatable)",
+    )
+    evolution_plan_activation.add_argument(
+        "--policy-exception",
+        action="append",
+        type=Path,
+        default=None,
+        help="versioned policy-exception declaration bound by the resolved "
+        "decision (repeatable)",
+    )
+    evolution_plan_activation.add_argument(
+        "--project-config",
+        required=True,
+        type=Path,
+        help="project runtime configuration whose [profiles] default is "
+        "inventoried as the proposed mutation",
+    )
+    for option in (
+        "watchlist",
+        "normalized-input",
+        "backtest-manifest",
+        "surface-snapshot",
+        "runner-config",
+    ):
+        evolution_plan_activation.add_argument(
+            f"--{option}",
+            action="append",
+            type=Path,
+            default=None,
+            help=f"affected {option.replace('-', ' ')} reference (repeatable, "
+            "explicit paths only)",
+        )
+    evolution_plan_activation.add_argument("--output", required=True, type=Path)
+    evolution_decision_dossier = evolution_commands.add_parser(
+        "decision-dossier",
+        help="generate the deterministic Chinese owner decision dossier from "
+        "a fresh audit (required automation output before any real owner "
+        "acceptance is requested)",
+    )
+    evolution_decision_dossier.add_argument("--base-profile", required=True, type=Path)
+    evolution_decision_dossier.add_argument("--target-profile", required=True, type=Path)
+    evolution_decision_dossier.add_argument("--release-manifest", required=True, type=Path)
+    evolution_decision_dossier.add_argument(
+        "--boundary-input",
+        type=Path,
+        default=None,
+        help="normalized input JSON used as the boundary-replay template "
+        "(default: fixtures/healthy_cash_cow.json)",
+    )
+    evolution_decision_dossier.add_argument(
+        "--policy-exception",
+        action="append",
+        type=Path,
+        default=None,
+        help="versioned policy-exception declaration shown in the dossier "
+        "(repeatable)",
+    )
+    evolution_decision_dossier.add_argument("--output", required=True, type=Path)
 
     watch_parser = subparsers.add_parser(
         "watch",
@@ -1318,6 +1462,12 @@ def _run_evolution_command(args: argparse.Namespace) -> object:
         return _run_evolution_release_command(args)
     if args.evolution_command == "audit-profile":
         return _run_evolution_audit_command(args)
+    if args.evolution_command == "record-decision":
+        return _run_evolution_record_decision_command(args)
+    if args.evolution_command == "plan-activation":
+        return _run_evolution_plan_activation_command(args)
+    if args.evolution_command == "decision-dossier":
+        return _run_evolution_decision_dossier_command(args)
 
     input_paths = {
         "manifest": args.manifest,
@@ -1449,6 +1599,239 @@ def _run_evolution_audit_command(args: argparse.Namespace) -> object:
         # the readiness outcome without discarding any evidence.
         raise _CliPayloadExit(audit, 1)
     return audit
+
+
+def _guard_c2_output_path(
+    path: Path,
+    *,
+    label: str,
+    inputs: dict[str, Path | None],
+    published_inputs: tuple[str, ...] = (
+        "base-profile",
+        "target-profile",
+        "release-manifest",
+    ),
+) -> None:
+    """Refuse C2 outputs that are symlinks, inputs or published artifacts.
+
+    Only the directories of genuinely published artifacts (rule profiles and
+    the release manifest) are treated as published; ordinary working inputs
+    such as decision drafts or exceptions merely may not be overwritten.
+    """
+
+    if path.is_symlink():
+        raise ValueError(f"{label} must not be a symlink: {path}")
+    resolved = path.resolve()
+    for input_label, input_path in inputs.items():
+        if input_path is not None and resolved == input_path.resolve():
+            raise ValueError(
+                f"{label} must not overwrite a supplied input artifact "
+                f"({input_label}): {input_path}"
+            )
+    published_dirs = {
+        (Path(__file__).resolve().parents[2] / "rules").resolve(),
+        (Path.cwd() / "rules").resolve(),
+    }
+    for input_label in published_inputs:
+        supplied = inputs.get(input_label)
+        if supplied is not None:
+            published_dirs.add(supplied.resolve().parent)
+    for published_dir in published_dirs:
+        if resolved.is_relative_to(published_dir):
+            raise ValueError(
+                f"{label} is refused under published artifact directories "
+                f"({published_dir}); Phase 7-C2 never writes there"
+            )
+
+
+def _write_create_or_identical(path: Path, content: bytes, *, label: str) -> str:
+    """Create-only publication; byte-identical reruns are idempotent no-ops."""
+
+    if path.is_symlink():
+        raise ValueError(f"{label} must not be a symlink: {path}")
+    if path.exists():
+        if path.read_bytes() == content:
+            return "IDEMPOTENT"
+        raise ValueError(
+            f"{label} already exists with different content; outputs are "
+            f"immutable — choose a new path: {path}"
+        )
+    _atomic_write(path, content)
+    return "CREATED"
+
+
+def _load_policy_exceptions(paths: list[Path] | None) -> list[VersionedPolicyExceptionV1]:
+    exceptions: list[VersionedPolicyExceptionV1] = []
+    for path in paths or []:
+        raw = _read_json(path)
+        items = raw if isinstance(raw, list) else [raw]
+        exceptions.extend(VersionedPolicyExceptionV1.model_validate(item) for item in items)
+    return exceptions
+
+
+def _run_evolution_record_decision_command(args: argparse.Namespace) -> object:
+    """Validate and record one owner decision; the record never activates."""
+
+    inputs: dict[str, Path | None] = {
+        "decision-input": args.decision_input,
+        "base-profile": args.base_profile,
+        "target-profile": args.target_profile,
+        "release-manifest": args.release_manifest,
+        "boundary-input": args.boundary_input,
+        "owner-allowlist": args.owner_allowlist,
+    }
+    for index, path in enumerate(args.policy_exception or []):
+        inputs[f"policy-exception[{index}]"] = path
+    _guard_c2_output_path(
+        args.record_output, label="--record-output", inputs=inputs
+    )
+    if args.output is not None:
+        _guard_c2_output_path(args.output, label="--output", inputs=inputs)
+        if args.output.resolve() == args.record_output.resolve():
+            raise ValueError(
+                "--output must not overwrite --record-output: "
+                f"{args.output}"
+            )
+
+    decision_source_bytes = args.decision_input.read_bytes()
+    decision_input = OwnerPolicyDecisionInputV1.model_validate(
+        json.loads(decision_source_bytes)
+    )
+    policy_exceptions = _load_policy_exceptions(args.policy_exception)
+    owner_allowlist = None
+    if args.owner_allowlist is not None:
+        raw_allowlist = _read_json(args.owner_allowlist)
+        if not isinstance(raw_allowlist, list) or not all(
+            isinstance(item, str) and item.strip() for item in raw_allowlist
+        ):
+            raise ValueError("--owner-allowlist must contain a JSON array of strings")
+        owner_allowlist = raw_allowlist
+    boundary_input = None
+    if args.boundary_input is not None:
+        boundary_input = parse_normalized_input(args.boundary_input.read_bytes())
+
+    validation = validate_owner_decision(
+        decision_input=decision_input,
+        decision_source_bytes=decision_source_bytes,
+        base_profile_path=args.base_profile,
+        target_profile_path=args.target_profile,
+        release_manifest_path=args.release_manifest,
+        boundary_input=boundary_input,
+        policy_exceptions=policy_exceptions,
+        owner_allowlist=owner_allowlist,
+        verifier=None,
+    )
+    if args.output is not None:
+        _write_create_or_identical(
+            args.output,
+            _export_bytes(validation),
+            label="--output",
+        )
+    if validation.state == "VALID" and validation.record is not None:
+        record_owner_decision_file(validation.record, args.record_output)
+    elif validation.state == "INVALID":
+        # The validation dossier is printed and persisted; exit code 1
+        # classifies the outcome without discarding any evidence.
+        raise _CliPayloadExit(validation, 1)
+    return validation
+
+
+def _run_evolution_plan_activation_command(args: argparse.Namespace) -> object:
+    """Derive one read-only activation plan; execution never happens here."""
+
+    inputs: dict[str, Path | None] = {
+        "base-profile": args.base_profile,
+        "target-profile": args.target_profile,
+        "release-manifest": args.release_manifest,
+        "boundary-input": args.boundary_input,
+        "project-config": args.project_config,
+    }
+    for label, paths in (
+        ("decision-record", args.decision_record),
+        ("revocation", args.revocation),
+        ("policy-exception", args.policy_exception),
+        ("watchlist", args.watchlist),
+        ("normalized-input", args.normalized_input),
+        ("backtest-manifest", args.backtest_manifest),
+        ("surface-snapshot", args.surface_snapshot),
+        ("runner-config", args.runner_config),
+    ):
+        for index, path in enumerate(paths or []):
+            inputs[f"{label}[{index}]"] = path
+    _guard_c2_output_path(args.output, label="--output", inputs=inputs)
+
+    decision_records = [load_decision_record(path) for path in args.decision_record]
+    revocations = [load_decision_revocation(path) for path in (args.revocation or [])]
+    policy_exceptions = _load_policy_exceptions(args.policy_exception)
+    boundary_input = None
+    if args.boundary_input is not None:
+        boundary_input = parse_normalized_input(args.boundary_input.read_bytes())
+
+    plan = plan_profile_activation(
+        base_profile_path=args.base_profile,
+        target_profile_path=args.target_profile,
+        release_manifest_path=args.release_manifest,
+        boundary_input=boundary_input,
+        decision_records=decision_records,
+        revocations=revocations,
+        policy_exceptions=policy_exceptions,
+        project_config_path=args.project_config,
+        watchlist_paths=args.watchlist or [],
+        normalized_input_paths=args.normalized_input or [],
+        backtest_manifest_paths=args.backtest_manifest or [],
+        surface_snapshot_paths=args.surface_snapshot or [],
+        runner_config_paths=args.runner_config or [],
+    )
+    _write_create_or_identical(args.output, _export_bytes(plan), label="--output")
+    if plan.plan_state != "READY_FOR_EXPLICIT_OWNER_EXECUTION":
+        raise _CliPayloadExit(plan, 1)
+    return plan
+
+
+def _run_evolution_decision_dossier_command(args: argparse.Namespace) -> object:
+    """Generate the Chinese owner decision dossier from a fresh audit."""
+
+    inputs: dict[str, Path | None] = {
+        "base-profile": args.base_profile,
+        "target-profile": args.target_profile,
+        "release-manifest": args.release_manifest,
+        "boundary-input": args.boundary_input,
+    }
+    for index, path in enumerate(args.policy_exception or []):
+        inputs[f"policy-exception[{index}]"] = path
+    _guard_c2_output_path(args.output, label="--output", inputs=inputs)
+
+    policy_exceptions = _load_policy_exceptions(args.policy_exception)
+    boundary_input = None
+    if args.boundary_input is not None:
+        boundary_input = parse_normalized_input(args.boundary_input.read_bytes())
+    audit = audit_profile_semantics(
+        base_profile_path=args.base_profile,
+        target_profile_path=args.target_profile,
+        release_manifest_path=args.release_manifest,
+        boundary_input=boundary_input,
+        policy_exceptions=policy_exceptions,
+    )
+    markdown = build_owner_decision_dossier_markdown(
+        base_profile_path=args.base_profile,
+        target_profile_path=args.target_profile,
+        release_manifest_path=args.release_manifest,
+        audit=audit,
+        policy_exceptions=policy_exceptions,
+    )
+    _write_create_or_identical(args.output, markdown, label="--output")
+    return {
+        "status": "generated",
+        "path": str(args.output),
+        "audit_id": audit.audit_id,
+        "audit_content_sha256": audit.content_sha256,
+        "activation_readiness": audit.activation_readiness,
+        "dossier_sha256": hashlib.sha256(markdown).hexdigest(),
+        "note": (
+            "Chinese owner decision dossier generated from a fresh audit; "
+            "synthetic boundary evidence, not a performance proof"
+        ),
+    }
 
 
 def _materialization_output_forbidden_paths(

@@ -1,0 +1,127 @@
+{
+  "additionalProperties": false,
+  "description": "The explicitly supplied, human-authored decision submission.\n\nShape-valid only: this contract states a decision and the exact artifact\nidentities it is about.  Whether the declared bindings are true, whether\nthe audit is fresh and whether the submitter actually holds owner\nauthority are answered by :func:`validate_owner_decision`, never by this\nmodel.  A C1 :class:`PolicyApprovalClaimV1` is a different contract and is\nnever silently mapped onto this one.",
+  "properties": {
+    "contract": {
+      "const": "owner_policy_decision_input_v1",
+      "default": "owner_policy_decision_input_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "decision": {
+      "enum": [
+        "ACCEPT_WITH_EXCEPTION",
+        "REJECT"
+      ],
+      "title": "Decision",
+      "type": "string"
+    },
+    "base_profile_id": {
+      "minLength": 1,
+      "title": "Base Profile Id",
+      "type": "string"
+    },
+    "base_profile_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Base Profile Sha256",
+      "type": "string"
+    },
+    "target_profile_id": {
+      "minLength": 1,
+      "title": "Target Profile Id",
+      "type": "string"
+    },
+    "target_profile_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Target Profile Sha256",
+      "type": "string"
+    },
+    "release_manifest_id": {
+      "minLength": 1,
+      "title": "Release Manifest Id",
+      "type": "string"
+    },
+    "release_manifest_content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Release Manifest Content Sha256",
+      "type": "string"
+    },
+    "audit_id": {
+      "minLength": 1,
+      "title": "Audit Id",
+      "type": "string"
+    },
+    "audit_content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Audit Content Sha256",
+      "type": "string"
+    },
+    "exception_id": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Exception Id"
+    },
+    "exception_content_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Exception Content Sha256"
+    },
+    "rationale": {
+      "maxLength": 4000,
+      "minLength": 20,
+      "title": "Rationale",
+      "type": "string"
+    },
+    "declared_owner_identity": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Declared Owner Identity",
+      "type": "string"
+    },
+    "decided_at": {
+      "maxLength": 32,
+      "minLength": 10,
+      "title": "Decided At",
+      "type": "string"
+    },
+    "source_revision": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Source Revision",
+      "type": "string"
+    }
+  },
+  "required": [
+    "decision",
+    "base_profile_id",
+    "base_profile_sha256",
+    "target_profile_id",
+    "target_profile_sha256",
+    "release_manifest_id",
+    "release_manifest_content_sha256",
+    "audit_id",
+    "audit_content_sha256",
+    "rationale",
+    "declared_owner_identity",
+    "decided_at",
+    "source_revision"
+  ],
+  "title": "OwnerPolicyDecisionInputV1",
+  "type": "object"
+}

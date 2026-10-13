@@ -1,0 +1,341 @@
+{
+  "$defs": {
+    "ConfigReferenceV1": {
+      "additionalProperties": false,
+      "description": "One explicitly supplied affected configuration/artifact reference.",
+      "properties": {
+        "kind": {
+          "enum": [
+            "PROJECT_DEFAULT_PROFILE",
+            "WATCHLIST",
+            "NORMALIZED_INPUT",
+            "BACKTEST_DATASET_MANIFEST",
+            "SURFACE_SNAPSHOT",
+            "MONITORING_RUNNER_CONFIG"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "path": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        },
+        "profile_references": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 256,
+          "title": "Profile References",
+          "type": "array"
+        },
+        "compatibility": {
+          "enum": [
+            "PROPOSED_MUTATION",
+            "ALREADY_TARGET",
+            "BASE_PINNED_PRESERVED",
+            "FOREIGN",
+            "NOT_PROFILE_SCOPED",
+            "MISSING",
+            "UNREADABLE"
+          ],
+          "title": "Compatibility",
+          "type": "string"
+        },
+        "blocker_code": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Blocker Code"
+        },
+        "detail": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Detail",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "path",
+        "profile_references",
+        "compatibility",
+        "detail"
+      ],
+      "title": "ConfigReferenceV1",
+      "type": "object"
+    },
+    "RollbackPlanV1": {
+      "additionalProperties": false,
+      "description": "Deterministic rollback reference for the proposed activation.",
+      "properties": {
+        "prior_project_config_path": {
+          "anyOf": [
+            {
+              "maxLength": 2048,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Prior Project Config Path"
+        },
+        "prior_project_config_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Prior Project Config Sha256"
+        },
+        "prior_default_profile": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Prior Default Profile"
+        },
+        "expected_current_state": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Expected Current State",
+          "type": "string"
+        },
+        "restoration_steps": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "minItems": 1,
+          "title": "Restoration Steps",
+          "type": "array"
+        },
+        "exclusions": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 16,
+          "minItems": 1,
+          "title": "Exclusions",
+          "type": "array"
+        }
+      },
+      "required": [
+        "expected_current_state",
+        "restoration_steps",
+        "exclusions"
+      ],
+      "title": "RollbackPlanV1",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Immutable read-only activation plan; execution never happens here.",
+  "properties": {
+    "contract": {
+      "const": "profile_activation_plan_v1",
+      "default": "profile_activation_plan_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "plan_id": {
+      "minLength": 1,
+      "title": "Plan Id",
+      "type": "string"
+    },
+    "current_profile_id": {
+      "minLength": 1,
+      "title": "Current Profile Id",
+      "type": "string"
+    },
+    "current_profile_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Current Profile Sha256",
+      "type": "string"
+    },
+    "proposed_profile_id": {
+      "minLength": 1,
+      "title": "Proposed Profile Id",
+      "type": "string"
+    },
+    "proposed_profile_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Proposed Profile Sha256",
+      "type": "string"
+    },
+    "release_manifest_id": {
+      "minLength": 1,
+      "title": "Release Manifest Id",
+      "type": "string"
+    },
+    "release_manifest_content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Release Manifest Content Sha256",
+      "type": "string"
+    },
+    "audit_id": {
+      "minLength": 1,
+      "title": "Audit Id",
+      "type": "string"
+    },
+    "audit_content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Audit Content Sha256",
+      "type": "string"
+    },
+    "audit_activation_readiness": {
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "Audit Activation Readiness",
+      "type": "string"
+    },
+    "audit_policy_decision_reasons": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 64,
+      "title": "Audit Policy Decision Reasons",
+      "type": "array"
+    },
+    "decision_authority_state": {
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "Decision Authority State",
+      "type": "string"
+    },
+    "decision_record_id": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Decision Record Id"
+    },
+    "decision_record_content_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Decision Record Content Sha256"
+    },
+    "decision": {
+      "anyOf": [
+        {
+          "enum": [
+            "ACCEPT_WITH_EXCEPTION",
+            "REJECT"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Decision"
+    },
+    "config_inventory": {
+      "items": {
+        "$ref": "#/$defs/ConfigReferenceV1"
+      },
+      "maxItems": 2048,
+      "title": "Config Inventory",
+      "type": "array"
+    },
+    "rollback": {
+      "$ref": "#/$defs/RollbackPlanV1"
+    },
+    "blockers": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 128,
+      "title": "Blockers",
+      "type": "array"
+    },
+    "plan_state": {
+      "enum": [
+        "READY_FOR_EXPLICIT_OWNER_EXECUTION",
+        "BLOCKED"
+      ],
+      "title": "Plan State",
+      "type": "string"
+    },
+    "automatic_activation_allowed": {
+      "const": false,
+      "default": false,
+      "title": "Automatic Activation Allowed",
+      "type": "boolean"
+    },
+    "execution_performed": {
+      "const": false,
+      "default": false,
+      "title": "Execution Performed",
+      "type": "boolean"
+    },
+    "verified_decision_is_not_execution_request": {
+      "const": true,
+      "default": true,
+      "title": "Verified Decision Is Not Execution Request",
+      "type": "boolean"
+    },
+    "content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Content Sha256",
+      "type": "string"
+    }
+  },
+  "required": [
+    "plan_id",
+    "current_profile_id",
+    "current_profile_sha256",
+    "proposed_profile_id",
+    "proposed_profile_sha256",
+    "release_manifest_id",
+    "release_manifest_content_sha256",
+    "audit_id",
+    "audit_content_sha256",
+    "audit_activation_readiness",
+    "audit_policy_decision_reasons",
+    "decision_authority_state",
+    "config_inventory",
+    "rollback",
+    "blockers",
+    "plan_state",
+    "content_sha256"
+  ],
+  "title": "ProfileActivationPlanV1",
+  "type": "object"
+}

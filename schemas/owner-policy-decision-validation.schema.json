@@ -1,0 +1,659 @@
+{
+  "$defs": {
+    "DecisionProvenanceV1": {
+      "additionalProperties": false,
+      "description": "Where the decision came from, bound by bytes.\n\n``LOCAL_UNSIGNED_JSON`` records that the decision was submitted as a plain\nunsigned local file whose exact bytes hash to ``source_content_sha256``;\nthat binding makes later tampering of the source file detectable, but it\nis provenance bookkeeping — it never authenticates the submitter.",
+      "properties": {
+        "source_kind": {
+          "enum": [
+            "LOCAL_UNSIGNED_JSON",
+            "VERIFIER_CAPTURED_EVIDENCE"
+          ],
+          "title": "Source Kind",
+          "type": "string"
+        },
+        "source_revision": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Source Revision",
+          "type": "string"
+        },
+        "source_content_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Content Sha256"
+        }
+      },
+      "required": [
+        "source_kind",
+        "source_revision"
+      ],
+      "title": "DecisionProvenanceV1",
+      "type": "object"
+    },
+    "OwnerAuthorityAssessmentV1": {
+      "additionalProperties": false,
+      "description": "Machine-readable authority assessment of one declared decision.\n\n``allowlist_matched`` is ``None`` when no allowlist was configured at all\n(the boundary then cannot even allowlist-check the identity); matching an\nallowlist is necessary but never sufficient for ``VERIFIED``.",
+      "properties": {
+        "authority_status": {
+          "enum": [
+            "OWNER_AUTHORITY_UNVERIFIED",
+            "OWNER_AUTHORITY_VERIFIED",
+            "OWNER_AUTHORITY_REJECTED"
+          ],
+          "title": "Authority Status",
+          "type": "string"
+        },
+        "verification_method": {
+          "enum": [
+            "NO_AUTHENTICATED_SOURCE",
+            "INJECTED_VERIFIER"
+          ],
+          "title": "Verification Method",
+          "type": "string"
+        },
+        "verifier_kind": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Verifier Kind"
+        },
+        "allowlist_matched": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Allowlist Matched"
+        },
+        "reason_code": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Reason Code",
+          "type": "string"
+        },
+        "detail": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Detail",
+          "type": "string"
+        },
+        "evidence_content_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Evidence Content Sha256"
+        }
+      },
+      "required": [
+        "authority_status",
+        "verification_method",
+        "reason_code",
+        "detail"
+      ],
+      "title": "OwnerAuthorityAssessmentV1",
+      "type": "object"
+    },
+    "OwnerPolicyDecisionRecordV1": {
+      "additionalProperties": false,
+      "description": "Immutable record of one owner decision with complete artifact bindings.\n\nThe record binds the exact base/target profile byte hashes, the release\nmanifest id/content hash, the fresh audit id/content hash, the policy\nexception by BOTH deterministic id and full content hash (C1 exception ids\nomit rationale/declarer, so the id alone is not a content identity), the\nprovenance source revision and the authority assessment.  The\ndeterministic ``decision_record_id`` includes every bound field including\nthe rationale, so any edit anywhere yields a different record identity\nthat the resolver treats as ambiguity rather than silently accepting.",
+      "properties": {
+        "contract": {
+          "const": "owner_policy_decision_record_v1",
+          "default": "owner_policy_decision_record_v1",
+          "title": "Contract",
+          "type": "string"
+        },
+        "decision_record_id": {
+          "minLength": 1,
+          "title": "Decision Record Id",
+          "type": "string"
+        },
+        "decision": {
+          "enum": [
+            "ACCEPT_WITH_EXCEPTION",
+            "REJECT"
+          ],
+          "title": "Decision",
+          "type": "string"
+        },
+        "base_profile_id": {
+          "minLength": 1,
+          "title": "Base Profile Id",
+          "type": "string"
+        },
+        "base_profile_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Base Profile Sha256",
+          "type": "string"
+        },
+        "target_profile_id": {
+          "minLength": 1,
+          "title": "Target Profile Id",
+          "type": "string"
+        },
+        "target_profile_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Target Profile Sha256",
+          "type": "string"
+        },
+        "release_manifest_id": {
+          "minLength": 1,
+          "title": "Release Manifest Id",
+          "type": "string"
+        },
+        "release_manifest_content_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Release Manifest Content Sha256",
+          "type": "string"
+        },
+        "audit_id": {
+          "minLength": 1,
+          "title": "Audit Id",
+          "type": "string"
+        },
+        "audit_content_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Audit Content Sha256",
+          "type": "string"
+        },
+        "exception_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Exception Id"
+        },
+        "exception_content_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Exception Content Sha256"
+        },
+        "rationale": {
+          "maxLength": 4000,
+          "minLength": 20,
+          "title": "Rationale",
+          "type": "string"
+        },
+        "declared_owner_identity": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Declared Owner Identity",
+          "type": "string"
+        },
+        "decided_at": {
+          "maxLength": 32,
+          "minLength": 10,
+          "title": "Decided At",
+          "type": "string"
+        },
+        "provenance": {
+          "$ref": "#/$defs/DecisionProvenanceV1"
+        },
+        "authority": {
+          "$ref": "#/$defs/OwnerAuthorityAssessmentV1"
+        },
+        "supersedes_decision_record_id": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Supersedes Decision Record Id"
+        },
+        "requires_authenticated_owner_authority": {
+          "const": true,
+          "default": true,
+          "title": "Requires Authenticated Owner Authority",
+          "type": "boolean"
+        },
+        "automatic_application_allowed": {
+          "const": false,
+          "default": false,
+          "title": "Automatic Application Allowed",
+          "type": "boolean"
+        },
+        "decision_is_not_execution_request": {
+          "const": true,
+          "default": true,
+          "title": "Decision Is Not Execution Request",
+          "type": "boolean"
+        },
+        "content_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Content Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "decision_record_id",
+        "decision",
+        "base_profile_id",
+        "base_profile_sha256",
+        "target_profile_id",
+        "target_profile_sha256",
+        "release_manifest_id",
+        "release_manifest_content_sha256",
+        "audit_id",
+        "audit_content_sha256",
+        "rationale",
+        "declared_owner_identity",
+        "decided_at",
+        "provenance",
+        "authority",
+        "content_sha256"
+      ],
+      "title": "OwnerPolicyDecisionRecordV1",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Immutable decision-validation dossier; the record exists only when VALID.\n\n``state`` is ``VALID`` exactly when every canonical check passes; the\nwould-be record is then embedded with its authority assessment (possibly\nstill visibly unverified — validity of artifacts is separate from real\nauthority).  ``state`` ``INVALID`` carries the failing check codes as\n``blockers`` and embeds no record.",
+  "properties": {
+    "contract": {
+      "const": "owner_policy_decision_validation_v1",
+      "default": "owner_policy_decision_validation_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "validation_id": {
+      "minLength": 1,
+      "title": "Validation Id",
+      "type": "string"
+    },
+    "decision": {
+      "enum": [
+        "ACCEPT_WITH_EXCEPTION",
+        "REJECT"
+      ],
+      "title": "Decision",
+      "type": "string"
+    },
+    "declared_owner_identity": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Declared Owner Identity",
+      "type": "string"
+    },
+    "fresh_audit_id": {
+      "minLength": 1,
+      "title": "Fresh Audit Id",
+      "type": "string"
+    },
+    "fresh_audit_content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Fresh Audit Content Sha256",
+      "type": "string"
+    },
+    "fresh_audit_activation_readiness": {
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "Fresh Audit Activation Readiness",
+      "type": "string"
+    },
+    "checks": {
+      "items": false,
+      "maxItems": 6,
+      "minItems": 6,
+      "prefixItems": [
+        {
+          "additionalProperties": false,
+          "description": "One machine-readable decision-validation check.",
+          "properties": {
+            "name": {
+              "const": "DECISION_SHAPE_VALID"
+            },
+            "scope": {
+              "const": "decision"
+            },
+            "status": {
+              "enum": [
+                "PASS",
+                "BLOCKED"
+              ],
+              "title": "Status",
+              "type": "string"
+            },
+            "code": {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Z][A-Z0-9_]*$",
+              "title": "Code",
+              "type": "string"
+            },
+            "detail": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Detail",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "scope",
+            "status",
+            "code",
+            "detail"
+          ],
+          "title": "DecisionValidationCheckV1",
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "One machine-readable decision-validation check.",
+          "properties": {
+            "name": {
+              "const": "INPUT_BINDINGS_MATCH_BYTES"
+            },
+            "scope": {
+              "const": "bindings"
+            },
+            "status": {
+              "enum": [
+                "PASS",
+                "BLOCKED"
+              ],
+              "title": "Status",
+              "type": "string"
+            },
+            "code": {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Z][A-Z0-9_]*$",
+              "title": "Code",
+              "type": "string"
+            },
+            "detail": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Detail",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "scope",
+            "status",
+            "code",
+            "detail"
+          ],
+          "title": "DecisionValidationCheckV1",
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "One machine-readable decision-validation check.",
+          "properties": {
+            "name": {
+              "const": "AUDIT_FRESH_AND_MATCHING"
+            },
+            "scope": {
+              "const": "audit"
+            },
+            "status": {
+              "enum": [
+                "PASS",
+                "BLOCKED"
+              ],
+              "title": "Status",
+              "type": "string"
+            },
+            "code": {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Z][A-Z0-9_]*$",
+              "title": "Code",
+              "type": "string"
+            },
+            "detail": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Detail",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "scope",
+            "status",
+            "code",
+            "detail"
+          ],
+          "title": "DecisionValidationCheckV1",
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "One machine-readable decision-validation check.",
+          "properties": {
+            "name": {
+              "const": "EXCEPTION_BINDING_EXACT"
+            },
+            "scope": {
+              "const": "exception"
+            },
+            "status": {
+              "enum": [
+                "PASS",
+                "BLOCKED"
+              ],
+              "title": "Status",
+              "type": "string"
+            },
+            "code": {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Z][A-Z0-9_]*$",
+              "title": "Code",
+              "type": "string"
+            },
+            "detail": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Detail",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "scope",
+            "status",
+            "code",
+            "detail"
+          ],
+          "title": "DecisionValidationCheckV1",
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "One machine-readable decision-validation check.",
+          "properties": {
+            "name": {
+              "const": "EXCEPTION_COVERS_ALL_FINDINGS"
+            },
+            "scope": {
+              "const": "exception"
+            },
+            "status": {
+              "enum": [
+                "PASS",
+                "BLOCKED"
+              ],
+              "title": "Status",
+              "type": "string"
+            },
+            "code": {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Z][A-Z0-9_]*$",
+              "title": "Code",
+              "type": "string"
+            },
+            "detail": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Detail",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "scope",
+            "status",
+            "code",
+            "detail"
+          ],
+          "title": "DecisionValidationCheckV1",
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "One machine-readable decision-validation check.",
+          "properties": {
+            "name": {
+              "const": "PROVENANCE_BOUND"
+            },
+            "scope": {
+              "const": "provenance"
+            },
+            "status": {
+              "enum": [
+                "PASS",
+                "BLOCKED"
+              ],
+              "title": "Status",
+              "type": "string"
+            },
+            "code": {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Z][A-Z0-9_]*$",
+              "title": "Code",
+              "type": "string"
+            },
+            "detail": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Detail",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "scope",
+            "status",
+            "code",
+            "detail"
+          ],
+          "title": "DecisionValidationCheckV1",
+          "type": "object"
+        }
+      ],
+      "title": "Checks",
+      "type": "array"
+    },
+    "blockers": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 32,
+      "title": "Blockers",
+      "type": "array"
+    },
+    "state": {
+      "enum": [
+        "VALID",
+        "INVALID"
+      ],
+      "title": "State",
+      "type": "string"
+    },
+    "record": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/OwnerPolicyDecisionRecordV1"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "authority_status": {
+      "enum": [
+        "OWNER_AUTHORITY_UNVERIFIED",
+        "OWNER_AUTHORITY_VERIFIED",
+        "OWNER_AUTHORITY_REJECTED"
+      ],
+      "title": "Authority Status",
+      "type": "string"
+    },
+    "content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Content Sha256",
+      "type": "string"
+    }
+  },
+  "required": [
+    "validation_id",
+    "decision",
+    "declared_owner_identity",
+    "fresh_audit_id",
+    "fresh_audit_content_sha256",
+    "fresh_audit_activation_readiness",
+    "checks",
+    "blockers",
+    "state",
+    "authority_status",
+    "content_sha256"
+  ],
+  "title": "OwnerPolicyDecisionValidationV1",
+  "type": "object"
+}

@@ -1,0 +1,205 @@
+{
+  "$defs": {
+    "DecisionProvenanceV1": {
+      "additionalProperties": false,
+      "description": "Where the decision came from, bound by bytes.\n\n``LOCAL_UNSIGNED_JSON`` records that the decision was submitted as a plain\nunsigned local file whose exact bytes hash to ``source_content_sha256``;\nthat binding makes later tampering of the source file detectable, but it\nis provenance bookkeeping — it never authenticates the submitter.",
+      "properties": {
+        "source_kind": {
+          "enum": [
+            "LOCAL_UNSIGNED_JSON",
+            "VERIFIER_CAPTURED_EVIDENCE"
+          ],
+          "title": "Source Kind",
+          "type": "string"
+        },
+        "source_revision": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Source Revision",
+          "type": "string"
+        },
+        "source_content_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Content Sha256"
+        }
+      },
+      "required": [
+        "source_kind",
+        "source_revision"
+      ],
+      "title": "DecisionProvenanceV1",
+      "type": "object"
+    },
+    "OwnerAuthorityAssessmentV1": {
+      "additionalProperties": false,
+      "description": "Machine-readable authority assessment of one declared decision.\n\n``allowlist_matched`` is ``None`` when no allowlist was configured at all\n(the boundary then cannot even allowlist-check the identity); matching an\nallowlist is necessary but never sufficient for ``VERIFIED``.",
+      "properties": {
+        "authority_status": {
+          "enum": [
+            "OWNER_AUTHORITY_UNVERIFIED",
+            "OWNER_AUTHORITY_VERIFIED",
+            "OWNER_AUTHORITY_REJECTED"
+          ],
+          "title": "Authority Status",
+          "type": "string"
+        },
+        "verification_method": {
+          "enum": [
+            "NO_AUTHENTICATED_SOURCE",
+            "INJECTED_VERIFIER"
+          ],
+          "title": "Verification Method",
+          "type": "string"
+        },
+        "verifier_kind": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Verifier Kind"
+        },
+        "allowlist_matched": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Allowlist Matched"
+        },
+        "reason_code": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Reason Code",
+          "type": "string"
+        },
+        "detail": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Detail",
+          "type": "string"
+        },
+        "evidence_content_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Evidence Content Sha256"
+        }
+      },
+      "required": [
+        "authority_status",
+        "verification_method",
+        "reason_code",
+        "detail"
+      ],
+      "title": "OwnerAuthorityAssessmentV1",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Immutable record withdrawing one previously recorded decision.\n\nA revocation is itself a recorded authority claim with the same\nprovenance/authority separation as a decision: structurally valid is not\nverified.  The resolver treats any structurally valid revocation of a\ncurrent record as removing that record, so a forged revocation can only\nmake authority ambiguous (fail-closed), never silently redirect it.",
+  "properties": {
+    "contract": {
+      "const": "owner_policy_decision_revocation_v1",
+      "default": "owner_policy_decision_revocation_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "revocation_id": {
+      "minLength": 1,
+      "title": "Revocation Id",
+      "type": "string"
+    },
+    "revoked_decision_record_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Revoked Decision Record Id",
+      "type": "string"
+    },
+    "target_profile_id": {
+      "minLength": 1,
+      "title": "Target Profile Id",
+      "type": "string"
+    },
+    "target_profile_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Target Profile Sha256",
+      "type": "string"
+    },
+    "revoked_by": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Revoked By",
+      "type": "string"
+    },
+    "revoked_at": {
+      "maxLength": 32,
+      "minLength": 10,
+      "title": "Revoked At",
+      "type": "string"
+    },
+    "rationale": {
+      "maxLength": 4000,
+      "minLength": 20,
+      "title": "Rationale",
+      "type": "string"
+    },
+    "provenance": {
+      "$ref": "#/$defs/DecisionProvenanceV1"
+    },
+    "authority": {
+      "$ref": "#/$defs/OwnerAuthorityAssessmentV1"
+    },
+    "revocation_is_not_execution": {
+      "const": true,
+      "default": true,
+      "title": "Revocation Is Not Execution",
+      "type": "boolean"
+    },
+    "content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Content Sha256",
+      "type": "string"
+    }
+  },
+  "required": [
+    "revocation_id",
+    "revoked_decision_record_id",
+    "target_profile_id",
+    "target_profile_sha256",
+    "revoked_by",
+    "revoked_at",
+    "rationale",
+    "provenance",
+    "authority",
+    "content_sha256"
+  ],
+  "title": "OwnerPolicyDecisionRevocationV1",
+  "type": "object"
+}
