@@ -138,6 +138,8 @@ def _decode_base64(value: str, *, length: int, label: str) -> bytes:
         raise OwnerProvenanceError(
             f"{label} must decode to exactly {length} bytes (got {len(raw)})"
         )
+    if base64.b64encode(raw).decode("ascii") != value:
+        raise OwnerProvenanceError(f"{label} must use canonical base64 encoding")
     return raw
 
 
@@ -181,6 +183,7 @@ def _parse_canonical_decision_input(
 def owner_provenance_key_id(*, algorithm: str, public_key_base64: str) -> str:
     """Content-derived key identity: algorithm + key material only."""
 
+    _decode_base64(public_key_base64, length=32, label="Ed25519 public key")
     return deterministic_id("owner-provenance-key", algorithm, public_key_base64)
 
 
@@ -577,12 +580,18 @@ def verify_owner_provenance(
     if key is not None and decided_at is not None and re.fullmatch(
         ISO_DATE_PATTERN, decided_at
     ):
-        if date.fromisoformat(key.valid_from) <= date.fromisoformat(decided_at) <= (
-            date.fromisoformat(key.valid_until)
-        ):
-            window_state = "WITHIN_WINDOW"
+        try:
+            signing_date = date.fromisoformat(decided_at)
+            start_date = date.fromisoformat(key.valid_from)
+            end_date = date.fromisoformat(key.valid_until)
+        except ValueError:
+            pass  # An impossible calendar date must fail closed as UNKNOWN.
         else:
-            window_state = "OUTSIDE_WINDOW"
+            window_state = (
+                "WITHIN_WINDOW"
+                if start_date <= signing_date <= end_date
+                else "OUTSIDE_WINDOW"
+            )
     window_ok = window_state == "WITHIN_WINDOW"
     outcomes.append(
         (
@@ -858,7 +867,17 @@ class SignedOwnerProvenanceVerifier(OwnerDecisionVerifier):
                 if input_dump.get(field) != record_dump.get(field)
             ]
         provenance_bound = provenance.source_content_sha256 == signed_hash
-        record_binding_ok = provenance_bound and not record_mismatches
+        if parsed_input is not None and (
+            provenance.source_revision != parsed_input.source_revision
+            or record.provenance.source_revision != parsed_input.source_revision
+        ):
+            record_mismatches.append("source_revision")
+        # Supersession is not part of the signed decision-input contract.
+        # A valid signature alone cannot authorize replacing an older record.
+        unsigned_supersession = record.supersedes_decision_record_id is not None
+        record_binding_ok = (
+            provenance_bound and not record_mismatches and not unsigned_supersession
+        )
 
         if verification.verification_status == "VERIFIED" and record_binding_ok:
             return OwnerAuthorityAssessmentV1(
@@ -876,7 +895,13 @@ class SignedOwnerProvenanceVerifier(OwnerDecisionVerifier):
                 evidence_content_sha256=_sha256_hex(decision_source_bytes),
             )
         if not record_binding_ok:
-            if record_mismatches:
+            if unsigned_supersession:
+                reason_code = "OWNER_PROVENANCE_UNSIGNED_SUPERSESSION"
+                detail = (
+                    "record supersession is not covered by the signed "
+                    "decision-input contract and cannot be authenticated"
+                )
+            elif record_mismatches:
                 reason_code = "OWNER_PROVENANCE_RECORD_INPUT_BINDING_MISMATCH"
                 detail = (
                     "the presented record does not embed the signed "
