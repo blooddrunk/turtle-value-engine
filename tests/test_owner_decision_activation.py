@@ -955,7 +955,12 @@ def test_plan_with_reject_is_terminal_blocked(tmp_path):
 def test_verified_accept_with_compatible_config_is_ready(tmp_path):
     record = _record()
     watchlist = _write_watchlist(tmp_path, "strict-v1", "watchlist.json")
-    plan = _plan(tmp_path, records=[record], watchlist_paths=[watchlist])
+    plan = _plan(
+        tmp_path,
+        records=[record],
+        watchlist_paths=[watchlist],
+        authority_verifier=ScriptedOwnerVerifier(),
+    )
 
     assert plan.plan_state == "READY_FOR_EXPLICIT_OWNER_EXECUTION"
     assert plan.blockers == []
@@ -973,9 +978,14 @@ def test_verified_accept_with_compatible_config_is_ready(tmp_path):
 
 def test_ready_plan_requires_the_bound_exception_file(tmp_path):
     record = _record()
-    plan = _plan(tmp_path, records=[record], exceptions=[])
+    plan = _plan(
+        tmp_path,
+        records=[record],
+        exceptions=[],
+        authority_verifier=ScriptedOwnerVerifier(),
+    )
     assert plan.plan_state == "BLOCKED"
-    assert "EXCEPTION_NOT_SUPPLIED" in plan.blockers
+    assert "DECISION_EXCEPTION_BINDING_STALE" in plan.blockers
     assert "AUDIT_NOT_READY" in plan.blockers
 
 
@@ -1023,6 +1033,7 @@ def test_historical_artifact_inventory_preserves_and_labels(tmp_path):
     record = _record()
     manifest = _write_backtest_manifest(tmp_path, "backtest.json")
     surface = _write_surface_snapshot(tmp_path, "surface.json")
+    watchlist = _write_watchlist(tmp_path, "strict-v1", "watchlist.json")
     runner = tmp_path / "runner.json"
     runner.write_text(
         json.dumps(
@@ -1050,7 +1061,9 @@ def test_historical_artifact_inventory_preserves_and_labels(tmp_path):
         backtest_manifest_paths=[manifest],
         surface_snapshot_paths=[surface],
         runner_config_paths=[runner],
+        watchlist_paths=[watchlist],
         normalized_input_paths=[BOUNDARY_PATH],
+        authority_verifier=ScriptedOwnerVerifier(),
     )
     assert plan.plan_state == "READY_FOR_EXPLICIT_OWNER_EXECUTION"
     by_kind = {item.kind: item for item in plan.config_inventory}
