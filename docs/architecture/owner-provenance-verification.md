@@ -154,6 +154,41 @@ exists anywhere in the module (source-scanned by tests). A persisted
 plan, exactly as hardened in C2-R1 and C2-R2 (where
 `allowlist_matched=True` is the only allowlist state that may pass).
 
+### 3.1 C3-A-R1 binding hardening (independent review)
+
+An independent post-C3-A review found and closed five binding gaps; the
+corrected invariants are:
+
+- **Unsigned supersession fails closed.** Plan-time re-attestation rejects
+  any record carrying `supersedes_decision_record_id`
+  (`OWNER_PROVENANCE_UNSIGNED_SUPERSESSION`): the signature covers the
+  decision input only, so it can never authenticate replacement metadata.
+  No signed supersession protocol exists yet — fail closed until one is
+  versioned (a later phase); a forged supersession chain cannot help
+  either, because every superseder remains active itself and the resolver
+  fails closed as AMBIGUOUS/CONFLICTING.
+- **The record's `source_revision` must equal the signed input's.** The
+  legitimate record-time flow copies the input's `source_revision` into
+  the record provenance, so any drift at plan time is tampering
+  (`OWNER_PROVENANCE_RECORD_INPUT_BINDING_MISMATCH`).
+- **One key material, one identity.** Every accepted Base64 value must be
+  the canonical RFC 4648 encoding of its decoded bytes; pad-bit aliases
+  are rejected before any `key_id` is derived, and a registry can never
+  hold one key under two identities. Legitimate encoder output is always
+  canonical, so no valid key or signature is rejected.
+- **Impossible calendar dates classify, never crash.** A syntactically
+  ISO-shaped but calendar-invalid `decided_at` (e.g. `2026-02-30`) leaves
+  `key_validity=UNKNOWN` and yields a deterministic `REJECTED` dossier;
+  registry validity dates fail as `ValidationError` at model construction.
+- **Revocations cannot shape a plan.** A revocation is unauthenticated
+  bookkeeping; until a versioned signed revocation protocol exists, any
+  revocation that withdraws a record of the planned target blocks the
+  activation plan with `OWNER_REVOCATION_AUTHORITY_UNVERIFIED`. Without
+  this, a forged revocation of a dissenting REJECT collapsed a CONFLICTING
+  set onto the single signed ACCEPT and reached READY — withdrawing a
+  decision must never *increase* what the remaining set authorizes.
+  Revoking a stale/other-target record stays inert bookkeeping.
+
 ## 4. Threat model
 
 In scope and cryptographically blocked (each with a deterministic negative
