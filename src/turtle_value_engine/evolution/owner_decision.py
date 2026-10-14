@@ -1325,18 +1325,46 @@ def record_owner_decision_file(
             f"{path}"
         )
     path.parent.mkdir(parents=True, exist_ok=True)
-    # O_EXCL publication: never overwrite a racing writer, and a competing
-    # create between the existence check and this open simply fails closed.
-    # fdopen takes ownership of the descriptor; on failure only the file this
-    # call itself created exclusively is removed.
-    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+    # O_EXCL publication: never overwrite a racing writer.  A competing create
+    # between the existence check and this open surfaces the same classified
+    # immutability error (byte-identical racing writes are idempotent), never
+    # a raw FileExistsError and never an overwrite.  fdopen takes ownership of
+    # the descriptor; on failure only the file this call itself created
+    # exclusively is removed, proven by inode so a racing replacement at the
+    # same path is never deleted by mistake.
+    try:
+        descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+    except FileExistsError:
+        if path.is_symlink():
+            raise OwnerDecisionError(
+                f"decision record output must not be a symlink: {path}"
+            ) from None
+        try:
+            existing = path.read_bytes()
+        except OSError as exc:
+            raise OwnerDecisionError(
+                f"a decision record output appeared at this path and cannot be "
+                f"read (records are immutable): {path}"
+            ) from exc
+        if existing == serialized:
+            return "IDEMPOTENT"
+        raise OwnerDecisionError(
+            "a different decision record already exists at this path (records are "
+            "immutable; write a new path, or supersede/revoke explicitly): "
+            f"{path}"
+        ) from None
+    created_ino = os.fstat(descriptor).st_ino
     try:
         with os.fdopen(descriptor, "wb") as handle:
             handle.write(serialized)
             handle.flush()
             os.fsync(handle.fileno())
     except BaseException:
-        path.unlink(missing_ok=True)
+        try:
+            if os.stat(path).st_ino == created_ino:
+                path.unlink(missing_ok=True)
+        except OSError:
+            pass
         raise
     return "CREATED"
 

@@ -224,6 +224,16 @@
       "title": "Decision Authority State",
       "type": "string"
     },
+    "authority_reverification_status": {
+      "enum": [
+        "NOT_APPLICABLE",
+        "REVERIFIED",
+        "REVERIFICATION_REQUIRED",
+        "REVERIFICATION_FAILED"
+      ],
+      "title": "Authority Reverification Status",
+      "type": "string"
+    },
     "decision_record_id": {
       "anyOf": [
         {
@@ -330,6 +340,7 @@
     "audit_activation_readiness",
     "audit_policy_decision_reasons",
     "decision_authority_state",
+    "authority_reverification_status",
     "config_inventory",
     "rollback",
     "blockers",

@@ -1645,18 +1645,50 @@ def _guard_c2_output_path(
 
 
 def _write_create_or_identical(path: Path, content: bytes, *, label: str) -> str:
-    """Create-only publication; byte-identical reruns are idempotent no-ops."""
+    """Create-only publication; byte-identical reruns are idempotent no-ops.
+
+    Publication is a single exclusive ``O_CREAT | O_EXCL`` open — there is no
+    check-then-replace window, so a competing writer that creates different
+    content at the same path is never overwritten (byte-identical racing
+    writes collapse to idempotence).  On write failure only the file this
+    call itself created exclusively is removed, proven by inode, and no
+    temporary artifact is ever left behind.
+    """
 
     if path.is_symlink():
         raise ValueError(f"{label} must not be a symlink: {path}")
-    if path.exists():
-        if path.read_bytes() == content:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+    except FileExistsError:
+        if path.is_symlink():
+            raise ValueError(f"{label} must not be a symlink: {path}") from None
+        try:
+            existing = path.read_bytes()
+        except OSError as exc:
+            raise ValueError(
+                f"{label} already exists at this path and cannot be read; "
+                f"outputs are immutable — choose a new path: {path}"
+            ) from exc
+        if existing == content:
             return "IDEMPOTENT"
         raise ValueError(
             f"{label} already exists with different content; outputs are "
             f"immutable — choose a new path: {path}"
-        )
-    _atomic_write(path, content)
+        ) from None
+    created_ino = os.fstat(descriptor).st_ino
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+    except BaseException:
+        try:
+            if os.stat(path).st_ino == created_ino:
+                path.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
     return "CREATED"
 
 

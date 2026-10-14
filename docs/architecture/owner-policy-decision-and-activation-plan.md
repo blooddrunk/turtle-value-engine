@@ -92,9 +92,9 @@ the exact target identity, and:
 
 ## Read-only activation plan and config inventory
 
-`plan_profile_activation` re-runs the C1 audit fresh (with the resolved
-decision's bound exception when supplied), resolves the authority state and
-inventories every explicitly supplied affected configuration:
+`plan_profile_activation` re-runs the C1 audit fresh (with the supplied
+policy exceptions), resolves the authority state over the supplied record
+set and inventories every explicitly supplied affected configuration:
 
 | kind | source of profile reference |
 | --- | --- |
@@ -103,19 +103,61 @@ inventories every explicitly supplied affected configuration:
 | `NORMALIZED_INPUT` | `NormalizedCompanyInput.profile_id` |
 | `BACKTEST_DATASET_MANIFEST` | decision artifacts' normalized input/analysis profile ids |
 | `SURFACE_SNAPSHOT` | `ResearchSurfaceSnapshotV1.profile_id` |
-| `MONITORING_RUNNER_CONFIG` | not profile-scoped; reports its bound watchlist path |
+| `MONITORING_RUNNER_CONFIG` | not profile-scoped; its bound watchlist path must be inventoried explicitly (resolved against the runner config's own directory; absolute references as-is) or the entry blocks with `RUNNER_WATCHLIST_NOT_INVENTORIED` |
 
 Historical artifacts pinned to the prior profile are
 `BASE_PINNED_PRESERVED` — labelled, preserved byte-for-byte, never rewritten.
 Foreign (`FOREIGN_PROFILE_REFERENCE`), missing (`MISSING_REFERENCE`) and
 unreadable (`UNREADABLE_REFERENCE`) references, an incoherent project
-default (`DEFAULT_NOT_BASE` / `DEFAULT_ALREADY_TARGET`) and every unresolved
-decision/audit blocker make the plan `BLOCKED` with specific codes. The
-plan is `READY_FOR_EXPLICIT_OWNER_EXECUTION` only when the resolved decision
-is `ACCEPT_VERIFIED`, the fresh audit is `READY_FOR_POLICY_DECISION` and the
+default (`DEFAULT_NOT_BASE` / `DEFAULT_ALREADY_TARGET`), a missing project
+configuration (`PROJECT_CONFIG_REQUIRED` — the library boundary agrees with
+the CLI's required `--project-config`) and every unresolved decision/audit
+blocker make the plan `BLOCKED` with specific codes. The plan is
+`READY_FOR_EXPLICIT_OWNER_EXECUTION` only when the resolved decision is
+`ACCEPT_VERIFIED`, the fresh audit is `READY_FOR_POLICY_DECISION`, the
 inventory is clean — and even then `execution_performed=false` and
 `automatic_activation_allowed=false` are fixed literals: a verified decision
 is necessary input, never an execution request.
+
+Since Phase 7-C2-R1 the plan additionally enforces two trust boundaries
+before any READY can exist:
+
+* **Plan-time authority reverification (R1-A).** A persisted
+  `OWNER_AUTHORITY_VERIFIED` claim on a decision record is record integrity,
+  never authority. When the resolved state is `ACCEPT_VERIFIED`, the planner
+  re-attests the claim through an injected, library-only
+  `OwnerDecisionVerifier` over the exact canonical record bytes and the
+  record's bound provenance; the fresh assessment must be `VERIFIED` via
+  `INJECTED_VERIFIER` with a non-empty verifier kind, evidence bound to those
+  exact bytes, no allowlist mismatch and complete provenance. Without an
+  injected verifier the plan fails closed with
+  `OWNER_AUTHORITY_REVERIFICATION_REQUIRED` (status
+  `REVERIFICATION_REQUIRED`), so a self-consistent forged VERIFIED record can
+  never make the production CLI output READY; granular failure codes
+  (`..._REJECTED`, `..._UNVERIFIED`, `..._METHOD_INVALID`,
+  `..._EVIDENCE_MISMATCH`, `..._ALLOWLIST_MISMATCH`,
+  `..._PROVENANCE_INCOMPLETE`) distinguish every other refutation. The plan
+  contract exposes `authority_reverification_status`
+  (`NOT_APPLICABLE` / `REVERIFIED` / `REVERIFICATION_REQUIRED` /
+  `REVERIFICATION_FAILED`), READY requires `REVERIFIED`, and no CLI flag can
+  select or synthesize a verifier.
+* **Exact decision-to-plan-context binding (R1-B).** The active decision
+  record must bind the plan's actual base profile (id + byte SHA), release
+  manifest (id + content SHA), fresh audit (id + content SHA) and the exact
+  supplied exception set (id AND full content hash, no extras). Violations
+  are stable granular blockers (`DECISION_BASE_BINDING_STALE`,
+  `DECISION_MANIFEST_BINDING_STALE`, `DECISION_AUDIT_BINDING_STALE`,
+  `DECISION_EXCEPTION_BINDING_STALE`, `DECISION_EXCEPTION_SET_MISMATCH`); a
+  record valid when created is not thereby valid for a different planning
+  context, and stale evidence is never silently dropped.
+
+CLI create-only outputs (`--output`, `--record-output`) and
+`record_owner_decision_file` publish through a single exclusive
+`O_CREAT | O_EXCL` open with inode-guarded failure cleanup (R1-C): there is
+no check-then-replace window, a racing writer's different content is never
+overwritten (byte-identical racing writes collapse to idempotence), and the
+classified immutability error — never a raw `FileExistsError` — is raised
+when a competing file appears inside the window.
 
 The embedded rollback plan records the prior project-config bytes hash and
 prior default profile, the expected current state, explicit restoration

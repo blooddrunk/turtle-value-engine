@@ -1,4 +1,4 @@
-"""Read-only versioned-profile activation planning (Phase 7-C2).
+"""Read-only versioned-profile activation planning (Phase 7-C2 + C2-R1).
 
 This module derives a deterministic, machine-readable activation/rollback
 plan for one audited base -> target profile pair from a resolved owner policy
@@ -9,13 +9,27 @@ input, never an execution request — and nothing in this module writes a rule
 profile, mutates runtime configuration, replays monitoring effects or sends
 notifications.
 
+Since Phase 7-C2-R1 the plan additionally separates record integrity from
+authenticated authority: a persisted ``OWNER_AUTHORITY_VERIFIED`` claim on a
+decision record is re-attested at plan time through an injected, library-only
+:class:`OwnerDecisionVerifier` over the exact canonical record bytes and the
+record's bound provenance.  Without such a trusted source the plan fails
+closed with ``OWNER_AUTHORITY_REVERIFICATION_REQUIRED`` and can never be
+READY, so a self-consistent forged VERIFIED record is inert here.  The
+active decision record is also bound against the exact plan context (base,
+target, manifest, fresh audit, exact exception set by id AND full content
+hash) with granular stable blockers.
+
 The plan additionally inventories every explicitly supplied affected
 configuration/artifact (project default profile, watchlist references,
 normalized-input profile ids, backtest dataset manifests with frozen
 decision artifacts, Dashboard surface projections, monitoring runner
 configs).  Historical artifacts are always preserved: their profile ids are
 labelled, never rewritten, and foreign/missing/unreadable references become
-specific blockers instead of silent migrations.
+specific blockers instead of silent migrations.  A plan without a project
+configuration is explicitly blocked, and a monitoring runner config's
+referenced watchlist must be inventoried explicitly (resolved against the
+runner config's directory) or the plan blocks.
 
 The Chinese decision dossier generated here is the required automation
 output *before* any real owner acceptance is requested: exact hashes, the
@@ -46,6 +60,8 @@ from turtle_value_engine.providers.normalization import deterministic_id
 
 from .materialization_pair import _regular_file_bytes
 from .owner_decision import (
+    OwnerAuthorityAssessmentV1,
+    OwnerDecisionVerifier,
     OwnerPolicyDecisionRecordV1,
     OwnerPolicyDecisionRevocationV1,
     resolve_owner_decision_authority,
@@ -120,6 +136,18 @@ class ConfigReferenceV1(BaseModel):
             blocker_by_compatibility["FOREIGN"] = "DEFAULT_NOT_BASE"
             blocker_by_compatibility["MISSING"] = "PROJECT_CONFIG_MISSING"
             blocker_by_compatibility["UNREADABLE"] = "PROJECT_CONFIG_UNREADABLE"
+        if self.compatibility == "NOT_PROFILE_SCOPED":
+            # A runner configuration is the only not-profile-scoped artifact,
+            # and its single live reference (the watchlist) either is
+            # inventoried explicitly (no blocker) or blocks the plan with the
+            # specific incomplete-inventory code.
+            if self.blocker_code not in (None, "RUNNER_WATCHLIST_NOT_INVENTORIED"):
+                raise ValueError(
+                    "blocker_code must be None or 'RUNNER_WATCHLIST_NOT_INVENTORIED' "
+                    f"for compatibility 'NOT_PROFILE_SCOPED' "
+                    f"(got {self.blocker_code!r})"
+                )
+            return self
         expected = blocker_by_compatibility.get(self.compatibility)
         if self.blocker_code != expected:
             raise ValueError(
@@ -341,14 +369,23 @@ def inventory_activation_config_references(
 
         _append_inventory_entry("SURFACE_SNAPSHOT", path, _extract_surface_snapshot)
 
+    # Runner configurations are not profile-scoped, but each one binds exactly
+    # one live watchlist path.  A claimed-complete inventory must have that
+    # reference inventoried explicitly: relative runner watchlist paths are
+    # resolved against the runner configuration's own directory (absolute
+    # references are used as-is), and the comparison is on resolved paths.
+    supplied_watchlists = {
+        Path(raw_path).resolve() for raw_path in watchlist_paths
+    }
+
     for raw_path in runner_config_paths:
         path = Path(raw_path)
 
-        def _extract_runner_config(raw: bytes) -> set[str]:
+        def _extract_runner_config(raw: bytes) -> dict:
             from turtle_value_engine.monitoring_runner import RunnerConfigV1
 
-            RunnerConfigV1.model_validate(json.loads(raw))
-            return set()
+            runner = RunnerConfigV1.model_validate(json.loads(raw))
+            return runner.model_dump(mode="json")
 
         if not path.is_file():
             references.append(
@@ -363,13 +400,9 @@ def inventory_activation_config_references(
             )
             continue
         try:
-            _extract_runner_config(_regular_file_bytes(path))
-            watchlist_path = json.loads(_regular_file_bytes(path))["watchlist_path"]
-            detail = (
-                "runner configuration is not profile-scoped; it binds "
-                f"watchlist_path {watchlist_path!r} — supply that watchlist "
-                "explicitly to inventory its profile binding"
-            )
+            runner_payload = _extract_runner_config(_regular_file_bytes(path))
+            watchlist_path = runner_payload["watchlist_path"]
+            resolved_watchlist = (path.parent / watchlist_path).resolve()
         except Exception as exc:
             references.append(
                 ConfigReferenceV1(
@@ -382,16 +415,39 @@ def inventory_activation_config_references(
                 )
             )
             continue
-        references.append(
-            ConfigReferenceV1(
-                kind="MONITORING_RUNNER_CONFIG",
-                path=str(path),
-                profile_references=[],
-                compatibility="NOT_PROFILE_SCOPED",
-                blocker_code=None,
-                detail=detail,
+        if resolved_watchlist in supplied_watchlists:
+            references.append(
+                ConfigReferenceV1(
+                    kind="MONITORING_RUNNER_CONFIG",
+                    path=str(path),
+                    profile_references=[],
+                    compatibility="NOT_PROFILE_SCOPED",
+                    blocker_code=None,
+                    detail=(
+                        "runner configuration is not profile-scoped; it binds "
+                        f"watchlist_path {watchlist_path!r} (resolved "
+                        f"{resolved_watchlist}), which is inventoried explicitly "
+                        "as a WATCHLIST reference in this plan"
+                    ),
+                )
             )
-        )
+        else:
+            references.append(
+                ConfigReferenceV1(
+                    kind="MONITORING_RUNNER_CONFIG",
+                    path=str(path),
+                    profile_references=[],
+                    compatibility="NOT_PROFILE_SCOPED",
+                    blocker_code="RUNNER_WATCHLIST_NOT_INVENTORIED",
+                    detail=(
+                        "runner configuration is not profile-scoped; it binds "
+                        f"watchlist_path {watchlist_path!r} (resolved "
+                        f"{resolved_watchlist}), which was NOT supplied as a "
+                        "watchlist reference — the live runtime inventory is "
+                        "incomplete, so no READY can be claimed"
+                    ),
+                )
+            )
 
     return references
 
@@ -445,6 +501,12 @@ class ProfileActivationPlanV1(BaseModel):
     audit_activation_readiness: StrictStr = Field(min_length=1, max_length=64)
     audit_policy_decision_reasons: list[StrictStr] = Field(max_length=64)
     decision_authority_state: StrictStr = Field(min_length=1, max_length=64)
+    authority_reverification_status: Literal[
+        "NOT_APPLICABLE",
+        "REVERIFIED",
+        "REVERIFICATION_REQUIRED",
+        "REVERIFICATION_FAILED",
+    ]
     decision_record_id: StrictStr | None = Field(default=None, min_length=1)
     decision_record_content_sha256: StrictStr | None = Field(
         default=None, pattern=HASH_PATTERN
@@ -468,6 +530,12 @@ class ProfileActivationPlanV1(BaseModel):
                 raise ValueError("a ready plan requires an accepted decision")
             if self.decision_authority_state != "ACCEPT_VERIFIED":
                 raise ValueError("a ready plan requires verified owner authority")
+            if self.authority_reverification_status != "REVERIFIED":
+                raise ValueError(
+                    "a ready plan requires authority that was independently "
+                    "re-attested at plan time from a trusted verifier, never a "
+                    "persisted record claim"
+                )
             if self.audit_activation_readiness != "READY_FOR_POLICY_DECISION":
                 raise ValueError("a ready plan requires a machine-clean fresh audit")
         else:
@@ -484,6 +552,7 @@ class ProfileActivationPlanV1(BaseModel):
             self.audit_id,
             self.audit_content_sha256,
             self.decision_authority_state,
+            self.authority_reverification_status,
             self.decision_record_id or "",
             self.decision_record_content_sha256 or "",
             sorted(self.blockers),
@@ -506,6 +575,71 @@ class ProfileActivationPlanV1(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+def _reverify_decision_authority(
+    *,
+    record: OwnerPolicyDecisionRecordV1,
+    authority_verifier: OwnerDecisionVerifier | None,
+) -> tuple[str, list[str]]:
+    """Independently re-attest a persisted ``OWNER_AUTHORITY_VERIFIED`` claim.
+
+    A record's serialized ``authority`` text and its self-recomputed content
+    hash prove record integrity, never authenticated authority (C2-R1 R1-A).
+    Authority for a plan is therefore re-assessed here against a trusted
+    injected verifier over the exact canonical record bytes and the record's
+    bound provenance; without such a source the plan fails closed — a forged
+    VERIFIED record can never reach READY through this path.  The verifier
+    interface stays library-only: the production CLI constructs none.
+    """
+
+    if authority_verifier is None:
+        return (
+            "REVERIFICATION_REQUIRED",
+            ["OWNER_AUTHORITY_REVERIFICATION_REQUIRED"],
+        )
+
+    blockers: list[str] = []
+    if (
+        record.provenance.source_content_sha256 is None
+        or not record.provenance.source_revision
+    ):
+        blockers.append("OWNER_AUTHORITY_REVERIFICATION_PROVENANCE_INCOMPLETE")
+
+    assessment: OwnerAuthorityAssessmentV1 | None = None
+    try:
+        record_bytes = canonical_json_bytes(record.model_dump(mode="json"))
+        assessment = authority_verifier.verify_decision_authority(
+            declared_owner_identity=record.declared_owner_identity,
+            provenance=record.provenance,
+            decision_source_bytes=record_bytes,
+        )
+    except Exception as exc:
+        return (
+            "REVERIFICATION_FAILED",
+            [f"OWNER_AUTHORITY_REVERIFICATION_ERRORED:{str(exc)[:120]}"],
+        )
+
+    if assessment.authority_status == "OWNER_AUTHORITY_REJECTED":
+        blockers.append("OWNER_AUTHORITY_REVERIFICATION_REJECTED")
+    elif assessment.authority_status != "OWNER_AUTHORITY_VERIFIED":
+        blockers.append("OWNER_AUTHORITY_REVERIFICATION_UNVERIFIED")
+    if assessment.verification_method != "INJECTED_VERIFIER" or (
+        not assessment.verifier_kind
+    ):
+        # A VERIFIED claim whose own method says there is no authenticated
+        # source is self-contradictory, whatever text it carries.
+        blockers.append("OWNER_AUTHORITY_REVERIFICATION_METHOD_INVALID")
+    if assessment.evidence_content_sha256 != _sha256_hex(record_bytes):
+        # Evidence absent from, or not bound to, these exact record bytes
+        # attests something else.
+        blockers.append("OWNER_AUTHORITY_REVERIFICATION_EVIDENCE_MISMATCH")
+    if assessment.allowlist_matched is False:
+        blockers.append("OWNER_AUTHORITY_REVERIFICATION_ALLOWLIST_MISMATCH")
+
+    if blockers:
+        return ("REVERIFICATION_FAILED", blockers)
+    return ("REVERIFIED", [])
+
+
 def plan_profile_activation(
     *,
     base_profile_path: str | Path,
@@ -515,6 +649,7 @@ def plan_profile_activation(
     decision_records: Sequence[OwnerPolicyDecisionRecordV1] = (),
     revocations: Sequence[OwnerPolicyDecisionRevocationV1] = (),
     policy_exceptions: Sequence[VersionedPolicyExceptionV1] = (),
+    authority_verifier: OwnerDecisionVerifier | None = None,
     project_config_path: str | Path | None = None,
     watchlist_paths: Sequence[str | Path] = (),
     normalized_input_paths: Sequence[str | Path] = (),
@@ -523,7 +658,17 @@ def plan_profile_activation(
     runner_config_paths: Sequence[str | Path] = (),
 ) -> ProfileActivationPlanV1:
     """Derive one read-only activation plan from fresh evidence, never trust
-    a previous dossier's self-reported readiness."""
+    a previous dossier's self-reported readiness or a persisted authority
+    claim.
+
+    The active decision record is bound against the exact plan context
+    (base/target profile ids and byte hashes, release manifest id and content
+    hash, fresh audit id and content hash, and the exact exception set by id
+    AND full content hash).  A ``OWNER_AUTHORITY_VERIFIED`` claim on the
+    record is additionally re-attested through ``authority_verifier`` — an
+    injected, library-only trusted source; without one the plan fails closed
+    with ``OWNER_AUTHORITY_REVERIFICATION_REQUIRED`` and can never be READY.
+    """
 
     from turtle_value_engine.evolution.profile_release import (
         VersionedProfileReleaseCandidateV1,
@@ -545,6 +690,7 @@ def plan_profile_activation(
     except Exception as exc:
         raise ActivationPlanError(f"PLAN_INPUTS_UNREADABLE: {str(exc)[:300]}") from exc
 
+    records_by_id = {record.decision_record_id: record for record in decision_records}
     resolution = resolve_owner_decision_authority(
         target_profile_id=target_id,
         target_profile_sha256=target_sha,
@@ -554,16 +700,6 @@ def plan_profile_activation(
 
     blockers: list[str] = []
     audit_exceptions = list(policy_exceptions)
-    if (
-        resolution.resolved_state == "ACCEPT_VERIFIED"
-        and resolution.active_exception_id is not None
-        and not any(
-            exception.exception_id == resolution.active_exception_id
-            for exception in audit_exceptions
-        )
-    ):
-        blockers.append("EXCEPTION_NOT_SUPPLIED")
-
     fresh_audit = audit_profile_semantics(
         base_profile_path=base_profile_path,
         target_profile_path=target_profile_path,
@@ -571,6 +707,55 @@ def plan_profile_activation(
         boundary_input=boundary_input,
         policy_exceptions=audit_exceptions,
     )
+
+    # R1-B: bind the active decision record to THIS plan's exact context.
+    active_record = (
+        records_by_id.get(resolution.active_decision_record_id or "")
+        if resolution.active_decision_record_id is not None
+        else None
+    )
+    if active_record is not None:
+        if (
+            active_record.base_profile_id != base_id
+            or active_record.base_profile_sha256 != base_sha
+        ):
+            blockers.append("DECISION_BASE_BINDING_STALE")
+        if (
+            active_record.release_manifest_id != manifest.release_candidate_id
+            or active_record.release_manifest_content_sha256 != manifest.content_sha256
+        ):
+            blockers.append("DECISION_MANIFEST_BINDING_STALE")
+        if (
+            active_record.audit_id != fresh_audit.audit_id
+            or active_record.audit_content_sha256 != fresh_audit.content_sha256
+        ):
+            blockers.append("DECISION_AUDIT_BINDING_STALE")
+        supplied_exception_pairs = sorted(
+            (exception.exception_id, exception.content_sha256)
+            for exception in audit_exceptions
+        )
+        if active_record.decision == "ACCEPT_WITH_EXCEPTION":
+            bound_pair = (
+                active_record.exception_id or "",
+                active_record.exception_content_sha256 or "",
+            )
+            if bound_pair not in supplied_exception_pairs:
+                blockers.append("DECISION_EXCEPTION_BINDING_STALE")
+            if supplied_exception_pairs != [bound_pair]:
+                blockers.append("DECISION_EXCEPTION_SET_MISMATCH")
+        elif supplied_exception_pairs:
+            blockers.append("DECISION_EXCEPTION_SET_MISMATCH")
+
+    # R1-A: a persisted VERIFIED claim must be independently re-attested.
+    reverification_status = "NOT_APPLICABLE"
+    if resolution.resolved_state == "ACCEPT_VERIFIED" and active_record is not None:
+        reverification_status, reverification_blockers = (
+            _reverify_decision_authority(
+                record=active_record,
+                authority_verifier=authority_verifier,
+            )
+        )
+        blockers.extend(reverification_blockers)
 
     state_blockers = {
         "NO_DECISION": {
@@ -613,6 +798,11 @@ def plan_profile_activation(
     blockers.extend(
         item.blocker_code for item in inventory if item.blocker_code is not None
     )
+    if project_config_path is None:
+        # R1-D: a claimed-complete inventory cannot be derived without the
+        # project runtime configuration whose default would change; the CLI
+        # already requires it, and the library boundary must agree.
+        blockers.append("PROJECT_CONFIG_REQUIRED")
 
     prior_config_sha: str | None = None
     prior_default: str | None = None
@@ -676,6 +866,7 @@ def plan_profile_activation(
         audit_activation_readiness=fresh_audit.activation_readiness,
         audit_policy_decision_reasons=fresh_audit.policy_decision_reasons,
         decision_authority_state=resolution.resolved_state,
+        authority_reverification_status=reverification_status,
         decision_record_id=resolution.active_decision_record_id,
         decision_record_content_sha256=(
             resolution.active_decision_record_content_sha256
@@ -702,6 +893,7 @@ def plan_profile_activation(
         payload["audit_id"],
         payload["audit_content_sha256"],
         payload["decision_authority_state"],
+        payload["authority_reverification_status"],
         payload["decision_record_id"] or "",
         payload["decision_record_content_sha256"] or "",
         sorted(payload["blockers"]),
