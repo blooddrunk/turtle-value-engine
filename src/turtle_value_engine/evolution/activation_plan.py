@@ -132,6 +132,10 @@ class ConfigReferenceV1(BaseModel):
             "MISSING": "MISSING_REFERENCE",
             "UNREADABLE": "UNREADABLE_REFERENCE",
         }
+        if self.kind != "PROJECT_DEFAULT_PROFILE":
+            # A historical/watchlist reference already using the target is
+            # compatible; only the mutable project default is a no-op blocker.
+            blocker_by_compatibility["ALREADY_TARGET"] = None
         if self.kind == "PROJECT_DEFAULT_PROFILE":
             blocker_by_compatibility["FOREIGN"] = "DEFAULT_NOT_BASE"
             blocker_by_compatibility["MISSING"] = "PROJECT_CONFIG_MISSING"
@@ -634,6 +638,9 @@ def _reverify_decision_authority(
         blockers.append("OWNER_AUTHORITY_REVERIFICATION_EVIDENCE_MISMATCH")
     if assessment.allowlist_matched is False:
         blockers.append("OWNER_AUTHORITY_REVERIFICATION_ALLOWLIST_MISMATCH")
+    elif assessment.allowlist_matched is None:
+        # Absence of a positive identity authorization result is not proof.
+        blockers.append("OWNER_AUTHORITY_REVERIFICATION_ALLOWLIST_UNCONFIRMED")
 
     if blockers:
         return ("REVERIFICATION_FAILED", blockers)
