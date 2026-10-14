@@ -1,3 +1,12 @@
+> **2026-10-14 post-closure review override:** The independent static code review in
+> `docs/status/phase-7-c2-post-closure-review-2026-10-14.md` found
+> planning-time trust/binding gaps and a create-only output race. The **selected
+> next coding-agent package** is Phase 7-C2-R1:
+> `docs/goals/phase-7-c2-r1-activation-plan-trust-boundary-hardening.md`.
+> The older proposals below (real owner provenance source, then activation
+> executor) are **deferred until C2-R1 has passed executable regression and
+> exact-head CI verification**. No real acceptance or activation has occurred.
+
 # Phase 7-C2 → next coding-agent handoff — 2026-10-13
 
 Status: **C2 IMPLEMENTED (offline boundary)**. The authoritative scope was
