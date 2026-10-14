@@ -1007,3 +1007,46 @@ def test_no_verifier_escape_hatch_in_hardened_cli():
     ):
         assert forbidden not in source
     assert "OwnerDecisionVerifier" not in source
+
+# Phase 7-C2-R2 post-closure review regressions: independently discovered
+
+
+def test_r2_target_pinned_watchlist_is_valid_inventory(tmp_path):
+    """A watchlist already pinned to the target is not a default-config mutation.
+
+    The C2 implementation classified it as ALREADY_TARGET with no blocker, but
+    ConfigReferenceV1 required DEFAULT_ALREADY_TARGET for *every* kind, raising
+    ValidationError rather than returning a coherent activation plan.
+    """
+    record = _forged_verified_record()
+    watchlist = _write_watchlist(tmp_path, "strict-v2", "target-watchlist.json")
+    plan = _plan(
+        tmp_path,
+        records=[record],
+        watchlist_paths=[watchlist],
+        authority_verifier=RecordingVerifier(),
+    )
+    entries = [item for item in plan.config_inventory if item.kind == "WATCHLIST"]
+    assert len(entries) == 1
+    assert entries[0].compatibility == "ALREADY_TARGET"
+    assert entries[0].blocker_code is None
+    assert plan.plan_state == "READY_FOR_EXPLICIT_OWNER_EXECUTION"
+    assert plan.execution_performed is False
+
+
+def test_r2_reverification_requires_positive_allowlist_match(tmp_path):
+    """A verifier returning None for allowlist_matched has NOT proven a match.
+
+    This is distinct from an explicit False mismatch; neither may authorize
+    a fixture READY plan.  The production CLI continues to have no verifier.
+    """
+    record = _forged_verified_record()
+    plan = _plan(
+        tmp_path,
+        records=[record],
+        authority_verifier=RecordingVerifier(allowlist_matched=None),
+    )
+    assert plan.plan_state == "BLOCKED"
+    assert plan.authority_reverification_status == "REVERIFICATION_FAILED"
+    assert "OWNER_AUTHORITY_REVERIFICATION_ALLOWLIST_UNCONFIRMED" in plan.blockers
+    assert plan.execution_performed is False
