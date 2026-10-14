@@ -37,6 +37,7 @@ from turtle_value_engine.evolution.owner_decision import (
     OwnerAuthorityAssessmentV1,
     OwnerPolicyDecisionInputV1,
     OwnerPolicyDecisionRecordV1,
+    OwnerPolicyDecisionRevocationV1,
     validate_owner_decision,
 )
 from turtle_value_engine.evolution.owner_provenance import (
@@ -1134,4 +1135,263 @@ def test_r1_unsigned_supersession_cannot_resolve_ambiguity_to_ready(tmp_path):
     plan = _plan(tmp_path, records=[earlier, forged], verifier=verifier)
     assert plan.plan_state == "BLOCKED"
     assert "OWNER_AUTHORITY_REVERIFICATION_REJECTED" in plan.blockers
+    assert plan.execution_performed is False
+
+
+def _unverified_reject_record() -> OwnerPolicyDecisionRecordV1:
+    """A separately recorded, unsigned REJECT decision."""
+
+    return OwnerPolicyDecisionRecordV1.build(
+        decision_input=_reject_input(),
+        provenance=DecisionProvenanceV1(
+            source_kind="LOCAL_UNSIGNED_JSON",
+            source_revision="separate-reject-submission",
+            source_content_sha256=hashlib.sha256(b"separate-reject").hexdigest(),
+        ),
+        authority=OwnerAuthorityAssessmentV1(
+            authority_status="OWNER_AUTHORITY_UNVERIFIED",
+            verification_method="NO_AUTHENTICATED_SOURCE",
+            reason_code="NO_AUTHENTICATED_SOURCE_AVAILABLE",
+            detail="Unverified separate REJECT; never authorizes anything.",
+        ),
+    )
+
+
+def _revocation_of(record: OwnerPolicyDecisionRecordV1) -> OwnerPolicyDecisionRevocationV1:
+    return OwnerPolicyDecisionRevocationV1.build(
+        revoked_decision_record_id=record.decision_record_id,
+        target_profile_id=record.target_profile_id,
+        target_profile_sha256=record.target_profile_sha256,
+        revoked_by=OWNER_IDENTITY,
+        revoked_at="2026-10-14",
+        rationale="Unsigned revocation; no authenticated protocol exists yet.",
+        provenance=DecisionProvenanceV1(
+            source_kind="LOCAL_UNSIGNED_JSON",
+            source_revision="revocation-submission",
+            source_content_sha256=hashlib.sha256(b"revocation-src").hexdigest(),
+        ),
+        authority=OwnerAuthorityAssessmentV1(
+            authority_status="OWNER_AUTHORITY_UNVERIFIED",
+            verification_method="NO_AUTHENTICATED_SOURCE",
+            reason_code="NO_AUTHENTICATED_SOURCE_AVAILABLE",
+            detail="Revocation is unauthenticated bookkeeping, never authority.",
+        ),
+    )
+
+
+def test_r1_forged_revocation_cannot_unblock_a_conflicting_set(tmp_path):
+    """An unsigned revocation must not remove a conflicting REJECT to reach READY.
+
+    Without this boundary the resolver applies every structurally valid
+    revocation at face value, so a forged revocation of the dissenting REJECT
+    collapses a CONFLICTING set onto the single signed ACCEPT and the plan
+    reaches READY — the same unsigned-metadata escalation class as supersession.
+    """
+    _key, _statement, signed_bytes, verifier = _signed_accept_fixture()
+    accept_record = OwnerPolicyDecisionRecordV1.build(
+        decision_input=_accept_input(),
+        provenance=DecisionProvenanceV1(
+            source_kind="LOCAL_UNSIGNED_JSON",
+            source_revision="c3a-test",
+            source_content_sha256=hashlib.sha256(signed_bytes).hexdigest(),
+        ),
+        authority=OwnerAuthorityAssessmentV1(
+            authority_status="OWNER_AUTHORITY_VERIFIED",
+            verification_method="INJECTED_VERIFIER",
+            verifier_kind=verifier.kind,
+            allowlist_matched=True,
+            reason_code="ED25519_OWNER_PROVENANCE_VERIFIED",
+            detail="record-time capture",
+        ),
+    )
+    reject_record = _unverified_reject_record()
+
+    # Control: the conflicting set without any revocation stays blocked.
+    control = _plan(tmp_path, records=[accept_record, reject_record], verifier=verifier)
+    assert control.plan_state == "BLOCKED"
+    assert "DECISIONS_CONFLICTING" in control.blockers
+
+    # A forged revocation of the REJECT must not convert that into READY.
+    forged = _revocation_of(reject_record)
+    plan = _plan(
+        tmp_path,
+        records=[accept_record, reject_record],
+        verifier=verifier,
+        revocations=[forged],
+    )
+    assert plan.plan_state == "BLOCKED"
+    assert "OWNER_REVOCATION_AUTHORITY_UNVERIFIED" in plan.blockers
+    assert plan.execution_performed is False
+
+
+def test_r1_effective_revocation_blocks_the_plan_until_a_signed_protocol_exists(
+    tmp_path,
+):
+    """Even a genuine unauthenticated revocation cannot shape a plan.
+
+    Until a versioned signed revocation protocol exists (C3-B), any revocation
+    that withdraws a current record of the planned target fails the plan
+    closed; withdrawing a decision must never be able to *increase* what the
+    remaining set authorizes.
+    """
+    _key, _statement, signed_bytes, verifier = _signed_accept_fixture()
+    accept_record = OwnerPolicyDecisionRecordV1.build(
+        decision_input=_accept_input(),
+        provenance=DecisionProvenanceV1(
+            source_kind="LOCAL_UNSIGNED_JSON",
+            source_revision="c3a-test",
+            source_content_sha256=hashlib.sha256(signed_bytes).hexdigest(),
+        ),
+        authority=OwnerAuthorityAssessmentV1(
+            authority_status="OWNER_AUTHORITY_VERIFIED",
+            verification_method="INJECTED_VERIFIER",
+            verifier_kind=verifier.kind,
+            allowlist_matched=True,
+            reason_code="ED25519_OWNER_PROVENANCE_VERIFIED",
+            detail="record-time capture",
+        ),
+    )
+    plan = _plan(
+        tmp_path,
+        records=[accept_record],
+        verifier=verifier,
+        revocations=[_revocation_of(accept_record)],
+    )
+    assert plan.plan_state == "BLOCKED"
+    assert "OWNER_REVOCATION_AUTHORITY_UNVERIFIED" in plan.blockers
+    assert "ALL_CURRENT_DECISIONS_REVOKED" in plan.blockers
+    assert plan.execution_performed is False
+
+
+def test_r1_revocation_of_a_stale_target_record_does_not_block_the_plan(tmp_path):
+    """A revocation that cannot touch this plan's target is inert bookkeeping."""
+    _key, _statement, signed_bytes, verifier = _signed_accept_fixture()
+    accept_record = OwnerPolicyDecisionRecordV1.build(
+        decision_input=_accept_input(),
+        provenance=DecisionProvenanceV1(
+            source_kind="LOCAL_UNSIGNED_JSON",
+            source_revision="c3a-test",
+            source_content_sha256=hashlib.sha256(signed_bytes).hexdigest(),
+        ),
+        authority=OwnerAuthorityAssessmentV1(
+            authority_status="OWNER_AUTHORITY_VERIFIED",
+            verification_method="INJECTED_VERIFIER",
+            verifier_kind=verifier.kind,
+            allowlist_matched=True,
+            reason_code="ED25519_OWNER_PROVENANCE_VERIFIED",
+            detail="record-time capture",
+        ),
+    )
+    stale_target = OwnerPolicyDecisionRecordV1.build(
+        decision_input=OwnerPolicyDecisionInputV1.model_validate(
+            _accept_payload(
+                base_profile_id="strict-v1",
+                target_profile_id="strict-v3",
+                target_profile_sha256="a" * 64,
+                rationale=(
+                    "Decision about a hypothetical different target profile; "
+                    "kept stale for this plan."
+                ),
+            )
+        ),
+        provenance=DecisionProvenanceV1(
+            source_kind="LOCAL_UNSIGNED_JSON",
+            source_revision="other-target",
+            source_content_sha256=hashlib.sha256(b"other-target").hexdigest(),
+        ),
+        authority=OwnerAuthorityAssessmentV1(
+            authority_status="OWNER_AUTHORITY_UNVERIFIED",
+            verification_method="NO_AUTHENTICATED_SOURCE",
+            reason_code="NO_AUTHENTICATED_SOURCE_AVAILABLE",
+            detail="Stale-target record.",
+        ),
+    )
+    stale_revocation = OwnerPolicyDecisionRevocationV1.build(
+        revoked_decision_record_id=stale_target.decision_record_id,
+        target_profile_id="strict-v3",
+        target_profile_sha256="a" * 64,
+        revoked_by=OWNER_IDENTITY,
+        revoked_at="2026-10-14",
+        rationale="Revoking the stale-target decision; unrelated to this plan.",
+        provenance=DecisionProvenanceV1(
+            source_kind="LOCAL_UNSIGNED_JSON",
+            source_revision="other-target-revocation",
+            source_content_sha256=hashlib.sha256(b"other-revocation").hexdigest(),
+        ),
+        authority=OwnerAuthorityAssessmentV1(
+            authority_status="OWNER_AUTHORITY_UNVERIFIED",
+            verification_method="NO_AUTHENTICATED_SOURCE",
+            reason_code="NO_AUTHENTICATED_SOURCE_AVAILABLE",
+            detail="Unverified.",
+        ),
+    )
+    plan = _plan(
+        tmp_path,
+        records=[accept_record, stale_target],
+        verifier=verifier,
+        revocations=[stale_revocation],
+    )
+    assert plan.plan_state == "READY_FOR_EXPLICIT_OWNER_EXECUTION"
+    assert "OWNER_REVOCATION_AUTHORITY_UNVERIFIED" not in plan.blockers
+
+
+def test_r1_registry_validity_dates_are_classified_validation_errors():
+    """Impossible registry validity dates fail as ValidationError, never raw."""
+    key = _FixtureKey()
+    for bad_field in ("valid_from", "valid_until"):
+        payload = key.record.model_dump(mode="json")
+        payload[bad_field] = "2026-02-30"
+        with pytest.raises(ValidationError):
+            OwnerProvenanceKeyRecordV1.model_validate(payload)
+
+
+def test_r1_forged_supersession_chain_stays_ambiguous(tmp_path):
+    """A forged superseding record always leaves a forged active leaf.
+
+    The resolver keeps every superseder itself active, so forged supersession
+    cannot shrink a conflicting set onto the genuine signed record: the
+    forged leaf stays active and the resolution fails closed as AMBIGUOUS.
+    """
+    _key, _statement, signed_bytes, verifier = _signed_accept_fixture()
+    accept_record = OwnerPolicyDecisionRecordV1.build(
+        decision_input=_accept_input(),
+        provenance=DecisionProvenanceV1(
+            source_kind="LOCAL_UNSIGNED_JSON",
+            source_revision="c3a-test",
+            source_content_sha256=hashlib.sha256(signed_bytes).hexdigest(),
+        ),
+        authority=OwnerAuthorityAssessmentV1(
+            authority_status="OWNER_AUTHORITY_VERIFIED",
+            verification_method="INJECTED_VERIFIER",
+            verifier_kind=verifier.kind,
+            allowlist_matched=True,
+            reason_code="ED25519_OWNER_PROVENANCE_VERIFIED",
+            detail="record-time capture",
+        ),
+    )
+    reject_record = _unverified_reject_record()
+    forged_mid = OwnerPolicyDecisionRecordV1.build(
+        decision_input=_accept_input(),
+        provenance=DecisionProvenanceV1(
+            source_kind="LOCAL_UNSIGNED_JSON",
+            source_revision="forged-mid",
+            source_content_sha256=hashlib.sha256(b"forged-mid").hexdigest(),
+        ),
+        authority=OwnerAuthorityAssessmentV1(
+            authority_status="OWNER_AUTHORITY_VERIFIED",
+            verification_method="INJECTED_VERIFIER",
+            verifier_kind=verifier.kind,
+            allowlist_matched=True,
+            reason_code="CLAIM",
+            detail="Forged VERIFIED claim; never trusted at plan time.",
+        ),
+        supersedes_decision_record_id=reject_record.decision_record_id,
+    )
+    plan = _plan(
+        tmp_path,
+        records=[accept_record, reject_record, forged_mid],
+        verifier=verifier,
+    )
+    assert plan.plan_state == "BLOCKED"
+    assert "DECISIONS_AMBIGUOUS" in plan.blockers
     assert plan.execution_performed is False
