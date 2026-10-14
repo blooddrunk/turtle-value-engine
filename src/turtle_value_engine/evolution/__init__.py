@@ -112,6 +112,23 @@ from .owner_decision import (
     resolve_owner_decision_authority,
     validate_owner_decision,
 )
+from .owner_provenance import (
+    PROVENANCE_ALGORITHM,
+    PROVENANCE_PURPOSE,
+    REQUIRED_PROVENANCE_CHECK_NAMES,
+    OwnerProvenanceError,
+    OwnerProvenanceKeyRecordV1,
+    OwnerProvenanceKeyRegistryV1,
+    OwnerProvenanceVerificationCheckV1,
+    OwnerProvenanceVerificationV1,
+    OwnerSignedDecisionStatementV1,
+    SignedOwnerProvenanceVerifier,
+    build_owner_provenance_key_registry,
+    build_owner_signed_decision_statement,
+    owner_decision_input_signature_message,
+    owner_provenance_key_id,
+    verify_owner_provenance,
+)
 from .profile_release import (
     ProfileReleaseBundle,
     ProfileReleaseError,
@@ -139,6 +156,15 @@ from .replay import (
 )
 
 __all__ = [
+    "PROVENANCE_ALGORITHM",
+    "PROVENANCE_PURPOSE",
+    "REQUIRED_PROVENANCE_CHECK_NAMES",
+    "SignedOwnerProvenanceVerifier",
+    "build_owner_provenance_key_registry",
+    "build_owner_signed_decision_statement",
+    "owner_decision_input_signature_message",
+    "owner_provenance_key_id",
+    "verify_owner_provenance",
     "CHECK_BASE_PROFILE_BYTES_HASH",
     "CHECK_BASE_PROFILE_IDENTITY_AGREEMENT",
     "CHECK_CANONICAL_REPRODUCTION",
@@ -174,6 +200,12 @@ __all__ = [
     "OwnerAuthorityAssessmentV1",
     "OwnerDecisionError",
     "OwnerDecisionVerifier",
+    "OwnerProvenanceError",
+    "OwnerProvenanceKeyRecordV1",
+    "OwnerProvenanceKeyRegistryV1",
+    "OwnerProvenanceVerificationCheckV1",
+    "OwnerProvenanceVerificationV1",
+    "OwnerSignedDecisionStatementV1",
     "OwnerPolicyDecisionInputV1",
     "OwnerPolicyDecisionRecordV1",
     "OwnerPolicyDecisionRevocationV1",

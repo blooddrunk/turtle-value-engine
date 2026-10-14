@@ -1,0 +1,128 @@
+{
+  "$defs": {
+    "OwnerProvenanceKeyRecordV1": {
+      "additionalProperties": false,
+      "description": "One registered trusted Ed25519 public key with its authorization scope.\n\nThe key identity is derived only from the key material \u2014 never from any\ndecision file \u2014 so a registry entry cannot be forged by editing a\ndecision.  ``valid_from``/``valid_until`` are owner-declared ISO dates\ncompared against the signed decision's ``decided_at`` (deterministic;\nno wall-clock anywhere).  Revocation is an explicit record with a\nmandatory reference.",
+      "properties": {
+        "key_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Key Id",
+          "type": "string"
+        },
+        "algorithm": {
+          "const": "ED25519",
+          "default": "ED25519",
+          "title": "Algorithm",
+          "type": "string"
+        },
+        "public_key_base64": {
+          "pattern": "^[A-Za-z0-9+/]+={0,2}$",
+          "title": "Public Key Base64",
+          "type": "string"
+        },
+        "owner_identity": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Owner Identity",
+          "type": "string"
+        },
+        "authorized_decisions": {
+          "items": {
+            "enum": [
+              "ACCEPT_WITH_EXCEPTION",
+              "REJECT"
+            ],
+            "type": "string"
+          },
+          "maxItems": 2,
+          "minItems": 1,
+          "title": "Authorized Decisions",
+          "type": "array"
+        },
+        "valid_from": {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "title": "Valid From",
+          "type": "string"
+        },
+        "valid_until": {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "title": "Valid Until",
+          "type": "string"
+        },
+        "revoked": {
+          "default": false,
+          "title": "Revoked",
+          "type": "boolean"
+        },
+        "revocation_reference": {
+          "anyOf": [
+            {
+              "maxLength": 2048,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Revocation Reference"
+        }
+      },
+      "required": [
+        "key_id",
+        "public_key_base64",
+        "owner_identity",
+        "authorized_decisions",
+        "valid_from",
+        "valid_until"
+      ],
+      "title": "OwnerProvenanceKeyRecordV1",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "The independent trust root: an explicitly supplied key registry.\n\nNothing here references the decision files it verifies; the registry is\nsupplied by the hosting process/operator as its own trust decision.",
+  "properties": {
+    "contract": {
+      "const": "owner_provenance_key_registry_v1",
+      "default": "owner_provenance_key_registry_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "schema_version": {
+      "default": "1.0.0",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "registry_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Registry Id",
+      "type": "string"
+    },
+    "keys": {
+      "items": {
+        "$ref": "#/$defs/OwnerProvenanceKeyRecordV1"
+      },
+      "maxItems": 64,
+      "minItems": 1,
+      "title": "Keys",
+      "type": "array"
+    },
+    "content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Content Sha256",
+      "type": "string"
+    }
+  },
+  "required": [
+    "registry_id",
+    "keys",
+    "content_sha256"
+  ],
+  "title": "OwnerProvenanceKeyRegistryV1",
+  "type": "object"
+}
