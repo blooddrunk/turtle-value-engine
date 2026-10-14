@@ -764,7 +764,7 @@ def test_tampered_signature_keeps_the_plan_blocked(tmp_path):
         decision_input=_accept_input(),
         provenance=DecisionProvenanceV1(
             source_kind="LOCAL_UNSIGNED_JSON",
-            source_revision="c3a",
+            source_revision="c3a-test",
             source_content_sha256=hashlib.sha256(input_bytes).hexdigest(),
         ),
         authority=OwnerAuthorityAssessmentV1(
@@ -993,3 +993,145 @@ def test_owner_provenance_uses_only_synthetic_fixture_keys():
     # production code never signs and never holds private key material
     for forbidden in ("Ed25519PrivateKey", "private_bytes", "SigningKey"):
         assert forbidden not in source
+
+
+# Phase 7-C3-A-R1 independent trust-boundary regression reproductions.
+
+
+def _noncanonical_base64_alias(value: str) -> str:
+    """Change only unused RFC 4648 pad bits; decoded bytes remain identical."""
+    alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+    pad = len(value) - len(value.rstrip("="))
+    assert pad in (1, 2)
+    position = len(value) - pad - 1
+    chars = list(value)
+    chars[position] = alphabet[alphabet.index(chars[position]) ^ 1]
+    alias = "".join(chars)
+    assert alias != value
+    assert base64.b64decode(alias, validate=True) == base64.b64decode(
+        value, validate=True
+    )
+    return alias
+
+
+def test_r1_reject_noncanonical_public_key_and_signature_base64():
+    """Different text encoding must never create an alias of one signing key."""
+    key = _FixtureKey()
+    alias_key = _noncanonical_base64_alias(key.public_base64)
+    with pytest.raises(OwnerProvenanceError, match="canonical"):
+        owner_provenance_key_id(
+            algorithm=PROVENANCE_ALGORITHM, public_key_base64=alias_key
+        )
+    with pytest.raises(ValidationError, match="canonical"):
+        OwnerProvenanceKeyRecordV1.model_validate(
+            {**key.record.model_dump(mode="json"), "public_key_base64": alias_key}
+        )
+
+    statement, _ = key.sign_input(_accept_input())
+    alias_signature = _noncanonical_base64_alias(statement.signature_base64)
+    with pytest.raises(ValidationError, match="canonical"):
+        OwnerSignedDecisionStatementV1.model_validate(
+            {
+                **statement.model_dump(mode="json"),
+                "signature_base64": alias_signature,
+            }
+        )
+
+
+def test_r1_calendar_invalid_iso_date_returns_rejected_dossier():
+    """A date with correct syntax but impossible day must not raise ValueError."""
+    key = _FixtureKey()
+    invalid_date_input = _accept_input(decided_at="2026-02-30")
+    statement, signed_bytes = key.sign_input(invalid_date_input)
+    verification = verify_owner_provenance(
+        decision_input_bytes=signed_bytes,
+        statement=statement,
+        registry=_registry(key),
+    )
+    assert verification.verification_status == "REJECTED"
+    assert verification.key_validity == "UNKNOWN"
+    assert "KEY_VALIDITY_WINDOW" in _failed_names(verification)
+
+
+def test_r1_signed_decision_does_not_authorize_a_forged_source_revision(tmp_path):
+    """All record provenance fields derived from signed input must match it."""
+    _key, _statement, signed_bytes, verifier = _signed_accept_fixture()
+    validation = validate_owner_decision(
+        decision_input=_accept_input(),
+        decision_source_bytes=signed_bytes,
+        base_profile_path=BASE_PROFILE_PATH,
+        target_profile_path=TARGET_PROFILE_PATH,
+        release_manifest_path=MANIFEST_PATH,
+        policy_exceptions=[_policy_exception()],
+        verifier=verifier,
+    )
+    assert validation.record is not None
+    forged = OwnerPolicyDecisionRecordV1.build(
+        decision_input=_accept_input(),
+        provenance=DecisionProvenanceV1(
+            source_kind="LOCAL_UNSIGNED_JSON",
+            source_revision="altered-after-signature",
+            source_content_sha256=hashlib.sha256(signed_bytes).hexdigest(),
+        ),
+        authority=validation.record.authority,
+    )
+    assessment = verifier.verify_decision_authority(
+        declared_owner_identity=forged.declared_owner_identity,
+        provenance=forged.provenance,
+        decision_source_bytes=_record_bytes(forged),
+    )
+    assert assessment.authority_status == "OWNER_AUTHORITY_REJECTED"
+    assert assessment.reason_code == "OWNER_PROVENANCE_RECORD_INPUT_BINDING_MISMATCH"
+    plan = _plan(tmp_path, records=[forged], verifier=verifier)
+    assert plan.plan_state == "BLOCKED"
+    assert "OWNER_AUTHORITY_REVERIFICATION_REJECTED" in plan.blockers
+    assert plan.execution_performed is False
+
+
+def test_r1_unsigned_supersession_cannot_resolve_ambiguity_to_ready(tmp_path):
+    """A genuine signature never authorizes an unsigned record supersession."""
+    _key, _statement, signed_bytes, verifier = _signed_accept_fixture()
+    submitted = _accept_input()
+    validation = validate_owner_decision(
+        decision_input=submitted,
+        decision_source_bytes=signed_bytes,
+        base_profile_path=BASE_PROFILE_PATH,
+        target_profile_path=TARGET_PROFILE_PATH,
+        release_manifest_path=MANIFEST_PATH,
+        policy_exceptions=[_policy_exception()],
+        verifier=verifier,
+    )
+    assert validation.record is not None
+    earlier = OwnerPolicyDecisionRecordV1.build(
+        decision_input=_accept_input(
+            rationale="Earlier unsigned decision, intentionally separate from this one."
+        ),
+        provenance=DecisionProvenanceV1(
+            source_kind="LOCAL_UNSIGNED_JSON",
+            source_revision="earlier-submission",
+            source_content_sha256="0" * 64,
+        ),
+        authority=OwnerAuthorityAssessmentV1(
+            authority_status="OWNER_AUTHORITY_UNVERIFIED",
+            verification_method="NO_AUTHENTICATED_SOURCE",
+            reason_code="UNVERIFIED_FIXTURE",
+            detail="Earlier unverified decision; cannot authorize replacement.",
+        ),
+    )
+    forged = OwnerPolicyDecisionRecordV1.build(
+        decision_input=submitted,
+        provenance=validation.record.provenance,
+        authority=validation.record.authority,
+        supersedes_decision_record_id=earlier.decision_record_id,
+    )
+    assessment = verifier.verify_decision_authority(
+        declared_owner_identity=forged.declared_owner_identity,
+        provenance=forged.provenance,
+        decision_source_bytes=_record_bytes(forged),
+    )
+    assert assessment.authority_status == "OWNER_AUTHORITY_REJECTED"
+    assert assessment.reason_code == "OWNER_PROVENANCE_UNSIGNED_SUPERSESSION"
+    plan = _plan(tmp_path, records=[earlier, forged], verifier=verifier)
+    assert plan.plan_state == "BLOCKED"
+    assert "OWNER_AUTHORITY_REVERIFICATION_REJECTED" in plan.blockers
+    assert plan.execution_performed is False
