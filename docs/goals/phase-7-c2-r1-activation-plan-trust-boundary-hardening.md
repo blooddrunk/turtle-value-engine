@@ -1,8 +1,9 @@
 # Phase 7-C2-R1 — Activation Plan Trust-Boundary Hardening
 
-Status: **IMPLEMENTED / CI CLOSURE PENDING**
+Status: **IMPLEMENTED / CLOSED**
 Selected by: `docs/status/phase-7-c2-post-closure-review-2026-10-14.md`
 Reviewed baseline: `acc76508ee4aec6f312126538b93d04b572433fa` (main, 2026-10-14)
+Closed at implementation: `090a97d7f057183fc3d7d88ffd5044a2b1830801` (PR #6, merged `afdab7a`; exact-head Actions run `38501862047` `success`; closure record `docs/status/phase-7-c2-r1-2026-10-14.md`)
 Objective: repair the read-only C2 planning trust boundary before authenticating any real owner decision or developing a profile-activation executor.
 
 ## 1. Scope and source of truth
