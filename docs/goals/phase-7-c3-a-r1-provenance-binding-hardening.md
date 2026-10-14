@@ -1,6 +1,9 @@
 # Phase 7-C3-A-R1 — Provenance Binding Hardening (independent review closure)
 
-Status: **IMPLEMENTED / CI CLOSURE PENDING**
+Status: **IMPLEMENTED / CLOSED**
+Closed at implementation `79560e3412ce031c283e8d0c0a7ed2ae868dd750`
+(exact-head Actions run `38531123746` `success`; closure record
+`docs/status/phase-7-c3-a-r1-2026-10-14.md`)
 Selected by: independent post-C3-A review of main `7d681f94780af20d00a6b793ec539030081c2220`
 (PR #8, branch `phase-7-c3-a-r1-provenance-binding-hardening`)
 Objective: close every trust-boundary defect an independent review finds in the
