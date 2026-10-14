@@ -789,7 +789,7 @@ def test_assessment_evidence_binds_the_exact_record_bytes():
         decision_input=_accept_input(),
         provenance=DecisionProvenanceV1(
             source_kind="LOCAL_UNSIGNED_JSON",
-            source_revision="c3a",
+            source_revision="c3a-test",
             source_content_sha256=hashlib.sha256(input_bytes).hexdigest(),
         ),
         authority=OwnerAuthorityAssessmentV1(
@@ -884,7 +884,7 @@ def test_verification_constructs_no_socket(monkeypatch):
         declared_owner_identity=OWNER_IDENTITY,
         provenance=DecisionProvenanceV1(
             source_kind="LOCAL_UNSIGNED_JSON",
-            source_revision="c3a",
+            source_revision="c3a-test",
             source_content_sha256=hashlib.sha256(input_bytes).hexdigest(),
         ),
         decision_source_bytes=canonical_json_bytes(
@@ -892,7 +892,7 @@ def test_verification_constructs_no_socket(monkeypatch):
                 decision_input=_accept_input(),
                 provenance=DecisionProvenanceV1(
                     source_kind="LOCAL_UNSIGNED_JSON",
-                    source_revision="c3a",
+                    source_revision="c3a-test",
                     source_content_sha256=hashlib.sha256(input_bytes).hexdigest(),
                 ),
                 authority=OwnerAuthorityAssessmentV1(

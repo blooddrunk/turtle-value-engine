@@ -675,6 +675,10 @@ def plan_profile_activation(
     record is additionally re-attested through ``authority_verifier`` — an
     injected, library-only trusted source; without one the plan fails closed
     with ``OWNER_AUTHORITY_REVERIFICATION_REQUIRED`` and can never be READY.
+    Revocations are unauthenticated bookkeeping: any revocation that
+    withdraws a record of this plan's exact target blocks the plan with
+    ``OWNER_REVOCATION_AUTHORITY_UNVERIFIED`` until a versioned signed
+    revocation protocol exists.
     """
 
     from turtle_value_engine.evolution.profile_release import (
@@ -706,6 +710,23 @@ def plan_profile_activation(
     )
 
     blockers: list[str] = []
+    # A revocation is unauthenticated bookkeeping: until a versioned signed
+    # revocation protocol exists, no revocation may shape what this plan
+    # authorizes.  The resolver applies every structurally valid revocation
+    # at face value, so a forged revocation of a dissenting REJECT would
+    # otherwise collapse a CONFLICTING set onto a single signed ACCEPT and
+    # reach READY.  Any revocation that withdraws a record of THIS plan's
+    # exact target therefore blocks the plan; withdrawing a decision can
+    # never increase what the remaining set authorizes.
+    revoked_current_ids = [
+        record_id
+        for record_id in resolution.revoked_record_ids
+        if (withdrawn := records_by_id.get(record_id)) is not None
+        and withdrawn.target_profile_id == target_id
+        and withdrawn.target_profile_sha256 == target_sha
+    ]
+    if revoked_current_ids:
+        blockers.append("OWNER_REVOCATION_AUTHORITY_UNVERIFIED")
     audit_exceptions = list(policy_exceptions)
     fresh_audit = audit_profile_semantics(
         base_profile_path=base_profile_path,
