@@ -1,6 +1,9 @@
 # Phase 7-C3-A — Authenticated Owner Provenance Verifier: Contracts, Threat Model and Offline Verification
 
-Status: **IMPLEMENTED / CI CLOSURE PENDING**
+Status: **IMPLEMENTED / CLOSED**
+Closed at implementation: `ee05e21e56caf6271469d16efd518c2c285143b2`
+(exact-head Actions run `38507640664` `success`; closure record
+`docs/status/phase-7-c3-a-2026-10-14.md`)
 Selected by: the Phase 7-C2-R2 closure record
 (`docs/status/phase-7-c2-r2-2026-10-14.md` §9) following the C2-R1/C2-R2
 post-closure chain (`docs/status/phase-7-c2-r1-2026-10-14.md` §8,
