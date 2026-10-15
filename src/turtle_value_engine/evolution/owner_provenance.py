@@ -399,8 +399,12 @@ class OwnerProvenanceVerificationV1(BaseModel):
 
     ``VERIFIED`` requires every canonical check to pass; any failure keeps
     the dossier ``REJECTED`` naming the failing checks.  The dossier binds
-    the registry, key, statement and decision-content identities, carries no
-    wall-clock field, and is reproducible byte-for-byte offline.
+    the registry by id **and** exact ``content_sha256`` (``registry_id`` is
+    derived from key ids only and is not a trust-content identity: the same
+    key set re-windowed, re-scoped, revoked or un-revoked keeps the id while
+    changing the content), plus the key, statement and decision-content
+    identities, carries no wall-clock field, and is reproducible
+    byte-for-byte offline.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -411,6 +415,7 @@ class OwnerProvenanceVerificationV1(BaseModel):
     schema_version: StrictStr = Field(default="1.0.0", pattern=r"^\d+\.\d+\.\d+$")
     verification_id: StrictStr = Field(min_length=1, max_length=128)
     registry_id: StrictStr = Field(min_length=1, max_length=128)
+    registry_content_sha256: StrictStr = Field(pattern=HASH_PATTERN)
     key_id: StrictStr | None = Field(default=None, min_length=1, max_length=128)
     algorithm: Literal["ED25519"] = "ED25519"
     verification_status: Literal["VERIFIED", "REJECTED"]
@@ -450,6 +455,7 @@ class OwnerProvenanceVerificationV1(BaseModel):
         expected_id = deterministic_id(
             "owner-provenance-verification",
             self.registry_id,
+            self.registry_content_sha256,
             self.key_id or "",
             self.decision_input_content_sha256,
             self.verification_status,
@@ -700,6 +706,7 @@ def verify_owner_provenance(
     verification_id = deterministic_id(
         "owner-provenance-verification",
         registry.registry_id,
+        registry.content_sha256,
         statement.key_id if key_resolved else "",
         statement.decision_input_content_sha256,
         status,
@@ -710,6 +717,7 @@ def verify_owner_provenance(
         "schema_version": "1.0.0",
         "algorithm": PROVENANCE_ALGORITHM,
         "registry_id": registry.registry_id,
+        "registry_content_sha256": registry.content_sha256,
         "key_id": statement.key_id if key_resolved else None,
         "verification_status": status,
         "revocation_status": (
@@ -822,11 +830,14 @@ class SignedOwnerProvenanceVerifier(OwnerDecisionVerifier):
             # authentication).
             if _sha256_hex(decision_source_bytes) != signed_hash:
                 return self._rejected(
-                    identity_passed,
-                    decision_source_bytes,
-                    "OWNER_PROVENANCE_SOURCE_BYTES_MISMATCH",
-                    "the submitted decision bytes are not the exact signed "
-                    "submission this verifier was constructed with",
+                    verification=verification,
+                    identity_passed=identity_passed,
+                    decision_source_bytes=decision_source_bytes,
+                    reason_code="OWNER_PROVENANCE_SOURCE_BYTES_MISMATCH",
+                    detail=(
+                        "the submitted decision bytes are not the exact signed "
+                        "submission this verifier was constructed with"
+                    ),
                 )
             if verification.verification_status == "VERIFIED":
                 return OwnerAuthorityAssessmentV1(
@@ -841,12 +852,16 @@ class SignedOwnerProvenanceVerifier(OwnerDecisionVerifier):
                         "submitted decision-input bytes."
                     ),
                     evidence_content_sha256=_sha256_hex(decision_source_bytes),
+                    attested_key_id=verification.key_id,
+                    attested_registry_id=self._registry.registry_id,
+                    attested_registry_content_sha256=self._registry.content_sha256,
                 )
             return self._rejected(
-                identity_passed,
-                decision_source_bytes,
-                f"OWNER_PROVENANCE_{verification.reason_code}",
-                verification.detail,
+                verification=verification,
+                identity_passed=identity_passed,
+                decision_source_bytes=decision_source_bytes,
+                reason_code=f"OWNER_PROVENANCE_{verification.reason_code}",
+                detail=verification.detail,
             )
 
         # Plan-time re-attestation: the presented record must be *about* the
@@ -893,6 +908,9 @@ class SignedOwnerProvenanceVerifier(OwnerDecisionVerifier):
                     "decision content bind the same submission."
                 ),
                 evidence_content_sha256=_sha256_hex(decision_source_bytes),
+                attested_key_id=verification.key_id,
+                attested_registry_id=self._registry.registry_id,
+                attested_registry_content_sha256=self._registry.content_sha256,
             )
         if not record_binding_ok:
             if unsigned_supersession:
@@ -918,11 +936,17 @@ class SignedOwnerProvenanceVerifier(OwnerDecisionVerifier):
             reason_code = f"OWNER_PROVENANCE_{verification.reason_code}"
             detail = verification.detail
         return self._rejected(
-            identity_passed, decision_source_bytes, reason_code, detail
+            verification=verification,
+            identity_passed=identity_passed,
+            decision_source_bytes=decision_source_bytes,
+            reason_code=reason_code,
+            detail=detail,
         )
 
-    @staticmethod
     def _rejected(
+        self,
+        *,
+        verification: OwnerProvenanceVerificationV1,
         identity_passed: bool,
         decision_source_bytes: bytes,
         reason_code: str,
@@ -936,6 +960,9 @@ class SignedOwnerProvenanceVerifier(OwnerDecisionVerifier):
             reason_code=reason_code,
             detail=detail,
             evidence_content_sha256=_sha256_hex(decision_source_bytes),
+            attested_key_id=verification.key_id,
+            attested_registry_id=self._registry.registry_id,
+            attested_registry_content_sha256=self._registry.content_sha256,
         )
 
 
