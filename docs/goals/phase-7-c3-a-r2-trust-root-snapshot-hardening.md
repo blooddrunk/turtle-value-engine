@@ -1,8 +1,12 @@
 # Phase 7-C3-A-R2 — Trust Root Snapshot Hardening (independent review closure)
 
-Status: **SELECTED / IN PROGRESS**
+Status: **IMPLEMENTED / CLOSED**
+Closed at implementation `04bc196ec510c8b0dedf55a5d690e34adc2b6e5f`
+(exact-head Actions run `38667869689` `success`; merge-head run
+`38668297522` `success`; closure record
+`docs/status/phase-7-c3-a-r2-2026-10-15.md`)
 Selected by: independent post-C3-A-R1 review of main
-`ce9726d2445f578215159722d85ac8027d8d20ac` (branch
+`ce9726d2445f578215159722d85ac8027d8d20ac` (PR #9, branch
 `phase-7-c3-a-r2-trust-root-snapshot-hardening`)
 Objective: make the trust root content-addressed through every artifact that
 depends on it, with fail-on-baseline reproductions, adversarial regressions
