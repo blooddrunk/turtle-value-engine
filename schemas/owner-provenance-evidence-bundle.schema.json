@@ -1,0 +1,700 @@
+{
+  "$defs": {
+    "DecisionProvenanceV1": {
+      "additionalProperties": false,
+      "description": "Where the decision came from, bound by bytes.\n\n``LOCAL_UNSIGNED_JSON`` records that the decision was submitted as a plain\nunsigned local file whose exact bytes hash to ``source_content_sha256``;\nthat binding makes later tampering of the source file detectable, but it\nis provenance bookkeeping \u2014 it never authenticates the submitter.",
+      "properties": {
+        "source_kind": {
+          "enum": [
+            "LOCAL_UNSIGNED_JSON",
+            "VERIFIER_CAPTURED_EVIDENCE"
+          ],
+          "title": "Source Kind",
+          "type": "string"
+        },
+        "source_revision": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Source Revision",
+          "type": "string"
+        },
+        "source_content_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Content Sha256"
+        }
+      },
+      "required": [
+        "source_kind",
+        "source_revision"
+      ],
+      "title": "DecisionProvenanceV1",
+      "type": "object"
+    },
+    "OwnerAuthorityAssessmentV1": {
+      "additionalProperties": false,
+      "description": "Machine-readable authority assessment of one declared decision.\n\n``allowlist_matched`` is ``None`` when no allowlist was configured at all\n(the boundary then cannot even allowlist-check the identity); matching an\nallowlist is necessary but never sufficient for ``VERIFIED``.\n\nThe additive ``attested_*`` fields are structured bookkeeping of the\ntrust root a verifier actually used (key id, registry id, registry\ncontent hash).  They are captured evidence metadata, never authority:\na forged record claiming foreign attested fields changes nothing,\nbecause plan-time authority always comes from a fresh injected-verifier\nassessment whose own attested fields are the ones bound into the plan.\nVerifiers without a registry trust model leave them ``None``.",
+      "properties": {
+        "authority_status": {
+          "enum": [
+            "OWNER_AUTHORITY_UNVERIFIED",
+            "OWNER_AUTHORITY_VERIFIED",
+            "OWNER_AUTHORITY_REJECTED"
+          ],
+          "title": "Authority Status",
+          "type": "string"
+        },
+        "verification_method": {
+          "enum": [
+            "NO_AUTHENTICATED_SOURCE",
+            "INJECTED_VERIFIER"
+          ],
+          "title": "Verification Method",
+          "type": "string"
+        },
+        "verifier_kind": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Verifier Kind"
+        },
+        "allowlist_matched": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Allowlist Matched"
+        },
+        "reason_code": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Reason Code",
+          "type": "string"
+        },
+        "detail": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Detail",
+          "type": "string"
+        },
+        "evidence_content_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Evidence Content Sha256"
+        },
+        "attested_key_id": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Attested Key Id"
+        },
+        "attested_registry_id": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Attested Registry Id"
+        },
+        "attested_registry_content_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Attested Registry Content Sha256"
+        }
+      },
+      "required": [
+        "authority_status",
+        "verification_method",
+        "reason_code",
+        "detail"
+      ],
+      "title": "OwnerAuthorityAssessmentV1",
+      "type": "object"
+    },
+    "OwnerPolicyDecisionRecordV1": {
+      "additionalProperties": false,
+      "description": "Immutable record of one owner decision with complete artifact bindings.\n\nThe record binds the exact base/target profile byte hashes, the release\nmanifest id/content hash, the fresh audit id/content hash, the policy\nexception by BOTH deterministic id and full content hash (C1 exception ids\nomit rationale/declarer, so the id alone is not a content identity), the\nprovenance source revision and the authority assessment.  The\ndeterministic ``decision_record_id`` includes every bound field including\nthe rationale, so any edit anywhere yields a different record identity\nthat the resolver treats as ambiguity rather than silently accepting.",
+      "properties": {
+        "contract": {
+          "const": "owner_policy_decision_record_v1",
+          "default": "owner_policy_decision_record_v1",
+          "title": "Contract",
+          "type": "string"
+        },
+        "decision_record_id": {
+          "minLength": 1,
+          "title": "Decision Record Id",
+          "type": "string"
+        },
+        "decision": {
+          "enum": [
+            "ACCEPT_WITH_EXCEPTION",
+            "REJECT"
+          ],
+          "title": "Decision",
+          "type": "string"
+        },
+        "base_profile_id": {
+          "minLength": 1,
+          "title": "Base Profile Id",
+          "type": "string"
+        },
+        "base_profile_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Base Profile Sha256",
+          "type": "string"
+        },
+        "target_profile_id": {
+          "minLength": 1,
+          "title": "Target Profile Id",
+          "type": "string"
+        },
+        "target_profile_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Target Profile Sha256",
+          "type": "string"
+        },
+        "release_manifest_id": {
+          "minLength": 1,
+          "title": "Release Manifest Id",
+          "type": "string"
+        },
+        "release_manifest_content_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Release Manifest Content Sha256",
+          "type": "string"
+        },
+        "audit_id": {
+          "minLength": 1,
+          "title": "Audit Id",
+          "type": "string"
+        },
+        "audit_content_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Audit Content Sha256",
+          "type": "string"
+        },
+        "exception_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Exception Id"
+        },
+        "exception_content_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Exception Content Sha256"
+        },
+        "rationale": {
+          "maxLength": 4000,
+          "minLength": 20,
+          "title": "Rationale",
+          "type": "string"
+        },
+        "declared_owner_identity": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Declared Owner Identity",
+          "type": "string"
+        },
+        "decided_at": {
+          "maxLength": 32,
+          "minLength": 10,
+          "title": "Decided At",
+          "type": "string"
+        },
+        "provenance": {
+          "$ref": "#/$defs/DecisionProvenanceV1"
+        },
+        "authority": {
+          "$ref": "#/$defs/OwnerAuthorityAssessmentV1"
+        },
+        "supersedes_decision_record_id": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Supersedes Decision Record Id"
+        },
+        "requires_authenticated_owner_authority": {
+          "const": true,
+          "default": true,
+          "title": "Requires Authenticated Owner Authority",
+          "type": "boolean"
+        },
+        "automatic_application_allowed": {
+          "const": false,
+          "default": false,
+          "title": "Automatic Application Allowed",
+          "type": "boolean"
+        },
+        "decision_is_not_execution_request": {
+          "const": true,
+          "default": true,
+          "title": "Decision Is Not Execution Request",
+          "type": "boolean"
+        },
+        "content_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Content Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "decision_record_id",
+        "decision",
+        "base_profile_id",
+        "base_profile_sha256",
+        "target_profile_id",
+        "target_profile_sha256",
+        "release_manifest_id",
+        "release_manifest_content_sha256",
+        "audit_id",
+        "audit_content_sha256",
+        "rationale",
+        "declared_owner_identity",
+        "decided_at",
+        "provenance",
+        "authority",
+        "content_sha256"
+      ],
+      "title": "OwnerPolicyDecisionRecordV1",
+      "type": "object"
+    },
+    "OwnerProvenanceVerificationV1": {
+      "additionalProperties": false,
+      "description": "The deterministic result dossier of one signature verification.\n\n``VERIFIED`` requires every canonical check to pass; any failure keeps\nthe dossier ``REJECTED`` naming the failing checks.  The dossier binds\nthe registry by id **and** exact ``content_sha256`` (``registry_id`` is\nderived from key ids only and is not a trust-content identity: the same\nkey set re-windowed, re-scoped, revoked or un-revoked keeps the id while\nchanging the content), plus the key, statement and decision-content\nidentities, carries no wall-clock field, and is reproducible\nbyte-for-byte offline.",
+      "properties": {
+        "contract": {
+          "const": "owner_provenance_verification_v1",
+          "default": "owner_provenance_verification_v1",
+          "title": "Contract",
+          "type": "string"
+        },
+        "schema_version": {
+          "default": "1.0.0",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "verification_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Verification Id",
+          "type": "string"
+        },
+        "registry_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Registry Id",
+          "type": "string"
+        },
+        "registry_content_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Registry Content Sha256",
+          "type": "string"
+        },
+        "key_id": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Key Id"
+        },
+        "algorithm": {
+          "const": "ED25519",
+          "default": "ED25519",
+          "title": "Algorithm",
+          "type": "string"
+        },
+        "verification_status": {
+          "enum": [
+            "VERIFIED",
+            "REJECTED"
+          ],
+          "title": "Verification Status",
+          "type": "string"
+        },
+        "revocation_status": {
+          "enum": [
+            "NOT_REVOKED",
+            "REVOKED",
+            "UNKNOWN"
+          ],
+          "title": "Revocation Status",
+          "type": "string"
+        },
+        "key_validity": {
+          "enum": [
+            "WITHIN_WINDOW",
+            "OUTSIDE_WINDOW",
+            "UNKNOWN"
+          ],
+          "title": "Key Validity",
+          "type": "string"
+        },
+        "decision_input_content_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Decision Input Content Sha256",
+          "type": "string"
+        },
+        "evidence_content_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Evidence Content Sha256"
+        },
+        "reason_code": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Reason Code",
+          "type": "string"
+        },
+        "detail": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Detail",
+          "type": "string"
+        },
+        "checks": {
+          "items": false,
+          "maxItems": 9,
+          "minItems": 9,
+          "prefixItems": [
+            {
+              "properties": {
+                "name": {
+                  "const": "ALGORITHM_SUPPORTED"
+                }
+              },
+              "required": [
+                "name"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "name": {
+                  "const": "KEY_RESOLUTION"
+                }
+              },
+              "required": [
+                "name"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "name": {
+                  "const": "KEY_IDENTITY_BINDING"
+                }
+              },
+              "required": [
+                "name"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "name": {
+                  "const": "KEY_SCOPE_AUTHORIZED"
+                }
+              },
+              "required": [
+                "name"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "name": {
+                  "const": "KEY_VALIDITY_WINDOW"
+                }
+              },
+              "required": [
+                "name"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "name": {
+                  "const": "KEY_NOT_REVOKED"
+                }
+              },
+              "required": [
+                "name"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "name": {
+                  "const": "DECISION_CONTENT_BINDING"
+                }
+              },
+              "required": [
+                "name"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "name": {
+                  "const": "PURPOSE_BINDING"
+                }
+              },
+              "required": [
+                "name"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "name": {
+                  "const": "SIGNATURE_VERIFIED"
+                }
+              },
+              "required": [
+                "name"
+              ],
+              "type": "object"
+            }
+          ],
+          "title": "Checks",
+          "type": "array"
+        },
+        "content_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Content Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "verification_id",
+        "registry_id",
+        "registry_content_sha256",
+        "verification_status",
+        "revocation_status",
+        "key_validity",
+        "decision_input_content_sha256",
+        "reason_code",
+        "detail",
+        "checks",
+        "content_sha256"
+      ],
+      "title": "OwnerProvenanceVerificationV1",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "One immutable captured evidence unit for a signed decision submission.\n\nBinds the exact canonical decision-input bytes, the signed statement,\nthe trust-root snapshot that was trusted at capture time (id + content\nhash, plus the wrapped registry identity), the deterministic\nverification dossier, the validation outcome and the resulting decision\nrecord (``null`` when validation failed).  The bundle is captured\nevidence, never authority: plan-time authority always comes from fresh\nverification against the operator's *current* trust root.",
+  "properties": {
+    "contract": {
+      "const": "owner_provenance_evidence_bundle_v1",
+      "default": "owner_provenance_evidence_bundle_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "schema_version": {
+      "default": "1.0.0",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "bundle_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Bundle Id",
+      "type": "string"
+    },
+    "decision_input_content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Decision Input Content Sha256",
+      "type": "string"
+    },
+    "statement_content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Statement Content Sha256",
+      "type": "string"
+    },
+    "registry_snapshot_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Registry Snapshot Id",
+      "type": "string"
+    },
+    "registry_snapshot_content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Registry Snapshot Content Sha256",
+      "type": "string"
+    },
+    "registry_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Registry Id",
+      "type": "string"
+    },
+    "registry_content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Registry Content Sha256",
+      "type": "string"
+    },
+    "verification": {
+      "$ref": "#/$defs/OwnerProvenanceVerificationV1"
+    },
+    "validation_state": {
+      "enum": [
+        "VALID",
+        "INVALID"
+      ],
+      "title": "Validation State",
+      "type": "string"
+    },
+    "validation_blockers": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 64,
+      "title": "Validation Blockers",
+      "type": "array"
+    },
+    "record": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/OwnerPolicyDecisionRecordV1"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "record_content_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Record Content Sha256"
+    },
+    "capture_is_evidence_not_authority": {
+      "const": true,
+      "default": true,
+      "title": "Capture Is Evidence Not Authority",
+      "type": "boolean"
+    },
+    "content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Content Sha256",
+      "type": "string"
+    }
+  },
+  "required": [
+    "bundle_id",
+    "decision_input_content_sha256",
+    "statement_content_sha256",
+    "registry_snapshot_id",
+    "registry_snapshot_content_sha256",
+    "registry_id",
+    "registry_content_sha256",
+    "verification",
+    "validation_state",
+    "validation_blockers",
+    "content_sha256"
+  ],
+  "title": "OwnerProvenanceEvidenceBundleV1",
+  "type": "object"
+}

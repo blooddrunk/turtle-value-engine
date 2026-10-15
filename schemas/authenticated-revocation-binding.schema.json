@@ -1,0 +1,55 @@
+{
+  "additionalProperties": false,
+  "description": "Content-bound carrier of one cryptographically verified revocation.\n\nThis contract exists only so the resolver can consume the *result* of a\nfresh signed-revocation verification (Phase 7-C3-B,\n``verify_owner_revocation``) without importing the provenance layer: it\nis a plain data carrier whose fields are copied from a\n``OwnerRevocationPayloadV1`` whose signature was just verified against\nthe trust root by the hosting boundary.  It carries no authority of its\nown \u2014 a binding handed to the resolver without that upstream\nverification is a caller-side protocol violation, and the resolver\nstill fail-closes unless every field matches an actually supplied\nrecord byte-exactly (id, content hash, target binding).",
+  "properties": {
+    "contract": {
+      "const": "authenticated_revocation_binding_v1",
+      "default": "authenticated_revocation_binding_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "revoked_decision_record_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Revoked Decision Record Id",
+      "type": "string"
+    },
+    "revoked_record_content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Revoked Record Content Sha256",
+      "type": "string"
+    },
+    "target_profile_id": {
+      "minLength": 1,
+      "title": "Target Profile Id",
+      "type": "string"
+    },
+    "target_profile_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Target Profile Sha256",
+      "type": "string"
+    },
+    "revoked_by": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Revoked By",
+      "type": "string"
+    },
+    "revoked_at": {
+      "maxLength": 32,
+      "minLength": 10,
+      "title": "Revoked At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "revoked_decision_record_id",
+    "revoked_record_content_sha256",
+    "target_profile_id",
+    "target_profile_sha256",
+    "revoked_by",
+    "revoked_at"
+  ],
+  "title": "AuthenticatedRevocationBindingV1",
+  "type": "object"
+}

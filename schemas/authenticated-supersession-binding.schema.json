@@ -1,0 +1,68 @@
+{
+  "additionalProperties": false,
+  "description": "Content-bound carrier of one cryptographically verified supersession.\n\nSame construction contract as\n:class:`AuthenticatedRevocationBindingV1`: produced only by fresh\nverification of a ``OwnerSupersessionPayloadV1`` against the trust\nroot, binding BOTH the superseded and the superseding record by exact\nid and content hash plus their shared target binding.",
+  "properties": {
+    "contract": {
+      "const": "authenticated_supersession_binding_v1",
+      "default": "authenticated_supersession_binding_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "superseded_decision_record_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Superseded Decision Record Id",
+      "type": "string"
+    },
+    "superseded_record_content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Superseded Record Content Sha256",
+      "type": "string"
+    },
+    "superseding_decision_record_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Superseding Decision Record Id",
+      "type": "string"
+    },
+    "superseding_record_content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Superseding Record Content Sha256",
+      "type": "string"
+    },
+    "target_profile_id": {
+      "minLength": 1,
+      "title": "Target Profile Id",
+      "type": "string"
+    },
+    "target_profile_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Target Profile Sha256",
+      "type": "string"
+    },
+    "superseded_by": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Superseded By",
+      "type": "string"
+    },
+    "superseded_at": {
+      "maxLength": 32,
+      "minLength": 10,
+      "title": "Superseded At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "superseded_decision_record_id",
+    "superseded_record_content_sha256",
+    "superseding_decision_record_id",
+    "superseding_record_content_sha256",
+    "target_profile_id",
+    "target_profile_sha256",
+    "superseded_by",
+    "superseded_at"
+  ],
+  "title": "AuthenticatedSupersessionBindingV1",
+  "type": "object"
+}

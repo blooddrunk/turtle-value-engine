@@ -303,6 +303,22 @@
       "default": null,
       "title": "Decision"
     },
+    "authenticated_revoked_record_ids": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 256,
+      "title": "Authenticated Revoked Record Ids",
+      "type": "array"
+    },
+    "authenticated_superseded_record_ids": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 256,
+      "title": "Authenticated Superseded Record Ids",
+      "type": "array"
+    },
     "config_inventory": {
       "items": {
         "$ref": "#/$defs/ConfigReferenceV1"

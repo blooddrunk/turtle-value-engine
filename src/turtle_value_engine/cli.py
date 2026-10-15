@@ -59,6 +59,28 @@ from turtle_value_engine.evolution.owner_decision import (
     record_owner_decision_file,
     validate_owner_decision,
 )
+from turtle_value_engine.evolution.owner_lifecycle import (
+    OwnerSignedRevocationEvidenceV1,
+    OwnerSignedSupersessionEvidenceV1,
+)
+from turtle_value_engine.evolution.owner_provenance import (
+    PROVENANCE_ALGORITHM,
+    OwnerProvenanceKeyRecordV1,
+    OwnerSignedDecisionStatementV1,
+    SignedOwnerProvenanceVerifier,
+    build_owner_provenance_key_registry,
+    owner_provenance_key_id,
+)
+from turtle_value_engine.evolution.owner_trust_store import (
+    OwnerProvenanceTrustStore,
+    build_owner_decision_evidence_bundle,
+    enroll_registry_key,
+    load_owner_decision_evidence,
+    persist_owner_decision_evidence,
+    reverify_owner_decision_evidence,
+    revoke_registry_key,
+    rotate_registry_key,
+)
 from turtle_value_engine.evolution.profile_release import build_profile_release
 from turtle_value_engine.evolution.profile_semantic_audit import (
     PolicyApprovalClaimV1,
@@ -633,6 +655,30 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help="optional destination for the validation dossier",
     )
+    evolution_record_decision.add_argument(
+        "--signed-statement",
+        type=Path,
+        default=None,
+        help="owner-signed decision statement (owner_signed_decision_statement_"
+        "v1 JSON); requires --trust-root and enables real Ed25519 provenance "
+        "verification at record time",
+    )
+    evolution_record_decision.add_argument(
+        "--trust-root",
+        type=Path,
+        default=None,
+        help="operator-owned trust-root directory of versioned registry "
+        "snapshots (the independent trust root; never part of a decision "
+        "bundle)",
+    )
+    evolution_record_decision.add_argument(
+        "--evidence-root",
+        type=Path,
+        default=None,
+        help="evidence store root under which the captured proof bundle "
+        "(decision input, statement, registry snapshot, verification "
+        "dossier, record) is persisted create-only",
+    )
     evolution_plan_activation = evolution_commands.add_parser(
         "plan-activation",
         help="derive one read-only activation/rollback plan from a resolved "
@@ -694,6 +740,39 @@ def _build_parser() -> argparse.ArgumentParser:
             help=f"affected {option.replace('-', ' ')} reference (repeatable, "
             "explicit paths only)",
         )
+    evolution_plan_activation.add_argument(
+        "--trust-root",
+        type=Path,
+        default=None,
+        help="operator-owned trust-root directory; its LATEST validated "
+        "registry snapshot re-attests the decision authority and verifies "
+        "any signed lifecycle statements freshly",
+    )
+    evolution_plan_activation.add_argument(
+        "--authority-evidence",
+        type=Path,
+        default=None,
+        help="captured evidence bundle (bundle.json from `tve evolution "
+        "record-decision --evidence-root`) supplying the signed statement "
+        "and exact decision-input bytes for plan-time re-attestation; "
+        "requires --trust-root",
+    )
+    evolution_plan_activation.add_argument(
+        "--signed-revocation",
+        action="append",
+        type=Path,
+        default=None,
+        help="owner-signed revocation evidence JSON (payload + statement); "
+        "verified freshly against --trust-root (repeatable)",
+    )
+    evolution_plan_activation.add_argument(
+        "--signed-supersession",
+        action="append",
+        type=Path,
+        default=None,
+        help="owner-signed supersession evidence JSON (payload + "
+        "statement); verified freshly against --trust-root (repeatable)",
+    )
     evolution_plan_activation.add_argument("--output", required=True, type=Path)
     evolution_decision_dossier = evolution_commands.add_parser(
         "decision-dossier",
@@ -720,6 +799,69 @@ def _build_parser() -> argparse.ArgumentParser:
         "(repeatable)",
     )
     evolution_decision_dossier.add_argument("--output", required=True, type=Path)
+
+    provenance_parser = subparsers.add_parser(
+        "provenance",
+        help="trusted owner-provenance operations (registry snapshots, "
+        "evidence re-verification; offline, fail-closed)",
+    )
+    provenance_commands = provenance_parser.add_subparsers(
+        dest="provenance_command", required=True
+    )
+    provenance_registry = provenance_commands.add_parser(
+        "registry",
+        help="trusted public-key registry lifecycle (append-only versioned "
+        "snapshots; committed snapshots are immutable)",
+    )
+    provenance_registry_commands = provenance_registry.add_subparsers(
+        dest="provenance_registry_command", required=True
+    )
+    for command_name, command_help in (
+        ("init", "create sequence 1 of a new trust root from one public key"),
+        ("enroll", "enroll one additional trusted public key (new snapshot)"),
+        (
+            "rotate",
+            "revoke the old key and enroll the new one in one atomic snapshot",
+        ),
+    ):
+        # NB: never reuse the name ``parser`` here — it would shadow (and
+        # ultimately replace the return value of) the root parser built by
+        # ``_build_parser``.
+        command_parser = provenance_registry_commands.add_parser(
+            command_name, help=command_help
+        )
+        command_parser.add_argument("--trust-root", required=True, type=Path)
+        command_parser.add_argument("--public-key", required=True, type=Path)
+        command_parser.add_argument("--owner-identity", required=True)
+        command_parser.add_argument("--valid-from", required=True)
+        command_parser.add_argument("--valid-until", required=True)
+        command_parser.add_argument(
+            "--authorized-decisions",
+            nargs="+",
+            choices=("ACCEPT_WITH_EXCEPTION", "REJECT"),
+            default=["ACCEPT_WITH_EXCEPTION", "REJECT"],
+            help="decision values this key can sign (default: both)",
+        )
+        if command_name == "rotate":
+            command_parser.add_argument("--old-key-id", required=True)
+            command_parser.add_argument("--reference", required=True)
+    provenance_registry_revoke = provenance_registry_commands.add_parser(
+        "revoke", help="revoke one registered key with a mandatory reference"
+    )
+    provenance_registry_revoke.add_argument("--trust-root", required=True, type=Path)
+    provenance_registry_revoke.add_argument("--key-id", required=True)
+    provenance_registry_revoke.add_argument("--reference", required=True)
+    provenance_registry_status = provenance_registry_commands.add_parser(
+        "status", help="read-only summary of the validated snapshot chain"
+    )
+    provenance_registry_status.add_argument("--trust-root", required=True, type=Path)
+    provenance_verify_evidence = provenance_commands.add_parser(
+        "verify-evidence",
+        help="offline re-verification of one persisted evidence bundle "
+        "(byte-identical dossier replay)",
+    )
+    provenance_verify_evidence.add_argument("--bundle", required=True, type=Path)
+    provenance_verify_evidence.add_argument("--output", type=Path, default=None)
 
     watch_parser = subparsers.add_parser(
         "watch",
@@ -1701,6 +1843,43 @@ def _load_policy_exceptions(paths: list[Path] | None) -> list[VersionedPolicyExc
     return exceptions
 
 
+def _guard_trust_root_separation(
+    trust_root: Path, untrusted: dict[str, Path | None]
+) -> None:
+    """Keep the trust root structurally independent of the decision bundle.
+
+    The trust root is an operator-owned location.  A path that arrives with
+    the same submitted bundle must never become the authoritative root
+    merely because it was provided: refuse a trust root located inside (or
+    equal to) the directory of any submitted decision artifact, and refuse
+    decision artifacts stored inside the trust root.
+    """
+
+    resolved_root = trust_root.resolve()
+    for label, path in untrusted.items():
+        if path is None:
+            continue
+        resolved = path.resolve()
+        if resolved.is_relative_to(resolved_root):
+            raise ValueError(
+                f"{label} must not be stored inside the trust root directory "
+                f"(the trust root holds registry snapshots only): {path}"
+            )
+        if resolved_root.is_relative_to(resolved.parent):
+            raise ValueError(
+                "the trust root must not be located inside the submitted "
+                f"decision bundle directory ({label}: {path}); supply the "
+                "trust root as an independent operator-owned location, never "
+                "as part of the bundle it is asked to trust"
+            )
+
+
+def _load_trust_root_snapshot(trust_root: Path):
+    """Load the LATEST fully validated snapshot of one trust root."""
+
+    return OwnerProvenanceTrustStore(trust_root).latest_snapshot()
+
+
 def _run_evolution_record_decision_command(args: argparse.Namespace) -> object:
     """Validate and record one owner decision; the record never activates."""
 
@@ -1711,6 +1890,9 @@ def _run_evolution_record_decision_command(args: argparse.Namespace) -> object:
         "release-manifest": args.release_manifest,
         "boundary-input": args.boundary_input,
         "owner-allowlist": args.owner_allowlist,
+        "signed-statement": args.signed_statement,
+        "trust-root": args.trust_root,
+        "evidence-root": args.evidence_root,
     }
     for index, path in enumerate(args.policy_exception or []):
         inputs[f"policy-exception[{index}]"] = path
@@ -1724,6 +1906,13 @@ def _run_evolution_record_decision_command(args: argparse.Namespace) -> object:
                 "--output must not overwrite --record-output: "
                 f"{args.output}"
             )
+    if args.evidence_root is not None and (
+        args.signed_statement is None or args.trust_root is None
+    ):
+        raise ValueError(
+            "--evidence-root requires --signed-statement and --trust-root "
+            "(evidence capture is the signed-provenance flow)"
+        )
 
     decision_source_bytes = args.decision_input.read_bytes()
     decision_input = OwnerPolicyDecisionInputV1.model_validate(
@@ -1742,6 +1931,38 @@ def _run_evolution_record_decision_command(args: argparse.Namespace) -> object:
     if args.boundary_input is not None:
         boundary_input = parse_normalized_input(args.boundary_input.read_bytes())
 
+    # Real provenance verification (Phase 7-C3-B): the trust root and the
+    # signed statement are explicit operator inputs, never bundle content;
+    # the verifier proves the statement binds these exact submitted bytes.
+    verifier = None
+    snapshot = None
+    statement = None
+    if (args.signed_statement is None) != (args.trust_root is None):
+        raise ValueError(
+            "--signed-statement and --trust-root must be supplied together"
+        )
+    if args.signed_statement is not None and args.trust_root is not None:
+        _guard_trust_root_separation(
+            args.trust_root,
+            {
+                "decision-input": args.decision_input,
+                "signed-statement": args.signed_statement,
+                **{
+                    f"policy-exception[{index}]": path
+                    for index, path in enumerate(args.policy_exception or [])
+                },
+            },
+        )
+        statement = OwnerSignedDecisionStatementV1.model_validate(
+            _read_json(args.signed_statement)
+        )
+        snapshot = _load_trust_root_snapshot(args.trust_root)
+        verifier = SignedOwnerProvenanceVerifier(
+            registry=snapshot.registry,
+            statement=statement,
+            decision_input_bytes=decision_source_bytes,
+        )
+
     validation = validate_owner_decision(
         decision_input=decision_input,
         decision_source_bytes=decision_source_bytes,
@@ -1751,8 +1972,30 @@ def _run_evolution_record_decision_command(args: argparse.Namespace) -> object:
         boundary_input=boundary_input,
         policy_exceptions=policy_exceptions,
         owner_allowlist=owner_allowlist,
-        verifier=None,
+        verifier=verifier,
     )
+    evidence_payload = None
+    if snapshot is not None and statement is not None and args.evidence_root is not None:
+        bundle = build_owner_decision_evidence_bundle(
+            validation=validation,
+            decision_input_bytes=decision_source_bytes,
+            statement=statement,
+            registry_snapshot=snapshot,
+        )
+        persist_owner_decision_evidence(
+            args.evidence_root,
+            bundle,
+            decision_input_bytes=decision_source_bytes,
+            statement=statement,
+            registry_snapshot=snapshot,
+        )
+        evidence_payload = {
+            "bundle_id": bundle.bundle_id,
+            "path": str(args.evidence_root / bundle.bundle_id / "bundle.json"),
+            "validation_state": bundle.validation_state,
+            "verification_status": bundle.verification.verification_status,
+            "registry_snapshot_id": bundle.registry_snapshot_id,
+        }
     if args.output is not None:
         _write_create_or_identical(
             args.output,
@@ -1763,8 +2006,17 @@ def _run_evolution_record_decision_command(args: argparse.Namespace) -> object:
         record_owner_decision_file(validation.record, args.record_output)
     elif validation.state == "INVALID":
         # The validation dossier is printed and persisted; exit code 1
-        # classifies the outcome without discarding any evidence.
-        raise _CliPayloadExit(validation, 1)
+        # classifies the outcome without discarding any evidence.  The
+        # composite shape (validation + evidence pointer) is used only in
+        # the signed-capture flow, keeping the plain flow byte-compatible.
+        raise _CliPayloadExit(
+            {"validation": validation, "evidence_bundle": evidence_payload}
+            if evidence_payload is not None
+            else validation,
+            1,
+        )
+    if evidence_payload is not None:
+        return {"validation": validation, "evidence_bundle": evidence_payload}
     return validation
 
 
@@ -1777,11 +2029,15 @@ def _run_evolution_plan_activation_command(args: argparse.Namespace) -> object:
         "release-manifest": args.release_manifest,
         "boundary-input": args.boundary_input,
         "project-config": args.project_config,
+        "trust-root": args.trust_root,
+        "authority-evidence": args.authority_evidence,
     }
     for label, paths in (
         ("decision-record", args.decision_record),
         ("revocation", args.revocation),
         ("policy-exception", args.policy_exception),
+        ("signed-revocation", args.signed_revocation),
+        ("signed-supersession", args.signed_supersession),
         ("watchlist", args.watchlist),
         ("normalized-input", args.normalized_input),
         ("backtest-manifest", args.backtest_manifest),
@@ -1792,12 +2048,78 @@ def _run_evolution_plan_activation_command(args: argparse.Namespace) -> object:
             inputs[f"{label}[{index}]"] = path
     _guard_c2_output_path(args.output, label="--output", inputs=inputs)
 
+    if (
+        args.trust_root is None
+        and (
+            args.authority_evidence is not None
+            or args.signed_revocation
+            or args.signed_supersession
+        )
+    ):
+        raise ValueError(
+            "--authority-evidence, --signed-revocation and "
+            "--signed-supersession all require --trust-root (the trust root "
+            "is the operator's explicit trust decision)"
+        )
+
     decision_records = [load_decision_record(path) for path in args.decision_record]
     revocations = [load_decision_revocation(path) for path in (args.revocation or [])]
     policy_exceptions = _load_policy_exceptions(args.policy_exception)
     boundary_input = None
     if args.boundary_input is not None:
         boundary_input = parse_normalized_input(args.boundary_input.read_bytes())
+
+    # Plan-time authority is derived from FRESH verification (C2-R1/C3-B):
+    # the current latest trust-root snapshot re-attests the record through
+    # the real verifier over the captured evidence's exact signed bytes,
+    # and every signed lifecycle statement is verified against the same
+    # current trust root inside the plan boundary.
+    authority_verifier = None
+    lifecycle_trust_root = None
+    if args.trust_root is not None:
+        _guard_trust_root_separation(
+            args.trust_root,
+            {
+                **{
+                    f"decision-record[{index}]": path
+                    for index, path in enumerate(args.decision_record)
+                },
+                **{
+                    f"revocation[{index}]": path
+                    for index, path in enumerate(args.revocation or [])
+                },
+                **{
+                    f"policy-exception[{index}]": path
+                    for index, path in enumerate(args.policy_exception or [])
+                },
+                **{
+                    f"signed-revocation[{index}]": path
+                    for index, path in enumerate(args.signed_revocation or [])
+                },
+                **{
+                    f"signed-supersession[{index}]": path
+                    for index, path in enumerate(args.signed_supersession or [])
+                },
+                "authority-evidence": args.authority_evidence,
+            },
+        )
+        snapshot = _load_trust_root_snapshot(args.trust_root)
+        lifecycle_trust_root = snapshot.registry
+        if args.authority_evidence is not None:
+            loaded = load_owner_decision_evidence(args.authority_evidence)
+            authority_verifier = SignedOwnerProvenanceVerifier(
+                registry=snapshot.registry,
+                statement=loaded.statement,
+                decision_input_bytes=loaded.decision_input_bytes,
+            )
+    signed_revocations = [
+        OwnerSignedRevocationEvidenceV1.model_validate(_read_json(path))
+        for path in (args.signed_revocation or [])
+    ]
+    signed_supersessions = [
+        OwnerSignedSupersessionEvidenceV1.model_validate(_read_json(path))
+        for path in (args.signed_supersession or [])
+    ]
 
     plan = plan_profile_activation(
         base_profile_path=args.base_profile,
@@ -1807,6 +2129,10 @@ def _run_evolution_plan_activation_command(args: argparse.Namespace) -> object:
         decision_records=decision_records,
         revocations=revocations,
         policy_exceptions=policy_exceptions,
+        authority_verifier=authority_verifier,
+        signed_revocations=signed_revocations,
+        signed_supersessions=signed_supersessions,
+        lifecycle_trust_root=lifecycle_trust_root,
         project_config_path=args.project_config,
         watchlist_paths=args.watchlist or [],
         normalized_input_paths=args.normalized_input or [],
@@ -1864,6 +2190,182 @@ def _run_evolution_decision_dossier_command(args: argparse.Namespace) -> object:
             "synthetic boundary evidence, not a performance proof"
         ),
     }
+
+
+def _load_public_key_material(path: Path) -> str:
+    """Read one canonical base64 Ed25519 public key from a file."""
+
+    text = path.read_text(encoding="utf-8").strip()
+    if "\n" in text or "\r" in text:
+        raise ValueError(
+            f"public-key file must contain exactly one base64 line: {path}"
+        )
+    # Validates decoding, length and canonical RFC 4648 encoding, and
+    # derives the key id (never a caller-supplied identity).
+    owner_provenance_key_id(algorithm=PROVENANCE_ALGORITHM, public_key_base64=text)
+    return text
+
+
+def _key_record_from_args(args: argparse.Namespace) -> OwnerProvenanceKeyRecordV1:
+    public_key_base64 = _load_public_key_material(args.public_key)
+    key_id = owner_provenance_key_id(
+        algorithm=PROVENANCE_ALGORITHM, public_key_base64=public_key_base64
+    )
+    return OwnerProvenanceKeyRecordV1(
+        key_id=key_id,
+        algorithm=PROVENANCE_ALGORITHM,
+        public_key_base64=public_key_base64,
+        owner_identity=args.owner_identity,
+        authorized_decisions=args.authorized_decisions,
+        valid_from=args.valid_from,
+        valid_until=args.valid_until,
+    )
+
+
+def _run_provenance_command(args: argparse.Namespace) -> object:
+    """Trusted owner-provenance operations; offline, fail-closed, immutable."""
+
+    if args.provenance_command == "registry":
+        if args.provenance_registry_command == "init":
+            return _run_provenance_registry_init_command(args)
+        if args.provenance_registry_command == "enroll":
+            return _run_provenance_registry_enroll_command(args)
+        if args.provenance_registry_command == "revoke":
+            return _run_provenance_registry_revoke_command(args)
+        if args.provenance_registry_command == "rotate":
+            return _run_provenance_registry_rotate_command(args)
+        if args.provenance_registry_command == "status":
+            return _run_provenance_registry_status_command(args)
+        raise ValueError(f"unknown provenance registry command: {args.provenance_registry_command}")
+    if args.provenance_command == "verify-evidence":
+        return _run_provenance_verify_evidence_command(args)
+    raise ValueError(f"unknown provenance command: {args.provenance_command}")
+
+
+def _run_provenance_registry_init_command(args: argparse.Namespace) -> object:
+    record = _key_record_from_args(args)
+    store = OwnerProvenanceTrustStore(args.trust_root)
+    registry = build_owner_provenance_key_registry([record])
+    result = store.init_store(registry)
+    snapshot = store.latest_snapshot()
+    return {
+        "status": result,
+        "trust_root": str(args.trust_root),
+        "sequence": snapshot.sequence,
+        "snapshot_id": snapshot.snapshot_id,
+        "snapshot_content_sha256": snapshot.snapshot_content_sha256,
+        "registry_id": snapshot.registry.registry_id,
+        "registry_content_sha256": snapshot.registry.content_sha256,
+        "key_id": record.key_id,
+        "note": (
+            "trust root initialized with the owner's PUBLIC key only; "
+            "snapshots are append-only and immutable"
+        ),
+    }
+
+
+def _run_provenance_registry_enroll_command(args: argparse.Namespace) -> object:
+    record = _key_record_from_args(args)
+    store = OwnerProvenanceTrustStore(args.trust_root)
+    snapshot, result = store.apply_snapshot_operation(
+        lambda latest: enroll_registry_key(latest, record)
+    )
+    return {
+        "status": result,
+        "trust_root": str(args.trust_root),
+        "sequence": snapshot.sequence,
+        "snapshot_id": snapshot.snapshot_id,
+        "snapshot_content_sha256": snapshot.snapshot_content_sha256,
+        "enrolled_key_id": record.key_id,
+    }
+
+
+def _run_provenance_registry_revoke_command(args: argparse.Namespace) -> object:
+    store = OwnerProvenanceTrustStore(args.trust_root)
+    snapshot, result = store.apply_snapshot_operation(
+        lambda latest: revoke_registry_key(latest, args.key_id, args.reference)
+    )
+    return {
+        "status": result,
+        "trust_root": str(args.trust_root),
+        "sequence": snapshot.sequence,
+        "snapshot_id": snapshot.snapshot_id,
+        "snapshot_content_sha256": snapshot.snapshot_content_sha256,
+        "revoked_key_id": args.key_id,
+        "revocation_reference": args.reference,
+        "note": (
+            "revocation takes effect for every FUTURE verification against "
+            "this trust root; already-captured evidence stays auditable"
+        ),
+    }
+
+
+def _run_provenance_registry_rotate_command(args: argparse.Namespace) -> object:
+    record = _key_record_from_args(args)
+    store = OwnerProvenanceTrustStore(args.trust_root)
+    snapshot, result = store.apply_snapshot_operation(
+        lambda latest: rotate_registry_key(
+            latest, args.old_key_id, record, args.reference
+        )
+    )
+    return {
+        "status": result,
+        "trust_root": str(args.trust_root),
+        "sequence": snapshot.sequence,
+        "snapshot_id": snapshot.snapshot_id,
+        "snapshot_content_sha256": snapshot.snapshot_content_sha256,
+        "revoked_key_id": args.old_key_id,
+        "enrolled_key_id": record.key_id,
+        "revocation_reference": args.reference,
+    }
+
+
+def _run_provenance_registry_status_command(args: argparse.Namespace) -> object:
+    snapshot = _load_trust_root_snapshot(args.trust_root)
+    return {
+        "trust_root": str(args.trust_root),
+        "sequence": snapshot.sequence,
+        "snapshot_id": snapshot.snapshot_id,
+        "snapshot_content_sha256": snapshot.snapshot_content_sha256,
+        "registry_id": snapshot.registry.registry_id,
+        "registry_content_sha256": snapshot.registry.content_sha256,
+        "key_count": len(snapshot.registry.keys),
+        "keys": [
+            {
+                "key_id": item.key_id,
+                "owner_identity": item.owner_identity,
+                "authorized_decisions": item.authorized_decisions,
+                "valid_from": item.valid_from,
+                "valid_until": item.valid_until,
+                "revoked": item.revoked,
+                **(
+                    {"revocation_reference": item.revocation_reference}
+                    if item.revocation_reference is not None
+                    else {}
+                ),
+            }
+            for item in snapshot.registry.keys
+        ],
+    }
+
+
+def _run_provenance_verify_evidence_command(args: argparse.Namespace) -> object:
+    """Offline replay of one persisted evidence bundle; read-only."""
+
+    result = reverify_owner_decision_evidence(args.bundle)
+    if args.output is not None:
+        _guard_c2_output_path(
+            args.output,
+            label="--output",
+            inputs={"bundle": args.bundle},
+            published_inputs=(),
+        )
+        _write_create_or_identical(
+            args.output, _export_bytes(result), label="--output"
+        )
+    if result.replay_status != "REPLAYS_BYTE_IDENTICAL":
+        raise _CliPayloadExit(result, 1)
+    return result
 
 
 def _materialization_output_forbidden_paths(
@@ -3046,6 +3548,8 @@ def main(argv: list[str] | None = None) -> int:
             result = _run_calibration_command(args)
         elif args.command == "evolution":
             result = _run_evolution_command(args)
+        elif args.command == "provenance":
+            result = _run_provenance_command(args)
         elif args.command == "historical":
             result = _run_historical_command(args)
         elif args.command == "watch":

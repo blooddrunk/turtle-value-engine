@@ -60,12 +60,21 @@ from turtle_value_engine.providers.normalization import deterministic_id
 
 from .materialization_pair import _regular_file_bytes
 from .owner_decision import (
+    AuthenticatedRevocationBindingV1,
+    AuthenticatedSupersessionBindingV1,
     OwnerAuthorityAssessmentV1,
     OwnerDecisionVerifier,
     OwnerPolicyDecisionRecordV1,
     OwnerPolicyDecisionRevocationV1,
     resolve_owner_decision_authority,
 )
+from .owner_lifecycle import (
+    OwnerSignedRevocationEvidenceV1,
+    OwnerSignedSupersessionEvidenceV1,
+    verify_owner_revocation,
+    verify_owner_supersession,
+)
+from .owner_provenance import OwnerProvenanceKeyRegistryV1
 from .profile_semantic_audit import (
     ProfileSemanticAuditV1,
     VersionedPolicyExceptionV1,
@@ -531,6 +540,12 @@ class ProfileActivationPlanV1(BaseModel):
         default=None, pattern=HASH_PATTERN
     )
     decision: Literal["ACCEPT_WITH_EXCEPTION", "REJECT"] | None = None
+    authenticated_revoked_record_ids: list[StrictStr] = Field(
+        default_factory=list, max_length=256
+    )
+    authenticated_superseded_record_ids: list[StrictStr] = Field(
+        default_factory=list, max_length=256
+    )
     config_inventory: list[ConfigReferenceV1] = Field(max_length=2_048)
     rollback: RollbackPlanV1
     blockers: list[StrictStr] = Field(max_length=128)
@@ -583,6 +598,8 @@ class ProfileActivationPlanV1(BaseModel):
             self.authority_reverification_registry_content_sha256 or "",
             self.decision_record_id or "",
             self.decision_record_content_sha256 or "",
+            sorted(self.authenticated_revoked_record_ids),
+            sorted(self.authenticated_superseded_record_ids),
             sorted(self.blockers),
             sorted(
                 f"{item.kind}:{item.path}:{item.compatibility}"
@@ -688,6 +705,9 @@ def plan_profile_activation(
     revocations: Sequence[OwnerPolicyDecisionRevocationV1] = (),
     policy_exceptions: Sequence[VersionedPolicyExceptionV1] = (),
     authority_verifier: OwnerDecisionVerifier | None = None,
+    signed_revocations: Sequence[OwnerSignedRevocationEvidenceV1] = (),
+    signed_supersessions: Sequence[OwnerSignedSupersessionEvidenceV1] = (),
+    lifecycle_trust_root: OwnerProvenanceKeyRegistryV1 | None = None,
     project_config_path: str | Path | None = None,
     watchlist_paths: Sequence[str | Path] = (),
     normalized_input_paths: Sequence[str | Path] = (),
@@ -710,6 +730,15 @@ def plan_profile_activation(
     withdraws a record of this plan's exact target blocks the plan with
     ``OWNER_REVOCATION_AUTHORITY_UNVERIFIED`` until a versioned signed
     revocation protocol exists.
+
+    Phase 7-C3-B adds the authenticated lifecycle path: signed revocation
+    and supersession statements are verified **fresh** here against
+    ``lifecycle_trust_root`` (never trusted because they were supplied);
+    only a statement that fully verifies becomes an authenticated binding
+    for the resolver.  Without a trust root, any signed statement blocks
+    the plan with ``LIFECYCLE_TRUST_ROOT_REQUIRED``; a statement that fails
+    verification blocks it with ``SIGNED_REVOCATION_REJECTED:*`` /
+    ``SIGNED_SUPERSESSION_REJECTED:*``.
     """
 
     from turtle_value_engine.evolution.profile_release import (
@@ -733,14 +762,62 @@ def plan_profile_activation(
         raise ActivationPlanError(f"PLAN_INPUTS_UNREADABLE: {str(exc)[:300]}") from exc
 
     records_by_id = {record.decision_record_id: record for record in decision_records}
+    blockers: list[str] = []
+
+    # C3-B: signed lifecycle statements are verified FRESH against the
+    # supplied trust root — a statement is never trusted because it was
+    # supplied, and only a fully verified statement may remove a record.
+    lifecycle_blockers: list[str] = []
+    authenticated_revocations: list[AuthenticatedRevocationBindingV1] = []
+    authenticated_supersessions: list[AuthenticatedSupersessionBindingV1] = []
+    if signed_revocations or signed_supersessions:
+        if lifecycle_trust_root is None:
+            lifecycle_blockers.append("LIFECYCLE_TRUST_ROOT_REQUIRED")
+        else:
+            from .owner_lifecycle import (
+                revocation_binding_from_payload,
+                supersession_binding_from_payload,
+            )
+
+            for evidence in signed_revocations:
+                dossier = verify_owner_revocation(
+                    payload=evidence.payload,
+                    statement=evidence.statement,
+                    registry=lifecycle_trust_root,
+                )
+                if dossier.verification_status != "VERIFIED":
+                    lifecycle_blockers.append(
+                        f"SIGNED_REVOCATION_REJECTED:{dossier.reason_code}"
+                    )
+                else:
+                    authenticated_revocations.append(
+                        revocation_binding_from_payload(evidence.payload)
+                    )
+            for evidence in signed_supersessions:
+                dossier = verify_owner_supersession(
+                    payload=evidence.payload,
+                    statement=evidence.statement,
+                    registry=lifecycle_trust_root,
+                )
+                if dossier.verification_status != "VERIFIED":
+                    lifecycle_blockers.append(
+                        f"SIGNED_SUPERSESSION_REJECTED:{dossier.reason_code}"
+                    )
+                else:
+                    authenticated_supersessions.append(
+                        supersession_binding_from_payload(evidence.payload)
+                    )
+    blockers.extend(lifecycle_blockers)
+
     resolution = resolve_owner_decision_authority(
         target_profile_id=target_id,
         target_profile_sha256=target_sha,
         records=list(decision_records),
         revocations=list(revocations),
+        authenticated_revocations=authenticated_revocations,
+        authenticated_supersessions=authenticated_supersessions,
     )
 
-    blockers: list[str] = []
     # A revocation is unauthenticated bookkeeping: until a versioned signed
     # revocation protocol exists, no revocation may shape what this plan
     # authorizes.  The resolver applies every structurally valid revocation
@@ -948,6 +1025,12 @@ def plan_profile_activation(
             resolution.active_decision_record_content_sha256
         ),
         decision=resolution.active_decision,
+        authenticated_revoked_record_ids=list(
+            resolution.authenticated_revoked_record_ids
+        ),
+        authenticated_superseded_record_ids=list(
+            resolution.authenticated_superseded_record_ids
+        ),
         config_inventory=inventory,
         rollback=rollback,
         blockers=deduped_blockers,
@@ -974,6 +1057,8 @@ def plan_profile_activation(
         payload["authority_reverification_registry_content_sha256"] or "",
         payload["decision_record_id"] or "",
         payload["decision_record_content_sha256"] or "",
+        sorted(payload["authenticated_revoked_record_ids"]),
+        sorted(payload["authenticated_superseded_record_ids"]),
         sorted(payload["blockers"]),
         sorted(
             f"{item['kind']}:{item['path']}:{item['compatibility']}"

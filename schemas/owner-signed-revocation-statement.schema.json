@@ -1,0 +1,72 @@
+{
+  "additionalProperties": false,
+  "description": "Immutable Ed25519 signature evidence over one revocation payload.",
+  "properties": {
+    "contract": {
+      "const": "owner_signed_revocation_statement_v1",
+      "default": "owner_signed_revocation_statement_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "schema_version": {
+      "default": "1.0.0",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "purpose": {
+      "const": "turtle-value-engine:owner-decision-revocation:v1",
+      "title": "Purpose",
+      "type": "string"
+    },
+    "algorithm": {
+      "const": "ED25519",
+      "default": "ED25519",
+      "title": "Algorithm",
+      "type": "string"
+    },
+    "key_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Key Id",
+      "type": "string"
+    },
+    "signature_base64": {
+      "pattern": "^[A-Za-z0-9+/]+={0,2}$",
+      "title": "Signature Base64",
+      "type": "string"
+    },
+    "payload_content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Payload Content Sha256",
+      "type": "string"
+    },
+    "signed_content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Signed Content Sha256",
+      "type": "string"
+    },
+    "declared_owner_identity": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Declared Owner Identity",
+      "type": "string"
+    },
+    "content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Content Sha256",
+      "type": "string"
+    }
+  },
+  "required": [
+    "purpose",
+    "key_id",
+    "signature_base64",
+    "payload_content_sha256",
+    "signed_content_sha256",
+    "declared_owner_identity",
+    "content_sha256"
+  ],
+  "title": "OwnerSignedRevocationStatementV1",
+  "type": "object"
+}

@@ -367,6 +367,59 @@ class OwnerPolicyDecisionRecordV1(BaseModel):
         return cls.model_validate(payload)
 
 
+class AuthenticatedRevocationBindingV1(BaseModel):
+    """Content-bound carrier of one cryptographically verified revocation.
+
+    This contract exists only so the resolver can consume the *result* of a
+    fresh signed-revocation verification (Phase 7-C3-B,
+    ``verify_owner_revocation``) without importing the provenance layer: it
+    is a plain data carrier whose fields are copied from a
+    ``OwnerRevocationPayloadV1`` whose signature was just verified against
+    the trust root by the hosting boundary.  It carries no authority of its
+    own — a binding handed to the resolver without that upstream
+    verification is a caller-side protocol violation, and the resolver
+    still fail-closes unless every field matches an actually supplied
+    record byte-exactly (id, content hash, target binding).
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    contract: Literal["authenticated_revocation_binding_v1"] = (
+        "authenticated_revocation_binding_v1"
+    )
+    revoked_decision_record_id: StrictStr = Field(min_length=1, max_length=128)
+    revoked_record_content_sha256: StrictStr = Field(pattern=HASH_PATTERN)
+    target_profile_id: StrictStr = Field(min_length=1)
+    target_profile_sha256: StrictStr = Field(pattern=HASH_PATTERN)
+    revoked_by: StrictStr = Field(min_length=1, max_length=256)
+    revoked_at: StrictStr = Field(min_length=10, max_length=32)
+
+
+class AuthenticatedSupersessionBindingV1(BaseModel):
+    """Content-bound carrier of one cryptographically verified supersession.
+
+    Same construction contract as
+    :class:`AuthenticatedRevocationBindingV1`: produced only by fresh
+    verification of a ``OwnerSupersessionPayloadV1`` against the trust
+    root, binding BOTH the superseded and the superseding record by exact
+    id and content hash plus their shared target binding.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    contract: Literal["authenticated_supersession_binding_v1"] = (
+        "authenticated_supersession_binding_v1"
+    )
+    superseded_decision_record_id: StrictStr = Field(min_length=1, max_length=128)
+    superseded_record_content_sha256: StrictStr = Field(pattern=HASH_PATTERN)
+    superseding_decision_record_id: StrictStr = Field(min_length=1, max_length=128)
+    superseding_record_content_sha256: StrictStr = Field(pattern=HASH_PATTERN)
+    target_profile_id: StrictStr = Field(min_length=1)
+    target_profile_sha256: StrictStr = Field(pattern=HASH_PATTERN)
+    superseded_by: StrictStr = Field(min_length=1, max_length=256)
+    superseded_at: StrictStr = Field(min_length=10, max_length=32)
+
+
 class OwnerPolicyDecisionRevocationV1(BaseModel):
     """Immutable record withdrawing one previously recorded decision.
 
@@ -1020,6 +1073,12 @@ class DecisionAuthorityResolutionV1(BaseModel):
     stale_record_ids: list[StrictStr] = Field(max_length=256)
     revoked_record_ids: list[StrictStr] = Field(max_length=256)
     superseded_record_ids: list[StrictStr] = Field(max_length=256)
+    authenticated_revoked_record_ids: list[StrictStr] = Field(
+        default_factory=list, max_length=256
+    )
+    authenticated_superseded_record_ids: list[StrictStr] = Field(
+        default_factory=list, max_length=256
+    )
     resolved_state: Literal[
         "ACCEPT_VERIFIED",
         "ACCEPT_UNVERIFIED",
@@ -1081,6 +1140,8 @@ class DecisionAuthorityResolutionV1(BaseModel):
             sorted(self.stale_record_ids),
             sorted(self.revoked_record_ids),
             sorted(self.superseded_record_ids),
+            sorted(self.authenticated_revoked_record_ids),
+            sorted(self.authenticated_superseded_record_ids),
             sorted(self.blockers),
         )
         if self.resolution_id != expected_id:
@@ -1130,8 +1191,20 @@ def resolve_owner_decision_authority(
     target_profile_sha256: str,
     records: Sequence[OwnerPolicyDecisionRecordV1],
     revocations: Sequence[OwnerPolicyDecisionRevocationV1] = (),
+    authenticated_revocations: Sequence[AuthenticatedRevocationBindingV1] = (),
+    authenticated_supersessions: Sequence[AuthenticatedSupersessionBindingV1] = (),
 ) -> DecisionAuthorityResolutionV1:
-    """Resolve all records for one exact target identity, fail-closed."""
+    """Resolve all records for one exact target identity, fail-closed.
+
+    ``authenticated_revocations`` / ``authenticated_supersessions`` are the
+    Phase 7-C3-B carriers of cryptographically verified lifecycle
+    statements: each must match an actually supplied record byte-exactly
+    (record id, content hash and target binding) or the resolution fails
+    closed.  Only the hosting boundary that freshly verified the signed
+    statement against its trust root may construct them; unsigned
+    revocations keep their unchanged face-value semantics (and keep
+    blocking any plan they shape, per C3-A-R1).
+    """
 
     by_id: dict[str, OwnerPolicyDecisionRecordV1] = {}
     for record in records:
@@ -1159,6 +1232,73 @@ def resolve_owner_decision_authority(
                 f"{revocation.revocation_id}"
             )
 
+    authenticated_revoked_ids: set[str] = set()
+    for binding in authenticated_revocations:
+        revoked = by_id.get(binding.revoked_decision_record_id)
+        if revoked is None:
+            raise OwnerDecisionError(
+                "authenticated revocation references an unknown decision "
+                f"record: {binding.revoked_decision_record_id}"
+            )
+        if (
+            revoked.content_sha256 != binding.revoked_record_content_sha256
+            or revoked.target_profile_id != binding.target_profile_id
+            or revoked.target_profile_sha256 != binding.target_profile_sha256
+        ):
+            raise OwnerDecisionError(
+                "authenticated revocation does not bind the revoked record's "
+                "exact content and target: "
+                f"{binding.revoked_decision_record_id}"
+            )
+        authenticated_revoked_ids.add(binding.revoked_decision_record_id)
+
+    authenticated_superseded_ids: set[str] = set()
+    authenticated_links: dict[str, str] = {}
+    for binding in authenticated_supersessions:
+        superseded = by_id.get(binding.superseded_decision_record_id)
+        superseding = by_id.get(binding.superseding_decision_record_id)
+        if superseded is None or superseding is None:
+            raise OwnerDecisionError(
+                "authenticated supersession references an unknown decision "
+                f"record: {binding.superseded_decision_record_id} -> "
+                f"{binding.superseding_decision_record_id}"
+            )
+        if (
+            superseded.content_sha256 != binding.superseded_record_content_sha256
+            or superseding.content_sha256
+            != binding.superseding_record_content_sha256
+            or superseded.target_profile_id != binding.target_profile_id
+            or superseded.target_profile_sha256 != binding.target_profile_sha256
+            or superseding.target_profile_id != binding.target_profile_id
+            or superseding.target_profile_sha256 != binding.target_profile_sha256
+        ):
+            raise OwnerDecisionError(
+                "authenticated supersession does not bind both records' "
+                "exact content and shared target: "
+                f"{binding.superseded_decision_record_id} -> "
+                f"{binding.superseding_decision_record_id}"
+            )
+        if (
+            binding.superseded_decision_record_id
+            == binding.superseding_decision_record_id
+        ):
+            raise OwnerDecisionError("a record cannot supersede itself")
+        # Exact duplicate bindings collapse idempotently (the record-set
+        # precedent); a DISTINCT authenticated link of the same shape is a
+        # different statement and is caught by double-supersession counting.
+        if authenticated_links.get(binding.superseding_decision_record_id) not in (
+            None,
+            binding.superseded_decision_record_id,
+        ):
+            raise OwnerDecisionError(
+                "one record carries two distinct authenticated supersessions: "
+                f"{binding.superseding_decision_record_id}"
+            )
+        authenticated_links[binding.superseding_decision_record_id] = (
+            binding.superseded_decision_record_id
+        )
+        authenticated_superseded_ids.add(binding.superseded_decision_record_id)
+
     superseded: set[str] = set()
     for record in by_id.values():
         target_id = record.supersedes_decision_record_id
@@ -1181,21 +1321,29 @@ def resolve_owner_decision_authority(
         if target_id == record.decision_record_id:
             raise OwnerDecisionError("a record cannot supersede itself")
         superseded.add(target_id)
+    # Union of unsigned-field and authenticated "superseder -> superseded"
+    # links; cycles and double supersession are fail-closed across both
+    # kinds (an unsigned field and an authenticated statement of the same
+    # supersession do not conflict — they assert the same edge).
+    successor_links: dict[str, str] = dict(authenticated_links)
+    for record in by_id.values():
+        if record.supersedes_decision_record_id is not None:
+            successor_links[record.decision_record_id] = (
+                record.supersedes_decision_record_id
+            )
+    superseded.update(authenticated_superseded_ids)
     for record in by_id.values():
         seen = {record.decision_record_id}
         cursor = record
-        while cursor.supersedes_decision_record_id is not None:
-            following = by_id[cursor.supersedes_decision_record_id]
+        while (following_id := successor_links.get(cursor.decision_record_id)) is not None:
+            following = by_id[following_id]
             if following.decision_record_id in seen:
                 raise OwnerDecisionError("supersession chain contains a cycle")
             seen.add(following.decision_record_id)
             cursor = following
     superseder_counts: dict[str, int] = {}
-    for record in by_id.values():
-        if record.supersedes_decision_record_id is not None:
-            superseder_counts[record.supersedes_decision_record_id] = (
-                superseder_counts.get(record.supersedes_decision_record_id, 0) + 1
-            )
+    for target_id in successor_links.values():
+        superseder_counts[target_id] = superseder_counts.get(target_id, 0) + 1
     doubly_superseded = {key for key, count in superseder_counts.items() if count > 1}
     if doubly_superseded:
         raise OwnerDecisionError(
@@ -1219,6 +1367,7 @@ def resolve_owner_decision_authority(
         record
         for record in current
         if record.decision_record_id not in revoked_ids
+        and record.decision_record_id not in authenticated_revoked_ids
         and record.decision_record_id not in superseded
     ]
 
@@ -1276,6 +1425,8 @@ def resolve_owner_decision_authority(
         stale_record_ids=stale_ids,
         revoked_record_ids=sorted(revoked_ids & set(by_id)),
         superseded_record_ids=sorted(superseded),
+        authenticated_revoked_record_ids=sorted(authenticated_revoked_ids),
+        authenticated_superseded_record_ids=sorted(authenticated_superseded_ids),
         resolved_state=resolved_state,
         active_decision=active_record.decision if active_record else None,
         active_decision_record_id=(
@@ -1306,6 +1457,8 @@ def resolve_owner_decision_authority(
         sorted(payload["stale_record_ids"]),
         sorted(payload["revoked_record_ids"]),
         sorted(payload["superseded_record_ids"]),
+        sorted(payload["authenticated_revoked_record_ids"]),
+        sorted(payload["authenticated_superseded_record_ids"]),
         sorted(payload["blockers"]),
     )
     payload["content_sha256"] = hashlib.sha256(
@@ -1393,6 +1546,8 @@ __all__ = [
     "CHECK_EXCEPTION_COVERS_ALL_FINDINGS",
     "CHECK_INPUT_BINDINGS_MATCH_BYTES",
     "CHECK_PROVENANCE_BOUND",
+    "AuthenticatedRevocationBindingV1",
+    "AuthenticatedSupersessionBindingV1",
     "DecisionAuthorityResolutionV1",
     "DecisionProvenanceV1",
     "DecisionValidationCheckV1",

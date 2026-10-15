@@ -1,0 +1,305 @@
+{
+  "$defs": {
+    "OwnerProvenanceVerificationV1": {
+      "additionalProperties": false,
+      "description": "The deterministic result dossier of one signature verification.\n\n``VERIFIED`` requires every canonical check to pass; any failure keeps\nthe dossier ``REJECTED`` naming the failing checks.  The dossier binds\nthe registry by id **and** exact ``content_sha256`` (``registry_id`` is\nderived from key ids only and is not a trust-content identity: the same\nkey set re-windowed, re-scoped, revoked or un-revoked keeps the id while\nchanging the content), plus the key, statement and decision-content\nidentities, carries no wall-clock field, and is reproducible\nbyte-for-byte offline.",
+      "properties": {
+        "contract": {
+          "const": "owner_provenance_verification_v1",
+          "default": "owner_provenance_verification_v1",
+          "title": "Contract",
+          "type": "string"
+        },
+        "schema_version": {
+          "default": "1.0.0",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "verification_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Verification Id",
+          "type": "string"
+        },
+        "registry_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Registry Id",
+          "type": "string"
+        },
+        "registry_content_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Registry Content Sha256",
+          "type": "string"
+        },
+        "key_id": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Key Id"
+        },
+        "algorithm": {
+          "const": "ED25519",
+          "default": "ED25519",
+          "title": "Algorithm",
+          "type": "string"
+        },
+        "verification_status": {
+          "enum": [
+            "VERIFIED",
+            "REJECTED"
+          ],
+          "title": "Verification Status",
+          "type": "string"
+        },
+        "revocation_status": {
+          "enum": [
+            "NOT_REVOKED",
+            "REVOKED",
+            "UNKNOWN"
+          ],
+          "title": "Revocation Status",
+          "type": "string"
+        },
+        "key_validity": {
+          "enum": [
+            "WITHIN_WINDOW",
+            "OUTSIDE_WINDOW",
+            "UNKNOWN"
+          ],
+          "title": "Key Validity",
+          "type": "string"
+        },
+        "decision_input_content_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Decision Input Content Sha256",
+          "type": "string"
+        },
+        "evidence_content_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Evidence Content Sha256"
+        },
+        "reason_code": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Reason Code",
+          "type": "string"
+        },
+        "detail": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Detail",
+          "type": "string"
+        },
+        "checks": {
+          "items": false,
+          "maxItems": 9,
+          "minItems": 9,
+          "prefixItems": [
+            {
+              "properties": {
+                "name": {
+                  "const": "ALGORITHM_SUPPORTED"
+                }
+              },
+              "required": [
+                "name"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "name": {
+                  "const": "KEY_RESOLUTION"
+                }
+              },
+              "required": [
+                "name"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "name": {
+                  "const": "KEY_IDENTITY_BINDING"
+                }
+              },
+              "required": [
+                "name"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "name": {
+                  "const": "KEY_SCOPE_AUTHORIZED"
+                }
+              },
+              "required": [
+                "name"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "name": {
+                  "const": "KEY_VALIDITY_WINDOW"
+                }
+              },
+              "required": [
+                "name"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "name": {
+                  "const": "KEY_NOT_REVOKED"
+                }
+              },
+              "required": [
+                "name"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "name": {
+                  "const": "DECISION_CONTENT_BINDING"
+                }
+              },
+              "required": [
+                "name"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "name": {
+                  "const": "PURPOSE_BINDING"
+                }
+              },
+              "required": [
+                "name"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "name": {
+                  "const": "SIGNATURE_VERIFIED"
+                }
+              },
+              "required": [
+                "name"
+              ],
+              "type": "object"
+            }
+          ],
+          "title": "Checks",
+          "type": "array"
+        },
+        "content_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Content Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "verification_id",
+        "registry_id",
+        "registry_content_sha256",
+        "verification_status",
+        "revocation_status",
+        "key_validity",
+        "decision_input_content_sha256",
+        "reason_code",
+        "detail",
+        "checks",
+        "content_sha256"
+      ],
+      "title": "OwnerProvenanceVerificationV1",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Deterministic offline replay result for one persisted evidence bundle.\n\n``REPLAYS_BYTE_IDENTICAL`` requires the freshly recomputed dossier to\nequal the embedded one byte-for-byte and the embedded record (when\npresent) to bind the persisted decision-input bytes exactly; anything\nelse is a named ``MISMATCH``.  This is audit replay of captured\nevidence, never a fresh authority claim for a plan.",
+  "properties": {
+    "contract": {
+      "const": "owner_provenance_evidence_reverification_v1",
+      "default": "owner_provenance_evidence_reverification_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "schema_version": {
+      "default": "1.0.0",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "reverification_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Reverification Id",
+      "type": "string"
+    },
+    "bundle_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Bundle Id",
+      "type": "string"
+    },
+    "replay_status": {
+      "enum": [
+        "REPLAYS_BYTE_IDENTICAL",
+        "MISMATCH"
+      ],
+      "title": "Replay Status",
+      "type": "string"
+    },
+    "mismatches": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 64,
+      "title": "Mismatches",
+      "type": "array"
+    },
+    "replayed_verification": {
+      "$ref": "#/$defs/OwnerProvenanceVerificationV1"
+    },
+    "content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Content Sha256",
+      "type": "string"
+    }
+  },
+  "required": [
+    "reverification_id",
+    "bundle_id",
+    "replay_status",
+    "mismatches",
+    "replayed_verification",
+    "content_sha256"
+  ],
+  "title": "EvidenceReverificationV1",
+  "type": "object"
+}

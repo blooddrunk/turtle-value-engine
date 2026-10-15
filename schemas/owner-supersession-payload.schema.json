@@ -1,0 +1,82 @@
+{
+  "additionalProperties": false,
+  "description": "The canonical bytes an owner signs to replace one recorded decision.\n\nBinds BOTH the superseded and the superseding record by exact id and\nfull content SHA-256 plus their shared target binding, so the\nauthenticated replacement cannot be redirected onto other records.",
+  "properties": {
+    "contract": {
+      "const": "owner_signed_supersession_payload_v1",
+      "default": "owner_signed_supersession_payload_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "superseded_decision_record_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Superseded Decision Record Id",
+      "type": "string"
+    },
+    "superseded_record_content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Superseded Record Content Sha256",
+      "type": "string"
+    },
+    "superseding_decision_record_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Superseding Decision Record Id",
+      "type": "string"
+    },
+    "superseding_record_content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Superseding Record Content Sha256",
+      "type": "string"
+    },
+    "target_profile_id": {
+      "minLength": 1,
+      "title": "Target Profile Id",
+      "type": "string"
+    },
+    "target_profile_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Target Profile Sha256",
+      "type": "string"
+    },
+    "superseded_by": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Superseded By",
+      "type": "string"
+    },
+    "superseded_at": {
+      "maxLength": 32,
+      "minLength": 10,
+      "title": "Superseded At",
+      "type": "string"
+    },
+    "rationale": {
+      "maxLength": 4000,
+      "minLength": 20,
+      "title": "Rationale",
+      "type": "string"
+    },
+    "source_revision": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Source Revision",
+      "type": "string"
+    }
+  },
+  "required": [
+    "superseded_decision_record_id",
+    "superseded_record_content_sha256",
+    "superseding_decision_record_id",
+    "superseding_record_content_sha256",
+    "target_profile_id",
+    "target_profile_sha256",
+    "superseded_by",
+    "superseded_at",
+    "rationale",
+    "source_revision"
+  ],
+  "title": "OwnerSupersessionPayloadV1",
+  "type": "object"
+}

@@ -1,18 +1,28 @@
-# Owner Provenance Verification — Architecture (Phase 7-C3-A)
+# Owner Provenance Verification — Architecture (Phase 7-C3-A + 7-C3-B)
 
-Status: implemented at the C3-A boundary (contracts, threat model, pure
-offline verification, the real library verifier class, deterministic test
-fixtures). C3-B (trusted identity registration lifecycle, evidence-capture
-tooling, revocation workflow, end-to-end record integration and any CLI
-wiring) remains a separately selected package. No activation executor exists.
+Status: C3-A implemented at its offline verification boundary (contracts,
+threat model, pure offline verification, the real library verifier class,
+deterministic test fixtures) with the R1 binding hardening and R2
+trust-root snapshot hardening. C3-B implemented at its trusted operations
+boundary: the versioned registry-snapshot store (trust-root lifecycle:
+init/enroll/revoke/rotate), the immutable create-only evidence bundles
+with offline byte-identical re-verification, the signed
+revocation/supersession protocols, and the fail-closed CLI integration of
+the real verifier (`tve provenance …` plus the `record-decision` /
+`plan-activation` provenance extensions). No activation executor exists.
 
 Related documents:
 
-- Goal: `docs/goals/phase-7-c3-a-authenticated-owner-provenance-verifier.md`
+- Goals: `docs/goals/phase-7-c3-a-authenticated-owner-provenance-verifier.md`,
+  `docs/goals/phase-7-c3-b-trusted-owner-provenance-operations.md`
 - Trust-model interface and record/plan contracts:
   `docs/architecture/owner-policy-decision-and-activation-plan.md`
-- Module: `src/turtle_value_engine/evolution/owner_provenance.py`
-- Tests: `tests/test_owner_provenance.py`
+- Modules: `src/turtle_value_engine/evolution/owner_provenance.py`,
+  `src/turtle_value_engine/evolution/owner_lifecycle.py`,
+  `src/turtle_value_engine/evolution/owner_trust_store.py`
+- Tests: `tests/test_owner_provenance.py`,
+  `tests/test_owner_trust_operations.py`
+- Owner procedure: `docs/operations/owner-provenance-walkthrough.md`
 
 ## 1. Why digital signatures, and why Ed25519
 
@@ -226,6 +236,103 @@ id was bound. The corrected invariants:
   fabricating a binding, and no new READY-blocking rule is imposed on the
   verifier interface in this package.
 
+### 3.3 C3-B trusted operations (store, evidence, lifecycle, CLI)
+
+**Trust-root store** (`owner_trust_store.OwnerProvenanceTrustStore`). The
+trust root is an operator-owned directory of append-only versioned
+snapshots (`snapshots/snapshot-<seq>.json`). One
+`OwnerProvenanceRegistrySnapshotV1` wraps a full
+`OwnerProvenanceKeyRegistryV1` with its sequence number, a content-hash
+link to its parent (sequence 1 has none) and its own deterministic id plus
+full-content SHA-256 — so the same key set under different trust content
+re-windowed, re-scoped or re-revoked is a *distinct* snapshot identity
+(the R2 content-snapshot rule applied to the store itself). Every load
+validates the complete chain fail-closed (contiguity from 1, parent links,
+model-level tamper detection, foreign files); publication is a single
+exclusive `O_CREAT|O_EXCL` open (byte-identical appends idempotent, any
+foreign content a classified immutable error, symlinks refused). Trust
+lifecycle operations are pure snapshot transitions — `enroll` (new public
+key), `revoke` (mandatory reference), `rotate` (old revoked + new enrolled
+in ONE atomic snapshot) — persisted only as the next snapshot; committed
+snapshots are never rewritten.
+
+**Evidence bundles.** One capture = one immutable directory per
+deterministic `bundle_id` holding the exact canonical decision-input
+bytes, the signed statement, the registry snapshot trusted at capture
+time, the verification dossier, the resulting decision record (or `null`
+when validation failed) and the manifest binding them
+(`OwnerProvenanceEvidenceBundleV1`; `capture_is_evidence_not_authority`
+fixed). Capture runs the real record-time boundary
+(`validate_owner_decision` with the real verifier injected over the exact
+submitted bytes) plus the pure dossier; a signature that does not verify
+yields an honest INVALID/REJECTED bundle, never a fabricated VERIFIED
+capture. `load_owner_decision_evidence` is the strict fail-closed loader
+(every component hash must match the manifest) used by consumers;
+`reverify_owner_decision_evidence` is the audit replay: it *compares* —
+recomputing the dossier from the actual persisted bytes and naming every
+divergence — so even a fully self-consistent forged bundle whose embedded
+dossier claims a verification the bytes cannot reproduce surfaces as a
+`MISMATCH`.
+
+**Signed revocation/supersession** (`owner_lifecycle`). Two narrowly
+versioned domain-separated protocols parallel to the decision statement:
+`turtle-value-engine:owner-decision-revocation:v1` over
+`OwnerRevocationPayloadV1` (exact revoked record id AND content SHA-256,
+target binding, identity, date, rationale) and
+`turtle-value-engine:owner-decision-supersession:v1` over
+`OwnerSupersessionPayloadV1` (both records bound by id and content
+SHA-256, shared target). Verification is pure/offline against the same
+trust root with its own pinned eight-check sequence (ALGORITHM_SUPPORTED,
+KEY_RESOLUTION, KEY_IDENTITY_BINDING, KEY_VALIDITY_WINDOW,
+KEY_NOT_REVOKED, PAYLOAD_CONTENT_BINDING, PURPOSE_BINDING,
+SIGNATURE_VERIFIED). A key may sign lifecycle statements when enrolled,
+identity-bound, in-window and not revoked — the key's decision-value scope
+governs which decisions it may make, not withdrawals, which can only
+reduce or restate authorization. Verified payloads feed the resolver only
+through the plain content-bound carriers
+(`AuthenticatedRevocationBindingV1` /
+`AuthenticatedSupersessionBindingV1` in `owner_decision`), which must
+match actually supplied records byte-exactly or the resolution fails
+closed; cycles and double supersession stay fail-closed across unsigned
+and authenticated links, exact duplicate bindings collapse idempotently.
+
+**Plan-boundary freshness.** `plan_profile_activation` verifies every
+signed lifecycle statement freshly against the supplied
+`lifecycle_trust_root`: without one, any statement blocks
+(`LIFECYCLE_TRUST_ROOT_REQUIRED`); a failing statement blocks
+(`SIGNED_REVOCATION_REJECTED:*` / `SIGNED_SUPERSESSION_REJECTED:*`). Only
+a fully verified statement becomes a resolver binding. Unsigned
+revocations keep their unchanged C3-A-R1 semantics (any unsigned
+revocation that withdraws a record of the planned target still blocks with
+`OWNER_REVOCATION_AUTHORITY_UNVERIFIED`); an *authenticated* revocation of
+a dissenting REJECT legitimately resolves a conflicting set — it is the
+owner's own signed statement, verified fresh. The resolution and plan
+contracts carry the additive `authenticated_revoked_record_ids` /
+`authenticated_superseded_record_ids`, which participate in their identity
+derivations.
+
+**CLI integration (the real verifier only).** `tve provenance registry
+init|enroll|revoke|rotate|status` manage the trust root;
+`tve provenance verify-evidence` replays one bundle (exit 0/1);
+`tve evolution record-decision --signed-statement … --trust-root …
+[--evidence-root …]` captures VERIFIED records with evidence (the default
+unsigned flow is byte-compatible); `tve evolution plan-activation
+--trust-root … --authority-evidence … [--signed-revocation …]
+[--signed-supersession …]` re-attests authority freshly against the trust
+root's **latest** snapshot — registry revocation/rotation takes effect
+immediately — and verifies lifecycle statements the same way. There is no
+verifier selector, no environment-derived trust and no fake-verifier
+escape hatch; the CLI constructs `SignedOwnerProvenanceVerifier` at
+exactly two authorized sites (source-scanned by tests).
+
+**Trust-root ownership.** The trust root is supplied by the operator as
+its own path; no decision artifact field designates it (none exists and
+none may be added). The CLI additionally refuses a trust root located
+inside the directory of any submitted decision artifact (and decision
+artifacts stored inside the trust root), so a submitted bundle can never
+smuggle the trust root it is asked to be verified under — supplying the
+trust root stays a visible, structurally independent operator action.
+
 ## 4. Threat model
 
 In scope and cryptographically blocked (each with a deterministic negative
@@ -240,16 +347,17 @@ crypto dependency.
 Out of scope, documented honestly:
 
 - **Private-key compromise** — mitigation is owner key custody plus the
-  explicit registry revocation record; verification fail-closes on revoked
-  keys. Revocation *workflow* tooling is C3-B.
+  registry revocation record: `tve provenance registry revoke` appends the
+   revoking snapshot and every future verification under that trust root
+   fails closed (proven end-to-end by the C3-B CLI walkthrough test).
 - **Registry substitution** — the registry is an explicit independent
-  input; a hosting process that supplies a different registry has visibly
-  changed the trust root (registry id and content hash are bound into every
-  verification dossier, and the fresh re-attestation trust root into every
-  activation plan — §3.2). Nothing in a decision file can influence it.
+   input; the operator's choice of `--trust-root` is the visible trust
+   decision, structurally separated from every submitted bundle (§3.3),
+   with registry id and content hash bound into every verification
+   dossier, every evidence bundle and every activation plan (§3.2).
 - **Side-channel/timing attacks** on the offline verifier — the attacker
-  model (local decision files, no secrets at verification time) does not
-  expose a secret-dependent computation.
+   model (local decision files, no secrets at verification time) does not
+   expose a secret-dependent computation.
 
 ## 5. Determinism and auditability
 
@@ -265,19 +373,15 @@ Out of scope, documented honestly:
   claimed — C3-A proves the boundary, it does not exercise real owner
   authority.
 
-## 6. Owner signing operations (outside this repository, for C3-B)
+## 6. Owner signing operations (outside this repository)
 
-1. Generate an offline Ed25519 keypair and register the **public** key in
-   the trusted registry file (identity, scope, validity window) kept
-   outside Git or in an owner-controlled trust location.
-2. Prepare the decision input; serialize it with the provided canonical
-   helper; sign the domain-prefixed message with the private key
-   (`openssl pkeyutl -sign -rawin` or a short `cryptography` script).
-3. Assemble the statement with
-   `build_owner_signed_decision_statement(signature=..., key_id=...,
-   decision_input=...)` and submit it alongside the decision input to the
-   hosting process that injects `SignedOwnerProvenanceVerifier`.
-4. The private key is never committed, never passed through chat, and never
-   read by this repository; compromise handling is key revocation in the
-   registry (a new explicit registry revision), after which every
-   verification of that key fails closed.
+The complete practical procedure — generating the owner key outside the
+repository, registering only its public key through the trust-root store,
+signing exact canonical payloads, capturing with the real verifier,
+replaying evidence offline, exercising signed revocation/supersession and
+revoking trust — is documented step by step in
+`docs/operations/owner-provenance-walkthrough.md`. The private key is
+never committed, never passed through chat, and never read by this
+repository; compromise handling is key revocation in the trust root (one
+new immutable snapshot), after which every future verification of that
+key fails closed while already-captured evidence stays auditable.

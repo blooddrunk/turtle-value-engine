@@ -1,0 +1,225 @@
+{
+  "additionalProperties": false,
+  "description": "The deterministic dossier of one signed-supersession verification.",
+  "properties": {
+    "contract": {
+      "const": "owner_supersession_verification_v1",
+      "default": "owner_supersession_verification_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "schema_version": {
+      "default": "1.0.0",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "verification_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Verification Id",
+      "type": "string"
+    },
+    "purpose": {
+      "const": "turtle-value-engine:owner-decision-supersession:v1",
+      "title": "Purpose",
+      "type": "string"
+    },
+    "registry_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Registry Id",
+      "type": "string"
+    },
+    "registry_content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Registry Content Sha256",
+      "type": "string"
+    },
+    "key_id": {
+      "anyOf": [
+        {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Key Id"
+    },
+    "algorithm": {
+      "const": "ED25519",
+      "default": "ED25519",
+      "title": "Algorithm",
+      "type": "string"
+    },
+    "verification_status": {
+      "enum": [
+        "VERIFIED",
+        "REJECTED"
+      ],
+      "title": "Verification Status",
+      "type": "string"
+    },
+    "key_validity": {
+      "enum": [
+        "WITHIN_WINDOW",
+        "OUTSIDE_WINDOW",
+        "UNKNOWN"
+      ],
+      "title": "Key Validity",
+      "type": "string"
+    },
+    "superseded_record_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Superseded Record Id",
+      "type": "string"
+    },
+    "superseding_record_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Superseding Record Id",
+      "type": "string"
+    },
+    "payload_content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Payload Content Sha256",
+      "type": "string"
+    },
+    "reason_code": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Reason Code",
+      "type": "string"
+    },
+    "detail": {
+      "maxLength": 2000,
+      "minLength": 1,
+      "title": "Detail",
+      "type": "string"
+    },
+    "checks": {
+      "items": false,
+      "maxItems": 8,
+      "minItems": 8,
+      "prefixItems": [
+        {
+          "properties": {
+            "name": {
+              "const": "ALGORITHM_SUPPORTED"
+            }
+          },
+          "required": [
+            "name"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "name": {
+              "const": "KEY_RESOLUTION"
+            }
+          },
+          "required": [
+            "name"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "name": {
+              "const": "KEY_IDENTITY_BINDING"
+            }
+          },
+          "required": [
+            "name"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "name": {
+              "const": "KEY_VALIDITY_WINDOW"
+            }
+          },
+          "required": [
+            "name"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "name": {
+              "const": "KEY_NOT_REVOKED"
+            }
+          },
+          "required": [
+            "name"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "name": {
+              "const": "PAYLOAD_CONTENT_BINDING"
+            }
+          },
+          "required": [
+            "name"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "name": {
+              "const": "PURPOSE_BINDING"
+            }
+          },
+          "required": [
+            "name"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "name": {
+              "const": "SIGNATURE_VERIFIED"
+            }
+          },
+          "required": [
+            "name"
+          ],
+          "type": "object"
+        }
+      ],
+      "title": "Checks",
+      "type": "array"
+    },
+    "content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Content Sha256",
+      "type": "string"
+    }
+  },
+  "required": [
+    "verification_id",
+    "purpose",
+    "registry_id",
+    "registry_content_sha256",
+    "verification_status",
+    "key_validity",
+    "superseded_record_id",
+    "superseding_record_id",
+    "payload_content_sha256",
+    "reason_code",
+    "detail",
+    "checks",
+    "content_sha256"
+  ],
+  "title": "OwnerSupersessionVerificationV1",
+  "type": "object"
+}
