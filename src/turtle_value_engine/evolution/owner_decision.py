@@ -119,6 +119,14 @@ class OwnerAuthorityAssessmentV1(BaseModel):
     ``allowlist_matched`` is ``None`` when no allowlist was configured at all
     (the boundary then cannot even allowlist-check the identity); matching an
     allowlist is necessary but never sufficient for ``VERIFIED``.
+
+    The additive ``attested_*`` fields are structured bookkeeping of the
+    trust root a verifier actually used (key id, registry id, registry
+    content hash).  They are captured evidence metadata, never authority:
+    a forged record claiming foreign attested fields changes nothing,
+    because plan-time authority always comes from a fresh injected-verifier
+    assessment whose own attested fields are the ones bound into the plan.
+    Verifiers without a registry trust model leave them ``None``.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -130,6 +138,15 @@ class OwnerAuthorityAssessmentV1(BaseModel):
     reason_code: StrictStr = Field(min_length=1, max_length=128)
     detail: StrictStr = Field(min_length=1, max_length=2_000)
     evidence_content_sha256: StrictStr | None = Field(default=None, pattern=HASH_PATTERN)
+    attested_key_id: StrictStr | None = Field(
+        default=None, min_length=1, max_length=128
+    )
+    attested_registry_id: StrictStr | None = Field(
+        default=None, min_length=1, max_length=128
+    )
+    attested_registry_content_sha256: StrictStr | None = Field(
+        default=None, pattern=HASH_PATTERN
+    )
 
 
 class OwnerDecisionVerifier(ABC):

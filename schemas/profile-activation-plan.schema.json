@@ -151,7 +151,7 @@
     }
   },
   "additionalProperties": false,
-  "description": "Immutable read-only activation plan; execution never happens here.",
+  "description": "Immutable read-only activation plan; execution never happens here.\n\nThe plan binds the exact fresh-audit, release-manifest and active-record\nidentities it was derived from, and (C3-A-R2) the trust root that\nre-attested the authority: ``authority_reverification_registry_id`` /\n``authority_reverification_registry_content_sha256`` come exclusively\nfrom the fresh injected-verifier assessment, never from the persisted\nrecord claim, and participate in the ``plan_id`` derivation \u2014 two\ndifferent trust roots can never produce the same READY plan identity.",
   "properties": {
     "contract": {
       "const": "profile_activation_plan_v1",
@@ -233,6 +233,33 @@
       ],
       "title": "Authority Reverification Status",
       "type": "string"
+    },
+    "authority_reverification_registry_id": {
+      "anyOf": [
+        {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Authority Reverification Registry Id"
+    },
+    "authority_reverification_registry_content_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Authority Reverification Registry Content Sha256"
     },
     "decision_record_id": {
       "anyOf": [

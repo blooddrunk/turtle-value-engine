@@ -1,6 +1,6 @@
 {
   "additionalProperties": false,
-  "description": "The deterministic result dossier of one signature verification.\n\n``VERIFIED`` requires every canonical check to pass; any failure keeps\nthe dossier ``REJECTED`` naming the failing checks.  The dossier binds\nthe registry, key, statement and decision-content identities, carries no\nwall-clock field, and is reproducible byte-for-byte offline.",
+  "description": "The deterministic result dossier of one signature verification.\n\n``VERIFIED`` requires every canonical check to pass; any failure keeps\nthe dossier ``REJECTED`` naming the failing checks.  The dossier binds\nthe registry by id **and** exact ``content_sha256`` (``registry_id`` is\nderived from key ids only and is not a trust-content identity: the same\nkey set re-windowed, re-scoped, revoked or un-revoked keeps the id while\nchanging the content), plus the key, statement and decision-content\nidentities, carries no wall-clock field, and is reproducible\nbyte-for-byte offline.",
   "properties": {
     "contract": {
       "const": "owner_provenance_verification_v1",
@@ -24,6 +24,11 @@
       "maxLength": 128,
       "minLength": 1,
       "title": "Registry Id",
+      "type": "string"
+    },
+    "registry_content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Registry Content Sha256",
       "type": "string"
     },
     "key_id": {
@@ -219,6 +224,7 @@
   "required": [
     "verification_id",
     "registry_id",
+    "registry_content_sha256",
     "verification_status",
     "revocation_status",
     "key_validity",

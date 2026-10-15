@@ -488,7 +488,16 @@ class RollbackPlanV1(BaseModel):
 
 
 class ProfileActivationPlanV1(BaseModel):
-    """Immutable read-only activation plan; execution never happens here."""
+    """Immutable read-only activation plan; execution never happens here.
+
+    The plan binds the exact fresh-audit, release-manifest and active-record
+    identities it was derived from, and (C3-A-R2) the trust root that
+    re-attested the authority: ``authority_reverification_registry_id`` /
+    ``authority_reverification_registry_content_sha256`` come exclusively
+    from the fresh injected-verifier assessment, never from the persisted
+    record claim, and participate in the ``plan_id`` derivation — two
+    different trust roots can never produce the same READY plan identity.
+    """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -511,6 +520,12 @@ class ProfileActivationPlanV1(BaseModel):
         "REVERIFICATION_REQUIRED",
         "REVERIFICATION_FAILED",
     ]
+    authority_reverification_registry_id: StrictStr | None = Field(
+        default=None, min_length=1, max_length=128
+    )
+    authority_reverification_registry_content_sha256: StrictStr | None = Field(
+        default=None, pattern=HASH_PATTERN
+    )
     decision_record_id: StrictStr | None = Field(default=None, min_length=1)
     decision_record_content_sha256: StrictStr | None = Field(
         default=None, pattern=HASH_PATTERN
@@ -527,6 +542,13 @@ class ProfileActivationPlanV1(BaseModel):
 
     @model_validator(mode="after")
     def validate_plan(self) -> Self:
+        if (self.authority_reverification_registry_id is None) != (
+            self.authority_reverification_registry_content_sha256 is None
+        ):
+            raise ValueError(
+                "the re-attestation trust-root binding supplies registry id "
+                "and registry content hash together or not at all"
+            )
         if self.plan_state == "READY_FOR_EXPLICIT_OWNER_EXECUTION":
             if self.blockers:
                 raise ValueError("a ready plan carries no blockers")
@@ -557,6 +579,8 @@ class ProfileActivationPlanV1(BaseModel):
             self.audit_content_sha256,
             self.decision_authority_state,
             self.authority_reverification_status,
+            self.authority_reverification_registry_id or "",
+            self.authority_reverification_registry_content_sha256 or "",
             self.decision_record_id or "",
             self.decision_record_content_sha256 or "",
             sorted(self.blockers),
@@ -583,7 +607,7 @@ def _reverify_decision_authority(
     *,
     record: OwnerPolicyDecisionRecordV1,
     authority_verifier: OwnerDecisionVerifier | None,
-) -> tuple[str, list[str]]:
+) -> tuple[str, list[str], OwnerAuthorityAssessmentV1 | None]:
     """Independently re-attest a persisted ``OWNER_AUTHORITY_VERIFIED`` claim.
 
     A record's serialized ``authority`` text and its self-recomputed content
@@ -593,12 +617,18 @@ def _reverify_decision_authority(
     bound provenance; without such a source the plan fails closed — a forged
     VERIFIED record can never reach READY through this path.  The verifier
     interface stays library-only: the production CLI constructs none.
+
+    Returns the reverification status, its blockers, and the verifier's own
+    fresh assessment (``None`` when no verifier ran) — the assessment's
+    ``attested_*`` trust-root fields are the only trust-root binding a plan
+    may carry; the record's persisted claim is never consulted for it.
     """
 
     if authority_verifier is None:
         return (
             "REVERIFICATION_REQUIRED",
             ["OWNER_AUTHORITY_REVERIFICATION_REQUIRED"],
+            None,
         )
 
     blockers: list[str] = []
@@ -620,6 +650,7 @@ def _reverify_decision_authority(
         return (
             "REVERIFICATION_FAILED",
             [f"OWNER_AUTHORITY_REVERIFICATION_ERRORED:{str(exc)[:120]}"],
+            None,
         )
 
     if assessment.authority_status == "OWNER_AUTHORITY_REJECTED":
@@ -643,8 +674,8 @@ def _reverify_decision_authority(
         blockers.append("OWNER_AUTHORITY_REVERIFICATION_ALLOWLIST_UNCONFIRMED")
 
     if blockers:
-        return ("REVERIFICATION_FAILED", blockers)
-    return ("REVERIFIED", [])
+        return ("REVERIFICATION_FAILED", blockers, assessment)
+    return ("REVERIFIED", [], assessment)
 
 
 def plan_profile_activation(
@@ -776,14 +807,27 @@ def plan_profile_activation(
 
     # R1-A: a persisted VERIFIED claim must be independently re-attested.
     reverification_status = "NOT_APPLICABLE"
+    reverification_registry_id: str | None = None
+    reverification_registry_content: str | None = None
     if resolution.resolved_state == "ACCEPT_VERIFIED" and active_record is not None:
-        reverification_status, reverification_blockers = (
-            _reverify_decision_authority(
-                record=active_record,
-                authority_verifier=authority_verifier,
-            )
+        (
+            reverification_status,
+            reverification_blockers,
+            reverification_assessment,
+        ) = _reverify_decision_authority(
+            record=active_record,
+            authority_verifier=authority_verifier,
         )
         blockers.extend(reverification_blockers)
+        if reverification_assessment is not None:
+            # R2: the plan's trust-root snapshot comes from the fresh
+            # verifier assessment only — never the persisted record claim.
+            reverification_registry_id = (
+                reverification_assessment.attested_registry_id
+            )
+            reverification_registry_content = (
+                reverification_assessment.attested_registry_content_sha256
+            )
 
     state_blockers = {
         "NO_DECISION": {
@@ -895,6 +939,10 @@ def plan_profile_activation(
         audit_policy_decision_reasons=fresh_audit.policy_decision_reasons,
         decision_authority_state=resolution.resolved_state,
         authority_reverification_status=reverification_status,
+        authority_reverification_registry_id=reverification_registry_id,
+        authority_reverification_registry_content_sha256=(
+            reverification_registry_content
+        ),
         decision_record_id=resolution.active_decision_record_id,
         decision_record_content_sha256=(
             resolution.active_decision_record_content_sha256
@@ -922,6 +970,8 @@ def plan_profile_activation(
         payload["audit_content_sha256"],
         payload["decision_authority_state"],
         payload["authority_reverification_status"],
+        payload["authority_reverification_registry_id"] or "",
+        payload["authority_reverification_registry_content_sha256"] or "",
         payload["decision_record_id"] or "",
         payload["decision_record_content_sha256"] or "",
         sorted(payload["blockers"]),

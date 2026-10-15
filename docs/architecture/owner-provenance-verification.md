@@ -189,6 +189,43 @@ corrected invariants are:
   decision must never *increase* what the remaining set authorizes.
   Revoking a stale/other-target record stays inert bookkeeping.
 
+### 3.2 C3-A-R2 trust-root snapshot hardening (independent review)
+
+A second independent review found that no persisted artifact could name the
+exact trust-root *content* that produced a VERIFIED result: `registry_id` is
+derived from key ids only, so the same key set re-windowed, re-scoped,
+revoked or un-revoked keeps the id while changing the content — and only the
+id was bound. The corrected invariants:
+
+- **The verification dossier binds the registry content.**
+  `OwnerProvenanceVerificationV1` carries the required
+  `registry_content_sha256` and derives `verification_id` from it, so one
+  verification identity names one exact trust-root content; the canonical
+  nine-check sequence is unchanged (the registry's internal consistency is
+  enforced at model construction — the new binding is recording, not
+  checking).
+- **The captured record names its trust root structurally.**
+  `OwnerAuthorityAssessmentV1` carries the additive optional
+  `attested_key_id` / `attested_registry_id` /
+  `attested_registry_content_sha256`, populated by the real verifier on
+  every assessment (VERIFIED and rejected). They are captured bookkeeping,
+  never authority: a forged record claiming foreign attested fields is
+  inert, because plan-time authority always comes from the fresh
+  injected-verifier assessment.
+- **The activation plan binds the fresh re-attestation trust root.**
+  `ProfileActivationPlanV1` carries
+  `authority_reverification_registry_id` /
+  `authority_reverification_registry_content_sha256` sourced exclusively
+  from the fresh re-attestation assessment (never the persisted record
+  claim), supplied together or not at all, and participates in the `plan_id`
+  derivation — two different trust roots can never produce the same READY
+  plan identity.
+- **Deliberate non-goal.** A verifier that attests no trust root (the
+  generic C2 fake fixtures, any future non-registry trust model) follows the
+  unchanged C2/C2-R1 rules; the fields stay visibly `None` rather than
+  fabricating a binding, and no new READY-blocking rule is imposed on the
+  verifier interface in this package.
+
 ## 4. Threat model
 
 In scope and cryptographically blocked (each with a deterministic negative
@@ -208,7 +245,8 @@ Out of scope, documented honestly:
 - **Registry substitution** — the registry is an explicit independent
   input; a hosting process that supplies a different registry has visibly
   changed the trust root (registry id and content hash are bound into every
-  verification dossier). Nothing in a decision file can influence it.
+  verification dossier, and the fresh re-attestation trust root into every
+  activation plan — §3.2). Nothing in a decision file can influence it.
 - **Side-channel/timing attacks** on the offline verifier — the attacker
   model (local decision files, no secrets at verification time) does not
   expose a secret-dependent computation.
@@ -218,8 +256,9 @@ Out of scope, documented honestly:
 - Verification dossiers carry no wall-clock fields; identical inputs always
   produce byte-identical dossiers (asserted by tests), so evidence is
   replayable offline at any later time.
-- The dossier binds the registry id, key id, decision-content hash, every
-  check outcome, and its own `verification_id`/`content_sha256`.
+- The dossier binds the registry id **and** registry content hash (§3.2),
+  the key id, decision-content hash, every check outcome, and its own
+  `verification_id`/`content_sha256`.
 - Keys never enter this repository: production code never signs and never
   holds private key material (source-scanned); all test keys are throwaway
   fixtures generated at runtime. No real owner acceptance of strict-v2 is
