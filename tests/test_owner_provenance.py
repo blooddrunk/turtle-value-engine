@@ -31,7 +31,10 @@ from jsonschema import Draft202012Validator
 from pydantic import ValidationError
 
 from turtle_value_engine import load_normalized_input
-from turtle_value_engine.evolution.activation_plan import plan_profile_activation
+from turtle_value_engine.evolution.activation_plan import (
+    ProfileActivationPlanV1,
+    plan_profile_activation,
+)
 from turtle_value_engine.evolution.owner_decision import (
     DecisionProvenanceV1,
     OwnerAuthorityAssessmentV1,
@@ -1395,3 +1398,253 @@ def test_r1_forged_supersession_chain_stays_ambiguous(tmp_path):
     assert plan.plan_state == "BLOCKED"
     assert "DECISIONS_AMBIGUOUS" in plan.blockers
     assert plan.execution_performed is False
+
+
+# ---------------------------------------------------------------------------
+# 7. C3-A-R2: trust-root snapshot binding
+# ---------------------------------------------------------------------------
+
+
+def _two_trust_roots():
+    """One throwaway key registered under two valid trust contents.
+
+    Same key set (therefore the same derived ``registry_id``), different
+    validity windows that both cover ``decided_at`` 2026-10-14 — the minimal
+    pair proving that ``registry_id`` alone is not a trust-content identity.
+    """
+
+    key = _FixtureKey()
+    long_record = OwnerProvenanceKeyRecordV1(
+        key_id=key.key_id,
+        algorithm=PROVENANCE_ALGORITHM,
+        public_key_base64=key.public_base64,
+        owner_identity=OWNER_IDENTITY,
+        authorized_decisions=["ACCEPT_WITH_EXCEPTION", "REJECT"],
+        valid_from="2026-01-01",
+        valid_until="2027-12-31",
+    )
+    return key, _registry(key), build_owner_provenance_key_registry([long_record])
+
+
+def test_r2_registry_id_alone_is_not_a_trust_content_identity():
+    _key, registry_short, registry_long = _two_trust_roots()
+    assert registry_short.registry_id == registry_long.registry_id
+    assert registry_short.content_sha256 != registry_long.content_sha256
+
+
+def test_r2_dossier_binds_the_registry_content_snapshot():
+    key, registry_short, registry_long = _two_trust_roots()
+    statement, input_bytes = key.sign_input(_accept_input())
+    dossier_short = verify_owner_provenance(
+        decision_input_bytes=input_bytes, statement=statement, registry=registry_short
+    )
+    dossier_long = verify_owner_provenance(
+        decision_input_bytes=input_bytes, statement=statement, registry=registry_long
+    )
+    assert dossier_short.verification_status == "VERIFIED"
+    assert dossier_long.verification_status == "VERIFIED"
+    # The exact trust-root content is recorded as a dossier value...
+    assert dossier_short.registry_content_sha256 == registry_short.content_sha256
+    assert dossier_long.registry_content_sha256 == registry_long.content_sha256
+    # ...and separates the verification identities of the two trust roots.
+    assert dossier_short.verification_id != dossier_long.verification_id
+    assert dossier_short.content_sha256 != dossier_long.content_sha256
+
+
+def test_r2_dossier_schema_requires_the_trust_root_snapshot():
+    schema = json.loads(
+        (ROOT / "schemas" / "owner-provenance-verification.schema.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    props = schema["properties"]
+    assert "registry_content_sha256" in props
+    assert "registry_content_sha256" in schema["required"]
+
+
+def test_r2_record_authority_captures_structured_trust_root():
+    key, registry_short, _registry_long = _two_trust_roots()
+    statement, input_bytes = key.sign_input(_accept_input())
+    validation = validate_owner_decision(
+        decision_input=_accept_input(),
+        decision_source_bytes=input_bytes,
+        base_profile_path=BASE_PROFILE_PATH,
+        target_profile_path=TARGET_PROFILE_PATH,
+        release_manifest_path=MANIFEST_PATH,
+        policy_exceptions=[_policy_exception()],
+        verifier=SignedOwnerProvenanceVerifier(
+            registry=registry_short,
+            statement=statement,
+            decision_input_bytes=input_bytes,
+        ),
+    )
+    assert validation.record is not None
+    authority = validation.record.authority
+    assert authority.authority_status == "OWNER_AUTHORITY_VERIFIED"
+    assert authority.attested_key_id == key.key_id
+    assert authority.attested_registry_id == registry_short.registry_id
+    assert (
+        authority.attested_registry_content_sha256 == registry_short.content_sha256
+    )
+
+
+def test_r2_rejected_assessment_still_records_the_trust_root():
+    key = _FixtureKey(revoked=True)
+    statement, input_bytes = key.sign_input(_accept_input())
+    verifier = SignedOwnerProvenanceVerifier(
+        registry=_registry(key), statement=statement, decision_input_bytes=input_bytes
+    )
+    provenance = DecisionProvenanceV1(
+        source_kind="LOCAL_UNSIGNED_JSON",
+        source_revision="c3a-test",
+        source_content_sha256=hashlib.sha256(input_bytes).hexdigest(),
+    )
+    assessment = verifier.verify_decision_authority(
+        declared_owner_identity=OWNER_IDENTITY,
+        provenance=provenance,
+        decision_source_bytes=input_bytes,
+    )
+    assert assessment.authority_status == "OWNER_AUTHORITY_REJECTED"
+    assert assessment.attested_key_id == key.key_id
+    assert assessment.attested_registry_id == verifier.registry.registry_id
+    assert (
+        assessment.attested_registry_content_sha256
+        == verifier.registry.content_sha256
+    )
+
+
+def _captured_record():
+    """Capture one VERIFIED record under the short-window trust root.
+
+    Returns the record, both registries, the statement and the signed bytes
+    so callers can re-attest plans under either trust root.
+    """
+
+    key, registry_short, registry_long = _two_trust_roots()
+    statement, input_bytes = key.sign_input(_accept_input())
+    validation = validate_owner_decision(
+        decision_input=_accept_input(),
+        decision_source_bytes=input_bytes,
+        base_profile_path=BASE_PROFILE_PATH,
+        target_profile_path=TARGET_PROFILE_PATH,
+        release_manifest_path=MANIFEST_PATH,
+        policy_exceptions=[_policy_exception()],
+        verifier=SignedOwnerProvenanceVerifier(
+            registry=registry_short,
+            statement=statement,
+            decision_input_bytes=input_bytes,
+        ),
+    )
+    assert validation.record is not None
+    return validation.record, registry_short, registry_long, statement, input_bytes
+
+
+def test_r2_plan_binds_the_fresh_reattestation_trust_root(tmp_path):
+    record, registry_short, registry_long, statement, input_bytes = (
+        _captured_record()
+    )
+    plan_short = _plan(
+        tmp_path,
+        records=[record],
+        verifier=SignedOwnerProvenanceVerifier(
+            registry=registry_short,
+            statement=statement,
+            decision_input_bytes=input_bytes,
+        ),
+    )
+    plan_long = _plan(
+        tmp_path,
+        records=[record],
+        verifier=SignedOwnerProvenanceVerifier(
+            registry=registry_long,
+            statement=statement,
+            decision_input_bytes=input_bytes,
+        ),
+    )
+    assert plan_short.plan_state == "READY_FOR_EXPLICIT_OWNER_EXECUTION"
+    assert plan_long.plan_state == "READY_FOR_EXPLICIT_OWNER_EXECUTION"
+    # The plan names the trust root that re-attested the authority...
+    assert plan_short.authority_reverification_registry_id == (
+        registry_short.registry_id
+    )
+    assert (
+        plan_short.authority_reverification_registry_content_sha256
+        == registry_short.content_sha256
+    )
+    assert (
+        plan_long.authority_reverification_registry_content_sha256
+        == registry_long.content_sha256
+    )
+    # ...so two different trust roots can never share one plan identity.
+    assert plan_short.plan_id != plan_long.plan_id
+    assert plan_short.content_sha256 != plan_long.content_sha256
+    # The record itself was captured under registry_short; the plan under
+    # registry_long binds registry_long — the fresh verifier is authoritative.
+    assert record.authority.attested_registry_content_sha256 == (
+        registry_short.content_sha256
+    )
+
+
+def test_r2_forged_record_attestation_claims_are_inert(tmp_path):
+    record, registry_short, _registry_long, statement, input_bytes = (
+        _captured_record()
+    )
+    foreign_hash = "ab" * 32
+    dump = record.model_dump(mode="json")
+    dump["authority"]["attested_registry_content_sha256"] = foreign_hash
+    dump["authority"]["attested_registry_id"] = "owner-provenance-key-reg-forged"
+    payload = {key: value for key, value in dump.items() if key != "content_sha256"}
+    forged = OwnerPolicyDecisionRecordV1.model_validate(
+        {**payload, "content_sha256": hashlib.sha256(canonical_json_bytes(payload)).hexdigest()}
+    )
+    assert forged.authority.attested_registry_content_sha256 == foreign_hash
+    plan = _plan(
+        tmp_path,
+        records=[forged],
+        verifier=SignedOwnerProvenanceVerifier(
+            registry=registry_short,
+            statement=statement,
+            decision_input_bytes=input_bytes,
+        ),
+    )
+    # The persisted claim never becomes the plan's trust-root binding.
+    assert plan.authority_reverification_registry_content_sha256 == (
+        registry_short.content_sha256
+    )
+    assert plan.authority_reverification_registry_id == registry_short.registry_id
+    serialized = json.dumps(plan.model_dump(mode="json"))
+    assert foreign_hash not in serialized
+    assert "owner-provenance-key-reg-forged" not in serialized
+
+
+def test_r2_plan_trust_root_fields_are_supplied_together_or_not_at_all(tmp_path):
+    record, registry_short, _registry_long, statement, input_bytes = (
+        _captured_record()
+    )
+    plan = _plan(
+        tmp_path,
+        records=[record],
+        verifier=SignedOwnerProvenanceVerifier(
+            registry=registry_short,
+            statement=statement,
+            decision_input_bytes=input_bytes,
+        ),
+    )
+    schema = json.loads(
+        (ROOT / "schemas" / "profile-activation-plan.schema.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    props = schema["properties"]
+    assert "authority_reverification_registry_id" in props
+    assert "authority_reverification_registry_content_sha256" in props
+    assert "authority_reverification_registry_id" not in schema["required"]
+    # A half-bound trust root (id without content hash) is incoherent.
+    dump = plan.model_dump(mode="json")
+    dump["authority_reverification_registry_content_sha256"] = None
+    with pytest.raises(Exception):
+        ProfileActivationPlanV1.model_validate(dump)
+    dump = plan.model_dump(mode="json")
+    dump["authority_reverification_registry_id"] = None
+    with pytest.raises(Exception):
+        ProfileActivationPlanV1.model_validate(dump)
