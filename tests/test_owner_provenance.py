@@ -842,15 +842,25 @@ def test_no_production_backdoor_or_cli_wiring():
     import turtle_value_engine.evolution.owner_provenance as provenance_module
 
     cli_source = Path(cli_module.__file__).read_text(encoding="utf-8")
+    # Since Phase 7-C3-B the CLI wires the REAL verifier from explicit
+    # operator inputs only (--trust-root + --signed-statement).  What must
+    # never exist: a verifier *selector*, a trust flag, or any fake/test
+    # verifier reference.  (``os.environ`` appears elsewhere in the CLI for
+    # declared monitoring ENV references only; no environment input may
+    # reach provenance trust.)
     for forbidden in (
-        "SignedOwnerProvenanceVerifier",
-        "owner_provenance",
         "--verifier",
         "--provenance-verifier",
-        "--registry",
-        "--key-registry",
+        "--verifier-kind",
+        "trust=True",
+        "TVE_TRUST",
     ):
         assert forbidden not in cli_source
+    assert cli_source.count("SignedOwnerProvenanceVerifier(") == 2, (
+        "the CLI must construct the real verifier at exactly the two "
+        "authorized boundaries (record-time capture, plan-time "
+        "re-attestation)"
+    )
 
     module_source = Path(provenance_module.__file__).read_text(encoding="utf-8")
     for forbidden in (

@@ -1509,8 +1509,12 @@ def test_cli_has_no_verifier_escape_hatch():
     from turtle_value_engine import cli as cli_module
 
     source = Path(cli_module.__file__).read_text(encoding="utf-8")
-    assert "verifier=None" in source  # CLI validation always passes no verifier
-    assert "OwnerDecisionVerifier" not in source  # not even imported there
+    # Since Phase 7-C3-B the CLI may construct exactly the REAL
+    # SignedOwnerProvenanceVerifier from explicit operator inputs
+    # (--signed-statement + --trust-root); the default flow still passes no
+    # verifier, no selector exists, and no fake verifier is reachable.
+    assert "verifier = None" in source  # default flow passes no verifier
+    assert source.count("SignedOwnerProvenanceVerifier(") == 2
     for forbidden in ("--verifier", "--fake-verifier", "--scripted-verifier"):
         assert forbidden not in source
     assert not hasattr(cli_module, "ScriptedOwnerVerifier")

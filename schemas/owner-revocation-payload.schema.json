@@ -1,0 +1,69 @@
+{
+  "additionalProperties": false,
+  "description": "The canonical bytes an owner signs to withdraw one recorded decision.\n\nBinds the exact revoked record by id AND full content SHA-256 plus the\ntarget profile binding, so the authenticated withdrawal cannot be\nreplayed against a different or tampered record.",
+  "properties": {
+    "contract": {
+      "const": "owner_signed_revocation_payload_v1",
+      "default": "owner_signed_revocation_payload_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "revoked_decision_record_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Revoked Decision Record Id",
+      "type": "string"
+    },
+    "revoked_record_content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Revoked Record Content Sha256",
+      "type": "string"
+    },
+    "target_profile_id": {
+      "minLength": 1,
+      "title": "Target Profile Id",
+      "type": "string"
+    },
+    "target_profile_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Target Profile Sha256",
+      "type": "string"
+    },
+    "revoked_by": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Revoked By",
+      "type": "string"
+    },
+    "revoked_at": {
+      "maxLength": 32,
+      "minLength": 10,
+      "title": "Revoked At",
+      "type": "string"
+    },
+    "rationale": {
+      "maxLength": 4000,
+      "minLength": 20,
+      "title": "Rationale",
+      "type": "string"
+    },
+    "source_revision": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Source Revision",
+      "type": "string"
+    }
+  },
+  "required": [
+    "revoked_decision_record_id",
+    "revoked_record_content_sha256",
+    "target_profile_id",
+    "target_profile_sha256",
+    "revoked_by",
+    "revoked_at",
+    "rationale",
+    "source_revision"
+  ],
+  "title": "OwnerRevocationPayloadV1",
+  "type": "object"
+}
