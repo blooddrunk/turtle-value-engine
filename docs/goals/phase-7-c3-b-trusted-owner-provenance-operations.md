@@ -1,8 +1,10 @@
 # Phase 7-C3-B — Trusted Owner Provenance Operations
 
-Status: ACTIVE (implementation package selected 2026-10-15 from the C3-A-R2
-post-closure residual-risk list:
-`docs/status/phase-7-c3-a-r2-2026-10-15.md` §5).
+Status: **IMPLEMENTED / CLOSED** (PR #10; implementation
+`c7943b5903d74588d0eeffaec94cc80bcdc279fc`, exact-head Actions run
+`38708419906` `success`; merge `6d2da2edd23fe7b0a9fea45f9778e31923c1de03`,
+merge-head run `38834048273` `success`; closure record
+`docs/status/phase-7-c3-b-2026-10-16.md`)
 
 ## 1. Problem
 
