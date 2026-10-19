@@ -672,6 +672,71 @@ def _record_signed_payload_divergences(
     return divergences
 
 
+def capture_attestation_divergences(
+    *,
+    bundle: OwnerProvenanceEvidenceBundleV1,
+    decision_input_bytes: bytes,
+    snapshot: OwnerProvenanceRegistrySnapshotV1,
+    verification: OwnerProvenanceVerificationV1,
+) -> list[str]:
+    """Named incoherences between captured authority claims and crypto facts.
+
+    One shared consistency contract for the strict loader and the audit
+    replay (R2): the bundle is the output of the record-time capture
+    boundary, so its recorded claims must be derivable from the actual
+    persisted bytes and the recomputed verification dossier.  Enforced:
+
+    * ``VALID`` ⇔ empty ``validation_blockers`` (record-time state
+      derivation: any blocker or authority rejection forces ``INVALID``
+      with no record);
+    * a record-bearing bundle is a signed capture, so its record authority
+      must be exactly ``OWNER_AUTHORITY_VERIFIED`` through an
+      ``INJECTED_VERIFIER`` **and** the recomputed dossier must be
+      ``VERIFIED`` — an honestly rejected signature can never establish
+      historic VERIFIED authority (and a REJECTED/UNVERIFIED authority
+      could never have produced a record inside a VALID bundle);
+    * the attested key id equals the dossier's ``key_id``, the attested
+      registry identity/content hash equals the registry inside the
+      persisted snapshot, and the authority ``evidence_content_sha256``
+      equals the hash of the actual decision-input bytes.
+
+    This reconciles captured *attestation metadata* with cryptographic
+    facts; it deliberately does not re-execute the record-time economic
+    audit (whose inputs are not part of the bundle) and it never grants
+    fresh authority: plan-time authority always comes from the separate
+    re-attestation against the operator's current trust root.
+    """
+
+    divergences: list[str] = []
+    if bundle.validation_state == "VALID":
+        if bundle.validation_blockers:
+            divergences.append("VALID_STATE_WITH_BLOCKERS")
+    elif not bundle.validation_blockers:
+        divergences.append("INVALID_STATE_WITHOUT_BLOCKERS")
+    record = bundle.record
+    if record is None:
+        return divergences
+    authority = record.authority
+    if authority.verification_method != "INJECTED_VERIFIER":
+        divergences.append("AUTHORITY_METHOD_INCONSISTENT")
+    if (
+        authority.authority_status != "OWNER_AUTHORITY_VERIFIED"
+        or verification.verification_status != "VERIFIED"
+    ):
+        divergences.append("AUTHORITY_STATUS_INCONSISTENT")
+    if authority.evidence_content_sha256 != _sha256_hex(decision_input_bytes):
+        divergences.append("EVIDENCE_HASH_DIVERGED")
+    if authority.attested_key_id != verification.key_id:
+        divergences.append("ATTESTED_KEY_DIVERGED")
+    if (
+        authority.attested_registry_id != snapshot.registry.registry_id
+        or authority.attested_registry_content_sha256
+        != snapshot.registry.content_sha256
+    ):
+        divergences.append("ATTESTED_REGISTRY_DIVERGED")
+    return divergences
+
+
 def build_owner_decision_evidence_bundle(
     *,
     validation: OwnerPolicyDecisionValidationV1,
@@ -860,7 +925,15 @@ def persist_owner_decision_evidence(
 def load_owner_decision_evidence(
     bundle_path: str | Path,
 ) -> LoadedOwnerDecisionEvidence:
-    """Load one persisted bundle, validating every component hash."""
+    """Load one persisted bundle, validating every component hash.
+
+    Beyond component hashes and the signed-field record binding, the
+    verification dossier is recomputed from the actual persisted bytes and
+    must equal the captured one, and the record's captured authority claims
+    must be consistent with those cryptographic facts
+    (:func:`capture_attestation_divergences`) — a bundle claiming VERIFIED
+    authority over an honestly rejected signature fails closed here.
+    """
 
     bundle_file = Path(bundle_path)
     if bundle_file.name != "bundle.json":
@@ -943,6 +1016,28 @@ def load_owner_decision_evidence(
                 "persisted decision record diverges from the signed "
                 f"decision-input bytes ({', '.join(divergences)})"
             )
+    # The recomputed dossier must equal the captured one, and the recorded
+    # authority claims must be consistent with these cryptographic facts.
+    fresh = verify_owner_provenance(
+        decision_input_bytes=decision_input_bytes,
+        statement=statement,
+        registry=snapshot.registry,
+    )
+    if fresh != bundle.verification:
+        raise OwnerTrustStoreError(
+            "recomputed verification dossier does not match the embedded one"
+        )
+    attestation = capture_attestation_divergences(
+        bundle=bundle,
+        decision_input_bytes=decision_input_bytes,
+        snapshot=snapshot,
+        verification=fresh,
+    )
+    if attestation:
+        raise OwnerTrustStoreError(
+            "captured authority claims are inconsistent with the recomputed "
+            f"verification facts ({', '.join(attestation)})"
+        )
     return LoadedOwnerDecisionEvidence(
         bundle=bundle,
         decision_input_bytes=decision_input_bytes,
@@ -964,10 +1059,12 @@ class EvidenceReverificationV1(BaseModel):
     snapshot and its internal registry identity, the physical
     ``verification.json``, and — for a record-bearing bundle — the physical
     ``record.json``), the freshly recomputed dossier to equal the embedded
-    one byte-for-byte, and the embedded record to bind the owner-signed
-    decision-input fields verbatim; anything else is a named ``MISMATCH``.
-    This is audit replay of captured evidence, never a fresh authority
-    claim for a plan.
+    one byte-for-byte, the embedded record to bind the owner-signed
+    decision-input fields verbatim, and the captured authority claims to be
+    consistent with the recomputed verification facts
+    (:func:`capture_attestation_divergences`); anything else is a named
+    ``MISMATCH``.  This is audit replay of captured evidence, never a fresh
+    authority claim for a plan.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -1022,8 +1119,11 @@ def reverify_owner_decision_evidence(
     bundle, the physical ``record.json`` — and the dossier is recomputed
     from the actual persisted bytes, so tampering surfaces as a named
     ``MISMATCH``.  The persisted record must also embed the owner-signed
-    decision-input fields verbatim, so a fully self-consistent forged
-    record/manifest whose signed fields diverge cannot replay clean.  The
+    decision-input fields verbatim, and the bundle's captured authority
+    claims must be consistent with the recomputed verification facts
+    (:func:`capture_attestation_divergences`), so a fully self-consistent
+    forged record/manifest whose signed fields or authority claims diverge
+    cannot replay clean.  The
     bundle directory must hold exactly its complete component shape; a
     missing, unexpected, symlinked or unparseable component fails closed as
     a classified store error instead of being reinterpreted as success.
@@ -1094,6 +1194,14 @@ def reverify_owner_decision_evidence(
     )
     if fresh != bundle.verification:
         mismatches.append("VERIFICATION_REPLAY_DIVERGED")
+    mismatches.extend(
+        capture_attestation_divergences(
+            bundle=bundle,
+            decision_input_bytes=decision_input_bytes,
+            snapshot=snapshot,
+            verification=fresh,
+        )
+    )
 
     record = bundle.record
     if record is not None:
@@ -1146,6 +1254,7 @@ __all__ = [
     "OwnerTrustStoreError",
     "build_initial_registry_snapshot",
     "build_owner_decision_evidence_bundle",
+    "capture_attestation_divergences",
     "capture_owner_decision_evidence",
     "enroll_registry_key",
     "load_owner_decision_evidence",
