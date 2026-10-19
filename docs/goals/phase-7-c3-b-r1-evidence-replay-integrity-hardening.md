@@ -1,6 +1,6 @@
 # Phase 7-C3-B-R1 — Evidence Replay Integrity and Executable Owner Walkthrough
 
-Status: **SELECTED / NOT IMPLEMENTED** (selected by `docs/status/phase-7-c3-b-post-closure-review-2026-10-19.md`; baseline `main` `2cebd91341553edbbbaf8f07cb307d6949b7e223`)
+Status: **IMPLEMENTED / CI CLOSURE PENDING** (selected by `docs/status/phase-7-c3-b-post-closure-review-2026-10-19.md`; reviewed baseline `main` `462159cc5e2571e779048bb188b852a35b96ae59` — merge of PR #11, code equal to `2cebd91`)
 
 ## 0. First action: synchronize and review the actual upstream
 

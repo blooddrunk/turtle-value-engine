@@ -18,12 +18,22 @@ python -m pip install --user ".[provenance]"   # or your established install
 ```
 
 All commands below assume `python -m turtle_value_engine` (abbreviated
-`tve`). Choose three directories **outside the repository**:
+`tve`). Create the working directories **outside the repository** first,
+then confirm where they live before proceeding:
+
+```bash
+mkdir -p ~/tve-trust/trust-root ~/tve-trust/bundle ~/tve-trust/decisions \
+         ~/tve-trust/evidence ~/tve-trust/private
+ls -ld ~/tve-trust/*   # every path printed must be outside the repository
+realpath ~/tve-trust   # resolve symlinks; use a plain directory, not one
+                       # inside ~/research/turtle-value-engine
+```
 
 ```text
 ~/tve-trust/trust-root/     the trust root (registry snapshots; nothing else)
 ~/tve-trust/bundle/         one submission bundle (decision input, statement,
                             exception, your public key)
+~/tve-trust/private/        the ENCRYPTED private key (never committed anywhere)
 ~/tve-trust/decisions/      recorded decision records and plans
 ~/tve-trust/evidence/       captured proof bundles
 ```
@@ -32,26 +42,53 @@ The CLI refuses a trust root located inside a submitted decision bundle
 directory (and decision artifacts stored inside the trust root) — a bundle
 can never smuggle its own trust root.
 
-## 1. Generate an owner key outside the repository
+## 1. Generate an owner key and persist it ENCRYPTED, outside the repository
+
+The private key is generated once, written as an **encrypted PKCS#8 PEM**
+(passphrase prompted interactively, never on the command line), and reloaded
+from that file by every later signing run — including after a process
+restart or reboot. Nothing below ever puts a private key into the
+repository, Git, CI logs or chat.
 
 ```bash
 python - <<'EOF'
-import base64
+import base64, getpass
 from pathlib import Path
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
+PRIVATE_PEM = Path.home() / "tve-trust/private/owner.pem"
+PUBLIC_KEY  = Path.home() / "tve-trust/bundle/owner.pub"
+
 key = Ed25519PrivateKey.generate()
-Path("bundle/owner.pub").write_text(base64.b64encode(
+passphrase = getpass.getpass("New private-key passphrase: ").encode("utf-8")
+PRIVATE_PEM.write_bytes(key.private_bytes(
+    serialization.Encoding.PEM,
+    serialization.PrivateFormat.PKCS8,
+    serialization.BestAvailableEncryption(passphrase),
+))
+PUBLIC_KEY.write_text(base64.b64encode(
     key.public_key().public_bytes(
         serialization.Encoding.Raw, serialization.PublicFormat.Raw
     )
 ).decode() + "\n")
-# Store the private half in your password manager / offline medium NOW;
-# this script deliberately does not persist it.
-print("public key registered in bundle/owner.pub")
+print("wrote", PRIVATE_PEM, "and", PUBLIC_KEY)
 EOF
+head -1 ~/tve-trust/private/owner.pem   # must print:
+                                        # -----BEGIN ENCRYPTED PRIVATE KEY-----
 ```
+
+Back the `owner.pem` file and its passphrase up in your password manager /
+offline medium NOW; the passphrase cannot be recovered. `chmod 600
+~/tve-trust/private/owner.pem` is sensible. Only `owner.pub` (public key
+material) is ever registered with the engine. A hardware security key that
+supports Ed25519 may replace the encrypted PEM; keep the same
+generate-then-reload discipline either way.
+
+This whole procedure — encrypted on-disk key, fresh-process reload, sign,
+capture, replay — is executed automatically with throwaway keys and a
+throwaway passphrase by
+`tests/test_owner_evidence_replay_integrity.py::test_walkthrough_encrypted_key_round_trip_across_processes`.
 
 ## 2. Register only the public key (create the trust root)
 
@@ -78,18 +115,22 @@ Every operation appends one immutable versioned snapshot
 parent); committed snapshots are never rewritten, and every load validates
 the whole chain.
 
-## 3. Sign an exact decision payload
+## 3. Sign an exact decision payload (reload the encrypted key)
 
 1. Produce the decision input JSON (fields listed in
    `docs/architecture/owner-policy-decision-and-activation-plan.md`; take
    the audit id/content hash from a fresh
    `tve evolution audit-profile`/`decision-dossier` run).
 2. Serialize it canonically, sign the domain-prefixed message, assemble
-   the statement — a short script, run where the private key lives:
+   the statement — a short script, run where the encrypted key file lives.
+   The key is reloaded from disk with the passphrase prompted again, so a
+   fresh process (or a later day) signs with exactly the same persisted
+   key:
 
 ```python
-import json, sys
+import getpass, json
 from pathlib import Path
+from cryptography.hazmat.primitives import serialization
 from turtle_value_engine.evolution.owner_decision import OwnerPolicyDecisionInputV1
 from turtle_value_engine.evolution.owner_provenance import (
     build_owner_signed_decision_statement,
@@ -97,20 +138,23 @@ from turtle_value_engine.evolution.owner_provenance import (
 )
 from turtle_value_engine.providers.models import canonical_json_bytes
 
-payload = json.loads(Path("decision-input.json").read_text("utf-8"))
-model = OwnerPolicyDecisionInputV1.model_validate(payload)
-Path("decision-input.json").write_bytes(          # canonical byte form only
-    canonical_json_bytes(model.model_dump(mode="json"))
+private = serialization.load_pem_private_key(
+    (Path.home() / "tve-trust/private/owner.pem").read_bytes(),
+    getpass.getpass("Private-key passphrase: ").encode("utf-8"),
 )
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-private = ...  # load from your offline medium
 key_id = ...   # from `tve provenance registry status`
+
+payload = json.loads((Path.home() / "tve-trust/bundle/decision-input.json").read_text("utf-8"))
+model = OwnerPolicyDecisionInputV1.model_validate(payload)
+(Path.home() / "tve-trust/bundle/decision-input.json").write_bytes(
+    canonical_json_bytes(model.model_dump(mode="json"))  # canonical byte form only
+)
 statement = build_owner_signed_decision_statement(
     signature=private.sign(owner_decision_input_signature_message(model)),
     key_id=key_id,
     decision_input=model,
 )
-Path("statement.json").write_text(
+(Path.home() / "tve-trust/bundle/statement.json").write_text(
     json.dumps(json.loads(statement.model_dump_json()), indent=2, sort_keys=True) + "\n"
 )
 ```
@@ -143,9 +187,20 @@ same command records visibly unverified decisions exactly as before.
 tve provenance verify-evidence --bundle ~/tve-trust/evidence/<bundle_id>/bundle.json
 ```
 
-Exit 0 + `REPLAYS_BYTE_IDENTICAL` means the persisted bytes still
-reproduce the captured dossier byte-for-byte; exit 1 names the mismatch.
-No network is involved at any point.
+Exit codes:
+
+| exit | meaning |
+| --- | --- |
+| 0 | `REPLAYS_BYTE_IDENTICAL` — every persisted component (decision-input bytes, statement, registry snapshot and its internal registry identity, `verification.json`, and `record.json` for a record-bearing bundle) matches the manifest binding, the recomputed dossier equals the captured one byte-for-byte, and the record embeds the owner-signed decision fields verbatim |
+| 1 | `MISMATCH` — the replay completed and names the divergences (e.g. `RECORD_FILE_DIVERGED`, `VERIFICATION_FILE_DIVERGED`, `REGISTRY_IDENTITY_DIVERGED`, `RECORD_SIGNED_CONTENT_DIVERGED`) |
+| 2 | classified fail-closed store error — a component is missing, unexpected (e.g. a `record.json` inside an INVALID no-record bundle), symlinked, unparseable, or the bundle path is unusable |
+
+`REPLAYS_BYTE_IDENTICAL` is an **integrity** statement only, never an
+authorization: it also holds for an honestly captured `REJECTED` bundle
+(a signature that failed at capture time stays honestly rejected). A
+later `plan-activation` still re-attests the signature freshly against
+the trust root's *current* latest snapshot. No network is involved at any
+point.
 
 ## 6. Derive the read-only activation plan
 
@@ -226,5 +281,7 @@ the trust content that was valid *at capture time*.
 | `SIGNATURE_VERIFIED` failed in dossier | signature/key mismatch — wrong key, tampered bytes, or cross-purpose replay |
 | `trust root must not be located inside the submitted decision bundle directory` | separate the trust root from the bundle (by design) |
 | `trust root has no snapshots directory` | `--trust-root` does not point at an initialized store (`registry init` first) |
+| verify-evidence exit 1, `*_DIVERGED` mismatch | a persisted component is valid but differs from the manifest binding — inspect which component the code names; evidence directories are immutable, so recapture rather than edit |
+| verify-evidence exit 2, `missing components` / `unexpected entries` / `symlink` | the bundle directory no longer holds exactly its six-file (VALID) or five-file (INVALID) component shape |
 | plan BLOCKED `OWNER_AUTHORITY_REVERIFICATION_REQUIRED` | plan run without `--trust-root`/`--authority-evidence` |
 | plan BLOCKED `SIGNED_REVOCATION_REJECTED:*` | the signed lifecycle statement failed fresh verification |
