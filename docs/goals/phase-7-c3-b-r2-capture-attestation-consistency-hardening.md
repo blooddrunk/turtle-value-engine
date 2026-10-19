@@ -1,6 +1,6 @@
 # Phase 7-C3-B-R2 — Capture Attestation Consistency and Safe Owner-Key Provisioning
 
-Status: **SELECTED / NOT IMPLEMENTED**. Source-level candidates from `docs/status/phase-7-c3-b-r1-post-closure-review-2026-10-19.md`; first reproduce before repairing. This goal is **not** permission to execute an activation.
+Status: **IMPLEMENTED / CI CLOSURE PENDING** (candidates reproduced fail-on-baseline on pristine `c40dc7a` before any fix; selection review `docs/status/phase-7-c3-b-r1-post-closure-review-2026-10-19.md`, PR #13). This goal is **not** permission to execute an activation.
 
 ## 0. Mandatory first action: synchronize
 

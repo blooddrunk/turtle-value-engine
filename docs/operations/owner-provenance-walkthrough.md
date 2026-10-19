@@ -23,8 +23,10 @@ then confirm where they live before proceeding:
 
 ```bash
 mkdir -p ~/tve-trust/trust-root ~/tve-trust/bundle ~/tve-trust/decisions \
-         ~/tve-trust/evidence ~/tve-trust/private
-ls -ld ~/tve-trust/*   # every path printed must be outside the repository
+         ~/tve-trust/evidence
+mkdir -m 700 ~/tve-trust/private
+ls -ld ~/tve-trust/*   # every path printed must be outside the repository;
+                       # private must print mode drwx------ (0700)
 realpath ~/tve-trust   # resolve symlinks; use a plain directory, not one
                        # inside ~/research/turtle-value-engine
 ```
@@ -47,26 +49,51 @@ can never smuggle its own trust root.
 The private key is generated once, written as an **encrypted PKCS#8 PEM**
 (passphrase prompted interactively, never on the command line), and reloaded
 from that file by every later signing run — including after a process
-restart or reboot. Nothing below ever puts a private key into the
+restart or reboot. The key file is created **exclusively** (`O_CREAT |
+O_EXCL`, refusing any existing path or symlink destination) with mode
+**0600 from the first open**, independent of your `umask`, and the private
+directory is forced to 0700. Nothing below ever puts a private key into the
 repository, Git, CI logs or chat.
 
 ```bash
 python - <<'EOF'
-import base64, getpass
+import base64, getpass, os
 from pathlib import Path
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-PRIVATE_PEM = Path.home() / "tve-trust/private/owner.pem"
+PRIVATE_DIR = Path.home() / "tve-trust/private"
+PRIVATE_PEM = PRIVATE_DIR / "owner.pem"
 PUBLIC_KEY  = Path.home() / "tve-trust/bundle/owner.pub"
+
+PRIVATE_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
+os.chmod(PRIVATE_DIR, 0o700)  # also repairs a pre-existing loose directory
 
 key = Ed25519PrivateKey.generate()
 passphrase = getpass.getpass("New private-key passphrase: ").encode("utf-8")
-PRIVATE_PEM.write_bytes(key.private_bytes(
+pem = key.private_bytes(
     serialization.Encoding.PEM,
     serialization.PrivateFormat.PKCS8,
     serialization.BestAvailableEncryption(passphrase),
-))
+)
+try:
+    # One-time exclusive create: refuses an existing file OR symlink
+    # destination atomically, and is owner-only from the first byte.
+    descriptor = os.open(
+        PRIVATE_PEM,
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
+        0o600,
+    )
+except FileExistsError:
+    raise SystemExit(
+        f"refusing to overwrite {PRIVATE_PEM}: an owner key is write-once; "
+        "move the existing file aside yourself first if you really mean to"
+    )
+with os.fdopen(descriptor, "wb") as handle:
+    handle.write(pem)
+    handle.flush()
+    os.fsync(handle.fileno())
+PUBLIC_KEY.parent.mkdir(parents=True, exist_ok=True)
 PUBLIC_KEY.write_text(base64.b64encode(
     key.public_key().public_bytes(
         serialization.Encoding.Raw, serialization.PublicFormat.Raw
@@ -74,16 +101,16 @@ PUBLIC_KEY.write_text(base64.b64encode(
 ).decode() + "\n")
 print("wrote", PRIVATE_PEM, "and", PUBLIC_KEY)
 EOF
+ls -l ~/tve-trust/private/owner.pem   # must print: -rw------- (0600)
 head -1 ~/tve-trust/private/owner.pem   # must print:
-                                        # -----BEGIN ENCRYPTED PRIVATE KEY-----
+                                         # -----BEGIN ENCRYPTED PRIVATE KEY-----
 ```
 
 Back the `owner.pem` file and its passphrase up in your password manager /
-offline medium NOW; the passphrase cannot be recovered. `chmod 600
-~/tve-trust/private/owner.pem` is sensible. Only `owner.pub` (public key
-material) is ever registered with the engine. A hardware security key that
-supports Ed25519 may replace the encrypted PEM; keep the same
-generate-then-reload discipline either way.
+offline medium NOW; the passphrase cannot be recovered. Only `owner.pub`
+(public key material) is ever registered with the engine. A hardware
+security key that supports Ed25519 may replace the encrypted PEM; keep the
+same generate-then-reload discipline either way.
 
 This whole procedure — encrypted on-disk key, fresh-process reload, sign,
 capture, replay — is executed automatically with throwaway keys and a
@@ -191,16 +218,18 @@ Exit codes:
 
 | exit | meaning |
 | --- | --- |
-| 0 | `REPLAYS_BYTE_IDENTICAL` — every persisted component (decision-input bytes, statement, registry snapshot and its internal registry identity, `verification.json`, and `record.json` for a record-bearing bundle) matches the manifest binding, the recomputed dossier equals the captured one byte-for-byte, and the record embeds the owner-signed decision fields verbatim |
-| 1 | `MISMATCH` — the replay completed and names the divergences (e.g. `RECORD_FILE_DIVERGED`, `VERIFICATION_FILE_DIVERGED`, `REGISTRY_IDENTITY_DIVERGED`, `RECORD_SIGNED_CONTENT_DIVERGED`) |
+| 0 | `REPLAYS_BYTE_IDENTICAL` — every persisted component (decision-input bytes, statement, registry snapshot and its internal registry identity, `verification.json`, and `record.json` for a record-bearing bundle) matches the manifest binding, the recomputed dossier equals the captured one byte-for-byte, the record embeds the owner-signed decision fields verbatim, and the captured authority claims are consistent with the recomputed verification facts |
+| 1 | `MISMATCH` — the replay completed and names the divergences (e.g. `RECORD_FILE_DIVERGED`, `VERIFICATION_FILE_DIVERGED`, `REGISTRY_IDENTITY_DIVERGED`, `RECORD_SIGNED_CONTENT_DIVERGED`, `AUTHORITY_STATUS_INCONSISTENT`, `ATTESTED_KEY_DIVERGED`, `ATTESTED_REGISTRY_DIVERGED`, `EVIDENCE_HASH_DIVERGED`, `VALID_STATE_WITH_BLOCKERS`) |
 | 2 | classified fail-closed store error — a component is missing, unexpected (e.g. a `record.json` inside an INVALID no-record bundle), symlinked, unparseable, or the bundle path is unusable |
 
-`REPLAYS_BYTE_IDENTICAL` is an **integrity** statement only, never an
-authorization: it also holds for an honestly captured `REJECTED` bundle
-(a signature that failed at capture time stays honestly rejected). A
-later `plan-activation` still re-attests the signature freshly against
-the trust root's *current* latest snapshot. No network is involved at any
-point.
+`REPLAYS_BYTE_IDENTICAL` is an **integrity and capture-coherence**
+statement only, never an authorization: it also holds for an honestly
+captured `REJECTED` bundle (a signature that failed at capture time stays
+honestly rejected), and a record claiming `OWNER_AUTHORITY_VERIFIED` over a
+signature whose recomputed verification is `REJECTED` can never replay
+clean. A later `plan-activation` still re-attests the signature freshly
+against the trust root's *current* latest snapshot. No network is involved
+at any point.
 
 ## 6. Derive the read-only activation plan
 
@@ -281,7 +310,8 @@ the trust content that was valid *at capture time*.
 | `SIGNATURE_VERIFIED` failed in dossier | signature/key mismatch — wrong key, tampered bytes, or cross-purpose replay |
 | `trust root must not be located inside the submitted decision bundle directory` | separate the trust root from the bundle (by design) |
 | `trust root has no snapshots directory` | `--trust-root` does not point at an initialized store (`registry init` first) |
-| verify-evidence exit 1, `*_DIVERGED` mismatch | a persisted component is valid but differs from the manifest binding — inspect which component the code names; evidence directories are immutable, so recapture rather than edit |
+| verify-evidence exit 1, `*_DIVERGED` / `*_INCONSISTENT` mismatch | a persisted component or captured authority claim is valid-looking but disagrees with the manifest binding or the recomputed verification facts — inspect which divergence the code names; evidence directories are immutable, so recapture rather than edit |
 | verify-evidence exit 2, `missing components` / `unexpected entries` / `symlink` | the bundle directory no longer holds exactly its six-file (VALID) or five-file (INVALID) component shape |
+| keygen refuses to overwrite `owner.pem` | an owner key is write-once by design; move the existing file aside yourself first, or choose a different key file |
 | plan BLOCKED `OWNER_AUTHORITY_REVERIFICATION_REQUIRED` | plan run without `--trust-root`/`--authority-evidence` |
 | plan BLOCKED `SIGNED_REVOCATION_REJECTED:*` | the signed lifecycle statement failed fresh verification |
