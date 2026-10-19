@@ -1,6 +1,6 @@
 # Phase 7-C3-B-R2 — Capture Attestation Consistency and Safe Owner-Key Provisioning
 
-Status: **IMPLEMENTED / CI CLOSURE PENDING** (candidates reproduced fail-on-baseline on pristine `c40dc7a` before any fix; selection review `docs/status/phase-7-c3-b-r1-post-closure-review-2026-10-19.md`, PR #13). This goal is **not** permission to execute an activation.
+Status: **IMPLEMENTED / CLOSED** (implemented at `814779019846278ea5490d61298b8cd8c7a17bc9`, PR #14 merged as `12f1d68b12f347e8a9bb99e00c63dd51cf62b303`; closure record `docs/status/phase-7-c3-b-r2-2026-10-19.md`) (candidates reproduced fail-on-baseline on pristine `c40dc7a` before any fix; selection review `docs/status/phase-7-c3-b-r1-post-closure-review-2026-10-19.md`, PR #13). This goal is **not** permission to execute an activation.
 
 ## 0. Mandatory first action: synchronize
 
