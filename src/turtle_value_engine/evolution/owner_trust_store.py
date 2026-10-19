@@ -59,12 +59,14 @@ from .owner_decision import (
     validate_owner_decision,
 )
 from .owner_provenance import (
+    _DECISION_CONTENT_FIELDS,
     HASH_PATTERN,
     OwnerProvenanceKeyRecordV1,
     OwnerProvenanceKeyRegistryV1,
     OwnerProvenanceVerificationV1,
     OwnerSignedDecisionStatementV1,
     SignedOwnerProvenanceVerifier,
+    _parse_canonical_decision_input,
     build_owner_provenance_key_registry,
     verify_owner_provenance,
 )
@@ -585,6 +587,91 @@ class LoadedOwnerDecisionEvidence(NamedTuple):
     snapshot: OwnerProvenanceRegistrySnapshotV1
 
 
+_BUNDLE_BASE_COMPONENTS: tuple[str, ...] = (
+    "bundle.json",
+    "decision-input.json",
+    "statement.json",
+    "registry-snapshot.json",
+    "verification.json",
+)
+
+
+def _check_bundle_directory_shape(
+    bundle_dir: Path, bundle: OwnerProvenanceEvidenceBundleV1
+) -> None:
+    """Fail closed unless the bundle directory holds exactly its components.
+
+    A complete VALID bundle is the six-file shape (the base components plus
+    ``record.json``); an INVALID no-record capture is the five-file shape.
+    Missing, extra, symlinked and non-file entries are classified store
+    errors, so an unexpected ``record.json`` can never masquerade as a
+    no-record bundle and no foreign file hides inside a bundle.  The check
+    is read-only: nothing is deleted or rewritten.
+    """
+
+    expected = set(_BUNDLE_BASE_COMPONENTS)
+    if bundle.record is not None:
+        expected.add("record.json")
+    try:
+        entries = sorted(bundle_dir.iterdir())
+    except OSError as exc:
+        raise OwnerTrustStoreError(
+            f"evidence bundle directory is unavailable: {bundle_dir}"
+        ) from exc
+    actual: set[str] = set()
+    for entry in entries:
+        if entry.is_symlink():
+            raise OwnerTrustStoreError(
+                f"evidence bundle component is a symlink: {entry}"
+            )
+        if not entry.is_file():
+            raise OwnerTrustStoreError(
+                f"evidence bundle directory holds a non-file entry: {entry}"
+            )
+        actual.add(entry.name)
+    missing = sorted(expected - actual)
+    if missing:
+        raise OwnerTrustStoreError(
+            f"evidence bundle is missing components: {', '.join(missing)} "
+            f"({bundle_dir})"
+        )
+    extra = sorted(actual - expected)
+    if extra:
+        raise OwnerTrustStoreError(
+            "evidence bundle directory holds unexpected entries: "
+            f"{', '.join(extra)} ({bundle_dir})"
+        )
+
+
+def _record_signed_payload_divergences(
+    record: OwnerPolicyDecisionRecordV1, decision_input_bytes: bytes
+) -> list[str]:
+    """Named divergences between the record and the bytes it claims to embed.
+
+    Mirrors the plan-time re-attestation binding: every owner-signed
+    decision-input field and the provenance ``source_revision`` must appear
+    verbatim in the persisted record.  A self-consistent SHA-256 or a
+    recomputed deterministic id is integrity, not authentication — this
+    field-level comparison is what makes a fully self-consistent forged
+    record visible offline.
+    """
+
+    parsed = _parse_canonical_decision_input(decision_input_bytes)
+    if parsed is None:
+        return ["SIGNED_INPUT_UNUSABLE"]
+    input_dump = parsed.model_dump(mode="json")
+    record_dump = record.model_dump(mode="json")
+    divergences: list[str] = []
+    if any(
+        input_dump.get(field) != record_dump.get(field)
+        for field in _DECISION_CONTENT_FIELDS
+    ):
+        divergences.append("RECORD_SIGNED_CONTENT_DIVERGED")
+    if record.provenance.source_revision != parsed.source_revision:
+        divergences.append("RECORD_SOURCE_REVISION_DIVERGED")
+    return divergences
+
+
 def build_owner_decision_evidence_bundle(
     *,
     validation: OwnerPolicyDecisionValidationV1,
@@ -791,6 +878,7 @@ def load_owner_decision_evidence(
         raise OwnerTrustStoreError(
             f"evidence bundle is tampered or unreadable: {str(exc)[:300]}"
         ) from exc
+    _check_bundle_directory_shape(bundle_dir, bundle)
 
     decision_input_bytes = _regular_file_bytes(bundle_dir / "decision-input.json")
     if _sha256_hex(decision_input_bytes) != bundle.decision_input_content_sha256:
@@ -826,6 +914,14 @@ def load_owner_decision_evidence(
         raise OwnerTrustStoreError(
             "persisted registry snapshot does not match the bundle binding"
         )
+    if (
+        snapshot.registry.registry_id != bundle.registry_id
+        or snapshot.registry.content_sha256 != bundle.registry_content_sha256
+    ):
+        raise OwnerTrustStoreError(
+            "persisted registry snapshot's registry identity does not match "
+            "the bundle binding"
+        )
     verification = _load_model(
         "verification.json", OwnerProvenanceVerificationV1
     )
@@ -838,6 +934,14 @@ def load_owner_decision_evidence(
         if record != bundle.record:
             raise OwnerTrustStoreError(
                 "persisted decision record does not match the bundle embedding"
+            )
+        divergences = _record_signed_payload_divergences(
+            bundle.record, decision_input_bytes
+        )
+        if divergences:
+            raise OwnerTrustStoreError(
+                "persisted decision record diverges from the signed "
+                f"decision-input bytes ({', '.join(divergences)})"
             )
     return LoadedOwnerDecisionEvidence(
         bundle=bundle,
@@ -855,11 +959,15 @@ def load_owner_decision_evidence(
 class EvidenceReverificationV1(BaseModel):
     """Deterministic offline replay result for one persisted evidence bundle.
 
-    ``REPLAYS_BYTE_IDENTICAL`` requires the freshly recomputed dossier to
-    equal the embedded one byte-for-byte and the embedded record (when
-    present) to bind the persisted decision-input bytes exactly; anything
-    else is a named ``MISMATCH``.  This is audit replay of captured
-    evidence, never a fresh authority claim for a plan.
+    ``REPLAYS_BYTE_IDENTICAL`` requires every persisted component file to
+    match its manifest binding (decision-input bytes, statement, registry
+    snapshot and its internal registry identity, the physical
+    ``verification.json``, and — for a record-bearing bundle — the physical
+    ``record.json``), the freshly recomputed dossier to equal the embedded
+    one byte-for-byte, and the embedded record to bind the owner-signed
+    decision-input fields verbatim; anything else is a named ``MISMATCH``.
+    This is audit replay of captured evidence, never a fresh authority
+    claim for a plan.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -908,13 +1016,17 @@ def reverify_owner_decision_evidence(
     """Replay one persisted evidence bundle offline: same bytes, same dossier.
 
     Unlike the strict :func:`load_owner_decision_evidence` (which fail-closes
-    for consumers), this audit boundary *compares*: every component that
-    parses is compared against the manifest binding and the dossier is
-    recomputed from the actual persisted bytes, so tampering surfaces as a
-    named ``MISMATCH`` — including a fully self-consistent forged bundle
-    whose embedded dossier claims a verification the bytes cannot reproduce.
-    A component that does not parse at all still fails closed as a classified
-    store error.
+    for consumers), this audit boundary *compares*: every persisted
+    component file that parses is compared against the manifest binding —
+    including the physical ``verification.json`` and, for a record-bearing
+    bundle, the physical ``record.json`` — and the dossier is recomputed
+    from the actual persisted bytes, so tampering surfaces as a named
+    ``MISMATCH``.  The persisted record must also embed the owner-signed
+    decision-input fields verbatim, so a fully self-consistent forged
+    record/manifest whose signed fields diverge cannot replay clean.  The
+    bundle directory must hold exactly its complete component shape; a
+    missing, unexpected, symlinked or unparseable component fails closed as
+    a classified store error instead of being reinterpreted as success.
     """
 
     bundle_file = Path(bundle_path)
@@ -933,6 +1045,7 @@ def reverify_owner_decision_evidence(
         raise OwnerTrustStoreError(
             f"evidence bundle is tampered or unreadable: {str(exc)[:300]}"
         ) from exc
+    _check_bundle_directory_shape(bundle_dir, bundle)
 
     def _load_component(name: str, model_cls):
         try:
@@ -951,7 +1064,9 @@ def reverify_owner_decision_evidence(
     snapshot = _load_component(
         "registry-snapshot.json", OwnerProvenanceRegistrySnapshotV1
     )
-    _load_component("verification.json", OwnerProvenanceVerificationV1)
+    verification_file = _load_component(
+        "verification.json", OwnerProvenanceVerificationV1
+    )
 
     decision_input_bytes = _regular_file_bytes(bundle_dir / "decision-input.json")
     mismatches: list[str] = []
@@ -964,6 +1079,13 @@ def reverify_owner_decision_evidence(
         or snapshot.snapshot_content_sha256 != bundle.registry_snapshot_content_sha256
     ):
         mismatches.append("REGISTRY_SNAPSHOT_DIVERGED")
+    if (
+        snapshot.registry.registry_id != bundle.registry_id
+        or snapshot.registry.content_sha256 != bundle.registry_content_sha256
+    ):
+        mismatches.append("REGISTRY_IDENTITY_DIVERGED")
+    if verification_file != bundle.verification:
+        mismatches.append("VERIFICATION_FILE_DIVERGED")
 
     fresh = verify_owner_provenance(
         decision_input_bytes=decision_input_bytes,
@@ -975,6 +1097,9 @@ def reverify_owner_decision_evidence(
 
     record = bundle.record
     if record is not None:
+        record_file = _load_component("record.json", OwnerPolicyDecisionRecordV1)
+        if record_file != bundle.record:
+            mismatches.append("RECORD_FILE_DIVERGED")
         if (
             record.provenance.source_content_sha256
             != bundle.decision_input_content_sha256
@@ -982,6 +1107,9 @@ def reverify_owner_decision_evidence(
             mismatches.append("RECORD_PROVENANCE_NOT_BOUND_TO_INPUT_BYTES")
         if record.content_sha256 != bundle.record_content_sha256:
             mismatches.append("RECORD_CONTENT_HASH_MISMATCH")
+        mismatches.extend(
+            _record_signed_payload_divergences(record, decision_input_bytes)
+        )
 
     status: Literal["REPLAYS_BYTE_IDENTICAL", "MISMATCH"] = (
         "REPLAYS_BYTE_IDENTICAL" if not mismatches else "MISMATCH"
