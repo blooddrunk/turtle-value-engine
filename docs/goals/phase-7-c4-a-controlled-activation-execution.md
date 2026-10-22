@@ -1,0 +1,53 @@
+# Phase 7-C4-A — Controlled Profile Activation and Reversible Local Execution
+
+Status: **SELECTED / NOT IMPLEMENTED**. Selected by `docs/status/phase-7-c3-b-r3-post-closure-review-2026-10-22.md` after independent R3 source/CI review. R3 stays **CLOSED**.
+
+## Mandatory step zero: sync and verify current upstream
+
+Run `git status --short`, `git fetch origin --prune`, `git log -5 --oneline origin/main`, inspect open PRs and exact-head CI, then read `AGENTS.md`, this goal, the R3 post-closure review, `docs/status/phase-7-c3-b-r3-2026-10-22.md`, `docs/operations/owner-provenance-walkthrough.md`, and actual current CLI/planner/store/config code. Protect local edits; use a clean feature branch/worktree from verified **current** `origin/main`, never a hard reset. If this selection PR has not yet merged, resolve its exact-head CI/merge or incorporate its goal without duplicating divergent files.
+
+## Outcome and scope
+
+Deliver the smallest useful *opt-in* offline executor that changes only `[profiles] default` in one explicitly specified, owner-controlled private project TOML configuration, **after deriving a fresh `READY_FOR_EXPLICIT_OWNER_EXECUTION` plan**. Include an exact before/after preview, an atomic single-file change, a content-addressed local before-image/receipt, and a bounded explicit rollback command. The code must be executable and end-to-end testable now, but must **never** perform the owner's real strict-v2 acceptance/switch in development, tests or CI.
+
+Reuse `plan_profile_activation`, the real `SignedOwnerProvenanceVerifier`, `OwnerProvenanceTrustStore.latest_snapshot()`, the strict `load_owner_decision_evidence`, existing signed lifecycle verification and already-enumerated configuration inventory. No duplicated authority logic, no new trusted flag/JSON shortcut, no mock signers in end-to-end acceptance. Do not alter investment math, strategy thresholds, released profile files or manifest, and do not introduce an auto-trading, brokerage, daemon-restart, historical-artifact rewrite or notification replay path.
+
+## Test-first preflight (no assumed new vulnerability)
+
+1. Inspect the real `plan-activation --decision-record ... --authority-evidence ...` path. Determine with real throwaway Ed25519 fixtures whether the selected record may differ in content hash or bytes from the bundle's embedded record while fresh signed-input re-attestation still returns READY. This is a **source-level hypothesis**, not a claimed exploit. Record the pristine baseline behavior and full-rehash fixture method; if not reproducible, do not manufacture a failing test or a change.
+2. Regardless of the outcome, define and test the **executor's** provenance association: for an apply attempt, require the chosen currently active owner decision record to be exactly the one in a strictly loaded, coherent evidence bundle (same canonical bytes/content hash and id). Merely verifying that *some* bundle carries a valid signature for compatible input is insufficient as a provenance receipt for mutation. Preserve existing read-only planner behavior unless a demonstrated bug justifies a compatible repair.
+3. Establish the existing config shape: `[profiles]\ndefault = "strict-v1"` in `config/project.example.toml`; the operational target is an explicit private copy, not that source template. Fix allowed path semantics in tests before implementing writes.
+
+## Functional implementation
+
+### A. Preview and explicit execution
+
+Add a discoverable CLI entry point, e.g. `tve evolution activate-profile`, reusing the arguments of `plan-activation` for policy exceptions, record(s), evidence bundle, current trust root, release manifest, config and inventory paths. The **default is preview-only**, with no mutation, and displays plan id, READY/BLOCKED, blockers, current and proposed profiles, original config SHA-256, before/after exact configuration diff, intended backup and receipt paths, and rollback command. If blocked, return a classified nonzero status and do not touch any input.
+
+Actual mutation requires **both** `--apply` and `--expected-plan-id <freshly-previewed-id>`. Refuse missing, stale or mismatched intent. During the apply critical section, re-read/revalidate the current project config and trust root and rederive the full plan from authoritative current inputs; do not trust a saved plan JSON or an earlier READY state. Require fresh READY, current registry authority, matching signed evidence/decision record, config and inventory/hash stability, and still-exact target profile/manifest hashes. An already-target/default state is an explicit no-op outcome, never a silent fresh activation.
+
+### B. One-file atomicity and recoverability
+
+Mutation boundary is exactly the selected private project TOML's single `[profiles].default` value. Preserve every unrelated byte/key/comment and validate the resulting TOML. Reject missing/ambiguous profile keys, symlinked target paths, path aliasing to protected/released files, malformed or non-regular files, unexpected config byte changes, and unsafe output/backup overlap. No rewriting of watchlists, normalized inputs, backtest files, snapshot stores, monitoring state or source `config/project.example.toml`.
+
+Create an immutable, private before-image before replacing config, with its SHA-256. Use a same-directory temporary file + fsync + atomic replace for the one config; consider OS-supported exclusive lock/CAS behavior so an intervening writer cannot be silently overwritten. Publish a deterministic, create-only activation receipt (old/new hashes, profile ids, fresh plan id, evidence/decision/trust-root identities, outcome and rollback reference), and document the **realistic crash consistency** of multiple files: config replacement itself is atomic, but receipt/backup publication is not one multi-file transaction. Provide deterministic recoverability for interrupted operations rather than promising impossible cross-file atomicity. Keep failure cleanup narrow; never delete unrelated files.
+
+### C. Explicit rollback
+
+Expose an offline rollback command requiring the exact activation receipt and an explicit rollback request. It must verify the original before-image hash, receipt binding, target config's *current* hash and profile, and a no-intervening-mutation precondition; refuse to clobber a later unrelated change. Restore exactly the original TOML bytes by atomic replacement, emit an immutable rollback outcome, and define repeat/idempotent rollback behavior. No new policy acceptance is needed to restore the exact previous config from a valid receipt, but rollback must be explicitly invoked. Do not replay past monitoring runs or notifications, alter stored research history, or imply that a config rollback reverses already produced decisions.
+
+## Automated acceptance — mandatory for engineering closure
+
+- Real generated throwaway Ed25519 key + real trust-root registry, actual signed decision input/capture/persist/strict-load, fresh READY plan, preview, apply in **disposable temp private config**, observed default change, receipt/backup digest verification, rollback and byte-exact restoration. No real owner key or live config required.
+- Negative matrix: absent evidence/root/allowlist, bad signature, revoked/rotated key after preview, REJECT, competing decision, unsigned supersession, omitted or forged policy exception, C1 audit not ready, changed config bytes after preview, changed release bytes, altered signed binding, record/bundle mismatch, already-target state, symlink/ambiguous TOML/aliases, output collision, concurrent writer, interrupted staging, corrupted receipt/backup, rollback after intervening edit. For each assert exit status, named error, no unintended modification, and content hashes.
+- Explicit dry-run must be byte-for-byte read-only; failure paths must leave valid prior config recoverable. Run idempotence and repeated-run tests. Include test injection for failure *before* replace and *after* replace before receipt finalization, and document recovery commands with actual observable on-disk states.
+- Run current repository's full CI-equivalent matrix: Ruff; focused provenance/owner decision/activation tests; `python -m pytest`; config validation; systemd unit validation; checked OpenAPI/generated TS/Wrangler files; Dashboard API/types/lint/typecheck/tests/build/client-secret sentinel scan; Wrangler strict dry-run; dashboard cross-stack smoke. Do not skip failing checks without separately reporting them; rerun contention-prone smoke sequentially if needed, with the first failure recorded.
+- Before/after SHA-256 must be identical for `rules/strict-v1.yaml`, `rules/strict-v2.yaml`, `docs/releases/strict-v2/release-candidate.json`, `config/project.example.toml`; checked-in default remains strict-v1. No real private material or user signature in repository, artifacts, CI logs, chat or PR. No default-on activation or network calls in deterministic verification.
+- Update short operator docs with **literal working commands, expected output fields/statuses, path examples, failure interpretation, backup inspection and rollback**. A readable Chinese operations section is preferred. Supply fully automated fixture commands or scripts that a second engineer can rerun; no `manual evidence incomplete` placeholders.
+- Commit source/tests/docs, open a scoped PR, verify exact PR head SHA and all required CI successful before merging; after merge, verify exact merge-head CI and write a factual closure note. No extra R4 phase unless a **new fail-on-baseline, actually reproduced serious defect** demands one.
+
+## Human vs machine: explicit boundary
+
+**No human action is required to close C4-A engineering**: test fixtures simulate genuine cryptographic workflows with throwaway keys and disposable configs. Do not require the user to execute cryptic commands or submit a real key to make tests pass.
+
+**Only for an optional subsequent REAL strict-v2 activation:** show the owner a plain-language audit of its CDC 14% threshold versus S-band 12% and the exact policy-exception consequence; do not invent their ACCEPT/REJECT. The owner must choose, independently maintain an encrypted key and registry outside the repo, sign the matching canonical decision input (see `docs/operations/owner-provenance-walkthrough.md`), observe a fresh READY preview over the actual private config/inventory, compare its plan id/diff, then explicitly issue `--apply --expected-plan-id ...`. Afterward verify the default, backup SHA and receipt; use the documented rollback command if necessary. If they do not authorize this, stop at the green engineering closure with production default unchanged. This is policy judgment and live operator consent, not missing test evidence.
