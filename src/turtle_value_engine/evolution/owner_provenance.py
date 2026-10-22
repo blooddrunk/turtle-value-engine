@@ -86,6 +86,12 @@ PROVENANCE_PURPOSE = "turtle-value-engine:owner-policy-decision:v1"
 #: The only supported signature algorithm (RFC 8032 Ed25519, pure).
 PROVENANCE_ALGORITHM = "ED25519"
 
+#: The fixed reason code of a VERIFIED authority assessment produced by
+#: :class:`SignedOwnerProvenanceVerifier` at record time and at plan-time
+#: re-attestation.  Capture-consistency consumers reconcile persisted
+#: records against exactly this value (R3).
+ED25519_OWNER_PROVENANCE_VERIFIED_REASON = "ED25519_OWNER_PROVENANCE_VERIFIED"
+
 #: Canonical check sequence of one provenance verification, in canonical
 #: order.  The persisted dossier carries exactly these checks, and the
 #: generated schema pins per-position names (Draft 2020-12 ``prefixItems``).
@@ -845,7 +851,7 @@ class SignedOwnerProvenanceVerifier(OwnerDecisionVerifier):
                     verification_method="INJECTED_VERIFIER",
                     verifier_kind=self.kind,
                     allowlist_matched=True,
-                    reason_code="ED25519_OWNER_PROVENANCE_VERIFIED",
+                    reason_code=ED25519_OWNER_PROVENANCE_VERIFIED_REASON,
                     detail=(
                         "Ed25519 signature by registered key "
                         f"{verification.key_id!r} verified over the exact "
@@ -900,7 +906,7 @@ class SignedOwnerProvenanceVerifier(OwnerDecisionVerifier):
                 verification_method="INJECTED_VERIFIER",
                 verifier_kind=self.kind,
                 allowlist_matched=True,
-                reason_code="ED25519_OWNER_PROVENANCE_VERIFIED",
+                reason_code=ED25519_OWNER_PROVENANCE_VERIFIED_REASON,
                 detail=(
                     "Ed25519 signature by registered key "
                     f"{verification.key_id!r} verified over the exact canonical "
@@ -967,6 +973,7 @@ class SignedOwnerProvenanceVerifier(OwnerDecisionVerifier):
 
 
 __all__ = [
+    "ED25519_OWNER_PROVENANCE_VERIFIED_REASON",
     "PROVENANCE_ALGORITHM",
     "PROVENANCE_PURPOSE",
     "REQUIRED_PROVENANCE_CHECK_NAMES",

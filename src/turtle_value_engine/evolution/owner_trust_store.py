@@ -60,6 +60,7 @@ from .owner_decision import (
 )
 from .owner_provenance import (
     _DECISION_CONTENT_FIELDS,
+    ED25519_OWNER_PROVENANCE_VERIFIED_REASON,
     HASH_PATTERN,
     OwnerProvenanceKeyRecordV1,
     OwnerProvenanceKeyRegistryV1,
@@ -682,9 +683,9 @@ def capture_attestation_divergences(
     """Named incoherences between captured authority claims and crypto facts.
 
     One shared consistency contract for the strict loader and the audit
-    replay (R2): the bundle is the output of the record-time capture
-    boundary, so its recorded claims must be derivable from the actual
-    persisted bytes and the recomputed verification dossier.  Enforced:
+    replay (R2, extended by R3): the bundle is the output of the record-time
+    capture boundary, so its recorded claims must be derivable from the
+    actual persisted bytes and the recomputed verification dossier.  Enforced:
 
     * ``VALID`` ⇔ empty ``validation_blockers`` (record-time state
       derivation: any blocker or authority rejection forces ``INVALID``
@@ -698,7 +699,17 @@ def capture_attestation_divergences(
     * the attested key id equals the dossier's ``key_id``, the attested
       registry identity/content hash equals the registry inside the
       persisted snapshot, and the authority ``evidence_content_sha256``
-      equals the hash of the actual decision-input bytes.
+      equals the hash of the actual decision-input bytes;
+    * (R3) the record provenance binds the exact decision-input bytes —
+      replay and strict loading must agree on the same named divergence;
+    * (R3) the record's authority annotations are exactly the deterministic
+      record-time values of the real ``SignedOwnerProvenanceVerifier``
+      (verifier kind, affirmative allowlist result, VERIFIED reason code) —
+      fields outside both the owner signature and the deterministic record
+      id, so only the capture boundary could have written them;
+    * (R3) the record carries no ``supersedes_decision_record_id``: the
+      capture boundary never generates it and supersession is authorized
+      only by the separately signed lifecycle protocol.
 
     This reconciles captured *attestation metadata* with cryptographic
     facts; it deliberately does not re-execute the record-time economic
@@ -717,6 +728,10 @@ def capture_attestation_divergences(
     if record is None:
         return divergences
     authority = record.authority
+    if record.provenance.source_content_sha256 != _sha256_hex(decision_input_bytes):
+        divergences.append("RECORD_PROVENANCE_NOT_BOUND_TO_INPUT_BYTES")
+    if record.supersedes_decision_record_id is not None:
+        divergences.append("RECORD_UNSIGNED_SUPERSESSION")
     if authority.verification_method != "INJECTED_VERIFIER":
         divergences.append("AUTHORITY_METHOD_INCONSISTENT")
     if (
@@ -734,6 +749,12 @@ def capture_attestation_divergences(
         != snapshot.registry.content_sha256
     ):
         divergences.append("ATTESTED_REGISTRY_DIVERGED")
+    if authority.verifier_kind != SignedOwnerProvenanceVerifier.kind:
+        divergences.append("AUTHORITY_VERIFIER_KIND_DIVERGED")
+    if authority.allowlist_matched is not True:
+        divergences.append("AUTHORITY_ALLOWLIST_DIVERGED")
+    if authority.reason_code != ED25519_OWNER_PROVENANCE_VERIFIED_REASON:
+        divergences.append("AUTHORITY_REASON_CODE_DIVERGED")
     return divergences
 
 
@@ -1208,11 +1229,6 @@ def reverify_owner_decision_evidence(
         record_file = _load_component("record.json", OwnerPolicyDecisionRecordV1)
         if record_file != bundle.record:
             mismatches.append("RECORD_FILE_DIVERGED")
-        if (
-            record.provenance.source_content_sha256
-            != bundle.decision_input_content_sha256
-        ):
-            mismatches.append("RECORD_PROVENANCE_NOT_BOUND_TO_INPUT_BYTES")
         if record.content_sha256 != bundle.record_content_sha256:
             mismatches.append("RECORD_CONTENT_HASH_MISMATCH")
         mismatches.extend(

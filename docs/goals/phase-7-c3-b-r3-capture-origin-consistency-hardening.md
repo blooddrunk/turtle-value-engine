@@ -1,6 +1,6 @@
 # Phase 7-C3-B-R3 — Capture-Origin and Authority-Annotation Consistency (tests first)
 
-Status: **SELECTED / NOT IMPLEMENTED**. Selected by `docs/status/phase-7-c3-b-r2-post-closure-review-2026-10-20.md`; R2 remains **CLOSED**. This document does not authorize switching any profile or implementing an activation executor.
+Status: **IMPLEMENTED** (implementation and regression evidence complete; closure record `docs/status/phase-7-c3-b-r3-2026-10-22.md`). Selected by `docs/status/phase-7-c3-b-r2-post-closure-review-2026-10-20.md`; R2 remains **CLOSED**. This document does not authorize switching any profile or implementing an activation executor.
 
 ## Mandatory first step: synchronize the latest code
 
