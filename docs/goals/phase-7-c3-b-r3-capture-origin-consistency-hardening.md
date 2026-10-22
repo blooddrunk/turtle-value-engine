@@ -1,6 +1,6 @@
 # Phase 7-C3-B-R3 — Capture-Origin and Authority-Annotation Consistency (tests first)
 
-Status: **IMPLEMENTED** (implementation and regression evidence complete; closure record `docs/status/phase-7-c3-b-r3-2026-10-22.md`). Selected by `docs/status/phase-7-c3-b-r2-post-closure-review-2026-10-20.md`; R2 remains **CLOSED**. This document does not authorize switching any profile or implementing an activation executor.
+Status: **IMPLEMENTED / CLOSED** (implementation `cbf88a4673aa233e852a4879cbb090579871516b`, PR #16 merged as `720720edf90f608f05b19730d58ca13d2d98f1fc`; exact-head Actions run `39752585126` `success`, merge-head run `39753385499` `success`; closure record `docs/status/phase-7-c3-b-r3-2026-10-22.md`). Selected by `docs/status/phase-7-c3-b-r2-post-closure-review-2026-10-20.md`; R2 remains **CLOSED**. This document does not authorize switching any profile or implementing an activation executor.
 
 ## Mandatory first step: synchronize the latest code
 
