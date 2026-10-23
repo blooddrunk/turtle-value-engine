@@ -29,9 +29,20 @@ Design boundaries, made explicit:
 * **Recoverability is deterministic, never magical.**  A content-addressed
   private before-image and an immutable intent journal are persisted *before*
   the atomic same-directory ``os.replace``; the deterministic create-only
-  receipt is published *after* it.  A crash at any point leaves an
-  on-disk state that the next invocation classifies and completes (or refuses)
-  by name — multi-file cross-restart atomicity is deliberately not claimed.
+  receipt is published *after* it.  Every publication fsyncs the file body
+  and its parent directory entry before returning.  A crash at any point
+  leaves an on-disk state that the next invocation classifies and completes
+  (or refuses) by name — multi-file cross-restart atomicity is deliberately
+  not claimed.  Rollback symmetrically persists an immutable recovery intent
+  before the restore and finalizes the rollback outcome after it, so an
+  interrupted rollback's audit artifact is recoverable on retry while a
+  prior-byte state without durable proof is never fabricated into one.
+* **Store containment is enforced below the activation root.**  The store
+  descendant directories (``locks``, ``journal``, ``receipts``,
+  ``before-images``, ``rollbacks``) are refused as symlinks or
+  non-directories before any mutation — a hostile layout cannot direct a
+  lock file, journal, before-image, receipt or rollback artifact outside
+  the private root.
 * **Rollback is separately invoked and byte-exact.**  It restores the exact
   prior bytes only after receipt validation, before-image hash verification
   and a current-config precondition check, refusing to clobber any
@@ -64,6 +75,7 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import stat
 import tomllib
 from collections.abc import Callable, Sequence
@@ -135,7 +147,21 @@ FAULT_POINTS: tuple[str, ...] = (
     "before_image_persisted",
     "temp_written",
     "config_replaced",
+    "rollback_intent_persisted",
+    "config_restored",
 )
+
+#: Activation-store descendant directories the executor publishes into.  A
+#: hostile layout (symlink or non-directory entry) is refused before any
+#: mutation, so no lock, journal, before-image, receipt or rollback byte can
+#: be directed outside the activation root through a descendant path.
+_APPLY_STORE_DIRS: tuple[str, ...] = (
+    "locks",
+    "journal",
+    "receipts",
+    "before-images",
+)
+_ROLLBACK_STORE_DIRS: tuple[str, ...] = ("locks", "before-images", "rollbacks")
 
 
 class ActivationExecutionError(ValueError):
@@ -182,13 +208,18 @@ def _write_create_or_identical(
     Same repository-standard publication discipline as the C2/C3 record
     boundary: a single exclusive ``O_CREAT | O_EXCL`` open (no
     check-then-replace window), full write + fsync before returning, and
-    cleanup of only the exclusively-created inode on failure.
+    cleanup of only the exclusively-created inode on failure.  The parent
+    directory entry is fsynced after the file body (and its own parent when
+    the store directory itself was just created), so a publication that must
+    precede the config swap is durable as a directory entry, not only as
+    file bytes.
     """
 
     if path.is_symlink():
         raise ActivationExecutionError(
             "OUTPUT_PATH_SYMLINK", f"{label} must not be a symlink: {path}"
         )
+    parent_existed = path.parent.is_dir()
     path.parent.mkdir(parents=True, exist_ok=True)
     try:
         descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, mode)
@@ -218,6 +249,11 @@ def _write_create_or_identical(
             handle.write(content)
             handle.flush()
             os.fsync(handle.fileno())
+        _fsync_dir(path.parent)
+        if not parent_existed:
+            # The store directory entry itself is new; make it durable inside
+            # the activation root (store layouts are one level deep).
+            _fsync_dir(path.parent.parent)
     except BaseException:
         try:
             if os.stat(path).st_ino == created_ino:
@@ -395,6 +431,59 @@ class ProfileActivationRollbackOutcomeV1(BaseModel):
         if self.content_sha256 != expected_content:
             raise ValueError(
                 "rollback outcome content_sha256 does not match content"
+            )
+        return self
+
+    def serialized_bytes(self) -> bytes:
+        return _pretty_json_bytes(self)
+
+
+class ProfileActivationRollbackIntentV1(BaseModel):
+    """Immutable recovery intent persisted before the config restoration.
+
+    Written while the config still holds the receipt's activated bytes, this
+    record is *not* a claim that the rollback completed: it binds the exact
+    receipt, config path and byte hashes an interrupted rollback can be
+    verified against, so a retry that already observes the restored bytes
+    can finalize the durable rollback outcome deterministically without
+    rewriting the config — and without fabricating an outcome for a rollback
+    that never provably ran.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    contract: Literal["profile_activation_rollback_intent_v1"] = (
+        "profile_activation_rollback_intent_v1"
+    )
+    schema_version: StrictStr = Field(default="1.0.0", pattern=r"^\d+\.\d+\.\d+$")
+    rollback_id: StrictStr = Field(min_length=1, max_length=168)
+    activation_id: StrictStr = Field(min_length=1, max_length=168)
+    receipt_content_sha256: StrictStr = Field(pattern=HASH_PATTERN)
+    project_config_path: StrictStr = Field(min_length=1, max_length=2_048)
+    activated_config_sha256: StrictStr = Field(pattern=HASH_PATTERN)
+    restored_config_sha256: StrictStr = Field(pattern=HASH_PATTERN)
+    before_image_sha256: StrictStr = Field(pattern=HASH_PATTERN)
+    purpose: Literal["ROLLBACK_RECOVERY_INTENT"] = "ROLLBACK_RECOVERY_INTENT"
+    content_sha256: StrictStr = Field(pattern=HASH_PATTERN)
+
+    @model_validator(mode="after")
+    def validate_intent(self) -> Self:
+        expected_id = deterministic_id(
+            "profile-activation-rollback",
+            self.activation_id,
+            self.receipt_content_sha256,
+            self.project_config_path,
+            self.restored_config_sha256,
+        )
+        if self.rollback_id != expected_id:
+            raise ValueError(
+                "rollback intent id disagrees with the bound content"
+            )
+        payload = self.model_dump(mode="json", exclude={"content_sha256"})
+        expected_content = _sha256_hex(canonical_json_bytes(payload))
+        if self.content_sha256 != expected_content:
+            raise ValueError(
+                "rollback intent content_sha256 does not match content"
             )
         return self
 
@@ -581,6 +670,59 @@ def _guard_activation_root(activation_root: Path) -> Path:
                 f"trees ({resolved} under {root})",
             )
     return resolved
+
+
+def _guard_contained_dir(activation_root: Path, relative: str) -> Path:
+    """Refuse a symlinked/non-directory activation-store descendant.
+
+    Every existing path component below the (already verified) activation
+    root must be a real directory — a symlink here could direct the lock
+    file, journal, before-image, receipt or rollback outcome outside the
+    private store.  Missing components are created later by the anchored
+    ``mkdir(parents=True)`` inside the verified root and need no check.  The
+    resolved descendant is additionally proven to stay under the root.
+    """
+
+    target = activation_root / relative
+    current = activation_root
+    for part in Path(relative).parts:
+        current = current / part
+        try:
+            metadata = os.lstat(current)
+        except FileNotFoundError:
+            break
+        except OSError as exc:
+            raise ActivationExecutionError(
+                "ACTIVATION_STORE_UNAVAILABLE",
+                f"the activation store directory '{relative}' cannot be "
+                f"inspected: {current} ({str(exc)[:200]})",
+            ) from exc
+        if stat.S_ISLNK(metadata.st_mode):
+            raise ActivationExecutionError(
+                "ACTIVATION_STORE_SYMLINK",
+                f"the activation store directory '{relative}' must be a real "
+                f"directory inside the activation root, not a symlink: "
+                f"{current}",
+            )
+        if not stat.S_ISDIR(metadata.st_mode):
+            raise ActivationExecutionError(
+                "ACTIVATION_STORE_NOT_DIRECTORY",
+                f"the activation store directory '{relative}' must be a real "
+                f"directory inside the activation root: {current}",
+            )
+    resolved = target.resolve(strict=False)
+    if not (resolved == activation_root or resolved.is_relative_to(activation_root)):
+        raise ActivationExecutionError(
+            "ACTIVATION_STORE_ESCAPE",
+            f"the activation store directory '{relative}' resolves outside "
+            f"the activation root: {resolved}",
+        )
+    return target
+
+
+def _guard_activation_store(activation_root: Path, names: tuple[str, ...]) -> None:
+    for name in names:
+        _guard_contained_dir(activation_root, name)
 
 
 def _lock_path(activation_root: Path, resolved_config: Path) -> Path:
@@ -980,9 +1122,45 @@ def build_activation_receipt(
 
 
 def build_rollback_command(receipt_path: Path, activation_root: Path) -> str:
-    return (
-        "tve evolution rollback-activation "
-        f"--receipt {receipt_path} --activation-root {activation_root}"
+    """The complete, safely shell-quoted operator rollback command."""
+
+    return shlex.join(
+        [
+            "tve",
+            "evolution",
+            "rollback-activation",
+            "--receipt",
+            str(receipt_path),
+            "--activation-root",
+            str(activation_root),
+        ]
+    )
+
+
+def build_apply_command_hint(
+    apply_command_argv: Sequence[str],
+    *,
+    plan_id: str,
+    original_config_sha256: str,
+) -> str:
+    """The complete, safely shell-quoted operator apply command.
+
+    ``apply_command_argv`` is the exact ``activate-profile`` argument vector
+    (starting at ``"evolution"``) the operator's invocation used, without
+    the trailing apply opt-in flags, which are bound to the freshly derived
+    preview identities here.
+    """
+
+    return shlex.join(
+        [
+            "tve",
+            *apply_command_argv,
+            "--apply",
+            "--expected-plan-id",
+            plan_id,
+            "--expected-config-sha256",
+            original_config_sha256,
+        ]
     )
 
 
@@ -1040,8 +1218,19 @@ def preview_profile_activation(
     backtest_manifest_paths: Sequence[str | Path] = (),
     surface_snapshot_paths: Sequence[str | Path] = (),
     runner_config_paths: Sequence[str | Path] = (),
+    apply_command_argv: Sequence[str] | None = None,
 ) -> ProfileActivationPreviewV1:
-    """Derive the read-only preview; performs no writes of any kind."""
+    """Derive the read-only preview; performs no writes of any kind.
+
+    ``apply_command_argv`` carries the exact original ``activate-profile``
+    argument vector (starting at ``"evolution"``, without the trailing
+    ``--apply`` opt-in flags) so the emitted ``apply_command_hint`` is a
+    complete, shell-quoted, directly executable command.  Only the CLI
+    boundary sees the original decision/evidence file paths; when it is
+    omitted, the hint names only the path arguments this function itself
+    received and is not guaranteed runnable for library callers that loaded
+    records from files.
+    """
 
     root = _guard_activation_root(Path(activation_root))
     config_path = _guard_target_config(Path(project_config_path))
@@ -1111,11 +1300,28 @@ def preview_profile_activation(
         )
         receipt_path = str(root / "receipts" / f"{receipt.activation_id}.json")
         rollback_command = build_rollback_command(Path(receipt_path), root)
-        apply_hint = (
-            "tve evolution activate-profile ... --apply "
-            f"--expected-plan-id {plan.plan_id} "
-            f"--expected-config-sha256 {original_sha} "
-            f"--activation-root {root}"
+        argv = (
+            list(apply_command_argv)
+            if apply_command_argv is not None
+            else [
+                "evolution",
+                "activate-profile",
+                "--base-profile",
+                str(base_profile_path),
+                "--target-profile",
+                str(target_profile_path),
+                "--release-manifest",
+                str(release_manifest_path),
+                "--project-config",
+                str(config_path),
+                "--activation-root",
+                str(root),
+            ]
+        )
+        apply_hint = build_apply_command_hint(
+            argv,
+            plan_id=plan.plan_id,
+            original_config_sha256=original_sha or "",
         )
 
     payload = {
@@ -1300,6 +1506,9 @@ def apply_profile_activation(
 
     root = _guard_activation_root(Path(activation_root))
     config_path = _guard_target_config(Path(project_config_path))
+    # Refuse a hostile store layout before the lock exists: nothing may be
+    # created inside — let alone outside — the private root.
+    _guard_activation_store(root, _APPLY_STORE_DIRS)
     journal_dir = root / "journal"
     receipts_dir = root / "receipts"
     before_images_dir = root / "before-images"
@@ -1554,10 +1763,148 @@ def load_activation_receipt(path: str | Path) -> ProfileActivationReceiptV1:
         ) from exc
 
 
+def _build_rollback_outcome(
+    receipt: ProfileActivationReceiptV1, config_path: Path
+) -> ProfileActivationRollbackOutcomeV1:
+    outcome_payload = {
+        "contract": "profile_activation_rollback_v1",
+        "schema_version": "1.0.0",
+        "activation_id": receipt.activation_id,
+        "receipt_content_sha256": receipt.content_sha256,
+        "project_config_path": str(config_path),
+        "restored_config_sha256": receipt.prior_config_sha256,
+        "restored_default_profile": receipt.prior_default_profile,
+        "before_image_sha256": receipt.before_image_sha256,
+        "outcome": "ROLLED_BACK",
+        "rollback_was_explicit_opt_in": True,
+    }
+    outcome_payload["rollback_id"] = deterministic_id(
+        "profile-activation-rollback",
+        outcome_payload["activation_id"],
+        outcome_payload["receipt_content_sha256"],
+        outcome_payload["project_config_path"],
+        outcome_payload["restored_config_sha256"],
+    )
+    outcome_payload["content_sha256"] = _sha256_hex(
+        canonical_json_bytes(
+            {
+                key: value
+                for key, value in outcome_payload.items()
+                if key != "content_sha256"
+            }
+        )
+    )
+    return ProfileActivationRollbackOutcomeV1.model_validate(outcome_payload)
+
+
+def _build_rollback_intent(
+    receipt: ProfileActivationReceiptV1, config_path: Path
+) -> ProfileActivationRollbackIntentV1:
+    outcome = _build_rollback_outcome(receipt, config_path)
+    fields = {
+        "contract": "profile_activation_rollback_intent_v1",
+        "schema_version": "1.0.0",
+        "rollback_id": outcome.rollback_id,
+        "activation_id": receipt.activation_id,
+        "receipt_content_sha256": receipt.content_sha256,
+        "project_config_path": str(config_path),
+        "activated_config_sha256": receipt.activated_config_sha256,
+        "restored_config_sha256": receipt.prior_config_sha256,
+        "before_image_sha256": receipt.before_image_sha256,
+        "purpose": "ROLLBACK_RECOVERY_INTENT",
+    }
+    fields["content_sha256"] = _sha256_hex(
+        canonical_json_bytes(
+            {key: value for key, value in fields.items() if key != "content_sha256"}
+        )
+    )
+    return ProfileActivationRollbackIntentV1.model_validate(fields)
+
+
+def _load_validated_rollback_outcome(
+    path: Path, expected: ProfileActivationRollbackOutcomeV1
+) -> ProfileActivationRollbackOutcomeV1:
+    try:
+        persisted = ProfileActivationRollbackOutcomeV1.model_validate(
+            json.loads(path.read_bytes())
+        )
+    except Exception as exc:
+        raise ActivationExecutionError(
+            "ROLLBACK_OUTCOME_CORRUPT",
+            f"the persisted rollback outcome cannot be validated: {path} "
+            f"({str(exc)[:200]})",
+        ) from exc
+    if persisted != expected:
+        raise ActivationExecutionError(
+            "ROLLBACK_OUTCOME_CORRUPT",
+            f"the persisted rollback outcome is bound to different content "
+            f"than this receipt: {path}",
+        )
+    return persisted
+
+
+def _load_validated_rollback_intent(
+    path: Path, expected: ProfileActivationRollbackIntentV1
+) -> ProfileActivationRollbackIntentV1:
+    try:
+        persisted = ProfileActivationRollbackIntentV1.model_validate(
+            json.loads(path.read_bytes())
+        )
+    except Exception as exc:
+        raise ActivationExecutionError(
+            "ROLLBACK_INTENT_CORRUPT",
+            f"the persisted rollback recovery intent cannot be validated: "
+            f"{path} ({str(exc)[:200]})",
+        ) from exc
+    if persisted != expected:
+        raise ActivationExecutionError(
+            "ROLLBACK_INTENT_MISMATCH",
+            f"the persisted rollback recovery intent is bound to different "
+            f"content than this receipt: {path}",
+        )
+    return persisted
+
+
+def _load_verified_before_image(
+    before_image: Path, receipt: ProfileActivationReceiptV1
+) -> bytes:
+    try:
+        image_bytes = _regular_file_bytes(before_image)
+    except Exception as exc:
+        raise ActivationExecutionError(
+            "BEFORE_IMAGE_UNAVAILABLE",
+            "the receipt-bound before-image cannot be read: "
+            f"{before_image} ({str(exc)[:200]})",
+        ) from exc
+    if _sha256_hex(image_bytes) != receipt.before_image_sha256:
+        raise ActivationExecutionError(
+            "BEFORE_IMAGE_HASH_MISMATCH",
+            "the before-image no longer hashes to its content-addressed "
+            f"identity: {before_image}",
+        )
+    if _sha256_hex(image_bytes) != receipt.prior_config_sha256:
+        raise ActivationExecutionError(
+            "BEFORE_IMAGE_CONTENT_MISMATCH",
+            "the before-image bytes disagree with the receipt's prior "
+            "config hash",
+        )
+    image_parsed = tomllib.loads(image_bytes.decode("utf-8"))
+    if image_parsed.get("profiles", {}).get("default") != (
+        receipt.prior_default_profile
+    ):
+        raise ActivationExecutionError(
+            "BEFORE_IMAGE_CONTENT_MISMATCH",
+            "the before-image's [profiles] default disagrees with the "
+            "receipt's prior default",
+        )
+    return image_bytes
+
+
 def rollback_profile_activation(
     *,
     receipt_path: str | Path,
     activation_root: str | Path,
+    fault_hook: Callable[[str], None] | None = None,
 ) -> ActivationRollbackResult:
     """Restore the exact prior config bytes from a valid receipt.
 
@@ -1567,13 +1914,28 @@ def rollback_profile_activation(
     other current hash is an intervening change the rollback refuses to
     clobber.  The before-image must still exist with its content-addressed
     hash and must parse with the prior default.
+
+    Audit recoverability: an immutable recovery intent is persisted *before*
+    the config restoration, and the immutable rollback outcome *after* it.
+    A retry that observes the restored bytes distinguishes (a) a genuinely
+    completed rollback (valid outcome present — explicit no-op), (b) an
+    interrupted rollback (valid bound intent — the outcome is finalized
+    deterministically with zero further config mutation) and (c) prior bytes
+    without durable proof (reported truthfully; no outcome is fabricated).
     """
 
     root = _guard_activation_root(Path(activation_root))
     receipt = load_activation_receipt(receipt_path)
     config_path = _guard_target_config(Path(receipt.project_config_path))
+    # Refuse a hostile store layout before the lock exists: nothing may be
+    # created inside — let alone outside — the private root.
+    _guard_activation_store(root, _ROLLBACK_STORE_DIRS)
     before_image = root / "before-images" / receipt.before_image_name
     rollback_dir = root / "rollbacks"
+    outcome = _build_rollback_outcome(receipt, config_path)
+    intent = _build_rollback_intent(receipt, config_path)
+    outcome_path = rollback_dir / f"{outcome.rollback_id}.json"
+    intent_path = rollback_dir / f"{outcome.rollback_id}.intent.json"
 
     with _ConfigLock(root, config_path):
         current_bytes = _regular_file_bytes(config_path)
@@ -1583,12 +1945,47 @@ def rollback_profile_activation(
             if parsed.get("profiles", {}).get("default") == (
                 receipt.prior_default_profile
             ):
+                if outcome_path.is_file():
+                    _load_validated_rollback_outcome(outcome_path, outcome)
+                    return ActivationRollbackResult(
+                        status="ALREADY_RESTORED",
+                        outcome=None,
+                        detail=(
+                            "the config already holds the exact prior bytes "
+                            "and this rollback's immutable outcome is valid; "
+                            "zero mutation performed"
+                        ),
+                    )
+                if intent_path.is_file():
+                    _load_validated_rollback_intent(intent_path, intent)
+                    # The interrupted rollback's evidence must still verify
+                    # before the audit outcome may be finalized.
+                    _load_verified_before_image(before_image, receipt)
+                    publication = _write_create_or_identical(
+                        outcome_path,
+                        outcome.serialized_bytes(),
+                        label="rollback outcome",
+                    )
+                    return ActivationRollbackResult(
+                        status="FINALIZED_AFTER_INTERRUPTED_RESTORE",
+                        outcome=outcome,
+                        detail=(
+                            "the config restoration had already completed; "
+                            "the deterministic rollback outcome was finalized "
+                            "from the persisted recovery intent with zero "
+                            f"further config mutation (publication: "
+                            f"{publication})"
+                        ),
+                    )
                 return ActivationRollbackResult(
                     status="ALREADY_RESTORED",
                     outcome=None,
                     detail=(
-                        "the config already holds the exact prior bytes; "
-                        "zero mutation performed"
+                        "the config already holds the exact prior bytes; no "
+                        "durable rollback record (outcome or recovery "
+                        "intent) exists for this receipt, so no rollback "
+                        "audit artifact is fabricated; zero mutation "
+                        "performed"
                     ),
                 )
         if current_hash != receipt.activated_config_sha256:
@@ -1606,67 +2003,15 @@ def rollback_profile_activation(
                     ),
                 }
             )
-        try:
-            image_bytes = _regular_file_bytes(before_image)
-        except Exception as exc:
-            raise ActivationExecutionError(
-                "BEFORE_IMAGE_UNAVAILABLE",
-                "the receipt-bound before-image cannot be read: "
-                f"{before_image} ({str(exc)[:200]})",
-            ) from exc
-        if _sha256_hex(image_bytes) != receipt.before_image_sha256:
-            raise ActivationExecutionError(
-                "BEFORE_IMAGE_HASH_MISMATCH",
-                "the before-image no longer hashes to its content-addressed "
-                f"identity: {before_image}",
-            )
-        if _sha256_hex(image_bytes) != receipt.prior_config_sha256:
-            raise ActivationExecutionError(
-                "BEFORE_IMAGE_CONTENT_MISMATCH",
-                "the before-image bytes disagree with the receipt's prior "
-                "config hash",
-            )
-        image_parsed = tomllib.loads(image_bytes.decode("utf-8"))
-        if image_parsed.get("profiles", {}).get("default") != (
-            receipt.prior_default_profile
-        ):
-            raise ActivationExecutionError(
-                "BEFORE_IMAGE_CONTENT_MISMATCH",
-                "the before-image's [profiles] default disagrees with the "
-                "receipt's prior default",
-            )
+        image_bytes = _load_verified_before_image(before_image, receipt)
 
-        outcome_payload = {
-            "contract": "profile_activation_rollback_v1",
-            "schema_version": "1.0.0",
-            "activation_id": receipt.activation_id,
-            "receipt_content_sha256": receipt.content_sha256,
-            "project_config_path": str(config_path),
-            "restored_config_sha256": receipt.prior_config_sha256,
-            "restored_default_profile": receipt.prior_default_profile,
-            "before_image_sha256": receipt.before_image_sha256,
-            "outcome": "ROLLED_BACK",
-            "rollback_was_explicit_opt_in": True,
-        }
-        outcome_payload["rollback_id"] = deterministic_id(
-            "profile-activation-rollback",
-            outcome_payload["activation_id"],
-            outcome_payload["receipt_content_sha256"],
-            outcome_payload["project_config_path"],
-            outcome_payload["restored_config_sha256"],
+        _write_create_or_identical(
+            intent_path,
+            intent.serialized_bytes(),
+            label="rollback recovery intent",
         )
-        outcome_payload["content_sha256"] = _sha256_hex(
-            canonical_json_bytes(
-                {
-                    key: value
-                    for key, value in outcome_payload.items()
-                    if key != "content_sha256"
-                }
-            )
-        )
-        outcome = ProfileActivationRollbackOutcomeV1.model_validate(
-            outcome_payload
-        )
+        if fault_hook is not None:
+            fault_hook("rollback_intent_persisted")
 
         _stage_and_replace(
             config_path=config_path,
@@ -1681,6 +2026,8 @@ def rollback_profile_activation(
                 "nothing was replaced"
             ),
         )
+        if fault_hook is not None:
+            fault_hook("config_restored")
 
         _write_create_or_identical(
             rollback_dir / f"{outcome.rollback_id}.json",
@@ -1708,9 +2055,11 @@ __all__ = [
     "ProfileActivationIntentV1",
     "ProfileActivationPreviewV1",
     "ProfileActivationReceiptV1",
+    "ProfileActivationRollbackIntentV1",
     "ProfileActivationRollbackOutcomeV1",
     "apply_profile_activation",
     "build_activation_receipt",
+    "build_apply_command_hint",
     "build_rollback_command",
     "derive_default_profile_edit",
     "evidence_record_association_blockers",

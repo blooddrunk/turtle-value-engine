@@ -1,6 +1,6 @@
 # Phase 7-C4-A-R1 — Activation Artifact Containment & Rollback Audit Recovery
 
-Status: **SELECTED / NOT IMPLEMENTED**. Selected by `docs/status/phase-7-c4-a-post-closure-review-2026-10-23.md`. Phase 7-C4-A remains **CLOSED**.
+Status: **IMPLEMENTED / CLOSED** (see `docs/status/phase-7-c4-a-r1-2026-10-23.md`). Selected by `docs/status/phase-7-c4-a-post-closure-review-2026-10-23.md`. Phase 7-C4-A remains **CLOSED**.
 
 ## 0 — Mandatory synchronization / branch discipline
 
