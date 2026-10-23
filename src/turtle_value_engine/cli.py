@@ -52,6 +52,7 @@ from turtle_value_engine.evolution.activation_execution import (
     ActivationBusyError,
     ActivationExecutionBlocked,
     apply_profile_activation,
+    build_rollback_command,
     preview_profile_activation,
     rollback_profile_activation,
 )
@@ -2365,6 +2366,59 @@ def _activation_input_paths(args: argparse.Namespace) -> dict[str, Path | None]:
     return inputs
 
 
+def _activation_apply_argv(args: argparse.Namespace) -> list[str]:
+    """Reconstruct the exact original ``activate-profile`` argument vector.
+
+    Mirrors the parser's option set in a fixed order (without the trailing
+    ``--apply`` opt-in flags, which the preview binds to the freshly derived
+    identities) so the emitted ``apply_command_hint`` is complete, shell-safe
+    and directly executable — including every repeatable decision/evidence/
+    inventory option the operator actually supplied.
+    """
+
+    argv = [
+        "evolution",
+        "activate-profile",
+        "--base-profile",
+        str(args.base_profile),
+        "--target-profile",
+        str(args.target_profile),
+        "--release-manifest",
+        str(args.release_manifest),
+    ]
+    if args.boundary_input is not None:
+        argv.extend(["--boundary-input", str(args.boundary_input)])
+    for label, paths in (
+        ("--decision-record", args.decision_record),
+        ("--revocation", args.revocation or []),
+        ("--policy-exception", args.policy_exception or []),
+    ):
+        for path in paths:
+            argv.extend([label, str(path)])
+    argv.extend(["--project-config", str(args.project_config)])
+    for label, paths in (
+        ("--watchlist", args.watchlist or []),
+        ("--normalized-input", args.normalized_input or []),
+        ("--backtest-manifest", args.backtest_manifest or []),
+        ("--surface-snapshot", args.surface_snapshot or []),
+        ("--runner-config", args.runner_config or []),
+    ):
+        for path in paths:
+            argv.extend([label, str(path)])
+    if args.trust_root is not None:
+        argv.extend(["--trust-root", str(args.trust_root)])
+    if args.authority_evidence is not None:
+        argv.extend(["--authority-evidence", str(args.authority_evidence)])
+    for label, paths in (
+        ("--signed-revocation", args.signed_revocation or []),
+        ("--signed-supersession", args.signed_supersession or []),
+    ):
+        for path in paths:
+            argv.extend([label, str(path)])
+    argv.extend(["--activation-root", str(args.activation_root)])
+    return argv
+
+
 def _run_evolution_activate_profile_command(args: argparse.Namespace) -> object:
     """C4-A executor: read-only preview by default, explicit apply opt-in."""
 
@@ -2414,7 +2468,9 @@ def _run_evolution_activate_profile_command(args: argparse.Namespace) -> object:
     }
     try:
         if not args.apply:
-            preview = preview_profile_activation(**common)
+            preview = preview_profile_activation(
+                apply_command_argv=_activation_apply_argv(args), **common
+            )
             if args.output is not None:
                 _write_create_or_identical(
                     args.output,
@@ -2447,11 +2503,9 @@ def _run_evolution_activate_profile_command(args: argparse.Namespace) -> object:
         "status": result.status,
         "detail": result.detail,
         "receipt": result.receipt,
-        "rollback_command": (
-            "tve evolution rollback-activation "
-            f"--receipt {args.activation_root}/receipts/"
-            f"{result.receipt.activation_id}.json "
-            f"--activation-root {args.activation_root}"
+        "rollback_command": build_rollback_command(
+            args.activation_root / "receipts" / f"{result.receipt.activation_id}.json",
+            args.activation_root,
         ),
     }
     if args.output is not None:

@@ -43,6 +43,7 @@ from turtle_value_engine.evolution.activation_execution import (
     ProfileActivationIntentV1,
     ProfileActivationPreviewV1,
     ProfileActivationReceiptV1,
+    ProfileActivationRollbackIntentV1,
     ProfileActivationRollbackOutcomeV1,
     apply_profile_activation,
     derive_default_profile_edit,
@@ -1828,6 +1829,10 @@ def test_receipt_is_deterministic_across_identical_activations(tmp_path, capsys)
         (
             "profile-activation-rollback-outcome.schema.json",
             ProfileActivationRollbackOutcomeV1,
+        ),
+        (
+            "profile-activation-rollback-intent.schema.json",
+            ProfileActivationRollbackIntentV1,
         ),
         ("profile-activation-preview.schema.json", ProfileActivationPreviewV1),
     ],
