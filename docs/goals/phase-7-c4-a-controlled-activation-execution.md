@@ -1,6 +1,6 @@
 # Phase 7-C4-A — Controlled Profile Activation and Reversible Local Execution
 
-Status: **SELECTED / NOT IMPLEMENTED**. Selected by `docs/status/phase-7-c3-b-r3-post-closure-review-2026-10-22.md` after independent R3 source/CI review. R3 stays **CLOSED**.
+Status: **IMPLEMENTED / CLOSED** (implementation `b228103a96d1e17e9670172b72b2853c6e374f05`, PR #18 merged as `edca593cbc44f6783eeac374a20011f348ce3970`; exact-head Actions run `39885236666` `success`, merge-head run `39885768698` `success`; full suite 7356 passed / 2 skipped; closure record `docs/status/phase-7-c4-a-2026-10-23.md`). Selected by `docs/status/phase-7-c3-b-r3-post-closure-review-2026-10-22.md`; R3 stays **CLOSED**. No real owner decision or strict-v2 activation was performed; the checked-in default remains `strict-v1`.
 
 ## Mandatory step zero: sync and verify current upstream
 
