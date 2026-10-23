@@ -70,6 +70,7 @@ no real owner decision or strict-v2 activation is performed by this code.
 from __future__ import annotations
 
 import difflib
+import errno
 import fcntl
 import hashlib
 import json
@@ -731,7 +732,17 @@ def _lock_path(activation_root: Path, resolved_config: Path) -> Path:
 
 
 class _ConfigLock:
-    """Exclusive per-config activation lock, non-blocking, fail-closed."""
+    """Exclusive per-config activation lock, non-blocking, fail-closed.
+
+    Final-component containment (Phase 7-C4-A-R2 F2): the lock entry is
+    opened with ``O_NOFOLLOW`` where the platform provides it (Linux/POSIX;
+    CI hosts) and the opened descriptor is proven to be a regular file, so a
+    pre-existing ``locks/<digest>.lock`` symlink — or any other non-regular
+    entry — can never bind the executor's mutual exclusion to a foreign
+    inode outside the activation store.  A hostile entry is refused by name
+    and never unlinked or altered; ``ACTIVATION_BUSY`` remains reserved for
+    genuine flock contention on the in-store lock.
+    """
 
     def __init__(self, activation_root: Path, resolved_config: Path) -> None:
         self.path = _lock_path(activation_root, resolved_config)
@@ -739,35 +750,64 @@ class _ConfigLock:
 
     def __enter__(self) -> _ConfigLock:
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        open_flags = os.O_RDWR | os.O_CREAT
+        nofollow = getattr(os, "O_NOFOLLOW", 0)
         try:
-            self._descriptor = os.open(self.path, os.O_RDWR | os.O_CREAT, 0o600)
+            self._descriptor = os.open(
+                self.path, open_flags | nofollow, 0o600
+            )
         except OSError as exc:
+            if nofollow and exc.errno == errno.ELOOP:
+                raise ActivationExecutionError(
+                    "ACTIVATION_LOCK_SYMLINK",
+                    "the activation lock path is a symlink and will not be "
+                    "opened or locked through a foreign inode (remove the "
+                    f"hostile entry manually if intended): {self.path}",
+                ) from exc
             raise ActivationExecutionError(
                 "ACTIVATION_LOCK_UNAVAILABLE",
                 f"the activation lock cannot be acquired: {str(exc)[:200]}",
             ) from exc
         try:
+            metadata = os.fstat(self._descriptor)
+        except OSError as exc:
+            self._close()
+            raise ActivationExecutionError(
+                "ACTIVATION_LOCK_UNAVAILABLE",
+                f"the activation lock cannot be inspected: {str(exc)[:200]}",
+            ) from exc
+        if not stat.S_ISREG(metadata.st_mode):
+            self._close()
+            raise ActivationExecutionError(
+                "ACTIVATION_LOCK_NOT_REGULAR",
+                "the activation lock path is not a regular file and will not "
+                "be locked (remove the hostile entry manually if intended): "
+                f"{self.path}",
+            )
+        try:
             fcntl.flock(self._descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError as exc:
-            os.close(self._descriptor)
-            self._descriptor = None
+            self._close()
             raise ActivationBusyError(str(self.path)) from exc
         except OSError as exc:
-            os.close(self._descriptor)
-            self._descriptor = None
+            self._close()
             raise ActivationExecutionError(
                 "ACTIVATION_LOCK_UNAVAILABLE",
                 f"the activation lock cannot be acquired: {str(exc)[:200]}",
             ) from exc
         return self
 
+    def _close(self) -> None:
+        if self._descriptor is not None:
+            os.close(self._descriptor)
+            self._descriptor = None
+
     def __exit__(self, *exc_info: object) -> None:
         if self._descriptor is not None:
             try:
                 fcntl.flock(self._descriptor, fcntl.LOCK_UN)
             finally:
-                os.close(self._descriptor)
-                self._descriptor = None
+                self._close()
 
 
 # ---------------------------------------------------------------------------
@@ -1404,6 +1444,46 @@ def _load_persisted_receipt(
         ) from exc
 
 
+def _enforce_authority_recheck(
+    recheck: Callable[[], Sequence[str]] | None,
+) -> None:
+    """Run the execution-boundary authority freshness recheck (R2 F1).
+
+    ``recheck`` (injected by the CLI, which is the boundary that reads the
+    on-disk trust root and evidence) compares the *current* authoritative
+    state against what was prepared before the config lock and returns
+    named blockers; an empty result means the prepared authority is still
+    the current one.  Any staleness is a named, fail-closed refusal before
+    the protected mutation — never a silent continuation through the
+    pre-lock registry/verifier objects.  Library callers keep their
+    explicit supplied-verifier contract (``None`` performs no recheck).
+
+    No cross-process or cross-file global atomicity is claimed: the check
+    observes the authority at a point inside the lock; a change landing in
+    the remaining window up to the same-directory ``os.replace`` is outside
+    what this single-host executor can prevent.
+    """
+
+    if recheck is None:
+        return
+    blockers = sorted(set(recheck()))
+    if blockers:
+        raise ActivationExecutionBlocked(
+            {
+                "status": "ACTIVATION_AUTHORITY_STALE",
+                "blockers": blockers,
+                "detail": (
+                    "the authoritative trust root/evidence changed after "
+                    "this invocation prepared it; the activation was "
+                    "refused and the config was not replaced — rerun "
+                    "preview + apply against the current authority "
+                    "(durable intent artifacts of this refused attempt "
+                    "may exist as immutable audit history)"
+                ),
+            }
+        )
+
+
 def _stage_and_replace(
     *,
     config_path: Path,
@@ -1414,6 +1494,7 @@ def _stage_and_replace(
     blocked_code: str,
     blocked_detail: str,
     fault_hook: Callable[[str], None] | None = None,
+    authority_recheck: Callable[[], Sequence[str]] | None = None,
 ) -> None:
     """Same-directory staged atomic replace with a CAS re-read before it."""
 
@@ -1466,6 +1547,15 @@ def _stage_and_replace(
                 "detail": blocked_detail,
             }
         )
+    # Last-moment authority anchor (R2 F1): the staged bytes are durable and
+    # the config still holds the expected hash; the protected replace is
+    # refused right here if the authoritative state has changed since this
+    # invocation prepared it.
+    try:
+        _enforce_authority_recheck(authority_recheck)
+    except BaseException:
+        temp_path.unlink(missing_ok=True)
+        raise
     os.replace(temp_path, config_path)
     _fsync_dir(config_path.parent)
 
@@ -1494,6 +1584,7 @@ def apply_profile_activation(
     surface_snapshot_paths: Sequence[str | Path] = (),
     runner_config_paths: Sequence[str | Path] = (),
     fault_hook: Callable[[str], None] | None = None,
+    authority_recheck: Callable[[], Sequence[str]] | None = None,
 ) -> ActivationApplyResult:
     """Perform the guarded, idempotent, recoverable single-file activation.
 
@@ -1502,6 +1593,14 @@ def apply_profile_activation(
     the byte-preserving edit.  The persisted intent journal, the
     content-addressed before-image, the same-directory atomic replace and the
     create-only receipt follow in crash-recoverable order.
+
+    ``authority_recheck`` (Phase 7-C4-A-R2 F1) is the CLI-injected
+    execution-boundary freshness check: it runs inside the lock, once before
+    the first durable write and once more immediately before the protected
+    config replace, and any named staleness blocker fails the apply closed
+    without replacing config.  Library callers who supply explicit in-memory
+    verifier/trust-root objects keep their existing contract by passing
+    ``None`` (the default).
     """
 
     root = _guard_activation_root(Path(activation_root))
@@ -1688,6 +1787,11 @@ def apply_profile_activation(
                 }
             )
 
+        # First authority anchor (R2 F1): everything is re-derived and every
+        # expected identity matches; the first durable write of this attempt
+        # happens only if the prepared authority is still the current one.
+        _enforce_authority_recheck(authority_recheck)
+
         intent = _build_intent(receipt)
         _write_create_or_identical(
             journal_dir / f"{receipt.activation_id}.json",
@@ -1721,6 +1825,7 @@ def apply_profile_activation(
                 "bytes"
             ),
             fault_hook=fault_hook,
+            authority_recheck=authority_recheck,
         )
         if fault_hook is not None:
             fault_hook("config_replaced")
