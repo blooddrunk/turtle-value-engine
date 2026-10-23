@@ -27,6 +27,20 @@ review input only: it requires human approval, is never applied
 automatically and never writes into active ``rules/``.
 """
 
+from .activation_execution import (
+    ActivationApplyResult,
+    ActivationBusyError,
+    ActivationExecutionBlocked,
+    ActivationExecutionError,
+    ActivationRollbackResult,
+    ProfileActivationIntentV1,
+    ProfileActivationPreviewV1,
+    ProfileActivationReceiptV1,
+    ProfileActivationRollbackOutcomeV1,
+    apply_profile_activation,
+    preview_profile_activation,
+    rollback_profile_activation,
+)
 from .activation_plan import (
     ROLLBACK_EXCLUSIONS,
     ActivationPlanError,
@@ -323,6 +337,18 @@ __all__ = [
     "materialize_candidate_profile",
     "persisted_content_sha256",
     "plan_profile_activation",
+    "ActivationApplyResult",
+    "ActivationBusyError",
+    "ActivationExecutionBlocked",
+    "ActivationExecutionError",
+    "ActivationRollbackResult",
+    "ProfileActivationIntentV1",
+    "ProfileActivationPreviewV1",
+    "ProfileActivationReceiptV1",
+    "ProfileActivationRollbackOutcomeV1",
+    "apply_profile_activation",
+    "preview_profile_activation",
+    "rollback_profile_activation",
     "project_candidate_profile",
     "proposal_payload_sha256",
     "record_owner_decision_file",
