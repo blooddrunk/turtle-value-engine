@@ -1,0 +1,242 @@
+{
+  "additionalProperties": false,
+  "description": "The deterministic, read-only preview payload of one activation intent.",
+  "properties": {
+    "activation_id": {
+      "anyOf": [
+        {
+          "maxLength": 168,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Activation Id"
+    },
+    "apply_command_hint": {
+      "anyOf": [
+        {
+          "maxLength": 4096,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Apply Command Hint"
+    },
+    "automatic_activation_allowed": {
+      "const": false,
+      "default": false,
+      "title": "Automatic Activation Allowed",
+      "type": "boolean"
+    },
+    "before_image_path": {
+      "anyOf": [
+        {
+          "maxLength": 2048,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Before Image Path"
+    },
+    "blockers": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 256,
+      "title": "Blockers",
+      "type": "array"
+    },
+    "config_diff": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 512,
+      "title": "Config Diff",
+      "type": "array"
+    },
+    "content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Content Sha256",
+      "type": "string"
+    },
+    "contract": {
+      "const": "profile_activation_preview_v1",
+      "default": "profile_activation_preview_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "current_profile_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Current Profile Id",
+      "type": "string"
+    },
+    "current_profile_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Current Profile Sha256",
+      "type": "string"
+    },
+    "execution_performed": {
+      "const": false,
+      "default": false,
+      "title": "Execution Performed",
+      "type": "boolean"
+    },
+    "executor_blockers": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 128,
+      "title": "Executor Blockers",
+      "type": "array"
+    },
+    "original_config_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Original Config Sha256"
+    },
+    "plan_blockers": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 128,
+      "title": "Plan Blockers",
+      "type": "array"
+    },
+    "plan_id": {
+      "maxLength": 168,
+      "minLength": 1,
+      "title": "Plan Id",
+      "type": "string"
+    },
+    "plan_state": {
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "Plan State",
+      "type": "string"
+    },
+    "preview_state": {
+      "enum": [
+        "READY_FOR_APPLY",
+        "BLOCKED"
+      ],
+      "title": "Preview State",
+      "type": "string"
+    },
+    "prior_default_profile": {
+      "anyOf": [
+        {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Prior Default Profile"
+    },
+    "project_config_path": {
+      "maxLength": 2048,
+      "minLength": 1,
+      "title": "Project Config Path",
+      "type": "string"
+    },
+    "proposed_config_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Proposed Config Sha256"
+    },
+    "proposed_profile_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Proposed Profile Id",
+      "type": "string"
+    },
+    "proposed_profile_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Proposed Profile Sha256",
+      "type": "string"
+    },
+    "receipt_path": {
+      "anyOf": [
+        {
+          "maxLength": 2048,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Receipt Path"
+    },
+    "rollback_command": {
+      "anyOf": [
+        {
+          "maxLength": 4096,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Rollback Command"
+    },
+    "schema_version": {
+      "default": "1.0.0",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "preview_state",
+    "plan_id",
+    "plan_state",
+    "plan_blockers",
+    "executor_blockers",
+    "blockers",
+    "current_profile_id",
+    "current_profile_sha256",
+    "proposed_profile_id",
+    "proposed_profile_sha256",
+    "project_config_path",
+    "config_diff",
+    "content_sha256"
+  ],
+  "title": "ProfileActivationPreviewV1",
+  "type": "object"
+}

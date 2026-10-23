@@ -48,6 +48,13 @@ from turtle_value_engine.evolution import (
     materialize_candidate_profile,
     resolve_complete_materialization_pair,
 )
+from turtle_value_engine.evolution.activation_execution import (
+    ActivationBusyError,
+    ActivationExecutionBlocked,
+    apply_profile_activation,
+    preview_profile_activation,
+    rollback_profile_activation,
+)
 from turtle_value_engine.evolution.activation_plan import (
     build_owner_decision_dossier_markdown,
     plan_profile_activation,
@@ -774,6 +781,156 @@ def _build_parser() -> argparse.ArgumentParser:
         "statement); verified freshly against --trust-root (repeatable)",
     )
     evolution_plan_activation.add_argument("--output", required=True, type=Path)
+    evolution_activate = evolution_commands.add_parser(
+        "activate-profile",
+        help="controlled local activation executor (Phase 7-C4-A): read-only "
+        "preview by default; explicit --apply plus the previewed "
+        "--expected-plan-id/--expected-config-sha256 changes exactly "
+        "[profiles] default in one private project config, with a "
+        "content-addressed before-image, deterministic receipt and "
+        "receipt-bound rollback",
+    )
+    evolution_activate.add_argument("--base-profile", required=True, type=Path)
+    evolution_activate.add_argument("--target-profile", required=True, type=Path)
+    evolution_activate.add_argument("--release-manifest", required=True, type=Path)
+    evolution_activate.add_argument(
+        "--boundary-input",
+        type=Path,
+        default=None,
+        help="normalized input JSON used as the boundary-replay template "
+        "(default: fixtures/healthy_cash_cow.json)",
+    )
+    evolution_activate.add_argument(
+        "--decision-record",
+        action="append",
+        required=True,
+        type=Path,
+        help="owner policy-decision record (repeatable; the executor "
+        "additionally requires the resolved active record to be exactly the "
+        "record embedded in --authority-evidence)",
+    )
+    evolution_activate.add_argument(
+        "--revocation",
+        action="append",
+        type=Path,
+        default=None,
+        help="owner policy-decision revocation (repeatable)",
+    )
+    evolution_activate.add_argument(
+        "--policy-exception",
+        action="append",
+        type=Path,
+        default=None,
+        help="versioned policy-exception declaration bound by the resolved "
+        "decision (repeatable)",
+    )
+    evolution_activate.add_argument(
+        "--project-config",
+        required=True,
+        type=Path,
+        help="PRIVATE project runtime configuration whose [profiles] default "
+        "is the one mutated value (never the checked-in template)",
+    )
+    for option in (
+        "watchlist",
+        "normalized-input",
+        "backtest-manifest",
+        "surface-snapshot",
+        "runner-config",
+    ):
+        evolution_activate.add_argument(
+            f"--{option}",
+            action="append",
+            type=Path,
+            default=None,
+            help=f"affected {option.replace('-', ' ')} reference (repeatable, "
+            "explicit paths only)",
+        )
+    evolution_activate.add_argument(
+        "--trust-root",
+        type=Path,
+        default=None,
+        help="operator-owned trust-root directory; its LATEST validated "
+        "registry snapshot re-attests the decision authority and verifies "
+        "any signed lifecycle statements freshly",
+    )
+    evolution_activate.add_argument(
+        "--authority-evidence",
+        type=Path,
+        default=None,
+        help="captured evidence bundle (bundle.json from `tve evolution "
+        "record-decision --evidence-root`); required for apply — the "
+        "active decision record must be its embedded record",
+    )
+    evolution_activate.add_argument(
+        "--signed-revocation",
+        action="append",
+        type=Path,
+        default=None,
+        help="owner-signed revocation evidence JSON (repeatable)",
+    )
+    evolution_activate.add_argument(
+        "--signed-supersession",
+        action="append",
+        type=Path,
+        default=None,
+        help="owner-signed supersession evidence JSON (repeatable)",
+    )
+    evolution_activate.add_argument(
+        "--activation-root",
+        required=True,
+        type=Path,
+        help="private executor store (outside the repository): intent "
+        "journals, content-addressed before-images, receipts, rollback "
+        "outcomes and the per-config lock",
+    )
+    evolution_activate.add_argument(
+        "--apply",
+        action="store_true",
+        help="perform the mutation; requires the fresh preview's "
+        "--expected-plan-id and --expected-config-sha256",
+    )
+    evolution_activate.add_argument(
+        "--expected-plan-id",
+        default=None,
+        help="plan_id from a fresh READY preview (required with --apply)",
+    )
+    evolution_activate.add_argument(
+        "--expected-config-sha256",
+        default=None,
+        help="original_config_sha256 from the same fresh preview (required "
+        "with --apply; binds the exact config bytes)",
+    )
+    evolution_activate.add_argument(
+        "--output",
+        type=Path,
+        default=None,
+        help="optional create-only destination for the preview/apply report",
+    )
+    evolution_rollback = evolution_commands.add_parser(
+        "rollback-activation",
+        help="receipt-bound rollback (Phase 7-C4-A): restore the exact prior "
+        "config bytes recorded in one activation receipt; refuses to clobber "
+        "intervening changes; never replays monitoring or notifications",
+    )
+    evolution_rollback.add_argument(
+        "--receipt",
+        required=True,
+        type=Path,
+        help="the activation receipt JSON to roll back",
+    )
+    evolution_rollback.add_argument(
+        "--activation-root",
+        required=True,
+        type=Path,
+        help="the same private executor store the activation used",
+    )
+    evolution_rollback.add_argument(
+        "--output",
+        type=Path,
+        default=None,
+        help="optional create-only destination for the rollback report",
+    )
     evolution_decision_dossier = evolution_commands.add_parser(
         "decision-dossier",
         help="generate the deterministic Chinese owner decision dossier from "
@@ -1608,6 +1765,10 @@ def _run_evolution_command(args: argparse.Namespace) -> object:
         return _run_evolution_record_decision_command(args)
     if args.evolution_command == "plan-activation":
         return _run_evolution_plan_activation_command(args)
+    if args.evolution_command == "activate-profile":
+        return _run_evolution_activate_profile_command(args)
+    if args.evolution_command == "rollback-activation":
+        return _run_evolution_rollback_activation_command(args)
     if args.evolution_command == "decision-dossier":
         return _run_evolution_decision_dossier_command(args)
 
@@ -2020,33 +2181,17 @@ def _run_evolution_record_decision_command(args: argparse.Namespace) -> object:
     return validation
 
 
-def _run_evolution_plan_activation_command(args: argparse.Namespace) -> object:
-    """Derive one read-only activation plan; execution never happens here."""
+def _prepare_activation_inputs(
+    args: argparse.Namespace,
+) -> dict[str, object]:
+    """Load the shared plan/executor inputs identically for both commands.
 
-    inputs: dict[str, Path | None] = {
-        "base-profile": args.base_profile,
-        "target-profile": args.target_profile,
-        "release-manifest": args.release_manifest,
-        "boundary-input": args.boundary_input,
-        "project-config": args.project_config,
-        "trust-root": args.trust_root,
-        "authority-evidence": args.authority_evidence,
-    }
-    for label, paths in (
-        ("decision-record", args.decision_record),
-        ("revocation", args.revocation),
-        ("policy-exception", args.policy_exception),
-        ("signed-revocation", args.signed_revocation),
-        ("signed-supersession", args.signed_supersession),
-        ("watchlist", args.watchlist),
-        ("normalized-input", args.normalized_input),
-        ("backtest-manifest", args.backtest_manifest),
-        ("surface-snapshot", args.surface_snapshot),
-        ("runner-config", args.runner_config),
-    ):
-        for index, path in enumerate(paths or []):
-            inputs[f"{label}[{index}]"] = path
-    _guard_c2_output_path(args.output, label="--output", inputs=inputs)
+    Used by ``plan-activation`` (read-only planner) and ``activate-profile``
+    (C4-A executor): decision records, revocations, policy exceptions, the
+    boundary template, the fresh plan-time authority verifier built from the
+    strictly loaded evidence bundle plus the CURRENT trust-root snapshot,
+    and the signed lifecycle statements.
+    """
 
     if (
         args.trust_root is None
@@ -2076,6 +2221,7 @@ def _run_evolution_plan_activation_command(args: argparse.Namespace) -> object:
     # current trust root inside the plan boundary.
     authority_verifier = None
     lifecycle_trust_root = None
+    authority_evidence = None
     if args.trust_root is not None:
         _guard_trust_root_separation(
             args.trust_root,
@@ -2106,11 +2252,11 @@ def _run_evolution_plan_activation_command(args: argparse.Namespace) -> object:
         snapshot = _load_trust_root_snapshot(args.trust_root)
         lifecycle_trust_root = snapshot.registry
         if args.authority_evidence is not None:
-            loaded = load_owner_decision_evidence(args.authority_evidence)
+            authority_evidence = load_owner_decision_evidence(args.authority_evidence)
             authority_verifier = SignedOwnerProvenanceVerifier(
                 registry=snapshot.registry,
-                statement=loaded.statement,
-                decision_input_bytes=loaded.decision_input_bytes,
+                statement=authority_evidence.statement,
+                decision_input_bytes=authority_evidence.decision_input_bytes,
             )
     signed_revocations = [
         OwnerSignedRevocationEvidenceV1.model_validate(_read_json(path))
@@ -2120,19 +2266,60 @@ def _run_evolution_plan_activation_command(args: argparse.Namespace) -> object:
         OwnerSignedSupersessionEvidenceV1.model_validate(_read_json(path))
         for path in (args.signed_supersession or [])
     ]
+    return {
+        "boundary_input": boundary_input,
+        "decision_records": decision_records,
+        "revocations": revocations,
+        "policy_exceptions": policy_exceptions,
+        "authority_verifier": authority_verifier,
+        "authority_evidence": authority_evidence,
+        "signed_revocations": signed_revocations,
+        "signed_supersessions": signed_supersessions,
+        "lifecycle_trust_root": lifecycle_trust_root,
+    }
 
+
+def _run_evolution_plan_activation_command(args: argparse.Namespace) -> object:
+    """Derive one read-only activation plan; execution never happens here."""
+
+    inputs: dict[str, Path | None] = {
+        "base-profile": args.base_profile,
+        "target-profile": args.target_profile,
+        "release-manifest": args.release_manifest,
+        "boundary-input": args.boundary_input,
+        "project-config": args.project_config,
+        "trust-root": args.trust_root,
+        "authority-evidence": args.authority_evidence,
+    }
+    for label, paths in (
+        ("decision-record", args.decision_record),
+        ("revocation", args.revocation),
+        ("policy-exception", args.policy_exception),
+        ("signed-revocation", args.signed_revocation),
+        ("signed-supersession", args.signed_supersession),
+        ("watchlist", args.watchlist),
+        ("normalized-input", args.normalized_input),
+        ("backtest-manifest", args.backtest_manifest),
+        ("surface-snapshot", args.surface_snapshot),
+        ("runner-config", args.runner_config),
+    ):
+        for index, path in enumerate(paths or []):
+            inputs[f"{label}[{index}]"] = path
+    _guard_c2_output_path(args.output, label="--output", inputs=inputs)
+
+    prepared = _prepare_activation_inputs(args)
     plan = plan_profile_activation(
         base_profile_path=args.base_profile,
         target_profile_path=args.target_profile,
         release_manifest_path=args.release_manifest,
-        boundary_input=boundary_input,
-        decision_records=decision_records,
-        revocations=revocations,
-        policy_exceptions=policy_exceptions,
-        authority_verifier=authority_verifier,
-        signed_revocations=signed_revocations,
-        signed_supersessions=signed_supersessions,
-        lifecycle_trust_root=lifecycle_trust_root,
+        boundary_input=prepared["boundary_input"],
+        decision_records=prepared["decision_records"],
+        revocations=prepared["revocations"],
+        policy_exceptions=prepared["policy_exceptions"],
+        authority_verifier=prepared["authority_verifier"],
+        signed_revocations=prepared["signed_revocations"],
+        signed_supersessions=prepared["signed_supersessions"],
+        lifecycle_trust_root=prepared["lifecycle_trust_root"],
         project_config_path=args.project_config,
         watchlist_paths=args.watchlist or [],
         normalized_input_paths=args.normalized_input or [],
@@ -2144,6 +2331,174 @@ def _run_evolution_plan_activation_command(args: argparse.Namespace) -> object:
     if plan.plan_state != "READY_FOR_EXPLICIT_OWNER_EXECUTION":
         raise _CliPayloadExit(plan, 1)
     return plan
+
+
+def _activation_input_paths(args: argparse.Namespace) -> dict[str, Path | None]:
+    def _optional(name: str) -> Path | None:
+        return getattr(args, name, None)
+
+    inputs: dict[str, Path | None] = {
+        "base-profile": _optional("base_profile"),
+        "target-profile": _optional("target_profile"),
+        "release-manifest": _optional("release_manifest"),
+        "boundary-input": _optional("boundary_input"),
+        "project-config": _optional("project_config"),
+        "trust-root": _optional("trust_root"),
+        "authority-evidence": _optional("authority_evidence"),
+        "activation-root": _optional("activation_root"),
+        "receipt": _optional("receipt"),
+    }
+    for label in (
+        "decision_record",
+        "revocation",
+        "policy_exception",
+        "signed_revocation",
+        "signed_supersession",
+        "watchlist",
+        "normalized_input",
+        "backtest_manifest",
+        "surface_snapshot",
+        "runner_config",
+    ):
+        for index, path in enumerate(getattr(args, label, None) or []):
+            inputs[f"{label.replace('_', '-')}[{index}]"] = path
+    return inputs
+
+
+def _run_evolution_activate_profile_command(args: argparse.Namespace) -> object:
+    """C4-A executor: read-only preview by default, explicit apply opt-in."""
+
+    if args.output is not None:
+        _guard_c2_output_path(
+            args.output,
+            label="--output",
+            inputs=_activation_input_paths(args),
+        )
+    if args.apply and (
+        not args.expected_plan_id or not args.expected_config_sha256
+    ):
+        raise ValueError(
+            "--apply requires both --expected-plan-id and "
+            "--expected-config-sha256 from a fresh preview (explicit intent "
+            "binding; refuse missing or stale intent)"
+        )
+    if not args.apply and (
+        args.expected_plan_id is not None or args.expected_config_sha256 is not None
+    ):
+        raise ValueError(
+            "--expected-plan-id/--expected-config-sha256 belong to --apply; "
+            "the preview derives them itself"
+        )
+
+    prepared = _prepare_activation_inputs(args)
+    common = {
+        "activation_root": args.activation_root,
+        "base_profile_path": args.base_profile,
+        "target_profile_path": args.target_profile,
+        "release_manifest_path": args.release_manifest,
+        "boundary_input": prepared["boundary_input"],
+        "decision_records": prepared["decision_records"],
+        "revocations": prepared["revocations"],
+        "policy_exceptions": prepared["policy_exceptions"],
+        "authority_verifier": prepared["authority_verifier"],
+        "authority_evidence": prepared["authority_evidence"],
+        "signed_revocations": prepared["signed_revocations"],
+        "signed_supersessions": prepared["signed_supersessions"],
+        "lifecycle_trust_root": prepared["lifecycle_trust_root"],
+        "project_config_path": args.project_config,
+        "watchlist_paths": args.watchlist or [],
+        "normalized_input_paths": args.normalized_input or [],
+        "backtest_manifest_paths": args.backtest_manifest or [],
+        "surface_snapshot_paths": args.surface_snapshot or [],
+        "runner_config_paths": args.runner_config or [],
+    }
+    try:
+        if not args.apply:
+            preview = preview_profile_activation(**common)
+            if args.output is not None:
+                _write_create_or_identical(
+                    args.output,
+                    _export_bytes(preview),
+                    label="--output",
+                )
+            if preview.preview_state != "READY_FOR_APPLY":
+                raise _CliPayloadExit(preview, 1)
+            return preview
+        result = apply_profile_activation(
+            expected_plan_id=args.expected_plan_id,
+            expected_config_sha256=args.expected_config_sha256,
+            **common,
+        )
+    except ActivationExecutionBlocked as exc:
+        raise _CliPayloadExit(exc.payload, 1) from exc
+    except ActivationBusyError:
+        raise _CliPayloadExit(
+            {
+                "status": "ACTIVATION_BUSY",
+                "blockers": ["ACTIVATION_BUSY"],
+                "detail": (
+                    "another activation holds this config's exclusive lock; "
+                    "zero provider/model/config work was performed"
+                ),
+            },
+            3,
+        ) from None
+    payload = {
+        "status": result.status,
+        "detail": result.detail,
+        "receipt": result.receipt,
+        "rollback_command": (
+            "tve evolution rollback-activation "
+            f"--receipt {args.activation_root}/receipts/"
+            f"{result.receipt.activation_id}.json "
+            f"--activation-root {args.activation_root}"
+        ),
+    }
+    if args.output is not None:
+        _write_create_or_identical(
+            args.output, _export_bytes(payload), label="--output"
+        )
+    return payload
+
+
+def _run_evolution_rollback_activation_command(args: argparse.Namespace) -> object:
+    """C4-A rollback: explicit, receipt-bound, byte-exact restore."""
+
+    if args.output is not None:
+        _guard_c2_output_path(
+            args.output,
+            label="--output",
+            inputs=_activation_input_paths(args),
+        )
+    try:
+        result = rollback_profile_activation(
+            receipt_path=args.receipt,
+            activation_root=args.activation_root,
+        )
+    except ActivationExecutionBlocked as exc:
+        raise _CliPayloadExit(exc.payload, 1) from exc
+    except ActivationBusyError:
+        raise _CliPayloadExit(
+            {
+                "status": "ACTIVATION_BUSY",
+                "blockers": ["ACTIVATION_BUSY"],
+                "detail": (
+                    "another activation holds this config's exclusive lock; "
+                    "zero rollback work was performed"
+                ),
+            },
+            3,
+        ) from None
+    payload = {
+        "status": result.status,
+        "detail": result.detail,
+        "outcome": result.outcome,
+    }
+    if args.output is not None:
+        _write_create_or_identical(
+            args.output, _export_bytes(payload), label="--output"
+        )
+    return payload
 
 
 def _run_evolution_decision_dossier_command(args: argparse.Namespace) -> object:
