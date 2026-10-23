@@ -9,7 +9,7 @@ import secrets
 import stat
 import sys
 import tempfile
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -2223,6 +2223,8 @@ def _prepare_activation_inputs(
     authority_verifier = None
     lifecycle_trust_root = None
     authority_evidence = None
+    authority_snapshot_content_sha256: str | None = None
+    authority_evidence_content_sha256: str | None = None
     if args.trust_root is not None:
         _guard_trust_root_separation(
             args.trust_root,
@@ -2252,8 +2254,12 @@ def _prepare_activation_inputs(
         )
         snapshot = _load_trust_root_snapshot(args.trust_root)
         lifecycle_trust_root = snapshot.registry
+        authority_snapshot_content_sha256 = snapshot.snapshot_content_sha256
         if args.authority_evidence is not None:
             authority_evidence = load_owner_decision_evidence(args.authority_evidence)
+            authority_evidence_content_sha256 = (
+                authority_evidence.bundle.content_sha256
+            )
             authority_verifier = SignedOwnerProvenanceVerifier(
                 registry=snapshot.registry,
                 statement=authority_evidence.statement,
@@ -2277,7 +2283,54 @@ def _prepare_activation_inputs(
         "signed_revocations": signed_revocations,
         "signed_supersessions": signed_supersessions,
         "lifecycle_trust_root": lifecycle_trust_root,
+        "authority_snapshot_content_sha256": authority_snapshot_content_sha256,
+        "authority_evidence_content_sha256": authority_evidence_content_sha256,
     }
+
+
+def _build_activation_authority_recheck(
+    args: argparse.Namespace,
+    prepared: dict[str, object],
+) -> Callable[[], list[str]] | None:
+    """The CLI apply path's execution-boundary authority freshness check.
+
+    Phase 7-C4-A-R2 F1: the executor consumes the in-memory verifier, trust
+    root and evidence prepared *before* the config lock, so a key
+    revocation/rotation or evidence change landing in the real on-disk
+    sources inside the same invocation would otherwise be missed at the
+    mutation boundary.  The returned callable (injected into
+    ``apply_profile_activation``, which runs it inside the lock) reloads the
+    current latest trust-root snapshot and the strictly loaded evidence
+    bundle and reports named blockers when either no longer matches the
+    prepared state.  It observes the authority at the two anchor points only
+    — no cross-file global atomicity is implied.
+    """
+
+    expected_snapshot_sha = prepared.get("authority_snapshot_content_sha256")
+    expected_evidence_sha = prepared.get("authority_evidence_content_sha256")
+    if expected_snapshot_sha is None:
+        return None
+
+    def recheck() -> list[str]:
+        blockers: list[str] = []
+        try:
+            latest = _load_trust_root_snapshot(args.trust_root)
+        except (OSError, ValueError):
+            blockers.append("AUTHORITY_TRUST_ROOT_UNREADABLE")
+        else:
+            if latest.snapshot_content_sha256 != expected_snapshot_sha:
+                blockers.append("AUTHORITY_TRUST_ROOT_SUPERSEDED")
+        if expected_evidence_sha is not None:
+            try:
+                current = load_owner_decision_evidence(args.authority_evidence)
+            except (OSError, ValueError):
+                blockers.append("AUTHORITY_EVIDENCE_UNREADABLE")
+            else:
+                if current.bundle.content_sha256 != expected_evidence_sha:
+                    blockers.append("AUTHORITY_EVIDENCE_CHANGED")
+        return blockers
+
+    return recheck
 
 
 def _run_evolution_plan_activation_command(args: argparse.Namespace) -> object:
@@ -2483,6 +2536,7 @@ def _run_evolution_activate_profile_command(args: argparse.Namespace) -> object:
         result = apply_profile_activation(
             expected_plan_id=args.expected_plan_id,
             expected_config_sha256=args.expected_config_sha256,
+            authority_recheck=_build_activation_authority_recheck(args, prepared),
             **common,
         )
     except ActivationExecutionBlocked as exc:

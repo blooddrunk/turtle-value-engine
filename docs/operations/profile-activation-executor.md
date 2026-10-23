@@ -71,6 +71,16 @@ READY；`1` = BLOCKED（载荷含阻塞项）；`2` = 输入不可用（路径/�
 拒绝——锁文件、日志、备份、回执与回滚结果都不可能被引出私有存储之外。
 预览保持只读语义，不因未使用的子目录布局而失败。
 
+最终锁条目约束（C4-A-R2 F2，fail-closed）：即便 `locks/` 目录本身合法，
+预先存在的 `locks/<digest>.lock` 若是指向外部文件的符号链接
+（`ACTIVATION_LOCK_SYMLINK`）或任何非常规文件（FIFO 等，
+`ACTIVATION_LOCK_NOT_REGULAR`），apply/rollback 会在**打开或加锁任何
+inode 之前**按名拒绝——锁永远绑定存储内的常规文件 inode，外部文件既
+不会被打开也不会被加锁，敌意条目本身不会被删除或改写（不存在"删除
+陈旧锁恢复"流程）。`O_NOFOLLOW` 语义在 Linux/POSIX（CI 主机）生效；
+缺少该标志的平台由打开后的 `fstat` 常规文件校验兜底。`ACTIVATION_BUSY`
+（退出码 3）只表示存储内真实锁的 flock 竞争。
+
 执行器级阻塞项（`executor_blockers`）中最重要的一类是
 `EVIDENCE_RECORD_*`：**当前生效的决策记录必须与证据束内嵌的记录字节
 完全一致**（同一 `decision_record_id` 且同一内容哈希）。2026-10-22 的
@@ -120,6 +130,21 @@ sha256sum ~/tve-trust/activation/before-images/<prior_sha>.toml
 私有备份**（创建后不可变）；`journal/<activation_id>.json` 是意图日志；
 `receipts/<activation_id>.json` 是确定性回执（绑定计划、决策记录、证据束、
 信任根、前后配置哈希与回滚引用）。
+
+执行边界授权新鲜度（C4-A-R2 F1，fail-closed）：CLI 在取锁**之前**准备
+签名证据、信任根快照与授权验证器；apply 在锁内于两个锚点重新校验这些
+on-disk 权威来源仍是准备时的同一状态——第一个锚点在本次尝试的首次
+持久写入之前，第二个锚点在受保护的配置替换（`os.replace`）之前。若
+最新信任根快照已被取代（`AUTHORITY_TRUST_ROOT_SUPERSEDED`，含密钥撤销/
+轮换/新登记）、不可读（`AUTHORITY_TRUST_ROOT_UNREADABLE`）或证据束已
+变化（`AUTHORITY_EVIDENCE_CHANGED` / `AUTHORITY_EVIDENCE_UNREADABLE`），
+apply 以 `ACTIVATION_AUTHORITY_STALE`（退出码 1）命名拒绝，**配置不被
+替换**；被拒尝试已写入的意图日志/备份属于不可变审计历史，保留不删。
+明确边界：该校验只在锚点时刻观察权威状态，**不承诺跨文件/跨进程全局
+原子性**——锚点之后至 `os.replace` 之前落地的变更超出单机执行器在无
+全局原子性前提下可防御的范围。库调用方显式传入内存 verifier/信任根
+对象的既有契约不变（缺省不注入该校验）；回滚不消耗新的签名所有者
+决策，因此不做该校验。
 
 写入顺序（崩溃一致性，真实边界）：意图日志 → 备份 → 同目录临时文件 +
 fsync + CAS 复读 + 原子 `os.replace`（+ 目录 fsync）→ 回执。每次发布
@@ -184,9 +209,11 @@ ALREADY_RESTORED）；备份存在且哈希一致。**任何中间改动**（哪
 | 1 | `PLAN_ID_MISMATCH` | 提供的 plan id 与新鲜派生不一致（重跑预览取新 id） |
 | 1 | `ACTIVATION_CONFIG_UNSTABLE` | 预览后配置字节变化（含注释级变化） |
 | 1 | `ACTIVATION_CONFIG_CHANGED_DURING_APPLY` | 应用临界区内检测到外部写入者；staged 写入已丢弃 |
+| 1 | `ACTIVATION_AUTHORITY_STALE` + `blockers` | 执行边界权威新鲜度校验失败：信任根快照被取代/不可读（`AUTHORITY_TRUST_ROOT_SUPERSEDED` / `AUTHORITY_TRUST_ROOT_UNREADABLE`）或证据束变化/不可读（`AUTHORITY_EVIDENCE_CHANGED` / `AUTHORITY_EVIDENCE_UNREADABLE`）；配置不被替换 |
 | 1 | `ROLLBACK_PRECONDITION_VIOLATED` | 回滚前置条件不满足（配置已被中间改动） |
 | 2 | `CONFIG_PATH_SYMLINK` / `CONFIG_PATH_PROTECTED` / `ACTIVATION_ROOT_PROTECTED` | 目标/存储路径为符号链接或解析进受保护仓库目录（模板、rules、发布清单、源码等） |
 | 2 | `ACTIVATION_STORE_SYMLINK` / `ACTIVATION_STORE_NOT_DIRECTORY` / `ACTIVATION_STORE_ESCAPE` / `ACTIVATION_STORE_UNAVAILABLE` | activation-root 子目录（locks/journal/receipts/before-images/rollbacks）为符号链接、非目录或解析出根；任何写入之前拒绝 |
+| 2 | `ACTIVATION_LOCK_SYMLINK` / `ACTIVATION_LOCK_NOT_REGULAR` | 最终锁条目 `locks/<digest>.lock` 为符号链接或非常规文件；打开/加锁任何 inode 之前按名拒绝，外部目标不被触碰 |
 | 2 | `CONFIG_TOML_INVALID` / `CONFIG_PROFILES_TABLE_MISSING` / `CONFIG_DEFAULT_VALUE_UNSUPPORTED` / `CONFIG_DEFAULT_KEY_AMBIGUOUS` | 配置形态不可编辑（缺表、非单行字符串 default 等） |
 | 2 | `RECEIPT_INVALID` / `RECEIPT_CORRUPT` / `BEFORE_IMAGE_HASH_MISMATCH` | 回执或备份不可验证 |
 | 2 | `ROLLBACK_OUTCOME_CORRUPT` / `ROLLBACK_INTENT_CORRUPT` / `ROLLBACK_INTENT_MISMATCH` | 回滚结果/恢复意图损坏或绑定不符（不补写任何审计工件） |
@@ -209,6 +236,12 @@ Ed25519 密钥端到端驱动真实 CLI：签名 → 捕获 → 严格加载 →
 回滚结果中断后不可补齐、`...` 缩略的不可执行应用命令）及父目录 fsync
 缺失，并在修复树上全绿；其中 3 项是本来就正确的只读预览/零写入语义的
 保留性固定。每项均断言命名错误、退出码与失败时哈希不变。
+`tests/test_activation_execution_r2_regressions.py`（15 项，C4-A-R2）在
+原始 main `2acc5a8` 上以 9 红 / 6 绿复现了两类缺陷（同一 apply 调用内
+授权加载后的撤销/轮换/证据篡改仍完成激活；最终锁符号链接/FIFO 绑定
+外部 inode——含持有陷阱锁时的伪 `ACTIVATION_BUSY`），并在修复树上全绿；
+其中 6 项是本来就正确的控制语义（普通授权 apply、两次调用间撤销、
+常规锁文件、目录锁目标、双进程 0/3、一次性 fixture 边界）的保留性固定。
 
 ## 7. 真实 strict-v2 启用（可选，所有者人工边界）
 

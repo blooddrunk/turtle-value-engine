@@ -1,6 +1,6 @@
 # Phase 7-C4-A-R2 — Activation Authority Freshness and Lock-Inode Containment
 
-Status: **SELECTED / NOT IMPLEMENTED**. Selection: `docs/status/phase-7-c4-a-r1-post-closure-review-2026-10-23.md`. R1 and C4-A remain **CLOSED**.
+Status: **IMPLEMENTED / CLOSED** (see `docs/status/phase-7-c4-a-r2-2026-10-23.md`). Selected by `docs/status/phase-7-c4-a-r1-post-closure-review-2026-10-23.md`. R1 and C4-A remain **CLOSED**.
 
 ## 0. Mandatory sync, evidence and branch discipline
 
