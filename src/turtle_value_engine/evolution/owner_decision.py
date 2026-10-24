@@ -1153,12 +1153,20 @@ class DecisionAuthorityResolutionV1(BaseModel):
         return self
 
 
-def load_decision_record(path: str | Path) -> OwnerPolicyDecisionRecordV1:
-    """Load and fully validate one decision record file (fail-closed)."""
+def load_decision_record_with_bytes(
+    path: str | Path,
+) -> tuple[OwnerPolicyDecisionRecordV1, bytes]:
+    """Load one decision record and return it with the exact consumed bytes.
+
+    Phase 7-C4-A-R4: the caller records THIS buffer's SHA-256, so the
+    prepared object and its recorded digest provably come from one read.
+    """
 
     try:
-        return OwnerPolicyDecisionRecordV1.model_validate(
-            json.loads(_regular_file_bytes(Path(path)))
+        data = _regular_file_bytes(Path(path))
+        return (
+            OwnerPolicyDecisionRecordV1.model_validate(json.loads(data)),
+            data,
         )
     except OwnerDecisionError:
         raise
@@ -1169,12 +1177,27 @@ def load_decision_record(path: str | Path) -> OwnerPolicyDecisionRecordV1:
         ) from exc
 
 
-def load_decision_revocation(path: str | Path) -> OwnerPolicyDecisionRevocationV1:
-    """Load and fully validate one revocation file (fail-closed)."""
+def load_decision_record(path: str | Path) -> OwnerPolicyDecisionRecordV1:
+    """Load and fully validate one decision record file (fail-closed)."""
+
+    record, _ = load_decision_record_with_bytes(path)
+    return record
+
+
+def load_decision_revocation_with_bytes(
+    path: str | Path,
+) -> tuple[OwnerPolicyDecisionRevocationV1, bytes]:
+    """Load one revocation and return it with the exact consumed bytes.
+
+    Phase 7-C4-A-R4: the caller records THIS buffer's SHA-256, so the
+    prepared object and its recorded digest provably come from one read.
+    """
 
     try:
-        return OwnerPolicyDecisionRevocationV1.model_validate(
-            json.loads(_regular_file_bytes(Path(path)))
+        data = _regular_file_bytes(Path(path))
+        return (
+            OwnerPolicyDecisionRevocationV1.model_validate(json.loads(data)),
+            data,
         )
     except OwnerDecisionError:
         raise
@@ -1183,6 +1206,13 @@ def load_decision_revocation(path: str | Path) -> OwnerPolicyDecisionRevocationV
             f"revocation is not a valid owner_policy_decision_revocation_v1: "
             f"{path}: {str(exc)[:300]}"
         ) from exc
+
+
+def load_decision_revocation(path: str | Path) -> OwnerPolicyDecisionRevocationV1:
+    """Load and fully validate one revocation file (fail-closed)."""
+
+    revocation, _ = load_decision_revocation_with_bytes(path)
+    return revocation
 
 
 def resolve_owner_decision_authority(
@@ -1560,7 +1590,9 @@ __all__ = [
     "OwnerPolicyDecisionValidationV1",
     "REQUIRED_DECISION_VALIDATION_CHECKS",
     "load_decision_record",
+    "load_decision_record_with_bytes",
     "load_decision_revocation",
+    "load_decision_revocation_with_bytes",
     "record_owner_decision_file",
     "resolve_owner_decision_authority",
     "validate_owner_decision",

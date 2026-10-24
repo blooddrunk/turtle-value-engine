@@ -62,8 +62,8 @@ from turtle_value_engine.evolution.activation_plan import (
 )
 from turtle_value_engine.evolution.owner_decision import (
     OwnerPolicyDecisionInputV1,
-    load_decision_record,
-    load_decision_revocation,
+    load_decision_record_with_bytes,
+    load_decision_revocation_with_bytes,
     record_owner_decision_file,
     validate_owner_decision,
 )
@@ -1996,9 +1996,23 @@ def _write_create_or_identical(path: Path, content: bytes, *, label: str) -> str
     return "CREATED"
 
 
-def _load_policy_exceptions(paths: list[Path] | None) -> list[VersionedPolicyExceptionV1]:
+def _load_policy_exceptions(
+    source: list[Path] | None | bytes,
+) -> list[VersionedPolicyExceptionV1]:
+    """Load policy exceptions from named paths or one consumed byte buffer.
+
+    Phase 7-C4-A-R4: the ``bytes`` form parses the exact pre-read buffer
+    whose SHA-256 the caller records, so the prepared objects and their
+    digests provably come from one read.  The path form (one file may hold
+    a single exception or a JSON array) is unchanged for the other callers.
+    """
+
+    if isinstance(source, (bytes, bytearray)):
+        raw = json.loads(bytes(source), parse_constant=_reject_json_number)
+        items = raw if isinstance(raw, list) else [raw]
+        return [VersionedPolicyExceptionV1.model_validate(item) for item in items]
     exceptions: list[VersionedPolicyExceptionV1] = []
-    for path in paths or []:
+    for path in source or []:
         raw = _read_json(path)
         items = raw if isinstance(raw, list) else [raw]
         exceptions.extend(VersionedPolicyExceptionV1.model_validate(item) for item in items)
@@ -2208,12 +2222,41 @@ def _prepare_activation_inputs(
             "is the operator's explicit trust decision)"
         )
 
-    decision_records = [load_decision_record(path) for path in args.decision_record]
-    revocations = [load_decision_revocation(path) for path in (args.revocation or [])]
-    policy_exceptions = _load_policy_exceptions(args.policy_exception)
+    decision_records = []
+    revocations = []
+    # Phase 7-C4-A-R4: every actually supplied named input file is read
+    # exactly ONCE — the prepared in-memory object and the recorded
+    # ``prepared_input_file_sha256s`` digest both come from that same
+    # consumed buffer, so an external replacement landing between parsing
+    # and digesting can no longer lend its new bytes' identity to a stale
+    # prepared object (the R3 anchors still re-check the on-disk bytes).
+    consumed_input_bytes: dict[str, bytes] = {}
+
+    def _consume_named_input(label: str, path: Path) -> bytes:
+        data = Path(path).read_bytes()
+        consumed_input_bytes[label] = data
+        return data
+
+    for index, path in enumerate(args.decision_record):
+        record, data = load_decision_record_with_bytes(path)
+        consumed_input_bytes[f"decision-record[{index}]"] = data
+        decision_records.append(record)
+    for index, path in enumerate(args.revocation or []):
+        revocation, data = load_decision_revocation_with_bytes(path)
+        consumed_input_bytes[f"revocation[{index}]"] = data
+        revocations.append(revocation)
+    policy_exceptions = []
+    for index, path in enumerate(args.policy_exception or []):
+        policy_exceptions.extend(
+            _load_policy_exceptions(
+                _consume_named_input(f"policy-exception[{index}]", path)
+            )
+        )
     boundary_input = None
     if args.boundary_input is not None:
-        boundary_input = parse_normalized_input(args.boundary_input.read_bytes())
+        boundary_input = parse_normalized_input(
+            _consume_named_input("boundary-input", args.boundary_input)
+        )
 
     # Plan-time authority is derived from FRESH verification (C2-R1/C3-B):
     # the current latest trust-root snapshot re-attests the record through
@@ -2266,12 +2309,22 @@ def _prepare_activation_inputs(
                 decision_input_bytes=authority_evidence.decision_input_bytes,
             )
     signed_revocations = [
-        OwnerSignedRevocationEvidenceV1.model_validate(_read_json(path))
-        for path in (args.signed_revocation or [])
+        OwnerSignedRevocationEvidenceV1.model_validate(
+            json.loads(
+                _consume_named_input(f"signed-revocation[{index}]", path),
+                parse_constant=_reject_json_number,
+            )
+        )
+        for index, path in enumerate(args.signed_revocation or [])
     ]
     signed_supersessions = [
-        OwnerSignedSupersessionEvidenceV1.model_validate(_read_json(path))
-        for path in (args.signed_supersession or [])
+        OwnerSignedSupersessionEvidenceV1.model_validate(
+            json.loads(
+                _consume_named_input(f"signed-supersession[{index}]", path),
+                parse_constant=_reject_json_number,
+            )
+        )
+        for index, path in enumerate(args.signed_supersession or [])
     ]
     return {
         "boundary_input": boundary_input,
@@ -2290,13 +2343,19 @@ def _prepare_activation_inputs(
         # execution-boundary recheck compares these hashes at both anchors
         # so a file replaced/removed after preparation can no longer be
         # silently consumed from stale memory while the trust root and the
-        # evidence bundle stay byte-identical.
-        "prepared_input_file_sha256s": _prepared_input_file_sha256s(args),
+        # evidence bundle stay byte-identical.  Phase 7-C4-A-R4: each digest
+        # is the hash of the exact byte buffer the corresponding object was
+        # parsed from (one read per named input), never a second path read.
+        "prepared_input_file_sha256s": _prepared_input_file_sha256s(
+            consumed_input_bytes
+        ),
     }
 
 
-def _prepared_input_file_sha256s(args: argparse.Namespace) -> dict[str, str]:
-    """Hash every actually supplied preloaded named input file by label.
+def _prepared_input_file_sha256s(
+    consumed_input_bytes: dict[str, bytes],
+) -> dict[str, str]:
+    """Hash the exact byte buffers the prepared objects were parsed from.
 
     Only the CLI-named files whose *contents* become prepared in-memory
     objects before the executor's config lock are included — decision
@@ -2305,25 +2364,18 @@ def _prepared_input_file_sha256s(args: argparse.Namespace) -> dict[str, str]:
     evidence bundle have their own identity recheck; profiles, manifests
     and the project config are re-read fresh inside the executor and are
     deliberately not reread or reclassified here.
+
+    Phase 7-C4-A-R4: the digests are derived from the same single read
+    that produced each prepared in-memory object (keyed by the R3 label
+    scheme), never from a second path re-read — so an external replacement
+    landing between parsing and digesting cannot lend its new bytes'
+    identity to the stale prepared object.
     """
 
-    inputs: dict[str, str] = {}
-    if args.boundary_input is not None:
-        inputs["boundary-input"] = hashlib.sha256(
-            args.boundary_input.read_bytes()
-        ).hexdigest()
-    for label, paths in (
-        ("decision-record", args.decision_record),
-        ("revocation", args.revocation or []),
-        ("policy-exception", args.policy_exception or []),
-        ("signed-revocation", args.signed_revocation or []),
-        ("signed-supersession", args.signed_supersession or []),
-    ):
-        for index, path in enumerate(paths):
-            inputs[f"{label}[{index}]"] = hashlib.sha256(
-                Path(path).read_bytes()
-            ).hexdigest()
-    return inputs
+    return {
+        label: hashlib.sha256(data).hexdigest()
+        for label, data in consumed_input_bytes.items()
+    }
 
 
 def _build_activation_authority_recheck(
