@@ -19,6 +19,18 @@ Boundaries, made explicit:
   receipt-bound hashes AND every referenced artifact to validate.  Wherever
   the bytes cannot prove a state, the classifier reports the pending,
   diverged, ambiguous or corrupt class instead of guessing success.
+  Activated bytes of an activation whose valid rollback outcome is present
+  do **not** prove a current activation (the executor reuses the same
+  deterministic identities on re-apply, so a genuine re-apply and an
+  external restoration are byte-identical): they classify as
+  ``CONFIG_DIVERGED`` with ``ROLLED_BACK_ACTIVATION_BYTES_PRESENT`` unless a
+  distinct matching activation without a rollback outcome — independently
+  verifiable later activation history — carries the state.
+* **No verified green alongside problems.**  The projection contract pins
+  every informational status (``NO_HISTORY`` / ``ACTIVATED_VERIFIED`` /
+  ``ROLLED_BACK_VERIFIED``) to an empty ``problems`` list; receipt
+  diagnostics supplied through ``--receipt`` are additive facts inside
+  ``receipt_inspection`` and never enter the store-level ``problems``.
 * **Owner authority is out of scope.**  A historical receipt is audit
   evidence, not present owner consent: the projection fixes
   ``owner_authority_revalidated=false`` and never re-runs signature
@@ -245,6 +257,14 @@ class ProfileActivationStatusV1(BaseModel):
             raise ValueError(f"unknown activation status: {self.status}")
         if self.status not in _GUIDANCE_ZH:
             raise ValueError(f"status carries no guidance: {self.status}")
+        if (
+            self.status in INFORMATIONAL_ACTIVATION_STATUSES
+            and self.problems
+        ):
+            raise ValueError(
+                "an informational activation status must never carry "
+                f"store-level problems: {self.status} with {self.problems}"
+            )
         for field in ("pending_activation_ids", "problems", "observations"):
             value = getattr(self, field)
             if value != sorted(set(value)):
@@ -387,9 +407,10 @@ def _verify_before_image(
                 f"BEFORE_IMAGE_CONTENT_MISMATCH:before-images/{name}"
             )
         return False
-    if parsed.get("profiles", {}).get("default") != (
-        receipt.prior_default_profile
-    ):
+    profiles_section = parsed.get("profiles")
+    if not isinstance(profiles_section, dict) or profiles_section.get(
+        "default"
+    ) != receipt.prior_default_profile:
         if record_problems:
             problems.append(
                 f"BEFORE_IMAGE_CONTENT_MISMATCH:before-images/{name}"
@@ -711,19 +732,41 @@ def _classify(
         key=lambda intent: intent.receipt.activation_id,
     )
     if active:
-        if len(active) > 1:
-            return ACTIVATION_STATUS_AMBIGUOUS_HISTORY, None, observations
-        intent = active[0]
-        receipt = intent.receipt
-        if receipt.activation_id in outcome_by_activation:
-            observations.append("STALE_ROLLBACK_OUTCOME_PRESENT")
-        if receipt.activation_id in rollback_intents and (
-            receipt.activation_id not in outcome_by_activation
-        ):
-            observations.append("ROLLBACK_INTENT_PENDING_RESTORE")
+        # A matching activation whose valid rollback outcome is present was
+        # terminally rolled back: its activated bytes alone no longer prove a
+        # *current* activation, because the executor deterministically reuses
+        # the same identities on a genuine re-apply, leaving byte-identical
+        # artifacts to an external restoration of the activated bytes.  Only
+        # a matching activation WITHOUT a rollback outcome is independently
+        # verifiable evidence of a current activation.
+        provable = [
+            intent
+            for intent in active
+            if intent.receipt.activation_id not in outcome_by_activation
+        ]
+        rolled_back = [
+            intent
+            for intent in active
+            if intent.receipt.activation_id in outcome_by_activation
+        ]
+        if provable:
+            if rolled_back:
+                # Historical siblings of a proven current activation.
+                observations.append("STALE_ROLLBACK_OUTCOME_PRESENT")
+            if len(provable) > 1:
+                return ACTIVATION_STATUS_AMBIGUOUS_HISTORY, None, observations
+            intent = provable[0]
+            if intent.receipt.activation_id in rollback_intents:
+                observations.append("ROLLBACK_INTENT_PENDING_RESTORE")
+            return (
+                ACTIVATION_STATUS_ACTIVATED_VERIFIED,
+                focal_for(intent),
+                observations,
+            )
+        observations.append("ROLLED_BACK_ACTIVATION_BYTES_PRESENT")
         return (
-            ACTIVATION_STATUS_ACTIVATED_VERIFIED,
-            focal_for(intent),
+            ACTIVATION_STATUS_CONFIG_DIVERGED,
+            focal_for(active[0]),
             observations,
         )
 
@@ -796,9 +839,19 @@ def _inspect_receipt(
     config_path: Path,
     current_hash: str,
     scanned: dict[str, object],
-    problems: list[str],
 ) -> ActivationReceiptInspectionV1:
-    """Facts about one explicitly supplied receipt file (additive detail)."""
+    """Facts about one explicitly supplied receipt file (additive detail).
+
+    Receipt diagnostics are deliberately kept OUT of the store-level
+    ``problems`` list: classification runs before this inspection, the
+    projection contract pins every informational status to empty problems,
+    and a supplied receipt file — even one bound to this config — is an
+    external artifact whose facts are reported unambiguously through the
+    ``ActivationReceiptInspectionV1`` booleans (a missing before-image for a
+    receipt this store does not hold is an expected absence, not store
+    corruption).  The store's own copies are verified, and any real store
+    corruption problems recorded, by ``_scan_store`` above.
+    """
 
     kind = _entry_kind(receipt_path)
     if kind != "file":
@@ -829,8 +882,8 @@ def _inspect_receipt(
         root,
         receipt,
         require_present=relevant,
-        record_problems=relevant,
-        problems=problems,
+        record_problems=False,
+        problems=[],
     )
     store_copy = root / "receipts" / f"{receipt.activation_id}.json"
     store_copy_present = _entry_kind(store_copy) == "file"
@@ -907,11 +960,18 @@ def inspect_activation_status(
     current_default: str | None = None
     try:
         parsed = tomllib.loads(config_bytes.decode("utf-8"))
-        default_value = parsed.get("profiles", {}).get("default")
-        if isinstance(default_value, str):
-            current_default = default_value
+        profiles_section = parsed.get("profiles")
+        if isinstance(profiles_section, dict):
+            default_value = profiles_section.get("default")
+            if isinstance(default_value, str):
+                current_default = default_value
+            else:
+                observations.append("CURRENT_CONFIG_DEFAULT_NOT_STRING")
         else:
-            observations.append("CURRENT_CONFIG_DEFAULT_NOT_STRING")
+            # A syntactically valid config whose ``profiles`` key is not a
+            # TOML table (e.g. ``profiles = "unexpected"``) is a controlled
+            # observation, never an uncaught attribute error.
+            observations.append("CURRENT_CONFIG_PROFILES_NOT_TABLE")
     except (tomllib.TOMLDecodeError, UnicodeDecodeError):
         observations.append("CURRENT_CONFIG_TOML_UNPARSEABLE")
 
@@ -931,7 +991,6 @@ def inspect_activation_status(
             config_path=config_path,
             current_hash=current_hash,
             scanned=scanned,
-            problems=problems,
         )
 
     unrelated: set[str] = scanned["unrelated_activation_ids"]

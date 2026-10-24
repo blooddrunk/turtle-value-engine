@@ -209,20 +209,25 @@ python -m turtle_value_engine evolution activation-status \
 该命令**严格只读**：不创建目录、不加锁、不修复、不写任何文件（因此
 没有 `--output`），不发任何网络请求，也不会代替你执行激活或回滚。重复
 执行输出逐字节一致。可选 `--receipt <回执路径>` 附加检查某一份回执文件
-本身（有效性、是否绑定本配置、日志/备份/回滚工件是否存在），它不改变
-整体状态判定。
+本身（有效性、是否绑定本配置、日志/备份/回滚工件是否存在）。这些附加
+事实**只**出现在 `receipt_inspection` 字段里，不改变整体状态判定、
+`problems` 列表或退出码：对着空存储检查一份绑定本配置的外部回执时，
+`before_image_verified=false`／`store_copy_present=false` 只说明"该回执
+引用的工件不在这个存储里"，不是存储损坏。所有信息性状态（退出码 0）的
+`problems` 必为空——这是 `profile_activation_status_v1` 投影契约本身
+强制的不变量。
 
 输出 JSON 顶层的 `status` 就是稳定状态码：
 
 | status | 退出码 | 含义 | 下一步 |
 | --- | --- | --- | --- |
 | `NO_HISTORY` | 0 | 该配置在本存储中没有任何激活/回滚历史 | 无需处理；需要启用时先跑第 1 节预览 |
-| `ACTIVATED_VERIFIED` | 0 | 回执、日志、备份全部有效，当前配置字节等于激活后哈希 | 如需恢复，执行回执绑定的回滚命令 |
-| `ROLLED_BACK_VERIFIED` | 0 | 回滚已完成并经字节验证（回滚结果有效） | 无需处理 |
+| `ACTIVATED_VERIFIED` | 0 | 回执、日志、备份全部有效，当前配置字节等于激活后哈希，且该激活没有被有效回滚结果证明回滚过（或另有一份未回滚的同字节后续激活） | 如需恢复，执行回执绑定的回滚命令 |
+| `ROLLED_BACK_VERIFIED` | 0 | 回滚已完成并经字节验证（有效回滚结果；恢复意图不是必需的——见下方兼容性说明） | 无需处理 |
 | `RECEIPT_FINALIZATION_PENDING` | 1 | 配置已替换，但回执尚未发布（应用在替换后中断） | 重新执行同一 apply 命令补写回执；不会再次改配置 |
 | `APPLY_RESUMABLE` | 1 | 存在未完成意图，配置仍是激活前字节（应用在替换前中断） | 可重新执行同一 apply；成功仍要求授权链当前有效 |
 | `ROLLBACK_FINALIZATION_PENDING` | 1 | 配置已恢复、回滚意图存在，但回滚结果未发布（回滚在恢复后中断） | 重新执行同一 rollback 命令补写结果；不会再次改配置 |
-| `CONFIG_DIVERGED` | 1 | 当前配置字节与存储可证明的任何状态都不一致（可能被手工修改） | 人工比对 `before-images/` 备份后自行决定；命令不修复 |
+| `CONFIG_DIVERGED` | 1 | 当前配置字节与存储可证明的当前终局状态不一致（可能被手工修改，或激活后字节在回滚之后被写回而存储无法证明新的激活） | 人工比对 `before-images/` 备份后自行决定；命令不修复 |
 | `AMBIGUOUS_HISTORY` | 1 | 存在多份未完成激活意图，无法判断哪份代表当前意图 | 人工检查 `journal/`；执行器会拒绝进一步激活直至澄清 |
 | `CORRUPT_OR_UNVERIFIABLE` | 1 | 存在损坏/被篡改/越界/无法验证的工件（见 `problems` 列表） | 按 `problems` 逐项人工处理；命令不修复 |
 
@@ -230,7 +235,15 @@ python -m turtle_value_engine evolution activation-status \
 `RECEIPT_CORRUPT:<文件>`、`JOURNAL_FILE_SYMLINK:<文件>`、
 `ACTIVATION_ROOT_FOREIGN_ENTRY:<名字>`）；`observations` 列表给出额外事实
 （如 `RESTORED_WITHOUT_DURABLE_PROOF`＝字节等于激活前但无回滚证据、
-`STALE_ROLLBACK_OUTCOME_PRESENT`＝回滚后字节又被重新激活、
+`ROLLED_BACK_ACTIVATION_BYTES_PRESENT`＝当前字节等于一次**已被有效回滚
+结果证明回滚过**的激活的激活后字节——回滚之后的重新激活无法从存储字节
+证明（真实重跑 apply 会确定性复用同一激活身份，与手工把激活后字节写回
+不可区分），因此如实判为 `CONFIG_DIVERGED`／退出码 1，而不是猜测成功；
+`STALE_ROLLBACK_OUTCOME_PRESENT`＝当前有效激活之外还存在一份同字节的
+历史激活及其回滚结果、`ROLLBACK_INTENT_PENDING_RESTORE`＝激活已验证但
+有一个尚未执行恢复的回滚意图、`CURRENT_CONFIG_TOML_UNPARSEABLE`／
+`CURRENT_CONFIG_DEFAULT_NOT_STRING`／`CURRENT_CONFIG_PROFILES_NOT_TABLE`
+＝配置可读但形态异常（如 `profiles = "unexpected"`，受控观察而非崩溃）、
 `UNRELATED_HISTORIES_PRESENT`＝存储里有其他配置的历史——它们不会被算作
 本配置的状态）；`guidance_zh` 是中文下一步建议；`focal` 是判定所依据的那
 次激活的已验证身份（activation_id、前后哈希与默认策略、回执/日志/备份/
@@ -241,6 +254,19 @@ python -m turtle_value_engine evolution activation-status \
 - **历史回执不证明当前所有者同意。** `owner_authority_revalidated` 恒为
   `false`：状态检查不重新验证签名授权、不重新派生计划。要知道"现在是否
   仍获授权"，请重跑第 1 节预览。
+- **回滚之后的"重新激活"不可由字节证明。** 对同一输入重跑 apply 会确定性
+  复用同一 activation_id 与回执（执行器语义，见第 5 节），因此回滚后无论
+  是真实重激活还是手工写回激活后字节，存储都一样：`activation-status`
+  对这两种情况统一报告 `CONFIG_DIVERGED` +
+  `ROLLED_BACK_ACTIVATION_BYTES_PRESENT`（退出码 1）。这是如实的
+  "无法证明"，不是执行器故障；若确需一个可被状态检查证明为
+  `ACTIVATED_VERIFIED` 的当前激活，须以一份**不同的**所有者决策记录
+  （不同 plan/activation id）重新走预览→apply。
+- **`ROLLED_BACK_VERIFIED` 的兼容性。** 只要求绑定本回执的有效回滚结果，
+  不要求恢复意图：早期 C4-A 回滚结果早于 R1 恢复意图格式，而回滚结果由
+  回执内容哈希确定性重算并比对（篡改即 `ROLLBACK_CONTENT_MISMATCH`
+  损坏项），"仅有结果"是已完成的终局证据；恢复意图只服务于"恢复已发生、
+  结果未发布"的中断态。
 - **单遍读取，无全局原子快照。** `global_atomic_snapshot_claimed` 恒为
   `false`：并发 apply/rollback 可能改变读取间隙中的字节。
 - 输入不可用（activation-root/存储子目录为符号链接或非目录、配置缺失/
