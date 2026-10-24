@@ -2010,8 +2010,16 @@ def _load_verified_before_image(
             "the before-image bytes disagree with the receipt's prior "
             "config hash",
         )
-    image_parsed = tomllib.loads(image_bytes.decode("utf-8"))
-    if image_parsed.get("profiles", {}).get("default") != (
+    try:
+        image_parsed = tomllib.loads(image_bytes.decode("utf-8"))
+    except (tomllib.TOMLDecodeError, UnicodeDecodeError) as exc:
+        raise ActivationExecutionError(
+            "BEFORE_IMAGE_CONTENT_MISMATCH",
+            "the hash-verified before-image does not decode and parse as "
+            f"UTF-8 TOML: {before_image} ({str(exc)[:200]})",
+        ) from exc
+    image_profiles = image_parsed.get("profiles")
+    if not isinstance(image_profiles, dict) or image_profiles.get("default") != (
         receipt.prior_default_profile
     ):
         raise ActivationExecutionError(
@@ -2020,6 +2028,28 @@ def _load_verified_before_image(
             "receipt's prior default",
         )
     return image_bytes
+
+
+def _prior_default_in_place(
+    current_bytes: bytes, receipt: ProfileActivationReceiptV1
+) -> bool:
+    """Whether the current prior-hash bytes still prove the prior default.
+
+    Structural parity with the C4-B status inspector: bytes that are not
+    valid UTF-8 TOML, or whose ``[profiles]`` is not a table holding the
+    receipt's prior default, simply do not *prove* the prior default in
+    place — the caller then falls through to its existing hash-precondition
+    refusal instead of raising an unclassified parser/attribute error.
+    """
+
+    try:
+        parsed = tomllib.loads(current_bytes.decode("utf-8"))
+    except (tomllib.TOMLDecodeError, UnicodeDecodeError):
+        return False
+    profiles_section = parsed.get("profiles")
+    return isinstance(profiles_section, dict) and profiles_section.get(
+        "default"
+    ) == receipt.prior_default_profile
 
 
 def rollback_profile_activation(
@@ -2035,7 +2065,11 @@ def rollback_profile_activation(
     proceeds) or already the prior bytes (idempotent ALREADY_RESTORED); any
     other current hash is an intervening change the rollback refuses to
     clobber.  The before-image must still exist with its content-addressed
-    hash and must parse with the prior default.
+    hash and must parse with the prior default.  Prior-hash current bytes
+    (or a hash-consistent before-image) whose structure does not decode,
+    parse and yield the receipt's prior ``[profiles]`` default are treated
+    as unproven and refused by these same named classifications — never by
+    an unclassified parser/attribute error.
 
     Audit recoverability: an immutable recovery intent is persisted *before*
     the config restoration, and the immutable rollback outcome *after* it.
@@ -2063,10 +2097,7 @@ def rollback_profile_activation(
         current_bytes = _regular_file_bytes(config_path)
         current_hash = _sha256_hex(current_bytes)
         if current_hash == receipt.prior_config_sha256:
-            parsed = tomllib.loads(current_bytes.decode("utf-8"))
-            if parsed.get("profiles", {}).get("default") == (
-                receipt.prior_default_profile
-            ):
+            if _prior_default_in_place(current_bytes, receipt):
                 if outcome_path.is_file():
                     _load_validated_rollback_outcome(outcome_path, outcome)
                     return ActivationRollbackResult(
