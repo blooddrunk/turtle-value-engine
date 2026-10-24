@@ -1,0 +1,319 @@
+{
+  "$defs": {
+    "ActivationFocalStateV1": {
+      "additionalProperties": false,
+      "description": "Verified identities of the one activation a classification is about.",
+      "properties": {
+        "activated_config_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Activated Config Sha256",
+          "type": "string"
+        },
+        "activated_default_profile": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Activated Default Profile",
+          "type": "string"
+        },
+        "activation_id": {
+          "maxLength": 168,
+          "minLength": 1,
+          "title": "Activation Id",
+          "type": "string"
+        },
+        "before_image_name": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Before Image Name",
+          "type": "string"
+        },
+        "before_image_present": {
+          "title": "Before Image Present",
+          "type": "boolean"
+        },
+        "before_image_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Before Image Sha256",
+          "type": "string"
+        },
+        "journal_present": {
+          "title": "Journal Present",
+          "type": "boolean"
+        },
+        "prior_config_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Prior Config Sha256",
+          "type": "string"
+        },
+        "prior_default_profile": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Prior Default Profile",
+          "type": "string"
+        },
+        "receipt_present": {
+          "title": "Receipt Present",
+          "type": "boolean"
+        },
+        "rollback_id": {
+          "anyOf": [
+            {
+              "maxLength": 168,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rollback Id"
+        },
+        "rollback_intent_present": {
+          "default": false,
+          "title": "Rollback Intent Present",
+          "type": "boolean"
+        },
+        "rollback_outcome_present": {
+          "default": false,
+          "title": "Rollback Outcome Present",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "activation_id",
+        "activated_default_profile",
+        "activated_config_sha256",
+        "prior_default_profile",
+        "prior_config_sha256",
+        "before_image_name",
+        "before_image_sha256",
+        "journal_present",
+        "receipt_present",
+        "before_image_present"
+      ],
+      "title": "ActivationFocalStateV1",
+      "type": "object"
+    },
+    "ActivationReceiptInspectionV1": {
+      "additionalProperties": false,
+      "description": "Additive facts about one explicitly supplied receipt file.",
+      "properties": {
+        "activation_id": {
+          "maxLength": 168,
+          "minLength": 1,
+          "title": "Activation Id",
+          "type": "string"
+        },
+        "before_image_verified": {
+          "title": "Before Image Verified",
+          "type": "boolean"
+        },
+        "current_config_matches_activated": {
+          "title": "Current Config Matches Activated",
+          "type": "boolean"
+        },
+        "journal_present": {
+          "title": "Journal Present",
+          "type": "boolean"
+        },
+        "receipt_path": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Receipt Path",
+          "type": "string"
+        },
+        "relevant_to_config": {
+          "title": "Relevant To Config",
+          "type": "boolean"
+        },
+        "rollback_intent_present": {
+          "title": "Rollback Intent Present",
+          "type": "boolean"
+        },
+        "rollback_outcome_present": {
+          "title": "Rollback Outcome Present",
+          "type": "boolean"
+        },
+        "store_copy_matches": {
+          "title": "Store Copy Matches",
+          "type": "boolean"
+        },
+        "store_copy_present": {
+          "title": "Store Copy Present",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "receipt_path",
+        "activation_id",
+        "relevant_to_config",
+        "current_config_matches_activated",
+        "journal_present",
+        "before_image_verified",
+        "store_copy_present",
+        "store_copy_matches",
+        "rollback_outcome_present",
+        "rollback_intent_present"
+      ],
+      "title": "ActivationReceiptInspectionV1",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "The versioned, deterministic, read-only activation status projection.",
+  "properties": {
+    "activation_root_present": {
+      "title": "Activation Root Present",
+      "type": "boolean"
+    },
+    "content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Content Sha256",
+      "type": "string"
+    },
+    "contract": {
+      "const": "profile_activation_status_v1",
+      "default": "profile_activation_status_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "current_config_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Current Config Sha256",
+      "type": "string"
+    },
+    "current_default_profile": {
+      "anyOf": [
+        {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Current Default Profile"
+    },
+    "execution_performed": {
+      "const": false,
+      "default": false,
+      "title": "Execution Performed",
+      "type": "boolean"
+    },
+    "focal": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ActivationFocalStateV1"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "global_atomic_snapshot_claimed": {
+      "const": false,
+      "default": false,
+      "title": "Global Atomic Snapshot Claimed",
+      "type": "boolean"
+    },
+    "guidance_zh": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 16,
+      "minItems": 1,
+      "title": "Guidance Zh",
+      "type": "array"
+    },
+    "observations": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Observations",
+      "type": "array"
+    },
+    "owner_authority_revalidated": {
+      "const": false,
+      "default": false,
+      "title": "Owner Authority Revalidated",
+      "type": "boolean"
+    },
+    "pending_activation_ids": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Pending Activation Ids",
+      "type": "array"
+    },
+    "problems": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Problems",
+      "type": "array"
+    },
+    "project_config_path": {
+      "maxLength": 2048,
+      "minLength": 1,
+      "title": "Project Config Path",
+      "type": "string"
+    },
+    "read_only_observation": {
+      "const": true,
+      "default": true,
+      "title": "Read Only Observation",
+      "type": "boolean"
+    },
+    "receipt_inspection": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ActivationReceiptInspectionV1"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "relevant_histories": {
+      "maximum": 1000,
+      "minimum": 0,
+      "title": "Relevant Histories",
+      "type": "integer"
+    },
+    "schema_version": {
+      "default": "1.0.0",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "status": {
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "Status",
+      "type": "string"
+    },
+    "unrelated_histories": {
+      "maximum": 1000,
+      "minimum": 0,
+      "title": "Unrelated Histories",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "status",
+    "project_config_path",
+    "current_config_sha256",
+    "activation_root_present",
+    "relevant_histories",
+    "unrelated_histories",
+    "guidance_zh",
+    "content_sha256"
+  ],
+  "title": "ProfileActivationStatusV1",
+  "type": "object"
+}

@@ -60,6 +60,10 @@ from turtle_value_engine.evolution.activation_plan import (
     build_owner_decision_dossier_markdown,
     plan_profile_activation,
 )
+from turtle_value_engine.evolution.activation_status import (
+    INFORMATIONAL_ACTIVATION_STATUSES,
+    inspect_activation_status,
+)
 from turtle_value_engine.evolution.owner_decision import (
     OwnerPolicyDecisionInputV1,
     load_decision_record_with_bytes,
@@ -932,6 +936,35 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help="optional create-only destination for the rollback report",
     )
+    evolution_activation_status = evolution_commands.add_parser(
+        "activation-status",
+        help="read-only activation state inspection (Phase 7-C4-B): "
+        "classify the persisted journal/receipts/before-images/rollbacks "
+        "plus the observed config bytes into one stable status with Chinese "
+        "guidance; performs zero writes, repairs, locks, authority "
+        "re-validation or network calls",
+    )
+    evolution_activation_status.add_argument(
+        "--activation-root",
+        required=True,
+        type=Path,
+        help="the private executor store to inspect (outside the repository)",
+    )
+    evolution_activation_status.add_argument(
+        "--project-config",
+        required=True,
+        type=Path,
+        help="the private project config whose activation history is being "
+        "inspected (the same file activate-profile would target)",
+    )
+    evolution_activation_status.add_argument(
+        "--receipt",
+        type=Path,
+        default=None,
+        help="optional receipt file to inspect additively (exact-record "
+        "facts: validity, association to this config, journal/before-image/"
+        "rollback presence); it never changes the overall classification",
+    )
     evolution_decision_dossier = evolution_commands.add_parser(
         "decision-dossier",
         help="generate the deterministic Chinese owner decision dossier from "
@@ -1770,6 +1803,8 @@ def _run_evolution_command(args: argparse.Namespace) -> object:
         return _run_evolution_activate_profile_command(args)
     if args.evolution_command == "rollback-activation":
         return _run_evolution_rollback_activation_command(args)
+    if args.evolution_command == "activation-status":
+        return _run_evolution_activation_status_command(args)
     if args.evolution_command == "decision-dossier":
         return _run_evolution_decision_dossier_command(args)
 
@@ -2739,6 +2774,28 @@ def _run_evolution_rollback_activation_command(args: argparse.Namespace) -> obje
             args.output, _export_bytes(payload), label="--output"
         )
     return payload
+
+
+def _run_evolution_activation_status_command(args: argparse.Namespace) -> object:
+    """C4-B read-only status: classify, never mutate, never repair.
+
+    Exit classes follow the repository convention: 0 for the verified
+    informational outcomes (no history / activated verified / rolled back
+    verified), 1 for every pending, diverged, ambiguous or corrupt outcome
+    (the full projection is still printed), 2 for unusable input (the
+    executor's own classified guards).  There is no ``--output``: printing a
+    report file would itself be a persistent write this command must not
+    perform.
+    """
+
+    status = inspect_activation_status(
+        activation_root=args.activation_root,
+        project_config_path=args.project_config,
+        receipt_path=args.receipt,
+    )
+    if status.status not in INFORMATIONAL_ACTIVATION_STATUSES:
+        raise _CliPayloadExit(status, 1)
+    return status
 
 
 def _run_evolution_decision_dossier_command(args: argparse.Namespace) -> object:
