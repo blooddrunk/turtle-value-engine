@@ -2,8 +2,10 @@
 
 本手册描述 `tve evolution activate-profile` / `tve evolution rollback-activation`
 两个离线命令的完整操作流程：预览（默认、只读）、显式应用（`--apply`）、
-中断恢复与回滚。所有示例均可在本地按字面执行；测试与 CI 使用一次性
-Ed25519 密钥与临时私有配置，**不需要也不应该使用真实所有者密钥**。
+中断恢复与回滚，以及第 4 节的只读状态检查命令
+`tve evolution activation-status`（Phase 7-C4-B）。所有示例均可在本地按字面
+执行；测试与 CI 使用一次性 Ed25519 密钥与临时私有配置，**不需要也不应该
+使用真实所有者密钥**。
 
 边界声明：执行器只修改**一个**文件——显式提供的私有项目配置
 （如 `.tve-private/project.toml`）中的 `[profiles] default` 一个值。它不会
@@ -160,7 +162,7 @@ fsync + CAS 复读 + 原子 `os.replace`（+ 目录 fsync）→ 回执。每次�
 其父目录项（新建存储子目录时再 fsync 根目录项），使先于配置替换的发布
 在目录项层面也是持久的；这是模拟中断与 fsync 调用序层面的证据，**不是**
 物理掉电认证。配置替换本身是原子的；**回执/备份的发布不是跨文件事务**
-——中断状态由下一次调用按名分类并确定性恢复（见第 4 节），本执行器不
+——中断状态由下一次调用按名分类并确定性恢复（见第 5 节），本执行器不
 承诺不可能的跨文件原子性。
 
 ## 3. 回滚（显式、字节精确）
@@ -193,7 +195,86 @@ ALREADY_RESTORED）；备份存在且哈希一致。**任何中间改动**（哪
 项 `NO_AUTOMATIC_MONITORING_REPLAY` / `NO_AUTOMATIC_NOTIFICATION_REPLAY` /
 `NO_HISTORICAL_ARTIFACT_REWRITE`），也不撤销启用期间已产生的分析决策。
 
-## 4. 中断恢复（确定性）
+## 4. 只读状态检查（Phase 7-C4-B：`activation-status`）
+
+在执行任何操作（尤其是重试一次中断的 apply/rollback）之前，先用一条
+命令看清当前状态：
+
+```bash
+python -m turtle_value_engine evolution activation-status \
+  --activation-root ~/tve-trust/activation \
+  --project-config ~/tve-private/project.toml
+```
+
+该命令**严格只读**：不创建目录、不加锁、不修复、不写任何文件（因此
+没有 `--output`），不发任何网络请求，也不会代替你执行激活或回滚。重复
+执行输出逐字节一致。可选 `--receipt <回执路径>` 附加检查某一份回执文件
+本身（有效性、是否绑定本配置、日志/备份/回滚工件是否存在）。这些附加
+事实**只**出现在 `receipt_inspection` 字段里，不改变整体状态判定、
+`problems` 列表或退出码：对着空存储检查一份绑定本配置的外部回执时，
+`before_image_verified=false`／`store_copy_present=false` 只说明"该回执
+引用的工件不在这个存储里"，不是存储损坏。所有信息性状态（退出码 0）的
+`problems` 必为空——这是 `profile_activation_status_v1` 投影契约本身
+强制的不变量。
+
+输出 JSON 顶层的 `status` 就是稳定状态码：
+
+| status | 退出码 | 含义 | 下一步 |
+| --- | --- | --- | --- |
+| `NO_HISTORY` | 0 | 该配置在本存储中没有任何激活/回滚历史 | 无需处理；需要启用时先跑第 1 节预览 |
+| `ACTIVATED_VERIFIED` | 0 | 回执、日志、备份全部有效，当前配置字节等于激活后哈希，且该激活没有被有效回滚结果证明回滚过（或另有一份未回滚的同字节后续激活） | 如需恢复，执行回执绑定的回滚命令 |
+| `ROLLED_BACK_VERIFIED` | 0 | 回滚已完成并经字节验证（有效回滚结果；恢复意图不是必需的——见下方兼容性说明） | 无需处理 |
+| `RECEIPT_FINALIZATION_PENDING` | 1 | 配置已替换，但回执尚未发布（应用在替换后中断） | 重新执行同一 apply 命令补写回执；不会再次改配置 |
+| `APPLY_RESUMABLE` | 1 | 存在未完成意图，配置仍是激活前字节（应用在替换前中断） | 可重新执行同一 apply；成功仍要求授权链当前有效 |
+| `ROLLBACK_FINALIZATION_PENDING` | 1 | 配置已恢复、回滚意图存在，但回滚结果未发布（回滚在恢复后中断） | 重新执行同一 rollback 命令补写结果；不会再次改配置 |
+| `CONFIG_DIVERGED` | 1 | 当前配置字节与存储可证明的当前终局状态不一致（可能被手工修改，或激活后字节在回滚之后被写回而存储无法证明新的激活） | 人工比对 `before-images/` 备份后自行决定；命令不修复 |
+| `AMBIGUOUS_HISTORY` | 1 | 存在多份未完成激活意图，无法判断哪份代表当前意图 | 人工检查 `journal/`；执行器会拒绝进一步激活直至澄清 |
+| `CORRUPT_OR_UNVERIFIABLE` | 1 | 存在损坏/被篡改/越界/无法验证的工件（见 `problems` 列表） | 按 `problems` 逐项人工处理；命令不修复 |
+
+`problems` 列表给出具体损坏条目（如 `BEFORE_IMAGE_HASH_MISMATCH:<文件>`、
+`RECEIPT_CORRUPT:<文件>`、`JOURNAL_FILE_SYMLINK:<文件>`、
+`ACTIVATION_ROOT_FOREIGN_ENTRY:<名字>`）；`observations` 列表给出额外事实
+（如 `RESTORED_WITHOUT_DURABLE_PROOF`＝字节等于激活前但无回滚证据、
+`ROLLED_BACK_ACTIVATION_BYTES_PRESENT`＝当前字节等于一次**已被有效回滚
+结果证明回滚过**的激活的激活后字节——回滚之后的重新激活无法从存储字节
+证明（真实重跑 apply 会确定性复用同一激活身份，与手工把激活后字节写回
+不可区分），因此如实判为 `CONFIG_DIVERGED`／退出码 1，而不是猜测成功；
+`STALE_ROLLBACK_OUTCOME_PRESENT`＝当前有效激活之外还存在一份同字节的
+历史激活及其回滚结果、`ROLLBACK_INTENT_PENDING_RESTORE`＝激活已验证但
+有一个尚未执行恢复的回滚意图、`CURRENT_CONFIG_TOML_UNPARSEABLE`／
+`CURRENT_CONFIG_DEFAULT_NOT_STRING`／`CURRENT_CONFIG_PROFILES_NOT_TABLE`
+＝配置可读但形态异常（如 `profiles = "unexpected"`，受控观察而非崩溃）、
+`UNRELATED_HISTORIES_PRESENT`＝存储里有其他配置的历史——它们不会被算作
+本配置的状态）；`guidance_zh` 是中文下一步建议；`focal` 是判定所依据的那
+次激活的已验证身份（activation_id、前后哈希与默认策略、回执/日志/备份/
+回滚工件存在性）。
+
+边界（重要）：
+
+- **历史回执不证明当前所有者同意。** `owner_authority_revalidated` 恒为
+  `false`：状态检查不重新验证签名授权、不重新派生计划。要知道"现在是否
+  仍获授权"，请重跑第 1 节预览。
+- **回滚之后的"重新激活"不可由字节证明。** 对同一输入重跑 apply 会确定性
+  复用同一 activation_id 与回执（执行器语义，见第 5 节），因此回滚后无论
+  是真实重激活还是手工写回激活后字节，存储都一样：`activation-status`
+  对这两种情况统一报告 `CONFIG_DIVERGED` +
+  `ROLLED_BACK_ACTIVATION_BYTES_PRESENT`（退出码 1）。这是如实的
+  "无法证明"，不是执行器故障；若确需一个可被状态检查证明为
+  `ACTIVATED_VERIFIED` 的当前激活，须以一份**不同的**所有者决策记录
+  （不同 plan/activation id）重新走预览→apply。
+- **`ROLLED_BACK_VERIFIED` 的兼容性。** 只要求绑定本回执的有效回滚结果，
+  不要求恢复意图：早期 C4-A 回滚结果早于 R1 恢复意图格式，而回滚结果由
+  回执内容哈希确定性重算并比对（篡改即 `ROLLBACK_CONTENT_MISMATCH`
+  损坏项），"仅有结果"是已完成的终局证据；恢复意图只服务于"恢复已发生、
+  结果未发布"的中断态。
+- **单遍读取，无全局原子快照。** `global_atomic_snapshot_claimed` 恒为
+  `false`：并发 apply/rollback 可能改变读取间隙中的字节。
+- 输入不可用（activation-root/存储子目录为符号链接或非目录、配置缺失/
+  符号链接/在受保护仓库目录内、`--receipt` 文件非法）是退出码 `2` 的分类
+  错误，与上表的状态判定（退出码 0/1）分开。
+- `locks/` 中遗留的锁文件不影响判定（锁是运行状态，不是历史）。
+
+## 5. 中断恢复（确定性）
 
 执行器按可观察的磁盘状态分类，不需要人工猜测：
 
@@ -209,7 +290,7 @@ ALREADY_RESTORED）；备份存在且哈希一致。**任何中间改动**（哪
 | 配置哈希 = `prior_config_sha256`；结果与意图都不存在 | 无本回滚已运行的持久证据 | 再次 rollback → `ALREADY_RESTORED`（如实报告，不伪造结果） |
 | 恢复意图被篡改/绑定不符 | 审计证据损坏 | `ROLLBACK_INTENT_CORRUPT` / `ROLLBACK_INTENT_MISMATCH`（退出码 2；不补写任何结果） |
 
-## 5. 失败码速查
+## 6. 失败码速查
 
 | 退出码 | status / code | 含义 |
 | --- | --- | --- |
@@ -231,7 +312,7 @@ ALREADY_RESTORED）；备份存在且哈希一致。**任何中间改动**（哪
 非阻塞排他 flock 串行化；竞争者立即以退出码 3 结束且不做任何工作。
 替换前的 CAS 复读捕获未持锁的外部写入者。
 
-## 6. 完整自动化复现（工程师可重跑）
+## 7. 完整自动化复现（工程师可重跑）
 
 `tests/test_activation_execution.py`（48 项）用运行期生成的一次性
 Ed25519 密钥端到端驱动真实 CLI：签名 → 捕获 → 严格加载 → 新鲜 READY
@@ -259,8 +340,17 @@ main `4247f20` 上以 8 红 / 3 绿复现了两类残余缺陷（同一 apply �
 真值/控制固定（新鲜调用对被替换文件必然阻塞 ×2、执行器自建与复用的
 单链接锁生命周期）。硬链接探针在不支持 `os.link` 的文件系统上显式
 skip 并在 Linux CI 主机上执行。
+`tests/test_activation_status.py`（47 项，C4-B）覆盖第 4 节的九个状态
+分类：每个正/负用例都用真实签名 apply/rollback 或具名故障点
+（journal-persisted、config-replaced、config-restored、
+rollback-intent-persisted）构造真实磁盘状态，再由真实 CLI 判定，并对每
+次调用做调用前后全树哈希对比（零写入证明）与重复调用字节一致证明；负
+矩阵覆盖缺失/篡改备份、篡改回执、伪造回滚关联、符号链接工件、根级异物、
+多历史歧义、无关历史隔离、`--receipt` 检查与全部输入拒绝路径，另含一条
+字面 `python -m` 子进程的完整操作演练（含空格路径与三个中断状态的恢复
+路径衔接）。
 
-## 7. 真实 strict-v2 启用（可选，所有者人工边界）
+## 8. 真实 strict-v2 启用（可选，所有者人工边界）
 
 工程验收不需要以下任何步骤；真实启用是所有者本人的政策决策（CDC 14%
 门槛高于 S 档 12% 的例外是否可接受），只能由真实签名决策授权：
