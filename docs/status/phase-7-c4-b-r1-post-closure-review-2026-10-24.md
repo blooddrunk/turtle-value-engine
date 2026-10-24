@@ -1,0 +1,26 @@
+# Independent Phase 7-C4-B-R1 post-closure review (2026-10-24)
+
+## Review base and evidence
+
+- Reviewed `main` at `8ba65c5ef72a067dc770509f0c64c202a7943ef7`, Phase 7-C4-B implementation PR #28, its R1 head `7c7bc77593a8960fafee07019e065410b7779b98`, merge commit `3439e62a86546c3caf70ef89a8465207ffbac66e` and current-main closure commit `8ba65c5ef72a067dc770509f0c64c202a7943ef7`.
+- Confirmed R1 exact-head Actions run [40089703114](https://github.com/blooddrunk/turtle-value-engine/actions/runs/40089703114), merge-head [40090289838](https://github.com/blooddrunk/turtle-value-engine/actions/runs/40090289838) and current-main [40090968279](https://github.com/blooddrunk/turtle-value-engine/actions/runs/40090968279) all concluded `success`. Independently inspected current-main job 120863365723's raw log: **7471 passed, 2 skipped, 9 warnings in 403.63s**, Dashboard **55 passed**, bundle secret scan **4 files passed**, cross-stack smoke passed. All CI job steps succeeded.
+- Reviewed R1 production delta in `activation_status.py` and 12 new `test_activation_status_r1_regressions.py` tests. The three addressed areas are: F1 supplemental `--receipt` diagnostics never contaminate store-level problems (also model-level informational => empty problems invariant); F2 post-rollback activated bytes are not presumed current, while distinct unrolled-back matching activation can be recognized; F3 scalar `profiles` config/before-image inputs yield controlled status observations/problems, not an `AttributeError`.
+- Checked protected blobs on current `main`: `rules/strict-v1.yaml` `e34f4ca00ba822766e05e6ccd48d3398b0245e4a`; `rules/strict-v2.yaml` `0e75b02e9305415018bb57c9b9fb8418440eb090`; `docs/releases/strict-v2/release-candidate.json` `ded5606454d3ef0afc1a0fdc0fea937d3c6cc786`; `config/project.example.toml` `a9cff0de8fbc4e6f510f3ee5e8551f4b89aeaa03`. The default remains `strict-v1`.
+- Limitation: a local clone attempt (`git ls-remote https://github.com/blooddrunk/turtle-value-engine.git HEAD`) failed with `Could not resolve host: github.com`. Thus no local fresh pytest execution and no baseline-red adversarial reproduction is claimed by this review; remote exact-head/main CI and source inspection are separately labeled.
+
+**Disposition: Accept and keep Phase 7-C4-B-R1 CLOSED at its stated engineering boundary.** R1 did not change the executor, and its deliberate re-apply ambiguity is accurately disclosed. Existing code/tests/CI support the claimed scoped acceptance, not real owner-policy approval, live activation, globally atomic observations, or proof that an idempotent re-apply differs from an external rewrite.
+
+## A distinct, narrower candidate found outside R1 scope
+
+Source-level candidate **H1: executor rollback parser classification**:
+
+- `src/turtle_value_engine/evolution/activation_execution.py::_load_verified_before_image` verifies the receipt-bound before-image byte hashes, then runs bare `tomllib.loads(image_bytes.decode("utf-8"))` and `image_parsed.get("profiles", {}).get("default")` without the shape guard already added in `activation_status.py::_verify_before_image`.
+- `rollback_profile_activation` takes another analogous `parsed.get("profiles", {}).get("default")` path when the current bytes match a receipt's `prior_config_sha256`.
+- A structurally self-consistent, locally forged receipt and matching content-addressed backup with `profiles = "unexpected"` can potentially reach the latter `.get`, resulting in uncaught `AttributeError` rather than a named CLI refusal. Invalid TOML may also lack the intended named before-image classification. This is **NOT** evidence that genuine executor-generated signed receipts have malformed before-images: a real successful apply starts with a parsed valid config. The adversarial boundary is caller-supplied/forged receipt and disk artifacts; no real signing key or accepted economic decision is needed to test it.
+- Existing `tests/test_activation_execution.py` specifically tests missing/tampered before-images (hash invalid), not a hash-consistent malformed backup or self-consistent forged receipt. This is a **static hypothesis, not a runtime-reproduced R5 defect**. Do not claim an exploit, concrete traceback or regression fix without baseline-red proof.
+
+**Next action: a bounded conditional Phase 7-C4-A-R5 tests-first probe**, see [goal](../goals/phase-7-c4-a-r5-conditional-rollback-input-classification.md). Keep this separate from R1, and edit executor only if an unchanged new test actually fails on the clean pinned baseline. If negative tests are already green, record evidence and close the hypothesis without code changes; do not invent another hardening phase.
+
+## Scope and ownership
+
+No real Ed25519 owner secrets, live activation, published profile edit, policy exception, `strict-v2` approval, automatic rollback, or new environmental access is needed. C4-B status stays strictly read-only, `owner_authority_revalidated=false` and `global_atomic_snapshot_claimed=false`. Engineering checks must be automated; optional genuine strict-v2 policy choice (14% CDC pass gate versus 12% S band) and private owner signature/application remain deliberately outside this review and the proposed R5 probe.
