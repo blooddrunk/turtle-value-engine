@@ -1,6 +1,6 @@
 # Phase 7-C4-A-R4 — Conditional Prepared Input Read/Hash Consistency
 
-Status: **SELECTED FOR TESTS-FIRST REPRODUCTION; NOT IMPLEMENTED**. Selection: `docs/status/phase-7-c4-a-r3-post-closure-review-2026-10-24.md`. R3 remains CLOSED. No automatically selected R5.
+Status: **IMPLEMENTED / CLOSED** (see `docs/status/phase-7-c4-a-r4-2026-10-24.md`). Selection: `docs/status/phase-7-c4-a-r3-post-closure-review-2026-10-24.md`. The hypothesis REPRODUCED on pristine main `96d89e6` (3 red / 2 green, three consecutive runs) and was closed with the smallest compatible single-read repair. R3 remains CLOSED; no R5 exists or is implied.
 
 ## Step 0 — synchronize before any work
 
