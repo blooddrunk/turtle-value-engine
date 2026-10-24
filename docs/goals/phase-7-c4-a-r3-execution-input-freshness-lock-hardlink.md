@@ -1,6 +1,6 @@
 # Phase 7-C4-A-R3 — Conditional Execution Input Freshness and Lock Hardlink Containment
 
-Status: **SELECTED / NOT IMPLEMENTED / TESTS-FIRST ONLY**. Selected by `docs/status/phase-7-c4-a-r2-post-closure-review-2026-10-24.md` after independent GitHub source/CI review of C4-A-R2. **R2 remains CLOSED**.
+Status: **IMPLEMENTED / CLOSED** (see `docs/status/phase-7-c4-a-r3-2026-10-24.md`). Selected by `docs/status/phase-7-c4-a-r2-post-closure-review-2026-10-24.md` after independent GitHub source/CI review of C4-A-R2. Both conditional probes REPRODUCED on pristine main `4247f20` (8 red / 3 green, three consecutive runs) and were closed with the smallest compatible repairs. **C4-A, R1 and R2 remain CLOSED**; no R4 exists or is implied.
 
 ## 0. Mandatory sync and inspect before action
 

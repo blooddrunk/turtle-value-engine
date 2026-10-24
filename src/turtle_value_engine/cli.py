@@ -2285,7 +2285,45 @@ def _prepare_activation_inputs(
         "lifecycle_trust_root": lifecycle_trust_root,
         "authority_snapshot_content_sha256": authority_snapshot_content_sha256,
         "authority_evidence_content_sha256": authority_evidence_content_sha256,
+        # Phase 7-C4-A-R3 F1: the byte identity of every actually supplied
+        # named input file consumed as a prepared in-memory object.  The
+        # execution-boundary recheck compares these hashes at both anchors
+        # so a file replaced/removed after preparation can no longer be
+        # silently consumed from stale memory while the trust root and the
+        # evidence bundle stay byte-identical.
+        "prepared_input_file_sha256s": _prepared_input_file_sha256s(args),
     }
+
+
+def _prepared_input_file_sha256s(args: argparse.Namespace) -> dict[str, str]:
+    """Hash every actually supplied preloaded named input file by label.
+
+    Only the CLI-named files whose *contents* become prepared in-memory
+    objects before the executor's config lock are included — decision
+    records, unsigned revocations, policy exceptions, the boundary input
+    and the signed lifecycle statements.  The trust root and the authority
+    evidence bundle have their own identity recheck; profiles, manifests
+    and the project config are re-read fresh inside the executor and are
+    deliberately not reread or reclassified here.
+    """
+
+    inputs: dict[str, str] = {}
+    if args.boundary_input is not None:
+        inputs["boundary-input"] = hashlib.sha256(
+            args.boundary_input.read_bytes()
+        ).hexdigest()
+    for label, paths in (
+        ("decision-record", args.decision_record),
+        ("revocation", args.revocation or []),
+        ("policy-exception", args.policy_exception or []),
+        ("signed-revocation", args.signed_revocation or []),
+        ("signed-supersession", args.signed_supersession or []),
+    ):
+        for index, path in enumerate(paths):
+            inputs[f"{label}[{index}]"] = hashlib.sha256(
+                Path(path).read_bytes()
+            ).hexdigest()
+    return inputs
 
 
 def _build_activation_authority_recheck(
@@ -2304,22 +2342,33 @@ def _build_activation_authority_recheck(
     bundle and reports named blockers when either no longer matches the
     prepared state.  It observes the authority at the two anchor points only
     — no cross-file global atomicity is implied.
+
+    Phase 7-C4-A-R3 F1 extends the same comparison to every actually
+    supplied preloaded named input file (decision records, unsigned
+    revocations, policy exceptions, the boundary input and the signed
+    lifecycle statements): the file must still be readable and byte-identical
+    at each anchor, otherwise the prepared in-memory object is stale and the
+    named blocker fails the apply closed before the protected mutation.
     """
 
     expected_snapshot_sha = prepared.get("authority_snapshot_content_sha256")
     expected_evidence_sha = prepared.get("authority_evidence_content_sha256")
-    if expected_snapshot_sha is None:
+    expected_input_sha256s: dict[str, str] = dict(
+        prepared.get("prepared_input_file_sha256s") or {}
+    )
+    if expected_snapshot_sha is None and not expected_input_sha256s:
         return None
 
     def recheck() -> list[str]:
         blockers: list[str] = []
-        try:
-            latest = _load_trust_root_snapshot(args.trust_root)
-        except (OSError, ValueError):
-            blockers.append("AUTHORITY_TRUST_ROOT_UNREADABLE")
-        else:
-            if latest.snapshot_content_sha256 != expected_snapshot_sha:
-                blockers.append("AUTHORITY_TRUST_ROOT_SUPERSEDED")
+        if args.trust_root is not None:
+            try:
+                latest = _load_trust_root_snapshot(args.trust_root)
+            except (OSError, ValueError):
+                blockers.append("AUTHORITY_TRUST_ROOT_UNREADABLE")
+            else:
+                if latest.snapshot_content_sha256 != expected_snapshot_sha:
+                    blockers.append("AUTHORITY_TRUST_ROOT_SUPERSEDED")
         if expected_evidence_sha is not None:
             try:
                 current = load_owner_decision_evidence(args.authority_evidence)
@@ -2328,9 +2377,40 @@ def _build_activation_authority_recheck(
             else:
                 if current.bundle.content_sha256 != expected_evidence_sha:
                     blockers.append("AUTHORITY_EVIDENCE_CHANGED")
+        for label, expected_sha in sorted(expected_input_sha256s.items()):
+            try:
+                current_sha = hashlib.sha256(
+                    Path(_prepared_input_path(args, label)).read_bytes()
+                ).hexdigest()
+            except OSError:
+                blockers.append(f"AUTHORITY_INPUT_UNREADABLE:{label}")
+            else:
+                if current_sha != expected_sha:
+                    blockers.append(f"AUTHORITY_INPUT_CHANGED:{label}")
         return blockers
 
     return recheck
+
+
+def _prepared_input_path(args: argparse.Namespace, label: str) -> Path:
+    """Resolve one ``prepared_input_file_sha256s`` label back to its path."""
+
+    if label == "boundary-input":
+        if args.boundary_input is None:
+            raise ValueError(f"no boundary input is supplied for label {label!r}")
+        return args.boundary_input
+    name, _, index_text = label.rpartition("[")
+    index = int(index_text.rstrip("]"))
+    groups = {
+        "decision-record": args.decision_record,
+        "revocation": args.revocation or [],
+        "policy-exception": args.policy_exception or [],
+        "signed-revocation": args.signed_revocation or [],
+        "signed-supersession": args.signed_supersession or [],
+    }
+    if name not in groups or index >= len(groups[name]):
+        raise ValueError(f"no supplied input file matches label {label!r}")
+    return Path(groups[name][index])
 
 
 def _run_evolution_plan_activation_command(args: argparse.Namespace) -> object:

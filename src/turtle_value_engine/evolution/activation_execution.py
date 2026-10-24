@@ -742,6 +742,14 @@ class _ConfigLock:
     inode outside the activation store.  A hostile entry is refused by name
     and never unlinked or altered; ``ACTIVATION_BUSY`` remains reserved for
     genuine flock contention on the in-store lock.
+
+    Multi-link containment (Phase 7-C4-A-R3 F2): a regular entry is still
+    refused when ``st_nlink != 1`` — a hard link planted from outside the
+    store passes the symlink and regular-file checks while making the lock
+    inode reachable (and externally flock-controllable) through a foreign
+    directory entry.  The lock must be an inode with exactly one directory
+    link, the in-store one; the hostile entry and its foreign twin are
+    never unlinked or altered.
     """
 
     def __init__(self, activation_root: Path, resolved_config: Path) -> None:
@@ -783,6 +791,15 @@ class _ConfigLock:
                 "the activation lock path is not a regular file and will not "
                 "be locked (remove the hostile entry manually if intended): "
                 f"{self.path}",
+            )
+        if metadata.st_nlink != 1:
+            self._close()
+            raise ActivationExecutionError(
+                "ACTIVATION_LOCK_HARDLINK",
+                "the activation lock entry has multiple directory links and "
+                "will not be locked through an inode reachable outside the "
+                "activation store (remove the hostile link manually if "
+                f"intended): {self.path}",
             )
         try:
             fcntl.flock(self._descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
