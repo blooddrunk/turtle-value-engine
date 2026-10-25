@@ -990,6 +990,99 @@ def _build_parser() -> argparse.ArgumentParser:
         "(repeatable)",
     )
     evolution_decision_dossier.add_argument("--output", required=True, type=Path)
+    evolution_readiness_summary = evolution_commands.add_parser(
+        "readiness-summary",
+        help="single read-only owner-readiness summary (Phase 7-C4-C): one "
+        "secret-free Chinese-first JSON combining a fresh profile audit, a "
+        "fresh activation plan (the only authority source), the observed "
+        "activation-store classification and concrete next read-only steps; "
+        "writes nothing anywhere (no --output exists, no locks, no repair, "
+        "no network), never approves or applies anything, and stays an "
+        "informational view — exit 0 for every informational outcome, 2 "
+        "for unusable input",
+    )
+    evolution_readiness_summary.add_argument(
+        "--base-profile", required=True, type=Path
+    )
+    evolution_readiness_summary.add_argument(
+        "--target-profile", required=True, type=Path
+    )
+    evolution_readiness_summary.add_argument(
+        "--release-manifest", required=True, type=Path
+    )
+    evolution_readiness_summary.add_argument(
+        "--boundary-input",
+        type=Path,
+        default=None,
+        help="normalized input JSON used as the boundary-replay template "
+        "(default: fixtures/healthy_cash_cow.json)",
+    )
+    evolution_readiness_summary.add_argument(
+        "--decision-record",
+        action="append",
+        type=Path,
+        default=None,
+        help="owner policy-decision record to resolve (repeatable; none "
+        "supplied means the journey-start view)",
+    )
+    evolution_readiness_summary.add_argument(
+        "--revocation",
+        action="append",
+        type=Path,
+        default=None,
+        help="owner policy-decision revocation (repeatable)",
+    )
+    evolution_readiness_summary.add_argument(
+        "--policy-exception",
+        action="append",
+        type=Path,
+        default=None,
+        help="versioned policy-exception declaration bound by the resolved "
+        "decision (repeatable)",
+    )
+    evolution_readiness_summary.add_argument(
+        "--project-config",
+        required=True,
+        type=Path,
+        help="private project runtime configuration whose [profiles] default "
+        "and bytes are observed read-only",
+    )
+    evolution_readiness_summary.add_argument(
+        "--trust-root",
+        type=Path,
+        default=None,
+        help="operator-owned trust-root directory whose LATEST validated "
+        "registry snapshot re-attests the decision authority freshly",
+    )
+    evolution_readiness_summary.add_argument(
+        "--authority-evidence",
+        type=Path,
+        default=None,
+        help="captured evidence bundle (bundle.json); with --trust-root this "
+        "is the only path that can report owner_authority_revalidated=true",
+    )
+    evolution_readiness_summary.add_argument(
+        "--signed-revocation",
+        action="append",
+        type=Path,
+        default=None,
+        help="owner-signed revocation evidence JSON (repeatable)",
+    )
+    evolution_readiness_summary.add_argument(
+        "--signed-supersession",
+        action="append",
+        type=Path,
+        default=None,
+        help="owner-signed supersession evidence JSON (repeatable)",
+    )
+    evolution_readiness_summary.add_argument(
+        "--activation-root",
+        type=Path,
+        default=None,
+        help="optional private executor store to classify read-only (the "
+        "unchanged activation-status projection); a missing store stays "
+        "missing",
+    )
 
     provenance_parser = subparsers.add_parser(
         "provenance",
@@ -1807,6 +1900,8 @@ def _run_evolution_command(args: argparse.Namespace) -> object:
         return _run_evolution_activation_status_command(args)
     if args.evolution_command == "decision-dossier":
         return _run_evolution_decision_dossier_command(args)
+    if args.evolution_command == "readiness-summary":
+        return _run_evolution_readiness_summary_command(args)
 
     input_paths = {
         "manifest": args.manifest,
@@ -2842,6 +2937,59 @@ def _run_evolution_decision_dossier_command(args: argparse.Namespace) -> object:
             "synthetic boundary evidence, not a performance proof"
         ),
     }
+
+
+def _run_evolution_readiness_summary_command(args: argparse.Namespace) -> object:
+    """C4-C read-only readiness summary: observe, never mutate.
+
+    Exit classes: ``0`` for every informational outcome (the readiness
+    facts themselves — including a missing decision, unproven authority,
+    blocked plan or pending recovery — are observations, not failures of
+    the summary) and ``2`` for unusable input through the established
+    classified guards.  There is no ``--output`` and no success-path
+    refusal code: printing a report file would itself be a persistent
+    write this command must not perform, and a blocked readiness is a
+    fact to display, not an error to raise.
+    """
+
+    from turtle_value_engine.evolution.activation_execution import (
+        _guard_target_config,
+    )
+    from turtle_value_engine.evolution.owner_readiness import (
+        summarize_owner_readiness,
+    )
+
+    # The same read-only guards the executor/status paths apply; both are
+    # pure path checks (lstat/resolve) and write nothing.
+    _guard_target_config(Path(args.project_config))
+    if args.activation_root is not None:
+        from turtle_value_engine.evolution.activation_execution import (
+            _guard_activation_root,
+        )
+
+        _guard_activation_root(Path(args.activation_root))
+
+    # ``--decision-record`` is optional here (the journey-start view has no
+    # decision yet); the shared preparation contract expects a list.
+    if args.decision_record is None:
+        args.decision_record = []
+    prepared = _prepare_activation_inputs(args)
+    return summarize_owner_readiness(
+        base_profile_path=args.base_profile,
+        target_profile_path=args.target_profile,
+        release_manifest_path=args.release_manifest,
+        project_config_path=args.project_config,
+        boundary_input=prepared["boundary_input"],
+        decision_records=prepared["decision_records"],
+        revocations=prepared["revocations"],
+        policy_exceptions=prepared["policy_exceptions"],
+        authority_verifier=prepared["authority_verifier"],
+        authority_evidence=prepared["authority_evidence"],
+        signed_revocations=prepared["signed_revocations"],
+        signed_supersessions=prepared["signed_supersessions"],
+        lifecycle_trust_root=prepared["lifecycle_trust_root"],
+        activation_root=args.activation_root,
+    )
 
 
 def _load_public_key_material(path: Path) -> str:

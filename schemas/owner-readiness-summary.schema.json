@@ -1,0 +1,327 @@
+{
+  "additionalProperties": false,
+  "description": "The immutable, informational owner-readiness projection.\n\nFixed literals make the boundary explicit: this summary never approves,\nauthorizes or executes anything, and it is not an authorization bearer.\nA READY plan observed here is a *fact about a fresh plan derivation*,\nnot a permission; the apply boundary re-derives everything under its\nown locks and expected hashes.",
+  "properties": {
+    "contract": {
+      "const": "owner_readiness_summary_v1",
+      "default": "owner_readiness_summary_v1",
+      "title": "Contract",
+      "type": "string"
+    },
+    "schema_version": {
+      "default": "1.0.0",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "summary_id": {
+      "minLength": 1,
+      "title": "Summary Id",
+      "type": "string"
+    },
+    "base_profile_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Base Profile Id",
+      "type": "string"
+    },
+    "base_profile_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Base Profile Sha256",
+      "type": "string"
+    },
+    "target_profile_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Target Profile Id",
+      "type": "string"
+    },
+    "target_profile_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Target Profile Sha256",
+      "type": "string"
+    },
+    "release_manifest_id": {
+      "minLength": 1,
+      "title": "Release Manifest Id",
+      "type": "string"
+    },
+    "release_manifest_content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Release Manifest Content Sha256",
+      "type": "string"
+    },
+    "audit_id": {
+      "minLength": 1,
+      "title": "Audit Id",
+      "type": "string"
+    },
+    "audit_content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Audit Content Sha256",
+      "type": "string"
+    },
+    "audit_activation_readiness": {
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "Audit Activation Readiness",
+      "type": "string"
+    },
+    "published_bytes_verified": {
+      "title": "Published Bytes Verified",
+      "type": "boolean"
+    },
+    "uncovered_policy_findings": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 64,
+      "title": "Uncovered Policy Findings",
+      "type": "array"
+    },
+    "policy_question_zh": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 32,
+      "minItems": 1,
+      "title": "Policy Question Zh",
+      "type": "array"
+    },
+    "behavior_contrast_zh": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 32,
+      "minItems": 1,
+      "title": "Behavior Contrast Zh",
+      "type": "array"
+    },
+    "decision_authority_state": {
+      "anyOf": [
+        {
+          "maxLength": 64,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Decision Authority State"
+    },
+    "decision_record_id": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Decision Record Id"
+    },
+    "decision": {
+      "anyOf": [
+        {
+          "enum": [
+            "ACCEPT_WITH_EXCEPTION",
+            "REJECT"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Decision"
+    },
+    "owner_authority_revalidated": {
+      "title": "Owner Authority Revalidated",
+      "type": "boolean"
+    },
+    "plan_state": {
+      "anyOf": [
+        {
+          "maxLength": 64,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Plan State"
+    },
+    "plan_blockers": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 256,
+      "title": "Plan Blockers",
+      "type": "array"
+    },
+    "project_config_path": {
+      "maxLength": 2048,
+      "minLength": 1,
+      "title": "Project Config Path",
+      "type": "string"
+    },
+    "project_config_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Project Config Sha256",
+      "type": "string"
+    },
+    "current_default_profile": {
+      "anyOf": [
+        {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Current Default Profile"
+    },
+    "activation_root_supplied": {
+      "title": "Activation Root Supplied",
+      "type": "boolean"
+    },
+    "activation_store_status": {
+      "anyOf": [
+        {
+          "maxLength": 64,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Activation Store Status"
+    },
+    "activation_store_problems": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 256,
+      "title": "Activation Store Problems",
+      "type": "array"
+    },
+    "activation_store_guidance_zh": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 64,
+      "title": "Activation Store Guidance Zh",
+      "type": "array"
+    },
+    "journey_state": {
+      "enum": [
+        "OWNER_DECISION_REQUIRED",
+        "REJECTED_BY_OWNER",
+        "DECISION_CONFLICT",
+        "OWNER_AUTHORITY_NOT_PROVEN",
+        "PUBLISHED_PAIR_BLOCKED",
+        "ACTIVATION_BLOCKED",
+        "RECOVERY_PENDING",
+        "STORE_NEEDS_ATTENTION",
+        "ALREADY_APPLIED",
+        "ROLLED_BACK",
+        "PREVIEW_READY"
+      ],
+      "title": "Journey State",
+      "type": "string"
+    },
+    "informational_blockers": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 256,
+      "title": "Informational Blockers",
+      "type": "array"
+    },
+    "next_steps_zh": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 16,
+      "minItems": 1,
+      "title": "Next Steps Zh",
+      "type": "array"
+    },
+    "requires_human_policy_approval": {
+      "const": true,
+      "default": true,
+      "title": "Requires Human Policy Approval",
+      "type": "boolean"
+    },
+    "automatic_activation_allowed": {
+      "const": false,
+      "default": false,
+      "title": "Automatic Activation Allowed",
+      "type": "boolean"
+    },
+    "execution_performed": {
+      "const": false,
+      "default": false,
+      "title": "Execution Performed",
+      "type": "boolean"
+    },
+    "summary_is_informational_not_authorization": {
+      "const": true,
+      "default": true,
+      "title": "Summary Is Informational Not Authorization",
+      "type": "boolean"
+    },
+    "read_only_observation": {
+      "const": true,
+      "default": true,
+      "title": "Read Only Observation",
+      "type": "boolean"
+    },
+    "content_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Content Sha256",
+      "type": "string"
+    }
+  },
+  "required": [
+    "summary_id",
+    "base_profile_id",
+    "base_profile_sha256",
+    "target_profile_id",
+    "target_profile_sha256",
+    "release_manifest_id",
+    "release_manifest_content_sha256",
+    "audit_id",
+    "audit_content_sha256",
+    "audit_activation_readiness",
+    "published_bytes_verified",
+    "uncovered_policy_findings",
+    "policy_question_zh",
+    "behavior_contrast_zh",
+    "owner_authority_revalidated",
+    "plan_blockers",
+    "project_config_path",
+    "project_config_sha256",
+    "activation_root_supplied",
+    "activation_store_problems",
+    "activation_store_guidance_zh",
+    "journey_state",
+    "informational_blockers",
+    "next_steps_zh",
+    "content_sha256"
+  ],
+  "title": "OwnerReadinessSummaryV1",
+  "type": "object"
+}
